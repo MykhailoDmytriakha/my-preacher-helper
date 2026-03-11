@@ -1,6 +1,6 @@
 import { Extension } from '@tiptap/core';
 import Placeholder from '@tiptap/extension-placeholder';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { EditorContent, type Editor, useEditor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -24,6 +24,14 @@ interface RichMarkdownEditorProps {
     stickyToolbar?: boolean;
     stickyToolbarTop?: string;
     showOutlineStructureControls?: boolean;
+    pendingHeadingSelection?: PendingHeadingSelectionRequest | null;
+}
+
+export interface PendingHeadingSelectionRequest {
+    token: string;
+    headingText: string;
+    headingLevel: number;
+    occurrenceIndex: number;
 }
 
 const OutlineHeadingHotkeys = Extension.create({
@@ -52,6 +60,13 @@ interface OutlineDepthDecorationDescriptor {
     from: number;
     to: number;
     depth: number;
+}
+
+interface HeadingSelectionDescriptor {
+    level: number;
+    text: string;
+    from: number;
+    to: number;
 }
 
 interface MarkdownStorageShape {
@@ -170,6 +185,48 @@ export function getOutlineDepthDecorationsForBlocks(
     });
 }
 
+export function findHeadingSelectionRange(
+    headings: HeadingSelectionDescriptor[],
+    pendingHeadingSelection: PendingHeadingSelectionRequest
+): Pick<HeadingSelectionDescriptor, 'from' | 'to'> | null {
+    const matchingHeadings = headings.filter((heading) =>
+        heading.level === pendingHeadingSelection.headingLevel &&
+        heading.text === pendingHeadingSelection.headingText
+    );
+
+    const matchingHeading = matchingHeadings[pendingHeadingSelection.occurrenceIndex];
+
+    if (!matchingHeading) {
+        return null;
+    }
+
+    return {
+        from: matchingHeading.from,
+        to: matchingHeading.to,
+    };
+}
+
+function collectHeadingSelectionDescriptors(doc: Editor['state']['doc']): HeadingSelectionDescriptor[] {
+    const headings: HeadingSelectionDescriptor[] = [];
+
+    doc.descendants((node, position) => {
+        if (node.type.name !== 'heading' || typeof node.attrs.level !== 'number') {
+            return true;
+        }
+
+        headings.push({
+            level: clampHeadingLevel(node.attrs.level),
+            text: node.textContent,
+            from: position + 1,
+            to: position + 1 + node.textContent.length,
+        });
+
+        return true;
+    });
+
+    return headings;
+}
+
 export function RichMarkdownEditor({
     value,
     onChange,
@@ -179,6 +236,7 @@ export function RichMarkdownEditor({
     stickyToolbar = false,
     stickyToolbarTop = '0px',
     showOutlineStructureControls = false,
+    pendingHeadingSelection = null,
 }: RichMarkdownEditorProps) {
     const extensions = useMemo(() => {
         const configuredExtensions = [
@@ -229,6 +287,36 @@ export function RichMarkdownEditor({
 
         return undefined;
     }, [value, editor]);
+
+    useEffect(() => {
+        if (!editor || !pendingHeadingSelection) {
+            return undefined;
+        }
+
+        const selectionTimeoutId = window.setTimeout(() => {
+            const headingSelectionRange = findHeadingSelectionRange(
+                collectHeadingSelectionDescriptors(editor.state.doc),
+                pendingHeadingSelection
+            );
+
+            if (!headingSelectionRange) {
+                return;
+            }
+
+            editor.view.dispatch(
+                editor.state.tr.setSelection(
+                    TextSelection.create(
+                        editor.state.doc,
+                        headingSelectionRange.from,
+                        headingSelectionRange.to
+                    )
+                ).scrollIntoView()
+            );
+            editor.view.focus();
+        }, 0);
+
+        return () => window.clearTimeout(selectionTimeoutId);
+    }, [editor, pendingHeadingSelection]);
 
     if (!editor) {
         return null;

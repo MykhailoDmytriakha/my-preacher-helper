@@ -1,4 +1,5 @@
 import {
+    findHeadingSelectionRange,
     getOutlineBaseHeadingLevel,
     getOutlineDepthDecorationsForBlocks,
     getOutlineNodeDecorationRange,
@@ -133,5 +134,23 @@ describe('getOutlineNodeDecorationRange', () => {
     it('uses outer ProseMirror node boundaries for node decorations', () => {
         expect(getOutlineNodeDecorationRange(0, 9)).toEqual({ from: 0, to: 9 });
         expect(getOutlineNodeDecorationRange(14, 7)).toEqual({ from: 14, to: 21 });
+    });
+});
+
+describe('findHeadingSelectionRange', () => {
+    it('selects the requested heading occurrence by level and raw text', () => {
+        expect(findHeadingSelectionRange([
+            { level: 2, text: 'New branch', from: 4, to: 14 },
+            { level: 2, text: 'Existing', from: 18, to: 26 },
+            { level: 2, text: 'New branch', from: 30, to: 40 },
+        ], {
+            token: 'selection-1',
+            headingText: 'New branch',
+            headingLevel: 2,
+            occurrenceIndex: 1,
+        })).toEqual({
+            from: 30,
+            to: 40,
+        });
     });
 });

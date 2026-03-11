@@ -101,6 +101,36 @@ const structuredNote: StudyNote = {
     ].join('\n'),
 };
 
+const movableStructuredNote: StudyNote = {
+    ...createMockNote('note-1', 'Movable Structured Note'),
+    content: [
+        'Preface paragraph',
+        '',
+        '## Alpha',
+        'Alpha body',
+        '',
+        '### Alpha child',
+        'Alpha child body',
+        '',
+        '## Beta',
+        'Beta body',
+    ].join('\n'),
+};
+
+const nestedMovableStructuredNote: StudyNote = {
+    ...createMockNote('note-1', 'Nested Movable Structured Note'),
+    content: [
+        '## Root',
+        'Root body',
+        '',
+        '### First child',
+        'First body',
+        '',
+        '### Second child',
+        'Second body',
+    ].join('\n'),
+};
+
 describe('StudyNoteEditorPage Pagination', () => {
     beforeEach(() => {
         jest.clearAllMocks();
@@ -394,6 +424,221 @@ describe('StudyNoteEditorPage Pagination', () => {
         expect(screen.getByText('studiesWorkspace.outlinePilot.previewTitle')).toBeInTheDocument();
         expect(screen.getByText('Main Branch')).toBeInTheDocument();
         expect(screen.getByText('Child Branch')).toBeInTheDocument();
+    });
+
+    it('switches between editor-only, split, and preview-only outline workspace modes', () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [structuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+
+        expect(screen.getByTestId('rich-markdown-editor')).toBeInTheDocument();
+        expect(screen.getByTestId('study-note-outline-preview')).toBeInTheDocument();
+        expect(screen.getByTestId('study-note-outline-resizer')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('study-note-layout-mode-preview'));
+
+        expect(screen.queryByTestId('rich-markdown-editor')).not.toBeInTheDocument();
+        expect(screen.getByTestId('study-note-outline-preview')).toBeInTheDocument();
+        expect(screen.queryByTestId('study-note-outline-resizer')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('study-note-layout-mode-editor'));
+
+        expect(screen.getByTestId('rich-markdown-editor')).toBeInTheDocument();
+        expect(screen.queryByTestId('study-note-outline-preview')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('study-note-outline-resizer')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('study-note-layout-mode-split'));
+
+        expect(screen.getByTestId('rich-markdown-editor')).toBeInTheDocument();
+        expect(screen.getByTestId('study-note-outline-preview')).toBeInTheDocument();
+        expect(screen.getByTestId('study-note-outline-resizer')).toBeInTheDocument();
+    });
+
+    it('returns from preview-only into the editor after creating a branch so the placeholder can be renamed', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [movableStructuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTestId('study-note-layout-mode-preview'));
+
+        expect(screen.queryByTestId('rich-markdown-editor')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('study-note-branch-create-sibling-1'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('rich-markdown-editor')).toBeInTheDocument();
+        });
+    });
+
+    it('moves a branch through the preview shell and rewrites the editor markdown', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [movableStructuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTestId('study-note-branch-move-down-1'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue([
+                'Preface paragraph',
+                '',
+                '## Beta',
+                'Beta body',
+                '',
+                '## Alpha',
+                'Alpha body',
+                '',
+                '### Alpha child',
+                'Alpha child body',
+            ].join('\n'));
+        });
+
+        const branchCards = Array.from(
+            screen
+                .getByTestId('study-note-outline-preview')
+                .querySelectorAll<HTMLElement>('section[data-testid^="study-note-branch-"]')
+        );
+
+        expect(within(branchCards[0]).getByText('Beta')).toBeInTheDocument();
+        expect(within(branchCards[1]).getByText('Alpha')).toBeInTheDocument();
+    });
+
+    it('moves a nested branch through the preview shell and preserves parent ownership', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [nestedMovableStructuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTestId('study-note-branch-move-up-1.2'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue([
+                '## Root',
+                'Root body',
+                '',
+                '### Second child',
+                'Second body',
+                '',
+                '### First child',
+                'First body',
+            ].join('\n'));
+        });
+
+        const branchCards = Array.from(
+            screen
+                .getByTestId('study-note-outline-preview')
+                .querySelectorAll<HTMLElement>('section[data-testid^="study-note-branch-"]')
+        );
+
+        expect(within(branchCards[0]).getByText('Root')).toBeInTheDocument();
+        expect(within(branchCards[1]).getByText('Second child')).toBeInTheDocument();
+        expect(within(branchCards[2]).getByText('First child')).toBeInTheDocument();
+    });
+
+    it('creates a sibling branch through the preview shell and rewrites the editor markdown', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [movableStructuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTestId('study-note-branch-create-sibling-1'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue([
+                'Preface paragraph',
+                '',
+                '## Alpha',
+                'Alpha body',
+                '',
+                '### Alpha child',
+                'Alpha child body',
+                '',
+                '## studiesWorkspace.outlinePilot.newBranchTitle',
+                '',
+                '## Beta',
+                'Beta body',
+            ].join('\n'));
+        });
+
+        expect(screen.getAllByText('studiesWorkspace.outlinePilot.newBranchTitle').length).toBeGreaterThan(0);
+    });
+
+    it('creates a child branch through the preview shell and keeps it under the same parent', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [structuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTestId('study-note-branch-create-child-1'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue([
+                'Preface paragraph',
+                '',
+                '## Main Branch',
+                'Main branch body',
+                '',
+                '### Child Branch',
+                'Child branch body',
+                '',
+                '### studiesWorkspace.outlinePilot.newBranchTitle',
+            ].join('\n'));
+        });
+
+        const branchCards = Array.from(
+            screen
+                .getByTestId('study-note-outline-preview')
+                .querySelectorAll<HTMLElement>('section[data-testid^="study-note-branch-"]')
+        );
+
+        expect(within(branchCards[0]).getByText('Main Branch')).toBeInTheDocument();
+        expect(within(branchCards[1]).getByText('Child Branch')).toBeInTheDocument();
+        expect(within(branchCards[2]).getByText('studiesWorkspace.outlinePilot.newBranchTitle')).toBeInTheDocument();
     });
 
     it('navigates back using the back button', () => {

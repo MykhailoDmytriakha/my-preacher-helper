@@ -1,13 +1,17 @@
 'use client';
 
-import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
+import { ArrowDownIcon, ArrowUpIcon, ChevronDownIcon, ChevronRightIcon, PlusIcon } from '@heroicons/react/24/outline';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
-import { StudyNoteOutline, StudyNoteOutlineBranch } from './studyNoteOutline';
+import {
+    remapStudyNoteOutlineKey,
+    StudyNoteOutline,
+    StudyNoteOutlineBranch,
+} from './studyNoteOutline';
 
 interface StudyNoteOutlineViewProps {
     outline: StudyNoteOutline;
@@ -15,14 +19,22 @@ interface StudyNoteOutlineViewProps {
     onToggleBranch: (branchKey: string) => void;
     onExpandAll: () => void;
     onCollapseAll: () => void;
+    onMoveBranch?: (branchKey: string, direction: 'up' | 'down') => void;
+    onCreateBranch?: (branchKey: string, position: 'sibling' | 'child') => void;
     searchQuery?: string;
     mode?: 'read' | 'preview';
     className?: string;
     testId?: string;
+    preferredActiveBranchRequest?: { key: string; token: string } | null;
+    showNavigator?: boolean;
 }
 
 const NAV_INDENT_PX = 14;
 const BRANCH_INDENT_PX = 18;
+const PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME =
+    'inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-200';
+const PREVIEW_BRANCH_ACTION_BUTTON_DISABLED_CLASS_NAME =
+    ' disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:bg-white disabled:hover:text-gray-600 dark:disabled:hover:border-gray-700 dark:disabled:hover:bg-gray-900 dark:disabled:hover:text-gray-300';
 
 function hasBranchDetails(branch: StudyNoteOutlineBranch): boolean {
     return Boolean(branch.body.trim()) || branch.children.length > 0;
@@ -34,30 +46,52 @@ export function StudyNoteOutlineView({
     onToggleBranch,
     onExpandAll,
     onCollapseAll,
+    onMoveBranch,
+    onCreateBranch,
     searchQuery = '',
     mode = 'read',
     className = '',
     testId,
+    preferredActiveBranchRequest = null,
+    showNavigator = true,
 }: StudyNoteOutlineViewProps) {
     const { t } = useTranslation();
     const isPreview = mode === 'preview';
     const foldedBranchKeySet = useMemo(() => new Set(foldedBranchKeys), [foldedBranchKeys]);
     const branchRefs = useRef<Record<string, HTMLElement | null>>({});
+    const previousOutlineRef = useRef(outline);
     const [activeBranchKey, setActiveBranchKey] = useState<string | null>(outline.branches[0]?.key ?? null);
 
     useEffect(() => {
+        setActiveBranchKey((currentKey) => {
+            if (!currentKey) {
+                return outline.branches[0]?.key ?? null;
+            }
+
+            const remappedKey = remapStudyNoteOutlineKey(
+                currentKey,
+                previousOutlineRef.current.branches,
+                outline.branches
+            );
+
+            return remappedKey ?? outline.branches[0]?.key ?? null;
+        });
+        previousOutlineRef.current = outline;
+    }, [outline]);
+
+    useEffect(() => {
+        if (!preferredActiveBranchRequest) {
+            return;
+        }
+
         const allBranchKeys = new Set(
             outline.branches.flatMap((branch) => collectBranchKeys(branch))
         );
 
-        setActiveBranchKey((currentKey) => {
-            if (currentKey && allBranchKeys.has(currentKey)) {
-                return currentKey;
-            }
-
-            return outline.branches[0]?.key ?? null;
-        });
-    }, [outline.branches]);
+        if (allBranchKeys.has(preferredActiveBranchRequest.key)) {
+            setActiveBranchKey(preferredActiveBranchRequest.key);
+        }
+    }, [outline.branches, preferredActiveBranchRequest]);
 
     const handleJumpToBranch = (branchKey: string) => {
         setActiveBranchKey(branchKey);
@@ -112,10 +146,19 @@ export function StudyNoteOutlineView({
         );
     };
 
-    const renderBranch = (branch: StudyNoteOutlineBranch) => {
+    const renderBranch = (
+        branch: StudyNoteOutlineBranch,
+        siblingIndex: number,
+        siblingCount: number
+    ) => {
         const isFolded = foldedBranchKeySet.has(branch.key);
         const isCollapsible = hasBranchDetails(branch);
         const headingClassName = getHeadingClassName(branch.depth, isPreview);
+        const canMoveUp = siblingIndex > 0;
+        const canMoveDown = siblingIndex < siblingCount - 1;
+        const canCreateChild = branch.headingLevel < 6;
+        const addSiblingLabel = t('studiesWorkspace.outlinePilot.addSibling');
+        const addChildLabel = t('studiesWorkspace.outlinePilot.addChild');
 
         return (
             <section
@@ -152,22 +195,81 @@ export function StudyNoteOutlineView({
                     )}
 
                     <div className="min-w-0 flex-1 space-y-3">
-                        <button
-                            type="button"
-                            onClick={() => handleJumpToBranch(branch.key)}
-                            className="w-full text-left"
-                        >
-                            <div className="mb-1 flex items-center gap-2">
-                                <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
-                                    H{branch.headingLevel}
-                                </span>
+                        <div className="space-y-2">
+                            <div className="flex items-start gap-2">
+                                <div className="min-w-0 flex-1 space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                                            H{branch.headingLevel}
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleJumpToBranch(branch.key)}
+                                        className="w-full text-left"
+                                    >
+                                        <h3 className={`${headingClassName} transition-colors hover:text-emerald-700 dark:hover:text-emerald-400`}>
+                                            {searchQuery.trim()
+                                                ? <HighlightedText text={branch.title} searchQuery={searchQuery} />
+                                                : branch.title}
+                                        </h3>
+                                    </button>
+                                </div>
+                                {isPreview && onMoveBranch && siblingCount > 1 && (
+                                    <div className="flex shrink-0 items-center gap-1 pt-0.5">
+                                        <button
+                                            type="button"
+                                            data-testid={`study-note-branch-move-up-${branch.key}`}
+                                            aria-label={t('common.moveUp')}
+                                            title={t('common.moveUp')}
+                                            disabled={!canMoveUp}
+                                            onClick={() => onMoveBranch(branch.key, 'up')}
+                                            className="rounded-lg border border-gray-200 bg-white p-1 text-gray-500 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:bg-white disabled:hover:text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-200 dark:disabled:hover:border-gray-700 dark:disabled:hover:bg-gray-900 dark:disabled:hover:text-gray-300"
+                                        >
+                                            <ArrowUpIcon className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            data-testid={`study-note-branch-move-down-${branch.key}`}
+                                            aria-label={t('common.moveDown')}
+                                            title={t('common.moveDown')}
+                                            disabled={!canMoveDown}
+                                            onClick={() => onMoveBranch(branch.key, 'down')}
+                                            className="rounded-lg border border-gray-200 bg-white p-1 text-gray-500 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:bg-white disabled:hover:text-gray-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-200 dark:disabled:hover:border-gray-700 dark:disabled:hover:bg-gray-900 dark:disabled:hover:text-gray-300"
+                                        >
+                                            <ArrowDownIcon className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                )}
                             </div>
-                            <h3 className={headingClassName}>
-                                {searchQuery.trim()
-                                    ? <HighlightedText text={branch.title} searchQuery={searchQuery} />
-                                    : branch.title}
-                            </h3>
-                        </button>
+                            {isPreview && onCreateBranch && (
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <button
+                                        type="button"
+                                        data-testid={`study-note-branch-create-sibling-${branch.key}`}
+                                        aria-label={addSiblingLabel}
+                                        title={addSiblingLabel}
+                                        onClick={() => onCreateBranch(branch.key, 'sibling')}
+                                        className={PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}
+                                    >
+                                        <PlusIcon className="h-3.5 w-3.5" />
+                                        <span>{addSiblingLabel}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        data-testid={`study-note-branch-create-child-${branch.key}`}
+                                        aria-label={addChildLabel}
+                                        title={addChildLabel}
+                                        disabled={!canCreateChild}
+                                        onClick={() => onCreateBranch(branch.key, 'child')}
+                                        className={`${PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}${PREVIEW_BRANCH_ACTION_BUTTON_DISABLED_CLASS_NAME}`}
+                                    >
+                                        <PlusIcon className="h-3.5 w-3.5" />
+                                        <span>{addChildLabel}</span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
 
                         {isFolded ? (
                             branch.preview ? (
@@ -193,7 +295,9 @@ export function StudyNoteOutlineView({
 
                                 {branch.children.length > 0 && (
                                     <div className="space-y-3">
-                                        {branch.children.map(renderBranch)}
+                                        {branch.children.map((childBranch, childIndex) =>
+                                            renderBranch(childBranch, childIndex, branch.children.length)
+                                        )}
                                     </div>
                                 )}
                             </>
@@ -254,8 +358,8 @@ export function StudyNoteOutlineView({
                     </section>
                 )}
 
-                <div className={`grid gap-6 ${outline.branches.length > 1 ? 'xl:grid-cols-[240px_minmax(0,1fr)]' : ''}`}>
-                    {outline.branches.length > 1 && (
+                <div className={`grid gap-6 ${showNavigator && outline.branches.length > 1 ? 'xl:grid-cols-[240px_minmax(0,1fr)]' : ''}`}>
+                    {showNavigator && outline.branches.length > 1 && (
                         <nav className="hidden xl:block">
                             <div className="sticky top-24 rounded-2xl border border-gray-200/80 bg-white/80 p-3 shadow-sm dark:border-gray-700 dark:bg-gray-900/70">
                                 <ul className="space-y-1.5">
@@ -266,7 +370,9 @@ export function StudyNoteOutlineView({
                     )}
 
                     <div className="space-y-3">
-                        {outline.branches.map(renderBranch)}
+                        {outline.branches.map((branch, index) =>
+                            renderBranch(branch, index, outline.branches.length)
+                        )}
                     </div>
                 </div>
             </div>

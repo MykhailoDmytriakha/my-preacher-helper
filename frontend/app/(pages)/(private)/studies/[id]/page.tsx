@@ -2,13 +2,13 @@
 
 import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon } from '@heroicons/react/24/outline';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState, useMemo, useRef, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useState, useMemo, useRef, type Dispatch, type PointerEvent as ReactPointerEvent, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 import { toast } from 'sonner';
 
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
-import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
+import { RichMarkdownEditor, type PendingHeadingSelectionRequest } from '@/components/ui/RichMarkdownEditor';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { ScriptureReference, StudyNote } from '@/models/models';
@@ -20,10 +20,14 @@ import MarkdownDisplay from '@components/MarkdownDisplay';
 import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfirmationModal';
 import { BibleLocale } from '../bibleData';
 import {
+    findStudyNoteOutlineBranchByKey,
     filterStudyNoteOutlineKeys,
+    flattenStudyNoteOutlineBranches,
     getCollapsibleStudyNoteBranchKeys,
     parseStudyNoteOutline,
+    remapStudyNoteOutlineKeys,
 } from '../components/studyNoteOutline';
+import { insertStudyNoteOutlineBranch, moveStudyNoteOutlineBranch } from '../components/studyNoteOutlineActions';
 import { StudyNoteOutlineView } from '../components/StudyNoteOutlineView';
 import { STUDIES_INPUT_SHARED_CLASSES } from '../constants';
 import { parseReferenceText } from '../referenceParser';
@@ -327,34 +331,71 @@ function useStructuredOutlineState(content: string) {
         () => getCollapsibleStudyNoteBranchKeys(noteOutline.branches),
         [noteOutline.branches]
     );
-    const [foldedBranchKeys, setFoldedBranchKeys] = useState<string[]>([]);
+    const previousOutlineRef = useRef(noteOutline);
+    const [readFoldedBranchKeys, setReadFoldedBranchKeys] = useState<string[]>([]);
+    const [previewFoldedBranchKeys, setPreviewFoldedBranchKeys] = useState<string[]>([]);
 
     useEffect(() => {
-        setFoldedBranchKeys((prev) => filterStudyNoteOutlineKeys(prev, noteOutline.branches));
-    }, [noteOutline.branches]);
+        const previousOutline = previousOutlineRef.current;
 
-    const handleToggleBranch = useCallback((branchKey: string) => {
-        setFoldedBranchKeys((prev) =>
+        setReadFoldedBranchKeys((prev) => {
+            const remappedKeys = remapStudyNoteOutlineKeys(prev, previousOutline.branches, noteOutline.branches);
+            return filterStudyNoteOutlineKeys(remappedKeys, noteOutline.branches);
+        });
+        setPreviewFoldedBranchKeys((prev) => {
+            const remappedKeys = remapStudyNoteOutlineKeys(prev, previousOutline.branches, noteOutline.branches);
+            return filterStudyNoteOutlineKeys(remappedKeys, noteOutline.branches);
+        });
+        previousOutlineRef.current = noteOutline;
+    }, [noteOutline]);
+
+    const handleToggleReadBranch = useCallback((branchKey: string) => {
+        setReadFoldedBranchKeys((prev) =>
             prev.includes(branchKey)
                 ? prev.filter((key) => key !== branchKey)
                 : [...prev, branchKey]
         );
     }, []);
 
-    const handleExpandAllBranches = useCallback(() => {
-        setFoldedBranchKeys([]);
+    const handleTogglePreviewBranch = useCallback((branchKey: string) => {
+        setPreviewFoldedBranchKeys((prev) =>
+            prev.includes(branchKey)
+                ? prev.filter((key) => key !== branchKey)
+                : [...prev, branchKey]
+        );
     }, []);
 
-    const handleCollapseAllBranches = useCallback(() => {
-        setFoldedBranchKeys(collapsibleBranchKeys);
+    const handleExpandAllReadBranches = useCallback(() => {
+        setReadFoldedBranchKeys([]);
+    }, []);
+
+    const handleExpandAllPreviewBranches = useCallback(() => {
+        setPreviewFoldedBranchKeys([]);
+    }, []);
+
+    const handleCollapseAllReadBranches = useCallback(() => {
+        setReadFoldedBranchKeys(collapsibleBranchKeys);
     }, [collapsibleBranchKeys]);
+
+    const handleCollapseAllPreviewBranches = useCallback(() => {
+        setPreviewFoldedBranchKeys(collapsibleBranchKeys);
+    }, [collapsibleBranchKeys]);
+
+    const clearPreviewFoldedBranch = useCallback((branchKey: string) => {
+        setPreviewFoldedBranchKeys((prev) => prev.filter((key) => key !== branchKey));
+    }, []);
 
     return {
         noteOutline,
-        foldedBranchKeys,
-        handleToggleBranch,
-        handleExpandAllBranches,
-        handleCollapseAllBranches,
+        readFoldedBranchKeys,
+        previewFoldedBranchKeys,
+        handleToggleReadBranch,
+        handleTogglePreviewBranch,
+        handleExpandAllReadBranches,
+        handleExpandAllPreviewBranches,
+        handleCollapseAllReadBranches,
+        handleCollapseAllPreviewBranches,
+        clearPreviewFoldedBranch,
     };
 }
 
@@ -512,99 +553,177 @@ function StudyNoteContentSurface({
     noteOutline,
     content,
     searchQuery,
-    foldedBranchKeys,
-    handleToggleBranch,
-    handleExpandAllBranches,
-    handleCollapseAllBranches,
+    readFoldedBranchKeys,
+    previewFoldedBranchKeys,
+    handleToggleReadBranch,
+    handleTogglePreviewBranch,
+    handleExpandAllReadBranches,
+    handleExpandAllPreviewBranches,
+    handleCollapseAllReadBranches,
+    handleCollapseAllPreviewBranches,
     isPreviewResizing,
     previewPanelWidth,
     handlePreviewResizeStart,
     handlePreviewResizeReset,
     setContent,
+    handleMoveBranch,
+    handleCreateBranch,
+    outlineWorkspaceMode,
+    setOutlineWorkspaceMode,
+    pendingHeadingSelection,
+    preferredPreviewActiveBranchRequest,
     t,
 }: {
     isEditing: boolean;
     noteOutline: ReturnType<typeof parseStudyNoteOutline>;
     content: string;
     searchQuery: string;
-    foldedBranchKeys: string[];
-    handleToggleBranch: (branchKey: string) => void;
-    handleExpandAllBranches: () => void;
-    handleCollapseAllBranches: () => void;
+    readFoldedBranchKeys: string[];
+    previewFoldedBranchKeys: string[];
+    handleToggleReadBranch: (branchKey: string) => void;
+    handleTogglePreviewBranch: (branchKey: string) => void;
+    handleExpandAllReadBranches: () => void;
+    handleExpandAllPreviewBranches: () => void;
+    handleCollapseAllReadBranches: () => void;
+    handleCollapseAllPreviewBranches: () => void;
     isPreviewResizing: boolean;
     previewPanelWidth: number;
     handlePreviewResizeStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
     handlePreviewResizeReset: () => void;
-    setContent: (value: string) => void;
+    setContent: Dispatch<SetStateAction<string>>;
+    handleMoveBranch: (branchKey: string, direction: 'up' | 'down') => void;
+    handleCreateBranch: (branchKey: string, position: 'sibling' | 'child') => void;
+    outlineWorkspaceMode: 'editor' | 'split' | 'preview';
+    setOutlineWorkspaceMode: Dispatch<SetStateAction<'editor' | 'split' | 'preview'>>;
+    pendingHeadingSelection: PendingHeadingSelectionRequest | null;
+    preferredPreviewActiveBranchRequest: { key: string; token: string } | null;
     t: ReturnType<typeof useTranslation>['t'];
 }) {
     const shouldShowOutlinePreview = noteOutline.hasOutline || content.trim();
+    const effectiveOutlineWorkspaceMode = shouldShowOutlinePreview ? outlineWorkspaceMode : 'editor';
+    const showEditorPane = effectiveOutlineWorkspaceMode !== 'preview';
+    const showPreviewPane = shouldShowOutlinePreview && effectiveOutlineWorkspaceMode !== 'editor';
+    const isSplitMode = effectiveOutlineWorkspaceMode === 'split';
+    const activeOutlineWorkspaceModeButtonClassName = 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200';
+    const inactiveOutlineWorkspaceModeButtonClassName = 'border-gray-200 text-gray-600 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:border-gray-700 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-200';
 
     if (isEditing) {
         return (
-            <div className={`flex flex-col gap-6 ${shouldShowOutlinePreview ? 'xl:flex-row xl:items-start' : ''}`}>
-                <div className="min-w-0 flex-1 text-lg md:text-xl leading-relaxed">
-                    <RichMarkdownEditor
-                        value={content}
-                        onChange={setContent}
-                        placeholder={t('studiesWorkspace.contentPlaceholder') || 'Start typing your thoughts here...'}
-                        minHeight="300px"
-                        stickyToolbar
-                        stickyToolbarTop="5rem"
-                        showOutlineStructureControls
-                    />
-                </div>
-
+            <div className="space-y-4">
                 {shouldShowOutlinePreview && (
-                    <>
-                        <div className="hidden xl:flex xl:w-5 xl:flex-none xl:items-stretch xl:justify-center">
-                            <div
-                                role="separator"
-                                aria-orientation="vertical"
-                                aria-label={t('studiesWorkspace.outlinePilot.resizePreview')}
-                                title={t('studiesWorkspace.outlinePilot.resizePreview')}
-                                data-testid="study-note-outline-resizer"
-                                onPointerDown={handlePreviewResizeStart}
-                                onDoubleClick={handlePreviewResizeReset}
-                                className={`group/resizer flex h-full w-3 cursor-col-resize items-center justify-center rounded-full transition-colors ${
-                                    isPreviewResizing ? 'bg-emerald-100/70 dark:bg-emerald-900/40' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
-                                }`}
-                            >
-                                <div className="h-16 w-1 rounded-full bg-gray-300 transition-colors group-hover/resizer:bg-emerald-400 dark:bg-gray-700 dark:group-hover/resizer:bg-emerald-500" />
-                            </div>
-                        </div>
-
-                        <aside
-                            className="xl:sticky xl:top-24 xl:flex-none"
-                            style={{ width: `${previewPanelWidth}px`, maxWidth: '100%' }}
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            data-testid="study-note-layout-mode-editor"
+                            onClick={() => setOutlineWorkspaceMode('editor')}
+                            className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                                effectiveOutlineWorkspaceMode === 'editor'
+                                    ? activeOutlineWorkspaceModeButtonClassName
+                                    : inactiveOutlineWorkspaceModeButtonClassName
+                            }`}
                         >
-                            {noteOutline.hasOutline ? (
-                                <StudyNoteOutlineView
-                                    outline={noteOutline}
-                                    foldedBranchKeys={foldedBranchKeys}
-                                    onToggleBranch={handleToggleBranch}
-                                    onExpandAll={handleExpandAllBranches}
-                                    onCollapseAll={handleCollapseAllBranches}
-                                    searchQuery={searchQuery}
-                                    mode="preview"
-                                    testId="study-note-outline-preview"
-                                />
-                            ) : (
-                                <div
-                                    data-testid="study-note-outline-empty"
-                                    className="not-prose rounded-[28px] border border-dashed border-gray-200 bg-white/80 px-5 py-5 text-sm leading-6 text-gray-500 shadow-sm dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-400"
-                                >
-                                    <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-600 dark:text-emerald-400">
-                                        {t('studiesWorkspace.outlinePilot.previewTitle')}
-                                    </p>
-                                    <p className="mt-3">
-                                        {t('studiesWorkspace.outlinePilot.noBranches')}
-                                    </p>
+                            {t('studiesWorkspace.outlinePilot.focusEditor')}
+                        </button>
+                        <button
+                            type="button"
+                            data-testid="study-note-layout-mode-split"
+                            onClick={() => setOutlineWorkspaceMode('split')}
+                            className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                                effectiveOutlineWorkspaceMode === 'split'
+                                    ? activeOutlineWorkspaceModeButtonClassName
+                                    : inactiveOutlineWorkspaceModeButtonClassName
+                            }`}
+                        >
+                            {t('studiesWorkspace.outlinePilot.focusSplit')}
+                        </button>
+                        <button
+                            type="button"
+                            data-testid="study-note-layout-mode-preview"
+                            onClick={() => setOutlineWorkspaceMode('preview')}
+                            className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                                effectiveOutlineWorkspaceMode === 'preview'
+                                    ? activeOutlineWorkspaceModeButtonClassName
+                                    : inactiveOutlineWorkspaceModeButtonClassName
+                            }`}
+                        >
+                            {t('studiesWorkspace.outlinePilot.focusPreview')}
+                        </button>
+                    </div>
+                )}
+
+                <div className={`flex flex-col gap-6 ${isSplitMode ? 'xl:flex-row xl:items-start' : ''}`}>
+                    {showEditorPane && (
+                        <div className="min-w-0 flex-1 text-lg md:text-xl leading-relaxed">
+                            <RichMarkdownEditor
+                                value={content}
+                                onChange={setContent}
+                                placeholder={t('studiesWorkspace.contentPlaceholder') || 'Start typing your thoughts here...'}
+                                minHeight="300px"
+                                stickyToolbar
+                                stickyToolbarTop="5rem"
+                                showOutlineStructureControls
+                                pendingHeadingSelection={pendingHeadingSelection}
+                            />
+                        </div>
+                    )}
+
+                    {showPreviewPane && (
+                        <>
+                            {isSplitMode && (
+                                <div className="hidden xl:flex xl:w-5 xl:flex-none xl:items-stretch xl:justify-center">
+                                    <div
+                                        role="separator"
+                                        aria-orientation="vertical"
+                                        aria-label={t('studiesWorkspace.outlinePilot.resizePreview')}
+                                        title={t('studiesWorkspace.outlinePilot.resizePreview')}
+                                        data-testid="study-note-outline-resizer"
+                                        onPointerDown={handlePreviewResizeStart}
+                                        onDoubleClick={handlePreviewResizeReset}
+                                        className={`group/resizer flex h-full w-3 cursor-col-resize items-center justify-center rounded-full transition-colors ${
+                                            isPreviewResizing ? 'bg-emerald-100/70 dark:bg-emerald-900/40' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                                        }`}
+                                    >
+                                        <div className="h-16 w-1 rounded-full bg-gray-300 transition-colors group-hover/resizer:bg-emerald-400 dark:bg-gray-700 dark:group-hover/resizer:bg-emerald-500" />
+                                    </div>
                                 </div>
                             )}
-                        </aside>
-                    </>
-                )}
+
+                            <aside
+                                className={isSplitMode ? 'xl:sticky xl:top-24 xl:flex-none' : 'w-full'}
+                                style={isSplitMode ? { width: `${previewPanelWidth}px`, maxWidth: '100%' } : undefined}
+                            >
+                                {noteOutline.hasOutline ? (
+                                    <StudyNoteOutlineView
+                                        outline={noteOutline}
+                                        foldedBranchKeys={previewFoldedBranchKeys}
+                                        onToggleBranch={handleTogglePreviewBranch}
+                                        onExpandAll={handleExpandAllPreviewBranches}
+                                        onCollapseAll={handleCollapseAllPreviewBranches}
+                                        onMoveBranch={handleMoveBranch}
+                                        onCreateBranch={handleCreateBranch}
+                                        preferredActiveBranchRequest={preferredPreviewActiveBranchRequest}
+                                        showNavigator={isSplitMode}
+                                        searchQuery={searchQuery}
+                                        mode="preview"
+                                        testId="study-note-outline-preview"
+                                    />
+                                ) : (
+                                    <div
+                                        data-testid="study-note-outline-empty"
+                                        className="not-prose rounded-[28px] border border-dashed border-gray-200 bg-white/80 px-5 py-5 text-sm leading-6 text-gray-500 shadow-sm dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-400"
+                                    >
+                                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-600 dark:text-emerald-400">
+                                            {t('studiesWorkspace.outlinePilot.previewTitle')}
+                                        </p>
+                                        <p className="mt-3">
+                                            {t('studiesWorkspace.outlinePilot.noBranches')}
+                                        </p>
+                                    </div>
+                                )}
+                            </aside>
+                        </>
+                    )}
+                </div>
             </div>
         );
     }
@@ -613,10 +732,10 @@ function StudyNoteContentSurface({
         return (
             <StudyNoteOutlineView
                 outline={noteOutline}
-                foldedBranchKeys={foldedBranchKeys}
-                onToggleBranch={handleToggleBranch}
-                onExpandAll={handleExpandAllBranches}
-                onCollapseAll={handleCollapseAllBranches}
+                foldedBranchKeys={readFoldedBranchKeys}
+                onToggleBranch={handleToggleReadBranch}
+                onExpandAll={handleExpandAllReadBranches}
+                onCollapseAll={handleCollapseAllReadBranches}
                 searchQuery={searchQuery}
                 mode="read"
                 testId="study-note-outline-read"
@@ -629,6 +748,50 @@ function StudyNoteContentSurface({
             <MarkdownDisplay content={content} searchQuery={searchQuery} />
         </div>
     );
+}
+
+function shiftStudyNoteOutlineKey(branchKey: string, delta: number): string | null {
+    const path = branchKey
+        .split('.')
+        .map((segment) => Number.parseInt(segment, 10));
+
+    if (path.some((segment) => Number.isNaN(segment))) {
+        return null;
+    }
+
+    const nextLastSegment = path[path.length - 1] + delta;
+
+    if (nextLastSegment <= 0) {
+        return null;
+    }
+
+    path[path.length - 1] = nextLastSegment;
+
+    return path.join('.');
+}
+
+function getBranchSelectionOccurrenceIndex(
+    branches: ReturnType<typeof parseStudyNoteOutline>['branches'],
+    targetBranch: NonNullable<ReturnType<typeof findStudyNoteOutlineBranchByKey>>
+): number {
+    return flattenStudyNoteOutlineBranches(branches)
+        .filter((branch) =>
+            branch.headingLevel === targetBranch.headingLevel &&
+            branch.rawTitle === targetBranch.rawTitle
+        )
+        .findIndex((branch) => branch.key === targetBranch.key);
+}
+
+function buildPendingHeadingSelectionRequest(
+    branches: ReturnType<typeof parseStudyNoteOutline>['branches'],
+    targetBranch: NonNullable<ReturnType<typeof findStudyNoteOutlineBranchByKey>>
+): PendingHeadingSelectionRequest {
+    return {
+        token: makeId(),
+        headingText: targetBranch.rawTitle,
+        headingLevel: targetBranch.headingLevel,
+        occurrenceIndex: getBranchSelectionOccurrenceIndex(branches, targetBranch),
+    };
 }
 
 export default function StudyNoteEditorPage() {
@@ -649,6 +812,9 @@ export default function StudyNoteEditorPage() {
     const [scriptureRefs, setScriptureRefs] = useState<ScriptureReference[]>([]);
     const [type, setType] = useState<'note' | 'question'>('note');
     const [isEditing, setIsEditing] = useState(isNew);
+    const [outlineWorkspaceMode, setOutlineWorkspaceMode] = useState<'editor' | 'split' | 'preview'>('split');
+    const [pendingHeadingSelection, setPendingHeadingSelection] = useState<PendingHeadingSelectionRequest | null>(null);
+    const [preferredPreviewActiveBranchRequest, setPreferredPreviewActiveBranchRequest] = useState<{ key: string; token: string } | null>(null);
 
     // Input states
     const [tagInput, setTagInput] = useState('');
@@ -678,10 +844,15 @@ export default function StudyNoteEditorPage() {
     }, [tagData, notes]);
     const {
         noteOutline,
-        foldedBranchKeys,
-        handleToggleBranch,
-        handleExpandAllBranches,
-        handleCollapseAllBranches,
+        readFoldedBranchKeys,
+        previewFoldedBranchKeys,
+        handleToggleReadBranch,
+        handleTogglePreviewBranch,
+        handleExpandAllReadBranches,
+        handleExpandAllPreviewBranches,
+        handleCollapseAllReadBranches,
+        handleCollapseAllPreviewBranches,
+        clearPreviewFoldedBranch,
     } = useStructuredOutlineState(content);
     const {
         previewPanelWidth,
@@ -727,6 +898,70 @@ export default function StudyNoteEditorPage() {
     };
 
     const handleDelete = useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router });
+
+    const handleMoveOutlineBranch = useCallback((branchKey: string, direction: 'up' | 'down') => {
+        const nextContent = moveStudyNoteOutlineBranch(content, branchKey, direction);
+
+        if (nextContent === content) {
+            return;
+        }
+
+        const nextOutline = parseStudyNoteOutline(nextContent);
+        const shiftedBranchKey = shiftStudyNoteOutlineKey(branchKey, direction === 'up' ? -1 : 1);
+        const shiftedBranch = shiftedBranchKey
+            ? findStudyNoteOutlineBranchByKey(nextOutline.branches, shiftedBranchKey)
+            : null;
+
+        if (shiftedBranch) {
+            setPreferredPreviewActiveBranchRequest({
+                key: shiftedBranch.key,
+                token: makeId(),
+            });
+        }
+
+        setContent(nextContent);
+    }, [content, setContent]);
+
+    const handleCreateOutlineBranch = useCallback((branchKey: string, position: 'sibling' | 'child') => {
+        const nextContent = insertStudyNoteOutlineBranch(content, branchKey, position, {
+            title: t('studiesWorkspace.outlinePilot.newBranchTitle'),
+        });
+
+        if (nextContent === content) {
+            return;
+        }
+
+        const currentBranch = findStudyNoteOutlineBranchByKey(noteOutline.branches, branchKey);
+        const nextOutline = parseStudyNoteOutline(nextContent);
+        const insertedBranchKey = currentBranch
+            ? position === 'child'
+                ? `${branchKey}.${currentBranch.children.length + 1}`
+                : shiftStudyNoteOutlineKey(branchKey, 1)
+            : null;
+        const insertedBranch = insertedBranchKey
+            ? findStudyNoteOutlineBranchByKey(nextOutline.branches, insertedBranchKey)
+            : null;
+
+        if (position === 'child') {
+            clearPreviewFoldedBranch(branchKey);
+        }
+
+        if (insertedBranch) {
+            setPreferredPreviewActiveBranchRequest({
+                key: insertedBranch.key,
+                token: makeId(),
+            });
+            setPendingHeadingSelection(
+                buildPendingHeadingSelectionRequest(nextOutline.branches, insertedBranch)
+            );
+        }
+
+        if (outlineWorkspaceMode === 'preview') {
+            setOutlineWorkspaceMode('editor');
+        }
+
+        setContent(nextContent);
+    }, [clearPreviewFoldedBranch, content, noteOutline.branches, outlineWorkspaceMode, setContent, t]);
 
     const addTag = () => {
         const value = tagInput.trim();
@@ -798,15 +1033,25 @@ export default function StudyNoteEditorPage() {
                         noteOutline={noteOutline}
                         content={content}
                         searchQuery={searchQuery}
-                        foldedBranchKeys={foldedBranchKeys}
-                        handleToggleBranch={handleToggleBranch}
-                        handleExpandAllBranches={handleExpandAllBranches}
-                        handleCollapseAllBranches={handleCollapseAllBranches}
+                        readFoldedBranchKeys={readFoldedBranchKeys}
+                        previewFoldedBranchKeys={previewFoldedBranchKeys}
+                        handleToggleReadBranch={handleToggleReadBranch}
+                        handleTogglePreviewBranch={handleTogglePreviewBranch}
+                        handleExpandAllReadBranches={handleExpandAllReadBranches}
+                        handleExpandAllPreviewBranches={handleExpandAllPreviewBranches}
+                        handleCollapseAllReadBranches={handleCollapseAllReadBranches}
+                        handleCollapseAllPreviewBranches={handleCollapseAllPreviewBranches}
                         isPreviewResizing={isPreviewResizing}
                         previewPanelWidth={previewPanelWidth}
                         handlePreviewResizeStart={handlePreviewResizeStart}
                         handlePreviewResizeReset={handlePreviewResizeReset}
                         setContent={setContent}
+                        handleMoveBranch={handleMoveOutlineBranch}
+                        handleCreateBranch={handleCreateOutlineBranch}
+                        outlineWorkspaceMode={outlineWorkspaceMode}
+                        setOutlineWorkspaceMode={setOutlineWorkspaceMode}
+                        pendingHeadingSelection={pendingHeadingSelection}
+                        preferredPreviewActiveBranchRequest={preferredPreviewActiveBranchRequest}
                         t={t}
                     />
                 </div>

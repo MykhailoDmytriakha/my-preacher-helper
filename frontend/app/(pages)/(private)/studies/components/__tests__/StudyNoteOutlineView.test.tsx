@@ -62,6 +62,41 @@ const outlineFixture: StudyNoteOutline = {
     ],
 };
 
+const reorderedOutlineFixture: StudyNoteOutline = {
+    ...outlineFixture,
+    totalBranches: 4,
+    branches: [
+        {
+            key: '1',
+            path: [1],
+            depth: 0,
+            headingLevel: 2,
+            title: 'Inserted Branch',
+            rawTitle: 'Inserted Branch',
+            body: '',
+            preview: '',
+            children: [],
+        },
+        {
+            ...outlineFixture.branches[0],
+            key: '2',
+            path: [2],
+            children: [
+                {
+                    ...outlineFixture.branches[0].children[0],
+                    key: '2.1',
+                    path: [2, 1],
+                },
+            ],
+        },
+        {
+            ...outlineFixture.branches[1],
+            key: '3',
+            path: [3],
+        },
+    ],
+};
+
 describe('StudyNoteOutlineView', () => {
     const scrollIntoViewMock = jest.fn();
     const originalRequestAnimationFrame = global.requestAnimationFrame;
@@ -110,7 +145,7 @@ describe('StudyNoteOutlineView', () => {
         expect(onToggleBranch).toHaveBeenCalledWith('1');
     });
 
-    it('tracks the active branch through navigator jumps and resets when the branch disappears', () => {
+    it('tracks the active branch through navigator jumps, semantic remaps, and resets when the branch disappears', () => {
         const { rerender } = render(
             <StudyNoteOutlineView
                 outline={outlineFixture}
@@ -133,6 +168,18 @@ describe('StudyNoteOutlineView', () => {
 
         rerender(
             <StudyNoteOutlineView
+                outline={reorderedOutlineFixture}
+                foldedBranchKeys={[]}
+                onToggleBranch={jest.fn()}
+                onExpandAll={jest.fn()}
+                onCollapseAll={jest.fn()}
+            />
+        );
+
+        expect(screen.getByTestId('study-note-branch-3')).toHaveClass('ring-2');
+
+        rerender(
+            <StudyNoteOutlineView
                 outline={{
                     ...outlineFixture,
                     totalBranches: 2,
@@ -146,5 +193,72 @@ describe('StudyNoteOutlineView', () => {
         );
 
         expect(screen.getByTestId('study-note-branch-1')).toHaveClass('ring-2');
+    });
+
+    it('honors explicit preferred active branch requests', () => {
+        render(
+            <StudyNoteOutlineView
+                outline={reorderedOutlineFixture}
+                foldedBranchKeys={[]}
+                onToggleBranch={jest.fn()}
+                onExpandAll={jest.fn()}
+                onCollapseAll={jest.fn()}
+                preferredActiveBranchRequest={{ key: '2', token: 'activate-2' }}
+            />
+        );
+
+        expect(screen.getByTestId('study-note-branch-2')).toHaveClass('ring-2');
+    });
+
+    it('can hide the navigator column for full-width preview mode', () => {
+        render(
+            <StudyNoteOutlineView
+                outline={outlineFixture}
+                foldedBranchKeys={[]}
+                onToggleBranch={jest.fn()}
+                onExpandAll={jest.fn()}
+                onCollapseAll={jest.fn()}
+                mode="preview"
+                showNavigator={false}
+            />
+        );
+
+        expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    });
+
+    it('shows preview move controls and forwards branch move actions with boundary guards', () => {
+        const onMoveBranch = jest.fn();
+        const onCreateBranch = jest.fn();
+
+        render(
+            <StudyNoteOutlineView
+                outline={outlineFixture}
+                foldedBranchKeys={[]}
+                onToggleBranch={jest.fn()}
+                onExpandAll={jest.fn()}
+                onCollapseAll={jest.fn()}
+                onMoveBranch={onMoveBranch}
+                onCreateBranch={onCreateBranch}
+                mode="preview"
+            />
+        );
+
+        expect(screen.getByTestId('study-note-branch-move-up-1')).toBeDisabled();
+        expect(screen.getByTestId('study-note-branch-move-down-1')).toBeEnabled();
+        expect(screen.getByTestId('study-note-branch-move-up-2')).toBeEnabled();
+        expect(screen.getByTestId('study-note-branch-move-down-2')).toBeDisabled();
+        expect(screen.queryByTestId('study-note-branch-move-up-1.1')).not.toBeInTheDocument();
+        expect(screen.getByTestId('study-note-branch-create-sibling-1')).toBeInTheDocument();
+        expect(screen.getByTestId('study-note-branch-create-child-1')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('study-note-branch-move-down-1'));
+        fireEvent.click(screen.getByTestId('study-note-branch-move-up-2'));
+        fireEvent.click(screen.getByTestId('study-note-branch-create-sibling-1'));
+        fireEvent.click(screen.getByTestId('study-note-branch-create-child-1'));
+
+        expect(onMoveBranch).toHaveBeenNthCalledWith(1, '1', 'down');
+        expect(onMoveBranch).toHaveBeenNthCalledWith(2, '2', 'up');
+        expect(onCreateBranch).toHaveBeenNthCalledWith(1, '1', 'sibling');
+        expect(onCreateBranch).toHaveBeenNthCalledWith(2, '1', 'child');
     });
 });

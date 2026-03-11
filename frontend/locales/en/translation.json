@@ -1854,7 +1854,13 @@
       "openingContent": "Opening content",
       "branchCount": "{{count}} branches",
       "noBranches": "Add headings (##, ###, ...) to turn this note into branches.",
-      "resizePreview": "Resize structure preview"
+      "focusEditor": "Editor only",
+      "focusSplit": "Split view",
+      "focusPreview": "Preview only",
+      "resizePreview": "Resize structure preview",
+      "addSibling": "Add sibling",
+      "addChild": "Add child",
+      "newBranchTitle": "New branch"
     },
     "shareLinks": {
       "title": "Share links",

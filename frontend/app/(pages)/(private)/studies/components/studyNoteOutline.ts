@@ -8,6 +8,14 @@ export interface StudyNoteOutlineBranch {
     body: string;
     preview: string;
     children: StudyNoteOutlineBranch[];
+    sourceRange?: StudyNoteOutlineBranchSourceRange;
+}
+
+export interface StudyNoteOutlineBranchSourceRange {
+    startOffset: number;
+    bodyStartOffset: number;
+    bodyEndOffset: number;
+    subtreeEndOffset: number;
 }
 
 export interface StudyNoteOutline {
@@ -16,6 +24,11 @@ export interface StudyNoteOutline {
     hasOutline: boolean;
     totalBranches: number;
     baseHeadingLevel: number | null;
+}
+
+interface StudyNoteOutlineBranchMatchDescriptor {
+    signature: string;
+    occurrenceIndex: number;
 }
 
 interface CollectedHeading {
@@ -32,13 +45,14 @@ interface MutableBranch {
     title: string;
     body: string;
     children: MutableBranch[];
+    sourceRange: StudyNoteOutlineBranchSourceRange;
 }
 
-const HEADING_PATTERN = /^(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/;
+const HEADING_PATTERN = /^[ ]{0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/;
 const FENCE_PATTERN = /^(```+|~~~+)/;
 const COLLAPSED_PREVIEW_LIMIT = 140;
 
-function normalizeMarkdown(markdown: string): string {
+export function normalizeStudyNoteMarkdown(markdown: string): string {
     return markdown.replace(/\r\n?/g, '\n');
 }
 
@@ -80,7 +94,7 @@ function collectHeadings(markdown: string): CollectedHeading[] {
     const lines = markdown.split('\n');
     const headings: CollectedHeading[] = [];
     let offset = 0;
-    let activeFenceMarker: '`' | '~' | null = null;
+    let activeFenceMarker: { marker: '`' | '~'; length: number } | null = null;
 
     lines.forEach((line) => {
         const trimmedLine = line.trim();
@@ -88,10 +102,11 @@ function collectHeadings(markdown: string): CollectedHeading[] {
 
         if (fenceMatch) {
             const marker = fenceMatch[1][0] as '`' | '~';
+            const markerLength = fenceMatch[1].length;
 
             if (activeFenceMarker === null) {
-                activeFenceMarker = marker;
-            } else if (activeFenceMarker === marker) {
+                activeFenceMarker = { marker, length: markerLength };
+            } else if (activeFenceMarker.marker === marker && markerLength >= activeFenceMarker.length) {
                 activeFenceMarker = null;
             }
         }
@@ -125,8 +140,9 @@ function buildTree(markdown: string, headings: CollectedHeading[]): MutableBranc
     const stack: MutableBranch[] = [];
 
     headings.forEach((heading, index) => {
-        const nextHeadingStart = headings[index + 1]?.startOffset ?? markdown.length;
-        const body = trimOuterBlankLines(markdown.slice(heading.bodyStartOffset, nextHeadingStart));
+        const bodyEndOffset = headings[index + 1]?.startOffset ?? markdown.length;
+        const subtreeEndOffset = getSubtreeEndOffset(markdown, headings, index);
+        const body = trimOuterBlankLines(markdown.slice(heading.bodyStartOffset, bodyEndOffset));
 
         const branch: MutableBranch = {
             headingLevel: heading.headingLevel,
@@ -134,6 +150,12 @@ function buildTree(markdown: string, headings: CollectedHeading[]): MutableBranc
             title: heading.plainTitle,
             body,
             children: [],
+            sourceRange: {
+                startOffset: heading.startOffset,
+                bodyStartOffset: heading.bodyStartOffset,
+                bodyEndOffset,
+                subtreeEndOffset,
+            },
         };
 
         while (stack.length > 0 && stack[stack.length - 1].headingLevel >= heading.headingLevel) {
@@ -171,12 +193,25 @@ function finalizeBranches(
             body: branch.body,
             preview: getCollapsedPreview(branch.body),
             children,
+            sourceRange: branch.sourceRange,
         };
     });
 }
 
+function getSubtreeEndOffset(markdown: string, headings: CollectedHeading[], currentIndex: number): number {
+    const currentHeading = headings[currentIndex];
+
+    for (let index = currentIndex + 1; index < headings.length; index += 1) {
+        if (headings[index].headingLevel <= currentHeading.headingLevel) {
+            return headings[index].startOffset;
+        }
+    }
+
+    return markdown.length;
+}
+
 export function parseStudyNoteOutline(markdown: string): StudyNoteOutline {
-    const normalizedMarkdown = normalizeMarkdown(markdown);
+    const normalizedMarkdown = normalizeStudyNoteMarkdown(markdown);
     const headings = collectHeadings(normalizedMarkdown);
 
     if (headings.length === 0) {
@@ -210,6 +245,25 @@ export function flattenStudyNoteOutlineBranches(branches: StudyNoteOutlineBranch
     return branches.flatMap((branch) => [branch, ...flattenStudyNoteOutlineBranches(branch.children)]);
 }
 
+export function findStudyNoteOutlineBranchByKey(
+    branches: StudyNoteOutlineBranch[],
+    branchKey: string
+): StudyNoteOutlineBranch | null {
+    for (const branch of branches) {
+        if (branch.key === branchKey) {
+            return branch;
+        }
+
+        const nestedBranch = findStudyNoteOutlineBranchByKey(branch.children, branchKey);
+
+        if (nestedBranch) {
+            return nestedBranch;
+        }
+    }
+
+    return null;
+}
+
 export function getCollapsibleStudyNoteBranchKeys(branches: StudyNoteOutlineBranch[]): string[] {
     return flattenStudyNoteOutlineBranches(branches)
         .filter((branch) => Boolean(branch.body.trim()) || branch.children.length > 0)
@@ -223,4 +277,67 @@ export function filterStudyNoteOutlineKeys(
     const validKeys = new Set(flattenStudyNoteOutlineBranches(branches).map((branch) => branch.key));
 
     return candidateKeys.filter((key) => validKeys.has(key));
+}
+
+function getStudyNoteOutlineBranchSignature(branch: StudyNoteOutlineBranch): string {
+    return JSON.stringify([
+        branch.headingLevel,
+        branch.rawTitle,
+        branch.body.trim(),
+        branch.children.length,
+    ]);
+}
+
+function getStudyNoteOutlineBranchMatchDescriptor(
+    branches: StudyNoteOutlineBranch[],
+    branchKey: string
+): StudyNoteOutlineBranchMatchDescriptor | null {
+    const flattenedBranches = flattenStudyNoteOutlineBranches(branches);
+    const branch = flattenedBranches.find((candidate) => candidate.key === branchKey);
+
+    if (!branch) {
+        return null;
+    }
+
+    const signature = getStudyNoteOutlineBranchSignature(branch);
+    const occurrenceIndex = flattenedBranches
+        .filter((candidate) => getStudyNoteOutlineBranchSignature(candidate) === signature)
+        .findIndex((candidate) => candidate.key === branch.key);
+
+    if (occurrenceIndex < 0) {
+        return null;
+    }
+
+    return {
+        signature,
+        occurrenceIndex,
+    };
+}
+
+export function remapStudyNoteOutlineKey(
+    branchKey: string,
+    previousBranches: StudyNoteOutlineBranch[],
+    nextBranches: StudyNoteOutlineBranch[]
+): string | null {
+    const matchDescriptor = getStudyNoteOutlineBranchMatchDescriptor(previousBranches, branchKey);
+
+    if (!matchDescriptor) {
+        return null;
+    }
+
+    const nextMatches = flattenStudyNoteOutlineBranches(nextBranches)
+        .filter((branch) => getStudyNoteOutlineBranchSignature(branch) === matchDescriptor.signature);
+
+    return nextMatches[matchDescriptor.occurrenceIndex]?.key ?? null;
+}
+
+export function remapStudyNoteOutlineKeys(
+    candidateKeys: string[],
+    previousBranches: StudyNoteOutlineBranch[],
+    nextBranches: StudyNoteOutlineBranch[]
+): string[] {
+    return candidateKeys.flatMap((branchKey) => {
+        const remappedKey = remapStudyNoteOutlineKey(branchKey, previousBranches, nextBranches);
+        return remappedKey ? [remappedKey] : [];
+    });
 }
