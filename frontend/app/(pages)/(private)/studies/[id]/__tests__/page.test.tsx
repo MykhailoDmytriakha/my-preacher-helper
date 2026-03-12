@@ -38,14 +38,103 @@ jest.mock('react-textarea-autosize', () => ({
 
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({
     __esModule: true,
-    RichMarkdownEditor: ({ value, onChange, placeholder }: any) => (
-        <textarea
-            data-testid="rich-markdown-editor"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-        />
-    ),
+    RichMarkdownEditor: ({
+        value,
+        onChange,
+        placeholder,
+        onOutlineBranchSelectionChange,
+        outlineBranchSelection,
+        onCreateSiblingBranch,
+        onCreateChildBranch,
+        canCreateSiblingBranch,
+        canCreateChildBranch,
+    }: any) => {
+        const React = require('react');
+        const headingMatches: Array<{ headingText: string; headingLevel: number }> = React.useMemo(() => {
+            const headingMatchIterator = value.matchAll(/^[ ]{0,3}(#{1,6})[ \t]+(.+)$/gm) as IterableIterator<RegExpMatchArray>;
+
+            return Array.from(headingMatchIterator).map((match) => ({
+                headingText: match[2].trim(),
+                headingLevel: match[1].length,
+            }));
+        }, [value]);
+        const [selectedHeadingIndex, setSelectedHeadingIndex] = React.useState(0);
+
+        React.useEffect(() => {
+            setSelectedHeadingIndex((currentIndex: number) => (
+                headingMatches.length === 0 ? 0 : Math.min(currentIndex, headingMatches.length - 1)
+            ));
+        }, [headingMatches.length]);
+
+        React.useEffect(() => {
+            if (!onOutlineBranchSelectionChange) {
+                return;
+            }
+
+            if (headingMatches.length === 0) {
+                onOutlineBranchSelectionChange(null);
+                return;
+            }
+
+            const selectedHeading = headingMatches[selectedHeadingIndex];
+            const occurrenceIndex = headingMatches
+                .slice(0, selectedHeadingIndex + 1)
+                .filter((heading) =>
+                    heading.headingLevel === selectedHeading.headingLevel &&
+                    heading.headingText === selectedHeading.headingText
+                )
+                .length - 1;
+
+            onOutlineBranchSelectionChange({
+                ...selectedHeading,
+                occurrenceIndex,
+            });
+        }, [headingMatches, onOutlineBranchSelectionChange, selectedHeadingIndex]);
+
+        return (
+            <div>
+                <textarea
+                    data-testid="rich-markdown-editor"
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    placeholder={placeholder}
+                />
+                {headingMatches.map((heading: { headingText: string; headingLevel: number }, index: number) => (
+                    <button
+                        key={`${heading.headingText}-${index}`}
+                        type="button"
+                        data-testid={`rich-markdown-select-heading-${index}`}
+                        onClick={() => setSelectedHeadingIndex(index)}
+                    >
+                        Select {heading.headingText}
+                    </button>
+                ))}
+                {onCreateSiblingBranch && (
+                    <button
+                        type="button"
+                        data-testid="rich-markdown-create-sibling"
+                        onClick={onCreateSiblingBranch}
+                        disabled={!canCreateSiblingBranch}
+                    >
+                        Create sibling
+                    </button>
+                )}
+                {onCreateChildBranch && (
+                    <button
+                        type="button"
+                        data-testid="rich-markdown-create-child"
+                        onClick={onCreateChildBranch}
+                        disabled={!canCreateChildBranch}
+                    >
+                        Create child
+                    </button>
+                )}
+                <div data-testid="rich-markdown-active-heading">
+                    {outlineBranchSelection?.headingText ?? 'none'}
+                </div>
+            </div>
+        );
+    },
 }));
 
 jest.mock('@/components/FocusRecorderButton', () => ({
@@ -144,6 +233,15 @@ const nestedMovableStructuredNote: StudyNote = {
         '',
         '### Second child',
         'Second body',
+    ].join('\n'),
+};
+
+const introOnlyStructuredCandidateNote: StudyNote = {
+    ...createMockNote('note-1', 'Intro Only Structured Candidate'),
+    content: [
+        'Preface paragraph',
+        '',
+        'More prefatory text',
     ].join('\n'),
 };
 
@@ -410,8 +508,8 @@ describe('StudyNoteEditorPage Pagination', () => {
 
         expect(screen.getByTestId('study-note-outline-read')).toBeInTheDocument();
         expect(screen.getByText('Preface paragraph')).toBeInTheDocument();
-        expect(screen.getByText('Main Branch')).toBeInTheDocument();
-        expect(screen.getByText('Child Branch')).toBeInTheDocument();
+        expect(within(screen.getByTestId('study-note-outline-read')).getByText('Main Branch')).toBeInTheDocument();
+        expect(within(screen.getByTestId('study-note-outline-read')).getByText('Child Branch')).toBeInTheDocument();
         expect(screen.getByText('Main branch body')).toBeInTheDocument();
         expect(screen.getByText('Child branch body')).toBeInTheDocument();
 
@@ -438,8 +536,8 @@ describe('StudyNoteEditorPage Pagination', () => {
         expect(screen.getByTestId('study-note-outline-preview')).toBeInTheDocument();
         expect(screen.getByTestId('study-note-outline-resizer')).toBeInTheDocument();
         expect(screen.getByText('studiesWorkspace.outlinePilot.previewTitle')).toBeInTheDocument();
-        expect(screen.getByText('Main Branch')).toBeInTheDocument();
-        expect(screen.getByText('Child Branch')).toBeInTheDocument();
+        expect(within(screen.getByTestId('study-note-outline-preview')).getByText('Main Branch')).toBeInTheDocument();
+        expect(within(screen.getByTestId('study-note-outline-preview')).getByText('Child Branch')).toBeInTheDocument();
     });
 
     it('switches between editor-only, split, and preview-only outline workspace modes', () => {
@@ -617,6 +715,39 @@ describe('StudyNoteEditorPage Pagination', () => {
         expect(screen.getAllByText('studiesWorkspace.outlinePilot.newBranchTitle').length).toBeGreaterThan(0);
     });
 
+    it('creates a sibling branch from editor-native controls using the current branch selection', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [movableStructuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTestId('rich-markdown-create-sibling'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue([
+                'Preface paragraph',
+                '',
+                '## Alpha',
+                'Alpha body',
+                '',
+                '### Alpha child',
+                'Alpha child body',
+                '',
+                '## studiesWorkspace.outlinePilot.newBranchTitle',
+                '',
+                '## Beta',
+                'Beta body',
+            ].join('\n'));
+        });
+    });
+
     it('creates a child branch through the preview shell and keeps it under the same parent', async () => {
         (useStudyNotes as jest.Mock).mockReturnValue({
             uid: 'user-1',
@@ -655,6 +786,105 @@ describe('StudyNoteEditorPage Pagination', () => {
         expect(within(branchCards[0]).getByText('Main Branch')).toBeInTheDocument();
         expect(within(branchCards[1]).getByText('Child Branch')).toBeInTheDocument();
         expect(within(branchCards[2]).getByText('studiesWorkspace.outlinePilot.newBranchTitle')).toBeInTheDocument();
+    });
+
+    it('creates a child branch from editor-native controls under the current branch', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [structuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTestId('rich-markdown-create-child'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue([
+                'Preface paragraph',
+                '',
+                '## Main Branch',
+                'Main branch body',
+                '',
+                '### Child Branch',
+                'Child branch body',
+                '',
+                '### studiesWorkspace.outlinePilot.newBranchTitle',
+            ].join('\n'));
+        });
+    });
+
+    it('creates a sibling branch from editor-native controls for the currently selected non-first branch', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [movableStructuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTestId('rich-markdown-select-heading-2'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('rich-markdown-active-heading')).toHaveTextContent('Beta');
+        });
+
+        fireEvent.click(screen.getByTestId('rich-markdown-create-sibling'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue([
+                'Preface paragraph',
+                '',
+                '## Alpha',
+                'Alpha body',
+                '',
+                '### Alpha child',
+                'Alpha child body',
+                '',
+                '## Beta',
+                'Beta body',
+                '',
+                '## studiesWorkspace.outlinePilot.newBranchTitle',
+            ].join('\n'));
+        });
+    });
+
+    it('creates the first root branch from editor-native controls when the note has no headings yet', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [introOnlyStructuredCandidateNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+
+        expect(screen.getByTestId('rich-markdown-create-sibling')).toBeEnabled();
+        expect(screen.getByTestId('rich-markdown-create-child')).toBeDisabled();
+
+        fireEvent.click(screen.getByTestId('rich-markdown-create-sibling'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('rich-markdown-editor')).toHaveValue([
+                'Preface paragraph',
+                '',
+                'More prefatory text',
+                '',
+                '## studiesWorkspace.outlinePilot.newBranchTitle',
+            ].join('\n'));
+        });
     });
 
     it('promotes a branch with descendants through the preview shell and preserves cascade wiring', async () => {

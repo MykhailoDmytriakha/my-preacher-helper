@@ -723,6 +723,12 @@
     "branchAtCurrentLevel": "Ветка на текущем уровне (H{{level}})",
     "childBranch": "Подветка",
     "childBranchAtLevel": "Подветка (H{{level}})",
+    "makeBranch": "Сделать веткой",
+    "makeChildBranch": "Сделать подветкой",
+    "addBranch": "Добавить ветку",
+    "addBranchAfterCurrent": "Добавить ветку после текущей",
+    "addChildBranch": "Добавить подветку",
+    "addChildUnderCurrent": "Добавить подветку под текущей веткой",
     "promote": "Выше",
     "promoteBranch": "Поднять ветку"
   },

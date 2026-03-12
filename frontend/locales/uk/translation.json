@@ -723,6 +723,12 @@
     "branchAtCurrentLevel": "Гілка на поточному рівні (H{{level}})",
     "childBranch": "Підгілка",
     "childBranchAtLevel": "Підгілка (H{{level}})",
+    "makeBranch": "Зробити гілкою",
+    "makeChildBranch": "Зробити підгілкою",
+    "addBranch": "Додати гілку",
+    "addBranchAfterCurrent": "Додати гілку після поточної",
+    "addChildBranch": "Додати підгілку",
+    "addChildUnderCurrent": "Додати підгілку під поточною гілкою",
     "promote": "Вище",
     "promoteBranch": "Підняти гілку"
   },

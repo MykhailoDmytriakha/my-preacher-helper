@@ -1,4 +1,5 @@
 import {
+    findCurrentOutlineBranchSelection,
     findHeadingSelectionRange,
     getOutlineBaseHeadingLevel,
     getOutlineDepthDecorationsForBlocks,
@@ -140,9 +141,9 @@ describe('getOutlineNodeDecorationRange', () => {
 describe('findHeadingSelectionRange', () => {
     it('selects the requested heading occurrence by level and raw text', () => {
         expect(findHeadingSelectionRange([
-            { level: 2, text: 'New branch', from: 4, to: 14 },
-            { level: 2, text: 'Existing', from: 18, to: 26 },
-            { level: 2, text: 'New branch', from: 30, to: 40 },
+            { level: 2, text: 'New branch', from: 4, to: 14, nodeFrom: 2, nodeTo: 16 },
+            { level: 2, text: 'Existing', from: 18, to: 26, nodeFrom: 16, nodeTo: 28 },
+            { level: 2, text: 'New branch', from: 30, to: 40, nodeFrom: 28, nodeTo: 42 },
         ], {
             token: 'selection-1',
             headingText: 'New branch',
@@ -151,6 +152,61 @@ describe('findHeadingSelectionRange', () => {
         })).toEqual({
             from: 30,
             to: 40,
+        });
+    });
+});
+
+describe('findCurrentOutlineBranchSelection', () => {
+    it('uses the current heading when the cursor is inside it, including the first text position, and falls back to the previous heading for branch body text', () => {
+        const headings = [
+            {
+                level: 2,
+                text: 'Main Branch',
+                from: 4,
+                to: 15,
+                nodeFrom: 2,
+                nodeTo: 18,
+            },
+            {
+                level: 3,
+                text: 'Child Branch',
+                from: 28,
+                to: 40,
+                nodeFrom: 26,
+                nodeTo: 43,
+            },
+            {
+                level: 2,
+                text: 'Main Branch',
+                from: 52,
+                to: 63,
+                nodeFrom: 50,
+                nodeTo: 66,
+            },
+        ];
+
+        expect(findCurrentOutlineBranchSelection(headings, 4)).toEqual({
+            headingText: 'Main Branch',
+            headingLevel: 2,
+            occurrenceIndex: 0,
+        });
+
+        expect(findCurrentOutlineBranchSelection(headings, 30)).toEqual({
+            headingText: 'Child Branch',
+            headingLevel: 3,
+            occurrenceIndex: 0,
+        });
+
+        expect(findCurrentOutlineBranchSelection(headings, 45)).toEqual({
+            headingText: 'Child Branch',
+            headingLevel: 3,
+            occurrenceIndex: 0,
+        });
+
+        expect(findCurrentOutlineBranchSelection(headings, 60)).toEqual({
+            headingText: 'Main Branch',
+            headingLevel: 2,
+            occurrenceIndex: 1,
         });
     });
 });

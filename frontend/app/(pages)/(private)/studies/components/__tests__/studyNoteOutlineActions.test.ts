@@ -1,5 +1,6 @@
 import {
     insertStudyNoteOutlineBranch,
+    insertStudyNoteOutlineRootBranch,
     moveStudyNoteOutlineBranch,
     shiftStudyNoteOutlineBranchDepth,
 } from '../studyNoteOutlineActions';
@@ -186,6 +187,27 @@ describe('studyNoteOutlineActions', () => {
 
         expect(insertStudyNoteOutlineBranch(markdown, '1', 'child', { title: 'Too deep' })).toBe(markdown);
         expect(insertStudyNoteOutlineBranch(markdown, 'missing', 'sibling', { title: 'Missing' })).toBe(markdown);
+    });
+
+    it('appends the first root branch to intro-only markdown', () => {
+        const markdown = [
+            'Intro line',
+            '',
+            'More intro',
+        ].join('\n');
+
+        const nextMarkdown = insertStudyNoteOutlineRootBranch(markdown, {
+            title: 'First branch',
+        });
+
+        expect(nextMarkdown).toBe([
+            'Intro line',
+            '',
+            'More intro',
+            '',
+            '## First branch',
+        ].join('\n'));
+        expect(parseStudyNoteOutline(nextMarkdown).branches.map((branch) => branch.title)).toEqual(['First branch']);
     });
 
     it('promotes a nested branch and cascades heading levels across its subtree', () => {

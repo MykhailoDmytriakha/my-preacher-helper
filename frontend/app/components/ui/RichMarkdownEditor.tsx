@@ -25,10 +25,23 @@ interface RichMarkdownEditorProps {
     stickyToolbarTop?: string;
     showOutlineStructureControls?: boolean;
     pendingHeadingSelection?: PendingHeadingSelectionRequest | null;
+    outlineBranchSelection?: OutlineBranchSelectionRequest | null;
+    onOutlineBranchSelectionChange?: (selection: OutlineBranchSelectionRequest | null) => void;
+    onCreateSiblingBranch?: (() => void) | null;
+    onCreateChildBranch?: (() => void) | null;
+    canCreateSiblingBranch?: boolean;
+    canCreateChildBranch?: boolean;
+    onPendingHeadingSelectionConsumed?: ((token: string) => void) | null;
 }
 
 export interface PendingHeadingSelectionRequest {
     token: string;
+    headingText: string;
+    headingLevel: number;
+    occurrenceIndex: number;
+}
+
+export interface OutlineBranchSelectionRequest {
     headingText: string;
     headingLevel: number;
     occurrenceIndex: number;
@@ -67,6 +80,8 @@ interface HeadingSelectionDescriptor {
     text: string;
     from: number;
     to: number;
+    nodeFrom: number;
+    nodeTo: number;
 }
 
 interface MarkdownStorageShape {
@@ -219,12 +234,57 @@ function collectHeadingSelectionDescriptors(doc: Editor['state']['doc']): Headin
             text: node.textContent,
             from: position + 1,
             to: position + 1 + node.textContent.length,
+            nodeFrom: position,
+            nodeTo: position + node.nodeSize,
         });
 
         return true;
     });
 
     return headings;
+}
+
+export function findCurrentOutlineBranchSelection(
+    headings: HeadingSelectionDescriptor[],
+    selectionPosition: number
+): OutlineBranchSelectionRequest | null {
+    if (headings.length === 0) {
+        return null;
+    }
+
+    const currentHeadingIndex = headings.findIndex((heading) =>
+        selectionPosition >= heading.from && selectionPosition <= heading.to
+    );
+
+    let activeHeadingIndex = currentHeadingIndex;
+
+    if (activeHeadingIndex < 0) {
+        for (let index = headings.length - 1; index >= 0; index -= 1) {
+            if (headings[index].from <= selectionPosition) {
+                activeHeadingIndex = index;
+                break;
+            }
+        }
+    }
+
+    if (activeHeadingIndex < 0) {
+        return null;
+    }
+
+    const activeHeading = headings[activeHeadingIndex];
+    const occurrenceIndex = headings
+        .slice(0, activeHeadingIndex + 1)
+        .filter((heading) =>
+            heading.level === activeHeading.level &&
+            heading.text === activeHeading.text
+        )
+        .length - 1;
+
+    return {
+        headingText: activeHeading.text,
+        headingLevel: activeHeading.level,
+        occurrenceIndex,
+    };
 }
 
 export function RichMarkdownEditor({
@@ -237,6 +297,13 @@ export function RichMarkdownEditor({
     stickyToolbarTop = '0px',
     showOutlineStructureControls = false,
     pendingHeadingSelection = null,
+    outlineBranchSelection = null,
+    onOutlineBranchSelectionChange,
+    onCreateSiblingBranch = null,
+    onCreateChildBranch = null,
+    canCreateSiblingBranch = false,
+    canCreateChildBranch = false,
+    onPendingHeadingSelectionConsumed = null,
 }: RichMarkdownEditorProps) {
     const extensions = useMemo(() => {
         const configuredExtensions = [
@@ -300,6 +367,7 @@ export function RichMarkdownEditor({
             );
 
             if (!headingSelectionRange) {
+                onPendingHeadingSelectionConsumed?.(pendingHeadingSelection.token);
                 return;
             }
 
@@ -313,10 +381,35 @@ export function RichMarkdownEditor({
                 ).scrollIntoView()
             );
             editor.view.focus();
+            onPendingHeadingSelectionConsumed?.(pendingHeadingSelection.token);
         }, 0);
 
         return () => window.clearTimeout(selectionTimeoutId);
-    }, [editor, pendingHeadingSelection]);
+    }, [editor, onPendingHeadingSelectionConsumed, pendingHeadingSelection]);
+
+    useEffect(() => {
+        if (!editor || !showOutlineStructureControls || !onOutlineBranchSelectionChange) {
+            return undefined;
+        }
+
+        const emitOutlineBranchSelection = () => {
+            onOutlineBranchSelectionChange(
+                findCurrentOutlineBranchSelection(
+                    collectHeadingSelectionDescriptors(editor.state.doc),
+                    editor.state.selection.from
+                )
+            );
+        };
+
+        emitOutlineBranchSelection();
+        editor.on('selectionUpdate', emitOutlineBranchSelection);
+        editor.on('update', emitOutlineBranchSelection);
+
+        return () => {
+            editor.off('selectionUpdate', emitOutlineBranchSelection);
+            editor.off('update', emitOutlineBranchSelection);
+        };
+    }, [editor, onOutlineBranchSelectionChange, showOutlineStructureControls]);
 
     if (!editor) {
         return null;
@@ -329,6 +422,11 @@ export function RichMarkdownEditor({
                 sticky={stickyToolbar}
                 stickyTop={stickyToolbarTop}
                 showOutlineStructureControls={showOutlineStructureControls}
+                outlineBranchSelection={outlineBranchSelection}
+                onCreateSiblingBranch={onCreateSiblingBranch}
+                onCreateChildBranch={onCreateChildBranch}
+                canCreateSiblingBranch={canCreateSiblingBranch}
+                canCreateChildBranch={canCreateChildBranch}
             />
             <div className="flex-1 cursor-text flex flex-col">
                 <EditorContent

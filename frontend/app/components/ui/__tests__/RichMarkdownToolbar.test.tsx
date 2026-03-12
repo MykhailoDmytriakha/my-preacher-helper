@@ -159,4 +159,60 @@ describe('RichMarkdownToolbar', () => {
         expect(editorDouble.spies.setParagraph).toHaveBeenCalledTimes(1);
         expect(editorDouble.spies.setHeading).not.toHaveBeenCalled();
     });
+
+    it('renders editor-native branch creation controls and respects their enabled state', () => {
+        const editorDouble = createEditorDouble();
+        const handleCreateSiblingBranch = jest.fn();
+        const handleCreateChildBranch = jest.fn();
+
+        mockUseEditorState.mockReturnValue({
+            isBold: false,
+            isItalic: false,
+            isStrike: false,
+            isBulletList: false,
+            isOrderedList: false,
+            isBlockquote: false,
+            isHeading1: false,
+            isHeading2: true,
+            isHeading3: false,
+            currentHeadingLevel: 2,
+            previousHeadingLevel: 2,
+        });
+
+        const { rerender } = render(
+            <RichMarkdownToolbar
+                editor={editorDouble.editor as never}
+                showOutlineStructureControls
+                outlineBranchSelection={{
+                    headingText: 'Main Branch',
+                    headingLevel: 2,
+                    occurrenceIndex: 0,
+                }}
+                onCreateSiblingBranch={handleCreateSiblingBranch}
+                onCreateChildBranch={handleCreateChildBranch}
+                canCreateSiblingBranch
+                canCreateChildBranch
+            />
+        );
+
+        screen.getByRole('button', { name: 'common.addBranchAfterCurrent' }).click();
+        screen.getByRole('button', { name: 'common.addChildUnderCurrent' }).click();
+
+        expect(handleCreateSiblingBranch).toHaveBeenCalledTimes(1);
+        expect(handleCreateChildBranch).toHaveBeenCalledTimes(1);
+
+        rerender(
+            <RichMarkdownToolbar
+                editor={editorDouble.editor as never}
+                showOutlineStructureControls
+                onCreateSiblingBranch={handleCreateSiblingBranch}
+                onCreateChildBranch={handleCreateChildBranch}
+                canCreateSiblingBranch={false}
+                canCreateChildBranch={false}
+            />
+        );
+
+        expect(screen.getByRole('button', { name: 'common.addBranch' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'common.addChildBranch' })).toBeDisabled();
+    });
 });

@@ -723,6 +723,12 @@
     "branchAtCurrentLevel": "Branch at current level (H{{level}})",
     "childBranch": "Child",
     "childBranchAtLevel": "Child branch (H{{level}})",
+    "makeBranch": "Make branch",
+    "makeChildBranch": "Make child",
+    "addBranch": "Add branch",
+    "addBranchAfterCurrent": "Add branch after current branch",
+    "addChildBranch": "Add child",
+    "addChildUnderCurrent": "Add child branch under current branch",
     "promote": "Up",
     "promoteBranch": "Promote branch"
   },

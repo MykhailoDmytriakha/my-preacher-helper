@@ -11,6 +11,9 @@ import {
 type StudyNoteOutlineMoveDirection = 'up' | 'down';
 type StudyNoteOutlineInsertPosition = 'sibling' | 'child';
 type StudyNoteOutlineDepthDirection = 'promote' | 'demote';
+type StudyNoteOutlineRootOptions = StudyNoteOutlineInsertOptions & {
+    headingLevel?: number;
+};
 
 interface StudyNoteOutlineInsertOptions {
     title: string;
@@ -138,6 +141,19 @@ export function insertStudyNoteOutlineBranch(
     const prefix = before.length > 0 ? '\n\n' : '';
     const suffix = after.length > 0 ? '\n\n' : '';
     const nextMarkdown = `${before}${prefix}${insertedBranch}${suffix}${after}`;
+
+    return restoreMarkdownLineEndings(nextMarkdown, markdown);
+}
+
+export function insertStudyNoteOutlineRootBranch(
+    markdown: string,
+    options: StudyNoteOutlineRootOptions
+): string {
+    const normalizedMarkdown = normalizeStudyNoteMarkdown(markdown);
+    const before = trimTrailingNewlines(normalizedMarkdown);
+    const insertedBranch = buildInsertedBranchMarkdown(options.headingLevel ?? 2, options);
+    const prefix = before.length > 0 ? '\n\n' : '';
+    const nextMarkdown = `${before}${prefix}${insertedBranch}`;
 
     return restoreMarkdownLineEndings(nextMarkdown, markdown);
 }

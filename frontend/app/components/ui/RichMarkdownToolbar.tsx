@@ -20,11 +20,18 @@ import {
     getPromotedHeadingLevel,
 } from './richMarkdownStructure';
 
+import type { OutlineBranchSelectionRequest } from './RichMarkdownEditor';
+
 interface RichMarkdownToolbarProps {
     editor: Editor;
     sticky?: boolean;
     stickyTop?: string;
     showOutlineStructureControls?: boolean;
+    outlineBranchSelection?: OutlineBranchSelectionRequest | null;
+    onCreateSiblingBranch?: (() => void) | null;
+    onCreateChildBranch?: (() => void) | null;
+    canCreateSiblingBranch?: boolean;
+    canCreateChildBranch?: boolean;
 }
 
 interface ToolbarState {
@@ -46,6 +53,11 @@ export function RichMarkdownToolbar({
     sticky = false,
     stickyTop = '0px',
     showOutlineStructureControls = false,
+    outlineBranchSelection = null,
+    onCreateSiblingBranch = null,
+    onCreateChildBranch = null,
+    canCreateSiblingBranch = false,
+    canCreateChildBranch = false,
 }: RichMarkdownToolbarProps) {
     const { t } = useTranslation();
 
@@ -137,12 +149,12 @@ export function RichMarkdownToolbar({
 
                         <ToolbarTextButton
                             onClick={() => editor.chain().focus().setHeading({ level: contextBranchLevel }).run()}
-                            label={t('common.branch') || 'Branch'}
+                            label={t('common.makeBranch') || 'Make branch'}
                             ariaLabel={t('common.branchAtCurrentLevel', { level: contextBranchLevel }) || `Branch at level H${contextBranchLevel}`}
                         />
                         <ToolbarTextButton
                             onClick={() => editor.chain().focus().setHeading({ level: childBranchLevel }).run()}
-                            label={t('common.childBranch') || 'Child'}
+                            label={t('common.makeChildBranch') || 'Make child'}
                             ariaLabel={t('common.childBranchAtLevel', { level: childBranchLevel }) || `Child branch at level H${childBranchLevel}`}
                         />
                         <ToolbarTextButton
@@ -159,6 +171,25 @@ export function RichMarkdownToolbar({
                             label={t('common.promote') || 'Up'}
                             ariaLabel={t('common.promoteBranch') || 'Promote branch'}
                             disabled={toolbarState.currentHeadingLevel === null}
+                        />
+                    </div>
+
+                    <div className="flex items-center gap-1 rounded-lg border border-indigo-100 bg-white px-1.5 py-1 shadow-sm dark:border-indigo-900/60 dark:bg-gray-950/70">
+                        <ToolbarTextButton
+                            onClick={() => onCreateSiblingBranch?.()}
+                            label={t('common.addBranch') || 'Add branch'}
+                            ariaLabel={outlineBranchSelection
+                                ? t('common.addBranchAfterCurrent') || 'Add branch after current branch'
+                                : t('common.addBranch') || 'Add branch'}
+                            disabled={!canCreateSiblingBranch || !onCreateSiblingBranch}
+                        />
+                        <ToolbarTextButton
+                            onClick={() => onCreateChildBranch?.()}
+                            label={t('common.addChildBranch') || 'Add child'}
+                            ariaLabel={outlineBranchSelection
+                                ? t('common.addChildUnderCurrent') || 'Add child branch under current branch'
+                                : t('common.addChildBranch') || 'Add child branch'}
+                            disabled={!canCreateChildBranch || !onCreateChildBranch}
                         />
                     </div>
 
