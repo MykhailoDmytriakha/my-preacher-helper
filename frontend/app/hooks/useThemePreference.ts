@@ -52,16 +52,33 @@ export function useThemePreference() {
 
     if (preference === 'system') {
       const handleChange = () => applyTheme();
+
+      // Re-apply theme when device wakes from sleep (visibilitychange fires,
+      // but matchMedia 'change' may not if the OS changed theme while asleep)
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          applyTheme();
+        }
+      };
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+
       if (typeof mediaQuery.addEventListener === 'function') {
         mediaQuery.addEventListener('change', handleChange);
-        return () => mediaQuery.removeEventListener('change', handleChange);
+        return () => {
+          mediaQuery.removeEventListener('change', handleChange);
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
       }
 
       if (typeof mediaQuery.addListener === 'function') {
         mediaQuery.addListener(handleChange);
-        return () => mediaQuery.removeListener?.(handleChange);
+        return () => {
+          mediaQuery.removeListener?.(handleChange);
+          document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
       }
 
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       return undefined;
     }
 
