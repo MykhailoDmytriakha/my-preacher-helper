@@ -196,9 +196,9 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
     : 'rgba(255, 255, 255, 0.2)';
 
   return (
-    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+    <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4">
       {/* Left side: Title, Date, Series Badge, Verse */}
-      <div className="flex-grow">
+      <div className="flex-grow min-w-0">
         <EditableTitle
           initialTitle={sermon.title}
           onSave={handleSaveSermonTitle}
@@ -308,7 +308,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
             </Transition>
           </Menu>
         </div>
-        <div className="mt-2">
+        <div className="mt-2 text-base md:text-lg">
           <EditableVerse
             initialVerse={sermon.verse || ''}
             onSave={handleSaveSermonVerse}
@@ -318,7 +318,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
       </div>
 
       {/* Right side: Preach Button and Export Buttons */}
-      <div className="flex items-center gap-2 mt-2 sm:mt-0 flex-shrink-0">
+      <div className="flex flex-wrap items-center gap-2 mt-4 lg:mt-0 flex-shrink-0 w-full lg:w-auto">
         <ExportButtons
           sermonId={sermon.id}
           getExportContent={generateExportContent}

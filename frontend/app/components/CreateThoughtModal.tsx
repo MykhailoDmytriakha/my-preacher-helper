@@ -292,11 +292,11 @@ export default function CreateThoughtModal({
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 mt-4 pb-4 sm:pb-0">
+            <div className="flex justify-end gap-3 mt-4 pb-6 sm:pb-0 flex-shrink-0">
               <button
                 type="button"
                 onClick={handleClose}
-                className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 disabled:opacity-50 transition-colors"
+                className="px-4 py-2 bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200 rounded-md hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-50 disabled:hover:bg-gray-200 transition-colors"
                 disabled={isSubmitting}
               >
                 {t('buttons.cancel')}
