@@ -242,4 +242,53 @@ describe('useThemePreference Hook', () => {
       expect(result.current.preference).toBe(pref);
     }
   });
+
+  it('should re-apply system theme on visibilitychange (device wake from sleep)', async () => {
+    // Simulate system starts in light mode
+    let systemPrefersDark = false;
+    const listeners: ((ev: MediaQueryListEvent) => void)[] = [];
+
+    mockMatchMedia.mockImplementation((query: string) => ({
+      get matches() {
+        return query === '(prefers-color-scheme: dark)' && systemPrefersDark;
+      },
+      media: query,
+      onchange: null,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      addEventListener: jest.fn().mockImplementation((_event: string, cb: (ev: MediaQueryListEvent) => void) => {
+        listeners.push(cb);
+      }),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    }));
+
+    const { result } = renderHook(() => useThemePreference());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    // Ensure system mode is active and starts light
+    act(() => {
+      result.current.setPreference('system');
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.classList.contains('dark')).toBe(false);
+    });
+
+    // Simulate device goes to sleep → OS switches to dark theme → device wakes
+    systemPrefersDark = true;
+
+    // Trigger visibilitychange (page becomes visible again after device wake)
+    act(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.classList.contains('dark')).toBe(true);
+    });
+  });
 });
