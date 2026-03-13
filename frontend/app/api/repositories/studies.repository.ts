@@ -1,11 +1,12 @@
 import { FieldValue } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { StudyMaterial, StudyNote } from '@/models/models';
+import { StudyMaterial, StudyNote, StudyNoteBranchState } from '@/models/models';
 
 
 const NOTES_COLLECTION = 'studyNotes';
 const MATERIALS_COLLECTION = 'studyMaterials';
+const NOTE_BRANCH_STATES_COLLECTION = 'studyNoteBranchStates';
 
 function computeDraft(note: Pick<StudyNote, 'tags' | 'scriptureRefs'>): boolean {
   return (note.tags?.length ?? 0) === 0 || (note.scriptureRefs?.length ?? 0) === 0;
@@ -97,6 +98,56 @@ export class StudiesRepository {
       await batch.commit();
     }
     await adminDb.collection(NOTES_COLLECTION).doc(id).delete();
+    await adminDb.collection(NOTE_BRANCH_STATES_COLLECTION).doc(id).delete();
+  }
+
+  async getNoteBranchState(noteId: string): Promise<StudyNoteBranchState | null> {
+    const doc = await adminDb.collection(NOTE_BRANCH_STATES_COLLECTION).doc(noteId).get();
+
+    if (!doc.exists) {
+      return null;
+    }
+
+    const data = doc.data() as StudyNoteBranchState;
+
+    return {
+      ...data,
+      id: doc.id,
+      noteId: data.noteId || doc.id,
+      branchRecords: data.branchRecords || [],
+      readFoldedBranchIds: data.readFoldedBranchIds || [],
+      previewFoldedBranchIds: data.previewFoldedBranchIds || [],
+    };
+  }
+
+  async upsertNoteBranchState(
+    noteId: string,
+    payload: Pick<StudyNoteBranchState, 'userId' | 'branchRecords' | 'readFoldedBranchIds' | 'previewFoldedBranchIds'>
+  ): Promise<StudyNoteBranchState> {
+    const existing = await this.getNoteBranchState(noteId);
+    const now = new Date().toISOString();
+    const nextState: StudyNoteBranchState = {
+      id: noteId,
+      noteId,
+      userId: payload.userId,
+      branchRecords: payload.branchRecords,
+      readFoldedBranchIds: payload.readFoldedBranchIds,
+      previewFoldedBranchIds: payload.previewFoldedBranchIds,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    await adminDb.collection(NOTE_BRANCH_STATES_COLLECTION).doc(noteId).set({
+      noteId: nextState.noteId,
+      userId: nextState.userId,
+      branchRecords: nextState.branchRecords,
+      readFoldedBranchIds: nextState.readFoldedBranchIds,
+      previewFoldedBranchIds: nextState.previewFoldedBranchIds,
+      createdAt: nextState.createdAt,
+      updatedAt: nextState.updatedAt,
+    });
+
+    return nextState;
   }
 
   async listMaterials(userId: string): Promise<StudyMaterial[]> {

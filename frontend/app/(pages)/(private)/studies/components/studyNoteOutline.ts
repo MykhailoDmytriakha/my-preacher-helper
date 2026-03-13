@@ -1,5 +1,9 @@
+import type { StudyNoteBranchOverlayTone } from '@/models/models';
+
 export interface StudyNoteOutlineBranch {
     key: string;
+    branchId?: string;
+    overlayTone?: StudyNoteBranchOverlayTone | null;
     path: number[];
     depth: number;
     headingLevel: number;

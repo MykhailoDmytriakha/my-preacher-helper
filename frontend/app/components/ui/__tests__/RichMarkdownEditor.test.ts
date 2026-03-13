@@ -1,4 +1,8 @@
+import { act, render, waitFor } from '@testing-library/react';
+import React from 'react';
+
 import {
+    applyPendingMarkdownInsertion,
     findCurrentOutlineBranchSelection,
     findHeadingSelectionRange,
     getOutlineBaseHeadingLevel,
@@ -6,15 +10,25 @@ import {
     getOutlineNodeDecorationRange,
     getRichMarkdownEditorClassName,
     handleOutlineTabShortcut,
+    RichMarkdownEditor,
     shiftHeadingDepth,
 } from '../RichMarkdownEditor';
 
+jest.mock('react-i18next', () => ({
+    useTranslation: () => ({
+        t: (key: string) => key,
+        i18n: { language: 'en' },
+    }),
+}));
+
 function createHeadingShortcutEditor(nodeType: 'heading' | 'paragraph', level: number | null = null) {
     const run = jest.fn(() => true);
+    const insertContent = jest.fn(() => ({ run }));
     const setHeading = jest.fn(() => ({ run }));
     const setParagraph = jest.fn(() => ({ run }));
     const chain = jest.fn(() => ({
         focus: jest.fn(() => ({
+            insertContent,
             setHeading,
             setParagraph,
         })),
@@ -35,6 +49,7 @@ function createHeadingShortcutEditor(nodeType: 'heading' | 'paragraph', level: n
         },
         spies: {
             chain,
+            insertContent,
             setHeading,
             setParagraph,
             run,
@@ -208,5 +223,92 @@ describe('findCurrentOutlineBranchSelection', () => {
             headingLevel: 2,
             occurrenceIndex: 1,
         });
+    });
+});
+
+describe('applyPendingMarkdownInsertion', () => {
+    it('inserts pending markdown at the current editor selection and consumes the token', () => {
+        const { editor, spies } = createHeadingShortcutEditor('paragraph');
+        const handlePendingMarkdownInsertionConsumed = jest.fn();
+
+        expect(applyPendingMarkdownInsertion(
+            editor as never,
+            {
+                token: 'insert-1',
+                text: '[Child Branch](#branch=branch-child)',
+            },
+            handlePendingMarkdownInsertionConsumed
+        )).toBe(true);
+
+        expect(spies.insertContent).toHaveBeenCalledWith('[Child Branch](#branch=branch-child)');
+        expect(handlePendingMarkdownInsertionConsumed).toHaveBeenCalledWith('insert-1');
+    });
+
+    it('preserves branch-link markdown through the live TipTap markdown round-trip', async () => {
+        jest.useFakeTimers();
+
+        const handleChange = jest.fn();
+        const handlePendingMarkdownInsertionConsumed = jest.fn();
+        const elementPrototype = Element.prototype as Element & {
+            getClientRects?: () => DOMRectList;
+            getBoundingClientRect?: () => DOMRect;
+        };
+        const rangePrototype = Range.prototype as Range & {
+            getClientRects?: () => DOMRectList;
+            getBoundingClientRect?: () => DOMRect;
+        };
+        const originalGetClientRects = elementPrototype.getClientRects;
+        const originalGetBoundingClientRect = elementPrototype.getBoundingClientRect;
+        const originalRangeGetClientRects = rangePrototype.getClientRects;
+        const originalRangeGetBoundingClientRect = rangePrototype.getBoundingClientRect;
+        const createRect = () => ({
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            top: 0,
+            right: 0,
+            bottom: 0,
+            left: 0,
+            toJSON: () => '',
+        });
+
+        elementPrototype.getClientRects = () => ({
+            length: 1,
+            item: () => null,
+            [Symbol.iterator]: function* iterator() {
+                yield createRect();
+            },
+            0: createRect(),
+        } as unknown as DOMRectList);
+        elementPrototype.getBoundingClientRect = () => createRect() as DOMRect;
+        rangePrototype.getClientRects = elementPrototype.getClientRects;
+        rangePrototype.getBoundingClientRect = elementPrototype.getBoundingClientRect;
+
+        render(React.createElement(RichMarkdownEditor, {
+            value: '## Root',
+            onChange: handleChange,
+            pendingMarkdownInsertion: {
+                token: 'insert-1',
+                text: '[Child Branch](#branch=branch-child)',
+            },
+            onPendingMarkdownInsertionConsumed: handlePendingMarkdownInsertionConsumed,
+        }));
+
+        await act(async () => {
+            jest.runOnlyPendingTimers();
+            await Promise.resolve();
+        });
+
+        await waitFor(() => {
+        expect(handleChange).toHaveBeenCalledWith(expect.stringContaining('[Child Branch](#branch=branch-child)'));
+        });
+
+        expect(handlePendingMarkdownInsertionConsumed).toHaveBeenCalledWith('insert-1');
+        elementPrototype.getClientRects = originalGetClientRects;
+        elementPrototype.getBoundingClientRect = originalGetBoundingClientRect;
+        rangePrototype.getClientRects = originalRangeGetClientRects;
+        rangePrototype.getBoundingClientRect = originalRangeGetBoundingClientRect;
+        jest.useRealTimers();
     });
 });

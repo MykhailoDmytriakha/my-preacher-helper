@@ -1,18 +1,21 @@
 'use client';
 
-import { ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, ChevronDownIcon, ChevronRightIcon, PlusIcon } from '@heroicons/react/24/outline';
+import { ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, ChevronDownIcon, ChevronRightIcon, DocumentDuplicateIcon, LinkIcon, PlusIcon } from '@heroicons/react/24/outline';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
+import { buildStudyNoteBranchBacklinks } from './studyNoteBranchBacklinks';
 import {
     getStudyNoteOutlineBranchMaxHeadingLevel,
     remapStudyNoteOutlineKey,
     StudyNoteOutline,
     StudyNoteOutlineBranch,
 } from './studyNoteOutline';
+
+import type { StudyNoteBranchOverlayTone } from '@/models/models';
 
 interface StudyNoteOutlineViewProps {
     outline: StudyNoteOutline;
@@ -29,6 +32,11 @@ interface StudyNoteOutlineViewProps {
     testId?: string;
     preferredActiveBranchRequest?: { key: string; token: string } | null;
     showNavigator?: boolean;
+    onCopyBranchLink?: (branchKey: string) => void;
+    onCopyBranchReference?: (branchKey: string, relationLabel?: string) => void;
+    onBranchLinkClick?: (branchId: string) => void;
+    onInsertBranchReference?: (branchKey: string, relationLabel?: string) => void;
+    onSetBranchOverlayTone?: (branchKey: string, overlayTone: StudyNoteBranchOverlayTone | null) => void;
 }
 
 const NAV_INDENT_PX = 14;
@@ -37,9 +45,48 @@ const PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME =
     'inline-flex items-center gap-1 rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-200';
 const PREVIEW_BRANCH_ACTION_BUTTON_DISABLED_CLASS_NAME =
     ' disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:bg-white disabled:hover:text-gray-600 dark:disabled:hover:border-gray-700 dark:disabled:hover:bg-gray-900 dark:disabled:hover:text-gray-300';
+const BRANCH_OVERLAY_TONES: StudyNoteBranchOverlayTone[] = ['amber', 'emerald', 'sky', 'rose', 'violet', 'slate'];
 
 function hasBranchDetails(branch: StudyNoteOutlineBranch): boolean {
     return Boolean(branch.body.trim()) || branch.children.length > 0;
+}
+
+function getBranchOverlayCardClassName(overlayTone?: StudyNoteBranchOverlayTone | null): string {
+    switch (overlayTone) {
+        case 'amber':
+            return 'border-amber-200/80 bg-amber-50/70 dark:border-amber-900/60 dark:bg-amber-900/10';
+        case 'emerald':
+            return 'border-emerald-200/80 bg-emerald-50/70 dark:border-emerald-900/60 dark:bg-emerald-900/10';
+        case 'sky':
+            return 'border-sky-200/80 bg-sky-50/70 dark:border-sky-900/60 dark:bg-sky-900/10';
+        case 'rose':
+            return 'border-rose-200/80 bg-rose-50/70 dark:border-rose-900/60 dark:bg-rose-900/10';
+        case 'violet':
+            return 'border-violet-200/80 bg-violet-50/70 dark:border-violet-900/60 dark:bg-violet-900/10';
+        case 'slate':
+            return 'border-slate-300/80 bg-slate-100/80 dark:border-slate-700 dark:bg-slate-800/50';
+        default:
+            return 'border-gray-200/80 bg-white/90 dark:border-gray-700 dark:bg-gray-900/70';
+    }
+}
+
+function getBranchOverlaySwatchClassName(overlayTone?: StudyNoteBranchOverlayTone | null): string {
+    switch (overlayTone) {
+        case 'amber':
+            return 'bg-amber-400 dark:bg-amber-500';
+        case 'emerald':
+            return 'bg-emerald-400 dark:bg-emerald-500';
+        case 'sky':
+            return 'bg-sky-400 dark:bg-sky-500';
+        case 'rose':
+            return 'bg-rose-400 dark:bg-rose-500';
+        case 'violet':
+            return 'bg-violet-400 dark:bg-violet-500';
+        case 'slate':
+            return 'bg-slate-500 dark:bg-slate-400';
+        default:
+            return 'bg-gray-300 dark:bg-gray-600';
+    }
 }
 
 export function StudyNoteOutlineView({
@@ -57,6 +104,11 @@ export function StudyNoteOutlineView({
     testId,
     preferredActiveBranchRequest = null,
     showNavigator = true,
+    onCopyBranchLink,
+    onCopyBranchReference,
+    onBranchLinkClick,
+    onInsertBranchReference,
+    onSetBranchOverlayTone,
 }: StudyNoteOutlineViewProps) {
     const { t } = useTranslation();
     const isPreview = mode === 'preview';
@@ -64,6 +116,18 @@ export function StudyNoteOutlineView({
     const branchRefs = useRef<Record<string, HTMLElement | null>>({});
     const previousOutlineRef = useRef(outline);
     const [activeBranchKey, setActiveBranchKey] = useState<string | null>(outline.branches[0]?.key ?? null);
+    const [referenceRelationByBranchKey, setReferenceRelationByBranchKey] = useState<Record<string, string>>({});
+    const relationOptions = useMemo(() => ([
+        { value: '', label: t('studiesWorkspace.outlinePilot.branchRelations.plain') },
+        { value: t('studiesWorkspace.outlinePilot.branchRelations.supports'), label: t('studiesWorkspace.outlinePilot.branchRelations.supports') },
+        { value: t('studiesWorkspace.outlinePilot.branchRelations.contrasts'), label: t('studiesWorkspace.outlinePilot.branchRelations.contrasts') },
+        { value: t('studiesWorkspace.outlinePilot.branchRelations.expands'), label: t('studiesWorkspace.outlinePilot.branchRelations.expands') },
+        { value: t('studiesWorkspace.outlinePilot.branchRelations.applies'), label: t('studiesWorkspace.outlinePilot.branchRelations.applies') },
+    ]), [t]);
+    const backlinksByTargetId = useMemo(
+        () => buildStudyNoteBranchBacklinks(outline.branches),
+        [outline.branches]
+    );
 
     useEffect(() => {
         setActiveBranchKey((currentKey) => {
@@ -166,6 +230,9 @@ export function StudyNoteOutlineView({
         const addChildLabel = t('studiesWorkspace.outlinePilot.addChild');
         const promoteLabel = t('studiesWorkspace.outlinePilot.promoteBranch');
         const demoteLabel = t('studiesWorkspace.outlinePilot.demoteBranch');
+        const insertReferenceLabel = t('studiesWorkspace.outlinePilot.insertBranchReference');
+        const selectedReferenceRelation = referenceRelationByBranchKey[branch.key] ?? '';
+        const branchBacklinks = branch.branchId ? backlinksByTargetId[branch.branchId] ?? [] : [];
 
         return (
             <section
@@ -173,8 +240,9 @@ export function StudyNoteOutlineView({
                 ref={(element) => {
                     branchRefs.current[branch.key] = element;
                 }}
+                id={branch.branchId ? `branch-${branch.branchId}` : undefined}
                 data-testid={`study-note-branch-${branch.key}`}
-                className={`rounded-2xl border border-gray-200/80 bg-white/90 shadow-sm transition-colors dark:border-gray-700 dark:bg-gray-900/70 ${
+                className={`rounded-2xl border shadow-sm transition-colors ${getBranchOverlayCardClassName(branch.overlayTone)} ${
                     activeBranchKey === branch.key
                         ? 'ring-2 ring-emerald-200 dark:ring-emerald-700/60'
                         : ''
@@ -206,9 +274,41 @@ export function StudyNoteOutlineView({
                             <div className="flex items-start gap-2">
                                 <div className="min-w-0 flex-1 space-y-1">
                                     <div className="flex items-center gap-2">
+                                        {branch.overlayTone && (
+                                            <span
+                                                data-testid={`study-note-branch-overlay-indicator-${branch.key}`}
+                                                className={`h-2.5 w-2.5 rounded-full ${getBranchOverlaySwatchClassName(branch.overlayTone)}`}
+                                            />
+                                        )}
                                         <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
                                             H{branch.headingLevel}
                                         </span>
+                                        {onCopyBranchLink && (
+                                            <div className="flex items-center gap-1">
+                                                <button
+                                                    type="button"
+                                                    data-testid={`study-note-branch-copy-link-${branch.key}`}
+                                                    aria-label={t('studiesWorkspace.shareLinks.copyLink')}
+                                                    title={t('studiesWorkspace.shareLinks.copyLink')}
+                                                    onClick={() => onCopyBranchLink(branch.key)}
+                                                    className="rounded-full border border-gray-200 bg-white p-1 text-gray-500 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-200"
+                                                >
+                                                    <LinkIcon className="h-3.5 w-3.5" />
+                                                </button>
+                                                {onCopyBranchReference && (
+                                                    <button
+                                                        type="button"
+                                                        data-testid={`study-note-branch-copy-reference-${branch.key}`}
+                                                        aria-label={t('studiesWorkspace.outlinePilot.copyBranchReference')}
+                                                        title={t('studiesWorkspace.outlinePilot.copyBranchReference')}
+                                                        onClick={() => onCopyBranchReference(branch.key)}
+                                                        className="rounded-full border border-gray-200 bg-white p-1 text-gray-500 transition-colors hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-200"
+                                                    >
+                                                        <DocumentDuplicateIcon className="h-3.5 w-3.5" />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                     <button
                                         type="button"
@@ -274,6 +374,84 @@ export function StudyNoteOutlineView({
                                         <PlusIcon className="h-3.5 w-3.5" />
                                         <span>{addChildLabel}</span>
                                     </button>
+                                    {onInsertBranchReference && (
+                                        <>
+                                            <label className="sr-only" htmlFor={`study-note-branch-relation-${branch.key}`}>
+                                                {t('studiesWorkspace.outlinePilot.referenceRelation')}
+                                            </label>
+                                            <select
+                                                id={`study-note-branch-relation-${branch.key}`}
+                                                data-testid={`study-note-branch-relation-${branch.key}`}
+                                                value={selectedReferenceRelation}
+                                                onChange={(event) => {
+                                                    const nextValue = event.target.value;
+                                                    setReferenceRelationByBranchKey((currentValue) => ({
+                                                        ...currentValue,
+                                                        [branch.key]: nextValue,
+                                                    }));
+                                                }}
+                                                className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:border-emerald-200 hover:text-emerald-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:text-emerald-200"
+                                            >
+                                                {relationOptions.map((relationOption) => (
+                                                    <option key={`${branch.key}-${relationOption.label}`} value={relationOption.value}>
+                                                        {relationOption.label}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <button
+                                                type="button"
+                                                data-testid={`study-note-branch-insert-reference-${branch.key}`}
+                                                aria-label={insertReferenceLabel}
+                                                title={insertReferenceLabel}
+                                                onClick={() => onInsertBranchReference(
+                                                    branch.key,
+                                                    selectedReferenceRelation || undefined
+                                                )}
+                                                className={PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}
+                                            >
+                                                <LinkIcon className="h-3.5 w-3.5" />
+                                                <span>{insertReferenceLabel}</span>
+                                            </button>
+                                        </>
+                                    )}
+                                    {onSetBranchOverlayTone && (
+                                        <div className="flex items-center gap-1">
+                                            <span className="mr-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                                                {t('studiesWorkspace.outlinePilot.branchColor')}
+                                            </span>
+                                            <button
+                                                type="button"
+                                                data-testid={`study-note-branch-overlay-clear-${branch.key}`}
+                                                aria-label={t('studiesWorkspace.outlinePilot.clearBranchColor')}
+                                                title={t('studiesWorkspace.outlinePilot.clearBranchColor')}
+                                                onClick={() => onSetBranchOverlayTone(branch.key, null)}
+                                                className={`inline-flex h-7 items-center rounded-full border px-2 text-[11px] font-medium transition-colors ${
+                                                    branch.overlayTone
+                                                        ? 'border-gray-200 bg-white text-gray-500 hover:border-emerald-200 hover:text-emerald-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:text-emerald-200'
+                                                        : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
+                                                }`}
+                                            >
+                                                {t('common.clear')}
+                                            </button>
+                                            {BRANCH_OVERLAY_TONES.map((overlayTone) => (
+                                                <button
+                                                    key={`${branch.key}-${overlayTone}`}
+                                                    type="button"
+                                                    data-testid={`study-note-branch-overlay-${branch.key}-${overlayTone}`}
+                                                    aria-label={t(`studiesWorkspace.outlinePilot.branchOverlayTones.${overlayTone}`)}
+                                                    title={t(`studiesWorkspace.outlinePilot.branchOverlayTones.${overlayTone}`)}
+                                                    onClick={() => onSetBranchOverlayTone(branch.key, overlayTone)}
+                                                    className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition-transform hover:scale-105 ${
+                                                        branch.overlayTone === overlayTone
+                                                            ? 'border-emerald-500 ring-2 ring-emerald-200 dark:border-emerald-400 dark:ring-emerald-700/60'
+                                                            : 'border-gray-200 dark:border-gray-700'
+                                                    }`}
+                                                >
+                                                    <span className={`h-3.5 w-3.5 rounded-full ${getBranchOverlaySwatchClassName(overlayTone)}`} />
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
                                     {onShiftBranchDepth && (
                                         <>
                                             <button
@@ -316,11 +494,38 @@ export function StudyNoteOutlineView({
                             ) : null
                         ) : (
                             <>
+                                {branchBacklinks.length > 0 && (
+                                    <div className="rounded-2xl border border-emerald-200/70 bg-emerald-50/70 px-3 py-3 dark:border-emerald-900/60 dark:bg-emerald-900/20">
+                                        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-300">
+                                            {t('studiesWorkspace.outlinePilot.referencedBy')}
+                                        </p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {branchBacklinks.map((backlink) => (
+                                                <button
+                                                    key={`${branch.key}-${backlink.sourceBranchKey}-${backlink.referenceLabel}-${backlink.relationLabel ?? 'plain'}`}
+                                                    type="button"
+                                                    data-testid={`study-note-branch-backlink-${branch.key}-${backlink.sourceBranchKey}`}
+                                                    onClick={() => handleJumpToBranch(backlink.sourceBranchKey)}
+                                                    className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-xs font-medium text-emerald-800 transition-colors hover:border-emerald-300 hover:bg-emerald-100 dark:border-emerald-800/70 dark:bg-gray-900 dark:text-emerald-200 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/40"
+                                                >
+                                                    <span>{backlink.sourceBranchTitle}</span>
+                                                    {backlink.relationLabel && (
+                                                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-900/30 dark:text-emerald-200">
+                                                            {backlink.relationLabel}
+                                                        </span>
+                                                    )}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {branch.body.trim() && (
                                     <MarkdownDisplay
                                         content={branch.body}
                                         compact={isPreview}
                                         searchQuery={searchQuery}
+                                        onBranchLinkClick={onBranchLinkClick}
                                         className={isPreview
                                             ? '!text-sm prose-p:my-2 prose-headings:my-2'
                                             : 'prose-p:my-2 prose-headings:my-3'
@@ -388,6 +593,7 @@ export function StudyNoteOutlineView({
                             content={outline.introduction}
                             compact={isPreview}
                             searchQuery={searchQuery}
+                            onBranchLinkClick={onBranchLinkClick}
                             className={isPreview ? '!text-sm prose-p:my-2 prose-headings:my-2' : 'prose-p:my-2 prose-headings:my-3'}
                         />
                     </section>

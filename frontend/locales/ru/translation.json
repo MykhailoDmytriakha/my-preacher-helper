@@ -663,6 +663,8 @@
     "insightsThreshold": "Нужно еще {{count}} мыслей для аналитики. Сейчас: {{thoughtsCount}} из {{threshold}}"
   },
   "common": {
+    "clear": "Очистить",
+    "copyError": "Ошибка копирования",
     "done": "Готово",
     "warning": "Внимание",
     "confirm": "Подтвердить",
@@ -1872,7 +1874,28 @@
       "addChild": "Добавить подветку",
       "promoteBranch": "Поднять ветку",
       "demoteBranch": "Сделать подветкой",
-      "newBranchTitle": "Новая ветка"
+      "newBranchTitle": "Новая ветка",
+      "copyBranchReference": "Скопировать ссылку на ветку",
+      "insertBranchReference": "Вставить ссылку на ветку",
+      "referencedBy": "Есть ссылки из",
+      "branchColor": "Цвет ветки",
+      "clearBranchColor": "Сбросить цвет ветки",
+      "referenceRelation": "Тип связи",
+      "branchOverlayTones": {
+        "amber": "Янтарный",
+        "emerald": "Изумрудный",
+        "sky": "Небесный",
+        "rose": "Розовый",
+        "violet": "Фиолетовый",
+        "slate": "Графитовый"
+      },
+      "branchRelations": {
+        "plain": "Обычная ссылка",
+        "supports": "Поддерживает",
+        "contrasts": "Контрастирует",
+        "expands": "Раскрывает",
+        "applies": "Применяет"
+      }
     },
     "shareLinks": {
       "title": "Ссылки для доступа",

@@ -4,6 +4,7 @@ import React, { memo, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+import { parseStudyNoteBranchLinkMeta } from '@/utils/studyNoteBranchLinks';
 import HighlightedText from '@components/HighlightedText';
 
 interface MarkdownDisplayProps {
@@ -12,6 +13,7 @@ interface MarkdownDisplayProps {
     compact?: boolean;
     /** Optional search query to highlight within the content */
     searchQuery?: string;
+    onBranchLinkClick?: (branchId: string) => void;
 }
 
 // Helper to transform [Type: Content] into code blocks for custom rendering
@@ -28,7 +30,13 @@ const formatStructuredBlocks = (text: string) => {
     });
 };
 
-const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery = '' }: MarkdownDisplayProps) => {
+const MarkdownDisplay = ({
+    content,
+    className = '',
+    compact = false,
+    searchQuery = '',
+    onBranchLinkClick,
+}: MarkdownDisplayProps) => {
     const processedContent = useMemo(() => formatStructuredBlocks(content), [content]);
 
     const renderHighlighted = useCallback(
@@ -45,9 +53,50 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
                 remarkPlugins={[remarkGfm]}
                 components={{
                     // Override link behavior to open in new tab
-                    a: ({ ...props }) => (
-                        <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline" />
-                    ),
+                    a: ({ href, onClick, title, children, ...props }) => {
+                        const branchLinkMeta = parseStudyNoteBranchLinkMeta(href, title);
+
+                        if (branchLinkMeta) {
+                            return (
+                                <span className="inline-flex flex-wrap items-center gap-1 align-baseline">
+                                    <a
+                                        {...props}
+                                        href={href}
+                                        title={title}
+                                        onClick={(event) => {
+                                            onClick?.(event);
+                                            if (onBranchLinkClick) {
+                                                event.preventDefault();
+                                                onBranchLinkClick(branchLinkMeta.branchId);
+                                            }
+                                        }}
+                                        className="text-emerald-600 dark:text-emerald-400 hover:underline"
+                                    >
+                                        {children}
+                                    </a>
+                                    {branchLinkMeta.relationLabel && (
+                                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-900/30 dark:text-emerald-200">
+                                            {branchLinkMeta.relationLabel}
+                                        </span>
+                                    )}
+                                </span>
+                            );
+                        }
+
+                        return (
+                            <a
+                                {...props}
+                                href={href}
+                                title={title}
+                                onClick={onClick}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 dark:text-blue-400 hover:underline"
+                            >
+                                {children}
+                            </a>
+                        );
+                    },
                     // Ensure lists are properly spaced
                     ul: ({ ...props }) => <ul {...props} className="my-2 list-disc pl-4" />,
                     ol: ({ ...props }) => <ol {...props} className="my-2 list-decimal pl-4" />,

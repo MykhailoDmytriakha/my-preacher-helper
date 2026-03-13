@@ -1,8 +1,14 @@
-import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import {
+    getStudyNoteBranchState,
+    updateStudyNoteBranchState,
+} from '@services/studies.service';
+import { createStudyNoteBranchStateRecord } from '../../components/studyNoteBranchIdentity';
+import { parseStudyNoteOutline } from '../../components/studyNoteOutline';
 import StudyNoteEditorPage from '../page';
 import { StudyNote } from '@/models/models';
 
@@ -24,11 +30,39 @@ jest.mock('react-i18next', () => ({
 jest.mock('@/hooks/useStudyNotes');
 jest.mock('@/hooks/useTags');
 jest.mock('@/hooks/useStudyNoteShareLinks');
+jest.mock('@services/studies.service', () => ({
+    getStudyNoteBranchState: jest.fn(),
+    updateStudyNoteBranchState: jest.fn(),
+}));
 
 // Mock components to avoid deep rendering issues in this test
 jest.mock('@components/MarkdownDisplay', () => ({
     __esModule: true,
-    default: ({ content }: { content: string }) => <div data-testid="markdown-display">{content}</div>,
+    default: ({
+        content,
+        onBranchLinkClick,
+    }: {
+        content: string;
+        onBranchLinkClick?: (branchId: string) => void;
+    }) => {
+        const branchLinkMatches = Array.from(content.matchAll(/\[[^\]]+\]\(#branch=([^\s)]+)(?:\s+"([^"]+)")?\)/g));
+
+        return (
+            <div data-testid="markdown-display">
+                <div>{content}</div>
+                {branchLinkMatches.map((match) => (
+                    <button
+                        key={`${match[1]}-${match[2] ?? 'plain'}`}
+                        type="button"
+                        data-testid={`markdown-branch-link-${match[1]}`}
+                        onClick={() => onBranchLinkClick?.(decodeURIComponent(match[1]))}
+                    >
+                        Branch link {match[1]}
+                    </button>
+                ))}
+            </div>
+        );
+    },
 }));
 
 jest.mock('react-textarea-autosize', () => ({
@@ -48,6 +82,8 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({
         onCreateChildBranch,
         canCreateSiblingBranch,
         canCreateChildBranch,
+        pendingMarkdownInsertion,
+        onPendingMarkdownInsertionConsumed,
     }: any) => {
         const React = require('react');
         const headingMatches: Array<{ headingText: string; headingLevel: number }> = React.useMemo(() => {
@@ -59,6 +95,7 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({
             }));
         }, [value]);
         const [selectedHeadingIndex, setSelectedHeadingIndex] = React.useState(0);
+        const textareaRef = React.useRef(null as HTMLTextAreaElement | null);
 
         React.useEffect(() => {
             setSelectedHeadingIndex((currentIndex: number) => (
@@ -91,9 +128,24 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({
             });
         }, [headingMatches, onOutlineBranchSelectionChange, selectedHeadingIndex]);
 
+        React.useEffect(() => {
+            if (!pendingMarkdownInsertion) {
+                return;
+            }
+
+            const textarea = textareaRef.current;
+            const selectionStart = textarea?.selectionStart ?? value.length;
+            const selectionEnd = textarea?.selectionEnd ?? value.length;
+            const nextValue = `${value.slice(0, selectionStart)}${pendingMarkdownInsertion.text}${value.slice(selectionEnd)}`;
+
+            onChange(nextValue);
+            onPendingMarkdownInsertionConsumed?.(pendingMarkdownInsertion.token);
+        }, [onChange, onPendingMarkdownInsertionConsumed, pendingMarkdownInsertion, value]);
+
         return (
             <div>
                 <textarea
+                    ref={textareaRef}
                     data-testid="rich-markdown-editor"
                     value={value}
                     onChange={(e) => onChange(e.target.value)}
@@ -154,6 +206,18 @@ const mockRouter = {
     replace: jest.fn(),
     back: jest.fn(),
 };
+const mockClipboardWriteText = jest.fn().mockResolvedValue(undefined);
+
+Object.defineProperty(navigator, 'clipboard', {
+    value: {
+        writeText: mockClipboardWriteText,
+    },
+    writable: true,
+});
+Object.defineProperty(window, 'isSecureContext', {
+    value: true,
+    writable: true,
+});
 
 const mockParams = { id: 'note-1' };
 const mockSearchParams = new URLSearchParams('tag=tag1'); // Matches all mock notes
@@ -184,6 +248,19 @@ const structuredNote: StudyNote = {
         '',
         '## Main Branch',
         'Main branch body',
+        '',
+        '### Child Branch',
+        'Child branch body',
+    ].join('\n'),
+};
+
+const linkedStructuredNote: StudyNote = {
+    ...createMockNote('note-1', 'Linked Structured Note'),
+    content: [
+        'Preface paragraph',
+        '',
+        '## Main Branch',
+        'See [Child Branch](#branch=branch-child)',
         '',
         '### Child Branch',
         'Child branch body',
@@ -248,9 +325,21 @@ const introOnlyStructuredCandidateNote: StudyNote = {
 describe('StudyNoteEditorPage Pagination', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        mockClipboardWriteText.mockResolvedValue(undefined);
         (useRouter as jest.Mock).mockReturnValue(mockRouter);
         (useParams as jest.Mock).mockReturnValue(mockParams);
         (useSearchParams as jest.Mock).mockReturnValue(mockSearchParams);
+        (getStudyNoteBranchState as jest.Mock).mockResolvedValue(null);
+        (updateStudyNoteBranchState as jest.Mock).mockResolvedValue({
+            id: 'note-1',
+            noteId: 'note-1',
+            userId: 'user-1',
+            branchRecords: [],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-12T00:00:00.000Z',
+            updatedAt: '2026-03-12T00:00:00.000Z',
+        });
 
         (useStudyNotes as jest.Mock).mockReturnValue({
             uid: 'user-1',
@@ -519,6 +608,146 @@ describe('StudyNoteEditorPage Pagination', () => {
         expect(screen.queryByText('Child branch body')).not.toBeInTheDocument();
     });
 
+    it('restores folded read branches from persisted branch-state identity', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [structuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+        const outline = parseStudyNoteOutline(structuredNote.content);
+        const mainBranchRecord = createStudyNoteBranchStateRecord(outline.branches, '1', 'branch-main');
+
+        expect(mainBranchRecord).not.toBeNull();
+
+        (getStudyNoteBranchState as jest.Mock).mockResolvedValue({
+            id: 'note-1',
+            noteId: 'note-1',
+            userId: 'user-1',
+            branchRecords: [mainBranchRecord!],
+            readFoldedBranchIds: ['branch-main'],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-12T00:00:00.000Z',
+            updatedAt: '2026-03-12T00:00:00.000Z',
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('study-note-branch-1.1')).not.toBeInTheDocument();
+        });
+    });
+
+    it('activates a branch from the URL hash and reveals its folded parent path', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [structuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+        const outline = parseStudyNoteOutline(structuredNote.content);
+        const rootRecord = createStudyNoteBranchStateRecord(outline.branches, '1', 'branch-main');
+        const childRecord = createStudyNoteBranchStateRecord(outline.branches, '1.1', 'branch-child');
+
+        expect(rootRecord).not.toBeNull();
+        expect(childRecord).not.toBeNull();
+
+        (getStudyNoteBranchState as jest.Mock).mockResolvedValue({
+            id: 'note-1',
+            noteId: 'note-1',
+            userId: 'user-1',
+            branchRecords: [rootRecord!, childRecord!],
+            readFoldedBranchIds: ['branch-main'],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-12T00:00:00.000Z',
+            updatedAt: '2026-03-12T00:00:00.000Z',
+        });
+        window.history.replaceState(null, '', 'http://localhost/studies/note-1?tag=tag1#branch=branch-child');
+
+        render(<StudyNoteEditorPage />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('study-note-branch-1.1')).toHaveClass('ring-2');
+        });
+
+        window.history.replaceState(null, '', 'http://localhost/studies/note-1?tag=tag1');
+    });
+
+    it('follows an internal markdown branch link and highlights the target branch', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [linkedStructuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+        const outline = parseStudyNoteOutline(linkedStructuredNote.content);
+        const childRecord = createStudyNoteBranchStateRecord(outline.branches, '1.1', 'branch-child');
+
+        expect(childRecord).not.toBeNull();
+
+        (getStudyNoteBranchState as jest.Mock).mockResolvedValue({
+            id: 'note-1',
+            noteId: 'note-1',
+            userId: 'user-1',
+            branchRecords: [childRecord!],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-12T00:00:00.000Z',
+            updatedAt: '2026-03-12T00:00:00.000Z',
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(await screen.findByTestId('markdown-branch-link-branch-child'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('study-note-branch-1.1')).toHaveClass('ring-2');
+        });
+        expect(window.location.hash).toBe('#branch=branch-child');
+    });
+
+    it('surfaces backlinks in the structured view when the target branch has persisted identity', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [linkedStructuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+        const outline = parseStudyNoteOutline(linkedStructuredNote.content);
+        const childRecord = createStudyNoteBranchStateRecord(outline.branches, '1.1', 'branch-child');
+
+        expect(childRecord).not.toBeNull();
+
+        (getStudyNoteBranchState as jest.Mock).mockResolvedValue({
+            id: 'note-1',
+            noteId: 'note-1',
+            userId: 'user-1',
+            branchRecords: [childRecord!],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-12T00:00:00.000Z',
+            updatedAt: '2026-03-12T00:00:00.000Z',
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        await waitFor(() => {
+            expect(screen.getByTestId('study-note-branch-backlink-1.1-1')).toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByTestId('study-note-branch-backlink-1.1-1'));
+
+        expect(screen.getByTestId('study-note-branch-1')).toHaveClass('ring-2');
+    });
+
     it('shows the live structure preview while editing heading-based content', () => {
         (useStudyNotes as jest.Mock).mockReturnValue({
             uid: 'user-1',
@@ -639,6 +868,307 @@ describe('StudyNoteEditorPage Pagination', () => {
 
         expect(within(branchCards[0]).getByText('Beta')).toBeInTheDocument();
         expect(within(branchCards[1]).getByText('Alpha')).toBeInTheDocument();
+    });
+
+    it('preserves folded preview branches across structural mutations and persists branch-state', async () => {
+        jest.useFakeTimers();
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [movableStructuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+        const outline = parseStudyNoteOutline(movableStructuredNote.content);
+        const alphaRecord = createStudyNoteBranchStateRecord(outline.branches, '1', 'branch-alpha');
+
+        expect(alphaRecord).not.toBeNull();
+
+        (getStudyNoteBranchState as jest.Mock).mockResolvedValue({
+            id: 'note-1',
+            noteId: 'note-1',
+            userId: 'user-1',
+            branchRecords: [alphaRecord!],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: ['branch-alpha'],
+            createdAt: '2026-03-12T00:00:00.000Z',
+            updatedAt: '2026-03-12T00:00:00.000Z',
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('study-note-branch-1.1')).not.toBeInTheDocument();
+        });
+
+        fireEvent.click(screen.getByTestId('study-note-branch-move-down-1'));
+
+        await waitFor(() => {
+            expect(screen.queryByTestId('study-note-branch-2.1')).not.toBeInTheDocument();
+        });
+
+        await act(async () => {
+            jest.advanceTimersByTime(1300);
+        });
+
+        await waitFor(() => {
+            expect(updateStudyNoteBranchState).toHaveBeenCalledWith(
+                'note-1',
+                'user-1',
+                expect.objectContaining({
+                    previewFoldedBranchIds: expect.arrayContaining([expect.any(String)]),
+                })
+            );
+        });
+
+        jest.useRealTimers();
+    });
+
+    it('copies a branch deep-link, creates branch identity on demand, and persists it', async () => {
+        jest.useFakeTimers();
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [structuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTestId('study-note-branch-copy-link-1'));
+
+        await waitFor(() => {
+            expect(mockClipboardWriteText).toHaveBeenCalledWith(expect.stringContaining('#branch='));
+        });
+
+        await act(async () => {
+            jest.advanceTimersByTime(1300);
+        });
+
+        await waitFor(() => {
+            expect(updateStudyNoteBranchState).toHaveBeenCalledWith(
+                'note-1',
+                'user-1',
+                expect.objectContaining({
+                    branchRecords: expect.arrayContaining([
+                        expect.objectContaining({
+                            branchId: expect.any(String),
+                            title: 'Main Branch',
+                        }),
+                    ]),
+                })
+            );
+        });
+
+        jest.useRealTimers();
+    });
+
+    it('persists branch overlay tone metadata through the companion branch-state layer', async () => {
+        jest.useFakeTimers();
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [structuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTestId('study-note-branch-copy-link-1'));
+
+        await waitFor(() => {
+            expect(mockClipboardWriteText).toHaveBeenCalledWith(expect.stringContaining('#branch='));
+        });
+
+        await act(async () => {
+            jest.advanceTimersByTime(1300);
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        await waitFor(() => {
+            expect(updateStudyNoteBranchState).toHaveBeenCalledWith(
+                'note-1',
+                'user-1',
+                expect.objectContaining({
+                    branchRecords: expect.arrayContaining([
+                        expect.objectContaining({
+                            title: 'Main Branch',
+                            branchId: expect.any(String),
+                        }),
+                    ]),
+                })
+            );
+        });
+
+        (updateStudyNoteBranchState as jest.Mock).mockClear();
+        fireEvent.click(screen.getByTestId('study-note-branch-overlay-1-amber'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('study-note-branch-overlay-indicator-1')).toBeInTheDocument();
+        });
+
+        await act(async () => {
+            jest.advanceTimersByTime(1300);
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        await waitFor(() => {
+            expect(updateStudyNoteBranchState).toHaveBeenCalledWith(
+                'note-1',
+                'user-1',
+                expect.objectContaining({
+                    branchRecords: expect.arrayContaining([
+                        expect.objectContaining({
+                            title: 'Main Branch',
+                            overlayTone: 'amber',
+                        }),
+                    ]),
+                })
+            );
+        });
+
+        jest.useRealTimers();
+    });
+
+    it('copies a markdown branch reference using the current branch identity seam', async () => {
+        jest.useFakeTimers();
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [structuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTestId('study-note-branch-copy-reference-1'));
+
+        await waitFor(() => {
+            expect(mockClipboardWriteText).toHaveBeenCalledWith(expect.stringMatching(/^\[Main Branch\]\(#branch=[^)]+\)$/));
+        });
+
+        await act(async () => {
+            jest.advanceTimersByTime(1300);
+        });
+
+        await waitFor(() => {
+            expect(updateStudyNoteBranchState).toHaveBeenCalledWith(
+                'note-1',
+                'user-1',
+                expect.objectContaining({
+                    branchRecords: expect.arrayContaining([
+                        expect.objectContaining({
+                            branchId: expect.any(String),
+                            title: 'Main Branch',
+                        }),
+                    ]),
+                })
+            );
+        });
+
+        jest.useRealTimers();
+    });
+
+    it('inserts a markdown branch reference at the current editor cursor from the preview branch action', async () => {
+        jest.useFakeTimers();
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [structuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+
+        const editor = screen.getByTestId('rich-markdown-editor') as HTMLTextAreaElement;
+        const insertionPoint = structuredNote.content.indexOf('Main branch body') + 'Main branch body'.length;
+        editor.focus();
+        editor.setSelectionRange(insertionPoint, insertionPoint);
+
+        fireEvent.click(screen.getByTestId('study-note-branch-insert-reference-1.1'));
+
+        await waitFor(() => {
+            expect(
+                (screen.getByTestId('rich-markdown-editor') as HTMLTextAreaElement).value
+            ).toContain('[Child Branch](#branch=');
+        });
+
+        await act(async () => {
+            jest.advanceTimersByTime(1300);
+        });
+
+        await waitFor(() => {
+            expect(updateStudyNoteBranchState).toHaveBeenCalledWith(
+                'note-1',
+                'user-1',
+                expect.objectContaining({
+                    branchRecords: expect.arrayContaining([
+                        expect.objectContaining({
+                            title: 'Child Branch',
+                        }),
+                    ]),
+                })
+            );
+        });
+
+        jest.useRealTimers();
+    });
+
+    it('inserts a relation-labeled markdown branch reference from the preview branch action', async () => {
+        jest.useFakeTimers();
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [structuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+
+        const editor = screen.getByTestId('rich-markdown-editor') as HTMLTextAreaElement;
+        const insertionPoint = structuredNote.content.indexOf('Main branch body') + 'Main branch body'.length;
+        editor.focus();
+        editor.setSelectionRange(insertionPoint, insertionPoint);
+
+        fireEvent.change(screen.getByTestId('study-note-branch-relation-1.1'), {
+            target: {
+                value: 'studiesWorkspace.outlinePilot.branchRelations.supports',
+            },
+        });
+        fireEvent.click(screen.getByTestId('study-note-branch-insert-reference-1.1'));
+
+        await waitFor(() => {
+            expect(
+                (screen.getByTestId('rich-markdown-editor') as HTMLTextAreaElement).value
+            ).toContain('[Child Branch](#branch=');
+            expect(
+                (screen.getByTestId('rich-markdown-editor') as HTMLTextAreaElement).value
+            ).toContain('"studiesWorkspace.outlinePilot.branchRelations.supports"');
+        });
+
+        jest.useRealTimers();
     });
 
     it('moves a nested branch through the preview shell and preserves parent ownership', async () => {

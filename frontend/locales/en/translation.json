@@ -663,6 +663,8 @@
     "insightsThreshold": "You need {{count}} more thoughts to unlock insights. Currently: {{thoughtsCount}} of {{threshold}} required"
   },
   "common": {
+    "clear": "Clear",
+    "copyError": "Failed to copy",
     "done": "Done",
     "warning": "Warning",
     "confirm": "Confirm",
@@ -1868,7 +1870,28 @@
       "addChild": "Add child",
       "promoteBranch": "Promote branch",
       "demoteBranch": "Demote branch",
-      "newBranchTitle": "New branch"
+      "newBranchTitle": "New branch",
+      "copyBranchReference": "Copy branch reference",
+      "insertBranchReference": "Insert branch reference",
+      "referencedBy": "Referenced by",
+      "branchColor": "Branch color",
+      "clearBranchColor": "Clear branch color",
+      "referenceRelation": "Reference relation",
+      "branchOverlayTones": {
+        "amber": "Amber",
+        "emerald": "Emerald",
+        "sky": "Sky",
+        "rose": "Rose",
+        "violet": "Violet",
+        "slate": "Slate"
+      },
+      "branchRelations": {
+        "plain": "Plain reference",
+        "supports": "Supports",
+        "contrasts": "Contrasts",
+        "expands": "Expands",
+        "applies": "Applies"
+      }
     },
     "shareLinks": {
       "title": "Share links",

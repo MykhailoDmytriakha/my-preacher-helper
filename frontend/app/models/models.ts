@@ -417,6 +417,42 @@ export interface StudyNote {
   type?: 'note' | 'question';
 }
 
+export interface StudyNoteBranchStateRecord {
+  branchId: string;
+  overlayTone?: StudyNoteBranchOverlayTone | null;
+  title: string;
+  titleSlug: string;
+  parentSlugChain: string[];
+  bodyHash: string;
+  subtreeHash: string;
+  subtreeContentHash: string;
+  subtreeOccurrenceIndex: number;
+  contextualOccurrenceIndex: number;
+  relaxedOccurrenceIndex: number;
+  contextualContentOccurrenceIndex: number;
+  relaxedContentOccurrenceIndex: number;
+  lastKnownKey?: string;
+}
+
+export interface StudyNoteBranchState {
+  id: string;
+  noteId: string;
+  userId: string;
+  branchRecords: StudyNoteBranchStateRecord[];
+  readFoldedBranchIds: string[];
+  previewFoldedBranchIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type StudyNoteBranchOverlayTone =
+  | 'amber'
+  | 'emerald'
+  | 'sky'
+  | 'rose'
+  | 'violet'
+  | 'slate';
+
 export interface StudyNoteShareLink {
   id: string;
   noteId: string;

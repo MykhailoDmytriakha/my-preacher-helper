@@ -1,4 +1,4 @@
-import { StudyMaterial, StudyNote } from '@/models/models';
+import { StudyMaterial, StudyNote, StudyNoteBranchState } from '@/models/models';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -61,6 +61,37 @@ export async function deleteStudyNote(id: string, userId: string): Promise<void>
     console.error('deleteStudyNote: failed', res.status);
     throw new Error('Failed to delete study note');
   }
+}
+
+export async function getStudyNoteBranchState(
+  noteId: string,
+  userId: string
+): Promise<StudyNoteBranchState | null> {
+  const res = await fetch(`${API_BASE}/api/studies/notes/${noteId}/branch-state?userId=${userId}`, {
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    console.error('getStudyNoteBranchState: failed', res.status);
+    throw new Error('Failed to fetch study note branch state');
+  }
+  return res.json();
+}
+
+export async function updateStudyNoteBranchState(
+  noteId: string,
+  userId: string,
+  updates: Pick<StudyNoteBranchState, 'branchRecords' | 'readFoldedBranchIds' | 'previewFoldedBranchIds'>
+): Promise<StudyNoteBranchState> {
+  const res = await fetch(`${API_BASE}/api/studies/notes/${noteId}/branch-state?userId=${userId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) {
+    console.error('updateStudyNoteBranchState: failed', res.status);
+    throw new Error('Failed to update study note branch state');
+  }
+  return res.json();
 }
 
 export async function getStudyMaterials(userId: string): Promise<StudyMaterial[]> {

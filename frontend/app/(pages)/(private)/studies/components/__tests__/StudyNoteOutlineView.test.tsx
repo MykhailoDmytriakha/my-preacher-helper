@@ -97,6 +97,39 @@ const reorderedOutlineFixture: StudyNoteOutline = {
     ],
 };
 
+const backlinkedOutlineFixture: StudyNoteOutline = {
+    introduction: '',
+    hasOutline: true,
+    totalBranches: 2,
+    baseHeadingLevel: 2,
+    branches: [
+        {
+            key: '1',
+            branchId: 'branch-root',
+            path: [1],
+            depth: 0,
+            headingLevel: 2,
+            title: 'Root Branch',
+            rawTitle: 'Root Branch',
+            body: 'See [Child Branch](#branch=branch-child "supports")',
+            preview: 'Root preview',
+            children: [],
+        },
+        {
+            key: '2',
+            branchId: 'branch-child',
+            path: [2],
+            depth: 0,
+            headingLevel: 2,
+            title: 'Child Branch',
+            rawTitle: 'Child Branch',
+            body: 'Child body',
+            preview: 'Child preview',
+            children: [],
+        },
+    ],
+};
+
 describe('StudyNoteOutlineView', () => {
     const scrollIntoViewMock = jest.fn();
     const originalRequestAnimationFrame = global.requestAnimationFrame;
@@ -230,6 +263,10 @@ describe('StudyNoteOutlineView', () => {
         const onMoveBranch = jest.fn();
         const onCreateBranch = jest.fn();
         const onShiftBranchDepth = jest.fn();
+        const onCopyBranchLink = jest.fn();
+        const onCopyBranchReference = jest.fn();
+        const onInsertBranchReference = jest.fn();
+        const onSetBranchOverlayTone = jest.fn();
 
         render(
             <StudyNoteOutlineView
@@ -241,6 +278,10 @@ describe('StudyNoteOutlineView', () => {
                 onMoveBranch={onMoveBranch}
                 onCreateBranch={onCreateBranch}
                 onShiftBranchDepth={onShiftBranchDepth}
+                onCopyBranchLink={onCopyBranchLink}
+                onCopyBranchReference={onCopyBranchReference}
+                onInsertBranchReference={onInsertBranchReference}
+                onSetBranchOverlayTone={onSetBranchOverlayTone}
                 mode="preview"
             />
         );
@@ -252,6 +293,9 @@ describe('StudyNoteOutlineView', () => {
         expect(screen.queryByTestId('study-note-branch-move-up-1.1')).not.toBeInTheDocument();
         expect(screen.getByTestId('study-note-branch-create-sibling-1')).toBeInTheDocument();
         expect(screen.getByTestId('study-note-branch-create-child-1')).toBeInTheDocument();
+        expect(screen.getByTestId('study-note-branch-relation-1')).toBeInTheDocument();
+        expect(screen.getByTestId('study-note-branch-insert-reference-1')).toBeInTheDocument();
+        expect(screen.getByTestId('study-note-branch-overlay-1-amber')).toBeInTheDocument();
         expect(screen.getByTestId('study-note-branch-promote-1')).toBeDisabled();
         expect(screen.getByTestId('study-note-branch-demote-1')).toBeDisabled();
         expect(screen.getByTestId('study-note-branch-promote-1.1')).toBeEnabled();
@@ -261,8 +305,18 @@ describe('StudyNoteOutlineView', () => {
 
         fireEvent.click(screen.getByTestId('study-note-branch-move-down-1'));
         fireEvent.click(screen.getByTestId('study-note-branch-move-up-2'));
+        fireEvent.click(screen.getByTestId('study-note-branch-copy-link-1'));
+        fireEvent.click(screen.getByTestId('study-note-branch-copy-reference-1'));
         fireEvent.click(screen.getByTestId('study-note-branch-create-sibling-1'));
         fireEvent.click(screen.getByTestId('study-note-branch-create-child-1'));
+        fireEvent.change(screen.getByTestId('study-note-branch-relation-1'), {
+            target: {
+                value: 'studiesWorkspace.outlinePilot.branchRelations.supports',
+            },
+        });
+        fireEvent.click(screen.getByTestId('study-note-branch-overlay-1-amber'));
+        fireEvent.click(screen.getByTestId('study-note-branch-overlay-clear-1'));
+        fireEvent.click(screen.getByTestId('study-note-branch-insert-reference-1'));
         fireEvent.click(screen.getByTestId('study-note-branch-promote-1.1'));
         fireEvent.click(screen.getByTestId('study-note-branch-demote-2'));
 
@@ -270,7 +324,33 @@ describe('StudyNoteOutlineView', () => {
         expect(onMoveBranch).toHaveBeenNthCalledWith(2, '2', 'up');
         expect(onShiftBranchDepth).toHaveBeenNthCalledWith(1, '1.1', 'promote');
         expect(onShiftBranchDepth).toHaveBeenNthCalledWith(2, '2', 'demote');
+        expect(onCopyBranchLink).toHaveBeenCalledWith('1');
+        expect(onCopyBranchReference).toHaveBeenCalledWith('1');
+        expect(onInsertBranchReference).toHaveBeenCalledWith('1', 'studiesWorkspace.outlinePilot.branchRelations.supports');
+        expect(onSetBranchOverlayTone).toHaveBeenNthCalledWith(1, '1', 'amber');
+        expect(onSetBranchOverlayTone).toHaveBeenNthCalledWith(2, '1', null);
         expect(onCreateBranch).toHaveBeenNthCalledWith(1, '1', 'sibling');
         expect(onCreateBranch).toHaveBeenNthCalledWith(2, '1', 'child');
+    });
+
+    it('surfaces backlinks for remembered target branches and jumps to the source branch', () => {
+        render(
+            <StudyNoteOutlineView
+                outline={backlinkedOutlineFixture}
+                foldedBranchKeys={[]}
+                onToggleBranch={jest.fn()}
+                onExpandAll={jest.fn()}
+                onCollapseAll={jest.fn()}
+            />
+        );
+
+        expect(screen.getByText('studiesWorkspace.outlinePilot.referencedBy')).toBeInTheDocument();
+        expect(screen.getByTestId('study-note-branch-backlink-2-1')).toBeInTheDocument();
+        expect(screen.getByText('supports')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('study-note-branch-backlink-2-1'));
+
+        expect(screen.getByTestId('study-note-branch-1')).toHaveClass('ring-2');
+        expect(scrollIntoViewMock).toHaveBeenCalled();
     });
 });

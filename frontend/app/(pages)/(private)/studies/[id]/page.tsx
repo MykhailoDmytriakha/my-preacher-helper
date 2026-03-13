@@ -12,26 +12,48 @@ import {
     RichMarkdownEditor,
     type OutlineBranchSelectionRequest,
     type PendingHeadingSelectionRequest,
+    type PendingMarkdownInsertionRequest,
 } from '@/components/ui/RichMarkdownEditor';
+import { useClipboard } from '@/hooks/useClipboard';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
-import { ScriptureReference, StudyNote } from '@/models/models';
+import {
+    ScriptureReference,
+    StudyNote,
+    StudyNoteBranchOverlayTone,
+    StudyNoteBranchState,
+    StudyNoteBranchStateRecord,
+} from '@/models/models';
+import {
+    getStudyNoteBranchState,
+    updateStudyNoteBranchState,
+} from '@/services/studies.service';
 import { deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
 import { debugLog } from '@/utils/debugMode';
+import {
+    buildStudyNoteBranchMarkdownReference,
+    getStudyNoteBranchHash,
+    parseStudyNoteBranchIdFromHash,
+} from '@/utils/studyNoteBranchLinks';
 import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
 import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfirmationModal';
 import { BibleLocale } from '../bibleData';
 import {
+    createStudyNoteBranchStateRecord,
+    filterKnownBranchIds,
+    hydrateStudyNoteBranchIdentity,
+    mapFoldedBranchIdsToKeys,
+    upsertStudyNoteBranchStateRecords,
+} from '../components/studyNoteBranchIdentity';
+import {
     findStudyNoteOutlineBranchByKey,
     findStudyNoteOutlinePreviousSiblingKey,
-    filterStudyNoteOutlineKeys,
-    flattenStudyNoteOutlineBranches,
     getCollapsibleStudyNoteBranchKeys,
     parseStudyNoteOutline,
     remapStudyNoteOutlineKeyIgnoringHeadingLevel,
-    remapStudyNoteOutlineKeys,
+    flattenStudyNoteOutlineBranches,
 } from '../components/studyNoteOutline';
 import {
     insertStudyNoteOutlineBranch,
@@ -336,68 +358,367 @@ function useNoteAIAssistant({
     };
 }
 
-function useStructuredOutlineState(content: string) {
-    const noteOutline = useMemo(() => parseStudyNoteOutline(content), [content]);
+function useStructuredOutlineState({
+    content,
+    noteId,
+    uid,
+    isNew,
+    isContentReady,
+}: {
+    content: string;
+    noteId: string;
+    uid: string | undefined;
+    isNew: boolean;
+    isContentReady: boolean;
+}) {
+    const parsedOutline = useMemo(() => parseStudyNoteOutline(content), [content]);
+    const [branchRecords, setBranchRecords] = useState<StudyNoteBranchStateRecord[]>([]);
+    const [readFoldedBranchIds, setReadFoldedBranchIds] = useState<string[]>([]);
+    const [previewFoldedBranchIds, setPreviewFoldedBranchIds] = useState<string[]>([]);
+    const [hasLoadedBranchState, setHasLoadedBranchState] = useState(false);
+    const lastPersistedSnapshotRef = useRef<string>('');
+    const preserveLocalBranchRecordsOnLoadRef = useRef(false);
+    const preserveLocalReadFoldStateOnLoadRef = useRef(false);
+    const preserveLocalPreviewFoldStateOnLoadRef = useRef(false);
+
+    const getAncestorBranchKeys = useCallback((branchKey: string) => {
+        const pathSegments = branchKey.split('.');
+        return pathSegments
+            .slice(0, -1)
+            .map((_, index) => pathSegments.slice(0, index + 1).join('.'));
+    }, []);
+
+    useEffect(() => {
+        setBranchRecords([]);
+        setReadFoldedBranchIds([]);
+        setPreviewFoldedBranchIds([]);
+        lastPersistedSnapshotRef.current = '';
+        preserveLocalBranchRecordsOnLoadRef.current = false;
+        preserveLocalReadFoldStateOnLoadRef.current = false;
+        preserveLocalPreviewFoldStateOnLoadRef.current = false;
+
+        if (!uid || isNew) {
+            setHasLoadedBranchState(true);
+            return;
+        }
+
+        let isCancelled = false;
+        setHasLoadedBranchState(false);
+
+        void getStudyNoteBranchState(noteId, uid)
+            .then((branchState) => {
+                if (isCancelled) {
+                    return;
+                }
+
+                const loadedBranchRecords = branchState?.branchRecords ?? [];
+                const loadedReadFoldedBranchIds = branchState?.readFoldedBranchIds ?? [];
+                const loadedPreviewFoldedBranchIds = branchState?.previewFoldedBranchIds ?? [];
+                const shouldPreserveLocalBranchRecords = preserveLocalBranchRecordsOnLoadRef.current;
+                const shouldPreserveLocalReadFoldState = preserveLocalReadFoldStateOnLoadRef.current;
+                const shouldPreserveLocalPreviewFoldState = preserveLocalPreviewFoldStateOnLoadRef.current;
+
+                setBranchRecords((currentRecords) => (
+                    shouldPreserveLocalBranchRecords
+                        ? currentRecords
+                        : loadedBranchRecords
+                ));
+                setReadFoldedBranchIds((currentBranchIds) => (
+                    shouldPreserveLocalReadFoldState
+                        ? currentBranchIds
+                        : loadedReadFoldedBranchIds
+                ));
+                setPreviewFoldedBranchIds((currentBranchIds) => (
+                    shouldPreserveLocalPreviewFoldState
+                        ? currentBranchIds
+                        : loadedPreviewFoldedBranchIds
+                ));
+                preserveLocalBranchRecordsOnLoadRef.current = false;
+                preserveLocalReadFoldStateOnLoadRef.current = false;
+                preserveLocalPreviewFoldStateOnLoadRef.current = false;
+                lastPersistedSnapshotRef.current = JSON.stringify({
+                    branchRecords: loadedBranchRecords,
+                    readFoldedBranchIds: loadedReadFoldedBranchIds,
+                    previewFoldedBranchIds: loadedPreviewFoldedBranchIds,
+                });
+                setHasLoadedBranchState(true);
+            })
+            .catch((error) => {
+                debugLog('Study note branch-state load failed', { noteId, error });
+                if (!isCancelled) {
+                    setHasLoadedBranchState(true);
+                }
+            });
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [isNew, noteId, uid]);
+
+    const hydratedOutlineState = useMemo(
+        () => hydrateStudyNoteBranchIdentity(parsedOutline.branches, branchRecords),
+        [branchRecords, parsedOutline.branches]
+    );
+    const noteOutline = useMemo(
+        () => ({
+            ...parsedOutline,
+            branches: hydratedOutlineState.branches,
+        }),
+        [hydratedOutlineState.branches, parsedOutline]
+    );
     const collapsibleBranchKeys = useMemo(
         () => getCollapsibleStudyNoteBranchKeys(noteOutline.branches),
         [noteOutline.branches]
     );
-    const previousOutlineRef = useRef(noteOutline);
-    const [readFoldedBranchKeys, setReadFoldedBranchKeys] = useState<string[]>([]);
-    const [previewFoldedBranchKeys, setPreviewFoldedBranchKeys] = useState<string[]>([]);
 
     useEffect(() => {
-        const previousOutline = previousOutlineRef.current;
+        if (!hasLoadedBranchState || !isContentReady) {
+            return;
+        }
 
-        setReadFoldedBranchKeys((prev) => {
-            const remappedKeys = remapStudyNoteOutlineKeys(prev, previousOutline.branches, noteOutline.branches);
-            return filterStudyNoteOutlineKeys(remappedKeys, noteOutline.branches);
+        const nextBranchRecords = hydratedOutlineState.branchRecords;
+
+        setBranchRecords((currentRecords) => (
+            JSON.stringify(currentRecords) === JSON.stringify(nextBranchRecords)
+                ? currentRecords
+                : nextBranchRecords
+        ));
+    }, [hasLoadedBranchState, hydratedOutlineState.branchRecords, isContentReady]);
+
+    const ensureBranchRecordsForKeys = useCallback((branchKeys: string[]): string[] => {
+        const nextRecords: StudyNoteBranchStateRecord[] = [];
+        const nextBranchIds: string[] = [];
+
+        branchKeys.forEach((branchKey) => {
+            const existingBranchId = hydratedOutlineState.branchIdByKey[branchKey];
+
+            if (existingBranchId) {
+                nextBranchIds.push(existingBranchId);
+                return;
+            }
+
+            const nextRecord = createStudyNoteBranchStateRecord(
+                noteOutline.branches,
+                branchKey,
+                makeId()
+            );
+
+            if (!nextRecord) {
+                return;
+            }
+
+            nextRecords.push(nextRecord);
+            nextBranchIds.push(nextRecord.branchId);
         });
-        setPreviewFoldedBranchKeys((prev) => {
-            const remappedKeys = remapStudyNoteOutlineKeys(prev, previousOutline.branches, noteOutline.branches);
-            return filterStudyNoteOutlineKeys(remappedKeys, noteOutline.branches);
-        });
-        previousOutlineRef.current = noteOutline;
-    }, [noteOutline]);
+
+        if (nextRecords.length > 0) {
+            if (!hasLoadedBranchState) {
+                preserveLocalBranchRecordsOnLoadRef.current = true;
+            }
+            setBranchRecords((currentRecords) =>
+                upsertStudyNoteBranchStateRecords(currentRecords, nextRecords)
+            );
+        }
+
+        return nextBranchIds;
+    }, [hasLoadedBranchState, hydratedOutlineState.branchIdByKey, noteOutline.branches]);
+
+    const ensureBranchIdForBranchKey = useCallback((branchKey: string): string | null => {
+        return ensureBranchRecordsForKeys([branchKey])[0] ?? null;
+    }, [ensureBranchRecordsForKeys]);
+
+    const setBranchOverlayTone = useCallback((branchKey: string, overlayTone: StudyNoteBranchOverlayTone | null) => {
+        const existingBranchId = hydratedOutlineState.branchIdByKey[branchKey];
+
+        if (overlayTone === null && !existingBranchId) {
+            return;
+        }
+
+        const branchId = existingBranchId ?? makeId();
+        const nextRecord = createStudyNoteBranchStateRecord(noteOutline.branches, branchKey, branchId);
+
+        if (!nextRecord) {
+            return;
+        }
+
+        nextRecord.overlayTone = overlayTone;
+
+        if (!hasLoadedBranchState) {
+            preserveLocalBranchRecordsOnLoadRef.current = true;
+        }
+
+        setBranchRecords((currentRecords) =>
+            upsertStudyNoteBranchStateRecords(currentRecords, [nextRecord])
+        );
+    }, [hasLoadedBranchState, hydratedOutlineState.branchIdByKey, noteOutline.branches]);
+
+    const readFoldedBranchKeys = useMemo(
+        () => mapFoldedBranchIdsToKeys(readFoldedBranchIds, hydratedOutlineState.keyByBranchId),
+        [hydratedOutlineState.keyByBranchId, readFoldedBranchIds]
+    );
+    const previewFoldedBranchKeys = useMemo(
+        () => mapFoldedBranchIdsToKeys(previewFoldedBranchIds, hydratedOutlineState.keyByBranchId),
+        [hydratedOutlineState.keyByBranchId, previewFoldedBranchIds]
+    );
 
     const handleToggleReadBranch = useCallback((branchKey: string) => {
-        setReadFoldedBranchKeys((prev) =>
-            prev.includes(branchKey)
-                ? prev.filter((key) => key !== branchKey)
-                : [...prev, branchKey]
+        const [branchId] = ensureBranchRecordsForKeys([branchKey]);
+
+        if (!branchId) {
+            return;
+        }
+
+        if (!hasLoadedBranchState) {
+            preserveLocalReadFoldStateOnLoadRef.current = true;
+        }
+        setReadFoldedBranchIds((currentBranchIds) =>
+            currentBranchIds.includes(branchId)
+                ? currentBranchIds.filter((candidateBranchId) => candidateBranchId !== branchId)
+                : [...currentBranchIds, branchId]
         );
-    }, []);
+    }, [ensureBranchRecordsForKeys, hasLoadedBranchState]);
 
     const handleTogglePreviewBranch = useCallback((branchKey: string) => {
-        setPreviewFoldedBranchKeys((prev) =>
-            prev.includes(branchKey)
-                ? prev.filter((key) => key !== branchKey)
-                : [...prev, branchKey]
+        const [branchId] = ensureBranchRecordsForKeys([branchKey]);
+
+        if (!branchId) {
+            return;
+        }
+
+        if (!hasLoadedBranchState) {
+            preserveLocalPreviewFoldStateOnLoadRef.current = true;
+        }
+        setPreviewFoldedBranchIds((currentBranchIds) =>
+            currentBranchIds.includes(branchId)
+                ? currentBranchIds.filter((candidateBranchId) => candidateBranchId !== branchId)
+                : [...currentBranchIds, branchId]
         );
-    }, []);
+    }, [ensureBranchRecordsForKeys, hasLoadedBranchState]);
 
     const handleExpandAllReadBranches = useCallback(() => {
-        setReadFoldedBranchKeys([]);
-    }, []);
+        if (!hasLoadedBranchState) {
+            preserveLocalReadFoldStateOnLoadRef.current = true;
+        }
+        setReadFoldedBranchIds([]);
+    }, [hasLoadedBranchState]);
 
     const handleExpandAllPreviewBranches = useCallback(() => {
-        setPreviewFoldedBranchKeys([]);
-    }, []);
+        if (!hasLoadedBranchState) {
+            preserveLocalPreviewFoldStateOnLoadRef.current = true;
+        }
+        setPreviewFoldedBranchIds([]);
+    }, [hasLoadedBranchState]);
 
     const handleCollapseAllReadBranches = useCallback(() => {
-        setReadFoldedBranchKeys(collapsibleBranchKeys);
-    }, [collapsibleBranchKeys]);
+        if (!hasLoadedBranchState) {
+            preserveLocalReadFoldStateOnLoadRef.current = true;
+        }
+        setReadFoldedBranchIds(ensureBranchRecordsForKeys(collapsibleBranchKeys));
+    }, [collapsibleBranchKeys, ensureBranchRecordsForKeys, hasLoadedBranchState]);
 
     const handleCollapseAllPreviewBranches = useCallback(() => {
-        setPreviewFoldedBranchKeys(collapsibleBranchKeys);
-    }, [collapsibleBranchKeys]);
+        if (!hasLoadedBranchState) {
+            preserveLocalPreviewFoldStateOnLoadRef.current = true;
+        }
+        setPreviewFoldedBranchIds(ensureBranchRecordsForKeys(collapsibleBranchKeys));
+    }, [collapsibleBranchKeys, ensureBranchRecordsForKeys, hasLoadedBranchState]);
 
     const clearPreviewFoldedBranch = useCallback((branchKey: string) => {
-        setPreviewFoldedBranchKeys((prev) => prev.filter((key) => key !== branchKey));
-    }, []);
+        const branchId = hydratedOutlineState.branchIdByKey[branchKey];
+
+        if (!branchId) {
+            return;
+        }
+
+        if (!hasLoadedBranchState) {
+            preserveLocalPreviewFoldStateOnLoadRef.current = true;
+        }
+        setPreviewFoldedBranchIds((currentBranchIds) =>
+            currentBranchIds.filter((candidateBranchId) => candidateBranchId !== branchId)
+        );
+    }, [hasLoadedBranchState, hydratedOutlineState.branchIdByKey]);
+
+    const revealReadBranchPath = useCallback((branchKey: string) => {
+        const ancestorKeySet = new Set(getAncestorBranchKeys(branchKey));
+
+        if (!hasLoadedBranchState) {
+            preserveLocalReadFoldStateOnLoadRef.current = true;
+        }
+        setReadFoldedBranchIds((currentBranchIds) =>
+            currentBranchIds.filter((branchId) => {
+                const mappedKey = hydratedOutlineState.keyByBranchId[branchId];
+
+                return !mappedKey || !ancestorKeySet.has(mappedKey);
+            })
+        );
+    }, [getAncestorBranchKeys, hasLoadedBranchState, hydratedOutlineState.keyByBranchId]);
+
+    const revealPreviewBranchPath = useCallback((branchKey: string) => {
+        const ancestorKeySet = new Set(getAncestorBranchKeys(branchKey));
+
+        if (!hasLoadedBranchState) {
+            preserveLocalPreviewFoldStateOnLoadRef.current = true;
+        }
+        setPreviewFoldedBranchIds((currentBranchIds) =>
+            currentBranchIds.filter((branchId) => {
+                const mappedKey = hydratedOutlineState.keyByBranchId[branchId];
+
+                return !mappedKey || !ancestorKeySet.has(mappedKey);
+            })
+        );
+    }, [getAncestorBranchKeys, hasLoadedBranchState, hydratedOutlineState.keyByBranchId]);
+
+    const persistableBranchStateSnapshot = useMemo(() => JSON.stringify({
+        branchRecords: hydratedOutlineState.branchRecords,
+        readFoldedBranchIds: filterKnownBranchIds(readFoldedBranchIds, hydratedOutlineState.branchRecords),
+        previewFoldedBranchIds: filterKnownBranchIds(previewFoldedBranchIds, hydratedOutlineState.branchRecords),
+    }), [
+        hydratedOutlineState.branchRecords,
+        previewFoldedBranchIds,
+        readFoldedBranchIds,
+    ]);
+
+    useEffect(() => {
+        if (!uid || isNew || !hasLoadedBranchState || !isContentReady) {
+            return;
+        }
+
+        if (persistableBranchStateSnapshot === lastPersistedSnapshotRef.current) {
+            return;
+        }
+
+        const snapshot = JSON.parse(persistableBranchStateSnapshot) as Pick<
+            StudyNoteBranchState,
+            'branchRecords' | 'readFoldedBranchIds' | 'previewFoldedBranchIds'
+        >;
+
+        if (
+            snapshot.branchRecords.length === 0 &&
+            snapshot.readFoldedBranchIds.length === 0 &&
+            snapshot.previewFoldedBranchIds.length === 0
+        ) {
+            lastPersistedSnapshotRef.current = persistableBranchStateSnapshot;
+            return;
+        }
+
+        const timeoutId = setTimeout(() => {
+            void updateStudyNoteBranchState(noteId, uid, snapshot)
+                .then(() => {
+                    lastPersistedSnapshotRef.current = persistableBranchStateSnapshot;
+                })
+                .catch((error) => {
+                    debugLog('Study note branch-state save failed', { noteId, error });
+                });
+        }, 1200);
+
+        return () => clearTimeout(timeoutId);
+    }, [hasLoadedBranchState, isContentReady, isNew, noteId, persistableBranchStateSnapshot, uid]);
 
     return {
         noteOutline,
+        branchIdByKey: hydratedOutlineState.branchIdByKey,
+        keyByBranchId: hydratedOutlineState.keyByBranchId,
+        isBranchStateReady: hasLoadedBranchState,
         readFoldedBranchKeys,
         previewFoldedBranchKeys,
         handleToggleReadBranch,
@@ -407,6 +728,10 @@ function useStructuredOutlineState(content: string) {
         handleCollapseAllReadBranches,
         handleCollapseAllPreviewBranches,
         clearPreviewFoldedBranch,
+        ensureBranchIdForBranchKey,
+        setBranchOverlayTone,
+        revealReadBranchPath,
+        revealPreviewBranchPath,
     };
 }
 
@@ -667,6 +992,7 @@ function StudyNoteContentSurface({
     handleExpandAllPreviewBranches,
     handleCollapseAllReadBranches,
     handleCollapseAllPreviewBranches,
+    handleSetBranchOverlayTone,
     isPreviewResizing,
     previewPanelWidth,
     handlePreviewResizeStart,
@@ -683,7 +1009,13 @@ function StudyNoteContentSurface({
     currentEditorOutlineBranch,
     handleCreateBranchFromEditor,
     handlePendingHeadingSelectionConsumed,
-    preferredPreviewActiveBranchRequest,
+    pendingMarkdownInsertion,
+    handlePendingMarkdownInsertionConsumed,
+    preferredOutlineActiveBranchRequest,
+    onCopyBranchLink,
+    onCopyBranchReference,
+    onBranchLinkClick,
+    onInsertBranchReference,
     t,
 }: {
     isEditing: boolean;
@@ -698,6 +1030,7 @@ function StudyNoteContentSurface({
     handleExpandAllPreviewBranches: () => void;
     handleCollapseAllReadBranches: () => void;
     handleCollapseAllPreviewBranches: () => void;
+    handleSetBranchOverlayTone: (branchKey: string, overlayTone: StudyNoteBranchOverlayTone | null) => void;
     isPreviewResizing: boolean;
     previewPanelWidth: number;
     handlePreviewResizeStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
@@ -714,7 +1047,13 @@ function StudyNoteContentSurface({
     currentEditorOutlineBranch: ReturnType<typeof findStudyNoteOutlineBranchBySelectionRequest>;
     handleCreateBranchFromEditor: (position: 'sibling' | 'child') => void;
     handlePendingHeadingSelectionConsumed: (token: string) => void;
-    preferredPreviewActiveBranchRequest: { key: string; token: string } | null;
+    pendingMarkdownInsertion: PendingMarkdownInsertionRequest | null;
+    handlePendingMarkdownInsertionConsumed: (token: string) => void;
+    preferredOutlineActiveBranchRequest: { key: string; token: string } | null;
+    onCopyBranchLink: (branchKey: string) => void;
+    onCopyBranchReference: (branchKey: string, relationLabel?: string) => void;
+    onBranchLinkClick: (branchId: string) => void;
+    onInsertBranchReference: (branchKey: string, relationLabel?: string) => void;
     t: ReturnType<typeof useTranslation>['t'];
 }) {
     const shouldShowOutlinePreview = noteOutline.hasOutline || content.trim();
@@ -754,6 +1093,8 @@ function StudyNoteContentSurface({
                                     currentEditorOutlineBranch && currentEditorOutlineBranch.headingLevel < 6
                                 )}
                                 onPendingHeadingSelectionConsumed={handlePendingHeadingSelectionConsumed}
+                                pendingMarkdownInsertion={pendingMarkdownInsertion}
+                                onPendingMarkdownInsertionConsumed={handlePendingMarkdownInsertionConsumed}
                             />
                         </div>
                     )}
@@ -783,11 +1124,16 @@ function StudyNoteContentSurface({
                                         onMoveBranch={handleMoveBranch}
                                         onCreateBranch={handleCreateBranch}
                                         onShiftBranchDepth={handleShiftBranchDepth}
-                                        preferredActiveBranchRequest={preferredPreviewActiveBranchRequest}
+                                        preferredActiveBranchRequest={preferredOutlineActiveBranchRequest}
                                         showNavigator={isSplitMode}
                                         searchQuery={searchQuery}
                                         mode="preview"
                                         testId="study-note-outline-preview"
+                                        onCopyBranchLink={onCopyBranchLink}
+                                        onCopyBranchReference={onCopyBranchReference}
+                                        onBranchLinkClick={onBranchLinkClick}
+                                        onInsertBranchReference={showEditorPane ? onInsertBranchReference : undefined}
+                                        onSetBranchOverlayTone={handleSetBranchOverlayTone}
                                     />
                                 ) : (
                                     <StudyNoteEmptyOutline t={t} />
@@ -808,16 +1154,25 @@ function StudyNoteContentSurface({
                 onToggleBranch={handleToggleReadBranch}
                 onExpandAll={handleExpandAllReadBranches}
                 onCollapseAll={handleCollapseAllReadBranches}
+                preferredActiveBranchRequest={preferredOutlineActiveBranchRequest}
                 searchQuery={searchQuery}
                 mode="read"
                 testId="study-note-outline-read"
+                onCopyBranchLink={onCopyBranchLink}
+                onCopyBranchReference={onCopyBranchReference}
+                onBranchLinkClick={onBranchLinkClick}
+                onSetBranchOverlayTone={undefined}
             />
         );
     }
 
     return (
         <div className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-800 dark:prose-p:text-gray-200 prose-p:leading-relaxed max-w-none text-lg md:text-xl">
-            <MarkdownDisplay content={content} searchQuery={searchQuery} />
+            <MarkdownDisplay
+                content={content}
+                searchQuery={searchQuery}
+                onBranchLinkClick={onBranchLinkClick}
+            />
         </div>
     );
 }
@@ -901,7 +1256,8 @@ export default function StudyNoteEditorPage() {
     const [isEditing, setIsEditing] = useState(isNew);
     const [outlineWorkspaceMode, setOutlineWorkspaceMode] = useState<'editor' | 'split' | 'preview'>('split');
     const [pendingHeadingSelection, setPendingHeadingSelection] = useState<PendingHeadingSelectionRequest | null>(null);
-    const [preferredPreviewActiveBranchRequest, setPreferredPreviewActiveBranchRequest] = useState<{ key: string; token: string } | null>(null);
+    const [pendingMarkdownInsertion, setPendingMarkdownInsertion] = useState<PendingMarkdownInsertionRequest | null>(null);
+    const [preferredOutlineActiveBranchRequest, setPreferredOutlineActiveBranchRequest] = useState<{ key: string; token: string } | null>(null);
     const [currentEditorOutlineBranchSelection, setCurrentEditorOutlineBranchSelection] = useState<OutlineBranchSelectionRequest | null>(null);
 
     // Input states
@@ -930,8 +1286,11 @@ export default function StudyNoteEditorPage() {
         notes.forEach(n => n.tags.forEach(t => fromNotes.add(t)));
         return Array.from(new Set([...fromTags, ...Array.from(fromNotes)])).sort((a, b) => a.localeCompare(b));
     }, [tagData, notes]);
+    const [isInitialized, setIsInitialized] = useState(false);
     const {
         noteOutline,
+        keyByBranchId,
+        isBranchStateReady,
         readFoldedBranchKeys,
         previewFoldedBranchKeys,
         handleToggleReadBranch,
@@ -941,7 +1300,17 @@ export default function StudyNoteEditorPage() {
         handleCollapseAllReadBranches,
         handleCollapseAllPreviewBranches,
         clearPreviewFoldedBranch,
-    } = useStructuredOutlineState(content);
+        ensureBranchIdForBranchKey,
+        setBranchOverlayTone,
+        revealReadBranchPath,
+        revealPreviewBranchPath,
+    } = useStructuredOutlineState({
+        content,
+        noteId,
+        uid,
+        isNew,
+        isContentReady: isInitialized,
+    });
     const {
         previewPanelWidth,
         isPreviewResizing,
@@ -952,15 +1321,13 @@ export default function StudyNoteEditorPage() {
         () => findStudyNoteOutlineBranchBySelectionRequest(noteOutline.branches, currentEditorOutlineBranchSelection),
         [currentEditorOutlineBranchSelection, noteOutline.branches]
     );
+    const { copyToClipboard } = useClipboard();
 
     // ─── PAGINATION LOGIC ──────────────────────────────────────────────────
     const searchParams = useSearchParams();
     const { filteredNotes, currentIndex, prevNoteId, nextNoteId, searchQuery } = useFilteredNotes(notes, searchParams, bibleLocale);
 
     useNoteKeyboardNavigation({ isEditing, prevNoteId, nextNoteId, router, searchParams });
-
-    // Handle Initial Load
-    const [isInitialized, setIsInitialized] = useState(false);
 
     const { isSaving, lastSaved, saveError, setLastSaved } = useNoteAutoSave({
         noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type,
@@ -989,7 +1356,110 @@ export default function StudyNoteEditorPage() {
         router.push(queryParams ? `/studies?${queryParams}` : '/studies');
     };
 
+    const handleActivateOutlineBranchById = useCallback((branchId: string) => {
+        const branchKey = keyByBranchId[branchId];
+
+        if (!branchKey) {
+            return;
+        }
+
+        revealReadBranchPath(branchKey);
+        revealPreviewBranchPath(branchKey);
+        setPreferredOutlineActiveBranchRequest({
+            key: branchKey,
+            token: makeId(),
+        });
+    }, [keyByBranchId, revealPreviewBranchPath, revealReadBranchPath]);
+
+    const handleFollowOutlineBranchLink = useCallback((branchId: string) => {
+        if (typeof window !== 'undefined') {
+            const nextUrl = `${window.location.pathname}${window.location.search}${getStudyNoteBranchHash(branchId)}`;
+            window.history.replaceState(window.history.state, '', nextUrl);
+        }
+
+        handleActivateOutlineBranchById(branchId);
+    }, [handleActivateOutlineBranchById]);
+
+    const handleCopyOutlineBranchLink = useCallback(async (branchKey: string) => {
+        const branchId = ensureBranchIdForBranchKey(branchKey);
+
+        if (!branchId || typeof window === 'undefined') {
+            return;
+        }
+
+        const branchUrl = `${window.location.origin}${window.location.pathname}${window.location.search}${getStudyNoteBranchHash(branchId)}`;
+        const isCopied = await copyToClipboard(branchUrl);
+
+        if (isCopied) {
+            toast.success(t('common.copied'));
+        } else {
+            toast.error(t('common.copyError') || 'Failed to copy to clipboard');
+        }
+    }, [copyToClipboard, ensureBranchIdForBranchKey, t]);
+
+    const handleCopyOutlineBranchReference = useCallback(async (branchKey: string, relationLabel?: string) => {
+        const branchId = ensureBranchIdForBranchKey(branchKey);
+        const branch = findStudyNoteOutlineBranchByKey(noteOutline.branches, branchKey);
+
+        if (!branchId || !branch) {
+            return;
+        }
+
+        const isCopied = await copyToClipboard(
+            buildStudyNoteBranchMarkdownReference(branch.title, branchId, relationLabel)
+        );
+
+        if (isCopied) {
+            toast.success(t('common.copied'));
+        } else {
+            toast.error(t('common.copyError') || 'Failed to copy to clipboard');
+        }
+    }, [copyToClipboard, ensureBranchIdForBranchKey, noteOutline.branches, t]);
+
+    const handleInsertOutlineBranchReference = useCallback((branchKey: string, relationLabel?: string) => {
+        const branchId = ensureBranchIdForBranchKey(branchKey);
+        const branch = findStudyNoteOutlineBranchByKey(noteOutline.branches, branchKey);
+
+        if (!branchId || !branch) {
+            return;
+        }
+
+        setPendingMarkdownInsertion({
+            token: makeId(),
+            text: buildStudyNoteBranchMarkdownReference(branch.title, branchId, relationLabel),
+        });
+    }, [ensureBranchIdForBranchKey, noteOutline.branches]);
+
     const handleDelete = useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router });
+
+    useEffect(() => {
+        if (!isBranchStateReady || !isInitialized || typeof window === 'undefined') {
+            return;
+        }
+
+        const syncFromHash = () => {
+            const branchId = parseStudyNoteBranchIdFromHash(window.location.hash);
+
+            if (!branchId) {
+                return;
+            }
+
+            handleActivateOutlineBranchById(branchId);
+        };
+
+        syncFromHash();
+        window.addEventListener('hashchange', syncFromHash);
+
+        return () => {
+            window.removeEventListener('hashchange', syncFromHash);
+        };
+    }, [handleActivateOutlineBranchById, isBranchStateReady, isInitialized]);
+
+    const handlePendingMarkdownInsertionConsumed = useCallback((token: string) => {
+        setPendingMarkdownInsertion((currentRequest) => (
+            currentRequest?.token === token ? null : currentRequest
+        ));
+    }, []);
 
     const handleMoveOutlineBranch = useCallback((branchKey: string, direction: 'up' | 'down') => {
         const nextContent = moveStudyNoteOutlineBranch(content, branchKey, direction);
@@ -1005,7 +1475,7 @@ export default function StudyNoteEditorPage() {
             : null;
 
         if (shiftedBranch) {
-            setPreferredPreviewActiveBranchRequest({
+            setPreferredOutlineActiveBranchRequest({
                 key: shiftedBranch.key,
                 token: makeId(),
             });
@@ -1039,7 +1509,7 @@ export default function StudyNoteEditorPage() {
         }
 
         if (insertedBranch) {
-            setPreferredPreviewActiveBranchRequest({
+            setPreferredOutlineActiveBranchRequest({
                 key: insertedBranch.key,
                 token: makeId(),
             });
@@ -1068,7 +1538,7 @@ export default function StudyNoteEditorPage() {
         const insertedBranch = nextOutline.branches.at(-1) ?? null;
 
         if (insertedBranch) {
-            setPreferredPreviewActiveBranchRequest({
+            setPreferredOutlineActiveBranchRequest({
                 key: insertedBranch.key,
                 token: makeId(),
             });
@@ -1112,7 +1582,7 @@ export default function StudyNoteEditorPage() {
         }
 
         if (nextBranch) {
-            setPreferredPreviewActiveBranchRequest({
+            setPreferredOutlineActiveBranchRequest({
                 key: nextBranch.key,
                 token: makeId(),
             });
@@ -1223,6 +1693,7 @@ export default function StudyNoteEditorPage() {
                         handleExpandAllPreviewBranches={handleExpandAllPreviewBranches}
                         handleCollapseAllReadBranches={handleCollapseAllReadBranches}
                         handleCollapseAllPreviewBranches={handleCollapseAllPreviewBranches}
+                        handleSetBranchOverlayTone={setBranchOverlayTone}
                         isPreviewResizing={isPreviewResizing}
                         previewPanelWidth={previewPanelWidth}
                         handlePreviewResizeStart={handlePreviewResizeStart}
@@ -1239,7 +1710,13 @@ export default function StudyNoteEditorPage() {
                         currentEditorOutlineBranch={currentEditorOutlineBranch}
                         handleCreateBranchFromEditor={handleCreateOutlineBranchFromEditor}
                         handlePendingHeadingSelectionConsumed={handlePendingHeadingSelectionConsumed}
-                        preferredPreviewActiveBranchRequest={preferredPreviewActiveBranchRequest}
+                        pendingMarkdownInsertion={pendingMarkdownInsertion}
+                        handlePendingMarkdownInsertionConsumed={handlePendingMarkdownInsertionConsumed}
+                        preferredOutlineActiveBranchRequest={preferredOutlineActiveBranchRequest}
+                        onCopyBranchLink={handleCopyOutlineBranchLink}
+                        onCopyBranchReference={handleCopyOutlineBranchReference}
+                        onBranchLinkClick={handleFollowOutlineBranchLink}
+                        onInsertBranchReference={handleInsertOutlineBranchReference}
                         t={t}
                     />
                 </div>

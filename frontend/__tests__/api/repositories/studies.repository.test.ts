@@ -117,6 +117,12 @@ describe('StudiesRepository', () => {
         };
       }
 
+      if (name === 'studyNoteBranchStates') {
+        return {
+          doc: jest.fn().mockImplementation((id: string) => createDocRef(id)),
+        };
+      }
+
       throw new Error(`Unexpected collection: ${name}`);
     });
   });

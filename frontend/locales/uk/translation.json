@@ -663,6 +663,8 @@
     "insightsThreshold": "Потрібно ще {{count}} думок для аналітики. Зараз: {{thoughtsCount}} із {{threshold}}"
   },
   "common": {
+    "clear": "Очистити",
+    "copyError": "Помилка копіювання",
     "done": "Готово",
     "warning": "Увага",
     "confirm": "Підтвердити",
@@ -1872,7 +1874,28 @@
       "addChild": "Додати підгілку",
       "promoteBranch": "Підняти гілку",
       "demoteBranch": "Зробити підгілкою",
-      "newBranchTitle": "Нова гілка"
+      "newBranchTitle": "Нова гілка",
+      "copyBranchReference": "Скопіювати посилання на гілку",
+      "insertBranchReference": "Вставити посилання на гілку",
+      "referencedBy": "Є посилання з",
+      "branchColor": "Колір гілки",
+      "clearBranchColor": "Скинути колір гілки",
+      "referenceRelation": "Тип звʼязку",
+      "branchOverlayTones": {
+        "amber": "Бурштиновий",
+        "emerald": "Смарагдовий",
+        "sky": "Небесний",
+        "rose": "Рожевий",
+        "violet": "Фіолетовий",
+        "slate": "Графітовий"
+      },
+      "branchRelations": {
+        "plain": "Звичайне посилання",
+        "supports": "Підтримує",
+        "contrasts": "Контрастує",
+        "expands": "Розкриває",
+        "applies": "Застосовує"
+      }
     },
     "shareLinks": {
       "title": "Посилання для доступу",

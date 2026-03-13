@@ -32,6 +32,8 @@ interface RichMarkdownEditorProps {
     canCreateSiblingBranch?: boolean;
     canCreateChildBranch?: boolean;
     onPendingHeadingSelectionConsumed?: ((token: string) => void) | null;
+    pendingMarkdownInsertion?: PendingMarkdownInsertionRequest | null;
+    onPendingMarkdownInsertionConsumed?: ((token: string) => void) | null;
 }
 
 export interface PendingHeadingSelectionRequest {
@@ -45,6 +47,11 @@ export interface OutlineBranchSelectionRequest {
     headingText: string;
     headingLevel: number;
     occurrenceIndex: number;
+}
+
+export interface PendingMarkdownInsertionRequest {
+    token: string;
+    text: string;
 }
 
 const OutlineHeadingHotkeys = Extension.create({
@@ -304,6 +311,8 @@ export function RichMarkdownEditor({
     canCreateSiblingBranch = false,
     canCreateChildBranch = false,
     onPendingHeadingSelectionConsumed = null,
+    pendingMarkdownInsertion = null,
+    onPendingMarkdownInsertionConsumed = null,
 }: RichMarkdownEditorProps) {
     const extensions = useMemo(() => {
         const configuredExtensions = [
@@ -386,6 +395,22 @@ export function RichMarkdownEditor({
 
         return () => window.clearTimeout(selectionTimeoutId);
     }, [editor, onPendingHeadingSelectionConsumed, pendingHeadingSelection]);
+
+    useEffect(() => {
+        if (!editor || !pendingMarkdownInsertion) {
+            return undefined;
+        }
+
+        const insertionTimeoutId = window.setTimeout(() => {
+            applyPendingMarkdownInsertion(
+                editor,
+                pendingMarkdownInsertion,
+                onPendingMarkdownInsertionConsumed
+            );
+        }, 0);
+
+        return () => window.clearTimeout(insertionTimeoutId);
+    }, [editor, onPendingMarkdownInsertionConsumed, pendingMarkdownInsertion]);
 
     useEffect(() => {
         if (!editor || !showOutlineStructureControls || !onOutlineBranchSelectionChange) {
@@ -478,4 +503,14 @@ export function handleOutlineTabShortcut(editor: HeadingShortcutEditor, directio
     }
 
     return false;
+}
+
+export function applyPendingMarkdownInsertion(
+    editor: Pick<Editor, 'chain'>,
+    pendingMarkdownInsertion: PendingMarkdownInsertionRequest,
+    onPendingMarkdownInsertionConsumed?: ((token: string) => void) | null
+): boolean {
+    const didInsert = editor.chain().focus().insertContent(pendingMarkdownInsertion.text).run();
+    onPendingMarkdownInsertionConsumed?.(pendingMarkdownInsertion.token);
+    return didInsert;
 }
