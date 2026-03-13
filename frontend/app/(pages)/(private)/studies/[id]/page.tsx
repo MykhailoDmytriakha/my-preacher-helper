@@ -559,6 +559,101 @@ function EditorHeader({
     );
 }
 
+function OutlineWorkspaceModeToggle({
+    effectiveMode,
+    onModeChange,
+    t,
+}: {
+    effectiveMode: 'editor' | 'split' | 'preview';
+    onModeChange: (mode: 'editor' | 'split' | 'preview') => void;
+    t: ReturnType<typeof useTranslation>['t'];
+}) {
+    const activeClassName = 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200';
+    const inactiveClassName = 'border-gray-200 text-gray-600 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:border-gray-700 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-200';
+
+    return (
+        <div className="flex flex-wrap items-center gap-2">
+            <button
+                type="button"
+                data-testid="study-note-layout-mode-editor"
+                onClick={() => onModeChange('editor')}
+                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    effectiveMode === 'editor' ? activeClassName : inactiveClassName
+                }`}
+            >
+                {t('studiesWorkspace.outlinePilot.focusEditor')}
+            </button>
+            <button
+                type="button"
+                data-testid="study-note-layout-mode-split"
+                onClick={() => onModeChange('split')}
+                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    effectiveMode === 'split' ? activeClassName : inactiveClassName
+                }`}
+            >
+                {t('studiesWorkspace.outlinePilot.focusSplit')}
+            </button>
+            <button
+                type="button"
+                data-testid="study-note-layout-mode-preview"
+                onClick={() => onModeChange('preview')}
+                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    effectiveMode === 'preview' ? activeClassName : inactiveClassName
+                }`}
+            >
+                {t('studiesWorkspace.outlinePilot.focusPreview')}
+            </button>
+        </div>
+    );
+}
+
+function StudyNotePreviewResizer({
+    isPreviewResizing,
+    onResizeStart,
+    onResizeReset,
+    t,
+}: {
+    isPreviewResizing: boolean;
+    onResizeStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
+    onResizeReset: () => void;
+    t: ReturnType<typeof useTranslation>['t'];
+}) {
+    return (
+        <div className="hidden xl:flex xl:w-5 xl:flex-none xl:items-stretch xl:justify-center">
+            <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label={t('studiesWorkspace.outlinePilot.resizePreview')}
+                title={t('studiesWorkspace.outlinePilot.resizePreview')}
+                data-testid="study-note-outline-resizer"
+                onPointerDown={onResizeStart}
+                onDoubleClick={onResizeReset}
+                className={`group/resizer flex h-full w-3 cursor-col-resize items-center justify-center rounded-full transition-colors ${
+                    isPreviewResizing ? 'bg-emerald-100/70 dark:bg-emerald-900/40' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+            >
+                <div className="h-16 w-1 rounded-full bg-gray-300 transition-colors group-hover/resizer:bg-emerald-400 dark:bg-gray-700 dark:group-hover/resizer:bg-emerald-500" />
+            </div>
+        </div>
+    );
+}
+
+function StudyNoteEmptyOutline({ t }: { t: ReturnType<typeof useTranslation>['t'] }) {
+    return (
+        <div
+            data-testid="study-note-outline-empty"
+            className="not-prose rounded-[28px] border border-dashed border-gray-200 bg-white/80 px-5 py-5 text-sm leading-6 text-gray-500 shadow-sm dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-400"
+        >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-600 dark:text-emerald-400">
+                {t('studiesWorkspace.outlinePilot.previewTitle')}
+            </p>
+            <p className="mt-3">
+                {t('studiesWorkspace.outlinePilot.noBranches')}
+            </p>
+        </div>
+    );
+}
+
 function StudyNoteContentSurface({
     isEditing,
     noteOutline,
@@ -627,51 +722,15 @@ function StudyNoteContentSurface({
     const showEditorPane = effectiveOutlineWorkspaceMode !== 'preview';
     const showPreviewPane = shouldShowOutlinePreview && effectiveOutlineWorkspaceMode !== 'editor';
     const isSplitMode = effectiveOutlineWorkspaceMode === 'split';
-    const activeOutlineWorkspaceModeButtonClassName = 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200';
-    const inactiveOutlineWorkspaceModeButtonClassName = 'border-gray-200 text-gray-600 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:border-gray-700 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-200';
-
     if (isEditing) {
         return (
             <div className="space-y-4">
                 {shouldShowOutlinePreview && (
-                    <div className="flex flex-wrap items-center gap-2">
-                        <button
-                            type="button"
-                            data-testid="study-note-layout-mode-editor"
-                            onClick={() => setOutlineWorkspaceMode('editor')}
-                            className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
-                                effectiveOutlineWorkspaceMode === 'editor'
-                                    ? activeOutlineWorkspaceModeButtonClassName
-                                    : inactiveOutlineWorkspaceModeButtonClassName
-                            }`}
-                        >
-                            {t('studiesWorkspace.outlinePilot.focusEditor')}
-                        </button>
-                        <button
-                            type="button"
-                            data-testid="study-note-layout-mode-split"
-                            onClick={() => setOutlineWorkspaceMode('split')}
-                            className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
-                                effectiveOutlineWorkspaceMode === 'split'
-                                    ? activeOutlineWorkspaceModeButtonClassName
-                                    : inactiveOutlineWorkspaceModeButtonClassName
-                            }`}
-                        >
-                            {t('studiesWorkspace.outlinePilot.focusSplit')}
-                        </button>
-                        <button
-                            type="button"
-                            data-testid="study-note-layout-mode-preview"
-                            onClick={() => setOutlineWorkspaceMode('preview')}
-                            className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
-                                effectiveOutlineWorkspaceMode === 'preview'
-                                    ? activeOutlineWorkspaceModeButtonClassName
-                                    : inactiveOutlineWorkspaceModeButtonClassName
-                            }`}
-                        >
-                            {t('studiesWorkspace.outlinePilot.focusPreview')}
-                        </button>
-                    </div>
+                    <OutlineWorkspaceModeToggle
+                        effectiveMode={effectiveOutlineWorkspaceMode}
+                        onModeChange={setOutlineWorkspaceMode}
+                        t={t}
+                    />
                 )}
 
                 <div className={`flex flex-col gap-6 ${isSplitMode ? 'xl:flex-row xl:items-start' : ''}`}>
@@ -702,22 +761,12 @@ function StudyNoteContentSurface({
                     {showPreviewPane && (
                         <>
                             {isSplitMode && (
-                                <div className="hidden xl:flex xl:w-5 xl:flex-none xl:items-stretch xl:justify-center">
-                                    <div
-                                        role="separator"
-                                        aria-orientation="vertical"
-                                        aria-label={t('studiesWorkspace.outlinePilot.resizePreview')}
-                                        title={t('studiesWorkspace.outlinePilot.resizePreview')}
-                                        data-testid="study-note-outline-resizer"
-                                        onPointerDown={handlePreviewResizeStart}
-                                        onDoubleClick={handlePreviewResizeReset}
-                                        className={`group/resizer flex h-full w-3 cursor-col-resize items-center justify-center rounded-full transition-colors ${
-                                            isPreviewResizing ? 'bg-emerald-100/70 dark:bg-emerald-900/40' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
-                                        }`}
-                                    >
-                                        <div className="h-16 w-1 rounded-full bg-gray-300 transition-colors group-hover/resizer:bg-emerald-400 dark:bg-gray-700 dark:group-hover/resizer:bg-emerald-500" />
-                                    </div>
-                                </div>
+                                <StudyNotePreviewResizer
+                                    isPreviewResizing={isPreviewResizing}
+                                    onResizeStart={handlePreviewResizeStart}
+                                    onResizeReset={handlePreviewResizeReset}
+                                    t={t}
+                                />
                             )}
 
                             <aside
@@ -741,17 +790,7 @@ function StudyNoteContentSurface({
                                         testId="study-note-outline-preview"
                                     />
                                 ) : (
-                                    <div
-                                        data-testid="study-note-outline-empty"
-                                        className="not-prose rounded-[28px] border border-dashed border-gray-200 bg-white/80 px-5 py-5 text-sm leading-6 text-gray-500 shadow-sm dark:border-gray-700 dark:bg-gray-900/60 dark:text-gray-400"
-                                    >
-                                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-600 dark:text-emerald-400">
-                                            {t('studiesWorkspace.outlinePilot.previewTitle')}
-                                        </p>
-                                        <p className="mt-3">
-                                            {t('studiesWorkspace.outlinePilot.noBranches')}
-                                        </p>
-                                    </div>
+                                    <StudyNoteEmptyOutline t={t} />
                                 )}
                             </aside>
                         </>
