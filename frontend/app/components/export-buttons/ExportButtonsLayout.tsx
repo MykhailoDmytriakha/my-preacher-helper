@@ -58,7 +58,7 @@ export function ExportButtonsLayout({
     const wordTooltipText = isWordDisabled ? noPlanForWordLabel : wordButtonLabel;
 
     return (
-      <div className={`flex ${layoutClass} gap-2 w-full sm:w-auto flex-shrink-0 items-center`}>
+      <div className={`flex flex-wrap ${layoutClass} gap-2 w-full sm:w-auto flex-shrink-0 items-center`}>
         <div className="tooltip">
           <button
             onClick={onTxtClick}
@@ -113,7 +113,7 @@ export function ExportButtonsLayout({
   const textButtonSlotClassName = slotClassName || ACTION_BUTTON_SLOT_CLASS;
 
   return (
-    <div className={`flex ${layoutClass} gap-1.5 w-full sm:w-auto flex-shrink-0`}>
+    <div className={`flex flex-wrap ${layoutClass} gap-1.5 w-full sm:w-auto flex-shrink-0`}>
       {extraButtons}
 
       <div className={textButtonSlotClassName}>
