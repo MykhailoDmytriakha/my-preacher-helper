@@ -32,7 +32,9 @@ export function useFeedback() {
       await new Promise(resolve => setTimeout(resolve, 500));
 
       setShowFeedbackModal(false);
-      alert(t('feedback.successMessage'));
+      // Defer alert so the modal has time to close (React re-renders) before
+      // the browser blocks the thread with the synchronous alert dialog
+      setTimeout(() => alert(t('feedback.successMessage')), 0);
       return true;
     } catch (error) {
       console.error('Error submitting feedback:', error);
@@ -40,7 +42,8 @@ export function useFeedback() {
       // Add a slight delay before showing the error alert
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      alert(t('feedback.errorMessage'));
+      setShowFeedbackModal(false);
+      setTimeout(() => alert(t('feedback.errorMessage')), 0);
       return false;
     }
   }, [t]);
