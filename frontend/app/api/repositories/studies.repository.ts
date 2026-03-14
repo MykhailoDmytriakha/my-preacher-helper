@@ -120,6 +120,26 @@ export class StudiesRepository {
     };
   }
 
+  async listNoteBranchStates(userId: string): Promise<StudyNoteBranchState[]> {
+    const snapshot = await adminDb
+      .collection(NOTE_BRANCH_STATES_COLLECTION)
+      .where('userId', '==', userId)
+      .get();
+
+    return snapshot.docs.map((doc) => {
+      const data = doc.data() as StudyNoteBranchState;
+
+      return {
+        ...data,
+        id: doc.id,
+        noteId: data.noteId || doc.id,
+        branchRecords: data.branchRecords || [],
+        readFoldedBranchIds: data.readFoldedBranchIds || [],
+        previewFoldedBranchIds: data.previewFoldedBranchIds || [],
+      };
+    });
+  }
+
   async upsertNoteBranchState(
     noteId: string,
     payload: Pick<StudyNoteBranchState, 'userId' | 'branchRecords' | 'readFoldedBranchIds' | 'previewFoldedBranchIds'>

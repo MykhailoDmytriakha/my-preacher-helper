@@ -77,6 +77,18 @@ export async function getStudyNoteBranchState(
   return res.json();
 }
 
+export async function getStudyNoteBranchStates(userId: string): Promise<StudyNoteBranchState[]> {
+  const query = buildQuery({ userId });
+  const res = await fetch(`${API_BASE}/api/studies/notes/branch-states?${query}`, {
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    console.error('getStudyNoteBranchStates: failed', res.status);
+    throw new Error('Failed to fetch study note branch states');
+  }
+  return res.json();
+}
+
 export async function updateStudyNoteBranchState(
   noteId: string,
   userId: string,

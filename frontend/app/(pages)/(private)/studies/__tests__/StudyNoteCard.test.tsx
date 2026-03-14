@@ -23,6 +23,7 @@ import { StudyNote } from '@/models/models';
 import { HIGHLIGHT_COLORS } from '@/utils/themeColors';
 
 import StudyNoteCard from '../StudyNoteCard';
+import { StudyNoteMetadataSummary } from '../utils/studyNoteMetadataSummary';
 
 const createTestNote = (overrides: Partial<StudyNote> = {}): StudyNote => {
   const timestamp = new Date(Date.now()).toISOString();
@@ -74,6 +75,32 @@ describe('StudyNoteCard', () => {
     const heading = screen.getByRole('heading', { name: 'A very long title that should wrap' });
     expect(heading).toHaveClass('line-clamp-3');
     expect(heading).toHaveClass('leading-tight');
+  });
+
+  it('renders note-level branch metadata summary chips when provided', () => {
+    const note = createTestNote({ id: 'note-metadata', title: 'Metadata Note' });
+    const metadataSummary: StudyNoteMetadataSummary = {
+      noteId: note.id,
+      branchCount: 3,
+      labeledBranchCount: 1,
+      branchKindCounts: { evidence: 2 },
+      branchStatusCounts: { confirmed: 1 },
+      semanticLabels: ['Theme'],
+    };
+
+    render(
+      <StudyNoteCard
+        note={note}
+        metadataSummary={metadataSummary}
+        bibleLocale="en"
+        isExpanded={false}
+        onEdit={jest.fn()}
+      />
+    );
+
+    expect(screen.getByText(/studiesWorkspace\.outlinePilot\.branchKinds\.evidence/i)).toBeInTheDocument();
+    expect(screen.getByText(/studiesWorkspace\.outlinePilot\.branchStatuses\.confirmed/i)).toBeInTheDocument();
+    expect(screen.getByText(/studiesWorkspace\.branchMetadata\.labelChip/i)).toBeInTheDocument();
   });
 
 

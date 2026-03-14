@@ -1880,6 +1880,33 @@
       "referencedBy": "Є посилання з",
       "branchColor": "Колір гілки",
       "clearBranchColor": "Скинути колір гілки",
+      "branchSemanticLabel": "Код / мітка",
+      "branchSemanticLabelPlaceholder": "Тема, доказ, попередження...",
+      "clearBranchSemanticLabel": "Скинути мітку гілки",
+      "branchKind": "Тип гілки",
+      "branchStatus": "Статус гілки",
+      "metadataSummary": "Фокус за метаданими",
+      "metadataSummaryHint": "Фільтруй дерево за змістом і робочим станом.",
+      "clearMetadataFilters": "Скинути фільтри",
+      "filteredBranchCount": "{{visible}} з {{total}} гілок",
+      "noMetadataMatches": "Немає гілок, що відповідають поточним метаданим.",
+      "branchKinds": {
+        "all": "Усі типи",
+        "none": "Без типу",
+        "summary": "Висновок",
+        "insight": "Спостереження",
+        "evidence": "Доказ",
+        "question": "Питання",
+        "application": "Застосування"
+      },
+      "branchStatuses": {
+        "all": "Усі статуси",
+        "none": "Без статусу",
+        "active": "Активно",
+        "tentative": "Чернетка",
+        "confirmed": "Підтверджено",
+        "resolved": "Закрито"
+      },
       "referenceRelation": "Тип звʼязку",
       "branchOverlayTones": {
         "amber": "Бурштиновий",
@@ -1895,6 +1922,42 @@
         "contrasts": "Контрастує",
         "expands": "Розкриває",
         "applies": "Застосовує"
+      }
+    },
+    "branchMetadata": {
+      "title": "Метадані гілок по всіх нотатках",
+      "hint": "Зараз {{count}} нотаток уже мають branch-level сенс, який можна фільтрувати тут.",
+      "loading": "Завантаження surfaces метаданих гілок...",
+      "notesWithMetadata": "Нотатки з метаданими",
+      "labeledNotes": "Нотатки з мітками",
+      "reviewTitle": "Поверхні огляду",
+      "reviewHint": "Швидко заходьте в докази, питання, застосування й кластери міток, не відкриваючи кожну нотатку окремо.",
+      "reviewQueuesTitle": "Стрічки огляду гілок",
+      "reviewQueuesHint": "Переглядайте реальні гілки по всіх нотатках і переходьте одразу до потрібної гілки, а не лише фільтруйте картки нотаток.",
+      "showAllLaneItems": "Показати всі ({{count}})",
+      "showLessLaneItems": "Показати менше",
+      "kindFilter": "Тип гілки",
+      "statusFilter": "Статус гілки",
+      "labeledOnly": "Тільки з мітками",
+      "clear": "Очистити metadata filters",
+      "allKinds": "Усі типи гілок",
+      "allStatuses": "Усі статуси гілок",
+      "error": "Метадані гілок тимчасово недоступні.",
+      "labelChip": "Мітки",
+      "topLabels": "Топ міток",
+      "reviewCards": {
+        "evidence": "Нотатки з доказами",
+        "questions": "Нотатки з питаннями",
+        "confirmed": "Підтверджені нотатки",
+        "applications": "Нотатки із застосуванням",
+        "labels": "Нотатки з мітками"
+      },
+      "reviewLanes": {
+        "evidence": "Гілки з доказами",
+        "questions": "Гілки з питаннями",
+        "confirmed": "Підтверджені гілки",
+        "applications": "Гілки із застосуванням",
+        "labels": "Гілки з мітками"
       }
     },
     "shareLinks": {

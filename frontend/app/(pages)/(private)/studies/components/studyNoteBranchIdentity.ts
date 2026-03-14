@@ -1,4 +1,8 @@
-import { StudyNoteBranchStateRecord } from '@/models/models';
+import {
+    StudyNoteBranchKind,
+    StudyNoteBranchStateRecord,
+    StudyNoteBranchStatus,
+} from '@/models/models';
 
 import {
     flattenStudyNoteOutlineBranches,
@@ -32,6 +36,39 @@ export interface HydratedStudyNoteBranchIdentity {
     branchIdByKey: Record<string, string>;
     keyByBranchId: Record<string, string>;
     branchRecords: StudyNoteBranchStateRecord[];
+}
+
+export const STUDY_NOTE_BRANCH_KIND_VALUES: StudyNoteBranchKind[] = [
+    'summary',
+    'insight',
+    'evidence',
+    'question',
+    'application',
+];
+
+export const STUDY_NOTE_BRANCH_STATUS_VALUES: StudyNoteBranchStatus[] = [
+    'active',
+    'tentative',
+    'confirmed',
+    'resolved',
+];
+
+export function normalizeStudyNoteBranchSemanticLabel(value?: string | null): string | null {
+    const normalizedValue = value?.replace(/\s+/g, ' ').trim() ?? '';
+
+    return normalizedValue ? normalizedValue : null;
+}
+
+export function normalizeStudyNoteBranchKind(value?: string | null): StudyNoteBranchKind | null {
+    return STUDY_NOTE_BRANCH_KIND_VALUES.includes(value as StudyNoteBranchKind)
+        ? value as StudyNoteBranchKind
+        : null;
+}
+
+export function normalizeStudyNoteBranchStatus(value?: string | null): StudyNoteBranchStatus | null {
+    return STUDY_NOTE_BRANCH_STATUS_VALUES.includes(value as StudyNoteBranchStatus)
+        ? value as StudyNoteBranchStatus
+        : null;
 }
 
 function cloneBranch(branch: StudyNoteOutlineBranch): StudyNoteOutlineBranch {
@@ -195,6 +232,9 @@ function createBranchRecord(
     return {
         branchId,
         overlayTone: descriptor.branch.overlayTone ?? null,
+        semanticLabel: normalizeStudyNoteBranchSemanticLabel(descriptor.branch.semanticLabel),
+        branchKind: normalizeStudyNoteBranchKind(descriptor.branch.branchKind),
+        branchStatus: normalizeStudyNoteBranchStatus(descriptor.branch.branchStatus),
         title: descriptor.branch.title,
         titleSlug: descriptor.titleSlug,
         parentSlugChain: descriptor.parentSlugChain,
@@ -262,6 +302,9 @@ export function hydrateStudyNoteBranchIdentity(
 
             matchingDescriptor.branch.branchId = record.branchId;
             matchingDescriptor.branch.overlayTone = record.overlayTone ?? null;
+            matchingDescriptor.branch.semanticLabel = normalizeStudyNoteBranchSemanticLabel(record.semanticLabel);
+            matchingDescriptor.branch.branchKind = normalizeStudyNoteBranchKind(record.branchKind);
+            matchingDescriptor.branch.branchStatus = normalizeStudyNoteBranchStatus(record.branchStatus);
             descriptorPool.delete(matchingDescriptor.branch.key);
         });
     };

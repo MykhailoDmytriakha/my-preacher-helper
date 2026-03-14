@@ -1876,6 +1876,33 @@
       "referencedBy": "Referenced by",
       "branchColor": "Branch color",
       "clearBranchColor": "Clear branch color",
+      "branchSemanticLabel": "Code / label",
+      "branchSemanticLabelPlaceholder": "Theme, proof, warning...",
+      "clearBranchSemanticLabel": "Clear branch label",
+      "branchKind": "Branch type",
+      "branchStatus": "Branch status",
+      "metadataSummary": "Metadata focus",
+      "metadataSummaryHint": "Filter the tree by meaning and workflow state.",
+      "clearMetadataFilters": "Clear filters",
+      "filteredBranchCount": "{{visible}} of {{total}} branches",
+      "noMetadataMatches": "No branches match the current metadata filters.",
+      "branchKinds": {
+        "all": "All types",
+        "none": "No type",
+        "summary": "Summary",
+        "insight": "Insight",
+        "evidence": "Evidence",
+        "question": "Question",
+        "application": "Application"
+      },
+      "branchStatuses": {
+        "all": "All statuses",
+        "none": "No status",
+        "active": "Active",
+        "tentative": "Tentative",
+        "confirmed": "Confirmed",
+        "resolved": "Resolved"
+      },
       "referenceRelation": "Reference relation",
       "branchOverlayTones": {
         "amber": "Amber",
@@ -1891,6 +1918,42 @@
         "contrasts": "Contrasts",
         "expands": "Expands",
         "applies": "Applies"
+      }
+    },
+    "branchMetadata": {
+      "title": "Branch metadata across notes",
+      "hint": "{{count}} notes currently expose branch-level meaning that can be filtered here.",
+      "loading": "Loading branch metadata surfaces...",
+      "notesWithMetadata": "Notes with metadata",
+      "labeledNotes": "Labeled notes",
+      "reviewTitle": "Review surfaces",
+      "reviewHint": "Jump into evidence, questions, applications, and label clusters without opening each note first.",
+      "reviewQueuesTitle": "Branch review lanes",
+      "reviewQueuesHint": "Review actual branches across notes and jump directly to the anchored branch instead of only filtering note cards.",
+      "showAllLaneItems": "Show all ({{count}})",
+      "showLessLaneItems": "Show less",
+      "kindFilter": "Branch type",
+      "statusFilter": "Branch status",
+      "labeledOnly": "Only labeled",
+      "clear": "Clear metadata filters",
+      "allKinds": "All branch types",
+      "allStatuses": "All branch statuses",
+      "error": "Branch metadata is temporarily unavailable.",
+      "labelChip": "Labels",
+      "topLabels": "Top labels",
+      "reviewCards": {
+        "evidence": "Evidence notes",
+        "questions": "Question notes",
+        "confirmed": "Confirmed notes",
+        "applications": "Application notes",
+        "labels": "Labeled notes"
+      },
+      "reviewLanes": {
+        "evidence": "Evidence branches",
+        "questions": "Question branches",
+        "confirmed": "Confirmed branches",
+        "applications": "Application branches",
+        "labels": "Labeled branches"
       }
     },
     "shareLinks": {

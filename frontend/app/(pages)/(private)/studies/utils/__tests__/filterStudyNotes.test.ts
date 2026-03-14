@@ -1,6 +1,7 @@
 import { StudyNote } from '@/models/models';
 
 import { filterAndSortStudyNotes } from '../filterStudyNotes';
+import { buildStudyNoteMetadataSummaryMap } from '../studyNoteMetadataSummary';
 
 function createNote(id: string, overrides: Partial<StudyNote> = {}): StudyNote {
     return {
@@ -65,5 +66,91 @@ describe('filterAndSortStudyNotes', () => {
             notes,
             bibleLocale: 'en',
         }).map((note) => note.id)).toEqual(['2', '3', '1']);
+    });
+
+    it('filters notes by derived branch metadata and metadata search text', () => {
+        const notes = [
+            createNote('1', { title: 'Evidence note' }),
+            createNote('2', { title: 'Question note' }),
+            createNote('3', { title: 'Plain note' }),
+        ];
+        const metadataSummaryByNoteId = buildStudyNoteMetadataSummaryMap([
+            {
+                id: '1',
+                noteId: '1',
+                userId: 'user-1',
+                branchRecords: [
+                    {
+                        branchId: 'branch-1',
+                        title: 'Alpha',
+                        titleSlug: 'alpha',
+                        parentSlugChain: [],
+                        bodyHash: '1',
+                        subtreeHash: '1',
+                        subtreeContentHash: '1',
+                        subtreeOccurrenceIndex: 0,
+                        contextualOccurrenceIndex: 0,
+                        relaxedOccurrenceIndex: 0,
+                        contextualContentOccurrenceIndex: 0,
+                        relaxedContentOccurrenceIndex: 0,
+                        branchKind: 'evidence',
+                        branchStatus: 'confirmed',
+                        semanticLabel: 'Blessing',
+                    },
+                ],
+                readFoldedBranchIds: [],
+                previewFoldedBranchIds: [],
+                createdAt: '2026-03-13T00:00:00.000Z',
+                updatedAt: '2026-03-13T00:00:00.000Z',
+            },
+            {
+                id: '2',
+                noteId: '2',
+                userId: 'user-1',
+                branchRecords: [
+                    {
+                        branchId: 'branch-2',
+                        title: 'Beta',
+                        titleSlug: 'beta',
+                        parentSlugChain: [],
+                        bodyHash: '2',
+                        subtreeHash: '2',
+                        subtreeContentHash: '2',
+                        subtreeOccurrenceIndex: 0,
+                        contextualOccurrenceIndex: 0,
+                        relaxedOccurrenceIndex: 0,
+                        contextualContentOccurrenceIndex: 0,
+                        relaxedContentOccurrenceIndex: 0,
+                        branchKind: 'question',
+                        branchStatus: 'tentative',
+                    },
+                ],
+                readFoldedBranchIds: [],
+                previewFoldedBranchIds: [],
+                createdAt: '2026-03-13T00:00:00.000Z',
+                updatedAt: '2026-03-13T00:00:00.000Z',
+            },
+        ] as any);
+
+        expect(filterAndSortStudyNotes({
+            notes,
+            branchKindFilter: 'evidence',
+            noteMetadataSummaryByNoteId: metadataSummaryByNoteId,
+            bibleLocale: 'en',
+        }).map((note) => note.id)).toEqual(['1']);
+
+        expect(filterAndSortStudyNotes({
+            notes,
+            branchLabelFilter: 'labeled',
+            noteMetadataSummaryByNoteId: metadataSummaryByNoteId,
+            bibleLocale: 'en',
+        }).map((note) => note.id)).toEqual(['1']);
+
+        expect(filterAndSortStudyNotes({
+            notes,
+            searchTokens: ['blessing'],
+            noteMetadataSummaryByNoteId: metadataSummaryByNoteId,
+            bibleLocale: 'en',
+        }).map((note) => note.id)).toEqual(['1']);
     });
 });

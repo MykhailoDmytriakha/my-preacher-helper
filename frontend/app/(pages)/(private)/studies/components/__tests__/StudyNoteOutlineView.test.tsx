@@ -30,6 +30,8 @@ const outlineFixture: StudyNoteOutline = {
             path: [1],
             depth: 0,
             headingLevel: 2,
+            branchKind: 'summary',
+            branchStatus: 'active',
             title: 'Root Branch',
             rawTitle: 'Root Branch',
             body: 'Root body',
@@ -40,6 +42,8 @@ const outlineFixture: StudyNoteOutline = {
                     path: [1, 1],
                     depth: 1,
                     headingLevel: 3,
+                    branchKind: 'evidence',
+                    branchStatus: 'confirmed',
                     title: 'Child Branch',
                     rawTitle: 'Child Branch',
                     body: 'Child body',
@@ -53,6 +57,8 @@ const outlineFixture: StudyNoteOutline = {
             path: [2],
             depth: 0,
             headingLevel: 2,
+            branchKind: 'question',
+            branchStatus: 'tentative',
             title: 'Second Root',
             rawTitle: 'Second Root',
             body: '',
@@ -267,6 +273,9 @@ describe('StudyNoteOutlineView', () => {
         const onCopyBranchReference = jest.fn();
         const onInsertBranchReference = jest.fn();
         const onSetBranchOverlayTone = jest.fn();
+        const onSetBranchSemanticLabel = jest.fn();
+        const onSetBranchKind = jest.fn();
+        const onSetBranchStatus = jest.fn();
 
         render(
             <StudyNoteOutlineView
@@ -282,6 +291,9 @@ describe('StudyNoteOutlineView', () => {
                 onCopyBranchReference={onCopyBranchReference}
                 onInsertBranchReference={onInsertBranchReference}
                 onSetBranchOverlayTone={onSetBranchOverlayTone}
+                onSetBranchSemanticLabel={onSetBranchSemanticLabel}
+                onSetBranchKind={onSetBranchKind}
+                onSetBranchStatus={onSetBranchStatus}
                 mode="preview"
             />
         );
@@ -296,6 +308,9 @@ describe('StudyNoteOutlineView', () => {
         expect(screen.getByTestId('study-note-branch-relation-1')).toBeInTheDocument();
         expect(screen.getByTestId('study-note-branch-insert-reference-1')).toBeInTheDocument();
         expect(screen.getByTestId('study-note-branch-overlay-1-amber')).toBeInTheDocument();
+        expect(screen.getByTestId('study-note-branch-semantic-label-input-1')).toBeInTheDocument();
+        expect(screen.getByTestId('study-note-branch-kind-select-1')).toBeInTheDocument();
+        expect(screen.getByTestId('study-note-branch-status-select-1')).toBeInTheDocument();
         expect(screen.getByTestId('study-note-branch-promote-1')).toBeDisabled();
         expect(screen.getByTestId('study-note-branch-demote-1')).toBeDisabled();
         expect(screen.getByTestId('study-note-branch-promote-1.1')).toBeEnabled();
@@ -316,6 +331,17 @@ describe('StudyNoteOutlineView', () => {
         });
         fireEvent.click(screen.getByTestId('study-note-branch-overlay-1-amber'));
         fireEvent.click(screen.getByTestId('study-note-branch-overlay-clear-1'));
+        fireEvent.change(screen.getByTestId('study-note-branch-semantic-label-input-1'), {
+            target: { value: 'Theme' },
+        });
+        fireEvent.click(screen.getByTestId('study-note-branch-semantic-label-save-1'));
+        fireEvent.click(screen.getByTestId('study-note-branch-semantic-label-clear-1'));
+        fireEvent.change(screen.getByTestId('study-note-branch-kind-select-1'), {
+            target: { value: 'application' },
+        });
+        fireEvent.change(screen.getByTestId('study-note-branch-status-select-1'), {
+            target: { value: 'resolved' },
+        });
         fireEvent.click(screen.getByTestId('study-note-branch-insert-reference-1'));
         fireEvent.click(screen.getByTestId('study-note-branch-promote-1.1'));
         fireEvent.click(screen.getByTestId('study-note-branch-demote-2'));
@@ -329,8 +355,66 @@ describe('StudyNoteOutlineView', () => {
         expect(onInsertBranchReference).toHaveBeenCalledWith('1', 'studiesWorkspace.outlinePilot.branchRelations.supports');
         expect(onSetBranchOverlayTone).toHaveBeenNthCalledWith(1, '1', 'amber');
         expect(onSetBranchOverlayTone).toHaveBeenNthCalledWith(2, '1', null);
+        expect(onSetBranchSemanticLabel).toHaveBeenNthCalledWith(1, '1', 'Theme');
+        expect(onSetBranchSemanticLabel).toHaveBeenNthCalledWith(2, '1', null);
+        expect(onSetBranchKind).toHaveBeenCalledWith('1', 'application');
+        expect(onSetBranchStatus).toHaveBeenCalledWith('1', 'resolved');
         expect(onCreateBranch).toHaveBeenNthCalledWith(1, '1', 'sibling');
         expect(onCreateBranch).toHaveBeenNthCalledWith(2, '1', 'child');
+    });
+
+    it('renders existing metadata badges in the branch header', () => {
+        render(
+            <StudyNoteOutlineView
+                outline={{
+                    ...outlineFixture,
+                    branches: [
+                        {
+                            ...outlineFixture.branches[0],
+                            semanticLabel: 'Theme',
+                            branchKind: 'summary',
+                            branchStatus: 'confirmed',
+                        },
+                        outlineFixture.branches[1],
+                    ],
+                }}
+                foldedBranchKeys={[]}
+                onToggleBranch={jest.fn()}
+                onExpandAll={jest.fn()}
+                onCollapseAll={jest.fn()}
+            />
+        );
+
+        expect(screen.getByTestId('study-note-branch-semantic-label-1')).toHaveTextContent('Theme');
+        expect(screen.getByTestId('study-note-branch-kind-1')).toHaveTextContent('studiesWorkspace.outlinePilot.branchKinds.summary');
+        expect(screen.getByTestId('study-note-branch-status-1')).toHaveTextContent('studiesWorkspace.outlinePilot.branchStatuses.confirmed');
+    });
+
+    it('filters branches by metadata while preserving matching descendants and supporting clear-reset', () => {
+        render(
+            <StudyNoteOutlineView
+                outline={outlineFixture}
+                foldedBranchKeys={[]}
+                onToggleBranch={jest.fn()}
+                onExpandAll={jest.fn()}
+                onCollapseAll={jest.fn()}
+                mode="preview"
+            />
+        );
+
+        fireEvent.click(screen.getByTestId('study-note-branch-kind-filter-evidence'));
+
+        expect(screen.getByTestId('study-note-branch-1')).toBeInTheDocument();
+        expect(screen.getByTestId('study-note-branch-1.1')).toBeInTheDocument();
+        expect(screen.queryByTestId('study-note-branch-2')).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('study-note-branch-status-filter-resolved'));
+
+        expect(screen.getByText('studiesWorkspace.outlinePilot.noMetadataMatches')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('study-note-branch-clear-metadata-filters'));
+
+        expect(screen.getByTestId('study-note-branch-2')).toBeInTheDocument();
     });
 
     it('surfaces backlinks for remembered target branches and jumps to the source branch', () => {

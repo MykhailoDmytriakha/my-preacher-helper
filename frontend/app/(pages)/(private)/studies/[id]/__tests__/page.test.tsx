@@ -1,4 +1,6 @@
 import { act, render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useStudyNoteBranchStates } from '@/hooks/useStudyNoteBranchStates';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
@@ -28,8 +30,15 @@ jest.mock('react-i18next', () => ({
 
 // Mock hooks
 jest.mock('@/hooks/useStudyNotes');
+jest.mock('@/hooks/useStudyNoteBranchStates', () => ({
+    useStudyNoteBranchStates: jest.fn(),
+    studyNoteBranchStatesKey: (uid: string | undefined) => ['study-note-branch-states', uid],
+}));
 jest.mock('@/hooks/useTags');
 jest.mock('@/hooks/useStudyNoteShareLinks');
+jest.mock('@tanstack/react-query', () => ({
+    useQueryClient: jest.fn(),
+}));
 jest.mock('@services/studies.service', () => ({
     getStudyNoteBranchState: jest.fn(),
     updateStudyNoteBranchState: jest.fn(),
@@ -206,6 +215,9 @@ const mockRouter = {
     replace: jest.fn(),
     back: jest.fn(),
 };
+const mockQueryClient = {
+    invalidateQueries: jest.fn(),
+};
 const mockClipboardWriteText = jest.fn().mockResolvedValue(undefined);
 
 Object.defineProperty(navigator, 'clipboard', {
@@ -221,6 +233,7 @@ Object.defineProperty(window, 'isSecureContext', {
 
 const mockParams = { id: 'note-1' };
 const mockSearchParams = new URLSearchParams('tag=tag1'); // Matches all mock notes
+const mockUseStudyNoteBranchStates = useStudyNoteBranchStates as jest.MockedFunction<typeof useStudyNoteBranchStates>;
 
 const createMockNote = (id: string, title: string): StudyNote => ({
     id,
@@ -240,6 +253,40 @@ const mockNotes: StudyNote[] = [
     { ...createMockNote('note-1', 'Current Note'), updatedAt: '2024-01-02T00:00:00.000Z' },
     { ...createMockNote('note-2', 'Next Note'), updatedAt: '2024-01-01T00:00:00.000Z' },
 ];
+
+const createMetadataBranchState = (
+    noteId: string,
+    metadata: {
+        branchKind?: 'summary' | 'insight' | 'evidence' | 'question' | 'application' | null;
+        branchStatus?: 'active' | 'tentative' | 'confirmed' | 'resolved' | null;
+        semanticLabel?: string | null;
+    } = {}
+) => ({
+    id: `branch-state-${noteId}`,
+    noteId,
+    userId: 'user-1',
+    branchRecords: [
+        {
+            branchId: `branch-${noteId}`,
+            title: 'Branch',
+            titleSlug: 'branch',
+            parentSlugChain: [],
+            bodyHash: 'body-hash',
+            subtreeHash: 'subtree-hash',
+            subtreeContentHash: 'subtree-content-hash',
+            subtreeOccurrenceIndex: 0,
+            contextualOccurrenceIndex: 0,
+            relaxedOccurrenceIndex: 0,
+            contextualContentOccurrenceIndex: 0,
+            relaxedContentOccurrenceIndex: 0,
+            ...metadata,
+        },
+    ],
+    readFoldedBranchIds: [],
+    previewFoldedBranchIds: [],
+    createdAt: '2026-03-13T00:00:00.000Z',
+    updatedAt: '2026-03-13T00:00:00.000Z',
+});
 
 const structuredNote: StudyNote = {
     ...createMockNote('note-1', 'Structured Note'),
@@ -329,6 +376,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         (useRouter as jest.Mock).mockReturnValue(mockRouter);
         (useParams as jest.Mock).mockReturnValue(mockParams);
         (useSearchParams as jest.Mock).mockReturnValue(mockSearchParams);
+        (useQueryClient as jest.Mock).mockReturnValue(mockQueryClient);
         (getStudyNoteBranchState as jest.Mock).mockResolvedValue(null);
         (updateStudyNoteBranchState as jest.Mock).mockResolvedValue({
             id: 'note-1',
@@ -348,6 +396,13 @@ describe('StudyNoteEditorPage Pagination', () => {
             createNote: jest.fn(),
             updateNote: jest.fn(),
             deleteNote: jest.fn(),
+        });
+        mockUseStudyNoteBranchStates.mockReturnValue({
+            uid: 'user-1',
+            branchStates: [],
+            loading: false,
+            error: null,
+            refetch: jest.fn(),
         });
 
         (useTags as jest.Mock).mockReturnValue({
@@ -394,6 +449,30 @@ describe('StudyNoteEditorPage Pagination', () => {
         fireEvent.click(nextButton);
 
         expect(mockRouter.push).toHaveBeenCalledWith('/studies/note-2?tag=tag1');
+    });
+
+    it('keeps metadata filters in the detail-page navigation lens', () => {
+        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('tag=tag1&branchKind=evidence'));
+        mockUseStudyNoteBranchStates.mockReturnValue({
+            uid: 'user-1',
+            branchStates: [
+                createMetadataBranchState('note-1', { branchKind: 'evidence' }),
+                createMetadataBranchState('note-2', { branchKind: 'evidence' }),
+            ],
+            loading: false,
+            error: null,
+            refetch: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        expect(screen.getByTitle('common.previous')).toBeDisabled();
+        expect(screen.getByTitle('common.next')).toBeEnabled();
+        expect(screen.getByText('1 / 2')).toBeInTheDocument();
+
+        fireEvent.click(screen.getByTitle('common.next'));
+
+        expect(mockRouter.push).toHaveBeenCalledWith('/studies/note-2?tag=tag1&branchKind=evidence');
     });
 
     it('responds to ArrowLeft and ArrowRight keyboard events when not editing', () => {
@@ -965,6 +1044,9 @@ describe('StudyNoteEditorPage Pagination', () => {
                 })
             );
         });
+        expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({
+            queryKey: ['study-note-branch-states', 'user-1'],
+        });
 
         jest.useRealTimers();
     });
@@ -1032,6 +1114,135 @@ describe('StudyNoteEditorPage Pagination', () => {
                         expect.objectContaining({
                             title: 'Main Branch',
                             overlayTone: 'amber',
+                        }),
+                    ]),
+                })
+            );
+        });
+        expect(mockQueryClient.invalidateQueries).toHaveBeenCalledWith({
+            queryKey: ['study-note-branch-states', 'user-1'],
+        });
+
+        jest.useRealTimers();
+    });
+
+    it('persists branch semantic label metadata through the companion branch-state layer', async () => {
+        jest.useFakeTimers();
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [structuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTestId('study-note-branch-copy-link-1'));
+
+        await waitFor(() => {
+            expect(mockClipboardWriteText).toHaveBeenCalledWith(expect.stringContaining('#branch='));
+        });
+
+        await act(async () => {
+            jest.advanceTimersByTime(1300);
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        (updateStudyNoteBranchState as jest.Mock).mockClear();
+
+        fireEvent.change(screen.getByTestId('study-note-branch-semantic-label-input-1'), {
+            target: { value: 'Theme' },
+        });
+        fireEvent.click(screen.getByTestId('study-note-branch-semantic-label-save-1'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('study-note-branch-semantic-label-1')).toHaveTextContent('Theme');
+        });
+
+        await act(async () => {
+            jest.advanceTimersByTime(1300);
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        await waitFor(() => {
+            expect(updateStudyNoteBranchState).toHaveBeenCalledWith(
+                'note-1',
+                'user-1',
+                expect.objectContaining({
+                    branchRecords: expect.arrayContaining([
+                        expect.objectContaining({
+                            title: 'Main Branch',
+                            semanticLabel: 'Theme',
+                        }),
+                    ]),
+                })
+            );
+        });
+
+        jest.useRealTimers();
+    });
+
+    it('persists branch kind and status metadata through the companion branch-state layer', async () => {
+        jest.useFakeTimers();
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [structuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTestId('study-note-branch-copy-link-1'));
+
+        await waitFor(() => {
+            expect(mockClipboardWriteText).toHaveBeenCalledWith(expect.stringContaining('#branch='));
+        });
+
+        await act(async () => {
+            jest.advanceTimersByTime(1300);
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        (updateStudyNoteBranchState as jest.Mock).mockClear();
+
+        fireEvent.change(screen.getByTestId('study-note-branch-kind-select-1'), {
+            target: { value: 'evidence' },
+        });
+        fireEvent.change(screen.getByTestId('study-note-branch-status-select-1'), {
+            target: { value: 'confirmed' },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTestId('study-note-branch-kind-1')).toHaveTextContent('studiesWorkspace.outlinePilot.branchKinds.evidence');
+            expect(screen.getByTestId('study-note-branch-status-1')).toHaveTextContent('studiesWorkspace.outlinePilot.branchStatuses.confirmed');
+        });
+
+        await act(async () => {
+            jest.advanceTimersByTime(1300);
+            await Promise.resolve();
+            await Promise.resolve();
+        });
+
+        await waitFor(() => {
+            expect(updateStudyNoteBranchState).toHaveBeenCalledWith(
+                'note-1',
+                'user-1',
+                expect.objectContaining({
+                    branchRecords: expect.arrayContaining([
+                        expect.objectContaining({
+                            title: 'Main Branch',
+                            branchKind: 'evidence',
+                            branchStatus: 'confirmed',
                         }),
                     ]),
                 })

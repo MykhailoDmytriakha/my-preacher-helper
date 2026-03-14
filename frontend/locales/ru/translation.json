@@ -1880,6 +1880,33 @@
       "referencedBy": "Есть ссылки из",
       "branchColor": "Цвет ветки",
       "clearBranchColor": "Сбросить цвет ветки",
+      "branchSemanticLabel": "Код / метка",
+      "branchSemanticLabelPlaceholder": "Тема, доказательство, предупреждение...",
+      "clearBranchSemanticLabel": "Сбросить метку ветки",
+      "branchKind": "Тип ветки",
+      "branchStatus": "Статус ветки",
+      "metadataSummary": "Фокус по метаданным",
+      "metadataSummaryHint": "Фильтруй дерево по смыслу и рабочему состоянию.",
+      "clearMetadataFilters": "Сбросить фильтры",
+      "filteredBranchCount": "{{visible}} из {{total}} веток",
+      "noMetadataMatches": "Нет веток, подходящих под текущие метаданные.",
+      "branchKinds": {
+        "all": "Все типы",
+        "none": "Без типа",
+        "summary": "Вывод",
+        "insight": "Наблюдение",
+        "evidence": "Доказательство",
+        "question": "Вопрос",
+        "application": "Применение"
+      },
+      "branchStatuses": {
+        "all": "Все статусы",
+        "none": "Без статуса",
+        "active": "Активно",
+        "tentative": "Черновик",
+        "confirmed": "Подтверждено",
+        "resolved": "Закрыто"
+      },
       "referenceRelation": "Тип связи",
       "branchOverlayTones": {
         "amber": "Янтарный",
@@ -1895,6 +1922,42 @@
         "contrasts": "Контрастирует",
         "expands": "Раскрывает",
         "applies": "Применяет"
+      }
+    },
+    "branchMetadata": {
+      "title": "Метаданные веток по всем заметкам",
+      "hint": "Сейчас {{count}} заметок уже имеют branch-level смысл, который можно фильтровать здесь.",
+      "loading": "Загрузка surfaces метаданных веток...",
+      "notesWithMetadata": "Заметки с метаданными",
+      "labeledNotes": "Заметки с метками",
+      "reviewTitle": "Поверхности обзора",
+      "reviewHint": "Быстро входите в доказательства, вопросы, применения и кластеры меток, не открывая каждую заметку по отдельности.",
+      "reviewQueuesTitle": "Ленты обзора веток",
+      "reviewQueuesHint": "Просматривайте реальные ветки по всем заметкам и переходите сразу к нужной ветке, а не только фильтруйте карточки заметок.",
+      "showAllLaneItems": "Показать все ({{count}})",
+      "showLessLaneItems": "Показать меньше",
+      "kindFilter": "Тип ветки",
+      "statusFilter": "Статус ветки",
+      "labeledOnly": "Только с метками",
+      "clear": "Очистить metadata filters",
+      "allKinds": "Все типы веток",
+      "allStatuses": "Все статусы веток",
+      "error": "Метаданные веток временно недоступны.",
+      "labelChip": "Метки",
+      "topLabels": "Топ меток",
+      "reviewCards": {
+        "evidence": "Заметки с доказательствами",
+        "questions": "Заметки с вопросами",
+        "confirmed": "Подтверждённые заметки",
+        "applications": "Заметки с применением",
+        "labels": "Заметки с метками"
+      },
+      "reviewLanes": {
+        "evidence": "Ветки с доказательствами",
+        "questions": "Ветки с вопросами",
+        "confirmed": "Подтверждённые ветки",
+        "applications": "Ветки с применением",
+        "labels": "Ветки с метками"
       }
     },
     "shareLinks": {

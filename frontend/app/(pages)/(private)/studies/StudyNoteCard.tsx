@@ -24,10 +24,12 @@ import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
 import { getLocalizedBookName, BibleLocale, psalmHebrewToSeptuagint } from './bibleData';
+import { StudyNoteMetadataSummary } from './utils/studyNoteMetadataSummary';
 
 
 interface StudyNoteCardProps {
   note: StudyNote;
+  metadataSummary?: StudyNoteMetadataSummary | null;
   bibleLocale: BibleLocale;
   isExpanded: boolean;
   onEdit: (note: StudyNote) => void;
@@ -108,6 +110,7 @@ const ALERT_CLASS = [
 
 export default function StudyNoteCard({
   note,
+  metadataSummary,
   bibleLocale,
   isExpanded,
   onEdit,
@@ -248,6 +251,12 @@ export default function StudyNoteCard({
     contentSnippets.length + matchingTags.length + matchingRefs.length + (titleMatches ? 1 : 0);
   const hasSearchDetails =
     contentSnippets.length > 0 || matchingTags.length > 0 || matchingRefs.length > 0 || !hasAnyMatch;
+
+  const hasMetadataSummary =
+    !!metadataSummary &&
+    (metadataSummary.semanticLabels.length > 0 ||
+      Object.keys(metadataSummary.branchKindCounts).length > 0 ||
+      Object.keys(metadataSummary.branchStatusCounts).length > 0);
 
   return (
     <article
@@ -452,6 +461,34 @@ export default function StudyNoteCard({
               <span>•</span>
               <span>{formatRelativeTime(note.updatedAt)}</span>
             </div>
+
+            {hasMetadataSummary && metadataSummary && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {Object.entries(metadataSummary.branchKindCounts).map(([branchKind, count]) => (
+                  <span
+                    key={`${note.id}-kind-${branchKind}`}
+                    className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
+                  >
+                    {t(`studiesWorkspace.outlinePilot.branchKinds.${branchKind}`)} · {count}
+                  </span>
+                ))}
+                {Object.entries(metadataSummary.branchStatusCounts).map(([branchStatus, count]) => (
+                  <span
+                    key={`${note.id}-status-${branchStatus}`}
+                    className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-200"
+                  >
+                    {t(`studiesWorkspace.outlinePilot.branchStatuses.${branchStatus}`)} · {count}
+                  </span>
+                ))}
+                {metadataSummary.semanticLabels.length > 0 && (
+                  <span
+                    className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700 dark:border-violet-800 dark:bg-violet-900/30 dark:text-violet-200"
+                  >
+                    {t('studiesWorkspace.branchMetadata.labelChip')} · {metadataSummary.semanticLabels.length}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Analyze button for notes without metadata (collapsed only) */}

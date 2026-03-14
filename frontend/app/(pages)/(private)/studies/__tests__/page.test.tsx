@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
+import { useStudyNoteBranchStates } from '@/hooks/useStudyNoteBranchStates';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { StudyNote } from '@/models/models';
@@ -34,6 +35,10 @@ jest.mock('@/hooks/useStudyNotes', () => ({
   useStudyNotes: jest.fn(),
 }));
 
+jest.mock('@/hooks/useStudyNoteBranchStates', () => ({
+  useStudyNoteBranchStates: jest.fn(),
+}));
+
 jest.mock('@/hooks/useStudyNoteShareLinks', () => ({
   useStudyNoteShareLinks: jest.fn(),
 }));
@@ -48,6 +53,7 @@ jest.mock('../bibleData', () => ({
 }));
 
 const mockUseStudyNotes = useStudyNotes as jest.MockedFunction<typeof useStudyNotes>;
+const mockUseStudyNoteBranchStates = useStudyNoteBranchStates as jest.MockedFunction<typeof useStudyNoteBranchStates>;
 const mockUseStudyNoteShareLinks = useStudyNoteShareLinks as jest.MockedFunction<typeof useStudyNoteShareLinks>;
 const mockUseTags = useTags as jest.MockedFunction<typeof useTags>;
 
@@ -77,6 +83,14 @@ const baseUseStudyNotesValue = (): ReturnType<typeof useStudyNotes> => ({
   deleteNote: jest.fn(),
 });
 
+const baseUseStudyNoteBranchStatesValue = (): ReturnType<typeof useStudyNoteBranchStates> => ({
+  uid: 'mock-user',
+  branchStates: [],
+  loading: false,
+  error: null,
+  refetch: jest.fn(),
+});
+
 const baseUseStudyNoteShareLinksValue = (): ReturnType<typeof useStudyNoteShareLinks> => ({
   uid: 'mock-user',
   shareLinks: [],
@@ -90,6 +104,7 @@ const baseUseStudyNoteShareLinksValue = (): ReturnType<typeof useStudyNoteShareL
 describe('StudiesPage', () => {
   beforeEach(() => {
     mockUseStudyNotes.mockReturnValue(baseUseStudyNotesValue());
+    mockUseStudyNoteBranchStates.mockReturnValue(baseUseStudyNoteBranchStatesValue());
     mockUseStudyNoteShareLinks.mockReturnValue(baseUseStudyNoteShareLinksValue());
     mockUseTags.mockReturnValue({
       tags: { requiredTags: [], customTags: [] },
@@ -439,6 +454,398 @@ describe('StudiesPage', () => {
       // Header count should reflect zero matches
       const matchingNotesLabels = screen.getAllByText(/matchingNotes/i);
       expect(matchingNotesLabels[0]).toHaveTextContent('0');
+    });
+  });
+
+  describe('Branch metadata workspace surfaces', () => {
+    it('filters notes by workspace branch kind metadata', async () => {
+      const notes: StudyNote[] = [
+        createMockNote({ id: '1', title: 'Evidence Note' }),
+        createMockNote({ id: '2', title: 'Question Note' }),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+      mockUseStudyNoteBranchStates.mockReturnValue({
+        ...baseUseStudyNoteBranchStatesValue(),
+        branchStates: [
+          {
+            id: '1',
+            noteId: '1',
+            userId: 'mock-user',
+            branchRecords: [
+              {
+                branchId: 'branch-1',
+                title: 'Evidence',
+                titleSlug: 'evidence',
+                parentSlugChain: [],
+                bodyHash: '1',
+                subtreeHash: '1',
+                subtreeContentHash: '1',
+                subtreeOccurrenceIndex: 0,
+                contextualOccurrenceIndex: 0,
+                relaxedOccurrenceIndex: 0,
+                contextualContentOccurrenceIndex: 0,
+                relaxedContentOccurrenceIndex: 0,
+                branchKind: 'evidence',
+                branchStatus: 'confirmed',
+                semanticLabel: 'Theme',
+              },
+            ],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-13T00:00:00.000Z',
+            updatedAt: '2026-03-13T00:00:00.000Z',
+          },
+          {
+            id: '2',
+            noteId: '2',
+            userId: 'mock-user',
+            branchRecords: [
+              {
+                branchId: 'branch-2',
+                title: 'Question',
+                titleSlug: 'question',
+                parentSlugChain: [],
+                bodyHash: '2',
+                subtreeHash: '2',
+                subtreeContentHash: '2',
+                subtreeOccurrenceIndex: 0,
+                contextualOccurrenceIndex: 0,
+                relaxedOccurrenceIndex: 0,
+                contextualContentOccurrenceIndex: 0,
+                relaxedContentOccurrenceIndex: 0,
+                branchKind: 'question',
+                branchStatus: 'tentative',
+              },
+            ],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-13T00:00:00.000Z',
+            updatedAt: '2026-03-13T00:00:00.000Z',
+          },
+        ] as any,
+      });
+
+      render(<StudiesPage />);
+
+      fireEvent.change(screen.getByTestId('studies-branch-kind-filter'), {
+        target: { value: 'evidence' },
+      });
+
+      await waitFor(() => {
+        const visibleCards = screen.getAllByRole('article');
+        expect(visibleCards).toHaveLength(1);
+      });
+
+      expect(screen.getByRole('heading', { name: 'Evidence Note' })).toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Question Note' })).not.toBeInTheDocument();
+      expect(screen.getByText(/studiesWorkspace\.branchMetadata\.notesWithMetadata/i)).toHaveTextContent('2');
+    });
+
+    it('filters notes by labeled branches only', async () => {
+      const notes: StudyNote[] = [
+        createMockNote({ id: '1', title: 'Labeled Note' }),
+        createMockNote({ id: '2', title: 'Unlabeled Note' }),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+      mockUseStudyNoteBranchStates.mockReturnValue({
+        ...baseUseStudyNoteBranchStatesValue(),
+        branchStates: [
+          {
+            id: '1',
+            noteId: '1',
+            userId: 'mock-user',
+            branchRecords: [
+              {
+                branchId: 'branch-1',
+                title: 'Main',
+                titleSlug: 'main',
+                parentSlugChain: [],
+                bodyHash: '1',
+                subtreeHash: '1',
+                subtreeContentHash: '1',
+                subtreeOccurrenceIndex: 0,
+                contextualOccurrenceIndex: 0,
+                relaxedOccurrenceIndex: 0,
+                contextualContentOccurrenceIndex: 0,
+                relaxedContentOccurrenceIndex: 0,
+                semanticLabel: 'Theme',
+              },
+            ],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-13T00:00:00.000Z',
+            updatedAt: '2026-03-13T00:00:00.000Z',
+          },
+          {
+            id: '2',
+            noteId: '2',
+            userId: 'mock-user',
+            branchRecords: [
+              {
+                branchId: 'branch-2',
+                title: 'Main',
+                titleSlug: 'main',
+                parentSlugChain: [],
+                bodyHash: '2',
+                subtreeHash: '2',
+                subtreeContentHash: '2',
+                subtreeOccurrenceIndex: 0,
+                contextualOccurrenceIndex: 0,
+                relaxedOccurrenceIndex: 0,
+                contextualContentOccurrenceIndex: 0,
+                relaxedContentOccurrenceIndex: 0,
+              },
+            ],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-13T00:00:00.000Z',
+            updatedAt: '2026-03-13T00:00:00.000Z',
+          },
+        ] as any,
+      });
+
+      render(<StudiesPage />);
+
+      await userEvent.click(screen.getByTestId('studies-branch-label-filter'));
+
+      await waitFor(() => {
+        expect(screen.queryByRole('heading', { name: 'Unlabeled Note' })).not.toBeInTheDocument();
+      });
+
+      expect(screen.getByRole('heading', { name: 'Labeled Note' })).toBeInTheDocument();
+    });
+
+    it('uses review cards and top labels as retrieval shortcuts', async () => {
+      const notes: StudyNote[] = [
+        createMockNote({ id: '1', title: 'Evidence Note' }),
+        createMockNote({ id: '2', title: 'Grace Note' }),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+      mockUseStudyNoteBranchStates.mockReturnValue({
+        ...baseUseStudyNoteBranchStatesValue(),
+        branchStates: [
+          {
+            id: '1',
+            noteId: '1',
+            userId: 'mock-user',
+            branchRecords: [
+              {
+                branchId: 'branch-1',
+                title: 'Evidence',
+                titleSlug: 'evidence',
+                parentSlugChain: [],
+                bodyHash: '1',
+                subtreeHash: '1',
+                subtreeContentHash: '1',
+                subtreeOccurrenceIndex: 0,
+                contextualOccurrenceIndex: 0,
+                relaxedOccurrenceIndex: 0,
+                contextualContentOccurrenceIndex: 0,
+                relaxedContentOccurrenceIndex: 0,
+                branchKind: 'evidence',
+                branchStatus: 'confirmed',
+                semanticLabel: 'Grace',
+              },
+            ],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-13T00:00:00.000Z',
+            updatedAt: '2026-03-13T00:00:00.000Z',
+          },
+          {
+            id: '2',
+            noteId: '2',
+            userId: 'mock-user',
+            branchRecords: [
+              {
+                branchId: 'branch-2',
+                title: 'Grace',
+                titleSlug: 'grace',
+                parentSlugChain: [],
+                bodyHash: '2',
+                subtreeHash: '2',
+                subtreeContentHash: '2',
+                subtreeOccurrenceIndex: 0,
+                contextualOccurrenceIndex: 0,
+                relaxedOccurrenceIndex: 0,
+                contextualContentOccurrenceIndex: 0,
+                relaxedContentOccurrenceIndex: 0,
+                branchKind: 'insight',
+                semanticLabel: 'Grace',
+              },
+            ],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-13T00:00:00.000Z',
+            updatedAt: '2026-03-13T00:00:00.000Z',
+          },
+        ] as any,
+      });
+
+      render(<StudiesPage />);
+
+      await userEvent.click(screen.getByTestId('studies-metadata-review-card-evidence'));
+
+      await waitFor(() => {
+        expect(screen.queryByRole('heading', { name: 'Grace Note' })).not.toBeInTheDocument();
+      });
+      expect(screen.getByRole('heading', { name: 'Evidence Note' })).toBeInTheDocument();
+
+      await userEvent.click(screen.getByTestId('studies-top-label-Grace'));
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/studiesWorkspace\.searchPlaceholder/i)).toHaveValue('Grace');
+      });
+    });
+
+    it('renders branch review lanes as a stable cross-note inventory and preserves the query lens in branch links', async () => {
+      const notes: StudyNote[] = [
+        createMockNote({ id: '1', title: 'Evidence Note' }),
+        createMockNote({ id: '2', title: 'Question Note' }),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+      mockUseStudyNoteBranchStates.mockReturnValue({
+        ...baseUseStudyNoteBranchStatesValue(),
+        branchStates: [
+          {
+            id: '1',
+            noteId: '1',
+            userId: 'mock-user',
+            branchRecords: [
+              {
+                branchId: 'branch-1',
+                title: 'Evidence branch',
+                titleSlug: 'evidence-branch',
+                parentSlugChain: [],
+                bodyHash: '1',
+                subtreeHash: '1',
+                subtreeContentHash: '1',
+                subtreeOccurrenceIndex: 0,
+                contextualOccurrenceIndex: 0,
+                relaxedOccurrenceIndex: 0,
+                contextualContentOccurrenceIndex: 0,
+                relaxedContentOccurrenceIndex: 0,
+                branchKind: 'evidence',
+                branchStatus: 'confirmed',
+                semanticLabel: 'Grace',
+              },
+            ],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-13T00:00:00.000Z',
+            updatedAt: '2026-03-13T00:00:00.000Z',
+          },
+          {
+            id: '2',
+            noteId: '2',
+            userId: 'mock-user',
+            branchRecords: [
+              {
+                branchId: 'branch-2',
+                title: 'Question branch',
+                titleSlug: 'question-branch',
+                parentSlugChain: [],
+                bodyHash: '2',
+                subtreeHash: '2',
+                subtreeContentHash: '2',
+                subtreeOccurrenceIndex: 0,
+                contextualOccurrenceIndex: 0,
+                relaxedOccurrenceIndex: 0,
+                contextualContentOccurrenceIndex: 0,
+                relaxedContentOccurrenceIndex: 0,
+                branchKind: 'question',
+                branchStatus: 'tentative',
+              },
+            ],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-13T00:00:00.000Z',
+            updatedAt: '2026-03-13T00:00:00.000Z',
+          },
+        ] as any,
+      });
+
+      render(<StudiesPage />);
+
+      fireEvent.change(screen.getByTestId('studies-branch-kind-filter'), {
+        target: { value: 'evidence' },
+      });
+
+      expect(screen.getByTestId('studies-review-lane-evidence')).toBeInTheDocument();
+      expect(screen.getByTestId('studies-review-lane-question')).toBeInTheDocument();
+      expect(screen.getByText('studiesWorkspace.branchMetadata.reviewLanes.evidence')).toBeInTheDocument();
+
+      const anchoredBranchLink = screen.getByTestId('studies-review-branch-evidence-branch-1');
+      expect(anchoredBranchLink).toHaveAttribute('href', '/studies/1?branchKind=evidence#branch=branch-1');
+      expect(anchoredBranchLink).toHaveTextContent('Evidence branch');
+      expect(anchoredBranchLink).toHaveTextContent('Evidence Note');
+    });
+
+    it('allows expanding a review lane beyond the collapsed limit', async () => {
+      const notes: StudyNote[] = [
+        createMockNote({ id: '1', title: 'Evidence Note' }),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+      mockUseStudyNoteBranchStates.mockReturnValue({
+        ...baseUseStudyNoteBranchStatesValue(),
+        branchStates: [
+          {
+            id: '1',
+            noteId: '1',
+            userId: 'mock-user',
+            branchRecords: Array.from({ length: 5 }, (_, index) => ({
+              branchId: `branch-${index + 1}`,
+              title: `Evidence branch ${index + 1}`,
+              titleSlug: `evidence-branch-${index + 1}`,
+              parentSlugChain: [],
+              bodyHash: `${index + 1}`,
+              subtreeHash: `${index + 1}`,
+              subtreeContentHash: `${index + 1}`,
+              subtreeOccurrenceIndex: 0,
+              contextualOccurrenceIndex: 0,
+              relaxedOccurrenceIndex: 0,
+              contextualContentOccurrenceIndex: 0,
+              relaxedContentOccurrenceIndex: 0,
+              branchKind: 'evidence',
+            })),
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-13T00:00:00.000Z',
+            updatedAt: '2026-03-13T00:00:00.000Z',
+          },
+        ] as any,
+      });
+
+      render(<StudiesPage />);
+
+      const evidenceLane = screen.getByTestId('studies-review-lane-evidence');
+
+      expect(within(evidenceLane).getAllByRole('link')).toHaveLength(4);
+
+      await userEvent.click(screen.getByTestId('studies-review-lane-toggle-evidence'));
+
+      expect(within(evidenceLane).getAllByRole('link')).toHaveLength(5);
+      expect(screen.getByText('studiesWorkspace.branchMetadata.showLessLaneItems')).toBeInTheDocument();
     });
   });
 });

@@ -103,4 +103,57 @@ describe('studyNoteBranchIdentity', () => {
         expect(hydrated.branches[1].overlayTone).toBe('amber');
         expect(hydrated.branchRecords[0].overlayTone).toBe('amber');
     });
+
+    it('rehydrates semantic label metadata onto the matched branch record', () => {
+        const initialOutline = parseStudyNoteOutline([
+            '## Alpha',
+            'Alpha body',
+        ].join('\n'));
+        const alphaRecord = createStudyNoteBranchStateRecord(initialOutline.branches, '1', 'branch-alpha');
+
+        expect(alphaRecord).not.toBeNull();
+
+        alphaRecord!.semanticLabel = 'Theme';
+
+        const reorderedOutline = parseStudyNoteOutline([
+            '## Beta',
+            'Beta body',
+            '',
+            '## Alpha',
+            'Alpha body',
+        ].join('\n'));
+        const hydrated = hydrateStudyNoteBranchIdentity(reorderedOutline.branches, [alphaRecord!]);
+
+        expect(hydrated.branchIdByKey['2']).toBe('branch-alpha');
+        expect(hydrated.branches[1].semanticLabel).toBe('Theme');
+        expect(hydrated.branchRecords[0].semanticLabel).toBe('Theme');
+    });
+
+    it('rehydrates controlled branch metadata onto the matched branch record', () => {
+        const initialOutline = parseStudyNoteOutline([
+            '## Alpha',
+            'Alpha body',
+        ].join('\n'));
+        const alphaRecord = createStudyNoteBranchStateRecord(initialOutline.branches, '1', 'branch-alpha');
+
+        expect(alphaRecord).not.toBeNull();
+
+        alphaRecord!.branchKind = 'evidence';
+        alphaRecord!.branchStatus = 'confirmed';
+
+        const reorderedOutline = parseStudyNoteOutline([
+            '## Beta',
+            'Beta body',
+            '',
+            '## Alpha',
+            'Alpha body',
+        ].join('\n'));
+        const hydrated = hydrateStudyNoteBranchIdentity(reorderedOutline.branches, [alphaRecord!]);
+
+        expect(hydrated.branchIdByKey['2']).toBe('branch-alpha');
+        expect(hydrated.branches[1].branchKind).toBe('evidence');
+        expect(hydrated.branches[1].branchStatus).toBe('confirmed');
+        expect(hydrated.branchRecords[0].branchKind).toBe('evidence');
+        expect(hydrated.branchRecords[0].branchStatus).toBe('confirmed');
+    });
 });

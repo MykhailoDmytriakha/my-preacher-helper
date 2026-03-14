@@ -1,9 +1,16 @@
-import type { StudyNoteBranchOverlayTone } from '@/models/models';
+import type {
+    StudyNoteBranchKind,
+    StudyNoteBranchOverlayTone,
+    StudyNoteBranchStatus,
+} from '@/models/models';
 
 export interface StudyNoteOutlineBranch {
     key: string;
     branchId?: string;
     overlayTone?: StudyNoteBranchOverlayTone | null;
+    semanticLabel?: string | null;
+    branchKind?: StudyNoteBranchKind | null;
+    branchStatus?: StudyNoteBranchStatus | null;
     path: number[];
     depth: number;
     headingLevel: number;

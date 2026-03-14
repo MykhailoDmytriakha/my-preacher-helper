@@ -420,6 +420,9 @@ export interface StudyNote {
 export interface StudyNoteBranchStateRecord {
   branchId: string;
   overlayTone?: StudyNoteBranchOverlayTone | null;
+  semanticLabel?: string | null;
+  branchKind?: StudyNoteBranchKind | null;
+  branchStatus?: StudyNoteBranchStatus | null;
   title: string;
   titleSlug: string;
   parentSlugChain: string[];
@@ -452,6 +455,19 @@ export type StudyNoteBranchOverlayTone =
   | 'rose'
   | 'violet'
   | 'slate';
+
+export type StudyNoteBranchKind =
+  | 'summary'
+  | 'insight'
+  | 'evidence'
+  | 'question'
+  | 'application';
+
+export type StudyNoteBranchStatus =
+  | 'active'
+  | 'tentative'
+  | 'confirmed'
+  | 'resolved';
 
 export interface StudyNoteShareLink {
   id: string;
