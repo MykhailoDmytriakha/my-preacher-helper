@@ -443,33 +443,32 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
             </div>
           </div>
 
-          {/* Tablet/Mobile Layout - Timer & Controls */}
-          <div className="lg:hidden flex flex-col py-2 space-y-2">
-            {/* Exit button - left edge */}
-            <div className="flex justify-start px-0 pb-1">
-              <button
-                type="button"
-                onClick={handleExitPreaching}
-                className="flex items-center justify-center p-2 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
-                aria-label={t('plan.exitPreachingMode', { defaultValue: 'Exit Preaching Mode' })}
-                data-testid="exit-preaching"
-              >
-                <SquareX className="h-5 w-5 shrink-0" />
-              </button>
+          {/* Tablet/Mobile Layout - Single compact row: [exit] [timer] [controls] */}
+          <div className="lg:hidden flex flex-row items-center justify-between gap-1 py-1 px-1">
+            {/* Exit button */}
+            <button
+              type="button"
+              onClick={handleExitPreaching}
+              className="flex items-center justify-center p-1.5 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors shrink-0"
+              aria-label={t('plan.exitPreachingMode', { defaultValue: 'Exit Preaching Mode' })}
+              data-testid="exit-preaching"
+            >
+              <SquareX className="h-4 w-4 shrink-0" />
+            </button>
+            {/* Timer Display */}
+            <div className="flex items-center justify-center flex-1 min-w-0">
+              <DigitalTimerDisplay
+                time={visualState.displayTime}
+                color={visualState.displayColor}
+                phase={timerState.currentPhase}
+                isEmergency={visualState.isEmergency}
+                animationClass={`${visualState.animationClass} compact-timer`}
+                isInteractive={timerState.status === 'idle'}
+                onClick={timerState.status === 'idle' ? handleOpenDurationPicker : undefined}
+              />
             </div>
-            {/* Timer Display and Controls (Centered) */}
-            <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8 pb-2">
-              <div className="flex items-center justify-center">
-                <DigitalTimerDisplay
-                  time={visualState.displayTime}
-                  color={visualState.displayColor}
-                  phase={timerState.currentPhase}
-                  isEmergency={visualState.isEmergency}
-                  animationClass={visualState.animationClass}
-                  isInteractive={timerState.status === 'idle'}
-                  onClick={timerState.status === 'idle' ? handleOpenDurationPicker : undefined}
-                />
-              </div>
+            {/* Controls */}
+            <div className="compact-controls-row shrink-0">
               <TimerControls
                 isPaused={timerState.isPaused}
                 status={timerState.status}
