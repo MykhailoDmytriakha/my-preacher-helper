@@ -9,6 +9,7 @@ import { AuthProvider } from "./providers/AuthProvider";
 import { QueryProvider } from "./providers/QueryProvider";
 import { TextScaleProvider } from "./providers/TextScaleProvider";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
+import { Toaster } from "sonner";
 import "./globals.css";
 
 const interSans = Inter({
@@ -73,6 +74,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <NuqsAdapter>
                 <LanguageInitializer />
                 <ServiceWorkerRegister />
+                <Toaster richColors closeButton position="top-right" />
                 <div className="min-h-screen flex flex-col" id="app-shell">
                   <OfflineBanner />
                   {children}

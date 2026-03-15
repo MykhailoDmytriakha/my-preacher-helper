@@ -1,4 +1,5 @@
 import { renderHook, act } from '@testing-library/react';
+import { toast } from 'sonner';
 
 import { useFeedback } from '@/hooks/useFeedback';
 
@@ -13,26 +14,20 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
+// Mock sonner toast
+jest.mock('sonner', () => ({
+  toast: {
+    success: jest.fn(),
+    error: jest.fn(),
+  },
+}));
+
 import { submitFeedback } from '@services/feedback.service';
 
 describe('useFeedback', () => {
-  let alertSpy: jest.SpyInstance;
-  let timeoutSpy: jest.SpyInstance;
-
   beforeEach(() => {
     jest.clearAllMocks();
-    alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
-    // Make setTimeout fire immediately so async tests don't need timer advancement
-    timeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation((fn: any) => {
-      if (typeof fn === 'function') fn();
-      return 0 as unknown as ReturnType<typeof setTimeout>;
-    });
     (submitFeedback as jest.Mock).mockResolvedValue(undefined);
-  });
-
-  afterEach(() => {
-    alertSpy.mockRestore();
-    timeoutSpy.mockRestore();
   });
 
   test('initial state: modal is closed', () => {
@@ -77,7 +72,7 @@ describe('useFeedback', () => {
       'My feedback', 'suggestion', ['data:image/png;base64,abc'], 'user-123'
     );
     expect(result.current.showFeedbackModal).toBe(false);
-    expect(alertSpy).toHaveBeenCalledWith('feedback.successMessage');
+    expect(toast.success).toHaveBeenCalledWith('feedback.successMessage');
     expect(returnValue).toBe(true);
   });
 
@@ -91,7 +86,7 @@ describe('useFeedback', () => {
     expect(submitFeedback).toHaveBeenCalledWith('Minimal', 'bug', [], 'anonymous');
   });
 
-  test('handleSubmitFeedback shows error alert and returns false on failure', async () => {
+  test('handleSubmitFeedback shows error toast and returns false on failure', async () => {
     (submitFeedback as jest.Mock).mockRejectedValue(new Error('Network error'));
 
     const { result } = renderHook(() => useFeedback());
@@ -101,7 +96,7 @@ describe('useFeedback', () => {
       returnValue = await result.current.handleSubmitFeedback('text', 'type', [], 'user1');
     });
 
-    expect(alertSpy).toHaveBeenCalledWith('feedback.errorMessage');
+    expect(toast.error).toHaveBeenCalledWith('feedback.errorMessage');
     expect(returnValue).toBe(false);
   });
 });
