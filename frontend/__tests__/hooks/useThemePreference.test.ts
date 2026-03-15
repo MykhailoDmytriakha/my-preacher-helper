@@ -291,4 +291,157 @@ describe('useThemePreference Hook', () => {
       expect(document.documentElement.classList.contains('dark')).toBe(true);
     });
   });
+
+  it('should fallback correctly when matchMedia is not a function', async () => {
+    // @ts-ignore - simulating env where matchMedia is missing
+    delete (window as any).matchMedia;
+
+    const { result } = renderHook(() => useThemePreference());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    act(() => {
+      result.current.setPreference('dark');
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.classList.contains('dark')).toBe(true);
+    });
+
+    act(() => {
+      result.current.setPreference('light');
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.classList.contains('dark')).toBe(false);
+    });
+  });
+
+  it('should re-apply theme on window focus', async () => {
+    jest.useFakeTimers();
+    let systemPrefersDark = false;
+
+    mockMatchMedia.mockImplementation((query: string) => ({
+      get matches() {
+        return query === '(prefers-color-scheme: dark)' && systemPrefersDark;
+      },
+      media: query,
+      onchange: null,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    }));
+
+    // Mock document.hasFocus
+    const originalHasFocus = document.hasFocus;
+    document.hasFocus = jest.fn().mockReturnValue(true);
+
+    const { result } = renderHook(() => useThemePreference());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    // Start in light mode
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+
+    // Simulate system change and window focus
+    systemPrefersDark = true;
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+
+    // Fast-forward the wake-up timeout (50ms)
+    act(() => {
+      jest.advanceTimersByTime(50);
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.classList.contains('dark')).toBe(true);
+    });
+
+    // Sub-case: Test when visibilityState is 'hidden' but hasFocus() is true
+    systemPrefersDark = false;
+    act(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      (document.hasFocus as jest.Mock).mockReturnValue(true);
+      window.dispatchEvent(new Event('focus'));
+    });
+
+    act(() => {
+      jest.advanceTimersByTime(50);
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.classList.contains('dark')).toBe(false);
+    });
+
+    // Restore timers and focus mock
+    jest.useRealTimers();
+    document.hasFocus = originalHasFocus;
+  });
+
+  it('should support legacy addListener/removeListener API', async () => {
+    const addListenerMock = jest.fn();
+    const removeListenerMock = jest.fn();
+
+    mockMatchMedia.mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: addListenerMock,
+      removeListener: removeListenerMock,
+      // No addEventListener for this test to trigger the legacy branch
+      addEventListener: undefined,
+      removeEventListener: undefined,
+      dispatchEvent: jest.fn(),
+    }));
+
+    const { result, unmount } = renderHook(() => useThemePreference());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    expect(addListenerMock).toHaveBeenCalled();
+
+    unmount();
+    expect(removeListenerMock).toHaveBeenCalled();
+  });
+
+  it('should cleanup event listeners when no matchMedia listeners are supported', async () => {
+    const addListenerMock = undefined;
+    const removeListenerMock = undefined;
+
+    mockMatchMedia.mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: addListenerMock,
+      removeListener: removeListenerMock,
+      addEventListener: undefined,
+      removeEventListener: undefined,
+      dispatchEvent: jest.fn(),
+    }));
+
+    const spyAddEvent = jest.spyOn(document, 'addEventListener');
+    const spyRemoveEvent = jest.spyOn(document, 'removeEventListener');
+
+    const { result } = renderHook(() => useThemePreference());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    // Should have added and then immediately removed listeners during effect setup
+    expect(spyAddEvent).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
+    expect(spyRemoveEvent).toHaveBeenCalledWith('visibilitychange', expect.any(Function));
+
+    spyAddEvent.mockRestore();
+    spyRemoveEvent.mockRestore();
+  });
 });

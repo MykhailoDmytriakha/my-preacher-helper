@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 
 import { submitFeedback } from '@services/feedback.service';
 
@@ -32,9 +33,10 @@ export function useFeedback() {
       await new Promise(resolve => setTimeout(resolve, 500));
 
       setShowFeedbackModal(false);
-      // Defer alert so the modal has time to close (React re-renders) before
-      // the browser blocks the thread with the synchronous alert dialog
-      setTimeout(() => alert(t('feedback.successMessage')), 0);
+      
+      // Use toast instead of browser alert
+      toast.success(t('feedback.successMessage'));
+      
       return true;
     } catch (error) {
       console.error('Error submitting feedback:', error);
@@ -43,7 +45,10 @@ export function useFeedback() {
       await new Promise(resolve => setTimeout(resolve, 500));
 
       setShowFeedbackModal(false);
-      setTimeout(() => alert(t('feedback.errorMessage')), 0);
+      
+      // Use toast instead of browser alert
+      toast.error(t('feedback.errorMessage'));
+      
       return false;
     }
   }, [t]);

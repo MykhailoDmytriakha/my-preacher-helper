@@ -44,7 +44,10 @@ export function useThemePreference() {
       removeListener?: (listener: (this: MediaQueryList, ev: MediaQueryListEvent) => void) => void;
     };
     const applyTheme = () => {
-      const shouldUseDark = shouldApplyDark(preference, mediaQuery.matches);
+      // Re-evaluate the media query locally to ensure we get the freshest value
+      // This is crucial after device wake-up where the outer closure's mediaQuery object might be stale.
+      const freshMediaQueryMatches = window.matchMedia(MEDIA_QUERY).matches;
+      const shouldUseDark = shouldApplyDark(preference, freshMediaQueryMatches);
       html.classList.toggle('dark', shouldUseDark);
     };
 
@@ -53,20 +56,29 @@ export function useThemePreference() {
     if (preference === 'system') {
       const handleChange = () => applyTheme();
 
-      // Re-apply theme when device wakes from sleep (visibilitychange fires,
-      // but matchMedia 'change' may not if the OS changed theme while asleep)
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === 'visible') {
-          applyTheme();
+      // Re-apply theme when device wakes from sleep or tab regains focus
+      // (visibilitychange fires, but matchMedia 'change' may not if the OS changed theme while asleep)
+      const handleWakeEvent = () => {
+        if (
+          document.visibilityState === 'visible' ||
+          (document.hasFocus && document.hasFocus())
+        ) {
+          // Add a tiny delay because OS->Browser theme propagation might not be instant on wake
+          setTimeout(() => {
+            applyTheme();
+          }, 50);
         }
       };
-      document.addEventListener('visibilitychange', handleVisibilityChange);
+
+      document.addEventListener('visibilitychange', handleWakeEvent);
+      window.addEventListener('focus', handleWakeEvent);
 
       if (typeof mediaQuery.addEventListener === 'function') {
         mediaQuery.addEventListener('change', handleChange);
         return () => {
           mediaQuery.removeEventListener('change', handleChange);
-          document.removeEventListener('visibilitychange', handleVisibilityChange);
+          document.removeEventListener('visibilitychange', handleWakeEvent);
+          window.removeEventListener('focus', handleWakeEvent);
         };
       }
 
@@ -74,11 +86,13 @@ export function useThemePreference() {
         mediaQuery.addListener(handleChange);
         return () => {
           mediaQuery.removeListener?.(handleChange);
-          document.removeEventListener('visibilitychange', handleVisibilityChange);
+          document.removeEventListener('visibilitychange', handleWakeEvent);
+          window.removeEventListener('focus', handleWakeEvent);
         };
       }
 
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      document.removeEventListener('visibilitychange', handleWakeEvent);
+      window.removeEventListener('focus', handleWakeEvent);
       return undefined;
     }
 
