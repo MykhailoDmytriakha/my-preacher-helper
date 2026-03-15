@@ -365,6 +365,41 @@ nav .digital-timer-display .time-display,
   }
 }
 
+/* Compact single-row timer layout for mobile (Samsung Z Fold 6 and similar small viewports) */
+.compact-timer.preaching-timer-display,
+.compact-timer {
+  flex-direction: row !important;
+  gap: 0 !important;
+  padding: 0 !important;
+}
+
+.compact-timer .time-display {
+  font-size: 26px !important;
+  letter-spacing: 1px !important;
+  line-height: 1 !important;
+}
+
+.compact-timer .phase-label {
+  display: none !important;
+}
+
+/* Compact controls for single-row layout */
+.compact-controls-row .timer-controls-card .timer-controls {
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.compact-controls-row .timer-controls-card .control-button {
+  min-width: 38px;
+  min-height: 32px;
+  border-radius: 10px;
+}
+
+.compact-controls-row .timer-controls-card .control-icon {
+  width: 14px;
+  height: 14px;
+}
+
 /* Animation for phase transitions */
 .phase-transition {
   animation: phaseChange 0.5s ease-in-out;
