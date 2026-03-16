@@ -1,5 +1,7 @@
 'use client';
 
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import FeedbackForm from "@/components/navigation/FeedbackForm";
@@ -13,10 +15,16 @@ interface FeedbackModalProps {
 
 export default function FeedbackModal({ isOpen, onClose, onSubmit }: FeedbackModalProps) {
   const { t } = useTranslation();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   if (!isOpen) return null;
 
-  return (
+  const modalContent = (
     <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="feedback-modal" role="dialog" aria-modal="true">
       <div className="flex items-center justify-center min-h-screen p-4">
         {/* Modal backdrop */}
@@ -45,4 +53,9 @@ export default function FeedbackModal({ isOpen, onClose, onSubmit }: FeedbackMod
       </div>
     </div>
   );
+
+  if (mounted) {
+    return createPortal(modalContent, document.body);
+  }
+  return null;
 } 

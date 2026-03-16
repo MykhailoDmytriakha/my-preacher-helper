@@ -110,12 +110,15 @@ Run in three stages:
    - Follow the plan in order.
    - Keep changes minimal and reversible.
 
-7. **Add or update tests**.
-   - Cover changed logic and any new boundaries.
+7. **Add or update tests — apply 60-test-coverage 3-Rule Protocol**:
+   - **Rule 1 (always):** 100% coverage of every changed/new line, explicitly asserted — not just silently rendered.
+   - **Rule 2 (baseline < 80%):** raise file-wide coverage to ≥ 80%.
+   - **Rule 3 (baseline ≥ 80%):** raise file-wide coverage by ≥ +5 percentage points beyond baseline.
    - Avoid brittle tests; prefer behavior-based assertions.
+   - Run: `npm run test:coverage -- <changed-file>` and verify uncovered lines do NOT overlap with diff.
 
-8. **Run validation**.
-   - Execute all tests from the checklist.
+8. **Run validation**:
+   - Execute: `npm run test:coverage && npm run lint:full` from root.
    - Record results and fix failures before moving to Stage 3.
 
 ## Stage 3 — Scout105 cleanup protocol
