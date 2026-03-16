@@ -59,6 +59,8 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-03-15 Interleaved Grid Layout over JS Duplication:** To create alternating interleaved layouts (e.g. Card A, Editor A, Card B, Editor B) on mobile while keeping them side-by-side on desktop, use a flat list of adjacent children (`<React.Fragment><Card/><Editor/></React.Fragment>`) inside a single CSS Grid (`grid-cols-1 lg:grid-cols-2`) instead of wrapping them in separate column `div`s. CSS Grid naturally interleaves them vertically on small screens and horizontally on large screens. This eliminates hydration bugs caused by `window.innerWidth` JS checks, removes the need for JS-based height synchronization (since Grid `<div className="h-full">` stretches pairs automatically), and simplifies the React tree.
+
 - **2026-03-15 Modals Without createPortal Are Invisible Z-Index Bombs:** Any modal that renders inside-tree (not via `createPortal`) is subject to its ancestor's stacking context — even with `z-50`. On mobile viewports, parent stacking contexts (nav, card containers, floating buttons) will render on top. Fix: always use `createPortal(content, document.body)` with a `mounted` state guard for SSR safety, consistent with the project standard (14 of 16 modals already use this pattern). In tests, mock `react-dom` with `createPortal: (node) => node`.
 
 - **2026-03-13 Cross-Note Review Lanes Need Their Own Scope And Unit Language:** When a workspace shows both note-level review cards and branch-level review lanes, do not derive lanes from the already metadata-filtered note list, and do not reuse the same labels for both surfaces. Notes and branches are different units; the UI must preserve that distinction in both scope and wording.
