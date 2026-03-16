@@ -232,7 +232,7 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
   return (
     <Card
       ref={ref}
-      className={`mb-4 p-4 border bg-white dark:bg-gray-800 ${sectionToneClasses.border}`}
+      className={`h-full p-4 border bg-white dark:bg-gray-800 ${sectionToneClasses.border}`}
     >
       <h3 className={`font-semibold text-lg mb-2 ${sectionToneClasses.text} flex justify-between items-center`}>
         {outlinePoint.text}
@@ -335,7 +335,7 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
     <div
       ref={ref}
       key={outlinePoint.id}
-      className="mb-4 bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
+      className="h-full bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
     >
       <h3 className={`font-semibold text-lg mb-2 ${sectionToneClasses.text} flex justify-between items-center`}>
         {outlinePoint.text}
@@ -449,48 +449,37 @@ const PlanSectionColumns = ({
   const sectionToneClasses = SECTION_TONE_CLASSES[sectionKey];
 
   return (
-    <>
-      <div
-        data-testid={leftTestId}
-        className={`rounded-lg overflow-hidden border ${sectionToneClasses.surface}`}
-      >
-        <div className="p-3">
-          {points.map((outlinePoint) => (
-            <SermonPointCard
-              key={outlinePoint.id}
-              ref={(el) => registerPairRef(sectionKey, outlinePoint.id, "left", el)}
-              outlinePoint={outlinePoint}
-              thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
-              sectionName={sectionKey}
-            />
-          ))}
-          {outlinePoints?.length === 0 && (
-            <p className="text-gray-500">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
-          )}
-        </div>
+    <div
+      data-testid={`${sectionKey}-interleaved-section`}
+      className={`lg:col-span-2 rounded-lg overflow-hidden border ${sectionToneClasses.surface} p-3 mt-4`}
+    >
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {points.map((outlinePoint) => (
+          <React.Fragment key={outlinePoint.id}>
+            <div data-testid={leftTestId} className="h-full">
+              <SermonPointCard
+                ref={(el) => registerPairRef(sectionKey, outlinePoint.id, "left", el)}
+                outlinePoint={outlinePoint}
+                thoughts={getThoughtsForSermonPoint(outlinePoint.id)}
+                sectionName={sectionKey}
+              />
+            </div>
+            <div data-testid={rightTestId} className="h-full">
+              <PlanOutlinePointEditor
+                ref={(el) => registerPairRef(sectionKey, outlinePoint.id, "right", el)}
+                outlinePoint={outlinePoint}
+                sectionKey={sectionKey}
+                sectionColors={sectionColors}
+                sermonPlanSection={sermonPlanSection}
+              />
+            </div>
+          </React.Fragment>
+        ))}
       </div>
-
-      <div
-        data-testid={rightTestId}
-        className={`rounded-lg overflow-hidden border ${sectionToneClasses.surface}`}
-      >
-        <div className="p-3">
-          {points.map((outlinePoint) => (
-            <PlanOutlinePointEditor
-              key={outlinePoint.id}
-              ref={(el) => registerPairRef(sectionKey, outlinePoint.id, "right", el)}
-              outlinePoint={outlinePoint}
-              sectionKey={sectionKey}
-              sectionColors={sectionColors}
-              sermonPlanSection={sermonPlanSection}
-            />
-          ))}
-          {outlinePoints?.length === 0 && (
-            <p className="text-gray-500">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
-          )}
-        </div>
-      </div>
-    </>
+      {points.length === 0 && (
+        <p className="text-gray-500 mt-2">{t(TRANSLATION_KEYS.PLAN.NO_SERMON_POINTS)}</p>
+      )}
+    </div>
   );
 };
 

@@ -617,21 +617,21 @@ describe('Sermon Plan Page UI Smoke Test', () => {
   it('renders main plan layout with sections when sermon loads', async () => {
     renderWithQueryClient(<SermonPlanPage />);
 
-    expect(await screen.findByTestId('plan-introduction-left-section')).toBeInTheDocument();
-    expect(screen.getByTestId('plan-main-right-section')).toBeInTheDocument();
-    expect(screen.getByTestId('plan-conclusion-right-section')).toBeInTheDocument();
+    expect(await screen.findByTestId('introduction-interleaved-section')).toBeInTheDocument();
+    expect(screen.getByTestId('main-interleaved-section')).toBeInTheDocument();
+    expect(screen.getByTestId('conclusion-interleaved-section')).toBeInTheDocument();
   });
 
   it('applies static section tone classes to plan columns and headers', async () => {
     renderWithQueryClient(<SermonPlanPage />);
 
-    const introductionLeftSection = await screen.findByTestId('plan-introduction-left-section');
-    const mainLeftSection = screen.getByTestId('plan-main-left-section');
-    const conclusionLeftSection = screen.getByTestId('plan-conclusion-left-section');
+    const introductionSection = await screen.findByTestId('introduction-interleaved-section');
+    const mainSection = screen.getByTestId('main-interleaved-section');
+    const conclusionSection = screen.getByTestId('conclusion-interleaved-section');
 
-    expect(introductionLeftSection).toHaveClass('border-amber-200', 'dark:border-amber-800', 'bg-amber-50', 'dark:bg-amber-900/40');
-    expect(mainLeftSection).toHaveClass('border-blue-200', 'dark:border-blue-800', 'bg-blue-50', 'dark:bg-blue-900/20');
-    expect(conclusionLeftSection).toHaveClass('border-green-200', 'dark:border-green-800', 'bg-green-50', 'dark:bg-green-900/20');
+    expect(introductionSection).toHaveClass('border-amber-200', 'dark:border-amber-800', 'bg-amber-50', 'dark:bg-amber-900/40');
+    expect(mainSection).toHaveClass('border-blue-200', 'dark:border-blue-800', 'bg-blue-50', 'dark:bg-blue-900/20');
+    expect(conclusionSection).toHaveClass('border-green-200', 'dark:border-green-800', 'bg-green-50', 'dark:bg-green-900/20');
 
     expect(screen.getByRole('heading', { name: /^Introduction$/ })).toHaveClass('text-amber-800', 'dark:text-amber-200');
     expect(screen.getByRole('heading', { name: /^Main$/ })).toHaveClass('text-blue-800', 'dark:text-blue-200');
@@ -641,7 +641,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
   it('wires section header action through layout context (switch to structure)', async () => {
     renderWithQueryClient(<SermonPlanPage />);
 
-    await screen.findByTestId('plan-introduction-left-section');
+    await screen.findByTestId('introduction-interleaved-section');
     const switchButtons = screen.getAllByTitle('Switch to ThoughtsBySection view');
     fireEvent.click(switchButtons[0]);
 
