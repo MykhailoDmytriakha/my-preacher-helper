@@ -27,7 +27,8 @@ describe('feedback.service', () => {
                 feedbackText: text,
                 feedbackType: type,
                 images,
-                userId
+                userId,
+                userEmail: ''
             })
         });
     });
@@ -45,7 +46,8 @@ describe('feedback.service', () => {
                 feedbackText: text,
                 feedbackType: type,
                 images: [],
-                userId: 'anonymous'
+                userId: 'anonymous',
+                userEmail: ''
             })
         });
     });

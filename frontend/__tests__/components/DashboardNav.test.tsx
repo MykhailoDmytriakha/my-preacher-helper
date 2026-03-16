@@ -414,8 +414,8 @@ describe('DashboardNav Component', () => {
       fireEvent.click(submitButton);
     });
 
-    // Verify handleSubmitFeedback was called with user ID
-    expect(mockFeedbackState.handleSubmitFeedback).toHaveBeenCalledWith('Feedback text', 'suggestion', [], 'user123');
+    // Verify handleSubmitFeedback was called with correct arguments
+    expect(mockFeedbackState.handleSubmitFeedback).toHaveBeenCalledWith('Feedback text', 'suggestion', [], 'user123', 'test@example.com');
   });
 
   test('handles feedback submission with anonymous user', async () => {
@@ -434,7 +434,7 @@ describe('DashboardNav Component', () => {
     });
 
     // Verify handleSubmitFeedback was called with 'anonymous'
-    expect(mockFeedbackState.handleSubmitFeedback).toHaveBeenCalledWith('Feedback text', 'suggestion', [], 'anonymous');
+    expect(mockFeedbackState.handleSubmitFeedback).toHaveBeenCalledWith('Feedback text', 'suggestion', [], 'anonymous', '');
   });
 
   test('mobile feedback button is displayed on small screens', async () => {

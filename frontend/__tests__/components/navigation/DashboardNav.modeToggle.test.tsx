@@ -41,18 +41,27 @@ jest.mock('next/navigation', () => ({
   }),
 }));
 
-jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'u1' }, handleLogout: jest.fn() }) }));
+jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'u1', email: 'test@user.com' }, handleLogout: jest.fn() }) }));
+export const mockHandleSubmitFeedback = jest.fn().mockResolvedValue(true);
+export const mockHandleFeedbackClick = jest.fn();
 jest.mock('@/hooks/useFeedback', () => ({
   useFeedback: () => ({
     showFeedbackModal: false,
-    handleFeedbackClick: jest.fn(),
+    handleFeedbackClick: mockHandleFeedbackClick,
     closeFeedbackModal: jest.fn(),
-    handleSubmitFeedback: jest.fn(),
+    handleSubmitFeedback: mockHandleSubmitFeedback,
   })
 }));
 jest.mock('@/components/navigation/LanguageSwitcher', () => ({ __esModule: true, default: () => <div data-testid="lang-switch" /> }));
 jest.mock('@/components/navigation/UserProfileDropdown', () => ({ __esModule: true, default: () => <div data-testid="user-dropdown" /> }));
-jest.mock('@/components/navigation/FeedbackModal', () => ({ __esModule: true, default: () => null }));
+jest.mock('@/components/navigation/FeedbackModal', () => ({ 
+  __esModule: true, 
+  default: ({ onSubmit }: any) => (
+    <div data-testid="feedback-modal">
+      <button data-testid="mock-feedback-submit" onClick={() => onSubmit('Test feedback', 'suggestion', ['img1'])}>Submit</button>
+    </div>
+  ) 
+}));
 jest.mock('@/components/navigation/MobileMenu', () => ({ __esModule: true, default: () => <div data-testid="mobile-menu" /> }));
 jest.mock('@/services/userSettings.service', () => ({
   ...jest.requireActual('@/services/userSettings.service'),
@@ -366,5 +375,62 @@ describe('Navigation button visibility', () => {
       ],
       { beforeEachScenario: resetScenario, afterEachScenario: cleanup }
     );
+  });
+});
+
+describe('Feedback integration', () => {
+  beforeEach(resetScenario);
+  afterAll(() => { process.env = OLD_ENV; });
+
+  it('calls handleSubmitFeedback with user email when feedback is submitted', () => {
+    pathnameMock = '/dashboard';
+    render(<DashboardNav />);
+    
+    // Simulate clicking the feedback button (desktop)
+    const feedbackButton = screen.getAllByRole('button', { name: /Provide feedback/i })[0];
+    fireEvent.click(feedbackButton);
+    expect(mockHandleFeedbackClick).toHaveBeenCalled();
+
+    // The FeedbackModal mock renders a submit button
+    const submitBtn = screen.getByTestId('mock-feedback-submit');
+    fireEvent.click(submitBtn);
+
+    // Assert that handleSubmitFeedback was called correctly with u1 and test@user.com
+    expect(mockHandleSubmitFeedback).toHaveBeenCalledWith(
+      'Test feedback',
+      'suggestion',
+      ['img1'],
+      'u1',
+      'test@user.com'
+    );
+  });
+});
+
+describe('DashboardNav useEffects', () => {
+  beforeEach(resetScenario);
+  afterAll(() => { process.env = OLD_ENV; });
+
+  it('closes menus when pathname changes', () => {
+    const { rerender } = render(<DashboardNav />);
+    
+    // Simulate mobile menu open
+    const mobileMenuBtn = screen.getByRole('button', { name: /Open menu/i });
+    fireEvent.click(mobileMenuBtn);
+    
+    // Change pathname
+    pathnameMock = '/new-path';
+    rerender(<DashboardNav />);
+    
+    expect(screen.getByRole('button', { name: /Open menu/i })).toBeInTheDocument();
+  });
+
+  it('closes nav dropdown when clicking outside', () => {
+    pathnameMock = '/sermons/abc';
+    render(<DashboardNav />);
+    
+    const navMenuBtn = screen.getByRole('button', { name: /Navigation menu/i });
+    fireEvent.click(navMenuBtn);
+    
+    fireEvent.click(document.body);
   });
 });
