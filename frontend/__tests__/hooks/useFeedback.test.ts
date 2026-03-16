@@ -69,7 +69,7 @@ describe('useFeedback', () => {
     });
 
     expect(submitFeedback).toHaveBeenCalledWith(
-      'My feedback', 'suggestion', ['data:image/png;base64,abc'], 'user-123'
+      'My feedback', 'suggestion', ['data:image/png;base64,abc'], 'user-123', ''
     );
     expect(result.current.showFeedbackModal).toBe(false);
     expect(toast.success).toHaveBeenCalledWith('feedback.successMessage');
@@ -83,7 +83,7 @@ describe('useFeedback', () => {
       await result.current.handleSubmitFeedback('Minimal', 'bug');
     });
 
-    expect(submitFeedback).toHaveBeenCalledWith('Minimal', 'bug', [], 'anonymous');
+    expect(submitFeedback).toHaveBeenCalledWith('Minimal', 'bug', [], 'anonymous', '');
   });
 
   test('handleSubmitFeedback shows error toast and returns false on failure', async () => {

@@ -8,13 +8,15 @@
  * @param feedbackType - The type of feedback (suggestion, bug, question, other)
  * @param images - Optional array of Base64-encoded image data URLs (max 3)
  * @param userId - The user's ID or 'anonymous'
+ * @param userEmail - The user's email or empty string
  * @returns Promise with the response data
  */
 export async function submitFeedback(
   feedbackText: string,
   feedbackType: string,
   images: string[] = [],
-  userId: string = 'anonymous'
+  userId: string = 'anonymous',
+  userEmail: string = ''
 ) {
   const response = await fetch('/api/feedback', {
     method: 'POST',
@@ -23,7 +25,8 @@ export async function submitFeedback(
       feedbackText,
       feedbackType,
       images,
-      userId
+      userId,
+      userEmail
     })
   });
 

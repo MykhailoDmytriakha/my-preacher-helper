@@ -8,6 +8,7 @@ interface FeedbackData {
   text: string;
   type: string;
   userId: string;
+  userEmail?: string;
   createdAt: string;
   status: string;
   userAgent: string;
@@ -94,7 +95,7 @@ async function sendEmailNotification(feedbackData: FeedbackData) {
     }
 
     console.log(`Preparing to send email to: ${OWNER_EMAIL}`);
-    const { text, type, userId, createdAt, images = [] } = feedbackData;
+    const { text, type, userId, userEmail, createdAt, images = [] } = feedbackData;
 
     // Create a transporter for this specific email
     const transporter = createTransporter();
@@ -103,12 +104,14 @@ async function sendEmailNotification(feedbackData: FeedbackData) {
     const emailContent = {
       from: `"Preacher Helper" <${EMAIL_CONFIG.auth.user}>`,
       to: OWNER_EMAIL,
+      ...(userEmail && { replyTo: userEmail }),
       subject: `New Feedback (${type}) from Preacher Helper`,
       attachments: buildAttachments(images),
       html: `
         <h2>New Feedback Submitted</h2>
         <p><strong>Type:</strong> ${type}</p>
         <p><strong>User ID:</strong> ${userId}</p>
+        <p><strong>User Email:</strong> ${userEmail || 'Not provided'}</p>
         <p><strong>Time:</strong> ${new Date(createdAt).toLocaleString()}</p>
         <p><strong>Message:</strong></p>
         <blockquote style="border-left: 4px solid #ccc; padding-left: 16px;">
@@ -121,6 +124,7 @@ async function sendEmailNotification(feedbackData: FeedbackData) {
 New Feedback Submitted
 Type: ${type}
 User ID: ${userId}
+User Email: ${userEmail || 'Not provided'}
 Time: ${new Date(createdAt).toLocaleString()}
 Message:
 ${text}
@@ -192,7 +196,7 @@ export async function POST(request: NextRequest) {
   try {
     // Parse the request body
     const body = await request.json();
-    const { feedbackText, feedbackType, images, userId = 'anonymous' } = body;
+    const { feedbackText, feedbackType, images, userId = 'anonymous', userEmail = '' } = body;
 
     // Validate images: must be an array of strings, max 3 items
     const validatedImages: string[] = Array.isArray(images)
@@ -202,6 +206,7 @@ export async function POST(request: NextRequest) {
     console.log('Parsed feedback request:', {
       type: feedbackType,
       userId,
+      userEmail,
       textLength: feedbackText?.length || 0,
       imagesCount: validatedImages.length
     });
@@ -220,6 +225,7 @@ export async function POST(request: NextRequest) {
       text: feedbackText,
       type: feedbackType || 'other',
       userId,
+      userEmail,
       createdAt: new Date().toISOString(),
       status: 'new', // Can be used for tracking feedback status: new, reviewed, addressed, etc.
       userAgent: request.headers.get('user-agent') || 'unknown',
