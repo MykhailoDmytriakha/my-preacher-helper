@@ -18,7 +18,7 @@
 *   **Zod Boundaries:** Use `zod` for ALL external data (API, AI, Forms). Types must match Zod schemas.
 *   **i18n:** `i18next` + `useTranslation`. Every new `t('key')` call **must** be added to all three locale files (`en/ru/uk`) in the same change — no exceptions. `defaultValue` is only an emergency fallback, never a substitute for a proper translation. Use `_one`/`_other` keys, NOT ICU plural syntax.
 *   **Testing:** `jest` + `RTL`. Test Behavior, not Implementation. Mock modules with explicit factories. `data-testid` for anchors. **Sequence-Aware Mocking** for AI chains.
-*   **Coverage:** **100% test coverage** on new/modified lines (diff). Overall ≥80%. Run `npm run test:coverage && npm run lint:full`.
+*   **Coverage:** **3-Rule Protocol** on every code change: **Rule 1** — 100% of changed lines covered & explicitly asserted (always mandatory). **Rule 2** — file baseline < 80% → raise to ≥80%. **Rule 3** — file baseline ≥ 80% → raise by ≥+5pp. Run `npm run test:coverage && npm run lint:full` from root until both green.
 *   **Optimistic Sync:** Apply local state immediately, keep transient sync metadata (`pending`/`error`) separate from domain entities, always provide rollback + retry.
 *   **Colors:** Use tokens from `@/utils/themeColors`. Never hardcode.
 *   **Hooks:** Rules of Hooks Absolute. Complexity > 20 → Extract to Custom Hook.
@@ -51,12 +51,15 @@
 *   **Negative-Offset Clip:** Never place `overflow-hidden` on a flex/grid container that hosts components with absolute-positioned children using negative offsets (`-top-1`, `-left-1`, `-right-1`). Those offsets extend outside the component's own bounds and will be clipped.
 *   **Mobile Nested Scroll:** Avoid `overflow-y-auto` on small sub-containers inside mobile modals; let the main modal container scroll the whole page to prevent "touch-trapping."
 *   **useState Prop Snapshot:** Never rely solely on `useState(prop)` for data that arrives after mount. Pair with `useEffect` + dirty-ref guard.
+*   **In-Tree Modal Render:** Never render a modal directly inside-tree without `createPortal`. Even with `z-50`, ancestor stacking contexts (nav, cards, dropdowns) will sit on top. Always use `createPortal(content, document.body)` + `mounted` state guard for SSR. In tests, mock `createPortal: (node) => node`.
 
 ---
 
 ## 🆕 Lessons (Inbox) — Extracted Principles
 
 > One-line principles. History in git blame. Newest first.
+
+- **2026-03-15 Modals Without createPortal Are Invisible Z-Index Bombs:** Any modal that renders inside-tree (not via `createPortal`) is subject to its ancestor's stacking context — even with `z-50`. On mobile viewports, parent stacking contexts (nav, card containers, floating buttons) will render on top. Fix: always use `createPortal(content, document.body)` with a `mounted` state guard for SSR safety, consistent with the project standard (14 of 16 modals already use this pattern). In tests, mock `react-dom` with `createPortal: (node) => node`.
 
 - **2026-03-13 Cross-Note Review Lanes Need Their Own Scope And Unit Language:** When a workspace shows both note-level review cards and branch-level review lanes, do not derive lanes from the already metadata-filtered note list, and do not reuse the same labels for both surfaces. Notes and branches are different units; the UI must preserve that distinction in both scope and wording.
 - **2026-03-13 Collapsed Review Surfaces Must Expose A Recovery Path:** If a semantic review lane shows only the first N items, the hidden remainder needs an explicit “show all” path in the same surface. A badge with a larger total but no local expansion path is a broken workflow promise.

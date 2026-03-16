@@ -5,6 +5,13 @@ import '@testing-library/jest-dom';
 import FeedbackModal from '@/components/navigation/FeedbackModal';
 import * as reactI18next from 'react-i18next';
 
+// Mock createPortal to render inline in tests
+jest.mock('react-dom', () => ({
+  ...jest.requireActual('react-dom'),
+  createPortal: (node: React.ReactNode) => node,
+}));
+
+
 // Mock dependencies
 jest.mock('react-i18next', () => ({
   useTranslation: () => {

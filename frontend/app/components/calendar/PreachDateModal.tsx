@@ -2,6 +2,7 @@
 
 import { XMarkIcon } from "@heroicons/react/24/outline";
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
 import { PreachDate, Church, PreachDateStatus } from "@/models/models";
@@ -30,6 +31,12 @@ export default function PreachDateModal({
     const [audience, setAudience] = useState(initialData?.audience || "");
     const [notes, setNotes] = useState(initialData?.notes || "");
     const [isSaving, setIsSaving] = useState(false);
+    const [mounted, setMounted] = useState(false);
+
+    useEffect(() => {
+        setMounted(true);
+        return () => setMounted(false);
+    }, []);
 
     useEffect(() => {
         if (initialData) {
@@ -70,7 +77,7 @@ export default function PreachDateModal({
         }
     };
 
-    return (
+    const modalContent = (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
             <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md shadow-2xl border border-gray-100 dark:border-gray-700">
                 <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-700">
@@ -162,4 +169,10 @@ export default function PreachDateModal({
             </div>
         </div>
     );
+
+    if (mounted) {
+        return createPortal(modalContent, document.body);
+    }
+    return null;
 }
+

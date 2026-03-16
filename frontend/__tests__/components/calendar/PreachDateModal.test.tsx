@@ -4,6 +4,13 @@ import PreachDateModal from '@/components/calendar/PreachDateModal';
 import { PreachDate } from '@/models/models';
 import '@testing-library/jest-dom';
 
+// Mock createPortal to render inline in tests
+jest.mock('react-dom', () => ({
+  ...jest.requireActual('react-dom'),
+  createPortal: (node: React.ReactNode) => node,
+}));
+
+
 // Mock react-i18next
 jest.mock('react-i18next', () => ({
     useTranslation: () => ({

@@ -204,6 +204,10 @@ Calculate and declare:
 4. **RISK TRANSPARENCY:** Document residual risks honestly
 5. **IMPROVEMENT FOCUS:** Identify what could be better
 6. **HONEST SCORING:** Don't inflate quality score
+7. **COVERAGE RULE:** Code changes must satisfy the 3-Rule Protocol from `60-test-coverage`:
+   - Rule 1: 100% of changed lines covered & asserted (always)
+   - Rule 2: file < 80% → raise to ≥80%
+   - Rule 3: file ≥ 80% → raise by ≥+5pp
 
 ## Failure Modes & Recovery
 
@@ -233,7 +237,7 @@ Quality Score: 88/100 (Good)
 - User registration fully functional
 - Mobile/desktop compatibility verified
 - All 5 requirements implemented
-- Unit tests passing (94% coverage)
+- Test coverage: Rule 1 ✅ (all changed lines asserted), Rule 3 ✅ (+7pp from baseline 88% → 95%)
 
 ⚠️ AREAS FOR ATTENTION:
 - Loading states could be smoother
