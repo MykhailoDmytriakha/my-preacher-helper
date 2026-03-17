@@ -1978,6 +1978,16 @@
       "synthesisClustersTitle": "Question synthesis clusters",
       "synthesisClustersHint": "Pull each visible open question together with linked support, contrast, and application branches so review turns into an actual synthesis pass.",
       "synthesisClusters": {
+        "modes": {
+          "workflow": "Workflow",
+          "theme": "Theme"
+        },
+        "groups": {
+          "needsEvidence": "Needs evidence",
+          "hasSupport": "Has support context",
+          "readyToApply": "Has application path",
+          "unlabeled": "Unlabeled"
+        },
         "sections": {
           "support": "Support",
           "contrast": "Contrast",

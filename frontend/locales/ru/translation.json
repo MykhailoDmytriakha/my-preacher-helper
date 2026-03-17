@@ -1982,6 +1982,16 @@
       "synthesisClustersTitle": "Кластеры синтеза по вопросам",
       "synthesisClustersHint": "Собирайте каждый видимый открытый вопрос вместе с привязанными ветками поддержки, контраста и применения, чтобы обзор превращался в настоящий synthesis pass.",
       "synthesisClusters": {
+        "modes": {
+          "workflow": "Этапы",
+          "theme": "Тема"
+        },
+        "groups": {
+          "needsEvidence": "Нужно доказательство",
+          "hasSupport": "Есть контекст поддержки",
+          "readyToApply": "Есть путь применения",
+          "unlabeled": "Без метки"
+        },
         "sections": {
           "support": "Поддержка",
           "contrast": "Контраст",

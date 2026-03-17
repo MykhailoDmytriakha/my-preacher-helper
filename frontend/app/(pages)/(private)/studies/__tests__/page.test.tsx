@@ -1020,6 +1020,7 @@ describe('StudiesPage', () => {
       expect(screen.queryByRole('heading', { name: 'Application Guide' })).not.toBeInTheDocument();
 
       expect(screen.getByTestId('studies-synthesis-clusters')).toBeInTheDocument();
+      expect(screen.getByTestId('studies-synthesis-cluster-group-readyToApply')).toBeInTheDocument();
       expect(screen.getByTestId('studies-synthesis-cluster-question-branch')).toHaveTextContent('Open Question');
 
       const supportLink = screen.getByTestId(
@@ -1033,6 +1034,17 @@ describe('StudiesPage', () => {
       );
       expect(applicationLink).toHaveTextContent('Application Step');
       expect(applicationLink).toHaveAttribute('href', '/studies/application-note?search=Primary#branch=application-branch');
+
+      fireEvent.click(screen.getByTestId('studies-synthesis-cluster-mode-theme'));
+      expect(screen.getByTestId('studies-synthesis-cluster-group-grace')).toBeInTheDocument();
+
+      const themedApplicationLink = screen.getByTestId(
+        'studies-synthesis-cluster-link-question-branch-application-application-branch'
+      );
+      expect(themedApplicationLink).toHaveAttribute(
+        'href',
+        '/studies/application-note?search=Primary&synthesisGroup=theme#branch=application-branch'
+      );
     });
 
     it('renders branch review lanes as a stable cross-note inventory and preserves the query lens in branch links', async () => {

@@ -1982,6 +1982,16 @@
       "synthesisClustersTitle": "Кластери синтезу за питаннями",
       "synthesisClustersHint": "Збирайте кожне видиме відкрите питання разом із повʼязаними гілками підтримки, контрасту й застосування, щоб огляд перетворювався на справжній synthesis pass.",
       "synthesisClusters": {
+        "modes": {
+          "workflow": "Етапи",
+          "theme": "Тема"
+        },
+        "groups": {
+          "needsEvidence": "Потрібен доказ",
+          "hasSupport": "Є контекст підтримки",
+          "readyToApply": "Є шлях застосування",
+          "unlabeled": "Без мітки"
+        },
         "sections": {
           "support": "Підтримка",
           "contrast": "Контраст",

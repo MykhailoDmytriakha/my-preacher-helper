@@ -13,6 +13,22 @@ export interface StudyWorkspaceQuestionSynthesisCluster {
   applicationLinks: StudyWorkspaceSynthesisClusterLink[];
 }
 
+export type StudyWorkspaceQuestionSynthesisClusterGroupMode = 'workflow' | 'theme';
+
+export interface StudyWorkspaceQuestionSynthesisClusterGroup {
+  id: string;
+  label: string;
+  totalClusters: number;
+  clusters: StudyWorkspaceQuestionSynthesisCluster[];
+}
+
+function buildClusterThemeGroupId(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'unlabeled';
+}
+
 function compareClusterLinks(
   a: StudyWorkspaceSynthesisClusterLink,
   b: StudyWorkspaceSynthesisClusterLink
@@ -111,8 +127,14 @@ export function buildStudyWorkspaceQuestionSynthesisClusters(
     lane.items.filter((item) => item.isResolved)
   );
 
-  return openQuestionItems.map((questionItem) => {
+  return openQuestionItems.flatMap((questionItem) => {
+    if (!questionItem.isResolved) {
+      return [];
+    }
+
     const supportItems = resolvedRelationItems.filter((item) =>
+      // Questions receive support from linked branches; outgoing support links from the
+      // question itself are intentionally not treated as supporting evidence here.
       item.targetBranchId === questionItem.branchId
       && (item.relationKey === 'supports' || item.relationKey === 'expands')
     );
@@ -125,11 +147,72 @@ export function buildStudyWorkspaceQuestionSynthesisClusters(
       && (item.targetBranchId === questionItem.branchId || item.sourceBranchId === questionItem.branchId)
     );
 
-    return {
+    return [{
       question: questionItem,
       supportLinks: collectClusterLinks(questionItem.branchId, supportItems, inventoryByBranchId),
       contrastLinks: collectClusterLinks(questionItem.branchId, contrastItems, inventoryByBranchId),
       applicationLinks: collectClusterLinks(questionItem.branchId, applicationItems, inventoryByBranchId),
-    };
+    }];
   });
+}
+
+export function buildStudyWorkspaceQuestionSynthesisClusterGroups(
+  clusters: StudyWorkspaceQuestionSynthesisCluster[],
+  mode: StudyWorkspaceQuestionSynthesisClusterGroupMode
+): StudyWorkspaceQuestionSynthesisClusterGroup[] {
+  if (mode === 'workflow') {
+    const needsEvidence: StudyWorkspaceQuestionSynthesisCluster[] = [];
+    const hasSupport: StudyWorkspaceQuestionSynthesisCluster[] = [];
+    const readyToApply: StudyWorkspaceQuestionSynthesisCluster[] = [];
+
+    clusters.forEach((cluster) => {
+      if (cluster.applicationLinks.length > 0) {
+        readyToApply.push(cluster);
+        return;
+      }
+
+      if (cluster.supportLinks.length > 0) {
+        hasSupport.push(cluster);
+        return;
+      }
+
+      needsEvidence.push(cluster);
+    });
+
+    return [
+      { id: 'needsEvidence', label: 'needsEvidence', totalClusters: needsEvidence.length, clusters: needsEvidence },
+      { id: 'hasSupport', label: 'hasSupport', totalClusters: hasSupport.length, clusters: hasSupport },
+      { id: 'readyToApply', label: 'readyToApply', totalClusters: readyToApply.length, clusters: readyToApply },
+    ].filter((group) => group.totalClusters > 0);
+  }
+
+  const themeGroups = new Map<string, { label: string; clusters: StudyWorkspaceQuestionSynthesisCluster[] }>();
+
+  clusters.forEach((cluster) => {
+    const rawThemeLabel = cluster.question.semanticLabel?.trim();
+    const normalizedThemeKey = rawThemeLabel?.toLowerCase() || 'unlabeled';
+    const existingGroup = themeGroups.get(normalizedThemeKey) ?? {
+      label: rawThemeLabel || 'unlabeled',
+      clusters: [],
+    };
+    existingGroup.clusters.push(cluster);
+    themeGroups.set(normalizedThemeKey, existingGroup);
+  });
+
+  return Array.from(themeGroups.entries())
+    .sort((a, b) => {
+      if (a[0] === 'unlabeled') {
+        return 1;
+      }
+      if (b[0] === 'unlabeled') {
+        return -1;
+      }
+      return a[1].label.localeCompare(b[1].label);
+    })
+    .map(([normalizedThemeKey, group]) => ({
+      id: buildClusterThemeGroupId(normalizedThemeKey),
+      label: group.label,
+      totalClusters: group.clusters.length,
+      clusters: group.clusters,
+    }));
 }
