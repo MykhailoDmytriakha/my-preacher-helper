@@ -59,6 +59,7 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-03-16 Responsive Action Bars on Mobile Need flex-wrap Plus Explicit Widths:** Containers for primary page actions (e.g. "View Plan" + "Preach") must use `flex-wrap` and their children should use `w-full sm:w-auto`. Standard `flex gap-2` alone without wrapping causes horizontal overflow on narrow mobile screens (like iPhone SE), even if individual buttons are small.
 - **2026-03-16 Offline-First Requires Durable Replay, Not Just Persisted Optimistic State:** Persisting optimistic UI records without persisting the executable replay path is a false offline-first guarantee. If retries live only in component refs/closures, a reload, redirect, or auth bounce strands local edits permanently. Local state, retry intent, and conflict metadata must survive together.
 - **2026-03-15 Interleaved Grid Layout over JS Duplication:** To create alternating interleaved layouts (e.g. Card A, Editor A, Card B, Editor B) on mobile while keeping them side-by-side on desktop, use a flat list of adjacent children (`<React.Fragment><Card/><Editor/></React.Fragment>`) inside a single CSS Grid (`grid-cols-1 lg:grid-cols-2`) instead of wrapping them in separate column `div`s. CSS Grid naturally interleaves them vertically on small screens and horizontally on large screens. This eliminates hydration bugs caused by `window.innerWidth` JS checks, removes the need for JS-based height synchronization (since Grid `<div className="h-full">` stretches pairs automatically), and simplifies the React tree.
 

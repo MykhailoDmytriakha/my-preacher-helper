@@ -693,7 +693,7 @@ export default function PlanMainLayout({
                   </div>
                 )}
 
-                <div className="flex flex-wrap gap-3 mt-6">
+                <div className="flex flex-wrap items-center gap-3 mt-6">
                   <ViewPlanMenu
                     sermonId={sermonId}
                     combinedPlan={combinedPlan}
@@ -710,7 +710,7 @@ export default function PlanMainLayout({
                     getExportContent={getExportContent}
                     getPdfContent={getPdfContent}
                     title={sermon.title || "Sermon Plan"}
-                    className="ml-auto"
+                    className="w-full sm:w-auto sm:ml-auto"
                     disabledFormats={["pdf"]}
                     planData={hasPlan(sermon) ? { ...combinedPlan, sermonTitle: sermon.title, sermonVerse: sermon.verse } : undefined}
                     sermonTitle={sermon.title}
