@@ -33,18 +33,25 @@ import ShareNoteModal from './components/ShareNoteModal';
 import StudyNoteCard from './StudyNoteCard';
 import { filterAndSortStudyNotes } from './utils/filterStudyNotes';
 import {
+  buildStudyWorkspaceBranchReviewInventory,
   buildStudyNoteMetadataSummaryMap,
   buildStudyWorkspaceMetadataCounts,
-  buildStudyWorkspaceReviewLanes,
+  buildStudyWorkspaceReviewLanesFromInventory,
   buildStudyWorkspaceTopSemanticLabels,
   StudyNoteMetadataLabelFilter,
 } from './utils/studyNoteMetadataSummary';
 import { buildStudyWorkspaceRelationData } from './utils/studyNoteRelationSummary';
+import { buildStudyWorkspaceQuestionSynthesisClusters } from './utils/studyNoteSynthesisClusters';
+import { buildStudyWorkspaceSynthesisData, StudyWorkspaceSynthesisLane } from './utils/studyNoteSynthesisSummary';
 
 type NoteTabType = 'all' | 'notes' | 'questions';
 type MetadataBranchKindFilter = StudyNoteBranchKind | '';
 type MetadataBranchStatusFilter = StudyNoteBranchStatus | '';
 const REVIEW_LANE_COLLAPSED_LIMIT = 4;
+const ANCHOR_NEEDS_REFRESH_KEY = 'studiesWorkspace.branchMetadata.anchorNeedsRefresh';
+const SHOW_LESS_LANE_ITEMS_KEY = 'studiesWorkspace.branchMetadata.showLessLaneItems';
+const SHOW_ALL_LANE_ITEMS_KEY = 'studiesWorkspace.branchMetadata.showAllLaneItems';
+const SYNTHESIS_CLUSTER_LINK_LIMIT = 3;
 
 export default function StudiesPage() {
   const { t, i18n } = useTranslation();
@@ -126,6 +133,8 @@ export default function StudiesPage() {
   const [allExpanded, setAllExpanded] = useState(false);
   const [expandedReviewLaneIds, setExpandedReviewLaneIds] = useState<Set<string>>(new Set());
   const [expandedRelationLaneLabels, setExpandedRelationLaneLabels] = useState<Set<string>>(new Set());
+  const [expandedSynthesisLaneIds, setExpandedSynthesisLaneIds] = useState<Set<string>>(new Set());
+  const [activeSynthesisLaneId, setActiveSynthesisLaneId] = useState<StudyWorkspaceSynthesisLane['id'] | ''>('');
 
 
   // Merge available tags with tags from notes
@@ -150,10 +159,11 @@ export default function StudiesPage() {
     () => buildStudyNoteMetadataSummaryMap(branchStates),
     [branchStates]
   );
-  const noteRelationSummaryByNoteId = useMemo(
-    () => buildStudyWorkspaceRelationData(notes, branchStates).relationSummaryByNoteId,
+  const workspaceRelationData = useMemo(
+    () => buildStudyWorkspaceRelationData(notes, branchStates, { liveTargetNotes: notes }),
     [branchStates, notes]
   );
+  const noteRelationSummaryByNoteId = workspaceRelationData.relationSummaryByNoteId;
 
   const metadataScopeNotes = useMemo(() => {
     return filterAndSortStudyNotes({
@@ -216,9 +226,53 @@ export default function StudiesPage() {
   ]);
 
   const visibleNotes = filteredNotes;
-  const reviewLanes = useMemo(
-    () => buildStudyWorkspaceReviewLanes(metadataScopeNotes, branchStates),
+  const workspaceBranchInventory = useMemo(
+    () => buildStudyWorkspaceBranchReviewInventory(notes, branchStates),
+    [branchStates, notes]
+  );
+  const scopedBranchInventory = useMemo(
+    () => buildStudyWorkspaceBranchReviewInventory(metadataScopeNotes, branchStates),
     [branchStates, metadataScopeNotes]
+  );
+  const reviewLanes = useMemo(
+    () => buildStudyWorkspaceReviewLanesFromInventory(scopedBranchInventory),
+    [scopedBranchInventory]
+  );
+  const visibleNoteIds = useMemo(
+    () => new Set(visibleNotes.map((note) => note.id)),
+    [visibleNotes]
+  );
+  const visibleBranchInventory = useMemo(
+    () => scopedBranchInventory.filter((item) => visibleNoteIds.has(item.noteId)),
+    [scopedBranchInventory, visibleNoteIds]
+  );
+  const synthesisData = useMemo(
+    () => buildStudyWorkspaceSynthesisData(visibleBranchInventory, workspaceRelationData),
+    [visibleBranchInventory, workspaceRelationData]
+  );
+  const synthesisLanes = useMemo(
+    () => synthesisData.synthesisLanes.filter((lane) => lane.totalItems > 0),
+    [synthesisData.synthesisLanes]
+  );
+  const openQuestionSynthesisLane = useMemo(
+    () => synthesisLanes.find((lane) => lane.id === 'openQuestions') ?? null,
+    [synthesisLanes]
+  );
+  const openQuestionSynthesisItems = useMemo(
+    () => openQuestionSynthesisLane?.items ?? [],
+    [openQuestionSynthesisLane]
+  );
+  const questionSynthesisClusters = useMemo(
+    () => buildStudyWorkspaceQuestionSynthesisClusters(
+      openQuestionSynthesisItems,
+      workspaceBranchInventory,
+      workspaceRelationData
+    ),
+    [openQuestionSynthesisItems, workspaceBranchInventory, workspaceRelationData]
+  );
+  const visibleSynthesisLanes = useMemo(
+    () => synthesisLanes.filter((lane) => !activeSynthesisLaneId || lane.id === activeSynthesisLaneId),
+    [activeSynthesisLaneId, synthesisLanes]
   );
   const workspaceQueryString = useMemo(() => {
     const nextSearchParams = new URLSearchParams();
@@ -299,6 +353,19 @@ export default function StudiesPage() {
       }
 
       return nextLabels;
+    });
+  }, []);
+  const toggleSynthesisLaneExpansion = useCallback((laneId: string) => {
+    setExpandedSynthesisLaneIds((currentLaneIds) => {
+      const nextLaneIds = new Set(currentLaneIds);
+
+      if (nextLaneIds.has(laneId)) {
+        nextLaneIds.delete(laneId);
+      } else {
+        nextLaneIds.add(laneId);
+      }
+
+      return nextLaneIds;
     });
   }, []);
 
@@ -864,7 +931,7 @@ export default function StudiesPage() {
                               )}
                               {!item.isResolved && (
                                 <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-                                  {t('studiesWorkspace.branchMetadata.anchorNeedsRefresh')}
+                                  {t(ANCHOR_NEEDS_REFRESH_KEY)}
                                 </span>
                               )}
                             </div>
@@ -883,8 +950,8 @@ export default function StudiesPage() {
                         className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
                       >
                         {isLaneExpanded
-                          ? t('studiesWorkspace.branchMetadata.showLessLaneItems')
-                          : t('studiesWorkspace.branchMetadata.showAllLaneItems', { count: lane.items.length })}
+                          ? t(SHOW_LESS_LANE_ITEMS_KEY)
+                          : t(SHOW_ALL_LANE_ITEMS_KEY, { count: lane.items.length })}
                       </button>
                     )}
                   </section>
@@ -949,7 +1016,7 @@ export default function StudiesPage() {
                                 </span>
                                 {!item.isResolved && (
                                   <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-                                    {t('studiesWorkspace.branchMetadata.anchorNeedsRefresh')}
+                                    {t(ANCHOR_NEEDS_REFRESH_KEY)}
                                   </span>
                                 )}
                               </div>
@@ -992,14 +1059,297 @@ export default function StudiesPage() {
                         className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
                       >
                         {isLaneExpanded
-                          ? t('studiesWorkspace.branchMetadata.showLessLaneItems')
-                          : t('studiesWorkspace.branchMetadata.showAllLaneItems', { count: lane.items.length })}
+                          ? t(SHOW_LESS_LANE_ITEMS_KEY)
+                          : t(SHOW_ALL_LANE_ITEMS_KEY, { count: lane.items.length })}
                       </button>
                     )}
                   </section>
                 );
               })}
           </div>
+        </div>
+      )}
+
+      {synthesisLanes.length > 0 && (
+        <div className="space-y-4 rounded-2xl border border-sky-100 bg-gradient-to-br from-sky-50 via-white to-emerald-50 p-4 shadow-sm dark:border-sky-900/50 dark:from-sky-950/20 dark:via-gray-900 dark:to-emerald-950/20">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-sky-700 dark:text-sky-200">
+              {t('studiesWorkspace.branchMetadata.synthesisTitle')}
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              {t('studiesWorkspace.branchMetadata.synthesisHint')}
+            </p>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            {([
+              {
+                id: 'openQuestions' as const,
+                count: synthesisData.synthesisCounts.openQuestions,
+                className: activeSynthesisLaneId === 'openQuestions'
+                  ? 'border-amber-300 bg-amber-100 dark:border-amber-700 dark:bg-amber-900/40'
+                  : 'border-amber-200 bg-white/90 dark:border-amber-800 dark:bg-gray-900/60',
+              },
+              {
+                id: 'confirmedEvidence' as const,
+                count: synthesisData.synthesisCounts.confirmedEvidence,
+                className: activeSynthesisLaneId === 'confirmedEvidence'
+                  ? 'border-emerald-300 bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-900/40'
+                  : 'border-emerald-200 bg-white/90 dark:border-emerald-800 dark:bg-gray-900/60',
+              },
+              {
+                id: 'applicationReady' as const,
+                count: synthesisData.synthesisCounts.applicationReady,
+                className: activeSynthesisLaneId === 'applicationReady'
+                  ? 'border-sky-300 bg-sky-100 dark:border-sky-700 dark:bg-sky-900/40'
+                  : 'border-sky-200 bg-white/90 dark:border-sky-800 dark:bg-gray-900/60',
+              },
+            ]).map((card) => (
+              <button
+                key={`workspace-synthesis-card-${card.id}`}
+                type="button"
+                data-testid={`studies-synthesis-card-${card.id}`}
+                onClick={() => setActiveSynthesisLaneId((currentLaneId) => currentLaneId === card.id ? '' : card.id)}
+                className={`rounded-2xl border p-4 text-left transition ${card.className}`}
+              >
+                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                  {t(`studiesWorkspace.branchMetadata.synthesisCards.${card.id}`)}
+                </div>
+                <div className="mt-2 text-2xl font-bold tabular-nums text-gray-900 dark:text-gray-50">
+                  {card.count}
+                </div>
+              </button>
+            ))}
+          </div>
+
+          <div className="grid gap-3 xl:grid-cols-2">
+            {visibleSynthesisLanes.map((lane) => {
+              const isLaneExpanded = expandedSynthesisLaneIds.has(lane.id);
+              const visibleLaneItems = isLaneExpanded
+                ? lane.items
+                : lane.items.slice(0, REVIEW_LANE_COLLAPSED_LIMIT);
+
+              return (
+                <section
+                  key={`workspace-synthesis-lane-${lane.id}`}
+                  data-testid={`studies-synthesis-lane-${lane.id}`}
+                  className="space-y-3 rounded-2xl border border-gray-200 bg-white/80 p-4 dark:border-gray-700 dark:bg-gray-900/70"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                      {t(`studiesWorkspace.branchMetadata.synthesisLanes.${lane.id}`)}
+                    </div>
+                    <div className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold tabular-nums text-gray-700 shadow-sm dark:bg-gray-900/80 dark:text-gray-200">
+                      {lane.items.length}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {visibleLaneItems.map((item) => (
+                      <Link
+                        key={`workspace-synthesis-item-${lane.id}-${item.branchId}`}
+                        data-testid={`studies-synthesis-item-${lane.id}-${item.branchId}`}
+                        href={buildWorkspaceBranchHref(item.noteId, item.branchId)}
+                        className="flex items-start justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 transition hover:border-sky-200 hover:bg-sky-50/50 dark:border-gray-700 dark:bg-gray-900/70 dark:hover:border-sky-800 dark:hover:bg-sky-950/20"
+                      >
+                        <div className="min-w-0 space-y-1">
+                          <div className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            {item.branchTitle}
+                          </div>
+                          <div className="truncate text-xs text-gray-500 dark:text-gray-400">
+                            {item.noteTitle}
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {item.branchStatus && (
+                              <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-200">
+                                {t(`studiesWorkspace.outlinePilot.branchStatuses.${item.branchStatus}`)}
+                              </span>
+                            )}
+                            {item.semanticLabel && (
+                              <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:border-violet-800 dark:bg-violet-900/30 dark:text-violet-200">
+                                {item.semanticLabel}
+                              </span>
+                            )}
+                            {item.relationBadges.map((badge) => (
+                              <span
+                                key={`workspace-synthesis-badge-${item.branchId}-${badge.relationKey}`}
+                                className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200"
+                              >
+                                {t(getStudyNoteBranchRelationTranslationKey(badge.relationKey) ?? badge.relationKey)} · {badge.count}
+                              </span>
+                            ))}
+                            {!item.isResolved && (
+                              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                                {t(ANCHOR_NEEDS_REFRESH_KEY)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <LinkIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+                      </Link>
+                    ))}
+                  </div>
+
+                  {lane.items.length > REVIEW_LANE_COLLAPSED_LIMIT && (
+                    <button
+                      type="button"
+                      data-testid={`studies-synthesis-lane-toggle-${lane.id}`}
+                      onClick={() => toggleSynthesisLaneExpansion(lane.id)}
+                      className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                    >
+                      {isLaneExpanded
+                        ? t(SHOW_LESS_LANE_ITEMS_KEY)
+                        : t(SHOW_ALL_LANE_ITEMS_KEY, { count: lane.items.length })}
+                    </button>
+                  )}
+                </section>
+              );
+            })}
+          </div>
+
+          {questionSynthesisClusters.length > 0 && (
+            <div className="space-y-3 rounded-2xl border border-sky-200 bg-white/80 p-4 dark:border-sky-800 dark:bg-gray-900/60">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-700 dark:text-sky-200">
+                  {t('studiesWorkspace.branchMetadata.synthesisClustersTitle')}
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  {t('studiesWorkspace.branchMetadata.synthesisClustersHint')}
+                </p>
+              </div>
+
+              <div
+                data-testid="studies-synthesis-clusters"
+                className="grid gap-3 xl:grid-cols-2"
+              >
+                {questionSynthesisClusters.map((cluster) => (
+                  <section
+                    key={`workspace-synthesis-cluster-${cluster.question.branchId}`}
+                    data-testid={`studies-synthesis-cluster-${cluster.question.branchId}`}
+                    className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900/80"
+                  >
+                    <Link
+                      href={buildWorkspaceBranchHref(cluster.question.noteId, cluster.question.branchId)}
+                      className="flex items-start justify-between gap-3 rounded-xl border border-transparent bg-sky-50/70 px-3 py-3 transition hover:border-sky-200 hover:bg-sky-50 dark:bg-sky-950/20 dark:hover:border-sky-800"
+                    >
+                      <div className="min-w-0 space-y-1">
+                        <div className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
+                          {cluster.question.branchTitle}
+                        </div>
+                        <div className="truncate text-xs text-gray-500 dark:text-gray-400">
+                          {cluster.question.noteTitle}
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {cluster.question.semanticLabel && (
+                            <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:border-violet-800 dark:bg-violet-900/30 dark:text-violet-200">
+                              {cluster.question.semanticLabel}
+                            </span>
+                          )}
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                            {t('studiesWorkspace.branchMetadata.synthesisClusters.sections.support')} · {cluster.supportLinks.length}
+                          </span>
+                          <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700 dark:border-rose-800 dark:bg-rose-900/30 dark:text-rose-200">
+                            {t('studiesWorkspace.branchMetadata.synthesisClusters.sections.contrast')} · {cluster.contrastLinks.length}
+                          </span>
+                          <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-200">
+                            {t('studiesWorkspace.branchMetadata.synthesisClusters.sections.application')} · {cluster.applicationLinks.length}
+                          </span>
+                        </div>
+                      </div>
+
+                      <LinkIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+                    </Link>
+
+                    {([
+                      {
+                        id: 'support',
+                        items: cluster.supportLinks,
+                        className: 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-800 dark:bg-emerald-950/20',
+                        textClassName: 'text-emerald-700 dark:text-emerald-200',
+                      },
+                      {
+                        id: 'contrast',
+                        items: cluster.contrastLinks,
+                        className: 'border-rose-200 bg-rose-50/60 dark:border-rose-800 dark:bg-rose-950/20',
+                        textClassName: 'text-rose-700 dark:text-rose-200',
+                      },
+                      {
+                        id: 'application',
+                        items: cluster.applicationLinks,
+                        className: 'border-sky-200 bg-sky-50/60 dark:border-sky-800 dark:bg-sky-950/20',
+                        textClassName: 'text-sky-700 dark:text-sky-200',
+                      },
+                    ] as const).map((section) => {
+                      const visibleSectionItems = section.items.slice(0, SYNTHESIS_CLUSTER_LINK_LIMIT);
+
+                      return (
+                        <div
+                          key={`workspace-synthesis-cluster-section-${cluster.question.branchId}-${section.id}`}
+                          className={`space-y-2 rounded-xl border px-3 py-3 ${section.className}`}
+                        >
+                          <div className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${section.textClassName}`}>
+                            {t(`studiesWorkspace.branchMetadata.synthesisClusters.sections.${section.id}`)}
+                          </div>
+
+                          {visibleSectionItems.length > 0 ? (
+                            <div className="space-y-2">
+                              {visibleSectionItems.map((item) => (
+                                <Link
+                                  key={`workspace-synthesis-cluster-link-${cluster.question.branchId}-${section.id}-${item.branchId}-${item.relationKey}`}
+                                  data-testid={`studies-synthesis-cluster-link-${cluster.question.branchId}-${section.id}-${item.branchId}`}
+                                  href={buildWorkspaceBranchHref(item.noteId, item.branchId)}
+                                  className="flex items-start justify-between gap-3 rounded-lg border border-white/80 bg-white/80 px-3 py-2.5 transition hover:border-gray-200 hover:bg-white dark:border-gray-800 dark:bg-gray-900/70 dark:hover:border-gray-700"
+                                >
+                                  <div className="min-w-0 space-y-1">
+                                    <div className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                                      {item.branchTitle}
+                                    </div>
+                                    <div className="truncate text-xs text-gray-500 dark:text-gray-400">
+                                      {item.noteTitle}
+                                    </div>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                                        {t(getStudyNoteBranchRelationTranslationKey(item.relationKey) ?? item.relationKey)}
+                                      </span>
+                                      {item.branchKind && (
+                                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200">
+                                          {t(`studiesWorkspace.outlinePilot.branchKinds.${item.branchKind}`)}
+                                        </span>
+                                      )}
+                                      {item.branchStatus && (
+                                        <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-200">
+                                          {t(`studiesWorkspace.outlinePilot.branchStatuses.${item.branchStatus}`)}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <LinkIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+                                </Link>
+                              ))}
+
+                              {section.items.length > SYNTHESIS_CLUSTER_LINK_LIMIT && (
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  {t('studiesWorkspace.branchMetadata.synthesisClusters.moreLinks', {
+                                    count: section.items.length - SYNTHESIS_CLUSTER_LINK_LIMIT,
+                                  })}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
+                              {t(`studiesWorkspace.branchMetadata.synthesisClusters.empty.${section.id}`)}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </section>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1078,6 +1428,7 @@ export default function StudiesPage() {
               key={note.id}
               note={note}
               metadataSummary={noteMetadataSummaryByNoteId.get(note.id)}
+              synthesisSummary={synthesisData.noteSummaryByNoteId.get(note.id)}
               bibleLocale={bibleLocale}
               isExpanded={expandedNoteIds.has(note.id)}
               onEdit={(n) => router.push(`/studies/${n.id}${window.location.search}`)}

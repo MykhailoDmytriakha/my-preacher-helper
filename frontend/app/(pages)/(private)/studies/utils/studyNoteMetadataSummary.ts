@@ -239,13 +239,46 @@ export function buildStudyWorkspaceTopSemanticLabels(
     .map(([label, noteCount]) => ({ label, noteCount }));
 }
 
-export function buildStudyWorkspaceReviewLanes(
+export function buildStudyWorkspaceBranchReviewInventory(
   notes: StudyNote[],
   branchStates: StudyNoteBranchState[]
-): StudyWorkspaceReviewLane[] {
+): StudyWorkspaceReviewBranchItem[] {
   const branchStateByNoteId = new Map(
     branchStates.map((branchState) => [branchState.noteId, branchState])
   );
+  const inventoryItems: StudyWorkspaceReviewBranchItem[] = [];
+
+  notes.forEach((note) => {
+    const branchState = branchStateByNoteId.get(note.id);
+
+    if (!branchState) {
+      return;
+    }
+
+    const liveBranchesById = buildLiveBranchLookup(note, branchState);
+
+    branchState.branchRecords.forEach((record) => {
+      const liveBranch = liveBranchesById.get(record.branchId);
+      inventoryItems.push({
+        noteId: note.id,
+        noteTitle: note.title || '',
+        branchId: record.branchId,
+        branchTitle: liveBranch?.title ?? record.title,
+        isResolved: Boolean(liveBranch),
+        branchKind: liveBranch?.branchKind ?? record.branchKind,
+        branchStatus: liveBranch?.branchStatus ?? record.branchStatus,
+        semanticLabel: liveBranch?.semanticLabel ?? record.semanticLabel,
+        noteUpdatedAt: note.updatedAt,
+      });
+    });
+  });
+
+  return inventoryItems;
+}
+
+export function buildStudyWorkspaceReviewLanesFromInventory(
+  inventoryItems: StudyWorkspaceReviewBranchItem[]
+): StudyWorkspaceReviewLane[] {
   const laneMatchers: Array<{
     id: StudyWorkspaceReviewLane['id'];
     matches: (item: Pick<StudyWorkspaceReviewBranchItem, 'branchKind' | 'branchStatus' | 'semanticLabel'>) => boolean;
@@ -273,36 +306,7 @@ export function buildStudyWorkspaceReviewLanes(
   ];
 
   return laneMatchers.map(({ id, matches }) => {
-    const laneItems: StudyWorkspaceReviewBranchItem[] = [];
-
-    notes.forEach((note) => {
-      const branchState = branchStateByNoteId.get(note.id);
-
-      if (!branchState) {
-        return;
-      }
-
-      const liveBranchesById = buildLiveBranchLookup(note, branchState);
-
-      branchState.branchRecords.forEach((record) => {
-        const liveBranch = liveBranchesById.get(record.branchId);
-        const item: StudyWorkspaceReviewBranchItem = {
-          noteId: note.id,
-          noteTitle: note.title || '',
-          branchId: record.branchId,
-          branchTitle: liveBranch?.title ?? record.title,
-          isResolved: Boolean(liveBranch),
-          branchKind: liveBranch?.branchKind ?? record.branchKind,
-          branchStatus: liveBranch?.branchStatus ?? record.branchStatus,
-          semanticLabel: liveBranch?.semanticLabel ?? record.semanticLabel,
-          noteUpdatedAt: note.updatedAt,
-        };
-
-        if (matches(item)) {
-          laneItems.push(item);
-        }
-      });
-    });
+    const laneItems = inventoryItems.filter((item) => matches(item));
 
     return {
       id,
@@ -310,4 +314,13 @@ export function buildStudyWorkspaceReviewLanes(
       items: laneItems,
     };
   });
+}
+
+export function buildStudyWorkspaceReviewLanes(
+  notes: StudyNote[],
+  branchStates: StudyNoteBranchState[]
+): StudyWorkspaceReviewLane[] {
+  return buildStudyWorkspaceReviewLanesFromInventory(
+    buildStudyWorkspaceBranchReviewInventory(notes, branchStates)
+  );
 }

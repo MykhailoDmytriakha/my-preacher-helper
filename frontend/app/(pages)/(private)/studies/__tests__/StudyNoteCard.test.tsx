@@ -24,6 +24,7 @@ import { HIGHLIGHT_COLORS } from '@/utils/themeColors';
 
 import StudyNoteCard from '../StudyNoteCard';
 import { StudyNoteMetadataSummary } from '../utils/studyNoteMetadataSummary';
+import { StudyNoteSynthesisSummary } from '../utils/studyNoteSynthesisSummary';
 
 const createTestNote = (overrides: Partial<StudyNote> = {}): StudyNote => {
   const timestamp = new Date(Date.now()).toISOString();
@@ -101,6 +102,30 @@ describe('StudyNoteCard', () => {
     expect(screen.getByText(/studiesWorkspace\.outlinePilot\.branchKinds\.evidence/i)).toBeInTheDocument();
     expect(screen.getByText(/studiesWorkspace\.outlinePilot\.branchStatuses\.confirmed/i)).toBeInTheDocument();
     expect(screen.getByText(/studiesWorkspace\.branchMetadata\.labelChip/i)).toBeInTheDocument();
+  });
+
+  it('renders note-level synthesis summary chips when provided', () => {
+    const note = createTestNote({ id: 'note-synthesis', title: 'Synthesis Note' });
+    const synthesisSummary: StudyNoteSynthesisSummary = {
+      noteId: note.id,
+      openQuestionCount: 1,
+      confirmedEvidenceCount: 2,
+      applicationReadyCount: 1,
+    };
+
+    render(
+      <StudyNoteCard
+        note={note}
+        synthesisSummary={synthesisSummary}
+        bibleLocale="en"
+        isExpanded={false}
+        onEdit={jest.fn()}
+      />
+    );
+
+    expect(screen.getByText(/studiesWorkspace\.branchMetadata\.synthesisCards\.openQuestions/i)).toBeInTheDocument();
+    expect(screen.getByText(/studiesWorkspace\.branchMetadata\.synthesisCards\.confirmedEvidence/i)).toBeInTheDocument();
+    expect(screen.getByText(/studiesWorkspace\.branchMetadata\.synthesisCards\.applicationReady/i)).toBeInTheDocument();
   });
 
 

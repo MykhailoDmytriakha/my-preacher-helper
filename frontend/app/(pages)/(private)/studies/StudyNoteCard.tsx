@@ -25,11 +25,13 @@ import MarkdownDisplay from '@components/MarkdownDisplay';
 
 import { getLocalizedBookName, BibleLocale, psalmHebrewToSeptuagint } from './bibleData';
 import { StudyNoteMetadataSummary } from './utils/studyNoteMetadataSummary';
+import { StudyNoteSynthesisSummary } from './utils/studyNoteSynthesisSummary';
 
 
 interface StudyNoteCardProps {
   note: StudyNote;
   metadataSummary?: StudyNoteMetadataSummary | null;
+  synthesisSummary?: StudyNoteSynthesisSummary | null;
   bibleLocale: BibleLocale;
   isExpanded: boolean;
   onEdit: (note: StudyNote) => void;
@@ -111,6 +113,7 @@ const ALERT_CLASS = [
 export default function StudyNoteCard({
   note,
   metadataSummary,
+  synthesisSummary,
   bibleLocale,
   isExpanded,
   onEdit,
@@ -257,6 +260,14 @@ export default function StudyNoteCard({
     (metadataSummary.semanticLabels.length > 0 ||
       Object.keys(metadataSummary.branchKindCounts).length > 0 ||
       Object.keys(metadataSummary.branchStatusCounts).length > 0);
+
+  const hasSynthesisSummary =
+    !!synthesisSummary &&
+    (
+      synthesisSummary.openQuestionCount > 0
+      || synthesisSummary.confirmedEvidenceCount > 0
+      || synthesisSummary.applicationReadyCount > 0
+    );
 
   return (
     <article
@@ -485,6 +496,32 @@ export default function StudyNoteCard({
                     className="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700 dark:border-violet-800 dark:bg-violet-900/30 dark:text-violet-200"
                   >
                     {t('studiesWorkspace.branchMetadata.labelChip')} · {metadataSummary.semanticLabels.length}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {hasSynthesisSummary && synthesisSummary && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {synthesisSummary.openQuestionCount > 0 && (
+                  <span
+                    className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200"
+                  >
+                    {t('studiesWorkspace.branchMetadata.synthesisCards.openQuestions')} · {synthesisSummary.openQuestionCount}
+                  </span>
+                )}
+                {synthesisSummary.confirmedEvidenceCount > 0 && (
+                  <span
+                    className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200"
+                  >
+                    {t('studiesWorkspace.branchMetadata.synthesisCards.confirmedEvidence')} · {synthesisSummary.confirmedEvidenceCount}
+                  </span>
+                )}
+                {synthesisSummary.applicationReadyCount > 0 && (
+                  <span
+                    className="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-200"
+                  >
+                    {t('studiesWorkspace.branchMetadata.synthesisCards.applicationReady')} · {synthesisSummary.applicationReadyCount}
                   </span>
                 )}
               </div>

@@ -766,6 +766,275 @@ describe('StudiesPage', () => {
       expect(relationLink).toHaveTextContent('Target Branch');
     });
 
+    it('builds scope-aware synthesis lanes from visible notes while keeping broader relation context', async () => {
+      const questionContent = [
+        '## Open Question',
+        'Question body',
+      ].join('\n');
+      const evidenceContent = [
+        '## Confirmed Evidence',
+        'Supports [Open Question](#branch=question-branch "supports").',
+      ].join('\n');
+      const questionOutline = parseStudyNoteOutline(questionContent);
+      const questionRecord = createStudyNoteBranchStateRecord(questionOutline.branches, '1', 'question-branch');
+
+      expect(questionRecord).not.toBeNull();
+
+      const notes: StudyNote[] = [
+        createMockNote({ id: 'question-note', title: 'Primary Question', content: questionContent }),
+        createMockNote({ id: 'evidence-note', title: 'Evidence Support', content: evidenceContent }),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+      mockUseStudyNoteBranchStates.mockReturnValue({
+        ...baseUseStudyNoteBranchStatesValue(),
+        branchStates: [
+          {
+            id: 'question-note',
+            noteId: 'question-note',
+            userId: 'mock-user',
+            branchRecords: [
+              {
+                ...questionRecord!,
+                branchKind: 'question',
+                branchStatus: 'tentative',
+                semanticLabel: 'Grace',
+              },
+            ],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-16T00:00:00.000Z',
+            updatedAt: '2026-03-16T00:00:00.000Z',
+          },
+          {
+            id: 'evidence-note',
+            noteId: 'evidence-note',
+            userId: 'mock-user',
+            branchRecords: [
+              {
+                branchId: 'evidence-branch',
+                title: 'Confirmed Evidence',
+                titleSlug: 'confirmed-evidence',
+                parentSlugChain: [],
+                bodyHash: '2',
+                subtreeHash: '2',
+                subtreeContentHash: '2',
+                subtreeOccurrenceIndex: 0,
+                contextualOccurrenceIndex: 0,
+                relaxedOccurrenceIndex: 0,
+                contextualContentOccurrenceIndex: 0,
+                relaxedContentOccurrenceIndex: 0,
+                branchKind: 'evidence',
+                branchStatus: 'confirmed',
+              },
+            ],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-16T00:00:00.000Z',
+            updatedAt: '2026-03-16T00:00:00.000Z',
+          },
+        ] as any,
+      });
+
+      render(<StudiesPage />);
+
+      fireEvent.change(screen.getByTestId('studies-branch-kind-filter'), {
+        target: { value: 'question' },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Primary Question' })).toBeInTheDocument();
+      });
+      expect(screen.queryByRole('heading', { name: 'Evidence Support' })).not.toBeInTheDocument();
+
+      expect(screen.getByText('studiesWorkspace.branchMetadata.synthesisTitle')).toBeInTheDocument();
+      expect(screen.getByTestId('studies-synthesis-card-openQuestions')).toHaveTextContent('1');
+      expect(screen.getByTestId('studies-synthesis-lane-openQuestions')).toBeInTheDocument();
+      expect(screen.getByTestId('studies-synthesis-item-openQuestions-question-branch')).toHaveTextContent('Open Question');
+      expect(screen.getByTestId('studies-synthesis-item-openQuestions-question-branch')).toHaveTextContent('studiesWorkspace.outlinePilot.branchRelations.supports');
+      expect(screen.getAllByText(/studiesWorkspace\.branchMetadata\.synthesisCards\.openQuestions/i).length).toBeGreaterThan(0);
+    });
+
+    it('keeps synthesis support badges when search narrows the visible notes but not the workspace relation graph', async () => {
+      const questionContent = [
+        '## Open Question',
+        'Question body',
+      ].join('\n');
+      const evidenceContent = [
+        '## Confirmed Evidence',
+        'Supports [Open Question](#branch=question-branch "supports").',
+      ].join('\n');
+      const questionOutline = parseStudyNoteOutline(questionContent);
+      const questionRecord = createStudyNoteBranchStateRecord(questionOutline.branches, '1', 'question-branch');
+
+      expect(questionRecord).not.toBeNull();
+
+      const notes: StudyNote[] = [
+        createMockNote({ id: 'question-note', title: 'Primary Question', content: questionContent }),
+        createMockNote({ id: 'evidence-note', title: 'Evidence Support', content: evidenceContent }),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+      mockUseStudyNoteBranchStates.mockReturnValue({
+        ...baseUseStudyNoteBranchStatesValue(),
+        branchStates: [
+          {
+            id: 'question-note',
+            noteId: 'question-note',
+            userId: 'mock-user',
+            branchRecords: [
+              {
+                ...questionRecord!,
+                branchKind: 'question',
+                branchStatus: 'tentative',
+              },
+            ],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-17T00:00:00.000Z',
+            updatedAt: '2026-03-17T00:00:00.000Z',
+          },
+        ] as any,
+      });
+
+      render(<StudiesPage />);
+
+      fireEvent.change(screen.getByPlaceholderText(/studiesWorkspace\.searchPlaceholder/i), {
+        target: { value: 'Primary' },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Primary Question' })).toBeInTheDocument();
+      });
+      expect(screen.queryByRole('heading', { name: 'Evidence Support' })).not.toBeInTheDocument();
+      expect(screen.getByTestId('studies-synthesis-item-openQuestions-question-branch')).toHaveTextContent(
+        'studiesWorkspace.outlinePilot.branchRelations.supports'
+      );
+    });
+
+    it('renders question-centered synthesis clusters with hidden support and application branches from the wider workspace graph', async () => {
+      const questionContent = [
+        '## Open Question',
+        'Question body',
+      ].join('\n');
+      const evidenceContent = [
+        '## Confirmed Evidence',
+        'Supports [Open Question](#branch=question-branch "supports").',
+      ].join('\n');
+      const applicationContent = [
+        '## Application Step',
+        'Applies [Open Question](#branch=question-branch "applies").',
+      ].join('\n');
+      const questionOutline = parseStudyNoteOutline(questionContent);
+      const evidenceOutline = parseStudyNoteOutline(evidenceContent);
+      const applicationOutline = parseStudyNoteOutline(applicationContent);
+      const questionRecord = createStudyNoteBranchStateRecord(questionOutline.branches, '1', 'question-branch');
+      const evidenceRecord = createStudyNoteBranchStateRecord(evidenceOutline.branches, '1', 'evidence-branch');
+      const applicationRecord = createStudyNoteBranchStateRecord(applicationOutline.branches, '1', 'application-branch');
+
+      expect(questionRecord).not.toBeNull();
+      expect(evidenceRecord).not.toBeNull();
+      expect(applicationRecord).not.toBeNull();
+
+      const notes: StudyNote[] = [
+        createMockNote({ id: 'question-note', title: 'Primary Question', content: questionContent }),
+        createMockNote({ id: 'evidence-note', title: 'Evidence Support', content: evidenceContent }),
+        createMockNote({ id: 'application-note', title: 'Application Guide', content: applicationContent }),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+      mockUseStudyNoteBranchStates.mockReturnValue({
+        ...baseUseStudyNoteBranchStatesValue(),
+        branchStates: [
+          {
+            id: 'question-note',
+            noteId: 'question-note',
+            userId: 'mock-user',
+            branchRecords: [
+              {
+                ...questionRecord!,
+                branchKind: 'question',
+                branchStatus: 'tentative',
+                semanticLabel: 'Grace',
+              },
+            ],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-17T00:00:00.000Z',
+            updatedAt: '2026-03-17T00:00:00.000Z',
+          },
+          {
+            id: 'evidence-note',
+            noteId: 'evidence-note',
+            userId: 'mock-user',
+            branchRecords: [
+              {
+                ...evidenceRecord!,
+                branchKind: 'evidence',
+                branchStatus: 'confirmed',
+              },
+            ],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-17T00:00:00.000Z',
+            updatedAt: '2026-03-17T00:00:00.000Z',
+          },
+          {
+            id: 'application-note',
+            noteId: 'application-note',
+            userId: 'mock-user',
+            branchRecords: [
+              {
+                ...applicationRecord!,
+                branchKind: 'application',
+                branchStatus: 'active',
+              },
+            ],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-17T00:00:00.000Z',
+            updatedAt: '2026-03-17T00:00:00.000Z',
+          },
+        ] as any,
+      });
+
+      render(<StudiesPage />);
+
+      fireEvent.change(screen.getByPlaceholderText(/studiesWorkspace\.searchPlaceholder/i), {
+        target: { value: 'Primary' },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Primary Question' })).toBeInTheDocument();
+      });
+      expect(screen.queryByRole('heading', { name: 'Evidence Support' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('heading', { name: 'Application Guide' })).not.toBeInTheDocument();
+
+      expect(screen.getByTestId('studies-synthesis-clusters')).toBeInTheDocument();
+      expect(screen.getByTestId('studies-synthesis-cluster-question-branch')).toHaveTextContent('Open Question');
+
+      const supportLink = screen.getByTestId(
+        'studies-synthesis-cluster-link-question-branch-support-evidence-branch'
+      );
+      expect(supportLink).toHaveTextContent('Confirmed Evidence');
+      expect(supportLink).toHaveAttribute('href', '/studies/evidence-note?search=Primary#branch=evidence-branch');
+
+      const applicationLink = screen.getByTestId(
+        'studies-synthesis-cluster-link-question-branch-application-application-branch'
+      );
+      expect(applicationLink).toHaveTextContent('Application Step');
+      expect(applicationLink).toHaveAttribute('href', '/studies/application-note?search=Primary#branch=application-branch');
+    });
+
     it('renders branch review lanes as a stable cross-note inventory and preserves the query lens in branch links', async () => {
       const notes: StudyNote[] = [
         createMockNote({ id: '1', title: 'Evidence Note' }),
