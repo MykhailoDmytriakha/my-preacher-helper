@@ -23,6 +23,10 @@ import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
 import { StudyNote, StudyNoteBranchKind, StudyNoteBranchStatus } from '@/models/models';
+import {
+  getStudyNoteBranchRelationTranslationKey,
+  normalizeStudyNoteBranchRelationKey,
+} from '@/utils/studyNoteBranchLinks';
 
 import { getBooksForDropdown, BibleLocale } from './bibleData';
 import ShareNoteModal from './components/ShareNoteModal';
@@ -35,6 +39,7 @@ import {
   buildStudyWorkspaceTopSemanticLabels,
   StudyNoteMetadataLabelFilter,
 } from './utils/studyNoteMetadataSummary';
+import { buildStudyWorkspaceRelationData } from './utils/studyNoteRelationSummary';
 
 type NoteTabType = 'all' | 'notes' | 'questions';
 type MetadataBranchKindFilter = StudyNoteBranchKind | '';
@@ -97,6 +102,7 @@ export default function StudiesPage() {
     defaultValue: 'all',
     parse: (value) => (value === 'labeled' ? 'labeled' : 'all'),
   });
+  const [branchRelationFilter, setBranchRelationFilter] = useQueryState('branchRelation', { defaultValue: '' });
 
   // Type tabs
   const [activeTab, setActiveTab] = useQueryState<NoteTabType>('tab', { defaultValue: 'all', parse: (val) => val as NoteTabType });
@@ -119,6 +125,7 @@ export default function StudiesPage() {
   const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(new Set());
   const [allExpanded, setAllExpanded] = useState(false);
   const [expandedReviewLaneIds, setExpandedReviewLaneIds] = useState<Set<string>>(new Set());
+  const [expandedRelationLaneLabels, setExpandedRelationLaneLabels] = useState<Set<string>>(new Set());
 
 
   // Merge available tags with tags from notes
@@ -143,6 +150,10 @@ export default function StudiesPage() {
     () => buildStudyNoteMetadataSummaryMap(branchStates),
     [branchStates]
   );
+  const noteRelationSummaryByNoteId = useMemo(
+    () => buildStudyWorkspaceRelationData(notes, branchStates).relationSummaryByNoteId,
+    [branchStates, notes]
+  );
 
   const metadataScopeNotes = useMemo(() => {
     return filterAndSortStudyNotes({
@@ -152,9 +163,10 @@ export default function StudiesPage() {
       bookFilter,
       searchTokens,
       noteMetadataSummaryByNoteId,
+      noteRelationSummaryByNoteId,
       bibleLocale,
     });
-  }, [notes, activeTab, tagFilter, bookFilter, searchTokens, noteMetadataSummaryByNoteId, bibleLocale]);
+  }, [notes, activeTab, tagFilter, bookFilter, searchTokens, noteMetadataSummaryByNoteId, noteRelationSummaryByNoteId, bibleLocale]);
 
   const workspaceMetadataCounts = useMemo(
     () => buildStudyWorkspaceMetadataCounts(metadataScopeNotes, noteMetadataSummaryByNoteId),
@@ -165,6 +177,12 @@ export default function StudiesPage() {
     () => buildStudyWorkspaceTopSemanticLabels(metadataScopeNotes, noteMetadataSummaryByNoteId),
     [metadataScopeNotes, noteMetadataSummaryByNoteId]
   );
+  const scopedRelationData = useMemo(
+    () => buildStudyWorkspaceRelationData(metadataScopeNotes, branchStates, { liveTargetNotes: notes }),
+    [branchStates, metadataScopeNotes, notes]
+  );
+  const topRelationLabels = scopedRelationData.topRelationLabels;
+  const relationLanes = scopedRelationData.relationLanes;
 
   // Filter notes
   const filteredNotes = useMemo(() => {
@@ -177,7 +195,9 @@ export default function StudiesPage() {
       branchKindFilter,
       branchStatusFilter,
       branchLabelFilter,
+      branchRelationFilter,
       noteMetadataSummaryByNoteId,
+      noteRelationSummaryByNoteId,
       bibleLocale,
     });
   }, [
@@ -189,7 +209,9 @@ export default function StudiesPage() {
     branchKindFilter,
     branchStatusFilter,
     branchLabelFilter,
+    branchRelationFilter,
     noteMetadataSummaryByNoteId,
+    noteRelationSummaryByNoteId,
     bibleLocale,
   ]);
 
@@ -222,6 +244,10 @@ export default function StudiesPage() {
     if (branchLabelFilter === 'labeled') {
       nextSearchParams.set('branchLabel', 'labeled');
     }
+    const normalizedRelationFilter = normalizeStudyNoteBranchRelationKey(branchRelationFilter);
+    if (normalizedRelationFilter) {
+      nextSearchParams.set('branchRelation', normalizedRelationFilter);
+    }
 
     return nextSearchParams.toString();
   }, [
@@ -229,10 +255,18 @@ export default function StudiesPage() {
     bookFilter,
     branchKindFilter,
     branchLabelFilter,
+    branchRelationFilter,
     branchStatusFilter,
     searchQueryParam,
     tagFilter,
   ]);
+  const normalizedBranchRelationFilter = branchRelationFilter.trim().toLowerCase();
+  const canonicalBranchRelationFilter =
+    normalizeStudyNoteBranchRelationKey(branchRelationFilter) ?? normalizedBranchRelationFilter;
+  const activeRelationFilterLabel = useMemo(() => {
+    const relationTranslationKey = getStudyNoteBranchRelationTranslationKey(canonicalBranchRelationFilter);
+    return relationTranslationKey ? t(relationTranslationKey) : branchRelationFilter;
+  }, [branchRelationFilter, canonicalBranchRelationFilter, t]);
   const buildWorkspaceBranchHref = useCallback(
     (noteId: string, branchId: string) => {
       const noteHref = `/studies/${noteId}`;
@@ -252,6 +286,19 @@ export default function StudiesPage() {
       }
 
       return nextLaneIds;
+    });
+  }, []);
+  const toggleRelationLaneExpansion = useCallback((relationLabel: string) => {
+    setExpandedRelationLaneLabels((currentLabels) => {
+      const nextLabels = new Set(currentLabels);
+
+      if (nextLabels.has(relationLabel)) {
+        nextLabels.delete(relationLabel);
+      } else {
+        nextLabels.add(relationLabel);
+      }
+
+      return nextLabels;
     });
   }, []);
 
@@ -383,9 +430,10 @@ export default function StudiesPage() {
     setBranchKindFilter('');
     setBranchStatusFilter('');
     setBranchLabelFilter('all');
+    setBranchRelationFilter('');
   };
 
-  const hasMetadataFilters = !!branchKindFilter || !!branchStatusFilter || branchLabelFilter === 'labeled';
+  const hasMetadataFilters = !!branchKindFilter || !!branchStatusFilter || branchLabelFilter === 'labeled' || !!branchRelationFilter;
   const hasActiveFilters = searchQueryParam || tagFilter || bookFilter || hasMetadataFilters;
 
   return (
@@ -621,8 +669,23 @@ export default function StudiesPage() {
                   : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'
               }`}
             >
-              {t('studiesWorkspace.branchMetadata.labeledOnly')} ({workspaceMetadataCounts.labeledNotes})
+                  {t('studiesWorkspace.branchMetadata.labeledOnly')} ({workspaceMetadataCounts.labeledNotes})
             </button>
+            {topRelationLabels.length > 0 && (
+              <button
+                type="button"
+                data-testid="studies-branch-relation-filter-clear-toggle"
+                onClick={() => setBranchRelationFilter('')}
+                disabled={branchStatesLoading || !branchRelationFilter}
+                className={`inline-flex items-center justify-center rounded-lg border px-3 py-2.5 text-sm font-medium transition disabled:opacity-60 ${
+                  branchRelationFilter
+                    ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100'
+                    : 'border-gray-200 bg-white text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500'
+                }`}
+              >
+                {activeRelationFilterLabel || t('studiesWorkspace.branchMetadata.allRelations')}
+              </button>
+            )}
             {hasMetadataFilters && (
               <button
                 type="button"
@@ -630,6 +693,7 @@ export default function StudiesPage() {
                   setBranchKindFilter('');
                   setBranchStatusFilter('');
                   setBranchLabelFilter('all');
+                  setBranchRelationFilter('');
                 }}
                 className="inline-flex items-center justify-center rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
               >
@@ -696,6 +760,34 @@ export default function StudiesPage() {
                   {labelEntry.label}
                   <span className="ml-2 rounded-full bg-white/80 px-2 py-0.5 text-xs font-semibold tabular-nums text-violet-700 dark:bg-gray-900/70 dark:text-violet-200">
                     {labelEntry.noteCount}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {topRelationLabels.length > 0 && (
+          <div className="space-y-2">
+            <div className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+              {t('studiesWorkspace.branchMetadata.topRelations')}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {topRelationLabels.map((relationEntry) => (
+                <button
+                  key={`workspace-top-relation-${relationEntry.relationKey}`}
+                  type="button"
+                  data-testid={`studies-top-relation-${encodeURIComponent(relationEntry.relationKey)}`}
+                  onClick={() => setBranchRelationFilter(relationEntry.relationKey)}
+                  className={`inline-flex items-center rounded-full border px-3 py-1 text-sm font-medium transition ${
+                    canonicalBranchRelationFilter === relationEntry.relationKey
+                      ? 'border-amber-300 bg-amber-100 text-amber-800 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100'
+                      : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200 dark:hover:bg-amber-900/50'
+                  }`}
+                >
+                  {t(getStudyNoteBranchRelationTranslationKey(relationEntry.relationKey) ?? relationEntry.label)}
+                  <span className="ml-2 rounded-full bg-white/80 px-2 py-0.5 text-xs font-semibold tabular-nums text-amber-700 dark:bg-gray-900/70 dark:text-amber-200">
+                    {relationEntry.relationCount}
                   </span>
                 </button>
               ))}
@@ -788,6 +880,115 @@ export default function StudiesPage() {
                         type="button"
                         data-testid={`studies-review-lane-toggle-${lane.id}`}
                         onClick={() => toggleReviewLaneExpansion(lane.id)}
+                        className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+                      >
+                        {isLaneExpanded
+                          ? t('studiesWorkspace.branchMetadata.showLessLaneItems')
+                          : t('studiesWorkspace.branchMetadata.showAllLaneItems', { count: lane.items.length })}
+                      </button>
+                    )}
+                  </section>
+                );
+              })}
+          </div>
+        </div>
+      )}
+
+      {relationLanes.some((lane) => !canonicalBranchRelationFilter || lane.relationKey === canonicalBranchRelationFilter) && (
+        <div className="space-y-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-gray-700 dark:text-gray-200">
+              {t('studiesWorkspace.branchMetadata.relationReviewTitle')}
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              {t('studiesWorkspace.branchMetadata.relationReviewHint')}
+            </p>
+          </div>
+
+          <div className="grid gap-3 xl:grid-cols-2">
+            {relationLanes
+              .filter((lane) => !canonicalBranchRelationFilter || lane.relationKey === canonicalBranchRelationFilter)
+              .map((lane) => {
+                const isLaneExpanded = expandedRelationLaneLabels.has(lane.relationLabel);
+                const visibleLaneItems = isLaneExpanded
+                  ? lane.items
+                  : lane.items.slice(0, REVIEW_LANE_COLLAPSED_LIMIT);
+
+                return (
+                  <section
+                    key={`workspace-relation-lane-${lane.relationLabel}`}
+                    data-testid={`studies-relation-lane-${encodeURIComponent(lane.relationKey)}`}
+                    className="space-y-3 rounded-2xl border border-gray-200 bg-gray-50/80 p-4 dark:border-gray-700 dark:bg-gray-800/50"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                        {t(getStudyNoteBranchRelationTranslationKey(lane.relationKey) ?? lane.relationLabel)}
+                      </div>
+                      <div className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold tabular-nums text-gray-700 shadow-sm dark:bg-gray-900/80 dark:text-gray-200">
+                        {lane.items.length}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      {visibleLaneItems.map((item) => {
+                        const relationItemContent = (
+                          <>
+                            <div className="min-w-0 space-y-1">
+                              <div className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                {item.sourceBranchTitle}
+                                <span className="mx-2 text-gray-400">→</span>
+                                {item.targetBranchTitle}
+                              </div>
+                              <div className="truncate text-xs text-gray-500 dark:text-gray-400">
+                                {item.sourceNoteTitle}
+                                {item.targetNoteTitle ? ` → ${item.targetNoteTitle}` : ''}
+                              </div>
+                              <div className="flex flex-wrap gap-1.5">
+                                <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                                  {t(getStudyNoteBranchRelationTranslationKey(item.relationKey) ?? item.relationLabel)}
+                                </span>
+                                {!item.isResolved && (
+                                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                                    {t('studiesWorkspace.branchMetadata.anchorNeedsRefresh')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <LinkIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+                          </>
+                        );
+
+                        if (!item.isResolved || !item.targetNoteId) {
+                          return (
+                            <div
+                              key={`workspace-relation-item-${item.relationKey}-${item.targetBranchId}-${item.sourceBranchTitle}`}
+                              data-testid={`studies-relation-item-unresolved-${encodeURIComponent(item.relationKey)}-${item.targetBranchId}`}
+                              className="flex items-start justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-900/70"
+                            >
+                              {relationItemContent}
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <Link
+                            key={`workspace-relation-item-${item.relationKey}-${item.targetBranchId}-${item.sourceBranchTitle}`}
+                            data-testid={`studies-relation-item-${encodeURIComponent(item.relationKey)}-${item.targetBranchId}`}
+                            href={buildWorkspaceBranchHref(item.targetNoteId, item.targetBranchId)}
+                            className="flex items-start justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-3 transition hover:border-amber-200 hover:bg-amber-50/50 dark:border-gray-700 dark:bg-gray-900/70 dark:hover:border-amber-800 dark:hover:bg-amber-950/20"
+                          >
+                            {relationItemContent}
+                          </Link>
+                        );
+                      })}
+                    </div>
+
+                    {lane.items.length > REVIEW_LANE_COLLAPSED_LIMIT && (
+                      <button
+                        type="button"
+                        data-testid={`studies-relation-lane-toggle-${encodeURIComponent(lane.relationKey)}`}
+                        onClick={() => toggleRelationLaneExpansion(lane.relationLabel)}
                         className="inline-flex items-center rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
                       >
                         {isLaneExpanded

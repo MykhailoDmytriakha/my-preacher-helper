@@ -474,7 +474,29 @@ describe('StudyNoteEditorPage Pagination', () => {
     });
 
     it('keeps metadata filters in the detail-page navigation lens', () => {
-        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('tag=tag1&branchKind=evidence'));
+        const relationNotes: StudyNote[] = [
+            { ...createMockNote('note-0', 'Prev Note'), content: 'Plain content', updatedAt: '2024-01-03T00:00:00.000Z' },
+            {
+                ...createMockNote('note-1', 'Current Note'),
+                content: ['## Main', 'See [Shared](#branch=branch-shared "supports")'].join('\n'),
+                updatedAt: '2024-01-02T00:00:00.000Z',
+            },
+            {
+                ...createMockNote('note-2', 'Next Note'),
+                content: ['## Main', 'See [Shared](#branch=branch-shared "supports")'].join('\n'),
+                updatedAt: '2024-01-01T00:00:00.000Z',
+            },
+        ];
+
+        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('tag=tag1&branchKind=evidence&branchRelation=supports'));
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: relationNotes,
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
         mockUseStudyNoteBranchStates.mockReturnValue({
             uid: 'user-1',
             branchStates: [
@@ -494,7 +516,15 @@ describe('StudyNoteEditorPage Pagination', () => {
 
         fireEvent.click(screen.getByTitle('common.next'));
 
-        expect(mockRouter.push).toHaveBeenCalledWith('/studies/note-2?tag=tag1&branchKind=evidence');
+        expect(mockRouter.push).toHaveBeenCalledWith('/studies/note-2?tag=tag1&branchKind=evidence&branchRelation=supports');
+    });
+
+    it('loads branch-state navigation helpers when branchRelation is the only metadata lens', () => {
+        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('branchRelation=supports'));
+
+        render(<StudyNoteEditorPage />);
+
+        expect(mockUseStudyNoteBranchStates).toHaveBeenCalledWith({ enabled: true });
     });
 
     it('responds to ArrowLeft and ArrowRight keyboard events when not editing', () => {

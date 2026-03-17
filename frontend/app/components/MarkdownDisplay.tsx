@@ -1,10 +1,14 @@
 'use client';
 
 import React, { memo, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-import { parseStudyNoteBranchLinkMeta } from '@/utils/studyNoteBranchLinks';
+import {
+    getStudyNoteBranchRelationTranslationKey,
+    parseStudyNoteBranchLinkMeta,
+} from '@/utils/studyNoteBranchLinks';
 import HighlightedText from '@components/HighlightedText';
 
 interface MarkdownDisplayProps {
@@ -37,6 +41,7 @@ const MarkdownDisplay = ({
     searchQuery = '',
     onBranchLinkClick,
 }: MarkdownDisplayProps) => {
+    const { t } = useTranslation();
     const processedContent = useMemo(() => formatStructuredBlocks(content), [content]);
 
     const renderHighlighted = useCallback(
@@ -57,6 +62,10 @@ const MarkdownDisplay = ({
                         const branchLinkMeta = parseStudyNoteBranchLinkMeta(href, title);
 
                         if (branchLinkMeta) {
+                            const relationTranslationKey = getStudyNoteBranchRelationTranslationKey(
+                                branchLinkMeta.relationKey ?? branchLinkMeta.relationLabel
+                            );
+
                             return (
                                 <span className="inline-flex flex-wrap items-center gap-1 align-baseline">
                                     <a
@@ -76,7 +85,7 @@ const MarkdownDisplay = ({
                                     </a>
                                     {branchLinkMeta.relationLabel && (
                                         <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-900/30 dark:text-emerald-200">
-                                            {branchLinkMeta.relationLabel}
+                                            {relationTranslationKey ? t(relationTranslationKey) : branchLinkMeta.relationLabel}
                                         </span>
                                     )}
                                 </span>

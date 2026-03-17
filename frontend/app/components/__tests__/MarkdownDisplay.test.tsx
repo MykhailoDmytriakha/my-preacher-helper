@@ -1,5 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 
+jest.mock('react-i18next', () => ({
+    useTranslation: () => ({
+        t: (key: string) => key,
+    }),
+}));
+
 jest.mock('react-markdown', () => ({
     __esModule: true,
     default: ({
@@ -46,7 +52,7 @@ describe('MarkdownDisplay', () => {
     it('renders relation labels for internal branch links that use markdown titles', () => {
         render(<MarkdownDisplay content='See [Child Branch](#branch=branch-child "supports")' />);
 
-        expect(screen.getByText('supports')).toBeInTheDocument();
+        expect(screen.getByText('studiesWorkspace.outlinePilot.branchRelations.supports')).toBeInTheDocument();
     });
 
     it('keeps regular links as external links', () => {

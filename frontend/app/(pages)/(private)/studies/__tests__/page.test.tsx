@@ -6,6 +6,8 @@ import { useStudyNoteBranchStates } from '@/hooks/useStudyNoteBranchStates';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { StudyNote } from '@/models/models';
+import { createStudyNoteBranchStateRecord } from '../components/studyNoteBranchIdentity';
+import { parseStudyNoteOutline } from '../components/studyNoteOutline';
 
 import StudiesPage from '../page';
 
@@ -708,6 +710,60 @@ describe('StudiesPage', () => {
       await waitFor(() => {
         expect(screen.getByPlaceholderText(/studiesWorkspace\.searchPlaceholder/i)).toHaveValue('Grace');
       });
+    });
+
+    it('builds relation review surfaces and preserves the active relation lens in branch links', async () => {
+      const sourceContent = [
+        '## Source Branch',
+        'See [Target Branch](#branch=branch-target "supports").',
+      ].join('\n');
+      const targetContent = [
+        '## Target Branch',
+        'Target body',
+      ].join('\n');
+      const targetOutline = parseStudyNoteOutline(targetContent);
+      const targetRecord = createStudyNoteBranchStateRecord(targetOutline.branches, '1', 'branch-target');
+      const notes: StudyNote[] = [
+        createMockNote({ id: '1', title: 'Source Note', content: sourceContent }),
+        createMockNote({ id: '2', title: 'Target Note', content: targetContent }),
+      ];
+
+      expect(targetRecord).not.toBeNull();
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+      mockUseStudyNoteBranchStates.mockReturnValue({
+        ...baseUseStudyNoteBranchStatesValue(),
+        branchStates: [
+          {
+            id: '2',
+            noteId: '2',
+            userId: 'mock-user',
+            branchRecords: [targetRecord!],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-16T00:00:00.000Z',
+            updatedAt: '2026-03-16T00:00:00.000Z',
+          },
+        ] as any,
+      });
+
+      render(<StudiesPage />);
+
+      await userEvent.click(screen.getByTestId(`studies-top-relation-${encodeURIComponent('supports')}`));
+
+      await waitFor(() => {
+        expect(screen.getByRole('heading', { name: 'Source Note' })).toBeInTheDocument();
+      });
+      expect(screen.getByRole('heading', { name: 'Target Note' })).toBeInTheDocument();
+      expect(screen.getByText('studiesWorkspace.branchMetadata.relationReviewTitle')).toBeInTheDocument();
+
+      const relationLink = screen.getByTestId(`studies-relation-item-${encodeURIComponent('supports')}-branch-target`);
+      expect(relationLink).toHaveAttribute('href', '/studies/2?branchRelation=supports#branch=branch-target');
+      expect(relationLink).toHaveTextContent('Source Branch');
+      expect(relationLink).toHaveTextContent('Target Branch');
     });
 
     it('renders branch review lanes as a stable cross-note inventory and preserves the query lens in branch links', async () => {

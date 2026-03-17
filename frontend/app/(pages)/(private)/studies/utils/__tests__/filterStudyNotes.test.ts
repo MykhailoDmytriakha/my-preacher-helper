@@ -1,7 +1,10 @@
 import { StudyNote } from '@/models/models';
+import { createStudyNoteBranchStateRecord } from '../../components/studyNoteBranchIdentity';
+import { parseStudyNoteOutline } from '../../components/studyNoteOutline';
 
 import { filterAndSortStudyNotes } from '../filterStudyNotes';
 import { buildStudyNoteMetadataSummaryMap } from '../studyNoteMetadataSummary';
+import { buildStudyWorkspaceRelationData } from '../studyNoteRelationSummary';
 
 function createNote(id: string, overrides: Partial<StudyNote> = {}): StudyNote {
     return {
@@ -150,6 +153,133 @@ describe('filterAndSortStudyNotes', () => {
             notes,
             searchTokens: ['blessing'],
             noteMetadataSummaryByNoteId: metadataSummaryByNoteId,
+            bibleLocale: 'en',
+        }).map((note) => note.id)).toEqual(['1']);
+    });
+
+    it('filters notes by derived relation labels and relation search text', () => {
+        const notes = [
+            createNote('1', {
+                title: 'Supports note',
+                content: [
+                    '## Source',
+                    'See [Target](#branch=branch-target "supports")',
+                ].join('\n'),
+            }),
+            createNote('2', {
+                title: 'Target note',
+                content: [
+                    '## Target',
+                    'Target body',
+                ].join('\n'),
+            }),
+            createNote('3', {
+                title: 'Unrelated note',
+                content: 'Plain note',
+            }),
+        ];
+        const targetOutline = parseStudyNoteOutline(notes[1].content);
+        const targetRecord = createStudyNoteBranchStateRecord(targetOutline.branches, '1', 'branch-target');
+
+        expect(targetRecord).not.toBeNull();
+
+        const relationSummaryByNoteId = buildStudyWorkspaceRelationData(notes, [
+            {
+                id: 'branch-state-2',
+                noteId: '2',
+                userId: 'user-1',
+                branchRecords: [targetRecord!],
+                readFoldedBranchIds: [],
+                previewFoldedBranchIds: [],
+                createdAt: '2026-03-16T00:00:00.000Z',
+                updatedAt: '2026-03-16T00:00:00.000Z',
+            },
+        ] as any).relationSummaryByNoteId;
+
+        expect(filterAndSortStudyNotes({
+            notes,
+            branchRelationFilter: 'supports',
+            noteRelationSummaryByNoteId: relationSummaryByNoteId,
+            bibleLocale: 'en',
+        }).map((note) => note.id)).toEqual(['1', '2']);
+
+        expect(filterAndSortStudyNotes({
+            notes,
+            searchTokens: ['supports'],
+            noteRelationSummaryByNoteId: relationSummaryByNoteId,
+            bibleLocale: 'en',
+        }).map((note) => note.id)).toEqual(['1', '2']);
+    });
+
+    it('applies relation and metadata filters together with AND semantics', () => {
+        const relationSummaryByNoteId = new Map([
+            ['1', { noteId: '1', totalRelations: 1, relationCounts: { supports: 1 }, relationLabels: ['supports'], normalizedRelationLabels: ['supports'] }],
+            ['2', { noteId: '2', totalRelations: 1, relationCounts: { supports: 1 }, relationLabels: ['supports'], normalizedRelationLabels: ['supports'] }],
+        ]) as any;
+        const metadataSummaryByNoteId = buildStudyNoteMetadataSummaryMap([
+            {
+                id: '1',
+                noteId: '1',
+                userId: 'user-1',
+                branchRecords: [
+                    {
+                        branchId: 'branch-1',
+                        title: 'Alpha',
+                        titleSlug: 'alpha',
+                        parentSlugChain: [],
+                        bodyHash: '1',
+                        subtreeHash: '1',
+                        subtreeContentHash: '1',
+                        subtreeOccurrenceIndex: 0,
+                        contextualOccurrenceIndex: 0,
+                        relaxedOccurrenceIndex: 0,
+                        contextualContentOccurrenceIndex: 0,
+                        relaxedContentOccurrenceIndex: 0,
+                        branchKind: 'evidence',
+                    },
+                ],
+                readFoldedBranchIds: [],
+                previewFoldedBranchIds: [],
+                createdAt: '2026-03-13T00:00:00.000Z',
+                updatedAt: '2026-03-13T00:00:00.000Z',
+            },
+            {
+                id: '2',
+                noteId: '2',
+                userId: 'user-1',
+                branchRecords: [
+                    {
+                        branchId: 'branch-2',
+                        title: 'Beta',
+                        titleSlug: 'beta',
+                        parentSlugChain: [],
+                        bodyHash: '2',
+                        subtreeHash: '2',
+                        subtreeContentHash: '2',
+                        subtreeOccurrenceIndex: 0,
+                        contextualOccurrenceIndex: 0,
+                        relaxedOccurrenceIndex: 0,
+                        contextualContentOccurrenceIndex: 0,
+                        relaxedContentOccurrenceIndex: 0,
+                        branchKind: 'question',
+                    },
+                ],
+                readFoldedBranchIds: [],
+                previewFoldedBranchIds: [],
+                createdAt: '2026-03-13T00:00:00.000Z',
+                updatedAt: '2026-03-13T00:00:00.000Z',
+            },
+        ] as any);
+
+        expect(filterAndSortStudyNotes({
+            notes: [
+                createNote('1', { updatedAt: '2026-03-10T02:00:00.000Z' }),
+                createNote('2', { updatedAt: '2026-03-10T01:00:00.000Z' }),
+            ],
+            branchKindFilter: 'evidence',
+            branchRelationFilter: 'supports',
+            noteMetadataSummaryByNoteId: metadataSummaryByNoteId,
+            noteRelationSummaryByNoteId: relationSummaryByNoteId,
             bibleLocale: 'en',
         }).map((note) => note.id)).toEqual(['1']);
     });

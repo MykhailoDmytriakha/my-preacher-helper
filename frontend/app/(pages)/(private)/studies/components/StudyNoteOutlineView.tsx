@@ -4,6 +4,7 @@ import { ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, ChevronDownI
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { getStudyNoteBranchRelationTranslationKey } from '@/utils/studyNoteBranchLinks';
 import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
@@ -713,7 +714,10 @@ export function StudyNoteOutlineView({
                                     <span>{backlink.sourceBranchTitle}</span>
                                     {backlink.relationLabel && (
                                         <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-700 dark:border-emerald-800/70 dark:bg-emerald-900/30 dark:text-emerald-200">
-                                            {backlink.relationLabel}
+                                            {t(
+                                                getStudyNoteBranchRelationTranslationKey(backlink.relationLabel)
+                                                ?? backlink.relationLabel
+                                            )}
                                         </span>
                                     )}
                                 </button>

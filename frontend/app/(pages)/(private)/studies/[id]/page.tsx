@@ -80,6 +80,7 @@ import {
     type StudyNoteMetadataLabelFilter,
     type StudyNoteMetadataSummary,
 } from '../utils/studyNoteMetadataSummary';
+import { buildStudyWorkspaceRelationData, type StudyNoteRelationSummary } from '../utils/studyNoteRelationSummary';
 
 import { useResizableOutlinePreview } from './useResizableOutlinePreview';
 
@@ -97,7 +98,8 @@ function useFilteredNotes(
     notes: StudyNote[],
     searchParams: URLSearchParams,
     bibleLocale: BibleLocale,
-    noteMetadataSummaryByNoteId?: Map<string, StudyNoteMetadataSummary>
+    noteMetadataSummaryByNoteId?: Map<string, StudyNoteMetadataSummary>,
+    noteRelationSummaryByNoteId?: Map<string, StudyNoteRelationSummary>
 ) {
     const params = useParams();
     const noteId = params.id as string;
@@ -114,6 +116,7 @@ function useFilteredNotes(
     ) ?? '';
     const branchLabelFilter: StudyNoteMetadataLabelFilter =
         searchParams.get('branchLabel') === 'labeled' ? 'labeled' : 'all';
+    const branchRelationFilter = searchParams.get('branchRelation')?.trim() || '';
 
     const searchTokens = useMemo(() => searchQuery.toLowerCase().split(/\s+/).filter(Boolean), [searchQuery]);
 
@@ -128,6 +131,8 @@ function useFilteredNotes(
             branchStatusFilter,
             branchLabelFilter,
             noteMetadataSummaryByNoteId,
+            branchRelationFilter,
+            noteRelationSummaryByNoteId,
             bibleLocale,
         });
     }, [
@@ -140,6 +145,8 @@ function useFilteredNotes(
         branchStatusFilter,
         branchLabelFilter,
         noteMetadataSummaryByNoteId,
+        branchRelationFilter,
+        noteRelationSummaryByNoteId,
         bibleLocale,
     ]);
 
@@ -1387,7 +1394,7 @@ export default function StudyNoteEditorPage() {
     const { uid, notes, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
     const hasMetadataNavigationFilters = useMemo(
         () =>
-            Boolean(searchParams.get('branchKind') || searchParams.get('branchStatus')) ||
+            Boolean(searchParams.get('branchKind') || searchParams.get('branchStatus') || searchParams.get('branchRelation')?.trim()) ||
             searchParams.get('branchLabel') === 'labeled',
         [searchParams]
     );
@@ -1437,6 +1444,10 @@ export default function StudyNoteEditorPage() {
         () => buildStudyNoteMetadataSummaryMap(branchStates),
         [branchStates]
     );
+    const noteRelationSummaryByNoteId = useMemo(
+        () => buildStudyWorkspaceRelationData(notes, branchStates).relationSummaryByNoteId,
+        [branchStates, notes]
+    );
     const [isInitialized, setIsInitialized] = useState(false);
     const {
         noteOutline,
@@ -1482,7 +1493,8 @@ export default function StudyNoteEditorPage() {
         notes,
         searchParams,
         bibleLocale,
-        noteMetadataSummaryByNoteId
+        noteMetadataSummaryByNoteId,
+        noteRelationSummaryByNoteId
     );
 
     useNoteKeyboardNavigation({ isEditing, prevNoteId, nextNoteId, router, searchParams });

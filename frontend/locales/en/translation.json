@@ -1945,6 +1945,10 @@
       "error": "Branch metadata is temporarily unavailable.",
       "labelChip": "Labels",
       "topLabels": "Top labels",
+      "topRelations": "Top relations",
+      "allRelations": "All relations",
+      "relationReviewTitle": "Relation review lanes",
+      "relationReviewHint": "Review actual branch-to-branch reasoning links across notes and jump straight to the target branch.",
       "reviewCards": {
         "evidence": "Evidence notes",
         "questions": "Question notes",

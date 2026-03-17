@@ -430,7 +430,7 @@ describe('StudyNoteOutlineView', () => {
 
         expect(screen.getByText('studiesWorkspace.outlinePilot.referencedBy')).toBeInTheDocument();
         expect(screen.getByTestId('study-note-branch-backlink-2-1')).toBeInTheDocument();
-        expect(screen.getByText('supports')).toBeInTheDocument();
+        expect(screen.getByText('studiesWorkspace.outlinePilot.branchRelations.supports')).toBeInTheDocument();
 
         fireEvent.click(screen.getByTestId('study-note-branch-backlink-2-1'));
 
