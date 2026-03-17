@@ -3,6 +3,7 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import DashboardNav from '@/components/navigation/DashboardNav';
+import { TestProviders } from '../../test-utils/test-providers';
 
 import { User } from 'firebase/auth';
 
@@ -181,7 +182,11 @@ describe('DashboardNav Component', () => {
       photoURL: 'https://example.com/photo.jpg'
     } as User;
 
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     // On dashboard page, the dynamic title should show "Sermons"
     const sermonsTitle = screen.getAllByText('Sermons');
@@ -203,7 +208,11 @@ describe('DashboardNav Component', () => {
     // Mock pathname to be a different page (not dashboard)
     mockUsePathname.mockReturnValue('/sermons');
 
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     // mock active item should be 'Sermons' since it matches dashboardMatcher
     // On non-dashboard pages that match sermons, dynamic link "Sermons" should be visible
@@ -220,7 +229,11 @@ describe('DashboardNav Component', () => {
       photoURL: null
     } as User;
 
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     // Should show the first letter of email
     expect(screen.getByText('T')).toBeInTheDocument();
@@ -234,7 +247,11 @@ describe('DashboardNav Component', () => {
       photoURL: 'https://example.com/photo.jpg'
     } as User;
 
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     const avatar = screen.getByAltText('Avatar');
     expect(avatar).toBeInTheDocument();
@@ -248,7 +265,11 @@ describe('DashboardNav Component', () => {
       displayName: 'Test User'
     } as User;
 
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     // Find avatar button and click it
     const avatarButton = screen.getByTestId('avatar-button');
@@ -280,7 +301,11 @@ describe('DashboardNav Component', () => {
       displayName: 'Test User'
     } as User;
 
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     // Open dropdown - use the specific avatar button testid
     await act(async () => {
@@ -301,7 +326,7 @@ describe('DashboardNav Component', () => {
   test('unsubscribes from auth state changes on unmount', () => {
     // This test is no longer relevant since we don't manage auth state directly in the component
     // Instead, test that the component renders and unmounts without errors
-    const { unmount } = render(<DashboardNav />);
+    const { unmount } = render(<DashboardNav />, { wrapper: TestProviders });
     expect(() => unmount()).not.toThrow();
   });
 
@@ -317,7 +342,11 @@ describe('DashboardNav Component', () => {
       displayName: 'Test User'
     } as User;
 
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     // Mobile menu should be initially closed
     expect(screen.queryByTestId('mobile-menu')).not.toBeInTheDocument();
@@ -353,7 +382,7 @@ describe('DashboardNav Component', () => {
       displayName: 'Test User'
     } as User;
 
-    const { rerender } = render(<DashboardNav />);
+    const { rerender } = render(<DashboardNav />, { wrapper: TestProviders });
 
     // Open mobile menu
     const menuButton = screen.getByRole('button', { name: /open menu/i });
@@ -380,7 +409,11 @@ describe('DashboardNav Component', () => {
     // Set feedback state to show modal
     mockFeedbackState.showFeedbackModal = true;
 
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     // Find and click desktop feedback button 
     const feedbackButton = screen.getByText('Feedback');
@@ -406,7 +439,11 @@ describe('DashboardNav Component', () => {
     // Set feedback state to show modal
     mockFeedbackState.showFeedbackModal = true;
 
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     // Find and click submit feedback button in modal
     const submitButton = screen.getByTestId('submit-feedback');
@@ -425,7 +462,11 @@ describe('DashboardNav Component', () => {
     // Set feedback state to show modal
     mockFeedbackState.showFeedbackModal = true;
 
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     // Find and click submit feedback button in modal
     const submitButton = screen.getByTestId('submit-feedback');
@@ -445,7 +486,11 @@ describe('DashboardNav Component', () => {
       value: 500,
     });
 
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     // Find mobile feedback button (should be just an icon without text)
     const mobileFeedbackButtons = screen.getAllByRole('button', { name: /provide feedback/i });
@@ -454,7 +499,11 @@ describe('DashboardNav Component', () => {
 
   test('renders beta label for groups nav item', async () => {
     mockOldAuthState.user = { uid: 'user123' } as User;
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
     // "Groups" nav item should have "Beta" badge
     await waitFor(() => {
       expect(screen.getByText('Beta')).toBeInTheDocument();
@@ -463,7 +512,11 @@ describe('DashboardNav Component', () => {
 
   test('renders sermon dropdown and closes on outside click', async () => {
     mockUsePathname.mockReturnValue('/sermons/123');
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     // Should show navigation dropdown button
     const navButton = screen.getByLabelText('Navigation menu');
@@ -485,7 +538,11 @@ describe('DashboardNav Component', () => {
     const { push } = useRouter();
 
     mockUsePathname.mockReturnValue('/sermons/123');
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     // Should show mode toggle (since showWizardButton mock is true)
     // ModeToggle renders buttons for Classic and Prep

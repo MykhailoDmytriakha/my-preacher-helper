@@ -29,10 +29,11 @@ jest.mock('@/hooks/useScrollLock', () => ({
     useScrollLock: jest.fn(),
 }));
 
-jest.mock('@/hooks/useOnlineStatus', () => ({
-    useOnlineStatus: jest.fn(() => true),
+const mockUseConnection = jest.fn(() => ({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() }));
+jest.mock('@/providers/ConnectionProvider', () => ({
+  useConnection: () => mockUseConnection(),
+  ConnectionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
-
 jest.mock('@services/thought.service', () => ({
     transcribeThoughtAudio: jest.fn(),
 }));

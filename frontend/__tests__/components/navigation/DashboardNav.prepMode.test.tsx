@@ -5,6 +5,7 @@ import '@testing-library/jest-dom';
 import DashboardNav from '@/components/navigation/DashboardNav';
 import { hasGroupsAccess } from '@/services/userSettings.service';
 import { runScenarios } from '@test-utils/scenarioRunner';
+import { TestProviders } from '../../../test-utils/test-providers';
 import { setDebugModeEnabled } from '@/utils/debugMode';
 
 // Mocks
@@ -94,7 +95,11 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
             run: () => {
               prepModeAccessState = { hasAccess: true, loading: false };
               pathnameMock = '/sermons/test-sermon-id';
-              render(<DashboardNav />);
+              render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
 
               expect(screen.getByTestId('mode-toggle')).toBeInTheDocument();
               expect(screen.getByText('Mode Toggle')).toBeInTheDocument();
@@ -115,7 +120,11 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
             run: () => {
               prepModeAccessState = { hasAccess: false, loading: false };
               pathnameMock = '/sermons/test-sermon-id';
-              render(<DashboardNav />);
+              render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
 
               expect(screen.queryByTestId('mode-toggle')).not.toBeInTheDocument();
               expect(screen.queryByText('Mode Toggle')).not.toBeInTheDocument();
@@ -133,7 +142,11 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
 
               sermonPaths.forEach(path => {
                 pathnameMock = path;
-                render(<DashboardNav />);
+                render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
 
                 expect(screen.queryByTestId('mode-toggle')).not.toBeInTheDocument();
                 cleanup();
@@ -154,7 +167,11 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
             run: () => {
               prepModeAccessState = { hasAccess: false, loading: true };
               pathnameMock = '/sermons/test-sermon-id';
-              render(<DashboardNav />);
+              render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
 
               expect(screen.queryByTestId('mode-toggle')).not.toBeInTheDocument();
             }
@@ -173,7 +190,11 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
             run: () => {
               prepModeAccessState = { hasAccess: true, loading: false };
               pathnameMock = '/dashboard';
-              render(<DashboardNav />);
+              render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
 
               expect(screen.queryByTestId('mode-toggle')).not.toBeInTheDocument();
             }
@@ -183,7 +204,11 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
             run: () => {
               prepModeAccessState = { hasAccess: true, loading: false };
               pathnameMock = '/series';
-              render(<DashboardNav />);
+              render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
 
               expect(screen.queryByTestId('mode-toggle')).not.toBeInTheDocument();
             }
@@ -193,7 +218,11 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
             run: () => {
               prepModeAccessState = { hasAccess: true, loading: false };
               pathnameMock = '/settings';
-              render(<DashboardNav />);
+              render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
 
               expect(screen.queryByTestId('mode-toggle')).not.toBeInTheDocument();
             }
@@ -215,7 +244,11 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
             run: () => {
               prepModeAccessState = { hasAccess: true, loading: false };
               pathnameMock = '/sermons/test-sermon-id';
-              render(<DashboardNav />);
+              render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
 
               expect(consoleSpy).toHaveBeenCalledWith('[debug]', '🔧 DashboardNav: showWizardButton:', true, 'prepModeLoading:', false);
             }

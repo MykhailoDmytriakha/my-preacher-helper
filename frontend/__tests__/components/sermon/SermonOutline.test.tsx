@@ -48,9 +48,10 @@ jest.mock('@/utils/themeColors', () => ({
   }
 }));
 
-const mockUseOnlineStatus = jest.fn(() => true);
-jest.mock('@/hooks/useOnlineStatus', () => ({
-  useOnlineStatus: () => mockUseOnlineStatus(),
+const mockUseConnection = jest.fn(() => ({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() }));
+jest.mock('@/providers/ConnectionProvider', () => ({
+  useConnection: () => mockUseConnection(),
+  ConnectionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 describe('SermonOutline Component', () => {
@@ -100,7 +101,7 @@ describe('SermonOutline Component', () => {
     mockOnOutlineUpdate.mockClear();
     // Clear all mocks might still be useful here to catch unexpected calls
     jest.clearAllMocks();
-    mockUseOnlineStatus.mockReturnValue(true);
+    mockUseConnection.mockReturnValue({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() });
   });
 
   test('renders with initial data fetched from service', async () => {
@@ -457,7 +458,7 @@ describe('SermonOutline Component', () => {
   });
 
   test('uses local sermon outline in offline mode and keeps sections collapsed on mobile', async () => {
-    mockUseOnlineStatus.mockReturnValue(false);
+    mockUseConnection.mockReturnValue({ isOnline: false, isMagicAvailable: false, checkConnection: jest.fn() });
     const originalWidth = window.innerWidth;
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 375 });
 

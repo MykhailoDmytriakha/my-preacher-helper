@@ -1,4 +1,5 @@
 import { BrainstormSuggestion } from "@/models/models";
+import { apiClient } from '@/utils/apiClient';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -8,11 +9,12 @@ export const generateBrainstormSuggestion = async (
   try {
     console.log("generateBrainstormSuggestion: Starting brainstorm generation for sermon:", sermonId);
 
-    const response = await fetch(`${API_BASE}/api/sermons/${sermonId}/brainstorm`, {
+    const response = await apiClient(`${API_BASE}/api/sermons/${sermonId}/brainstorm`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
+      category: 'ai'
     });
 
     console.log("generateBrainstormSuggestion: Received response:", response.status);
@@ -32,4 +34,4 @@ export const generateBrainstormSuggestion = async (
     console.error("generateBrainstormSuggestion: Error generating brainstorm suggestion", error);
     throw error;
   }
-}; 
+};

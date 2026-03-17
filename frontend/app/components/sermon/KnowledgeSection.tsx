@@ -6,8 +6,8 @@ import { useTranslation } from 'react-i18next';
 
 import "@locales/i18n";
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { Sermon, Insights, SermonContent, SectionHints } from '@/models/models';
+import { useConnection } from '@/providers/ConnectionProvider';
 import {
   generateTopics,
   generateRelatedVerses,
@@ -32,12 +32,9 @@ interface KnowledgeSectionProps {
 type InsightSectionType = 'topics' | 'verses' | 'directions';
 type RegenerationFunction = (sermonId: string) => Promise<Insights | null>;
 
-// Use direct translation calls to avoid duplicate string warnings
-
 // Constants for repeated CSS classes and text
-const REFRESH_BUTTON_CLASSES = "p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded transition-colors disabled:opacity-50";
+const REFRESH_BUTTON_CLASSES = "p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded transition-colors disabled:opacity-40 disabled:grayscale disabled:cursor-not-allowed";
 const TOGGLE_BUTTON_CLASSES = "text-xs text-blue-600 dark:text-blue-400 hover:underline focus:outline-none";
-// Use direct translation calls with unique fallback values
 
 const THOUGHTS_THRESHOLD = 10;
 
@@ -340,7 +337,8 @@ const EmptyStateGenerateContainer = ({
   generateLabel,
   isGeneratingAll,
   anyGenerating,
-  onGenerate
+  onGenerate,
+  magicUnavailableLabel
 }: {
   hasEnoughThoughts: boolean;
   noInsightsMessage: string;
@@ -349,6 +347,7 @@ const EmptyStateGenerateContainer = ({
   isGeneratingAll: boolean;
   anyGenerating: boolean;
   onGenerate: () => void;
+  magicUnavailableLabel?: string;
 }) => (
   <div className="mt-3 sm:mt-4">
     <div className="flex flex-col items-center gap-4 p-4 bg-blue-50/50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-800/30">
@@ -365,16 +364,17 @@ const EmptyStateGenerateContainer = ({
       </div>
 
       <button
-        className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap flex items-center justify-center gap-2 transition-colors ${hasEnoughThoughts
+        className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap flex items-center justify-center gap-2 transition-all ${hasEnoughThoughts && !magicUnavailableLabel
           ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
-          : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+          : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50 grayscale'
           }`}
-        onClick={hasEnoughThoughts ? onGenerate : undefined}
-        disabled={!hasEnoughThoughts || anyGenerating}
+        onClick={hasEnoughThoughts && !magicUnavailableLabel ? onGenerate : undefined}
+        disabled={!hasEnoughThoughts || anyGenerating || !!magicUnavailableLabel}
+        title={magicUnavailableLabel}
         data-testid="generate-insights-button"
       >
         {isGeneratingAll ? <LoadingSpinner /> : null}
-        {generateLabel}
+        {magicUnavailableLabel || generateLabel}
       </button>
     </div>
   </div>
@@ -542,8 +542,8 @@ const PlanSection = ({
 
 const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermon }) => {
   const { t } = useTranslation();
-  const isOnline = useOnlineStatus();
-  const disableNetworkActions = !isOnline;
+  const { isMagicAvailable } = useConnection();
+  const disableNetworkActions = !isMagicAvailable;
 
   // UI state
   const [expanded, setExpanded] = useState(false);
@@ -674,15 +674,6 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
   const possibleDirections = localInsights?.possibleDirections ?? [];
   const sectionHints = getSectionHintsFromInsightsOrContent(localInsights, localContent);
 
-  // Debug logging (commented out for production)
-  // console.log('🔍 Debug Plan:', {
-  //   localInsights,
-  //   sectionHints,
-  //   'sectionHints.introduction': sectionHints?.introduction,
-  //   'sectionHints.main': sectionHints?.main,
-  //   'sectionHints.conclusion': sectionHints?.conclusion
-  // });
-
   const hasSectionHints = Boolean(sectionHints && (sectionHints.introduction || sectionHints.main || sectionHints.conclusion));
 
   // Data for rendering
@@ -808,6 +799,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
             isGeneratingAll={isGeneratingAll}
             anyGenerating={disableRefresh}
             onGenerate={handleGenerateAllInsights}
+            magicUnavailableLabel={!isMagicAvailable ? (t('errors.magicUnavailable') || "AI features unavailable offline") : undefined}
           />
         )
       ) : null}

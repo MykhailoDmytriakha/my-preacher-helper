@@ -6,11 +6,11 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import "@locales/i18n";
 
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import useSermon from '@/hooks/useSermon';
 import { useTags } from '@/hooks/useTags';
 import { Thought, SermonOutline } from '@/models/models';
+import { useConnection } from '@/providers/ConnectionProvider';
 import { debugLog } from '@/utils/debugMode';
 import { PlusIcon } from '@components/Icons';
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
@@ -43,7 +43,7 @@ export default function AddThoughtManual({
   const { sermon, loading: sermonLoading } = useSermon(sermonId);
   const shouldLoadTags = !allowedTagsProp || allowedTagsProp.length === 0;
   const { allTags, loading: tagsLoading } = useTags(shouldLoadTags ? sermon?.userId : null);
-  const isOnline = useOnlineStatus();
+  const { isOnline } = useConnection();
 
   useScrollLock(open);
 

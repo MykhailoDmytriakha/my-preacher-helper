@@ -5,6 +5,7 @@ import '@testing-library/jest-dom';
 import KnowledgeSection from '@/components/sermon/KnowledgeSection';
 import { Sermon, Insights, Plan, SectionHints } from '@/models/models';
 import * as insightsService from '@/services/insights.service';
+import { TestProviders } from '../../test-utils/test-providers';
 
 // Extend global Window interface to include our test flag
 declare global {
@@ -171,7 +172,11 @@ describe('KnowledgeSection Component', () => {
       thoughts: Array(20).fill({ id: 'thought-id', text: 'Thought text', tags: [] })
     };
 
-    render(<KnowledgeSection sermon={sermonWithEnoughThoughts} updateSermon={mockUpdateSermon} />);
+    render(
+      <TestProviders>
+        <KnowledgeSection sermon={sermonWithEnoughThoughts} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
 
     // Wait for loading state to finish - properly wrapped in act()
     await act(async () => {
@@ -190,7 +195,11 @@ describe('KnowledgeSection Component', () => {
   });
 
   it('renders with insights in collapsed state by default', async () => {
-    render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+    render(
+      <TestProviders>
+        <KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
 
     // Wait for loading state to finish - properly wrapped in act()
     await act(async () => {
@@ -202,7 +211,11 @@ describe('KnowledgeSection Component', () => {
   });
 
   it('collapses and expands when the button is clicked', async () => {
-    render(<KnowledgeSection sermon={mockSermonWithInsightsAndPlan} updateSermon={mockUpdateSermon} />);
+    render(
+      <TestProviders>
+        <KnowledgeSection sermon={mockSermonWithInsightsAndPlan} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
 
     // Wait for loading state to finish - properly wrapped in act()
     await act(async () => {
@@ -235,7 +248,11 @@ describe('KnowledgeSection Component', () => {
   });
 
   it('toggles topics visibility when show/hide is clicked', async () => {
-    render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+    render(
+      <TestProviders>
+        <KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
 
     // Wait for loading state to finish - properly wrapped in act()
     await act(async () => {
@@ -277,7 +294,11 @@ describe('KnowledgeSection Component', () => {
       thoughts: Array(20).fill({ id: 'thought-id', text: 'Thought text', tags: [] })
     };
 
-    render(<KnowledgeSection sermon={sermonWithEnoughThoughts} updateSermon={mockUpdateSermon} />);
+    render(
+      <TestProviders>
+        <KnowledgeSection sermon={sermonWithEnoughThoughts} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
 
     // Wait for loading state to finish - properly wrapped in act()
     await act(async () => {
@@ -313,7 +334,11 @@ describe('KnowledgeSection Component', () => {
   });
 
   it('shows plan sections when sermon has plan', async () => {
-    render(<KnowledgeSection sermon={mockSermonWithPlan} updateSermon={mockUpdateSermon} />);
+    render(
+      <TestProviders>
+        <KnowledgeSection sermon={mockSermonWithPlan} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
 
     // Wait for loading state to finish - properly wrapped in act()
     await act(async () => {
@@ -344,7 +369,11 @@ describe('KnowledgeSection Component', () => {
     });
 
     // Use sermon with insights so hasAnyData=true and the toggle button is visible
-    render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+    render(
+      <TestProviders>
+        <KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
 
     // Wait for loading state to finish - properly wrapped in act()
     await act(async () => {
@@ -383,7 +412,11 @@ describe('KnowledgeSection Component', () => {
       });
     });
 
-    render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+    render(
+      <TestProviders>
+        <KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
 
     // Wait for loading state to finish - properly wrapped in act()
     await act(async () => {
@@ -438,7 +471,11 @@ describe('KnowledgeSection Component', () => {
       });
     });
 
-    render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+    render(
+      <TestProviders>
+        <KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
 
     // Wait for loading state to finish - properly wrapped in act()
     await act(async () => {
@@ -495,7 +532,11 @@ describe('KnowledgeSection Component', () => {
       });
     });
 
-    render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+    render(
+      <TestProviders>
+        <KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
 
     // Wait for loading state to finish - properly wrapped in act()
     await act(async () => {
@@ -557,17 +598,19 @@ describe('KnowledgeSection Component', () => {
     try {
       // Render with sermon that has enough thoughts
       render(
-        <KnowledgeSection
-          sermon={{
-            id: 'test-sermon',
-            title: 'Test Sermon',
-            verse: 'John 3:16',
-            date: '2023-01-01',
-            thoughts: Array(20).fill({ id: 'thought-id', text: 'Thought text', tags: [] }),
-            userId: 'user1',
-          }}
-          updateSermon={mockUpdateSermon}
-        />
+        <TestProviders>
+          <KnowledgeSection
+            sermon={{
+              id: 'test-sermon',
+              title: 'Test Sermon',
+              verse: 'John 3:16',
+              date: '2023-01-01',
+              thoughts: Array(20).fill({ id: 'thought-id', text: 'Thought text', tags: [] }),
+              userId: 'user1',
+            }}
+            updateSermon={mockUpdateSermon}
+          />
+        </TestProviders>
       );
 
       // Wait for initial loading
@@ -609,7 +652,11 @@ describe('KnowledgeSection Component', () => {
     console.error = mockConsoleError;
 
     try {
-      render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+      render(
+      <TestProviders>
+        <KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
 
       // Wait for loading state to finish - properly wrapped in act()
       await act(async () => {
@@ -652,7 +699,11 @@ describe('KnowledgeSection Component', () => {
     console.error = mockConsoleError;
 
     try {
-      render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+      render(
+      <TestProviders>
+        <KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
 
       // Wait for loading state to finish - properly wrapped in act()
       await act(async () => {
@@ -695,7 +746,11 @@ describe('KnowledgeSection Component', () => {
     console.error = mockConsoleError;
 
     try {
-      render(<KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />);
+      render(
+      <TestProviders>
+        <KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
 
       // Wait for loading state to finish - properly wrapped in act()
       await act(async () => {
@@ -735,7 +790,11 @@ describe('KnowledgeSection Component', () => {
     try {
       const sermonWithoutId = { ...mockSermonWithInsights, id: undefined };
 
-      render(<KnowledgeSection sermon={sermonWithoutId as any} updateSermon={mockUpdateSermon} />);
+      render(
+        <TestProviders>
+          <KnowledgeSection sermon={sermonWithoutId as any} updateSermon={mockUpdateSermon} />
+        </TestProviders>
+      );
 
       // Wait for loading state to finish - properly wrapped in act()
       await act(async () => {
@@ -778,7 +837,11 @@ describe('KnowledgeSection Component', () => {
     global.__CONSOLE_OVERRIDDEN_BY_TEST__ = true;
 
     try {
-      render(<KnowledgeSection sermon={mockSermonWithoutInsights} />);
+      render(
+        <TestProviders>
+          <KnowledgeSection sermon={mockSermonWithoutInsights} />
+        </TestProviders>
+      );
 
       // Wait for loading state to finish - properly wrapped in act()
       await act(async () => {
@@ -814,7 +877,11 @@ describe('KnowledgeSection Component', () => {
       plan: mockPlan
     };
 
-    render(<KnowledgeSection sermon={sermonWithData} updateSermon={mockUpdateSermon} />);
+    render(
+      <TestProviders>
+        <KnowledgeSection sermon={sermonWithData} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
 
     // Wait for loading state to finish
     await act(async () => {

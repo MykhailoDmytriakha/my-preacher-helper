@@ -468,7 +468,9 @@
     "loadDataError": "Failed to load data",
     "removingError": "Error removing",
     "savingError": "Error saving",
-    "reservedTagName": "This name is reserved for structure tags"
+    "reservedTagName": "This name is reserved for structure tags",
+    "magicUnavailable": "Magic is currently unavailable due to connectivity issues",
+    "syncFailed": "Sync failed"
   },
   "createThought": {
     "title": "New Thought",

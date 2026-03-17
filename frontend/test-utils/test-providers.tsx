@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React, { ReactNode } from 'react';
 
 import { AuthProvider } from '@/providers/AuthProvider';
+import { ConnectionProvider } from '@/providers/ConnectionProvider';
 import { TextScaleProvider } from '@/providers/TextScaleProvider';
 
 // Create a test QueryClient with test-specific settings
@@ -30,7 +31,9 @@ export const TestProviders = ({ children }: { children: ReactNode }) => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <ConnectionProvider>
+        {children}
+      </ConnectionProvider>
     </QueryClientProvider>
   );
 };
@@ -40,7 +43,11 @@ export const createQueryWrapper = () => {
   const queryClient = createTestQueryClient();
 
   return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <ConnectionProvider>
+        {children}
+      </ConnectionProvider>
+    </QueryClientProvider>
   );
 };
 
@@ -51,9 +58,11 @@ export const createAppWrapper = () => {
   return ({ children }: { children: ReactNode }) => (
     <TextScaleProvider>
       <AuthProvider>
-        <QueryClientProvider client={queryClient}>
-          {children}
-        </QueryClientProvider>
+        <ConnectionProvider>
+          <QueryClientProvider client={queryClient}>
+            {children}
+          </QueryClientProvider>
+        </ConnectionProvider>
       </AuthProvider>
     </TextScaleProvider>
   );

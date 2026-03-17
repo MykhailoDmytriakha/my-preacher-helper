@@ -1,6 +1,8 @@
 import { toast } from 'sonner';
 
 import { Thought } from "@/models/models";
+import { apiClient } from '@/utils/apiClient';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 export const createAudioThought = async (
@@ -46,9 +48,10 @@ export const createAudioThoughtWithForceTag = async (
       `transcribeAudio: Sending audio blob and sermon id ${sermonId} to ${API_BASE}/api/thoughts.`
     );
 
-    const response = await fetch(`${API_BASE}/api/thoughts`, {
+    const response = await apiClient(`${API_BASE}/api/thoughts`, {
       method: "POST",
       body: formData,
+      category: 'audio'
     });
 
     console.log("transcribeAudio: Received response:", response);
@@ -142,9 +145,10 @@ export const transcribeThoughtAudio = async (audioBlob: Blob): Promise<ThoughtTr
     const formData = new FormData();
     formData.append("audio", audioBlob, "recording.webm");
 
-    const response = await fetch(`${API_BASE}/api/thoughts/transcribe`, {
+    const response = await apiClient(`${API_BASE}/api/thoughts/transcribe`, {
       method: "POST",
       body: formData,
+      category: 'audio'
     });
 
     let data: { success?: boolean; polishedText?: string; originalText?: string; warning?: string; error?: string } | null = null;
@@ -178,10 +182,11 @@ export const deleteThought = async (
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
-    const response = await fetch(`${API_BASE}/api/thoughts`, {
+    const response = await apiClient(`${API_BASE}/api/thoughts`, {
       method: "DELETE",
       headers,
       body: JSON.stringify({ sermonId, thought }),
+      category: 'crud'
     });
     if (!response.ok) {
       throw new Error(
@@ -204,10 +209,11 @@ export const updateThought = async (
     };
     
     const requestBody = JSON.stringify({ sermonId, thought });
-    const response = await fetch(`${API_BASE}/api/thoughts`, {
+    const response = await apiClient(`${API_BASE}/api/thoughts`, {
       method: "PUT",
       headers,
       body: requestBody,
+      category: 'crud'
     });
     
     if (!response.ok) {
@@ -234,10 +240,11 @@ export const createManualThought = async (
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
-    const response = await fetch(`${API_BASE}/api/thoughts?manual=true`, {
+    const response = await apiClient(`${API_BASE}/api/thoughts?manual=true`, {
       method: "POST",
       headers,
       body: JSON.stringify({ sermonId, thought }),
+      category: 'crud'
     });
     if (!response.ok) {
       throw new Error(`Failed to create manual thought with status ${response.status}`);

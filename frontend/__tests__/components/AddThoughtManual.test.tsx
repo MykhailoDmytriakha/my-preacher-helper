@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import AddThoughtManual from '@/components/AddThoughtManual';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useConnection } from '@/providers/ConnectionProvider';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import useSermon from '@/hooks/useSermon';
 import { useTags } from '@/hooks/useTags';
@@ -11,8 +11,9 @@ import { TestProviders } from '@test-utils/test-providers';
 jest.mock('@/hooks/useScrollLock', () => ({
   useScrollLock: jest.fn(),
 }));
-jest.mock('@/hooks/useOnlineStatus', () => ({
-  useOnlineStatus: jest.fn(),
+jest.mock('@/providers/ConnectionProvider', () => ({
+  useConnection: jest.fn(),
+  ConnectionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 jest.mock('@/hooks/useTags', () => ({
   useTags: jest.fn(),
@@ -36,7 +37,7 @@ jest.mock('@components/ui/RichMarkdownEditor', () => ({
 
 // No longer fetching in the component during open when props are provided
 
-const mockUseOnlineStatus = useOnlineStatus as jest.MockedFunction<typeof useOnlineStatus>;
+const mockUseConnection = useConnection as jest.MockedFunction<typeof useConnection>;
 const mockUseSermon = useSermon as jest.MockedFunction<typeof useSermon>;
 const mockUseTags = useTags as jest.MockedFunction<typeof useTags>;
 const mockToast = jest.requireMock('sonner').toast as { success: jest.Mock; error: jest.Mock };
@@ -101,7 +102,7 @@ describe('AddThoughtManual', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseOnlineStatus.mockReturnValue(true);
+    mockUseConnection.mockReturnValue({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() });
     mockUseSermon.mockReturnValue({ sermon: { userId: 'user-1' } as any, loading: false } as any);
     mockUseTags.mockReturnValue({ allTags: [], loading: false } as any);
     tagUtilsMock.isStructureTag.mockReturnValue(false);
@@ -399,7 +400,7 @@ describe('AddThoughtManual', () => {
   });
 
   it('shows offline warning and disables saving when offline', async () => {
-    mockUseOnlineStatus.mockReturnValue(false);
+    mockUseConnection.mockReturnValue({ isOnline: false, isMagicAvailable: false, checkConnection: jest.fn() });
 
     renderWithProviders(
       <AddThoughtManual

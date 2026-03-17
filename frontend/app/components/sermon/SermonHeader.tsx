@@ -13,7 +13,6 @@ import ActionButton, { ACTION_BUTTON_SLOT_CLASS } from '@/components/common/Acti
 import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
 import SeriesSelector from '@/components/series/SeriesSelector';
 import { useAuth } from '@/hooks/useAuth';
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useUserSettings } from '@/hooks/useUserSettings';
 import { addSermonToSeries, removeSermonFromSeries } from '@/services/series.service';
 import { updateSermon } from '@/services/sermon.service'; // Import updateSermon service
@@ -45,8 +44,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
   const [showSeriesSelector, setShowSeriesSelector] = useState(false);
   const [seriesSelectorMode, setSeriesSelectorMode] = useState<'add' | 'change'>('add');
   const [isProcessing, setIsProcessing] = useState(false);
-  const isOnline = useOnlineStatus();
-  const isReadOnly = !isOnline;
+  const isReadOnly = false; // Always allow local edits
 
   const enableAudio = settings?.enableAudioGeneration || false;
 

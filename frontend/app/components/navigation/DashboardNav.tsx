@@ -20,6 +20,7 @@ import { debugLog } from "@/utils/debugMode";
 import { getNavItemTheme } from "@/utils/themeColors";
 
 import ModeToggle from "./ModeToggle";
+import { OfflineIndicator } from "./OfflineIndicator";
 export default function DashboardNav() {
   const { t } = useTranslation();
   const { user, handleLogout } = useAuth();
@@ -258,6 +259,7 @@ export default function DashboardNav() {
 
           {/* Right: Desktop controls */}
           <div className="flex items-center gap-4">
+            <OfflineIndicator />
             {/* Feedback button for desktop */}
             <button
               onClick={handleFeedbackClick}
@@ -319,6 +321,7 @@ export default function DashboardNav() {
 
             {/* Right: Mobile controls */}
             <div className="flex items-center gap-2 z-10">
+              <OfflineIndicator />
               {/* Feedback button for mobile */}
               <button
                 onClick={handleFeedbackClick}

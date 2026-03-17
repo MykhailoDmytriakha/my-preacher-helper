@@ -3,6 +3,7 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import DashboardNav from '@/components/navigation/DashboardNav';
+import { TestProviders } from '../../test-utils/test-providers';
 
 jest.mock('next/navigation', () => ({
   usePathname: jest.fn(() => '/dashboard'),
@@ -38,7 +39,11 @@ jest.mock('@/hooks/usePrepModeAccess', () => ({
 
 describe('DashboardNav layout', () => {
   it('uses fluid container without max-w-7xl', () => {
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
     const nav = screen.getByRole('navigation');
     expect(nav).toBeInTheDocument();
     const wrapper = nav.querySelector(':scope > div');
@@ -57,7 +62,11 @@ describe('DashboardNav layout', () => {
     usePathname.mockReturnValue('/sermons/123');
 
     // We already mocked usePrepModeAccess at the top level
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     // Desktop wrapper must be relative
     const desktopWrapper = screen.getByRole('navigation').querySelector('.lg\\:flex.h-16');
