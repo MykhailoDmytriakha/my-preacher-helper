@@ -795,6 +795,7 @@ describe('StudiesPage', () => {
       expect(anchoredBranchLink).toHaveAttribute('href', '/studies/1?branchKind=evidence#branch=branch-1');
       expect(anchoredBranchLink).toHaveTextContent('Evidence branch');
       expect(anchoredBranchLink).toHaveTextContent('Evidence Note');
+      expect(anchoredBranchLink).toHaveTextContent('studiesWorkspace.branchMetadata.anchorNeedsRefresh');
     });
 
     it('allows expanding a review lane beyond the collapsed limit', async () => {

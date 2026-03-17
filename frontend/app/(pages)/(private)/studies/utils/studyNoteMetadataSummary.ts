@@ -5,6 +5,9 @@ import {
   StudyNoteBranchStatus,
 } from '@/models/models';
 
+import { flattenHydratedStudyNoteOutlineBranches, hydrateStudyNoteBranchIdentity } from '../components/studyNoteBranchIdentity';
+import { parseStudyNoteOutline } from '../components/studyNoteOutline';
+
 export interface StudyNoteMetadataSummary {
   noteId: string;
   branchCount: number;
@@ -33,6 +36,7 @@ export interface StudyWorkspaceReviewBranchItem {
   noteTitle: string;
   branchId: string;
   branchTitle: string;
+  isResolved: boolean;
   branchKind?: StudyNoteBranchKind | null;
   branchStatus?: StudyNoteBranchStatus | null;
   semanticLabel?: string | null;
@@ -47,6 +51,17 @@ export interface StudyWorkspaceReviewLane {
 
 function incrementCount<T extends string>(counts: Partial<Record<T, number>>, key: T) {
   counts[key] = (counts[key] ?? 0) + 1;
+}
+
+function buildLiveBranchLookup(note: StudyNote, branchState: StudyNoteBranchState) {
+  const parsedOutline = parseStudyNoteOutline(note.content ?? '');
+  const hydratedOutline = hydrateStudyNoteBranchIdentity(parsedOutline.branches, branchState.branchRecords);
+
+  return new Map(
+    flattenHydratedStudyNoteOutlineBranches(hydratedOutline.branches)
+      .filter((branch) => Boolean(branch.branchId))
+      .map((branch) => [branch.branchId!, branch])
+  );
 }
 
 export function summarizeStudyNoteBranchState(
@@ -267,15 +282,19 @@ export function buildStudyWorkspaceReviewLanes(
         return;
       }
 
+      const liveBranchesById = buildLiveBranchLookup(note, branchState);
+
       branchState.branchRecords.forEach((record) => {
+        const liveBranch = liveBranchesById.get(record.branchId);
         const item: StudyWorkspaceReviewBranchItem = {
           noteId: note.id,
           noteTitle: note.title || '',
           branchId: record.branchId,
-          branchTitle: record.title,
-          branchKind: record.branchKind,
-          branchStatus: record.branchStatus,
-          semanticLabel: record.semanticLabel,
+          branchTitle: liveBranch?.title ?? record.title,
+          isResolved: Boolean(liveBranch),
+          branchKind: liveBranch?.branchKind ?? record.branchKind,
+          branchStatus: liveBranch?.branchStatus ?? record.branchStatus,
+          semanticLabel: liveBranch?.semanticLabel ?? record.semanticLabel,
           noteUpdatedAt: note.updatedAt,
         };
 

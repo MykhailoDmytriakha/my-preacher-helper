@@ -166,7 +166,9 @@ function useNoteKeyboardNavigation({
             }
         };
         document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+        };
     }, [isEditing, prevNoteId, nextNoteId, router, searchParams]);
 }
 
@@ -295,7 +297,9 @@ function useNoteAutoSave({
         const timeoutId = setTimeout(() => {
             saveChanges();
         }, 1500);
-        return () => clearTimeout(timeoutId);
+        return () => {
+            clearTimeout(timeoutId);
+        };
     }, [title, content, tags, scriptureRefs, type, isInitialized, saveChanges]);
 
     return { isSaving, lastSaved, saveError, setLastSaved };
@@ -833,7 +837,9 @@ function useStructuredOutlineState({
                 });
         }, 1200);
 
-        return () => clearTimeout(timeoutId);
+        return () => {
+            clearTimeout(timeoutId);
+        };
     }, [hasLoadedBranchState, isContentReady, isNew, noteId, persistableBranchStateSnapshot, queryClient, uid]);
 
     return {
@@ -1027,9 +1033,8 @@ function OutlineWorkspaceModeToggle({
                 type="button"
                 data-testid="study-note-layout-mode-editor"
                 onClick={() => onModeChange('editor')}
-                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
-                    effectiveMode === 'editor' ? activeClassName : inactiveClassName
-                }`}
+                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${effectiveMode === 'editor' ? activeClassName : inactiveClassName
+                    }`}
             >
                 {t('studiesWorkspace.outlinePilot.focusEditor')}
             </button>
@@ -1037,9 +1042,8 @@ function OutlineWorkspaceModeToggle({
                 type="button"
                 data-testid="study-note-layout-mode-split"
                 onClick={() => onModeChange('split')}
-                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
-                    effectiveMode === 'split' ? activeClassName : inactiveClassName
-                }`}
+                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${effectiveMode === 'split' ? activeClassName : inactiveClassName
+                    }`}
             >
                 {t('studiesWorkspace.outlinePilot.focusSplit')}
             </button>
@@ -1047,9 +1051,8 @@ function OutlineWorkspaceModeToggle({
                 type="button"
                 data-testid="study-note-layout-mode-preview"
                 onClick={() => onModeChange('preview')}
-                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
-                    effectiveMode === 'preview' ? activeClassName : inactiveClassName
-                }`}
+                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${effectiveMode === 'preview' ? activeClassName : inactiveClassName
+                    }`}
             >
                 {t('studiesWorkspace.outlinePilot.focusPreview')}
             </button>
@@ -1078,9 +1081,8 @@ function StudyNotePreviewResizer({
                 data-testid="study-note-outline-resizer"
                 onPointerDown={onResizeStart}
                 onDoubleClick={onResizeReset}
-                className={`group/resizer flex h-full w-3 cursor-col-resize items-center justify-center rounded-full transition-colors ${
-                    isPreviewResizing ? 'bg-emerald-100/70 dark:bg-emerald-900/40' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
-                }`}
+                className={`group/resizer flex h-full w-3 cursor-col-resize items-center justify-center rounded-full transition-colors ${isPreviewResizing ? 'bg-emerald-100/70 dark:bg-emerald-900/40' : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                    }`}
             >
                 <div className="h-16 w-1 rounded-full bg-gray-300 transition-colors group-hover/resizer:bg-emerald-400 dark:bg-gray-700 dark:group-hover/resizer:bg-emerald-500" />
             </div>
@@ -1513,10 +1515,19 @@ export default function StudyNoteEditorPage() {
     };
 
     const handleActivateOutlineBranchById = useCallback((branchId: string) => {
+        if (!isBranchStateReady) {
+            return false;
+        }
+
         const branchKey = keyByBranchId[branchId];
 
         if (!branchKey) {
-            return;
+            debugLog('Study note branch link could not be resolved', { noteId, branchId });
+            toast.error(
+                t('studiesWorkspace.outlinePilot.branchLinkUnavailable') ||
+                'This branch link is no longer available in the current note.'
+            );
+            return false;
         }
 
         revealReadBranchPath(branchKey);
@@ -1525,7 +1536,8 @@ export default function StudyNoteEditorPage() {
             key: branchKey,
             token: makeId(),
         });
-    }, [keyByBranchId, revealPreviewBranchPath, revealReadBranchPath]);
+        return true;
+    }, [isBranchStateReady, keyByBranchId, noteId, revealPreviewBranchPath, revealReadBranchPath, t]);
 
     const handleFollowOutlineBranchLink = useCallback((branchId: string) => {
         if (typeof window !== 'undefined') {
@@ -1533,8 +1545,12 @@ export default function StudyNoteEditorPage() {
             window.history.replaceState(window.history.state, '', nextUrl);
         }
 
+        if (!isBranchStateReady) {
+            return;
+        }
+
         handleActivateOutlineBranchById(branchId);
-    }, [handleActivateOutlineBranchById]);
+    }, [handleActivateOutlineBranchById, isBranchStateReady]);
 
     const handleCopyOutlineBranchLink = useCallback(async (branchKey: string) => {
         const branchId = ensureBranchIdForBranchKey(branchKey);
@@ -1588,26 +1604,36 @@ export default function StudyNoteEditorPage() {
 
     const handleDelete = useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router });
 
+    const lastProcessedHashRef = useRef<string>('');
+
     useEffect(() => {
-        if (!isBranchStateReady || !isInitialized || typeof window === 'undefined') {
-            return;
-        }
+        if (typeof window === 'undefined') return;
 
-        const syncFromHash = () => {
-            const branchId = parseStudyNoteBranchIdFromHash(window.location.hash);
-
-            if (!branchId) {
+        const handleHashChange = () => {
+            const hash = window.location.hash;
+            if (hash === lastProcessedHashRef.current) {
                 return;
             }
 
-            handleActivateOutlineBranchById(branchId);
+            lastProcessedHashRef.current = hash;
+
+            if (hash) {
+                const branchId = parseStudyNoteBranchIdFromHash(hash);
+                if (branchId) {
+                    handleActivateOutlineBranchById(branchId);
+                }
+            }
         };
 
-        syncFromHash();
-        window.addEventListener('hashchange', syncFromHash);
+        if (!isBranchStateReady || !isInitialized) {
+            return;
+        }
+
+        window.addEventListener('hashchange', handleHashChange);
+        handleHashChange(); // Initial sync
 
         return () => {
-            window.removeEventListener('hashchange', syncFromHash);
+            window.removeEventListener('hashchange', handleHashChange);
         };
     }, [handleActivateOutlineBranchById, isBranchStateReady, isInitialized]);
 

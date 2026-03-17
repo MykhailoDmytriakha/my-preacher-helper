@@ -1,3 +1,4 @@
+import React from 'react';
 import { act, render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useStudyNoteBranchStates } from '@/hooks/useStudyNoteBranchStates';
@@ -5,6 +6,7 @@ import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { toast } from 'sonner';
 import {
     getStudyNoteBranchState,
     updateStudyNoteBranchState,
@@ -38,6 +40,13 @@ jest.mock('@/hooks/useTags');
 jest.mock('@/hooks/useStudyNoteShareLinks');
 jest.mock('@tanstack/react-query', () => ({
     useQueryClient: jest.fn(),
+}));
+jest.mock('sonner', () => ({
+    toast: {
+        error: jest.fn(),
+        success: jest.fn(),
+        info: jest.fn(),
+    },
 }));
 jest.mock('@services/studies.service', () => ({
     getStudyNoteBranchState: jest.fn(),
@@ -94,7 +103,6 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({
         pendingMarkdownInsertion,
         onPendingMarkdownInsertionConsumed,
     }: any) => {
-        const React = require('react');
         const headingMatches: Array<{ headingText: string; headingLevel: number }> = React.useMemo(() => {
             const headingMatchIterator = value.matchAll(/^[ ]{0,3}(#{1,6})[ \t]+(.+)$/gm) as IterableIterator<RegExpMatchArray>;
 
@@ -105,11 +113,14 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({
         }, [value]);
         const [selectedHeadingIndex, setSelectedHeadingIndex] = React.useState(0);
         const textareaRef = React.useRef(null as HTMLTextAreaElement | null);
+        const lastProcessedInsertionTokenRef = React.useRef<string | null>(null);
+        const lastOutlineSelectionRef = React.useRef<string | null>(null);
 
         React.useEffect(() => {
-            setSelectedHeadingIndex((currentIndex: number) => (
-                headingMatches.length === 0 ? 0 : Math.min(currentIndex, headingMatches.length - 1)
-            ));
+            setSelectedHeadingIndex((currentIndex: number) => {
+                const nextIndex = headingMatches.length === 0 ? 0 : Math.min(currentIndex, headingMatches.length - 1);
+                return nextIndex;
+            });
         }, [headingMatches.length]);
 
         React.useEffect(() => {
@@ -118,7 +129,10 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({
             }
 
             if (headingMatches.length === 0) {
-                onOutlineBranchSelectionChange(null);
+                if (lastOutlineSelectionRef.current !== 'null') {
+                    onOutlineBranchSelectionChange(null);
+                    lastOutlineSelectionRef.current = 'null';
+                }
                 return;
             }
 
@@ -131,14 +145,18 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({
                 )
                 .length - 1;
 
-            onOutlineBranchSelectionChange({
-                ...selectedHeading,
-                occurrenceIndex,
-            });
+            const selectionSnapshot = JSON.stringify({ ...selectedHeading, occurrenceIndex });
+            if (lastOutlineSelectionRef.current !== selectionSnapshot) {
+                onOutlineBranchSelectionChange({
+                    ...selectedHeading,
+                    occurrenceIndex,
+                });
+                lastOutlineSelectionRef.current = selectionSnapshot;
+            }
         }, [headingMatches, onOutlineBranchSelectionChange, selectedHeadingIndex]);
 
         React.useEffect(() => {
-            if (!pendingMarkdownInsertion) {
+            if (!pendingMarkdownInsertion || pendingMarkdownInsertion.token === lastProcessedInsertionTokenRef.current) {
                 return;
             }
 
@@ -147,6 +165,7 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({
             const selectionEnd = textarea?.selectionEnd ?? value.length;
             const nextValue = `${value.slice(0, selectionStart)}${pendingMarkdownInsertion.text}${value.slice(selectionEnd)}`;
 
+            lastProcessedInsertionTokenRef.current = pendingMarkdownInsertion.token;
             onChange(nextValue);
             onPendingMarkdownInsertionConsumed?.(pendingMarkdownInsertion.token);
         }, [onChange, onPendingMarkdownInsertionConsumed, pendingMarkdownInsertion, value]);
@@ -372,6 +391,9 @@ const introOnlyStructuredCandidateNote: StudyNote = {
 describe('StudyNoteEditorPage Pagination', () => {
     beforeEach(() => {
         jest.clearAllMocks();
+        (toast.error as jest.Mock).mockClear();
+        (toast.success as jest.Mock).mockClear();
+        (toast.info as jest.Mock).mockClear();
         mockClipboardWriteText.mockResolvedValue(undefined);
         (useRouter as jest.Mock).mockReturnValue(mockRouter);
         (useParams as jest.Mock).mockReturnValue(mockParams);
@@ -756,6 +778,41 @@ describe('StudyNoteEditorPage Pagination', () => {
         window.history.replaceState(null, '', 'http://localhost/studies/note-1?tag=tag1');
     });
 
+    it('shows an error toast when the URL hash points to a missing branch identity', async () => {
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [structuredNote],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+        const outline = parseStudyNoteOutline(structuredNote.content);
+        const rootRecord = createStudyNoteBranchStateRecord(outline.branches, '1', 'branch-main');
+
+        expect(rootRecord).not.toBeNull();
+
+        (getStudyNoteBranchState as jest.Mock).mockResolvedValue({
+            id: 'note-1',
+            noteId: 'note-1',
+            userId: 'user-1',
+            branchRecords: [rootRecord!],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-12T00:00:00.000Z',
+            updatedAt: '2026-03-12T00:00:00.000Z',
+        });
+        window.history.replaceState(null, '', 'http://localhost/studies/note-1?tag=tag1#branch=missing-branch');
+
+        render(<StudyNoteEditorPage />);
+
+        await waitFor(() => {
+            expect(toast.error).toHaveBeenCalledWith('studiesWorkspace.outlinePilot.branchLinkUnavailable');
+        });
+
+        window.history.replaceState(null, '', 'http://localhost/studies/note-1?tag=tag1');
+    });
+
     it('follows an internal markdown branch link and highlights the target branch', async () => {
         (useStudyNotes as jest.Mock).mockReturnValue({
             uid: 'user-1',
@@ -783,7 +840,10 @@ describe('StudyNoteEditorPage Pagination', () => {
 
         render(<StudyNoteEditorPage />);
 
-        fireEvent.click(await screen.findByTestId('markdown-branch-link-branch-child'));
+        await act(async () => {
+            const link = await screen.findByTestId('markdown-branch-link-branch-child');
+            fireEvent.click(link);
+        });
 
         await waitFor(() => {
             expect(screen.getByTestId('study-note-branch-1.1')).toHaveClass('ring-2');

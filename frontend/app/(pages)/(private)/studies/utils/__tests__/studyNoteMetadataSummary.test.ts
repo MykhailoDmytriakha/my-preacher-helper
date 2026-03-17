@@ -1,4 +1,6 @@
 import { StudyNoteBranchState } from '@/models/models';
+import { createStudyNoteBranchStateRecord } from '../../components/studyNoteBranchIdentity';
+import { parseStudyNoteOutline } from '../../components/studyNoteOutline';
 
 import {
   buildStudyWorkspaceTopSemanticLabels,
@@ -202,6 +204,7 @@ describe('studyNoteMetadataSummary', () => {
             noteTitle: 'Evidence Note',
             branchId: 'branch-1',
             branchTitle: 'Evidence',
+            isResolved: false,
           }),
         ],
       },
@@ -212,6 +215,7 @@ describe('studyNoteMetadataSummary', () => {
           expect.objectContaining({
             noteId: 'note-2',
             branchId: 'branch-2',
+            isResolved: false,
           }),
         ],
       },
@@ -221,6 +225,7 @@ describe('studyNoteMetadataSummary', () => {
         items: [
           expect.objectContaining({
             branchId: 'branch-1',
+            isResolved: false,
           }),
         ],
       },
@@ -236,9 +241,75 @@ describe('studyNoteMetadataSummary', () => {
           expect.objectContaining({
             branchId: 'branch-1',
             semanticLabel: 'Grace',
+            isResolved: false,
           }),
         ],
       },
     ]);
+  });
+
+  it('prefers live hydrated branch titles in review lanes after a heading rename', () => {
+    const noteContent = '## Fresh Evidence\nBody text';
+    const outline = parseStudyNoteOutline(noteContent);
+    const liveRecord = createStudyNoteBranchStateRecord(outline.branches, '1', 'branch-1');
+
+    expect(liveRecord).not.toBeNull();
+
+    const staleRecord = {
+      ...liveRecord!,
+      title: 'Old Evidence',
+      titleSlug: 'old-evidence',
+    };
+
+    const reviewLanes = buildStudyWorkspaceReviewLanes([
+      { id: 'note-1', title: 'Evidence Note', content: noteContent, updatedAt: '2026-03-13T00:00:00.000Z' } as any,
+    ], [
+      makeBranchState({
+        id: 'note-1',
+        noteId: 'note-1',
+        branchRecords: [{
+          ...staleRecord,
+          branchKind: 'evidence',
+        }],
+      }),
+    ]);
+
+    expect(reviewLanes[0].items[0]).toEqual(expect.objectContaining({
+      branchId: 'branch-1',
+      branchTitle: 'Fresh Evidence',
+      isResolved: true,
+    }));
+  });
+
+  it('marks review lane items as unresolved when persisted branch identity no longer maps to the live outline', () => {
+    const reviewLanes = buildStudyWorkspaceReviewLanes([
+      { id: 'note-1', title: 'Evidence Note', content: '## Completely Different\nNew body', updatedAt: '2026-03-13T00:00:00.000Z' } as any,
+    ], [
+      makeBranchState({
+        id: 'note-1',
+        noteId: 'note-1',
+        branchRecords: [{
+          branchId: 'branch-stale',
+          title: 'Snapshot Evidence',
+          titleSlug: 'snapshot-evidence',
+          parentSlugChain: [],
+          bodyHash: 'old-body',
+          subtreeHash: 'old-subtree',
+          subtreeContentHash: 'old-subtree-content',
+          subtreeOccurrenceIndex: 0,
+          contextualOccurrenceIndex: 0,
+          relaxedOccurrenceIndex: 0,
+          contextualContentOccurrenceIndex: 0,
+          relaxedContentOccurrenceIndex: 0,
+          branchKind: 'evidence',
+        }],
+      }),
+    ]);
+
+    expect(reviewLanes[0].items[0]).toEqual(expect.objectContaining({
+      branchId: 'branch-stale',
+      branchTitle: 'Snapshot Evidence',
+      isResolved: false,
+    }));
   });
 });

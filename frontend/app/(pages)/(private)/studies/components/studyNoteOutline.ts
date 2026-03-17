@@ -276,7 +276,8 @@ export function parseStudyNoteOutline(markdown: string): StudyNoteOutline {
 }
 
 export function flattenStudyNoteOutlineBranches(branches: StudyNoteOutlineBranch[]): StudyNoteOutlineBranch[] {
-    return branches.flatMap((branch) => [branch, ...flattenStudyNoteOutlineBranches(branch.children)]);
+    const result = branches.flatMap((branch) => [branch, ...flattenStudyNoteOutlineBranches(branch.children)]);
+    return result;
 }
 
 export function findStudyNoteOutlineBranchByKey(

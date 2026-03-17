@@ -245,7 +245,8 @@ export function StudyNoteOutlineView({
                 return currentKey;
             }
 
-            return filteredBranches[0]?.key ?? null;
+            const fallbackKey = filteredBranches[0]?.key ?? null;
+            return fallbackKey;
         });
     }, [filteredBranches, visibleBranchKeySet]);
 
@@ -288,11 +289,10 @@ export function StudyNoteOutlineView({
                 <button
                     type="button"
                     onClick={() => handleJumpToBranch(branch.key)}
-                    className={`flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-sm transition-colors ${
-                        isActive
+                    className={`flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-sm transition-colors ${isActive
                             ? 'bg-emerald-100/80 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100'
                             : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800/80'
-                    }`}
+                        }`}
                     style={{ paddingLeft: `${12 + branch.depth * NAV_INDENT_PX}px` }}
                 >
                     {isCollapsible ? (
@@ -393,192 +393,190 @@ export function StudyNoteOutlineView({
         const demoteBranchLabel = t('studiesWorkspace.outlinePilot.demoteBranch');
         const saveLabel = t('common.save');
         return (
-        <div className="flex flex-wrap items-center gap-2">
-            <button
-                type="button"
-                data-testid={`study-note-branch-create-sibling-${branch.key}`}
-                aria-label={addSiblingLabel}
-                title={addSiblingLabel}
-                onClick={() => onCreateBranch!(branch.key, 'sibling')}
-                className={PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}
-            >
-                <PlusIcon className="h-3.5 w-3.5" />
-                <span>{addSiblingLabel}</span>
-            </button>
-            <button
-                type="button"
-                data-testid={`study-note-branch-create-child-${branch.key}`}
-                aria-label={addChildLabel}
-                title={addChildLabel}
-                disabled={branch.headingLevel >= 6}
-                onClick={() => onCreateBranch!(branch.key, 'child')}
-                className={`${PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}${PREVIEW_BRANCH_ACTION_BUTTON_DISABLED_CLASS_NAME}`}
-            >
-                <PlusIcon className="h-3.5 w-3.5" />
-                <span>{addChildLabel}</span>
-            </button>
-            {onInsertBranchReference && (
-                <>
-                    <label className="sr-only" htmlFor={`study-note-branch-relation-${branch.key}`}>
-                        {t('studiesWorkspace.outlinePilot.referenceRelation')}
-                    </label>
-                    <select
-                        id={`study-note-branch-relation-${branch.key}`}
-                        data-testid={`study-note-branch-relation-${branch.key}`}
-                        value={selectedReferenceRelation}
-                        onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setReferenceRelationByBranchKey((currentValue) => ({
-                                ...currentValue,
-                                [branch.key]: nextValue,
-                            }));
-                        }}
-                        className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:border-emerald-200 hover:text-emerald-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:text-emerald-200"
-                    >
-                        {relationOptions.map((relationOption) => (
-                            <option key={`${branch.key}-${relationOption.label}`} value={relationOption.value}>
-                                {relationOption.label}
-                            </option>
-                        ))}
-                    </select>
-                    <button
-                        type="button"
-                        data-testid={`study-note-branch-insert-reference-${branch.key}`}
-                        aria-label={insertReferenceLabel}
-                        title={insertReferenceLabel}
-                        onClick={() => onInsertBranchReference(
-                            branch.key,
-                            selectedReferenceRelation || undefined
-                        )}
-                        className={PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}
-                    >
-                        <LinkIcon className="h-3.5 w-3.5" />
-                        <span>{insertReferenceLabel}</span>
-                    </button>
-                </>
-            )}
-            {onSetBranchOverlayTone && (
-                <div className="flex items-center gap-1">
-                    <span className="mr-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                        {t('studiesWorkspace.outlinePilot.branchColor')}
-                    </span>
-                    <button
-                        type="button"
-                        data-testid={`study-note-branch-overlay-clear-${branch.key}`}
-                        aria-label={t('studiesWorkspace.outlinePilot.clearBranchColor')}
-                        title={t('studiesWorkspace.outlinePilot.clearBranchColor')}
-                        onClick={() => onSetBranchOverlayTone(branch.key, null)}
-                        className={`inline-flex h-7 items-center rounded-full border px-2 text-[11px] font-medium transition-colors ${
-                            branch.overlayTone
-                                ? 'border-gray-200 bg-white text-gray-500 hover:border-emerald-200 hover:text-emerald-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:text-emerald-200'
-                                : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
-                        }`}
-                    >
-                        {t('common.clear')}
-                    </button>
-                    {BRANCH_OVERLAY_TONES.map((overlayTone) => (
-                        <button
-                            key={`${branch.key}-${overlayTone}`}
-                            type="button"
-                            data-testid={`study-note-branch-overlay-${branch.key}-${overlayTone}`}
-                            aria-label={t(`studiesWorkspace.outlinePilot.branchOverlayTones.${overlayTone}`)}
-                            title={t(`studiesWorkspace.outlinePilot.branchOverlayTones.${overlayTone}`)}
-                            onClick={() => onSetBranchOverlayTone(branch.key, overlayTone)}
-                            className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition-transform hover:scale-105 ${
-                                branch.overlayTone === overlayTone
-                                    ? 'border-emerald-500 ring-2 ring-emerald-200 dark:border-emerald-400 dark:ring-emerald-700/60'
-                                    : 'border-gray-200 dark:border-gray-700'
-                            }`}
+            <div className="flex flex-wrap items-center gap-2">
+                <button
+                    type="button"
+                    data-testid={`study-note-branch-create-sibling-${branch.key}`}
+                    aria-label={addSiblingLabel}
+                    title={addSiblingLabel}
+                    onClick={() => onCreateBranch!(branch.key, 'sibling')}
+                    className={PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}
+                >
+                    <PlusIcon className="h-3.5 w-3.5" />
+                    <span>{addSiblingLabel}</span>
+                </button>
+                <button
+                    type="button"
+                    data-testid={`study-note-branch-create-child-${branch.key}`}
+                    aria-label={addChildLabel}
+                    title={addChildLabel}
+                    disabled={branch.headingLevel >= 6}
+                    onClick={() => onCreateBranch!(branch.key, 'child')}
+                    className={`${PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}${PREVIEW_BRANCH_ACTION_BUTTON_DISABLED_CLASS_NAME}`}
+                >
+                    <PlusIcon className="h-3.5 w-3.5" />
+                    <span>{addChildLabel}</span>
+                </button>
+                {onInsertBranchReference && (
+                    <>
+                        <label className="sr-only" htmlFor={`study-note-branch-relation-${branch.key}`}>
+                            {t('studiesWorkspace.outlinePilot.referenceRelation')}
+                        </label>
+                        <select
+                            id={`study-note-branch-relation-${branch.key}`}
+                            data-testid={`study-note-branch-relation-${branch.key}`}
+                            value={selectedReferenceRelation}
+                            onChange={(event) => {
+                                const nextValue = event.target.value;
+                                setReferenceRelationByBranchKey((currentValue) => ({
+                                    ...currentValue,
+                                    [branch.key]: nextValue,
+                                }));
+                            }}
+                            className="rounded-full border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:border-emerald-200 hover:text-emerald-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:text-emerald-200"
                         >
-                            <span className={`h-3.5 w-3.5 rounded-full ${getBranchOverlaySwatchClassName(overlayTone)}`} />
+                            {relationOptions.map((relationOption) => (
+                                <option key={`${branch.key}-${relationOption.label}`} value={relationOption.value}>
+                                    {relationOption.label}
+                                </option>
+                            ))}
+                        </select>
+                        <button
+                            type="button"
+                            data-testid={`study-note-branch-insert-reference-${branch.key}`}
+                            aria-label={insertReferenceLabel}
+                            title={insertReferenceLabel}
+                            onClick={() => onInsertBranchReference(
+                                branch.key,
+                                selectedReferenceRelation || undefined
+                            )}
+                            className={PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}
+                        >
+                            <LinkIcon className="h-3.5 w-3.5" />
+                            <span>{insertReferenceLabel}</span>
                         </button>
-                    ))}
-                </div>
-            )}
-            {onSetBranchSemanticLabel && (
-                <div className="flex flex-wrap items-center gap-2">
-                    <span className="mr-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
-                        {t('studiesWorkspace.outlinePilot.branchSemanticLabel')}
-                    </span>
-                    <label className="sr-only" htmlFor={`study-note-branch-semantic-label-input-${branch.key}`}>
-                        {t('studiesWorkspace.outlinePilot.branchSemanticLabel')}
-                    </label>
-                    <input
-                        id={`study-note-branch-semantic-label-input-${branch.key}`}
-                        data-testid={`study-note-branch-semantic-label-input-${branch.key}`}
-                        type="text"
-                        maxLength={48}
-                        value={semanticLabelDraft}
-                        onChange={(event) => {
-                            const nextValue = event.target.value;
-                            setSemanticLabelDraftByBranchKey((currentValue) => ({
-                                ...currentValue,
-                                [branch.key]: nextValue,
-                            }));
-                        }}
-                        placeholder={t('studiesWorkspace.outlinePilot.branchSemanticLabelPlaceholder')}
-                        className="min-w-[9rem] rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-emerald-200 focus:border-emerald-400 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-emerald-700 dark:focus:border-emerald-500"
-                    />
-                    <button
-                        type="button"
-                        data-testid={`study-note-branch-semantic-label-save-${branch.key}`}
-                        aria-label={saveLabel}
-                        title={saveLabel}
-                        disabled={normalizedSemanticLabelDraft === normalizeStudyNoteBranchSemanticLabel(branch.semanticLabel)}
-                        onClick={() => onSetBranchSemanticLabel(branch.key, semanticLabelDraft)}
-                        className={`${PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}${PREVIEW_BRANCH_ACTION_BUTTON_DISABLED_CLASS_NAME}`}
-                    >
-                        <span>{saveLabel}</span>
-                    </button>
-                    <button
-                        type="button"
-                        data-testid={`study-note-branch-semantic-label-clear-${branch.key}`}
-                        aria-label={t('studiesWorkspace.outlinePilot.clearBranchSemanticLabel')}
-                        title={t('studiesWorkspace.outlinePilot.clearBranchSemanticLabel')}
-                        onClick={() => {
-                            setSemanticLabelDraftByBranchKey((currentValue) => ({
-                                ...currentValue,
-                                [branch.key]: '',
-                            }));
-                            onSetBranchSemanticLabel(branch.key, null);
-                        }}
-                        className={`${PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}${PREVIEW_BRANCH_ACTION_BUTTON_DISABLED_CLASS_NAME}`}
-                        disabled={!branch.semanticLabel && normalizedSemanticLabelDraft === null}
-                    >
-                        <span>{t('common.clear')}</span>
-                    </button>
-                </div>
-            )}
-            {(onSetBranchKind || onSetBranchStatus) && renderBranchKindStatusSelects(branch)}
-            {onShiftBranchDepth && (
-                <>
-                    <button
-                        type="button"
-                        data-testid={`study-note-branch-promote-${branch.key}`}
-                        aria-label={promoteBranchLabel}
-                        title={promoteBranchLabel}
-                        disabled={branch.path.length <= 1}
-                        onClick={() => onShiftBranchDepth(branch.key, 'promote')}
-                        className={`${PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}${PREVIEW_BRANCH_ACTION_BUTTON_DISABLED_CLASS_NAME}`}
-                    >
-                        <ArrowLeftIcon className="h-3.5 w-3.5" />
-                        <span>{promoteBranchLabel}</span>
-                    </button>
-                    <button
-                        type="button"
-                        data-testid={`study-note-branch-demote-${branch.key}`}
-                        aria-label={demoteBranchLabel}
-                        title={demoteBranchLabel}
-                        disabled={!(siblingIndex > 0 && getStudyNoteOutlineBranchMaxHeadingLevel(branch) < 6)}
-                        onClick={() => onShiftBranchDepth(branch.key, 'demote')}
-                        className={`${PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}${PREVIEW_BRANCH_ACTION_BUTTON_DISABLED_CLASS_NAME}`}
-                    >
-                        <ArrowRightIcon className="h-3.5 w-3.5" />
-                        <span>{demoteBranchLabel}</span>
-                    </button>
-                </>
-            )}
-        </div>
+                    </>
+                )}
+                {onSetBranchOverlayTone && (
+                    <div className="flex items-center gap-1">
+                        <span className="mr-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                            {t('studiesWorkspace.outlinePilot.branchColor')}
+                        </span>
+                        <button
+                            type="button"
+                            data-testid={`study-note-branch-overlay-clear-${branch.key}`}
+                            aria-label={t('studiesWorkspace.outlinePilot.clearBranchColor')}
+                            title={t('studiesWorkspace.outlinePilot.clearBranchColor')}
+                            onClick={() => onSetBranchOverlayTone(branch.key, null)}
+                            className={`inline-flex h-7 items-center rounded-full border px-2 text-[11px] font-medium transition-colors ${branch.overlayTone
+                                    ? 'border-gray-200 bg-white text-gray-500 hover:border-emerald-200 hover:text-emerald-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:text-emerald-200'
+                                    : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
+                                }`}
+                        >
+                            {t('common.clear')}
+                        </button>
+                        {BRANCH_OVERLAY_TONES.map((overlayTone) => (
+                            <button
+                                key={`${branch.key}-${overlayTone}`}
+                                type="button"
+                                data-testid={`study-note-branch-overlay-${branch.key}-${overlayTone}`}
+                                aria-label={t(`studiesWorkspace.outlinePilot.branchOverlayTones.${overlayTone}`)}
+                                title={t(`studiesWorkspace.outlinePilot.branchOverlayTones.${overlayTone}`)}
+                                onClick={() => onSetBranchOverlayTone(branch.key, overlayTone)}
+                                className={`inline-flex h-7 w-7 items-center justify-center rounded-full border transition-transform hover:scale-105 ${branch.overlayTone === overlayTone
+                                        ? 'border-emerald-500 ring-2 ring-emerald-200 dark:border-emerald-400 dark:ring-emerald-700/60'
+                                        : 'border-gray-200 dark:border-gray-700'
+                                    }`}
+                            >
+                                <span className={`h-3.5 w-3.5 rounded-full ${getBranchOverlaySwatchClassName(overlayTone)}`} />
+                            </button>
+                        ))}
+                    </div>
+                )}
+                {onSetBranchSemanticLabel && (
+                    <div className="flex flex-wrap items-center gap-2">
+                        <span className="mr-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-gray-500 dark:text-gray-400">
+                            {t('studiesWorkspace.outlinePilot.branchSemanticLabel')}
+                        </span>
+                        <label className="sr-only" htmlFor={`study-note-branch-semantic-label-input-${branch.key}`}>
+                            {t('studiesWorkspace.outlinePilot.branchSemanticLabel')}
+                        </label>
+                        <input
+                            id={`study-note-branch-semantic-label-input-${branch.key}`}
+                            data-testid={`study-note-branch-semantic-label-input-${branch.key}`}
+                            type="text"
+                            maxLength={48}
+                            value={semanticLabelDraft}
+                            onChange={(event) => {
+                                const nextValue = event.target.value;
+                                setSemanticLabelDraftByBranchKey((currentValue) => ({
+                                    ...currentValue,
+                                    [branch.key]: nextValue,
+                                }));
+                            }}
+                            placeholder={t('studiesWorkspace.outlinePilot.branchSemanticLabelPlaceholder')}
+                            className="min-w-[9rem] rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 transition-colors hover:border-emerald-200 focus:border-emerald-400 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:border-emerald-700 dark:focus:border-emerald-500"
+                        />
+                        <button
+                            type="button"
+                            data-testid={`study-note-branch-semantic-label-save-${branch.key}`}
+                            aria-label={saveLabel}
+                            title={saveLabel}
+                            disabled={normalizedSemanticLabelDraft === normalizeStudyNoteBranchSemanticLabel(branch.semanticLabel)}
+                            onClick={() => onSetBranchSemanticLabel(branch.key, semanticLabelDraft)}
+                            className={`${PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}${PREVIEW_BRANCH_ACTION_BUTTON_DISABLED_CLASS_NAME}`}
+                        >
+                            <span>{saveLabel}</span>
+                        </button>
+                        <button
+                            type="button"
+                            data-testid={`study-note-branch-semantic-label-clear-${branch.key}`}
+                            aria-label={t('studiesWorkspace.outlinePilot.clearBranchSemanticLabel')}
+                            title={t('studiesWorkspace.outlinePilot.clearBranchSemanticLabel')}
+                            onClick={() => {
+                                setSemanticLabelDraftByBranchKey((currentValue) => ({
+                                    ...currentValue,
+                                    [branch.key]: '',
+                                }));
+                                onSetBranchSemanticLabel(branch.key, null);
+                            }}
+                            className={`${PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}${PREVIEW_BRANCH_ACTION_BUTTON_DISABLED_CLASS_NAME}`}
+                            disabled={!branch.semanticLabel && normalizedSemanticLabelDraft === null}
+                        >
+                            <span>{t('common.clear')}</span>
+                        </button>
+                    </div>
+                )}
+                {(onSetBranchKind || onSetBranchStatus) && renderBranchKindStatusSelects(branch)}
+                {onShiftBranchDepth && (
+                    <>
+                        <button
+                            type="button"
+                            data-testid={`study-note-branch-promote-${branch.key}`}
+                            aria-label={promoteBranchLabel}
+                            title={promoteBranchLabel}
+                            disabled={branch.path.length <= 1}
+                            onClick={() => onShiftBranchDepth(branch.key, 'promote')}
+                            className={`${PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}${PREVIEW_BRANCH_ACTION_BUTTON_DISABLED_CLASS_NAME}`}
+                        >
+                            <ArrowLeftIcon className="h-3.5 w-3.5" />
+                            <span>{promoteBranchLabel}</span>
+                        </button>
+                        <button
+                            type="button"
+                            data-testid={`study-note-branch-demote-${branch.key}`}
+                            aria-label={demoteBranchLabel}
+                            title={demoteBranchLabel}
+                            disabled={!(siblingIndex > 0 && getStudyNoteOutlineBranchMaxHeadingLevel(branch) < 6)}
+                            onClick={() => onShiftBranchDepth(branch.key, 'demote')}
+                            className={`${PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME}${PREVIEW_BRANCH_ACTION_BUTTON_DISABLED_CLASS_NAME}`}
+                        >
+                            <ArrowRightIcon className="h-3.5 w-3.5" />
+                            <span>{demoteBranchLabel}</span>
+                        </button>
+                    </>
+                )}
+            </div>
         );
     };
 
@@ -777,11 +775,10 @@ export function StudyNoteOutlineView({
                 }}
                 id={branch.branchId ? `branch-${branch.branchId}` : undefined}
                 data-testid={`study-note-branch-${branch.key}`}
-                className={`rounded-2xl border shadow-sm transition-colors ${getBranchOverlayCardClassName(branch.overlayTone)} ${
-                    activeBranchKey === branch.key
+                className={`rounded-2xl border shadow-sm transition-colors ${getBranchOverlayCardClassName(branch.overlayTone)} ${activeBranchKey === branch.key
                         ? 'ring-2 ring-emerald-200 dark:ring-emerald-700/60'
                         : ''
-                }`}
+                    }`}
                 style={{ marginLeft: `${branch.depth * BRANCH_INDENT_PX}px` }}
             >
                 <div className="flex items-start gap-3 px-4 py-4">
@@ -917,11 +914,10 @@ export function StudyNoteOutlineView({
                                         type="button"
                                         data-testid={`study-note-branch-kind-filter-${option.value}`}
                                         onClick={() => setKindFilter(option.value)}
-                                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                                            kindFilter === option.value
+                                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${kindFilter === option.value
                                                 ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
                                                 : 'border-gray-200 bg-white text-gray-600 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-200'
-                                        }`}
+                                            }`}
                                     >
                                         {option.label} {option.value === 'all' ? outline.totalBranches : (kindCounts[option.value] ?? 0)}
                                     </button>
@@ -940,11 +936,10 @@ export function StudyNoteOutlineView({
                                         type="button"
                                         data-testid={`study-note-branch-status-filter-${option.value}`}
                                         onClick={() => setStatusFilter(option.value)}
-                                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                                            statusFilter === option.value
+                                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${statusFilter === option.value
                                                 ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
                                                 : 'border-gray-200 bg-white text-gray-600 hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-200'
-                                        }`}
+                                            }`}
                                     >
                                         {option.label} {option.value === 'all' ? outline.totalBranches : (statusCounts[option.value] ?? 0)}
                                     </button>

@@ -770,6 +770,11 @@ export default function StudiesPage() {
                                   {item.semanticLabel}
                                 </span>
                               )}
+                              {!item.isResolved && (
+                                <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                                  {t('studiesWorkspace.branchMetadata.anchorNeedsRefresh')}
+                                </span>
+                              )}
                             </div>
                           </div>
 
