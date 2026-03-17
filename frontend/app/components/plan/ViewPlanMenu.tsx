@@ -138,11 +138,11 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
   };
 
   return (
-    <div className="flex gap-2" ref={sectionMenuRef}>
-      <div className="relative">
+    <div className="flex flex-wrap gap-2" ref={sectionMenuRef}>
+      <div className="relative w-full sm:w-auto">
         <button
           onClick={() => setShowSectionMenu(!showSectionMenu)}
-          className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors bg-blue-600 text-white hover:bg-blue-700"
+          className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors bg-blue-600 text-white hover:bg-blue-700 w-full sm:w-auto"
         >
           <BookOpen className="h-6 w-6" />
           {t("plan.viewPlan") || "View Plan"}
@@ -201,7 +201,7 @@ const ViewPlanMenu: React.FC<ViewPlanMenuProps> = ({
             window.location.href = `/sermons/${sermonId}/plan?planView=preaching`;
           }
         }}
-        className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors bg-green-600 text-white hover:bg-green-700"
+        className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-colors bg-green-600 text-white hover:bg-green-700 w-full sm:w-auto"
       >
         <ScrollText className="h-6 w-6" />
         {t("plan.preachButton") || "Preach"}
