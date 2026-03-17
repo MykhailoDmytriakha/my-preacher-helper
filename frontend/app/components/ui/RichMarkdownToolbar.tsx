@@ -4,6 +4,8 @@ import {
     Heading1,
     Heading2,
     Heading3,
+    IndentDecrease,
+    IndentIncrease,
     Italic,
     List,
     ListOrdered,
@@ -16,7 +18,9 @@ import { useTranslation } from 'react-i18next';
 import {
     getChildBranchLevel,
     getContextBranchLevel,
+    getDemotedHeadingLevel,
     MarkdownHeadingLevel,
+    MIN_MARKDOWN_HEADING_LEVEL,
     getPromotedHeadingLevel,
 } from './richMarkdownStructure';
 
@@ -46,6 +50,7 @@ interface ToolbarState {
     isHeading3: boolean;
     currentHeadingLevel: number | null;
     previousHeadingLevel: number | null;
+    currentNodeType: string | null;
 }
 
 export function RichMarkdownToolbar({
@@ -77,6 +82,7 @@ export function RichMarkdownToolbar({
                     isHeading3: false,
                     currentHeadingLevel: null,
                     previousHeadingLevel: null,
+                    currentNodeType: null,
                 };
             }
             return {
@@ -91,6 +97,7 @@ export function RichMarkdownToolbar({
                 isHeading3: currentEditor.isActive('heading', { level: 3 }),
                 currentHeadingLevel: getCurrentHeadingLevel(currentEditor),
                 previousHeadingLevel: showOutlineStructureControls ? getPreviousHeadingLevel(currentEditor) : null,
+                currentNodeType: getCurrentNodeType(currentEditor),
             };
         },
     });
@@ -109,9 +116,13 @@ export function RichMarkdownToolbar({
     const contextBranchLevel = getContextBranchLevel(headingContext);
     const childBranchLevel = getChildBranchLevel(headingContext);
     const promotedHeadingLevel = getPromotedHeadingLevel(toolbarState.currentHeadingLevel);
+    const demotedHeadingLevel = getDemotedHeadingLevel(toolbarState.currentHeadingLevel);
     const currentBlockValue = toolbarState.currentHeadingLevel
         ? `heading-${toolbarState.currentHeadingLevel}`
         : 'paragraph';
+    const canIndentSelection =
+        toolbarState.currentNodeType === 'heading' || toolbarState.currentNodeType === 'paragraph';
+    const canOutdentSelection = toolbarState.currentNodeType === 'heading';
 
     const toolbarClassName = `flex flex-wrap items-center gap-1 p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-t-xl border-b-0 ${
         sticky ? 'sticky z-20 shadow-sm' : ''
@@ -147,6 +158,45 @@ export function RichMarkdownToolbar({
                             <option value="heading-6">H6</option>
                         </select>
 
+                        <ToolbarButton
+                            onClick={(event) => {
+                                event.preventDefault();
+
+                                if (toolbarState.currentNodeType === 'paragraph') {
+                                    editor.chain().focus().setHeading({ level: MIN_MARKDOWN_HEADING_LEVEL }).run();
+                                    return;
+                                }
+
+                                if (demotedHeadingLevel !== null && demotedHeadingLevel !== toolbarState.currentHeadingLevel) {
+                                    editor.chain().focus().setHeading({ level: demotedHeadingLevel }).run();
+                                }
+                            }}
+                            isActive={false}
+                            ariaLabel={t('common.indentBranch') || 'Indent branch'}
+                            disabled={!canIndentSelection}
+                        >
+                            <IndentIncrease className="w-4 h-4" />
+                        </ToolbarButton>
+                        <ToolbarButton
+                            onClick={(event) => {
+                                event.preventDefault();
+
+                                if (toolbarState.currentHeadingLevel === MIN_MARKDOWN_HEADING_LEVEL) {
+                                    editor.chain().focus().setParagraph().run();
+                                    return;
+                                }
+
+                                if (promotedHeadingLevel !== null) {
+                                    editor.chain().focus().setHeading({ level: promotedHeadingLevel }).run();
+                                }
+                            }}
+                            isActive={false}
+                            ariaLabel={t('common.outdentBranch') || 'Outdent branch'}
+                            disabled={!canOutdentSelection}
+                        >
+                            <IndentDecrease className="w-4 h-4" />
+                        </ToolbarButton>
+
                         <ToolbarTextButton
                             onClick={() => editor.chain().focus().setHeading({ level: contextBranchLevel }).run()}
                             label={t('common.makeBranch') || 'Make branch'}
@@ -156,21 +206,6 @@ export function RichMarkdownToolbar({
                             onClick={() => editor.chain().focus().setHeading({ level: childBranchLevel }).run()}
                             label={t('common.makeChildBranch') || 'Make child'}
                             ariaLabel={t('common.childBranchAtLevel', { level: childBranchLevel }) || `Child branch at level H${childBranchLevel}`}
-                        />
-                        <ToolbarTextButton
-                            onClick={() => {
-                                if (toolbarState.currentHeadingLevel === 1) {
-                                    editor.chain().focus().setParagraph().run();
-                                    return;
-                                }
-
-                                if (promotedHeadingLevel !== null) {
-                                    editor.chain().focus().setHeading({ level: promotedHeadingLevel }).run();
-                                }
-                            }}
-                            label={t('common.promote') || 'Up'}
-                            ariaLabel={t('common.promoteBranch') || 'Promote branch'}
-                            disabled={toolbarState.currentHeadingLevel === null}
                         />
                     </div>
 
@@ -284,6 +319,10 @@ function getCurrentHeadingLevel(editor: Editor): number | null {
     return typeof parentNode.attrs.level === 'number' ? parentNode.attrs.level : null;
 }
 
+function getCurrentNodeType(editor: Editor): string | null {
+    return editor.state.selection.$from.parent.type.name ?? null;
+}
+
 function getPreviousHeadingLevel(editor: Editor): number | null {
     const { doc, selection } = editor.state;
     let previousHeadingLevel: number | null = null;
@@ -302,17 +341,21 @@ interface ToolbarButtonProps {
     isActive: boolean;
     children: React.ReactNode;
     ariaLabel: string;
+    disabled?: boolean;
 }
 
-function ToolbarButton({ onClick, isActive, children, ariaLabel }: ToolbarButtonProps) {
+function ToolbarButton({ onClick, isActive, children, ariaLabel, disabled = false }: ToolbarButtonProps) {
     return (
         <button
             type="button"
             onClick={onClick}
+            disabled={disabled}
             aria-label={ariaLabel}
             title={ariaLabel}
             className={`p-1.5 rounded-md transition-colors ${
-                isActive
+                disabled
+                    ? 'cursor-not-allowed text-gray-300 dark:text-gray-600'
+                    : isActive
                     ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300'
                     : 'text-gray-600 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-800'
             }`}

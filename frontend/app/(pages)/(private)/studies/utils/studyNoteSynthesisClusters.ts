@@ -183,7 +183,7 @@ export function buildStudyWorkspaceQuestionSynthesisClusterGroups(
       { id: 'needsEvidence', label: 'needsEvidence', totalClusters: needsEvidence.length, clusters: needsEvidence },
       { id: 'hasSupport', label: 'hasSupport', totalClusters: hasSupport.length, clusters: hasSupport },
       { id: 'readyToApply', label: 'readyToApply', totalClusters: readyToApply.length, clusters: readyToApply },
-    ].filter((group) => group.totalClusters > 0);
+    ];
   }
 
   const themeGroups = new Map<string, { label: string; clusters: StudyWorkspaceQuestionSynthesisCluster[] }>();

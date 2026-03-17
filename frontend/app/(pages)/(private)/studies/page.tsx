@@ -138,6 +138,8 @@ export default function StudiesPage() {
   const [expandedReviewLaneIds, setExpandedReviewLaneIds] = useState<Set<string>>(new Set());
   const [expandedRelationLaneLabels, setExpandedRelationLaneLabels] = useState<Set<string>>(new Set());
   const [expandedSynthesisLaneIds, setExpandedSynthesisLaneIds] = useState<Set<string>>(new Set());
+  const [expandedSynthesisClusterSectionIds, setExpandedSynthesisClusterSectionIds] =
+    useState<Set<string>>(new Set());
   const [activeSynthesisLaneId, setActiveSynthesisLaneId] = useState<StudyWorkspaceSynthesisLane['id'] | ''>('');
   const [activeSynthesisClusterGroupMode, setActiveSynthesisClusterGroupMode] =
     useQueryState<StudyWorkspaceQuestionSynthesisClusterGroupMode>('synthesisGroup', {
@@ -386,6 +388,19 @@ export default function StudiesPage() {
       }
 
       return nextLaneIds;
+    });
+  }, []);
+  const toggleSynthesisClusterSectionExpansion = useCallback((sectionId: string) => {
+    setExpandedSynthesisClusterSectionIds((currentSectionIds) => {
+      const nextSectionIds = new Set(currentSectionIds);
+
+      if (nextSectionIds.has(sectionId)) {
+        nextSectionIds.delete(sectionId);
+      } else {
+        nextSectionIds.add(sectionId);
+      }
+
+      return nextSectionIds;
     });
   }, []);
 
@@ -1238,6 +1253,9 @@ export default function StudiesPage() {
                   <p className="text-sm text-gray-600 dark:text-gray-300">
                     {t('studiesWorkspace.branchMetadata.synthesisClustersHint')}
                   </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {t('studiesWorkspace.branchMetadata.synthesisClusters.scopeNote')}
+                  </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {([
@@ -1284,132 +1302,150 @@ export default function StudiesPage() {
                       </div>
                     </div>
 
-                    <div className="grid gap-3 xl:grid-cols-2">
-                      {group.clusters.map((cluster) => (
-                        <section
-                          key={`workspace-synthesis-cluster-${cluster.question.branchId}`}
-                          data-testid={`studies-synthesis-cluster-${cluster.question.branchId}`}
-                          className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900/80"
-                        >
-                          <Link
-                            href={buildWorkspaceBranchHref(cluster.question.noteId, cluster.question.branchId)}
-                            className="flex items-start justify-between gap-3 rounded-xl border border-transparent bg-sky-50/70 px-3 py-3 transition hover:border-sky-200 hover:bg-sky-50 dark:bg-sky-950/20 dark:hover:border-sky-800"
+                    {group.clusters.length > 0 ? (
+                      <div className="grid gap-3 xl:grid-cols-2">
+                        {group.clusters.map((cluster) => (
+                          <section
+                            key={`workspace-synthesis-cluster-${cluster.question.branchId}`}
+                            data-testid={`studies-synthesis-cluster-${cluster.question.branchId}`}
+                            className="space-y-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-900/80"
                           >
-                            <div className="min-w-0 space-y-1">
-                              <div className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
-                                {cluster.question.branchTitle}
-                              </div>
-                              <div className="truncate text-xs text-gray-500 dark:text-gray-400">
-                                {cluster.question.noteTitle}
-                              </div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {cluster.question.semanticLabel && (
-                                  <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:border-violet-800 dark:bg-violet-900/30 dark:text-violet-200">
-                                    {cluster.question.semanticLabel}
-                                  </span>
-                                )}
-                                <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-                                  {t('studiesWorkspace.branchMetadata.synthesisClusters.sections.support')} · {cluster.supportLinks.length}
-                                </span>
-                                <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700 dark:border-rose-800 dark:bg-rose-900/30 dark:text-rose-200">
-                                  {t('studiesWorkspace.branchMetadata.synthesisClusters.sections.contrast')} · {cluster.contrastLinks.length}
-                                </span>
-                                <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-200">
-                                  {t('studiesWorkspace.branchMetadata.synthesisClusters.sections.application')} · {cluster.applicationLinks.length}
-                                </span>
-                              </div>
-                            </div>
-
-                            <LinkIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
-                          </Link>
-
-                          {([
-                            {
-                              id: 'support',
-                              items: cluster.supportLinks,
-                              className: 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-800 dark:bg-emerald-950/20',
-                              textClassName: 'text-emerald-700 dark:text-emerald-200',
-                            },
-                            {
-                              id: 'contrast',
-                              items: cluster.contrastLinks,
-                              className: 'border-rose-200 bg-rose-50/60 dark:border-rose-800 dark:bg-rose-950/20',
-                              textClassName: 'text-rose-700 dark:text-rose-200',
-                            },
-                            {
-                              id: 'application',
-                              items: cluster.applicationLinks,
-                              className: 'border-sky-200 bg-sky-50/60 dark:border-sky-800 dark:bg-sky-950/20',
-                              textClassName: 'text-sky-700 dark:text-sky-200',
-                            },
-                          ] as const).map((section) => {
-                            const visibleSectionItems = section.items.slice(0, SYNTHESIS_CLUSTER_LINK_LIMIT);
-
-                            return (
-                              <div
-                                key={`workspace-synthesis-cluster-section-${cluster.question.branchId}-${section.id}`}
-                                className={`space-y-2 rounded-xl border px-3 py-3 ${section.className}`}
-                              >
-                                <div className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${section.textClassName}`}>
-                                  {t(`studiesWorkspace.branchMetadata.synthesisClusters.sections.${section.id}`)}
+                            <Link
+                              href={buildWorkspaceBranchHref(cluster.question.noteId, cluster.question.branchId)}
+                              className="flex items-start justify-between gap-3 rounded-xl border border-transparent bg-sky-50/70 px-3 py-3 transition hover:border-sky-200 hover:bg-sky-50 dark:bg-sky-950/20 dark:hover:border-sky-800"
+                            >
+                              <div className="min-w-0 space-y-1">
+                                <div className="truncate text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                  {cluster.question.branchTitle}
                                 </div>
-
-                                {visibleSectionItems.length > 0 ? (
-                                  <div className="space-y-2">
-                                    {visibleSectionItems.map((item) => (
-                                      <Link
-                                        key={`workspace-synthesis-cluster-link-${cluster.question.branchId}-${section.id}-${item.branchId}-${item.relationKey}`}
-                                        data-testid={`studies-synthesis-cluster-link-${cluster.question.branchId}-${section.id}-${item.branchId}`}
-                                        href={buildWorkspaceBranchHref(item.noteId, item.branchId)}
-                                        className="flex items-start justify-between gap-3 rounded-lg border border-white/80 bg-white/80 px-3 py-2.5 transition hover:border-gray-200 hover:bg-white dark:border-gray-800 dark:bg-gray-900/70 dark:hover:border-gray-700"
-                                      >
-                                        <div className="min-w-0 space-y-1">
-                                          <div className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                                            {item.branchTitle}
-                                          </div>
-                                          <div className="truncate text-xs text-gray-500 dark:text-gray-400">
-                                            {item.noteTitle}
-                                          </div>
-                                          <div className="flex flex-wrap gap-1.5">
-                                            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-                                              {t(getStudyNoteBranchRelationTranslationKey(item.relationKey) ?? item.relationKey)}
-                                            </span>
-                                            {item.branchKind && (
-                                              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200">
-                                                {t(`studiesWorkspace.outlinePilot.branchKinds.${item.branchKind}`)}
-                                              </span>
-                                            )}
-                                            {item.branchStatus && (
-                                              <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-200">
-                                                {t(`studiesWorkspace.outlinePilot.branchStatuses.${item.branchStatus}`)}
-                                              </span>
-                                            )}
-                                          </div>
-                                        </div>
-
-                                        <LinkIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
-                                      </Link>
-                                    ))}
-
-                                    {section.items.length > SYNTHESIS_CLUSTER_LINK_LIMIT && (
-                                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                                        {t('studiesWorkspace.branchMetadata.synthesisClusters.moreLinks', {
-                                          count: section.items.length - SYNTHESIS_CLUSTER_LINK_LIMIT,
-                                        })}
-                                      </p>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <p className="text-sm text-gray-500 dark:text-gray-400">
-                                    {t(`studiesWorkspace.branchMetadata.synthesisClusters.empty.${section.id}`)}
-                                  </p>
-                                )}
+                                <div className="truncate text-xs text-gray-500 dark:text-gray-400">
+                                  {cluster.question.noteTitle}
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {cluster.question.semanticLabel && (
+                                    <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:border-violet-800 dark:bg-violet-900/30 dark:text-violet-200">
+                                      {cluster.question.semanticLabel}
+                                    </span>
+                                  )}
+                                  <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                                    {t('studiesWorkspace.branchMetadata.synthesisClusters.sections.support')} · {cluster.supportLinks.length}
+                                  </span>
+                                  <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700 dark:border-rose-800 dark:bg-rose-900/30 dark:text-rose-200">
+                                    {t('studiesWorkspace.branchMetadata.synthesisClusters.sections.contrast')} · {cluster.contrastLinks.length}
+                                  </span>
+                                  <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-200">
+                                    {t('studiesWorkspace.branchMetadata.synthesisClusters.sections.application')} · {cluster.applicationLinks.length}
+                                  </span>
+                                </div>
                               </div>
-                            );
-                          })}
-                        </section>
-                      ))}
-                    </div>
+
+                              <LinkIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+                            </Link>
+
+                            {([
+                              {
+                                id: 'support',
+                                items: cluster.supportLinks,
+                                className: 'border-emerald-200 bg-emerald-50/60 dark:border-emerald-800 dark:bg-emerald-950/20',
+                                textClassName: 'text-emerald-700 dark:text-emerald-200',
+                              },
+                              {
+                                id: 'contrast',
+                                items: cluster.contrastLinks,
+                                className: 'border-rose-200 bg-rose-50/60 dark:border-rose-800 dark:bg-rose-950/20',
+                                textClassName: 'text-rose-700 dark:text-rose-200',
+                              },
+                              {
+                                id: 'application',
+                                items: cluster.applicationLinks,
+                                className: 'border-sky-200 bg-sky-50/60 dark:border-sky-800 dark:bg-sky-950/20',
+                                textClassName: 'text-sky-700 dark:text-sky-200',
+                              },
+                            ] as const).map((section) => {
+                              const sectionExpansionId = `${cluster.question.branchId}:${section.id}`;
+                              const isSectionExpanded = expandedSynthesisClusterSectionIds.has(sectionExpansionId);
+                              const visibleSectionItems = isSectionExpanded
+                                ? section.items
+                                : section.items.slice(0, SYNTHESIS_CLUSTER_LINK_LIMIT);
+
+                              return (
+                                <div
+                                  key={`workspace-synthesis-cluster-section-${cluster.question.branchId}-${section.id}`}
+                                  className={`space-y-2 rounded-xl border px-3 py-3 ${section.className}`}
+                                >
+                                  <div className={`text-[11px] font-semibold uppercase tracking-[0.14em] ${section.textClassName}`}>
+                                    {t(`studiesWorkspace.branchMetadata.synthesisClusters.sections.${section.id}`)}
+                                  </div>
+
+                                  {visibleSectionItems.length > 0 ? (
+                                    <div className="space-y-2">
+                                      {visibleSectionItems.map((item) => (
+                                        <Link
+                                          key={`workspace-synthesis-cluster-link-${cluster.question.branchId}-${section.id}-${item.branchId}-${item.relationKey}`}
+                                          data-testid={`studies-synthesis-cluster-link-${cluster.question.branchId}-${section.id}-${item.branchId}`}
+                                          href={buildWorkspaceBranchHref(item.noteId, item.branchId)}
+                                          className="flex items-start justify-between gap-3 rounded-lg border border-white/80 bg-white/80 px-3 py-2.5 transition hover:border-gray-200 hover:bg-white dark:border-gray-800 dark:bg-gray-900/70 dark:hover:border-gray-700"
+                                        >
+                                          <div className="min-w-0 space-y-1">
+                                            <div className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                                              {item.branchTitle}
+                                            </div>
+                                            <div className="truncate text-xs text-gray-500 dark:text-gray-400">
+                                              {item.noteTitle}
+                                            </div>
+                                            <div className="flex flex-wrap gap-1.5">
+                                              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
+                                                {t(getStudyNoteBranchRelationTranslationKey(item.relationKey) ?? item.relationKey)}
+                                              </span>
+                                              {item.branchKind && (
+                                                <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200">
+                                                  {t(`studiesWorkspace.outlinePilot.branchKinds.${item.branchKind}`)}
+                                                </span>
+                                              )}
+                                              {item.branchStatus && (
+                                                <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:border-sky-800 dark:bg-sky-900/30 dark:text-sky-200">
+                                                  {t(`studiesWorkspace.outlinePilot.branchStatuses.${item.branchStatus}`)}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+
+                                          <LinkIcon className="mt-0.5 h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+                                        </Link>
+                                      ))}
+
+                                      {section.items.length > SYNTHESIS_CLUSTER_LINK_LIMIT && (
+                                        <button
+                                          type="button"
+                                          data-testid={`studies-synthesis-cluster-section-toggle-${cluster.question.branchId}-${section.id}`}
+                                          onClick={() => toggleSynthesisClusterSectionExpansion(sectionExpansionId)}
+                                          className="inline-flex items-center rounded-lg border border-white/80 px-3 py-1.5 text-sm font-medium text-gray-600 transition hover:bg-white dark:border-gray-800 dark:text-gray-300 dark:hover:bg-gray-900"
+                                        >
+                                          {isSectionExpanded
+                                            ? t(SHOW_LESS_LANE_ITEMS_KEY)
+                                            : t(SHOW_ALL_LANE_ITEMS_KEY, { count: section.items.length })}
+                                        </button>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                                      {t(`studiesWorkspace.branchMetadata.synthesisClusters.empty.${section.id}`)}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </section>
+                        ))}
+                      </div>
+                    ) : (
+                      <p
+                        data-testid={`studies-synthesis-cluster-group-empty-${group.id}`}
+                        className="rounded-2xl border border-dashed border-gray-200 bg-white/70 px-4 py-4 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-900/50 dark:text-gray-400"
+                      >
+                        {t(`studiesWorkspace.branchMetadata.synthesisClusters.emptyGroups.${group.id}`)}
+                      </p>
+                    )}
                   </section>
                 ))}
               </div>

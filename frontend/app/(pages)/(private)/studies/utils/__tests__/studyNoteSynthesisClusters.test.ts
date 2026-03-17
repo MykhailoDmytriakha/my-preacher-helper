@@ -4,6 +4,7 @@ import { StudyWorkspaceSynthesisItem } from '../studyNoteSynthesisSummary';
 import {
   buildStudyWorkspaceQuestionSynthesisClusterGroups,
   buildStudyWorkspaceQuestionSynthesisClusters,
+  StudyWorkspaceQuestionSynthesisCluster,
 } from '../studyNoteSynthesisClusters';
 
 describe('buildStudyWorkspaceQuestionSynthesisClusters', () => {
@@ -313,6 +314,48 @@ describe('buildStudyWorkspaceQuestionSynthesisClusters', () => {
     expect(buildStudyWorkspaceQuestionSynthesisClusterGroups(clusters, 'theme')).toEqual([
       { id: 'grace', label: 'Grace', totalClusters: 2, clusters: [clusters[0], clusters[1]] },
       { id: 'unlabeled', label: 'unlabeled', totalClusters: 1, clusters: [clusters[2]] },
+    ]);
+  });
+
+  it('keeps empty workflow stages visible for board-style grouping', () => {
+    const clusters: StudyWorkspaceQuestionSynthesisCluster[] = [
+      {
+        question: {
+          noteId: 'q1',
+          noteTitle: 'Question Note',
+          branchId: 'q1-branch',
+          branchTitle: 'Ready to apply',
+          isResolved: true,
+          branchKind: 'question',
+          branchStatus: 'tentative',
+          semanticLabel: null,
+          noteUpdatedAt: '2026-03-17T00:00:00.000Z',
+          relationBadges: [{ relationKey: 'applies', count: 1 }],
+          relationTouchCount: 1,
+        },
+        supportLinks: [],
+        contrastLinks: [],
+        applicationLinks: [
+          {
+            noteId: 'a1',
+            noteTitle: 'Application Note',
+            branchId: 'a1-branch',
+            branchTitle: 'Application',
+            isResolved: true,
+            branchKind: 'application',
+            branchStatus: 'active',
+            semanticLabel: null,
+            noteUpdatedAt: '2026-03-17T00:00:00.000Z',
+            relationKey: 'applies',
+          },
+        ],
+      },
+    ];
+
+    expect(buildStudyWorkspaceQuestionSynthesisClusterGroups(clusters, 'workflow')).toEqual([
+      { id: 'needsEvidence', label: 'needsEvidence', totalClusters: 0, clusters: [] },
+      { id: 'hasSupport', label: 'hasSupport', totalClusters: 0, clusters: [] },
+      { id: 'readyToApply', label: 'readyToApply', totalClusters: 1, clusters },
     ]);
   });
 

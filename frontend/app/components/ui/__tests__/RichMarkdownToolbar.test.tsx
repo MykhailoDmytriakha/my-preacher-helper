@@ -62,6 +62,7 @@ describe('RichMarkdownToolbar', () => {
             isHeading3: false,
             currentHeadingLevel: 2,
             previousHeadingLevel: 2,
+            currentNodeType: 'heading',
         });
 
         const { rerender } = render(
@@ -86,6 +87,7 @@ describe('RichMarkdownToolbar', () => {
             isHeading3: false,
             currentHeadingLevel: null,
             previousHeadingLevel: 2,
+            currentNodeType: 'paragraph',
         });
 
         rerender(
@@ -114,6 +116,7 @@ describe('RichMarkdownToolbar', () => {
             isHeading3: false,
             currentHeadingLevel: null,
             previousHeadingLevel: 2,
+            currentNodeType: 'paragraph',
         });
 
         render(
@@ -130,7 +133,7 @@ describe('RichMarkdownToolbar', () => {
         expect(editorDouble.spies.setHeading).toHaveBeenCalledWith({ level: 3 });
     });
 
-    it('promotes H1 back to body text through the Up action', () => {
+    it('moves H1 back to body text through the outdent action', () => {
         const editorDouble = createEditorDouble();
 
         mockUseEditorState.mockReturnValue({
@@ -145,6 +148,7 @@ describe('RichMarkdownToolbar', () => {
             isHeading3: false,
             currentHeadingLevel: 1,
             previousHeadingLevel: 1,
+            currentNodeType: 'heading',
         });
 
         render(
@@ -154,7 +158,7 @@ describe('RichMarkdownToolbar', () => {
             />
         );
 
-        screen.getByRole('button', { name: 'common.promoteBranch' }).click();
+        screen.getByRole('button', { name: 'common.outdentBranch' }).click();
 
         expect(editorDouble.spies.setParagraph).toHaveBeenCalledTimes(1);
         expect(editorDouble.spies.setHeading).not.toHaveBeenCalled();
@@ -177,6 +181,7 @@ describe('RichMarkdownToolbar', () => {
             isHeading3: false,
             currentHeadingLevel: 2,
             previousHeadingLevel: 2,
+            currentNodeType: 'heading',
         });
 
         const { rerender } = render(
@@ -214,5 +219,63 @@ describe('RichMarkdownToolbar', () => {
 
         expect(screen.getByRole('button', { name: 'common.addBranch' })).toBeDisabled();
         expect(screen.getByRole('button', { name: 'common.addChildBranch' })).toBeDisabled();
+    });
+
+    it('renders discoverable indent and outdent controls that mirror outline depth changes', () => {
+        const editorDouble = createEditorDouble();
+
+        mockUseEditorState.mockReturnValue({
+            isBold: false,
+            isItalic: false,
+            isStrike: false,
+            isBulletList: false,
+            isOrderedList: false,
+            isBlockquote: false,
+            isHeading1: false,
+            isHeading2: true,
+            isHeading3: false,
+            currentHeadingLevel: 2,
+            previousHeadingLevel: 2,
+            currentNodeType: 'heading',
+        });
+
+        const { rerender } = render(
+            <RichMarkdownToolbar
+                editor={editorDouble.editor as never}
+                showOutlineStructureControls
+            />
+        );
+
+        screen.getByRole('button', { name: 'common.indentBranch' }).click();
+        expect(editorDouble.spies.setHeading).toHaveBeenCalledWith({ level: 3 });
+
+        editorDouble.spies.setHeading.mockClear();
+
+        screen.getByRole('button', { name: 'common.outdentBranch' }).click();
+        expect(editorDouble.spies.setHeading).toHaveBeenCalledWith({ level: 1 });
+
+        mockUseEditorState.mockReturnValue({
+            isBold: false,
+            isItalic: false,
+            isStrike: false,
+            isBulletList: false,
+            isOrderedList: false,
+            isBlockquote: false,
+            isHeading1: false,
+            isHeading2: false,
+            isHeading3: false,
+            currentHeadingLevel: null,
+            previousHeadingLevel: 2,
+            currentNodeType: 'paragraph',
+        });
+
+        rerender(
+            <RichMarkdownToolbar
+                editor={editorDouble.editor as never}
+                showOutlineStructureControls
+            />
+        );
+
+        expect(screen.getByRole('button', { name: 'common.outdentBranch' })).toBeDisabled();
     });
 });

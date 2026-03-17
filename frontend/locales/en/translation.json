@@ -733,6 +733,8 @@
     "addBranchAfterCurrent": "Add branch after current branch",
     "addChildBranch": "Add child",
     "addChildUnderCurrent": "Add child branch under current branch",
+    "indentBranch": "Move deeper",
+    "outdentBranch": "Move outward",
     "promote": "Up",
     "promoteBranch": "Promote branch"
   },
@@ -1978,6 +1980,7 @@
       "synthesisClustersTitle": "Question synthesis clusters",
       "synthesisClustersHint": "Pull each visible open question together with linked support, contrast, and application branches so review turns into an actual synthesis pass.",
       "synthesisClusters": {
+        "scopeNote": "Questions stay scoped to current results; linked context still comes from workspace-wide branch relations.",
         "modes": {
           "workflow": "Workflow",
           "theme": "Theme"
@@ -1997,6 +2000,11 @@
           "support": "No linked support branches yet.",
           "contrast": "No linked contrast branches yet.",
           "application": "No linked application branches yet."
+        },
+        "emptyGroups": {
+          "needsEvidence": "No visible questions currently need evidence in this scope.",
+          "hasSupport": "No visible questions currently have support context in this scope.",
+          "readyToApply": "No visible questions currently show an application path in this scope."
         },
         "moreLinks": "+{{count}} more linked branches"
       }

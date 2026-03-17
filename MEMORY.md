@@ -59,6 +59,8 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-03-17 Discoverable Outline Depth Controls Should Mirror Keyboard Shortcuts:** If outline mode already supports `Tab / Shift-Tab` for relative heading depth changes, surface the same behavior as explicit toolbar buttons. Do not invent a second depth model for mouse users; make the existing seam discoverable.
+- **2026-03-17 Grouped Synthesis Boards Should Show Empty Stages And Inline Reveal:** If grouped synthesis is meant to behave like a workflow board, keep workflow stages visible even at zero and let long support/contrast/application sections expand inline. Otherwise the surface looks smart but withholds the next useful move from the user.
 - **2026-03-17 Workspace Synthesis Modes Should Persist Like Other Lenses:** If a workspace synthesis surface introduces a real viewing mode (for example `workflow` vs `theme`), persist it in URL state just like other note/workspace filters. Otherwise the page treats it as meaningful during use but forgets it on reload or drill-in navigation.
 - **2026-03-17 Theme Grouping Needs Canonical Keys And Safe IDs:** When grouping by free-text semantic labels, normalize the grouping key case-insensitively and derive a stable safe id for automation/test anchors. Raw label text is acceptable for display, but not as the canonical group key.
 - **2026-03-17 Grouped Synthesis Modes Should Advance Workflow, Not Add New Storage:** After flat synthesis queues and first question-centered cluster cards already exist, the next leverage step is to group those clusters by workflow stage or semantic theme. That deepens synthesis without inventing another persistence seam or another branch model.

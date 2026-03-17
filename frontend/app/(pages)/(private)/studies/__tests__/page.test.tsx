@@ -1020,6 +1020,10 @@ describe('StudiesPage', () => {
       expect(screen.queryByRole('heading', { name: 'Application Guide' })).not.toBeInTheDocument();
 
       expect(screen.getByTestId('studies-synthesis-clusters')).toBeInTheDocument();
+      expect(screen.getByTestId('studies-synthesis-cluster-group-needsEvidence')).toBeInTheDocument();
+      expect(screen.getByTestId('studies-synthesis-cluster-group-empty-needsEvidence')).toBeInTheDocument();
+      expect(screen.getByTestId('studies-synthesis-cluster-group-hasSupport')).toBeInTheDocument();
+      expect(screen.getByTestId('studies-synthesis-cluster-group-empty-hasSupport')).toBeInTheDocument();
       expect(screen.getByTestId('studies-synthesis-cluster-group-readyToApply')).toBeInTheDocument();
       expect(screen.getByTestId('studies-synthesis-cluster-question-branch')).toHaveTextContent('Open Question');
 
@@ -1045,6 +1049,110 @@ describe('StudiesPage', () => {
         'href',
         '/studies/application-note?search=Primary&synthesisGroup=theme#branch=application-branch'
       );
+    });
+
+    it('expands synthesis cluster sections inline when a question has more linked branches than the preview limit', async () => {
+      const questionContent = [
+        '## Open Question',
+        'Question body',
+      ].join('\n');
+      const supportContents = [1, 2, 3, 4].map((index) => [
+        `## Evidence ${index}`,
+        `Supports [Open Question](#branch=question-branch "supports").`,
+      ].join('\n'));
+      const questionOutline = parseStudyNoteOutline(questionContent);
+      const questionRecord = createStudyNoteBranchStateRecord(questionOutline.branches, '1', 'question-branch');
+
+      expect(questionRecord).not.toBeNull();
+
+      const supportRecords = supportContents.map((content, index) => {
+        const outline = parseStudyNoteOutline(content);
+        return createStudyNoteBranchStateRecord(outline.branches, '1', `support-${index + 1}`);
+      });
+
+      supportRecords.forEach((record) => {
+        expect(record).not.toBeNull();
+      });
+
+      const notes: StudyNote[] = [
+        createMockNote({
+          id: 'question-note',
+          title: 'Primary Question',
+          content: questionContent,
+          updatedAt: '2026-03-17T00:00:00.000Z',
+        }),
+        ...supportContents.map((content, index) => createMockNote({
+          id: `support-note-${index + 1}`,
+          title: `Support Note ${index + 1}`,
+          content,
+          updatedAt: '2026-03-17T00:00:00.000Z',
+        })),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+      mockUseStudyNoteBranchStates.mockReturnValue({
+        ...baseUseStudyNoteBranchStatesValue(),
+        branchStates: [
+          {
+            id: 'question-note',
+            noteId: 'question-note',
+            userId: 'mock-user',
+            branchRecords: [
+              {
+                ...questionRecord!,
+                branchKind: 'question',
+                branchStatus: 'tentative',
+                semanticLabel: 'Grace',
+              },
+            ],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-17T00:00:00.000Z',
+            updatedAt: '2026-03-17T00:00:00.000Z',
+          },
+          ...supportRecords.map((record, index) => ({
+            id: `support-note-${index + 1}`,
+            noteId: `support-note-${index + 1}`,
+            userId: 'mock-user',
+            branchRecords: [
+              {
+                ...record!,
+                branchKind: 'evidence' as const,
+                branchStatus: 'confirmed' as const,
+              },
+            ],
+            readFoldedBranchIds: [],
+            previewFoldedBranchIds: [],
+            createdAt: '2026-03-17T00:00:00.000Z',
+            updatedAt: '2026-03-17T00:00:00.000Z',
+          })),
+        ] as any,
+      });
+
+      render(<StudiesPage />);
+
+      fireEvent.change(screen.getByPlaceholderText(/studiesWorkspace\.searchPlaceholder/i), {
+        target: { value: 'Primary' },
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('studies-synthesis-clusters')).toBeInTheDocument();
+      });
+
+      expect(
+        screen.queryByTestId('studies-synthesis-cluster-link-question-branch-support-support-4')
+      ).not.toBeInTheDocument();
+
+      fireEvent.click(
+        screen.getByTestId('studies-synthesis-cluster-section-toggle-question-branch-support')
+      );
+
+      expect(
+        screen.getByTestId('studies-synthesis-cluster-link-question-branch-support-support-4')
+      ).toBeInTheDocument();
     });
 
     it('renders branch review lanes as a stable cross-note inventory and preserves the query lens in branch links', async () => {
