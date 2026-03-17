@@ -29,7 +29,7 @@ describe('brainstorm.service', () => {
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
+    jest.clearAllMocks();
     // Restore the environment variable
     process.env.NEXT_PUBLIC_API_BASE = API_URL;
   });
@@ -61,12 +61,12 @@ describe('brainstorm.service', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
       expect(fetchMock).toHaveBeenCalledWith(
         `${API_URL}/api/sermons/${mockSermonId}/brainstorm`,
-        {
+        expect.objectContaining({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-        }
+        })
       );
       
       expect(result).toEqual(mockBrainstormSuggestion);
@@ -234,12 +234,13 @@ describe('brainstorm.service', () => {
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: expect.any(AbortSignal),
       });
     });
 
     it('logs appropriate messages during execution', async () => {
-      // Restore console mocks for this test
-      jest.restoreAllMocks();
+      // Clear mocks for this test
+      jest.clearAllMocks();
       const logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
       
       // Arrange

@@ -20,9 +20,10 @@ jest.mock('@/hooks/useScrollLock', () => ({
   useScrollLock: jest.fn(),
 }));
 
-const mockUseOnlineStatus = jest.fn(() => true);
-jest.mock('@/hooks/useOnlineStatus', () => ({
-  useOnlineStatus: () => mockUseOnlineStatus(),
+const mockUseConnection = jest.fn(() => ({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() }));
+jest.mock('@/providers/ConnectionProvider', () => ({
+  useConnection: () => mockUseConnection(),
+  ConnectionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 // Mock the new RichMarkdownEditor which uses TipTap
@@ -137,7 +138,7 @@ describe('EditThoughtModal Component', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseOnlineStatus.mockReturnValue(true);
+    mockUseConnection.mockReturnValue({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() });
   });
 
   test('renders modal with correct initial values', () => {
@@ -341,7 +342,7 @@ describe('EditThoughtModal Component', () => {
   });
 
   test('shows read-only text block when offline and offline editing is not allowed', () => {
-    mockUseOnlineStatus.mockReturnValue(false);
+    mockUseConnection.mockReturnValue({ isOnline: false, isMagicAvailable: false, checkConnection: jest.fn() });
     render(
       <EditThoughtModal
         {...mockProps}

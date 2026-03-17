@@ -7,21 +7,21 @@ import { addPreachDate, deletePreachDate, updatePreachDate } from '@/services/pr
 import { updateSermon } from '@/services/sermon.service';
 import '@testing-library/jest-dom';
 
-const mockUseOnlineStatus = jest.fn(() => true);
+const mockUseConnection = jest.fn(() => ({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() }));
 
 // Mock dependencies
 jest.mock('@/services/sermon.service', () => ({
-  updateSermon: jest.fn()
+  updateSermon: jest.fn(),
 }));
-
 jest.mock('@/services/preachDates.service', () => ({
   addPreachDate: jest.fn(),
   updatePreachDate: jest.fn(),
   deletePreachDate: jest.fn(),
 }));
 
-jest.mock('@/hooks/useOnlineStatus', () => ({
-  useOnlineStatus: () => mockUseOnlineStatus(),
+jest.mock('@/providers/ConnectionProvider', () => ({
+  useConnection: () => mockUseConnection(),
+  ConnectionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 jest.mock('next/navigation', () => ({
@@ -107,7 +107,7 @@ describe('EditSermonModal Component', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseOnlineStatus.mockReturnValue(true);
+    mockUseConnection.mockReturnValue({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() });
     (updateSermon as jest.Mock).mockResolvedValue(mockUpdatedSermon);
     (addPreachDate as jest.Mock).mockResolvedValue({
       id: 'pd-added',

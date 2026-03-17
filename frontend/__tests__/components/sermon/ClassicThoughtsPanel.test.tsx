@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 
 import ClassicThoughtsPanel from "@/components/sermon/ClassicThoughtsPanel";
+import { TestProviders } from "../../../test-utils/test-providers";
 
 jest.mock("@/components/sermon/BrainstormModule", () => () => (
   <div data-testid="brainstorm-module">Brainstorm module</div>
@@ -82,7 +83,8 @@ describe("ClassicThoughtsPanel", () => {
         {...createProps({
           structureFilter: "intro",
         })}
-      />
+      />,
+      { wrapper: TestProviders }
     );
     expect(screen.getByText("structure.introduction")).toBeInTheDocument();
 
@@ -125,7 +127,8 @@ describe("ClassicThoughtsPanel", () => {
           isFilterOpen: false,
           isBrainstormOpen: false,
         })}
-      />
+      />,
+      { wrapper: TestProviders }
     );
 
     const filterButton = screen.getByTestId("thought-filter-button");
@@ -150,7 +153,8 @@ describe("ClassicThoughtsPanel", () => {
           tagFilters: ["grace", "unknown-tag"],
           resetFilters,
         })}
-      />
+      />,
+      { wrapper: TestProviders }
     );
 
     expect(screen.getAllByText("Active Filters:").length).toBeGreaterThan(0);

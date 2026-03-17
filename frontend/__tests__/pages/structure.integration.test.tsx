@@ -8,6 +8,7 @@ import { sortItemsWithAI } from '@/services/sortAI.service';
 import { updateStructure } from '@/services/structure.service';
 
 import { createMockSermon, createMockThought, createMockSermonPoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
+import { TestProviders } from '../../test-utils/test-providers';
 
 const searchParamsGetMock = jest.fn<string | null, [string]>((param) =>
   param === 'sermonId' ? 'sermon-123' : null
@@ -114,7 +115,11 @@ describe('ThoughtsBySection Page - Integration Tests', () => {
         createMockHookReturn(mockSermon, containers, mockSermon.outline)
       );
 
-      render(<StructurePage />);
+      render(
+      <TestProviders>
+        <StructurePage />
+      </TestProviders>
+    );
 
       await waitFor(() => {
         expect(screen.getByText('Thought 1')).toBeInTheDocument();
@@ -157,7 +162,11 @@ describe('ThoughtsBySection Page - Integration Tests', () => {
         createMockHookReturn(mockSermon, containers, mockSermon.outline)
       );
 
-      render(<StructurePage />);
+      render(
+      <TestProviders>
+        <StructurePage />
+      </TestProviders>
+    );
 
       await waitFor(() => {
         // Find Introduction in the column header, not in navigation links
@@ -192,7 +201,11 @@ describe('ThoughtsBySection Page - Integration Tests', () => {
         createMockHookReturn(mockSermon, containers, mockSermon.outline)
       );
 
-      render(<StructurePage />);
+      render(
+      <TestProviders>
+        <StructurePage />
+      </TestProviders>
+    );
 
       await waitFor(() => {
         // Find Point 1 in the outline point header
@@ -231,7 +244,11 @@ describe('ThoughtsBySection Page - Integration Tests', () => {
         createMockHookReturn(mockSermon, containers, mockSermon.outline)
       );
 
-      render(<StructurePage />);
+      render(
+      <TestProviders>
+        <StructurePage />
+      </TestProviders>
+    );
 
       const addButton = await screen.findByTitle('Add thought to Introduction');
       fireEvent.click(addButton);
@@ -277,7 +294,11 @@ describe('ThoughtsBySection Page - Integration Tests', () => {
         createMockHookReturn(mockSermon, containers, mockSermon.outline)
       );
 
-      render(<StructurePage />);
+      render(
+      <TestProviders>
+        <StructurePage />
+      </TestProviders>
+    );
 
       fireEvent.click(screen.getByTitle('Add thought to Introduction'));
       fireEvent.click(screen.getByText('Cancel'));

@@ -6,6 +6,7 @@ import DashboardNav from '@/components/navigation/DashboardNav';
 import ModeToggle from '@/components/navigation/ModeToggle';
 import { hasGroupsAccess } from '@/services/userSettings.service';
 import { runScenarios } from '@test-utils/scenarioRunner';
+import { TestProviders } from '../../../test-utils/test-providers';
 // Use mocked ModeToggle rendered inside DashboardNav and query by testids exposed there
 jest.mock('@locales/i18n', () => ({}));
 
@@ -110,7 +111,11 @@ describe('DashboardNav mode toggle', () => {
           name: 'hidden outside sermon path',
           run: () => {
             pathnameMock = '/dashboard';
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             expect(screen.queryByText('Classic Mode')).not.toBeInTheDocument();
           }
         },
@@ -176,21 +181,33 @@ describe('DashboardNav mode toggle', () => {
           name: 'reads prep mode from query',
           run: () => {
             paramsMap = { mode: 'prep' };
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
           }
         },
         {
           name: 'defaults to classic when no mode',
           run: () => {
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             expect(screen.getByTestId('toggle-classic')).toHaveAttribute('aria-pressed', 'true');
           }
         },
         {
           name: 'switches from classic to prep',
           run: () => {
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             fireEvent.click(screen.getByTestId('toggle-prep'));
             expect(pushMock).toHaveBeenCalledWith('/sermons/abc?mode=prep', { scroll: false });
           }
@@ -199,7 +216,11 @@ describe('DashboardNav mode toggle', () => {
           name: 'switches from prep to classic',
           run: () => {
             paramsMap = { mode: 'prep' };
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             fireEvent.click(screen.getByTestId('toggle-classic'));
             expect(pushMock).toHaveBeenCalledWith('/sermons/abc', { scroll: false });
           }
@@ -208,7 +229,11 @@ describe('DashboardNav mode toggle', () => {
           name: 'preserves other query params',
           run: () => {
             paramsMap = { mode: 'prep', otherParam: 'value' };
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             fireEvent.click(screen.getByTestId('toggle-classic'));
             expect(pushMock).toHaveBeenCalledWith('/sermons/abc?otherParam=value', { scroll: false });
           }
@@ -217,7 +242,11 @@ describe('DashboardNav mode toggle', () => {
           name: 'keeps multiple params',
           run: () => {
             paramsMap = { mode: 'prep', param1: 'value1', param2: 'value2' };
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             fireEvent.click(screen.getByTestId('toggle-classic'));
             expect(pushMock).toHaveBeenCalledWith('/sermons/abc?param1=value1&param2=value2', { scroll: false });
           }
@@ -226,7 +255,11 @@ describe('DashboardNav mode toggle', () => {
           name: 'ignores clicks when already in mode',
           run: () => {
             paramsMap = { mode: 'prep' };
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             fireEvent.click(screen.getByTestId('toggle-prep'));
             expect(pushMock).not.toHaveBeenCalled();
           }
@@ -243,7 +276,11 @@ describe('DashboardNav mode toggle', () => {
           name: 'empty pathname hides toggle',
           run: () => {
             pathnameMock = '';
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             expect(screen.queryByTestId('toggle-prep')).not.toBeInTheDocument();
           }
         },
@@ -251,7 +288,11 @@ describe('DashboardNav mode toggle', () => {
           name: 'undefined pathname hides toggle',
           run: () => {
             pathnameMock = undefined as any;
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             expect(screen.queryByTestId('toggle-prep')).not.toBeInTheDocument();
           }
         },
@@ -259,7 +300,11 @@ describe('DashboardNav mode toggle', () => {
           name: 'complex pathname still shows toggle',
           run: () => {
             paramsMap = { mode: 'prep' };
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
           }
         },
@@ -268,7 +313,11 @@ describe('DashboardNav mode toggle', () => {
           run: () => {
             const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
             paramsMap = { mode: 'prep' };
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             expect(screen.getByTestId('toggle-prep')).toBeInTheDocument();
             consoleSpy.mockRestore();
           }
@@ -277,7 +326,11 @@ describe('DashboardNav mode toggle', () => {
           name: 'handles empty query values',
           run: () => {
             paramsMap = { mode: 'prep', emptyParam: '' };
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
           }
         },
@@ -285,7 +338,11 @@ describe('DashboardNav mode toggle', () => {
           name: 'handles special characters in params',
           run: () => {
             paramsMap = { mode: 'prep', specialParam: 'value with spaces & symbols' };
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             expect(screen.getByTestId('toggle-prep')).toHaveAttribute('aria-pressed', 'true');
           }
         }
@@ -300,7 +357,11 @@ describe('Navigation button visibility', () => {
     mockHasGroupsAccess.mockResolvedValueOnce(false);
     pathnameMock = '/dashboard';
 
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     await waitFor(() => {
       expect(screen.queryByText('navigation.groups')).not.toBeInTheDocument();
@@ -309,7 +370,11 @@ describe('Navigation button visibility', () => {
 
   it('updates groups item visibility immediately after feature toggle event', async () => {
     pathnameMock = '/dashboard';
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     await waitFor(() => {
       expect(screen.getByText('navigation.groups')).toBeInTheDocument();
@@ -336,7 +401,11 @@ describe('Navigation button visibility', () => {
           run: () => {
             pathnameMock = '/structure';
             paramsMap = { sermonId: 'test-id' };
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             expect(screen.getByText('Основная навигация')).toBeInTheDocument();
           }
         },
@@ -344,7 +413,11 @@ describe('Navigation button visibility', () => {
           name: 'sermon main page shows dropdown',
           run: () => {
             pathnameMock = '/sermons/test-id';
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             expect(screen.getByText('Основная навигация')).toBeInTheDocument();
           }
         },
@@ -352,7 +425,11 @@ describe('Navigation button visibility', () => {
           name: 'sermon plan page shows dropdown',
           run: () => {
             pathnameMock = '/sermons/test-id/plan';
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             expect(screen.getByText('Основная навигация')).toBeInTheDocument();
           }
         },
@@ -360,7 +437,11 @@ describe('Navigation button visibility', () => {
           name: 'dashboard hides dropdown',
           run: () => {
             pathnameMock = '/dashboard';
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             expect(screen.queryByText('Основная навигация')).not.toBeInTheDocument();
           }
         },
@@ -368,7 +449,11 @@ describe('Navigation button visibility', () => {
           name: 'series page hides dropdown',
           run: () => {
             pathnameMock = '/series';
-            render(<DashboardNav />);
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
             expect(screen.queryByText('Основная навигация')).not.toBeInTheDocument();
           }
         }
@@ -384,7 +469,11 @@ describe('Feedback integration', () => {
 
   it('calls handleSubmitFeedback with user email when feedback is submitted', () => {
     pathnameMock = '/dashboard';
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
     
     // Simulate clicking the feedback button (desktop)
     const feedbackButton = screen.getAllByRole('button', { name: /Provide feedback/i })[0];
@@ -411,7 +500,7 @@ describe('DashboardNav useEffects', () => {
   afterAll(() => { process.env = OLD_ENV; });
 
   it('closes menus when pathname changes', () => {
-    const { rerender } = render(<DashboardNav />);
+    const { rerender } = render(<DashboardNav />, { wrapper: TestProviders });
     
     // Simulate mobile menu open
     const mobileMenuBtn = screen.getByRole('button', { name: /Open menu/i });
@@ -426,7 +515,11 @@ describe('DashboardNav useEffects', () => {
 
   it('closes nav dropdown when clicking outside', () => {
     pathnameMock = '/sermons/abc';
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
     
     const navMenuBtn = screen.getByRole('button', { name: /Navigation menu/i });
     fireEvent.click(navMenuBtn);

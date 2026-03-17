@@ -6,6 +6,7 @@ import { OfflineBanner } from "./components/OfflineBanner";
 import { ServiceWorkerRegister } from "./components/ServiceWorkerRegister";
 import LanguageInitializer from "./components/navigation/LanguageInitializer";
 import { AuthProvider } from "./providers/AuthProvider";
+import { ConnectionProvider } from "./providers/ConnectionProvider";
 import { QueryProvider } from "./providers/QueryProvider";
 import { TextScaleProvider } from "./providers/TextScaleProvider";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
@@ -70,17 +71,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </a>
         <TextScaleProvider>
           <AuthProvider>
-            <QueryProvider>
-              <NuqsAdapter>
-                <LanguageInitializer />
-                <ServiceWorkerRegister />
-                <Toaster richColors closeButton position="top-right" />
-                <div className="min-h-screen flex flex-col" id="app-shell">
-                  <OfflineBanner />
-                  {children}
-                </div>
-              </NuqsAdapter>
-            </QueryProvider>
+            <ConnectionProvider>
+              <QueryProvider>
+                <NuqsAdapter>
+                  <LanguageInitializer />
+                  <ServiceWorkerRegister />
+                  <Toaster richColors closeButton position="top-right" />
+                  <div className="min-h-screen flex flex-col" id="app-shell">
+                    <OfflineBanner />
+                    {children}
+                  </div>
+                </NuqsAdapter>
+              </QueryProvider>
+            </ConnectionProvider>
           </AuthProvider>
         </TextScaleProvider>
       </body>

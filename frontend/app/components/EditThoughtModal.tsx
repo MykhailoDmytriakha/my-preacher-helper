@@ -5,9 +5,9 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { SermonPoint, SermonOutline } from '@/models/models';
+import { useConnection } from '@/providers/ConnectionProvider';
 import { FocusRecorderButton } from "@components/FocusRecorderButton";
 import { transcribeThoughtAudio } from "@services/thought.service";
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
@@ -268,9 +268,9 @@ export default function EditThoughtModal({
   onClose,
   allowOffline = false,
 }: EditThoughtModalProps) {
-  const isOnline = useOnlineStatus();
+  const { isOnline, isMagicAvailable } = useConnection();
   const isReadOnly = !isOnline && !allowOffline;
-  const isDictationDisabled = !isOnline || isReadOnly;
+  const isDictationDisabled = !isMagicAvailable || isReadOnly;
   const [text, setText] = useState(initialText);
   const [tags, setTags] = useState<string[]>(initialTags);
   const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | null | undefined>(initialSermonPointId);
@@ -342,16 +342,8 @@ export default function EditThoughtModal({
     }
   };
 
-  // We don't need manual textarea resizing logic for TipTap as it grows automatically and we set minHeight.
-  // But we still want to limit modal max height via Tailwind.
-  // Removed `computeTextareaMaxHeight` and `resizeTextarea` as TipTap Prosemirror handles contenteditable height automatically by default with css.
-
   const allSermonPoints = buildAllSermonPoints(sermonOutline, t);
-
-  // Find the selected outline point text for display
   const selectedPointInfo = allSermonPoints.find(point => point.id === selectedSermonPointId);
-
-  // Determine which outline points to show based on containerSection
   const filteredSermonPoints = getFilteredSermonPoints(sermonOutline, containerSection);
 
   const availableTags = allowedTags.filter(allowedTag =>
@@ -373,8 +365,6 @@ export default function EditThoughtModal({
         ref={modalRef}
         onClick={(e) => e.stopPropagation()}
         className={
-          // Mobile: fixed full-screen, scrollable
-          // Desktop (sm+): centered modal card
           "absolute inset-0 overflow-y-auto bg-white dark:bg-gray-800 " +
           "sm:bg-transparent sm:dark:bg-transparent " +
           "sm:inset-auto sm:relative sm:top-0 sm:left-0 sm:overflow-visible " +
@@ -420,7 +410,7 @@ export default function EditThoughtModal({
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-3 min-h-[48px]">
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('editThought.textLabel')}</label>
-                <div className="flex items-center gap-2">
+                <div className={`flex items-center gap-2 transition-opacity duration-300 ${isDictationDisabled ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
                   <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                     {t('editThought.appendDictation')}
                   </span>
@@ -478,4 +468,4 @@ export default function EditThoughtModal({
   );
 
   return createPortal(modalContent, document.body);
-} 
+}

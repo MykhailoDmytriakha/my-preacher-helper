@@ -5,7 +5,7 @@ import Link from 'next/link';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useConnection } from '@/providers/ConnectionProvider';
 import { getSermonOutline, updateSermonOutline } from '@/services/outline.service';
 import { getSectionStyling } from '@/utils/themeColors';
 import { getFocusModeUrl } from '@/utils/urlUtils';
@@ -32,7 +32,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
   isReadOnly = false,
 }) => {
   const { t } = useTranslation();
-  const isOnline = useOnlineStatus();
+  const { isOnline } = useConnection();
 
   // --- All useState hooks at the top ---
   const [loading, setLoading] = useState<boolean>(true);
@@ -104,6 +104,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
               conclusion: !isMobile && mappedOutline.conclusion.length > 0,
             });
           }
+          setLoading(false);
           return;
         }
         const outlineData = await getSermonOutline(sermon.id);
@@ -223,7 +224,6 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
 
       try {
         // Convert our component state structure to the API expected format
-        // Important: Using the explicitly passed data, not relying on state
         const outlineToSave: SermonOutline = {
           introduction: pointsToSave.introduction,
           main: pointsToSave.mainPart, // Map mainPart to main for API

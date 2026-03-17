@@ -5,9 +5,9 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { Thought, SermonOutline } from '@/models/models';
+import { useConnection } from '@/providers/ConnectionProvider';
 import { FocusRecorderButton } from '@components/FocusRecorderButton';
 import { transcribeThoughtAudio } from '@services/thought.service';
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from '@utils/tagUtils';
@@ -39,7 +39,7 @@ export default function CreateThoughtModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDictating, setIsDictating] = useState(false);
   const { t } = useTranslation();
-  const isOnline = useOnlineStatus();
+  const { isOnline, isMagicAvailable } = useConnection();
 
   useScrollLock(isOpen);
 
@@ -80,7 +80,7 @@ export default function CreateThoughtModal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (disabled || !isOnline) return;
+    if (disabled) return;
     const trimmedText = text.trim();
     if (!trimmedText) return;
 
@@ -168,7 +168,11 @@ export default function CreateThoughtModal({
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                 {t('editThought.textLabel')}
               </label>
-              <div className="flex items-center gap-2">
+              <div 
+                className={`flex items-center gap-2 transition-opacity duration-300 ${!isMagicAvailable ? 'opacity-40 grayscale' : ''}`}
+                aria-disabled={!isMagicAvailable}
+                title={!isMagicAvailable ? t('errors.magicUnavailable') || 'Unavailable offline' : ''}
+              >
                 <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                   {t('editThought.appendDictation')}
                 </span>
@@ -177,7 +181,7 @@ export default function CreateThoughtModal({
                     size="small"
                     onRecordingComplete={handleDictationComplete}
                     isProcessing={isDictating}
-                    disabled={isSubmitting || !isOnline}
+                    disabled={isSubmitting || !isMagicAvailable}
                     onError={(msg) => {
                       toast.error(msg);
                       setIsDictating(false);
@@ -192,8 +196,11 @@ export default function CreateThoughtModal({
             {/* Body: mobile scrolls via outer container; desktop scroll here */}
             <div className="sm:flex-grow sm:overflow-auto space-y-4">
               {!isOnline && (
-                <div className="p-3 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-400 rounded-md">
-                  <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                <div className="p-3 bg-amber-100 dark:bg-amber-900/30 border border-amber-400 rounded-md flex items-start gap-2">
+                  <svg className="w-5 h-5 text-amber-600 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
                     {t('manualThought.offlineWarning')}
                   </p>
                 </div>
@@ -304,7 +311,7 @@ export default function CreateThoughtModal({
               <button
                 type="submit"
                 className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
-                disabled={isSubmitting || !text.trim() || !isOnline}
+                disabled={isSubmitting || !text.trim()}
               >
                 {isSubmitting ? t('buttons.saving') : t('buttons.save')}
               </button>

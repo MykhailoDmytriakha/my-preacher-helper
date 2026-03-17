@@ -12,6 +12,7 @@ import { useSermonActions } from '@/(pages)/(private)/sermons/[id]/structure/hoo
 import { useStructureDnd } from '@/(pages)/(private)/sermons/[id]/structure/hooks/useStructureDnd';
 
 import { createMockSermon, createMockThought, createMockSermonPoint, mockTranslations, createMockHookReturn, createMockItem } from '../../test-utils/structure-test-utils';
+import { TestProviders } from '../../test-utils/test-providers';
 
 const mockUseSearchParams = jest.fn();
 jest.mock('next/navigation', () => ({
@@ -172,7 +173,11 @@ describe('ThoughtsBySection Page', () => {
 
       for (const scenario of fallbackScenarios) {
         mockedUseSermonStructureData.mockReturnValue(scenario.hookState());
-        render(<StructurePage />);
+        render(
+      <TestProviders>
+        <StructurePage />
+      </TestProviders>
+    );
         scenario.assert();
         cleanup();
       }
@@ -192,7 +197,11 @@ describe('ThoughtsBySection Page', () => {
         loading: true,
       });
 
-      render(<StructurePage />);
+      render(
+      <TestProviders>
+        <StructurePage />
+      </TestProviders>
+    );
 
       expect(screen.getByTestId('structure-skeleton')).toBeInTheDocument();
       // Skeleton with isFocusMode uses flex layout (single column) - both branches covered
@@ -221,7 +230,11 @@ describe('ThoughtsBySection Page', () => {
 
       mockedUseSermonStructureData.mockReturnValue(createMockHookReturn(mockSermon, containers));
 
-      render(<StructurePage />);
+      render(
+      <TestProviders>
+        <StructurePage />
+      </TestProviders>
+    );
 
       await waitFor(() => {
         // Sermon title appears in the header as "ThoughtsBySection Test Sermon"
@@ -256,7 +269,11 @@ describe('ThoughtsBySection Page', () => {
         createMockHookReturn(mockSermon, containers, mockSermon.outline)
       );
 
-      render(<StructurePage />);
+      render(
+      <TestProviders>
+        <StructurePage />
+      </TestProviders>
+    );
 
       await waitFor(() => {
         expect(screen.getByText(/drop thoughts here to add/i)).toBeInTheDocument();
@@ -332,7 +349,11 @@ describe('ThoughtsBySection Page', () => {
           handleDragEnd: jest.fn(),
         });
 
-        render(<StructurePage />);
+        render(
+      <TestProviders>
+        <StructurePage />
+      </TestProviders>
+    );
 
         // Should find the active item in the overlay
         await waitFor(() => {
@@ -366,7 +387,11 @@ describe('ThoughtsBySection Page', () => {
           handleRetryPendingThought: jest.fn(),
         });
 
-        render(<StructurePage />);
+        render(
+      <TestProviders>
+        <StructurePage />
+      </TestProviders>
+    );
 
         await waitFor(() => {
           // EditThoughtModal should be present (mocking usually renders it but we check for content or Role)

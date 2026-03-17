@@ -10,6 +10,11 @@ import '@testing-library/jest-dom';
 let latestExportProps: any = null;
 
 // Mock dependencies
+jest.mock('@/providers/ConnectionProvider', () => ({
+  useConnection: jest.fn(() => ({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() })),
+  ConnectionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
 jest.mock('@/services/sermon.service', () => ({
   updateSermon: jest.fn()
 }));

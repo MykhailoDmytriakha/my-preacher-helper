@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from 'sonner';
 import "@locales/i18n";
 
 import AudioRecorderPortalBridge from '@/components/sermon/AudioRecorderPortalBridge';
@@ -26,13 +27,13 @@ import SermonOutline from "@/components/sermon/SermonOutline";
 import StructurePreview from "@/components/sermon/StructurePreview";
 import StructureStats from "@/components/sermon/StructureStats";
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useOptimisticEntitySync } from "@/hooks/useOptimisticEntitySync";
 import { useSeries } from "@/hooks/useSeries";
 import useSermon from "@/hooks/useSermon";
 import { useTags } from "@/hooks/useTags";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { useAuth } from "@/providers/AuthProvider";
+import { useConnection } from "@/providers/ConnectionProvider";
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
 import { updateStructure } from "@/services/structure.service";
 import { projectOptimisticEntities } from "@/utils/optimisticEntityProjection";
@@ -219,8 +220,8 @@ export default function SermonPage() {
   const { user } = useAuth();
   const { series } = useSeries(user?.uid || null);
   const { settings: userSettings } = useUserSettings(user?.uid);
-  const isOnline = useOnlineStatus();
-  const isReadOnly = !isOnline;
+  const { isMagicAvailable } = useConnection();
+  const isReadOnly = false; // Support Indifferent Sync: edit always possible locally
 
   const searchParams = useSearchParams();
   const modeParam = searchParams?.get('mode');
@@ -282,17 +283,39 @@ export default function SermonPage() {
       retryThoughtActionsRef.current = {};
     };
   }, []);
-
-  useEffect(() => {
-    if (sermon?.preparation) setPrepDraft(sermon.preparation);
-  }, [sermon?.preparation]);
-
+useEffect(() => {
+  if (sermon?.preparation) {
+    let mergedPrep = { ...sermon.preparation };
+    try {
+      const backup = localStorage.getItem(`prep-draft-backup-${sermon.id}`);
+      if (backup) {
+        const parsed = JSON.parse(backup);
+        mergedPrep = { ...mergedPrep, ...parsed }; // Local wins over stale remote
+      }
+    } catch { }
+    setPrepDraft(mergedPrep);
+  }
+}, [sermon?.preparation, sermon?.id]);
   const savePreparation = useCallback(async (partial: Preparation) => {
     if (!sermon) return;
     setSavingPrep(true);
     const next: Preparation = { ...(sermon.preparation ?? {}), ...partial };
+    
+    // Backup to localStorage immediately in case network fails
+    try {
+      localStorage.setItem(`prep-draft-backup-${sermon.id}`, JSON.stringify(next));
+    } catch { }
+
     const updated = await updateSermonPreparation(sermon.id, next);
-    if (updated) setSermon(prev => (prev ? { ...prev, preparation: updated } : prev));
+    if (updated) {
+      setSermon(prev => (prev ? { ...prev, preparation: updated } : prev));
+      try {
+        localStorage.removeItem(`prep-draft-backup-${sermon.id}`);
+      } catch { }
+    } else {
+      // If update failed (offline), we keep the backup and show a toast
+      toast.error('Changes saved locally. They will sync when you are back online.', { id: 'prep-sync-error' });
+    }
     setSavingPrep(false);
   }, [sermon, setSermon]);
 
@@ -429,10 +452,50 @@ export default function SermonPage() {
   }, [sermon, setSermon]);
 
   const handleRetryThoughtSync = useCallback(async (thoughtId: string) => {
+    // If it's still in the closure map (same session), use that for speed/context
     const retryAction = retryThoughtActionsRef.current[thoughtId];
-    if (!retryAction) return;
-    await retryAction();
-  }, []);
+    if (retryAction) {
+      await retryAction();
+      return;
+    }
+
+    // Otherwise, we are likely recovering from a hard reload and must rebuild the action
+    if (!sermonRef.current) return;
+    
+    // Find the record by localId or entityId
+    let record = thoughtSync.getRecordByLocalId(thoughtId);
+    if (!record) {
+      record = thoughtSync.records.find(r => r.entityId === thoughtId) || undefined;
+    }
+
+    if (!record || !record.entity) {
+      console.warn('Cannot retry sync: record or entity not found in IndexedDB queue');
+      return;
+    }
+
+    const sermonId = sermonRef.current.id;
+    thoughtSync.markRecordStatus(record.localId, "sending", { resetExpiry: true });
+
+    try {
+      if (record.operation === 'create') {
+        const savedThought = await createManualThought(sermonId, record.entity);
+        thoughtSync.replaceRecordEntity(record.localId, savedThought, { entityId: savedThought.id });
+        thoughtSync.markRecordStatus(record.localId, "success", { successAt: new Date().toISOString() });
+        scheduleThoughtSyncCleanup(record.localId);
+      } else if (record.operation === 'update') {
+        const savedThought = await updateThought(sermonId, record.entity);
+        thoughtSync.replaceRecordEntity(record.localId, savedThought);
+        thoughtSync.markRecordStatus(record.localId, "success", { successAt: new Date().toISOString() });
+        scheduleThoughtSyncCleanup(record.localId);
+      } else if (record.operation === 'delete') {
+        await deleteThought(sermonId, record.snapshot || record.entity);
+        thoughtSync.removeRecord(record.localId);
+      }
+    } catch (err) {
+      console.error(`Failed to retry ${record.operation} for thought:`, err);
+      thoughtSync.markRecordStatus(record.localId, "error", { error: t('errors.syncFailed', { defaultValue: 'Sync failed' }) });
+    }
+  }, [thoughtSync, scheduleThoughtSyncCleanup, t]);
 
   const handleSaveThoughtPatch = useCallback(async (
     thoughtToUpdate: Thought,
@@ -1210,7 +1273,7 @@ export default function SermonPage() {
         transcriptionError={transcriptionError}
         onClearError={handleClearError}
         hideKeyboardShortcuts={uiMode === 'prep'}
-        isReadOnly={isReadOnly}
+        isReadOnly={!isMagicAvailable}
         onOpenCreateModal={() => setIsCreateModalOpen(true)}
         manualThoughtTitle={t('manualThought.addManual')}
       />
@@ -1270,6 +1333,7 @@ export default function SermonPage() {
           sermonOutline={displaySermon?.outline}
           onSave={handleSaveEditedThought}
           onClose={() => setEditingModalData(null)}
+          allowOffline={true}
         />
       )}
       <CreateThoughtModal
