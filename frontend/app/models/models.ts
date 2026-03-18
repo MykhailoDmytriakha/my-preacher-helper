@@ -460,3 +460,36 @@ export interface PlanData {
   conclusion: string;
   exportDate?: string;
 }
+
+// Prayer Journal
+
+export type PrayerStatus = 'active' | 'answered' | 'not_answered';
+
+export interface PrayerUpdate {
+  id: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface PrayerRequest {
+  id: string;
+  userId: string;
+  title: string;
+  description?: string;
+  categoryId?: string;
+  tags?: string[];
+  status: PrayerStatus;
+  updates: PrayerUpdate[];
+  createdAt: string;
+  updatedAt: string;
+  answeredAt?: string;
+  answerText?: string;
+}
+
+export interface PrayerCategory {
+  id: string;
+  userId: string;
+  name: string;
+  color?: string;
+  createdAt: string;
+}

@@ -16,7 +16,9 @@
     "seriesDetail": "Серия",
     "groupDetail": "Группа",
     "studyDetail": "Исследование",
+    "prayerDetail": "Молитва",
     "calendar": "Календарь",
+    "prayer": "Молитва",
     "breadcrumb": {
       "dashboard": "Панель",
       "sermon": "Проповедь",
@@ -1999,6 +2001,104 @@
       "end": "Завершить встречу",
       "completed": "Все блоки пройдены",
       "totalTime": "Итого"
+    }
+  },
+  "prayer": {
+    "title": "Молитвенный журнал",
+    "add": "Добавить молитву",
+    "empty": "Нет молитвенных запросов",
+    "emptyFiltered": "Нет молитв по этому фильтру",
+    "updates_count_one": "{{count}} обновление",
+    "updates_count_few": "{{count}} обновления",
+    "updates_count_many": "{{count}} обновлений",
+    "updates_count_other": "{{count}} обновлений",
+    "filter": {
+      "label": "Фильтры по статусу молитвы",
+      "all": "Все",
+      "active": "Активные",
+      "answered": "Отвеченные",
+      "not_answered": "Не отвеченные"
+    },
+    "search": {
+      "placeholder": "Поиск молитв...",
+      "settings": "Настройки поиска",
+      "inUpdates": "Искать в обновлениях",
+      "inTags": "Искать в тегах",
+      "inAnswers": "Искать в ответах"
+    },
+    "sort": {
+      "label": "Сортировка",
+      "createdAt": "По дате добавления",
+      "updatedAt": "По обновлению",
+      "answeredAt": "По дате ответа"
+    },
+    "status": {
+      "active": "Активная",
+      "answered": "Отвечена",
+      "not_answered": "Не отвечена"
+    },
+    "actions": {
+      "markAnswered": "Отметить как отвеченную",
+      "markNotAnswered": "Отметить как не отвеченную",
+      "markActive": "Вернуть в активные",
+      "addUpdate": "Добавить обновление",
+      "edit": "Редактировать",
+      "delete": "Удалить"
+    },
+    "create": {
+      "title": "Новый молитвенный запрос",
+      "titleLabel": "Молитвенный запрос",
+      "titlePlaceholder": "За что молитесь?",
+      "descriptionLabel": "Дополнительный контекст",
+      "descriptionPlaceholder": "Дополнительные заметки...",
+      "categoryLabel": "Категория",
+      "tagsLabel": "Теги",
+      "tagsPlaceholder": "семья, здоровье, евангелизация",
+      "submit": "Добавить молитву",
+      "cancel": "Отмена"
+    },
+    "edit": {
+      "title": "Редактировать молитву",
+      "submit": "Сохранить",
+      "cancel": "Отмена"
+    },
+    "update": {
+      "title": "Добавить обновление",
+      "placeholder": "Что произошло? (встретился, поговорил, оставил книгу...)",
+      "submit": "Добавить",
+      "cancel": "Отмена"
+    },
+    "detail": {
+      "updates": "Обновления",
+      "noUpdates": "Обновлений пока нет",
+      "answeredOn": "Отвечена",
+      "addedOn": "Добавлена",
+      "updatedOn": "Обновлена"
+    },
+    "delete": {
+      "confirm": "Удалить этот молитвенный запрос?",
+      "description": "Молитва и все её обновления будут удалены безвозвратно.",
+      "confirm_button": "Удалить",
+      "cancel": "Отмена"
+    },
+    "markAnswered": {
+      "title": "Молитва отвечена!",
+      "subtitle": "Как Бог ответил на эту молитву? (необязательно)",
+      "placeholder": "Запишите как Бог ответил...",
+      "skip": "Отметить без записи",
+      "submit": "Сохранить"
+    },
+    "answerText": {
+      "label": "Как Бог ответил",
+      "edit": "Редактировать ответ",
+      "add": "Записать как Бог ответил"
+    },
+    "toast": {
+      "created": "Молитвенный запрос добавлен",
+      "updated": "Молитвенный запрос обновлён",
+      "deleted": "Молитвенный запрос удалён",
+      "updateAdded": "Обновление добавлено",
+      "statusChanged": "Статус обновлён"
     }
   }
 }

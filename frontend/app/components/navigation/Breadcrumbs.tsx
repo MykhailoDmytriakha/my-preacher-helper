@@ -6,6 +6,7 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useGroupDetail } from '@/hooks/useGroupDetail';
+import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
 import useSermon from '@/hooks/useSermon';
 import { debugLog } from '@/utils/debugMode';
@@ -61,6 +62,11 @@ const segmentLabels: Record<string, SegmentConfig> = {
     labelKey: 'navigation.studies',
     defaultLabel: 'Studies',
     href: '/studies'
+  },
+  prayers: {
+    labelKey: 'navigation.prayer',
+    defaultLabel: 'Prayer',
+    href: '/prayers'
   }
 };
 
@@ -80,6 +86,10 @@ const detailParents: Record<string, SegmentConfig> = {
   studies: {
     labelKey: 'navigation.studyDetail',
     defaultLabel: 'Study'
+  },
+  prayers: {
+    labelKey: 'navigation.prayerDetail',
+    defaultLabel: 'Prayer'
   }
 };
 
@@ -93,6 +103,7 @@ type TranslateFn = (key: string, options?: { defaultValue?: string }) => string;
 type SermonData = ReturnType<typeof useSermon>['sermon'];
 type SeriesData = ReturnType<typeof useSeriesDetail>['series'];
 type GroupData = ReturnType<typeof useGroupDetail>['group'];
+type PrayerData = ReturnType<typeof usePrayerDetail>['prayer'];
 
 const shouldSkipRootSegment = (segment: string, index: number) =>
   segment === 'sermons' || (index === 0 && Boolean(segmentLabels[segment]));
@@ -106,12 +117,14 @@ type BuildSegmentCrumbParams = {
   sermon: SermonData;
   series: SeriesData;
   group: GroupData;
+  prayer: PrayerData;
 };
 
 type DetailLabelContext = {
   sermon: SermonData;
   series: SeriesData;
   group: GroupData;
+  prayer: PrayerData;
 };
 
 type DetailLabelResolver = (context: DetailLabelContext) => string | null;
@@ -120,6 +133,7 @@ const detailLabelResolvers: Record<string, DetailLabelResolver> = {
   sermons: ({ sermon }) => sermon?.title || null,
   series: ({ series }) => (series ? series.title || `Series ${series.id.slice(-4)}` : null),
   groups: ({ group }) => group?.title || null,
+  prayers: ({ prayer }) => prayer?.title || null,
 };
 
 const buildCrumb = (label: string, isLast: boolean, currentPath: string, hrefOverride?: string) => ({
@@ -155,6 +169,7 @@ const buildSegmentCrumb = ({
   sermon,
   series,
   group,
+  prayer,
 }: BuildSegmentCrumbParams): BreadcrumbItem => {
   const config = segmentLabels[segment];
   if (config) {
@@ -167,7 +182,7 @@ const buildSegmentCrumb = ({
   }
 
   if (parent) {
-    const detailLabel = resolveDetailLabel(parent, t, { sermon, series, group });
+    const detailLabel = resolveDetailLabel(parent, t, { sermon, series, group, prayer });
     if (detailLabel) {
       return buildCrumb(detailLabel, isLast, currentPath);
     }
@@ -217,6 +232,15 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
     return null;
   }, [pathname]);
 
+  // Get prayerId from URL
+  const prayerId = useMemo(() => {
+    const segments = pathname.split('/').filter(Boolean);
+    if (segments[0] === 'prayers' && segments[1]) {
+      return segments[1];
+    }
+    return null;
+  }, [pathname]);
+
   // Get sermon data if we have sermonId
   const { sermon } = useSermon(sermonId || '');
 
@@ -225,6 +249,9 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
 
   // Get group data if we have groupId
   const { group } = useGroupDetail(groupId || '');
+
+  // Get prayer data if we have prayerId
+  const { prayer } = usePrayerDetail(prayerId || '');
 
   const items = useMemo<BreadcrumbItem[]>(() => {
     if (shouldHide) {
@@ -276,7 +303,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
 
       const isLast = index === segments.length - 1;
       const parent = segments[index - 1];
-      crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series, group }));
+      crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series, group, prayer }));
     });
 
     // Handle "Preaching" mode overlay
@@ -310,7 +337,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
     });
 
     return crumbs.length > 1 ? crumbs : [];
-  }, [pathname, searchParams, sermon, sermonId, series, group, groupId, shouldHide, t]);
+  }, [pathname, searchParams, sermon, sermonId, series, group, groupId, prayer, shouldHide, t]);
 
   if (shouldHide) {
     return null;

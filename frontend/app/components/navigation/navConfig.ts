@@ -4,7 +4,8 @@ import {
   RectangleStackIcon,
   UsersIcon,
   Cog6ToothIcon,
-  CalendarDaysIcon
+  CalendarDaysIcon,
+  HeartIcon,
 } from '@heroicons/react/24/outline';
 
 import type { NavItemThemeKey } from '@/utils/themeColors';
@@ -57,6 +58,15 @@ export const primaryNavItems: PrimaryNavItem[] = [
     icon: UsersIcon,
     matchers: [/^\/groups(\/|$)/],
     isBeta: true
+  },
+  {
+    key: 'prayer',
+    href: '/prayers',
+    labelKey: 'navigation.prayer',
+    defaultLabel: 'Prayer',
+    icon: HeartIcon,
+    matchers: [/^\/prayers(\/|$)/],
+    theme: 'prayer' as const,
   },
   {
     key: 'calendar',

@@ -3,6 +3,7 @@ import { usePathname, useSearchParams } from 'next/navigation';
 
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import { useGroupDetail } from '@/hooks/useGroupDetail';
+import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
 import useSermon from '@/hooks/useSermon';
 
@@ -18,6 +19,9 @@ jest.mock('@/hooks/useSeriesDetail', () => ({
 }));
 jest.mock('@/hooks/useGroupDetail', () => ({
   useGroupDetail: jest.fn(),
+}));
+jest.mock('@/hooks/usePrayerDetail', () => ({
+  usePrayerDetail: jest.fn(),
 }));
 
 jest.mock('react-i18next', () => ({
@@ -37,6 +41,7 @@ describe('Breadcrumbs', () => {
   const mockUseSermon = useSermon as jest.Mock;
   const mockUseSeriesDetail = useSeriesDetail as jest.Mock;
   const mockUseGroupDetail = useGroupDetail as jest.Mock;
+  const mockUsePrayerDetail = usePrayerDetail as jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -50,6 +55,7 @@ describe('Breadcrumbs', () => {
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
     mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
 
@@ -67,6 +73,7 @@ describe('Breadcrumbs', () => {
     mockUseSermon.mockReturnValue({ sermon: mockSermon });
     mockUseSeriesDetail.mockReturnValue({ series: null });
     mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
 
@@ -84,6 +91,7 @@ describe('Breadcrumbs', () => {
     mockUseSermon.mockReturnValue({ sermon: mockSermon });
     mockUseSeriesDetail.mockReturnValue({ series: null });
     mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
 
@@ -100,6 +108,7 @@ describe('Breadcrumbs', () => {
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: mockSeries });
     mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
 
@@ -115,6 +124,7 @@ describe('Breadcrumbs', () => {
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
     mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
 
@@ -130,6 +140,7 @@ describe('Breadcrumbs', () => {
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
     mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
 
@@ -146,6 +157,7 @@ describe('Breadcrumbs', () => {
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
     mockUseGroupDetail.mockReturnValue({ group: mockGroup });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
 
@@ -161,6 +173,7 @@ describe('Breadcrumbs', () => {
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
     mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
 
@@ -176,10 +189,30 @@ describe('Breadcrumbs', () => {
     mockUseSermon.mockReturnValue({ sermon: null });
     mockUseSeriesDetail.mockReturnValue({ series: null });
     mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
 
     render(<Breadcrumbs />);
 
     expect(screen.getByRole('link', { name: 'Unknown' })).toBeInTheDocument();
     expect(screen.getByText('Foo Bar')).toBeInTheDocument();
+  });
+
+  it('should show Prayers > Prayer Title for prayer detail page', () => {
+    mockUsePathname.mockReturnValue('/prayers/prayer-1');
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn().mockReturnValue(null),
+    });
+    mockUseSermon.mockReturnValue({ sermon: null });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({
+      prayer: { id: 'prayer-1', title: 'Healing Prayer' },
+    });
+
+    render(<Breadcrumbs />);
+
+    expect(mockUsePrayerDetail).toHaveBeenCalledWith('prayer-1');
+    expect(screen.getByText('Prayer')).toBeInTheDocument();
+    expect(screen.getByText('Healing Prayer')).toBeInTheDocument();
   });
 });

@@ -16,7 +16,9 @@
     "seriesDetail": "Series",
     "groupDetail": "Group",
     "studyDetail": "Study",
+    "prayerDetail": "Prayer",
     "calendar": "Calendar",
+    "prayer": "Prayer",
     "breadcrumb": {
       "dashboard": "Dashboard",
       "sermon": "Sermon",
@@ -1995,6 +1997,102 @@
       "end": "End Meeting",
       "completed": "All blocks completed",
       "totalTime": "Total"
+    }
+  },
+  "prayer": {
+    "title": "Prayer Journal",
+    "add": "Add Prayer",
+    "empty": "No prayer requests yet",
+    "emptyFiltered": "No prayers match this filter",
+    "updates_count_one": "{{count}} update",
+    "updates_count_other": "{{count}} updates",
+    "filter": {
+      "label": "Prayer status filters",
+      "all": "All",
+      "active": "Active",
+      "answered": "Answered",
+      "not_answered": "Not Answered"
+    },
+    "search": {
+      "placeholder": "Search prayers...",
+      "settings": "Search settings",
+      "inUpdates": "Search in updates",
+      "inTags": "Search in tags",
+      "inAnswers": "Search in answers"
+    },
+    "sort": {
+      "label": "Sort",
+      "createdAt": "Date Added",
+      "updatedAt": "Recently Updated",
+      "answeredAt": "Date Answered"
+    },
+    "status": {
+      "active": "Active",
+      "answered": "Answered",
+      "not_answered": "Not Answered"
+    },
+    "actions": {
+      "markAnswered": "Mark as Answered",
+      "markNotAnswered": "Mark as Not Answered",
+      "markActive": "Mark as Active",
+      "addUpdate": "Add Update",
+      "edit": "Edit",
+      "delete": "Delete"
+    },
+    "create": {
+      "title": "New Prayer Request",
+      "titleLabel": "Prayer Request",
+      "titlePlaceholder": "What are you praying for?",
+      "descriptionLabel": "Additional Context",
+      "descriptionPlaceholder": "Optional notes...",
+      "categoryLabel": "Category",
+      "tagsLabel": "Tags",
+      "tagsPlaceholder": "family, health, evangelism",
+      "submit": "Add Prayer",
+      "cancel": "Cancel"
+    },
+    "edit": {
+      "title": "Edit Prayer Request",
+      "submit": "Save",
+      "cancel": "Cancel"
+    },
+    "update": {
+      "title": "Add Update",
+      "placeholder": "What happened? (met someone, had a conversation, saw progress...)",
+      "submit": "Add Update",
+      "cancel": "Cancel"
+    },
+    "detail": {
+      "updates": "Updates",
+      "noUpdates": "No updates yet",
+      "answeredOn": "Answered on",
+      "addedOn": "Added on",
+      "updatedOn": "Last updated"
+    },
+    "delete": {
+      "confirm": "Delete this prayer request?",
+      "description": "This will permanently delete the prayer and all its updates.",
+      "confirm_button": "Delete",
+      "cancel": "Cancel"
+    },
+    "markAnswered": {
+      "title": "Prayer Answered!",
+      "subtitle": "How did God answer this prayer? (optional)",
+      "placeholder": "Write how God answered...",
+      "skip": "Mark without note",
+      "submit": "Save"
+    },
+    "answerText": {
+      "label": "How God answered",
+      "edit": "Edit answer",
+      "add": "Record how God answered"
+    },
+    "toast": {
+      "created": "Prayer request added",
+      "updated": "Prayer request updated",
+      "deleted": "Prayer request deleted",
+      "updateAdded": "Update added",
+      "statusChanged": "Status updated"
     }
   }
 }

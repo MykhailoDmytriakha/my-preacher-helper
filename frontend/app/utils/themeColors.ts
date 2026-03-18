@@ -190,6 +190,11 @@ const NAV_ITEM_THEMES = {
     pill: 'border-emerald-500 text-emerald-600 dark:border-emerald-400 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-900/30',
     menu: 'text-emerald-600 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-900/30',
     indicator: 'text-emerald-600 dark:text-emerald-200'
+  },
+  prayer: {
+    pill: 'border-rose-400 text-rose-600 dark:border-rose-400 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40',
+    menu: 'text-rose-600 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40',
+    indicator: 'text-rose-600 dark:text-rose-300'
   }
 } as const;
 

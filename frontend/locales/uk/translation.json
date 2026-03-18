@@ -16,7 +16,9 @@
     "seriesDetail": "Серія",
     "groupDetail": "Група",
     "studyDetail": "Дослідження",
+    "prayerDetail": "Молитва",
     "calendar": "Календар",
+    "prayer": "Молитва",
     "breadcrumb": {
       "dashboard": "Панель",
       "sermon": "Проповідь",
@@ -1999,6 +2001,104 @@
       "end": "Завершити зустріч",
       "completed": "Всі блоки пройдено",
       "totalTime": "Разом"
+    }
+  },
+  "prayer": {
+    "title": "Молитовний журнал",
+    "add": "Додати молитву",
+    "empty": "Немає молитовних запитів",
+    "emptyFiltered": "Немає молитов за цим фільтром",
+    "updates_count_one": "{{count}} оновлення",
+    "updates_count_few": "{{count}} оновлення",
+    "updates_count_many": "{{count}} оновлень",
+    "updates_count_other": "{{count}} оновлень",
+    "filter": {
+      "label": "Фільтри за статусом молитви",
+      "all": "Всі",
+      "active": "Активні",
+      "answered": "Відповідені",
+      "not_answered": "Не відповідені"
+    },
+    "search": {
+      "placeholder": "Пошук молитов...",
+      "settings": "Налаштування пошуку",
+      "inUpdates": "Шукати в оновленнях",
+      "inTags": "Шукати в тегах",
+      "inAnswers": "Шукати у відповідях"
+    },
+    "sort": {
+      "label": "Сортування",
+      "createdAt": "За датою додавання",
+      "updatedAt": "За оновленням",
+      "answeredAt": "За датою відповіді"
+    },
+    "status": {
+      "active": "Активна",
+      "answered": "Відповідена",
+      "not_answered": "Не відповідена"
+    },
+    "actions": {
+      "markAnswered": "Позначити як відповідену",
+      "markNotAnswered": "Позначити як не відповідену",
+      "markActive": "Повернути до активних",
+      "addUpdate": "Додати оновлення",
+      "edit": "Редагувати",
+      "delete": "Видалити"
+    },
+    "create": {
+      "title": "Новий молитовний запит",
+      "titleLabel": "Молитовний запит",
+      "titlePlaceholder": "За що молитеся?",
+      "descriptionLabel": "Додатковий контекст",
+      "descriptionPlaceholder": "Додаткові нотатки...",
+      "categoryLabel": "Категорія",
+      "tagsLabel": "Теги",
+      "tagsPlaceholder": "сім'я, здоров'я, євангелізація",
+      "submit": "Додати молитву",
+      "cancel": "Скасувати"
+    },
+    "edit": {
+      "title": "Редагувати молитву",
+      "submit": "Зберегти",
+      "cancel": "Скасувати"
+    },
+    "update": {
+      "title": "Додати оновлення",
+      "placeholder": "Що сталося? (зустрівся, поговорив, залишив книгу...)",
+      "submit": "Додати",
+      "cancel": "Скасувати"
+    },
+    "detail": {
+      "updates": "Оновлення",
+      "noUpdates": "Оновлень поки немає",
+      "answeredOn": "Відповідено",
+      "addedOn": "Додано",
+      "updatedOn": "Оновлено"
+    },
+    "delete": {
+      "confirm": "Видалити цей молитовний запит?",
+      "description": "Молитва та всі її оновлення будуть видалені безповоротно.",
+      "confirm_button": "Видалити",
+      "cancel": "Скасувати"
+    },
+    "markAnswered": {
+      "title": "Молитву почуто!",
+      "subtitle": "Як Бог відповів на цю молитву? (необов'язково)",
+      "placeholder": "Запишіть як Бог відповів...",
+      "skip": "Відмітити без запису",
+      "submit": "Зберегти"
+    },
+    "answerText": {
+      "label": "Як Бог відповів",
+      "edit": "Редагувати відповідь",
+      "add": "Записати як Бог відповів"
+    },
+    "toast": {
+      "created": "Молитовний запит додано",
+      "updated": "Молитовний запит оновлено",
+      "deleted": "Молитовний запит видалено",
+      "updateAdded": "Оновлення додано",
+      "statusChanged": "Статус оновлено"
     }
   }
 }
