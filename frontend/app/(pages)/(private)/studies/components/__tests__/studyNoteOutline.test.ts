@@ -136,6 +136,40 @@ describe('studyNoteOutline', () => {
         });
     });
 
+    it('bubbles trailing untitled nodeblocks from a leaf branch back to the parent scope after a structure pop marker', () => {
+        const markdown = [
+            '## Character of God',
+            '',
+            '### Loving',
+            'Mercy and truth are manifested in love.',
+            '',
+            '- Nested note',
+            '  - Child note',
+            '- Another nested note',
+            '',
+            '---',
+            '- This note belongs to header 2',
+        ].join('\n');
+        const outline = parseStudyNoteOutline(markdown);
+        const rootBranch = outline.branches[0];
+        const childBranch = rootBranch.children[0];
+
+        expect(childBranch.body).toBe('Mercy and truth are manifested in love.');
+        expect(childBranch.nodeblocks?.map((nodeblock) => nodeblock.body)).toEqual([
+            'Nested note',
+            'Another nested note',
+        ]);
+        expect(childBranch.nodeblocks?.[0].children.map((nodeblock) => nodeblock.body)).toEqual(['Child note']);
+        expect(rootBranch.nodeblocks?.map((nodeblock) => nodeblock.body)).toEqual([
+            'This note belongs to header 2',
+        ]);
+        expect(rootBranch.childOrder).toEqual([
+            { kind: 'branch', key: '1.1' },
+            { kind: 'nodeblock', key: '1.n1' },
+        ]);
+        expect(childBranch.sourceRange?.subtreeEndOffset).toBe(markdown.indexOf('---'));
+    });
+
     it('remaps path-based keys by semantic branch match after reorder and insertion', () => {
         const previousOutline = parseStudyNoteOutline([
             '## Alpha',

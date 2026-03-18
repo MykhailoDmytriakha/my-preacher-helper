@@ -26,11 +26,18 @@ function createHeadingShortcutEditor(nodeType: 'heading' | 'paragraph', level: n
     const insertContent = jest.fn(() => ({ run }));
     const setHeading = jest.fn(() => ({ run }));
     const setParagraph = jest.fn(() => ({ run }));
+    const sinkListItem = jest.fn(() => ({ run }));
+    const liftListItem = jest.fn(() => ({ run }));
+    const listContextPath = nodeType === 'paragraph'
+        ? [{ type: { name: 'doc' } }, { type: { name: 'bulletList' } }, { type: { name: 'listItem' } }, { type: { name: 'paragraph' }, attrs: {} }]
+        : [{ type: { name: 'doc' } }, { type: { name: 'heading' }, attrs: { level } }];
     const chain = jest.fn(() => ({
         focus: jest.fn(() => ({
             insertContent,
             setHeading,
             setParagraph,
+            sinkListItem,
+            liftListItem,
         })),
     }));
 
@@ -42,6 +49,8 @@ function createHeadingShortcutEditor(nodeType: 'heading' | 'paragraph', level: n
                         parent: nodeType === 'paragraph'
                             ? { type: { name: 'paragraph' }, attrs: {} }
                             : { type: { name: 'heading' }, attrs: { level } },
+                        depth: listContextPath.length - 1,
+                        node: (depth: number) => listContextPath[depth],
                     },
                 },
             },
@@ -52,6 +61,8 @@ function createHeadingShortcutEditor(nodeType: 'heading' | 'paragraph', level: n
             insertContent,
             setHeading,
             setParagraph,
+            sinkListItem,
+            liftListItem,
             run,
         },
     };
@@ -94,6 +105,9 @@ describe('handleOutlineTabShortcut', () => {
     it('turns body text into H1 on Tab and keeps Shift-Tab inside the editor', () => {
         const bodyEditor = createHeadingShortcutEditor('paragraph');
 
+        bodyEditor.editor.state.selection.$from.depth = 0;
+        bodyEditor.editor.state.selection.$from.node = () => ({ type: { name: 'doc' } });
+
         expect(handleOutlineTabShortcut(bodyEditor.editor as never, 'deeper')).toBe(true);
         expect(bodyEditor.spies.setHeading).toHaveBeenCalledWith({ level: 1 });
 
@@ -101,6 +115,20 @@ describe('handleOutlineTabShortcut', () => {
 
         expect(handleOutlineTabShortcut(bodyEditor.editor as never, 'shallower')).toBe(true);
         expect(bodyEditor.spies.setHeading).not.toHaveBeenCalled();
+    });
+
+    it('uses list-item depth changes instead of heading conversion inside untitled nodeblocks', () => {
+        const listEditor = createHeadingShortcutEditor('paragraph');
+
+        expect(handleOutlineTabShortcut(listEditor.editor as never, 'deeper')).toBe(true);
+        expect(listEditor.spies.sinkListItem).toHaveBeenCalledWith('listItem');
+        expect(listEditor.spies.setHeading).not.toHaveBeenCalled();
+
+        listEditor.spies.sinkListItem.mockClear();
+
+        expect(handleOutlineTabShortcut(listEditor.editor as never, 'shallower')).toBe(true);
+        expect(listEditor.spies.liftListItem).toHaveBeenCalledWith('listItem');
+        expect(listEditor.spies.setHeading).not.toHaveBeenCalled();
     });
 });
 
@@ -113,6 +141,7 @@ describe('getRichMarkdownEditorClassName', () => {
         expect(outlineClassName).toContain('[&_.outline-depth-2]:ml-3');
         expect(outlineClassName).toContain('[&_.outline-depth-6]:ml-15');
         expect(outlineClassName).toContain('desktop:[&_.outline-depth-4]:ml-12');
+        expect(outlineClassName).toContain('[&_ul>li]:rounded-2xl');
     });
 });
 

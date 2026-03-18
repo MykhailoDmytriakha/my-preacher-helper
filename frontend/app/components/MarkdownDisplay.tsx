@@ -18,6 +18,9 @@ interface MarkdownDisplayProps {
     /** Optional search query to highlight within the content */
     searchQuery?: string;
     onBranchLinkClick?: (branchId: string) => void;
+    unorderedListClassName?: string;
+    orderedListClassName?: string;
+    listItemClassName?: string;
 }
 
 // Helper to transform [Type: Content] into code blocks for custom rendering
@@ -40,6 +43,9 @@ const MarkdownDisplay = ({
     compact = false,
     searchQuery = '',
     onBranchLinkClick,
+    unorderedListClassName = '',
+    orderedListClassName = '',
+    listItemClassName = '',
 }: MarkdownDisplayProps) => {
     const { t } = useTranslation();
     const processedContent = useMemo(() => formatStructuredBlocks(content), [content]);
@@ -51,6 +57,8 @@ const MarkdownDisplay = ({
                 : node,
         [searchQuery]
     );
+    const unorderedListBaseClassName = unorderedListClassName ? 'my-2' : 'my-2 list-disc pl-4';
+    const orderedListBaseClassName = orderedListClassName ? 'my-2' : 'my-2 list-decimal pl-4';
 
     return (
         <div className={`prose dark:prose-invert max-w-none break-words ${compact ? 'prose-sm' : ''} ${className}`}>
@@ -107,8 +115,8 @@ const MarkdownDisplay = ({
                         );
                     },
                     // Ensure lists are properly spaced
-                    ul: ({ ...props }) => <ul {...props} className="my-2 list-disc pl-4" />,
-                    ol: ({ ...props }) => <ol {...props} className="my-2 list-decimal pl-4" />,
+                    ul: ({ ...props }) => <ul {...props} className={`${unorderedListBaseClassName} ${unorderedListClassName}`.trim()} />,
+                    ol: ({ ...props }) => <ol {...props} className={`${orderedListBaseClassName} ${orderedListClassName}`.trim()} />,
                     // Tweak headings (h1, h2, h3 are defined below with highlighting)
                     // Text node highlighting when search is active
                     p: ({ children, ...props }) => (
@@ -118,7 +126,13 @@ const MarkdownDisplay = ({
                     ),
                     li: ({ children, ...props }) => (
                         <li {...props}>
-                            {React.Children.map(children, renderHighlighted)}
+                            {listItemClassName ? (
+                                <div className={listItemClassName}>
+                                    {React.Children.map(children, renderHighlighted)}
+                                </div>
+                            ) : (
+                                React.Children.map(children, renderHighlighted)
+                            )}
                         </li>
                     ),
                     strong: ({ children, ...props }) => (

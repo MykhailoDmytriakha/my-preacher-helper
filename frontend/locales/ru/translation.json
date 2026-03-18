@@ -723,6 +723,8 @@
     "clickToEdit": "Нажмите, чтобы редактировать",
     "blockType": "Тип блока",
     "bodyText": "Текст",
+    "noteBlock": "Заметка без заголовка",
+    "numberedList": "Нумерованный список",
     "branch": "Ветка",
     "branchAtCurrentLevel": "Ветка на текущем уровне (H{{level}})",
     "childBranch": "Подветка",

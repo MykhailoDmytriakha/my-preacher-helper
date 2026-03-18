@@ -29,6 +29,12 @@ const outlineFixture: StudyNoteOutline = {
             rawTitle: 'Child Branch',
             body: 'Child body',
             preview: 'Child preview',
+            nodeblocks: [{
+                key: '2.n1',
+                body: 'Nested [Root Branch](#branch=branch-root "expands")',
+                preview: 'Nested Root Branch',
+                children: [],
+            }],
             children: [],
         },
         {
@@ -57,6 +63,16 @@ describe('studyNoteBranchBacklinks', () => {
                     sourceBranchId: 'branch-root',
                     referenceLabel: 'Child Branch',
                     relationLabel: 'supports',
+                },
+            ],
+            'branch-root': [
+                {
+                    sourceBranchKey: '2',
+                    sourceBranchTitle: 'Child Branch',
+                    sourceBranchDepth: 0,
+                    sourceBranchId: 'branch-child',
+                    referenceLabel: 'Root Branch',
+                    relationLabel: 'expands',
                 },
             ],
         });

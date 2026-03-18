@@ -723,6 +723,8 @@
     "clickToEdit": "Click to edit",
     "blockType": "Block type",
     "bodyText": "Body",
+    "noteBlock": "Note block",
+    "numberedList": "Numbered list",
     "branch": "Branch",
     "branchAtCurrentLevel": "Branch at current level (H{{level}})",
     "childBranch": "Child",

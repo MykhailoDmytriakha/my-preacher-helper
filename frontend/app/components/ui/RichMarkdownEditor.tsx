@@ -8,6 +8,10 @@ import React, { useEffect, useMemo } from 'react';
 import { Markdown } from 'tiptap-markdown';
 
 import {
+    getActiveListType,
+    isSelectionInsideListItem,
+} from './richMarkdownNodeblocks';
+import {
     clampHeadingLevel,
     getDemotedHeadingLevel,
     getPromotedHeadingLevel,
@@ -29,6 +33,8 @@ interface RichMarkdownEditorProps {
     onOutlineBranchSelectionChange?: (selection: OutlineBranchSelectionRequest | null) => void;
     onCreateSiblingBranch?: (() => void) | null;
     onCreateChildBranch?: (() => void) | null;
+    onLiftNodeblockToParentBranch?: ((topLevelNodeblockIndex: number) => void) | null;
+    onLiftBranchBlockToParentBranch?: ((topLevelBlockIndex: number) => void) | null;
     canCreateSiblingBranch?: boolean;
     canCreateChildBranch?: boolean;
     onPendingHeadingSelectionConsumed?: ((token: string) => void) | null;
@@ -114,6 +120,28 @@ const OUTLINE_BLOCK_INDENT_CLASS_NAME = [
     'desktop:[&_.outline-depth-6]:ml-20',
 ].join(' ');
 
+const OUTLINE_NODEBLOCK_CLASS_NAME = [
+    '[&_ul]:my-3',
+    '[&_ul]:list-none',
+    '[&_ul]:pl-0',
+    '[&_ul]:space-y-3',
+    '[&_ul_ul]:mt-3',
+    '[&_ul_ul]:ml-4',
+    '[&_ul_ul]:border-l',
+    '[&_ul_ul]:border-emerald-100',
+    '[&_ul_ul]:pl-3',
+    '[&_ul_ul]:dark:border-emerald-900/40',
+    '[&_ul>li]:rounded-2xl',
+    '[&_ul>li]:border',
+    '[&_ul>li]:border-emerald-100',
+    '[&_ul>li]:bg-emerald-50/70',
+    '[&_ul>li]:px-3',
+    '[&_ul>li]:py-2.5',
+    '[&_ul>li]:dark:border-emerald-900/40',
+    '[&_ul>li]:dark:bg-emerald-900/10',
+    '[&_ul>li>p]:my-0',
+].join(' ');
+
 export function getOutlineNodeDecorationRange(offset: number, nodeSize: number): Pick<OutlineBlockDescriptor, 'from' | 'to'> {
     return {
         from: offset,
@@ -178,7 +206,7 @@ export function getRichMarkdownEditorClassName(showOutlineStructureControls: boo
         return BASE_EDITOR_CLASS_NAME;
     }
 
-    return `${BASE_EDITOR_CLASS_NAME} ${OUTLINE_BLOCK_INDENT_CLASS_NAME}`;
+    return `${BASE_EDITOR_CLASS_NAME} ${OUTLINE_BLOCK_INDENT_CLASS_NAME} ${OUTLINE_NODEBLOCK_CLASS_NAME}`;
 }
 
 export function getOutlineDepthDecorationsForBlocks(
@@ -308,6 +336,8 @@ export function RichMarkdownEditor({
     onOutlineBranchSelectionChange,
     onCreateSiblingBranch = null,
     onCreateChildBranch = null,
+    onLiftNodeblockToParentBranch = null,
+    onLiftBranchBlockToParentBranch = null,
     canCreateSiblingBranch = false,
     canCreateChildBranch = false,
     onPendingHeadingSelectionConsumed = null,
@@ -450,6 +480,8 @@ export function RichMarkdownEditor({
                 outlineBranchSelection={outlineBranchSelection}
                 onCreateSiblingBranch={onCreateSiblingBranch}
                 onCreateChildBranch={onCreateChildBranch}
+                onLiftNodeblockToParentBranch={onLiftNodeblockToParentBranch}
+                onLiftBranchBlockToParentBranch={onLiftBranchBlockToParentBranch}
                 canCreateSiblingBranch={canCreateSiblingBranch}
                 canCreateChildBranch={canCreateChildBranch}
             />
@@ -488,6 +520,15 @@ export function shiftHeadingDepth(editor: HeadingShortcutEditor, direction: 'dee
 }
 
 export function handleOutlineTabShortcut(editor: HeadingShortcutEditor, direction: 'deeper' | 'shallower'): boolean {
+    if (isSelectionInsideListItem(editor.state) && getActiveListType(editor.state)) {
+        const chain = editor.chain().focus();
+        const didShift = direction === 'deeper'
+            ? chain.sinkListItem('listItem').run()
+            : chain.liftListItem('listItem').run();
+
+        return didShift || true;
+    }
+
     const parentNode = editor.state.selection.$from.parent;
 
     if (parentNode.type.name === 'heading') {

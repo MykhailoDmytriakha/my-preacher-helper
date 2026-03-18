@@ -723,6 +723,8 @@
     "clickToEdit": "Натисніть, щоб редагувати",
     "blockType": "Тип блока",
     "bodyText": "Текст",
+    "noteBlock": "Нотатка без заголовка",
+    "numberedList": "Нумерований список",
     "branch": "Гілка",
     "branchAtCurrentLevel": "Гілка на поточному рівні (H{{level}})",
     "childBranch": "Підгілка",

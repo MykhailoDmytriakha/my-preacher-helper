@@ -4,6 +4,18 @@ import type {
     StudyNoteBranchStatus,
 } from '@/models/models';
 
+export interface StudyNoteOutlineNodeblock {
+    key: string;
+    body: string;
+    preview: string;
+    children: StudyNoteOutlineNodeblock[];
+}
+
+export interface StudyNoteOutlineChildOrderEntry {
+    kind: 'branch' | 'nodeblock';
+    key: string;
+}
+
 export interface StudyNoteOutlineBranch {
     key: string;
     branchId?: string;
@@ -18,6 +30,8 @@ export interface StudyNoteOutlineBranch {
     rawTitle: string;
     body: string;
     preview: string;
+    nodeblocks?: StudyNoteOutlineNodeblock[];
+    childOrder?: StudyNoteOutlineChildOrderEntry[];
     children: StudyNoteOutlineBranch[];
     sourceRange?: StudyNoteOutlineBranchSourceRange;
 }
@@ -64,13 +78,16 @@ interface MutableBranch {
     headingLevel: number;
     rawTitle: string;
     title: string;
-    body: string;
+    rawBody: string;
     children: MutableBranch[];
     sourceRange: StudyNoteOutlineBranchSourceRange;
 }
 
 const HEADING_PATTERN = /^[ ]{0,3}(#{1,6})[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/;
 const FENCE_PATTERN = /^(```+|~~~+)/;
+const STRUCTURE_POP_PATTERN = /^(?:-{3,}|\*{3,}|_{3,})[ \t]*$/;
+const ROOT_NODEBLOCK_PATTERN = /^[-+*][ \t]+(.+)$/;
+const NESTED_NODEBLOCK_PATTERN = /^(\s+)[-+*][ \t]+(.+)$/;
 const COLLAPSED_PREVIEW_LIMIT = 140;
 
 export function normalizeStudyNoteMarkdown(markdown: string): string {
@@ -176,13 +193,13 @@ function buildTree(markdown: string, headings: CollectedHeading[]): MutableBranc
     headings.forEach((heading, index) => {
         const bodyEndOffset = headings[index + 1]?.startOffset ?? markdown.length;
         const subtreeEndOffset = getSubtreeEndOffset(markdown, headings, index);
-        const body = trimOuterBlankLines(markdown.slice(heading.bodyStartOffset, bodyEndOffset));
+        const rawBody = markdown.slice(heading.bodyStartOffset, bodyEndOffset);
 
         const branch: MutableBranch = {
             headingLevel: heading.headingLevel,
             rawTitle: heading.rawTitle,
             title: heading.plainTitle,
-            body,
+            rawBody,
             children: [],
             sourceRange: {
                 startOffset: heading.startOffset,
@@ -208,28 +225,319 @@ function buildTree(markdown: string, headings: CollectedHeading[]): MutableBranc
     return roots;
 }
 
+interface ScopePopSplit {
+    ownedContent: string;
+    bubbledContent: string;
+    popOffset: number | null;
+}
+
+interface ParsedScopeNodeblocks {
+    body: string;
+    nodeblocks: StudyNoteOutlineNodeblock[];
+    nextNodeblockIndex: number;
+}
+
+interface ParsedTrailingNodeblocks {
+    nodeblocks: StudyNoteOutlineNodeblock[];
+    nextNodeblockIndex: number;
+}
+
+interface FinalizedMutableBranch {
+    branch: StudyNoteOutlineBranch;
+    bubbledContent: string;
+}
+
+function splitTopLevelScopePop(content: string): ScopePopSplit {
+    const lines = content.split('\n');
+    let activeFenceMarker: { marker: '`' | '~'; length: number } | null = null;
+    let offset = 0;
+
+    for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index];
+        activeFenceMarker = getShiftedFenceMarker(activeFenceMarker, line);
+
+        if (activeFenceMarker === null && STRUCTURE_POP_PATTERN.test(line)) {
+            const lineEndOffset = offset + line.length;
+            const remainderStartOffset = lineEndOffset < content.length ? lineEndOffset + 1 : lineEndOffset;
+
+            return {
+                ownedContent: content.slice(0, offset),
+                bubbledContent: content.slice(remainderStartOffset),
+                popOffset: offset,
+            };
+        }
+
+        offset += line.length;
+        if (index < lines.length - 1) {
+            offset += 1;
+        }
+    }
+
+    return {
+        ownedContent: content,
+        bubbledContent: '',
+        popOffset: null,
+    };
+}
+
+function isListItemAtIndent(line: string, indent: number): boolean {
+    const indentPrefix = ' '.repeat(indent);
+
+    if (!line.startsWith(indentPrefix)) {
+        return false;
+    }
+
+    const remainder = line.slice(indent);
+    return ROOT_NODEBLOCK_PATTERN.test(remainder);
+}
+
+function getNestedChildIndent(lines: string[]): number | null {
+    const indents = lines.flatMap((line) => {
+        const match = line.match(NESTED_NODEBLOCK_PATTERN);
+
+        if (!match) {
+            return [];
+        }
+
+        return [match[1].length];
+    });
+
+    if (indents.length === 0) {
+        return null;
+    }
+
+    return Math.min(...indents);
+}
+
+function parseNodeblocksFromListLines(
+    lines: string[],
+    parentKey: string,
+    startNodeblockIndex: number
+): ParsedTrailingNodeblocks {
+    const nodeblocks: StudyNoteOutlineNodeblock[] = [];
+    let nextNodeblockIndex = startNodeblockIndex;
+    let lineIndex = 0;
+
+    while (lineIndex < lines.length) {
+        if (!isListItemAtIndent(lines[lineIndex], 0)) {
+            lineIndex += 1;
+            continue;
+        }
+
+        const itemLines: string[] = [lines[lineIndex]];
+        lineIndex += 1;
+
+        while (lineIndex < lines.length && !isListItemAtIndent(lines[lineIndex], 0)) {
+            itemLines.push(lines[lineIndex]);
+            lineIndex += 1;
+        }
+
+        const firstLine = itemLines[0].replace(ROOT_NODEBLOCK_PATTERN, '$1');
+        const normalizedLines = [
+            firstLine,
+            ...itemLines.slice(1),
+        ];
+        const nestedStartIndex = normalizedLines.findIndex((line, index) => index > 0 && NESTED_NODEBLOCK_PATTERN.test(line));
+        const bodyLines = nestedStartIndex >= 0
+            ? normalizedLines.slice(0, nestedStartIndex)
+            : normalizedLines;
+        const nestedLines = nestedStartIndex >= 0
+            ? normalizedLines.slice(nestedStartIndex)
+            : [];
+        const nestedIndent = getNestedChildIndent(nestedLines);
+        const normalizedNestedLines = nestedIndent === null
+            ? []
+            : nestedLines.map((line) =>
+                line.startsWith(' '.repeat(nestedIndent))
+                    ? line.slice(nestedIndent)
+                    : line
+            );
+        const childParseResult = normalizedNestedLines.length > 0
+            ? parseNodeblocksFromListLines(
+                normalizedNestedLines,
+                `${parentKey}.n${nextNodeblockIndex}`,
+                1
+            )
+            : { nodeblocks: [], nextNodeblockIndex: 1 };
+        const body = trimOuterBlankLines(bodyLines.join('\n'));
+
+        nodeblocks.push({
+            key: `${parentKey}.n${nextNodeblockIndex}`,
+            body,
+            preview: getCollapsedPreview(body),
+            children: childParseResult.nodeblocks,
+        });
+        nextNodeblockIndex += 1;
+    }
+
+    return {
+        nodeblocks,
+        nextNodeblockIndex,
+    };
+}
+
+function findFirstRootNodeblockLineIndex(lines: string[]): number {
+    let activeFenceMarker: { marker: '`' | '~'; length: number } | null = null;
+
+    for (let index = 0; index < lines.length; index += 1) {
+        activeFenceMarker = getShiftedFenceMarker(activeFenceMarker, lines[index]);
+
+        if (activeFenceMarker === null && ROOT_NODEBLOCK_PATTERN.test(lines[index])) {
+            return index;
+        }
+    }
+
+    return -1;
+}
+
+function parseScopeBodyAndNodeblocks(
+    content: string,
+    parentKey: string,
+    startNodeblockIndex: number
+): ParsedScopeNodeblocks {
+    const lines = content.split('\n');
+    const firstNodeblockLineIndex = findFirstRootNodeblockLineIndex(lines);
+
+    if (firstNodeblockLineIndex < 0) {
+        return {
+            body: trimOuterBlankLines(content),
+            nodeblocks: [],
+            nextNodeblockIndex: startNodeblockIndex,
+        };
+    }
+
+    const body = trimOuterBlankLines(lines.slice(0, firstNodeblockLineIndex).join('\n'));
+    const nodeblockParseResult = parseNodeblocksFromListLines(
+        lines.slice(firstNodeblockLineIndex),
+        parentKey,
+        startNodeblockIndex
+    );
+
+    return {
+        body,
+        nodeblocks: nodeblockParseResult.nodeblocks,
+        nextNodeblockIndex: nodeblockParseResult.nextNodeblockIndex,
+    };
+}
+
+function parseTrailingScopeContentAsNodeblocks(
+    content: string,
+    parentKey: string,
+    startNodeblockIndex: number
+): ParsedTrailingNodeblocks {
+    const trimmedContent = trimOuterBlankLines(content);
+
+    if (!trimmedContent) {
+        return {
+            nodeblocks: [],
+            nextNodeblockIndex: startNodeblockIndex,
+        };
+    }
+
+    const lines = trimmedContent.split('\n');
+
+    if (findFirstRootNodeblockLineIndex(lines) === 0) {
+        return parseNodeblocksFromListLines(lines, parentKey, startNodeblockIndex);
+    }
+
+    return {
+        nodeblocks: [{
+            key: `${parentKey}.n${startNodeblockIndex}`,
+            body: trimmedContent,
+            preview: getCollapsedPreview(trimmedContent),
+            children: [],
+        }],
+        nextNodeblockIndex: startNodeblockIndex + 1,
+    };
+}
+
 function finalizeBranches(
     branches: MutableBranch[],
     parentPath: number[] = [],
     baseHeadingLevel: number
 ): StudyNoteOutlineBranch[] {
-    return branches.map((branch, index) => {
-        const path = [...parentPath, index + 1];
-        const children = finalizeBranches(branch.children, path, baseHeadingLevel);
+    return branches.map((branch, index) =>
+        finalizeBranch(branch, [...parentPath, index + 1], baseHeadingLevel).branch
+    );
+}
 
-        return {
-            key: path.join('.'),
+function finalizeBranch(
+    branch: MutableBranch,
+    path: number[],
+    baseHeadingLevel: number
+): FinalizedMutableBranch {
+    const branchKey = path.join('.');
+    const splitScope = branch.children.length === 0
+        ? splitTopLevelScopePop(branch.rawBody)
+        : {
+            ownedContent: branch.rawBody,
+            bubbledContent: '',
+            popOffset: null,
+        };
+    const ownContentParseResult = parseScopeBodyAndNodeblocks(splitScope.ownedContent, branchKey, 1);
+    const finalizedChildren = branch.children.map((childBranch, childIndex) =>
+        finalizeBranch(childBranch, [...path, childIndex + 1], baseHeadingLevel)
+    );
+    const nodeblocks = [...ownContentParseResult.nodeblocks];
+    const childOrder: StudyNoteOutlineChildOrderEntry[] = ownContentParseResult.nodeblocks.map((nodeblock) => ({
+        kind: 'nodeblock',
+        key: nodeblock.key,
+    }));
+    let nextNodeblockIndex = ownContentParseResult.nextNodeblockIndex;
+
+    finalizedChildren.forEach((finalizedChild) => {
+        childOrder.push({
+            kind: 'branch',
+            key: finalizedChild.branch.key,
+        });
+
+        if (!finalizedChild.bubbledContent.trim()) {
+            return;
+        }
+
+        const trailingNodeblockParseResult = parseTrailingScopeContentAsNodeblocks(
+            finalizedChild.bubbledContent,
+            branchKey,
+            nextNodeblockIndex
+        );
+
+        trailingNodeblockParseResult.nodeblocks.forEach((nodeblock) => {
+            nodeblocks.push(nodeblock);
+            childOrder.push({
+                kind: 'nodeblock',
+                key: nodeblock.key,
+            });
+        });
+        nextNodeblockIndex = trailingNodeblockParseResult.nextNodeblockIndex;
+    });
+
+    const body = ownContentParseResult.body;
+    const sourceRange = branch.sourceRange
+        ? {
+            ...branch.sourceRange,
+            subtreeEndOffset: splitScope.popOffset === null
+                ? branch.sourceRange.subtreeEndOffset
+                : branch.sourceRange.bodyStartOffset + splitScope.popOffset,
+        }
+        : undefined;
+
+    return {
+        branch: {
+            key: branchKey,
             path,
             depth: Math.max(0, branch.headingLevel - baseHeadingLevel),
             headingLevel: branch.headingLevel,
             title: branch.title,
             rawTitle: branch.rawTitle,
-            body: branch.body,
-            preview: getCollapsedPreview(branch.body),
-            children,
-            sourceRange: branch.sourceRange,
-        };
-    });
+            body,
+            preview: getCollapsedPreview(body || nodeblocks[0]?.body || ''),
+            nodeblocks,
+            childOrder,
+            children: finalizedChildren.map((finalizedChild) => finalizedChild.branch),
+            sourceRange,
+        },
+        bubbledContent: splitScope.bubbledContent,
+    };
 }
 
 function getSubtreeEndOffset(markdown: string, headings: CollectedHeading[], currentIndex: number): number {
@@ -278,6 +586,47 @@ export function parseStudyNoteOutline(markdown: string): StudyNoteOutline {
 export function flattenStudyNoteOutlineBranches(branches: StudyNoteOutlineBranch[]): StudyNoteOutlineBranch[] {
     const result = branches.flatMap((branch) => [branch, ...flattenStudyNoteOutlineBranches(branch.children)]);
     return result;
+}
+
+export function getStudyNoteOutlineBranchNodeblocks(
+    branch: Pick<StudyNoteOutlineBranch, 'nodeblocks'>
+): StudyNoteOutlineNodeblock[] {
+    return branch.nodeblocks ?? [];
+}
+
+export function getStudyNoteOutlineBranchChildOrder(
+    branch: Pick<StudyNoteOutlineBranch, 'childOrder' | 'children' | 'nodeblocks'>
+): StudyNoteOutlineChildOrderEntry[] {
+    if (branch.childOrder?.length) {
+        return branch.childOrder;
+    }
+
+    return [
+        ...(branch.nodeblocks ?? []).map((nodeblock) => ({
+            kind: 'nodeblock' as const,
+            key: nodeblock.key,
+        })),
+        ...branch.children.map((childBranch) => ({
+            kind: 'branch' as const,
+            key: childBranch.key,
+        })),
+    ];
+}
+
+function serializeNodeblockContent(nodeblock: StudyNoteOutlineNodeblock): string {
+    return trimOuterBlankLines([
+        nodeblock.body,
+        ...nodeblock.children.map(serializeNodeblockContent),
+    ].filter(Boolean).join('\n\n'));
+}
+
+export function getStudyNoteOutlineBranchContentMarkdown(
+    branch: Pick<StudyNoteOutlineBranch, 'body' | 'nodeblocks'>
+): string {
+    return trimOuterBlankLines([
+        branch.body,
+        ...getStudyNoteOutlineBranchNodeblocks(branch).map(serializeNodeblockContent),
+    ].filter(Boolean).join('\n\n'));
 }
 
 export function findStudyNoteOutlineBranchByKey(
@@ -346,7 +695,7 @@ export function getStudyNoteOutlineBranchMaxHeadingLevel(branch: StudyNoteOutlin
 
 export function getCollapsibleStudyNoteBranchKeys(branches: StudyNoteOutlineBranch[]): string[] {
     return flattenStudyNoteOutlineBranches(branches)
-        .filter((branch) => Boolean(branch.body.trim()) || branch.children.length > 0)
+        .filter((branch) => Boolean(branch.body.trim()) || branch.children.length > 0 || getStudyNoteOutlineBranchNodeblocks(branch).length > 0)
         .map((branch) => branch.key);
 }
 
@@ -367,12 +716,24 @@ function getStudyNoteOutlineBranchSignature(
         headingLevel: includeHeadingLevel ? branch.headingLevel : null,
         rawTitle: branch.rawTitle,
         body: branch.body.trim(),
+        nodeblocks: getStudyNoteOutlineBranchNodeblocks(branch).map((nodeblock) =>
+            JSON.parse(getStudyNoteOutlineNodeblockSignature(nodeblock))
+        ),
         children: branch.children.map((childBranch) =>
             JSON.parse(
                 getStudyNoteOutlineBranchSignature(childBranch, {
                     includeHeadingLevel,
                 })
             )
+        ),
+    });
+}
+
+function getStudyNoteOutlineNodeblockSignature(nodeblock: StudyNoteOutlineNodeblock): string {
+    return JSON.stringify({
+        body: nodeblock.body.trim(),
+        children: nodeblock.children.map((childNodeblock) =>
+            JSON.parse(getStudyNoteOutlineNodeblockSignature(childNodeblock))
         ),
     });
 }

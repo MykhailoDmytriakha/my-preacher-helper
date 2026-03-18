@@ -17,11 +17,18 @@ import {
     STUDY_NOTE_BRANCH_STATUS_VALUES,
 } from './studyNoteBranchIdentity';
 import {
+    STUDY_NOTE_NODEBLOCK_LIST_ITEM_CLASS_NAME,
+    STUDY_NOTE_NODEBLOCK_UNORDERED_LIST_CLASS_NAME,
+} from './studyNoteNodeblockStyles';
+import {
     flattenStudyNoteOutlineBranches,
+    getStudyNoteOutlineBranchChildOrder,
     getStudyNoteOutlineBranchMaxHeadingLevel,
+    getStudyNoteOutlineBranchNodeblocks,
     remapStudyNoteOutlineKey,
     StudyNoteOutline,
     StudyNoteOutlineBranch,
+    StudyNoteOutlineNodeblock,
 } from './studyNoteOutline';
 
 import type {
@@ -62,11 +69,13 @@ const PREVIEW_BRANCH_ACTION_BUTTON_CLASS_NAME =
 const PREVIEW_BRANCH_ACTION_BUTTON_DISABLED_CLASS_NAME =
     ' disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-200 disabled:hover:bg-white disabled:hover:text-gray-600 dark:disabled:hover:border-gray-700 dark:disabled:hover:bg-gray-900 dark:disabled:hover:text-gray-300';
 const BRANCH_OVERLAY_TONES: StudyNoteBranchOverlayTone[] = ['amber', 'emerald', 'sky', 'rose', 'violet', 'slate'];
+const PREVIEW_BODY_MARKDOWN_CLASS_NAME = '!text-sm prose-p:my-2 prose-headings:my-2';
+const READ_BODY_MARKDOWN_CLASS_NAME = 'prose-p:my-2 prose-headings:my-3';
 
 type BranchMetadataFilterValue<T extends string> = 'all' | T;
 
 function hasBranchDetails(branch: StudyNoteOutlineBranch): boolean {
-    return Boolean(branch.body.trim()) || branch.children.length > 0;
+    return Boolean(branch.body.trim()) || branch.children.length > 0 || getStudyNoteOutlineBranchNodeblocks(branch).length > 0;
 }
 
 function getBranchOverlayCardClassName(overlayTone?: StudyNoteBranchOverlayTone | null): string {
@@ -732,23 +741,70 @@ export function StudyNoteOutlineView({
                         compact={isPreview}
                         searchQuery={searchQuery}
                         onBranchLinkClick={onBranchLinkClick}
-                        className={isPreview
-                            ? '!text-sm prose-p:my-2 prose-headings:my-2'
-                            : 'prose-p:my-2 prose-headings:my-3'
-                        }
+                        className={isPreview ? PREVIEW_BODY_MARKDOWN_CLASS_NAME : READ_BODY_MARKDOWN_CLASS_NAME}
                     />
                 )}
 
-                {branch.children.length > 0 && (
+                {getStudyNoteOutlineBranchChildOrder(branch).length > 0 && (
                     <div className="space-y-3">
-                        {branch.children.map((childBranch, childIndex) =>
-                            renderBranch(childBranch, childIndex, branch.children.length)
-                        )}
+                        {getStudyNoteOutlineBranchChildOrder(branch).map((childEntry) => {
+                            if (childEntry.kind === 'branch') {
+                                const childBranch = branch.children.find((candidateBranch) => candidateBranch.key === childEntry.key);
+
+                                if (!childBranch) {
+                                    return null;
+                                }
+
+                                return renderBranch(
+                                    childBranch,
+                                    branch.children.findIndex((candidateBranch) => candidateBranch.key === childBranch.key),
+                                    branch.children.length
+                                );
+                            }
+
+                            const childNodeblock = getStudyNoteOutlineBranchNodeblocks(branch).find(
+                                (candidateNodeblock) => candidateNodeblock.key === childEntry.key
+                            );
+
+                            if (!childNodeblock) {
+                                return null;
+                            }
+
+                            return renderNodeblock(childNodeblock);
+                        })}
                     </div>
                 )}
             </>
         );
     };
+
+    const renderNodeblock = (
+        nodeblock: StudyNoteOutlineNodeblock,
+        nestedDepth = 0
+    ) => (
+        <div
+            key={nodeblock.key}
+            data-testid={`study-note-nodeblock-${nodeblock.key}`}
+            className={STUDY_NOTE_NODEBLOCK_LIST_ITEM_CLASS_NAME}
+            style={nestedDepth > 0 ? { marginLeft: `${nestedDepth * 12}px` } : undefined}
+        >
+            {nodeblock.body.trim() && (
+                <MarkdownDisplay
+                    content={nodeblock.body}
+                    compact={isPreview}
+                    searchQuery={searchQuery}
+                    onBranchLinkClick={onBranchLinkClick}
+                    className={isPreview ? PREVIEW_BODY_MARKDOWN_CLASS_NAME : READ_BODY_MARKDOWN_CLASS_NAME}
+                />
+            )}
+
+            {nodeblock.children.length > 0 && (
+                <div className="mt-3 space-y-3 border-l border-emerald-100 pl-3 dark:border-emerald-900/40">
+                    {nodeblock.children.map((childNodeblock) => renderNodeblock(childNodeblock, nestedDepth + 1))}
+                </div>
+            )}
+        </div>
+    );
 
     const renderBranch = (
         branch: StudyNoteOutlineBranch,
@@ -963,6 +1019,8 @@ export function StudyNoteOutlineView({
                             compact={isPreview}
                             searchQuery={searchQuery}
                             onBranchLinkClick={onBranchLinkClick}
+                            unorderedListClassName={STUDY_NOTE_NODEBLOCK_UNORDERED_LIST_CLASS_NAME}
+                            listItemClassName={STUDY_NOTE_NODEBLOCK_LIST_ITEM_CLASS_NAME}
                             className={isPreview ? '!text-sm prose-p:my-2 prose-headings:my-2' : 'prose-p:my-2 prose-headings:my-3'}
                         />
                     </section>
@@ -1034,6 +1092,10 @@ function filterStudyNoteOutlineBranchesByMetadata(
 
         return [{
             ...branch,
+            childOrder: getStudyNoteOutlineBranchChildOrder(branch).filter((childEntry) =>
+                childEntry.kind === 'nodeblock' ||
+                filteredChildren.some((childBranch) => childBranch.key === childEntry.key)
+            ),
             children: filteredChildren,
         }];
     });

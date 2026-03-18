@@ -6,7 +6,11 @@ import {
 
 import {
     flattenStudyNoteOutlineBranches,
+    getStudyNoteOutlineBranchChildOrder,
+    getStudyNoteOutlineBranchNodeblocks,
+    type StudyNoteOutlineChildOrderEntry,
     type StudyNoteOutlineBranch,
+    type StudyNoteOutlineNodeblock,
 } from './studyNoteOutline';
 
 interface StudyNoteBranchDescriptor {
@@ -74,7 +78,18 @@ export function normalizeStudyNoteBranchStatus(value?: string | null): StudyNote
 function cloneBranch(branch: StudyNoteOutlineBranch): StudyNoteOutlineBranch {
     return {
         ...branch,
+        nodeblocks: getStudyNoteOutlineBranchNodeblocks(branch).map(cloneNodeblock),
+        childOrder: getStudyNoteOutlineBranchChildOrder(branch).map((entry): StudyNoteOutlineChildOrderEntry => ({
+            ...entry,
+        })),
         children: branch.children.map(cloneBranch),
+    };
+}
+
+function cloneNodeblock(nodeblock: StudyNoteOutlineNodeblock): StudyNoteOutlineNodeblock {
+    return {
+        ...nodeblock,
+        children: nodeblock.children.map(cloneNodeblock),
     };
 }
 
@@ -101,11 +116,21 @@ function getBodyHash(body: string): string {
     return hashText(body.trim());
 }
 
+function getNodeblockHash(nodeblock: StudyNoteOutlineNodeblock): string {
+    return hashText(
+        JSON.stringify({
+            bodyHash: getBodyHash(nodeblock.body),
+            children: nodeblock.children.map((childNodeblock) => getNodeblockHash(childNodeblock)),
+        })
+    );
+}
+
 function getSubtreeHash(branch: StudyNoteOutlineBranch): string {
     return hashText(
         JSON.stringify({
             titleSlug: slugifyTitle(branch.title),
             bodyHash: getBodyHash(branch.body),
+            nodeblocks: getStudyNoteOutlineBranchNodeblocks(branch).map((nodeblock) => getNodeblockHash(nodeblock)),
             children: branch.children.map((childBranch) => getSubtreeHash(childBranch)),
         })
     );
@@ -115,6 +140,7 @@ function getSubtreeContentHash(branch: StudyNoteOutlineBranch): string {
     return hashText(
         JSON.stringify({
             bodyHash: getBodyHash(branch.body),
+            nodeblocks: getStudyNoteOutlineBranchNodeblocks(branch).map((nodeblock) => getNodeblockHash(nodeblock)),
             children: branch.children.map((childBranch) => getSubtreeContentHash(childBranch)),
         })
     );

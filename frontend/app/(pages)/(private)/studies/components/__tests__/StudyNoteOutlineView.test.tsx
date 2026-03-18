@@ -136,6 +136,48 @@ const backlinkedOutlineFixture: StudyNoteOutline = {
     ],
 };
 
+const mixedChildrenOutlineFixture: StudyNoteOutline = {
+    introduction: '',
+    hasOutline: true,
+    totalBranches: 2,
+    baseHeadingLevel: 2,
+    branches: [
+        {
+            key: '1',
+            path: [1],
+            depth: 0,
+            headingLevel: 2,
+            title: 'Parent Branch',
+            rawTitle: 'Parent Branch',
+            body: '',
+            preview: '',
+            childOrder: [
+                { kind: 'branch', key: '1.1' },
+                { kind: 'nodeblock', key: '1.n1' },
+            ],
+            nodeblocks: [{
+                key: '1.n1',
+                body: 'This note belongs to header 2',
+                preview: 'This note belongs to header 2',
+                children: [],
+            }],
+            children: [
+                {
+                    key: '1.1',
+                    path: [1, 1],
+                    depth: 1,
+                    headingLevel: 3,
+                    title: 'Child Branch',
+                    rawTitle: 'Child Branch',
+                    body: 'Child body',
+                    preview: 'Child preview',
+                    children: [],
+                },
+            ],
+        },
+    ],
+};
+
 describe('StudyNoteOutlineView', () => {
     const scrollIntoViewMock = jest.fn();
     const originalRequestAnimationFrame = global.requestAnimationFrame;
@@ -436,5 +478,21 @@ describe('StudyNoteOutlineView', () => {
 
         expect(screen.getByTestId('study-note-branch-1')).toHaveClass('ring-2');
         expect(scrollIntoViewMock).toHaveBeenCalled();
+    });
+
+    it('renders untitled nodeblocks as ordered siblings beside child branches', () => {
+        render(
+            <StudyNoteOutlineView
+                outline={mixedChildrenOutlineFixture}
+                foldedBranchKeys={[]}
+                onToggleBranch={jest.fn()}
+                onExpandAll={jest.fn()}
+                onCollapseAll={jest.fn()}
+            />
+        );
+
+        expect(screen.getByText('Child Branch')).toBeInTheDocument();
+        expect(screen.getByTestId('study-note-nodeblock-1.n1')).toBeInTheDocument();
+        expect(screen.getByText('This note belongs to header 2')).toBeInTheDocument();
     });
 });

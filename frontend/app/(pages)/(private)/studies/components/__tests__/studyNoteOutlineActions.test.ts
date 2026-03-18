@@ -1,6 +1,8 @@
 import {
     insertStudyNoteOutlineBranch,
     insertStudyNoteOutlineRootBranch,
+    liftStudyNoteOutlineBlockToParentBranch,
+    liftStudyNoteOutlineNodeblockToParentBranch,
     moveStudyNoteOutlineBranch,
     shiftStudyNoteOutlineBranchDepth,
 } from '../studyNoteOutlineActions';
@@ -311,5 +313,63 @@ describe('studyNoteOutlineActions', () => {
         expect(shiftStudyNoteOutlineBranchDepth(h6Markdown, '1.1', 'demote')).toBe(h6Markdown);
         expect(shiftStudyNoteOutlineBranchDepth(h6SelfMarkdown, '1.1.2', 'demote')).toBe(h6SelfMarkdown);
         expect(shiftStudyNoteOutlineBranchDepth(rootMarkdown, 'missing', 'promote')).toBe(rootMarkdown);
+    });
+
+    it('lifts a top-level untitled nodeblock from a leaf branch into the parent branch scope', () => {
+        const markdown = [
+            '## Character of God',
+            '',
+            '### Loving',
+            'Mercy and truth are manifested in love.',
+            '',
+            '- Nested note',
+            '  - Child note',
+            '- Another nested note',
+        ].join('\n');
+
+        const nextMarkdown = liftStudyNoteOutlineNodeblockToParentBranch(markdown, '1.1', 1);
+        const outline = parseStudyNoteOutline(nextMarkdown);
+        const rootBranch = outline.branches[0];
+        const childBranch = rootBranch.children[0];
+
+        expect(nextMarkdown).toContain('---');
+        expect(childBranch.nodeblocks?.map((nodeblock) => nodeblock.body)).toEqual(['Nested note']);
+        expect(childBranch.nodeblocks?.[0].children.map((nodeblock) => nodeblock.body)).toEqual(['Child note']);
+        expect(rootBranch.nodeblocks?.map((nodeblock) => nodeblock.body)).toEqual(['Another nested note']);
+        expect(rootBranch.childOrder).toEqual([
+            { kind: 'branch', key: '1.1' },
+            { kind: 'nodeblock', key: '1.n1' },
+        ]);
+    });
+
+    it('lifts a plain paragraph block from a leaf branch into the parent branch scope', () => {
+        const markdown = [
+            '## Header 1',
+            'Text for header 1',
+            '',
+            '### Header 2',
+            'Text for header 2',
+            '',
+            '#### Header 3',
+            'Text for header 3',
+            '',
+            '- Nested note',
+            '',
+            'This note should live under header 2',
+        ].join('\n');
+
+        const nextMarkdown = liftStudyNoteOutlineBlockToParentBranch(markdown, '1.1.1', 2);
+        const outline = parseStudyNoteOutline(nextMarkdown);
+        const rootBranch = outline.branches[0];
+        const parentBranch = rootBranch.children[0];
+        const liftedFromBranch = parentBranch.children[0];
+
+        expect(nextMarkdown).toContain('---');
+        expect(parentBranch.body).toBe('Text for header 2');
+        expect(liftedFromBranch.body).toBe('Text for header 3');
+        expect(liftedFromBranch.nodeblocks?.map((nodeblock) => nodeblock.body)).toEqual(['Nested note']);
+        expect(parentBranch.nodeblocks?.map((nodeblock) => nodeblock.body)).toEqual([
+            'This note should live under header 2',
+        ]);
     });
 });

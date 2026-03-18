@@ -2,6 +2,7 @@ import { extractStudyNoteBranchMarkdownReferences } from '@/utils/studyNoteBranc
 
 import {
     flattenStudyNoteOutlineBranches,
+    getStudyNoteOutlineBranchContentMarkdown,
     type StudyNoteOutlineBranch,
 } from './studyNoteOutline';
 
@@ -23,7 +24,7 @@ export function buildStudyNoteBranchBacklinks(
     const seenBacklinkKeys = new Set<string>();
 
     flattenStudyNoteOutlineBranches(branches).forEach((sourceBranch) => {
-        extractStudyNoteBranchMarkdownReferences(sourceBranch.body).forEach((reference) => {
+        extractStudyNoteBranchMarkdownReferences(getStudyNoteOutlineBranchContentMarkdown(sourceBranch)).forEach((reference) => {
             if (sourceBranch.branchId && sourceBranch.branchId === reference.branchId) {
                 return;
             }

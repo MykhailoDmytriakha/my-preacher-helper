@@ -156,4 +156,41 @@ describe('studyNoteRelationSummary', () => {
       isResolved: true,
     }));
   });
+
+  it('counts relations authored inside untitled nodeblocks as part of the source branch content', () => {
+    const sourceContent = [
+      '## Source Branch',
+      '',
+      '- See [Target Branch](#branch=branch-target "supports")',
+    ].join('\n');
+    const targetContent = [
+      '## Target Branch',
+      'Target body',
+    ].join('\n');
+    const sourceOutline = parseStudyNoteOutline(sourceContent);
+    const targetOutline = parseStudyNoteOutline(targetContent);
+    const sourceRecord = createStudyNoteBranchStateRecord(sourceOutline.branches, '1', 'branch-source');
+    const targetRecord = createStudyNoteBranchStateRecord(targetOutline.branches, '1', 'branch-target');
+
+    expect(sourceRecord).not.toBeNull();
+    expect(targetRecord).not.toBeNull();
+
+    const relationData = buildStudyWorkspaceRelationData([
+      { id: 'note-1', title: 'Source Note', content: sourceContent, updatedAt: '2026-03-16T00:00:00.000Z' } as any,
+      { id: 'note-2', title: 'Target Note', content: targetContent, updatedAt: '2026-03-15T00:00:00.000Z' } as any,
+    ], [
+      makeBranchState('note-1', [sourceRecord!]),
+      makeBranchState('note-2', [targetRecord!]),
+    ]);
+
+    expect(relationData.relationSummaryByNoteId.get('note-1')).toEqual(expect.objectContaining({
+      totalRelations: 1,
+      relationCounts: { supports: 1 },
+    }));
+    expect(relationData.relationLanes[0].items[0]).toEqual(expect.objectContaining({
+      sourceBranchTitle: 'Source Branch',
+      targetBranchId: 'branch-target',
+      relationKey: 'supports',
+    }));
+  });
 });

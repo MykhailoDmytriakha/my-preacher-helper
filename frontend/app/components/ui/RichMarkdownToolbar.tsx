@@ -16,6 +16,13 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 
 import {
+    getActiveListType,
+    getSelectedTopLevelBranchBlockIndex,
+    getSelectedNodeblockContext,
+    isSelectionInsideListItem,
+    type RichMarkdownActiveListType,
+} from './richMarkdownNodeblocks';
+import {
     getChildBranchLevel,
     getContextBranchLevel,
     getDemotedHeadingLevel,
@@ -34,6 +41,8 @@ interface RichMarkdownToolbarProps {
     outlineBranchSelection?: OutlineBranchSelectionRequest | null;
     onCreateSiblingBranch?: (() => void) | null;
     onCreateChildBranch?: (() => void) | null;
+    onLiftNodeblockToParentBranch?: ((topLevelNodeblockIndex: number) => void) | null;
+    onLiftBranchBlockToParentBranch?: ((topLevelBlockIndex: number) => void) | null;
     canCreateSiblingBranch?: boolean;
     canCreateChildBranch?: boolean;
 }
@@ -51,6 +60,11 @@ interface ToolbarState {
     currentHeadingLevel: number | null;
     previousHeadingLevel: number | null;
     currentNodeType: string | null;
+    activeListType: RichMarkdownActiveListType;
+    isInsideListItem: boolean;
+    selectedNodeblockPath: number[] | null;
+    selectedTopLevelNodeblockIndex: number | null;
+    selectedTopLevelBranchBlockIndex: number | null;
 }
 
 export function RichMarkdownToolbar({
@@ -61,6 +75,8 @@ export function RichMarkdownToolbar({
     outlineBranchSelection = null,
     onCreateSiblingBranch = null,
     onCreateChildBranch = null,
+    onLiftNodeblockToParentBranch = null,
+    onLiftBranchBlockToParentBranch = null,
     canCreateSiblingBranch = false,
     canCreateChildBranch = false,
 }: RichMarkdownToolbarProps) {
@@ -83,8 +99,16 @@ export function RichMarkdownToolbar({
                     currentHeadingLevel: null,
                     previousHeadingLevel: null,
                     currentNodeType: null,
+                    activeListType: null,
+                    isInsideListItem: false,
+                    selectedNodeblockPath: null,
+                    selectedTopLevelNodeblockIndex: null,
+                    selectedTopLevelBranchBlockIndex: null,
                 };
             }
+
+            const selectedNodeblockContext = getSelectedNodeblockContext(currentEditor.state);
+
             return {
                 isBold: currentEditor.isActive('bold'),
                 isItalic: currentEditor.isActive('italic'),
@@ -98,6 +122,11 @@ export function RichMarkdownToolbar({
                 currentHeadingLevel: getCurrentHeadingLevel(currentEditor),
                 previousHeadingLevel: showOutlineStructureControls ? getPreviousHeadingLevel(currentEditor) : null,
                 currentNodeType: getCurrentNodeType(currentEditor),
+                activeListType: getActiveListType(currentEditor.state),
+                isInsideListItem: isSelectionInsideListItem(currentEditor.state),
+                selectedNodeblockPath: selectedNodeblockContext?.path ?? null,
+                selectedTopLevelNodeblockIndex: selectedNodeblockContext?.topLevelIndex ?? null,
+                selectedTopLevelBranchBlockIndex: getSelectedTopLevelBranchBlockIndex(currentEditor.state),
             };
         },
     });
@@ -117,12 +146,22 @@ export function RichMarkdownToolbar({
     const childBranchLevel = getChildBranchLevel(headingContext);
     const promotedHeadingLevel = getPromotedHeadingLevel(toolbarState.currentHeadingLevel);
     const demotedHeadingLevel = getDemotedHeadingLevel(toolbarState.currentHeadingLevel);
-    const currentBlockValue = toolbarState.currentHeadingLevel
+    const currentBlockValue = toolbarState.activeListType === 'bulletList'
+        ? 'note-block'
+        : toolbarState.activeListType === 'orderedList'
+            ? 'ordered-list'
+            : toolbarState.currentHeadingLevel
         ? `heading-${toolbarState.currentHeadingLevel}`
         : 'paragraph';
-    const canIndentSelection =
-        toolbarState.currentNodeType === 'heading' || toolbarState.currentNodeType === 'paragraph';
-    const canOutdentSelection = toolbarState.currentNodeType === 'heading';
+    const canIndentSelection = toolbarState.activeListType
+        ? toolbarState.isInsideListItem
+        : toolbarState.currentNodeType === 'heading' || toolbarState.currentNodeType === 'paragraph';
+    const canOutdentSelection = toolbarState.activeListType
+        ? toolbarState.isInsideListItem
+        : toolbarState.currentNodeType === 'heading' || (
+            toolbarState.selectedTopLevelBranchBlockIndex !== null &&
+            Boolean(onLiftBranchBlockToParentBranch)
+        );
 
     const toolbarClassName = `flex flex-wrap items-center gap-1 p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-t-xl border-b-0 ${
         sticky ? 'sticky z-20 shadow-sm' : ''
@@ -137,19 +176,62 @@ export function RichMarkdownToolbar({
                             value={currentBlockValue}
                             onChange={(event) => {
                                 const selectedValue = event.target.value;
+                                const chain = editor.chain().focus();
 
                                 if (selectedValue === 'paragraph') {
-                                    editor.chain().focus().setParagraph().run();
+                                    if (toolbarState.activeListType === 'bulletList') {
+                                        chain.toggleBulletList().run();
+                                        return;
+                                    }
+
+                                    if (toolbarState.activeListType === 'orderedList') {
+                                        chain.toggleOrderedList().run();
+                                        return;
+                                    }
+
+                                    chain.setParagraph().run();
+                                    return;
+                                }
+
+                                if (selectedValue === 'note-block') {
+                                    if (toolbarState.activeListType === 'orderedList') {
+                                        chain.toggleOrderedList().toggleBulletList().run();
+                                        return;
+                                    }
+
+                                    chain.toggleBulletList().run();
+                                    return;
+                                }
+
+                                if (selectedValue === 'ordered-list') {
+                                    if (toolbarState.activeListType === 'bulletList') {
+                                        chain.toggleBulletList().toggleOrderedList().run();
+                                        return;
+                                    }
+
+                                    chain.toggleOrderedList().run();
                                     return;
                                 }
 
                                 const level = Number(selectedValue.replace('heading-', '')) as MarkdownHeadingLevel;
-                                editor.chain().focus().setHeading({ level }).run();
+                                if (toolbarState.activeListType === 'bulletList') {
+                                    chain.toggleBulletList().setHeading({ level }).run();
+                                    return;
+                                }
+
+                                if (toolbarState.activeListType === 'orderedList') {
+                                    chain.toggleOrderedList().setHeading({ level }).run();
+                                    return;
+                                }
+
+                                chain.setHeading({ level }).run();
                             }}
                             className="rounded-md border-none bg-transparent px-2 py-1 text-xs font-semibold text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-400 dark:text-gray-200"
                             aria-label={t('common.blockType') || 'Block type'}
                         >
                             <option value="paragraph">{t('common.bodyText') || 'Body'}</option>
+                            <option value="note-block">{t('common.noteBlock') || 'Note block'}</option>
+                            <option value="ordered-list">{t('common.numberedList') || 'Numbered list'}</option>
                             <option value="heading-1">H1</option>
                             <option value="heading-2">H2</option>
                             <option value="heading-3">H3</option>
@@ -161,6 +243,11 @@ export function RichMarkdownToolbar({
                         <ToolbarButton
                             onClick={(event) => {
                                 event.preventDefault();
+
+                                if (toolbarState.activeListType && toolbarState.isInsideListItem) {
+                                    editor.chain().focus().sinkListItem('listItem').run();
+                                    return;
+                                }
 
                                 if (toolbarState.currentNodeType === 'paragraph') {
                                     editor.chain().focus().setHeading({ level: MIN_MARKDOWN_HEADING_LEVEL }).run();
@@ -180,6 +267,29 @@ export function RichMarkdownToolbar({
                         <ToolbarButton
                             onClick={(event) => {
                                 event.preventDefault();
+
+                                if (toolbarState.activeListType && toolbarState.isInsideListItem) {
+                                    if (
+                                        toolbarState.activeListType === 'bulletList' &&
+                                        toolbarState.selectedNodeblockPath?.length === 1 &&
+                                        toolbarState.selectedTopLevelNodeblockIndex !== null &&
+                                        onLiftNodeblockToParentBranch
+                                    ) {
+                                        onLiftNodeblockToParentBranch(toolbarState.selectedTopLevelNodeblockIndex);
+                                        return;
+                                    }
+
+                                    editor.chain().focus().liftListItem('listItem').run();
+                                    return;
+                                }
+
+                                if (
+                                    toolbarState.selectedTopLevelBranchBlockIndex !== null &&
+                                    onLiftBranchBlockToParentBranch
+                                ) {
+                                    onLiftBranchBlockToParentBranch(toolbarState.selectedTopLevelBranchBlockIndex);
+                                    return;
+                                }
 
                                 if (toolbarState.currentHeadingLevel === MIN_MARKDOWN_HEADING_LEVEL) {
                                     editor.chain().focus().setParagraph().run();

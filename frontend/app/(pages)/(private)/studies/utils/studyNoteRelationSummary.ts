@@ -7,7 +7,11 @@ import {
 } from '@/utils/studyNoteBranchLinks';
 
 import { flattenHydratedStudyNoteOutlineBranches, hydrateStudyNoteBranchIdentity } from '../components/studyNoteBranchIdentity';
-import { type StudyNoteOutlineBranch, parseStudyNoteOutline } from '../components/studyNoteOutline';
+import {
+  getStudyNoteOutlineBranchContentMarkdown,
+  type StudyNoteOutlineBranch,
+  parseStudyNoteOutline,
+} from '../components/studyNoteOutline';
 
 export interface StudyNoteRelationSummary {
   noteId: string;
@@ -189,7 +193,7 @@ export function buildStudyWorkspaceRelationData(
 
   noteSnapshots.forEach(({ note, flatBranches }) => {
     flatBranches.forEach((sourceBranch) => {
-      extractStudyNoteBranchMarkdownReferences(sourceBranch.body).forEach((reference) => {
+      extractStudyNoteBranchMarkdownReferences(getStudyNoteOutlineBranchContentMarkdown(sourceBranch)).forEach((reference) => {
         const normalizedRelationLabel = reference.relationKey;
 
         if (!normalizedRelationLabel) {

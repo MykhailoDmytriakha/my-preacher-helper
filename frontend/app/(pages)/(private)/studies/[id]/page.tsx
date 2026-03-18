@@ -55,6 +55,10 @@ import {
     upsertStudyNoteBranchStateRecords,
 } from '../components/studyNoteBranchIdentity';
 import {
+    STUDY_NOTE_NODEBLOCK_LIST_ITEM_CLASS_NAME,
+    STUDY_NOTE_NODEBLOCK_UNORDERED_LIST_CLASS_NAME,
+} from '../components/studyNoteNodeblockStyles';
+import {
     findStudyNoteOutlineBranchByKey,
     findStudyNoteOutlinePreviousSiblingKey,
     getCollapsibleStudyNoteBranchKeys,
@@ -65,6 +69,8 @@ import {
 import {
     insertStudyNoteOutlineBranch,
     insertStudyNoteOutlineRootBranch,
+    liftStudyNoteOutlineBlockToParentBranch,
+    liftStudyNoteOutlineNodeblockToParentBranch,
     moveStudyNoteOutlineBranch,
     shiftStudyNoteOutlineBranchDepth,
 } from '../components/studyNoteOutlineActions';
@@ -1145,6 +1151,8 @@ function StudyNoteContentSurface({
     setCurrentEditorOutlineBranchSelection,
     currentEditorOutlineBranch,
     handleCreateBranchFromEditor,
+    handleLiftNodeblockToParentBranch,
+    handleLiftBranchBlockToParentBranch,
     handlePendingHeadingSelectionConsumed,
     pendingMarkdownInsertion,
     handlePendingMarkdownInsertionConsumed,
@@ -1186,6 +1194,8 @@ function StudyNoteContentSurface({
     setCurrentEditorOutlineBranchSelection: Dispatch<SetStateAction<OutlineBranchSelectionRequest | null>>;
     currentEditorOutlineBranch: ReturnType<typeof findStudyNoteOutlineBranchBySelectionRequest>;
     handleCreateBranchFromEditor: (position: 'sibling' | 'child') => void;
+    handleLiftNodeblockToParentBranch: (topLevelNodeblockIndex: number) => void;
+    handleLiftBranchBlockToParentBranch: (topLevelBlockIndex: number) => void;
     handlePendingHeadingSelectionConsumed: (token: string) => void;
     pendingMarkdownInsertion: PendingMarkdownInsertionRequest | null;
     handlePendingMarkdownInsertionConsumed: (token: string) => void;
@@ -1201,6 +1211,13 @@ function StudyNoteContentSurface({
     const showEditorPane = effectiveOutlineWorkspaceMode !== 'preview';
     const showPreviewPane = shouldShowOutlinePreview && effectiveOutlineWorkspaceMode !== 'editor';
     const isSplitMode = effectiveOutlineWorkspaceMode === 'split';
+    const canLiftCurrentEditorNodeblockToParentBranch = Boolean(
+        currentEditorOutlineBranch &&
+        currentEditorOutlineBranch.path.length > 1 &&
+        currentEditorOutlineBranch.children.length === 0
+    );
+    const canLiftCurrentEditorBlockToParentBranch = canLiftCurrentEditorNodeblockToParentBranch;
+
     if (isEditing) {
         return (
             <div className="space-y-4">
@@ -1228,6 +1245,16 @@ function StudyNoteContentSurface({
                                 onOutlineBranchSelectionChange={setCurrentEditorOutlineBranchSelection}
                                 onCreateSiblingBranch={() => handleCreateBranchFromEditor('sibling')}
                                 onCreateChildBranch={() => handleCreateBranchFromEditor('child')}
+                                onLiftNodeblockToParentBranch={
+                                    canLiftCurrentEditorNodeblockToParentBranch
+                                        ? handleLiftNodeblockToParentBranch
+                                        : null
+                                }
+                                onLiftBranchBlockToParentBranch={
+                                    canLiftCurrentEditorBlockToParentBranch
+                                        ? handleLiftBranchBlockToParentBranch
+                                        : null
+                                }
                                 canCreateSiblingBranch={Boolean(currentEditorOutlineBranch) || !noteOutline.hasOutline}
                                 canCreateChildBranch={Boolean(
                                     currentEditorOutlineBranch && currentEditorOutlineBranch.headingLevel < 6
@@ -1318,6 +1345,8 @@ function StudyNoteContentSurface({
                 content={content}
                 searchQuery={searchQuery}
                 onBranchLinkClick={onBranchLinkClick}
+                unorderedListClassName={STUDY_NOTE_NODEBLOCK_UNORDERED_LIST_CLASS_NAME}
+                listItemClassName={STUDY_NOTE_NODEBLOCK_LIST_ITEM_CLASS_NAME}
             />
         </div>
     );
@@ -1799,6 +1828,68 @@ export default function StudyNoteEditorPage() {
         handleCreateOutlineBranch(currentEditorOutlineBranch.key, position);
     }, [currentEditorOutlineBranch, handleCreateOutlineBranch, handleCreateOutlineRootBranch, noteOutline.hasOutline]);
 
+    const handleLiftOutlineNodeblockToParentBranch = useCallback((topLevelNodeblockIndex: number) => {
+        if (!currentEditorOutlineBranch) {
+            return;
+        }
+
+        const nextContent = liftStudyNoteOutlineNodeblockToParentBranch(
+            content,
+            currentEditorOutlineBranch.key,
+            topLevelNodeblockIndex
+        );
+
+        if (nextContent === content) {
+            return;
+        }
+
+        const nextOutline = parseStudyNoteOutline(nextContent);
+        const nextBranch = findStudyNoteOutlineBranchByKey(nextOutline.branches, currentEditorOutlineBranch.key);
+
+        if (nextBranch) {
+            setPreferredOutlineActiveBranchRequest({
+                key: nextBranch.key,
+                token: makeId(),
+            });
+            setPendingHeadingSelection(
+                buildPendingHeadingSelectionRequest(nextOutline.branches, nextBranch)
+            );
+        }
+
+        setContent(nextContent);
+    }, [content, currentEditorOutlineBranch, setContent]);
+
+    const handleLiftOutlineBlockToParentBranch = useCallback((topLevelBlockIndex: number) => {
+        if (!currentEditorOutlineBranch) {
+            return;
+        }
+
+        const nextContent = liftStudyNoteOutlineBlockToParentBranch(
+            content,
+            currentEditorOutlineBranch.key,
+            topLevelBlockIndex
+        );
+
+        if (nextContent === content) {
+            return;
+        }
+
+        const nextOutline = parseStudyNoteOutline(nextContent);
+        const nextBranch = findStudyNoteOutlineBranchByKey(nextOutline.branches, currentEditorOutlineBranch.key);
+
+        if (nextBranch) {
+            setPreferredOutlineActiveBranchRequest({
+                key: nextBranch.key,
+                token: makeId(),
+            });
+            setPendingHeadingSelection(
+                buildPendingHeadingSelectionRequest(nextOutline.branches, nextBranch)
+            );
+        }
+
+        setContent(nextContent);
+    }, [content, currentEditorOutlineBranch, setContent]);
+
     const handlePendingHeadingSelectionConsumed = useCallback((token: string) => {
         setPendingHeadingSelection((currentSelection) => {
             if (!currentSelection || currentSelection.token !== token) {
@@ -1906,6 +1997,8 @@ export default function StudyNoteEditorPage() {
                         setCurrentEditorOutlineBranchSelection={setCurrentEditorOutlineBranchSelection}
                         currentEditorOutlineBranch={currentEditorOutlineBranch}
                         handleCreateBranchFromEditor={handleCreateOutlineBranchFromEditor}
+                        handleLiftNodeblockToParentBranch={handleLiftOutlineNodeblockToParentBranch}
+                        handleLiftBranchBlockToParentBranch={handleLiftOutlineBlockToParentBranch}
                         handlePendingHeadingSelectionConsumed={handlePendingHeadingSelectionConsumed}
                         pendingMarkdownInsertion={pendingMarkdownInsertion}
                         handlePendingMarkdownInsertionConsumed={handlePendingMarkdownInsertionConsumed}
