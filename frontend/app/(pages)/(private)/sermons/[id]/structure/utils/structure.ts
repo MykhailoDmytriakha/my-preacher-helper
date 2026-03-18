@@ -194,8 +194,9 @@ export function buildItemForUI(params: {
   sectionTag?: string;
   outlinePointId?: string | null;
   outlinePoint?: { text: string; section: string };
+  isLocked?: boolean;
 }): Item {
-  const { id, text, tags, allowedTags, sectionTag, outlinePointId, outlinePoint } = params;
+  const { id, text, tags, allowedTags, sectionTag, outlinePointId, outlinePoint, isLocked } = params;
 
   return {
     id,
@@ -207,5 +208,6 @@ export function buildItemForUI(params: {
     requiredTags: sectionTag ? [sectionTag] : [],
     outlinePointId,
     outlinePoint,
+    isLocked: Boolean(isLocked),
   };
 }

@@ -88,6 +88,8 @@ jest.mock('react-i18next', () => ({
           'structure.generate': 'Generate',
           'structure.markAsReviewed': 'Mark as reviewed',
           'structure.markAsUnreviewed': 'Mark as unreviewed',
+          'structure.lockPointThoughts': 'Lock all thoughts in this outline point',
+          'structure.unlockPointThoughts': 'Unlock all thoughts in this outline point',
           'structure.outlineHelp.ariaLabel': 'Quick help for outline point',
           'structure.introductionInfo.ariaLabel': 'Introduction guidance',
           'structure.conclusionInfo.ariaLabel': 'Conclusion guidance',
@@ -1132,7 +1134,7 @@ describe('Column Component', () => {
     });
   });
 
-  describe('Column with outline points and isReviewed functionality', () => {
+  describe('Column with outline points and lock aggregation functionality', () => {
     const mockSermonPoints = [
       { id: 'op1', text: 'Point 1', isReviewed: false },
       { id: 'op2', text: 'Point 2', isReviewed: true },
@@ -1145,6 +1147,7 @@ describe('Column Component', () => {
         outlinePointId: 'op1',
         requiredTags: ['intro'],
         customTagNames: [],
+        isLocked: false,
       },
       {
         id: '2',
@@ -1152,6 +1155,7 @@ describe('Column Component', () => {
         outlinePointId: 'op2',
         requiredTags: ['intro'],
         customTagNames: [],
+        isLocked: true,
       },
     ];
     it('handles review toggles through consolidated scenarios', async () => {
@@ -1170,8 +1174,8 @@ describe('Column Component', () => {
                   onToggleReviewed={handler}
                 />
               );
-              expect(screen.getByRole('button', { name: /mark as reviewed/i })).toBeInTheDocument();
-              expect(screen.getByRole('button', { name: /mark as unreviewed/i })).toBeInTheDocument();
+              expect(screen.getByRole('button', { name: /^Lock all thoughts in this outline point$/i })).toBeInTheDocument();
+              expect(screen.getByRole('button', { name: /^Unlock all thoughts in this outline point$/i })).toBeInTheDocument();
             }
           },
           {
@@ -1187,8 +1191,8 @@ describe('Column Component', () => {
                   onToggleReviewed={handler}
                 />
               );
-              fireEvent.click(screen.getByRole('button', { name: /mark as reviewed/i }));
-              fireEvent.click(screen.getByRole('button', { name: /mark as unreviewed/i }));
+              fireEvent.click(screen.getByRole('button', { name: /^Lock all thoughts in this outline point$/i }));
+              fireEvent.click(screen.getByRole('button', { name: /^Unlock all thoughts in this outline point$/i }));
               expect(handler).toHaveBeenCalledWith('op1', true);
               expect(handler).toHaveBeenCalledWith('op2', false);
             }
@@ -1204,7 +1208,7 @@ describe('Column Component', () => {
                   outlinePoints={mockSermonPoints}
                 />
               );
-              expect(screen.queryByRole('button', { name: /mark as reviewed/i })).not.toBeInTheDocument();
+              expect(screen.queryByRole('button', { name: /^Lock all thoughts in this outline point$/i })).not.toBeInTheDocument();
             }
           },
           {
@@ -1224,7 +1228,7 @@ describe('Column Component', () => {
                   onToggleReviewed={handler}
                 />
               );
-              fireEvent.click(screen.getByRole('button', { name: /mark as reviewed/i }));
+              fireEvent.click(screen.getByRole('button', { name: /^Lock all thoughts in this outline point$/i }));
               expect(handler).toHaveBeenCalledWith('op1', true);
             }
           }
@@ -1232,6 +1236,43 @@ describe('Column Component', () => {
         { afterEachScenario: cleanup }
       );
     });
+  });
+
+  it('allows double-click editing for unlocked outline points and blocks it for locked ones', async () => {
+    const unlockedItems: Item[] = [
+      { id: 'thought-1', content: 'Unlocked thought', outlinePointId: 'point-1', customTagNames: [], requiredTags: ['intro'], isLocked: false },
+    ];
+    const lockedItems: Item[] = [
+      { id: 'thought-2', content: 'Locked thought', outlinePointId: 'point-2', customTagNames: [], requiredTags: ['intro'], isLocked: true },
+    ];
+
+    const { rerender } = render(
+      <Column
+        id="introduction"
+        title="Introduction"
+        items={unlockedItems}
+        isFocusMode={true}
+        outlinePoints={[{ id: 'point-1', text: 'Editable point' }]}
+      />
+    );
+
+    fireEvent.doubleClick(screen.getAllByText('Editable point')[0]);
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('Editable point')).toBeInTheDocument();
+    });
+
+    rerender(
+      <Column
+        id="introduction"
+        title="Introduction"
+        items={lockedItems}
+        isFocusMode={true}
+        outlinePoints={[{ id: 'point-2', text: 'Locked point' }]}
+      />
+    );
+
+    fireEvent.doubleClick(screen.getAllByText('Locked point')[0]);
+    expect(screen.queryByDisplayValue('Locked point')).not.toBeInTheDocument();
   });
 
   it('AudioRecorder integration available (popover tested elsewhere)', () => {

@@ -113,19 +113,24 @@ export const useAiSortingDiff = ({
       const outlinePointsForColumn = outlinePoints[columnId as keyof typeof outlinePoints] || [];
       
       // Call the AI sorting service
-      const sortedItems = await sortItemsWithAI(
+      const aiSortedItems = await sortItemsWithAI(
         columnId,
         currentColumnItems,
         sermonId,
         outlinePointsForColumn
       );
-      
-      if (!sortedItems || !Array.isArray(sortedItems)) {
+
+      if (!aiSortedItems || !Array.isArray(aiSortedItems)) {
         toast.error(t('errors.aiSortFailedFormat'));
         setIsSorting(false);
         setPreSortState(null);
         return;
       }
+
+      const sortedItems = aiSortedItems.map((sortedItem) => {
+        const originalItem = currentColumnItems.find((item) => item.id === sortedItem.id);
+        return originalItem ? { ...originalItem, ...sortedItem } : sortedItem;
+      });
       
       // Track items that were changed by AI
       const newHighlightedItems: Record<string, { type: 'assigned' | 'moved' }> = {};

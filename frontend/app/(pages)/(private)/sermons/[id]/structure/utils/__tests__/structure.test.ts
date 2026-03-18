@@ -418,7 +418,8 @@ describe('ThoughtsBySection Utilities', () => {
         ],
         requiredTags: ['intro'],
         outlinePointId: 'point-1',
-        outlinePoint: { text: 'Point 1', section: '' }
+        outlinePoint: { text: 'Point 1', section: '' },
+        isLocked: false,
       });
     });
 
@@ -436,7 +437,28 @@ describe('ThoughtsBySection Utilities', () => {
         customTagNames: [],
         requiredTags: [],
         outlinePointId: undefined,
-        outlinePoint: undefined
+        outlinePoint: undefined,
+        isLocked: false,
+      });
+    });
+
+    it('preserves locked state when provided', () => {
+      const result = buildItemForUI({
+        id: 'item-3',
+        text: 'Locked content',
+        tags: [],
+        allowedTags: [],
+        isLocked: true,
+      });
+
+      expect(result).toEqual({
+        id: 'item-3',
+        content: 'Locked content',
+        customTagNames: [],
+        requiredTags: [],
+        outlinePointId: undefined,
+        outlinePoint: undefined,
+        isLocked: true,
       });
     });
   });

@@ -4,9 +4,9 @@ import Column from '../../app/components/Column';
 import '@testing-library/jest-dom';
 
 // Constants matching Column.tsx to use in expectations
-const DEFAULT_ALL_POINTS_BLOCKED_TEXT = 'All outline points are reviewed';
+const DEFAULT_ALL_POINTS_BLOCKED_TEXT = 'All outline points are locked';
 const DEFAULT_RECORD_AUDIO_TEXT = 'Record voice note';
-const DEFAULT_POINT_BLOCKED_TEXT = 'Point is reviewed and blocked';
+const DEFAULT_POINT_BLOCKED_TEXT = 'All thoughts in this outline point are locked';
 
 // Mock dependencies
 jest.mock('@heroicons/react/24/outline', () => ({
@@ -99,15 +99,17 @@ describe('Column Disabling Logic', () => {
     const mockSermonId = 'sermon-1';
     const mockPoint = { id: 'p1', text: 'Point 1', isReviewed: true };
     const mockUnreviewedPoint = { id: 'p2', text: 'Point 2', isReviewed: false };
+    const lockedPointItems = [{ id: 'thought-1', content: 'Locked thought', outlinePointId: 'p1', isLocked: true }];
+    const unlockedPointItems = [{ id: 'thought-2', content: 'Unlocked thought', outlinePointId: 'p2', isLocked: false }];
 
     describe('SermonPointPlaceholder disabling', () => {
-        it('disables Add Thought and FocusRecorderButton when point is reviewed', () => {
+        it('disables Add Thought and FocusRecorderButton when all point thoughts are locked', () => {
             const onAddThought = jest.fn();
             render(
                 <Column
                     id="main"
                     title="Main"
-                    items={[]}
+                    items={lockedPointItems as any}
                     outlinePoints={[mockPoint]}
                     isFocusMode={true}
                     onAddThought={onAddThought}
@@ -125,12 +127,12 @@ describe('Column Disabling Logic', () => {
             expect(focusRecorder).toBeDisabled();
         });
 
-        it('enables buttons when point is not reviewed', () => {
+        it('enables buttons when point thoughts are not fully locked', () => {
             render(
                 <Column
                     id="main"
                     title="Main"
-                    items={[]}
+                    items={unlockedPointItems as any}
                     outlinePoints={[mockUnreviewedPoint]}
                     isFocusMode={true}
                     onAddThought={jest.fn()}
@@ -152,7 +154,7 @@ describe('Column Disabling Logic', () => {
                 <Column
                     id="main"
                     title="MainPart"
-                    items={[]}
+                    items={lockedPointItems as any}
                     outlinePoints={[mockPoint]}
                     onAudioThoughtCreated={jest.fn()}
                     onAddThought={jest.fn()}
@@ -174,7 +176,7 @@ describe('Column Disabling Logic', () => {
                 <Column
                     id="main"
                     title="Main"
-                    items={[]}
+                    items={lockedPointItems as any}
                     outlinePoints={[mockPoint]}
                     isFocusMode={true}
                     onAudioThoughtCreated={jest.fn()}

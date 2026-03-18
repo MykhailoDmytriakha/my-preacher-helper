@@ -5,6 +5,7 @@ export interface Thought {
   date: string;
   outlinePointId?: string | null;
   position?: number;
+  isLocked?: boolean;
   keyFragments?: string[]; // Store important text fragments for AI generation
   forceTag?: string; // Force tag for transcription (intro, main, conclusion)
 }
@@ -311,6 +312,7 @@ export interface ThoughtInStructure {
   outlinePoint?: { text: string; section: string };
   outlinePointId?: string | null;
   position?: number;
+  isLocked?: boolean;
   syncStatus?: 'pending' | 'error' | 'success';
   syncOperation?: 'create' | 'update' | 'delete';
   syncExpiresAt?: string;

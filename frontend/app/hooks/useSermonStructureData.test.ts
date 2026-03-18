@@ -44,7 +44,7 @@ type MockTFunction = TFunction;
 
 // Sample Data
 const mockThoughts: Thought[] = [
-  { id: 't1', text: 'Intro thought', tags: ['вступление'], outlinePointId: 'op1', date: '2023-01-01T10:00:00Z' },
+  { id: 't1', text: 'Intro thought', tags: ['вступление'], outlinePointId: 'op1', date: '2023-01-01T10:00:00Z', isLocked: true },
   { id: 't2', text: 'Main thought 1', tags: ['основная часть', 'grace'], date: '2023-01-01T10:01:00Z' },
   { id: 't3', text: 'Main thought 2', tags: ['Main Part', 'faith'], date: '2023-01-01T10:02:00Z' },
   { id: 't4', text: 'Conclusion thought', tags: ['заключение'], date: '2023-01-01T10:03:00Z' },
@@ -178,10 +178,12 @@ describe('useSermonStructureData Hook', () => {
     const t1Item = result.current.containers.introduction.find(item => item.id === 't1');
     expect(t1Item?.requiredTags).toEqual(['intro']);
     expect(t1Item?.customTagNames).toEqual([]); // No custom tags matched
+    expect(t1Item?.isLocked).toBe(true);
 
     const t2Item = result.current.containers.main.find(item => item.id === 't2');
     expect(t2Item?.requiredTags).toEqual(['main']);
     expect(t2Item?.customTagNames).toEqual([{ name: 'Grace', color: '#ffff00' }]);
+    expect(t2Item?.isLocked).toBe(false);
 
     const t3Item = result.current.containers.main.find(item => item.id === 't3');
     expect(t3Item?.requiredTags).toEqual(['main']);

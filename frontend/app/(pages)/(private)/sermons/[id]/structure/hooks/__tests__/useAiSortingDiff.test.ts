@@ -185,6 +185,54 @@ describe('useAiSortingDiff', () => {
       expect(result.current.preSortState).toEqual({ introduction: mockContainers.introduction });
       expect(result.current.highlightedItems).toHaveProperty('thought-1');
     });
+
+    it('preserves thought lock state when AI returns stripped item data', async () => {
+      const lockedContainers: Record<string, Item[]> = {
+        ...mockContainers,
+        introduction: [
+          { ...mockContainers.introduction[0], isLocked: true, outlinePointId: 'intro-1' },
+        ],
+      };
+      const mockSetContainers = jest.fn();
+
+      mockSortItemsWithAI.mockResolvedValueOnce([
+        {
+          id: 'thought-1',
+          content: 'Test thought 1',
+          requiredTags: ['intro'],
+          customTagNames: [],
+          outlinePointId: 'intro-1',
+        },
+      ]);
+
+      const { result } = renderHook(() =>
+        useAiSortingDiff({
+          ...defaultProps,
+          containers: lockedContainers,
+          setContainers: mockSetContainers,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.handleAiSort('introduction');
+      });
+
+      const setContainersUpdater = mockSetContainers.mock.calls[0]?.[0] as
+        | ((prev: Record<string, Item[]>) => Record<string, Item[]>)
+        | undefined;
+
+      expect(setContainersUpdater).toBeDefined();
+
+      const nextContainers = setContainersUpdater?.(lockedContainers);
+
+      expect(nextContainers?.introduction[0]).toEqual(
+        expect.objectContaining({
+          id: 'thought-1',
+          outlinePointId: 'intro-1',
+          isLocked: true,
+        }),
+      );
+    });
   });
 
   describe('item management in diff mode', () => {

@@ -6,13 +6,15 @@ import React, { useState, useEffect, Suspense, useRef, useCallback, useMemo } fr
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import CardContent from "@/components/CardContent";
 import Column from "@/components/Column";
 import EditThoughtModal from "@/components/EditThoughtModal";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
+import { SortableItemPreview } from "@/components/SortableItem";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useSermonStructureData } from "@/hooks/useSermonStructureData";
 import { Item, Sermon, SermonPoint, Thought, SermonOutline } from "@/models/models";
 import "@locales/i18n";
+import { updateThought } from "@/services/thought.service";
 import { getExportContent } from "@/utils/exportContent";
 import { getCanonicalTagForSection, normalizeStructureTag } from "@/utils/tagUtils";
 import { getSectionLabel } from "@lib/sections";
@@ -69,6 +71,7 @@ function StructurePageContent() {
   const sermonId = sermonIdFromPath ?? sermonIdFromQuery ?? null;
   const { t } = useTranslation();
   const [isClient, setIsClient] = useState(false);
+  const [aiSortConfirmColumn, setAiSortConfirmColumn] = useState<"introduction" | "main" | "conclusion" | null>(null);
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('structureLayoutVertical') === 'true';
@@ -202,6 +205,16 @@ function StructurePageContent() {
     debouncedSaveStructure,
   });
 
+  const requestAiSort = useCallback((columnId: "introduction" | "main" | "conclusion") => {
+    const hasLockedThoughts = (containers[columnId] || []).some((item) => item.isLocked);
+    if (hasLockedThoughts) {
+      setAiSortConfirmColumn(columnId);
+      return;
+    }
+
+    void handleAiSort(columnId);
+  }, [containers, handleAiSort]);
+
   // No changes needed here, just removing the old columnTitles definition later
 
   // DnD hook
@@ -233,6 +246,19 @@ function StructurePageContent() {
     return () => clearTimeout(safetyTimeout);
   }, [dndActiveId]);
 
+  const activeDragItem = useMemo(() => {
+    if (!dndActiveId) return null;
+
+    for (const [containerId, columnItems] of Object.entries(containers)) {
+      const activeItem = columnItems.find((item) => item.id === dndActiveId);
+      if (activeItem) {
+        return { containerId, item: activeItem };
+      }
+    }
+
+    return null;
+  }, [containers, dndActiveId]);
+
   // Handle a newly created audio thought: append to data model and UI, and persist structure
   const handleAudioThoughtCreated = useCallback(async (thought: Thought, sectionId: 'introduction' | 'main' | 'conclusion') => {
     if (!sermon) return;
@@ -258,6 +284,7 @@ function StructurePageContent() {
         })),
         outlinePointId: thought.outlinePointId,
         outlinePoint,
+        isLocked: Boolean(thought.isLocked),
       };
 
       // 1) Update containers UI (append to end of the target section)
@@ -390,38 +417,118 @@ function StructurePageContent() {
     });
   };
 
-  const handleToggleReviewed = async (outlinePointId: string, isReviewed: boolean) => {
+  const applyThoughtLockState = useCallback((thoughtIds: string[], isLocked: boolean) => {
+    if (thoughtIds.length === 0) return;
+    const thoughtIdSet = new Set(thoughtIds);
+
+    setSermon((prevSermon) => {
+      if (!prevSermon) return null;
+      return {
+        ...prevSermon,
+        thoughts: prevSermon.thoughts.map((thought) => (
+          thoughtIdSet.has(thought.id)
+            ? { ...thought, isLocked }
+            : thought
+        )),
+      };
+    });
+
+    setContainers((prevContainers) => {
+      const nextContainers = Object.fromEntries(
+        Object.entries(prevContainers).map(([key, columnItems]) => [
+          key,
+          columnItems.map((item) => (
+            thoughtIdSet.has(item.id)
+              ? { ...item, isLocked }
+              : item
+          )),
+        ]),
+      ) as Record<string, Item[]>;
+
+      containersRef.current = nextContainers;
+      return nextContainers;
+    });
+  }, [setContainers, setSermon]);
+
+  const restoreLockSnapshot = useCallback((previousSermon: Sermon, previousContainers: Record<string, Item[]>) => {
+    setSermon(previousSermon);
+    setContainers(previousContainers);
+    containersRef.current = previousContainers;
+  }, [setContainers, setSermon]);
+
+  const commitThoughtLockChange = useCallback(async ({
+    thoughtIds,
+    isLocked,
+    successMessage,
+    errorMessage,
+  }: {
+    thoughtIds: string[];
+    isLocked: boolean;
+    successMessage: string;
+    errorMessage: string;
+  }) => {
+    if (!sermon || thoughtIds.length === 0) return;
+
+    const thoughtsToUpdate = sermon.thoughts.filter((thought) => (
+      thoughtIds.includes(thought.id) && Boolean(thought.isLocked) !== isLocked
+    ));
+
+    if (thoughtsToUpdate.length === 0) return;
+
+    const previousSermon = sermon;
+    const previousContainers = containers;
+
+    applyThoughtLockState(thoughtsToUpdate.map((thought) => thought.id), isLocked);
+
+    const results = await Promise.allSettled(
+      thoughtsToUpdate.map((thought) => updateThought(sermon.id, { ...thought, isLocked })),
+    );
+
+    const hasFailures = results.some((result) => result.status === "rejected");
+    if (hasFailures) {
+      restoreLockSnapshot(previousSermon, previousContainers);
+
+      const successfulRollbacks = thoughtsToUpdate.filter((_, index) => results[index]?.status === "fulfilled");
+      if (successfulRollbacks.length > 0) {
+        await Promise.allSettled(
+          successfulRollbacks.map((thought) => updateThought(sermon.id, thought)),
+        );
+      }
+
+      toast.error(errorMessage);
+      return;
+    }
+
+    toast.success(successMessage);
+  }, [applyThoughtLockState, containers, restoreLockSnapshot, sermon]);
+
+  const handleToggleThoughtLock = useCallback(async (thoughtId: string, isLocked: boolean) => {
+    await commitThoughtLockChange({
+      thoughtIds: [thoughtId],
+      isLocked,
+      successMessage: t(isLocked ? "structure.thoughtLocked" : "structure.thoughtUnlocked", {
+        defaultValue: isLocked ? "Thought locked" : "Thought unlocked",
+      }),
+      errorMessage: t("errors.failedToSaveThought", { defaultValue: "Failed to save thought." }),
+    });
+  }, [commitThoughtLockChange, t]);
+
+  const handleTogglePointLock = useCallback(async (outlinePointId: string, isLocked: boolean) => {
     if (!sermon) return;
 
-    try {
-      // Find and update the outline point in the outline
-      const updatedOutline: SermonOutline = {
-        introduction: sermon.outline?.introduction?.map(point =>
-          point.id === outlinePointId ? { ...point, isReviewed } : point
-        ) || [],
-        main: sermon.outline?.main?.map(point =>
-          point.id === outlinePointId ? { ...point, isReviewed } : point
-        ) || [],
-        conclusion: sermon.outline?.conclusion?.map(point =>
-          point.id === outlinePointId ? { ...point, isReviewed } : point
-        ) || []
-      };
+    const thoughtIds = sermon.thoughts
+      .filter((thought) => thought.outlinePointId === outlinePointId)
+      .map((thought) => thought.id);
 
-      // Update sermon state
-      setSermon(prevSermon => prevSermon ? { ...prevSermon, outline: updatedOutline } : null);
-
-      // Save to backend
-      const { updateSermonOutline } = await import('@/services/outline.service');
-      await updateSermonOutline(sermon.id, updatedOutline);
-
-      toast.success(t(isReviewed ? 'structure.markedAsReviewed' : 'structure.markedAsUnreviewed', {
-        defaultValue: isReviewed ? 'Marked as reviewed' : 'Marked as unreviewed'
-      }));
-    } catch (error) {
-      console.error('Error updating outline point review status:', error);
-      toast.error(t(TRANSLATION_KEYS.ERRORS.SAVING_ERROR));
-    }
-  };
+    await commitThoughtLockChange({
+      thoughtIds,
+      isLocked,
+      successMessage: t(isLocked ? "structure.pointLockedSuccess" : "structure.pointUnlockedSuccess", {
+        defaultValue: isLocked ? "All thoughts in this outline point are locked" : "All thoughts in this outline point are unlocked",
+      }),
+      errorMessage: t("errors.failedToSaveThought", { defaultValue: "Failed to save thought." }),
+    });
+  }, [commitThoughtLockChange, sermon, t]);
 
   const handleOutlinePointDeleted = (pointId: string, sectionId: string) => {
     if (!sermon) return;
@@ -476,7 +583,6 @@ function StructurePageContent() {
       const newPoint: SermonPoint = {
         id: newPointId,
         text: text.trim(),
-        isReviewed: false
       };
 
       // 2. clone existing outline
@@ -617,7 +723,7 @@ function StructurePageContent() {
                 showFocusButton={true}
                 isFocusMode={focusedColumn === "introduction"}
                 onToggleFocusMode={handleToggleFocusMode}
-                onAiSort={() => handleAiSort("introduction")}
+                onAiSort={() => requestAiSort("introduction")}
                 isLoading={isSorting && focusedColumn === "introduction"}
                 getExportContent={getExportContentForFocusedColumn}
                 sermonId={sermonId || undefined}
@@ -633,7 +739,8 @@ function StructurePageContent() {
                 onRevertAll={() => handleRevertAll("introduction")}
                 activeId={dndActiveId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
-                onToggleReviewed={handleToggleReviewed}
+                onTogglePointLock={handleTogglePointLock}
+                onToggleThoughtLock={handleToggleThoughtLock}
                 onSwitchPage={handleSwitchToPlan}
                 onNavigateToSection={navigateToSection}
                 onRetryPendingThought={handleRetryPendingThought}
@@ -656,7 +763,7 @@ function StructurePageContent() {
                 showFocusButton={true}
                 isFocusMode={focusedColumn === "main"}
                 onToggleFocusMode={handleToggleFocusMode}
-                onAiSort={() => handleAiSort("main")}
+                onAiSort={() => requestAiSort("main")}
                 isLoading={isSorting && focusedColumn === "main"}
                 getExportContent={getExportContentForFocusedColumn}
                 sermonId={sermonId || undefined}
@@ -672,7 +779,8 @@ function StructurePageContent() {
                 onRevertAll={() => handleRevertAll("main")}
                 activeId={dndActiveId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
-                onToggleReviewed={handleToggleReviewed}
+                onTogglePointLock={handleTogglePointLock}
+                onToggleThoughtLock={handleToggleThoughtLock}
                 onSwitchPage={handleSwitchToPlan}
                 onNavigateToSection={navigateToSection}
                 onRetryPendingThought={handleRetryPendingThought}
@@ -693,7 +801,7 @@ function StructurePageContent() {
                 showFocusButton={true}
                 isFocusMode={focusedColumn === "conclusion"}
                 onToggleFocusMode={handleToggleFocusMode}
-                onAiSort={() => handleAiSort("conclusion")}
+                onAiSort={() => requestAiSort("conclusion")}
                 isLoading={isSorting && focusedColumn === "conclusion"}
                 getExportContent={getExportContentForFocusedColumn}
                 sermonId={sermonId || undefined}
@@ -709,7 +817,8 @@ function StructurePageContent() {
                 onRevertAll={() => handleRevertAll("conclusion")}
                 activeId={dndActiveId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
-                onToggleReviewed={handleToggleReviewed}
+                onTogglePointLock={handleTogglePointLock}
+                onToggleThoughtLock={handleToggleThoughtLock}
                 onSwitchPage={handleSwitchToPlan}
                 onNavigateToSection={navigateToSection}
                 onRetryPendingThought={handleRetryPendingThought}
@@ -720,36 +829,32 @@ function StructurePageContent() {
             )}
           </div>
           <DragOverlay>
-            {dndActiveId && (() => {
-              const containerKey = Object.keys(containers).find(
-                (key) => containers[key].some((item) => item.id === dndActiveId)
-              );
-
-              const activeItem = containerKey
-                ? containers[containerKey].find((item) => item.id === dndActiveId)
-                : null;
-
-              return activeItem ? (
-                <div
-                  className="flex items-start space-x-2 p-4 bg-white dark:bg-gray-800 rounded-md border border-gray-300 dark:border-gray-600 shadow-lg"
-                  style={{
-                    width: 'auto',
-                    opacity: 1,                    // Always fully visible
-                    zIndex: 9999,                  // Above everything
-                    pointerEvents: 'none',         // Don't intercept pointer events
-                    backgroundColor: 'rgba(255, 255, 255, 0.95)',  // Slightly transparent
-                  }}
-                >
-                  <div className="flex-grow">
-                    <CardContent item={activeItem} />
-                  </div>
-                  <div className="flex flex-col space-y-1 w-8 flex-shrink-0">
-                  </div>
-                </div>
-              ) : null;
-            })()}
+            {activeDragItem ? (
+              <SortableItemPreview
+                item={activeDragItem.item}
+                containerId={activeDragItem.containerId}
+                isLocked={Boolean(activeDragItem.item.isLocked)}
+              />
+            ) : null}
           </DragOverlay>
         </DndContext>
+        <ConfirmModal
+          isOpen={aiSortConfirmColumn !== null}
+          onClose={() => setAiSortConfirmColumn(null)}
+          onConfirm={() => {
+            if (aiSortConfirmColumn) {
+              void handleAiSort(aiSortConfirmColumn);
+            }
+            setAiSortConfirmColumn(null);
+          }}
+          title={t('structure.aiSortLockedWarningTitle', { defaultValue: 'Locked thoughts will also be re-sorted' })}
+          description={t('structure.aiSortLockedWarningDescription', {
+            defaultValue: 'This column contains locked thoughts. If you continue, AI sorting will reorder every thought in the column, including the locked ones.',
+          })}
+          confirmText={t('structure.aiSortContinue', { defaultValue: 'Continue anyway' })}
+          cancelText={t('common.cancel', { defaultValue: 'Cancel' })}
+          isDestructive={false}
+        />
         {editingItem && (
           <EditThoughtModal
             initialText={editingItem.content}

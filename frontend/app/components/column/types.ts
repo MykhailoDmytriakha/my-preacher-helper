@@ -51,7 +51,9 @@ export interface ColumnProps {
   activeId?: string | null;
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
   onAudioThoughtCreated?: OnAudioThoughtCreated;
-  onToggleReviewed?: (outlinePointId: string, isReviewed: boolean) => void;
+  onTogglePointLock?: (outlinePointId: string, isLocked: boolean) => Promise<void> | void;
+  onToggleThoughtLock?: (thoughtId: string, isLocked: boolean) => Promise<void> | void;
+  onToggleReviewed?: (outlinePointId: string, isReviewed: boolean) => Promise<void> | void;
   onSwitchPage?: (sectionId?: string) => void;
   onNavigateToSection?: (sectionId: ColumnSectionId) => void;
   onRetryPendingThought?: (itemId: string) => void;
@@ -60,6 +62,7 @@ export interface ColumnProps {
 
 export interface OpenPointEditorArgs {
   point: SermonPoint;
+  isLocked?: boolean;
   isFocusMode?: boolean;
   setLocalEditText: React.Dispatch<React.SetStateAction<string>>;
   setIsEditingLocally: React.Dispatch<React.SetStateAction<boolean>>;

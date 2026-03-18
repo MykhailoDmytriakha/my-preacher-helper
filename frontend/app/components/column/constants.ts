@@ -2,12 +2,13 @@ export const TRANSLATION_STRUCTURE_ADD_THOUGHT = "structure.addThoughtToSection"
 export const TRANSLATION_STRUCTURE_UNASSIGNED_THOUGHTS = "structure.unassignedThoughts";
 export const TRANSLATION_STRUCTURE_ALL_POINTS_BLOCKED = "structure.allPointsBlocked";
 export const TRANSLATION_STRUCTURE_RECORD_AUDIO = "structure.recordAudio";
+export const TRANSLATION_STRUCTURE_LOCKED = "structure.locked";
 export const TRANSLATION_COMMON_DELETE = "common.delete";
 export const TRANSLATION_COMMON_SAVE = "common.save";
 export const TRANSLATION_COMMON_CANCEL = "common.cancel";
 
 export const DEFAULT_UNASSIGNED_THOUGHTS_TEXT = "Unassigned Thoughts";
-export const DEFAULT_ALL_POINTS_BLOCKED_TEXT = "All outline points are reviewed";
+export const DEFAULT_ALL_POINTS_BLOCKED_TEXT = "All outline points are locked";
 export const DEFAULT_RECORD_AUDIO_TEXT = "Record voice note";
 
 export const BG_GRAY_LIGHT_DARK = "bg-gray-50 dark:bg-gray-800";

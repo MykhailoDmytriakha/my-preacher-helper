@@ -310,6 +310,27 @@ const buildUpdatedItem = (
   };
 };
 
+const hasMeaningfulDropChange = (
+  previousContainers: Record<string, Item[]>,
+  nextContainers: Record<string, Item[]>,
+  movedItemId: string
+): boolean => {
+  const previousStructure = buildStructureFromContainers(previousContainers);
+  const nextStructure = buildStructureFromContainers(nextContainers);
+
+  if (isStructureChanged(previousStructure, nextStructure)) {
+    return true;
+  }
+
+  const findMovedItem = (state: Record<string, Item[]>): Item | undefined =>
+    Object.values(state).flat().find((item) => item.id === movedItemId);
+
+  const previousItem = findMovedItem(previousContainers);
+  const nextItem = findMovedItem(nextContainers);
+
+  return (previousItem?.outlinePointId ?? null) !== (nextItem?.outlinePointId ?? null);
+};
+
 // Helper: Persist thought change
 const persistThoughtChange = (
   sermon: Sermon,
@@ -541,6 +562,14 @@ export const useStructureDnd = ({
 
     // Ensure the moved item exists only in the destination container across all sections
     updatedContainers = removeIdFromOtherSections(updatedContainers, overContainer, String(active.id));
+
+    if (!hasMeaningfulDropChange(previousContainers, updatedContainers, String(active.id))) {
+      containersRef.current = previousContainers;
+      setActiveId(null);
+      setOriginalContainer(null);
+      setIsDragEnding(false);
+      return;
+    }
 
     // Apply state updates immediately
     setContainers(updatedContainers);

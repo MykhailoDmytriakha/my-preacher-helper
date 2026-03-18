@@ -38,7 +38,7 @@ import {
   getAdjacentSectionIds,
   getOutlineInsertAccent,
   getPlaceholderColors,
-  getReviewToggleLabel,
+  getPointLockToggleLabel,
   getSectionBorderColor,
   getSectionHeaderBgStyle,
   isPendingItem,
@@ -65,7 +65,9 @@ const SermonPointPlaceholder: React.FC<{
   getHighlightType: (itemId: string) => 'assigned' | 'moved' | undefined;
   onKeepItem?: (itemId: string, columnId: string) => void;
   onRevertItem?: (itemId: string, columnId: string) => void;
-  onToggleReviewed?: (outlinePointId: string, isReviewed: boolean) => void;
+  onTogglePointLock?: (outlinePointId: string, isLocked: boolean) => Promise<void> | void;
+  onToggleThoughtLock?: (thoughtId: string, isLocked: boolean) => Promise<void> | void;
+  onToggleReviewed?: (outlinePointId: string, isReviewed: boolean) => Promise<void> | void;
   headerColor?: string;
   t: Translate;
   activeId?: string | null;
@@ -92,6 +94,8 @@ const SermonPointPlaceholder: React.FC<{
   getHighlightType,
   onKeepItem,
   onRevertItem,
+  onTogglePointLock,
+  onToggleThoughtLock,
   onToggleReviewed,
   headerColor,
   t,
@@ -117,6 +121,7 @@ const SermonPointPlaceholder: React.FC<{
 
     const pointItems = items.filter(item => item.outlinePointId === point.id);
     const hasItems = pointItems.length > 0;
+    const isPointLocked = hasItems && pointItems.every((item) => item.isLocked);
 
     const colors = getPlaceholderColors(containerId, headerColor);
 
@@ -149,7 +154,8 @@ const SermonPointPlaceholder: React.FC<{
       setLocalEditText(point.text);
     };
 
-    const reviewToggleLabel = getReviewToggleLabel(point.isReviewed ?? false, t);
+    const pointLockToggleLabel = getPointLockToggleLabel(isPointLocked, t);
+    const pointToggleHandler = onTogglePointLock ?? onToggleReviewed;
     const canUseInlineRecorder = Boolean(sermonId && isPointAudioSection(containerId));
 
     return (
@@ -169,10 +175,10 @@ const SermonPointPlaceholder: React.FC<{
               {dragHandleProps && (
                 <div
                   {...(dragHandleProps as React.HTMLAttributes<HTMLDivElement>)}
-                  className={point.isReviewed ? "hidden" : `cursor-grab opacity-50 hover:opacity-90 flex-shrink-0 transition-opacity ${colors.headerText}`}
-                  title={!point.isReviewed ? t('common.dragToReorder', { defaultValue: 'Drag to reorder' }) : undefined}
+                  className={isPointLocked ? "hidden" : `cursor-grab opacity-50 hover:opacity-90 flex-shrink-0 transition-opacity ${colors.headerText}`}
+                  title={!isPointLocked ? t('common.dragToReorder', { defaultValue: 'Drag to reorder' }) : undefined}
                 >
-                  {!point.isReviewed && <Bars3Icon className="h-4 w-4" />}
+                  {!isPointLocked && <Bars3Icon className="h-4 w-4" />}
                 </div>
               )}
 
@@ -199,18 +205,19 @@ const SermonPointPlaceholder: React.FC<{
                   <h4
                     onClick={() => openPointEditor({
                       point,
+                      isLocked: isPointLocked,
                       isFocusMode,
                       setLocalEditText,
                       setIsEditingLocally,
                       onEditPoint,
                     })}
-                    className={`font-medium text-sm min-w-0 truncate select-none ${point.isReviewed ? 'cursor-default' : 'cursor-text hover:bg-black/5 dark:hover:bg-white/10 rounded px-1 -mx-1 transition-colors'} ${headerColor ? 'text-gray-800 dark:text-gray-200' : colors.headerText}`}
-                    title={!point.isReviewed ? t('common.clickToEdit', { defaultValue: 'Click to edit' }) : undefined}
+                    className={`font-medium text-sm min-w-0 truncate select-none ${isPointLocked ? 'cursor-default' : 'cursor-text hover:bg-black/5 dark:hover:bg-white/10 rounded px-1 -mx-1 transition-colors'} ${headerColor ? 'text-gray-800 dark:text-gray-200' : colors.headerText}`}
+                    title={!isPointLocked ? t('common.clickToEdit', { defaultValue: 'Click to edit' }) : undefined}
                   >
                     {point.text}
                   </h4>
                   {/* Delete button (only if not reviewed, not focus mode) - Moved next to text */}
-                  {!isFocusMode && onDeletePoint && !point.isReviewed && (
+                  {!isFocusMode && onDeletePoint && !isPointLocked && (
                     <button
                       aria-label={t(TRANSLATION_COMMON_DELETE)}
                       onClick={() => onDeletePoint(point.id)}
@@ -226,18 +233,18 @@ const SermonPointPlaceholder: React.FC<{
               {/* Right-side actions and info */}
               <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 select-none">
 
-                {/* Toggle reviewed status button */}
-                {onToggleReviewed && (
+                {/* Toggle point lock status button */}
+                {pointToggleHandler && hasItems && (
                   <button
-                    onClick={() => onToggleReviewed?.(point.id, !point.isReviewed)}
-                    className={`p-1.5 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300 flex-shrink-0 ${point.isReviewed
+                    onClick={() => void pointToggleHandler?.(point.id, !isPointLocked)}
+                    className={`p-1.5 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300 flex-shrink-0 ${isPointLocked
                       ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900 dark:hover:bg-green-800 text-green-700 dark:text-green-300'
                       : 'bg-white/20 hover:bg-white/30 text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                       }`}
-                    title={reviewToggleLabel}
-                    aria-label={reviewToggleLabel}
+                    title={pointLockToggleLabel}
+                    aria-label={pointLockToggleLabel}
                   >
-                    <CheckIcon className={`h-3.5 w-3.5 ${point.isReviewed ? 'text-green-700 dark:text-green-300' : ''}`} />
+                    <CheckIcon className={`h-3.5 w-3.5 ${isPointLocked ? 'text-green-700 dark:text-green-300' : ''}`} />
                   </button>
                 )}
 
@@ -262,12 +269,12 @@ const SermonPointPlaceholder: React.FC<{
                         isFocusMode,
                         sermonId,
                       });
-                      onAddThought?.(containerId, point.id);
-                    }}
-                    disabled={point.isReviewed}
-                    className={`w-[30px] h-[30px] flex-shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:focus-visible:ring-green-300 flex items-center justify-center ${point.isReviewed ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50' : 'bg-gray-400 hover:bg-green-500'}`}
-                    title={point.isReviewed ? t('structure.pointBlocked', { defaultValue: 'Point is reviewed and blocked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
-                    aria-label={point.isReviewed ? t('structure.pointBlocked', { defaultValue: 'Point is reviewed and blocked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
+                    onAddThought?.(containerId, point.id);
+                  }}
+                    disabled={isPointLocked}
+                    className={`w-[30px] h-[30px] flex-shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:focus-visible:ring-green-300 flex items-center justify-center ${isPointLocked ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50' : 'bg-gray-400 hover:bg-green-500'}`}
+                    title={isPointLocked ? t('structure.pointLocked', { defaultValue: 'All thoughts in this outline point are locked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
+                    aria-label={isPointLocked ? t('structure.pointLocked', { defaultValue: 'All thoughts in this outline point are locked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
                   >
                     <PlusIcon className="h-4 w-4 text-white" />
                   </button>
@@ -277,7 +284,7 @@ const SermonPointPlaceholder: React.FC<{
                   <>
                     <FocusRecorderButton
                       size="small"
-                      disabled={point.isReviewed}
+                      disabled={isPointLocked}
                       onRecordingComplete={(audioBlob) => {
                         if (!sermonId) return;
                         void recordAudioThought({
@@ -330,7 +337,9 @@ const SermonPointPlaceholder: React.FC<{
                       activeId={activeId}
                       onMoveToAmbiguous={onMoveToAmbiguous}
                       onRetrySync={onRetryPendingThought}
-                      disabled={point.isReviewed || isPendingItem(item)}
+                      onToggleLock={onToggleThoughtLock}
+                      isLocked={Boolean(item.isLocked)}
+                      disabled={isPendingItem(item)}
                     />
                   ))}
 
@@ -361,6 +370,7 @@ const UnassignedThoughtsDropTarget: React.FC<{
   activeId?: string | null;
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
   onRetryPendingThought?: (itemId: string) => void;
+  onToggleThoughtLock?: (thoughtId: string, isLocked: boolean) => Promise<void> | void;
 }> = ({
   items,
   containerId,
@@ -372,7 +382,8 @@ const UnassignedThoughtsDropTarget: React.FC<{
   t,
   activeId,
   onMoveToAmbiguous,
-  onRetryPendingThought
+  onRetryPendingThought,
+  onToggleThoughtLock,
 }) => {
     const { setNodeRef, isOver } = useDroppable({
       id: `unassigned-${containerId}`,
@@ -405,6 +416,8 @@ const UnassignedThoughtsDropTarget: React.FC<{
                   activeId={activeId}
                   onMoveToAmbiguous={onMoveToAmbiguous}
                   onRetrySync={onRetryPendingThought}
+                  onToggleLock={onToggleThoughtLock}
+                  isLocked={Boolean(item.isLocked)}
                   disabled={isPendingItem(item)}
                 />
               ))}
@@ -449,6 +462,8 @@ export default function Column({
   activeId,
   onMoveToAmbiguous,
   onAudioThoughtCreated,
+  onTogglePointLock,
+  onToggleThoughtLock,
   onToggleReviewed,
   onSwitchPage,
   onNavigateToSection,
@@ -514,8 +529,24 @@ export default function Column({
     t,
   });
 
-  // Calculate if all outline points are blocked (reviewed) - only block if there are points AND all are reviewed
-  const allPointsBlocked = localSermonPoints.length > 0 && localSermonPoints.every(point => point.isReviewed);
+  const pointLockState = React.useMemo(() => {
+    return localSermonPoints.reduce<Record<string, { hasThoughts: boolean; isLocked: boolean }>>((acc, point) => {
+      const pointItems = items.filter((item) => item.outlinePointId === point.id);
+      acc[point.id] = {
+        hasThoughts: pointItems.length > 0,
+        isLocked: pointItems.length > 0 && pointItems.every((item) => item.isLocked),
+      };
+      return acc;
+    }, {});
+  }, [items, localSermonPoints]);
+
+  const isPointLocked = (pointId: string) => pointLockState[pointId]?.isLocked ?? false;
+  const resolvedPointToggleHandler = onTogglePointLock ?? onToggleReviewed;
+
+  const allPointsBlocked = localSermonPoints.length > 0 && localSermonPoints.every((point) => {
+    const pointState = pointLockState[point.id];
+    return Boolean(pointState?.hasThoughts && pointState.isLocked);
+  });
 
   // --- State for Audio Recording ---
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
@@ -573,6 +604,7 @@ export default function Column({
           activeId={activeId}
           onMoveToAmbiguous={onMoveToAmbiguous}
           onRetryPendingThought={onRetryPendingThought}
+          onToggleThoughtLock={onToggleThoughtLock}
         />
       </div>
     </div>
@@ -698,7 +730,7 @@ export default function Column({
                 <QuestionMarkCircleIcon className="w-4 h-4 ml-2 text-white dark:text-gray-100 opacity-80 hover:opacity-100" />
                 <div className="absolute bottom-full left-1/3 -translate-x-2 mb-2 p-2 bg-gray-800 dark:bg-gray-900 text-white dark:text-gray-100 text-xs rounded shadow-lg w-48 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 whitespace-normal">
                   {t('structure.sortInfo', {
-                    defaultValue: 'Sorting only processes unassigned thoughts, up to 25 at a time.'
+                    defaultValue: 'Sorting reorders the full column, up to 25 thoughts at a time.'
                   })}
                 </div>
               </div>
@@ -790,7 +822,9 @@ export default function Column({
               ref={provided.innerRef}
               className="flex-grow"
             >
-              {localSermonPoints.map((point, index) => (
+              {localSermonPoints.map((point, index) => {
+                const pointLocked = isPointLocked(point.id);
+                return (
                 <Draggable key={point.id} draggableId={point.id} index={index}>
                   {(providedDraggable, snapshot) => (
                     <li
@@ -800,9 +834,12 @@ export default function Column({
                       style={providedDraggable.draggableProps.style}
                     >
                       {/* Drag handle */}
-                      <div {...providedDraggable.dragHandleProps} className="cursor-grab mr-2 text-white dark:text-gray-100">
-                        <Bars3Icon className="h-5 w-5" />
-                      </div>
+                      {!pointLocked && (
+                        <div {...providedDraggable.dragHandleProps} className="cursor-grab mr-2 text-white dark:text-gray-100">
+                          <Bars3Icon className="h-5 w-5" />
+                        </div>
+                      )}
+                      {pointLocked && <div className="mr-2 h-5 w-5 shrink-0" />}
 
 	                      {/* Edit form or display */}
 	                      {editingPointId === point.id ? (
@@ -829,14 +866,16 @@ export default function Column({
                           <div className="flex flex-1 min-w-0 items-center gap-2 mr-2">
                             <span
                               className="text-sm text-white dark:text-gray-100 flex-1 min-w-0"
-                              onDoubleClick={() => handleStartEdit(point)}
+                              onDoubleClick={() => {
+                                if (!pointLocked) handleStartEdit(point);
+                              }}
                             >
                               {point.text}
                             </span>
                           </div>
                           <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0">
                             {/* Quick help for outline point */}
-                            {!point.isReviewed && (
+                            {!pointLocked && (
                               <>
                                 <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
                                   <PencilIcon className="h-4 w-4" />
@@ -857,7 +896,7 @@ export default function Column({
                     </li>
                   )}
                 </Draggable>
-              ))}
+              )})}
               {provided.placeholder}
 
 	              {addingNewPoint ? (
@@ -922,83 +961,33 @@ export default function Column({
           {/* In focus mode, show outline points and unassigned thoughts */}
           {localSermonPoints && localSermonPoints.length > 0 ? (
             <>
-              {/* Render placeholders for each outline point — wrapped in DragDropContext for reordering */}
-              {!isFocusMode ? (
-                <DragDropContext onDragEnd={handleDragEnd}>
-                  <Droppable droppableId={`normal-outline-${id}`}>
-                    {(provided) => (
-                      <div {...provided.droppableProps} ref={provided.innerRef} className="space-y-0">
-                        {localSermonPoints.map((point, index) => (
-                          <Draggable key={point.id} draggableId={`normal-${point.id}`} index={index}>
-                            {(providedDraggable, snapshot) => (
-                              <div
-                                ref={providedDraggable.innerRef}
-                                {...providedDraggable.draggableProps}
-                                className={`group transition-shadow pb-4 ${snapshot.isDragging ? 'shadow-lg opacity-90' : ''}`}
-                                style={providedDraggable.draggableProps.style}
-                              >
-                                <SermonPointPlaceholder
-                                  point={point}
-                                  items={items}
-                                  containerId={id}
-                                  onEdit={onEdit}
-                                  isHighlighted={isItemHighlighted}
-                                  getHighlightType={getItemHighlightType}
-                                  onKeepItem={onKeepItem}
-                                  onRevertItem={onRevertItem}
-                                  onToggleReviewed={onToggleReviewed}
-                                  headerColor={headerColor}
-                                  t={t}
-                                  activeId={activeId}
-                                  onMoveToAmbiguous={onMoveToAmbiguous}
-                                  sermonId={sermonId}
-                                  onAudioThoughtCreated={onAudioThoughtCreated}
-                                  isFocusMode={isFocusMode}
-                                  onAddThought={onAddThought}
-                                  sectionTitle={title}
-                                  setAudioError={setAudioError}
-                                  onRetryPendingThought={onRetryPendingThought}
-                                  dragHandleProps={providedDraggable.dragHandleProps as unknown as React.HTMLAttributes<HTMLElement>}
-                                  onEditPoint={handleStartEdit}
-                                  onDeletePoint={(pointId) => setDeletePointId(pointId)}
-                                />
-                              </div>
-                            )}
-                          </Draggable>
-                        ))}
-                        {provided.placeholder}
-                      </div>
-                    )}
-                  </Droppable>
-                </DragDropContext>
-              ) : (
-                localSermonPoints.map((point) => (
-                  <div key={point.id} className="pb-4">
-                    <SermonPointPlaceholder
-                      point={point}
-                      items={items}
-                      containerId={id}
-                      onEdit={onEdit}
-                      isHighlighted={isItemHighlighted}
-                      getHighlightType={getItemHighlightType}
-                      onKeepItem={onKeepItem}
-                      onRevertItem={onRevertItem}
-                      onToggleReviewed={onToggleReviewed}
-                      headerColor={headerColor}
-                      t={t}
-                      activeId={activeId}
-                      onMoveToAmbiguous={onMoveToAmbiguous}
-                      sermonId={sermonId}
-                      onAudioThoughtCreated={onAudioThoughtCreated}
-                      isFocusMode={isFocusMode}
-                      onAddThought={onAddThought}
-                      sectionTitle={title}
-                      setAudioError={setAudioError}
-                      onRetryPendingThought={onRetryPendingThought}
-                    />
-                  </div>
-                ))
-              )}
+              {localSermonPoints.map((point) => (
+                <div key={point.id} className="pb-4">
+                  <SermonPointPlaceholder
+                    point={point}
+                    items={items}
+                    containerId={id}
+                    onEdit={onEdit}
+                    isHighlighted={isItemHighlighted}
+                    getHighlightType={getItemHighlightType}
+                    onKeepItem={onKeepItem}
+                    onRevertItem={onRevertItem}
+                    onTogglePointLock={resolvedPointToggleHandler}
+                    onToggleThoughtLock={onToggleThoughtLock}
+                    headerColor={headerColor}
+                    t={t}
+                    activeId={activeId}
+                    onMoveToAmbiguous={onMoveToAmbiguous}
+                    sermonId={sermonId}
+                    onAudioThoughtCreated={onAudioThoughtCreated}
+                    isFocusMode={isFocusMode}
+                    onAddThought={onAddThought}
+                    sectionTitle={title}
+                    setAudioError={setAudioError}
+                    onRetryPendingThought={onRetryPendingThought}
+                  />
+                </div>
+              ))}
               {/* Unassigned thoughts section */}
               {renderUnassignedThoughtsSection(unassignedItemsForDisplay)}
             </>
@@ -1023,6 +1012,8 @@ export default function Column({
                     activeId={activeId}
                     onMoveToAmbiguous={onMoveToAmbiguous}
                     onRetrySync={onRetryPendingThought}
+                    onToggleLock={onToggleThoughtLock}
+                    isLocked={Boolean(item.isLocked)}
                     disabled={isPendingItem(item)}
                   />
                 ))}
@@ -1351,7 +1342,8 @@ export default function Column({
                                 getHighlightType={getItemHighlightType}
                                 onKeepItem={onKeepItem}
                                 onRevertItem={onRevertItem}
-                                onToggleReviewed={onToggleReviewed}
+                                onTogglePointLock={resolvedPointToggleHandler}
+                                onToggleThoughtLock={onToggleThoughtLock}
                                 headerColor={headerColor}
                                 t={t}
                                 activeId={activeId}
@@ -1410,6 +1402,8 @@ export default function Column({
                   activeId={activeId}
                   onMoveToAmbiguous={onMoveToAmbiguous}
                   onRetrySync={onRetryPendingThought}
+                  onToggleLock={onToggleThoughtLock}
+                  isLocked={Boolean(item.isLocked)}
                   disabled={isPendingItem(item)}
                 />
               ))}

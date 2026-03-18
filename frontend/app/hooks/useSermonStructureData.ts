@@ -120,7 +120,8 @@ function processThoughtsIntoItems(
       requiredTags: uniqueRequiredTags,
       outlinePoint: outlinePointData,
       outlinePointId: thought.outlinePointId,
-      position: (thought as { position?: number }).position
+      position: (thought as { position?: number }).position,
+      isLocked: Boolean(thought.isLocked),
     };
 
     allThoughtItems[stableId] = item;

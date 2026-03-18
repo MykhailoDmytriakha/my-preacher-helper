@@ -2,7 +2,16 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
-import SortableItem from '@/components/SortableItem';
+import SortableItem, {
+  getCardClassName,
+  getHighlightStyles,
+  getRemainingTime,
+  getSectionIconClasses,
+  HighlightBadge,
+  SortableItemActions,
+  SortableItemPreview,
+  SyncMeta,
+} from '@/components/SortableItem';
 
 import { useSortable } from '@dnd-kit/sortable';
 
@@ -62,6 +71,7 @@ describe('SortableItem Component', () => {
   const mockOnEdit = jest.fn();
   const mockOnDelete = jest.fn();
   const mockOnMoveToAmbiguous = jest.fn();
+  const mockOnToggleLock = jest.fn();
 
   afterEach(() => {
     jest.clearAllMocks();
@@ -277,8 +287,62 @@ Second paragraph with indentation.
     const container = screen.getByText('Test content for the item').closest('div[role="button"]') as HTMLElement | null;
     expect(container).toHaveAttribute('aria-disabled', 'true');
     expect(container?.className).toContain('cursor-default');
+    expect(container?.className).toContain('min-h-[144px]');
     expect(container?.className).not.toContain('hover:shadow-xl');
     expect(container?.style.touchAction).toBe('auto');
+  });
+
+  test('renders lock controls and toggles lock state', () => {
+    render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        onToggleLock={mockOnToggleLock}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'structure.lockThought' }));
+    expect(mockOnToggleLock).toHaveBeenCalledWith(mockItem.id, true);
+  });
+
+  test('shows locked state and unlock action for locked thoughts', () => {
+    render(
+      <SortableItem
+        item={{ ...mockItem, isLocked: true }}
+        containerId={mockContainerId}
+        onToggleLock={mockOnToggleLock}
+        isLocked={true}
+      />
+    );
+
+    const container = screen.getByText('Test content for the item').closest('div[role="button"]') as HTMLElement | null;
+    expect(container).not.toHaveAttribute('aria-disabled', 'true');
+    expect(container).toHaveClass('bg-slate-50');
+
+    const toggleButton = screen.getByRole('button', { name: 'structure.unlockThought' });
+    expect(toggleButton).toHaveAttribute('aria-pressed', 'true');
+    expect(toggleButton).toHaveAttribute('data-state', 'locked');
+    expect(screen.queryByText('structure.locked')).not.toBeInTheDocument();
+
+    fireEvent.click(toggleButton);
+    expect(mockOnToggleLock).toHaveBeenCalledWith(mockItem.id, false);
+  });
+
+  test('uses the lock button itself as the visible unlocked state', () => {
+    render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        onToggleLock={mockOnToggleLock}
+      />
+    );
+
+    const container = screen.getByText('Test content for the item').closest('div[role="button"]') as HTMLElement | null;
+    expect(container).not.toHaveClass('bg-slate-50');
+
+    const toggleButton = screen.getByRole('button', { name: 'structure.lockThought' });
+    expect(toggleButton).toHaveAttribute('aria-pressed', 'false');
+    expect(toggleButton).toHaveAttribute('data-state', 'unlocked');
   });
 
   test('renders move-to-ambiguous button and triggers handler', () => {
@@ -355,6 +419,107 @@ Second paragraph with indentation.
     expect(editIcon).toHaveClass('text-blue-800');
   });
 
+  test('covers conclusion and fallback icon color branches', () => {
+    const { rerender } = render(
+      <SortableItem
+        item={mockItem}
+        containerId="conclusion"
+        onEdit={mockOnEdit}
+        onMoveToAmbiguous={mockOnMoveToAmbiguous}
+      />
+    );
+
+    expect(screen.getByTestId('edit-icon')).toHaveClass('text-green-800');
+    expect(screen.getByTitle('structure.moveToUnderConsideration').querySelector('svg')?.getAttribute('class') || '').toContain('text-green-800');
+
+    rerender(
+      <SortableItem
+        item={mockItem}
+        containerId="custom-container"
+        onEdit={mockOnEdit}
+        onMoveToAmbiguous={mockOnMoveToAmbiguous}
+      />
+    );
+
+    expect(screen.getByTestId('edit-icon')).toHaveClass('text-gray-600');
+  });
+
+  test('renders sync meta states and retries failed sync items', () => {
+    const retrySpy = jest.fn();
+    const now = new Date('2026-03-18T10:00:00.000Z').getTime();
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+
+    const { rerender } = render(
+      <SortableItem
+        item={{
+          ...mockItem,
+          syncStatus: 'pending',
+          syncExpiresAt: new Date(now + 30_000).toISOString(),
+        }}
+        containerId={mockContainerId}
+        onRetrySync={retrySpy}
+      />
+    );
+
+    expect(screen.getByText('structure.localThoughtPending')).toBeInTheDocument();
+
+    rerender(
+      <SortableItem
+        item={{
+          ...mockItem,
+          syncStatus: 'error',
+          syncExpiresAt: new Date(now + 30_000).toISOString(),
+        }}
+        containerId={mockContainerId}
+        onRetrySync={retrySpy}
+      />
+    );
+
+    expect(screen.getByText('structure.localThoughtFailed')).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle('structure.localThoughtRetry'));
+    expect(retrySpy).toHaveBeenCalledWith(mockItem.id);
+
+    jest.restoreAllMocks();
+  });
+
+  test('invokes keep and revert actions for highlighted items', () => {
+    const keepSpy = jest.fn();
+    const revertSpy = jest.fn();
+
+    render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        isHighlighted={true}
+        highlightType="moved"
+        onKeep={keepSpy}
+        onRevert={revertSpy}
+      />
+    );
+
+    fireEvent.click(screen.getByTitle('structure.keepChanges'));
+    fireEvent.click(screen.getByTitle('structure.revertChanges'));
+
+    expect(keepSpy).toHaveBeenCalledWith(mockItem.id, mockContainerId);
+    expect(revertSpy).toHaveBeenCalledWith(mockItem.id, mockContainerId);
+  });
+
+  test('renders preview overlay and keeps overlay controls non-interactive', () => {
+    render(
+      <SortableItemPreview
+        item={{ ...mockItem, isLocked: true }}
+        containerId="conclusion"
+        isLocked={true}
+      />
+    );
+
+    const container = screen.getByText('Test content for the item').closest('div[aria-disabled="true"]') as HTMLElement | null;
+    expect(container?.className).not.toContain('mb-6');
+    expect(container).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.queryByTitle('structure.lockThought')).not.toBeInTheDocument();
+    expect(screen.queryByTitle('structure.unlockThought')).not.toBeInTheDocument();
+  });
+
   test('applies assigned highlight classes on card and badge', () => {
     render(
       <SortableItem
@@ -370,6 +535,7 @@ Second paragraph with indentation.
     expect(container).toBeInTheDocument();
     expect(container?.className).toContain('border-yellow-400');
     expect(container?.className).toContain('shadow-yellow-200');
+    expect(container).toHaveStyle({ borderColor: 'rgb(250, 204, 21)', backgroundColor: 'rgb(254, 249, 195)' });
 
     const badge = screen.getByText('structure.aiAssigned');
     expect(badge).toBeInTheDocument();
@@ -390,5 +556,152 @@ Second paragraph with indentation.
     const badge = screen.getByText('structure.aiMoved');
     expect(badge).toBeInTheDocument();
     expect(badge).toHaveClass('text-blue-800');
+
+    const container = screen.getByText('Test content for the item').closest('div[role="button"]') as HTMLElement | null;
+    expect(container).toHaveStyle({ borderColor: 'rgb(59, 130, 246)', backgroundColor: 'rgb(219, 234, 254)' });
+  });
+
+  test('covers exported helper branches directly', () => {
+    expect(getHighlightStyles(true, 'assigned')).toEqual({
+      borderColor: 'rgb(250, 204, 21)',
+      backgroundColor: 'rgb(254, 249, 195)',
+    });
+    expect(getHighlightStyles(true, 'moved')).toEqual({
+      borderColor: 'rgb(59, 130, 246)',
+      backgroundColor: 'rgb(219, 234, 254)',
+    });
+    expect(getSectionIconClasses('conclusion')).toContain('text-green-800');
+    expect(getSectionIconClasses('custom')).toBe('text-gray-600 dark:text-gray-300');
+    expect(getRemainingTime('2026-03-18T10:01:01.000Z', new Date('2026-03-18T10:00:00.000Z').getTime())).toBe('01:01');
+
+    expect(getCardClassName({
+      isHighlighted: false,
+      highlightType: 'moved',
+      syncBorderClass: '',
+      syncRingClass: '',
+      hoverShadowClass: '',
+      isDeleting: false,
+      isDragDisabled: false,
+      cursorClass: 'cursor-grab',
+      isOverlay: false,
+      isLocked: true,
+    })).toContain('bg-slate-50');
+
+    expect(getCardClassName({
+      isHighlighted: true,
+      highlightType: 'assigned',
+      syncBorderClass: '',
+      syncRingClass: '',
+      hoverShadowClass: '',
+      isDeleting: false,
+      isDragDisabled: false,
+      cursorClass: 'cursor-grab',
+      isOverlay: false,
+      isLocked: false,
+    })).toContain('border-yellow-400');
+  });
+
+  test('renders exported badge helpers for assigned, moved, pending, and error states', () => {
+    const t = (key: string) => key;
+    const { rerender } = render(
+      <HighlightBadge
+        isHighlighted={true}
+        highlightType="assigned"
+        t={t}
+      />
+    );
+
+    expect(screen.getByText('structure.aiAssigned')).toHaveClass('text-yellow-800');
+
+    rerender(
+      <HighlightBadge
+        isHighlighted={true}
+        highlightType="moved"
+        t={t}
+      />
+    );
+
+    expect(screen.getByText('structure.aiMoved')).toHaveClass('text-blue-800');
+
+    rerender(
+      <SyncMeta
+        show={true}
+        isError={true}
+        remainingTime="00:30"
+        t={t}
+      />
+    );
+
+    expect(screen.getByText('structure.localThoughtFailed')).toBeInTheDocument();
+
+    rerender(
+      <SyncMeta
+        show={true}
+        isError={false}
+        remainingTime="00:30"
+        t={t}
+      />
+    );
+
+    expect(screen.getByText('structure.localThoughtPending')).toBeInTheDocument();
+  });
+
+  test('renders exported actions branches for locked and unlocked lock controls', () => {
+    const t = (key: string) => key;
+    const { rerender } = render(
+      <SortableItemActions
+        item={mockItem}
+        containerId={mockContainerId}
+        isHighlighted={true}
+        isDragging={false}
+        isDeleting={false}
+        isPending={false}
+        isError={false}
+        isSuccess={false}
+        isLocal={false}
+        canEdit={false}
+        isLocked={true}
+        mutationDisabled={false}
+        canToggleLock={true}
+        showDeleteIcon={false}
+        sectionIconColorClasses="text-blue-800"
+        successOpacityClass=""
+        t={t}
+        isOverlay={false}
+      />
+    );
+
+    const unlockButton = screen.getByRole('button', { name: 'structure.unlockThought' });
+    expect(unlockButton).toHaveAttribute('aria-pressed', 'true');
+    expect(unlockButton.className).toContain('bg-slate-200');
+    expect(unlockButton.querySelector('svg')?.getAttribute('class') || '').toContain('h-5 w-5');
+
+    rerender(
+      <SortableItemActions
+        item={mockItem}
+        containerId={mockContainerId}
+        isHighlighted={false}
+        isDragging={false}
+        isDeleting={false}
+        isPending={false}
+        isError={false}
+        isSuccess={false}
+        isLocal={false}
+        canEdit={false}
+        isLocked={false}
+        mutationDisabled={false}
+        canToggleLock={true}
+        showDeleteIcon={false}
+        sectionIconColorClasses="text-blue-800"
+        successOpacityClass=""
+        t={t}
+        isOverlay={false}
+      />
+    );
+
+    const lockButton = screen.getByRole('button', { name: 'structure.lockThought' });
+    expect(lockButton).toHaveAttribute('aria-pressed', 'false');
+    expect(lockButton.className).toContain('bg-white');
+    expect(lockButton.querySelector('svg')?.getAttribute('class') || '').toContain('text-blue-800');
   });
 });

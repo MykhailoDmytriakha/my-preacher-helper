@@ -99,6 +99,7 @@ describe("column utils", () => {
 
     openPointEditor({
       point: reviewedPoint,
+      isLocked: true,
       setLocalEditText,
       setIsEditingLocally,
       onEditPoint,
@@ -123,8 +124,8 @@ describe("column utils", () => {
     expect(setLocalEditText).toHaveBeenCalledWith("Editable");
     expect(setIsEditingLocally).toHaveBeenCalledWith(true);
 
-    expect(getReviewToggleLabel(true, t)).toBe("Mark as unreviewed");
-    expect(getReviewToggleLabel(false, t)).toBe("Mark as reviewed");
+    expect(getReviewToggleLabel(true, t)).toBe("Unlock all thoughts in this outline point");
+    expect(getReviewToggleLabel(false, t)).toBe("Lock all thoughts in this outline point");
 
     expect(mapColumnIdToSectionType("introduction")).toBe("introduction");
     expect(mapColumnIdToSectionType("main")).toBe("mainPart");

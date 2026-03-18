@@ -547,7 +547,7 @@ describe('useStructureDnd', () => {
       expect(mockSetContainers).not.toHaveBeenCalled();
     });
 
-    it('should handle drag end with outline point placeholder', async () => {
+    it('skips a no-op drag end on the same outline point placeholder', async () => {
       const mockSetContainers = jest.fn();
       const { result } = renderHook(() => useStructureDnd({
         ...defaultProps,
@@ -568,7 +568,7 @@ describe('useStructureDnd', () => {
         await result.current.handleDragEnd(mockEvent);
       });
 
-      expect(mockSetContainers).toHaveBeenCalled();
+      expect(mockSetContainers).not.toHaveBeenCalled();
     });
 
     it('should handle drag end with unassigned placeholder', async () => {
@@ -648,9 +648,36 @@ describe('useStructureDnd', () => {
 
   describe('outline point handling', () => {
     it('should assign outline point when dropping on outline point', async () => {
+      const containers = buildContainers({
+        introduction: [
+          buildItem(THOUGHT_ONE, {
+            requiredTags: ['intro'],
+            outlinePointId: null,
+          }),
+        ],
+        main: [],
+      });
+      const sermon = buildSermon({
+        thoughts: [
+          buildThought(THOUGHT_ONE, {
+            tags: ['intro'],
+            outlinePointId: null,
+          }),
+        ],
+        structure: {
+          introduction: [THOUGHT_ONE],
+          main: [],
+          conclusion: [],
+          ambiguous: [],
+        },
+      });
+      const containersRef = { current: containers };
       const mockSetContainers = jest.fn();
       const { result } = renderHook(() => useStructureDnd({
         ...defaultProps,
+        containers,
+        containersRef,
+        sermon,
         setContainers: mockSetContainers
       }));
 
@@ -893,6 +920,63 @@ describe('useStructureDnd', () => {
       expect(mockSetContainers).toHaveBeenCalled();
     });
 
+    it('skips persistence for no-op drop in the same container', async () => {
+      const containers = buildContainers({
+        introduction: [
+          buildItem(THOUGHT_ONE, {
+            requiredTags: ['intro'],
+            outlinePointId: OUTLINE_INTRO,
+            position: 1000,
+          }),
+        ],
+        main: [],
+      });
+      const sermon = buildSermon({
+        thoughts: [
+          buildThought(THOUGHT_ONE, {
+            tags: ['intro'],
+            outlinePointId: OUTLINE_INTRO,
+            position: 1000,
+          }),
+        ],
+        structure: {
+          introduction: [THOUGHT_ONE],
+          main: [],
+          conclusion: [],
+          ambiguous: [],
+        },
+      });
+      const containersRef = { current: containers };
+      const mockSetContainers = jest.fn();
+      const mockDebouncedSaveThought = jest.fn();
+      const { result } = renderHook(() => useStructureDnd({
+        ...defaultProps,
+        containers,
+        containersRef,
+        setContainers: mockSetContainers,
+        sermon,
+        debouncedSaveThought: mockDebouncedSaveThought,
+      }));
+
+      act(() => {
+        result.current.handleDragStart({ active: { id: THOUGHT_ONE } } as any);
+      });
+
+      const mockEvent = buildDragEvent(
+        THOUGHT_ONE,
+        buildOver(THOUGHT_ONE, 'introduction')
+      );
+
+      await act(async () => {
+        await result.current.handleDragEnd(mockEvent);
+      });
+
+      expect(mockSetContainers).not.toHaveBeenCalled();
+      expect(mockDebouncedSaveThought).not.toHaveBeenCalled();
+      expect(mockUpdateStructure).not.toHaveBeenCalled();
+      expect(containersRef.current).toEqual(containers);
+    });
+
     it('reorders within the same container when dropped on item', async () => {
       const containers = buildContainers({
         introduction: [
@@ -937,6 +1021,80 @@ describe('useStructureDnd', () => {
       });
 
       expect(mockSetContainers).toHaveBeenCalled();
+    });
+
+    it('persists a real reorder within the same container', async () => {
+      const containers = buildContainers({
+        introduction: [
+          buildItem(THOUGHT_ONE, {
+            requiredTags: ['intro'],
+            outlinePointId: OUTLINE_INTRO,
+            position: 1000,
+          }),
+          buildItem(THOUGHT_TWO, {
+            requiredTags: ['intro'],
+            outlinePointId: OUTLINE_INTRO,
+            position: 2000,
+          }),
+        ],
+        main: [],
+      });
+      const sermon = buildSermon({
+        thoughts: [
+          buildThought(THOUGHT_ONE, {
+            tags: ['intro'],
+            outlinePointId: OUTLINE_INTRO,
+            position: 1000,
+          }),
+          buildThought(THOUGHT_TWO, {
+            tags: ['intro'],
+            outlinePointId: OUTLINE_INTRO,
+            position: 2000,
+          }),
+        ],
+        structure: {
+          introduction: [THOUGHT_ONE, THOUGHT_TWO],
+          main: [],
+          conclusion: [],
+          ambiguous: [],
+        },
+      });
+      const containersRef = { current: containers };
+      const mockDebouncedSaveThought = jest.fn();
+      const { result } = renderHook(() => useStructureDnd({
+        ...defaultProps,
+        containers,
+        containersRef,
+        sermon,
+        debouncedSaveThought: mockDebouncedSaveThought,
+      }));
+
+      act(() => {
+        result.current.handleDragStart({ active: { id: THOUGHT_TWO } } as any);
+      });
+
+      const mockEvent = buildDragEvent(
+        THOUGHT_TWO,
+        buildOver(THOUGHT_ONE, 'introduction')
+      );
+
+      await act(async () => {
+        await result.current.handleDragEnd(mockEvent);
+      });
+
+      expect(mockDebouncedSaveThought).toHaveBeenCalledWith(
+        sermon.id,
+        expect.objectContaining({
+          id: THOUGHT_TWO,
+          position: 0,
+        })
+      );
+      expect(mockUpdateStructure).toHaveBeenCalledWith(sermon.id, {
+        introduction: [THOUGHT_TWO, THOUGHT_ONE],
+        main: [],
+        conclusion: [],
+        ambiguous: [],
+      });
     });
 
     it('persists outline point without structure changes when dropping on outline placeholder', async () => {

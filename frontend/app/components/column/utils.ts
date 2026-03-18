@@ -77,21 +77,25 @@ export const getForceTagForContainer = (containerId: string) => {
 export const isPointAudioSection = (containerId: string): containerId is ColumnSectionId =>
   isColumnSectionId(containerId);
 
-export const getReviewToggleLabel = (isReviewed: boolean, t: Translate) => {
-  if (isReviewed) {
-    return t("structure.markAsUnreviewed", { defaultValue: "Mark as unreviewed" });
+export const getPointLockToggleLabel = (isLocked: boolean, t: Translate) => {
+  if (isLocked) {
+    return t("structure.unlockPointThoughts", { defaultValue: "Unlock all thoughts in this outline point" });
   }
-  return t("structure.markAsReviewed", { defaultValue: "Mark as reviewed" });
+  return t("structure.lockPointThoughts", { defaultValue: "Lock all thoughts in this outline point" });
 };
+
+/** @deprecated Backward-compatible alias for older test seams. */
+export const getReviewToggleLabel = getPointLockToggleLabel;
 
 export const openPointEditor = ({
   point,
+  isLocked = false,
   isFocusMode,
   setLocalEditText,
   setIsEditingLocally,
   onEditPoint,
 }: OpenPointEditorArgs) => {
-  if (point.isReviewed) return;
+  if (isLocked) return;
   if (isFocusMode) {
     onEditPoint?.(point);
     return;

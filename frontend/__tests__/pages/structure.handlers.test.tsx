@@ -5,14 +5,16 @@ import '@testing-library/jest-dom';
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
 import { useSermonStructureData } from '@/hooks/useSermonStructureData';
 import { updateStructure } from '@/services/structure.service';
-import { deleteThought } from '@/services/thought.service';
+import { deleteThought, updateThought } from '@/services/thought.service';
 import { updateSermonOutline } from '@/services/outline.service';
 import { getExportContent } from '@/utils/exportContent';
+import { toast } from 'sonner';
 import { createMockSermon, createMockThought, createMockItem, createMockSermonPoint } from '@test-utils/structure-test-utils';
 
 jest.mock('@/hooks/useSermonStructureData');
 jest.mock('@/services/structure.service', () => ({ updateStructure: jest.fn().mockResolvedValue({}) }));
 jest.mock('@/services/thought.service', () => ({
+  updateThought: jest.fn().mockResolvedValue({}),
   deleteThought: jest.fn().mockResolvedValue({}),
 }));
 jest.mock('@/services/outline.service', () => ({
@@ -46,6 +48,10 @@ jest.mock('sonner', () => ({
 const focusModeState: { focusedColumn: string | null } = { focusedColumn: 'introduction' };
 const debouncedSaveThoughtSpy = jest.fn();
 const debouncedSaveStructureSpy = jest.fn();
+const handleAiSortSpy = jest.fn();
+let autoTriggerAiSort = false;
+let autoTriggerPointLock = true;
+let autoTriggerThoughtLock = false;
 
 jest.mock('@dnd-kit/core', () => {
   const MockDndContext = ({ children, onDragEnd }: any) => {
@@ -69,7 +75,7 @@ jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useAiSortingDiff', (
       highlightedItems: highlighted,
       isDiffModeActive: true,
       isSorting: false,
-      handleAiSort: jest.fn(),
+      handleAiSort: handleAiSortSpy,
       handleKeepItem: jest.fn(),
       handleRevertItem: jest.fn(),
       handleKeepAll: jest.fn(),
@@ -133,6 +139,25 @@ jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useStructureDnd', ()
   }),
 }));
 
+jest.mock('@/components/SortableItem', () => ({
+  __esModule: true,
+  SortableItemPreview: () => <div data-testid="sortable-item-preview" />,
+  default: () => <div data-testid="sortable-item" />,
+}));
+
+jest.mock('@/components/ui/ConfirmModal', () => ({
+  __esModule: true,
+  default: ({ isOpen, title, description, onConfirm, onClose, confirmText, cancelText }: any) =>
+    isOpen ? (
+      <div data-testid="confirm-modal">
+        <div>{title}</div>
+        <div>{description}</div>
+        <button onClick={onConfirm}>{confirmText || 'Confirm'}</button>
+        <button onClick={onClose}>{cancelText || 'Cancel'}</button>
+      </div>
+    ) : null,
+}));
+
 jest.mock('@/components/Column', () => {
   const MockColumn = (props: any) => {
     React.useEffect(() => {
@@ -150,7 +175,15 @@ jest.mock('@/components/Column', () => {
       });
       props.onOutlinePointDeleted?.('op-1', props.id);
       void props.onAddOutlinePoint?.(props.id, 0, 'Inserted point');
-      props.onToggleReviewed?.('op-1', true);
+      if (autoTriggerPointLock) {
+        void props.onTogglePointLock?.('op-1', true);
+      }
+      if (autoTriggerThoughtLock) {
+        void props.onToggleThoughtLock?.('t1', true);
+      }
+      if (autoTriggerAiSort) {
+        props.onAiSort?.();
+      }
       void props.getExportContent?.('plain', { includeTags: true });
     }, [props]);
     return <div data-testid={`column-${props.id}`} />;
@@ -176,6 +209,9 @@ describe('StructurePage handlers', () => {
     jest.clearAllMocks();
     window.confirm = jest.fn(() => true);
     focusModeState.focusedColumn = 'introduction';
+    autoTriggerAiSort = false;
+    autoTriggerPointLock = true;
+    autoTriggerThoughtLock = false;
     localStorage.clear();
   });
 
@@ -232,11 +268,247 @@ describe('StructurePage handlers', () => {
     await waitFor(() => {
       expect(pushSpy).toHaveBeenCalled();
       expect(deleteThought).toHaveBeenCalled();
+      expect(updateThought).toHaveBeenCalled();
       expect(updateSermonOutline).toHaveBeenCalled();
       expect(updateStructure).toHaveBeenCalled();
       expect(getExportContent).toHaveBeenCalled();
       expect(debouncedSaveThoughtSpy).toHaveBeenCalled();
     });
+  });
+
+  it('shows a confirmation modal before AI sorting locked thoughts', async () => {
+    autoTriggerAiSort = true;
+
+    const sermon = createMockSermon({
+      id: 'sermon-1',
+      thoughts: [
+        createMockThought({ id: 't1', text: 'Locked intro', tags: ['Introduction'], outlinePointId: 'op-1', isLocked: true }),
+      ],
+      structure: {
+        introduction: ['t1'],
+        main: [],
+        conclusion: [],
+        ambiguous: [],
+      },
+      outline: {
+        introduction: [createMockSermonPoint({ id: 'op-1', text: 'Point 1' })],
+        main: [],
+        conclusion: [],
+      },
+    });
+
+    (useSermonStructureData as jest.Mock).mockReturnValue({
+      sermon,
+      setSermon: jest.fn(),
+      containers: {
+        introduction: [createMockItem({ id: 't1', content: 'Locked intro', outlinePointId: 'op-1', isLocked: true })],
+        main: [],
+        conclusion: [],
+        ambiguous: [],
+      },
+      setContainers: jest.fn(),
+      outlinePoints: sermon.outline,
+      requiredTagColors: { introduction: '#000', main: '#000', conclusion: '#000' },
+      allowedTags: [],
+      loading: false,
+      error: null,
+      isAmbiguousVisible: true,
+      setIsAmbiguousVisible: jest.fn(),
+    });
+
+    render(<StructurePage />);
+
+    expect(handleAiSortSpy).not.toHaveBeenCalledWith('introduction');
+    expect(await screen.findByText('Locked thoughts will also be re-sorted')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Continue anyway' }));
+
+    await waitFor(() => {
+      expect(handleAiSortSpy).toHaveBeenCalledWith('introduction');
+    });
+  });
+
+  it('runs AI sorting immediately when the column has no locked thoughts', async () => {
+    autoTriggerAiSort = true;
+    autoTriggerPointLock = false;
+
+    const sermon = createMockSermon({
+      id: 'sermon-1',
+      thoughts: [
+        createMockThought({ id: 't1', text: 'Unlocked intro', tags: ['Introduction'], outlinePointId: 'op-1', isLocked: false }),
+      ],
+      structure: {
+        introduction: ['t1'],
+        main: [],
+        conclusion: [],
+        ambiguous: [],
+      },
+      outline: {
+        introduction: [createMockSermonPoint({ id: 'op-1', text: 'Point 1' })],
+        main: [],
+        conclusion: [],
+      },
+    });
+
+    (useSermonStructureData as jest.Mock).mockReturnValue({
+      sermon,
+      setSermon: jest.fn(),
+      containers: {
+        introduction: [createMockItem({ id: 't1', content: 'Unlocked intro', outlinePointId: 'op-1', isLocked: false })],
+        main: [],
+        conclusion: [],
+        ambiguous: [],
+      },
+      setContainers: jest.fn(),
+      outlinePoints: sermon.outline,
+      requiredTagColors: { introduction: '#000', main: '#000', conclusion: '#000' },
+      allowedTags: [],
+      loading: false,
+      error: null,
+      isAmbiguousVisible: true,
+      setIsAmbiguousVisible: jest.fn(),
+    });
+
+    render(<StructurePage />);
+
+    await waitFor(() => {
+      expect(handleAiSortSpy).toHaveBeenCalledWith('introduction');
+    });
+
+    expect(screen.queryByTestId('confirm-modal')).not.toBeInTheDocument();
+  });
+
+  it('locks a single thought through the dedicated thought toggle handler', async () => {
+    autoTriggerPointLock = false;
+    autoTriggerThoughtLock = true;
+
+    const sermon = createMockSermon({
+      id: 'sermon-1',
+      thoughts: [
+        createMockThought({ id: 't1', text: 'Intro thought', tags: ['Introduction'], outlinePointId: 'op-1', isLocked: false }),
+      ],
+      structure: {
+        introduction: ['t1'],
+        main: [],
+        conclusion: [],
+        ambiguous: [],
+      },
+      outline: {
+        introduction: [createMockSermonPoint({ id: 'op-1', text: 'Point 1' })],
+        main: [],
+        conclusion: [],
+      },
+    });
+
+    (useSermonStructureData as jest.Mock).mockReturnValue({
+      sermon,
+      setSermon: jest.fn(),
+      containers: {
+        introduction: [createMockItem({ id: 't1', content: 'Intro thought', outlinePointId: 'op-1', isLocked: false })],
+        main: [],
+        conclusion: [],
+        ambiguous: [],
+      },
+      setContainers: jest.fn(),
+      outlinePoints: sermon.outline,
+      requiredTagColors: { introduction: '#000', main: '#000', conclusion: '#000' },
+      allowedTags: [],
+      loading: false,
+      error: null,
+      isAmbiguousVisible: true,
+      setIsAmbiguousVisible: jest.fn(),
+    });
+
+    render(<StructurePage />);
+
+    await waitFor(() => {
+      expect(updateThought).toHaveBeenCalledWith(
+        'sermon-1',
+        expect.objectContaining({ id: 't1', isLocked: true }),
+      );
+    });
+
+    expect(toast.success).toHaveBeenCalledWith('Thought locked');
+  });
+
+  it('rolls back optimistic point locking when one persistence request fails', async () => {
+    let sermonState = createMockSermon({
+      id: 'sermon-1',
+      thoughts: [
+        createMockThought({ id: 't1', text: 'Intro 1', tags: ['Introduction'], outlinePointId: 'op-1', isLocked: false }),
+        createMockThought({ id: 't2', text: 'Intro 2', tags: ['Introduction'], outlinePointId: 'op-1', isLocked: false }),
+      ],
+      structure: {
+        introduction: ['t1', 't2'],
+        main: [],
+        conclusion: [],
+        ambiguous: [],
+      },
+      outline: {
+        introduction: [createMockSermonPoint({ id: 'op-1', text: 'Point 1' })],
+        main: [],
+        conclusion: [],
+      },
+    });
+
+    let containersState: Record<string, any[]> = {
+      introduction: [
+        createMockItem({ id: 't1', content: 'Intro 1', outlinePointId: 'op-1', isLocked: false }),
+        createMockItem({ id: 't2', content: 'Intro 2', outlinePointId: 'op-1', isLocked: false }),
+      ],
+      main: [],
+      conclusion: [],
+      ambiguous: [],
+    };
+    const originalSermon = sermonState;
+    const originalContainers = containersState;
+
+    const setSermon = jest.fn((updater: any) => {
+      sermonState = typeof updater === 'function' ? updater(sermonState) : updater;
+    });
+    const setContainers = jest.fn((updater: any) => {
+      containersState = typeof updater === 'function' ? updater(containersState) : updater;
+    });
+
+    (updateThought as jest.Mock)
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error('lock failed'))
+      .mockResolvedValueOnce({});
+
+    (useSermonStructureData as jest.Mock).mockReturnValue({
+      sermon: sermonState,
+      setSermon,
+      containers: containersState,
+      setContainers,
+      outlinePoints: sermonState.outline,
+      requiredTagColors: { introduction: '#000', main: '#000', conclusion: '#000' },
+      allowedTags: [],
+      loading: false,
+      error: null,
+      isAmbiguousVisible: true,
+      setIsAmbiguousVisible: jest.fn(),
+    });
+
+    render(<StructurePage />);
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Failed to save thought.');
+    });
+
+    expect(updateThought).toHaveBeenCalledWith(
+      'sermon-1',
+      expect.objectContaining({ id: 't1', isLocked: true }),
+    );
+    expect(updateThought).toHaveBeenCalledWith(
+      'sermon-1',
+      expect.objectContaining({ id: 't2', isLocked: true }),
+    );
+    expect(updateThought).toHaveBeenCalledWith(
+      'sermon-1',
+      expect.objectContaining({ id: 't1', isLocked: false }),
+    );
+    expect(setSermon).toHaveBeenCalledWith(originalSermon);
+    expect(setContainers).toHaveBeenCalledWith(originalContainers);
   });
 
   it('toggles vertical layout and persists preference when not in focus mode', async () => {
