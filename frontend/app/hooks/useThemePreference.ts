@@ -56,29 +56,58 @@ export function useThemePreference() {
     if (preference === 'system') {
       const handleChange = () => applyTheme();
 
-      // Re-apply theme when device wakes from sleep or tab regains focus
-      // (visibilitychange fires, but matchMedia 'change' may not if the OS changed theme while asleep)
+      // OS→Browser theme propagation can take 50–500ms+ after device wake.
+      // Progressive retries ensure we catch the change reliably.
+      const WAKE_RETRY_DELAYS = [50, 300, 1000];
+      let wakeTimers: ReturnType<typeof setTimeout>[] = [];
+
       const handleWakeEvent = () => {
         if (
           document.visibilityState === 'visible' ||
           (document.hasFocus && document.hasFocus())
         ) {
-          // Add a tiny delay because OS->Browser theme propagation might not be instant on wake
-          setTimeout(() => {
-            applyTheme();
-          }, 50);
+          // Cancel any previously scheduled wake retries
+          wakeTimers.forEach(clearTimeout);
+          wakeTimers = [];
+
+          const currentDark = html.classList.contains('dark');
+          let resolved = false;
+
+          for (const delay of WAKE_RETRY_DELAYS) {
+            const timer = setTimeout(() => {
+              if (resolved) return;
+              const freshDark = shouldApplyDark(preference, window.matchMedia(MEDIA_QUERY).matches);
+              if (freshDark !== currentDark) {
+                // Theme changed — apply immediately and stop retrying
+                resolved = true;
+                wakeTimers.forEach(clearTimeout);
+                wakeTimers = [];
+                applyTheme();
+              } else if (delay === WAKE_RETRY_DELAYS[WAKE_RETRY_DELAYS.length - 1]) {
+                // Final attempt: apply unconditionally to handle edge cases
+                applyTheme();
+              }
+            }, delay);
+            wakeTimers.push(timer);
+          }
         }
       };
 
       document.addEventListener('visibilitychange', handleWakeEvent);
       window.addEventListener('focus', handleWakeEvent);
 
+      const cleanup = () => {
+        wakeTimers.forEach(clearTimeout);
+        wakeTimers = [];
+        document.removeEventListener('visibilitychange', handleWakeEvent);
+        window.removeEventListener('focus', handleWakeEvent);
+      };
+
       if (typeof mediaQuery.addEventListener === 'function') {
         mediaQuery.addEventListener('change', handleChange);
         return () => {
           mediaQuery.removeEventListener('change', handleChange);
-          document.removeEventListener('visibilitychange', handleWakeEvent);
-          window.removeEventListener('focus', handleWakeEvent);
+          cleanup();
         };
       }
 
@@ -86,13 +115,11 @@ export function useThemePreference() {
         mediaQuery.addListener(handleChange);
         return () => {
           mediaQuery.removeListener?.(handleChange);
-          document.removeEventListener('visibilitychange', handleWakeEvent);
-          window.removeEventListener('focus', handleWakeEvent);
+          cleanup();
         };
       }
 
-      document.removeEventListener('visibilitychange', handleWakeEvent);
-      window.removeEventListener('focus', handleWakeEvent);
+      cleanup();
       return undefined;
     }
 

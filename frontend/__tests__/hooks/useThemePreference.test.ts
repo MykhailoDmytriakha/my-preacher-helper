@@ -244,6 +244,7 @@ describe('useThemePreference Hook', () => {
   });
 
   it('should re-apply system theme on visibilitychange (device wake from sleep)', async () => {
+    jest.useFakeTimers();
     // Simulate system starts in light mode
     let systemPrefersDark = false;
     const listeners: ((ev: MediaQueryListEvent) => void)[] = [];
@@ -287,9 +288,75 @@ describe('useThemePreference Hook', () => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
 
+    // First progressive retry at 50ms catches the change
+    act(() => {
+      jest.advanceTimersByTime(50);
+    });
+
     await waitFor(() => {
       expect(document.documentElement.classList.contains('dark')).toBe(true);
     });
+
+    jest.useRealTimers();
+  });
+
+  it('should catch delayed OS theme propagation via progressive retries', async () => {
+    jest.useFakeTimers();
+    // Simulate system starts in light mode; OS change propagates slowly
+    let systemPrefersDark = false;
+
+    mockMatchMedia.mockImplementation((query: string) => ({
+      get matches() {
+        return query === '(prefers-color-scheme: dark)' && systemPrefersDark;
+      },
+      media: query,
+      onchange: null,
+      addListener: jest.fn(),
+      removeListener: jest.fn(),
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+      dispatchEvent: jest.fn(),
+    }));
+
+    const { result } = renderHook(() => useThemePreference());
+
+    await waitFor(() => {
+      expect(result.current.ready).toBe(true);
+    });
+
+    act(() => {
+      result.current.setPreference('system');
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.classList.contains('dark')).toBe(false);
+    });
+
+    // Trigger visibilitychange
+    act(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+
+    // First retry at 50ms: OS hasn't propagated yet
+    act(() => {
+      jest.advanceTimersByTime(50);
+    });
+    expect(document.documentElement.classList.contains('dark')).toBe(false);
+
+    // OS propagates between 50ms and 300ms
+    systemPrefersDark = true;
+
+    // Second retry at 300ms catches the change
+    act(() => {
+      jest.advanceTimersByTime(250); // total: 300ms
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.classList.contains('dark')).toBe(true);
+    });
+
+    jest.useRealTimers();
   });
 
   it('should fallback correctly when matchMedia is not a function', async () => {
@@ -355,7 +422,7 @@ describe('useThemePreference Hook', () => {
       window.dispatchEvent(new Event('focus'));
     });
 
-    // Fast-forward the wake-up timeout (50ms)
+    // First progressive retry at 50ms catches the change
     act(() => {
       jest.advanceTimersByTime(50);
     });
@@ -372,6 +439,7 @@ describe('useThemePreference Hook', () => {
       window.dispatchEvent(new Event('focus'));
     });
 
+    // First progressive retry at 50ms catches the change
     act(() => {
       jest.advanceTimersByTime(50);
     });
