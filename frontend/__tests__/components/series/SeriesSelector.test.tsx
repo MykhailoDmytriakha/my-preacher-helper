@@ -23,6 +23,8 @@ jest.mock('react-i18next', () => ({
         'workspaces.series.actions.selectSeries': 'Select Series',
         'workspaces.series.actions.selectSeriesForAdd': 'Add to Series',
         'workspaces.series.actions.selectSeriesForChange': 'Change Series',
+        'workspaces.series.actions.adding': 'Adding...',
+        'workspaces.series.actions.moving': 'Moving...',
         'common.search': 'Search series...',
         'workspaces.series.loadingSeries': 'Loading series...',
         'workspaces.series.errors.addSermonFailed': 'Failed to add sermon to series',
@@ -380,6 +382,21 @@ describe('SeriesSelector Component', () => {
   });
 
   describe('Series Selection', () => {
+    it('calls onSelect with the selected series id', () => {
+      render(
+        <SeriesSelector
+          onClose={mockOnClose}
+          onSelect={mockOnSelect}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', {
+        name: 'Faith Series Living by Faith Hebrews • 1 sermons'
+      }));
+
+      expect(mockOnSelect).toHaveBeenCalledWith('series-2');
+    });
+
     it('renders series buttons with correct accessible names', () => {
       render(
         <SeriesSelector
@@ -412,6 +429,27 @@ describe('SeriesSelector Component', () => {
       // Check that we have the expected number of buttons (close + series buttons)
       const buttons = screen.getAllByRole('button');
       expect(buttons.length).toBe(4); // 1 close button + 3 series buttons
+    });
+
+    it('shows pending feedback on the chosen series and locks interactions while processing', () => {
+      render(
+        <SeriesSelector
+          onClose={mockOnClose}
+          onSelect={mockOnSelect}
+          mode="change"
+          isProcessing
+          pendingSeriesId="series-2"
+        />
+      );
+
+      expect(screen.getByText('Moving...')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Search series...')).toBeDisabled();
+      expect(screen.getByRole('button', {
+        name: /Faith Series Living by Faith Hebrews • 1 sermons Moving\.\.\./
+      })).toBeDisabled();
+      expect(screen.getByRole('button', {
+        name: /Grace Series Understanding Grace Romans • 2 sermons/
+      })).toBeDisabled();
     });
   });
 

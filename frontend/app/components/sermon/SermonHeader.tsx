@@ -44,6 +44,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
   const [showSeriesSelector, setShowSeriesSelector] = useState(false);
   const [seriesSelectorMode, setSeriesSelectorMode] = useState<'add' | 'change'>('add');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [pendingSeriesId, setPendingSeriesId] = useState<string | null>(null);
   const isReadOnly = false; // Always allow local edits
 
   const enableAudio = settings?.enableAudioGeneration || false;
@@ -57,19 +58,19 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
   };
 
   const handleAddToSeries = () => {
-    if (isReadOnly) return;
+    if (isReadOnly || isProcessing) return;
     setSeriesSelectorMode('add');
     setShowSeriesSelector(true);
   };
 
   const handleChangeSeries = () => {
-    if (isReadOnly) return;
+    if (isReadOnly || isProcessing) return;
     setSeriesSelectorMode('change');
     setShowSeriesSelector(true);
   };
 
   const handleRemoveFromSeries = async () => {
-    if (isReadOnly) return;
+    if (isReadOnly || isProcessing) return;
     if (window.confirm(t(removeFromSeriesTranslationKey) + '?')) {
       setIsProcessing(true);
       try {
@@ -92,7 +93,8 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
   };
 
   const handleSeriesSelected = async (seriesId: string) => {
-    if (isReadOnly) return;
+    if (isReadOnly || isProcessing) return;
+    setPendingSeriesId(seriesId);
     setIsProcessing(true);
     try {
       if (seriesSelectorMode === 'change' && sermon.seriesId) {
@@ -118,6 +120,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
       );
     } finally {
       setIsProcessing(false);
+      setPendingSeriesId(null);
     }
   };
 
@@ -240,9 +243,9 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
           {/* Series options menu - always available (Add to series when standalone, Move/Remove when in series) */}
           <Menu as="div" className="relative">
             <Menu.Button
-              className={`flex items-center justify-center w-6 h-6 rounded-md transition-colors ml-1 ${isReadOnly ? processingButtonClasses : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+              className={`flex items-center justify-center w-6 h-6 rounded-md transition-colors ml-1 ${isReadOnly || isProcessing ? processingButtonClasses : 'hover:bg-gray-100 dark:hover:bg-gray-700'
                 }`}
-              disabled={isReadOnly}
+              disabled={isReadOnly || isProcessing}
             >
               <EllipsisVerticalIcon className="h-4 w-4 text-gray-500 dark:text-gray-400" />
             </Menu.Button>
@@ -347,10 +350,15 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
       {/* Series Selector Modal */}
       {showSeriesSelector && (
         <SeriesSelector
-          onClose={() => setShowSeriesSelector(false)}
+          onClose={() => {
+            if (isProcessing) return;
+            setShowSeriesSelector(false);
+          }}
           onSelect={handleSeriesSelected}
           currentSeriesId={sermon.seriesId}
           mode={seriesSelectorMode}
+          isProcessing={isProcessing}
+          pendingSeriesId={pendingSeriesId}
         />
       )}
     </div>

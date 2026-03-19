@@ -1563,6 +1563,7 @@
         "selectSermons": "Select Sermons",
         "addSelected": "Add Selected",
         "adding": "Adding...",
+        "moving": "Moving...",
         "selectedCount": "{{count}} selected",
         "addGroup": "Add Group"
       },

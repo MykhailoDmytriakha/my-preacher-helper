@@ -1564,6 +1564,7 @@
         "selectSermons": "Выбрать проповеди",
         "addSelected": "Добавить выбранные",
         "adding": "Добавление...",
+        "moving": "Перемещение...",
         "selectedCount": "{{count}} выбрано",
         "addGroup": "Добавить группу"
       },
