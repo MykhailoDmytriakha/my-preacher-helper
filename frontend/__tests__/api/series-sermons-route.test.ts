@@ -14,6 +14,7 @@ jest.mock('@repositories/series.repository', () => ({
 
 jest.mock('@repositories/sermons.repository', () => ({
   sermonsRepository: {
+    fetchSermonById: jest.fn(),
     updateSermonSeriesInfo: jest.fn(),
   },
 }));
@@ -42,6 +43,10 @@ describe('/api/series/[id]/sermons route', () => {
     (seriesRepository.reorderSermonsInSeries as jest.Mock).mockResolvedValue(undefined);
     (seriesRepository.removeSermonFromSeries as jest.Mock).mockResolvedValue(undefined);
     (sermonsRepository.updateSermonSeriesInfo as jest.Mock).mockResolvedValue(undefined);
+    // Default: sermons already in sync with series
+    (sermonsRepository.fetchSermonById as jest.Mock).mockImplementation((id: string) =>
+      Promise.resolve({ id, seriesId: 's1', seriesPosition: 1 })
+    );
   });
 
   describe('POST', () => {
@@ -60,7 +65,8 @@ describe('/api/series/[id]/sermons route', () => {
       expect(noSeries.status).toBe(404);
     });
 
-    it('adds sermon and syncs positions', async () => {
+    it('adds sermon and skips sync for already-synced sermons', async () => {
+      // sermon-1 already has seriesId='s1' and seriesPosition=1 (set in beforeEach)
       const response = await POST(
         { json: jest.fn().mockResolvedValue({ sermonId: 'sermon-2', position: 2 }) } as any,
         { params: Promise.resolve({ id: 's1' }) }
@@ -68,9 +74,25 @@ describe('/api/series/[id]/sermons route', () => {
       const data = await response.json();
 
       expect(seriesRepository.addSermonToSeries).toHaveBeenCalledWith('s1', 'sermon-2', 2);
-      expect(sermonsRepository.updateSermonSeriesInfo).toHaveBeenCalledWith('sermon-1', 's1', 1);
+      // sermon-1 is already in sync — updateSermonSeriesInfo should NOT be called for it
+      expect(sermonsRepository.updateSermonSeriesInfo).not.toHaveBeenCalledWith('sermon-1', 's1', 1);
       expect(response.status).toBe(200);
       expect(data.message).toBe('Sermon added to series successfully');
+    });
+
+    it('syncs positions for sermons with mismatched seriesPosition', async () => {
+      // sermon-1 has position 5 in DB but position 1 in series items — needs update
+      (sermonsRepository.fetchSermonById as jest.Mock).mockImplementation((id: string) =>
+        Promise.resolve({ id, seriesId: 's1', seriesPosition: id === 'sermon-1' ? 5 : 1 })
+      );
+
+      const response = await POST(
+        { json: jest.fn().mockResolvedValue({ sermonId: 'sermon-2', position: 2 }) } as any,
+        { params: Promise.resolve({ id: 's1' }) }
+      );
+
+      expect(sermonsRepository.updateSermonSeriesInfo).toHaveBeenCalledWith('sermon-1', 's1', 1);
+      expect(response.status).toBe(200);
     });
 
     it('returns 500 on add error', async () => {
@@ -152,6 +174,10 @@ describe('/api/series/[id]/sermons route', () => {
         items: [],
         sermonIds: ['legacy-sermon-1', 'legacy-sermon-2'],
       });
+      // Legacy sermons have no series info yet — needs sync
+      (sermonsRepository.fetchSermonById as jest.Mock).mockImplementation((id: string) =>
+        Promise.resolve({ id, seriesId: undefined, seriesPosition: undefined })
+      );
 
       await DELETE(
         { url: 'https://example.com/api/series/s1/sermons?sermonId=legacy-sermon-1' } as any,

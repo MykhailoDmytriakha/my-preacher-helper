@@ -161,6 +161,7 @@
 - **2026-02-24 Grid Card Footer Alignment:** Wrap main content in `flex-1` to push footer to bottom across dynamic-height cards.
 - **2026-02-24 Headless UI in Jest:** Mock `ConfirmModal` (Headless UI) in tests — JSDOM can't handle transition measurements.
 - **2026-02-24 Toggle Switch Pattern:** `w-11` rail + `border-2 border-transparent` + `h-5 w-5` thumb + `translate-x-5/translate-x-0`. Headless UI canonical.
+- **2026-03-19 Batch Update Redundancy:** In loop transformations (like `syncSermonPositions`), always fetch and read the entity first to compare expected field values against current. Unconditional writes bump `updatedAt` timestamps across unchanged sibling entities, which causes cascade desyncs in optimistic UI lists.
 - **2026-02-24 Smart Back Nav:** `router.back()` when `history.length > 1`, else `router.push(fallback)`. Via `BackLink.tsx`.
 - **2026-02-24 Beta Feature Toggle:** 5-step: `models.ts` → `userSettings.service.ts` → `useUserSettings.ts` → `*Toggle.tsx` → `settings/page.tsx`.
 - **2026-02-24 Dynamic Color Tinting:** Light: inline `rgba(r,g,b,0.07)`. Dark: overlay `div` with `opacity-0 dark:opacity-100` — Tailwind `dark:` can't apply to dynamic inline styles.
@@ -381,3 +382,4 @@
 - Coverage Scope Protocol: resolve and state the scope before running the strict coverage pass. Default to staged + unstaged only when the user does not narrow it; if the user says `staged` or points to a path/package, restrict discovery accordingly and report that scope explicitly.
 - Coverage New-File Protocol: every new runtime file in scope needs a direct suite tied to that file or its exact public seam. Incidental coverage through a parent component is not enough, even if the file already sits above `80%`.
 - Outline Point Unassignment (JSON.stringify Null vs Undefined): When unassigning or clearing fields in optimistic entities or payloads sent over the wire, **always explicitly pass `null`** instead of `undefined`. `JSON.stringify` drops `undefined` properties completely, which means the backend won't receive the "clear" instruction and will skip the field update resulting in the bug where unassignment does nothing.
+- **2026-03-19 Test Coverage Stability:** The guard fixed the bug and tests were correctly expanded.

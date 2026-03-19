@@ -18,18 +18,27 @@ async function syncSermonPositions(seriesId: string) {
 
   if (sermonItems.length > 0) {
     await Promise.all(
-      sermonItems.map((item) =>
-        sermonsRepository.updateSermonSeriesInfo(item.sermonId, seriesId, item.position)
-      )
+      sermonItems.map(async (item) => {
+        const current = await sermonsRepository.fetchSermonById(item.sermonId);
+        if (current.seriesId === seriesId && current.seriesPosition === item.position) {
+          return; // Already in sync — skip to avoid bumping updatedAt
+        }
+        await sermonsRepository.updateSermonSeriesInfo(item.sermonId, seriesId, item.position);
+      })
     );
     return;
   }
 
   // Legacy fallback for series documents without mixed items
   await Promise.all(
-    (series.sermonIds || []).map((sermonId, index) =>
-      sermonsRepository.updateSermonSeriesInfo(sermonId, seriesId, index + 1)
-    )
+    (series.sermonIds || []).map(async (sermonId, index) => {
+      const position = index + 1;
+      const current = await sermonsRepository.fetchSermonById(sermonId);
+      if (current.seriesId === seriesId && current.seriesPosition === position) {
+        return; // Already in sync — skip to avoid bumping updatedAt
+      }
+      await sermonsRepository.updateSermonSeriesInfo(sermonId, seriesId, position);
+    })
   );
 }
 
