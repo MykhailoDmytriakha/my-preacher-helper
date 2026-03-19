@@ -20,6 +20,35 @@ import { EditIcon, TrashIcon } from "@components/Icons";
 
 import CardContent from "./CardContent";
 
+const ACTION_BUTTON_BASE_CLASS = "flex h-8 w-8 items-center justify-center rounded-full shadow-sm transition-colors";
+const ACTION_STATUS_BASE_CLASS = "flex h-8 w-8 items-center justify-center rounded-full";
+
+const hasVisibleRailActions = ({
+  canToggleLock,
+  isPending,
+  showRetrySync,
+  isSuccess,
+  canEdit,
+  showMoveAction,
+  showDeleteAction,
+}: {
+  canToggleLock: boolean;
+  isPending: boolean;
+  showRetrySync: boolean;
+  isSuccess: boolean;
+  canEdit: boolean;
+  showMoveAction: boolean;
+  showDeleteAction: boolean;
+}) => (
+  canToggleLock ||
+  isPending ||
+  showRetrySync ||
+  isSuccess ||
+  canEdit ||
+  showMoveAction ||
+  showDeleteAction
+);
+
 interface SortableItemProps {
   item: Item;
   containerId: string;
@@ -212,14 +241,13 @@ export const SortableItemActions = ({
   onDelete,
   onEdit,
   onMoveToAmbiguous,
-  onKeep,
-  onRevert,
   onRetrySync,
   onToggleLock,
   sectionIconColorClasses,
   successOpacityClass,
   t,
   isOverlay,
+  className,
 }: {
   item: Item;
   containerId: string;
@@ -238,14 +266,13 @@ export const SortableItemActions = ({
   onDelete?: (itemId: string, containerId: string) => void;
   onEdit?: (item: Item) => void;
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
-  onKeep?: (itemId: string, containerId: string) => void;
-  onRevert?: (itemId: string, containerId: string) => void;
   onRetrySync?: (itemId: string) => void;
   onToggleLock?: (itemId: string, isLocked: boolean) => void;
   sectionIconColorClasses: string;
   successOpacityClass: string;
   t: TranslateFn;
   isOverlay: boolean;
+  className?: string;
 }) => {
   const hoverActionsClass = isHighlighted || isOverlay
     ? "opacity-100 pointer-events-auto"
@@ -253,9 +280,28 @@ export const SortableItemActions = ({
   const lockLabel = isLocked
     ? t("structure.unlockThought", { defaultValue: "Unlock thought" })
     : t("structure.lockThought", { defaultValue: "Lock thought" });
+  const showRetrySync = Boolean(isError && onRetrySync);
+  const showMoveAction = Boolean(onMoveToAmbiguous && containerId !== "ambiguous" && !isLocal && !isPending && !isError && !isSuccess && !mutationDisabled);
+  const showDeleteAction = Boolean(showDeleteIcon && onDelete && !isLocal && !isPending && !isError && !isSuccess && !mutationDisabled);
+  const hasAnyVisibleAction = hasVisibleRailActions({
+    canToggleLock,
+    isPending,
+    showRetrySync,
+    isSuccess,
+    canEdit,
+    showMoveAction,
+    showDeleteAction,
+  });
+
+  if (!hasAnyVisibleAction) {
+    return null;
+  }
 
   return (
-    <div className={`absolute right-5 top-5 flex w-10 flex-col items-center gap-1 ${isDragging || isDeleting ? "invisible" : ""}`}>
+    <div
+      data-testid={`sortable-item-actions-${item.id}`}
+      className={`flex w-10 flex-col items-center gap-1.5 ${isDragging || isDeleting ? "invisible" : ""} ${className ?? ""}`}
+    >
       {canToggleLock && (
         <button
           onPointerDown={stopEvent}
@@ -264,7 +310,7 @@ export const SortableItemActions = ({
             stopEvent(event);
             onToggleLock?.(item.id, !isLocked);
           }}
-          className={`focus:outline-none rounded-full border p-1.5 shadow-sm transition-colors ${isLocked
+          className={`focus:outline-none border ${ACTION_BUTTON_BASE_CLASS} ${isLocked
             ? "border-slate-300 bg-slate-200 text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100 hover:bg-slate-300 dark:hover:bg-slate-600"
             : "border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-gray-800 dark:text-slate-300 hover:border-slate-300 hover:bg-slate-50 dark:hover:border-slate-600 dark:hover:bg-gray-700"}`}
           title={lockLabel}
@@ -282,19 +328,19 @@ export const SortableItemActions = ({
       )}
 
       {isPending && (
-        <div className="rounded-full border border-amber-200 bg-amber-100 p-1.5 dark:border-amber-700 dark:bg-amber-900/40">
+        <div className={`${ACTION_STATUS_BASE_CLASS} border border-amber-200 bg-amber-100 dark:border-amber-700 dark:bg-amber-900/40`}>
           <ArrowPathIcon className="h-5 w-5 animate-spin text-amber-600 dark:text-amber-400" />
         </div>
       )}
-      {isError && onRetrySync && (
+      {showRetrySync && (
         <button
           onPointerDown={stopEvent}
           onMouseDown={stopEvent}
           onClick={(event) => {
             stopEvent(event);
-            onRetrySync(item.id);
+            onRetrySync?.(item.id);
           }}
-          className="focus:outline-none rounded-full border border-red-200 bg-red-50 p-1.5 shadow-sm hover:bg-red-100 hover:shadow-md dark:border-red-700 dark:bg-red-900/40 dark:hover:bg-red-900/60"
+          className={`focus:outline-none border border-red-200 bg-red-50 hover:bg-red-100 hover:shadow-md dark:border-red-700 dark:bg-red-900/40 dark:hover:bg-red-900/60 ${ACTION_BUTTON_BASE_CLASS}`}
           title={t("structure.localThoughtRetry", { defaultValue: "Retry sync" })}
           disabled={isOverlay}
         >
@@ -302,12 +348,12 @@ export const SortableItemActions = ({
         </button>
       )}
       {isSuccess && (
-        <div className={`rounded-full border border-green-200 bg-green-100 p-1.5 transition-opacity dark:border-green-700 dark:bg-green-900/40 ${successOpacityClass}`}>
+        <div className={`${ACTION_STATUS_BASE_CLASS} border border-green-200 bg-green-100 transition-opacity dark:border-green-700 dark:bg-green-900/40 ${successOpacityClass}`}>
           <CheckCircleIcon className="h-5 w-5 text-green-600 dark:text-green-400" />
         </div>
       )}
 
-      <div className={`flex flex-col items-center gap-1 transition-opacity ${hoverActionsClass}`}>
+      <div className={`flex flex-col items-center gap-1.5 transition-opacity ${hoverActionsClass}`}>
         {canEdit && (
           <button
             onPointerDown={stopEvent}
@@ -316,44 +362,81 @@ export const SortableItemActions = ({
               stopEvent(event);
               onEdit?.(item);
             }}
-            className="focus:outline-none rounded-full border border-transparent bg-white p-1.5 shadow-sm hover:border-gray-200 hover:shadow-md dark:bg-gray-700 dark:hover:border-gray-600"
+            className={`focus:outline-none border border-transparent bg-white hover:border-gray-200 hover:shadow-md dark:bg-gray-700 dark:hover:border-gray-600 ${ACTION_BUTTON_BASE_CLASS}`}
             title={t("structure.editThought", { defaultValue: "Edit Thought" })}
             disabled={isDeleting || isOverlay}
           >
             <EditIcon className={`h-5 w-5 ${sectionIconColorClasses} hover:opacity-90`} />
           </button>
         )}
-        {onMoveToAmbiguous && containerId !== "ambiguous" && !isLocal && !isPending && !isError && !isSuccess && !mutationDisabled && (
+        {showMoveAction && (
           <button
             onPointerDown={stopEvent}
             onMouseDown={stopEvent}
             onClick={(event) => {
               stopEvent(event);
-              onMoveToAmbiguous(item.id, containerId);
+              onMoveToAmbiguous?.(item.id, containerId);
             }}
-            className="focus:outline-none rounded-full border border-transparent bg-white p-1.5 shadow-sm transition-colors hover:border-gray-200 hover:shadow-md dark:bg-gray-700 dark:hover:border-gray-600"
+            className={`focus:outline-none border border-transparent bg-white transition-colors hover:border-gray-200 hover:shadow-md dark:bg-gray-700 dark:hover:border-gray-600 ${ACTION_BUTTON_BASE_CLASS}`}
             title={t("structure.moveToUnderConsideration", { defaultValue: "Move to Under Consideration" })}
             disabled={isDeleting || isOverlay}
           >
             <ArrowTopRightOnSquareIcon className={`h-5 w-5 ${sectionIconColorClasses}`} />
           </button>
         )}
-        {showDeleteIcon && onDelete && !isLocal && !isPending && !isError && !isSuccess && !mutationDisabled && (
+        {showDeleteAction && (
           <button
             onPointerDown={stopEvent}
             onMouseDown={stopEvent}
             onClick={(event) => {
               stopEvent(event);
-              onDelete(item.id, containerId);
+              onDelete?.(item.id, containerId);
             }}
-            className="focus:outline-none rounded-full border border-transparent bg-white p-1.5 shadow-sm hover:border-gray-200 hover:shadow-md dark:bg-gray-700 dark:hover:border-gray-600"
+            className={`focus:outline-none border border-transparent bg-white hover:border-gray-200 hover:shadow-md dark:bg-gray-700 dark:hover:border-gray-600 ${ACTION_BUTTON_BASE_CLASS}`}
             title={t("structure.removeFromStructure", { defaultValue: "Remove from ThoughtsBySection" })}
             disabled={isDeleting || isOverlay}
           >
             <TrashIcon className="h-5 w-5 text-red-500 hover:text-red-600" />
           </button>
         )}
-        {isHighlighted && onKeep && (
+      </div>
+    </div>
+  );
+};
+
+const SortableItemReviewFooter = ({
+  item,
+  containerId,
+  isHighlighted,
+  highlightType,
+  onKeep,
+  onRevert,
+  t,
+  isOverlay,
+}: {
+  item: Item;
+  containerId: string;
+  isHighlighted: boolean;
+  highlightType: "assigned" | "moved";
+  onKeep?: (itemId: string, containerId: string) => void;
+  onRevert?: (itemId: string, containerId: string) => void;
+  t: TranslateFn;
+  isOverlay: boolean;
+}) => {
+  if (!isHighlighted) {
+    return null;
+  }
+
+  return (
+    <div
+      data-testid={`sortable-item-footer-${item.id}`}
+      className="mt-3 flex flex-wrap items-center gap-3"
+    >
+      <div className="min-w-0 flex-1">
+        <HighlightBadge isHighlighted={isHighlighted} highlightType={highlightType} t={t} />
+      </div>
+      <div className="ml-auto inline-flex max-w-full items-center justify-end gap-1.5 rounded-full border border-slate-200/80 bg-white/90 p-1 shadow-sm backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-800/90">
+        {onKeep && (
           <button
             onPointerDown={stopEvent}
             onMouseDown={stopEvent}
@@ -361,14 +444,14 @@ export const SortableItemActions = ({
               stopEvent(event);
               onKeep(item.id, containerId);
             }}
-            className="focus:outline-none rounded-full border-2 border-green-200 bg-white p-1 dark:border-green-700 dark:bg-gray-700 hover:bg-green-50 hover:shadow-md dark:hover:bg-green-900/30"
+            className={`focus:outline-none border border-green-200 bg-green-50 hover:bg-green-100 dark:border-green-700 dark:bg-green-900/30 dark:hover:bg-green-900/50 ${ACTION_BUTTON_BASE_CLASS}`}
             title={t("structure.keepChanges", { defaultValue: "Keep this change" })}
             disabled={isOverlay}
           >
             <CheckIcon className="h-5 w-5 text-green-500 hover:text-green-700" />
           </button>
         )}
-        {isHighlighted && onRevert && (
+        {onRevert && (
           <button
             onPointerDown={stopEvent}
             onMouseDown={stopEvent}
@@ -376,7 +459,7 @@ export const SortableItemActions = ({
               stopEvent(event);
               onRevert(item.id, containerId);
             }}
-            className="focus:outline-none rounded-full border-2 border-orange-200 bg-white p-1 dark:border-orange-700 dark:bg-gray-700 hover:bg-orange-50 hover:shadow-md dark:hover:bg-orange-900/30"
+            className={`focus:outline-none border border-orange-200 bg-orange-50 hover:bg-orange-100 dark:border-orange-700 dark:bg-orange-900/30 dark:hover:bg-orange-900/50 ${ACTION_BUTTON_BASE_CLASS}`}
             title={t("structure.revertChanges", { defaultValue: "Revert to original" })}
             disabled={isOverlay}
           >
@@ -444,6 +527,9 @@ function SortableItemCard({
   const showSyncMeta = Boolean(remainingTime && (isPending || isError));
   const canEdit = Boolean(onEdit) && !isPending && !isSuccess && !mutationDisabled;
   const canToggleLock = Boolean(onToggleLock) && !isLocal && !isPending && !isError && !isSuccess;
+  const showRetryAction = Boolean(isError && onRetrySync);
+  const showMoveAction = Boolean(onMoveToAmbiguous && containerId !== "ambiguous" && !isLocal && !isPending && !isError && !isSuccess && !mutationDisabled);
+  const showDeleteAction = Boolean(showDeleteIcon && onDelete && !isLocal && !isPending && !isError && !isSuccess && !mutationDisabled);
   const isSemanticallyDisabled = effectiveDeleting || disabled || isOverlay;
   const cardClassName = getCardClassName({
     isHighlighted,
@@ -480,41 +566,58 @@ function SortableItemCard({
       aria-disabled={isSemanticallyDisabled || undefined}
       className={cardClassName}
     >
-      <div className="min-w-0 pr-14">
-        <CardContent item={item} />
-        <div className="mt-2 flex min-h-[24px] flex-col justify-end gap-1">
-          <SyncMeta show={showSyncMeta} isError={isError} remainingTime={remainingTime} t={t} />
-          <HighlightBadge isHighlighted={isHighlighted} highlightType={highlightType} t={t} />
+      <div className={`grid items-start gap-x-4 ${hasVisibleRailActions({
+        canToggleLock,
+        isPending,
+        showRetrySync: showRetryAction,
+        isSuccess,
+        canEdit,
+        showMoveAction,
+        showDeleteAction,
+      }) ? "grid-cols-[minmax(0,1fr)_2.5rem]" : "grid-cols-1"}`}>
+        <div className="min-w-0">
+          <CardContent item={item} />
+          <div className="mt-2 flex min-h-[24px] flex-col justify-end gap-1">
+            <SyncMeta show={showSyncMeta} isError={isError} remainingTime={remainingTime} t={t} />
+          </div>
+          <SortableItemReviewFooter
+            item={item}
+            containerId={containerId}
+            isHighlighted={isHighlighted}
+            highlightType={highlightType}
+            onKeep={onKeep}
+            onRevert={onRevert}
+            t={t}
+            isOverlay={isOverlay}
+          />
         </div>
+        <SortableItemActions
+          item={item}
+          containerId={containerId}
+          isHighlighted={isHighlighted}
+          isDragging={isDragging}
+          isDeleting={effectiveDeleting}
+          isPending={isPending}
+          isError={isError}
+          isSuccess={isSuccess}
+          isLocal={isLocal}
+          canEdit={canEdit}
+          isLocked={isLocked}
+          mutationDisabled={mutationDisabled}
+          canToggleLock={canToggleLock}
+          showDeleteIcon={showDeleteIcon}
+          onDelete={onDelete}
+          onEdit={onEdit}
+          onMoveToAmbiguous={onMoveToAmbiguous}
+          onRetrySync={onRetrySync}
+          onToggleLock={onToggleLock}
+          sectionIconColorClasses={sectionIconColorClasses}
+          successOpacityClass={successOpacityClass}
+          t={t}
+          isOverlay={isOverlay}
+          className="justify-self-end self-start"
+        />
       </div>
-
-      <SortableItemActions
-        item={item}
-        containerId={containerId}
-        isHighlighted={isHighlighted}
-        isDragging={isDragging}
-        isDeleting={effectiveDeleting}
-        isPending={isPending}
-        isError={isError}
-        isSuccess={isSuccess}
-        isLocal={isLocal}
-        canEdit={canEdit}
-        isLocked={isLocked}
-        mutationDisabled={mutationDisabled}
-        canToggleLock={canToggleLock}
-        showDeleteIcon={showDeleteIcon}
-        onDelete={onDelete}
-        onEdit={onEdit}
-        onMoveToAmbiguous={onMoveToAmbiguous}
-        onKeep={onKeep}
-        onRevert={onRevert}
-        onRetrySync={onRetrySync}
-        onToggleLock={onToggleLock}
-        sectionIconColorClasses={sectionIconColorClasses}
-        successOpacityClass={successOpacityClass}
-        t={t}
-        isOverlay={isOverlay}
-      />
     </div>
   );
 }

@@ -292,6 +292,52 @@ Second paragraph with indentation.
     expect(container?.style.touchAction).toBe('auto');
   });
 
+  test('keeps regular actions in the right rail outside AI review', () => {
+    const { container } = render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        onEdit={mockOnEdit}
+        onDelete={mockOnDelete}
+        onMoveToAmbiguous={mockOnMoveToAmbiguous}
+        onToggleLock={mockOnToggleLock}
+        showDeleteIcon={true}
+      />
+    );
+
+    const card = screen.getByText('Test content for the item').closest('div[role="button"]') as HTMLElement | null;
+    expect(card?.className).not.toContain('flex-col');
+    expect(screen.queryByTestId(`sortable-item-footer-${mockItem.id}`)).not.toBeInTheDocument();
+
+    const actions = screen.getByTestId(`sortable-item-actions-${mockItem.id}`);
+    expect(actions).not.toHaveClass('absolute');
+    expect(actions).toHaveClass('justify-self-end');
+    expect(actions).toHaveClass('self-start');
+
+    const grid = container.querySelector('.grid');
+    expect(grid).toBeInTheDocument();
+  });
+
+  test('renders footer review controls only for highlighted AI items', () => {
+    const { container } = render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        isHighlighted={true}
+        highlightType="moved"
+        onKeep={jest.fn()}
+        onRevert={jest.fn()}
+      />
+    );
+
+    const footer = screen.getByTestId(`sortable-item-footer-${mockItem.id}`);
+    expect(footer).toHaveClass('mt-3');
+    expect(screen.getByText('structure.aiMoved')).toBeInTheDocument();
+    expect(screen.getByTitle('structure.keepChanges')).toBeInTheDocument();
+    expect(screen.getByTitle('structure.revertChanges')).toBeInTheDocument();
+    expect(container.querySelector('.pb-16')).not.toBeInTheDocument();
+  });
+
   test('renders lock controls and toggles lock state', () => {
     render(
       <SortableItem
