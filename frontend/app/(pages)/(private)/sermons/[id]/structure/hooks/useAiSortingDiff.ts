@@ -2,10 +2,24 @@ import { useState, useCallback } from "react";
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { Item, SermonPoint, Thought, Sermon, ThoughtsBySection } from "@/models/models";
 import { sortItemsWithAI } from "@/services/sortAI.service";
+import {
+  MAX_AI_SORT_ITEMS,
+  getOutlinePointAiSortState,
+  hasLockedThoughtAnchorsPreserved,
+  replaceScopedItemsInColumn,
+} from "@/utils/aiSorting";
 
 import { buildStructureFromContainers, isLocalThoughtId } from "../utils/structure";
+
+type AiSortTarget = {
+  columnId: string;
+  outlinePointId?: string | null;
+};
+
+const MAX_LOCKED_ANCHOR_SORT_ATTEMPTS = 3;
 
 interface UseAiSortingDiffProps {
   containers: Record<string, Item[]>;
@@ -69,6 +83,12 @@ const createStructureFromContainers = (containers: Record<string, Item[]>): Thou
   return buildStructureFromContainers(containers);
 };
 
+const resolveAiSortTarget = (target: string | AiSortTarget): AiSortTarget => (
+  typeof target === "string" ? { columnId: target } : target
+);
+
+const getRetryValidationError = () => new Error("AI_SORT_LOCKED_ANCHORS_INVALID");
+
 export const useAiSortingDiff = ({
   containers,
   setContainers,
@@ -79,134 +99,195 @@ export const useAiSortingDiff = ({
   debouncedSaveStructure,
 }: UseAiSortingDiffProps) => {
   const { t } = useTranslation();
+  const isOnline = useOnlineStatus();
   
   // AI Sort with Interactive Confirmation state
   const [preSortState, setPreSortState] = useState<Record<string, Item[]> | null>(null);
   const [highlightedItems, setHighlightedItems] = useState<Record<string, { type: 'assigned' | 'moved' }>>({});
   const [isDiffModeActive, setIsDiffModeActive] = useState<boolean>(false);
   const [isSorting, setIsSorting] = useState(false);
+  const [sortingTarget, setSortingTarget] = useState<AiSortTarget | null>(null);
 
-  const handleAiSort = useCallback(async (columnId: string) => {
+  const handleAiSort = useCallback(async (targetInput: string | AiSortTarget) => {
+    const target = resolveAiSortTarget(targetInput);
+    const { columnId, outlinePointId } = target;
+
     if (isSorting || !sermon || !sermonId) return;
-    
-    const currentColumnItems: Item[] = (containers[columnId] || []).filter((item) => !isLocalThoughtId(item.id));
-    if (currentColumnItems.length === 0) {
-      toast.info(t('structure.noItemsToSort', {
-        defaultValue: 'No items to sort in this column.'
-      }));
-      return;
-    }
-    
-    // Check maximum thoughts limit (keep in sync with API: 25)
-    if (currentColumnItems.length > 25) {
-      toast.warning(t('structure.tooManyThoughts', {
-        defaultValue: 'Too many thoughts to sort. Please reduce to 25 or fewer.'
-      }));
-      return;
-    }
-    
-    setIsSorting(true);
-    setPreSortState({ [columnId]: [...currentColumnItems] });
-    
-    try {
-      // Get outline points for this column
-      const outlinePointsForColumn = outlinePoints[columnId as keyof typeof outlinePoints] || [];
-      
-      // Call the AI sorting service
-      const aiSortedItems = await sortItemsWithAI(
-        columnId,
-        currentColumnItems,
-        sermonId,
-        outlinePointsForColumn
-      );
 
-      if (!aiSortedItems || !Array.isArray(aiSortedItems)) {
-        toast.error(t('errors.aiSortFailedFormat'));
-        setIsSorting(false);
-        setPreSortState(null);
-        return;
+    const currentColumnItems: Item[] = containers[columnId] || [];
+    const scopedItems = outlinePointId
+      ? currentColumnItems.filter((item) => item.outlinePointId === outlinePointId)
+      : currentColumnItems;
+
+    if (outlinePointId) {
+      const pointSortState = getOutlinePointAiSortState({
+        items: currentColumnItems,
+        outlinePointId,
+        isOnline,
+        isSorting,
+        isDiffModeActive,
+      });
+
+      switch (pointSortState.disabledReason) {
+        case "offline":
+          toast.info(t("structure.aiSortPointDisabledOffline", {
+            defaultValue: "AI sorting is unavailable offline.",
+          }));
+          return;
+        case "sorting":
+          return;
+        case "review":
+          toast.info(t("structure.aiSortPointDisabledReview", {
+            defaultValue: "Review or revert current AI suggestions first.",
+          }));
+          return;
+        case "pending":
+          toast.info(t("structure.aiSortPointDisabledPending", {
+            defaultValue: "Finish syncing local thoughts in this outline point first.",
+          }));
+          return;
+        case "tooMany":
+          toast.warning(t("structure.aiSortPointDisabledTooMany", {
+            defaultValue: "AI sorting supports up to 25 thoughts in one outline point.",
+          }));
+          return;
+        case "insufficientUnlocked":
+          toast.info(t("structure.aiSortPointDisabledTooFewUnlocked", {
+            defaultValue: "Need at least 2 unlocked thoughts in this outline point.",
+          }));
+          return;
+        default:
+          break;
+      }
+    }
+
+    const sortableItems = scopedItems.filter((item) => !isLocalThoughtId(item.id));
+
+    if (sortableItems.length === 0) {
+      toast.info(t("structure.noItemsToSort", {
+        defaultValue: "No items to sort.",
+      }));
+      return;
+    }
+
+    if (sortableItems.length > MAX_AI_SORT_ITEMS) {
+      toast.warning(t("structure.tooManyThoughts", {
+        defaultValue: "Too many thoughts to sort. Please reduce to 25 or fewer.",
+      }));
+      return;
+    }
+
+    setIsSorting(true);
+    setSortingTarget(target);
+    setPreSortState({ [columnId]: [...currentColumnItems] });
+
+    try {
+      const outlinePointsForColumn = outlinePoints[columnId as keyof typeof outlinePoints] || [];
+      const outlinePointsForSort = outlinePointId
+        ? outlinePointsForColumn.filter((point) => point.id === outlinePointId)
+        : outlinePointsForColumn;
+
+      let sortedItems: Item[] | null = null;
+
+      for (let attempt = 1; attempt <= MAX_LOCKED_ANCHOR_SORT_ATTEMPTS; attempt += 1) {
+        const aiSortedItems = await sortItemsWithAI(
+          columnId,
+          sortableItems,
+          sermonId,
+          outlinePointsForSort,
+        );
+
+        if (!aiSortedItems || !Array.isArray(aiSortedItems)) {
+          throw new Error("AI_SORT_FAILED_FORMAT");
+        }
+
+        const mergedSortedItems = aiSortedItems.map((sortedItem) => {
+          const originalItem = sortableItems.find((item) => item.id === sortedItem.id);
+          return originalItem ? { ...originalItem, ...sortedItem } : sortedItem;
+        });
+
+        if (!outlinePointId || hasLockedThoughtAnchorsPreserved(sortableItems, mergedSortedItems)) {
+          sortedItems = mergedSortedItems;
+          break;
+        }
       }
 
-      const sortedItems = aiSortedItems.map((sortedItem) => {
-        const originalItem = currentColumnItems.find((item) => item.id === sortedItem.id);
-        return originalItem ? { ...originalItem, ...sortedItem } : sortedItem;
+      if (!sortedItems) {
+        throw getRetryValidationError();
+      }
+
+      const finalSortedItems = replaceScopedItemsInColumn({
+        columnItems: currentColumnItems,
+        scopedItemIds: sortableItems.map((item) => item.id),
+        sortedScopedItems: sortedItems,
       });
-      
-      // Track items that were changed by AI
+
       const newHighlightedItems: Record<string, { type: 'assigned' | 'moved' }> = {};
-      
-      // Find what changes were made by AI
+
       for (const item of sortedItems) {
-        const originalItem = currentColumnItems.find(i => i.id === item.id);
-        
-        if (!originalItem) continue; // Should not happen but safety first
-        
-        // Check if outline point was assigned (only for previously unassigned thoughts)
+        const originalItem = sortableItems.find((sortableItem) => sortableItem.id === item.id);
+        if (!originalItem) continue;
+
         if (item.outlinePointId && !originalItem.outlinePointId) {
           newHighlightedItems[item.id] = { type: 'assigned' };
-        } 
-        // Check if position changed
-        else if (
-          currentColumnItems.findIndex(i => i.id === item.id) !== 
-          sortedItems.findIndex(i => i.id === item.id)
-        ) {
+          continue;
+        }
+
+        const previousIndex = currentColumnItems.findIndex((columnItem) => columnItem.id === item.id);
+        const nextIndex = finalSortedItems.findIndex((columnItem) => columnItem.id === item.id);
+
+        if (previousIndex !== nextIndex) {
           newHighlightedItems[item.id] = { type: 'moved' };
         }
       }
-      
-      // Combine sorted items with remaining items
-      const finalSortedItems = [...sortedItems, ...currentColumnItems.filter(item => 
-        !sortedItems.some(sortedItem => sortedItem.id === item.id)
-      )];
-      
-      // Only enter diff mode if any changes were made
+
       const hasChanges = Object.keys(newHighlightedItems).length > 0;
-      
+
       if (hasChanges) {
-        // Update state with new highlighted items and enable diff mode
         setHighlightedItems(newHighlightedItems);
         setIsDiffModeActive(true);
-        
-        // Update containers with the new sorted items
-        setContainers(prev => ({
+        setContainers((prev) => ({
           ...prev,
-          [columnId]: finalSortedItems
+          [columnId]: finalSortedItems,
         }));
-        
-        // Notify the user of changes
-        toast.success(t('structure.aiSortSuggestionsReady', { 
-          defaultValue: 'AI sorting completed. Review and confirm the changes.'
+        toast.success(t('structure.aiSortSuggestionsReady', {
+          defaultValue: 'AI sorting completed. Review and confirm the changes.',
         }));
       } else {
-        // No changes were made, but still update containers to reflect AI sorting
-        setContainers(prev => ({
+        setContainers((prev) => ({
           ...prev,
-          [columnId]: finalSortedItems
+          [columnId]: finalSortedItems,
         }));
-        
-        // Simply inform the user
         toast.info(t('structure.aiSortNoChanges', {
-          defaultValue: 'AI sort did not suggest any changes.'
+          defaultValue: 'AI sort did not suggest any changes.',
         }));
-        
-        // Clean up
         setPreSortState(null);
       }
-    } catch {
-      toast.error(t('errors.failedToSortItems'));
-      // Reset state on error
+    } catch (error) {
+      if (error instanceof Error && error.message === "AI_SORT_LOCKED_ANCHORS_INVALID") {
+        toast.error(t("structure.aiSortLockedValidationFailed", {
+          defaultValue: "AI could not keep locked thoughts fixed. No changes were applied.",
+        }));
+      } else if (error instanceof Error && error.message === "AI_SORT_FAILED_FORMAT") {
+        toast.error(t("errors.aiSortFailedFormat"));
+      } else {
+        toast.error(t('errors.failedToSortItems'));
+      }
       setPreSortState(null);
     } finally {
       setIsSorting(false);
+      setSortingTarget(null);
     }
   }, [
-    sermon, 
-    sermonId, 
-    isSorting, 
-    containers, 
-    outlinePoints, 
-    setContainers, 
-    t
+    containers,
+    isDiffModeActive,
+    isOnline,
+    isSorting,
+    outlinePoints,
+    sermon,
+    sermonId,
+    setContainers,
+    t,
   ]);
 
   // Handler for accepting a single item change
@@ -421,6 +502,7 @@ export const useAiSortingDiff = ({
     highlightedItems,
     isDiffModeActive,
     isSorting,
+    sortingTarget,
     
     // Actions
     handleAiSort,

@@ -30,7 +30,9 @@ export interface ColumnProps {
   isFocusMode?: boolean;
   onToggleFocusMode?: (columnId: string) => void;
   onAiSort?: () => void;
+  onAiSortPoint?: (outlinePointId: string) => void;
   isLoading?: boolean;
+  sortingOutlinePointId?: string | null;
   className?: string;
   getExportContent?: (
     format: "plain" | "markdown",

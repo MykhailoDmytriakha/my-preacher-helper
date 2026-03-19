@@ -23,12 +23,19 @@ export function createSortingUserMessage(
   };
   
   const sectionName = sectionNames[columnId] || columnId;
+  const lockedItems = items
+    .map((item, index) => (
+      item.isLocked
+        ? { index: index + 1, key: item.id.slice(0, 4), content: item.content }
+        : null
+    ))
+    .filter((item): item is { index: number; key: string; content: string } => item !== null);
   
   // Create the items list using the item key for clarity
   let itemsList = "";
-  for (const item of items) {
+  for (const [index, item] of items.entries()) {
     const key = item.id.slice(0, 4);
-    itemsList += `key: ${key}, content: ${item.content}\n`;
+    itemsList += `position: ${index + 1}, key: ${key}, locked: ${item.isLocked ? "yes" : "no"}, content: ${item.content}\n`;
   }
   
   // Add outline points information if available
@@ -39,6 +46,13 @@ export function createSortingUserMessage(
       outlinePointsText += `${i+1}. ${outlinePoints[i].text}\n`;
     }
   }
+  const singleOutlinePoint = outlinePoints && outlinePoints.length === 1 ? outlinePoints[0] : undefined;
+
+  const lockedItemsText = lockedItems.length > 0
+    ? `Locked anchor items (must remain at the exact same position number as in the input):\n${lockedItems.map((item) => (
+      `${item.index}. key: ${item.key}, content: ${item.content}`
+    )).join("\n")}\n`
+    : "";
   
   return `
     Sermon Title: ${sermon.title}
@@ -46,6 +60,8 @@ export function createSortingUserMessage(
     Section: ${sectionName}
     
     ${outlinePointsText ? outlinePointsText + "\n" : ""}
+    ${singleOutlinePoint ? `All items already belong to the outline point "${singleOutlinePoint.text}". Keep every item in this exact outline point and improve only the order inside it.\n\n` : ""}
+    ${lockedItemsText ? lockedItemsText + "\n" : ""}
     
     Items to sort (${items.length} items):
     ${itemsList.trim()}
@@ -60,6 +76,7 @@ export function createSortingUserMessage(
     For the conclusion, arrange for effective closing impact.
     
     CRITICAL ASPECT - SMOOTH PROGRESSION: Ensure the progression of thoughts is gradual and smooth (coherent progression), making it easy for listeners to follow. The sermon should flow naturally like a smooth, even road without bumps or potholes. Adjacent thoughts should connect logically, with each thought building on the previous one. Avoid jarring transitions or unrelated thoughts placed next to each other.
+    ${lockedItems.length > 0 ? "LOCKED ITEM RULE: Every item marked locked: yes is a fixed anchor. Each locked item MUST stay in the exact same position number as in the input. You may reorder only unlocked items around those fixed anchors. Before answering, verify that every locked item is still in its original slot." : ""}
     
     CRITICAL TASK: For each item, you MUST assign it to the most appropriate outline point. This assignment is crucial for sermon organization.
     

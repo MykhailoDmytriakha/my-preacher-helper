@@ -11,6 +11,9 @@ import { useAiSortingDiff } from '../useAiSortingDiff';
 // Mock services
 jest.mock('@/services/sortAI.service');
 jest.mock('sonner');
+jest.mock('@/hooks/useOnlineStatus', () => ({
+  useOnlineStatus: () => true,
+}));
 
 const mockSortItemsWithAI = sortItemsWithAI as jest.MockedFunction<typeof sortItemsWithAI>;
 const mockToast = toast as jest.Mocked<typeof toast>;
@@ -77,6 +80,7 @@ describe('useAiSortingDiff', () => {
       expect(result.current.highlightedItems).toEqual({});
       expect(result.current.isDiffModeActive).toBe(false);
       expect(result.current.isSorting).toBe(false);
+      expect(result.current.sortingTarget).toBeNull();
       expect(typeof result.current.handleAiSort).toBe('function');
       expect(typeof result.current.handleKeepItem).toBe('function');
       expect(typeof result.current.handleRevertItem).toBe('function');
@@ -232,6 +236,133 @@ describe('useAiSortingDiff', () => {
           isLocked: true,
         }),
       );
+    });
+
+    it('retries point-level sorting until locked anchors stay in the same slots', async () => {
+      const pointContainers: Record<string, Item[]> = {
+        ...mockContainers,
+        introduction: [
+          { id: 'thought-1', content: 'Locked thought', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-1', isLocked: true },
+          { id: 'thought-2', content: 'Movable thought A', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-1' },
+          { id: 'thought-3', content: 'Movable thought B', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-1' },
+        ],
+      };
+      const pointSermon: Sermon = {
+        ...mockSermon,
+        thoughts: [
+          { id: 'thought-1', text: 'Locked thought', tags: ['intro'], date: new Date().toISOString(), outlinePointId: 'intro-1', isLocked: true },
+          { id: 'thought-2', text: 'Movable thought A', tags: ['intro'], date: new Date().toISOString(), outlinePointId: 'intro-1' },
+          { id: 'thought-3', text: 'Movable thought B', tags: ['intro'], date: new Date().toISOString(), outlinePointId: 'intro-1' },
+        ],
+        structure: {
+          introduction: ['thought-1', 'thought-2', 'thought-3'],
+          main: [],
+          conclusion: [],
+          ambiguous: [],
+        },
+      };
+      const pointOutline = {
+        ...mockSermonPoints,
+        introduction: [{ id: 'intro-1', text: 'Introduction point' }],
+      };
+      const mockSetContainers = jest.fn();
+
+      mockSortItemsWithAI
+        .mockResolvedValueOnce([
+          { ...pointContainers.introduction[1] },
+          { ...pointContainers.introduction[0] },
+          { ...pointContainers.introduction[2] },
+        ])
+        .mockResolvedValueOnce([
+          { ...pointContainers.introduction[0] },
+          { ...pointContainers.introduction[2] },
+          { ...pointContainers.introduction[1] },
+        ]);
+
+      const { result } = renderHook(() =>
+        useAiSortingDiff({
+          ...defaultProps,
+          containers: pointContainers,
+          setContainers: mockSetContainers,
+          outlinePoints: pointOutline,
+          sermon: pointSermon,
+        }),
+      );
+
+      await act(async () => {
+        await result.current.handleAiSort({ columnId: 'introduction', outlinePointId: 'intro-1' });
+      });
+
+      expect(mockSortItemsWithAI).toHaveBeenCalledTimes(2);
+      expect(mockSortItemsWithAI).toHaveBeenLastCalledWith(
+        'introduction',
+        pointContainers.introduction,
+        'sermon-1',
+        [{ id: 'intro-1', text: 'Introduction point' }],
+      );
+
+      const setContainersUpdater = mockSetContainers.mock.calls[0]?.[0] as
+        | ((prev: Record<string, Item[]>) => Record<string, Item[]>)
+        | undefined;
+      const nextContainers = setContainersUpdater?.(pointContainers);
+
+      expect(nextContainers?.introduction.map((item) => item.id)).toEqual([
+        'thought-1',
+        'thought-3',
+        'thought-2',
+      ]);
+      expect(result.current.highlightedItems).toEqual({
+        'thought-2': { type: 'moved' },
+        'thought-3': { type: 'moved' },
+      });
+    });
+
+    it('rejects point-level results after repeated locked-anchor violations', async () => {
+      const pointContainers: Record<string, Item[]> = {
+        ...mockContainers,
+        introduction: [
+          { id: 'thought-1', content: 'Locked thought', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-1', isLocked: true },
+          { id: 'thought-2', content: 'Movable thought A', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-1' },
+          { id: 'thought-3', content: 'Movable thought B', requiredTags: ['intro'], customTagNames: [], outlinePointId: 'intro-1' },
+        ],
+      };
+      const pointOutline = {
+        ...mockSermonPoints,
+        introduction: [{ id: 'intro-1', text: 'Introduction point' }],
+      };
+      const mockSetContainers = jest.fn();
+
+      mockSortItemsWithAI.mockResolvedValue([
+        { ...pointContainers.introduction[1] },
+        { ...pointContainers.introduction[0] },
+        { ...pointContainers.introduction[2] },
+      ]);
+
+      const { result } = renderHook(() =>
+        useAiSortingDiff({
+          ...defaultProps,
+          containers: pointContainers,
+          setContainers: mockSetContainers,
+          outlinePoints: pointOutline,
+          sermon: {
+            ...mockSermon,
+            thoughts: [
+              { id: 'thought-1', text: 'Locked thought', tags: ['intro'], date: new Date().toISOString(), outlinePointId: 'intro-1', isLocked: true },
+              { id: 'thought-2', text: 'Movable thought A', tags: ['intro'], date: new Date().toISOString(), outlinePointId: 'intro-1' },
+              { id: 'thought-3', text: 'Movable thought B', tags: ['intro'], date: new Date().toISOString(), outlinePointId: 'intro-1' },
+            ],
+          },
+        }),
+      );
+
+      await act(async () => {
+        await result.current.handleAiSort({ columnId: 'introduction', outlinePointId: 'intro-1' });
+      });
+
+      expect(mockSortItemsWithAI).toHaveBeenCalledTimes(3);
+      expect(mockToast.error).toHaveBeenCalled();
+      expect(mockSetContainers).not.toHaveBeenCalled();
+      expect(result.current.isDiffModeActive).toBe(false);
     });
   });
 

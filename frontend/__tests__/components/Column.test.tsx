@@ -515,55 +515,96 @@ describe('Column Component', () => {
   });
 
   // Tests for sorting button and export buttons in focus mode
-  describe('Sort Button and Export Buttons in Focus Mode', () => {
+  describe('Point AI Sort and Export Buttons in Focus Mode', () => {
     const mockGetExportContent = jest.fn(() => Promise.resolve('Example content'));
-    const mockAiSort = jest.fn();
+    const mockAiSortPoint = jest.fn();
+    const pointItems = [
+      { id: '1', content: 'Item 1', customTagNames: [], outlinePointId: 'point1' },
+      { id: '2', content: 'Item 2', customTagNames: [], outlinePointId: 'point1' },
+    ];
     const baseFocusProps = {
       id: 'introduction',
       title: 'Introduction',
-      items: mockItems,
-      isFocusMode: true
-    } as const;
+      items: pointItems,
+      isFocusMode: true,
+      outlinePoints: [{ id: 'point1', text: 'Introduction Point 1' }],
+    };
 
     beforeEach(() => {
       mockGetExportContent.mockClear();
-      mockAiSort.mockClear();
+      mockAiSortPoint.mockClear();
     });
 
     it('covers sort/export controls without redundant cases', async () => {
       await runScenarios(
         [
           {
-            name: 'renders AI sort button with intro palette',
+            name: 'renders point-level AI sort button and removes old sidebar sort CTA',
             run: () => {
-              render(<Column {...baseFocusProps} onAiSort={mockAiSort} />);
-              const button = screen.getByText('Сортировать').closest('button');
+              render(<Column {...baseFocusProps} onAiSortPoint={mockAiSortPoint} />);
+              const button = screen.getByTestId('outline-point-ai-sort-point1');
               expect(button).toHaveClass('bg-amber-50');
-              expect(button).toHaveClass('text-amber-800');
-            }
-          },
-          {
-            name: 'omits AI sort button when handler missing',
-            run: () => {
-              render(<Column {...baseFocusProps} />);
               expect(screen.queryByText('Сортировать')).not.toBeInTheDocument();
             }
           },
           {
-            name: 'fires onAiSort when clicked',
+            name: 'omits point AI sort button when handler missing',
             run: () => {
-              render(<Column {...baseFocusProps} onAiSort={mockAiSort} />);
-              fireEvent.click(screen.getByText('Сортировать').closest('button')!);
-              expect(mockAiSort).toHaveBeenCalled();
+              render(<Column {...baseFocusProps} />);
+              expect(screen.queryByTestId('outline-point-ai-sort-point1')).not.toBeInTheDocument();
             }
           },
           {
-            name: 'shows spinner/disabled state during loading',
+            name: 'fires onAiSortPoint with outline point id',
             run: () => {
-              render(<Column {...baseFocusProps} onAiSort={mockAiSort} isLoading={true} />);
-              const button = screen.getByText('Сортировка...').closest('button');
+              render(<Column {...baseFocusProps} onAiSortPoint={mockAiSortPoint} />);
+              fireEvent.click(screen.getByTestId('outline-point-ai-sort-point1'));
+              expect(mockAiSortPoint).toHaveBeenCalledWith('point1');
+            }
+          },
+          {
+            name: 'shows spinner on the active outline point during loading',
+            run: () => {
+              render(
+                <Column
+                  {...baseFocusProps}
+                  onAiSortPoint={mockAiSortPoint}
+                  isLoading={true}
+                  sortingOutlinePointId="point1"
+                />
+              );
+              const button = screen.getByTestId('outline-point-ai-sort-point1');
               expect(button).toBeDisabled();
               expect(button?.querySelector('svg.animate-spin')).toBeInTheDocument();
+            }
+          },
+          {
+            name: 'disables point AI sort when fewer than two unlocked thoughts are available',
+            run: () => {
+              render(
+                <Column
+                  {...baseFocusProps}
+                  items={[{ id: '1', content: 'Only thought', customTagNames: [], outlinePointId: 'point1' }]}
+                  onAiSortPoint={mockAiSortPoint}
+                />
+              );
+              expect(screen.getByTestId('outline-point-ai-sort-point1')).toBeDisabled();
+            }
+          },
+          {
+            name: 'disables point AI sort when the outline point contains pending thoughts',
+            run: () => {
+              render(
+                <Column
+                  {...baseFocusProps}
+                  items={[
+                    { id: 'local-1', content: 'Pending local thought', customTagNames: [], outlinePointId: 'point1' },
+                    { id: '2', content: 'Stable thought', customTagNames: [], outlinePointId: 'point1' },
+                  ]}
+                  onAiSortPoint={mockAiSortPoint}
+                />
+              );
+              expect(screen.getByTestId('outline-point-ai-sort-point1')).toBeDisabled();
             }
           },
           // Temporarily skipped due to complex ExportButtons dependencies
@@ -586,18 +627,6 @@ describe('Column Component', () => {
             run: () => {
               render(<Column {...baseFocusProps} />);
               expect(screen.queryByTestId('export-buttons-container')).not.toBeInTheDocument();
-            }
-          },
-          {
-            name: 'uses section colors for main and conclusion',
-            run: () => {
-              render(<Column {...baseFocusProps} id="main" title="Main" onAiSort={mockAiSort} />);
-              expect(screen.getByText('Сортировать').closest('button')).toHaveClass('bg-blue-50');
-              cleanup();
-              render(
-                <Column {...baseFocusProps} id="conclusion" title="Conclusion" onAiSort={mockAiSort} />
-              );
-              expect(screen.getByText('Сортировать').closest('button')).toHaveClass('bg-green-50');
             }
           },
           {
@@ -641,7 +670,6 @@ describe('Column Component', () => {
     };
 
     const mockToggleFocus = jest.fn();
-    const mockAiSort = jest.fn();
     const focusScaffold = {
       title: 'Introduction',
       id: 'introduction',
@@ -653,7 +681,6 @@ describe('Column Component', () => {
 
     beforeEach(() => {
       mockToggleFocus.mockClear();
-      mockAiSort.mockClear();
     });
 
     it('covers hover cues and accent UI pieces together', async () => {
@@ -698,11 +725,20 @@ describe('Column Component', () => {
             }
           },
           {
-            name: 'sort button includes animated emoji accent',
+            name: 'outline point header exposes the AI sort affordance',
             run: () => {
-              render(<Column {...focusScaffold} onAiSort={mockAiSort} />);
-              const emojiElement = screen.getByText('✨');
-              expect(emojiElement).toHaveClass('animate-pulse');
+              render(
+                <Column
+                  {...focusScaffold}
+                  items={[
+                    { id: '1', content: 'First item', customTagNames: [], outlinePointId: 'point1' },
+                    { id: '2', content: 'Second item', customTagNames: [], outlinePointId: 'point1' },
+                  ]}
+                  outlinePoints={[{ id: 'point1', text: 'Existing outline point' }]}
+                  onAiSortPoint={jest.fn()}
+                />
+              );
+              expect(screen.getByTestId('outline-point-ai-sort-point1')).toBeInTheDocument();
             }
           }
         ],
@@ -1059,32 +1095,42 @@ describe('Column Component', () => {
       await runScenarios(
         [
           {
-            name: 'introduction section colors',
-            run: () => {
-              render(<Column id="introduction" title="Introduction" items={mockItems} isFocusMode={true} onAiSort={jest.fn()} />);
-              const sortButton = screen.getByText('Сортировать').closest('button');
-              expect(sortButton).toHaveClass('bg-amber-50');
-              expect(sortButton).toHaveClass('dark:bg-amber-900/40');
-            }
-          },
-          {
-            name: 'main section colors',
-            run: () => {
-              render(<Column id="main" title="Main" items={mockItems} isFocusMode={true} onAiSort={jest.fn()} />);
-              const sortButton = screen.getByText('Сортировать').closest('button');
-              expect(sortButton).toHaveClass('bg-blue-50');
-              expect(sortButton).toHaveClass('dark:bg-blue-900/20');
-            }
-          },
-          {
-            name: 'conclusion section colors',
+            name: 'active point AI sort button uses the amber accent palette',
             run: () => {
               render(
-                <Column id="conclusion" title="Conclusion" items={mockItems} isFocusMode={true} onAiSort={jest.fn()} />
+                <Column
+                  id="introduction"
+                  title="Introduction"
+                  items={[
+                    { id: '1', content: 'Item 1', customTagNames: [], outlinePointId: 'point1' },
+                    { id: '2', content: 'Item 2', customTagNames: [], outlinePointId: 'point1' },
+                  ]}
+                  isFocusMode={true}
+                  outlinePoints={[{ id: 'point1', text: 'Point 1' }]}
+                  onAiSortPoint={jest.fn()}
+                />
               );
-              const sortButton = screen.getByText('Сортировать').closest('button');
-              expect(sortButton).toHaveClass('bg-green-50');
-              expect(sortButton).toHaveClass('dark:bg-green-900/30');
+              const sortButton = screen.getByTestId('outline-point-ai-sort-point1');
+              expect(sortButton).toHaveClass('bg-amber-50');
+              expect(sortButton).toHaveClass('dark:bg-amber-900/30');
+            }
+          },
+          {
+            name: 'disabled point AI sort button uses muted treatment',
+            run: () => {
+              render(
+                <Column
+                  id="introduction"
+                  title="Introduction"
+                  items={[{ id: '1', content: 'Item 1', customTagNames: [], outlinePointId: 'point1' }]}
+                  isFocusMode={true}
+                  outlinePoints={[{ id: 'point1', text: 'Point 1' }]}
+                  onAiSortPoint={jest.fn()}
+                />
+              );
+              const sortButton = screen.getByTestId('outline-point-ai-sort-point1');
+              expect(sortButton).toHaveClass('cursor-not-allowed');
+              expect(sortButton).toHaveClass('opacity-60');
             }
           },
           {

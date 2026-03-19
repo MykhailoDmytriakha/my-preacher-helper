@@ -182,7 +182,7 @@ jest.mock('@/components/Column', () => {
         void props.onToggleThoughtLock?.('t1', true);
       }
       if (autoTriggerAiSort) {
-        props.onAiSort?.();
+        props.onAiSortPoint?.('op-1');
       }
       void props.getExportContent?.('plain', { includeTags: true });
     }, [props]);
@@ -276,7 +276,7 @@ describe('StructurePage handlers', () => {
     });
   });
 
-  it('shows a confirmation modal before AI sorting locked thoughts', async () => {
+  it('routes AI sorting to the selected outline point in focus mode', async () => {
     autoTriggerAiSort = true;
 
     const sermon = createMockSermon({
@@ -318,63 +318,12 @@ describe('StructurePage handlers', () => {
 
     render(<StructurePage />);
 
-    expect(handleAiSortSpy).not.toHaveBeenCalledWith('introduction');
-    expect(await screen.findByText('Locked thoughts will also be re-sorted')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Continue anyway' }));
-
     await waitFor(() => {
-      expect(handleAiSortSpy).toHaveBeenCalledWith('introduction');
+      expect(handleAiSortSpy).toHaveBeenCalledWith({
+        columnId: 'introduction',
+        outlinePointId: 'op-1',
+      });
     });
-  });
-
-  it('runs AI sorting immediately when the column has no locked thoughts', async () => {
-    autoTriggerAiSort = true;
-    autoTriggerPointLock = false;
-
-    const sermon = createMockSermon({
-      id: 'sermon-1',
-      thoughts: [
-        createMockThought({ id: 't1', text: 'Unlocked intro', tags: ['Introduction'], outlinePointId: 'op-1', isLocked: false }),
-      ],
-      structure: {
-        introduction: ['t1'],
-        main: [],
-        conclusion: [],
-        ambiguous: [],
-      },
-      outline: {
-        introduction: [createMockSermonPoint({ id: 'op-1', text: 'Point 1' })],
-        main: [],
-        conclusion: [],
-      },
-    });
-
-    (useSermonStructureData as jest.Mock).mockReturnValue({
-      sermon,
-      setSermon: jest.fn(),
-      containers: {
-        introduction: [createMockItem({ id: 't1', content: 'Unlocked intro', outlinePointId: 'op-1', isLocked: false })],
-        main: [],
-        conclusion: [],
-        ambiguous: [],
-      },
-      setContainers: jest.fn(),
-      outlinePoints: sermon.outline,
-      requiredTagColors: { introduction: '#000', main: '#000', conclusion: '#000' },
-      allowedTags: [],
-      loading: false,
-      error: null,
-      isAmbiguousVisible: true,
-      setIsAmbiguousVisible: jest.fn(),
-    });
-
-    render(<StructurePage />);
-
-    await waitFor(() => {
-      expect(handleAiSortSpy).toHaveBeenCalledWith('introduction');
-    });
-
     expect(screen.queryByTestId('confirm-modal')).not.toBeInTheDocument();
   });
 

@@ -3,7 +3,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
-import { QuestionMarkCircleIcon, PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import React, { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "@locales/i18n";
@@ -12,8 +12,9 @@ import { MicrophoneIcon, SwitchViewIcon } from "@/components/Icons";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { getSectionLabel } from "@/lib/sections";
 import { Item, SermonPoint } from "@/models/models";
+import { getOutlinePointAiSortState } from "@/utils/aiSorting";
 import { debugLog } from "@/utils/debugMode";
-import { SERMON_SECTION_COLORS, UI_COLORS } from "@/utils/themeColors";
+import { UI_COLORS } from "@/utils/themeColors";
 
 import { AudioRecorder } from "./AudioRecorder";
 import { recordAudioThought } from "./column/audio";
@@ -79,6 +80,11 @@ const SermonPointPlaceholder: React.FC<{
   sectionTitle?: string;
   setAudioError: (error: string | null) => void;
   onRetryPendingThought?: (itemId: string) => void;
+  onAiSortPoint?: (outlinePointId: string) => void;
+  isOnline: boolean;
+  isSorting?: boolean;
+  isSortReviewPending?: boolean;
+  sortingOutlinePointId?: string | null;
   // Drag handle props for normal mode reordering
   dragHandleProps?: React.HTMLAttributes<HTMLElement> | null;
   onEditPoint?: (point: SermonPoint) => void;
@@ -108,6 +114,11 @@ const SermonPointPlaceholder: React.FC<{
   sectionTitle,
   setAudioError,
   onRetryPendingThought,
+  onAiSortPoint,
+  isOnline,
+  isSorting = false,
+  isSortReviewPending = false,
+  sortingOutlinePointId,
   dragHandleProps,
   onEditPoint,
   onDeletePoint,
@@ -122,6 +133,14 @@ const SermonPointPlaceholder: React.FC<{
     const pointItems = items.filter(item => item.outlinePointId === point.id);
     const hasItems = pointItems.length > 0;
     const isPointLocked = hasItems && pointItems.every((item) => item.isLocked);
+    const aiSortState = getOutlinePointAiSortState({
+      items,
+      outlinePointId: point.id,
+      isOnline,
+      isSorting,
+      isDiffModeActive: isSortReviewPending,
+    });
+    const isSortingThisPoint = isSorting && sortingOutlinePointId === point.id;
 
     const colors = getPlaceholderColors(containerId, headerColor);
 
@@ -157,6 +176,41 @@ const SermonPointPlaceholder: React.FC<{
     const pointLockToggleLabel = getPointLockToggleLabel(isPointLocked, t);
     const pointToggleHandler = onTogglePointLock ?? onToggleReviewed;
     const canUseInlineRecorder = Boolean(sermonId && isPointAudioSection(containerId));
+    const aiSortTooltip = (() => {
+      if (isSortingThisPoint) {
+        return t("structure.sorting", { defaultValue: "Sorting..." });
+      }
+      switch (aiSortState.disabledReason) {
+        case "offline":
+          return t("structure.aiSortPointDisabledOffline", {
+            defaultValue: "AI sorting is unavailable offline.",
+          });
+        case "sorting":
+          return t("structure.aiSortPointDisabledSorting", {
+            defaultValue: "AI sorting is already running.",
+          });
+        case "review":
+          return t("structure.aiSortPointDisabledReview", {
+            defaultValue: "Review or revert current AI suggestions first.",
+          });
+        case "pending":
+          return t("structure.aiSortPointDisabledPending", {
+            defaultValue: "Finish syncing local thoughts in this outline point first.",
+          });
+        case "tooMany":
+          return t("structure.aiSortPointDisabledTooMany", {
+            defaultValue: "AI sorting supports up to 25 thoughts in one outline point.",
+          });
+        case "insufficientUnlocked":
+          return t("structure.aiSortPointDisabledTooFewUnlocked", {
+            defaultValue: "Need at least 2 unlocked thoughts in this outline point.",
+          });
+        default:
+          return t("structure.aiSortPoint", {
+            defaultValue: "Sort this outline point with AI. Locked thoughts stay fixed.",
+          });
+      }
+    })();
 
     return (
       <>
@@ -216,6 +270,32 @@ const SermonPointPlaceholder: React.FC<{
                   >
                     {point.text}
                   </h4>
+                  {isFocusMode && onAiSortPoint && (
+                    <button
+                      type="button"
+                      onClick={() => onAiSortPoint(point.id)}
+                      disabled={aiSortState.disabledReason !== null}
+                      title={aiSortTooltip}
+                      aria-label={aiSortTooltip}
+                      data-testid={`outline-point-ai-sort-${point.id}`}
+                      className={`p-1 rounded-full border transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:focus-visible:ring-amber-300 ${
+                        isSortingThisPoint
+                          ? "bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-200 border-amber-300 dark:border-amber-700"
+                          : aiSortState.disabledReason
+                            ? "bg-white/10 text-gray-400 dark:text-gray-500 border-white/10 cursor-not-allowed opacity-60"
+                            : "bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/30 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-200 border-amber-200 dark:border-amber-700"
+                      }`}
+                    >
+                      {isSortingThisPoint ? (
+                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      ) : (
+                        <SparklesIcon className="h-4 w-4" />
+                      )}
+                    </button>
+                  )}
                   {/* Delete button (only if not reviewed, not focus mode) - Moved next to text */}
                   {!isFocusMode && onDeletePoint && !isPointLocked && (
                     <button
@@ -444,8 +524,9 @@ export default function Column({
   showFocusButton = false,
   isFocusMode = false,
   onToggleFocusMode,
-  onAiSort,
+  onAiSortPoint,
   isLoading = false,
+  sortingOutlinePointId,
   className = "",
   getExportContent,
   sermonId,
@@ -701,45 +782,6 @@ export default function Column({
         </div>
       )}
 
-      {onAiSort && (
-        <button
-          onClick={onAiSort}
-          disabled={isLoading}
-          className={`w-full px-4 py-2.5 text-sm font-medium rounded-md transition-colors shadow-sm flex items-center justify-center disabled:opacity-70 disabled:cursor-not-allowed border ${isLoading ? `${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} ${UI_COLORS.neutral.text} dark:${UI_COLORS.neutral.darkText} ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}` :
-            id === 'introduction' ? `${SERMON_SECTION_COLORS.introduction.bg} dark:${SERMON_SECTION_COLORS.introduction.darkBg} ${SERMON_SECTION_COLORS.introduction.text} dark:${SERMON_SECTION_COLORS.introduction.darkText} ${SERMON_SECTION_COLORS.introduction.hover} dark:${SERMON_SECTION_COLORS.introduction.darkHover} ${SERMON_SECTION_COLORS.introduction.border} dark:${SERMON_SECTION_COLORS.introduction.darkBorder} shadow-md` :
-              id === 'main' ? `${SERMON_SECTION_COLORS.mainPart.bg} dark:${SERMON_SECTION_COLORS.mainPart.darkBg} ${SERMON_SECTION_COLORS.mainPart.text} dark:${SERMON_SECTION_COLORS.mainPart.darkText} ${SERMON_SECTION_COLORS.mainPart.hover} dark:${SERMON_SECTION_COLORS.mainPart.darkHover} ${SERMON_SECTION_COLORS.mainPart.border} dark:${SERMON_SECTION_COLORS.mainPart.darkBorder} shadow-md` :
-                id === 'conclusion' ? `${SERMON_SECTION_COLORS.conclusion.bg} dark:${SERMON_SECTION_COLORS.conclusion.darkBg} ${SERMON_SECTION_COLORS.conclusion.text} dark:${SERMON_SECTION_COLORS.conclusion.darkText} ${SERMON_SECTION_COLORS.conclusion.hover} dark:${SERMON_SECTION_COLORS.conclusion.darkHover} ${SERMON_SECTION_COLORS.conclusion.border} dark:${SERMON_SECTION_COLORS.conclusion.darkBorder} shadow-md` :
-                  `${UI_COLORS.neutral.bg} dark:${UI_COLORS.neutral.darkBg} ${UI_COLORS.neutral.text} dark:${UI_COLORS.neutral.darkText} hover:bg-gray-400 dark:hover:bg-gray-500 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} shadow-md`
-            }`}
-        >
-          {isLoading ? (
-            <>
-              <svg className="animate-spin h-4 w-4 mr-2 text-gray-800 dark:text-gray-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-              </svg>
-              {t('structure.sorting')}
-            </>
-          ) : (
-            <>
-              <span className="flex items-center justify-center">
-                <span className="text-base font-medium">{t('structure.sortButton')}</span>
-                <span className="text-yellow-300 dark:text-yellow-200 ml-1.5 animate-pulse text-lg">✨</span>
-              </span>
-              <div className="relative flex items-center group">
-                <QuestionMarkCircleIcon className="w-4 h-4 ml-2 text-white dark:text-gray-100 opacity-80 hover:opacity-100" />
-                <div className="absolute bottom-full left-1/3 -translate-x-2 mb-2 p-2 bg-gray-800 dark:bg-gray-900 text-white dark:text-gray-100 text-xs rounded shadow-lg w-48 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 whitespace-normal">
-                  {t('structure.sortInfo', {
-                    defaultValue: 'Sorting reorders the full column, up to 25 thoughts at a time.'
-                  })}
-                </div>
-              </div>
-            </>
-          )}
-        </button>
-      )
-      }
-
       {/* Global accept/reject buttons for AI sort - only show when in diff mode and there are highlighted items */}
       {
         isDiffModeActive && hasHighlightedItems && (
@@ -985,6 +1027,11 @@ export default function Column({
                     sectionTitle={title}
                     setAudioError={setAudioError}
                     onRetryPendingThought={onRetryPendingThought}
+                    onAiSortPoint={onAiSortPoint}
+                    isOnline={isOnline}
+                    isSorting={isLoading}
+                    isSortReviewPending={isDiffModeActive}
+                    sortingOutlinePointId={sortingOutlinePointId}
                   />
                 </div>
               ))}
@@ -1355,6 +1402,11 @@ export default function Column({
                                 sectionTitle={title}
                                 setAudioError={setAudioError}
                                 onRetryPendingThought={onRetryPendingThought}
+                                onAiSortPoint={onAiSortPoint}
+                                isOnline={isOnline}
+                                isSorting={isLoading}
+                                isSortReviewPending={isDiffModeActive}
+                                sortingOutlinePointId={sortingOutlinePointId}
                                 dragHandleProps={providedDraggable.dragHandleProps as unknown as React.HTMLAttributes<HTMLElement>}
                                 onEditPoint={handleStartEdit}
                                 onDeletePoint={(pointId) => setDeletePointId(pointId)}

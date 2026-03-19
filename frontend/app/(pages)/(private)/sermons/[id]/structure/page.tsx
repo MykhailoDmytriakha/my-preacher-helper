@@ -10,7 +10,6 @@ import Column from "@/components/Column";
 import EditThoughtModal from "@/components/EditThoughtModal";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
 import { SortableItemPreview } from "@/components/SortableItem";
-import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useSermonStructureData } from "@/hooks/useSermonStructureData";
 import { Item, Sermon, SermonPoint, Thought, SermonOutline } from "@/models/models";
 import "@locales/i18n";
@@ -71,7 +70,6 @@ function StructurePageContent() {
   const sermonId = sermonIdFromPath ?? sermonIdFromQuery ?? null;
   const { t } = useTranslation();
   const [isClient, setIsClient] = useState(false);
-  const [aiSortConfirmColumn, setAiSortConfirmColumn] = useState<"introduction" | "main" | "conclusion" | null>(null);
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('structureLayoutVertical') === 'true';
@@ -187,6 +185,7 @@ function StructurePageContent() {
     highlightedItems,
     isDiffModeActive,
     isSorting,
+    sortingTarget,
     handleAiSort,
     handleKeepItem,
     handleRevertItem,
@@ -205,15 +204,9 @@ function StructurePageContent() {
     debouncedSaveStructure,
   });
 
-  const requestAiSort = useCallback((columnId: "introduction" | "main" | "conclusion") => {
-    const hasLockedThoughts = (containers[columnId] || []).some((item) => item.isLocked);
-    if (hasLockedThoughts) {
-      setAiSortConfirmColumn(columnId);
-      return;
-    }
-
-    void handleAiSort(columnId);
-  }, [containers, handleAiSort]);
+  const requestAiSortForOutlinePoint = useCallback((columnId: "introduction" | "main" | "conclusion", outlinePointId: string) => {
+    void handleAiSort({ columnId, outlinePointId });
+  }, [handleAiSort]);
 
   // No changes needed here, just removing the old columnTitles definition later
 
@@ -723,8 +716,9 @@ function StructurePageContent() {
                 showFocusButton={true}
                 isFocusMode={focusedColumn === "introduction"}
                 onToggleFocusMode={handleToggleFocusMode}
-                onAiSort={() => requestAiSort("introduction")}
-                isLoading={isSorting && focusedColumn === "introduction"}
+                onAiSortPoint={(outlinePointId) => requestAiSortForOutlinePoint("introduction", outlinePointId)}
+                isLoading={isSorting}
+                sortingOutlinePointId={sortingTarget?.columnId === "introduction" ? sortingTarget.outlinePointId ?? null : null}
                 getExportContent={getExportContentForFocusedColumn}
                 sermonId={sermonId || undefined}
                 onAddThought={handleAddThoughtToSection}
@@ -763,8 +757,9 @@ function StructurePageContent() {
                 showFocusButton={true}
                 isFocusMode={focusedColumn === "main"}
                 onToggleFocusMode={handleToggleFocusMode}
-                onAiSort={() => requestAiSort("main")}
-                isLoading={isSorting && focusedColumn === "main"}
+                onAiSortPoint={(outlinePointId) => requestAiSortForOutlinePoint("main", outlinePointId)}
+                isLoading={isSorting}
+                sortingOutlinePointId={sortingTarget?.columnId === "main" ? sortingTarget.outlinePointId ?? null : null}
                 getExportContent={getExportContentForFocusedColumn}
                 sermonId={sermonId || undefined}
                 onAddThought={handleAddThoughtToSection}
@@ -801,8 +796,9 @@ function StructurePageContent() {
                 showFocusButton={true}
                 isFocusMode={focusedColumn === "conclusion"}
                 onToggleFocusMode={handleToggleFocusMode}
-                onAiSort={() => requestAiSort("conclusion")}
-                isLoading={isSorting && focusedColumn === "conclusion"}
+                onAiSortPoint={(outlinePointId) => requestAiSortForOutlinePoint("conclusion", outlinePointId)}
+                isLoading={isSorting}
+                sortingOutlinePointId={sortingTarget?.columnId === "conclusion" ? sortingTarget.outlinePointId ?? null : null}
                 getExportContent={getExportContentForFocusedColumn}
                 sermonId={sermonId || undefined}
                 onAddThought={handleAddThoughtToSection}
@@ -838,23 +834,6 @@ function StructurePageContent() {
             ) : null}
           </DragOverlay>
         </DndContext>
-        <ConfirmModal
-          isOpen={aiSortConfirmColumn !== null}
-          onClose={() => setAiSortConfirmColumn(null)}
-          onConfirm={() => {
-            if (aiSortConfirmColumn) {
-              void handleAiSort(aiSortConfirmColumn);
-            }
-            setAiSortConfirmColumn(null);
-          }}
-          title={t('structure.aiSortLockedWarningTitle', { defaultValue: 'Locked thoughts will also be re-sorted' })}
-          description={t('structure.aiSortLockedWarningDescription', {
-            defaultValue: 'This column contains locked thoughts. If you continue, AI sorting will reorder every thought in the column, including the locked ones.',
-          })}
-          confirmText={t('structure.aiSortContinue', { defaultValue: 'Continue anyway' })}
-          cancelText={t('common.cancel', { defaultValue: 'Cancel' })}
-          isDestructive={false}
-        />
         {editingItem && (
           <EditThoughtModal
             initialText={editingItem.content}
