@@ -1,7 +1,12 @@
 import React from 'react';
 import { render, fireEvent, screen } from '@testing-library/react';
 
+jest.mock('@tiptap/react', () => ({
+    useEditorState: jest.fn(),
+}));
+
 import { RichMarkdownToolbar } from '@/components/ui/RichMarkdownToolbar';
+import { useEditorState } from '@tiptap/react';
 
 const makeEditorMock = (activeMarks: string[] = []) => ({
     isActive: jest.fn((markOrNode: string) => activeMarks.includes(markOrNode)),
@@ -17,6 +22,13 @@ const makeEditorMock = (activeMarks: string[] = []) => ({
 });
 
 describe('RichMarkdownToolbar', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        (useEditorState as jest.Mock).mockImplementation(({ editor, selector }) =>
+            selector({ editor, transactionNumber: 0 })
+        );
+    });
+
     it('renders all toolbar buttons', () => {
         const editor = makeEditorMock() as any;
         render(<RichMarkdownToolbar editor={editor} />);
@@ -50,6 +62,31 @@ describe('RichMarkdownToolbar', () => {
         const boldBtn = screen.getByRole('button', { name: 'Bold' });
         expect(boldBtn.className).not.toContain('bg-indigo-100');
         expect(boldBtn.className).toContain('text-gray-600');
+    });
+
+    it('derives button state through useEditorState', () => {
+        const editor = makeEditorMock([]) as any;
+        (useEditorState as jest.Mock).mockReturnValue({
+            bold: true,
+            italic: false,
+            strike: false,
+            heading1: false,
+            heading2: false,
+            heading3: false,
+            bulletList: false,
+            orderedList: false,
+            blockquote: false,
+        });
+
+        render(<RichMarkdownToolbar editor={editor} />);
+
+        expect(screen.getByRole('button', { name: 'Bold' }).className).toContain('bg-indigo-100');
+        expect(useEditorState).toHaveBeenCalledWith(
+            expect.objectContaining({
+                editor,
+                selector: expect.any(Function),
+            })
+        );
     });
 
     it('calls editor chain when Bold button is clicked', () => {

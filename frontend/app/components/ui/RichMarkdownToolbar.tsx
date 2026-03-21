@@ -1,4 +1,4 @@
-import { Editor } from '@tiptap/react';
+import { Editor, useEditorState } from '@tiptap/react';
 import {
     Bold,
     Italic,
@@ -13,10 +13,25 @@ import {
 import React from 'react';
 
 interface RichMarkdownToolbarProps {
-    editor: Editor;
+    editor: Editor | null;
 }
 
 export function RichMarkdownToolbar({ editor }: RichMarkdownToolbarProps) {
+    const toolbarState = useEditorState({
+        editor,
+        selector: ({ editor: currentEditor }) => ({
+            bold: currentEditor?.isActive('bold') ?? false,
+            italic: currentEditor?.isActive('italic') ?? false,
+            strike: currentEditor?.isActive('strike') ?? false,
+            heading1: currentEditor?.isActive('heading', { level: 1 }) ?? false,
+            heading2: currentEditor?.isActive('heading', { level: 2 }) ?? false,
+            heading3: currentEditor?.isActive('heading', { level: 3 }) ?? false,
+            bulletList: currentEditor?.isActive('bulletList') ?? false,
+            orderedList: currentEditor?.isActive('orderedList') ?? false,
+            blockquote: currentEditor?.isActive('blockquote') ?? false,
+        }),
+    }) ?? DEFAULT_TOOLBAR_STATE;
+
     if (!editor) {
         return null;
     }
@@ -30,21 +45,21 @@ export function RichMarkdownToolbar({ editor }: RichMarkdownToolbarProps) {
         <div className="flex flex-wrap items-center gap-1 p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-t-xl border-b-0">
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleBold().run(), e)}
-                isActive={editor.isActive('bold')}
+                isActive={toolbarState.bold}
                 ariaLabel="Bold"
             >
                 <Bold className="w-4 h-4" />
             </ToolbarButton>
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleItalic().run(), e)}
-                isActive={editor.isActive('italic')}
+                isActive={toolbarState.italic}
                 ariaLabel="Italic"
             >
                 <Italic className="w-4 h-4" />
             </ToolbarButton>
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleStrike().run(), e)}
-                isActive={editor.isActive('strike')}
+                isActive={toolbarState.strike}
                 ariaLabel="Strikethrough"
             >
                 <Strikethrough className="w-4 h-4" />
@@ -54,21 +69,21 @@ export function RichMarkdownToolbar({ editor }: RichMarkdownToolbarProps) {
 
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleHeading({ level: 1 }).run(), e)}
-                isActive={editor.isActive('heading', { level: 1 })}
+                isActive={toolbarState.heading1}
                 ariaLabel="Heading 1"
             >
                 <Heading1 className="w-4 h-4" />
             </ToolbarButton>
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleHeading({ level: 2 }).run(), e)}
-                isActive={editor.isActive('heading', { level: 2 })}
+                isActive={toolbarState.heading2}
                 ariaLabel="Heading 2"
             >
                 <Heading2 className="w-4 h-4" />
             </ToolbarButton>
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleHeading({ level: 3 }).run(), e)}
-                isActive={editor.isActive('heading', { level: 3 })}
+                isActive={toolbarState.heading3}
                 ariaLabel="Heading 3"
             >
                 <Heading3 className="w-4 h-4" />
@@ -78,21 +93,21 @@ export function RichMarkdownToolbar({ editor }: RichMarkdownToolbarProps) {
 
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleBulletList().run(), e)}
-                isActive={editor.isActive('bulletList')}
+                isActive={toolbarState.bulletList}
                 ariaLabel="Bullet List"
             >
                 <List className="w-4 h-4" />
             </ToolbarButton>
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleOrderedList().run(), e)}
-                isActive={editor.isActive('orderedList')}
+                isActive={toolbarState.orderedList}
                 ariaLabel="Ordered List"
             >
                 <ListOrdered className="w-4 h-4" />
             </ToolbarButton>
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleBlockquote().run(), e)}
-                isActive={editor.isActive('blockquote')}
+                isActive={toolbarState.blockquote}
                 ariaLabel="Quote"
             >
                 <Quote className="w-4 h-4" />
@@ -100,6 +115,18 @@ export function RichMarkdownToolbar({ editor }: RichMarkdownToolbarProps) {
         </div>
     );
 }
+
+const DEFAULT_TOOLBAR_STATE = {
+    bold: false,
+    italic: false,
+    strike: false,
+    heading1: false,
+    heading2: false,
+    heading3: false,
+    bulletList: false,
+    orderedList: false,
+    blockquote: false,
+};
 
 interface ToolbarButtonProps {
     onClick: (e: React.MouseEvent) => void;
