@@ -962,9 +962,10 @@ export default function Column({
                       )}
                       {/* Sub-points in sidebar */}
                       {point.subPoints && point.subPoints.length > 0 && (
-                        <ul className="ml-7 mt-1 space-y-0.5">
+                        <ul className="ml-7 mt-0.5 space-y-0.5 border-l border-white/20 pl-2">
                           {[...point.subPoints].sort((a, b) => a.position - b.position).map((sp) => (
-                            <li key={sp.id} className="text-xs text-white/60 dark:text-gray-400 truncate">
+                            <li key={sp.id} className="flex items-center gap-1.5 text-xs text-white/50 dark:text-gray-500 truncate">
+                              <span className="w-1 h-1 rounded-full bg-white/40 flex-shrink-0" />
                               {sp.text}
                             </li>
                           ))}
@@ -1269,12 +1270,24 @@ export default function Column({
           style={headerBgStyle ? { ...headerBgStyle, opacity: 0.8 } : {}}>
           <ul className="list-disc pl-4 space-y-1">
             {localSermonPoints.map((point: SermonPoint) => (
-              <li key={point.id} className="flex items-center">
-                <span>{point.text}</span>
-                {thoughtsPerSermonPoint[point.id] > 0 && (
-                  <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white px-1.5 text-xs leading-none align-middle tabular-nums text-gray-700">
-                    {thoughtsPerSermonPoint[point.id]}
-                  </span>
+              <li key={point.id}>
+                <div className="flex items-center">
+                  <span>{point.text}</span>
+                  {thoughtsPerSermonPoint[point.id] > 0 && (
+                    <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white px-1.5 text-xs leading-none align-middle tabular-nums text-gray-700">
+                      {thoughtsPerSermonPoint[point.id]}
+                    </span>
+                  )}
+                </div>
+                {point.subPoints && point.subPoints.length > 0 && (
+                  <ul className="ml-2 mt-0.5 space-y-0.5">
+                    {[...point.subPoints].sort((a, b) => a.position - b.position).map((sp) => (
+                      <li key={sp.id} className="text-xs text-white/70 flex items-center gap-1.5">
+                        <span className="w-1 h-1 rounded-full bg-white/50 flex-shrink-0" />
+                        {sp.text}
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </li>
             ))}
