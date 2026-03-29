@@ -4,7 +4,6 @@ import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon } from "@heroicon
 import React, { useEffect, useRef, useState } from "react";
 
 import type { SubPoint } from "@/models/models";
-import type { Translate } from "./types";
 
 interface SubPointListProps {
   subPoints: SubPoint[];
@@ -13,7 +12,7 @@ interface SubPointListProps {
   onAdd: (outlinePointId: string, text: string) => void;
   onEdit: (outlinePointId: string, subPointId: string, newText: string) => void;
   onDelete: (outlinePointId: string, subPointId: string) => void;
-  t: Translate;
+  t: (key: string, options?: Record<string, unknown>) => string;
 }
 
 export const SubPointList: React.FC<SubPointListProps> = ({
@@ -53,7 +52,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
     }
     onAdd(outlinePointId, addText.trim());
     setAddText("");
-    setIsAdding(false);
+    // Keep form open for quick sequential adds
   };
 
   const handleEditSave = () => {
@@ -72,13 +71,13 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   if (sorted.length === 0 && isPointLocked) return null;
 
   return (
-    <div className="mt-3 ml-3 border-l-2 border-gray-200 dark:border-gray-600 pl-3">
+    <div className="ml-7 mt-1 mb-1 border-l border-gray-200/60 dark:border-gray-600/40 pl-3">
       {sorted.length > 0 && (
-        <div className="space-y-1.5">
+        <div className="space-y-0.5">
           {sorted.map((sp) => (
             <div
               key={sp.id}
-              className="group/sp flex items-center gap-1.5 py-1 px-2 rounded text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+              className="group/sp flex items-center gap-2 py-1 px-1.5 rounded transition-colors hover:bg-gray-50/80 dark:hover:bg-gray-700/30"
             >
               {editingId === sp.id ? (
                 <div className="flex-1 flex items-center gap-1">
@@ -102,7 +101,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
                   </button>
                   <button
                     onClick={() => { setEditingId(null); setEditText(""); }}
-                    className="p-0.5 text-gray-500 hover:text-gray-700 dark:text-gray-400"
+                    className="p-0.5 text-gray-400 hover:text-gray-600 dark:text-gray-500"
                     aria-label={t("common.cancel")}
                   >
                     <XMarkIcon className="h-3.5 w-3.5" />
@@ -110,21 +109,22 @@ export const SubPointList: React.FC<SubPointListProps> = ({
                 </div>
               ) : (
                 <>
-                  <span className="flex-1 text-gray-600 dark:text-gray-300 min-w-0 truncate">
+                  <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-500 flex-shrink-0" />
+                  <span className="flex-1 text-sm text-gray-500 dark:text-gray-400 min-w-0 truncate">
                     {sp.text}
                   </span>
                   {!isPointLocked && (
                     <div className="flex items-center gap-0.5 opacity-0 group-hover/sp:opacity-100 transition-opacity flex-shrink-0">
                       <button
                         onClick={() => { setEditingId(sp.id); setEditText(sp.text); }}
-                        className="p-0.5 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                        className="p-0.5 text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400"
                         aria-label={t("common.edit")}
                       >
                         <PencilIcon className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => onDelete(outlinePointId, sp.id)}
-                        className="p-0.5 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400"
+                        className="p-0.5 text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400"
                         aria-label={t("common.delete")}
                       >
                         <TrashIcon className="h-3.5 w-3.5" />
@@ -139,9 +139,10 @@ export const SubPointList: React.FC<SubPointListProps> = ({
       )}
 
       {!isPointLocked && (
-        <div className="mt-1.5">
+        <div className={sorted.length > 0 ? "mt-0.5" : ""}>
           {isAdding ? (
-            <div className="flex items-center gap-1 px-2">
+            <div className="flex items-center gap-1 pl-1.5">
+              <span className="w-1 h-1 rounded-full bg-blue-300 dark:bg-blue-500 flex-shrink-0" />
               <input
                 ref={addInputRef}
                 type="text"
@@ -163,7 +164,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
               </button>
               <button
                 onClick={() => { setIsAdding(false); setAddText(""); }}
-                className="p-0.5 text-gray-500 hover:text-gray-700 dark:text-gray-400"
+                className="p-0.5 text-gray-400 hover:text-gray-600 dark:text-gray-500"
                 aria-label={t("common.cancel")}
               >
                 <XMarkIcon className="h-3.5 w-3.5" />
@@ -172,7 +173,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
           ) : (
             <button
               onClick={() => setIsAdding(true)}
-              className="flex items-center gap-1 px-2 py-0.5 text-xs text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
+              className="flex items-center gap-1.5 pl-1.5 py-0.5 text-xs text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 transition-colors"
             >
               <PlusIcon className="h-3 w-3" />
               <span>{t("structure.addSubPoint", { defaultValue: "Add sub-point" })}</span>
