@@ -584,6 +584,8 @@
     "outlinePointsExist": "Outline points already exist",
     "thought": "thought",
     "thoughts": "thoughts",
+    "addSubPoint": "Add sub-point",
+    "subPointPlaceholder": "Sub-point name...",
     "dropThoughtsHere": "Drop thoughts here",
     "dropThoughtsToAdd": "Drop thoughts here to add to this point",
     "dropToUnassign": "Drop thoughts here to unassign them from outline points",

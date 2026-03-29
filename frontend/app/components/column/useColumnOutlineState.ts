@@ -13,7 +13,7 @@ import { OUTLINE_SAVE_DEBOUNCE_MS } from "./constants";
 import { mapColumnIdToSectionType } from "./utils";
 
 import type { Translate } from "./types";
-import type { SermonOutline, SermonPoint } from "@/models/models";
+import type { SermonOutline, SermonPoint, SubPoint } from "@/models/models";
 
 interface UseColumnOutlineStateOptions {
   id: string;
@@ -302,6 +302,79 @@ export function useColumnOutlineState({
     }
   };
 
+  // --- Sub-point operations ---
+
+  const handleAddSubPoint = (outlinePointId: string, text: string) => {
+    if (!text.trim()) return;
+
+    const updatedPoints = localSermonPoints.map((point) => {
+      if (point.id !== outlinePointId) return point;
+      const existing = point.subPoints ?? [];
+      const maxPos = existing.length > 0
+        ? Math.max(...existing.map((sp) => sp.position))
+        : 0;
+      const newSubPoint: SubPoint = {
+        id: `sp-${Date.now().toString()}`,
+        text: text.trim(),
+        position: maxPos + 1000,
+      };
+      return { ...point, subPoints: [...existing, newSubPoint] };
+    });
+
+    setLocalSermonPoints(updatedPoints);
+    triggerSaveOutline(updatedPoints);
+  };
+
+  const handleEditSubPoint = (outlinePointId: string, subPointId: string, newText: string) => {
+    if (!newText.trim()) return;
+
+    const updatedPoints = localSermonPoints.map((point) => {
+      if (point.id !== outlinePointId || !point.subPoints) return point;
+      return {
+        ...point,
+        subPoints: point.subPoints.map((sp) =>
+          sp.id === subPointId ? { ...sp, text: newText.trim() } : sp
+        ),
+      };
+    });
+
+    setLocalSermonPoints(updatedPoints);
+    triggerSaveOutline(updatedPoints);
+  };
+
+  const handleDeleteSubPoint = (outlinePointId: string, subPointId: string) => {
+    const updatedPoints = localSermonPoints.map((point) => {
+      if (point.id !== outlinePointId || !point.subPoints) return point;
+      return {
+        ...point,
+        subPoints: point.subPoints.filter((sp) => sp.id !== subPointId),
+      };
+    });
+
+    setLocalSermonPoints(updatedPoints);
+    triggerSaveOutline(updatedPoints);
+  };
+
+  const handleReorderSubPoints = (outlinePointId: string, sourceIndex: number, destinationIndex: number) => {
+    if (sourceIndex === destinationIndex) return;
+
+    const updatedPoints = localSermonPoints.map((point) => {
+      if (point.id !== outlinePointId || !point.subPoints) return point;
+      const reordered = Array.from(point.subPoints);
+      const [removed] = reordered.splice(sourceIndex, 1);
+      reordered.splice(destinationIndex, 0, removed);
+      // Re-assign positions after reorder
+      const repositioned = reordered.map((sp, idx) => ({
+        ...sp,
+        position: (idx + 1) * 1000,
+      }));
+      return { ...point, subPoints: repositioned };
+    });
+
+    setLocalSermonPoints(updatedPoints);
+    triggerSaveOutline(updatedPoints);
+  };
+
   return {
     localSermonPoints,
     editingPointId,
@@ -333,5 +406,10 @@ export function useColumnOutlineState({
     handleInsertSave,
     handleDragEnd,
     handleGenerateSermonPoints,
+    // Sub-point operations
+    handleAddSubPoint,
+    handleEditSubPoint,
+    handleDeleteSubPoint,
+    handleReorderSubPoints,
   };
 }

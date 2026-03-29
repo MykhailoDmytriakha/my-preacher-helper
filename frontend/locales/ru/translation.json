@@ -584,6 +584,8 @@
     "outlinePointsExist": "Пункты плана уже существуют",
     "thought": "мысль",
     "thoughts": "мыслей",
+    "addSubPoint": "Добавить подпункт",
+    "subPointPlaceholder": "Название подпункта...",
     "dropThoughtsHere": "Перетащите мысли сюда",
     "dropThoughtsToAdd": "Перетащите мысли сюда, чтобы добавить к этому пункту",
     "dropToUnassign": "Перетащите мысли сюда, чтобы убрать их из пунктов плана",

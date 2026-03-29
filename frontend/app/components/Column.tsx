@@ -18,6 +18,7 @@ import { UI_COLORS } from "@/utils/themeColors";
 
 import { AudioRecorder } from "./AudioRecorder";
 import { recordAudioThought } from "./column/audio";
+import { SubPointList } from "./column/SubPointList";
 import {
   BG_GRAY_LIGHT_DARK,
   BG_GRAY_LIGHTER_DARK,
@@ -91,6 +92,10 @@ const SermonPointPlaceholder: React.FC<{
   onDeletePoint?: (pointId: string) => void;
   // For inline edit in normal mode
   onSaveEdit?: (pointId: string, newText: string) => void;
+  // Sub-point operations
+  onAddSubPoint?: (outlinePointId: string, text: string) => void;
+  onEditSubPoint?: (outlinePointId: string, subPointId: string, newText: string) => void;
+  onDeleteSubPoint?: (outlinePointId: string, subPointId: string) => void;
 }> = ({
   point,
   items,
@@ -123,6 +128,9 @@ const SermonPointPlaceholder: React.FC<{
   onEditPoint,
   onDeletePoint,
   onSaveEdit,
+  onAddSubPoint,
+  onEditSubPoint,
+  onDeleteSubPoint,
   // eslint-disable-next-line sonarjs/cognitive-complexity -- dense UI component with multiple conditional controls
 }) => {
     const { setNodeRef, isOver } = useDroppable({
@@ -432,6 +440,19 @@ const SermonPointPlaceholder: React.FC<{
               </SortableContext>
             )}
           </div>
+
+          {/* Sub-points list */}
+          {onAddSubPoint && (
+            <SubPointList
+              subPoints={point.subPoints ?? []}
+              outlinePointId={point.id}
+              isPointLocked={isPointLocked}
+              onAdd={onAddSubPoint}
+              onEdit={onEditSubPoint!}
+              onDelete={onDeleteSubPoint!}
+              t={t}
+            />
+          )}
         </div>
       </>
     );
@@ -599,6 +620,10 @@ export default function Column({
     handleInsertSave,
     handleDragEnd,
     handleGenerateSermonPoints,
+    // Sub-point operations
+    handleAddSubPoint,
+    handleEditSubPoint,
+    handleDeleteSubPoint,
   } = useColumnOutlineState({
     id,
     sermonId,
@@ -935,6 +960,16 @@ export default function Column({
                           )}
                         </>
                       )}
+                      {/* Sub-points in sidebar */}
+                      {point.subPoints && point.subPoints.length > 0 && (
+                        <ul className="ml-7 mt-1 space-y-0.5">
+                          {[...point.subPoints].sort((a, b) => a.position - b.position).map((sp) => (
+                            <li key={sp.id} className="text-xs text-white/60 dark:text-gray-400 truncate">
+                              {sp.text}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </li>
                   )}
                 </Draggable>
@@ -1032,6 +1067,9 @@ export default function Column({
                     isSorting={isLoading}
                     isSortReviewPending={isDiffModeActive}
                     sortingOutlinePointId={sortingOutlinePointId}
+                    onAddSubPoint={handleAddSubPoint}
+                    onEditSubPoint={handleEditSubPoint}
+                    onDeleteSubPoint={handleDeleteSubPoint}
                   />
                 </div>
               ))}
@@ -1411,6 +1449,9 @@ export default function Column({
                                 onEditPoint={handleStartEdit}
                                 onDeletePoint={(pointId) => setDeletePointId(pointId)}
                                 onSaveEdit={handleSaveEditDirect}
+                                onAddSubPoint={handleAddSubPoint}
+                                onEditSubPoint={handleEditSubPoint}
+                                onDeleteSubPoint={handleDeleteSubPoint}
                               />
                             </div>
                           )}

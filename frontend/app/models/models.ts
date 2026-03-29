@@ -4,10 +4,23 @@ export interface Thought {
   tags: string[];
   date: string;
   outlinePointId?: string | null;
+  subPointId?: string | null;
   position?: number;
   isLocked?: boolean;
   keyFragments?: string[]; // Store important text fragments for AI generation
   forceTag?: string; // Force tag for transcription (intro, main, conclusion)
+}
+
+/**
+ * Represents a sub-point within an outline point.
+ * Sub-points are optional inner headings that let the preacher
+ * build a deeper skeleton inside a single outline point.
+ * Thoughts can be assigned to a sub-point via `Thought.subPointId`.
+ */
+export interface SubPoint {
+  id: string;
+  text: string;
+  position: number; // fractional position among siblings in the parent outline point
 }
 
 /**
@@ -18,6 +31,7 @@ export interface OutlinePoint {
   id: string;
   text: string;
   isReviewed?: boolean;
+  subPoints?: SubPoint[];
 }
 
 /** @deprecated Use OutlinePoint instead. Kept for backward compatibility. */
@@ -311,6 +325,7 @@ export interface ThoughtInStructure {
   requiredTags?: string[];
   outlinePoint?: { text: string; section: string };
   outlinePointId?: string | null;
+  subPointId?: string | null;
   position?: number;
   isLocked?: boolean;
   syncStatus?: 'pending' | 'error' | 'success';
