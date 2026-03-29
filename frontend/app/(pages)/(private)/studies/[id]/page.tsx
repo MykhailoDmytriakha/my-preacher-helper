@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -9,10 +9,12 @@ import { toast } from 'sonner';
 
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
+import { useClipboard } from '@/hooks/useClipboard';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { ScriptureReference, StudyNote } from '@/models/models';
 import { deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
+import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
@@ -320,17 +322,18 @@ function useNoteAIAssistant({
 
 function EditorHeader({
     handleBack, t, isEditing, filteredNotes, prevNoteId, nextNoteId, router, searchParams,
-    currentIndex, type, setType, isSaving, saveError, lastSaved, setIsEditing, handleDelete
+    currentIndex, type, setType, isSaving, saveError, lastSaved, setIsEditing, handleDelete, handleCopy, isCopied
 }: {
     handleBack: () => void; t: ReturnType<typeof useTranslation>['t']; isEditing: boolean;
     filteredNotes: StudyNote[]; prevNoteId: string | null; nextNoteId: string | null;
     router: ReturnType<typeof useRouter>; searchParams: ReturnType<typeof useSearchParams>;
     currentIndex: number; type: 'note' | 'question'; setType: (t: 'note' | 'question') => void;
     isSaving: boolean; saveError: string | null; lastSaved: Date | null;
-    setIsEditing: (b: boolean) => void; handleDelete: () => void;
+    setIsEditing: (b: boolean) => void; handleDelete: () => void; handleCopy: () => void; isCopied: boolean;
 }) {
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const copyLabel = isCopied ? t('common.copied') || 'Copied!' : t('common.copy') || 'Copy';
 
     useEffect(() => {
         if (!showMenu) return;
@@ -381,37 +384,12 @@ function EditorHeader({
                     )}
                 </div>
 
-                <div className="flex flex-col">
-                    <div className="flex items-center gap-2">
-                        {isEditing ? (
-                            <>
-                                <button
-                                    type="button"
-                                    onClick={() => setType('note')}
-                                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'note' ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-                                >
-                                    {t('studiesWorkspace.type.note') || 'Note'}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setType('question')}
-                                    className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'question' ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-                                >
-                                    {t('studiesWorkspace.type.question') || 'Question'}
-                                </button>
-                            </>
-                        ) : type === 'question' ? (
-                            <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-500/30">
-                                <QuestionMarkCircleIcon className="mr-1 h-3.5 w-3.5" />
-                                {t('studiesWorkspace.type.question') || 'Question'}
-                            </span>
-                        ) : (
-                            <span className="inline-flex items-center rounded-md bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10 dark:bg-gray-800/50 dark:text-gray-400 dark:ring-gray-700/50">
-                                {t('studiesWorkspace.type.note') || 'Note'}
-                            </span>
-                        )}
-                    </div>
-                </div>
+                <EditorHeaderTypeControl
+                    isEditing={isEditing}
+                    type={type}
+                    setType={setType}
+                    t={t}
+                />
             </div>
 
             {/* Sync Status Info */}
@@ -425,6 +403,22 @@ function EditorHeader({
                         <><CheckCircleIcon className="h-4 w-4 text-emerald-500" /> <span className="hidden sm:inline">{t('common.saved') || 'Saved'}</span></>
                     ) : null}
                 </div>
+
+                {!isEditing && (
+                    <button
+                        type="button"
+                        onClick={handleCopy}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isCopied
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-gray-100'
+                            }`}
+                        title={copyLabel}
+                        aria-label={copyLabel}
+                    >
+                        {isCopied ? <CheckIcon className="h-5 w-5" /> : <DocumentDuplicateIcon className="h-5 w-5" />}
+                        <span className="hidden sm:inline">{copyLabel}</span>
+                    </button>
+                )}
 
                 <button
                     onClick={() => setIsEditing(!isEditing)}
@@ -467,6 +461,58 @@ function EditorHeader({
     );
 }
 
+function EditorHeaderTypeControl({
+    isEditing,
+    type,
+    setType,
+    t,
+}: {
+    isEditing: boolean;
+    type: 'note' | 'question';
+    setType: (t: 'note' | 'question') => void;
+    t: ReturnType<typeof useTranslation>['t'];
+}) {
+    if (isEditing) {
+        return (
+            <div className="flex flex-col">
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setType('note')}
+                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'note' ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+                    >
+                        {t('studiesWorkspace.type.note') || 'Note'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setType('question')}
+                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'question' ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
+                    >
+                        {t('studiesWorkspace.type.question') || 'Question'}
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col">
+            <div className="flex items-center gap-2">
+                {type === 'question' ? (
+                    <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-500/30">
+                        <QuestionMarkCircleIcon className="mr-1 h-3.5 w-3.5" />
+                        {t('studiesWorkspace.type.question') || 'Question'}
+                    </span>
+                ) : (
+                    <span className="inline-flex items-center rounded-md bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10 dark:bg-gray-800/50 dark:text-gray-400 dark:ring-gray-700/50">
+                        {t('studiesWorkspace.type.note') || 'Note'}
+                    </span>
+                )}
+            </div>
+        </div>
+    );
+}
+
 export default function StudyNoteEditorPage() {
     const { t, i18n } = useTranslation();
     const router = useRouter();
@@ -477,6 +523,7 @@ export default function StudyNoteEditorPage() {
 
     const { uid, notes, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
     const { tags: tagData } = useTags(uid);
+    const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
 
     // Local state for the editor
     const [title, setTitle] = useState('');
@@ -550,6 +597,24 @@ export default function StudyNoteEditorPage() {
     };
 
     const handleDelete = useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router });
+    const handleCopy = useCallback(() => {
+        void copyToClipboard(
+            formatStudyNoteForCopy({
+                id: noteId,
+                title,
+                content,
+                tags,
+                scriptureRefs,
+                type,
+                userId: existingNote?.userId ?? uid ?? '',
+                materialIds: existingNote?.materialIds ?? [],
+                relatedSermonIds: existingNote?.relatedSermonIds ?? [],
+                createdAt: existingNote?.createdAt ?? new Date().toISOString(),
+                updatedAt: existingNote?.updatedAt ?? new Date().toISOString(),
+                isDraft: existingNote?.isDraft ?? false,
+            }, bibleLocale)
+        );
+    }, [bibleLocale, content, copyToClipboard, existingNote, noteId, scriptureRefs, tags, title, type, uid]);
 
     const addTag = () => {
         const value = tagInput.trim();
@@ -580,6 +645,7 @@ export default function StudyNoteEditorPage() {
                 prevNoteId={prevNoteId} nextNoteId={nextNoteId} router={router} searchParams={searchParams}
                 currentIndex={currentIndex} type={type} setType={setType} isSaving={isSaving} saveError={saveError}
                 lastSaved={lastSaved} setIsEditing={setIsEditing} handleDelete={handleDelete}
+                handleCopy={handleCopy} isCopied={isCopied}
             />
 
             {/* EDITOR CONTENT */}

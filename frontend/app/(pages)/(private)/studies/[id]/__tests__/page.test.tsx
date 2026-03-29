@@ -346,6 +346,26 @@ describe('StudyNoteEditorPage Pagination', () => {
         expect(mockRouter.push).toHaveBeenCalledWith('/studies?tag=tag1');
     });
 
+    it('renders a copy button in read-only mode and copies formatted note content', async () => {
+        const mockWriteText = jest.fn().mockResolvedValue(undefined);
+        Object.assign(navigator, {
+            clipboard: { writeText: mockWriteText },
+        });
+        Object.defineProperty(window, 'isSecureContext', {
+            writable: true,
+            value: true,
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        const copyButton = screen.getByRole('button', { name: 'common.copy' });
+        fireEvent.click(copyButton);
+
+        await waitFor(() => {
+            expect(mockWriteText).toHaveBeenCalledWith('# Current Note\n\nContent for Current Note');
+        });
+    });
+
     describe('Missing Coverage Tests', () => {
         it('handles new note creation on input', async () => {
             jest.useFakeTimers();

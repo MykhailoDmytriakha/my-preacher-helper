@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 
 import { Item, SermonPoint, Sermon } from '@/models/models';
 import { sortItemsWithAI } from '@/services/sortAI.service';
+import * as aiSortingUtils from '@/utils/aiSorting';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
 import { useAiSortingDiff } from '../useAiSortingDiff';
@@ -14,9 +15,18 @@ jest.mock('sonner');
 jest.mock('@/hooks/useOnlineStatus', () => ({
   useOnlineStatus: () => true,
 }));
+jest.mock('@/utils/aiSorting', () => {
+  const actual = jest.requireActual('@/utils/aiSorting');
+
+  return {
+    ...actual,
+    getOutlinePointAiSortState: jest.fn(actual.getOutlinePointAiSortState),
+  };
+});
 
 const mockSortItemsWithAI = sortItemsWithAI as jest.MockedFunction<typeof sortItemsWithAI>;
 const mockToast = toast as jest.Mocked<typeof toast>;
+const mockGetOutlinePointAiSortState = aiSortingUtils.getOutlinePointAiSortState as jest.MockedFunction<typeof aiSortingUtils.getOutlinePointAiSortState>;
 
 describe('useAiSortingDiff', () => {
   const mockSermon: Sermon = {
@@ -70,6 +80,10 @@ describe('useAiSortingDiff', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSortItemsWithAI.mockResolvedValue([...mockContainers.introduction]);
+    mockGetOutlinePointAiSortState.mockImplementation((args) => {
+      const actual = jest.requireActual('@/utils/aiSorting') as typeof import('@/utils/aiSorting');
+      return actual.getOutlinePointAiSortState(args);
+    });
   });
 
   describe('initialization', () => {
@@ -173,6 +187,51 @@ describe('useAiSortingDiff', () => {
           jest.clearAllMocks();
         }
       });
+    });
+
+    it('blocks point-level sorting for each disabled reason', async () => {
+      const blockedCases: Array<{
+        disabledReason: NonNullable<ReturnType<typeof aiSortingUtils.getOutlinePointAiSortState>['disabledReason']>;
+        expectedToast: 'info' | 'warning' | null;
+      }> = [
+        { disabledReason: 'offline', expectedToast: 'info' },
+        { disabledReason: 'sorting', expectedToast: null },
+        { disabledReason: 'review', expectedToast: 'info' },
+        { disabledReason: 'pending', expectedToast: 'info' },
+        { disabledReason: 'tooMany', expectedToast: 'warning' },
+        { disabledReason: 'insufficientUnlocked', expectedToast: 'info' },
+      ];
+
+      for (const { disabledReason, expectedToast } of blockedCases) {
+        jest.clearAllMocks();
+        mockSortItemsWithAI.mockResolvedValue([...mockContainers.introduction]);
+        mockGetOutlinePointAiSortState.mockReturnValueOnce({
+          disabledReason,
+          totalCount: 3,
+          unlockedStableCount: 3,
+        });
+
+        const { result } = renderHook(() => useAiSortingDiff(defaultProps));
+
+        await act(async () => {
+          await result.current.handleAiSort({ columnId: 'introduction', outlinePointId: 'intro-1' });
+        });
+
+        expect(mockSortItemsWithAI).not.toHaveBeenCalled();
+        expect(result.current.isSorting).toBe(false);
+        expect(result.current.isDiffModeActive).toBe(false);
+
+        if (expectedToast === 'info') {
+          expect(mockToast.info).toHaveBeenCalledTimes(1);
+          expect(mockToast.warning).not.toHaveBeenCalled();
+        } else if (expectedToast === 'warning') {
+          expect(mockToast.warning).toHaveBeenCalledTimes(1);
+          expect(mockToast.info).not.toHaveBeenCalled();
+        } else {
+          expect(mockToast.info).not.toHaveBeenCalled();
+          expect(mockToast.warning).not.toHaveBeenCalled();
+        }
+      }
     });
   });
 

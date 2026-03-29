@@ -7,6 +7,7 @@ import { Item, SermonPoint, Thought, Sermon, ThoughtsBySection } from "@/models/
 import { sortItemsWithAI } from "@/services/sortAI.service";
 import {
   MAX_AI_SORT_ITEMS,
+  AiSortDisabledReason,
   getOutlinePointAiSortState,
   hasLockedThoughtAnchorsPreserved,
   replaceScopedItemsInColumn,
@@ -88,6 +89,213 @@ const resolveAiSortTarget = (target: string | AiSortTarget): AiSortTarget => (
 );
 
 const getRetryValidationError = () => new Error("AI_SORT_LOCKED_ANCHORS_INVALID");
+const getFailedFormatError = () => new Error("AI_SORT_FAILED_FORMAT");
+
+const notifyOutlinePointSortBlocked = (
+  disabledReason: AiSortDisabledReason | null,
+  t: ReturnType<typeof useTranslation>["t"],
+): boolean => {
+  switch (disabledReason) {
+    case "offline":
+      toast.info(t("structure.aiSortPointDisabledOffline", {
+        defaultValue: "AI sorting is unavailable offline.",
+      }));
+      return true;
+    case "sorting":
+      return true;
+    case "review":
+      toast.info(t("structure.aiSortPointDisabledReview", {
+        defaultValue: "Review or revert current AI suggestions first.",
+      }));
+      return true;
+    case "pending":
+      toast.info(t("structure.aiSortPointDisabledPending", {
+        defaultValue: "Finish syncing local thoughts in this outline point first.",
+      }));
+      return true;
+    case "tooMany":
+      toast.warning(t("structure.aiSortPointDisabledTooMany", {
+        defaultValue: "AI sorting supports up to 25 thoughts in one outline point.",
+      }));
+      return true;
+    case "insufficientUnlocked":
+      toast.info(t("structure.aiSortPointDisabledTooFewUnlocked", {
+        defaultValue: "Need at least 2 unlocked thoughts in this outline point.",
+      }));
+      return true;
+    default:
+      return false;
+  }
+};
+
+const getOutlinePointsForSort = ({
+  outlinePoints,
+  columnId,
+  outlinePointId,
+}: {
+  outlinePoints: UseAiSortingDiffProps["outlinePoints"];
+  columnId: string;
+  outlinePointId?: string | null;
+}) => {
+  const outlinePointsForColumn = outlinePoints[columnId as keyof typeof outlinePoints] || [];
+
+  return outlinePointId
+    ? outlinePointsForColumn.filter((point) => point.id === outlinePointId)
+    : outlinePointsForColumn;
+};
+
+const mergeSortedItemsWithOriginals = (sortableItems: Item[], aiSortedItems: Item[]) => {
+  return aiSortedItems.map((sortedItem) => {
+    const originalItem = sortableItems.find((item) => item.id === sortedItem.id);
+    return originalItem ? { ...originalItem, ...sortedItem } : sortedItem;
+  });
+};
+
+const getValidatedSortedItems = async ({
+  columnId,
+  sortableItems,
+  sermonId,
+  outlinePointsForSort,
+  outlinePointId,
+}: {
+  columnId: string;
+  sortableItems: Item[];
+  sermonId: string;
+  outlinePointsForSort: SermonPoint[];
+  outlinePointId?: string | null;
+}): Promise<Item[]> => {
+  for (let attempt = 1; attempt <= MAX_LOCKED_ANCHOR_SORT_ATTEMPTS; attempt += 1) {
+    const aiSortedItems = await sortItemsWithAI(
+      columnId,
+      sortableItems,
+      sermonId,
+      outlinePointsForSort,
+    );
+
+    if (!aiSortedItems || !Array.isArray(aiSortedItems)) {
+      throw getFailedFormatError();
+    }
+
+    const mergedSortedItems = mergeSortedItemsWithOriginals(sortableItems, aiSortedItems);
+
+    if (!outlinePointId || hasLockedThoughtAnchorsPreserved(sortableItems, mergedSortedItems)) {
+      return mergedSortedItems;
+    }
+  }
+
+  throw getRetryValidationError();
+};
+
+const buildHighlightedSortItems = ({
+  sortedItems,
+  sortableItems,
+  currentColumnItems,
+  finalSortedItems,
+}: {
+  sortedItems: Item[];
+  sortableItems: Item[];
+  currentColumnItems: Item[];
+  finalSortedItems: Item[];
+}): Record<string, { type: 'assigned' | 'moved' }> => {
+  const newHighlightedItems: Record<string, { type: 'assigned' | 'moved' }> = {};
+
+  for (const item of sortedItems) {
+    const originalItem = sortableItems.find((sortableItem) => sortableItem.id === item.id);
+    if (!originalItem) continue;
+
+    if (item.outlinePointId && !originalItem.outlinePointId) {
+      newHighlightedItems[item.id] = { type: 'assigned' };
+      continue;
+    }
+
+    const previousIndex = currentColumnItems.findIndex((columnItem) => columnItem.id === item.id);
+    const nextIndex = finalSortedItems.findIndex((columnItem) => columnItem.id === item.id);
+
+    if (previousIndex !== nextIndex) {
+      newHighlightedItems[item.id] = { type: 'moved' };
+    }
+  }
+
+  return newHighlightedItems;
+};
+
+const updateColumnItems = (
+  setContainers: UseAiSortingDiffProps["setContainers"],
+  columnId: string,
+  finalSortedItems: Item[],
+) => {
+  setContainers((prev) => ({
+    ...prev,
+    [columnId]: finalSortedItems,
+  }));
+};
+
+const applyAiSortOutcome = ({
+  sortedItems,
+  sortableItems,
+  currentColumnItems,
+  finalSortedItems,
+  columnId,
+  setContainers,
+  setHighlightedItems,
+  setIsDiffModeActive,
+  setPreSortState,
+  t,
+}: {
+  sortedItems: Item[];
+  sortableItems: Item[];
+  currentColumnItems: Item[];
+  finalSortedItems: Item[];
+  columnId: string;
+  setContainers: UseAiSortingDiffProps["setContainers"];
+  setHighlightedItems: React.Dispatch<React.SetStateAction<Record<string, { type: 'assigned' | 'moved' }>>>;
+  setIsDiffModeActive: React.Dispatch<React.SetStateAction<boolean>>;
+  setPreSortState: React.Dispatch<React.SetStateAction<Record<string, Item[]> | null>>;
+  t: ReturnType<typeof useTranslation>["t"];
+}) => {
+  const newHighlightedItems = buildHighlightedSortItems({
+    sortedItems,
+    sortableItems,
+    currentColumnItems,
+    finalSortedItems,
+  });
+  const hasChanges = Object.keys(newHighlightedItems).length > 0;
+
+  updateColumnItems(setContainers, columnId, finalSortedItems);
+
+  if (hasChanges) {
+    setHighlightedItems(newHighlightedItems);
+    setIsDiffModeActive(true);
+    toast.success(t('structure.aiSortSuggestionsReady', {
+      defaultValue: 'AI sorting completed. Review and confirm the changes.',
+    }));
+    return;
+  }
+
+  toast.info(t('structure.aiSortNoChanges', {
+    defaultValue: 'AI sort did not suggest any changes.',
+  }));
+  setPreSortState(null);
+};
+
+const notifyAiSortError = (
+  error: unknown,
+  t: ReturnType<typeof useTranslation>["t"],
+) => {
+  if (error instanceof Error && error.message === "AI_SORT_LOCKED_ANCHORS_INVALID") {
+    toast.error(t("structure.aiSortLockedValidationFailed", {
+      defaultValue: "AI could not keep locked thoughts fixed. No changes were applied.",
+    }));
+    return;
+  }
+
+  if (error instanceof Error && error.message === "AI_SORT_FAILED_FORMAT") {
+    toast.error(t("errors.aiSortFailedFormat"));
+    return;
+  }
+
+  toast.error(t('errors.failedToSortItems'));
+};
 
 export const useAiSortingDiff = ({
   containers,
@@ -128,36 +336,8 @@ export const useAiSortingDiff = ({
         isDiffModeActive,
       });
 
-      switch (pointSortState.disabledReason) {
-        case "offline":
-          toast.info(t("structure.aiSortPointDisabledOffline", {
-            defaultValue: "AI sorting is unavailable offline.",
-          }));
-          return;
-        case "sorting":
-          return;
-        case "review":
-          toast.info(t("structure.aiSortPointDisabledReview", {
-            defaultValue: "Review or revert current AI suggestions first.",
-          }));
-          return;
-        case "pending":
-          toast.info(t("structure.aiSortPointDisabledPending", {
-            defaultValue: "Finish syncing local thoughts in this outline point first.",
-          }));
-          return;
-        case "tooMany":
-          toast.warning(t("structure.aiSortPointDisabledTooMany", {
-            defaultValue: "AI sorting supports up to 25 thoughts in one outline point.",
-          }));
-          return;
-        case "insufficientUnlocked":
-          toast.info(t("structure.aiSortPointDisabledTooFewUnlocked", {
-            defaultValue: "Need at least 2 unlocked thoughts in this outline point.",
-          }));
-          return;
-        default:
-          break;
+      if (notifyOutlinePointSortBlocked(pointSortState.disabledReason, t)) {
+        return;
       }
     }
 
@@ -182,97 +362,38 @@ export const useAiSortingDiff = ({
     setPreSortState({ [columnId]: [...currentColumnItems] });
 
     try {
-      const outlinePointsForColumn = outlinePoints[columnId as keyof typeof outlinePoints] || [];
-      const outlinePointsForSort = outlinePointId
-        ? outlinePointsForColumn.filter((point) => point.id === outlinePointId)
-        : outlinePointsForColumn;
-
-      let sortedItems: Item[] | null = null;
-
-      for (let attempt = 1; attempt <= MAX_LOCKED_ANCHOR_SORT_ATTEMPTS; attempt += 1) {
-        const aiSortedItems = await sortItemsWithAI(
-          columnId,
-          sortableItems,
-          sermonId,
-          outlinePointsForSort,
-        );
-
-        if (!aiSortedItems || !Array.isArray(aiSortedItems)) {
-          throw new Error("AI_SORT_FAILED_FORMAT");
-        }
-
-        const mergedSortedItems = aiSortedItems.map((sortedItem) => {
-          const originalItem = sortableItems.find((item) => item.id === sortedItem.id);
-          return originalItem ? { ...originalItem, ...sortedItem } : sortedItem;
-        });
-
-        if (!outlinePointId || hasLockedThoughtAnchorsPreserved(sortableItems, mergedSortedItems)) {
-          sortedItems = mergedSortedItems;
-          break;
-        }
-      }
-
-      if (!sortedItems) {
-        throw getRetryValidationError();
-      }
+      const outlinePointsForSort = getOutlinePointsForSort({
+        outlinePoints,
+        columnId,
+        outlinePointId,
+      });
+      const sortedItems = await getValidatedSortedItems({
+        columnId,
+        sortableItems,
+        sermonId,
+        outlinePointsForSort,
+        outlinePointId,
+      });
 
       const finalSortedItems = replaceScopedItemsInColumn({
         columnItems: currentColumnItems,
         scopedItemIds: sortableItems.map((item) => item.id),
         sortedScopedItems: sortedItems,
       });
-
-      const newHighlightedItems: Record<string, { type: 'assigned' | 'moved' }> = {};
-
-      for (const item of sortedItems) {
-        const originalItem = sortableItems.find((sortableItem) => sortableItem.id === item.id);
-        if (!originalItem) continue;
-
-        if (item.outlinePointId && !originalItem.outlinePointId) {
-          newHighlightedItems[item.id] = { type: 'assigned' };
-          continue;
-        }
-
-        const previousIndex = currentColumnItems.findIndex((columnItem) => columnItem.id === item.id);
-        const nextIndex = finalSortedItems.findIndex((columnItem) => columnItem.id === item.id);
-
-        if (previousIndex !== nextIndex) {
-          newHighlightedItems[item.id] = { type: 'moved' };
-        }
-      }
-
-      const hasChanges = Object.keys(newHighlightedItems).length > 0;
-
-      if (hasChanges) {
-        setHighlightedItems(newHighlightedItems);
-        setIsDiffModeActive(true);
-        setContainers((prev) => ({
-          ...prev,
-          [columnId]: finalSortedItems,
-        }));
-        toast.success(t('structure.aiSortSuggestionsReady', {
-          defaultValue: 'AI sorting completed. Review and confirm the changes.',
-        }));
-      } else {
-        setContainers((prev) => ({
-          ...prev,
-          [columnId]: finalSortedItems,
-        }));
-        toast.info(t('structure.aiSortNoChanges', {
-          defaultValue: 'AI sort did not suggest any changes.',
-        }));
-        setPreSortState(null);
-      }
+      applyAiSortOutcome({
+        sortedItems,
+        sortableItems,
+        currentColumnItems,
+        finalSortedItems,
+        columnId,
+        setContainers,
+        setHighlightedItems,
+        setIsDiffModeActive,
+        setPreSortState,
+        t,
+      });
     } catch (error) {
-      if (error instanceof Error && error.message === "AI_SORT_LOCKED_ANCHORS_INVALID") {
-        toast.error(t("structure.aiSortLockedValidationFailed", {
-          defaultValue: "AI could not keep locked thoughts fixed. No changes were applied.",
-        }));
-      } else if (error instanceof Error && error.message === "AI_SORT_FAILED_FORMAT") {
-        toast.error(t("errors.aiSortFailedFormat"));
-      } else {
-        toast.error(t('errors.failedToSortItems'));
-      }
+      notifyAiSortError(error, t);
       setPreSortState(null);
     } finally {
       setIsSorting(false);

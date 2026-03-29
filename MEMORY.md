@@ -59,6 +59,7 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-03-28 Read-Only Sibling Surfaces Must Preserve Core Actions:** If the same entity can be viewed in list cards, focus overlays, and dedicated detail pages, keep core read-only actions like copy/share parity across those surfaces. Otherwise navigation path alone changes available capability and creates false "missing feature" bugs.
 - **2026-03-19 Selector Modal Mutations Need Row-Level Pending Feedback:** If clicking a row inside a selector modal triggers async mutations, do not leave the list visually static. Lock the modal, keep the chosen row visible, and show a spinner plus explicit action label on that row until the mutation finishes; otherwise users interpret the click as lost.
 - **2026-03-19 OS Theme Propagation Needs Progressive Retry, Not Single Timeout:** After device wake or tab re-focus, macOS/Chrome can take 50–500ms+ to propagate `prefers-color-scheme` changes from OS to `matchMedia`. A single `setTimeout(50)` misses the window; use progressive retries (50ms, 300ms, 1000ms) with early exit on change detection to reliably catch the OS→browser pipeline.
 - **2026-03-18 Structure Focus AI Sort Is Column-Wide, Not Point-Local:** On `/sermons/[id]/structure`, the AI sort button appears only in focus mode, but it still sorts the full section column (up to 25 non-local thoughts), not just the currently visible outline subgroup. Keep runtime copy, warning text, and tests aligned with that contract.
