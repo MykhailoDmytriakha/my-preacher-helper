@@ -276,7 +276,7 @@ export async function generateSermonVerses(sermon: Sermon): Promise<VerseWithRel
   return generateSermonVersesStructured(sermon);
 }
 
-type SortedItemResponse = { key: string; outlinePoint?: string; content?: string };
+type SortedItemResponse = { key: string; outlinePoint?: string; subPoint?: string; content?: string };
 
 function buildItemsMap(items: ThoughtInStructure[]): {
   itemsMapByKey: Record<string, ThoughtInStructure>;
@@ -318,7 +318,7 @@ function logOriginalItemOrdering(items: ThoughtInStructure[]) {
 function extractSortedKeysAndAssignments(
   sortedItems: SortedItemResponse[],
   itemsMapByKey: Record<string, ThoughtInStructure>
-): { aiSortedKeys: string[]; outlinePointAssignments: Record<string, string> } {
+): { aiSortedKeys: string[]; outlinePointAssignments: Record<string, string>; subPointAssignments: Record<string, string> } {
   const extractedKeys: string[] = [];
   sortedItems.forEach((item, pos) => {
     if (item && typeof item.key === 'string') {
@@ -330,6 +330,7 @@ function extractSortedKeysAndAssignments(
   });
 
   const outlinePointAssignments: Record<string, string> = {};
+  const subPointAssignments: Record<string, string> = {};
   const aiSortedKeys = sortedItems
     .map((aiItem: SortedItemResponse) => {
       if (aiItem && typeof aiItem.key === 'string') {
@@ -342,13 +343,20 @@ function extractSortedKeysAndAssignments(
           }
         }
 
+        if (itemsMapByKey[itemKey] && aiItem.subPoint && typeof aiItem.subPoint === 'string') {
+          subPointAssignments[itemKey] = aiItem.subPoint;
+          if (isDebugMode) {
+            console.log(`DEBUG: Assigned sub-point "${aiItem.subPoint}" to item ${itemKey}`);
+          }
+        }
+
         return itemsMapByKey[itemKey] ? itemKey : null;
       }
       return null;
     })
     .filter((key: string | null): key is string => key !== null);
 
-  return { aiSortedKeys, outlinePointAssignments };
+  return { aiSortedKeys, outlinePointAssignments, subPointAssignments };
 }
 
 function findMatchingOutlinePoint(aiAssignedOutlineText: string, outlinePoints: SermonPoint[]): SermonPoint | undefined {
@@ -396,18 +404,57 @@ function findMatchingOutlinePoint(aiAssignedOutlineText: string, outlinePoints: 
   return matchingSermonPoint;
 }
 
+function findMatchingSubPoint(aiSubPointText: string, outlinePoint: SermonPoint): string | null {
+  if (!outlinePoint.subPoints || outlinePoint.subPoints.length === 0) return null;
+
+  const normalized = aiSubPointText.toLowerCase().trim();
+  const subs = outlinePoint.subPoints;
+
+  // Exact match
+  let match = subs.find(sp => sp.text.toLowerCase() === normalized);
+  if (match) return match.id;
+
+  // Contains match
+  match = subs.find(sp =>
+    sp.text.toLowerCase().includes(normalized) || normalized.includes(sp.text.toLowerCase())
+  );
+  if (match) return match.id;
+
+  // Word overlap
+  const aiWords = new Set(normalized.split(/\s+/).filter(w => w.length > 2));
+  let bestScore = 0;
+  let bestId: string | null = null;
+  for (const sp of subs) {
+    const spWords = new Set(sp.text.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+    let score = 0;
+    for (const w of aiWords) { if (spWords.has(w)) score++; }
+    if (score > bestScore) { bestScore = score; bestId = sp.id; }
+  }
+
+  return bestScore > 0 ? bestId : null;
+}
+
 function buildSortedItem(
   key: string,
   itemsMapByKey: Record<string, ThoughtInStructure>,
   itemsWithExistingSermonPoints: Record<string, string>,
   outlinePointAssignments: Record<string, string>,
+  subPointAssignments: Record<string, string>,
   outlinePoints: SermonPoint[]
 ): ThoughtInStructure {
   const item = itemsMapByKey[key];
 
   if (itemsWithExistingSermonPoints[key]) {
-    if (isDebugMode) {
-      console.log(`DEBUG: Preserving existing outline point for item ${key}`);
+    // Even if outline point is preserved, AI may assign a sub-point
+    const aiSubPointText = subPointAssignments[key];
+    if (aiSubPointText && item.outlinePointId) {
+      const parentPoint = outlinePoints.find(op => op.id === item.outlinePointId);
+      if (parentPoint) {
+        const matchedSubPointId = findMatchingSubPoint(aiSubPointText, parentPoint);
+        if (matchedSubPointId) {
+          return { ...item, subPointId: matchedSubPointId };
+        }
+      }
     }
     return item;
   }
@@ -421,7 +468,7 @@ function buildSortedItem(
         console.log(`DEBUG: Successfully matched "${aiAssignedOutlineText}" to outline point "${matchingSermonPoint.text}" (${matchingSermonPoint.id})`);
       }
 
-      return {
+      const result: ThoughtInStructure = {
         ...item,
         outlinePointId: matchingSermonPoint.id,
         outlinePoint: {
@@ -429,10 +476,17 @@ function buildSortedItem(
           section: ''
         }
       };
-    }
 
-    if (isDebugMode) {
-      console.log(`DEBUG: Could not match "${aiAssignedOutlineText}" to any outline point`);
+      // Match sub-point if AI assigned one
+      const aiSubPointText = subPointAssignments[key];
+      if (aiSubPointText) {
+        const matchedSubPointId = findMatchingSubPoint(aiSubPointText, matchingSermonPoint);
+        if (matchedSubPointId) {
+          result.subPointId = matchedSubPointId;
+        }
+      }
+
+      return result;
     }
   }
 
@@ -509,7 +563,7 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
     // Log original item order for comparison
     logOriginalItemOrdering(items);
 
-    const { aiSortedKeys, outlinePointAssignments } = extractSortedKeysAndAssignments(sortedData.sortedItems, itemsMapByKey);
+    const { aiSortedKeys, outlinePointAssignments, subPointAssignments } = extractSortedKeysAndAssignments(sortedData.sortedItems, itemsMapByKey);
 
     // Create a new array with the sorted items
     const sortedItems: ThoughtInStructure[] = aiSortedKeys.map((key: string) => {
@@ -518,6 +572,7 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
         itemsMapByKey,
         itemsWithExistingSermonPoints,
         outlinePointAssignments,
+        subPointAssignments,
         outlinePoints
       );
     });

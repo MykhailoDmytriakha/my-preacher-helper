@@ -38,12 +38,21 @@ export function createSortingUserMessage(
     itemsList += `position: ${index + 1}, key: ${key}, locked: ${item.isLocked ? "yes" : "no"}, content: ${item.content}\n`;
   }
   
-  // Add outline points information if available
+  // Add outline points information if available (including sub-points)
   let outlinePointsText = "";
+  let hasSubPoints = false;
   if (outlinePoints && outlinePoints.length > 0) {
     outlinePointsText = "SermonOutline Points for this section (follow this exact order when sorting):\n";
     for (let i = 0; i < outlinePoints.length; i++) {
       outlinePointsText += `${i+1}. ${outlinePoints[i].text}\n`;
+      const subs = outlinePoints[i].subPoints;
+      if (subs && subs.length > 0) {
+        hasSubPoints = true;
+        const sorted = [...subs].sort((a, b) => a.position - b.position);
+        for (const sp of sorted) {
+          outlinePointsText += `   - ${sp.text}\n`;
+        }
+      }
     }
   }
   const singleOutlinePoint = outlinePoints && outlinePoints.length === 1 ? outlinePoints[0] : undefined;
@@ -83,17 +92,24 @@ export function createSortingUserMessage(
     IMPORTANT: Return a JSON object in this format:
     {
       "sortedItems": [
-        {"key": "b086", "outlinePoint": "Name of the outline point this relates to", "content": "First few words of the item..."},
-        {"key": "ee77", "outlinePoint": "Name of the outline point this relates to", "content": "First few words of the item..."},
+        {"key": "b086", "outlinePoint": "Name of the outline point", "subPoint": "Name of sub-point if applicable", "content": "First few words..."},
+        {"key": "ee77", "outlinePoint": "Name of the outline point", "content": "First few words..."},
         ...
       ]
     }
-    
+
     The "key" should be the first 4 characters of the original item ID.
-    ${outlinePointsText ? 
-      "The \"outlinePoint\" field MUST match EXACTLY one of the following outline points (copy and paste the exact text to avoid errors):\n" + 
-      outlinePoints?.map(op => `  - "${op.text}"`).join("\n") : 
+    ${outlinePointsText ?
+      "The \"outlinePoint\" field MUST match EXACTLY one of the following outline points (copy and paste the exact text to avoid errors):\n" +
+      outlinePoints?.map(op => `  - "${op.text}"`).join("\n") :
       "The \"outlinePoint\" should indicate which outline point this item corresponds to. Use the EXACT text of one of the outline points provided."
+    }
+    ${hasSubPoints ?
+      "The \"subPoint\" field is OPTIONAL. If an outline point has sub-points listed above, assign the item to the most appropriate sub-point using its EXACT text. If the item doesn't fit a specific sub-point, omit the field to assign directly to the outline point.\nAvailable sub-points:\n" +
+      outlinePoints?.filter(op => op.subPoints && op.subPoints.length > 0).map(op =>
+        `  Under "${op.text}":\n` + [...(op.subPoints ?? [])].sort((a, b) => a.position - b.position).map(sp => `    - "${sp.text}"`).join("\n")
+      ).join("\n") :
+      ""
     }
     The "content" should be the first 5-10 words of the item to confirm you understand what you're sorting.
     ${!outlinePointsText ? "If no outline points are provided, use \"General\" for the outlinePoint field or create appropriate outline points based on the content." : ""}

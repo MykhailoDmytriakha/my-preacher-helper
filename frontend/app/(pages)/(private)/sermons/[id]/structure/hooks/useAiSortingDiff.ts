@@ -37,20 +37,21 @@ const collectThoughtUpdates = (
   highlightedItems: Record<string, { type: 'assigned' | 'moved' }>,
   containers: Record<string, Item[]>,
   sermon: Sermon | null
-): Array<{id: string, outlinePointId?: string}> => {
-  const thoughtUpdates: Array<{id: string, outlinePointId?: string}> = [];
+): Array<{id: string, outlinePointId?: string, subPointId?: string | null}> => {
+  const thoughtUpdates: Array<{id: string, outlinePointId?: string, subPointId?: string | null}> = [];
 
   for (const itemId of Object.keys(highlightedItems)) {
     for (const items of Object.values(containers)) {
       if (!Array.isArray(items)) continue;
 
       const item = items.find(i => i.id === itemId);
-      if (item && item.outlinePointId && sermon) {
+      if (item && sermon) {
         const thought = sermon.thoughts.find((t: Thought) => t.id === itemId);
-        if (thought && thought.outlinePointId !== item.outlinePointId) {
+        if (thought && (thought.outlinePointId !== item.outlinePointId || (thought.subPointId ?? null) !== (item.subPointId ?? null))) {
           thoughtUpdates.push({
             id: itemId,
-            outlinePointId: item.outlinePointId
+            outlinePointId: item.outlinePointId ?? undefined,
+            subPointId: item.subPointId ?? null,
           });
         }
       }
@@ -62,7 +63,7 @@ const collectThoughtUpdates = (
 
 // Helper function to process thought updates
 const processThoughtUpdates = (
-  thoughtUpdates: Array<{id: string, outlinePointId?: string}>,
+  thoughtUpdates: Array<{id: string, outlinePointId?: string, subPointId?: string | null}>,
   sermon: Sermon,
   debouncedSaveThought: (sermonId: string, thought: Thought) => void,
   sermonId: string
@@ -72,7 +73,8 @@ const processThoughtUpdates = (
     if (thought) {
       const updatedThought: Thought = {
         ...thought,
-        outlinePointId: update.outlinePointId
+        outlinePointId: update.outlinePointId,
+        subPointId: update.subPointId ?? null,
       };
       debouncedSaveThought(sermonId, updatedThought);
     }
@@ -203,7 +205,9 @@ const buildHighlightedSortItems = ({
     const originalItem = sortableItems.find((sortableItem) => sortableItem.id === item.id);
     if (!originalItem) continue;
 
-    if (item.outlinePointId && !originalItem.outlinePointId) {
+    const outlineChanged = (item.outlinePointId ?? null) !== (originalItem.outlinePointId ?? null);
+    const subPointChanged = (item.subPointId ?? null) !== (originalItem.subPointId ?? null);
+    if (outlineChanged || subPointChanged) {
       newHighlightedItems[item.id] = { type: 'assigned' };
       continue;
     }
@@ -434,16 +438,19 @@ export const useAiSortingDiff = ({
       return newHighlighted;
     });
 
-    // Persist outline point change if it differs (including clearing to null)
+    // Persist outline point and sub-point changes
     if (sermon) {
       const thought = sermon.thoughts.find((t: Thought) => t.id === itemId);
       if (thought) {
         const prevOutline = (thought.outlinePointId ?? null);
         const nextOutline = (item.outlinePointId ?? null);
-        if (prevOutline !== nextOutline) {
+        const prevSubPoint = (thought.subPointId ?? null);
+        const nextSubPoint = (item.subPointId ?? null);
+        if (prevOutline !== nextOutline || prevSubPoint !== nextSubPoint) {
           const updatedThought: Thought = {
             ...thought,
-            outlinePointId: nextOutline
+            outlinePointId: nextOutline,
+            subPointId: nextSubPoint,
           };
           debouncedSaveThought(sermonId!, updatedThought);
         }
@@ -520,19 +527,17 @@ export const useAiSortingDiff = ({
       return newHighlighted;
     });
     
-    // If there was an outline point change, revert it in the database
+    // If there was an outline/sub-point change, revert it in the database
     if (sermon) {
       const currentItem = containers[columnId][currentIndex];
-      if (currentItem.outlinePointId !== originalItem.outlinePointId) {
+      if (currentItem.outlinePointId !== originalItem.outlinePointId || (currentItem.subPointId ?? null) !== (originalItem.subPointId ?? null)) {
         const thought = sermon.thoughts.find((t: Thought) => t.id === itemId);
         if (thought) {
-          // Create reverted thought
           const updatedThought: Thought = {
             ...thought,
-            outlinePointId: originalItem.outlinePointId
+            outlinePointId: originalItem.outlinePointId,
+            subPointId: originalItem.subPointId ?? null,
           };
-          
-          // Save the thought
           debouncedSaveThought(sermonId!, updatedThought);
         }
       }
