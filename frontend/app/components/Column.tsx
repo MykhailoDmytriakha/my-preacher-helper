@@ -96,6 +96,7 @@ const SermonPointPlaceholder: React.FC<{
   onAddSubPoint?: (outlinePointId: string, text: string) => void;
   onEditSubPoint?: (outlinePointId: string, subPointId: string, newText: string) => void;
   onDeleteSubPoint?: (outlinePointId: string, subPointId: string) => void;
+  onReorderSubPoints?: (outlinePointId: string, sourceIndex: number, destinationIndex: number) => void;
 }> = ({
   point,
   items,
@@ -131,6 +132,7 @@ const SermonPointPlaceholder: React.FC<{
   onAddSubPoint,
   onEditSubPoint,
   onDeleteSubPoint,
+  onReorderSubPoints,
   // eslint-disable-next-line sonarjs/cognitive-complexity -- dense UI component with multiple conditional controls
 }) => {
     const { setNodeRef, isOver } = useDroppable({
@@ -450,6 +452,7 @@ const SermonPointPlaceholder: React.FC<{
               onAdd={onAddSubPoint}
               onEdit={onEditSubPoint!}
               onDelete={onDeleteSubPoint!}
+              onReorder={onReorderSubPoints}
               t={t}
             />
           )}
@@ -624,6 +627,7 @@ export default function Column({
     handleAddSubPoint,
     handleEditSubPoint,
     handleDeleteSubPoint,
+    handleReorderSubPoints,
   } = useColumnOutlineState({
     id,
     sermonId,
@@ -1072,6 +1076,7 @@ export default function Column({
                     onAddSubPoint={handleAddSubPoint}
                     onEditSubPoint={handleEditSubPoint}
                     onDeleteSubPoint={handleDeleteSubPoint}
+                    onReorderSubPoints={handleReorderSubPoints}
                   />
                 </div>
               ))}

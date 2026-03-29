@@ -397,6 +397,22 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
     directlySaveOutlineChanges(updatedPoints);
   };
 
+  const handleReorderSubPoints = (outlinePointId: string, sourceIndex: number, destinationIndex: number) => {
+    if (isReadOnly || sourceIndex === destinationIndex) return;
+    const updatedPoints = Object.entries(sectionPoints).reduce((acc, [section, points]) => {
+      acc[section as SectionType] = points.map((p) => {
+        if (p.id !== outlinePointId || !p.subPoints) return p;
+        const reordered = Array.from(p.subPoints);
+        const [removed] = reordered.splice(sourceIndex, 1);
+        reordered.splice(destinationIndex, 0, removed);
+        return { ...p, subPoints: reordered.map((sp, idx) => ({ ...sp, position: (idx + 1) * 1000 })) };
+      });
+      return acc;
+    }, {} as Record<SectionType, SermonPoint[]>);
+    setSectionPoints(updatedPoints);
+    directlySaveOutlineChanges(updatedPoints);
+  };
+
   // Main component return
   if (loading) {
     return <div className="text-center p-4">{t('common.loading')}</div>;
@@ -606,6 +622,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
                               onAdd={handleAddSubPoint}
                               onEdit={handleEditSubPoint}
                               onDelete={handleDeleteSubPoint}
+                              onReorder={handleReorderSubPoints}
                               t={t}
                             />
                           )}
