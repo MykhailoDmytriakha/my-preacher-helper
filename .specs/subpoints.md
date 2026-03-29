@@ -1,6 +1,6 @@
 # Feature: SubPoints (подпункты внутри Outline Points)
 
-## Статус: Проектирование
+## Статус: Этапы 1-2 завершены
 
 ## Проблема
 
@@ -101,20 +101,23 @@ interface ThoughtInStructure {
 
 ## Этапы внедрения
 
-### Этап 1: Модель данных + Firestore + CRUD
-- [ ] Добавить `SubPoint` интерфейс в `models.ts`
-- [ ] Расширить `OutlinePoint` полем `subPoints?: SubPoint[]`
-- [ ] Расширить `Thought` и `ThoughtInStructure` полем `subPointId?: string | null`
-- [ ] Обновить `sermons.repository.ts` — сохранение/чтение sub-points в составе outline
-- [ ] API endpoint для CRUD sub-points (или через existing outline endpoint)
-- [ ] Проверить обратную совместимость — старые проповеди работают без sub-points
+### Этап 1: Модель данных + Firestore + CRUD -- DONE
+- [x] Добавить `SubPoint` интерфейс в `models.ts`
+- [x] Расширить `OutlinePoint` полем `subPoints?: SubPoint[]`
+- [x] Расширить `Thought` и `ThoughtInStructure` полем `subPointId?: string | null`
+- [x] Firestore обратно совместим (optional fields, outline сохраняется целиком)
+- [x] CRUD через existing outline save mechanism
+- [x] Обратная совместимость проверена — старые проповеди работают без sub-points
 
-### Этап 2: UI отображения в Structure page
-- [ ] Рендеринг sub-points как вложенных групп внутри outline point в `Column.tsx`
-- [ ] Визуальная иерархия: outline point → sub-point (отступ/стиль)
-- [ ] Мысли до/между/после sub-points видны на своих позициях
-- [ ] Создание/редактирование/удаление sub-points (UI controls)
-- [ ] Переупорядочивание sub-points (drag handle или стрелки)
+### Этап 2: UI отображения -- DONE
+- [x] Рендеринг sub-points в `Column.tsx` (normal mode body)
+- [x] Рендеринг sub-points в focus mode body
+- [x] Рендеринг sub-points в focus mode sidebar (bullets + vertical line)
+- [x] Рендеринг sub-points в normal mode header (column header compact view)
+- [x] Рендеринг sub-points в `SermonOutline.tsx` (sermon detail page)
+- [x] Визуальная иерархия: outline point → sub-point (indent, bullets, thin border)
+- [x] Создание/редактирование/удаление sub-points (inline UI controls)
+- [ ] Переупорядочивание sub-points (drag handle или стрелки) -- deferred to Stage 3
 
 ### Этап 3: DnD интеграция
 - [ ] Перетаскивание мыслей в/из sub-points
