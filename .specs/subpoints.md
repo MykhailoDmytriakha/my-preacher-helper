@@ -1,6 +1,6 @@
 # Feature: SubPoints (подпункты внутри Outline Points)
 
-## Статус: Этапы 1-2 завершены
+## Статус: Все 6 этапов завершены
 
 ## Проблема
 
@@ -117,33 +117,33 @@ interface ThoughtInStructure {
 - [x] Рендеринг sub-points в `SermonOutline.tsx` (sermon detail page)
 - [x] Визуальная иерархия: outline point → sub-point (indent, bullets, thin border)
 - [x] Создание/редактирование/удаление sub-points (inline UI controls)
-- [ ] Переупорядочивание sub-points (drag handle или стрелки) -- deferred to Stage 3
+- [x] Переупорядочивание sub-points (DnD with @hello-pangea/dnd)
 
-### Этап 3: DnD интеграция
-- [ ] Перетаскивание мыслей в/из sub-points
-- [ ] Drop targets: sub-point как контейнер, пространство outline point вне sub-points
-- [ ] Обновление `useStructureDnd.ts` — определение destination (outline point vs sub-point)
-- [ ] Обновление position calculation для двух уровней
-- [ ] Перетаскивание sub-points целиком (с содержимым)
+### Этап 3: DnD интеграция -- DONE
+- [x] Перетаскивание мыслей в/из sub-points (SubPointDropTarget + SubPointAwareDropZone)
+- [x] Drop targets: sub-point как контейнер с `sub-point-{id}` prefix
+- [x] Обновление `useStructureDnd.ts` — `targetSubPointId` в destination logic
+- [x] Сохранение `subPointId` при DnD (persistThoughtChange)
+- [x] Переупорядочивание sub-points (DnD handles, position recalculation)
 
-### Этап 4: AI сортировка
-- [ ] Обновить system prompt (`sorting.ts`) — описание 3-уровневой иерархии
-- [ ] Обновить user prompt template (`sortingTemplate.ts`) — включить sub-points
-- [ ] Расширить `SortingResponseSchema` полем `subPoint`
-- [ ] Обновить `openAI.client.ts` — парсинг нового формата ответа
-- [ ] Обновить `useAiSortingDiff.ts` — diff mode с учётом sub-point назначений
-- [ ] AI должен уметь: назначить в sub-point ИЛИ напрямую в outline point
+### Этап 4: AI сортировка -- DONE
+- [x] Обновить system prompt — mentions sub-points assignment
+- [x] Обновить user prompt template — includes sub-point hierarchy
+- [x] Расширить `SortingResponseSchema` полем `subPoint`
+- [x] `findMatchingSubPoint` — fuzzy matching AI text to SubPoint IDs
+- [x] `buildSortedItem` — assigns both outlinePointId and subPointId
+- [x] `useAiSortingDiff` — tracks/persists subPointId in keep/revert flows
 
-### Этап 5: Генерация контента (план/draft)
-- [ ] Обновить структуру `SermonContent` — sub-points в outline content
-- [ ] Обновить промпты генерации плана — учитывать sub-points
-- [ ] Обновить `updateSermonContent()` — сохранение контента по sub-points
-- [ ] Обратная совместимость — старые проповеди без sub-points генерируются как раньше
+### Этап 5: Генерация контента (план/draft) -- DONE
+- [x] Промпт генерации учитывает sub-points (### headings per sub-point)
+- [x] `generatePlanPointContent` принимает subPoints parameter
+- [x] `buildSectionOutlineMarkdown` показывает sub-point skeleton
+- [x] Обратная совместимость — старые проповеди без sub-points работают
 
-### Этап 6: Режим проповеди (conduct) и отображение
-- [ ] Скелет с sub-points отображается при проповедовании
-- [ ] Навигация учитывает sub-point уровень
-- [ ] Plan view — sub-points в финальном отображении
+### Этап 6: Режим проповеди и отображение -- DONE
+- [x] `SermonPointCard` — мысли сгруппированы по sub-points
+- [x] `FullPlanContent` / preaching view — sub-points как ### markdown headings
+- [x] Plan edit view — sub-point hierarchy visible in thought cards
 
 ## Камни преткновения
 
