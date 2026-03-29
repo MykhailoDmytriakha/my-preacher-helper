@@ -897,69 +897,70 @@ export default function Column({
                     <li
                       ref={providedDraggable.innerRef}
                       {...providedDraggable.draggableProps}
-                      className={`relative flex items-center group rounded p-2 mb-2 ${snapshot.isDragging ? 'bg-white/30 dark:bg-gray-200/30 shadow-md' : 'hover:bg-white/15 dark:hover:bg-gray-200/15'}`}
+                      className={`relative group rounded p-2 mb-2 ${snapshot.isDragging ? 'bg-white/30 dark:bg-gray-200/30 shadow-md' : 'hover:bg-white/15 dark:hover:bg-gray-200/15'}`}
                       style={providedDraggable.draggableProps.style}
                     >
-                      {/* Drag handle */}
-                      {!pointLocked && (
-                        <div {...providedDraggable.dragHandleProps} className="cursor-grab mr-2 text-white dark:text-gray-100">
-                          <Bars3Icon className="h-5 w-5" />
-                        </div>
-                      )}
-                      {pointLocked && <div className="mr-2 h-5 w-5 shrink-0" />}
+                      <div className="flex items-center">
+                        {/* Drag handle */}
+                        {!pointLocked && (
+                          <div {...providedDraggable.dragHandleProps} className="cursor-grab mr-2 text-white dark:text-gray-100">
+                            <Bars3Icon className="h-5 w-5" />
+                          </div>
+                        )}
+                        {pointLocked && <div className="mr-2 h-5 w-5 shrink-0" />}
 
-	                      {/* Edit form or display */}
-	                      {editingPointId === point.id ? (
-	                        <div className="flex-grow flex items-center space-x-1">
-	                          <input
-	                            ref={editInputRef}
-	                            type="text"
-	                            value={editingText}
-	                            onChange={(e) => setEditingText(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') handleCancelEdit(); }}
-                            className="flex-grow p-1 text-sm bg-white/90 dark:bg-gray-100/90 text-gray-800 dark:text-gray-800 rounded border border-white/30 dark:border-gray-300 focus:outline-none focus:border-white dark:focus:border-gray-400"
-                            placeholder={t('structure.editPointPlaceholder')}
-                            autoFocus
-                          />
-                          <button aria-label={t(TRANSLATION_COMMON_SAVE)} onClick={handleSaveEdit} className="p-1 text-green-400 hover:text-green-300">
-                            <CheckIcon className="h-5 w-5" />
-                          </button>
-                          <button aria-label={t(TRANSLATION_COMMON_CANCEL)} onClick={handleCancelEdit} className="p-1 text-red-400 hover:text-red-300">
-                            <XMarkIcon className="h-5 w-5" />
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex flex-1 min-w-0 items-center gap-2 mr-2">
-                            <span
-                              className="text-sm text-white dark:text-gray-100 flex-1 min-w-0"
-                              onDoubleClick={() => {
-                                if (!pointLocked) handleStartEdit(point);
-                              }}
-                            >
-                              {point.text}
-                            </span>
+                        {/* Edit form or display */}
+                        {editingPointId === point.id ? (
+                          <div className="flex-grow flex items-center space-x-1">
+                            <input
+                              ref={editInputRef}
+                              type="text"
+                              value={editingText}
+                              onChange={(e) => setEditingText(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') handleCancelEdit(); }}
+                              className="flex-grow p-1 text-sm bg-white/90 dark:bg-gray-100/90 text-gray-800 dark:text-gray-800 rounded border border-white/30 dark:border-gray-300 focus:outline-none focus:border-white dark:focus:border-gray-400"
+                              placeholder={t('structure.editPointPlaceholder')}
+                              autoFocus
+                            />
+                            <button aria-label={t(TRANSLATION_COMMON_SAVE)} onClick={handleSaveEdit} className="p-1 text-green-400 hover:text-green-300">
+                              <CheckIcon className="h-5 w-5" />
+                            </button>
+                            <button aria-label={t(TRANSLATION_COMMON_CANCEL)} onClick={handleCancelEdit} className="p-1 text-red-400 hover:text-red-300">
+                              <XMarkIcon className="h-5 w-5" />
+                            </button>
                           </div>
-                          <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0">
-                            {/* Quick help for outline point */}
-                            {!pointLocked && (
-                              <>
-                                <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
-                                  <PencilIcon className="h-4 w-4" />
-                                </button>
-                                <button aria-label={t('common.delete')} onClick={() => setDeletePointId(point.id)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
-                                  <TrashIcon className="h-4 w-4" />
-                                </button>
-                              </>
+                        ) : (
+                          <>
+                            <div className="flex flex-1 min-w-0 items-center gap-2 mr-2">
+                              <span
+                                className="text-sm text-white dark:text-gray-100 flex-1 min-w-0 truncate"
+                                onDoubleClick={() => {
+                                  if (!pointLocked) handleStartEdit(point);
+                                }}
+                              >
+                                {point.text}
+                              </span>
+                            </div>
+                            <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0">
+                              {!pointLocked && (
+                                <>
+                                  <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
+                                    <PencilIcon className="h-4 w-4" />
+                                  </button>
+                                  <button aria-label={t('common.delete')} onClick={() => setDeletePointId(point.id)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
+                                    <TrashIcon className="h-4 w-4" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                            {thoughtsPerSermonPoint[point.id] > 0 && (
+                              <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white px-1.5 text-xs leading-none align-middle tabular-nums text-gray-700 dark:bg-gray-200 dark:text-gray-700 flex-shrink-0">
+                                {thoughtsPerSermonPoint[point.id]}
+                              </span>
                             )}
-                          </div>
-                          {thoughtsPerSermonPoint[point.id] > 0 && (
-                            <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white px-1.5 text-xs leading-none align-middle tabular-nums text-gray-700 dark:bg-gray-200 dark:text-gray-700 flex-shrink-0">
-                              {thoughtsPerSermonPoint[point.id]}
-                            </span>
-                          )}
-                        </>
-                      )}
+                          </>
+                        )}
+                      </div>
                       {/* Sub-points in sidebar */}
                       {point.subPoints && point.subPoints.length > 0 && (
                         <ul className="ml-7 mt-0.5 space-y-0.5 border-l border-white/20 pl-2">
