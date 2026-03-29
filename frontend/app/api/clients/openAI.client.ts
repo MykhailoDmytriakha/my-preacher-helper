@@ -14,7 +14,7 @@ import {
   PlanSectionResponseSchema,
   SortingResponseSchema,
 } from "@/config/schemas/zod";
-import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, DirectionSuggestion, SermonContent, BrainstormSuggestion, SectionHints } from "@/models/models";
+import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, DirectionSuggestion, SermonContent, BrainstormSuggestion, SectionHints, SubPoint } from "@/models/models";
 import { validateAudioBlob, createAudioFile, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 
 import { extractSermonContent, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
@@ -914,11 +914,13 @@ function buildPlanPointUserMessage(input: {
   outlinePointText: string;
   thoughts: (ThoughtInStructure | string)[];
   keyFragments?: string[];
+  subPoints?: SubPoint[];
 }): string {
   return createPlanPointContentUserMessage(
     input.outlinePointText,
     input.thoughts,
-    input.keyFragments
+    input.keyFragments,
+    input.subPoints
   );
 }
 
@@ -943,7 +945,8 @@ export async function generatePlanPointContent(
   sectionName: string,
   keyFragments: string[] = [],
   context?: PlanContext,
-  style: PlanStyle = 'memory'
+  style: PlanStyle = 'memory',
+  subPoints?: SubPoint[]
 ): Promise<{ content: string; success: boolean }> {
   // Detect language — base primarily on THOUGHTS text to avoid
   // generating a different language than the thoughts themselves
@@ -975,7 +978,8 @@ export async function generatePlanPointContent(
     const userMessage = buildPlanPointUserMessage({
       outlinePointText,
       thoughts: relatedThoughtsTexts,
-      keyFragments
+      keyFragments,
+      subPoints,
     });
 
     // Log operation info

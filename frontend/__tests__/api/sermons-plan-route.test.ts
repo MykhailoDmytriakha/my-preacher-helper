@@ -303,7 +303,8 @@ describe('Sermon Plan Route', () => {
           nextPoint: { text: 'Next' },
           section: 'introduction',
         },
-        'memory'
+        'memory',
+        undefined
       );
       expect(responseData).toEqual({ content: 'Outline content' });
     });
@@ -340,7 +341,8 @@ describe('Sermon Plan Route', () => {
           nextPoint: { text: 'Next' },
           section: 'introduction',
         },
-        'memory'
+        'memory',
+        undefined
       );
       expect(responseData).toEqual({ content: 'Outline content' });
     });

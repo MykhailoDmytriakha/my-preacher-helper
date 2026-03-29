@@ -268,8 +268,12 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
       </h3>
 
       <div className="mb-3">
-        <ul className="mt-2 ml-4 text-base">
-          {thoughts.map((thought) => (
+        {(() => {
+          const directThoughts = thoughts.filter(th => !th.subPointId);
+          const sortedSubPoints = [...(outlinePoint.subPoints ?? [])].sort((a, b) => a.position - b.position);
+          const hasSubPoints = sortedSubPoints.length > 0;
+
+          const renderThought = (thought: Thought) => (
             <li key={thought.id} className="mb-3 text-gray-700 dark:text-gray-300 leading-relaxed text-base flex items-start gap-2">
               <span className="mt-1.5">•</span>
               <div className="flex-1 min-w-0">
@@ -289,11 +293,36 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
                 )}
               </div>
             </li>
-          ))}
-        </ul>
-        {thoughts.length === 0 && (
-          <p className="text-base text-gray-500 ml-4">{t("plan.noThoughts")}</p>
-        )}
+          );
+
+          return (
+            <>
+              {directThoughts.length > 0 && (
+                <ul className="mt-2 ml-4 text-base">
+                  {directThoughts.map(renderThought)}
+                </ul>
+              )}
+              {hasSubPoints && sortedSubPoints.map(sp => {
+                const spThoughts = thoughts.filter(th => th.subPointId === sp.id);
+                return (
+                  <div key={sp.id} className="mt-3 ml-2 border-l-2 border-gray-200 dark:border-gray-600 pl-3">
+                    <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{sp.text}</h4>
+                    {spThoughts.length > 0 ? (
+                      <ul className="ml-2 text-base">
+                        {spThoughts.map(renderThought)}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 ml-2">{t("plan.noThoughts")}</p>
+                    )}
+                  </div>
+                );
+              })}
+              {thoughts.length === 0 && !hasSubPoints && (
+                <p className="text-base text-gray-500 ml-4">{t("plan.noThoughts")}</p>
+              )}
+            </>
+          );
+        })()}
       </div>
     </Card>
   );

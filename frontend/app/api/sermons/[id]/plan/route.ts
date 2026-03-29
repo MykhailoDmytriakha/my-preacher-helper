@@ -199,7 +199,8 @@ async function generateSermonPointContent(sermonId: string, outlinePointId: stri
       sectionName,
       keyFragments, // Pass combined key fragments
       adjacentContext || undefined, // Pass context if available
-      style || 'memory' // Pass style
+      style || 'memory', // Pass style
+      outlinePoint.subPoints // Pass sub-points for structured generation
     );
 
     if (!success) {
