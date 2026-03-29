@@ -11,7 +11,7 @@ import "@locales/i18n";
 import { MicrophoneIcon, SwitchViewIcon } from "@/components/Icons";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { getSectionLabel } from "@/lib/sections";
-import { Item, SermonPoint } from "@/models/models";
+import { Item, SermonPoint, SubPoint } from "@/models/models";
 import { getOutlinePointAiSortState } from "@/utils/aiSorting";
 import { debugLog } from "@/utils/debugMode";
 import { UI_COLORS } from "@/utils/themeColors";
@@ -56,6 +56,187 @@ import SortableItem from "./SortableItem";
 
 import type { ColumnProps, OnAudioThoughtCreated, Translate } from "./column/types";
 
+
+// Sub-point droppable zone
+const SubPointDropTarget: React.FC<{
+  subPoint: SubPoint;
+  containerId: string;
+  outlinePointId: string;
+  items: Item[];
+  onEdit?: (item: Item) => void;
+  isHighlighted: (itemId: string) => boolean;
+  getHighlightType: (itemId: string) => 'assigned' | 'moved' | undefined;
+  onKeepItem?: (itemId: string, columnId: string) => void;
+  onRevertItem?: (itemId: string, columnId: string) => void;
+  activeId?: string | null;
+  onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
+  onRetryPendingThought?: (itemId: string) => void;
+  onToggleThoughtLock?: (thoughtId: string, isLocked: boolean) => Promise<void> | void;
+  t: Translate;
+}> = ({ subPoint, containerId, outlinePointId, items, onEdit, isHighlighted, getHighlightType, onKeepItem, onRevertItem, activeId, onMoveToAmbiguous, onRetryPendingThought, onToggleThoughtLock, t }) => {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `sub-point-${subPoint.id}`,
+    data: { container: containerId, outlinePointId, subPointId: subPoint.id }
+  });
+
+  return (
+    <div className="ml-2 border-l-2 border-gray-200/40 dark:border-gray-600/30 pl-3 py-1">
+      <div className="text-xs font-medium text-gray-400 dark:text-gray-500 mb-1.5 flex items-center gap-1.5">
+        <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-500" />
+        {subPoint.text}
+      </div>
+      <div
+        ref={setNodeRef}
+        className={`min-h-[36px] rounded transition-all ${isOver ? 'bg-blue-50/80 dark:bg-blue-900/20 ring-1 ring-blue-400' : ''}`}
+      >
+        {items.length > 0 ? (
+          <div className="space-y-3">
+            {items.map((item) => (
+              <SortableItem
+                key={item.id}
+                item={item}
+                containerId={containerId}
+                onEdit={onEdit}
+                isHighlighted={isHighlighted(item.id)}
+                highlightType={getHighlightType(item.id)}
+                onKeep={onKeepItem}
+                onRevert={onRevertItem}
+                activeId={activeId}
+                onMoveToAmbiguous={onMoveToAmbiguous}
+                onRetrySync={onRetryPendingThought}
+                onToggleLock={onToggleThoughtLock}
+                isLocked={Boolean(item.isLocked)}
+                disabled={isPendingItem(item)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className={`text-center text-gray-300 dark:text-gray-600 text-xs py-2 px-3 border border-dashed border-gray-200 dark:border-gray-700 rounded transition-all ${isOver ? 'border-blue-400 dark:border-blue-500' : ''}`}>
+            {t('structure.dropThoughtsHere')}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Drop zone with sub-point grouping
+const SubPointAwareDropZone: React.FC<{
+  setNodeRef: (node: HTMLElement | null) => void;
+  isOver: boolean;
+  pointItems: Item[];
+  subPoints: SubPoint[];
+  containerId: string;
+  outlinePointId: string;
+  hasItems: boolean;
+  isPointLocked: boolean;
+  onEdit?: (item: Item) => void;
+  isHighlighted: (itemId: string) => boolean;
+  getHighlightType: (itemId: string) => 'assigned' | 'moved' | undefined;
+  onKeepItem?: (itemId: string, columnId: string) => void;
+  onRevertItem?: (itemId: string, columnId: string) => void;
+  activeId?: string | null;
+  onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
+  onRetryPendingThought?: (itemId: string) => void;
+  onToggleThoughtLock?: (thoughtId: string, isLocked: boolean) => Promise<void> | void;
+  onAddSubPoint?: (outlinePointId: string, text: string) => void;
+  onEditSubPoint?: (outlinePointId: string, subPointId: string, newText: string) => void;
+  onDeleteSubPoint?: (outlinePointId: string, subPointId: string) => void;
+  onReorderSubPoints?: (outlinePointId: string, sourceIndex: number, destinationIndex: number) => void;
+  t: Translate;
+}> = ({
+  setNodeRef, isOver, pointItems, subPoints, containerId, outlinePointId, hasItems, isPointLocked,
+  onEdit, isHighlighted, getHighlightType, onKeepItem, onRevertItem, activeId, onMoveToAmbiguous,
+  onRetryPendingThought, onToggleThoughtLock, onAddSubPoint, onEditSubPoint, onDeleteSubPoint, onReorderSubPoints, t
+}) => {
+  const directItems = pointItems.filter(item => !item.subPointId);
+  const hasSubPoints = subPoints.length > 0;
+
+  return (
+    <>
+      {/* Main outline point drop zone (for items without sub-point) */}
+      <div
+        ref={setNodeRef}
+        className={`min-h-[80px] p-4 transition-all ${isOver ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400 dark:ring-blue-500' : ''}`}
+      >
+        {!hasItems && !hasSubPoints ? (
+          <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
+            {t('structure.dropThoughtsHere')}
+          </div>
+        ) : (
+          <SortableContext items={pointItems} strategy={verticalListSortingStrategy}>
+            <div className="space-y-4">
+              {/* Direct items (no sub-point) */}
+              {directItems.map((item) => (
+                <SortableItem
+                  key={item.id}
+                  item={item}
+                  containerId={containerId}
+                  onEdit={onEdit}
+                  isHighlighted={isHighlighted(item.id)}
+                  highlightType={getHighlightType(item.id)}
+                  onKeep={onKeepItem}
+                  onRevert={onRevertItem}
+                  activeId={activeId}
+                  onMoveToAmbiguous={onMoveToAmbiguous}
+                  onRetrySync={onRetryPendingThought}
+                  onToggleLock={onToggleThoughtLock}
+                  isLocked={Boolean(item.isLocked)}
+                  disabled={isPendingItem(item)}
+                />
+              ))}
+
+              {/* Sub-point sections with drop zones */}
+              {hasSubPoints && subPoints.map((sp) => {
+                const spItems = pointItems.filter(item => item.subPointId === sp.id);
+                return (
+                  <SubPointDropTarget
+                    key={sp.id}
+                    subPoint={sp}
+                    containerId={containerId}
+                    outlinePointId={outlinePointId}
+                    items={spItems}
+                    onEdit={onEdit}
+                    isHighlighted={isHighlighted}
+                    getHighlightType={getHighlightType}
+                    onKeepItem={onKeepItem}
+                    onRevertItem={onRevertItem}
+                    activeId={activeId}
+                    onMoveToAmbiguous={onMoveToAmbiguous}
+                    onRetryPendingThought={onRetryPendingThought}
+                    onToggleThoughtLock={onToggleThoughtLock}
+                    t={t}
+                  />
+                );
+              })}
+
+              {/* Drop area at the end */}
+              {(directItems.length > 0 || hasSubPoints) && (
+                <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''}`}>
+                  {t('structure.dropThoughtsToAdd')}
+                </div>
+              )}
+            </div>
+          </SortableContext>
+        )}
+      </div>
+
+      {/* Sub-points CRUD list */}
+      {onAddSubPoint && (
+        <SubPointList
+          subPoints={subPoints}
+          outlinePointId={outlinePointId}
+          isPointLocked={isPointLocked}
+          onAdd={onAddSubPoint}
+          onEdit={onEditSubPoint!}
+          onDelete={onDeleteSubPoint!}
+          onReorder={onReorderSubPoints}
+          t={t}
+        />
+      )}
+    </>
+  );
+};
 
 // Component for rendering outline point placeholder with thoughts
 const SermonPointPlaceholder: React.FC<{
@@ -401,61 +582,31 @@ const SermonPointPlaceholder: React.FC<{
             </div>
           </div>
 
-          {/* Drop zone for thoughts */}
-          <div
-            ref={setNodeRef}
-            className={`min-h-[80px] p-4 transition-all ${isOver ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400 dark:ring-blue-500' : ''
-              }`}
-          >
-            {!hasItems ? (
-              <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
-                {t('structure.dropThoughtsHere')}
-              </div>
-            ) : (
-              <SortableContext items={pointItems} strategy={verticalListSortingStrategy}>
-                <div className="space-y-4">
-                  {pointItems.map((item) => (
-                    <SortableItem
-                      key={item.id}
-                      item={item}
-                      containerId={containerId}
-                      onEdit={onEdit}
-                      isHighlighted={isHighlighted(item.id)}
-                      highlightType={getHighlightType(item.id)}
-                      onKeep={onKeepItem}
-                      onRevert={onRevertItem}
-                      activeId={activeId}
-                      onMoveToAmbiguous={onMoveToAmbiguous}
-                      onRetrySync={onRetryPendingThought}
-                      onToggleLock={onToggleThoughtLock}
-                      isLocked={Boolean(item.isLocked)}
-                      disabled={isPendingItem(item)}
-                    />
-                  ))}
-
-                  {/* Additional drop area at the end */}
-                  <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
-                    }`}>
-                    {t('structure.dropThoughtsToAdd')}
-                  </div>
-                </div>
-              </SortableContext>
-            )}
-          </div>
-
-          {/* Sub-points list */}
-          {onAddSubPoint && (
-            <SubPointList
-              subPoints={point.subPoints ?? []}
-              outlinePointId={point.id}
-              isPointLocked={isPointLocked}
-              onAdd={onAddSubPoint}
-              onEdit={onEditSubPoint!}
-              onDelete={onDeleteSubPoint!}
-              onReorder={onReorderSubPoints}
-              t={t}
-            />
-          )}
+          {/* Drop zone for thoughts — grouped by sub-point */}
+          <SubPointAwareDropZone
+            setNodeRef={setNodeRef}
+            isOver={isOver}
+            pointItems={pointItems}
+            subPoints={(point.subPoints ?? []).sort((a, b) => a.position - b.position)}
+            containerId={containerId}
+            outlinePointId={point.id}
+            hasItems={hasItems}
+            isPointLocked={isPointLocked}
+            onEdit={onEdit}
+            isHighlighted={isHighlighted}
+            getHighlightType={getHighlightType}
+            onKeepItem={onKeepItem}
+            onRevertItem={onRevertItem}
+            activeId={activeId}
+            onMoveToAmbiguous={onMoveToAmbiguous}
+            onRetryPendingThought={onRetryPendingThought}
+            onToggleThoughtLock={onToggleThoughtLock}
+            onAddSubPoint={onAddSubPoint}
+            onEditSubPoint={onEditSubPoint}
+            onDeleteSubPoint={onDeleteSubPoint}
+            onReorderSubPoints={onReorderSubPoints}
+            t={t}
+          />
         </div>
       </>
     );

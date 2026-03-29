@@ -27,28 +27,36 @@ import {
 // Constants for drag target prefixes
 const OUTLINE_POINT_PREFIX = 'outline-point-';
 const UNASSIGNED_PREFIX = 'unassigned-';
+const SUB_POINT_PREFIX = 'sub-point-';
 
 // Helper function to determine destination container and outline point
 const determineDestination = (
   overId: string,
-  over: { data?: { current?: { container?: string; outlinePointId?: string } } },
+  over: { data?: { current?: { container?: string; outlinePointId?: string; subPointId?: string } } },
   state: Record<string, Item[]>
-): { dstContainerKey: string | undefined; targetSermonPointId: string | null | undefined } => {
+): { dstContainerKey: string | undefined; targetSermonPointId: string | null | undefined; targetSubPointId: string | null | undefined } => {
   let dstContainerKey: string | undefined = over.data?.current?.container as string | undefined;
   let targetSermonPointId: string | null | undefined = over.data?.current?.outlinePointId as string | undefined;
+  let targetSubPointId: string | null | undefined = over.data?.current?.subPointId as string | undefined;
 
-  if (overId.startsWith(OUTLINE_POINT_PREFIX)) {
+  if (overId.startsWith(SUB_POINT_PREFIX)) {
     dstContainerKey = over.data?.current?.container as string | undefined;
     targetSermonPointId = (over.data?.current?.outlinePointId as string) || undefined;
+    targetSubPointId = (over.data?.current?.subPointId as string) || undefined;
+  } else if (overId.startsWith(OUTLINE_POINT_PREFIX)) {
+    dstContainerKey = over.data?.current?.container as string | undefined;
+    targetSermonPointId = (over.data?.current?.outlinePointId as string) || undefined;
+    targetSubPointId = null; // Explicitly dropping on outline point clears sub-point
   } else if (overId.startsWith(UNASSIGNED_PREFIX)) {
     dstContainerKey = over.data?.current?.container as string | undefined;
     targetSermonPointId = null;
+    targetSubPointId = null;
   } else if (!dstContainerKey) {
     // over on item or container id
     dstContainerKey = ["introduction", "main", "conclusion", "ambiguous"].includes(overId)
       ? overId
       : Object.keys(state).find((k) => state[k].some((it) => it.id === overId));
-    if (!dstContainerKey) return { dstContainerKey: undefined, targetSermonPointId: undefined };
+    if (!dstContainerKey) return { dstContainerKey: undefined, targetSermonPointId: undefined, targetSubPointId: undefined };
 
     // If over is an item, inherit its outline point group for preview
     if (overId !== dstContainerKey) {
@@ -59,7 +67,7 @@ const determineDestination = (
     }
   }
 
-  return { dstContainerKey, targetSermonPointId };
+  return { dstContainerKey, targetSermonPointId, targetSubPointId };
 };
 
 // Helper function to calculate insertion index
@@ -123,6 +131,7 @@ const shouldSkipUpdate = (
 interface DropTargetInfo {
   overContainer: string;
   outlinePointId: string | null | undefined;
+  subPointId: string | null | undefined;
   droppedOnItem: boolean;
   targetItemIndex: number;
   targetItemSermonPointId: string | null;
@@ -137,6 +146,7 @@ const identifyDropTarget = (
     return {
       overContainer: '',
       outlinePointId: undefined,
+      subPointId: undefined,
       droppedOnItem: false,
       targetItemIndex: -1,
       targetItemSermonPointId: null,
@@ -145,15 +155,21 @@ const identifyDropTarget = (
 
   let overContainer = over.data.current?.container;
   let outlinePointId = over.data.current?.outlinePointId;
+  let subPointId: string | null | undefined = over.data.current?.subPointId;
   let droppedOnItem = false;
   let targetItemIndex = -1;
   let targetItemSermonPointId: string | null = null;
 
-  // Check if we're dropping on an outline point placeholder
-  if (over.id.toString().startsWith(OUTLINE_POINT_PREFIX)) {
+  // Check if we're dropping on a sub-point
+  if (over.id.toString().startsWith(SUB_POINT_PREFIX)) {
+    subPointId = over.data.current?.subPointId;
+    outlinePointId = over.data.current?.outlinePointId;
+    overContainer = over.data.current?.container;
+  } else if (over.id.toString().startsWith(OUTLINE_POINT_PREFIX)) {
     const dropTargetId = over.id.toString();
     outlinePointId = dropTargetId.replace(OUTLINE_POINT_PREFIX, '');
     overContainer = over.data.current?.container;
+    subPointId = null; // Clear sub-point when dropping on outline point directly
   } else if (over.id.toString().startsWith(UNASSIGNED_PREFIX)) {
     outlinePointId = null;
     overContainer = over.data.current?.container;
@@ -180,6 +196,7 @@ const identifyDropTarget = (
   return {
     overContainer,
     outlinePointId,
+    subPointId,
     droppedOnItem,
     targetItemIndex,
     targetItemSermonPointId,
@@ -328,7 +345,8 @@ const hasMeaningfulDropChange = (
   const previousItem = findMovedItem(previousContainers);
   const nextItem = findMovedItem(nextContainers);
 
-  return (previousItem?.outlinePointId ?? null) !== (nextItem?.outlinePointId ?? null);
+  return (previousItem?.outlinePointId ?? null) !== (nextItem?.outlinePointId ?? null)
+    || (previousItem?.subPointId ?? null) !== (nextItem?.subPointId ?? null);
 };
 
 // Helper: Persist thought change
@@ -337,6 +355,7 @@ const persistThoughtChange = (
   movedItem: Item,
   updatedRequiredTags: string[],
   finalSermonPointId: string | null | undefined,
+  finalSubPointId: string | null | undefined,
   newPos: number,
   debouncedSaveThought: (sermonId: string, thought: Thought) => void
 ): boolean => {
@@ -349,6 +368,7 @@ const persistThoughtChange = (
         ...(movedItem.customTagNames || []).map((tag) => tag.name),
       ],
       outlinePointId: finalSermonPointId,
+      subPointId: finalSubPointId ?? null,
       position: newPos,
     };
     debouncedSaveThought(sermon.id, updatedThought);
@@ -495,7 +515,7 @@ export const useStructureDnd = ({
 
     // Identify drop target
     const dropTarget = identifyDropTarget(over, containers);
-    const { overContainer, outlinePointId, droppedOnItem, targetItemIndex, targetItemSermonPointId } = dropTarget;
+    const { overContainer, outlinePointId, subPointId: targetSubPointId, droppedOnItem, targetItemIndex, targetItemSermonPointId } = dropTarget;
 
     if (
       !activeContainer ||
@@ -544,11 +564,18 @@ export const useStructureDnd = ({
       sermon
     );
 
-    // Update outline point ID in the moved item
-    if (activeContainer !== overContainer || finalSermonPointId !== undefined) {
+    // Determine final sub-point assignment
+    const finalSubPointId = targetSubPointId !== undefined ? targetSubPointId : (
+      // If dropping on outline point or changing container, clear subPointId
+      (outlinePointId !== undefined || activeContainer !== overContainer) ? null : movedItem.subPointId
+    );
+
+    // Update outline point ID and sub-point ID in the moved item
+    if (activeContainer !== overContainer || finalSermonPointId !== undefined || finalSubPointId !== undefined) {
       updatedContainers[overContainer][movedIndex] = {
         ...updatedContainers[overContainer][movedIndex],
-        outlinePointId: finalSermonPointId
+        outlinePointId: finalSermonPointId,
+        subPointId: finalSubPointId,
       };
     }
 
@@ -587,15 +614,18 @@ export const useStructureDnd = ({
     try {
       // Update outline point assignment and required section tag if needed
       let positionPersisted = false;
-      if (activeContainer !== overContainer || finalSermonPointId !== undefined) {
+      if (activeContainer !== overContainer || finalSermonPointId !== undefined || finalSubPointId !== undefined) {
         const updatedMoved = updatedContainers[overContainer][movedIndex];
-        const updatedItem = buildUpdatedItem(
-          updatedMoved,
-          overContainer,
-          finalSermonPointId,
-          updatedContainers,
-          movedIndex
-        );
+        const updatedItem = {
+          ...buildUpdatedItem(
+            updatedMoved,
+            overContainer,
+            finalSermonPointId,
+            updatedContainers,
+            movedIndex
+          ),
+          subPointId: finalSubPointId,
+        };
 
         // Update UI with final item
         updatedContainers[overContainer][movedIndex] = updatedItem;
@@ -608,6 +638,7 @@ export const useStructureDnd = ({
           updatedItem,
           updatedItem.requiredTags || [],
           updatedItem.outlinePointId,
+          updatedItem.subPointId,
           updatedItem.position || 0,
           debouncedSaveThought
         );
