@@ -79,7 +79,41 @@ export const SubPointList: React.FC<SubPointListProps> = ({
 
   const canReorder = !isPointLocked && onReorder && sorted.length > 1;
 
-  const renderSubPointItem = (sp: SubPoint, index: number, dragHandleProps?: React.HTMLAttributes<HTMLElement> | null) => (
+  const renderSubPointContent = (sp: SubPoint, dragHandleProps?: React.HTMLAttributes<HTMLElement> | null) => (
+    <>
+      {canReorder && dragHandleProps ? (
+        <div {...(dragHandleProps as React.HTMLAttributes<HTMLDivElement>)} className="cursor-grab flex-shrink-0 w-3 flex items-center justify-center">
+          <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-500 group-hover/sp:hidden" />
+          <Bars2Icon className="h-3 w-3 text-gray-300 dark:text-gray-600 hidden group-hover/sp:block" />
+        </div>
+      ) : (
+        <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-500 flex-shrink-0" />
+      )}
+      <span className="flex-1 text-sm text-gray-500 dark:text-gray-400 min-w-0 truncate">
+        {sp.text}
+      </span>
+      {!isPointLocked && (
+        <div className="flex items-center gap-0.5 opacity-0 group-hover/sp:opacity-100 transition-opacity flex-shrink-0">
+          <button
+            onClick={() => { setEditingId(sp.id); setEditText(sp.text); }}
+            className="p-0.5 text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400"
+            aria-label={t("common.edit")}
+          >
+            <PencilIcon className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => onDelete(outlinePointId, sp.id)}
+            className="p-0.5 text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400"
+            aria-label={t("common.delete")}
+          >
+            <TrashIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+    </>
+  );
+
+  const renderSubPointItem = (sp: SubPoint, dragHandleProps?: React.HTMLAttributes<HTMLElement> | null) => (
     <div className="group/sp flex items-center gap-2 py-1 px-1.5 rounded transition-colors hover:bg-gray-50/80 dark:hover:bg-gray-700/30">
       {editingId === sp.id ? (
         <div className="flex-1 flex items-center gap-1">
@@ -102,59 +136,45 @@ export const SubPointList: React.FC<SubPointListProps> = ({
           </button>
         </div>
       ) : (
-        <>
-          {canReorder && dragHandleProps ? (
-            <div {...(dragHandleProps as React.HTMLAttributes<HTMLDivElement>)} className="cursor-grab flex-shrink-0 w-3 flex items-center justify-center">
-              <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-500 group-hover/sp:hidden" />
-              <Bars2Icon className="h-3 w-3 text-gray-300 dark:text-gray-600 hidden group-hover/sp:block" />
-            </div>
-          ) : (
-            <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-500 flex-shrink-0" />
-          )}
-          <span className="flex-1 text-sm text-gray-500 dark:text-gray-400 min-w-0 truncate">
-            {sp.text}
-          </span>
-          {!isPointLocked && (
-            <div className="flex items-center gap-0.5 opacity-0 group-hover/sp:opacity-100 transition-opacity flex-shrink-0">
-              <button
-                onClick={() => { setEditingId(sp.id); setEditText(sp.text); }}
-                className="p-0.5 text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400"
-                aria-label={t("common.edit")}
-              >
-                <PencilIcon className="h-3.5 w-3.5" />
-              </button>
-              <button
-                onClick={() => onDelete(outlinePointId, sp.id)}
-                className="p-0.5 text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400"
-                aria-label={t("common.delete")}
-              >
-                <TrashIcon className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )}
-        </>
+        renderSubPointContent(sp, dragHandleProps)
       )}
     </div>
   );
+
+  // Clone renderer for drag preview — renders at body level, avoids clipping
+  const renderClone = (provided: import("@hello-pangea/dnd").DraggableProvided, _snapshot: import("@hello-pangea/dnd").DraggableStateSnapshot, rubric: import("@hello-pangea/dnd").DraggableRubric) => {
+    const sp = sorted[rubric.source.index];
+    return (
+      <div
+        ref={provided.innerRef}
+        {...provided.draggableProps}
+        {...provided.dragHandleProps}
+        className="flex items-center gap-2 py-1 px-1.5 rounded bg-white dark:bg-gray-800 shadow-lg ring-1 ring-blue-400/50 text-sm"
+        style={provided.draggableProps.style}
+      >
+        <Bars2Icon className="h-3 w-3 text-gray-400 flex-shrink-0" />
+        <span className="text-gray-600 dark:text-gray-300">{sp.text}</span>
+      </div>
+    );
+  };
 
   return (
     <div className="ml-7 mt-1 mb-1 border-l border-gray-200/60 dark:border-gray-600/40 pl-3">
       {sorted.length > 0 && (
         canReorder ? (
           <DragDropContext onDragEnd={handleDragEnd}>
-            <Droppable droppableId={`subpoints-${outlinePointId}`}>
+            <Droppable droppableId={`subpoints-${outlinePointId}`} renderClone={renderClone}>
               {(provided) => (
                 <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-0.5">
                   {sorted.map((sp, index) => (
-                    <Draggable key={sp.id} draggableId={sp.id} index={index}>
-                      {(draggableProvided, snapshot) => (
+                    <Draggable key={sp.id} draggableId={`sp-drag-${sp.id}`} index={index}>
+                      {(draggableProvided) => (
                         <div
                           ref={draggableProvided.innerRef}
                           {...draggableProvided.draggableProps}
-                          className={snapshot.isDragging ? "opacity-70 shadow-sm rounded bg-gray-100/50 dark:bg-gray-700/50" : ""}
                           style={draggableProvided.draggableProps.style}
                         >
-                          {renderSubPointItem(sp, index, draggableProvided.dragHandleProps as unknown as React.HTMLAttributes<HTMLElement>)}
+                          {renderSubPointItem(sp, draggableProvided.dragHandleProps as unknown as React.HTMLAttributes<HTMLElement>)}
                         </div>
                       )}
                     </Draggable>
@@ -166,9 +186,9 @@ export const SubPointList: React.FC<SubPointListProps> = ({
           </DragDropContext>
         ) : (
           <div className="space-y-0.5">
-            {sorted.map((sp, index) => (
+            {sorted.map((sp) => (
               <div key={sp.id}>
-                {renderSubPointItem(sp, index)}
+                {renderSubPointItem(sp)}
               </div>
             ))}
           </div>

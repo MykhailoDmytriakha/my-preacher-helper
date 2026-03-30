@@ -324,10 +324,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
     if (isReadOnly) return;
     const { source, destination } = result;
 
-    // Dropped outside the list
-    if (!destination) {
-      return;
-    }
+    if (!destination) return;
 
     const sourceSection = source.droppableId as SectionType;
     const destSection = destination.droppableId as SectionType;
@@ -335,13 +332,11 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
     const updatedPoints = { ...sectionPoints };
 
     if (sourceSection === destSection) {
-      // Reordering within the same section
       const sectionItems = Array.from(updatedPoints[sourceSection]);
       const [removed] = sectionItems.splice(source.index, 1);
       sectionItems.splice(destination.index, 0, removed);
       updatedPoints[sourceSection] = sectionItems;
     } else {
-      // Moving between sections
       const sourceItems = Array.from(updatedPoints[sourceSection]);
       const destItems = Array.from(updatedPoints[destSection]);
       const [removed] = sourceItems.splice(source.index, 1);
@@ -509,22 +504,35 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
               key={sectionType}
               renderClone={(providedDraggable, _snapshot, rubric) => {
                 const point = points[rubric.source.index];
+                const sortedSubs = [...(point.subPoints ?? [])].sort((a, b) => a.position - b.position);
                 return (
                   <li
                     ref={providedDraggable.innerRef}
                     {...providedDraggable.draggableProps}
                     {...providedDraggable.dragHandleProps}
-                    className={`flex items-center group p-2 rounded ${colors.dragBg} shadow-lg border-2 ${colors.border}`}
+                    className="rounded bg-white dark:bg-gray-800 shadow-lg ring-1 ring-gray-300 dark:ring-gray-600"
                     style={providedDraggable.draggableProps.style}
                   >
-                    <div className="cursor-grab mr-2 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
-                      <Bars3Icon className="h-5 w-5" />
+                    <div className="flex items-center p-2">
+                      <div className="cursor-grab mr-2 text-gray-400">
+                        <Bars3Icon className="h-5 w-5" />
+                      </div>
+                      <span className="text-sm text-gray-800 dark:text-gray-200 flex-grow mr-2">{point.text}</span>
+                      {getThoughtCount(point.id) > 0 && (
+                        <span className={`${countBadgeBaseClass} mr-2 bg-gray-200 text-gray-500 dark:bg-gray-600 dark:text-gray-400`}>
+                          {getThoughtCount(point.id)}
+                        </span>
+                      )}
                     </div>
-                    <span className="text-sm text-gray-800 dark:text-gray-200 flex-grow mr-2">{point.text}</span>
-                    {getThoughtCount(point.id) > 0 && (
-                      <span className={`${countBadgeBaseClass} mr-2 bg-gray-200 text-gray-500 dark:bg-gray-600 dark:text-gray-400`}>
-                        {getThoughtCount(point.id)}
-                      </span>
+                    {sortedSubs.length > 0 && (
+                      <div className="ml-9 mb-2 border-l border-gray-200 dark:border-gray-600 pl-3 space-y-0.5">
+                        {sortedSubs.map(sp => (
+                          <div key={sp.id} className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
+                            <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-500" />
+                            {sp.text}
+                          </div>
+                        ))}
+                      </div>
                     )}
                   </li>
                 );
@@ -552,7 +560,6 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
                             >
                               <Bars3Icon className="h-5 w-5" />
                             </div>
-                            {/* Point Text or Edit Input */}
                             {editingPointId === point.id ? (
                               <div ref={editInputRef} className="flex-grow flex items-center space-x-1">
                                 <input
@@ -565,46 +572,24 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
                                   autoFocus
                                   disabled={isReadOnly}
                                 />
-                                <button
-                                  aria-label={t('common.save')}
-                                  onClick={handleSaveEdit}
-                                  disabled={isReadOnly}
-                                  className={`p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}
-                                >
+                                <button aria-label={t('common.save')} onClick={handleSaveEdit} disabled={isReadOnly} className={`p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}>
                                   <CheckIcon className="h-5 w-5" />
                                 </button>
-                                <button
-                                  aria-label={t('common.cancel')}
-                                  onClick={handleCancelEdit}
-                                  disabled={isReadOnly}
-                                  className={`p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}
-                                >
+                                <button aria-label={t('common.cancel')} onClick={handleCancelEdit} disabled={isReadOnly} className={`p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}>
                                   <XMarkIcon className="h-5 w-5" />
                                 </button>
                               </div>
                             ) : (
                               <>
                                 <span className="text-sm text-gray-800 dark:text-gray-200 flex-grow mr-2">{point.text}</span>
-                                {/* Action Buttons (Edit/Delete) - appear on hover */}
                                 <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button
-                                    aria-label={t('common.edit')}
-                                    onClick={() => handleStartEdit(point)}
-                                    disabled={isReadOnly}
-                                    className={`p-1 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}
-                                  >
+                                  <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} disabled={isReadOnly} className={`p-1 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}>
                                     <PencilIcon className="h-4 w-4" />
                                   </button>
-                                  <button
-                                    aria-label={t('common.delete')}
-                                    onClick={() => handleDeletePoint(point)}
-                                    disabled={isReadOnly}
-                                    className={`p-1 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}
-                                  >
+                                  <button aria-label={t('common.delete')} onClick={() => handleDeletePoint(point)} disabled={isReadOnly} className={`p-1 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}>
                                     <TrashIcon className="h-4 w-4" />
                                   </button>
                                 </div>
-                                {/* Thought count badge */}
                                 {getThoughtCount(point.id) > 0 && (
                                   <span className={`${countBadgeBaseClass} ml-2 bg-gray-200 text-gray-500 dark:bg-gray-600 dark:text-gray-400`}>
                                     {getThoughtCount(point.id)}
@@ -613,7 +598,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
                               </>
                             )}
                           </div>
-                          {/* Sub-points */}
+                          {/* Sub-points — inside Draggable so they move with parent */}
                           {editingPointId !== point.id && ((point.subPoints && point.subPoints.length > 0) || !isReadOnly) && (
                             <SubPointList
                               subPoints={point.subPoints ?? []}

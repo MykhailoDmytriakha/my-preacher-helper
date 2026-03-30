@@ -32,7 +32,7 @@ export function buildSectionOutlineMarkdown({
         return `${header}\n\n${skeleton}`;
       }
 
-      return header;
+      return `${header}\n\n${pointContent}`;
     })
     .join("\n\n");
 }
