@@ -104,8 +104,9 @@ export const SubPointList: React.FC<SubPointListProps> = ({
       ) : (
         <>
           {canReorder && dragHandleProps ? (
-            <div {...(dragHandleProps as React.HTMLAttributes<HTMLDivElement>)} className="cursor-grab text-gray-300 dark:text-gray-600 opacity-0 group-hover/sp:opacity-100 transition-opacity flex-shrink-0">
-              <Bars2Icon className="h-3 w-3" />
+            <div {...(dragHandleProps as React.HTMLAttributes<HTMLDivElement>)} className="cursor-grab flex-shrink-0 w-3 flex items-center justify-center">
+              <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-500 group-hover/sp:hidden" />
+              <Bars2Icon className="h-3 w-3 text-gray-300 dark:text-gray-600 hidden group-hover/sp:block" />
             </div>
           ) : (
             <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-500 flex-shrink-0" />
