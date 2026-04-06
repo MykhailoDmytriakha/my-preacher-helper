@@ -257,6 +257,7 @@ describe('analyzeStudyNote', () => {
     // Language detection correctly identifies Russian text (contains 'Russian' directive)
     expect(systemPrompt).toContain('Russian');
     expect(systemPrompt).toContain('English');
+    expect(callArgs[3].promptBlueprint.expectedLanguage).toBe('ru');
   });
 
   // New tests for flexible Scripture reference types
@@ -638,4 +639,3 @@ describe('analyzeStudyNote', () => {
     expect(systemPrompt).toContain('Septuagint → Hebrew');
   });
 });
-

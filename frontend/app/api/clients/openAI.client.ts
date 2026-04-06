@@ -18,7 +18,7 @@ import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, 
 import { validateAudioBlob, createAudioFile, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 
 import { extractSermonContent, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
-import { buildPromptBlueprint, buildSimplePromptBlueprint } from "./promptBuilder";
+import { buildPromptBlueprint, buildSimplePromptBlueprint, detectDominantLanguage } from "./promptBuilder";
 import {
   generateSermonInsightsStructured,
   generateSermonTopicsStructured,
@@ -792,6 +792,7 @@ interface PlanPointLanguageInfo {
   detectedLanguage: string;
   hasNonLatinChars: boolean;
   isCyrillic: boolean;
+  telemetryLanguage: string | null;
   languageDirective: string;
   formatExample: string;
   languageRequirementLabel: string;
@@ -803,6 +804,7 @@ function getPlanPointLanguageInfo(
   sermonVerse: string
 ): PlanPointLanguageInfo {
   const languageProbe = `${relatedThoughtsTexts.join(' ')} ${sermonTitle || ''} ${sermonVerse || ''}`;
+  const telemetryLanguage = detectDominantLanguage(languageProbe);
   const hasNonLatinChars = /[^\u0000-\u007F]/.test(languageProbe);
   const isCyrillic = /[\u0400-\u04FF]/.test(languageProbe);
   const detectedLanguage = isCyrillic
@@ -835,6 +837,7 @@ function getPlanPointLanguageInfo(
     detectedLanguage,
     hasNonLatinChars,
     isCyrillic,
+    telemetryLanguage: telemetryLanguage === "unknown" ? null : telemetryLanguage,
     languageDirective,
     formatExample,
     languageRequirementLabel
@@ -938,7 +941,7 @@ export async function generatePlanPointContent(
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "plan_point_content",
       promptVersion: "v3",
-      expectedLanguage: languageInfo.isCyrillic ? "ru" : "en",
+      expectedLanguage: languageInfo.telemetryLanguage,
       systemPrompt,
       userMessage,
       context: inputInfo,
