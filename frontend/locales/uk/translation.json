@@ -520,7 +520,9 @@
     "directUnderOutlinePoint": "Безпосередньо під цим пунктом плану",
     "directUnderOutlinePointShort": "Безпосередньо під пунктом",
     "currentSubPoint": "Підпункт: {{subPoint}}",
-    "subPointClearedOnMove": "Якщо зберегти думку під іншим пунктом плану, поточна прив'язка до підпункту буде знята."
+    "subPointClearedOnMove": "Якщо зберегти думку під іншим пунктом плану, поточна прив'язка до підпункту буде знята.",
+    "subPointLabel": "Підпункт",
+    "noSubPoint": "Безпосередньо під пунктом плану"
   },
   "structure": {
     "title": "Композиція проповіді:",
@@ -594,6 +596,7 @@
     "thoughts": "думок",
     "addSubPoint": "Додати підпункт",
     "subPointPlaceholder": "Назва підпункту...",
+    "subPointDeleteConfirm": "{{count}} думка(ок) втратить групування",
     "dropThoughtsHere": "Перетягніть думки сюди",
     "dropThoughtsToAdd": "Перетягніть думки сюди, щоб додати до цього пункту",
     "dropThoughtsToSubPoint": "Перетягніть думки в цей підпункт",

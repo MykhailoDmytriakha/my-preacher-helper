@@ -362,7 +362,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
         if (p.id !== outlinePointId) return p;
         const existing = p.subPoints ?? [];
         const maxPos = existing.length > 0 ? Math.max(...existing.map((sp) => sp.position)) : 0;
-        const newSp: SubPoint = { id: `sp-${Date.now()}`, text: text.trim(), position: maxPos + 1000 };
+        const newSp: SubPoint = { id: `sp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, text: text.trim(), position: maxPos + 1000 };
         return { ...p, subPoints: [...existing, newSp] };
       });
       return acc;
@@ -614,6 +614,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
                               onEdit={handleEditSubPoint}
                               onDelete={handleDeleteSubPoint}
                               onReorder={handleReorderSubPoints}
+                              getAffectedThoughtCount={(spId) => sermon.thoughts.filter((th) => th.subPointId === spId).length}
                               t={t}
                             />
                           )}

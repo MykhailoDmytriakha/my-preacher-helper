@@ -252,7 +252,7 @@ describe('SermonPointSelector', () => {
               fireEvent.click(screen.getByText('SermonOutline point not assigned'));
               await waitFor(() => screen.getByText('First main point'));
               fireEvent.click(screen.getByText('First main point'));
-              await waitFor(() => expect(mockOnSermonPointChange).toHaveBeenCalledWith('main-1'));
+              await waitFor(() => expect(mockOnSermonPointChange).toHaveBeenCalledWith('main-1', null));
             }
           },
           {
@@ -269,7 +269,7 @@ describe('SermonPointSelector', () => {
               fireEvent.click(screen.getByText(/First main point/));
               await waitFor(() => screen.getByText('No outline point selected'));
               fireEvent.click(screen.getByText('No outline point selected'));
-              await waitFor(() => expect(mockOnSermonPointChange).toHaveBeenCalledWith(null));
+              await waitFor(() => expect(mockOnSermonPointChange).toHaveBeenCalledWith(null, null));
             }
           },
           {
@@ -484,9 +484,11 @@ describe('SermonPointSelector', () => {
                 />
               );
               fireEvent.click(screen.getByText(/First main point/));
-              await waitFor(() =>
-                expect(screen.getByText('First main point').closest('button')).toHaveClass('bg-blue-50')
-              );
+              await waitFor(() => {
+                // The trigger button has bg-blue-50 and rounded-full
+                const triggerButton = screen.getAllByText(/First main point/)[0].closest('button');
+                expect(triggerButton).toHaveClass('bg-blue-50');
+              });
             }
           },
           {

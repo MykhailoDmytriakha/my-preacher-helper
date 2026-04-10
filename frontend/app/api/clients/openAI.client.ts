@@ -413,12 +413,12 @@ function findMatchingSubPoint(aiSubPointText: string, outlinePoint: SermonPoint)
   );
   if (match) return match.id;
 
-  // Word overlap
-  const aiWords = new Set(normalized.split(/\s+/).filter(w => w.length > 2));
+  // Word overlap (include words ≥2 chars to support abbreviations like "NT", "OT", "НЗ")
+  const aiWords = new Set(normalized.split(/\s+/).filter(w => w.length > 1));
   let bestScore = 0;
   let bestId: string | null = null;
   for (const sp of subs) {
-    const spWords = new Set(sp.text.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+    const spWords = new Set(sp.text.toLowerCase().split(/\s+/).filter(w => w.length > 1));
     let score = 0;
     for (const w of aiWords) { if (spWords.has(w)) score++; }
     if (score > bestScore) { bestScore = score; bestId = sp.id; }
@@ -449,13 +449,17 @@ function buildSortedItem(
     ?? null;
 
   const nextOutlinePointId = resolvedOutlinePoint?.id ?? item.outlinePointId ?? null;
+  const outlinePointChanged = nextOutlinePointId !== (item.outlinePointId ?? null);
+  const aiSuggestedSubPoint = subPointAssignments[key]
+    ? findMatchingSubPoint(subPointAssignments[key], resolvedOutlinePoint!)
+    : undefined; // undefined = AI didn't mention subPoint; null would mean explicit clear
+
   const nextSubPointId = resolvedOutlinePoint
-    ? normalizeSubPointId(
-      subPointAssignments[key]
-        ? findMatchingSubPoint(subPointAssignments[key], resolvedOutlinePoint)
-        : null,
-      resolvedOutlinePoint.subPoints
-    )
+    ? aiSuggestedSubPoint !== undefined
+      ? normalizeSubPointId(aiSuggestedSubPoint, resolvedOutlinePoint.subPoints)
+      : outlinePointChanged
+        ? null // outline point changed — sub-point no longer valid
+        : normalizeSubPointId(item.subPointId, resolvedOutlinePoint.subPoints) // preserve existing
     : null;
 
   if (

@@ -14,6 +14,7 @@ interface SubPointListProps {
   onEdit: (outlinePointId: string, subPointId: string, newText: string) => void;
   onDelete: (outlinePointId: string, subPointId: string) => void;
   onReorder?: (outlinePointId: string, sourceIndex: number, destinationIndex: number) => void;
+  getAffectedThoughtCount?: (subPointId: string) => number;
   t: (key: string, options?: Record<string, unknown>) => string;
 }
 
@@ -25,12 +26,14 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   onEdit,
   onDelete,
   onReorder,
+  getAffectedThoughtCount,
   t,
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [addText, setAddText] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const addInputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -69,6 +72,22 @@ export const SubPointList: React.FC<SubPointListProps> = ({
     setEditText("");
   };
 
+  const handleDeleteClick = (spId: string) => {
+    const count = getAffectedThoughtCount?.(spId) ?? 0;
+    if (count > 0) {
+      setConfirmDeleteId(spId);
+    } else {
+      onDelete(outlinePointId, spId);
+    }
+  };
+
+  const handleConfirmDelete = () => {
+    if (confirmDeleteId) {
+      onDelete(outlinePointId, confirmDeleteId);
+      setConfirmDeleteId(null);
+    }
+  };
+
   const handleDragEnd = (result: DropResult) => {
     if (!result.destination || result.source.index === result.destination.index) return;
     onReorder?.(outlinePointId, result.source.index, result.destination.index);
@@ -83,18 +102,17 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   const renderSubPointContent = (sp: SubPoint, dragHandleProps?: React.HTMLAttributes<HTMLElement> | null) => (
     <>
       {canReorder && dragHandleProps ? (
-        <div {...(dragHandleProps as React.HTMLAttributes<HTMLDivElement>)} className="cursor-grab flex-shrink-0 w-3 flex items-center justify-center">
-          <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-500 group-hover/sp:hidden" />
-          <Bars2Icon className="h-3 w-3 text-gray-300 dark:text-gray-600 hidden group-hover/sp:block" />
+        <div {...(dragHandleProps as React.HTMLAttributes<HTMLDivElement>)} className="cursor-grab flex-shrink-0 w-4 flex items-center justify-center touch-manipulation">
+          <Bars2Icon className="h-3 w-3 text-gray-300 dark:text-gray-600" />
         </div>
       ) : (
         <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-500 flex-shrink-0" />
       )}
-      <span className="flex-1 text-sm text-gray-500 dark:text-gray-400 min-w-0 truncate">
+      <span className="flex-1 text-sm text-gray-500 dark:text-gray-400 min-w-0 truncate" title={sp.text}>
         {sp.text}
       </span>
       {!isPointLocked && (
-        <div className="flex items-center gap-0.5 opacity-0 group-hover/sp:opacity-100 transition-opacity flex-shrink-0">
+        <div className="flex items-center gap-0.5 opacity-40 group-hover/sp:opacity-100 transition-opacity flex-shrink-0">
           <button
             onClick={() => { setEditingId(sp.id); setEditText(sp.text); }}
             className="p-0.5 text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400"
@@ -103,7 +121,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
             <PencilIcon className="h-3.5 w-3.5" />
           </button>
           <button
-            onClick={() => onDelete(outlinePointId, sp.id)}
+            onClick={() => handleDeleteClick(sp.id)}
             className="p-0.5 text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400"
             aria-label={t("common.delete")}
           >
@@ -194,6 +212,30 @@ export const SubPointList: React.FC<SubPointListProps> = ({
             ))}
           </div>
         )
+      )}
+
+      {confirmDeleteId && (
+        <div className="flex items-center gap-2 py-1.5 px-2 mt-1 rounded bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-xs">
+          <span className="text-red-600 dark:text-red-400 flex-1">
+            {t("structure.subPointDeleteConfirm", {
+              defaultValue: "{{count}} thought(s) will be ungrouped",
+              count: getAffectedThoughtCount?.(confirmDeleteId) ?? 0,
+            })}
+          </span>
+          <button
+            onClick={handleConfirmDelete}
+            className="px-2 py-0.5 rounded bg-red-100 hover:bg-red-200 dark:bg-red-800/40 dark:hover:bg-red-800/60 text-red-700 dark:text-red-300 font-medium transition-colors"
+          >
+            {t("common.delete")}
+          </button>
+          <button
+            onClick={() => setConfirmDeleteId(null)}
+            className="p-0.5 text-gray-400 hover:text-gray-600 dark:text-gray-500"
+            aria-label={t("common.cancel")}
+          >
+            <XMarkIcon className="h-3.5 w-3.5" />
+          </button>
+        </div>
       )}
 
       {!isPointLocked && (

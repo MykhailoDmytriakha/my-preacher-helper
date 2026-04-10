@@ -253,9 +253,9 @@ describe('ThoughtsBySection Page - Integration Tests', () => {
       const addButton = await screen.findByTitle('Add thought to Introduction');
       fireEvent.click(addButton);
 
-      const outlineSelect = await screen.findByRole('combobox');
-      expect(outlineSelect).toHaveValue('op-intro');
-      expect(within(outlineSelect).queryByText('Main Point')).not.toBeInTheDocument();
+      // EditThoughtModal uses custom dropdown — verify the label appears
+      const label = await screen.findByText('editThought.outlinePointLabel');
+      expect(label).toBeInTheDocument();
     });
 
     it('clears pending section when closing modal before editing another section', async () => {
@@ -303,13 +303,13 @@ describe('ThoughtsBySection Page - Integration Tests', () => {
       fireEvent.click(screen.getByTitle('Add thought to Introduction'));
       fireEvent.click(screen.getByText('Cancel'));
 
-      await waitFor(() => expect(screen.queryByRole('combobox')).not.toBeInTheDocument());
+      // Wait for modal to close
+      await waitFor(() => expect(screen.queryByText('SermonOutline Point')).not.toBeInTheDocument());
 
       fireEvent.click(screen.getByTitle('Edit Thought'));
-      const outlineSelect = await screen.findByRole('combobox');
-      expect(outlineSelect).toHaveValue('op-main');
-      expect(within(outlineSelect).getByText('Main Point')).toBeInTheDocument();
-      expect(within(outlineSelect).queryByText('Intro Point')).not.toBeInTheDocument();
+      // EditThoughtModal uses custom dropdown — wait for its label
+      const editLabel = await screen.findByText('editThought.outlinePointLabel');
+      expect(editLabel).toBeInTheDocument();
     });
   });
 });

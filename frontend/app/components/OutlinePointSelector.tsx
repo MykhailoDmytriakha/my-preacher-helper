@@ -12,7 +12,7 @@ import { normalizeStructureTag, CANONICAL_TO_SECTION, isStructureTag } from "@ut
 interface SermonPointSelectorProps {
   thought: Thought;
   sermonOutline?: SermonOutline;
-  onSermonPointChange: (outlinePointId: string | null | undefined) => Promise<void>;
+  onSermonPointChange: (outlinePointId: string | null | undefined, subPointId?: string | null) => Promise<void>;
   disabled?: boolean;
 }
 
@@ -78,12 +78,12 @@ export default function SermonPointSelector({
     : undefined;
   const subPointChipText = location?.subPoint?.text ?? null;
 
-  const handleSermonPointSelect = async (outlinePointId: string | null) => {
+  const handleSermonPointSelect = async (outlinePointId: string | null, subPointId?: string | null) => {
     if (isUpdating || disabled) return;
 
     setIsUpdating(true);
     try {
-      await onSermonPointChange(outlinePointId);
+      await onSermonPointChange(outlinePointId, subPointId ?? null);
       setIsOpen(false);
     } catch (error) {
       console.error('Failed to update outline point:', error);
@@ -157,17 +157,36 @@ export default function SermonPointSelector({
                       {t(`outline.${section === 'main' ? 'mainPoints' : section}`)}
                     </div>
                     {points.map((point: SermonPoint) => (
-                      <button
-                        key={point.id}
-                        onClick={() => handleSermonPointSelect(point.id)}
-                        disabled={isUpdating}
-                        className={`w-full text-left px-4 py-2 text-sm transition-colors disabled:opacity-50 ${thought.outlinePointId === point.id
-                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200'
-                            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                          }`}
-                      >
-                        {point.text}
-                      </button>
+                      <div key={point.id}>
+                        <button
+                          onClick={() => handleSermonPointSelect(point.id, null)}
+                          disabled={isUpdating}
+                          className={`w-full text-left px-4 py-2 text-sm transition-colors disabled:opacity-50 ${thought.outlinePointId === point.id && !thought.subPointId
+                              ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200'
+                              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                            }`}
+                        >
+                          {point.text}
+                        </button>
+                        {point.subPoints && point.subPoints.length > 0 && (
+                          [...point.subPoints].sort((a, b) => a.position - b.position).map((sp) => (
+                            <button
+                              key={sp.id}
+                              onClick={() => handleSermonPointSelect(point.id, sp.id)}
+                              disabled={isUpdating}
+                              className={`w-full text-left pl-8 pr-4 py-1.5 text-sm transition-colors disabled:opacity-50 ${thought.outlinePointId === point.id && thought.subPointId === sp.id
+                                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200'
+                                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                }`}
+                            >
+                              <span className="inline-flex items-center gap-1.5">
+                                <span className="w-1 h-1 rounded-full bg-gray-400 dark:bg-gray-500 flex-shrink-0" />
+                                {sp.text}
+                              </span>
+                            </button>
+                          ))
+                        )}
+                      </div>
                     ))}
                   </div>
                 ) : null
@@ -212,14 +231,30 @@ export default function SermonPointSelector({
                     {t(`outline.${section === 'main' ? 'mainPoints' : section}`)}
                   </div>
                   {points.map((point: SermonPoint) => (
-                    <button
-                      key={point.id}
-                      onClick={() => handleSermonPointSelect(point.id)}
-                      disabled={isUpdating}
-                      className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-                    >
-                      {point.text}
-                    </button>
+                    <div key={point.id}>
+                      <button
+                        onClick={() => handleSermonPointSelect(point.id, null)}
+                        disabled={isUpdating}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                      >
+                        {point.text}
+                      </button>
+                      {point.subPoints && point.subPoints.length > 0 && (
+                        [...point.subPoints].sort((a, b) => a.position - b.position).map((sp) => (
+                          <button
+                            key={sp.id}
+                            onClick={() => handleSermonPointSelect(point.id, sp.id)}
+                            disabled={isUpdating}
+                            className="w-full text-left pl-8 pr-4 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+                          >
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="w-1 h-1 rounded-full bg-gray-400 dark:bg-gray-500 flex-shrink-0" />
+                              {sp.text}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
                   ))}
                 </div>
               ) : null

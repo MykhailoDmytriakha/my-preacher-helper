@@ -105,7 +105,7 @@ const SubPointDropTarget: React.FC<{
             isOver ? "bg-blue-400 dark:bg-blue-400" : "bg-slate-400 dark:bg-slate-500"
           }`}
         />
-        <span className="min-w-0 truncate text-xs font-semibold text-slate-600 dark:text-slate-300">
+        <span className="min-w-0 truncate text-xs font-semibold text-slate-600 dark:text-slate-300" title={subPoint.text}>
           {subPoint.text}
         </span>
       </div>
@@ -573,6 +573,7 @@ const SermonPointPlaceholder: React.FC<{
               onEdit={onEditSubPoint ?? (() => undefined)}
               onDelete={onDeleteSubPoint ?? (() => undefined)}
               onReorder={onReorderSubPoints}
+              getAffectedThoughtCount={(spId) => pointItems.filter((it) => it.subPointId === spId).length}
               t={t}
             />
           )}

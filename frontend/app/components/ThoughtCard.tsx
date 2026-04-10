@@ -37,7 +37,7 @@ interface ThoughtCardProps {
   onDelete: (index: number, thoughtId: string) => void;
   onEditStart: (thought: Thought, index: number) => void;
   onThoughtUpdate?: (updatedThought: Thought) => void;
-  onThoughtOutlinePointChange?: (thought: Thought, outlinePointId?: string | null) => Promise<void> | void;
+  onThoughtOutlinePointChange?: (thought: Thought, outlinePointId?: string | null, subPointId?: string | null) => Promise<void> | void;
   syncState?: OptimisticEntitySyncState;
   onRetrySync?: (thoughtId: string) => void;
   isReadOnly?: boolean;
@@ -234,10 +234,10 @@ const ThoughtCard = ({
     return `${baseStyle} bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600`;
   }, [hasInconsistentSection, hasMultipleStructureTags, isDeleting, isError, isPending, isSuccess, needsSectionTag]);
 
-  const handleSermonPointChange = useCallback(async (outlinePointId: string | null | undefined) => {
+  const handleSermonPointChange = useCallback(async (outlinePointId: string | null | undefined, subPointId?: string | null) => {
     if (isReadOnly) return;
     if (!sermonId || !onThoughtUpdate || !onThoughtOutlinePointChange) return;
-    await onThoughtOutlinePointChange(thought, outlinePointId);
+    await onThoughtOutlinePointChange(thought, outlinePointId, subPointId);
   }, [isReadOnly, onThoughtOutlinePointChange, onThoughtUpdate, sermonId, thought]);
 
   // Get warning messages if any issues exist

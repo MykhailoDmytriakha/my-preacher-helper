@@ -520,7 +520,9 @@
     "directUnderOutlinePoint": "Directly under this outline point",
     "directUnderOutlinePointShort": "Directly under point",
     "currentSubPoint": "Sub-point: {{subPoint}}",
-    "subPointClearedOnMove": "Saving with a different outline point will remove the current sub-point assignment."
+    "subPointClearedOnMove": "Saving with a different outline point will remove the current sub-point assignment.",
+    "subPointLabel": "Sub-point",
+    "noSubPoint": "Directly under outline point"
   },
   "structure": {
     "title": "Sermon Composition:",
@@ -594,6 +596,7 @@
     "thoughts": "thoughts",
     "addSubPoint": "Add sub-point",
     "subPointPlaceholder": "Sub-point name...",
+    "subPointDeleteConfirm": "{{count}} thought(s) will be ungrouped",
     "dropThoughtsHere": "Drop thoughts here",
     "dropThoughtsToAdd": "Drop thoughts here to add to this point",
     "dropThoughtsToSubPoint": "Drop thoughts into this sub-point",

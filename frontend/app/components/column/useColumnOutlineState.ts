@@ -316,7 +316,7 @@ export function useColumnOutlineState({
         ? Math.max(...existing.map((sp) => sp.position))
         : 0;
       const newSubPoint: SubPoint = {
-        id: `sp-${Date.now().toString()}`,
+        id: `sp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         text: text.trim(),
         position: maxPos + 1000,
       };

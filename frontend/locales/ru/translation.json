@@ -520,7 +520,9 @@
     "directUnderOutlinePoint": "Напрямую под этим пунктом плана",
     "directUnderOutlinePointShort": "Напрямую под пунктом",
     "currentSubPoint": "Подпункт: {{subPoint}}",
-    "subPointClearedOnMove": "Если сохранить мысль под другим пунктом плана, текущая привязка к подпункту будет снята."
+    "subPointClearedOnMove": "Если сохранить мысль под другим пунктом плана, текущая привязка к подпункту будет снята.",
+    "subPointLabel": "Подпункт",
+    "noSubPoint": "Напрямую под пунктом плана"
   },
   "structure": {
     "title": "Композиция проповеди:",
@@ -594,6 +596,7 @@
     "thoughts": "мыслей",
     "addSubPoint": "Добавить подпункт",
     "subPointPlaceholder": "Название подпункта...",
+    "subPointDeleteConfirm": "{{count}} мысль(ей) потеряет группировку",
     "dropThoughtsHere": "Перетащите мысли сюда",
     "dropThoughtsToAdd": "Перетащите мысли сюда, чтобы добавить к этому пункту",
     "dropThoughtsToSubPoint": "Перетащите мысли в этот подпункт",

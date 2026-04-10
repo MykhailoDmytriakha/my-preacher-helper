@@ -24,7 +24,7 @@ interface EditThoughtModalProps {
   allowedTags: { name: string; color: string; translationKey?: string }[];
   sermonOutline?: SermonOutline;
   containerSection?: string;
-  onSave: (updatedText: string, updatedTags: string[], outlinePointId?: string | null) => void;
+  onSave: (updatedText: string, updatedTags: string[], outlinePointId?: string | null, subPointId?: string | null) => void;
   onClose: () => void;
   allowOffline?: boolean;
 }
@@ -135,56 +135,137 @@ const getFilteredSermonPoints = (
 
 const OutlinePointSelect = ({
   selectedSermonPointId,
-  onChange,
+  selectedSubPointId,
+  onSelect,
   filteredSermonPoints,
-  selectedPointInfo,
   t,
   disabled = false,
 }: {
   selectedSermonPointId: string | null | undefined;
-  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  selectedSubPointId: string | null | undefined;
+  onSelect: (outlinePointId: string | null, subPointId: string | null) => void;
   filteredSermonPoints: Partial<Record<OutlineSectionKey, SermonPoint[]>>;
-  selectedPointInfo: SermonPointInfo | undefined;
   t: TranslateFn;
   disabled?: boolean;
-}) => (
-  <div className="mb-4">
-    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-      {t('editThought.outlinePointLabel') || 'SermonOutline Point'}
-    </label>
-    <select
-      value={selectedSermonPointId || ""}
-      onChange={onChange}
-      className="w-full p-2 border rounded dark:bg-gray-700 dark:text-gray-200"
-      disabled={disabled}
-    >
-      <option value="">{t('editThought.noSermonPoint') || 'No outline point selected'}</option>
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-      {/* Group outline points by section */}
-      {Object.entries(filteredSermonPoints).map(([section, points]) =>
-        points?.length ? (
-          <optgroup
-            key={section}
-            label={t(OUTLINE_SECTION_LABEL_KEYS[section as OutlineSectionKey]) || section}
-          >
-            {points.map((point) => (
-              <option key={point.id} value={point.id}>
-                {point.text}
-              </option>
-            ))}
-          </optgroup>
-        ) : null
-      )}
-    </select>
+  // Find selected point/sub-point for display
+  const selectedPoint = selectedSermonPointId
+    ? Object.values(filteredSermonPoints).flat().find((p) => p?.id === selectedSermonPointId)
+    : null;
+  const selectedSubPoint = selectedPoint?.subPoints?.find((sp) => sp.id === selectedSubPointId);
 
-    {selectedPointInfo && (
-      <p className="mt-1 text-sm text-gray-500">
-        {t('editThought.selectedSermonPoint', { section: selectedPointInfo.section }) ||
-          `Selected outline point from ${selectedPointInfo.section}`}
-      </p>
-    )}
-  </div>
-);
+  // Build display label
+  const displayLabel = selectedPoint
+    ? selectedSubPoint
+      ? `${selectedPoint.text} / ${selectedSubPoint.text}`
+      : selectedPoint.text
+    : t('editThought.noSermonPoint') || 'No outline point selected';
+
+  const handleSelect = (outlinePointId: string | null, subPointId: string | null) => {
+    if (disabled) return;
+    onSelect(outlinePointId, subPointId);
+    setIsOpen(false);
+  };
+
+  // Close on outside click
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  return (
+    <div className="mb-2" ref={dropdownRef}>
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+        {t('editThought.outlinePointLabel') || 'SermonOutline Point'}
+      </label>
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => !disabled && setIsOpen(!isOpen)}
+          disabled={disabled}
+          className={`w-full text-left p-2.5 border rounded-lg flex items-center justify-between gap-2 transition-colors ${
+            selectedPoint
+              ? 'border-blue-200 bg-blue-50/50 text-gray-800 dark:border-blue-800 dark:bg-blue-900/30 dark:text-gray-200'
+              : 'border-gray-300 text-gray-500 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-400'
+          } ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-blue-300 dark:hover:border-blue-700'}`}
+        >
+          <span className="truncate text-sm">{displayLabel}</span>
+          <svg className={`w-4 h-4 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {isOpen && (
+          <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => handleSelect(null, null)}
+              className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                !selectedSermonPointId
+                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200'
+                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+            >
+              {t('editThought.noSermonPoint')}
+            </button>
+
+            {Object.entries(filteredSermonPoints).map(([section, points]) =>
+              points?.length ? (
+                <div key={section}>
+                  <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-900/50">
+                    {t(OUTLINE_SECTION_LABEL_KEYS[section as OutlineSectionKey]) || section}
+                  </div>
+                  {points.map((point) => (
+                    <div key={point.id}>
+                      <button
+                        type="button"
+                        onClick={() => handleSelect(point.id, null)}
+                        className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                          selectedSermonPointId === point.id && !selectedSubPointId
+                            ? 'bg-blue-50 text-blue-700 font-medium dark:bg-blue-900/50 dark:text-blue-200'
+                            : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        {point.text}
+                      </button>
+                      {point.subPoints && point.subPoints.length > 0 && (
+                        [...point.subPoints].sort((a, b) => a.position - b.position).map((sp) => (
+                          <button
+                            type="button"
+                            key={sp.id}
+                            onClick={() => handleSelect(point.id, sp.id)}
+                            className={`w-full text-left pl-7 pr-3 py-1.5 text-sm transition-colors ${
+                              selectedSermonPointId === point.id && selectedSubPointId === sp.id
+                                ? 'bg-blue-50 text-blue-700 font-medium dark:bg-blue-900/50 dark:text-blue-200'
+                                : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                            }`}
+                          >
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="w-1 h-1 rounded-full bg-gray-400 dark:bg-gray-500 flex-shrink-0" />
+                              {sp.text}
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : null
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const TagPill = ({
   label,
@@ -307,6 +388,7 @@ export default function EditThoughtModal({
   const [text, setText] = useState(initialText);
   const [tags, setTags] = useState<string[]>(initialTags);
   const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | null | undefined>(initialSermonPointId);
+  const [selectedSubPointId, setSelectedSubPointId] = useState<string | null | undefined>(initialSubPointId);
   const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -320,7 +402,8 @@ export default function EditThoughtModal({
   const isChanged =
     text !== initialText ||
     !areStringArraysEqual(tags, initialTags) ||
-    selectedSermonPointId !== initialSermonPointId;
+    selectedSermonPointId !== initialSermonPointId ||
+    (selectedSubPointId ?? null) !== (initialSubPointId ?? null);
 
   const handleAddTag = (tag: string) => {
     if (isReadOnly) return;
@@ -334,17 +417,11 @@ export default function EditThoughtModal({
     setTags(tags.filter((_, i) => i !== index));
   };
 
-  const handleSermonPointChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (isReadOnly) return;
-    const value = e.target.value;
-    setSelectedSermonPointId(value === "" ? null : value);
-  };
-
   const handleSave = () => {
     if (isReadOnly) return;
     setIsSubmitting(true);
     try {
-      onSave(text, tags, selectedSermonPointId);
+      onSave(text, tags, selectedSermonPointId, selectedSubPointId ?? null);
       onClose();
     } catch (error) {
       console.error("Error saving thought:", error);
@@ -375,28 +452,7 @@ export default function EditThoughtModal({
     }
   };
 
-  const allSermonPoints = buildAllSermonPoints(sermonOutline, t);
-  const selectedPointInfo = allSermonPoints.find(point => point.id === selectedSermonPointId);
   const filteredSermonPoints = getFilteredSermonPoints(sermonOutline, containerSection);
-  const initialLocation = resolveThoughtOutlineLocation(sermonOutline, initialSermonPointId, initialSubPointId);
-  const currentLocationText = initialLocation
-    ? formatOutlinePlacementDetail(t, initialLocation.subPoint?.text ?? null)
-    : translateOrFallback(t, 'editThought.noSermonPoint', 'No outline point selected');
-  const saveLocationText = selectedPointInfo
-    ? formatOutlinePlacementDetail(
-      t,
-      selectedSermonPointId === initialSermonPointId ? initialLocation?.subPoint?.text ?? null : null
-    )
-    : translateOrFallback(t, 'editThought.noSermonPoint', 'No outline point selected');
-  const showSaveLocationSummary = selectedSermonPointId !== initialSermonPointId;
-  const willClearSubPointAssignment = Boolean(initialLocation?.subPoint && selectedSermonPointId !== initialSermonPointId);
-  const currentLocationLabel = translateOrFallback(t, 'editThought.currentLocationLabel', 'Current location');
-  const saveLocationLabel = translateOrFallback(t, 'editThought.saveLocationLabel', 'After save');
-  const clearSubPointNotice = translateOrFallback(
-    t,
-    'editThought.subPointClearedOnMove',
-    'Saving with a different outline point will remove the current sub-point assignment.'
-  );
 
   const availableTags = allowedTags.filter(allowedTag =>
     !tags.some(selectedTag => {
@@ -438,45 +494,17 @@ export default function EditThoughtModal({
           <div className="sm:flex-1 sm:overflow-y-auto sm:min-h-0 w-full flex flex-col gap-6">
             <div ref={metaRef} className="space-y-4">
               {sermonOutline && (
-                <div className="space-y-3">
-                  <OutlinePointSelect
-                    selectedSermonPointId={selectedSermonPointId}
-                    onChange={handleSermonPointChange}
-                    filteredSermonPoints={filteredSermonPoints}
-                    selectedPointInfo={selectedPointInfo}
-                    t={t}
-                    disabled={isReadOnly}
-                  />
-
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                      <span className="font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                        {currentLocationLabel}
-                      </span>
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
-                        {currentLocationText}
-                      </span>
-
-                      {showSaveLocationSummary && (
-                        <>
-                          <span className="text-slate-300 dark:text-slate-600">→</span>
-                          <span className="font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                            {saveLocationLabel}
-                          </span>
-                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
-                            {saveLocationText}
-                          </span>
-                        </>
-                      )}
-                    </div>
-
-                    {willClearSubPointAssignment && (
-                      <p className="text-xs text-amber-700 dark:text-amber-300">
-                        {clearSubPointNotice}
-                      </p>
-                    )}
-                  </div>
-                </div>
+                <OutlinePointSelect
+                  selectedSermonPointId={selectedSermonPointId}
+                  selectedSubPointId={selectedSubPointId}
+                  onSelect={(outlinePointId, subPointId) => {
+                    setSelectedSermonPointId(outlinePointId);
+                    setSelectedSubPointId(subPointId);
+                  }}
+                  filteredSermonPoints={filteredSermonPoints}
+                  t={t}
+                  disabled={isReadOnly}
+                />
               )}
 
               <TagsSection

@@ -714,12 +714,13 @@ useEffect(() => {
     });
   }, [setSermon]);
 
-  const handleThoughtOutlinePointChange = useCallback(async (thought: Thought, outlinePointId?: string | null) => {
+  const handleThoughtOutlinePointChange = useCallback(async (thought: Thought, outlinePointId?: string | null, subPointId?: string | null) => {
+    const outlineChanged = outlinePointId !== (thought.outlinePointId ?? null);
     await handleSaveThoughtPatch(thought, {
       text: thought.text,
       tags: thought.tags,
       outlinePointId,
-      subPointId: outlinePointId === (thought.outlinePointId ?? null) ? thought.subPointId ?? null : null,
+      subPointId: subPointId !== undefined ? subPointId : (outlineChanged ? null : thought.subPointId ?? null),
     });
   }, [handleSaveThoughtPatch]);
 
@@ -796,7 +797,7 @@ useEffect(() => {
     void executeDelete();
   }, [displaySermon, persistStructureForThoughts, sermon, setSermon, t, thoughtSync]);
 
-  const handleSaveEditedThought = async (updatedText: string, updatedTags: string[], outlinePointId?: string | null) => {
+  const handleSaveEditedThought = async (updatedText: string, updatedTags: string[], outlinePointId?: string | null, subPointId?: string | null) => {
     if (!editingModalData) return;
     const currentSermon = displaySermon ?? sermon;
     if (!currentSermon) {
@@ -812,11 +813,12 @@ useEffect(() => {
       return;
     }
 
+    const outlineChanged = outlinePointId !== (thoughtToUpdate.outlinePointId ?? null);
     await handleSaveThoughtPatch(thoughtToUpdate, {
       text: updatedText.trim(),
       tags: updatedTags,
       outlinePointId,
-      subPointId: outlinePointId === (thoughtToUpdate.outlinePointId ?? null) ? thoughtToUpdate.subPointId ?? null : null,
+      subPointId: subPointId !== undefined ? subPointId : (outlineChanged ? null : thoughtToUpdate.subPointId ?? null),
     });
     setEditingModalData(null);
   };

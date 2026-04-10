@@ -157,10 +157,9 @@ describe('EditThoughtModal Component', () => {
     const textArea = screen.getByTestId('mock-rich-editor');
     expect(textArea).toHaveValue('Test thought content');
 
-    // Check outline selector
+    // Check outline selector — custom dropdown shows selected point name
     expect(screen.getByText('SermonOutline Point')).toBeInTheDocument();
-    const select = screen.getByRole('combobox');
-    expect(select).toHaveValue('intro1');
+    expect(screen.getByText('Introduction point 1')).toBeInTheDocument();
 
     // Check tags section
     expect(screen.getByText('Tags')).toBeInTheDocument();
@@ -171,7 +170,7 @@ describe('EditThoughtModal Component', () => {
     expect(screen.getByText('Save')).toBeInTheDocument();
   });
 
-  test('shows the current sub-point location when the thought belongs to a sub-point', () => {
+  test('shows sub-point in the dropdown display when thought has a sub-point', () => {
     render(
       <EditThoughtModal
         {...mockProps}
@@ -179,12 +178,11 @@ describe('EditThoughtModal Component', () => {
       />
     );
 
-    expect(screen.getByText('Current location')).toBeInTheDocument();
-    expect(screen.getByText('Sub-point: Intro sub-point 1')).toBeInTheDocument();
-    expect(screen.queryByText('After save')).not.toBeInTheDocument();
+    // Custom dropdown shows "OutlinePoint / SubPoint" format
+    expect(screen.getByText('Introduction point 1 / Intro sub-point 1')).toBeInTheDocument();
   });
 
-  test('shows the save location and sub-point removal note when the outline point changes', () => {
+  test('allows selecting a different outline point from the custom dropdown', () => {
     render(
       <EditThoughtModal
         {...mockProps}
@@ -192,13 +190,11 @@ describe('EditThoughtModal Component', () => {
       />
     );
 
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'intro2' } });
+    // Open dropdown
+    fireEvent.click(screen.getByText('Introduction point 1 / Intro sub-point 1'));
 
-    expect(screen.getByText('After save')).toBeInTheDocument();
-    expect(screen.getByText('Directly under this outline point')).toBeInTheDocument();
-    expect(
-      screen.getByText('Saving with a different outline point will remove the current sub-point assignment.')
-    ).toBeInTheDocument();
+    // Should see outline points in the dropdown
+    expect(screen.getByText('Introduction point 2')).toBeInTheDocument();
   });
 
   test('calls onClose when cancel button is clicked', () => {
@@ -229,25 +225,18 @@ describe('EditThoughtModal Component', () => {
     expect(screen.getByText('Main Part')).toBeInTheDocument();
   });
 
-  test('updates outline point when selection changes', () => {
-    // Mock implementation of onSave that captures the arguments
+  test('updates outline point when selection changes via custom dropdown', () => {
     const onSaveMock = jest.fn();
     const props = { ...mockProps, onSave: onSaveMock };
 
     render(<EditThoughtModal {...props} />);
 
-    // Get the select element and change its value
-    const select = screen.getByRole('combobox');
-    fireEvent.change(select, { target: { value: 'main1' } });
+    // Open dropdown and select a different point
+    fireEvent.click(screen.getByText('Introduction point 1'));
+    fireEvent.click(screen.getByText('Introduction point 2'));
 
-    // Click save to trigger the save action
-    const saveButton = screen.getByText('Save');
-    fireEvent.click(saveButton);
-
-    // Verify onSave was called
-    expect(onSaveMock).toHaveBeenCalled();
-
-    // Instead of checking the exact arguments, just verify it was called once
+    // Click save
+    fireEvent.click(screen.getByText('Save'));
     expect(onSaveMock).toHaveBeenCalledTimes(1);
   });
 
@@ -271,7 +260,8 @@ describe('EditThoughtModal Component', () => {
       expect(mockProps.onSave).toHaveBeenCalledWith(
         'Updated thought content',
         expect.any(Array),
-        expect.any(String)
+        expect.any(String),
+        null
       );
     });
   });
@@ -294,30 +284,26 @@ describe('EditThoughtModal Component', () => {
   test('filters outline points based on containerSection', () => {
     render(<EditThoughtModal {...mockProps} />);
 
-    // Should only show introduction points in the dropdown
-    const select = screen.getByRole('combobox');
-    const options = Array.from(select.querySelectorAll('option'));
+    // Open dropdown
+    fireEvent.click(screen.getByText('Introduction point 1'));
 
-    // There should be 3 options: the "No outline point" option and the 2 introduction points
-    expect(options.length).toBe(3);
-
-    // Check option values
-    expect(options[0].value).toBe(''); // No outline point
-    expect(options[1].value).toBe('intro1');
-    expect(options[2].value).toBe('intro2');
+    // Should only show introduction points (containerSection='introduction')
+    expect(screen.getByText('Introduction point 2')).toBeInTheDocument();
+    // Main/conclusion points should not be shown
+    expect(screen.queryByText('Main point 1')).not.toBeInTheDocument();
   });
 
   test('shows all outline sections when containerSection is not specified', () => {
     const props = { ...mockProps, containerSection: undefined };
     render(<EditThoughtModal {...props} />);
 
-    const select = screen.getByRole('combobox');
-    const options = Array.from(select.querySelectorAll('option'));
+    // Open dropdown
+    fireEvent.click(screen.getByText('Introduction point 1'));
 
-    // 1 placeholder + 2 intro + 2 main + 1 conclusion
-    expect(options.length).toBe(6);
-    expect(options[0].value).toBe('');
-    expect(options.map((o) => o.value)).toEqual(['', 'intro1', 'intro2', 'main1', 'main2', 'conclusion1']);
+    // Should show points from all sections
+    expect(screen.getByText('Introduction point 2')).toBeInTheDocument();
+    expect(screen.getByText('Main point 1')).toBeInTheDocument();
+    expect(screen.getByText('Conclusion point 1')).toBeInTheDocument();
   });
 
   test('uses canonical structure translations when translationKey is missing', () => {

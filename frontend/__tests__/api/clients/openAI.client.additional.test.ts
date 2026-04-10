@@ -443,7 +443,7 @@ describe('openAI.client additional coverage', () => {
       expect(result[0].outlinePoint?.text).toBe('New Point');
     });
 
-    it('clears stale sub-point ids when AI omits a sub-point assignment', async () => {
+    it('preserves existing sub-point id when AI omits a sub-point assignment and outline point unchanged', async () => {
       const subPointItems: ThoughtInStructure[] = [
         {
           id: 'keep-1111-1111-1111-111111111111',
@@ -468,6 +468,37 @@ describe('openAI.client additional coverage', () => {
       const result = await sortItemsWithAI('col-1', subPointItems, baseSermon, subPointOutlinePoints);
 
       expect(result[0].outlinePointId).toBe('op-main');
+      // When AI omits sub-point field and outline point hasn't changed, preserve existing assignment
+      expect(result[0].subPointId).toBe('sp-main');
+    });
+
+    it('clears sub-point id when AI omits assignment and outline point changed', async () => {
+      const subPointItems: ThoughtInStructure[] = [
+        {
+          id: 'move-1111-1111-1111-111111111111',
+          content: 'Move me to a different outline point',
+          outlinePointId: 'op-old',
+          subPointId: 'sp-old',
+        },
+      ];
+      const subPointOutlinePoints: SermonPoint[] = [
+        { id: 'op-old', text: 'Old Point', subPoints: [{ id: 'sp-old', text: 'Old sub', position: 1000 }] },
+        { id: 'op-new', text: 'New Point', subPoints: [{ id: 'sp-new', text: 'New sub', position: 1000 }] },
+      ];
+
+      mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+        success: true,
+        data: {
+          sortedItems: [{ key: 'move', outlinePoint: 'New Point' }],
+        },
+        refusal: null,
+        error: null,
+      });
+
+      const result = await sortItemsWithAI('col-1', subPointItems, baseSermon, subPointOutlinePoints);
+
+      expect(result[0].outlinePointId).toBe('op-new');
+      // When outline point changed, sub-point should be cleared (old sub-point belongs to old outline point)
       expect(result[0].subPointId).toBeNull();
     });
 

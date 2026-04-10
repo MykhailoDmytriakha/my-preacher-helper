@@ -470,7 +470,8 @@ describe('ThoughtCard Component', () => {
     await waitFor(() => {
       expect(onThoughtOutlinePointChange).toHaveBeenCalledWith(
         expect.objectContaining({ id: 'thought-1' }),
-        'point-1'
+        'point-1',
+        null
       );
     });
   });
