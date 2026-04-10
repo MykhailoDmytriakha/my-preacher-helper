@@ -16,6 +16,7 @@ import {
 } from "@/config/schemas/zod";
 import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, DirectionSuggestion, SermonContent, BrainstormSuggestion, SectionHints, SubPoint } from "@/models/models";
 import { validateAudioBlob, createAudioFile, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
+import { normalizeSubPointId } from "@/utils/subPoints";
 
 import { extractSermonContent, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
 import { buildPromptBlueprint, buildSimplePromptBlueprint } from "./promptBuilder";
@@ -278,23 +279,15 @@ export async function generateSermonVerses(sermon: Sermon): Promise<VerseWithRel
 
 type SortedItemResponse = { key: string; outlinePoint?: string; subPoint?: string; content?: string };
 
-function buildItemsMap(items: ThoughtInStructure[]): {
-  itemsMapByKey: Record<string, ThoughtInStructure>;
-  itemsWithExistingSermonPoints: Record<string, string>;
-} {
+function buildItemsMap(items: ThoughtInStructure[]): Record<string, ThoughtInStructure> {
   const itemsMapByKey: Record<string, ThoughtInStructure> = {};
-  const itemsWithExistingSermonPoints: Record<string, string> = {};
 
   items.forEach(item => {
     const shortKey = item.id.slice(0, 4);
     itemsMapByKey[shortKey] = item;
-
-    if (item.outlinePointId) {
-      itemsWithExistingSermonPoints[shortKey] = item.outlinePointId;
-    }
   });
 
-  return { itemsMapByKey, itemsWithExistingSermonPoints };
+  return itemsMapByKey;
 }
 
 function logItemKeyMapping(itemsMapByKey: Record<string, ThoughtInStructure>) {
@@ -437,60 +430,52 @@ function findMatchingSubPoint(aiSubPointText: string, outlinePoint: SermonPoint)
 function buildSortedItem(
   key: string,
   itemsMapByKey: Record<string, ThoughtInStructure>,
-  itemsWithExistingSermonPoints: Record<string, string>,
   outlinePointAssignments: Record<string, string>,
   subPointAssignments: Record<string, string>,
   outlinePoints: SermonPoint[]
 ): ThoughtInStructure {
   const item = itemsMapByKey[key];
+  const aiAssignedOutlineText = outlinePointAssignments[key];
+  const matchedOutlinePoint = aiAssignedOutlineText && outlinePoints.length > 0
+    ? findMatchingOutlinePoint(aiAssignedOutlineText, outlinePoints)
+    : null;
 
-  if (itemsWithExistingSermonPoints[key]) {
-    // Even if outline point is preserved, AI may assign a sub-point
-    const aiSubPointText = subPointAssignments[key];
-    if (aiSubPointText && item.outlinePointId) {
-      const parentPoint = outlinePoints.find(op => op.id === item.outlinePointId);
-      if (parentPoint) {
-        const matchedSubPointId = findMatchingSubPoint(aiSubPointText, parentPoint);
-        if (matchedSubPointId) {
-          return { ...item, subPointId: matchedSubPointId };
-        }
-      }
-    }
+  if (matchedOutlinePoint && isDebugMode) {
+    console.log(`DEBUG: Successfully matched "${aiAssignedOutlineText}" to outline point "${matchedOutlinePoint.text}" (${matchedOutlinePoint.id})`);
+  }
+
+  const resolvedOutlinePoint = matchedOutlinePoint
+    ?? outlinePoints.find((outlinePoint) => outlinePoint.id === item.outlinePointId)
+    ?? null;
+
+  const nextOutlinePointId = resolvedOutlinePoint?.id ?? item.outlinePointId ?? null;
+  const nextSubPointId = resolvedOutlinePoint
+    ? normalizeSubPointId(
+      subPointAssignments[key]
+        ? findMatchingSubPoint(subPointAssignments[key], resolvedOutlinePoint)
+        : null,
+      resolvedOutlinePoint.subPoints
+    )
+    : null;
+
+  if (
+    nextOutlinePointId === (item.outlinePointId ?? null) &&
+    nextSubPointId === (item.subPointId ?? null)
+  ) {
     return item;
   }
 
-  const aiAssignedOutlineText = outlinePointAssignments[key];
-  if (aiAssignedOutlineText && outlinePoints.length > 0) {
-    const matchingSermonPoint = findMatchingOutlinePoint(aiAssignedOutlineText, outlinePoints);
-
-    if (matchingSermonPoint) {
-      if (isDebugMode) {
-        console.log(`DEBUG: Successfully matched "${aiAssignedOutlineText}" to outline point "${matchingSermonPoint.text}" (${matchingSermonPoint.id})`);
+  return {
+    ...item,
+    outlinePointId: nextOutlinePointId,
+    outlinePoint: resolvedOutlinePoint
+      ? {
+        text: resolvedOutlinePoint.text,
+        section: item.outlinePoint?.section ?? '',
       }
-
-      const result: ThoughtInStructure = {
-        ...item,
-        outlinePointId: matchingSermonPoint.id,
-        outlinePoint: {
-          text: matchingSermonPoint.text,
-          section: ''
-        }
-      };
-
-      // Match sub-point if AI assigned one
-      const aiSubPointText = subPointAssignments[key];
-      if (aiSubPointText) {
-        const matchedSubPointId = findMatchingSubPoint(aiSubPointText, matchingSermonPoint);
-        if (matchedSubPointId) {
-          result.subPointId = matchedSubPointId;
-        }
-      }
-
-      return result;
-    }
-  }
-
-  return item;
+      : undefined,
+    subPointId: nextSubPointId,
+  };
 }
 
 function appendMissingSortedItems(
@@ -518,7 +503,7 @@ function appendMissingSortedItems(
 export async function sortItemsWithAI(columnId: string, items: ThoughtInStructure[], sermon: Sermon, outlinePoints: SermonPoint[] = []): Promise<ThoughtInStructure[]> {
   try {
     // Create a map for quick lookup by ID
-    const { itemsMapByKey, itemsWithExistingSermonPoints } = buildItemsMap(items);
+    const itemsMapByKey = buildItemsMap(items);
     logItemKeyMapping(itemsMapByKey);
 
     // Create user message for the AI model
@@ -570,7 +555,6 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
       return buildSortedItem(
         key,
         itemsMapByKey,
-        itemsWithExistingSermonPoints,
         outlinePointAssignments,
         subPointAssignments,
         outlinePoints
@@ -853,11 +837,14 @@ interface PlanPointLanguageInfo {
 }
 
 function getPlanPointLanguageInfo(
-  relatedThoughtsTexts: string[],
+  relatedThoughts: (ThoughtInStructure | string)[],
   sermonTitle: string,
   sermonVerse: string
 ): PlanPointLanguageInfo {
-  const languageProbe = `${relatedThoughtsTexts.join(' ')} ${sermonTitle || ''} ${sermonVerse || ''}`;
+  const thoughtTexts = relatedThoughts.map((thought) => (
+    typeof thought === 'string' ? thought : thought.content
+  ));
+  const languageProbe = `${thoughtTexts.join(' ')} ${sermonTitle || ''} ${sermonVerse || ''}`;
   const hasNonLatinChars = /[^\u0000-\u007F]/.test(languageProbe);
   const isCyrillic = /[\u0400-\u04FF]/.test(languageProbe);
   const detectedLanguage = isCyrillic
@@ -941,7 +928,7 @@ export async function generatePlanPointContent(
   sermonTitle: string,
   sermonVerse: string,
   outlinePointText: string,
-  relatedThoughtsTexts: string[],
+  relatedThoughts: (ThoughtInStructure | string)[],
   sectionName: string,
   keyFragments: string[] = [],
   context?: PlanContext,
@@ -950,7 +937,7 @@ export async function generatePlanPointContent(
 ): Promise<{ content: string; success: boolean }> {
   // Detect language — base primarily on THOUGHTS text to avoid
   // generating a different language than the thoughts themselves
-  const languageInfo = getPlanPointLanguageInfo(relatedThoughtsTexts, sermonTitle, sermonVerse);
+  const languageInfo = getPlanPointLanguageInfo(relatedThoughts, sermonTitle, sermonVerse);
 
   if (isDebugMode) {
     console.log(`DEBUG: Detected sermon language: ${languageInfo.detectedLanguage}`);
@@ -977,7 +964,7 @@ export async function generatePlanPointContent(
     // Prepare the user message
     const userMessage = buildPlanPointUserMessage({
       outlinePointText,
-      thoughts: relatedThoughtsTexts,
+      thoughts: relatedThoughts,
       keyFragments,
       subPoints,
     });
@@ -988,7 +975,7 @@ export async function generatePlanPointContent(
       sermonVerse,
       outlinePointText,
       sectionName,
-      thoughtsCount: relatedThoughtsTexts.length,
+      thoughtsCount: relatedThoughts.length,
       keyFragmentsCount: keyFragments.length,
       detectedLanguage: languageInfo.detectedLanguage,
       hasContext: !!context,

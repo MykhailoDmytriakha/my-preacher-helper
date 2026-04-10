@@ -295,7 +295,10 @@ describe('Sermon Plan Route', () => {
         mockSermon.title,
         mockSermon.verse,
         'Intro point',
-        ['First thought', 'Second thought'],
+        [
+          { id: 't1', content: 'First thought', position: undefined, subPointId: null },
+          { id: 't2', content: 'Second thought', position: undefined, subPointId: null },
+        ],
         'introduction',
         ['k1', 'k2'],
         {
@@ -333,7 +336,10 @@ describe('Sermon Plan Route', () => {
         mockSermon.title,
         mockSermon.verse,
         'Main point',
-        ['Main thought', 'Main thought 2'],
+        [
+          { id: 't3', content: 'Main thought', position: undefined, subPointId: null },
+          { id: 't4', content: 'Main thought 2', position: undefined, subPointId: null },
+        ],
         'main',
         ['k3'],
         {
@@ -385,6 +391,62 @@ describe('Sermon Plan Route', () => {
 
       expect(response.status).toBe(400);
       expect(responseData).toHaveProperty('error');
+    });
+
+    it('passes sub-point aware structured thoughts in render order and normalizes orphaned sub-point ids', async () => {
+      const sermonWithSubPoints = {
+        ...mockSermon,
+        outline: {
+          introduction: [
+            {
+              id: 'p1',
+              text: 'Intro point',
+              subPoints: [{ id: 'sp-1', text: 'Inner point', position: 2500 }],
+            },
+          ],
+          main: mockSermon.outline.main,
+          conclusion: mockSermon.outline.conclusion,
+        },
+      };
+      (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue(sermonWithSubPoints);
+      (getThoughtsForOutlinePoint as jest.Mock).mockReturnValue([
+        { id: 't2', text: 'Sub-point thought', tags: [], date: '2023-01-01', outlinePointId: 'p1', subPointId: 'sp-1', position: 3000 },
+        { id: 't3', text: 'Orphan thought', tags: [], date: '2023-01-01', outlinePointId: 'p1', subPointId: 'missing-sub-point', position: 2000 },
+        { id: 't1', text: 'Direct thought', tags: [], date: '2023-01-01', outlinePointId: 'p1', position: 1000 },
+      ]);
+
+      const mockRequestWithOutline = {
+        nextUrl: {
+          searchParams: {
+            get: jest.fn().mockImplementation((param) => {
+              if (param === 'outlinePointId') return 'p1';
+              return null;
+            })
+          }
+        }
+      } as unknown as NextRequest;
+
+      await GET(mockRequestWithOutline, { params: Promise.resolve({ id: 'test-sermon-123' }) });
+
+      expect(generatePlanPointContent).toHaveBeenCalledWith(
+        sermonWithSubPoints.title,
+        sermonWithSubPoints.verse,
+        'Intro point',
+        [
+          { id: 't1', content: 'Direct thought', position: 1000, subPointId: null },
+          { id: 't3', content: 'Orphan thought', position: 2000, subPointId: null },
+          { id: 't2', content: 'Sub-point thought', position: 3000, subPointId: 'sp-1' },
+        ],
+        'introduction',
+        [],
+        {
+          previousPoint: { text: 'Prev' },
+          nextPoint: { text: 'Next' },
+          section: 'introduction',
+        },
+        'memory',
+        [{ id: 'sp-1', text: 'Inner point', position: 2500 }]
+      );
     });
 
     it('should return 500 when outline point generation fails', async () => {

@@ -18,6 +18,8 @@ interface SermonOutlineProps {
   sermon: Sermon;
   thoughtsPerSermonPoint?: Record<string, number>;
   onOutlineUpdate?: (updatedOutline: SermonOutline) => void;
+  onOutlinePointDeleted?: (outlinePointId: string) => void;
+  onSubPointDeleted?: (outlinePointId: string, subPointId: string) => void;
   isReadOnly?: boolean;
 }
 
@@ -30,6 +32,8 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
   sermon,
   thoughtsPerSermonPoint = {},
   onOutlineUpdate,
+  onOutlinePointDeleted,
+  onSubPointDeleted,
   isReadOnly = false,
 }) => {
   const { t } = useTranslation();
@@ -309,6 +313,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
 
       setSectionPoints(updatedPoints);
       directlySaveOutlineChanges(updatedPoints);
+      onOutlinePointDeleted?.(pointToDelete.id);
     }
   };
 
@@ -390,6 +395,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
     }, {} as Record<SectionType, SermonPoint[]>);
     setSectionPoints(updatedPoints);
     directlySaveOutlineChanges(updatedPoints);
+    onSubPointDeleted?.(outlinePointId, subPointId);
   };
 
   const handleReorderSubPoints = (outlinePointId: string, sourceIndex: number, destinationIndex: number) => {

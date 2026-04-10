@@ -512,7 +512,15 @@
     "noSermonPoint": "No outline point selected",
     "noSermonPointAssigned": "Outline point not assigned",
     "selectSermonPoint": "Select outline point",
-    "selectedSermonPoint": "Selected outline point from {{section}}"
+    "selectedSermonPoint": "Selected outline point from {{section}}",
+    "currentLocationLabel": "Current location",
+    "saveLocationLabel": "After save",
+    "locationWithinSubPoint": "{{outlinePoint}} / {{subPoint}}",
+    "locationWithinOutlinePoint": "{{outlinePoint}} / {{directLabel}}",
+    "directUnderOutlinePoint": "Directly under this outline point",
+    "directUnderOutlinePointShort": "Directly under point",
+    "currentSubPoint": "Sub-point: {{subPoint}}",
+    "subPointClearedOnMove": "Saving with a different outline point will remove the current sub-point assignment."
   },
   "structure": {
     "title": "Sermon Composition:",
@@ -588,6 +596,7 @@
     "subPointPlaceholder": "Sub-point name...",
     "dropThoughtsHere": "Drop thoughts here",
     "dropThoughtsToAdd": "Drop thoughts here to add to this point",
+    "dropThoughtsToSubPoint": "Drop thoughts into this sub-point",
     "dropToUnassign": "Drop thoughts here to unassign them from outline points",
     "dropToAmbiguous": "Drop thoughts here to mark as unclear",
     "unassignedThoughts": "Unassigned Thoughts",

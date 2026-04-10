@@ -154,10 +154,11 @@ describe('useStructureDnd', () => {
   const buildOver = (
     id: string,
     container?: string,
-    outlinePointId?: string | null
+    outlinePointId?: string | null,
+    subPointId?: string | null
   ) => ({
     id,
-    data: container ? { current: { container, outlinePointId } } : undefined,
+    data: container ? { current: { container, outlinePointId, subPointId } } : undefined,
   });
 
   const buildDragEvent = (activeId: string, over: any) => ({
@@ -453,6 +454,31 @@ describe('useStructureDnd', () => {
 
       expect(containersRef.current.main[0]?.id).toBe(THOUGHT_ONE);
     });
+
+    it('should preview sub-point assignment when dragging over a sub-point drop target', () => {
+      const containers = buildContainers({
+        introduction: [
+          buildItem(THOUGHT_ONE, { outlinePointId: OUTLINE_INTRO, subPointId: null }),
+        ],
+        main: [],
+      });
+      const containersRef = { current: containers };
+      const { result } = renderHook(() => useStructureDnd({
+        ...defaultProps,
+        containers,
+        containersRef,
+      }));
+      const mockEvent = buildDragEvent(
+        THOUGHT_ONE,
+        buildOver('sub-point-sp-1', 'introduction', OUTLINE_INTRO, 'sp-1')
+      );
+
+      act(() => {
+        result.current.handleDragOver(mockEvent);
+      });
+
+      expect(containersRef.current.introduction[0]?.subPointId).toBe('sp-1');
+    });
   });
 
   describe('handleDragEnd', () => {
@@ -593,6 +619,75 @@ describe('useStructureDnd', () => {
       });
 
       expect(mockSetContainers).toHaveBeenCalled();
+    });
+
+    it('assigns a sub-point when dropped on a sub-point placeholder', async () => {
+      const containers = buildContainers({
+        introduction: [
+          buildItem(THOUGHT_ONE, {
+            requiredTags: ['intro'],
+            outlinePointId: OUTLINE_INTRO,
+            subPointId: null,
+          }),
+        ],
+        main: [],
+      });
+      const sermon = buildSermon({
+        thoughts: [
+          buildThought(THOUGHT_ONE, {
+            tags: ['intro'],
+            outlinePointId: OUTLINE_INTRO,
+            subPointId: null,
+          }),
+        ],
+        structure: {
+          introduction: [THOUGHT_ONE],
+          main: [],
+          conclusion: [],
+          ambiguous: [],
+        },
+        outline: {
+          introduction: [{
+            id: OUTLINE_INTRO,
+            text: 'Introduction point',
+            subPoints: [{ id: 'sp-1', text: 'Inner point', position: 1000 }],
+          }],
+          main: [{ id: OUTLINE_MAIN, text: 'Main point' }],
+          conclusion: [{ id: OUTLINE_CONCLUSION, text: 'Conclusion point' }],
+        },
+      });
+      const containersRef = { current: containers };
+      const mockDebouncedSaveThought = jest.fn();
+      const { result } = renderHook(() => useStructureDnd({
+        ...defaultProps,
+        containers,
+        containersRef,
+        sermon,
+        debouncedSaveThought: mockDebouncedSaveThought,
+      }));
+
+      act(() => {
+        result.current.handleDragStart({ active: { id: THOUGHT_ONE } } as any);
+      });
+
+      const mockEvent = buildDragEvent(
+        THOUGHT_ONE,
+        buildOver('sub-point-sp-1', 'introduction', OUTLINE_INTRO, 'sp-1')
+      );
+
+      await act(async () => {
+        await result.current.handleDragEnd(mockEvent);
+      });
+
+      expect(mockDebouncedSaveThought).toHaveBeenCalledWith(
+        sermon.id,
+        expect.objectContaining({
+          id: THOUGHT_ONE,
+          outlinePointId: OUTLINE_INTRO,
+          subPointId: 'sp-1',
+        })
+      );
+      expect(mockUpdateStructure).not.toHaveBeenCalled();
     });
   });
 

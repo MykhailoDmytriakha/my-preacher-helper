@@ -52,6 +52,9 @@ const hasVisibleRailActions = ({
 interface SortableItemProps {
   item: Item;
   containerId: string;
+  locationContext?: {
+    subPointText?: string | null;
+  };
   onEdit?: (item: Item) => void;
   showDeleteIcon?: boolean;
   onDelete?: (itemId: string, containerId: string) => void;
@@ -474,6 +477,7 @@ const SortableItemReviewFooter = ({
 function SortableItemCard({
   item,
   containerId,
+  locationContext,
   onEdit,
   showDeleteIcon = false,
   onDelete,
@@ -564,7 +568,7 @@ function SortableItemCard({
       {...attributes}
       {...(isDragDisabled ? {} : (listeners as Record<string, unknown> | undefined))}
       aria-disabled={isSemanticallyDisabled || undefined}
-      className={cardClassName}
+        className={cardClassName}
     >
       <div className={`grid items-start gap-x-4 ${hasVisibleRailActions({
         canToggleLock,
@@ -576,7 +580,7 @@ function SortableItemCard({
         showDeleteAction,
       }) ? "grid-cols-[minmax(0,1fr)_2.5rem]" : "grid-cols-1"}`}>
         <div className="min-w-0">
-          <CardContent item={item} />
+          <CardContent item={item} locationContext={locationContext} />
           <div className="mt-2 flex min-h-[24px] flex-col justify-end gap-1">
             <SyncMeta show={showSyncMeta} isError={isError} remainingTime={remainingTime} t={t} />
           </div>
@@ -629,6 +633,7 @@ export function SortableItemPreview(props: SortableItemPreviewProps) {
 export default function SortableItem({
   item,
   containerId,
+  locationContext,
   onEdit,
   showDeleteIcon = false,
   onDelete,
@@ -648,7 +653,11 @@ export default function SortableItem({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
       id: item.id,
-      data: { container: containerId },
+      data: {
+        container: containerId,
+        outlinePointId: item.outlinePointId,
+        subPointId: item.subPointId,
+      },
       disabled: isDragDisabled,
     });
 
@@ -658,6 +667,7 @@ export default function SortableItem({
     <SortableItemCard
       item={item}
       containerId={containerId}
+      locationContext={locationContext}
       onEdit={onEdit}
       showDeleteIcon={showDeleteIcon}
       onDelete={onDelete}

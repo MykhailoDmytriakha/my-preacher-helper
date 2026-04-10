@@ -512,7 +512,15 @@
     "noSermonPoint": "Пункт плана не выбран",
     "noSermonPointAssigned": "Пункт плана не назначен",
     "selectSermonPoint": "Выберите пункт плана",
-    "selectedSermonPoint": "Выбран пункт плана из раздела «{{section}}»"
+    "selectedSermonPoint": "Выбран пункт плана из раздела «{{section}}»",
+    "currentLocationLabel": "Текущее расположение",
+    "saveLocationLabel": "После сохранения",
+    "locationWithinSubPoint": "{{outlinePoint}} / {{subPoint}}",
+    "locationWithinOutlinePoint": "{{outlinePoint}} / {{directLabel}}",
+    "directUnderOutlinePoint": "Напрямую под этим пунктом плана",
+    "directUnderOutlinePointShort": "Напрямую под пунктом",
+    "currentSubPoint": "Подпункт: {{subPoint}}",
+    "subPointClearedOnMove": "Если сохранить мысль под другим пунктом плана, текущая привязка к подпункту будет снята."
   },
   "structure": {
     "title": "Композиция проповеди:",
@@ -588,6 +596,7 @@
     "subPointPlaceholder": "Название подпункта...",
     "dropThoughtsHere": "Перетащите мысли сюда",
     "dropThoughtsToAdd": "Перетащите мысли сюда, чтобы добавить к этому пункту",
+    "dropThoughtsToSubPoint": "Перетащите мысли в этот подпункт",
     "dropToUnassign": "Перетащите мысли сюда, чтобы убрать их из пунктов плана",
     "dropToAmbiguous": "Перетащите мысли сюда, если они неопределенные",
     "unassignedThoughts": "Неназначенные мысли",

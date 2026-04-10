@@ -59,6 +59,7 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-04-10 Dense Hierarchy Must Read From Containers, Not Card Labels:** On structure boards, direct items should stay visually clean and only exception items may get a tiny chip. If users need to read `Parent / Child` inside every card to understand nesting, move the signal to the group container with an inset lane, visible bounds, and consistent indentation.
 - **2026-03-28 Read-Only Sibling Surfaces Must Preserve Core Actions:** If the same entity can be viewed in list cards, focus overlays, and dedicated detail pages, keep core read-only actions like copy/share parity across those surfaces. Otherwise navigation path alone changes available capability and creates false "missing feature" bugs.
 - **2026-03-19 Selector Modal Mutations Need Row-Level Pending Feedback:** If clicking a row inside a selector modal triggers async mutations, do not leave the list visually static. Lock the modal, keep the chosen row visible, and show a spinner plus explicit action label on that row until the mutation finishes; otherwise users interpret the click as lost.
 - **2026-03-19 OS Theme Propagation Needs Progressive Retry, Not Single Timeout:** After device wake or tab re-focus, macOS/Chrome can take 50–500ms+ to propagate `prefers-color-scheme` changes from OS to `matchMedia`. A single `setTimeout(50)` misses the window; use progressive retries (50ms, 300ms, 1000ms) with early exit on change detection to reliably catch the OS→browser pipeline.
@@ -315,6 +316,7 @@
 - **Scripture References:** Request book names IN ENGLISH in prompts. *(referenceParser.ts uses English)*
 - **UI Refactor Safety:** Preserve key classes/DOM structure. Check logical sections in both modes.
 - **Test Coverage:** Add targeted tests for new DOM structures. Green tests ≠ covered logic.
+- **Feature Surface Verification:** A wired state path is not the feature. If a component imports an interaction surface like `SubPointList` but never renders it, backend logic and hook tests can still pass while the user-facing feature is effectively absent. Add a DOM-level assertion for the control itself and verify it manually in the real screen.
 - **Mock Override:** Use `mockReturnValue` or reset inside test to fully override `beforeEach` mock.
 - **Label Duplicates:** Use `getAllByText` or specific selectors when UI duplicates labels.
 - **Type-Safe Fixtures:** Treat test fixtures as first-class types — update mocks with model changes.
@@ -323,6 +325,7 @@
 - **Coverage Honesty:** For strict coverage workflows, exclude types-only contracts from `collectCoverageFrom` and cover IndexedDB branches with isolated module imports plus `idb-keyval` mocks instead of warping runtime code to satisfy the metric.
 - **Browser-Heavy Component Refactor:** For client components that mix browser APIs and UI (`MediaRecorder`, timers, responsive listeners, keyboard shortcuts), keep the public entry import stable and split into `types` + `constants` + presentational leaves + lifecycle hook + module `README`. *(small, explicit seams make AI edits safer without breaking caller contracts)*
 - **Shared Component Public Seams:** When refactoring a large shared component behind a new internal folder, preserve any root-level named exports that tests or downstream code import (for example modal exports from the root entry). Stable default import alone is not enough if the named export is part of the real public seam.
+- **Hierarchy Metadata UI:** On dense work surfaces like structure boards, hierarchy/location state should render as compact breadcrumb or chip metadata at scan time, not as a full secondary info panel. The goal is explicitness without adding another visual block that competes with the thought content.
 
 ---
 

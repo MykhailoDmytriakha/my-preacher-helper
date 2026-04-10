@@ -52,6 +52,7 @@ const handleAiSortSpy = jest.fn();
 let autoTriggerAiSort = false;
 let autoTriggerPointLock = true;
 let autoTriggerThoughtLock = false;
+let autoTriggerSubPointDelete = false;
 
 jest.mock('@dnd-kit/core', () => {
   const MockDndContext = ({ children, onDragEnd }: any) => {
@@ -174,6 +175,9 @@ jest.mock('@/components/Column', () => {
         conclusion: [],
       });
       props.onOutlinePointDeleted?.('op-1', props.id);
+      if (autoTriggerSubPointDelete) {
+        props.onSubPointDeleted?.('op-1', 'sp-1', props.id);
+      }
       void props.onAddOutlinePoint?.(props.id, 0, 'Inserted point');
       if (autoTriggerPointLock) {
         void props.onTogglePointLock?.('op-1', true);
@@ -212,6 +216,7 @@ describe('StructurePage handlers', () => {
     autoTriggerAiSort = false;
     autoTriggerPointLock = true;
     autoTriggerThoughtLock = false;
+    autoTriggerSubPointDelete = false;
     localStorage.clear();
   });
 
@@ -378,6 +383,129 @@ describe('StructurePage handlers', () => {
     });
 
     expect(toast.success).toHaveBeenCalledWith('Thought locked');
+  });
+
+  it('clears sub-point ids when an outline point is deleted', async () => {
+    let sermonState = createMockSermon({
+      id: 'sermon-1',
+      thoughts: [
+        createMockThought({ id: 't1', text: 'Intro', tags: ['Introduction'], outlinePointId: 'op-1', subPointId: 'sp-1' }),
+      ],
+      structure: {
+        introduction: ['t1'],
+        main: [],
+        conclusion: [],
+        ambiguous: [],
+      },
+      outline: {
+        introduction: [createMockSermonPoint({ id: 'op-1', text: 'Point 1' })],
+        main: [],
+        conclusion: [],
+      },
+    });
+
+    let containersState: Record<string, any[]> = {
+      introduction: [createMockItem({ id: 't1', content: 'Intro', outlinePointId: 'op-1', subPointId: 'sp-1' })],
+      main: [],
+      conclusion: [],
+      ambiguous: [],
+    };
+
+    const setSermon = jest.fn((updater: any) => {
+      sermonState = typeof updater === 'function' ? updater(sermonState) : updater;
+    });
+    const setContainers = jest.fn((updater: any) => {
+      containersState = typeof updater === 'function' ? updater(containersState) : updater;
+    });
+
+    (useSermonStructureData as jest.Mock).mockReturnValue({
+      sermon: sermonState,
+      setSermon,
+      containers: containersState,
+      setContainers,
+      outlinePoints: sermonState.outline,
+      requiredTagColors: { introduction: '#000', main: '#000', conclusion: '#000' },
+      allowedTags: [],
+      loading: false,
+      error: null,
+      isAmbiguousVisible: true,
+      setIsAmbiguousVisible: jest.fn(),
+    });
+
+    render(<StructurePage />);
+
+    await waitFor(() => {
+      expect(debouncedSaveThoughtSpy).toHaveBeenCalledWith(
+        'sermon-1',
+        expect.objectContaining({
+          id: 't1',
+          outlinePointId: null,
+          subPointId: null,
+        }),
+      );
+    });
+  });
+
+  it('clears sub-point ids when a sub-point is deleted', async () => {
+    autoTriggerSubPointDelete = true;
+
+    let sermonState = createMockSermon({
+      id: 'sermon-1',
+      thoughts: [
+        createMockThought({ id: 't1', text: 'Intro', tags: ['Introduction'], outlinePointId: 'op-1', subPointId: 'sp-1' }),
+      ],
+      structure: {
+        introduction: ['t1'],
+        main: [],
+        conclusion: [],
+        ambiguous: [],
+      },
+      outline: {
+        introduction: [createMockSermonPoint({ id: 'op-1', text: 'Point 1', subPoints: [{ id: 'sp-1', text: 'Sub-point', position: 1000 }] })],
+        main: [],
+        conclusion: [],
+      },
+    });
+
+    let containersState: Record<string, any[]> = {
+      introduction: [createMockItem({ id: 't1', content: 'Intro', outlinePointId: 'op-1', subPointId: 'sp-1' })],
+      main: [],
+      conclusion: [],
+      ambiguous: [],
+    };
+
+    const setSermon = jest.fn((updater: any) => {
+      sermonState = typeof updater === 'function' ? updater(sermonState) : updater;
+    });
+    const setContainers = jest.fn((updater: any) => {
+      containersState = typeof updater === 'function' ? updater(containersState) : updater;
+    });
+
+    (useSermonStructureData as jest.Mock).mockReturnValue({
+      sermon: sermonState,
+      setSermon,
+      containers: containersState,
+      setContainers,
+      outlinePoints: sermonState.outline,
+      requiredTagColors: { introduction: '#000', main: '#000', conclusion: '#000' },
+      allowedTags: [],
+      loading: false,
+      error: null,
+      isAmbiguousVisible: true,
+      setIsAmbiguousVisible: jest.fn(),
+    });
+
+    render(<StructurePage />);
+
+    await waitFor(() => {
+      expect(debouncedSaveThoughtSpy).toHaveBeenCalledWith(
+        'sermon-1',
+        expect.objectContaining({
+          id: 't1',
+          subPointId: null,
+        }),
+      );
+    });
   });
 
   it('rolls back optimistic point locking when one persistence request fails', async () => {

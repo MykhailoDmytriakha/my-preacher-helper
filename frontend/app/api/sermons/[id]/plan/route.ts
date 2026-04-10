@@ -2,7 +2,8 @@ import 'openai/shims/node';
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { SermonContent } from '@/models/models';
+import { SermonContent, ThoughtInStructure } from '@/models/models';
+import { buildSubPointRenderableEntries, flattenSubPointRenderableEntries, normalizeSubPointId } from '@/utils/subPoints';
 import { getThoughtsForOutlinePoint } from '@/utils/thoughtOrdering';
 import { generatePlanForSection, generatePlanPointContent, PlanStyle } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
@@ -178,8 +179,17 @@ async function generateSermonPointContent(sermonId: string, outlinePointId: stri
       );
     }
 
-    // Extract texts and key fragments from the (now sorted) thoughts
-    const relatedThoughtsTexts = relatedThoughts.map(thought => thought.text);
+    const relatedThoughtsForPrompt = flattenSubPointRenderableEntries(
+      buildSubPointRenderableEntries<ThoughtInStructure>(
+        relatedThoughts.map((thought) => ({
+          id: thought.id,
+          content: thought.text,
+          position: thought.position,
+          subPointId: normalizeSubPointId(thought.subPointId, outlinePoint.subPoints),
+        })),
+        outlinePoint.subPoints
+      )
+    );
     const keyFragments = relatedThoughts.reduce((acc: string[], thought) => {
       if (thought.keyFragments && thought.keyFragments.length > 0) {
         return acc.concat(thought.keyFragments);
@@ -195,7 +205,7 @@ async function generateSermonPointContent(sermonId: string, outlinePointId: stri
       sermon.title,
       sermon.verse,
       outlinePoint.text,
-      relatedThoughtsTexts, // Pass sorted texts
+      relatedThoughtsForPrompt,
       sectionName,
       keyFragments, // Pass combined key fragments
       adjacentContext || undefined, // Pass context if available

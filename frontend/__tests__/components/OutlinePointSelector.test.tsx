@@ -22,7 +22,15 @@ jest.mock('react-i18next', () => ({
         'outline.mainPoints': 'Main Points',
         'outline.conclusion': 'Conclusion',
       };
-      return translations[key] || defaultValue || key;
+      const translated = translations[key] || defaultValue || key;
+      if (typeof defaultValue === 'object' && defaultValue !== null) {
+        let result = translated;
+        Object.entries(defaultValue).forEach(([token, value]) => {
+          result = result.replace(`{{${token}}}`, String(value));
+        });
+        return result;
+      }
+      return translated;
     },
   }),
 }));
@@ -34,7 +42,7 @@ describe('SermonPointSelector', () => {
       { id: 'intro-2', text: 'Context setting' },
     ],
     main: [
-      { id: 'main-1', text: 'First main point' },
+      { id: 'main-1', text: 'First main point', subPoints: [{ id: 'main-1-sub-1', text: 'Faith steps', position: 1000 }] },
       { id: 'main-2', text: 'Second main point' },
       { id: 'main-3', text: 'Third main point' },
     ],
@@ -57,6 +65,7 @@ describe('SermonPointSelector', () => {
     tags: ['Основная часть'],
     date: '2025-09-30T10:00:00Z',
     outlinePointId: 'main-1',
+    subPointId: 'main-1-sub-1',
   };
 
   const mockOnSermonPointChange = jest.fn();
@@ -121,6 +130,7 @@ describe('SermonPointSelector', () => {
               );
               expect(screen.getByText(/Main Part:/)).toBeInTheDocument();
               expect(screen.getByText(/First main point/)).toBeInTheDocument();
+              expect(screen.getByText('Faith steps')).toBeInTheDocument();
             }
           },
           {

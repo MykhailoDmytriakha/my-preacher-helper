@@ -14,6 +14,7 @@ import { getSectionLabel } from "@/lib/sections";
 import { Item, SermonPoint, SubPoint } from "@/models/models";
 import { getOutlinePointAiSortState } from "@/utils/aiSorting";
 import { debugLog } from "@/utils/debugMode";
+import { buildSubPointRenderableEntries } from "@/utils/subPoints";
 import { UI_COLORS } from "@/utils/themeColors";
 
 import { AudioRecorder } from "./AudioRecorder";
@@ -58,6 +59,72 @@ import type { ColumnProps, OnAudioThoughtCreated, Translate } from "./column/typ
 
 
 // Drop zone with sub-point grouping (visual headers only, no nested drop targets)
+const SubPointDropTarget: React.FC<{
+  subPoint: SubPoint;
+  items: Item[];
+  containerId: string;
+  outlinePointId: string;
+  renderItem: (item: Item) => React.ReactNode;
+  t: Translate;
+}> = ({ subPoint, items, containerId, outlinePointId, renderItem, t }) => {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `sub-point-${subPoint.id}`,
+    data: {
+      container: containerId,
+      outlinePointId,
+      subPointId: subPoint.id,
+    },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      data-testid={`sub-point-drop-${subPoint.id}`}
+      className={`relative ml-3 rounded-2xl border px-3 py-3 shadow-sm transition-all ${
+        isOver
+          ? "border-blue-300 bg-blue-50/85 ring-2 ring-blue-300/70 dark:border-blue-600 dark:bg-blue-900/25 dark:ring-blue-700/60"
+          : "border-slate-200/90 bg-slate-50/90 dark:border-slate-700/70 dark:bg-slate-900/30"
+      }`}
+    >
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute bottom-3 left-3 top-3 w-px rounded-full ${
+          isOver ? "bg-blue-300 dark:bg-blue-500" : "bg-slate-300/90 dark:bg-slate-600/90"
+        }`}
+      />
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none absolute bottom-3 left-3 h-1.5 w-1.5 -translate-x-1/2 rounded-full ${
+          isOver ? "bg-blue-400 dark:bg-blue-400" : "bg-slate-400 dark:bg-slate-500"
+        }`}
+      />
+      <div className="relative flex items-center gap-2 pl-4 pr-1">
+        <span
+          aria-hidden="true"
+          className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${
+            isOver ? "bg-blue-400 dark:bg-blue-400" : "bg-slate-400 dark:bg-slate-500"
+          }`}
+        />
+        <span className="min-w-0 truncate text-xs font-semibold text-slate-600 dark:text-slate-300">
+          {subPoint.text}
+        </span>
+      </div>
+      <div
+        data-testid={`sub-point-lane-${subPoint.id}`}
+        className="relative mt-3 space-y-4 pl-4"
+      >
+        {items.length > 0 ? (
+          items.map(renderItem)
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-400 dark:border-slate-700 dark:text-slate-500">
+            {t("structure.dropThoughtsToSubPoint", { defaultValue: "Drop thoughts into this sub-point" })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const SubPointAwareDropZone: React.FC<{
   setNodeRef: (node: HTMLElement | null) => void;
   isOver: boolean;
@@ -86,16 +153,16 @@ const SubPointAwareDropZone: React.FC<{
   onEdit, isHighlighted, getHighlightType, onKeepItem, onRevertItem, activeId, onMoveToAmbiguous,
   onRetryPendingThought, onToggleThoughtLock, onAddSubPoint, onEditSubPoint, onDeleteSubPoint, onReorderSubPoints, t
 }) => {
-  // Items without subPointId OR with orphaned subPointId (sub-point was deleted)
-  const subPointIds = new Set(subPoints.map(sp => sp.id));
-  const directItems = pointItems.filter(item => !item.subPointId || !subPointIds.has(item.subPointId));
   const hasSubPoints = subPoints.length > 0;
 
-  const renderItem = (item: Item) => (
+  const renderItem = (item: Item, subPointText?: string | null) => (
     <SortableItem
       key={item.id}
       item={item}
       containerId={containerId}
+      locationContext={{
+        subPointText: subPointText ?? null,
+      }}
       onEdit={onEdit}
       isHighlighted={isHighlighted(item.id)}
       highlightType={getHighlightType(item.id)}
@@ -111,25 +178,7 @@ const SubPointAwareDropZone: React.FC<{
   );
 
   // Interleave items and sub-point headers sorted by position
-  const renderOrder = (() => {
-    if (!hasSubPoints) return pointItems.map(item => ({ type: 'item' as const, item }));
-
-    type RenderEntry =
-      | { type: 'item'; item: Item }
-      | { type: 'subPointHeader'; subPoint: SubPoint; items: Item[] };
-
-    const entries: RenderEntry[] = [];
-    for (const item of directItems) entries.push({ type: 'item', item });
-    for (const sp of subPoints) {
-      entries.push({ type: 'subPointHeader', subPoint: sp, items: pointItems.filter(i => i.subPointId === sp.id) });
-    }
-    entries.sort((a, b) => {
-      const posA = a.type === 'item' ? (a.item.position ?? 0) : a.subPoint.position;
-      const posB = b.type === 'item' ? (b.item.position ?? 0) : b.subPoint.position;
-      return posA - posB;
-    });
-    return entries;
-  })();
+  const renderOrder = buildSubPointRenderableEntries(pointItems, subPoints);
 
   return (
     <div
@@ -142,18 +191,20 @@ const SubPointAwareDropZone: React.FC<{
         </div>
       ) : (
         <SortableContext items={pointItems} strategy={verticalListSortingStrategy}>
-          <div className="space-y-4">
+          <div className="space-y-3">
             {renderOrder.map((entry) => {
-              if (entry.type === 'item') return renderItem(entry.item);
+              if (entry.type === 'item') return renderItem(entry.item, null);
               const { subPoint: sp, items: spItems } = entry;
               return (
-                <React.Fragment key={`spg-${sp.id}`}>
-                  <div className="flex items-center gap-1.5 ml-1 pt-1">
-                    <div className="w-0.5 h-4 bg-gray-200/60 dark:bg-gray-600/40 rounded-full" />
-                    <span className="text-xs font-medium text-gray-400 dark:text-gray-500">{sp.text}</span>
-                  </div>
-                  {spItems.map(renderItem)}
-                </React.Fragment>
+                <SubPointDropTarget
+                  key={`spg-${sp.id}`}
+                  subPoint={sp}
+                  items={spItems}
+                  containerId={containerId}
+                  outlinePointId={outlinePointId}
+                  renderItem={(item) => renderItem(item, sp.text)}
+                  t={t}
+                />
               );
             })}
 
@@ -513,6 +564,19 @@ const SermonPointPlaceholder: React.FC<{
             </div>
           </div>
 
+          {!isEditingLocally && ((point.subPoints?.length ?? 0) > 0 || Boolean(onAddSubPoint && onEditSubPoint && onDeleteSubPoint)) && (
+            <SubPointList
+              subPoints={point.subPoints ?? []}
+              outlinePointId={point.id}
+              isPointLocked={isPointLocked}
+              onAdd={onAddSubPoint ?? (() => undefined)}
+              onEdit={onEditSubPoint ?? (() => undefined)}
+              onDelete={onDeleteSubPoint ?? (() => undefined)}
+              onReorder={onReorderSubPoints}
+              t={t}
+            />
+          )}
+
           {/* Drop zone for thoughts — grouped by sub-point */}
           <SubPointAwareDropZone
             setNodeRef={setNodeRef}
@@ -657,6 +721,7 @@ export default function Column({
   onRetryPendingThought,
   planData,
   onOutlinePointDeleted,
+  onSubPointDeleted,
   onAddOutlinePoint
 }: ColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
@@ -717,6 +782,7 @@ export default function Column({
     isOnline,
     onOutlineUpdate,
     onOutlinePointDeleted,
+    onSubPointDeleted,
     onAddOutlinePoint,
     t,
   });

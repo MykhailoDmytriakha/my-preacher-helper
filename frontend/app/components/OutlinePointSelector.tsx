@@ -6,6 +6,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Thought, SermonOutline, SermonPoint } from '@/models/models';
+import { resolveThoughtOutlineLocation } from '@/utils/subPoints';
 import { normalizeStructureTag, CANONICAL_TO_SECTION, isStructureTag } from "@utils/tagUtils";
 
 interface SermonPointSelectorProps {
@@ -35,21 +36,6 @@ export default function SermonPointSelector({
     };
     return mapping[sectionKey] || sectionKey;
   }, [t]);
-
-  const findSermonPoint = useCallback((): { text: string; section: string } | undefined => {
-    if (!thought.outlinePointId || !sermonOutline) return undefined;
-
-    const introPoint = sermonOutline.introduction?.find(p => p.id === thought.outlinePointId);
-    if (introPoint) return { text: introPoint.text, section: 'introduction' };
-
-    const mainPoint = sermonOutline.main?.find(p => p.id === thought.outlinePointId);
-    if (mainPoint) return { text: mainPoint.text, section: 'main' };
-
-    const conclPoint = sermonOutline.conclusion?.find(p => p.id === thought.outlinePointId);
-    if (conclPoint) return { text: conclPoint.text, section: 'conclusion' };
-
-    return undefined;
-  }, [thought.outlinePointId, sermonOutline]);
 
   const getThoughtSection = useCallback((): string | undefined => {
     // Current approach: detect the first structure-related tag
@@ -83,7 +69,14 @@ export default function SermonPointSelector({
     };
   }, [sermonOutline, getThoughtSection, thought.tags]);
 
-  const outlinePoint = useMemo(() => findSermonPoint(), [findSermonPoint]);
+  const location = useMemo(
+    () => resolveThoughtOutlineLocation(sermonOutline, thought.outlinePointId, thought.subPointId),
+    [sermonOutline, thought.outlinePointId, thought.subPointId]
+  );
+  const outlinePoint = location
+    ? { text: location.outlinePoint.text, section: location.section }
+    : undefined;
+  const subPointChipText = location?.subPoint?.text ?? null;
 
   const handleSermonPointSelect = async (outlinePointId: string | null) => {
     if (isUpdating || disabled) return;
@@ -127,12 +120,17 @@ export default function SermonPointSelector({
         <button
           onClick={() => !disabled && setIsOpen(!isOpen)}
           disabled={disabled || isUpdating}
-          className="text-left text-sm inline-flex items-center gap-2 rounded-full px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/50 dark:text-blue-200 dark:border-blue-800 font-medium hover:bg-blue-100 dark:hover:bg-blue-900/70 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="text-left text-sm inline-flex max-w-full items-center gap-2 overflow-hidden rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/50 dark:text-blue-200 dark:hover:bg-blue-900/70 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <span>
+          <span className="min-w-0 truncate">
             {getSectionName(outlinePoint.section)}: {outlinePoint.text}
           </span>
-          <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          {subPointChipText && (
+            <span className="inline-flex min-w-0 max-w-[180px] items-center rounded-full border border-blue-200/80 bg-white/80 px-2 py-0.5 text-[11px] font-medium leading-4 text-blue-700 dark:border-blue-700 dark:bg-blue-950/50 dark:text-blue-200">
+              <span className="truncate">{subPointChipText}</span>
+            </span>
+          )}
+          <ChevronDown className={`h-4 w-4 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
 
         <AnimatePresence>

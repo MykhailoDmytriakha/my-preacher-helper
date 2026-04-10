@@ -73,6 +73,11 @@ jest.mock('react-i18next', () => ({
           'editThought.outlinePointLabel': 'SermonOutline Point',
           'editThought.noSermonPoint': 'No outline point selected',
           'editThought.selectedSermonPoint': 'Selected outline point from {{section}}',
+          'editThought.currentLocationLabel': 'Current location',
+          'editThought.saveLocationLabel': 'After save',
+          'editThought.currentSubPoint': 'Sub-point: {{subPoint}}',
+          'editThought.directUnderOutlinePoint': 'Directly under this outline point',
+          'editThought.subPointClearedOnMove': 'Saving with a different outline point will remove the current sub-point assignment.',
           'editThought.availableTags': 'Available tags',
           'thought.tagsLabel': 'Tags',
           'buttons.cancel': 'Cancel',
@@ -112,7 +117,7 @@ describe('EditThoughtModal Component', () => {
 
   const mockSermonOutline: SermonOutline = {
     introduction: [
-      { id: 'intro1', text: 'Introduction point 1' },
+      { id: 'intro1', text: 'Introduction point 1', subPoints: [{ id: 'intro1-sub1', text: 'Intro sub-point 1', position: 1000 }] },
       { id: 'intro2', text: 'Introduction point 2' }
     ],
     main: [
@@ -164,6 +169,36 @@ describe('EditThoughtModal Component', () => {
     // Check buttons
     expect(screen.getByText('Cancel')).toBeInTheDocument();
     expect(screen.getByText('Save')).toBeInTheDocument();
+  });
+
+  test('shows the current sub-point location when the thought belongs to a sub-point', () => {
+    render(
+      <EditThoughtModal
+        {...mockProps}
+        initialSubPointId="intro1-sub1"
+      />
+    );
+
+    expect(screen.getByText('Current location')).toBeInTheDocument();
+    expect(screen.getByText('Sub-point: Intro sub-point 1')).toBeInTheDocument();
+    expect(screen.queryByText('After save')).not.toBeInTheDocument();
+  });
+
+  test('shows the save location and sub-point removal note when the outline point changes', () => {
+    render(
+      <EditThoughtModal
+        {...mockProps}
+        initialSubPointId="intro1-sub1"
+      />
+    );
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'intro2' } });
+
+    expect(screen.getByText('After save')).toBeInTheDocument();
+    expect(screen.getByText('Directly under this outline point')).toBeInTheDocument();
+    expect(
+      screen.getByText('Saving with a different outline point will remove the current sub-point assignment.')
+    ).toBeInTheDocument();
   });
 
   test('calls onClose when cancel button is clicked', () => {

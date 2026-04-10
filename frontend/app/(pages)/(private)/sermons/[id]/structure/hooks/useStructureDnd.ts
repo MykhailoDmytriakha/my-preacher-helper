@@ -105,13 +105,15 @@ const shouldSkipUpdate = (
   insertIndex: number,
   dragged: Item,
   intendedOutline: string | undefined,
+  intendedSubPoint: string | undefined,
   state: Record<string, Item[]>
 ): boolean => {
   if (srcContainerKey === dstContainerKey) {
     const currentIdx = state[dstContainerKey].findIndex((it) => it.id === dragged.id);
     const sameGroup = (dragged.outlinePointId ?? undefined) === intendedOutline;
+    const sameSubPoint = (dragged.subPointId ?? undefined) === intendedSubPoint;
     const noReorder = insertIndex === currentIdx || insertIndex === currentIdx + 1;
-    if (sameGroup && noReorder) {
+    if (sameGroup && sameSubPoint && noReorder) {
       return true;
     }
   } else {
@@ -119,7 +121,8 @@ const shouldSkipUpdate = (
     if (currentDestIdx !== -1) {
       const alreadyAtIndex = currentDestIdx === insertIndex;
       const alreadyGroup = (state[dstContainerKey][currentDestIdx].outlinePointId ?? undefined) === intendedOutline;
-      if (alreadyAtIndex && alreadyGroup) {
+      const alreadySubPoint = (state[dstContainerKey][currentDestIdx].subPointId ?? undefined) === intendedSubPoint;
+      if (alreadyAtIndex && alreadyGroup && alreadySubPoint) {
         return true;
       }
     }
@@ -457,7 +460,7 @@ export const useStructureDnd = ({
     if (!srcContainerKey) return;
 
     // Determine destination container and outline point
-    const { dstContainerKey, targetSermonPointId } = determineDestination(overId, over, state);
+    const { dstContainerKey, targetSermonPointId, targetSubPointId } = determineDestination(overId, over, state);
     if (!dstContainerKey) return;
 
     // Early compute current positions before building draft
@@ -470,15 +473,23 @@ export const useStructureDnd = ({
 
     const intendedOutline: string | undefined =
       targetSermonPointId === undefined ? (dragged.outlinePointId || undefined) : (targetSermonPointId || undefined);
+    const intendedSubPoint: string | undefined =
+      targetSubPointId === undefined
+        ? (targetSermonPointId === undefined ? (dragged.subPointId || undefined) : undefined)
+        : (targetSubPointId || undefined);
 
     // Check if update is needed
-    if (shouldSkipUpdate(srcContainerKey, dstContainerKey, insertIndex, dragged, intendedOutline, state)) {
+    if (shouldSkipUpdate(srcContainerKey, dstContainerKey, insertIndex, dragged, intendedOutline, intendedSubPoint, state)) {
       return;
     }
 
     // Build new state preview
     const draft: Record<string, Item[]> = { ...state };
-    const previewItem: Item = { ...dragged, outlinePointId: intendedOutline };
+    const previewItem: Item = {
+      ...dragged,
+      outlinePointId: intendedOutline,
+      subPointId: intendedSubPoint,
+    };
 
     if (srcContainerKey === dstContainerKey) {
       const arr = [...state[srcContainerKey]];

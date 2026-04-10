@@ -499,7 +499,7 @@ useEffect(() => {
 
   const handleSaveThoughtPatch = useCallback(async (
     thoughtToUpdate: Thought,
-    patch: Pick<Thought, "text" | "tags" | "outlinePointId">
+    patch: Pick<Thought, "text" | "tags" | "outlinePointId" | "subPointId">
   ) => {
     if (!sermon) return;
 
@@ -719,6 +719,7 @@ useEffect(() => {
       text: thought.text,
       tags: thought.tags,
       outlinePointId,
+      subPointId: outlinePointId === (thought.outlinePointId ?? null) ? thought.subPointId ?? null : null,
     });
   }, [handleSaveThoughtPatch]);
 
@@ -815,6 +816,7 @@ useEffect(() => {
       text: updatedText.trim(),
       tags: updatedTags,
       outlinePointId,
+      subPointId: outlinePointId === (thoughtToUpdate.outlinePointId ?? null) ? thoughtToUpdate.subPointId ?? null : null,
     });
     setEditingModalData(null);
   };
@@ -865,6 +867,38 @@ useEffect(() => {
       };
     });
   };
+
+  const handleOutlinePointDeleted = useCallback((outlinePointId: string) => {
+    const currentSermon = displaySermon ?? sermon;
+    if (!currentSermon) return;
+
+    currentSermon.thoughts
+      .filter((thought) => thought.outlinePointId === outlinePointId)
+      .forEach((thought) => {
+        void handleSaveThoughtPatch(thought, {
+          text: thought.text,
+          tags: thought.tags,
+          outlinePointId: null,
+          subPointId: null,
+        });
+      });
+  }, [displaySermon, handleSaveThoughtPatch, sermon]);
+
+  const handleSubPointDeleted = useCallback((outlinePointId: string, subPointId: string) => {
+    const currentSermon = displaySermon ?? sermon;
+    if (!currentSermon) return;
+
+    currentSermon.thoughts
+      .filter((thought) => thought.outlinePointId === outlinePointId && thought.subPointId === subPointId)
+      .forEach((thought) => {
+        void handleSaveThoughtPatch(thought, {
+          text: thought.text,
+          tags: thought.tags,
+          outlinePointId: thought.outlinePointId ?? null,
+          subPointId: null,
+        });
+      });
+  }, [displaySermon, handleSaveThoughtPatch, sermon]);
 
   const handleSermonUpdate = useCallback((updatedSermon: Sermon) => {
     setSermon(updatedSermon);
@@ -1315,6 +1349,8 @@ useEffect(() => {
                   sermon={displaySermon!}
                   thoughtsPerSermonPoint={thoughtsPerSermonPoint}
                   onOutlineUpdate={handleOutlineUpdate}
+                  onOutlinePointDeleted={handleOutlinePointDeleted}
+                  onSubPointDeleted={handleSubPointDeleted}
                   isReadOnly={isReadOnly}
                 />
                 <KnowledgeSection sermon={sermon} updateSermon={handleSermonUpdate} />
@@ -1329,6 +1365,7 @@ useEffect(() => {
           initialText={editingModalData.thought.text}
           initialTags={editingModalData.thought.tags}
           initialSermonPointId={editingModalData.thought.outlinePointId || undefined}
+          initialSubPointId={editingModalData.thought.subPointId ?? undefined}
           allowedTags={allowedTags}
           sermonOutline={displaySermon?.outline}
           onSave={handleSaveEditedThought}

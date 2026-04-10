@@ -54,6 +54,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
       return;
     }
     onAdd(outlinePointId, addText.trim());
+    setIsAdding(false);
     setAddText("");
   };
 

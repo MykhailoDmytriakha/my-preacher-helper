@@ -286,7 +286,10 @@ export function useSermonActions({
             ...sermon.thoughts.find((thought) => thought.id === editingItem.id)!,
             text: updatedText,
             tags: [...(editingItem.requiredTags || []), ...updatedTags],
-            outlinePointId: outlinePointId
+            outlinePointId,
+            subPointId: outlinePointId === (editingItem.outlinePointId ?? null)
+                ? editingItem.subPointId ?? null
+                : null,
         };
         const syncExpiresAt = buildSyncExpiresAt();
         const outlinePoint = findOutlinePoint(outlinePointId, sermon);
@@ -311,6 +314,7 @@ export function useSermonActions({
             })),
             outlinePointId,
             outlinePoint,
+            subPointId: updatedItem.subPointId,
             syncStatus: 'pending',
             syncOperation: 'update',
             syncExpiresAt,
@@ -357,6 +361,7 @@ export function useSermonActions({
                         })),
                     outlinePointId: updatedThought.outlinePointId,
                     outlinePoint: latestOutlinePoint,
+                    subPointId: updatedThought.subPointId ?? null,
                 }));
                 pendingActions.updateItemSyncStatus(updatedThought.id, 'success', {
                     successAt,

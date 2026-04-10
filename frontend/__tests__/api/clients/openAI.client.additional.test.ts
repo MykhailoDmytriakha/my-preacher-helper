@@ -413,6 +413,99 @@ describe('openAI.client additional coverage', () => {
       expect(result[0].outlinePoint?.text).toBe('Victory of Faith');
     });
 
+    it('reassigns an already-assigned thought to a new outline point and clears stale sub-point ids', async () => {
+      const reassignedItems: ThoughtInStructure[] = [
+        {
+          id: 'move-1111-1111-1111-111111111111',
+          content: 'Move me',
+          outlinePointId: 'op-old',
+          subPointId: 'sp-old',
+        },
+      ];
+      const reassignedOutlinePoints: SermonPoint[] = [
+        { id: 'op-old', text: 'Old Point', subPoints: [{ id: 'sp-old', text: 'Old sub-point', position: 1000 }] },
+        { id: 'op-new', text: 'New Point', subPoints: [{ id: 'sp-new', text: 'New sub-point', position: 1000 }] },
+      ];
+
+      mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+        success: true,
+        data: {
+          sortedItems: [{ key: 'move', outlinePoint: 'New Point' }],
+        },
+        refusal: null,
+        error: null,
+      });
+
+      const result = await sortItemsWithAI('col-1', reassignedItems, baseSermon, reassignedOutlinePoints);
+
+      expect(result[0].outlinePointId).toBe('op-new');
+      expect(result[0].subPointId).toBeNull();
+      expect(result[0].outlinePoint?.text).toBe('New Point');
+    });
+
+    it('clears stale sub-point ids when AI omits a sub-point assignment', async () => {
+      const subPointItems: ThoughtInStructure[] = [
+        {
+          id: 'keep-1111-1111-1111-111111111111',
+          content: 'Keep me in the same outline point',
+          outlinePointId: 'op-main',
+          subPointId: 'sp-main',
+        },
+      ];
+      const subPointOutlinePoints: SermonPoint[] = [
+        { id: 'op-main', text: 'Main Point', subPoints: [{ id: 'sp-main', text: 'Existing sub-point', position: 1000 }] },
+      ];
+
+      mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+        success: true,
+        data: {
+          sortedItems: [{ key: 'keep' }],
+        },
+        refusal: null,
+        error: null,
+      });
+
+      const result = await sortItemsWithAI('col-1', subPointItems, baseSermon, subPointOutlinePoints);
+
+      expect(result[0].outlinePointId).toBe('op-main');
+      expect(result[0].subPointId).toBeNull();
+    });
+
+    it('matches sub-points by fuzzy label overlap and clears invalid matches', async () => {
+      const subPointItems: ThoughtInStructure[] = [
+        {
+          id: 'subp-1111-1111-1111-111111111111',
+          content: 'Needs a sub-point',
+        },
+        {
+          id: 'badm-1111-1111-1111-111111111111',
+          content: 'Invalid sub-point assignment',
+          outlinePointId: 'op-main',
+          subPointId: 'sp-stale',
+        },
+      ];
+      const subPointOutlinePoints: SermonPoint[] = [
+        { id: 'op-main', text: 'Main Point', subPoints: [{ id: 'sp-faith', text: 'Faith Victory', position: 1000 }] },
+      ];
+
+      mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+        success: true,
+        data: {
+          sortedItems: [
+            { key: 'subp', outlinePoint: 'Main Point', subPoint: 'Victory Faith' },
+            { key: 'badm', outlinePoint: 'Main Point', subPoint: 'Unknown sub-point' },
+          ],
+        },
+        refusal: null,
+        error: null,
+      });
+
+      const result = await sortItemsWithAI('col-1', subPointItems, baseSermon, subPointOutlinePoints);
+
+      expect(result[0].subPointId).toBe('sp-faith');
+      expect(result[1].subPointId).toBeNull();
+    });
+
     it('returns original items when sorted items list is empty', async () => {
       mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
         success: true,
@@ -461,6 +554,37 @@ describe('openAI.client additional coverage', () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain('Main Concept');
+  });
+
+  it('includes structured sub-point tags in the plan point prompt when structured thoughts are provided', async () => {
+    mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+      success: true,
+      data: { content: '### Main Concept\n* Supporting detail' },
+      refusal: null,
+      error: null,
+    });
+
+    await generatePlanPointContent(
+      'Test Sermon',
+      'John 3:16',
+      'Outline Point',
+      [
+        { id: 't-1', content: 'Direct thought', subPointId: null },
+        { id: 't-2', content: 'Sub-point thought', subPointId: 'sp-1' },
+      ],
+      'main',
+      [],
+      undefined,
+      'memory',
+      [{ id: 'sp-1', text: 'Sub-point title', position: 1000 }]
+    );
+
+    expect(mockStructuredOutput.callWithStructuredOutput).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.stringContaining('THOUGHT 2 [sub-point: Sub-point title]: Sub-point thought'),
+      expect.anything(),
+      expect.anything()
+    );
   });
 
   it('generates plan point content for Cyrillic thoughts', async () => {

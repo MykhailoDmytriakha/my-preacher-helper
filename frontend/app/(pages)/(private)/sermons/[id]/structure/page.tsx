@@ -537,7 +537,7 @@ function StructurePageContent() {
           ...prevSermon,
           thoughts: prevSermon.thoughts.map(thought =>
             thought.outlinePointId === pointId
-              ? { ...thought, outlinePointId: undefined }
+              ? { ...thought, outlinePointId: undefined, subPointId: null }
               : thought
           )
         };
@@ -549,20 +549,62 @@ function StructurePageContent() {
         if (nextContainers[sectionId]) {
           nextContainers[sectionId] = nextContainers[sectionId].map(item =>
             item.outlinePointId === pointId
-              ? { ...item, outlinePointId: undefined, outlinePoint: undefined }
+              ? { ...item, outlinePointId: undefined, outlinePoint: undefined, subPointId: null }
               : item
           );
         }
+        containersRef.current = nextContainers;
         return nextContainers;
       });
 
       // 3. Update backend for each thought
       thoughtsToUpdate.forEach(thought => {
-        debouncedSaveThought(sermon.id, { ...thought, outlinePointId: null });
+        debouncedSaveThought(sermon.id, { ...thought, outlinePointId: null, subPointId: null });
       });
 
     } catch (error) {
       console.error('Error updating thoughts after outline point deletion:', error);
+      toast.error(t('errors.saveOutlineError', { defaultValue: 'Error updating thoughts' }));
+    }
+  };
+
+  const handleSubPointDeleted = (outlinePointId: string, subPointId: string, sectionId: string) => {
+    if (!sermon) return;
+
+    const thoughtsToUpdate = sermon.thoughts.filter((thought) => thought.subPointId === subPointId);
+    if (thoughtsToUpdate.length === 0) return;
+
+    try {
+      setSermon((prevSermon) => {
+        if (!prevSermon) return null;
+        return {
+          ...prevSermon,
+          thoughts: prevSermon.thoughts.map((thought) => (
+            thought.subPointId === subPointId
+              ? { ...thought, subPointId: null }
+              : thought
+          )),
+        };
+      });
+
+      setContainers((prevContainers) => {
+        const nextContainers = { ...prevContainers };
+        if (nextContainers[sectionId]) {
+          nextContainers[sectionId] = nextContainers[sectionId].map((item) => (
+            item.subPointId === subPointId && item.outlinePointId === outlinePointId
+              ? { ...item, subPointId: null }
+              : item
+          ));
+        }
+        containersRef.current = nextContainers;
+        return nextContainers;
+      });
+
+      thoughtsToUpdate.forEach((thought) => {
+        debouncedSaveThought(sermon.id, { ...thought, subPointId: null });
+      });
+    } catch (error) {
+      console.error('Error updating thoughts after sub-point deletion:', error);
       toast.error(t('errors.saveOutlineError', { defaultValue: 'Error updating thoughts' }));
     }
   };
@@ -740,6 +782,7 @@ function StructurePageContent() {
                 onRetryPendingThought={handleRetryPendingThought}
                 planData={planData}
                 onOutlinePointDeleted={handleOutlinePointDeleted}
+                onSubPointDeleted={handleSubPointDeleted}
                 onAddOutlinePoint={handleAddOutlinePoint}
               />
             )}
@@ -781,6 +824,7 @@ function StructurePageContent() {
                 onRetryPendingThought={handleRetryPendingThought}
                 planData={planData}
                 onOutlinePointDeleted={handleOutlinePointDeleted}
+                onSubPointDeleted={handleSubPointDeleted}
                 onAddOutlinePoint={handleAddOutlinePoint}
               />
             )}
@@ -820,6 +864,7 @@ function StructurePageContent() {
                 onRetryPendingThought={handleRetryPendingThought}
                 planData={planData}
                 onOutlinePointDeleted={handleOutlinePointDeleted}
+                onSubPointDeleted={handleSubPointDeleted}
                 onAddOutlinePoint={handleAddOutlinePoint}
               />
             )}
@@ -839,6 +884,7 @@ function StructurePageContent() {
             initialText={editingItem.content}
             initialTags={editingItem.customTagNames?.map((tag) => tag.name) || []}
             initialSermonPointId={editingItem.outlinePointId || undefined}
+            initialSubPointId={editingItem.subPointId ?? undefined}
             allowedTags={allowedTags}
             sermonOutline={sermon?.outline}
             containerSection={addingThoughtToSection || Object.keys(containers).find(key =>

@@ -22,6 +22,7 @@ interface UseColumnOutlineStateOptions {
   isOnline: boolean;
   onOutlineUpdate?: (updatedOutline: SermonOutline) => void;
   onOutlinePointDeleted?: (pointId: string, columnId: string) => void;
+  onSubPointDeleted?: (outlinePointId: string, subPointId: string, columnId: string) => void;
   onAddOutlinePoint?: (sectionId: string, index: number, text: string) => Promise<void>;
   scheduleTask?: (callback: () => void | Promise<void>, delayMs: number) => ReturnType<typeof setTimeout>;
   clearScheduledTask?: (taskId: ReturnType<typeof setTimeout>) => void;
@@ -35,6 +36,7 @@ export function useColumnOutlineState({
   isOnline,
   onOutlineUpdate,
   onOutlinePointDeleted,
+  onSubPointDeleted,
   onAddOutlinePoint,
   scheduleTask = setTimeout,
   clearScheduledTask = clearTimeout,
@@ -353,6 +355,7 @@ export function useColumnOutlineState({
 
     setLocalSermonPoints(updatedPoints);
     triggerSaveOutline(updatedPoints);
+    onSubPointDeleted?.(outlinePointId, subPointId, id);
   };
 
   const handleReorderSubPoints = (outlinePointId: string, sourceIndex: number, destinationIndex: number) => {

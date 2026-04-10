@@ -512,7 +512,15 @@
     "noSermonPoint": "Пункт плану не вибрано",
     "noSermonPointAssigned": "Пункт плану не призначено",
     "selectSermonPoint": "Оберіть пункт плану",
-    "selectedSermonPoint": "Вибрано пункт плану з розділу «{{section}}»"
+    "selectedSermonPoint": "Вибрано пункт плану з розділу «{{section}}»",
+    "currentLocationLabel": "Поточне розташування",
+    "saveLocationLabel": "Після збереження",
+    "locationWithinSubPoint": "{{outlinePoint}} / {{subPoint}}",
+    "locationWithinOutlinePoint": "{{outlinePoint}} / {{directLabel}}",
+    "directUnderOutlinePoint": "Безпосередньо під цим пунктом плану",
+    "directUnderOutlinePointShort": "Безпосередньо під пунктом",
+    "currentSubPoint": "Підпункт: {{subPoint}}",
+    "subPointClearedOnMove": "Якщо зберегти думку під іншим пунктом плану, поточна прив'язка до підпункту буде знята."
   },
   "structure": {
     "title": "Композиція проповіді:",
@@ -588,6 +596,7 @@
     "subPointPlaceholder": "Назва підпункту...",
     "dropThoughtsHere": "Перетягніть думки сюди",
     "dropThoughtsToAdd": "Перетягніть думки сюди, щоб додати до цього пункту",
+    "dropThoughtsToSubPoint": "Перетягніть думки в цей підпункт",
     "dropToUnassign": "Перетягніть думки сюди, щоб забрати їх з пунктів плану",
     "dropToAmbiguous": "Перетягніть думки сюди, якщо вони невизначені",
     "unassignedThoughts": "Неприв'язані думки",

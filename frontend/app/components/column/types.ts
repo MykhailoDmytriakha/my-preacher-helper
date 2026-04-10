@@ -42,6 +42,7 @@ export interface ColumnProps {
   onAddThought?: (sectionId: string, outlinePointId?: string) => void;
   onOutlineUpdate?: (updatedOutline: SermonOutline) => void;
   onOutlinePointDeleted?: (pointId: string, columnId: string) => void;
+  onSubPointDeleted?: (outlinePointId: string, subPointId: string, columnId: string) => void;
   onAddOutlinePoint?: (sectionId: string, index: number, text: string) => Promise<void>;
   thoughtsPerSermonPoint?: Record<string, number>;
   isDiffModeActive?: boolean;

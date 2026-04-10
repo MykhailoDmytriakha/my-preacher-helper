@@ -1,0 +1,4 @@
+interface:
+  display_name: "Solver Optics Thinker"
+  short_description: "Map constraints and design high-leverage decisions, thought the thinking process, anazyzing, TRIZ, IFR"
+  default_prompt: "Use $solver-optics-thinker to separate facts from assumptions, find the real bottleneck, and recommend the highest-leverage next move."

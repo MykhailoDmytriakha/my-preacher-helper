@@ -566,6 +566,19 @@ Second paragraph with indentation.
     expect(screen.queryByTitle('structure.unlockThought')).not.toBeInTheDocument();
   });
 
+  test('renders only a compact subpoint chip when nested context is provided', () => {
+    render(
+      <SortableItem
+        item={mockItem}
+        containerId={mockContainerId}
+        locationContext={{ subPointText: 'Faith steps' }}
+      />
+    );
+
+    expect(screen.getByTestId('thought-location-chip')).toHaveTextContent('Faith steps');
+    expect(screen.queryByText(/Main Point/)).not.toBeInTheDocument();
+  });
+
   test('applies assigned highlight classes on card and badge', () => {
     render(
       <SortableItem

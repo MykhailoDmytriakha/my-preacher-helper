@@ -10,6 +10,7 @@ import { SermonPoint, SermonOutline } from '@/models/models';
 import { useConnection } from '@/providers/ConnectionProvider';
 import { FocusRecorderButton } from "@components/FocusRecorderButton";
 import { transcribeThoughtAudio } from "@services/thought.service";
+import { resolveThoughtOutlineLocation } from "@utils/subPoints";
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
 
 import { RichMarkdownEditor } from './ui/RichMarkdownEditor';
@@ -19,6 +20,7 @@ interface EditThoughtModalProps {
   initialText: string;
   initialTags: string[];
   initialSermonPointId?: string;
+  initialSubPointId?: string | null;
   allowedTags: { name: string; color: string; translationKey?: string }[];
   sermonOutline?: SermonOutline;
   containerSection?: string;
@@ -62,6 +64,36 @@ const getTagDisplayName = (t: TranslateFn, tagName: string, translationKey?: str
   if (canonical === 'conclusion') return t('tags.conclusion');
 
   return tagName;
+};
+
+const translateOrFallback = (
+  t: TranslateFn,
+  key: string,
+  fallback: string,
+  options?: Record<string, unknown>
+) => {
+  const translated = t(key, options);
+  return translated === key ? fallback : translated;
+};
+
+const formatOutlinePlacementDetail = (
+  t: TranslateFn,
+  subPointText?: string | null,
+) => {
+  if (subPointText) {
+    return translateOrFallback(
+      t,
+      'editThought.currentSubPoint',
+      `Sub-point: ${subPointText}`,
+      { subPoint: subPointText }
+    );
+  }
+
+  return translateOrFallback(
+    t,
+    'editThought.directUnderOutlinePoint',
+    'Directly under this outline point'
+  );
 };
 
 const buildAllSermonPoints = (sermonOutline: SermonOutline | undefined, t: TranslateFn): SermonPointInfo[] => {
@@ -261,6 +293,7 @@ export default function EditThoughtModal({
   initialText,
   initialTags,
   initialSermonPointId,
+  initialSubPointId,
   allowedTags,
   sermonOutline,
   containerSection,
@@ -345,6 +378,25 @@ export default function EditThoughtModal({
   const allSermonPoints = buildAllSermonPoints(sermonOutline, t);
   const selectedPointInfo = allSermonPoints.find(point => point.id === selectedSermonPointId);
   const filteredSermonPoints = getFilteredSermonPoints(sermonOutline, containerSection);
+  const initialLocation = resolveThoughtOutlineLocation(sermonOutline, initialSermonPointId, initialSubPointId);
+  const currentLocationText = initialLocation
+    ? formatOutlinePlacementDetail(t, initialLocation.subPoint?.text ?? null)
+    : translateOrFallback(t, 'editThought.noSermonPoint', 'No outline point selected');
+  const saveLocationText = selectedPointInfo
+    ? formatOutlinePlacementDetail(
+      t,
+      selectedSermonPointId === initialSermonPointId ? initialLocation?.subPoint?.text ?? null : null
+    )
+    : translateOrFallback(t, 'editThought.noSermonPoint', 'No outline point selected');
+  const showSaveLocationSummary = selectedSermonPointId !== initialSermonPointId;
+  const willClearSubPointAssignment = Boolean(initialLocation?.subPoint && selectedSermonPointId !== initialSermonPointId);
+  const currentLocationLabel = translateOrFallback(t, 'editThought.currentLocationLabel', 'Current location');
+  const saveLocationLabel = translateOrFallback(t, 'editThought.saveLocationLabel', 'After save');
+  const clearSubPointNotice = translateOrFallback(
+    t,
+    'editThought.subPointClearedOnMove',
+    'Saving with a different outline point will remove the current sub-point assignment.'
+  );
 
   const availableTags = allowedTags.filter(allowedTag =>
     !tags.some(selectedTag => {
@@ -386,14 +438,45 @@ export default function EditThoughtModal({
           <div className="sm:flex-1 sm:overflow-y-auto sm:min-h-0 w-full flex flex-col gap-6">
             <div ref={metaRef} className="space-y-4">
               {sermonOutline && (
-                <OutlinePointSelect
-                  selectedSermonPointId={selectedSermonPointId}
-                  onChange={handleSermonPointChange}
-                  filteredSermonPoints={filteredSermonPoints}
-                  selectedPointInfo={selectedPointInfo}
-                  t={t}
-                  disabled={isReadOnly}
-                />
+                <div className="space-y-3">
+                  <OutlinePointSelect
+                    selectedSermonPointId={selectedSermonPointId}
+                    onChange={handleSermonPointChange}
+                    filteredSermonPoints={filteredSermonPoints}
+                    selectedPointInfo={selectedPointInfo}
+                    t={t}
+                    disabled={isReadOnly}
+                  />
+
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
+                      <span className="font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                        {currentLocationLabel}
+                      </span>
+                      <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+                        {currentLocationText}
+                      </span>
+
+                      {showSaveLocationSummary && (
+                        <>
+                          <span className="text-slate-300 dark:text-slate-600">→</span>
+                          <span className="font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                            {saveLocationLabel}
+                          </span>
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-600 dark:border-slate-700 dark:bg-slate-900/50 dark:text-slate-300">
+                            {saveLocationText}
+                          </span>
+                        </>
+                      )}
+                    </div>
+
+                    {willClearSubPointAssignment && (
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        {clearSubPointNotice}
+                      </p>
+                    )}
+                  </div>
+                </div>
               )}
 
               <TagsSection

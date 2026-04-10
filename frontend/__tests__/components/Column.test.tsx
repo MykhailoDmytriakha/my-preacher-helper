@@ -7,6 +7,7 @@ jest.mock('@heroicons/react/24/outline', () => {
     CheckIcon: mockIcon('check'),
     XMarkIcon: mockIcon('x-mark'),
     TrashIcon: mockIcon('trash'),
+    Bars2Icon: mockIcon('bars-2'),
     Bars3Icon: mockIcon('bars-3'),
     ArrowUturnLeftIcon: mockIcon('arrow-uturn'),
     SparklesIcon: mockIcon('sparkles'),
@@ -250,8 +251,16 @@ jest.mock('@components/ExportButtons', () => {
 jest.mock('../../app/components/SortableItem', () => {
   return function MockSortableItem(props: any) {
     return (
-      <div data-testid={`sortable-item-${props.item?.id || 'unknown'}`}>
+      <div
+        data-testid={`sortable-item-${props.item?.id || 'unknown'}`}
+        data-sub-point={props.locationContext?.subPointText || ''}
+      >
         <span>{props.item?.content || 'Mock Item'}</span>
+        {props.locationContext?.subPointText && (
+          <span data-testid={`subpoint-chip-${props.item?.id || 'unknown'}`}>
+            {props.locationContext.subPointText}
+          </span>
+        )}
       </div>
     );
   };
@@ -985,10 +994,99 @@ describe('Column Component', () => {
               );
               expect(screen.queryByText(/Unassigned Thoughts/)).not.toBeInTheDocument();
             }
+          },
+          {
+            name: 'renders subpoint controls inside structure outline points',
+            run: () => {
+              const handleAddSubPoint = jest.fn();
+              render(
+                <Column
+                  id="introduction"
+                  title="Introduction"
+                  items={[
+                    { id: '1', content: 'Item 1', customTagNames: [], outlinePointId: 'point1' }
+                  ]}
+                  outlinePoints={[
+                    {
+                      id: 'point1',
+                      text: 'Introduction Point 1',
+                      subPoints: [{ id: 'sub-1', text: 'Sub-point A', position: 0 }]
+                    }
+                  ]}
+                  thoughtsPerSermonPoint={{ point1: 1 }}
+                  onOutlineUpdate={jest.fn()}
+                />
+              );
+
+              expect(screen.getAllByText('Sub-point A').length).toBeGreaterThan(0);
+              expect(screen.getByTestId('sub-point-lane-sub-1')).toBeInTheDocument();
+              expect(screen.getByText('Add sub-point')).toBeInTheDocument();
+            }
           }
         ],
         { afterEachScenario: cleanup }
       );
+    });
+
+    it('allows adding a subpoint from the structure outline surface', async () => {
+      const handleOutlineUpdate = jest.fn();
+      render(
+        <Column
+          id="introduction"
+          title="Introduction"
+          sermonId="sermon-1"
+          items={[
+            { id: '1', content: 'Item 1', customTagNames: [], outlinePointId: 'point1' }
+          ]}
+          outlinePoints={[
+            { id: 'point1', text: 'Introduction Point 1', subPoints: [] }
+          ]}
+          thoughtsPerSermonPoint={{ point1: 1 }}
+          onOutlineUpdate={handleOutlineUpdate}
+        />
+      );
+
+      fireEvent.click(screen.getByText('Add sub-point'));
+      fireEvent.change(screen.getByPlaceholderText('Sub-point name...'), { target: { value: 'Sub-point B' } });
+      fireEvent.click(screen.getByLabelText('Save'));
+
+      await waitFor(() => {
+        expect(handleOutlineUpdate).toHaveBeenCalledWith(expect.objectContaining({
+          introduction: [
+            expect.objectContaining({
+              id: 'point1',
+              subPoints: [expect.objectContaining({ text: 'Sub-point B' })],
+            }),
+          ],
+        }));
+      });
+
+      expect(screen.queryByPlaceholderText('Sub-point name...')).not.toBeInTheDocument();
+    });
+
+    it('marks only nested thoughts with a compact subpoint chip', () => {
+      render(
+        <Column
+          id="introduction"
+          title="Introduction"
+          items={[
+            { id: '1', content: 'Nested thought', customTagNames: [], outlinePointId: 'point1', subPointId: 'sub-1' },
+            { id: '2', content: 'Direct thought', customTagNames: [], outlinePointId: 'point1' }
+          ]}
+          outlinePoints={[
+            {
+              id: 'point1',
+              text: 'Introduction Point 1',
+              subPoints: [{ id: 'sub-1', text: 'Sub-point A', position: 0 }]
+            }
+          ]}
+          thoughtsPerSermonPoint={{ point1: 2 }}
+          onOutlineUpdate={jest.fn()}
+        />
+      );
+
+      expect(screen.getByTestId('subpoint-chip-1')).toHaveTextContent('Sub-point A');
+      expect(screen.queryByTestId('subpoint-chip-2')).not.toBeInTheDocument();
     });
   });
 
