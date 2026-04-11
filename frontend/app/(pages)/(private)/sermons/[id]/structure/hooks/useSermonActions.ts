@@ -132,9 +132,10 @@ export function useSermonActions({
         text: string;
         tags: string[];
         outlinePointId?: string | null;
+        subPointId?: string | null;
     }) => {
         if (!sermon) return;
-        const { localId, sectionId, text, tags, outlinePointId } = payload;
+        const { localId, sectionId, text, tags, outlinePointId, subPointId } = payload;
 
         const outlineSection = resolveSectionFromOutline(sermon, outlinePointId ?? null);
         const finalOutlinePointId = outlineSection && outlineSection !== sectionId ? undefined : outlinePointId;
@@ -165,6 +166,7 @@ export function useSermonActions({
                 text,
                 tags: requestTags,
                 outlinePointId: finalOutlinePointId,
+                subPointId: subPointId ?? undefined,
                 date: new Date().toISOString(),
             });
             debugLog('Structure: createManualThought result', { id: addedThought.id, tags: addedThought.tags, outlinePointId: addedThought.outlinePointId });
@@ -278,18 +280,18 @@ export function useSermonActions({
         updatedText: string,
         updatedTags: string[],
         outlinePointId: string | null | undefined,
+        subPointId?: string | null,
     ) => {
         if (!sermon || !editingItem) return;
         if (isLocalThoughtId(editingItem.id)) return;
 
+        const outlineChanged = outlinePointId !== (editingItem.outlinePointId ?? null);
         const updatedItem: Thought = {
             ...sermon.thoughts.find((thought) => thought.id === editingItem.id)!,
             text: updatedText,
             tags: [...(editingItem.requiredTags || []), ...updatedTags],
             outlinePointId,
-            subPointId: outlinePointId === (editingItem.outlinePointId ?? null)
-                ? editingItem.subPointId ?? null
-                : null,
+            subPointId: subPointId !== undefined ? subPointId : (outlineChanged ? null : editingItem.subPointId ?? null),
         };
         const syncExpiresAt = buildSyncExpiresAt();
         const outlinePoint = findOutlinePoint(outlinePointId, sermon);
@@ -449,7 +451,7 @@ export function useSermonActions({
         void executeDelete();
     }, [buildSyncExpiresAt, containersRef, pendingActions, setContainers, setSermon, t]);
 
-    const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string | null) => {
+    const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string | null, subPointId?: string | null) => {
         if (!sermon) return;
 
         const trimmedText = updatedText.trim();
@@ -494,6 +496,7 @@ export function useSermonActions({
                 text: trimmedText,
                 tags: updatedTags,
                 outlinePointId,
+                subPointId: subPointId ?? null,
             });
             const pending = pendingActions.getPendingById(editingItem.id);
             if (pending) {
@@ -503,11 +506,12 @@ export function useSermonActions({
                     text: trimmedText,
                     tags: updatedTags,
                     outlinePointId,
+                    subPointId: subPointId ?? null,
                 });
             }
             handleCloseEdit();
         } else {
-            await handleUpdateExistingThought(trimmedText, updatedTags, outlinePointId);
+            await handleUpdateExistingThought(trimmedText, updatedTags, outlinePointId, subPointId);
             handleCloseEdit();
         }
     };

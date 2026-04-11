@@ -413,12 +413,17 @@ function findMatchingSubPoint(aiSubPointText: string, outlinePoint: SermonPoint)
   );
   if (match) return match.id;
 
-  // Word overlap (include words ≥2 chars to support abbreviations like "NT", "OT", "НЗ")
-  const aiWords = new Set(normalized.split(/\s+/).filter(w => w.length > 1));
+  // Word overlap (≥2 chars for abbreviations like "NT", "OT", "НЗ"; exclude common stop-words)
+  const STOP_WORDS = new Set([
+    'of', 'to', 'in', 'on', 'at', 'by', 'an', 'or', 'is', 'it', 'as', 'if', 'no', 'do', 'so', 'up', 'he', 'we',
+    'и', 'в', 'на', 'с', 'к', 'о', 'у', 'за', 'из', 'по', 'до', 'от', 'не', 'та', 'ті', 'це', 'що', 'як', 'чи',
+  ]);
+  const isSignificantWord = (w: string) => w.length > 2 || (w.length === 2 && !STOP_WORDS.has(w));
+  const aiWords = new Set(normalized.split(/\s+/).filter(isSignificantWord));
   let bestScore = 0;
   let bestId: string | null = null;
   for (const sp of subs) {
-    const spWords = new Set(sp.text.toLowerCase().split(/\s+/).filter(w => w.length > 1));
+    const spWords = new Set(sp.text.toLowerCase().split(/\s+/).filter(isSignificantWord));
     let score = 0;
     for (const w of aiWords) { if (spWords.has(w)) score++; }
     if (score > bestScore) { bestScore = score; bestId = sp.id; }
@@ -450,9 +455,11 @@ function buildSortedItem(
 
   const nextOutlinePointId = resolvedOutlinePoint?.id ?? item.outlinePointId ?? null;
   const outlinePointChanged = nextOutlinePointId !== (item.outlinePointId ?? null);
-  const aiSuggestedSubPoint = subPointAssignments[key]
-    ? findMatchingSubPoint(subPointAssignments[key], resolvedOutlinePoint!)
-    : undefined; // undefined = AI didn't mention subPoint; null would mean explicit clear
+  const aiSuggestedSubPoint = subPointAssignments[key] && resolvedOutlinePoint
+    ? findMatchingSubPoint(subPointAssignments[key], resolvedOutlinePoint)
+    : subPointAssignments[key]
+      ? null // AI suggested a sub-point but no outline point resolved — can't match
+      : undefined; // undefined = AI didn't mention subPoint
 
   const nextSubPointId = resolvedOutlinePoint
     ? aiSuggestedSubPoint !== undefined

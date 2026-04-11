@@ -28,6 +28,7 @@ export type PendingThoughtInput = {
   text: string;
   tags: string[];
   outlinePointId?: string | null;
+  subPointId?: string | null;
 };
 
 interface UsePendingThoughtsParams {
