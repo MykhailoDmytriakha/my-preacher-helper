@@ -15,6 +15,7 @@ export interface PendingThoughtRecord {
   text: string;
   tags: string[];
   outlinePointId?: string | null;
+  subPointId?: string | null;
   createdAt: string;
   lastAttemptAt: string;
   expiresAt: string;
@@ -28,6 +29,7 @@ export interface PendingThoughtEntity {
   text: string;
   tags: string[];
   outlinePointId?: string | null;
+  subPointId?: string | null;
 }
 
 const PENDING_THOUGHTS_KEY_PREFIX = "pending-thoughts:";
@@ -57,6 +59,7 @@ const toOptimisticRecord = (
     text: record.text,
     tags: record.tags,
     outlinePointId: record.outlinePointId,
+    subPointId: record.subPointId,
   },
   createdAt: record.createdAt,
   lastAttemptAt: record.lastAttemptAt,
@@ -73,6 +76,7 @@ const toPendingThoughtRecord = (
   text: record.entity.text,
   tags: record.entity.tags,
   outlinePointId: record.entity.outlinePointId,
+  subPointId: record.entity.subPointId,
   createdAt: record.createdAt,
   lastAttemptAt: record.lastAttemptAt,
   expiresAt: record.expiresAt,

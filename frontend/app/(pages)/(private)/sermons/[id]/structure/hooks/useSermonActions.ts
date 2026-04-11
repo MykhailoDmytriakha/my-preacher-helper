@@ -35,7 +35,7 @@ interface UseSermonActionsProps {
         removePendingThought: (localId: string, options?: { removeFromContainers?: boolean }) => void;
         replacePendingThought: (localId: string, newItem: Item) => void;
         updateItemSyncStatus: (itemId: string, status?: 'pending' | 'error' | 'success', meta?: { expiresAt?: string; lastError?: string; successAt?: string; operation?: 'create' | 'update' | 'delete' }) => void;
-        getPendingById: (localId: string) => { sectionId: 'introduction' | 'main' | 'conclusion'; text: string; tags: string[]; outlinePointId?: string | null } | undefined;
+        getPendingById: (localId: string) => { sectionId: 'introduction' | 'main' | 'conclusion'; text: string; tags: string[]; outlinePointId?: string | null; subPointId?: string | null } | undefined;
     };
 }
 
@@ -237,6 +237,7 @@ export function useSermonActions({
         updatedText: string,
         updatedTags: string[],
         outlinePointId: string | null | undefined,
+        subPointId?: string | null,
     ) => {
         if (!sermon) return;
         const section = addingThoughtToSection;
@@ -246,6 +247,7 @@ export function useSermonActions({
             textLength: updatedText.length,
             tags: updatedTags,
             outlinePointId,
+            subPointId,
         });
         if (!section || !['introduction', 'main', 'conclusion'].includes(section)) {
             debugLog('Structure: handleCreateNewThought aborted - invalid section', { section });
@@ -258,6 +260,7 @@ export function useSermonActions({
                 text: updatedText,
                 tags: updatedTags,
                 outlinePointId,
+                subPointId: subPointId ?? null,
             });
             if (pending) {
                 await submitPendingThought({
@@ -266,6 +269,7 @@ export function useSermonActions({
                     text: updatedText,
                     tags: updatedTags,
                     outlinePointId,
+                    subPointId: subPointId ?? null,
                 });
             }
         } catch (error) {
@@ -490,7 +494,7 @@ export function useSermonActions({
         });
 
         if (editingItem?.id.startsWith('temp-')) {
-            await handleCreateNewThought(trimmedText, updatedTags, outlinePointId);
+            await handleCreateNewThought(trimmedText, updatedTags, outlinePointId, subPointId);
         } else if (editingItem && isLocalThoughtId(editingItem.id)) {
             pendingActions.updatePendingThought(editingItem.id, {
                 text: trimmedText,
@@ -525,6 +529,7 @@ export function useSermonActions({
                 text: pending.text,
                 tags: pending.tags,
                 outlinePointId: pending.outlinePointId,
+                subPointId: pending.subPointId ?? null,
             });
             return;
         }

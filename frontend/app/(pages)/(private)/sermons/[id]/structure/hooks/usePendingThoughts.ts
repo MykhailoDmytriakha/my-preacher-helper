@@ -55,6 +55,7 @@ const toOptimisticRecord = (
     text: record.text,
     tags: record.tags,
     outlinePointId: record.outlinePointId,
+    subPointId: record.subPointId,
   },
   createdAt: record.createdAt,
   lastAttemptAt: record.lastAttemptAt,
@@ -71,6 +72,7 @@ const toPendingThoughtRecord = (
   text: record.entity.text,
   tags: record.entity.tags,
   outlinePointId: record.entity.outlinePointId,
+  subPointId: record.entity.subPointId,
   createdAt: record.createdAt,
   lastAttemptAt: record.lastAttemptAt,
   expiresAt: record.expiresAt,
@@ -138,6 +140,7 @@ export const usePendingThoughts = ({
 
     return {
       ...item,
+      subPointId: pending.subPointId ?? null,
       syncStatus: pending.status === "sending" ? "pending" : pending.status,
       syncExpiresAt: pending.expiresAt,
       syncLastError: pending.lastError,
@@ -293,6 +296,7 @@ export const usePendingThoughts = ({
         text: input.text,
         tags: input.tags,
         outlinePointId: input.outlinePointId,
+        subPointId: input.subPointId ?? null,
       },
       status: "pending",
     });
@@ -314,6 +318,7 @@ export const usePendingThoughts = ({
       text: input.text ?? record.entity.text,
       tags: input.tags ?? record.entity.tags,
       outlinePointId: input.outlinePointId ?? record.entity.outlinePointId,
+      subPointId: input.subPointId !== undefined ? input.subPointId : record.entity.subPointId,
     };
 
     pendingSync.replaceRecordEntity(record.localId, updatedEntity, {
