@@ -572,13 +572,13 @@ export default function SeriesDetailPage() {
         <AddSermonModal
           showTriggerButton={false}
           isOpen
+          onClose={closeModals}
           onCancel={cancelCreateSermon}
           preSelectedSeriesId={seriesId}
           onNewSermonCreated={async (newSermon) => {
             debugLog('New sermon created, starting to add to series:', newSermon.id);
             try {
               await handleAddSermons([newSermon.id]);
-              closeModals();
               setTimeout(() => {
                 queryClient.invalidateQueries({ queryKey: ['series-detail', seriesId] });
               }, 100);

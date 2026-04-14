@@ -59,6 +59,7 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-04-14 Async Create-Then-Attach Modals Must Await Parent Completion:** If a modal creates an entity locally but the parent still has a second async step before close (for example, attaching the new sermon to a series), the child must await that parent callback before resetting local form state. Otherwise a controlled modal stays open but flashes an empty form, which looks like data loss.
 - **2026-03-28 Read-Only Sibling Surfaces Must Preserve Core Actions:** If the same entity can be viewed in list cards, focus overlays, and dedicated detail pages, keep core read-only actions like copy/share parity across those surfaces. Otherwise navigation path alone changes available capability and creates false "missing feature" bugs.
 - **2026-03-19 Selector Modal Mutations Need Row-Level Pending Feedback:** If clicking a row inside a selector modal triggers async mutations, do not leave the list visually static. Lock the modal, keep the chosen row visible, and show a spinner plus explicit action label on that row until the mutation finishes; otherwise users interpret the click as lost.
 - **2026-03-19 OS Theme Propagation Needs Progressive Retry, Not Single Timeout:** After device wake or tab re-focus, macOS/Chrome can take 50–500ms+ to propagate `prefers-color-scheme` changes from OS to `matchMedia`. A single `setTimeout(50)` misses the window; use progressive retries (50ms, 300ms, 1000ms) with early exit on change detection to reliably catch the OS→browser pipeline.
