@@ -41,6 +41,10 @@ jest.mock('@repositories/sermons.repository', () => ({
   },
 }));
 
+jest.mock('@/utils/server/audioServerUtils', () => ({
+  validateAudioDuration: jest.fn(),
+}));
+
 jest.mock('next/server', () => ({
   NextResponse: {
     json: jest.fn().mockImplementation((data, options: { status?: number } = {}) => ({
@@ -78,6 +82,7 @@ describe('Thoughts API route additional coverage', () => {
   let getRequiredTagsMock: jest.Mock;
   let getCustomTagsMock: jest.Mock;
   let fetchSermonByIdMock: jest.Mock;
+  let validateAudioDurationMock: jest.Mock;
   let sermonsRepoMock: any;
 
   beforeAll(async () => {
@@ -107,16 +112,19 @@ describe('Thoughts API route additional coverage', () => {
     const thoughtStructured = await import('@clients/thought.structured');
     const firestoreClient = await import('@clients/firestore.client');
     const sermonsRepo = await import('@repositories/sermons.repository');
+    const audioServerUtils = await import('@/utils/server/audioServerUtils');
 
     createTranscriptionMock = openAIClient.createTranscription as jest.Mock;
     generateThoughtStructuredMock = thoughtStructured.generateThoughtStructured as jest.Mock;
     getRequiredTagsMock = firestoreClient.getRequiredTags as jest.Mock;
     getCustomTagsMock = firestoreClient.getCustomTags as jest.Mock;
+    validateAudioDurationMock = audioServerUtils.validateAudioDuration as jest.Mock;
     sermonsRepoMock = sermonsRepo;
     fetchSermonByIdMock = sermonsRepo.sermonsRepository.fetchSermonById as jest.Mock;
 
     getRequiredTagsMock.mockResolvedValue([]);
     getCustomTagsMock.mockResolvedValue([]);
+    validateAudioDurationMock.mockResolvedValue({ valid: true, duration: 2, maxAllowed: 97 });
     fetchSermonByIdMock.mockResolvedValue({ userId: 'user-1', thoughts: [] });
     createTranscriptionMock.mockResolvedValue('transcribed');
     generateThoughtStructuredMock.mockResolvedValue({
@@ -216,6 +224,27 @@ describe('Thoughts API route additional coverage', () => {
 
       expect(response.status).toBe(400);
       expect(data).toEqual({ error: 'Invalid audio format' });
+      expect(createTranscriptionMock).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when audio duration exceeds the configured limit', async () => {
+      validateAudioDurationMock.mockResolvedValueOnce({
+        valid: false,
+        duration: 132,
+        maxAllowed: 97,
+        error: 'Audio duration (132.0s) exceeds maximum allowed (97s).',
+      });
+
+      const formData = new FormData();
+      formData.append('audio', new Blob(['audio'], { type: 'audio/webm' }));
+      formData.append('sermonId', 'sermon-1');
+      const request = createFormRequest(formData);
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(400);
+      expect(data).toEqual({ error: 'Audio duration (132.0s) exceeds maximum allowed (97s).' });
       expect(createTranscriptionMock).not.toHaveBeenCalled();
     });
 

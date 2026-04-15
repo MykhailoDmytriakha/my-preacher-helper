@@ -36,6 +36,9 @@ describe('apiClient', () => {
     await apiClient('http://test.com', { category: 'ai' });
     expect(fetchWithTimeout).toHaveBeenCalledWith('http://test.com', expect.objectContaining({ timeout: 90000 }));
 
+    await apiClient('http://test.com', { category: 'audio' });
+    expect(fetchWithTimeout).toHaveBeenCalledWith('http://test.com', expect.objectContaining({ timeout: 90000 }));
+
     await apiClient('http://test.com', { category: 'metadata' });
     expect(fetchWithTimeout).toHaveBeenCalledWith('http://test.com', expect.objectContaining({ timeout: 5000 }));
     

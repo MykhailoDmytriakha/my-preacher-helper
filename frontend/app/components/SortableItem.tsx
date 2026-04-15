@@ -551,7 +551,7 @@ function SortableItemCard({
   const style = {
     transform: isActiveItem ? "none" : CSS.Transform.toString(transform ?? null),
     transition: isActiveItem ? "none" : (transition || "transform 250ms ease-in-out"),
-    opacity: isActiveItem ? 0.3 : (isDragging || effectiveDeleting ? 0.5 : 1),
+    opacity: isActiveItem ? 0.4 : (isDragging || effectiveDeleting ? 0.5 : 1),
     pointerEvents: (isActiveItem || isOverlay ? "none" : "auto") as React.CSSProperties["pointerEvents"],
     ...highlightStyles,
   } as React.CSSProperties;

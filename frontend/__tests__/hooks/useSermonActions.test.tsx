@@ -104,6 +104,55 @@ describe('useSermonActions', () => {
     expect(mockSetSermon).toHaveBeenCalled();
   });
 
+  it('preserves subPointId in the UI item when saving a new thought into a sub-point', async () => {
+    defaultProps.sermon = createMockSermon({
+      id: 'sermon-1',
+      outline: {
+        introduction: [],
+        main: [
+          {
+            id: 'op-1',
+            text: 'Main point',
+            subPoints: [{ id: 'sp-1', text: 'Sub-point 1', position: 1000 }],
+          },
+        ],
+        conclusion: [],
+      },
+    });
+    mockPendingActions.createPendingThought.mockReturnValue({ localId: 'local-123' });
+    (thoughtService.createManualThought as jest.Mock).mockResolvedValueOnce({
+      id: 'server-123',
+      text: 'new text',
+      tags: [],
+      date: new Date().toISOString(),
+      outlinePointId: 'op-1',
+      subPointId: 'sp-1',
+    });
+
+    const { result } = renderHook(() => useSermonActions(defaultProps));
+
+    act(() => { result.current.handleAddThoughtToSection('main'); });
+    await act(async () => {
+      await result.current.handleSaveEdit('new text', ['tag1'], 'op-1', 'sp-1');
+    });
+
+    expect(thoughtService.createManualThought).toHaveBeenCalledWith(
+      'sermon-1',
+      expect.objectContaining({
+        outlinePointId: 'op-1',
+        subPointId: 'sp-1',
+      }),
+    );
+    expect(mockPendingActions.replacePendingThought).toHaveBeenCalledWith(
+      'local-123',
+      expect.objectContaining({
+        id: 'server-123',
+        outlinePointId: 'op-1',
+        subPointId: 'sp-1',
+      }),
+    );
+  });
+
   it('handleSaveEdit updates an existing thought', async () => {
     const existingThought = createMockThought({ id: 't1', text: 'Old' });
     const existingItem = createMockItem({ id: 't1', content: 'Old' });

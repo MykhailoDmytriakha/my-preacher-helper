@@ -276,7 +276,7 @@ describe('ThoughtsBySection Page', () => {
     );
 
       await waitFor(() => {
-        expect(screen.getByText(/drop thoughts here to add/i)).toBeInTheDocument();
+        expect(screen.getAllByText(/drop thoughts here/i).length).toBeGreaterThan(0);
       });
     });
   });

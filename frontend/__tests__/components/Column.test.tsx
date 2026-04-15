@@ -17,11 +17,13 @@ jest.mock('@heroicons/react/24/outline', () => {
   };
 });
 
+const droppableState = { activeDropId: null as string | null };
+
 // Mock @dnd-kit libraries
 jest.mock('@dnd-kit/core', () => ({
-  useDroppable: () => ({
+  useDroppable: ({ id }: { id: string }) => ({
     setNodeRef: jest.fn(),
-    isOver: false
+    isOver: droppableState.activeDropId === id
   })
 }));
 
@@ -310,6 +312,10 @@ describe('Column Component', () => {
     { id: '1', content: 'Item 1', customTagNames: [] },
     { id: '2', content: 'Item 2', customTagNames: [] }
   ];
+
+  beforeEach(() => {
+    droppableState.activeDropId = null;
+  });
 
   describe('Rendering and Props', () => {
     it('covers rendering permutations in a single scenario run', async () => {
@@ -1087,6 +1093,65 @@ describe('Column Component', () => {
 
       expect(screen.getByTestId('subpoint-chip-1')).toHaveTextContent('Sub-point A');
       expect(screen.queryByTestId('subpoint-chip-2')).not.toBeInTheDocument();
+    });
+
+    it('highlights subpoint container when a thought is hovering over it', () => {
+      droppableState.activeDropId = 'sub-point-sub-1';
+
+      render(
+        <Column
+          id="introduction"
+          title="Introduction"
+          activeId="dragging-thought"
+          items={[
+            { id: '1', content: 'Nested thought', customTagNames: [], outlinePointId: 'point1', subPointId: 'sub-1' }
+          ]}
+          outlinePoints={[
+            {
+              id: 'point1',
+              text: 'Introduction Point 1',
+              subPoints: [{ id: 'sub-1', text: 'Sub-point A', position: 0 }]
+            }
+          ]}
+          thoughtsPerSermonPoint={{ point1: 1 }}
+          onOutlineUpdate={jest.fn()}
+        />
+      );
+
+      const subPointDrop = screen.getByTestId('sub-point-drop-sub-1');
+      expect(subPointDrop).toHaveClass('border-blue-300');
+    });
+
+    it('renders an invisible gap slot between subpoints while dragging', () => {
+      droppableState.activeDropId = 'outline-gap-point1-1';
+
+      render(
+        <Column
+          id="introduction"
+          title="Introduction"
+          activeId="dragging-thought"
+          items={[
+            { id: '1', content: 'Thought A', customTagNames: [], outlinePointId: 'point1', subPointId: 'sub-1', position: 1000 },
+            { id: '2', content: 'Thought B', customTagNames: [], outlinePointId: 'point1', subPointId: 'sub-2', position: 2000 }
+          ]}
+          outlinePoints={[
+            {
+              id: 'point1',
+              text: 'Introduction Point 1',
+              subPoints: [
+                { id: 'sub-1', text: 'Sub-point A', position: 1000 },
+                { id: 'sub-2', text: 'Sub-point B', position: 3000 }
+              ]
+            }
+          ]}
+          thoughtsPerSermonPoint={{ point1: 2 }}
+          onOutlineUpdate={jest.fn()}
+        />
+      );
+
+      // Gap slot is now an invisible droppable (no preview div)
+      const outlineGap = screen.getByTestId('outline-gap-point1-1');
+      expect(outlineGap).toHaveClass('min-h-[24px]');
     });
   });
 

@@ -7,7 +7,7 @@ import {
   DragOverEvent,
   DragEndEvent
 } from "@dnd-kit/core";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -20,6 +20,7 @@ import {
   isStructureChanged,
   ensureUniqueItems,
   removeIdFromOtherSections,
+  calculateIntermediatePosition,
   calculateGroupPosition,
   buildStructureFromContainers
 } from "../utils/structure";
@@ -28,21 +29,34 @@ import {
 const OUTLINE_POINT_PREFIX = 'outline-point-';
 const UNASSIGNED_PREFIX = 'unassigned-';
 const SUB_POINT_PREFIX = 'sub-point-';
+const OUTLINE_GAP_PREFIX = 'outline-gap-';
 
 // Helper function to determine destination container and outline point
 const determineDestination = (
   overId: string,
-  over: { data?: { current?: { container?: string; outlinePointId?: string; subPointId?: string } } },
+  over: { data?: { current?: Record<string, unknown> } },
   state: Record<string, Item[]>
-): { dstContainerKey: string | undefined; targetSermonPointId: string | null | undefined; targetSubPointId: string | null | undefined } => {
+): {
+  dstContainerKey: string | undefined;
+  targetSermonPointId: string | null | undefined;
+  targetSubPointId: string | null | undefined;
+  targetBeforeItemId: string | null | undefined;
+  targetAfterItemId: string | null | undefined;
+} => {
   let dstContainerKey: string | undefined = over.data?.current?.container as string | undefined;
   let targetSermonPointId: string | null | undefined = over.data?.current?.outlinePointId as string | undefined;
   let targetSubPointId: string | null | undefined = over.data?.current?.subPointId as string | undefined;
+  let targetBeforeItemId: string | null | undefined = over.data?.current?.beforeItemId as string | undefined;
+  let targetAfterItemId: string | null | undefined = over.data?.current?.afterItemId as string | undefined;
 
   if (overId.startsWith(SUB_POINT_PREFIX)) {
     dstContainerKey = over.data?.current?.container as string | undefined;
     targetSermonPointId = (over.data?.current?.outlinePointId as string) || undefined;
     targetSubPointId = (over.data?.current?.subPointId as string) || undefined;
+  } else if (overId.startsWith(OUTLINE_GAP_PREFIX)) {
+    dstContainerKey = over.data?.current?.container as string | undefined;
+    targetSermonPointId = (over.data?.current?.outlinePointId as string) || undefined;
+    targetSubPointId = null;
   } else if (overId.startsWith(OUTLINE_POINT_PREFIX)) {
     dstContainerKey = over.data?.current?.container as string | undefined;
     targetSermonPointId = (over.data?.current?.outlinePointId as string) || undefined;
@@ -56,7 +70,15 @@ const determineDestination = (
     dstContainerKey = ["introduction", "main", "conclusion", "ambiguous"].includes(overId)
       ? overId
       : Object.keys(state).find((k) => state[k].some((it) => it.id === overId));
-    if (!dstContainerKey) return { dstContainerKey: undefined, targetSermonPointId: undefined, targetSubPointId: undefined };
+    if (!dstContainerKey) {
+      return {
+        dstContainerKey: undefined,
+        targetSermonPointId: undefined,
+        targetSubPointId: undefined,
+        targetBeforeItemId: undefined,
+        targetAfterItemId: undefined,
+      };
+    }
 
     // If over is an item, inherit its outline point group for preview
     if (overId !== dstContainerKey) {
@@ -67,7 +89,31 @@ const determineDestination = (
     }
   }
 
-  return { dstContainerKey, targetSermonPointId, targetSubPointId };
+  return {
+    dstContainerKey,
+    targetSermonPointId,
+    targetSubPointId,
+    targetBeforeItemId,
+    targetAfterItemId,
+  };
+};
+
+const resolveExplicitInsertIndex = (
+  items: Item[],
+  beforeItemId?: string | null,
+  afterItemId?: string | null,
+): number | null => {
+  if (beforeItemId) {
+    const beforeIndex = items.findIndex((item) => item.id === beforeItemId);
+    if (beforeIndex !== -1) return beforeIndex;
+  }
+
+  if (afterItemId) {
+    const afterIndex = items.findIndex((item) => item.id === afterItemId);
+    if (afterIndex !== -1) return afterIndex + 1;
+  }
+
+  return null;
 };
 
 // Helper function to calculate insertion index
@@ -75,11 +121,26 @@ const calculateInsertIndex = (
   overId: string,
   dstContainerKey: string,
   targetSermonPointId: string | null | undefined,
-  state: Record<string, Item[]>
+  state: Record<string, Item[]>,
+  targetBeforeItemId?: string | null,
+  targetAfterItemId?: string | null,
 ): number => {
+  const explicitInsertIndex = resolveExplicitInsertIndex(
+    state[dstContainerKey] || [],
+    targetBeforeItemId,
+    targetAfterItemId,
+  );
+  if (explicitInsertIndex !== null) return explicitInsertIndex;
+
   let insertIndex = state[dstContainerKey].length;
 
-  if (overId !== dstContainerKey && !overId.startsWith(OUTLINE_POINT_PREFIX) && !overId.startsWith(UNASSIGNED_PREFIX)) {
+  if (
+    overId !== dstContainerKey &&
+    !overId.startsWith(OUTLINE_POINT_PREFIX) &&
+    !overId.startsWith(UNASSIGNED_PREFIX) &&
+    !overId.startsWith(OUTLINE_GAP_PREFIX) &&
+    !overId.startsWith(SUB_POINT_PREFIX)
+  ) {
     const overIdx = state[dstContainerKey].findIndex((it) => it.id === overId);
     if (overIdx !== -1) insertIndex = overIdx; // insert before target item
   } else if (targetSermonPointId !== undefined) {
@@ -135,6 +196,10 @@ interface DropTargetInfo {
   overContainer: string;
   outlinePointId: string | null | undefined;
   subPointId: string | null | undefined;
+  beforeItemId: string | null | undefined;
+  afterItemId: string | null | undefined;
+  prevPosition: number | undefined;
+  nextPosition: number | undefined;
   droppedOnItem: boolean;
   targetItemIndex: number;
   targetItemSermonPointId: string | null;
@@ -150,6 +215,10 @@ const identifyDropTarget = (
       overContainer: '',
       outlinePointId: undefined,
       subPointId: undefined,
+      beforeItemId: undefined,
+      afterItemId: undefined,
+      prevPosition: undefined,
+      nextPosition: undefined,
       droppedOnItem: false,
       targetItemIndex: -1,
       targetItemSermonPointId: null,
@@ -159,6 +228,10 @@ const identifyDropTarget = (
   let overContainer = over.data.current?.container;
   let outlinePointId = over.data.current?.outlinePointId;
   let subPointId: string | null | undefined = over.data.current?.subPointId;
+  let beforeItemId: string | null | undefined = over.data.current?.beforeItemId;
+  let afterItemId: string | null | undefined = over.data.current?.afterItemId;
+  let prevPosition = typeof over.data.current?.prevPosition === 'number' ? over.data.current.prevPosition : undefined;
+  let nextPosition = typeof over.data.current?.nextPosition === 'number' ? over.data.current.nextPosition : undefined;
   let droppedOnItem = false;
   let targetItemIndex = -1;
   let targetItemSermonPointId: string | null = null;
@@ -168,6 +241,10 @@ const identifyDropTarget = (
     subPointId = over.data.current?.subPointId;
     outlinePointId = over.data.current?.outlinePointId;
     overContainer = over.data.current?.container;
+  } else if (over.id.toString().startsWith(OUTLINE_GAP_PREFIX)) {
+    outlinePointId = over.data.current?.outlinePointId;
+    overContainer = over.data.current?.container;
+    subPointId = null;
   } else if (over.id.toString().startsWith(OUTLINE_POINT_PREFIX)) {
     const dropTargetId = over.id.toString();
     outlinePointId = dropTargetId.replace(OUTLINE_POINT_PREFIX, '');
@@ -186,7 +263,9 @@ const identifyDropTarget = (
   if (
     over.id !== overContainer &&
     !over.id.toString().startsWith(OUTLINE_POINT_PREFIX) &&
-    !over.id.toString().startsWith(UNASSIGNED_PREFIX)
+    !over.id.toString().startsWith(UNASSIGNED_PREFIX) &&
+    !over.id.toString().startsWith(SUB_POINT_PREFIX) &&
+    !over.id.toString().startsWith(OUTLINE_GAP_PREFIX)
   ) {
     droppedOnItem = true;
     targetItemIndex = containers[overContainer]?.findIndex((item) => item.id === over.id) ?? -1;
@@ -200,6 +279,10 @@ const identifyDropTarget = (
     overContainer,
     outlinePointId,
     subPointId,
+    beforeItemId,
+    afterItemId,
+    prevPosition,
+    nextPosition,
     droppedOnItem,
     targetItemIndex,
     targetItemSermonPointId,
@@ -213,16 +296,23 @@ const calculateItemPlacement = (
   overContainer: string,
   activeId: string | number,
   droppedOnItem: boolean,
-  targetItemIndex: number
+  targetItemIndex: number,
+  explicitInsertIndex?: number | null,
 ): Record<string, Item[]> => {
   const updatedContainers = { ...containers };
 
   if (activeContainer === overContainer) {
     const items = [...updatedContainers[activeContainer]];
     const oldIndex = items.findIndex((item) => item.id === activeId);
+    const adjustedExplicitIndex = explicitInsertIndex !== null && explicitInsertIndex !== undefined
+      ? (oldIndex !== -1 && oldIndex < explicitInsertIndex ? explicitInsertIndex - 1 : explicitInsertIndex)
+      : null;
 
     if (oldIndex !== -1) {
-      if (droppedOnItem && targetItemIndex !== -1) {
+      if (adjustedExplicitIndex !== null && adjustedExplicitIndex !== undefined) {
+        const [draggedItem] = items.splice(oldIndex, 1);
+        items.splice(adjustedExplicitIndex, 0, draggedItem);
+      } else if (droppedOnItem && targetItemIndex !== -1) {
         const [draggedItem] = items.splice(oldIndex, 1);
         items.splice(targetItemIndex, 0, draggedItem);
       } else if (!droppedOnItem) {
@@ -240,7 +330,9 @@ const calculateItemPlacement = (
     if (activeIndex !== -1) {
       const [draggedItem] = activeItems.splice(activeIndex, 1);
 
-      if (droppedOnItem && targetItemIndex !== -1) {
+      if (explicitInsertIndex !== null && explicitInsertIndex !== undefined) {
+        overItems.splice(explicitInsertIndex, 0, draggedItem);
+      } else if (droppedOnItem && targetItemIndex !== -1) {
         overItems.splice(targetItemIndex, 0, draggedItem);
       } else {
         overItems.push(draggedItem);
@@ -310,7 +402,11 @@ const buildUpdatedItem = (
   overContainer: string,
   finalSermonPointId: string | null | undefined,
   updatedContainers: Record<string, Item[]>,
-  movedIndex: number
+  movedIndex: number,
+  positionHint?: {
+    prevPosition?: number;
+    nextPosition?: number;
+  }
 ): Item => {
   // Determine the correct required tag for the destination container
   let updatedRequiredTags: string[] = [];
@@ -320,7 +416,9 @@ const buildUpdatedItem = (
 
   // Compute new positional rank within the destination group
   const groupKey = finalSermonPointId || '__unassigned__';
-  const newPos = calculateGroupPosition(updatedContainers[overContainer], movedIndex, groupKey);
+  const newPos = positionHint
+    ? calculateIntermediatePosition(positionHint.prevPosition, positionHint.nextPosition)
+    : calculateGroupPosition(updatedContainers[overContainer], movedIndex, groupKey);
 
   return {
     ...movedItem,
@@ -418,6 +516,10 @@ export const useStructureDnd = ({
   const [activeId, setActiveId] = useState<string | null>(null);
   const [originalContainer, setOriginalContainer] = useState<string | null>(null);
   const [isDragEnding, setIsDragEnding] = useState(false);
+  const dragStartContainersRef = useRef<Record<string, Item[]> | null>(null);
+  const previewRafRef = useRef<number | null>(null);
+  // Track last two drag destinations to detect A→B→A oscillation at subpoint boundaries
+  const dragDestHistoryRef = useRef<{ current: string; previous: string }>({ current: '', previous: '' });
 
   // Setup sensors - using MouseSensor + TouchSensor for better touch support
   const sensors = useSensors(
@@ -445,6 +547,16 @@ export const useStructureDnd = ({
       containers[key].some((item) => item.id === id)
     );
     setOriginalContainer(original || null);
+
+    // Reset oscillation tracking
+    dragDestHistoryRef.current = { current: '', previous: '' };
+
+    // Snapshot the original containers for handleDragEnd calculations
+    const snapshot: Record<string, Item[]> = {};
+    for (const key of Object.keys(containers)) {
+      snapshot[key] = [...containers[key]];
+    }
+    dragStartContainersRef.current = snapshot;
   }, [containers]);
 
   const handleDragOver = useCallback((event: DragOverEvent) => {
@@ -460,7 +572,13 @@ export const useStructureDnd = ({
     if (!srcContainerKey) return;
 
     // Determine destination container and outline point
-    const { dstContainerKey, targetSermonPointId, targetSubPointId } = determineDestination(overId, over, state);
+    const {
+      dstContainerKey,
+      targetSermonPointId,
+      targetSubPointId,
+      targetBeforeItemId,
+      targetAfterItemId,
+    } = determineDestination(overId, over, state);
     if (!dstContainerKey) return;
 
     // Early compute current positions before building draft
@@ -469,7 +587,14 @@ export const useStructureDnd = ({
     const dragged = state[srcContainerKey][srcIdx];
 
     // Calculate insertion index
-    const insertIndex = calculateInsertIndex(overId, dstContainerKey, targetSermonPointId, state);
+    const insertIndex = calculateInsertIndex(
+      overId,
+      dstContainerKey,
+      targetSermonPointId,
+      state,
+      targetBeforeItemId,
+      targetAfterItemId,
+    );
 
     const intendedOutline: string | undefined =
       targetSermonPointId === undefined ? (dragged.outlinePointId || undefined) : (targetSermonPointId || undefined);
@@ -482,6 +607,16 @@ export const useStructureDnd = ({
     if (shouldSkipUpdate(srcContainerKey, dstContainerKey, insertIndex, dragged, intendedOutline, intendedSubPoint, state)) {
       return;
     }
+
+    // Detect A→B→A oscillation at subpoint/group boundaries.
+    // When the cursor sits at the edge between two targets, each state update
+    // shifts rects so the pointer alternates between them. Break the cycle by
+    // refusing to move back to the position we just left.
+    const destKey = `${dstContainerKey}:${intendedOutline ?? ''}:${intendedSubPoint ?? ''}:${insertIndex}`;
+    if (destKey === dragDestHistoryRef.current.previous && destKey !== dragDestHistoryRef.current.current) {
+      return;
+    }
+    dragDestHistoryRef.current = { current: destKey, previous: dragDestHistoryRef.current.current };
 
     // Build new state preview
     const draft: Record<string, Item[]> = { ...state };
@@ -504,9 +639,34 @@ export const useStructureDnd = ({
       draft[dstContainerKey].splice(insertIndex, 0, previewItem);
     }
 
-    // Store preview state in ref only - don't trigger re-render during drag
+    // Update preview item's position so buildSubPointRenderableEntries
+    // sorts it in the correct visual order (between its neighbors).
+    // Without this, the item keeps its old position and renders in the wrong spot.
+    const draftItems = draft[dstContainerKey];
+    const previewIdx = draftItems.findIndex((it) => it.id === previewItem.id);
+    if (previewIdx !== -1) {
+      const prevPos = previewIdx > 0 ? draftItems[previewIdx - 1].position : undefined;
+      const nextPos = previewIdx < draftItems.length - 1 ? draftItems[previewIdx + 1].position : undefined;
+      draftItems[previewIdx] = {
+        ...draftItems[previewIdx],
+        position: calculateIntermediatePosition(prevPos, nextPos),
+      };
+    }
+
+    // Update ref immediately for dnd-kit calculations
     containersRef.current = draft;
-  }, [isDragEnding, containersRef]);
+
+    // Batch state update via RAF to prevent infinite re-render loops.
+    // Without RAF, setContainers triggers re-render → dnd-kit recalculates rects →
+    // fires onDragOver again → setContainers → infinite loop.
+    if (previewRafRef.current !== null) {
+      cancelAnimationFrame(previewRafRef.current);
+    }
+    previewRafRef.current = requestAnimationFrame(() => {
+      previewRafRef.current = null;
+      setContainers(containersRef.current);
+    });
+  }, [isDragEnding, containersRef, setContainers]);
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event;
@@ -514,51 +674,80 @@ export const useStructureDnd = ({
     // Set drag ending flag immediately to prevent interference
     setIsDragEnding(true);
 
-    // Early return if no valid drop target
-    if (!over || !sermon) {
+    // Use the original (pre-drag) snapshot for all calculations
+    const originalContainers = dragStartContainersRef.current || containers;
+
+    // Helper to restore original state and clean up drag
+    const resetDragState = () => {
+      if (previewRafRef.current !== null) {
+        cancelAnimationFrame(previewRafRef.current);
+        previewRafRef.current = null;
+      }
+      setContainers(originalContainers);
+      containersRef.current = originalContainers;
       setActiveId(null);
       setOriginalContainer(null);
       setIsDragEnding(false);
+      dragStartContainersRef.current = null;
+    };
+
+    // Early return if no valid drop target
+    if (!over || !sermon) {
+      resetDragState();
       return;
     }
 
     const activeContainer = originalContainer;
 
-    // Identify drop target
-    const dropTarget = identifyDropTarget(over, containers);
-    const { overContainer, outlinePointId, subPointId: targetSubPointId, droppedOnItem, targetItemIndex, targetItemSermonPointId } = dropTarget;
+    // Identify drop target using original state
+    const dropTarget = identifyDropTarget(over, originalContainers);
+    const {
+      overContainer,
+      outlinePointId,
+      subPointId: targetSubPointId,
+      beforeItemId,
+      afterItemId,
+      prevPosition,
+      nextPosition,
+      droppedOnItem,
+      targetItemIndex,
+      targetItemSermonPointId,
+    } = dropTarget;
 
     if (
       !activeContainer ||
       !overContainer ||
       !["introduction", "main", "conclusion", "ambiguous"].includes(overContainer)
     ) {
-      setActiveId(null);
-      setOriginalContainer(null);
-      setIsDragEnding(false);
+      resetDragState();
       return;
     }
 
-    // Store the previous state for potential rollback
-    const previousContainers = { ...containers };
+    // Store the previous state for potential rollback (original pre-drag state)
+    const previousContainers = { ...originalContainers };
     const previousSermon = { ...sermon };
 
-    // Perform the UI update immediately for smooth UX
+    const explicitInsertIndex = resolveExplicitInsertIndex(
+      originalContainers[overContainer] || [],
+      beforeItemId,
+      afterItemId,
+    );
+
+    // Calculate placement from original (pre-drag) state
     let updatedContainers = calculateItemPlacement(
-      containers,
+      originalContainers,
       activeContainer,
       overContainer,
       active.id,
       droppedOnItem,
-      targetItemIndex
+      targetItemIndex,
+      explicitInsertIndex,
     );
 
     // Find moved item
     const movedIndex = updatedContainers[overContainer].findIndex(item => item.id === active.id);
     if (movedIndex === -1) {
-      setActiveId(null);
-      setOriginalContainer(null);
-      setIsDragEnding(false);
+      resetDragState();
       return;
     }
 
@@ -602,11 +791,14 @@ export const useStructureDnd = ({
     updatedContainers = removeIdFromOtherSections(updatedContainers, overContainer, String(active.id));
 
     if (!hasMeaningfulDropChange(previousContainers, updatedContainers, String(active.id))) {
-      containersRef.current = previousContainers;
-      setActiveId(null);
-      setOriginalContainer(null);
-      setIsDragEnding(false);
+      resetDragState();
       return;
+    }
+
+    // Cancel any pending preview RAF before applying final state
+    if (previewRafRef.current !== null) {
+      cancelAnimationFrame(previewRafRef.current);
+      previewRafRef.current = null;
     }
 
     // Apply state updates immediately
@@ -617,6 +809,7 @@ export const useStructureDnd = ({
     setActiveId(null);
     setOriginalContainer(null);
     setIsDragEnding(false);
+    dragStartContainersRef.current = null;
 
     // Build newStructure for API update
     const newStructure = buildStructureFromContainers(updatedContainers);
@@ -625,6 +818,9 @@ export const useStructureDnd = ({
     try {
       // Update outline point assignment and required section tag if needed
       let positionPersisted = false;
+      const positionHint = prevPosition !== undefined || nextPosition !== undefined
+        ? { prevPosition, nextPosition }
+        : undefined;
       if (activeContainer !== overContainer || finalSermonPointId !== undefined || finalSubPointId !== undefined) {
         const updatedMoved = updatedContainers[overContainer][movedIndex];
         const updatedItem = {
@@ -633,7 +829,8 @@ export const useStructureDnd = ({
             overContainer,
             finalSermonPointId,
             updatedContainers,
-            movedIndex
+            movedIndex,
+            positionHint
           ),
           subPointId: finalSubPointId,
         };
@@ -707,6 +904,21 @@ export const useStructureDnd = ({
     t
   ]);
 
+  const handleDragCancel = useCallback(() => {
+    if (previewRafRef.current !== null) {
+      cancelAnimationFrame(previewRafRef.current);
+      previewRafRef.current = null;
+    }
+    if (dragStartContainersRef.current) {
+      setContainers(dragStartContainersRef.current);
+      containersRef.current = dragStartContainersRef.current;
+    }
+    setActiveId(null);
+    setOriginalContainer(null);
+    setIsDragEnding(false);
+    dragStartContainersRef.current = null;
+  }, [setContainers, containersRef]);
+
   return {
     sensors,
     activeId,
@@ -714,5 +926,6 @@ export const useStructureDnd = ({
     handleDragStart,
     handleDragOver,
     handleDragEnd,
+    handleDragCancel,
   };
 };

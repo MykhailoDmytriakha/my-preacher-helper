@@ -12,7 +12,9 @@ const TIMEOUT_BY_CATEGORY: Record<RequestCategory, number> = {
   metadata: 5000,
   crud: 8000,
   ai: 90000,
-  audio: 45000,
+  // Audio requests run transcription plus follow-up AI formatting/tagging.
+  // A 45s cutoff causes false offline/timeouts for valid long-running work.
+  audio: 90000,
   health: 3000,
 };
 

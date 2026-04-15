@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { Sermon, Thought } from '@/models/models';
+import { validateAudioDuration } from '@/utils/server/audioServerUtils';
 import { getCustomTags, getRequiredTags } from '@clients/firestore.client';
 import { createTranscription } from '@clients/openAI.client';
 import { generateThoughtStructured } from '@clients/thought.structured';
@@ -130,11 +131,20 @@ async function handleAutoPost(request: Request) {
       );
     }
 
-    const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon;
-    const availableTags = [
-      ...(await getRequiredTags()),
-      ...(await getCustomTags(sermon.userId))
-    ].map(t => t.name);
+    const durationValidation = await validateAudioDuration(audioFile);
+    if (!durationValidation.valid) {
+      console.error("Thoughts route: Audio duration validation failed.", durationValidation);
+      return NextResponse.json(
+        { error: durationValidation.error || 'Audio file is too long' },
+        { status: 400 }
+      );
+    }
+
+    const sermonPromise = sermonsRepository.fetchSermonById(sermonId) as Promise<Sermon | null>;
+    const requiredTagsPromise = getRequiredTags();
+    const customTagsPromise = sermonPromise.then(async (sermon) => (
+      sermon ? getCustomTags(sermon.userId) : []
+    ));
 
     let transcriptionText: string;
     try {
@@ -150,6 +160,18 @@ async function handleAutoPost(request: Request) {
         { status: 500 }
       );
     }
+
+    const sermon = await sermonPromise;
+    if (!sermon) {
+      console.error("Thoughts route: Sermon not found.");
+      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+    }
+
+    const [requiredTags, customTags] = await Promise.all([
+      requiredTagsPromise,
+      customTagsPromise,
+    ]);
+    const availableTags = [...requiredTags, ...customTags].map(t => t.name);
 
     const generationResult = await generateThoughtStructured(transcriptionText, sermon, availableTags, { forceTag });
     const normalized = normalizeGenerationResult({ generationResult, transcriptionText });
@@ -268,6 +290,11 @@ export async function PUT(request: Request) {
     // Ensure outlinePointId is explicitly updated when provided (including clearing)
     if (Object.prototype.hasOwnProperty.call(updatedThoughtNew, "outlinePointId")) {
       mergedThought.outlinePointId = updatedThoughtNew.outlinePointId ?? null;
+    }
+
+    // Ensure subPointId is explicitly updated when provided (including clearing)
+    if (Object.prototype.hasOwnProperty.call(updatedThoughtNew, "subPointId")) {
+      mergedThought.subPointId = updatedThoughtNew.subPointId ?? null;
     }
 
     // Preserve position if new value not provided

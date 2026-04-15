@@ -335,6 +335,66 @@ describe('useStructureDnd', () => {
       expect(containersRef.current.main[0]?.outlinePointId).toBe(OUTLINE_MAIN);
     });
 
+    it('should preview insertion into an outline gap between subpoints', () => {
+      const containers = buildContainers({
+        introduction: [
+          buildItem(THOUGHT_ONE, {
+            outlinePointId: OUTLINE_INTRO,
+            subPointId: 'sub-1',
+            position: 1000,
+          }),
+          buildItem(THOUGHT_TWO, {
+            outlinePointId: OUTLINE_INTRO,
+            subPointId: 'sub-2',
+            position: 3000,
+          }),
+        ],
+        main: [
+          buildItem(THOUGHT_THREE, {
+            requiredTags: ['main'],
+            outlinePointId: OUTLINE_MAIN,
+            position: 5000,
+          }),
+        ],
+      });
+      const containersRef = { current: containers };
+      const { result } = renderHook(() => useStructureDnd({
+        ...defaultProps,
+        containers,
+        containersRef,
+      }));
+      const mockEvent = buildDragEvent(
+        THOUGHT_THREE,
+        {
+          id: 'outline-gap-intro-1',
+          data: {
+            current: {
+              container: 'introduction',
+              outlinePointId: OUTLINE_INTRO,
+              subPointId: null,
+              beforeItemId: THOUGHT_TWO,
+              afterItemId: THOUGHT_ONE,
+            },
+          },
+        },
+      );
+
+      act(() => {
+        result.current.handleDragOver(mockEvent);
+      });
+
+      expect(containersRef.current.introduction.map((item) => item.id)).toEqual([
+        THOUGHT_ONE,
+        THOUGHT_THREE,
+        THOUGHT_TWO,
+      ]);
+      expect(containersRef.current.introduction[1]).toEqual(expect.objectContaining({
+        id: THOUGHT_THREE,
+        outlinePointId: OUTLINE_INTRO,
+        subPointId: undefined,
+      }));
+    });
+
     it('should preview unassigned outlinePointId when over unassigned placeholder', () => {
       const containers = buildContainers({
         introduction: [buildItem(THOUGHT_ONE, { outlinePointId: OUTLINE_INTRO })],
@@ -570,7 +630,8 @@ describe('useStructureDnd', () => {
         await result.current.handleDragEnd(mockEvent);
       });
 
-      expect(mockSetContainers).not.toHaveBeenCalled();
+      // With live preview, setContainers is called to restore original state on early return
+      expect(mockSetContainers).toHaveBeenCalled();
     });
 
     it('skips a no-op drag end on the same outline point placeholder', async () => {
@@ -594,7 +655,8 @@ describe('useStructureDnd', () => {
         await result.current.handleDragEnd(mockEvent);
       });
 
-      expect(mockSetContainers).not.toHaveBeenCalled();
+      // With live preview, no-op drops restore original state via setContainers
+      expect(mockSetContainers).toHaveBeenCalled();
     });
 
     it('should handle drag end with unassigned placeholder', async () => {
@@ -959,7 +1021,8 @@ describe('useStructureDnd', () => {
         await result.current.handleDragEnd(mockEvent);
       });
 
-      expect(mockSetContainers).not.toHaveBeenCalled();
+      // With live preview, setContainers is called to restore original state on early return
+      expect(mockSetContainers).toHaveBeenCalled();
     });
 
     it('returns early for invalid container', async () => {
@@ -986,7 +1049,8 @@ describe('useStructureDnd', () => {
         await result.current.handleDragEnd(mockEvent);
       });
 
-      expect(mockSetContainers).not.toHaveBeenCalled();
+      // With live preview, setContainers is called to restore original state on early return
+      expect(mockSetContainers).toHaveBeenCalled();
     });
 
     it('uses over.id as container when data is missing', async () => {
@@ -1066,7 +1130,8 @@ describe('useStructureDnd', () => {
         await result.current.handleDragEnd(mockEvent);
       });
 
-      expect(mockSetContainers).not.toHaveBeenCalled();
+      // With live preview, no-op drops call setContainers to restore original state
+      expect(mockSetContainers).toHaveBeenCalled();
       expect(mockDebouncedSaveThought).not.toHaveBeenCalled();
       expect(mockUpdateStructure).not.toHaveBeenCalled();
       expect(containersRef.current).toEqual(containers);
@@ -1246,6 +1311,99 @@ describe('useStructureDnd', () => {
         })
       );
       expect(mockUpdateStructure).not.toHaveBeenCalled();
+    });
+
+    it('persists direct outline placement between subpoints when dropping on an outline gap', async () => {
+      const containers = buildContainers({
+        introduction: [
+          buildItem(THOUGHT_ONE, {
+            requiredTags: ['intro'],
+            outlinePointId: OUTLINE_INTRO,
+            subPointId: 'sub-1',
+            position: 1000,
+          }),
+          buildItem(THOUGHT_TWO, {
+            requiredTags: ['intro'],
+            outlinePointId: OUTLINE_INTRO,
+            subPointId: 'sub-2',
+            position: 3000,
+          }),
+        ],
+        main: [
+          buildItem(THOUGHT_THREE, {
+            requiredTags: ['main'],
+            outlinePointId: OUTLINE_MAIN,
+            position: 5000,
+          }),
+        ],
+      });
+      const sermon = buildSermon({
+        thoughts: [
+          buildThought(THOUGHT_ONE, { tags: ['intro'], outlinePointId: OUTLINE_INTRO, subPointId: 'sub-1', position: 1000 }),
+          buildThought(THOUGHT_TWO, { tags: ['intro'], outlinePointId: OUTLINE_INTRO, subPointId: 'sub-2', position: 3000 }),
+          buildThought(THOUGHT_THREE, { tags: ['main'], outlinePointId: OUTLINE_MAIN, position: 5000 }),
+        ],
+        structure: {
+          introduction: [THOUGHT_ONE, THOUGHT_TWO],
+          main: [THOUGHT_THREE],
+          conclusion: [],
+          ambiguous: [],
+        },
+      });
+      const containersRef = { current: containers };
+      const mockSetContainers = jest.fn();
+      const mockDebouncedSaveThought = jest.fn();
+      const { result } = renderHook(() => useStructureDnd({
+        ...defaultProps,
+        containers,
+        containersRef,
+        setContainers: mockSetContainers,
+        sermon,
+        debouncedSaveThought: mockDebouncedSaveThought,
+      }));
+
+      act(() => {
+        result.current.handleDragStart({ active: { id: THOUGHT_THREE } } as any);
+      });
+
+      const mockEvent = buildDragEvent(
+        THOUGHT_THREE,
+        {
+          id: 'outline-gap-intro-1',
+          data: {
+            current: {
+              container: 'introduction',
+              outlinePointId: OUTLINE_INTRO,
+              subPointId: null,
+              beforeItemId: THOUGHT_TWO,
+              afterItemId: THOUGHT_ONE,
+              prevPosition: 1000,
+              nextPosition: 3000,
+            },
+          },
+        },
+      );
+
+      await act(async () => {
+        await result.current.handleDragEnd(mockEvent);
+      });
+
+      expect(mockDebouncedSaveThought).toHaveBeenCalledWith(
+        sermon.id,
+        expect.objectContaining({
+          id: THOUGHT_THREE,
+          outlinePointId: OUTLINE_INTRO,
+          subPointId: null,
+          position: 2000,
+          tags: expect.arrayContaining(['intro']),
+        })
+      );
+      expect(mockUpdateStructure).toHaveBeenCalledWith(sermon.id, {
+        introduction: [THOUGHT_ONE, THOUGHT_THREE, THOUGHT_TWO],
+        main: [],
+        conclusion: [],
+        ambiguous: [],
+      });
     });
 
     it('inherits outline point from target item when dropping on item in another section', async () => {

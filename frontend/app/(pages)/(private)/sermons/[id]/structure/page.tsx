@@ -217,6 +217,7 @@ function StructurePageContent() {
     handleDragStart: onDragStartHook,
     handleDragOver: onDragOverHook,
     handleDragEnd,
+    handleDragCancel: onDragCancelHook,
   } = useStructureDnd({
     containers,
     setContainers,
@@ -731,6 +732,7 @@ function StructurePageContent() {
           onDragStart={onDragStartHook}
           onDragOver={onDragOverHook}
           onDragEnd={onDragEndWrapper}
+          onDragCancel={onDragCancelHook}
         >
           <AmbiguousSection
             items={containers.ambiguous}

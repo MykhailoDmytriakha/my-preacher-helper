@@ -169,7 +169,15 @@ export function useSermonActions({
                 subPointId: subPointId ?? undefined,
                 date: new Date().toISOString(),
             });
-            debugLog('Structure: createManualThought result', { id: addedThought.id, tags: addedThought.tags, outlinePointId: addedThought.outlinePointId });
+            const finalSavedSubPointId = finalOutlinePointId
+                ? (addedThought.subPointId ?? subPointId ?? null)
+                : null;
+            debugLog('Structure: createManualThought result', {
+                id: addedThought.id,
+                tags: addedThought.tags,
+                outlinePointId: addedThought.outlinePointId,
+                subPointId: finalSavedSubPointId,
+            });
 
             const outlinePoint = findOutlinePoint(finalOutlinePointId, sermon);
             const newItem = buildItemForUI({
@@ -179,6 +187,7 @@ export function useSermonActions({
                 allowedTags,
                 sectionTag,
                 outlinePointId: finalOutlinePointId,
+                subPointId: finalSavedSubPointId,
                 outlinePoint,
             });
 
