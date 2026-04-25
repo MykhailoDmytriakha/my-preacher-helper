@@ -1,8 +1,7 @@
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import React from 'react';
 
-import { Sermon } from '@/models/models';
-import type { SermonOutline as SermonOutlineType } from '@/models/models';
+import type { Sermon, SermonOutline as SermonOutlineType, Thought } from '@/models/models';
 import '@testing-library/jest-dom';
 
 // Mock translations (simplified)
@@ -88,6 +87,14 @@ describe('SermonOutline Component', () => {
     }
   };
 
+  const makeThought = (id: string, overrides: Partial<Thought> = {}): Thought => ({
+    id,
+    text: id,
+    tags: [],
+    date: '2023-01-01T00:00:00.000Z',
+    ...overrides,
+  });
+
   const mockOnOutlineUpdate = jest.fn();
 
   beforeEach(() => {
@@ -112,46 +119,44 @@ describe('SermonOutline Component', () => {
     });
   });
 
-  test('displays correct outline point counts in section headers', async () => {
-    // Setup a more extensive outline mock
+  test('displays section thought counts from tags when no outline points exist', async () => {
     mockGetSermonOutline.mockResolvedValueOnce({
-      introduction: [
-        { id: 'intro1', text: 'Introduction point 1' },
-        { id: 'intro2', text: 'Introduction point 2' }
-      ],
-      main: [
-        { id: 'main1', text: 'Main point 1' },
-        { id: 'main2', text: 'Main point 2' },
-        { id: 'main3', text: 'Main point 3' }
-      ],
-      conclusion: [
-        { id: 'concl1', text: 'Conclusion point 1' }
-      ]
+      introduction: [],
+      main: [],
+      conclusion: []
     });
 
-    render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
+    const sermonWithTaggedThoughts: Sermon = {
+      ...mockSermon,
+      thoughts: [
+        makeThought('intro-thought-1', { tags: ['Вступление'] }),
+        makeThought('intro-thought-2', { tags: ['intro'] }),
+        makeThought('main-thought-1', { tags: ['Основная часть'] }),
+        makeThought('conclusion-thought-1', { tags: ['Заключение'] }),
+        makeThought('ambiguous-thought', { tags: ['Вступление', 'Заключение'] }),
+      ],
+      structure: undefined,
+      thoughtsBySection: undefined,
+      outline: {
+        introduction: [],
+        main: [],
+        conclusion: []
+      }
+    };
 
-    // Wait for the component to load
+    render(<SermonOutline sermon={sermonWithTaggedThoughts} onOutlineUpdate={mockOnOutlineUpdate} />);
+
     await waitFor(() => {
-      expect(screen.getByText('Introduction point 1')).toBeInTheDocument();
+      expect(screen.getByTestId('outline-section-introduction')).toBeInTheDocument();
     });
 
-    // Check for the point count badges in each section header
     const introSection = screen.getByTestId('outline-section-introduction');
     const mainSection = screen.getByTestId('outline-section-mainPart');
     const conclSection = screen.getByTestId('outline-section-conclusion');
 
-    // Find count badges and verify their values
-    // Look within each section's header for the counts
-    const introCount = within(introSection).getByText('2');
-    const mainCount = within(mainSection).getByText('3');
-    const conclCount = within(conclSection).getByText('1');
-    expect(introCount).toBeInTheDocument();
-    expect(mainCount).toBeInTheDocument();
-    expect(conclCount).toBeInTheDocument();
-    expect(introCount).toHaveClass('inline-flex');
-    expect(mainCount).toHaveClass('inline-flex');
-    expect(conclCount).toHaveClass('inline-flex');
+    expect(within(introSection).getByText('2 structure.entries')).toBeInTheDocument();
+    expect(within(mainSection).getByText('1 structure.entries')).toBeInTheDocument();
+    expect(within(conclSection).getByText('1 structure.entries')).toBeInTheDocument();
   });
 
   test('displays thought counts when thoughtsPerSermonPoint prop is provided', async () => {
@@ -161,10 +166,18 @@ describe('SermonOutline Component', () => {
       'main1': 5,
       'concl1': 2
     };
+    const sermonWithAssignedThoughts: Sermon = {
+      ...mockSermon,
+      thoughts: [
+        ...Array.from({ length: 3 }, (_, index) => makeThought(`intro-assigned-${index}`, { outlinePointId: 'intro1' })),
+        ...Array.from({ length: 5 }, (_, index) => makeThought(`main-assigned-${index}`, { outlinePointId: 'main1' })),
+        ...Array.from({ length: 2 }, (_, index) => makeThought(`conclusion-assigned-${index}`, { outlinePointId: 'concl1' })),
+      ],
+    };
 
     render(
       <SermonOutline
-        sermon={mockSermon}
+        sermon={sermonWithAssignedThoughts}
         onOutlineUpdate={mockOnOutlineUpdate}
         thoughtsPerSermonPoint={mockThoughtsPerPoint}
       />
@@ -191,7 +204,7 @@ describe('SermonOutline Component', () => {
     expect(mainThoughtCount).toHaveClass('inline-flex');
     expect(conclThoughtCount).toHaveClass('inline-flex');
 
-    // Check the total entries in section headers
+    // Check the total thought counts in section headers
     expect(within(introSection).getByText('3 structure.entries')).toBeInTheDocument();
     expect(within(mainSection).getByText('5 structure.entries')).toBeInTheDocument();
     expect(within(conclSection).getByText('2 structure.entries')).toBeInTheDocument();
@@ -218,7 +231,7 @@ describe('SermonOutline Component', () => {
 
     // Check that total thought counts don't appear in section headers
     const introSection = screen.getByTestId('outline-section-introduction');
-    expect(within(introSection).queryByText('structure.entries')).not.toBeInTheDocument();
+    expect(within(introSection).getByText('0 structure.entries')).toBeInTheDocument();
 
     // Find a specific outline point and verify no thought count is shown
     // Note: We can't use queryByText('0') as that might find other elements with "0"
@@ -268,6 +281,29 @@ describe('SermonOutline Component', () => {
       expect(mockOnOutlineUpdate).toHaveBeenCalledWith(expectedOutline);
     });
   }, 40000); // Increased timeout to 40 seconds
+
+  test('cancels adding a new outline point without saving', async () => {
+    render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
+
+    const introSectionElement = await screen.findByTestId('outline-section-introduction');
+    await screen.findByText('Introduction point 1');
+
+    const addButton = within(introSectionElement).getByLabelText('structure.addPointButton');
+    await act(async () => {
+      fireEvent.click(addButton);
+    });
+
+    const input = within(introSectionElement).getByPlaceholderText('structure.addPointPlaceholder');
+    fireEvent.change(input, { target: { value: 'Draft intro point' } });
+
+    await act(async () => {
+      fireEvent.click(within(introSectionElement).getByLabelText('common.cancel'));
+    });
+
+    expect(within(introSectionElement).queryByPlaceholderText('structure.addPointPlaceholder')).not.toBeInTheDocument();
+    expect(mockUpdateSermonOutline).not.toHaveBeenCalled();
+    expect(mockOnOutlineUpdate).not.toHaveBeenCalled();
+  });
 
   test('dependency array uses sermon.id instead of sermon object', async () => {
     const { rerender } = render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);

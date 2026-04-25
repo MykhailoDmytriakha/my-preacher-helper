@@ -9,6 +9,7 @@ import { SubPointList } from '@/components/column/SubPointList';
 import { useConnection } from '@/providers/ConnectionProvider';
 import { getSermonOutline, updateSermonOutline } from '@/services/outline.service';
 import { getSectionStyling } from '@/utils/themeColors';
+import { getPreachOrderedThoughtsBySection } from '@/utils/thoughtOrdering';
 import { getFocusModeUrl } from '@/utils/urlUtils';
 import { getSectionLabel } from '@lib/sections';
 
@@ -27,6 +28,11 @@ interface SermonOutlineProps {
 type SectionType = 'introduction' | 'mainPart' | 'conclusion';
 
 const DISABLED_ACTION_CLASSES = 'opacity-50 cursor-not-allowed';
+const SECTION_TO_SERMON_KEY: Record<SectionType, 'introduction' | 'main' | 'conclusion'> = {
+  introduction: 'introduction',
+  mainPart: 'main',
+  conclusion: 'conclusion',
+};
 
 const SermonOutline: React.FC<SermonOutlineProps> = ({
   sermon,
@@ -436,11 +442,24 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
   const countBadgeBaseClass =
     'inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs leading-none align-middle tabular-nums';
 
-  // Get total thoughts count per section
+  const outlineForCounting: SermonOutline = {
+    introduction: sectionPoints.introduction,
+    main: sectionPoints.mainPart,
+    conclusion: sectionPoints.conclusion,
+  };
+
+  // Get total thoughts count per section, including unassigned thoughts with section tags.
   const getTotalThoughtsForSection = (sectionType: SectionType) => {
-    return sectionPoints[sectionType].reduce((total, point) => {
-      return total + (thoughtsPerSermonPoint[point.id] || 0);
-    }, 0);
+    return getPreachOrderedThoughtsBySection(
+      {
+        thoughts: sermon.thoughts ?? [],
+        structure: sermon.structure,
+        thoughtsBySection: sermon.thoughtsBySection,
+        outline: outlineForCounting,
+      },
+      SECTION_TO_SERMON_KEY[sectionType],
+      { includeOrphans: true }
+    ).length;
   };
 
   // Use the new utility to define sectionColors
@@ -470,13 +489,8 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
           >
             <span>{sectionTitles[sectionType]}</span>
             <span className={`ml-2 ${countBadgeBaseClass} ${colors.badge}`}>
-              {points.length}
+              {totalThoughts} {t('structure.entries')}
             </span>
-            {totalThoughts > 0 && (
-              <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300">
-                {totalThoughts} {t('structure.entries')}
-              </span>
-            )}
           </button>
 
           {/* Actions: Focus mode link (same icon as ThoughtsBySection columns) */}
