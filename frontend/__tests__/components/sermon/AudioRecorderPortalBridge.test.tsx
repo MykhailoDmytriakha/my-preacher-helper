@@ -6,9 +6,18 @@ import '@testing-library/jest-dom';
 import AudioRecorderPortalBridge from '@/components/sermon/AudioRecorderPortalBridge';
 
 describe('AudioRecorderPortalBridge', () => {
-  const RecorderMock = ({ splitLeft, disabled }: { splitLeft?: React.ReactNode; disabled?: boolean }) => (
+  const RecorderMock = ({
+    splitLeft,
+    disabled,
+    enableAudioLevelMonitoring,
+  }: {
+    splitLeft?: React.ReactNode;
+    disabled?: boolean;
+    enableAudioLevelMonitoring?: boolean;
+  }) => (
     <div>
       <div data-testid="recorder-disabled">{String(Boolean(disabled))}</div>
+      <div data-testid="recorder-audio-level-monitoring">{String(Boolean(enableAudioLevelMonitoring))}</div>
       {splitLeft}
     </div>
   );
@@ -37,6 +46,7 @@ describe('AudioRecorderPortalBridge', () => {
     );
 
     expect(screen.getByTestId('recorder-disabled')).toHaveTextContent('true');
+    expect(screen.getByTestId('recorder-audio-level-monitoring')).toHaveTextContent('false');
     expect(screen.getByTitle('Add manual thought')).toBeDisabled();
   });
 

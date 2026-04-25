@@ -17,6 +17,7 @@ interface RecorderLikeProps {
   onClearError?: () => void;
   hideKeyboardShortcuts?: boolean;
   splitLeft?: ReactNode;
+  enableAudioLevelMonitoring?: boolean;
 }
 
 interface AudioRecorderPortalBridgeProps {
@@ -113,6 +114,7 @@ export default function AudioRecorderPortalBridge({
       onClearError={onClearError}
       hideKeyboardShortcuts={hideKeyboardShortcuts}
       splitLeft={splitLeft}
+      enableAudioLevelMonitoring={false}
     />
   );
 

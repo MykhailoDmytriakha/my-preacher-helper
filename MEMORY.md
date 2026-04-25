@@ -59,6 +59,7 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-04-25 Sermon Detail Audio Level Removal Needs Caller-Level Monitoring Gate:** When removing mic-level bars from a specific page, pass `enableAudioLevelMonitoring={false}` at the page integration/bridge so both the visible strip and analyser loop are disabled without changing shared recorder surfaces.
 - **2026-04-25 Series Metadata Sync Must Not Bump User-Facing UpdatedAt:** `seriesId`/`seriesPosition` are index metadata, not content edits. Bulk repair/sync endpoints must guard no-op writes and update linkage directly without touching sermon `updatedAt`, otherwise adding one item makes sibling sermons look recently edited.
 - **2026-04-19 Compact Recorder Variants Must Skip Hidden Audio Analysis:** If a mobile/mini recorder does not surface mic-level feedback, disable `AudioContext` + `AnalyserNode` setup and the animation-frame loop entirely. Hiding the level strip alone preserves battery/CPU cost with zero user value.
 - **2026-04-14 Async Create-Then-Attach Modals Must Await Parent Completion:** If a modal creates an entity locally but the parent still has a second async step before close (for example, attaching the new sermon to a series), the child must await that parent callback before resetting local form state. Otherwise a controlled modal stays open but flashes an empty form, which looks like data loss.
