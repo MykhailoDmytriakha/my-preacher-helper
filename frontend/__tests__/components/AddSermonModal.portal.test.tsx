@@ -34,6 +34,12 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ refresh: jest.fn() })
 }));
 
+jest.mock('@/hooks/useUserSettings', () => ({
+  useUserSettings: () => ({ settings: { firstDayOfWeek: 'sunday' } }),
+}));
+
+jest.mock('react-day-picker/dist/style.css', () => ({}));
+
 describe('AddSermonModal portal + centering (regression)', () => {
   test('renders into body portal and uses centered overlay classes', async () => {
     // Render inside a wrapper that could be transformed in app

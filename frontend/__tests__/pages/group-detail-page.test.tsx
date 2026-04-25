@@ -83,6 +83,12 @@ jest.mock('@/providers/AuthProvider', () => ({
   useAuth: () => ({ user: { uid: 'user-1' } }),
 }));
 
+jest.mock('@/hooks/useUserSettings', () => ({
+  useUserSettings: () => ({ settings: { firstDayOfWeek: 'sunday' } }),
+}));
+
+jest.mock('react-day-picker/dist/style.css', () => ({}));
+
 jest.mock('@/services/userSettings.service', () => ({
   ...jest.requireActual('@/services/userSettings.service'),
   hasGroupsAccess: jest.fn(),
@@ -462,7 +468,7 @@ describe('GroupDetailPage', () => {
       expect(screen.getByDisplayValue('2026-02-11')).toBeInTheDocument();
     });
 
-    const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement;
+    const dateInput = screen.getByDisplayValue('2026-02-11') as HTMLInputElement;
     fireEvent.change(dateInput, { target: { value: '' } });
 
     await waitFor(() => {

@@ -2,6 +2,8 @@ import { DEFAULT_LANGUAGE, COOKIE_LANG_KEY, COOKIE_MAX_AGE } from '@/../../front
 import { UserSettings } from '@/models/models';
 import { debugLog } from '@/utils/debugMode';
 
+import type { FirstDayOfWeek } from '@/utils/weekStart';
+
 // Constants for repeated strings
 const USER_SETTINGS_API_URL = '/api/user/settings';
 const OFFLINE_ERROR = 'Offline: operation not available.';
@@ -139,6 +141,39 @@ export async function updateUserProfile(
     }
   } catch (error) {
     console.error('Error updating user profile:', error);
+  }
+}
+
+/**
+ * Update user's preferred first day of week for app-controlled calendars.
+ * @param userId The user ID
+ * @param firstDayOfWeek Whether calendars should start on Sunday or Monday
+ */
+export async function updateFirstDayOfWeek(
+  userId: string,
+  firstDayOfWeek: FirstDayOfWeek
+): Promise<void> {
+  try {
+    if (!userId) return;
+
+    if (isBrowserOffline()) {
+      throw new Error(OFFLINE_ERROR);
+    }
+
+    const response = await fetch(USER_SETTINGS_API_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId, firstDayOfWeek }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update first day of week: ${response.statusText}`);
+    }
+  } catch (error) {
+    console.error('Error updating first day of week:', error);
+    throw error;
   }
 }
 

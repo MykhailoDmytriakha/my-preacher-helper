@@ -11,6 +11,7 @@ import { DashboardCreateSermonInput } from '@/models/dashboardOptimistic';
 import { Sermon, Church } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { PlusIcon } from "@components/Icons";
+import DatePickerField from '@components/ui/DatePickerField';
 import { auth } from '@services/firebaseAuth.service';
 import { addPreachDate } from '@services/preachDates.service';
 import { createSermon } from '@services/sermon.service';
@@ -226,12 +227,12 @@ export default function AddSermonModal({
               <label htmlFor="plannedDate" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
                 {t('addSermon.plannedDateLabel', { defaultValue: 'Planned preaching date (optional)' })}
               </label>
-              <input
+              <DatePickerField
                 id="plannedDate"
-                type="date"
                 value={plannedDate}
-                onChange={(e) => setPlannedDate(e.target.value)}
-                className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white"
+                onChange={setPlannedDate}
+                wrapperClassName="mt-1"
+                inputClassName="block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 pr-12 dark:bg-gray-700 dark:text-white"
                 disabled={isSubmitting}
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 import "@locales/i18n";
 
+import DatePickerField from '@/components/ui/DatePickerField';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { DashboardEditSermonInput } from '@/models/dashboardOptimistic';
 import { Church, PreachDate, Sermon } from '@/models/models';
@@ -190,12 +191,12 @@ export default function EditSermonModal({ sermon, onClose, onUpdate, onSaveReque
               {t('editSermon.plannedDateLabel', { defaultValue: 'Planned preaching date (optional)' })}
             </label>
             <div className="mt-1 flex items-center gap-2">
-              <input
+              <DatePickerField
                 id="plannedDate"
-                type="date"
                 value={plannedDate}
-                onChange={(e) => setPlannedDate(e.target.value)}
-                className="block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white"
+                onChange={setPlannedDate}
+                wrapperClassName="w-full"
+                inputClassName="block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 pr-12 dark:bg-gray-700 dark:text-white"
                 disabled={isSubmitting || isReadOnly}
               />
               <button

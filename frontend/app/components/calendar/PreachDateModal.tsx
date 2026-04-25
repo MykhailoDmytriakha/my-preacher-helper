@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
+import DatePickerField from "@/components/ui/DatePickerField";
 import { PreachDate, Church, PreachDateStatus } from "@/models/models";
 import { getTodayDateOnlyKey, toDateOnlyKey } from "@/utils/dateOnly";
 
@@ -100,12 +101,11 @@ export default function PreachDateModal({
                         >
                             {t('calendar.date')}
                         </label>
-                        <input
+                        <DatePickerField
                             id="preach-date-input"
-                            type="date"
                             value={date}
-                            onChange={(e) => setDate(e.target.value)}
-                            className="w-full px-3 py-2 border rounded-lg border-gray-200 dark:border-gray-700 dark:bg-gray-800 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
+                            onChange={setDate}
+                            inputClassName="w-full px-3 py-2 pr-12 border rounded-lg border-gray-200 dark:border-gray-700 dark:bg-gray-800 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
                             required
                         />
                     </div>
@@ -175,4 +175,3 @@ export default function PreachDateModal({
     }
     return null;
 }
-

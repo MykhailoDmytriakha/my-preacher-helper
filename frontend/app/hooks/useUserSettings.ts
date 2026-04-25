@@ -3,9 +3,16 @@ import { useCallback } from 'react';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
-import { getUserSettings, updatePrepModeAccess, updateAudioGenerationAccess, updateStructurePreviewAccess } from '@/services/userSettings.service';
+import {
+  getUserSettings,
+  updatePrepModeAccess,
+  updateAudioGenerationAccess,
+  updateStructurePreviewAccess,
+  updateFirstDayOfWeek,
+} from '@/services/userSettings.service';
 
 import type { UserSettings } from '@/models/models';
+import type { FirstDayOfWeek } from '@/utils/weekStart';
 
 const buildQueryKey = (userId: string | null | undefined) => ['user-settings', userId ?? null];
 
@@ -74,6 +81,25 @@ export function useUserSettings(userId: string | null | undefined) {
     },
   });
 
+  const updateFirstDayOfWeekMutation = useMutation({
+    mutationFn: (firstDayOfWeek: FirstDayOfWeek) =>
+      mutationGuard(() => {
+        if (!userId) {
+          throw new Error('No user');
+        }
+        return updateFirstDayOfWeek(userId, firstDayOfWeek);
+      }),
+    onSuccess: (_data, firstDayOfWeek) => {
+      queryClient.setQueryData<UserSettings | null>(buildQueryKey(userId), (prev) =>
+        prev
+          ? { ...prev, firstDayOfWeek }
+          : userId
+            ? { id: userId, userId, language: 'en', isAdmin: false, firstDayOfWeek }
+            : prev
+      );
+    },
+  });
+
   return {
     settings: settingsQuery.data ?? null,
     loading: settingsQuery.isLoading,
@@ -85,5 +111,7 @@ export function useUserSettings(userId: string | null | undefined) {
     updatingAudioGeneration: updateAudioGenerationMutation.isPending,
     updateStructurePreviewAccess: updateStructurePreviewMutation.mutateAsync,
     updatingStructurePreview: updateStructurePreviewMutation.isPending,
+    updateFirstDayOfWeek: updateFirstDayOfWeekMutation.mutateAsync,
+    updatingFirstDayOfWeek: updateFirstDayOfWeekMutation.isPending,
   };
 }

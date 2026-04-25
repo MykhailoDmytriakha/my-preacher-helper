@@ -50,6 +50,12 @@ jest.mock('@/hooks/useSeries', () => ({
   useSeries: (userId: string | null) => mockUseSeries(userId),
 }));
 
+jest.mock('@/hooks/useUserSettings', () => ({
+  useUserSettings: () => ({ settings: { firstDayOfWeek: 'sunday' } }),
+}));
+
+jest.mock('react-day-picker/dist/style.css', () => ({}));
+
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
     refresh: jest.fn()

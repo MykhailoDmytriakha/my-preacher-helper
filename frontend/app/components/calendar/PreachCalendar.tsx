@@ -6,9 +6,12 @@ import { useEffect, useMemo } from "react";
 import { DayPicker } from "react-day-picker";
 import { useTranslation } from "react-i18next";
 
+import { useUserSettings } from "@/hooks/useUserSettings";
 import { PreachDate, Sermon } from "@/models/models";
+import { useAuth } from "@/providers/AuthProvider";
 import { debugLog } from "@/utils/debugMode";
 import { getEffectivePreachDateStatus } from "@/utils/preachDateStatus";
+import { getWeekStartsOn } from "@/utils/weekStart";
 
 import "react-day-picker/dist/style.css";
 
@@ -50,6 +53,9 @@ export default function PreachCalendar({
     onToggleGroups
 }: PreachCalendarProps) {
     const { t, i18n } = useTranslation();
+    const { user } = useAuth();
+    const { settings } = useUserSettings(user?.uid);
+    const weekStartsOn = getWeekStartsOn(settings?.firstDayOfWeek);
 
     const getDateLocale = () => {
         switch (i18n.language) {
@@ -208,6 +214,7 @@ export default function PreachCalendar({
                 month={currentMonth || selectedDate}
                 onMonthChange={onMonthChange}
                 locale={getDateLocale()}
+                weekStartsOn={weekStartsOn}
                 modifiers={{
                     hasSermon: (date) => hasSermonsDate(date),
                     hasGroup: (date) => hasGroupsDate(date)

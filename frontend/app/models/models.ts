@@ -340,6 +340,7 @@ export interface UserSettings {
   userId: string;
   language: string;
   isAdmin: boolean;
+  firstDayOfWeek?: 'sunday' | 'monday';
   enablePrepMode?: boolean;  // Per-user prep mode access
   enableAudioGeneration?: boolean; // Beta: audio generation feature
   enableStructurePreview?: boolean; // Beta: Structure Preview feature

@@ -10,6 +10,15 @@ jest.mock('react-dom', () => ({
   createPortal: (node: React.ReactNode) => node,
 }));
 
+jest.mock('react-day-picker/dist/style.css', () => ({}));
+
+jest.mock('@/providers/AuthProvider', () => ({
+    useAuth: () => ({ user: { uid: 'user-1' } }),
+}));
+
+jest.mock('@/hooks/useUserSettings', () => ({
+    useUserSettings: () => ({ settings: { firstDayOfWeek: 'sunday' } }),
+}));
 
 // Mock react-i18next
 jest.mock('react-i18next', () => ({

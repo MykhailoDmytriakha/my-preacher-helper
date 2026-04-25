@@ -136,7 +136,8 @@ describe('User Settings API Route', () => {
                   email: 'updated@example.com',
                   displayName: 'Updated User',
                   enablePrepMode: true,
-                  enableGroups: true
+                  enableGroups: true,
+                  firstDayOfWeek: 'monday'
                 })
               });
 
@@ -150,7 +151,8 @@ describe('User Settings API Route', () => {
                 'Updated User',
                 true,
                 undefined,
-                true
+                true,
+                'monday'
               );
               expect(response.status).toBe(200);
               expect(data).toEqual({ success: true });
@@ -177,6 +179,7 @@ describe('User Settings API Route', () => {
                 undefined,
                 undefined,
                 false,
+                undefined,
                 undefined,
                 undefined
               );
@@ -207,6 +210,7 @@ describe('User Settings API Route', () => {
                 undefined,
                 true,
                 undefined,
+                undefined,
                 undefined
               );
               expect(response.status).toBe(200);
@@ -230,6 +234,25 @@ describe('User Settings API Route', () => {
               expect(response.status).toBe(400);
 
               expect(data).toEqual({ error: 'User ID is required' });
+            }
+          },
+          {
+            name: 'returns 400 when firstDayOfWeek is invalid',
+            run: async () => {
+              const request = new NextRequest('http://localhost/api/user/settings', {
+                method: 'PUT',
+                body: JSON.stringify({
+                  userId: 'user1',
+                  firstDayOfWeek: 'tuesday'
+                })
+              });
+
+              const response = await PUT(request);
+              const data = await response.json();
+
+              expect(mockCreateOrUpdate).not.toHaveBeenCalled();
+              expect(response.status).toBe(400);
+              expect(data).toEqual({ error: 'First day of week must be sunday or monday' });
             }
           },
           {
@@ -294,7 +317,8 @@ describe('User Settings API Route', () => {
                   email: 'new@example.com',
                   displayName: 'New User',
                   enablePrepMode: true,
-                  enableGroups: true
+                  enableGroups: true,
+                  firstDayOfWeek: 'sunday'
                 })
               });
 
@@ -308,7 +332,8 @@ describe('User Settings API Route', () => {
                 'New User',
                 true,
                 undefined,
-                true
+                true,
+                'sunday'
               );
               expect(response.status).toBe(200);
               expect(data).toEqual({ success: true });
@@ -337,6 +362,7 @@ describe('User Settings API Route', () => {
                 undefined,
                 false,
                 undefined,
+                undefined,
                 undefined
               );
               expect(response.status).toBe(200);
@@ -359,6 +385,7 @@ describe('User Settings API Route', () => {
               expect(mockCreateOrUpdate).toHaveBeenCalledWith(
                 'minimal-user',
                 'en', // Default language
+                undefined,
                 undefined,
                 undefined,
                 undefined,

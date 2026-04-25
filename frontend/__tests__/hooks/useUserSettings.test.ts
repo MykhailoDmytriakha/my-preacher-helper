@@ -9,6 +9,7 @@ import {
   updatePrepModeAccess,
   updateAudioGenerationAccess,
   updateStructurePreviewAccess,
+  updateFirstDayOfWeek,
 } from '@/services/userSettings.service';
 
 jest.mock('@/hooks/useOnlineStatus', () => ({
@@ -24,6 +25,7 @@ jest.mock('@/services/userSettings.service', () => ({
   updatePrepModeAccess: jest.fn().mockResolvedValue(undefined),
   updateAudioGenerationAccess: jest.fn().mockResolvedValue(undefined),
   updateStructurePreviewAccess: jest.fn().mockResolvedValue(undefined),
+  updateFirstDayOfWeek: jest.fn().mockResolvedValue(undefined),
 }));
 
 const mockUseOnlineStatus = useOnlineStatus as jest.MockedFunction<typeof useOnlineStatus>;
@@ -31,6 +33,7 @@ const mockUseServerFirstQuery = useServerFirstQuery as jest.MockedFunction<typeo
 const mockUpdatePrepModeAccess = updatePrepModeAccess as jest.MockedFunction<typeof updatePrepModeAccess>;
 const mockUpdateAudioGenerationAccess = updateAudioGenerationAccess as jest.MockedFunction<typeof updateAudioGenerationAccess>;
 const mockUpdateStructurePreviewAccess = updateStructurePreviewAccess as jest.MockedFunction<typeof updateStructurePreviewAccess>;
+const mockUpdateFirstDayOfWeek = updateFirstDayOfWeek as jest.MockedFunction<typeof updateFirstDayOfWeek>;
 
 const fakeSettings = {
   enablePrepMode: false,
@@ -65,6 +68,7 @@ describe('useUserSettings', () => {
     expect(typeof result.current.updatePrepModeAccess).toBe('function');
     expect(typeof result.current.updateAudioGenerationAccess).toBe('function');
     expect(typeof result.current.updateStructurePreviewAccess).toBe('function');
+    expect(typeof result.current.updateFirstDayOfWeek).toBe('function');
   });
 
   it('updateStructurePreviewAccess calls service with userId and value', async () => {
@@ -107,6 +111,16 @@ describe('useUserSettings', () => {
     expect(mockUpdateAudioGenerationAccess).toHaveBeenCalledWith('user1', true);
   });
 
+  it('updateFirstDayOfWeek calls service', async () => {
+    const { result } = renderHook(() => useUserSettings('user1'), { wrapper: makeWrapper() });
+
+    await act(async () => {
+      await result.current.updateFirstDayOfWeek('monday');
+    });
+
+    expect(mockUpdateFirstDayOfWeek).toHaveBeenCalledWith('user1', 'monday');
+  });
+
   it('throws when offline (mutationGuard)', async () => {
     mockUseOnlineStatus.mockReturnValue(false);
     const { result } = renderHook(() => useUserSettings('user1'), { wrapper: makeWrapper() });
@@ -144,6 +158,16 @@ describe('useUserSettings', () => {
     await expect(
       act(async () => {
         await result.current.updateAudioGenerationAccess(true);
+      })
+    ).rejects.toThrow('No user');
+  });
+
+  it('throws when userId is not provided for first day of week', async () => {
+    const { result } = renderHook(() => useUserSettings(undefined), { wrapper: makeWrapper() });
+
+    await expect(
+      act(async () => {
+        await result.current.updateFirstDayOfWeek('monday');
       })
     ).rejects.toThrow('No user');
   });

@@ -41,6 +41,12 @@ jest.mock('@/hooks/useSeries', () => ({
   useSeries: (userId: string | null) => mockUseSeries(userId),
 }));
 
+jest.mock('@/hooks/useUserSettings', () => ({
+  useUserSettings: () => ({ settings: { firstDayOfWeek: 'sunday' } }),
+}));
+
+jest.mock('react-day-picker/dist/style.css', () => ({}));
+
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: { defaultValue?: string }) => {

@@ -349,6 +349,25 @@ describe('UserSettingsRepository', () => {
                 enableGroups: true
               });
             }
+          },
+          {
+            name: 'updates first day of week explicitly',
+            run: async () => {
+              await userSettingsRepository.createOrUpdate(
+                'existing-user-id',
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                'monday'
+              );
+
+              expect(mockUpdate).toHaveBeenCalledWith({
+                firstDayOfWeek: 'monday'
+              });
+            }
           }
         ],
         { beforeEachScenario: resetScenario }

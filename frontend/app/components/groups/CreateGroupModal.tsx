@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
+import DatePickerField from '@/components/ui/DatePickerField';
 import { Group } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { createFlowItem, createTemplate } from '@/utils/groupFlow';
@@ -169,11 +170,10 @@ export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModal
                   ({t('common.optional', { defaultValue: 'optional' })})
                 </span>
               </span>
-              <input
-                type="date"
+              <DatePickerField
                 value={firstMeetingDate}
-                onChange={(event) => setFirstMeetingDate(event.target.value)}
-                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-transparent transition focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40"
+                onChange={setFirstMeetingDate}
+                inputClassName="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 pr-12 text-sm shadow-sm ring-1 ring-transparent transition focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40"
               />
             </label>
 

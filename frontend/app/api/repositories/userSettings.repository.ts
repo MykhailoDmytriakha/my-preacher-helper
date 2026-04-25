@@ -1,6 +1,8 @@
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { UserSettings } from '@/models/models';
 
+import type { FirstDayOfWeek } from '@/utils/weekStart';
+
 /**
  * Repository for user settings database operations
  */
@@ -40,6 +42,7 @@ export class UserSettingsRepository {
    * @param enablePrepMode Enable prep mode access (optional)
    * @param enableAudioGeneration Enable audio generation access (optional)
    * @param enableGroups Enable groups workspace access (optional)
+   * @param firstDayOfWeek Preferred first day for app-controlled calendars (optional)
    * @returns ID of the created or updated document
    */
   async createOrUpdate(
@@ -49,7 +52,8 @@ export class UserSettingsRepository {
     displayName?: string,
     enablePrepMode?: boolean,
     enableAudioGeneration?: boolean,
-    enableGroups?: boolean
+    enableGroups?: boolean,
+    firstDayOfWeek?: FirstDayOfWeek
   ): Promise<string> {
     try {
       const docRef = adminDb.collection(this.collection).doc(userId);
@@ -65,6 +69,7 @@ export class UserSettingsRepository {
       if (enablePrepMode !== undefined) allowedUpdates.enablePrepMode = enablePrepMode;
       if (enableAudioGeneration !== undefined) allowedUpdates.enableAudioGeneration = enableAudioGeneration;
       if (enableGroups !== undefined) allowedUpdates.enableGroups = enableGroups;
+      if (firstDayOfWeek !== undefined) allowedUpdates.firstDayOfWeek = firstDayOfWeek;
 
       // If no fields to update, return early
       if (Object.keys(allowedUpdates).length === 0) {

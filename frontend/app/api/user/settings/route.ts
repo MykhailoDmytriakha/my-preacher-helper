@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { userSettingsRepository } from '@/api/repositories/userSettings.repository';
+import { isFirstDayOfWeek } from '@/utils/weekStart';
 
 // Error messages
 const ERROR_MESSAGES = {
   USER_ID_REQUIRED: 'User ID is required',
+  INVALID_FIRST_DAY_OF_WEEK: 'First day of week must be sunday or monday',
 } as const;
 
 /**
@@ -35,10 +37,14 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, language, email, displayName, enablePrepMode, enableAudioGeneration, enableGroups } = body;
+    const { userId, language, email, displayName, enablePrepMode, enableAudioGeneration, enableGroups, firstDayOfWeek } = body;
 
     if (!userId) {
       return NextResponse.json({ error: ERROR_MESSAGES.USER_ID_REQUIRED }, { status: 400 });
+    }
+
+    if ('firstDayOfWeek' in body && !isFirstDayOfWeek(firstDayOfWeek)) {
+      return NextResponse.json({ error: ERROR_MESSAGES.INVALID_FIRST_DAY_OF_WEEK }, { status: 400 });
     }
 
     // Only pass fields that are explicitly provided in the request
@@ -49,6 +55,7 @@ export async function PUT(request: NextRequest) {
     if ('enablePrepMode' in body) updates.enablePrepMode = enablePrepMode;
     if ('enableAudioGeneration' in body) updates.enableAudioGeneration = enableAudioGeneration;
     if ('enableGroups' in body) updates.enableGroups = enableGroups;
+    if ('firstDayOfWeek' in body) updates.firstDayOfWeek = firstDayOfWeek;
 
     await userSettingsRepository.createOrUpdate(
       userId,
@@ -57,7 +64,8 @@ export async function PUT(request: NextRequest) {
       updates.displayName as string | undefined,
       updates.enablePrepMode as boolean | undefined,
       updates.enableAudioGeneration as boolean | undefined,
-      updates.enableGroups as boolean | undefined
+      updates.enableGroups as boolean | undefined,
+      updates.firstDayOfWeek as 'sunday' | 'monday' | undefined
     );
 
     return NextResponse.json({ success: true });
@@ -74,10 +82,14 @@ export async function PUT(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, language, email, displayName, enablePrepMode, enableAudioGeneration, enableGroups } = body;
+    const { userId, language, email, displayName, enablePrepMode, enableAudioGeneration, enableGroups, firstDayOfWeek } = body;
 
     if (!userId) {
       return NextResponse.json({ error: ERROR_MESSAGES.USER_ID_REQUIRED }, { status: 400 });
+    }
+
+    if ('firstDayOfWeek' in body && !isFirstDayOfWeek(firstDayOfWeek)) {
+      return NextResponse.json({ error: ERROR_MESSAGES.INVALID_FIRST_DAY_OF_WEEK }, { status: 400 });
     }
 
     // For new users, provide default language if not specified
@@ -90,7 +102,8 @@ export async function POST(request: NextRequest) {
       'displayName' in body ? displayName : undefined,
       'enablePrepMode' in body ? enablePrepMode : undefined,
       'enableAudioGeneration' in body ? enableAudioGeneration : undefined,
-      'enableGroups' in body ? enableGroups : undefined
+      'enableGroups' in body ? enableGroups : undefined,
+      'firstDayOfWeek' in body ? firstDayOfWeek : undefined
     );
 
     return NextResponse.json({ success: true });

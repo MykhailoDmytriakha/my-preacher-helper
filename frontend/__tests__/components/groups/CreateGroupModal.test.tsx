@@ -6,6 +6,12 @@ jest.mock('@/providers/AuthProvider', () => ({
   useAuth: jest.fn(() => ({ user: { uid: 'user-1' } })),
 }));
 
+jest.mock('@/hooks/useUserSettings', () => ({
+  useUserSettings: () => ({ settings: { firstDayOfWeek: 'sunday' } }),
+}));
+
+jest.mock('react-day-picker/dist/style.css', () => ({}));
+
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue || key,
@@ -25,7 +31,7 @@ describe('CreateGroupModal', () => {
     fireEvent.change(screen.getByPlaceholderText('Optional context for this group meeting'), {
       target: { value: '  Notes  ' },
     });
-    const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement;
+    const dateInput = screen.getByPlaceholderText('yyyy-mm-dd') as HTMLInputElement;
     fireEvent.change(dateInput, {
       target: { value: '2026-02-14' },
     });

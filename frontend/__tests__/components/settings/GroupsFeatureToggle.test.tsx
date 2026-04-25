@@ -43,6 +43,8 @@ describe('GroupsFeatureToggle', () => {
       updatingAudioGeneration: false,
       updateStructurePreviewAccess: jest.fn(),
       updatingStructurePreview: false,
+      updateFirstDayOfWeek: jest.fn(),
+      updatingFirstDayOfWeek: false,
     });
   });
 
@@ -58,6 +60,8 @@ describe('GroupsFeatureToggle', () => {
       updatingAudioGeneration: false,
       updateStructurePreviewAccess: jest.fn(),
       updatingStructurePreview: false,
+      updateFirstDayOfWeek: jest.fn(),
+      updatingFirstDayOfWeek: false,
     } as any);
 
     render(<GroupsFeatureToggle />);

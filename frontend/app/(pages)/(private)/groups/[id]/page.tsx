@@ -38,6 +38,7 @@ import FlowFooter from '@/components/groups/FlowFooter';
 import FlowItemRow from '@/components/groups/FlowItemRow';
 import SeriesSelector from '@/components/series/SeriesSelector';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import DatePickerField from '@/components/ui/DatePickerField';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { useSeries } from '@/hooks/useSeries';
@@ -91,7 +92,6 @@ export default function GroupDetailPage() {
   flowRef.current = flow;
 
   const [meetingDate, setMeetingDate] = useState('');
-  const [isDateFocused, setIsDateFocused] = useState(false);
   const [meetingLocation, setMeetingLocation] = useState('');
   const [meetingAudience, setMeetingAudience] = useState('');
   const [deletingGroup, setDeletingGroup] = useState(false);
@@ -533,17 +533,15 @@ export default function GroupDetailPage() {
           <div className="flex flex-col gap-3 w-full max-w-[320px] ml-auto">
             <div className="flex items-center gap-2">
               <CalendarDaysIcon className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-              <input
-                type={isDateFocused || meetingDate ? 'date' : 'text'}
+              <DatePickerField
                 value={meetingDate}
-                onChange={(event) => {
-                  setMeetingDate(event.target.value);
+                onChange={(nextDate) => {
+                  setMeetingDate(nextDate);
                   debouncedSave();
                 }}
-                onFocus={() => setIsDateFocused(true)}
-                onBlur={() => setIsDateFocused(false)}
                 placeholder={t('workspaces.groups.meetings.datePlaceholder', { defaultValue: 'No date' })}
-                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                wrapperClassName="w-full"
+                inputClassName="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 pr-12 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
               />
             </div>
             <div className="flex items-center gap-2">

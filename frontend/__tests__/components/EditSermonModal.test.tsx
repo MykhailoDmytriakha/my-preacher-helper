@@ -24,6 +24,16 @@ jest.mock('@/providers/ConnectionProvider', () => ({
   ConnectionProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
+jest.mock('@/providers/AuthProvider', () => ({
+  useAuth: () => ({ user: { uid: 'test-user-id' } }),
+}));
+
+jest.mock('@/hooks/useUserSettings', () => ({
+  useUserSettings: () => ({ settings: { firstDayOfWeek: 'sunday' } }),
+}));
+
+jest.mock('react-day-picker/dist/style.css', () => ({}));
+
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
     refresh: jest.fn()

@@ -312,6 +312,13 @@
     "backToDashboard": "Back",
     "title": "Settings",
     "userSettings": "User Settings",
+    "firstDayOfWeek": {
+      "title": "First day of week",
+      "description": "Choose how calendars are arranged across the app.",
+      "sunday": "Sunday",
+      "monday": "Monday",
+      "error": "Could not save the first day of week. Please try again."
+    },
     "prepMode": {
       "title": "Preparation Mode (Beta)",
       "description": "Enable access to the new preparation mode workflow"
@@ -749,6 +756,9 @@
     "clearFilters": "Clear",
     "back": "Back",
     "close": "Close",
+    "clear": "Clear",
+    "openCalendar": "Open calendar",
+    "datePlaceholder": "yyyy-mm-dd",
     "hours": "Hours",
     "seconds": "Seconds",
     "expand": "Expand",

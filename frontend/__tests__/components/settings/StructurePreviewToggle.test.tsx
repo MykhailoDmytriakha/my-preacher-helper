@@ -37,6 +37,8 @@ describe('StructurePreviewToggle', () => {
     updatingAudioGeneration: false,
     updateStructurePreviewAccess: mockUpdateStructurePreviewAccess,
     updatingStructurePreview: false,
+    updateFirstDayOfWeek: jest.fn(),
+    updatingFirstDayOfWeek: false,
   };
 
   beforeEach(() => {

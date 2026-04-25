@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import '@testing-library/jest-dom';
 import { User } from 'firebase/auth';
@@ -50,6 +50,8 @@ const mockSettings: UserSettings = {
   displayName: 'Settings Display Name', // Different name to test override
 };
 
+const mockUpdateFirstDayOfWeek = jest.fn();
+
 // --- Test Suite --- //
 
 describe('UserSettingsSection', () => {
@@ -60,6 +62,8 @@ describe('UserSettingsSection', () => {
       settings: mockSettings,
       loading: false,
       error: null,
+      updateFirstDayOfWeek: mockUpdateFirstDayOfWeek,
+      updatingFirstDayOfWeek: false,
     });
   });
 
@@ -72,6 +76,8 @@ describe('UserSettingsSection', () => {
       settings: null,
       loading: true,
       error: null,
+      updateFirstDayOfWeek: mockUpdateFirstDayOfWeek,
+      updatingFirstDayOfWeek: false,
     });
     renderSection();
     expect(screen.getByText(/settings.loadingUserData/i)).toBeInTheDocument();
@@ -101,6 +107,8 @@ describe('UserSettingsSection', () => {
       settings: settingsWithoutEmail,
       loading: false,
       error: null,
+      updateFirstDayOfWeek: mockUpdateFirstDayOfWeek,
+      updatingFirstDayOfWeek: false,
     });
     renderSection();
 
@@ -118,6 +126,8 @@ describe('UserSettingsSection', () => {
        settings: settingsWithoutDisplayName,
        loading: false,
        error: null,
+       updateFirstDayOfWeek: mockUpdateFirstDayOfWeek,
+       updatingFirstDayOfWeek: false,
      });
      renderSection(userWithoutDisplayName);
 
@@ -134,6 +144,8 @@ describe('UserSettingsSection', () => {
       settings: null,
       loading: false,
       error,
+      updateFirstDayOfWeek: mockUpdateFirstDayOfWeek,
+      updatingFirstDayOfWeek: false,
     });
     renderSection();
 
@@ -154,4 +166,15 @@ describe('UserSettingsSection', () => {
     expect(screen.getByText(/settings.loadingUserData/i)).toBeInTheDocument(); 
   });
 
-}); 
+  it('updates first day of week from the user settings controls', async () => {
+    mockUpdateFirstDayOfWeek.mockResolvedValue(undefined);
+    renderSection();
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.firstDayOfWeek.monday' }));
+
+    await waitFor(() => {
+      expect(mockUpdateFirstDayOfWeek).toHaveBeenCalledWith('monday');
+    });
+  });
+
+});

@@ -8,6 +8,7 @@ import {
   initializeUserSettings,
   setLanguageCookie,
   updateAudioGenerationAccess,
+  updateFirstDayOfWeek,
   updateGroupsAccess,
   updatePrepModeAccess,
   updateUserLanguage,
@@ -825,6 +826,39 @@ describe('User Settings Service - Prep Mode Functions', () => {
       await expect(updateAudioGenerationAccess('user1', false)).rejects.toThrow('Network error');
       expect(consoleSpy).toHaveBeenCalledWith('Error updating audio generation access:', expect.any(Error));
 
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe('updateFirstDayOfWeek', () => {
+    it('updates the first day of week preference', async () => {
+      await expect(updateFirstDayOfWeek('', 'monday')).resolves.toBeUndefined();
+      expect(mockFetch).not.toHaveBeenCalled();
+
+      mockFetch.mockResolvedValueOnce({ ok: true, json: jest.fn().mockResolvedValue({ success: true }) });
+
+      await expect(updateFirstDayOfWeek('user1', 'monday')).resolves.toBeUndefined();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/user/settings',
+        expect.objectContaining({
+          method: 'PUT',
+          body: JSON.stringify({ userId: 'user1', firstDayOfWeek: 'monday' }),
+        })
+      );
+    });
+
+    it('throws on offline and request failures', async () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+      setNavigatorOnline(false);
+      await expect(updateFirstDayOfWeek('user1', 'sunday')).rejects.toThrow('Offline: operation not available.');
+
+      setNavigatorOnline(true);
+      mockFetch.mockResolvedValueOnce({ ok: false, statusText: 'Bad Request' });
+      await expect(updateFirstDayOfWeek('user1', 'sunday')).rejects.toThrow('Failed to update first day of week: Bad Request');
+
+      expect(consoleSpy).toHaveBeenCalledWith('Error updating first day of week:', expect.any(Error));
       consoleSpy.mockRestore();
     });
   });

@@ -5,6 +5,7 @@ import '@testing-library/jest-dom';
 import { Sermon } from '@/models/models';
 
 const mockDayPicker = jest.fn();
+const mockUseUserSettings = jest.fn((_userId?: string) => ({ settings: { firstDayOfWeek: 'sunday' } }));
 
 jest.mock('react-day-picker', () => ({
   DayPicker: (props: any) => {
@@ -20,6 +21,14 @@ jest.mock('react-i18next', () => ({
     t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? key,
     i18n: { language: 'en' },
   }),
+}));
+
+jest.mock('@/providers/AuthProvider', () => ({
+  useAuth: () => ({ user: { uid: 'user-1' } }),
+}));
+
+jest.mock('@/hooks/useUserSettings', () => ({
+  useUserSettings: (userId?: string) => mockUseUserSettings(userId),
 }));
 
 describe('PreachCalendar', () => {
@@ -50,6 +59,7 @@ describe('PreachCalendar', () => {
 
   beforeEach(() => {
     mockDayPicker.mockClear();
+    mockUseUserSettings.mockReturnValue({ settings: { firstDayOfWeek: 'sunday' } });
   });
 
   it('uses selectedDate as month when currentMonth is not provided', () => {
@@ -82,6 +92,22 @@ describe('PreachCalendar', () => {
 
     const props = mockDayPicker.mock.calls[0][0];
     expect(props.month).toEqual(currentMonth);
+  });
+
+  it('passes first day of week preference to DayPicker', () => {
+    mockUseUserSettings.mockReturnValue({ settings: { firstDayOfWeek: 'monday' } });
+    const selectedDate = new Date(2024, 0, 15);
+
+    render(
+      <PreachCalendar
+        eventsByDate={sermonsByDate}
+        selectedDate={selectedDate}
+        onDateSelect={jest.fn()}
+      />
+    );
+
+    const props = mockDayPicker.mock.calls[0][0];
+    expect(props.weekStartsOn).toBe(1);
   });
 
   it('forwards onMonthChange and onDateSelect handlers', () => {
