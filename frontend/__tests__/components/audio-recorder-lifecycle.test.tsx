@@ -393,6 +393,24 @@ describe("useAudioRecorderLifecycle", () => {
     expect(args.onRecordingComplete).not.toHaveBeenCalled();
   });
 
+  it("records without creating audio-level monitoring when disabled", async () => {
+    const args = createArgs({ enableAudioLevelMonitoring: false });
+    const { result } = renderHook(() => useAudioRecorderLifecycle(args));
+
+    await startRecording(result);
+    emitRecordedBlob();
+
+    act(() => {
+      result.current.stopRecording();
+    });
+
+    await waitFor(() => {
+      expect(args.onRecordingComplete).toHaveBeenCalledTimes(1);
+    });
+    expect(global.AudioContext).not.toHaveBeenCalled();
+    expect(global.requestAnimationFrame).not.toHaveBeenCalled();
+  });
+
   it("routes keyboard shortcuts correctly", async () => {
     const args = createArgs();
     const { result } = renderHook(() => useAudioRecorderLifecycle(args));

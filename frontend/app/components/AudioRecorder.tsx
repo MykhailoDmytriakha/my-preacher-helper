@@ -37,9 +37,11 @@ export const AudioRecorder = ({
   hideKeyboardShortcuts = false,
   onRecordingStateChange,
   splitLeft,
+  enableAudioLevelMonitoring = true,
 }: AudioRecorderProps) => {
   const { t } = useTranslation();
   const appliedVariant = useResponsiveRecorderVariant(variant);
+  const shouldEnableAudioLevelMonitoring = enableAudioLevelMonitoring && appliedVariant === "standard";
 
   const {
     recordingTime,
@@ -71,6 +73,7 @@ export const AudioRecorder = ({
     autoStart,
     hideKeyboardShortcuts,
     onRecordingStateChange,
+    enableAudioLevelMonitoring: shouldEnableAudioLevelMonitoring,
     t,
   });
 
@@ -159,12 +162,14 @@ export const AudioRecorder = ({
         t={t}
       />
 
-      <AudioLevelIndicator
-        isRecording={isRecording}
-        isPaused={isPaused}
-        audioLevel={audioLevel}
-        t={t}
-      />
+      {shouldEnableAudioLevelMonitoring ? (
+        <AudioLevelIndicator
+          isRecording={isRecording}
+          isPaused={isPaused}
+          audioLevel={audioLevel}
+          t={t}
+        />
+      ) : null}
     </div>
   );
 };

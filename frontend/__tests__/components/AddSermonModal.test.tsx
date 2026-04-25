@@ -69,10 +69,13 @@ jest.mock('react-i18next', () => ({
           'addSermon.verseLabel': 'Scripture Reference',
           'addSermon.versePlaceholder': 'Enter scripture reference',
           'addSermon.verseExample': 'Example: John 3:16-17',
+          'addSermon.seriesLabel': 'Series',
+          'addSermon.noSeriesOption': 'No series',
           'addSermon.plannedDateLabel': 'Planned preaching date (optional)',
           'addSermon.plannedDateHint': 'You can add church details later in Calendar',
           'addSermon.save': 'Save',
           'addSermon.cancel': 'Cancel',
+          'common.saving': 'Saving...',
           'calendar.unspecifiedChurch': 'Church not specified',
         };
         return translations[key] || key;
@@ -289,14 +292,7 @@ describe('AddSermonModal Component', () => {
 
   test('handles authentication errors gracefully', async () => {
     (auth as any).currentUser = null;
-    // Mock console.error
-    jest.spyOn(console, 'error').mockImplementation();
-
-    // Mock an authentication error
-    (createSermon as jest.Mock).mockImplementationOnce(() => {
-      console.error("User is not authenticated");
-      throw new Error("User is not authenticated");
-    });
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
 
     render(
       <TestProviders>
@@ -311,17 +307,23 @@ describe('AddSermonModal Component', () => {
     fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), {
       target: { value: 'Test Sermon Title' }
     });
+
+    fireEvent.change(screen.getByPlaceholderText('Enter scripture reference'), {
+      target: { value: 'Test 1:1-2' }
+    });
     
     // Submit the form
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
-    // Wait for the error to be shown
     await waitFor(() => {
-      expect(screen.findByText('Error creating sermon')).resolves.toBeInTheDocument();
+      expect(consoleSpy).toHaveBeenCalledWith('User is not authenticated');
     });
 
-    // Restore mocks
-    (console.error as jest.Mock).mockRestore();
+    expect(createSermon).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue('Test Sermon Title')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+
+    consoleSpy.mockRestore();
   });
 
   test('uses null user id for series when user is missing', () => {
@@ -337,8 +339,7 @@ describe('AddSermonModal Component', () => {
   });
 
   test('handles API errors gracefully', async () => {
-    // Mock console.error
-    jest.spyOn(console, 'error').mockImplementation();
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
 
     // Mock an API error
     const apiError = new Error('Server error');
@@ -365,13 +366,15 @@ describe('AddSermonModal Component', () => {
     // Submit the form
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     
-    // Wait for the error to be shown
     await waitFor(() => {
-      expect(screen.findByText('Error creating sermon')).resolves.toBeInTheDocument();
+      expect(consoleSpy).toHaveBeenCalledWith('Error creating sermon:', apiError);
     });
 
-    // Restore mocks
-    (console.error as jest.Mock).mockRestore();
+    expect(screen.getByDisplayValue('Test Sermon Title')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Test 1:1-2')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+
+    consoleSpy.mockRestore();
   });
 
   test('delegates create flow to onCreateRequest when provided', async () => {
@@ -416,7 +419,7 @@ describe('AddSermonModal Component', () => {
     expect(createSermon).not.toHaveBeenCalled();
   });
 
-  test('logs optimistic create errors but still resets and closes modal', async () => {
+  test('logs optimistic create errors and keeps modal data intact', async () => {
     const onCreateRequest = jest.fn().mockRejectedValue(new Error('optimistic-fail'));
     const onClose = jest.fn();
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
@@ -442,7 +445,13 @@ describe('AddSermonModal Component', () => {
 
     await waitFor(() => {
       expect(onCreateRequest).toHaveBeenCalled();
-      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByDisplayValue('Failed Delegated Sermon')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Acts 1:8')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
     });
 
     expect(consoleSpy).toHaveBeenCalledWith(

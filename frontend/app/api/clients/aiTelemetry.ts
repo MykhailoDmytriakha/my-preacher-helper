@@ -120,6 +120,7 @@ function inferCorrelationId(logContext?: Record<string, unknown>): string {
 }
 
 function detectOutputLanguage(parsedOutput: unknown): string | null {
+  if (parsedOutput === undefined || parsedOutput === null) return null;
   const outputText = toSafeString(parsedOutput);
   if (!outputText.trim()) return null;
   return detectDominantLanguage(outputText);
@@ -197,4 +198,3 @@ export function emitStructuredTelemetryEvent(input: StructuredTelemetryEventInpu
   const event = buildStructuredTelemetryEvent(input);
   void persistStructuredTelemetryEvent(event);
 }
-

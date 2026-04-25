@@ -15,7 +15,7 @@ import { addPreachDate } from '@services/preachDates.service';
 import { createSermon } from '@services/sermon.service';
 
 interface AddSermonModalProps {
-  onNewSermonCreated?: (newSermon: Sermon) => void;
+  onNewSermonCreated?: (newSermon: Sermon) => Promise<void> | void;
   onCancel?: () => void;
   preSelectedSeriesId?: string;
   isOpen?: boolean;
@@ -48,6 +48,7 @@ export default function AddSermonModal({
   const [verse, setVerse] = useState('');
   const [selectedSeriesId, setSelectedSeriesId] = useState<string>(preSelectedSeriesId || '');
   const [plannedDate, setPlannedDate] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const getUnspecifiedChurch = (): Church => ({
     id: 'church-unspecified',
@@ -55,10 +56,19 @@ export default function AddSermonModal({
     city: ''
   });
 
+  const resetForm = () => {
+    setTitle('');
+    setVerse('');
+    setSelectedSeriesId(preSelectedSeriesId || '');
+    setPlannedDate('');
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
 
     if (onCreateRequest) {
+      setIsSubmitting(true);
       try {
         await onCreateRequest({
           title,
@@ -67,15 +77,13 @@ export default function AddSermonModal({
           plannedDate: allowPlannedDate ? plannedDate || undefined : undefined,
           unspecifiedChurchName: getUnspecifiedChurch().name,
         });
+        resetForm();
+        setIsSubmitting(false);
+        handleClose();
       } catch (error) {
         console.error('Error creating sermon (optimistic request):', error);
+        setIsSubmitting(false);
       }
-
-      setTitle('');
-      setVerse('');
-      setSelectedSeriesId('');
-      setPlannedDate('');
-      handleClose();
       return;
     }
 
@@ -96,6 +104,7 @@ export default function AddSermonModal({
       seriesId: selectedSeriesId || undefined
     };
 
+    setIsSubmitting(true);
     try {
       const createdSermon = await createSermon(newSermon as Omit<Sermon, 'id'>);
       console.log('Created sermon returned from server:', createdSermon);
@@ -122,23 +131,27 @@ export default function AddSermonModal({
       // to avoid duplicate operations in the sequential modal flow
 
       if (onNewSermonCreated) {
-        onNewSermonCreated(sermonForCallback);
+        await onNewSermonCreated(sermonForCallback);
       }
       // Note: router.refresh() moved to parent component to avoid modal flickering
+      resetForm();
+      setIsSubmitting(false);
+      handleClose();
     } catch (error) {
       console.error('Error creating sermon:', error);
+      setIsSubmitting(false);
     }
-
-    setTitle('');
-    setVerse('');
-    setSelectedSeriesId('');
-    setPlannedDate('');
-    handleClose();
-
   };
 
   const modalContent = (
-    <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-[110] p-4" onClick={handleClose}>
+    <div
+      className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-[110] p-4"
+      onClick={() => {
+        if (!isSubmitting) {
+          handleClose();
+        }
+      }}
+    >
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-[600px] max-h-[85vh] my-8 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-2xl font-bold mb-6">{t(NEW_SERMON_KEY)}</h2>
         <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
@@ -154,6 +167,7 @@ export default function AddSermonModal({
               className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white resize-none"
               minRows={1}
               maxRows={6}
+              disabled={isSubmitting}
               required
             />
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
@@ -173,6 +187,7 @@ export default function AddSermonModal({
                 className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white resize-none"
                 minRows={3}
                 maxRows={16}
+                disabled={isSubmitting}
                 required
               />
             </div>
@@ -189,6 +204,7 @@ export default function AddSermonModal({
               value={selectedSeriesId}
               onChange={(e) => setSelectedSeriesId(e.target.value)}
               className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white"
+              disabled={isSubmitting}
             >
               <option value="">{t('addSermon.noSeriesOption')}</option>
               {series.map((s) => (
@@ -209,6 +225,7 @@ export default function AddSermonModal({
                 value={plannedDate}
                 onChange={(e) => setPlannedDate(e.target.value)}
                 className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white"
+                disabled={isSubmitting}
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 {t('addSermon.plannedDateHint', { defaultValue: 'You can set church details later in Calendar.' })}
@@ -219,21 +236,32 @@ export default function AddSermonModal({
             <button
               type="button"
               onClick={() => {
+                if (isSubmitting) {
+                  return;
+                }
                 if (onCancel) {
                   onCancel(); // Signal cancellation to parent
                 } else {
                   handleClose(); // Default close behavior
                 }
               }}
-              className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500"
+              disabled={isSubmitting}
+              className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {t('addSermon.cancel')}
             </button>
             <button
               type="submit"
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              disabled={isSubmitting}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {t('addSermon.save')}
+              {isSubmitting && (
+                <span
+                  className="h-4 w-4 animate-spin rounded-full border-2 border-white/80 border-b-transparent"
+                  aria-hidden="true"
+                />
+              )}
+              <span>{isSubmitting ? t('common.saving', { defaultValue: 'Saving...' }) : t('addSermon.save')}</span>
             </button>
           </div>
         </form>

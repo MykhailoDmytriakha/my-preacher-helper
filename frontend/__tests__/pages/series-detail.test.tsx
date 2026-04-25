@@ -139,13 +139,15 @@ jest.mock('@/components/AddSermonModal', () => {
   return function MockAddSermonModal({
     isOpen,
     onCancel,
+    onClose,
     onNewSermonCreated
   }: {
     isOpen?: boolean;
     onCancel?: () => void;
+    onClose?: () => void;
     showTriggerButton?: boolean;
     preSelectedSeriesId?: string;
-    onNewSermonCreated?: (sermon: any) => void;
+    onNewSermonCreated?: (sermon: any) => Promise<void> | void;
   }) {
     return isOpen ? (
       <div data-testid="create-sermon-modal">
@@ -155,14 +157,21 @@ jest.mock('@/components/AddSermonModal', () => {
         </button>
         <button
           data-testid="create-sermon-button"
-          onClick={() => onNewSermonCreated?.({
-            id: 'new-sermon-id',
-            title: 'New Test Sermon',
-            verse: 'John 3:16',
-            date: new Date().toISOString(),
-            thoughts: [],
-            userId: 'user-1',
-          })}
+          onClick={async () => {
+            try {
+              await onNewSermonCreated?.({
+                id: 'new-sermon-id',
+                title: 'New Test Sermon',
+                verse: 'John 3:16',
+                date: new Date().toISOString(),
+                thoughts: [],
+                userId: 'user-1',
+              });
+              onClose?.();
+            } catch {
+              // Keep the mock modal open on failure to mirror the real component contract.
+            }
+          }}
         >
           Create Sermon
         </button>

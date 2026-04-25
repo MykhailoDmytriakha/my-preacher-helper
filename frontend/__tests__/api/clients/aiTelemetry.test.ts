@@ -58,5 +58,27 @@ describe("aiTelemetry", () => {
       });
     }).not.toThrow();
   });
-});
 
+  it("does not infer English output when parsed output is missing", () => {
+    const promptBlueprint = buildSimplePromptBlueprint({
+      promptName: "plan_point_content",
+      promptVersion: "v3",
+      expectedLanguage: "ru",
+      systemPrompt: "System prompt",
+      userMessage: "User message",
+    });
+
+    const event = buildStructuredTelemetryEvent({
+      provider: "GEMINI",
+      model: "gemini-2.5-flash-lite",
+      formatName: "plan_point_content",
+      promptBlueprint,
+      latencyMs: 120,
+      status: "error",
+      errorMessage: "429 status code (no body)",
+    });
+
+    expect(event.language.expected).toBe("ru");
+    expect(event.language.detectedOutput).toBeNull();
+  });
+});

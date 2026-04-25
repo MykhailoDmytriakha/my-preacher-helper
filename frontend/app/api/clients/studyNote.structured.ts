@@ -11,7 +11,7 @@
 import { StudyNoteAnalysisSchema, StudyNoteAnalysis } from "@/config/schemas/zod";
 
 import { logger } from "./openAIHelpers";
-import { buildSimplePromptBlueprint } from "./promptBuilder";
+import { buildSimplePromptBlueprint, detectDominantLanguage } from "./promptBuilder";
 import { callWithStructuredOutput, StructuredOutputResult } from "./structuredOutput";
 
 /**
@@ -377,6 +377,7 @@ export async function analyzeStudyNote(
 
   // Detect language for proper prompt construction
   const { languageHint } = detectLanguage(noteContent);
+  const telemetryExpectedLanguage = detectDominantLanguage(noteContent);
 
   // Always log for easier debugging (content preview truncated for readability)
   const contentPreview = noteContent.length > 500
@@ -395,7 +396,7 @@ export async function analyzeStudyNote(
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "studyNoteAnalysis",
       promptVersion: "v1",
-      expectedLanguage: languageHint,
+      expectedLanguage: telemetryExpectedLanguage === "unknown" ? null : telemetryExpectedLanguage,
       systemPrompt,
       userMessage,
       context: {

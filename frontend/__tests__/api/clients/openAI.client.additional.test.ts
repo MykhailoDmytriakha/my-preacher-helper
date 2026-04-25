@@ -636,6 +636,16 @@ describe('openAI.client additional coverage', () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain('Заголовок');
+    expect(mockStructuredOutput.callWithStructuredOutput).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.anything(),
+      expect.objectContaining({
+        promptBlueprint: expect.objectContaining({
+          expectedLanguage: 'ru',
+        }),
+      })
+    );
   });
 
   it('detects non-Latin content when generating plan section', async () => {

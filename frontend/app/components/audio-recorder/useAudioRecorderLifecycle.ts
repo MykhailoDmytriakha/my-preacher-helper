@@ -29,6 +29,7 @@ export function useAudioRecorderLifecycle({
   autoStart,
   hideKeyboardShortcuts,
   onRecordingStateChange,
+  enableAudioLevelMonitoring = true,
   t,
 }: UseAudioRecorderLifecycleArgs): UseAudioRecorderLifecycleResult {
   const [recordingTime, setRecordingTime] = useState(0);
@@ -142,6 +143,7 @@ export function useAudioRecorderLifecycle({
     chunks.current = [];
     console.log("AudioRecorder: Cleared chunks array before starting");
     setIsInitializing(true);
+    setAudioLevel(0);
     setTranscriptionErrorState(null);
   }, []);
 
@@ -159,6 +161,10 @@ export function useAudioRecorderLifecycle({
   }, []);
 
   const setupAudioMonitoring = useCallback((stream: MediaStream) => {
+    if (!enableAudioLevelMonitoring) {
+      return;
+    }
+
     try {
       audioContextRef.current = new AudioContext();
       const source = audioContextRef.current.createMediaStreamSource(stream);
@@ -168,7 +174,7 @@ export function useAudioRecorderLifecycle({
     } catch (audioContextError) {
       console.warn("Could not create audio context for level monitoring:", audioContextError);
     }
-  }, []);
+  }, [enableAudioLevelMonitoring]);
 
   const initiateRecording = useCallback(() => {
     mediaRecorder.current!.start();
