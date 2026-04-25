@@ -6,6 +6,7 @@ import { DELETE, POST, PUT } from 'app/api/series/[id]/items/route';
 
 jest.mock('@repositories/groups.repository', () => ({
   groupsRepository: {
+    fetchGroupById: jest.fn(),
     updateGroupSeriesInfo: jest.fn(),
   },
 }));
@@ -23,6 +24,7 @@ jest.mock('@repositories/series.repository', () => ({
 
 jest.mock('@repositories/sermons.repository', () => ({
   sermonsRepository: {
+    fetchSermonById: jest.fn(),
     updateSermonSeriesInfo: jest.fn(),
   },
 }));
@@ -51,6 +53,12 @@ describe('/api/series/[id]/items route', () => {
     (seriesRepository.reorderSeriesItems as jest.Mock).mockResolvedValue(undefined);
     (seriesRepository.removeSermonFromSeries as jest.Mock).mockResolvedValue(undefined);
     (seriesRepository.removeGroupFromSeries as jest.Mock).mockResolvedValue(undefined);
+    (sermonsRepository.fetchSermonById as jest.Mock).mockImplementation((id: string) =>
+      Promise.resolve({ id, seriesId: 's1', seriesPosition: 1 })
+    );
+    (groupsRepository.fetchGroupById as jest.Mock).mockImplementation((id: string) =>
+      Promise.resolve({ id, seriesId: 's1', seriesPosition: 2 })
+    );
     (sermonsRepository.updateSermonSeriesInfo as jest.Mock).mockResolvedValue(undefined);
     (groupsRepository.updateGroupSeriesInfo as jest.Mock).mockResolvedValue(undefined);
   });
@@ -74,7 +82,7 @@ describe('/api/series/[id]/items route', () => {
       expect(missingRefData.error).toBe('refId is required');
     });
 
-    it('adds sermon and group and syncs positions', async () => {
+    it('adds sermon and group and skips already-synced position writes', async () => {
       const addSermonResponse = await POST(
         { json: jest.fn().mockResolvedValue({ type: 'sermon', refId: 'sermon-2', position: 1 }) } as any,
         { params: Promise.resolve({ id: 's1' }) }
@@ -86,10 +94,32 @@ describe('/api/series/[id]/items route', () => {
 
       expect(seriesRepository.addSermonToSeries).toHaveBeenCalledWith('s1', 'sermon-2', 1);
       expect(seriesRepository.addGroupToSeries).toHaveBeenCalledWith('s1', 'group-2', undefined);
-      expect(sermonsRepository.updateSermonSeriesInfo).toHaveBeenCalledWith('sermon-1', 's1', 1);
-      expect(groupsRepository.updateGroupSeriesInfo).toHaveBeenCalledWith('group-1', 's1', 2);
+      expect(sermonsRepository.updateSermonSeriesInfo).not.toHaveBeenCalled();
+      expect(groupsRepository.updateGroupSeriesInfo).not.toHaveBeenCalled();
       expect(addSermonResponse.status).toBe(200);
       expect(addGroupResponse.status).toBe(200);
+    });
+
+    it('syncs only items whose stored series metadata is stale', async () => {
+      (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue({
+        id: 'sermon-1',
+        seriesId: 's1',
+        seriesPosition: 99,
+      });
+      (groupsRepository.fetchGroupById as jest.Mock).mockResolvedValue({
+        id: 'group-1',
+        seriesId: 'other-series',
+        seriesPosition: 2,
+      });
+
+      const response = await POST(
+        { json: jest.fn().mockResolvedValue({ type: 'sermon', refId: 'sermon-2' }) } as any,
+        { params: Promise.resolve({ id: 's1' }) }
+      );
+
+      expect(sermonsRepository.updateSermonSeriesInfo).toHaveBeenCalledWith('sermon-1', 's1', 1);
+      expect(groupsRepository.updateGroupSeriesInfo).toHaveBeenCalledWith('group-1', 's1', 2);
+      expect(response.status).toBe(200);
     });
   });
 
@@ -156,8 +186,10 @@ describe('/api/series/[id]/items route', () => {
 
       expect(seriesRepository.removeSermonFromSeries).toHaveBeenCalledWith('s1', 'sermon-1');
       expect(sermonsRepository.updateSermonSeriesInfo).toHaveBeenCalledWith('sermon-1', null, null);
+      expect(sermonsRepository.updateSermonSeriesInfo).not.toHaveBeenCalledWith('sermon-1', 's1', 1);
       expect(seriesRepository.removeGroupFromSeries).toHaveBeenCalledWith('s1', 'group-1');
       expect(groupsRepository.updateGroupSeriesInfo).toHaveBeenCalledWith('group-1', null, null);
+      expect(groupsRepository.updateGroupSeriesInfo).not.toHaveBeenCalledWith('group-1', 's1', 2);
       expect(sermonResponse.status).toBe(200);
       expect(groupResponse.status).toBe(200);
     });

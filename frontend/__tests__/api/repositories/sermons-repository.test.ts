@@ -551,13 +551,13 @@ describe('SermonsRepository', () => {
       await expect(
         sermonsRepository.updateSermonSeriesInfo('sermon-1', 'series-1', 2)
       ).resolves.toBeUndefined();
-      expect(mockUpdate).toHaveBeenCalledWith({ seriesId: 'series-1', seriesPosition: 2, updatedAt: expect.any(String) });
+      expect(mockUpdate).toHaveBeenCalledWith({ seriesId: 'series-1', seriesPosition: 2 });
 
       mockUpdate.mockClear();
       await expect(
         sermonsRepository.updateSermonSeriesInfo('sermon-1', null, null)
       ).resolves.toBeUndefined();
-      expect(mockUpdate).toHaveBeenCalledWith({ seriesId: null, seriesPosition: null, updatedAt: expect.any(String) });
+      expect(mockUpdate).toHaveBeenCalledWith({ seriesId: null, seriesPosition: null });
 
       mockUpdate.mockClear();
       await expect(

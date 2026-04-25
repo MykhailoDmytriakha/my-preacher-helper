@@ -16,11 +16,21 @@ async function syncSeriesItemPositions(seriesId: string) {
   if (!series) return;
 
   await Promise.all(
-    (series.items || []).map((item) => {
+    (series.items || []).map(async (item) => {
       if (item.type === 'sermon') {
-        return sermonsRepository.updateSermonSeriesInfo(item.refId, seriesId, item.position);
+        const current = await sermonsRepository.fetchSermonById(item.refId);
+        if (current.seriesId === seriesId && current.seriesPosition === item.position) {
+          return;
+        }
+        await sermonsRepository.updateSermonSeriesInfo(item.refId, seriesId, item.position);
+        return;
       }
-      return groupsRepository.updateGroupSeriesInfo(item.refId, seriesId, item.position);
+
+      const current = await groupsRepository.fetchGroupById(item.refId);
+      if (current?.seriesId === seriesId && current.seriesPosition === item.position) {
+        return;
+      }
+      await groupsRepository.updateGroupSeriesInfo(item.refId, seriesId, item.position);
     })
   );
 }

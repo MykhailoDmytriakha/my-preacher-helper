@@ -46,8 +46,8 @@ const determineDestination = (
   let dstContainerKey: string | undefined = over.data?.current?.container as string | undefined;
   let targetSermonPointId: string | null | undefined = over.data?.current?.outlinePointId as string | undefined;
   let targetSubPointId: string | null | undefined = over.data?.current?.subPointId as string | undefined;
-  let targetBeforeItemId: string | null | undefined = over.data?.current?.beforeItemId as string | undefined;
-  let targetAfterItemId: string | null | undefined = over.data?.current?.afterItemId as string | undefined;
+  const targetBeforeItemId: string | null | undefined = over.data?.current?.beforeItemId as string | undefined;
+  const targetAfterItemId: string | null | undefined = over.data?.current?.afterItemId as string | undefined;
 
   if (overId.startsWith(SUB_POINT_PREFIX)) {
     dstContainerKey = over.data?.current?.container as string | undefined;
@@ -228,10 +228,10 @@ const identifyDropTarget = (
   let overContainer = over.data.current?.container;
   let outlinePointId = over.data.current?.outlinePointId;
   let subPointId: string | null | undefined = over.data.current?.subPointId;
-  let beforeItemId: string | null | undefined = over.data.current?.beforeItemId;
-  let afterItemId: string | null | undefined = over.data.current?.afterItemId;
-  let prevPosition = typeof over.data.current?.prevPosition === 'number' ? over.data.current.prevPosition : undefined;
-  let nextPosition = typeof over.data.current?.nextPosition === 'number' ? over.data.current.nextPosition : undefined;
+  const beforeItemId: string | null | undefined = over.data.current?.beforeItemId;
+  const afterItemId: string | null | undefined = over.data.current?.afterItemId;
+  const prevPosition = typeof over.data.current?.prevPosition === 'number' ? over.data.current.prevPosition : undefined;
+  const nextPosition = typeof over.data.current?.nextPosition === 'number' ? over.data.current.nextPosition : undefined;
   let droppedOnItem = false;
   let targetItemIndex = -1;
   let targetItemSermonPointId: string | null = null;

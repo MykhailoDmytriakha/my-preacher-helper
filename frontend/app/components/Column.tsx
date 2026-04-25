@@ -19,7 +19,6 @@ import { UI_COLORS } from "@/utils/themeColors";
 
 import { AudioRecorder } from "./AudioRecorder";
 import { recordAudioThought } from "./column/audio";
-import { SubPointList } from "./column/SubPointList";
 import {
   BG_GRAY_LIGHT_DARK,
   BG_GRAY_LIGHTER_DARK,
@@ -36,6 +35,7 @@ import {
   TRANSLATION_STRUCTURE_UNASSIGNED_THOUGHTS,
 } from "./column/constants";
 import { DeletePointConfirmModal } from "./column/DeletePointConfirmModal";
+import { SubPointList } from "./column/SubPointList";
 import { useColumnOutlineState } from "./column/useColumnOutlineState";
 import {
   getAdjacentSectionIds,

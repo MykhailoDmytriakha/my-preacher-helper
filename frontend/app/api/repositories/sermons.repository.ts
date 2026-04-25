@@ -248,8 +248,9 @@ export class SermonsRepository {
         return;
       }
 
-      // Update the sermon document
-      await this.updateSermonData(sermonId, updateData);
+      // Series linkage/position is index metadata. Do not bump user-facing
+      // updatedAt here; bulk series syncs must not make old sermons look edited.
+      await docRef.update(updateData);
       console.log(`Sermon series info updated for sermon id ${sermonId}`);
     } catch (error) {
       console.error(`Error updating sermon series info for sermon ${sermonId}:`, error);

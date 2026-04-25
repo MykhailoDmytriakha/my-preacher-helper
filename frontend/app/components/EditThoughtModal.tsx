@@ -10,7 +10,6 @@ import { SermonPoint, SermonOutline } from '@/models/models';
 import { useConnection } from '@/providers/ConnectionProvider';
 import { FocusRecorderButton } from "@components/FocusRecorderButton";
 import { transcribeThoughtAudio } from "@services/thought.service";
-import { resolveThoughtOutlineLocation } from "@utils/subPoints";
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
 
 import { RichMarkdownEditor } from './ui/RichMarkdownEditor';
@@ -33,12 +32,6 @@ type TranslateFn = (key: string, options?: Record<string, unknown>) => string;
 
 type OutlineSectionKey = keyof Pick<SermonOutline, 'introduction' | 'main' | 'conclusion'>;
 
-type SermonPointInfo = {
-  id: string;
-  text: string;
-  section: string;
-};
-
 type AllowedTag = EditThoughtModalProps['allowedTags'][number];
 
 const OUTLINE_SECTION_LABEL_KEYS: Record<OutlineSectionKey, string> = {
@@ -46,8 +39,6 @@ const OUTLINE_SECTION_LABEL_KEYS: Record<OutlineSectionKey, string> = {
   main: 'outline.mainPoints',
   conclusion: 'outline.conclusion',
 };
-
-const OUTLINE_SECTIONS_IN_ORDER: OutlineSectionKey[] = ['introduction', 'main', 'conclusion'];
 
 const isOutlineSectionKey = (value: string | undefined): value is OutlineSectionKey =>
   value === 'introduction' || value === 'main' || value === 'conclusion';
@@ -64,54 +55,6 @@ const getTagDisplayName = (t: TranslateFn, tagName: string, translationKey?: str
   if (canonical === 'conclusion') return t('tags.conclusion');
 
   return tagName;
-};
-
-const translateOrFallback = (
-  t: TranslateFn,
-  key: string,
-  fallback: string,
-  options?: Record<string, unknown>
-) => {
-  const translated = t(key, options);
-  return translated === key ? fallback : translated;
-};
-
-const formatOutlinePlacementDetail = (
-  t: TranslateFn,
-  subPointText?: string | null,
-) => {
-  if (subPointText) {
-    return translateOrFallback(
-      t,
-      'editThought.currentSubPoint',
-      `Sub-point: ${subPointText}`,
-      { subPoint: subPointText }
-    );
-  }
-
-  return translateOrFallback(
-    t,
-    'editThought.directUnderOutlinePoint',
-    'Directly under this outline point'
-  );
-};
-
-const buildAllSermonPoints = (sermonOutline: SermonOutline | undefined, t: TranslateFn): SermonPointInfo[] => {
-  if (!sermonOutline) return [];
-
-  const points: SermonPointInfo[] = [];
-
-  OUTLINE_SECTIONS_IN_ORDER.forEach((sectionKey) => {
-    const sectionPoints = sermonOutline[sectionKey];
-    if (!Array.isArray(sectionPoints)) return;
-
-    const sectionLabel = t(OUTLINE_SECTION_LABEL_KEYS[sectionKey]);
-    sectionPoints.forEach((point) => {
-      points.push({ id: point.id, text: point.text, section: sectionLabel });
-    });
-  });
-
-  return points;
 };
 
 const getFilteredSermonPoints = (
