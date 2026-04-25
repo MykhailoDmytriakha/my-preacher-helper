@@ -152,10 +152,138 @@ describe('generateThoughtStructured', () => {
         formatName: 'thought',
         promptBlueprint: expect.objectContaining({
           promptName: 'thought',
-          promptVersion: 'v4',
+          promptVersion: 'v5',
         }),
       })
     );
+  });
+
+  it('should instruct the model not to inject the sermon main verse when it was not dictated', async () => {
+    const sermonWithMainVerse: Sermon = {
+      ...mockSermon,
+      title: 'Свидетельство о поисках работы',
+      verse: 'Прит. 3:5-6',
+      thoughts: [
+        {
+          id: 'existing-thought-1',
+          text: 'A'.repeat(320),
+          tags: ['Вступление'],
+          date: '2024-01-01',
+        },
+      ],
+    };
+    const dictatedText = 'Поиск работы занял чуть больше месяца, и это было большим чудом.';
+    const mockResponse = {
+      originalText: 'AI-mutated original text',
+      formattedText: 'Поиск работы занял чуть больше месяца, и это было большим чудом.',
+      tags: ['Вступление'],
+      meaningPreserved: true,
+    };
+
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: mockResponse,
+      refusal: null,
+      error: null,
+    });
+
+    const result = await generateThoughtStructured(
+      dictatedText,
+      sermonWithMainVerse,
+      availableTags
+    );
+
+    const [systemPrompt, userMessage, , options] = (structuredOutput.callWithStructuredOutput as jest.Mock).mock.calls[0];
+    expect(systemPrompt).toContain('DO NOT add the main sermon scripture reference');
+    expect(systemPrompt).toContain('Do not use the sermon main scripture from the context as an added citation');
+    expect(systemPrompt).toContain('Bible references are helpful when they are grounded in the dictated words');
+    expect(systemPrompt).toContain('Bad thematic additions');
+    expect(userMessage).toContain('только для понимания и тегов');
+    expect(userMessage).toContain('не добавляй эти данные в мысль');
+    expect(userMessage).toContain('Основной текст проповеди: Прит. 3:5-6');
+    expect(userMessage).toContain(`Мысль: "${'A'.repeat(300)}…`);
+    expect(options).toEqual(
+      expect.objectContaining({
+        promptBlueprint: expect.objectContaining({
+          promptVersion: 'v5',
+        }),
+      })
+    );
+    expect(result.originalText).toBe(dictatedText);
+  });
+
+  it('should retry when the model injects the main sermon reference from context', async () => {
+    const sermonWithMainVerse: Sermon = {
+      ...mockSermon,
+      title: 'Доверие Богу',
+      verse: 'Прит. 3:5-6',
+    };
+    const dictatedText = 'Поиск работы занял чуть больше месяца, и это было большим чудом.';
+
+    (structuredOutput.callWithStructuredOutput as jest.Mock)
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          originalText: dictatedText,
+          formattedText: 'Поиск работы занял чуть больше месяца, и это было большим чудом (Прит. 3:5-6).',
+          tags: ['Вступление'],
+          meaningPreserved: true,
+        },
+        refusal: null,
+        error: null,
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        data: {
+          originalText: dictatedText,
+          formattedText: 'Поиск работы занял чуть больше месяца, и это было большим чудом.',
+          tags: ['Вступление'],
+          meaningPreserved: true,
+        },
+        refusal: null,
+        error: null,
+      });
+
+    const result = await generateThoughtStructured(
+      dictatedText,
+      sermonWithMainVerse,
+      availableTags
+    );
+
+    expect(structuredOutput.callWithStructuredOutput).toHaveBeenCalledTimes(2);
+    expect(result.meaningSuccessfullyPreserved).toBe(true);
+    expect(result.formattedText).toBe('Поиск работы занял чуть больше месяца, и это было большим чудом.');
+  });
+
+  it('should allow the main sermon reference when the user dictated it', async () => {
+    const sermonWithMainVerse: Sermon = {
+      ...mockSermon,
+      title: 'Доверие Богу',
+      verse: 'Прит. 3:5-6',
+    };
+    const dictatedText = 'Прочитаем Притчи 3 глава 5 стих и посмотрим на доверие Богу.';
+
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: {
+        originalText: dictatedText,
+        formattedText: 'Прочитаем Прит. 3:5 и посмотрим на доверие Богу.',
+        tags: ['Основная часть'],
+        meaningPreserved: true,
+      },
+      refusal: null,
+      error: null,
+    });
+
+    const result = await generateThoughtStructured(
+      dictatedText,
+      sermonWithMainVerse,
+      availableTags
+    );
+
+    expect(structuredOutput.callWithStructuredOutput).toHaveBeenCalledTimes(1);
+    expect(result.meaningSuccessfullyPreserved).toBe(true);
+    expect(result.formattedText).toBe('Прочитаем Прит. 3:5 и посмотрим на доверие Богу.');
   });
 
   it('should normalize dictated Scripture references in formatted thought text', async () => {

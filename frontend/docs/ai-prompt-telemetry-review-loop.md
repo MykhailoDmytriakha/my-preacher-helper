@@ -80,6 +80,18 @@ Compare new version metrics against old version:
 - `exampleCount`
 - issue types from reviewed bad examples
 
+## Raw vs Output Review Rule
+
+Always inspect the source text and the model output as a pair. For dictation flows this means raw transcription/input first, then the structured output (`formattedText`, tags, plan content, note analysis, etc.).
+
+Classify the delta:
+
+- `good`: the model cleaned dictation, preserved meaning, normalized an explicit spoken reference, or added a citation anchored in a quote/story/event the user actually mentioned.
+- `over_generation`: the model added sermon context, a main verse, a thematic support verse, a theological bridge, or an application that was not in the source.
+- `under_generation`: the model left raw speech artifacts, missed a clear reference normalization, or failed to structure explicit content.
+
+Example rule for thoughts: `(Быт. 24:12-14)` is acceptable when the raw input says "раб Авраама молился...", but `(Прит. 3:5-6)` is a failure when it came only from the sermon context rather than the dictated thought.
+
 ## Version Rule
 
 Any change that can affect final AI output must increment `promptVersion`, even if the fix is partly deterministic postprocessing.
@@ -90,7 +102,7 @@ Structured telemetry prompts:
 
 | Prompt | Version | Main purpose |
 | --- | --- | --- |
-| `thought` | `v4` | Turn dictated sermon thought into polished prose + tags. |
+| `thought` | `v5` | Turn dictated sermon thought into polished prose + tags without adding sermon-context material not dictated by the user. |
 | `polishTranscription` | `v3` | Clean raw voice transcription for notes/thought text. |
 | `studyNoteAnalysis` | `v2` | Extract study-note title, Scripture refs, and tags. |
 | `plan_point_content` | `v4` | Generate scannable content for one outline point. |
@@ -115,7 +127,8 @@ For each prompt/version:
 
 - Check whether `jsonStructureSuccessRate` changed.
 - Pull 10-50 newest examples.
-- Read `request.userMessage.value` and `response.parsedOutput.value` together.
+- Read raw source text inside `request.userMessage.value` and `response.parsedOutput.value` together.
+- Classify output deltas as grounded transformation, over-generation, or under-generation before changing prompts.
 - Mark high-quality examples with `quality=good&keepAsExample=true`.
 - Mark failures with specific `issueTypes`.
 - Prefer small prompt/schema/postprocessing fixes over broad rewrites.

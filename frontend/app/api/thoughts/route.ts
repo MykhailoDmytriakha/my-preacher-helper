@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { Sermon, Thought } from '@/models/models';
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
+import { createApiPerformanceTracker } from '@clients/apiPerformanceTelemetry';
 import { getCustomTags, getRequiredTags } from '@clients/firestore.client';
 import { createTranscription } from '@clients/openAI.client';
 import { generateThoughtStructured } from '@clients/thought.structured';
@@ -109,62 +110,108 @@ async function handleManualPost(request: Request) {
 }
 
 async function handleAutoPost(request: Request) {
+  const tracker = createApiPerformanceTracker({
+    route: "/api/thoughts",
+    method: "POST",
+    operation: "thought_audio_create",
+  });
+
+  const errorResponse = (errorMessage: string, status: number) => {
+    tracker.emit({
+      status: "error",
+      httpStatus: status,
+      errorMessage,
+    });
+    return NextResponse.json({ error: errorMessage }, { status });
+  };
+
   try {
     console.log("Thoughts route: Starting transcription process.");
 
-    const formData = await request.formData();
+    const formData = await tracker.timePhase("parse_form_data", () => request.formData());
     const audioFile = formData.get('audio');
     const sermonId = formData.get('sermonId') as string;
     const forceTag = formData.get('forceTag') as string | null;
     const outlinePointId = formData.get('outlinePointId') as string | null;
+    tracker.addContext({
+      sermonId: sermonId || null,
+      hasForceTag: Boolean(forceTag),
+      hasOutlinePointId: Boolean(outlinePointId),
+      audioPresent: audioFile instanceof Blob,
+    });
 
     if (!sermonId) {
       console.error("Thoughts route: sermonId is null.");
-      return NextResponse.json({ error: 'sermonId is required' }, { status: 400 });
+      return errorResponse('sermonId is required', 400);
     }
 
     if (!(audioFile instanceof Blob)) {
       console.error("Thoughts route: Invalid audio format received.");
-      return NextResponse.json(
-        { error: 'Invalid audio format' },
-        { status: 400 }
-      );
+      return errorResponse('Invalid audio format', 400);
     }
 
-    const durationValidation = await validateAudioDuration(audioFile);
+    tracker.addContext({
+      audioSizeBytes: audioFile.size,
+      audioType: audioFile.type || null,
+    });
+
+    const durationValidation = await tracker.timePhase(
+      "validate_audio_duration",
+      () => validateAudioDuration(audioFile),
+      {
+        audioSizeBytes: audioFile.size,
+        audioType: audioFile.type || null,
+      }
+    );
+    tracker.addContext({
+      audioDurationSeconds: durationValidation.duration ?? null,
+      audioMaxAllowedSeconds: durationValidation.maxAllowed ?? null,
+    });
     if (!durationValidation.valid) {
       console.error("Thoughts route: Audio duration validation failed.", durationValidation);
-      return NextResponse.json(
-        { error: durationValidation.error || 'Audio file is too long' },
-        { status: 400 }
-      );
+      return errorResponse(durationValidation.error || 'Audio file is too long', 400);
     }
 
-    const sermonPromise = sermonsRepository.fetchSermonById(sermonId) as Promise<Sermon | null>;
-    const requiredTagsPromise = getRequiredTags();
+    const sermonPromise = tracker.timePhase(
+      "fetch_sermon",
+      () => sermonsRepository.fetchSermonById(sermonId) as Promise<Sermon | null>,
+      { sermonId }
+    );
+    const requiredTagsPromise = tracker.timePhase("fetch_required_tags", () => getRequiredTags());
     const customTagsPromise = sermonPromise.then(async (sermon) => (
-      sermon ? getCustomTags(sermon.userId) : []
+      tracker.timePhase(
+        "fetch_custom_tags",
+        () => (sermon ? getCustomTags(sermon.userId) : Promise.resolve([])),
+        { sermonFound: Boolean(sermon) }
+      )
     ));
 
     let transcriptionText: string;
     try {
-      transcriptionText = await createTranscription(audioFile as Blob);
+      transcriptionText = await tracker.timePhase(
+        "transcribe_audio",
+        () => createTranscription(audioFile as Blob),
+        {
+          audioSizeBytes: audioFile.size,
+          audioType: audioFile.type || null,
+        }
+      );
+      tracker.addContext({
+        transcriptionLength: transcriptionText.length,
+      });
     } catch (transcriptionError) {
       console.error("Thoughts route: Transcription failed:", transcriptionError);
       const mappedError = mapTranscriptionError(transcriptionError);
       if (mappedError) {
-        return NextResponse.json({ error: mappedError.error }, { status: mappedError.status });
+        return errorResponse(mappedError.error, mappedError.status);
       }
-      return NextResponse.json(
-        { error: 'Failed to transcribe audio. Please try again.' },
-        { status: 500 }
-      );
+      return errorResponse('Failed to transcribe audio. Please try again.', 500);
     }
 
     const sermon = await sermonPromise;
     if (!sermon) {
       console.error("Thoughts route: Sermon not found.");
-      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+      return errorResponse('Sermon not found', 404);
     }
 
     const [requiredTags, customTags] = await Promise.all([
@@ -172,9 +219,27 @@ async function handleAutoPost(request: Request) {
       customTagsPromise,
     ]);
     const availableTags = [...requiredTags, ...customTags].map(t => t.name);
+    tracker.addContext({
+      requiredTagsCount: requiredTags.length,
+      customTagsCount: customTags.length,
+      availableTagsCount: availableTags.length,
+    });
 
-    const generationResult = await generateThoughtStructured(transcriptionText, sermon, availableTags, { forceTag });
+    const generationResult = await tracker.timePhase(
+      "generate_thought",
+      () => generateThoughtStructured(transcriptionText, sermon, availableTags, { forceTag }),
+      {
+        availableTagsCount: availableTags.length,
+        hasForceTag: Boolean(forceTag),
+      }
+    );
     const normalized = normalizeGenerationResult({ generationResult, transcriptionText });
+    tracker.addContext({
+      generationMeaningPreserved: generationResult.meaningSuccessfullyPreserved,
+      usedFallback: normalized.usedFallback,
+      formattedTextLength: normalized.formattedText.length,
+      generatedTagsCount: normalized.tags.length,
+    });
     if (normalized.usedFallback) {
       console.warn("Thoughts route: Failed to generate thought or meaning not preserved. Falling back to raw transcription.", generationResult);
     }
@@ -197,15 +262,35 @@ async function handleAutoPost(request: Request) {
 
     if (!isCompleteThought(thought)) {
       console.error("Thoughts route: Generated thought is missing required fields after processing", thought);
-      return NextResponse.json({ error: "Generated thought is missing required fields after processing" }, { status: 400 });
+      return errorResponse("Generated thought is missing required fields after processing", 400);
     }
     console.log("Generated thought:", thought);
 
-    await appendThoughtToSermon(sermonId, thought, FieldValue.arrayUnion);
+    await tracker.timePhase(
+      "persist_thought",
+      () => appendThoughtToSermon(sermonId, thought, FieldValue.arrayUnion),
+      {
+        sermonId,
+        thoughtId: thought.id,
+      }
+    );
     console.log("Firestore update: Stored new thought into sermon document.");
+    tracker.emit({
+      status: "success",
+      httpStatus: 200,
+      context: {
+        thoughtId: thought.id,
+      },
+    });
     return NextResponse.json(thought);
   } catch (error) {
     console.error('Thoughts route: Transcription error:', error);
+    tracker.emit({
+      status: "error",
+      httpStatus: 500,
+      error,
+      errorMessage: 'Failed to transcribe audio',
+    });
     return NextResponse.json(
       { error: 'Failed to transcribe audio' },
       { status: 500 }

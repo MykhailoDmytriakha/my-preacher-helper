@@ -136,7 +136,7 @@ async function runThoughtAttempt(params: {
   try {
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "thought",
-      promptVersion: "v4",
+      promptVersion: "v5",
       systemPrompt: thoughtSystemPrompt,
       userMessage,
       context: {
@@ -165,6 +165,7 @@ async function runThoughtAttempt(params: {
       result,
       content,
       forceTag,
+      sermonVerse: sermon.verse,
       attempt,
     });
   } catch (error) {
@@ -177,9 +178,10 @@ function handleStructuredResult(params: {
   result: StructuredOutputResult<ThoughtResponse>;
   content: string;
   forceTag: string | null;
+  sermonVerse: string;
   attempt: number;
 }): AttemptOutcome {
-  const { result, content, forceTag, attempt } = params;
+  const { result, content, forceTag, sermonVerse, attempt } = params;
 
   if (result.refusal) {
     logger.warn('GenerateThoughtStructured', `Model refused: ${result.refusal}`);
@@ -199,12 +201,24 @@ function handleStructuredResult(params: {
   }
 
   if (response.meaningPreserved) {
+    if (containsUndictatedMainSermonReference({
+      formattedText: response.formattedText,
+      transcription: content,
+      sermonVerse,
+    })) {
+      logger.warn(
+        'GenerateThoughtStructured',
+        'Model injected the main sermon scripture from context; retrying without accepting the output.'
+      );
+      return { type: "retry" };
+    }
+
     logger.success('GenerateThoughtStructured', `Success on attempt ${attempt}. Meaning preserved.`);
     if (forceTag) {
       logger.info('GenerateThoughtStructured', 
         `Force tag "${forceTag}" applied. Original tags: [${response.tags.join(", ")}]`);
     }
-    return { type: "success", result: createSuccessResult(response, forceTag) };
+    return { type: "success", result: createSuccessResult(response, forceTag, content) };
   }
 
   logger.warn('GenerateThoughtStructured', 
@@ -212,10 +226,45 @@ function handleStructuredResult(params: {
   return { type: "retry" };
 }
 
-function createSuccessResult(response: ThoughtResponse, forceTag: string | null): GenerateThoughtResult {
+function extractFirstChapterVerse(reference: string): { chapter: string; fromVerse: string; toVerse: string | null } | null {
+  const match = reference.match(/\b(\d{1,3})\s*[:.]\s*(\d{1,3})(?:\s*[-–—]\s*(\d{1,3}))?/);
+  if (!match) {
+    return null;
+  }
+  return {
+    chapter: match[1],
+    fromVerse: match[2],
+    toVerse: match[3] || null,
+  };
+}
+
+function containsChapterVerse(text: string, reference: { chapter: string; fromVerse: string; toVerse: string | null }): boolean {
+  const rangePattern = reference.toVerse ? `(?:\\s*[-–—]\\s*${reference.toVerse})?` : "";
+  const pattern = new RegExp(`\\b${reference.chapter}\\s*[:.]\\s*${reference.fromVerse}${rangePattern}\\b`);
+  return pattern.test(text);
+}
+
+function containsUndictatedMainSermonReference(params: {
+  formattedText: string;
+  transcription: string;
+  sermonVerse: string;
+}): boolean {
+  const mainReference = extractFirstChapterVerse(params.sermonVerse);
+  if (!mainReference) {
+    return false;
+  }
+
+  const normalizedTranscription = normalizeSpokenScriptureReferences(params.transcription);
+  return (
+    containsChapterVerse(params.formattedText, mainReference)
+    && !containsChapterVerse(normalizedTranscription, mainReference)
+  );
+}
+
+function createSuccessResult(response: ThoughtResponse, forceTag: string | null, originalContent: string): GenerateThoughtResult {
   const finalTags = forceTag ? [forceTag] : response.tags;
   return {
-    originalText: response.originalText,
+    originalText: originalContent,
     formattedText: normalizeSpokenScriptureReferences(response.formattedText),
     tags: finalTags,
     meaningSuccessfullyPreserved: true,

@@ -41,7 +41,7 @@ The project intentionally defers behavior-derived feedback telemetry as a large 
 Use the simpler monthly loop:
 
 1. Pull recent telemetry examples.
-2. Read prompt input and parsed output together.
+2. Read prompt input/raw transcription and parsed output together.
 3. Mark good/bad examples through admin endpoints when needed.
 4. Fix small prompt/schema/postprocessing issues.
 5. Bump `promptVersion` for output-affecting changes.
@@ -90,13 +90,34 @@ Recommended aggregation fields:
 - `promptVersion`
 - `jsonStructureStatus` or legacy `status`
 - `qualityReview.quality`
+- raw source text when present (`Транскрипция`, `originalText`, or the relevant input field)
 - `request.userMessage.value`
 - `response.parsedOutput.value`
 - `request.context`
 
 Do not dump huge raw telemetry into the final answer. Summarize counts and quote only short excerpts.
 
-### 4. Evaluate Domain Quality
+### 4. Compare Raw Input Against Output
+
+Always evaluate the pair, not the output alone:
+
+- Locate the raw user input/source inside `request.userMessage.value` or the route logs: raw transcript, dictated text, thoughts passed into a plan prompt, note content, etc.
+- Compare it with `response.parsedOutput.value` field by field.
+- Classify each model change:
+  - **Good transformation**: cleans dictation, normalizes a spoken reference, fixes obvious transcription spelling, or adds a Scripture citation anchored in a quote/story/event the user actually said.
+  - **Over-generation**: adds a sermon main verse from context, adds a thematic Bible reference only because the topic is nearby, inserts a theological bridge/application/conclusion the user did not say, or mutates `originalText`.
+  - **Under-generation**: leaves dictated artifacts, misses clear reference normalization, or fails to tag/structure content that is explicit in the input.
+- Treat `jsonStructureStatus: success` as only schema success. Domain review starts by asking: "What exactly did the user provide, and what exactly did the model add, remove, or change?"
+
+Grounded citation examples from real telemetry:
+
+- Good: "раб Авраама молился..." → `(Быт. 24:12-14)`.
+- Good: "коня готовят на день битвы, но исход от Господа" → `(Прит. 21:31)`.
+- Good: "Моисей... Аарон и Ор помогли ему руки держать" → `(Исх. 17:11-12)`.
+- Bad: adding the sermon main verse `(Прит. 3:5-6)` when it appears only in prompt context.
+- Bad: adding `(Иак. 1:2-4)`, `(Иак. 5:16)`, `(Гал. 6:2)`, `(Евр. 10:24-25)`, or `(Еф. 6:11-17)` from a topic/metaphor without an explicit textual anchor.
+
+### 5. Evaluate Domain Quality
 
 Check domain-specific red flags:
 
@@ -109,7 +130,7 @@ Check domain-specific red flags:
 - `sort_items`: missing items, duplicate item keys, invalid outline/sub-point assignment.
 - `speech_optimization`: chunk over 4000 characters, broken sentence boundaries, changed meaning.
 
-### 5. Check Prompt Contract Hygiene
+### 6. Check Prompt Contract Hygiene
 
 For every candidate issue, verify the full contract:
 
@@ -122,7 +143,7 @@ For every candidate issue, verify the full contract:
 
 Common silent failure: JSON telemetry is `success`, but the prompt asks for one shape while the schema expects another. The model may still satisfy the schema, but prompt clarity and quality degrade.
 
-### 6. Fix Conservatively
+### 7. Fix Conservatively
 
 Prefer small changes:
 
@@ -134,7 +155,7 @@ Prefer small changes:
 
 Avoid broad prompt rewrites unless telemetry clearly shows the prompt is structurally failing.
 
-### 7. Version Rule
+### 8. Version Rule
 
 Any change that can affect final AI output must increment `promptVersion`.
 
@@ -145,7 +166,7 @@ Examples:
 - Deterministic postprocessing that changes output: bump.
 - Telemetry-only metadata changes: usually no bump.
 
-### 8. Validate
+### 9. Validate
 
 Run targeted tests first:
 
@@ -184,7 +205,7 @@ curl -H "x-admin-secret: $ADMIN_SECRET" \
 
 ```bash
 curl -H "x-admin-secret: $ADMIN_SECRET" \
-  "http://localhost:3000/api/admin/telemetry/thought?version=v4&limit=50"
+  "http://localhost:3000/api/admin/telemetry/thought?version=v5&limit=50"
 ```
 
 Mark a failing example:
@@ -227,4 +248,3 @@ When reporting to the user, include:
 - Prompt versions bumped.
 - Tests/lint/compile run.
 - Next telemetry records to review after real usage.
-

@@ -22,9 +22,9 @@ export function createThoughtUserMessage(
         .join('\n')}\n`
     : '';
 
-  return `Контекст проповеди:
+  return `Контекст проповеди (только для понимания и тегов; не добавляй эти данные в мысль, если они не сказаны в транскрипции):
 Название: ${sermon.title}
-Текст: ${sermon.verse}
+Основной текст проповеди: ${sermon.verse}
 Теги: ${availableTags.join(', ')}
 Примеры существующих мыслей:${examplesString}
 --------------------------------

@@ -3,6 +3,7 @@ import 'openai/shims/node';
 import { NextResponse } from 'next/server';
 
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
+import { createApiPerformanceTracker } from '@clients/apiPerformanceTelemetry';
 import { createTranscription } from '@clients/openAI.client';
 import { polishTranscription } from '@clients/polishTranscription.structured';
 
@@ -24,36 +25,63 @@ import { polishTranscription } from '@clients/polishTranscription.structured';
  */
 export async function POST(request: Request) {
   console.log("Thoughts transcribe route: Received POST request.");
+  const tracker = createApiPerformanceTracker({
+    route: "/api/thoughts/transcribe",
+    method: "POST",
+    operation: "thought_audio_transcribe_polish",
+  });
+
+  const errorResponse = (errorMessage: string, status: number) => {
+    tracker.emit({
+      status: "error",
+      httpStatus: status,
+      errorMessage,
+    });
+    return NextResponse.json(
+      { success: false, error: errorMessage },
+      { status }
+    );
+  };
 
   try {
-    const formData = await request.formData();
+    const formData = await tracker.timePhase("parse_form_data", () => request.formData());
     const audioFile = formData.get('audio');
+    tracker.addContext({
+      audioPresent: audioFile instanceof Blob,
+    });
 
     // Validate audio file
     if (!(audioFile instanceof Blob)) {
       console.error("Thoughts transcribe route: Invalid audio format received.");
-      return NextResponse.json(
-        { success: false, error: 'Invalid audio format' },
-        { status: 400 }
-      );
+      return errorResponse('Invalid audio format', 400);
     }
+
+    tracker.addContext({
+      audioSizeBytes: audioFile.size,
+      audioType: audioFile.type || null,
+    });
 
     if (audioFile.size === 0) {
       console.error("Thoughts transcribe route: Empty audio file.");
-      return NextResponse.json(
-        { success: false, error: 'Audio file is empty' },
-        { status: 400 }
-      );
+      return errorResponse('Audio file is empty', 400);
     }
 
     // Validate audio duration
-    const durationValidation = await validateAudioDuration(audioFile);
+    const durationValidation = await tracker.timePhase(
+      "validate_audio_duration",
+      () => validateAudioDuration(audioFile),
+      {
+        audioSizeBytes: audioFile.size,
+        audioType: audioFile.type || null,
+      }
+    );
+    tracker.addContext({
+      audioDurationSeconds: durationValidation.duration ?? null,
+      audioMaxAllowedSeconds: durationValidation.maxAllowed ?? null,
+    });
     if (!durationValidation.valid) {
       console.error("Thoughts transcribe route: Audio duration validation failed.", durationValidation);
-      return NextResponse.json(
-        { success: false, error: durationValidation.error || 'Audio file is too long' },
-        { status: 400 }
-      );
+      return errorResponse(durationValidation.error || 'Audio file is too long', 400);
     }
 
     console.log("Thoughts transcribe route: Starting transcription", {
@@ -64,36 +92,34 @@ export async function POST(request: Request) {
 
     let transcriptionText: string;
     try {
-      transcriptionText = await createTranscription(audioFile as Blob);
+      transcriptionText = await tracker.timePhase(
+        "transcribe_audio",
+        () => createTranscription(audioFile as Blob),
+        {
+          audioSizeBytes: audioFile.size,
+          audioType: audioFile.type || null,
+        }
+      );
+      tracker.addContext({
+        transcriptionLength: transcriptionText.length,
+      });
     } catch (transcriptionError) {
       console.error("Thoughts transcribe route: Transcription failed:", transcriptionError);
 
       if (transcriptionError instanceof Error) {
         const errorMessage = transcriptionError.message.toLowerCase();
         if (errorMessage.includes('corrupted') || errorMessage.includes('unsupported')) {
-          return NextResponse.json(
-            { success: false, error: 'Audio file might be corrupted or unsupported. Please try recording again.' },
-            { status: 400 }
-          );
+          return errorResponse('Audio file might be corrupted or unsupported. Please try recording again.', 400);
         }
         if (errorMessage.includes('empty')) {
-          return NextResponse.json(
-            { success: false, error: 'Audio recording failed - file is empty. Please try recording again.' },
-            { status: 400 }
-          );
+          return errorResponse('Audio recording failed - file is empty. Please try recording again.', 400);
         }
         if (errorMessage.includes('too small') || errorMessage.includes('too short')) {
-          return NextResponse.json(
-            { success: false, error: 'Audio recording is too short. Please record for at least 1 second.' },
-            { status: 400 }
-          );
+          return errorResponse('Audio recording is too short. Please record for at least 1 second.', 400);
         }
       }
 
-      return NextResponse.json(
-        { success: false, error: 'Failed to transcribe audio. Please try again.' },
-        { status: 500 }
-      );
+      return errorResponse('Failed to transcribe audio. Please try again.', 500);
     }
 
     console.log("Thoughts transcribe route: Transcription successful", {
@@ -102,10 +128,25 @@ export async function POST(request: Request) {
     });
 
     // Step 2: Polish the transcription (remove filler words, fix grammar)
-    const polishResult = await polishTranscription(transcriptionText);
+    const polishResult = await tracker.timePhase(
+      "polish_transcription",
+      () => polishTranscription(transcriptionText),
+      {
+        transcriptionLength: transcriptionText.length,
+      }
+    );
 
     if (!polishResult.success || !polishResult.polishedText) {
       console.warn("Thoughts transcribe route: Polish failed, returning original", polishResult.error);
+      tracker.emit({
+        status: "success",
+        httpStatus: 200,
+        context: {
+          polishSuccess: false,
+          usedFallback: true,
+          polishedLength: transcriptionText.length,
+        },
+      });
       return NextResponse.json({
         success: true,
         polishedText: transcriptionText,
@@ -119,6 +160,15 @@ export async function POST(request: Request) {
       polishedLength: polishResult.polishedText.length,
     });
 
+    tracker.emit({
+      status: "success",
+      httpStatus: 200,
+      context: {
+        polishSuccess: true,
+        usedFallback: false,
+        polishedLength: polishResult.polishedText.length,
+      },
+    });
     return NextResponse.json({
       success: true,
       polishedText: polishResult.polishedText,
@@ -126,6 +176,12 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('Thoughts transcribe route: Error', error);
+    tracker.emit({
+      status: "error",
+      httpStatus: 500,
+      error,
+      errorMessage: 'Failed to process audio',
+    });
     return NextResponse.json(
       { success: false, error: 'Failed to process audio' },
       { status: 500 }
