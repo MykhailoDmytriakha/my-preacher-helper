@@ -70,6 +70,7 @@ curl -H "x-admin-secret: $ADMIN_SECRET" \
 ```
 
 5. Fix prompt/code, then bump `promptVersion`.
+6. Update the Review Baselines section below.
 
 Compare new version metrics against old version:
 
@@ -91,6 +92,21 @@ Classify the delta:
 - `under_generation`: the model left raw speech artifacts, missed a clear reference normalization, or failed to structure explicit content.
 
 Example rule for thoughts: `(Быт. 24:12-14)` is acceptable when the raw input says "раб Авраама молился...", but `(Прит. 3:5-6)` is a failure when it came only from the sermon context rather than the dictated thought.
+
+## Review Baselines
+
+Use this table as the prompt-review watermark. A future review should start from the current version and the next scope listed here. Older versions are history/comparison unless the user explicitly asks to audit history.
+
+| Prompt | Baseline version | Baseline review date | Reviewed window / reason | Next primary review scope |
+| --- | --- | --- | --- | --- |
+| `thought` | `v5` | 2026-04-25 | Created after reviewing `thought@v3/v4` raw transcript → output examples where the model added sermon-context and thematic references. | Review new `thought@v5` records after 2026-04-25 usage. Treat `v3/v4` as history/regression examples. |
+| `polishTranscription` | `v3` | 2026-04-25 | Created after dictated Scripture reference formatting review; old retained records were `v2`. | Review new `polishTranscription@v3` records after 2026-04-25 usage. Treat `v2` as history. |
+| `plan_point_content` | `v4` | 2026-04-25 | Created after `v3` review found ignored dynamic context, heading-count conflict, and verbosity pressure. | Review new `plan_point_content@v4` records after 2026-04-25 usage. |
+| `studyNoteAnalysis` | `v2` | 2026-04-25 | Created after `v1` review found tag-count/schema mismatch and redundant reference ranges. | Review new `studyNoteAnalysis@v2` records after 2026-04-25 usage. |
+| `sermon_verses` | `v2` | 2026-04-25 | Created after prompt/schema key mismatch review. | Review new `sermon_verses@v2` records after 2026-04-25 usage. |
+| `sermon_directions` | `v2` | 2026-04-25 | Created after prompt/schema key mismatch review. | Review new `sermon_directions@v2` records after 2026-04-25 usage. |
+
+When a review completes, update this table in the same change as any prompt version bump. If no code change was made, still update the reviewed window/date so the next review does not repeat the same telemetry slice.
 
 ## Version Rule
 
@@ -126,13 +142,16 @@ Non-structured AI path:
 For each prompt/version:
 
 - Check whether `jsonStructureSuccessRate` changed.
-- Pull 10-50 newest examples.
+- Check the Review Baselines table and identify the current version/date scope.
+- Pull 10-50 newest examples for the current version only.
+- If the current version has no new records, report that and stop; do not expand into old versions unless doing explicit regression/history analysis.
 - Read raw source text inside `request.userMessage.value` and `response.parsedOutput.value` together.
 - Classify output deltas as grounded transformation, over-generation, or under-generation before changing prompts.
 - Mark high-quality examples with `quality=good&keepAsExample=true`.
 - Mark failures with specific `issueTypes`.
 - Prefer small prompt/schema/postprocessing fixes over broad rewrites.
 - Bump `promptVersion` for every output-affecting change.
+- Update the Review Baselines table with the version/date/window reviewed.
 
 Suggested issue types:
 

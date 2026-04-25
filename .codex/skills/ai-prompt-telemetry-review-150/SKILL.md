@@ -45,7 +45,8 @@ Use the simpler monthly loop:
 3. Mark good/bad examples through admin endpoints when needed.
 4. Fix small prompt/schema/postprocessing issues.
 5. Bump `promptVersion` for output-affecting changes.
-6. Compare the next month/version against the previous version.
+6. Update the review baseline/watermark.
+7. Compare the next month/version against the previous version.
 
 ## Review Workflow
 
@@ -54,6 +55,7 @@ Use the simpler monthly loop:
 - Read `MEMORY.md`.
 - Read the current `.sessions/SESSION_*.md` log if one exists for prompt telemetry work.
 - Read `frontend/docs/ai-prompt-telemetry-review-loop.md`.
+- Read the `Review Baselines` section in that doc before querying telemetry. It defines the current version/date scope.
 
 ### 2. Build Prompt Inventory
 
@@ -97,7 +99,23 @@ Recommended aggregation fields:
 
 Do not dump huge raw telemetry into the final answer. Summarize counts and quote only short excerpts.
 
-### 4. Compare Raw Input Against Output
+### 4. Set Review Scope From Baseline
+
+Before evaluating examples, decide scope from `frontend/docs/ai-prompt-telemetry-review-loop.md`:
+
+- Primary scope is always the current baseline `promptVersion` for that prompt.
+- If the prompt version was bumped in the previous review, old versions are history/comparison only. Do not re-review them as current quality unless the user explicitly asks for regression analysis.
+- If the baseline says current-version telemetry has not accumulated yet, report "waiting for new usage" instead of expanding into older versions.
+- If reviewing the same version again, inspect only records newer than the baseline `reviewedThrough` timestamp when available. If the admin endpoint cannot filter by date, pull newest records for the current version and manually stop when timestamps reach the baseline.
+- Use previous versions only to explain why the current version exists, compare rates, or validate that a known failure disappeared.
+
+After completing a review:
+
+- Update `Review Baselines` with the prompt name, current version, review date, telemetry window reviewed, and next primary scope.
+- If any output-affecting prompt/schema/postprocessing change was made, bump `promptVersion` and set the next scope to that new version's future records.
+- Record old versions as history, not as the default future review surface.
+
+### 5. Compare Raw Input Against Output
 
 Always evaluate the pair, not the output alone:
 
@@ -117,7 +135,7 @@ Grounded citation examples from real telemetry:
 - Bad: adding the sermon main verse `(Прит. 3:5-6)` when it appears only in prompt context.
 - Bad: adding `(Иак. 1:2-4)`, `(Иак. 5:16)`, `(Гал. 6:2)`, `(Евр. 10:24-25)`, or `(Еф. 6:11-17)` from a topic/metaphor without an explicit textual anchor.
 
-### 5. Evaluate Domain Quality
+### 6. Evaluate Domain Quality
 
 Check domain-specific red flags:
 
@@ -130,7 +148,7 @@ Check domain-specific red flags:
 - `sort_items`: missing items, duplicate item keys, invalid outline/sub-point assignment.
 - `speech_optimization`: chunk over 4000 characters, broken sentence boundaries, changed meaning.
 
-### 6. Check Prompt Contract Hygiene
+### 7. Check Prompt Contract Hygiene
 
 For every candidate issue, verify the full contract:
 
@@ -143,7 +161,7 @@ For every candidate issue, verify the full contract:
 
 Common silent failure: JSON telemetry is `success`, but the prompt asks for one shape while the schema expects another. The model may still satisfy the schema, but prompt clarity and quality degrade.
 
-### 7. Fix Conservatively
+### 8. Fix Conservatively
 
 Prefer small changes:
 
@@ -155,7 +173,7 @@ Prefer small changes:
 
 Avoid broad prompt rewrites unless telemetry clearly shows the prompt is structurally failing.
 
-### 8. Version Rule
+### 9. Version Rule
 
 Any change that can affect final AI output must increment `promptVersion`.
 
@@ -166,7 +184,14 @@ Examples:
 - Deterministic postprocessing that changes output: bump.
 - Telemetry-only metadata changes: usually no bump.
 
-### 9. Validate
+When bumping a version, update in the same change:
+
+- code `promptVersion`
+- tests that assert version
+- prompt inventory in `frontend/docs/ai-prompt-telemetry-review-loop.md`
+- review baseline/watermark in `frontend/docs/ai-prompt-telemetry-review-loop.md`
+
+### 10. Validate
 
 Run targeted tests first:
 
