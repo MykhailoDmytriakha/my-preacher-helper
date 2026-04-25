@@ -2,6 +2,7 @@ import {
   clampPrayerSortKey,
   filterPrayerRequests,
   getDefaultPrayerSortKey,
+  getPrayerSearchTarget,
   getPrayerSortOptions,
   getPrayerUpdateSearchSnippet,
   matchesPrayerQuery,
@@ -199,5 +200,17 @@ describe('prayerFilters', () => {
     );
 
     expect(snippet).toContain('Family breakthrough came after prayer');
+  });
+
+  it('returns the detail-page target for the first matching prayer field', () => {
+    expect(getPrayerSearchTarget(prayerRequests[0], 'Pray church')).toEqual({ type: 'title' });
+    expect(getPrayerSearchTarget(prayerRequests[0], 'Sunday unity')).toEqual({ type: 'description' });
+    expect(getPrayerSearchTarget(prayerRequests[1], 'Interview completed')).toEqual({
+      type: 'update',
+      updateId: 'u-2',
+    });
+    expect(getPrayerSearchTarget(prayerRequests[1], 'Received offer')).toEqual({ type: 'answer' });
+    expect(getPrayerSearchTarget(prayerRequests[2], 'recovery')).toEqual({ type: 'tags' });
+    expect(getPrayerSearchTarget(prayerRequests[2], 'missing')).toBeNull();
   });
 });

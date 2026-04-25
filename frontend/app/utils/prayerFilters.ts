@@ -5,6 +5,12 @@ import { tokenizeQuery } from './sermonSearch';
 
 export type PrayerFilterStatus = 'all' | PrayerStatus;
 export type PrayerSortKey = 'updatedAt' | 'createdAt' | 'answeredAt';
+export type PrayerSearchTargetType = 'title' | 'description' | 'update' | 'answer' | 'tags';
+
+export interface PrayerSearchTarget {
+  type: PrayerSearchTargetType;
+  updateId?: string;
+}
 
 export interface PrayerSearchOptions {
   searchInUpdates: boolean;
@@ -199,6 +205,41 @@ export function getPrayerUpdateSearchSnippet(
       .replace(/(?<=\p{L})(?:\r?\n|\r)(?=\p{L})/gu, '')
       .replace(/\s+/g, ' ')
       .trim();
+  }
+
+  return null;
+}
+
+export function getPrayerSearchTarget(
+  prayer: PrayerRequest,
+  query: string
+): PrayerSearchTarget | null {
+  const tokens = tokenizeQuery(query);
+  if (tokens.length === 0) {
+    return null;
+  }
+
+  if (includesWithAllTokens(prayer.title, tokens)) {
+    return { type: 'title' };
+  }
+
+  if (includesWithAllTokens(prayer.description, tokens)) {
+    return { type: 'description' };
+  }
+
+  const matchedUpdate = [...(prayer.updates ?? [])]
+    .reverse()
+    .find((update) => includesWithAllTokens(update.text, tokens));
+  if (matchedUpdate) {
+    return { type: 'update', updateId: matchedUpdate.id };
+  }
+
+  if (includesWithAllTokens(prayer.answerText, tokens)) {
+    return { type: 'answer' };
+  }
+
+  if (anyTextMatches(prayer.tags ?? [], tokens)) {
+    return { type: 'tags' };
   }
 
   return null;

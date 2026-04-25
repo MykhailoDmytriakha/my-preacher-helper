@@ -7,6 +7,7 @@ import '@testing-library/jest-dom';
 const mockPush = jest.fn();
 const mockToastSuccess = jest.fn();
 const mockUsePrayerRequests = jest.fn();
+let mockSearchParams = new URLSearchParams();
 
 jest.mock('next/link', () => ({
   __esModule: true,
@@ -20,6 +21,7 @@ jest.mock('next/link', () => ({
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'p1' }),
   useRouter: () => ({ push: mockPush }),
+  useSearchParams: () => mockSearchParams,
 }));
 
 jest.mock('sonner', () => ({
@@ -121,6 +123,7 @@ describe('PrayerDetailPage', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSearchParams = new URLSearchParams();
     mockUsePrayerRequests.mockReturnValue({
       prayerRequests: [activePrayer],
       loading: false,
@@ -214,6 +217,46 @@ describe('PrayerDetailPage', () => {
     expect(mockToastSuccess).toHaveBeenCalledWith('Update added');
     expect(mockToastSuccess).toHaveBeenCalledWith('Prayer status changed');
     expect(mockToastSuccess).toHaveBeenCalledWith('Prayer deleted');
+  });
+
+  it('highlights and scrolls to the exact matched word from a prayer card search target', async () => {
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    const scrollIntoView = jest.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    mockSearchParams = new URLSearchParams('q=Newer&focus=update&updateId=u2');
+
+    mockUsePrayerRequests.mockReturnValue({
+      prayerRequests: [
+        {
+          ...activePrayer,
+          status: 'answered',
+          updates: [
+            { id: 'u1', text: 'Older update', createdAt: '2026-03-02T00:00:00.000Z' },
+            { id: 'u2', text: 'Newer update', createdAt: '2026-03-04T00:00:00.000Z' },
+          ],
+        },
+      ],
+      loading: false,
+      updatePrayer: jest.fn().mockResolvedValue(undefined),
+      deletePrayer: jest.fn().mockResolvedValue(undefined),
+      addUpdate: jest.fn().mockResolvedValue(undefined),
+      setStatus: jest.fn().mockResolvedValue(undefined),
+    });
+
+    try {
+      render(<PrayerDetailPage />);
+
+      expect(screen.getByText('Newer')).toHaveTextContent('Newer');
+
+      await waitFor(() => {
+        expect(scrollIntoView).toHaveBeenCalled();
+      });
+
+      const scrolledElement = scrollIntoView.mock.contexts[0] as unknown as Element;
+      expect(scrolledElement?.tagName).toBe('MARK');
+    } finally {
+      Element.prototype.scrollIntoView = originalScrollIntoView;
+    }
   });
 
   it('renders answered prayers, update timeline, and the restore action', async () => {

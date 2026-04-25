@@ -2106,6 +2106,10 @@
       "title": "Add Update",
       "placeholder": "What happened? (met someone, had a conversation, saw progress...)",
       "submit": "Add Update",
+      "saving": "Adding...",
+      "dictate": "Dictate",
+      "dictationEmpty": "No speech was detected. Try recording again.",
+      "dictationError": "Could not transcribe this update. Try again.",
       "cancel": "Cancel"
     },
     "detail": {

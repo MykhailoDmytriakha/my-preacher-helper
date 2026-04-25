@@ -15,7 +15,7 @@ import { useTranslation } from 'react-i18next';
 
 import HighlightedText from '@/components/HighlightedText';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
-import { getPrayerUpdateSearchSnippet } from '@/utils/prayerFilters';
+import { getPrayerSearchTarget, getPrayerUpdateSearchSnippet } from '@/utils/prayerFilters';
 
 import PrayerStatusBadge from './PrayerStatusBadge';
 
@@ -26,6 +26,24 @@ interface Props {
   onAddUpdate: (id: string) => void;
   onEdit: (prayer: PrayerRequest) => void;
   searchQuery?: string;
+}
+
+function buildPrayerDetailHref(prayer: PrayerRequest, searchQuery: string): string {
+  const target = getPrayerSearchTarget(prayer, searchQuery);
+  if (!target) {
+    return `/prayers/${prayer.id}`;
+  }
+
+  const params = new URLSearchParams({
+    q: searchQuery.trim(),
+    focus: target.type,
+  });
+
+  if (target.updateId) {
+    params.set('updateId', target.updateId);
+  }
+
+  return `/prayers/${prayer.id}?${params.toString()}`;
 }
 
 export default function PrayerRequestCard({
@@ -44,6 +62,7 @@ export default function PrayerRequestCard({
     ? prayer.updates[prayer.updates.length - 1]
     : null;
   const matchedUpdateSnippet = getPrayerUpdateSearchSnippet(prayer, searchQuery);
+  const detailHref = buildPrayerDetailHref(prayer, searchQuery);
 
   const handleDelete = async () => {
     if (!confirming) { setConfirming(true); return; }
@@ -60,7 +79,10 @@ export default function PrayerRequestCard({
         : 'border-gray-200 dark:border-gray-700 hover:border-rose-300 dark:hover:border-rose-700'
     }`}>
       <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0">
+        <Link
+          href={detailHref}
+          className="group block flex-1 min-w-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-800"
+        >
           <div className="flex items-center gap-2 flex-wrap mb-1">
             <PrayerStatusBadge status={prayer.status} />
             {prayer.tags && prayer.tags.length > 0 && (
@@ -74,11 +96,9 @@ export default function PrayerRequestCard({
             )}
           </div>
 
-          <Link href={`/prayers/${prayer.id}`} className="block">
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 leading-snug line-clamp-2 hover:text-rose-600 dark:hover:text-rose-400 transition-colors">
-              <HighlightedText text={prayer.title} searchQuery={searchQuery} />
-            </p>
-          </Link>
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 leading-snug line-clamp-2 transition-colors group-hover:text-rose-600 dark:group-hover:text-rose-400">
+            <HighlightedText text={prayer.title} searchQuery={searchQuery} />
+          </p>
 
           {prayer.description && (
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
@@ -122,7 +142,7 @@ export default function PrayerRequestCard({
               </span>
             )}
           </div>
-        </div>
+        </Link>
 
         {/* Actions */}
         <div className="relative flex-shrink-0">

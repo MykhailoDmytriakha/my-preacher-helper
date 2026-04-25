@@ -10,11 +10,12 @@ import {
   XCircleIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import HighlightedText from '@/components/HighlightedText';
 import AddUpdateModal from '@/components/prayer/AddUpdateModal';
 import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
 import MarkAnsweredModal from '@/components/prayer/MarkAnsweredModal';
@@ -24,10 +25,13 @@ import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import '@locales/i18n';
 
+const PRAYER_FOCUS_TYPES = new Set(['title', 'description', 'answer', 'tags']);
+
 export default function PrayerDetailPage() {
   const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
 
   const { prayerRequests, loading, updatePrayer, deletePrayer, addUpdate, setStatus } =
@@ -39,6 +43,75 @@ export default function PrayerDetailPage() {
   const [showAddUpdate, setShowAddUpdate] = useState(false);
   const [showMarkAnswered, setShowMarkAnswered] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const sortedUpdates = useMemo(
+    () =>
+      prayer
+        ? [...prayer.updates].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        : [],
+    [prayer]
+  );
+
+  const highlightQuery = searchParams.get('q')?.trim() ?? '';
+  const focus = searchParams.get('focus') ?? '';
+  const focusUpdateId = searchParams.get('updateId') ?? '';
+  const focusTargetId = useMemo(() => {
+    if (!highlightQuery) {
+      return null;
+    }
+
+    if (focus === 'update' && focusUpdateId) {
+      return `prayer-update-${focusUpdateId}`;
+    }
+
+    if (PRAYER_FOCUS_TYPES.has(focus)) {
+      return `prayer-focus-${focus}`;
+    }
+
+    return null;
+  }, [focus, focusUpdateId, highlightQuery]);
+
+  useEffect(() => {
+    if (!focusTargetId || !prayer || typeof window === 'undefined') {
+      return;
+    }
+
+    let removeRingTimeoutId: number | undefined;
+    const timeoutId = window.setTimeout(() => {
+      const targetElement = document.getElementById(focusTargetId);
+      if (!targetElement) {
+        return;
+      }
+
+      const exactMatch = targetElement.querySelector('mark');
+      const scrollTarget = exactMatch ?? targetElement;
+      scrollTarget.scrollIntoView({ block: 'center', behavior: 'smooth' });
+
+      targetElement.classList.add(
+        'ring-2',
+        'ring-rose-300',
+        'ring-offset-2',
+        'dark:ring-rose-700',
+        'dark:ring-offset-gray-900'
+      );
+      removeRingTimeoutId = window.setTimeout(() => {
+        targetElement.classList.remove(
+          'ring-2',
+          'ring-rose-300',
+          'ring-offset-2',
+          'dark:ring-rose-700',
+          'dark:ring-offset-gray-900'
+        );
+      }, 2200);
+    }, 50);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (removeRingTimeoutId !== undefined) {
+        window.clearTimeout(removeRingTimeoutId);
+      }
+    };
+  }, [focusTargetId, prayer]);
 
   if (loading) {
     return (
@@ -95,10 +168,6 @@ export default function PrayerDetailPage() {
 
   const isActive = prayer.status === 'active';
 
-  const sortedUpdates = [...prayer.updates].sort(
-    (a, b) => b.createdAt.localeCompare(a.createdAt)
-  );
-
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
       {/* Back */}
@@ -112,17 +181,25 @@ export default function PrayerDetailPage() {
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 space-y-2">
             <PrayerStatusBadge status={prayer.status} />
-            <p className="text-base font-semibold text-gray-900 dark:text-gray-100 leading-snug">
-              {prayer.title}
+            <p
+              id="prayer-focus-title"
+              className="rounded-md text-base font-semibold text-gray-900 dark:text-gray-100 leading-snug transition-shadow"
+            >
+              <HighlightedText text={prayer.title} searchQuery={highlightQuery} />
             </p>
             {prayer.description && (
-              <p className="text-sm text-gray-600 dark:text-gray-400">{prayer.description}</p>
+              <p
+                id="prayer-focus-description"
+                className="rounded-md text-sm text-gray-600 dark:text-gray-400 transition-shadow"
+              >
+                <HighlightedText text={prayer.description} searchQuery={highlightQuery} />
+              </p>
             )}
             {prayer.tags && prayer.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1">
+              <div id="prayer-focus-tags" className="flex flex-wrap gap-1 rounded-md transition-shadow">
                 {prayer.tags.map((tag) => (
                   <span key={tag} className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded">
-                    {tag}
+                    <HighlightedText text={tag} searchQuery={highlightQuery} />
                   </span>
                 ))}
               </div>
@@ -211,7 +288,10 @@ export default function PrayerDetailPage() {
 
       {/* God's Answer */}
       {prayer.status === 'answered' && (
-        <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/50 rounded-xl p-5">
+        <div
+          id="prayer-focus-answer"
+          className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800/50 rounded-xl p-5 transition-shadow"
+        >
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <CheckCircleIcon className="h-4 w-4 text-green-600 dark:text-green-400" />
@@ -228,7 +308,7 @@ export default function PrayerDetailPage() {
           </div>
           {prayer.answerText ? (
             <p className="text-sm text-green-900 dark:text-green-100 whitespace-pre-wrap leading-relaxed">
-              {prayer.answerText}
+              <HighlightedText text={prayer.answerText} searchQuery={highlightQuery} />
             </p>
           ) : (
             <p className="text-sm text-green-600/70 dark:text-green-400/60 italic">
@@ -258,9 +338,12 @@ export default function PrayerDetailPage() {
             {sortedUpdates.map((update) => (
               <div
                 key={update.id}
-                className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg px-4 py-3"
+                id={`prayer-update-${update.id}`}
+                className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-lg px-4 py-3 transition-shadow"
               >
-                <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">{update.text}</p>
+                <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap">
+                  <HighlightedText text={update.text} searchQuery={highlightQuery} />
+                </p>
                 <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
                   {new Date(update.createdAt).toLocaleString()}
                 </p>

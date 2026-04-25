@@ -134,6 +134,47 @@ describe('PrayerRequestCard', () => {
     expect(container).toHaveTextContent('family');
   });
 
+  it('routes search matches to the exact update target in the prayer detail page', () => {
+    render(
+      <PrayerRequestCard
+        prayer={{
+          ...basePrayer,
+          title: 'Pray for the neighbor',
+          description: 'Need wisdom',
+          tags: ['neighbor'],
+          updates: [
+            { id: 'u1', text: 'Breakthrough conversation during prayer night', createdAt: '2026-03-10T10:00:00.000Z' },
+            { id: 'u2', text: 'Latest note', createdAt: '2026-03-11T10:00:00.000Z' },
+          ],
+        } as any}
+        searchQuery="breakthrough"
+        onSetStatus={jest.fn().mockResolvedValue(undefined)}
+        onDelete={jest.fn().mockResolvedValue(undefined)}
+        onAddUpdate={jest.fn()}
+        onEdit={jest.fn()}
+      />
+    );
+
+    expect(screen.getByRole('link')).toHaveAttribute(
+      'href',
+      '/prayers/prayer-1?q=breakthrough&focus=update&updateId=u1'
+    );
+  });
+
+  it('makes the visible card content link to the prayer detail page when there is no search target', () => {
+    render(
+      <PrayerRequestCard
+        prayer={basePrayer as any}
+        onSetStatus={jest.fn().mockResolvedValue(undefined)}
+        onDelete={jest.fn().mockResolvedValue(undefined)}
+        onAddUpdate={jest.fn()}
+        onEdit={jest.fn()}
+      />
+    );
+
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/prayers/prayer-1');
+  });
+
   it('renders answered prayers with answer text and restore action', async () => {
     const onSetStatus = jest.fn().mockResolvedValue(undefined);
 
