@@ -757,7 +757,7 @@ export async function generateSermonDirections(sermon: Sermon): Promise<Directio
     };
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "sermon_directions",
-      promptVersion: "v1",
+      promptVersion: "v2",
       systemPrompt: directionsSystemPrompt,
       userMessage,
       context: inputInfo,
@@ -897,14 +897,33 @@ function getPlanPointLanguageInfo(
   };
 }
 
-function buildPlanPointSystemPrompt(_options: {
+function buildPlanPointSystemPrompt(options: {
   style: PlanStyle;
   languageDirective: string;
   keyFragments: string[];
   context?: PlanContext;
 }): string {
-  // Use the new modular system prompt which is optimized for quality and caching
-  return planPointContentSystemPrompt;
+  const dynamicInstructions = [
+    options.languageDirective,
+    getStyleInstructions(options.style),
+  ];
+
+  if (options.context?.previousPoint || options.context?.nextPoint) {
+    dynamicInstructions.push(`ADJACENT OUTLINE CONTEXT:
+- Previous point: ${options.context.previousPoint?.text || "none"}
+- Next point: ${options.context.nextPoint?.text || "none"}
+Use this only to make the current point flow naturally. Do not generate content for adjacent points.`);
+  }
+
+  if (options.keyFragments.length > 0) {
+    dynamicInstructions.push(`KEY FRAGMENT RULE:
+Use provided key fragments as memory anchors when they naturally fit. Do not force every fragment into the output.`);
+  }
+
+  return `${planPointContentSystemPrompt.trim()}
+
+// 8. DYNAMIC REQUEST INSTRUCTIONS
+${dynamicInstructions.join("\n\n")}`;
 }
 
 /**
@@ -997,7 +1016,7 @@ export async function generatePlanPointContent(
     };
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "plan_point_content",
-      promptVersion: "v3",
+      promptVersion: "v4",
       expectedLanguage: languageInfo.telemetryLanguage,
       systemPrompt,
       userMessage,

@@ -34,6 +34,12 @@ describe("aiTelemetry", () => {
     expect(event.promptVersion).toBe("v3");
     expect(event.structured).toBe(true);
     expect(event.latencyMs).toBe(1241);
+    expect(event.status).toBe("success");
+    expect(event.jsonStructureStatus).toBe("success");
+    expect(event.qualityReview).toEqual(expect.objectContaining({
+      quality: "unreviewed",
+      keepAsExample: false,
+    }));
     expect(event.request.systemPrompt.hash).toMatch(/^[a-f0-9]{64}$/);
     expect(event.request.userMessage.hash).toMatch(/^[a-f0-9]{64}$/);
     expect(event.response.parsedOutput?.value).toContain("Hope");

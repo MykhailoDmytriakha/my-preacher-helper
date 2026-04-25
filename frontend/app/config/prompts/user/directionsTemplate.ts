@@ -32,7 +32,9 @@ export function createDirectionsUserMessage(
        - Suggest exploring how different biblical characters approached similar situations
        - Recommend looking at how different church traditions have interpreted this passage
        - Propose rhetorical or communication approaches from biblical examples
-    
+
+    Return them in the JSON field "directions". Each item must include "title" and "description"; include "examples" only when concrete examples help.
+
     IMPORTANT: Your response should be in the EXACT SAME LANGUAGE as the sermon content - this is critically important. If the sermon is in Russian, respond in Russian. If the sermon is in Ukrainian, respond in Ukrainian. If the sermon is in English, respond in English.
   `;
-} 
+}

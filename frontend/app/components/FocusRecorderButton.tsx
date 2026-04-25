@@ -428,7 +428,7 @@ export const FocusRecorderButton = ({
         handleError(new Error('MediaRecorder error'), ERROR_AUDIO_PROCESSING);
       };
 
-      mediaRecorder.current.start(100); // Collect data every 100ms
+      mediaRecorder.current.start();
       setIsRecording(true);
       setIsInitializing(false);
 

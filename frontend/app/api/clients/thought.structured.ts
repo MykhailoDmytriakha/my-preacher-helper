@@ -14,6 +14,7 @@
 import { thoughtSystemPrompt, createThoughtUserMessage } from "@/config/prompts";
 import { ThoughtResponseSchema, ThoughtResponse } from "@/config/schemas/zod";
 import { Sermon } from "@/models/models";
+import { normalizeSpokenScriptureReferences } from "@/utils/scriptureReferenceNormalizer";
 
 import { logger } from "./openAIHelpers";
 import { buildSimplePromptBlueprint } from "./promptBuilder";
@@ -135,7 +136,7 @@ async function runThoughtAttempt(params: {
   try {
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "thought",
-      promptVersion: "v3",
+      promptVersion: "v4",
       systemPrompt: thoughtSystemPrompt,
       userMessage,
       context: {
@@ -215,7 +216,7 @@ function createSuccessResult(response: ThoughtResponse, forceTag: string | null)
   const finalTags = forceTag ? [forceTag] : response.tags;
   return {
     originalText: response.originalText,
-    formattedText: response.formattedText,
+    formattedText: normalizeSpokenScriptureReferences(response.formattedText),
     tags: finalTags,
     meaningSuccessfullyPreserved: true,
   };

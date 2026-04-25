@@ -4,6 +4,8 @@ import { logger } from "./openAIHelpers";
 import { detectDominantLanguage, PromptBlueprint } from "./promptBuilder";
 
 export type StructuredTelemetryStatus = "success" | "refusal" | "error" | "invalid_response";
+export type TelemetryQuality = "unreviewed" | "good" | "bad" | "needs_review";
+export type TelemetryResolutionStatus = "open" | "fixed" | "wont_fix";
 
 export interface CapturedText {
   value: string;
@@ -18,6 +20,18 @@ export interface TokenUsage {
   totalTokens: number;
 }
 
+export interface TelemetryQualityReview {
+  quality: TelemetryQuality;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  issueTypes: string[];
+  notes: string | null;
+  expectedOutput: CapturedText | null;
+  keepAsExample: boolean;
+  resolutionStatus: TelemetryResolutionStatus | null;
+  fixedInPromptVersion: string | null;
+}
+
 export interface StructuredTelemetryEvent {
   eventId: string;
   correlationId: string;
@@ -30,7 +44,10 @@ export interface StructuredTelemetryEvent {
   promptVersion: string;
   structured: true;
   latencyMs: number;
+  /** Backward-compatible transport/schema status. Prefer jsonStructureStatus in new code. */
   status: StructuredTelemetryStatus;
+  jsonStructureStatus: StructuredTelemetryStatus;
+  qualityReview: TelemetryQualityReview;
   language: {
     expected: string | null;
     detectedOutput: string | null;
@@ -85,7 +102,7 @@ function toSafeString(value: unknown): string {
   }
 }
 
-function captureText(content: string): CapturedText {
+export function captureTelemetryText(content: string): CapturedText {
   const normalized = content.replace(/\r\n/g, "\n");
   const truncated = normalized.length > MAX_CAPTURED_TEXT;
   const capturedValue = truncated ? `${normalized.slice(0, MAX_CAPTURED_TEXT)}...[truncated]` : normalized;
@@ -95,6 +112,20 @@ function captureText(content: string): CapturedText {
     hash: toSha256(normalized),
     length: normalized.length,
     truncated,
+  };
+}
+
+export function createDefaultTelemetryQualityReview(): TelemetryQualityReview {
+  return {
+    quality: "unreviewed",
+    reviewedAt: null,
+    reviewedBy: null,
+    issueTypes: [],
+    notes: null,
+    expectedOutput: null,
+    keepAsExample: false,
+    resolutionStatus: null,
+    fixedInPromptVersion: null,
   };
 }
 
@@ -129,10 +160,10 @@ function detectOutputLanguage(parsedOutput: unknown): string | null {
 export function buildStructuredTelemetryEvent(input: StructuredTelemetryEventInput): StructuredTelemetryEvent {
   const eventId = randomUUID();
   const correlationId = inferCorrelationId(input.logContext);
-  const systemPrompt = captureText(input.promptBlueprint.systemPrompt);
-  const userMessage = captureText(input.promptBlueprint.userMessage);
-  const parsedOutput = input.parsedOutput === undefined ? null : captureText(toSafeString(input.parsedOutput));
-  const rawMessage = input.rawMessage === undefined ? null : captureText(toSafeString(input.rawMessage));
+  const systemPrompt = captureTelemetryText(input.promptBlueprint.systemPrompt);
+  const userMessage = captureTelemetryText(input.promptBlueprint.userMessage);
+  const parsedOutput = input.parsedOutput === undefined ? null : captureTelemetryText(toSafeString(input.parsedOutput));
+  const rawMessage = input.rawMessage === undefined ? null : captureTelemetryText(toSafeString(input.rawMessage));
 
   return {
     eventId,
@@ -147,6 +178,8 @@ export function buildStructuredTelemetryEvent(input: StructuredTelemetryEventInp
     structured: true,
     latencyMs: Math.round(input.latencyMs),
     status: input.status,
+    jsonStructureStatus: input.status,
+    qualityReview: createDefaultTelemetryQualityReview(),
     language: {
       expected: input.promptBlueprint.expectedLanguage,
       detectedOutput: detectOutputLanguage(input.parsedOutput),

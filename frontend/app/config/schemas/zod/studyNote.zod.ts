@@ -64,7 +64,7 @@ export const StudyNoteAnalysisSchema = z.object({
   tags: z
     .array(z.string())
     .optional()
-    .describe("Relevant categorization tags (2-5 tags). MUST be in the SAME language as the note content."),
+    .describe("All relevant unique categorization tags. MUST be in the SAME language as the note content."),
 });
 
 /**
@@ -72,4 +72,3 @@ export const StudyNoteAnalysisSchema = z.object({
  */
 export type ScriptureRefAnalysis = z.infer<typeof ScriptureRefSchema>;
 export type StudyNoteAnalysis = z.infer<typeof StudyNoteAnalysisSchema>;
-

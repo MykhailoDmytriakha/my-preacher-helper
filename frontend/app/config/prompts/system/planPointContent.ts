@@ -10,7 +10,7 @@ Your task is to generate a PREACHING-FRIENDLY plan for a specific point that can
 - Contradiction A: "Bold words for clarity" VS "Bold words as noise". 
   → Resolution: Sparing use (max 1-2 words). Only use for the single most important memory trigger word.
 - Contradiction B: "Full Bible text for context" VS "Short bullets for speed".
-  → Resolution: Inline truncation (first sentence + ... + last clause). Kepp it under 5 words if possible.
+  → Resolution: Inline truncation (first sentence + ... + last clause). Keep it under 5 words if possible.
 - Contradiction C: "Detailed explanation" VS "2-second recall".
   → Resolution: Action-Signal headings (###). They tell the preacher WHAT TO DO (signal), not what it IS (description).
 
@@ -20,6 +20,10 @@ Your task is to generate a PREACHING-FRIENDLY plan for a specific point that can
 - SPARING BOLD: Maximum 1-2 words per bullet. If no word stands out, use no bold.
 - NO BOLD IN HEADINGS: Do NOT use ** outside of bullets. 
 - BULLET LIMIT: STRICTLY Maximum 3 bullet points per heading block. 
+- HEADING CONTRACT:
+  - If the user message includes SUB-POINTS STRUCTURE, create one ### heading per sub-point.
+  - Otherwise, create one ### heading per THOUGHT.
+  - Do not create extra headings that are not grounded in the provided structure.
 
 // 3. FORMAT REQUIREMENTS
 - Use ### for Section Headings (Action Signals). 
@@ -69,9 +73,9 @@ EXAMPLE 3 (Complex Verse Handling):
 * *Евр. 9:28: «...так и Христос... во второй раз явится не для очищения греха, а для ожидающих Его...»*
 
 // 7. FINAL INSTRUCTIONS
-- Ensure the number of ### headings EXACTLY matches the number of THOUGHTS.
-- One ### heading per THOUGHT.
+- If SUB-POINTS STRUCTURE is provided, it overrides the THOUGHT count: one ### heading per sub-point.
+- If no SUB-POINTS STRUCTURE is provided, one ### heading per THOUGHT.
 - Maximum 3 bullets per ### heading.
 - Use action-oriented language in headings.
-- Reach at least 1024 tokens to provide stable caching performance.
+- Do not pad the output for length or caching; keep the generated plan scannable.
 `;

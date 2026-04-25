@@ -6,7 +6,9 @@ const mockDocs = [
         data: () => ({
             promptName: 'test-prompt',
             promptVersion: 'v1',
+            jsonStructureStatus: 'success',
             status: 'success',
+            qualityReview: { quality: 'good', keepAsExample: true },
             usage: { totalTokens: 100 },
             latencyMs: 500,
             timestamp: '2024-01-01T10:00:00Z',
@@ -18,7 +20,9 @@ const mockDocs = [
         data: () => ({
             promptName: 'test-prompt',
             promptVersion: 'v1',
+            jsonStructureStatus: 'error',
             status: 'error',
+            qualityReview: { quality: 'bad', keepAsExample: false },
             latencyMs: 300,
             timestamp: '2024-01-01T10:05:00Z',
             language: { expected: 'en', detectedOutput: 'ru' }
@@ -39,7 +43,9 @@ const mockDocs = [
         data: () => ({
             promptName: 'test-prompt',
             promptVersion: 'v2',
+            jsonStructureStatus: 'refusal',
             status: 'refusal',
+            qualityReview: { quality: 'needs_review', keepAsExample: false },
             usage: { totalTokens: 150 },
             latencyMs: 600,
             timestamp: '2024-01-01T10:10:00Z'
@@ -50,7 +56,9 @@ const mockDocs = [
         data: () => ({
             promptName: 'test-prompt',
             promptVersion: 'v2',
+            jsonStructureStatus: 'invalid_response',
             status: 'invalid_response',
+            qualityReview: { quality: 'unreviewed', keepAsExample: false },
             latencyMs: 100,
             timestamp: '2024-01-01T10:15:00Z'
         }),
@@ -129,6 +137,12 @@ describe('/api/admin/telemetry Main Route', () => {
             expect(promptData.total).toBe(5);
             expect(promptData.versions).toHaveProperty('v1');
             expect(promptData.versions).toHaveProperty('v2');
+            expect(promptData.versions.v1.jsonStructureSuccessRate).toBe(0.67);
+            expect(promptData.versions.v1.goodCount).toBe(1);
+            expect(promptData.versions.v1.badCount).toBe(1);
+            expect(promptData.versions.v1.unreviewedCount).toBe(1);
+            expect(promptData.versions.v1.exampleCount).toBe(1);
+            expect(promptData.versions.v1.goodRate).toBe(0.5);
         });
 
         it('returns 500 on db error', async () => {

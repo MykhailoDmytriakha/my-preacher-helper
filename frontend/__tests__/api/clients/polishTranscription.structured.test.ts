@@ -79,6 +79,25 @@ describe('polishTranscription', () => {
         expect(result.error).toBeNull();
     });
 
+    it('should normalize dictated Scripture references in polished output', async () => {
+        const mockResponse = {
+            polishedText: 'Нужно прочитать Второзаконие 10 глава 11 стих.',
+            meaningPreserved: true,
+        };
+
+        (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+            success: true,
+            data: mockResponse,
+            refusal: null,
+            error: null,
+        });
+
+        const result = await polishTranscription('Нужно прочитать Второзаконие 10 глава 11 стих');
+
+        expect(result.success).toBe(true);
+        expect(result.polishedText).toBe('Нужно прочитать Втор. 10:11.');
+    });
+
     it('should return error for empty transcription', async () => {
         // Act
         const result = await polishTranscription('   ');
@@ -232,6 +251,10 @@ describe('polishTranscription', () => {
             expect.any(Object),
             expect.objectContaining({
                 formatName: 'polishTranscription',
+                promptBlueprint: expect.objectContaining({
+                    promptName: 'polishTranscription',
+                    promptVersion: 'v3',
+                }),
             })
         );
     });
@@ -258,6 +281,7 @@ describe('polishTranscription', () => {
         expect(systemPrompt).toContain('LANGUAGE RULE');
         expect(systemPrompt).toContain('You MUST respond in the SAME language as the input');
         expect(systemPrompt).toContain('SCRIPTURE QUOTES & REFERENCES');
+        expect(systemPrompt).toContain('Normalize dictated reference wording');
         expect(systemPrompt).toContain('KJV');
         expect(systemPrompt).toContain('Russian Synodal');
         expect(systemPrompt).toContain('Ogienko');

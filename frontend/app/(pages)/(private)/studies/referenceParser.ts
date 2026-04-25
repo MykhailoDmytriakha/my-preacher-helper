@@ -14,7 +14,7 @@ const ORDERED_BOOKS: Array<{ english: string; aliases: string[] }> = [
   { english: 'Exodus', aliases: ['исход', 'книга исход', 'исх', 'исхода', 'вихід', 'вих'] },
   { english: 'Leviticus', aliases: ['левит', 'книга левит', 'лев'] },
   { english: 'Numbers', aliases: ['числа', 'книга числа', 'чис'] },
-  { english: 'Deuteronomy', aliases: ['второзаконие', 'книга второзакония', 'втор', 'второзак', 'повторення закону', 'повт'] },
+  { english: 'Deuteronomy', aliases: ['второзаконие', 'второзакония', 'книга второзакония', 'втор', 'второзак', 'повторення закону', 'повт'] },
   // Historical
   { english: 'Joshua', aliases: ['иисус навин', 'книга иисуса навина', 'навин', 'ісус навин', 'і.нав'] },
   { english: 'Judges', aliases: ['судьи', 'книга судей', 'судья', 'суд', 'суддів'] },
@@ -88,7 +88,7 @@ const ORDERED_BOOKS: Array<{ english: string; aliases: string[] }> = [
   },
   {
     english: 'John',
-    aliases: ['иоанн', 'евангелие от иоанна', 'евангелие иоанна', 'иоанн', 'иоан', 'ин', 'від івана', 'ів'],
+    aliases: ['иоанн', 'иоанна', 'от иоанна', 'евангелие от иоанна', 'евангелие иоанна', 'иоанн', 'иоан', 'ин', 'від івана', 'ів'],
   },
   // History
   { english: 'Acts', aliases: ['деяния', 'деяния апостолов', 'дея', 'деян', 'дії'] },
@@ -172,6 +172,8 @@ const BOOK_ALIASES = BOOK_ALIAS_ENTRIES.reduce<Record<string, string>>((acc, [al
   acc[alias] = book;
   return acc;
 }, {});
+
+export const getReferenceBookAliases = (): string[] => Array.from(new Set(BOOK_ALIAS_ENTRIES.map(([alias]) => alias)));
 
 const normalizeInput = (raw: string): { dashNormalized: string; normalized: string } => {
   const dashNormalized = raw.replace(/[–—−‒‑﹘﹣]/g, '-');

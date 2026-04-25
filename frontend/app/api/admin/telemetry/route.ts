@@ -1,20 +1,6 @@
 import { NextResponse } from "next/server";
 
-const TELEMETRY_COLLECTION = process.env.AI_TELEMETRY_COLLECTION || "ai_prompt_telemetry";
-
-function checkAuth(request: Request): NextResponse | null {
-  if (process.env.NODE_ENV === "production") {
-    return NextResponse.json({ error: "Not available in production" }, { status: 403 });
-  }
-  const secret = process.env.ADMIN_SECRET;
-  if (!secret) {
-    return NextResponse.json({ error: "ADMIN_SECRET is not configured" }, { status: 503 });
-  }
-  if (request.headers.get("x-admin-secret") !== secret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  return null;
-}
+import { checkTelemetryAdminAuth, TELEMETRY_COLLECTION } from "./telemetryAdmin";
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -30,13 +16,19 @@ type VersionAccumulator = {
   tokenSamples: number;
   totalLatencyMs: number;
   langMismatch: number;
+  reviewed: number;
+  unreviewed: number;
+  good: number;
+  bad: number;
+  needs_review: number;
+  examples: number;
   lastSeen: string;
 };
 
 // GET /api/admin/telemetry
 // Returns summary grouped by promptName → promptVersion with computed metrics.
 export async function GET(request: Request) {
-  const authError = checkAuth(request);
+  const authError = checkTelemetryAdminAuth(request);
   if (authError) return authError;
 
   try {
@@ -54,7 +46,9 @@ export async function GET(request: Request) {
       if (!summary[promptName].versions[version]) {
         summary[promptName].versions[version] = {
           count: 0, success: 0, refusal: 0, error: 0, invalid_response: 0,
-          totalTokens: 0, tokenSamples: 0, totalLatencyMs: 0, langMismatch: 0, lastSeen: "",
+          totalTokens: 0, tokenSamples: 0, totalLatencyMs: 0, langMismatch: 0,
+          reviewed: 0, unreviewed: 0, good: 0, bad: 0, needs_review: 0, examples: 0,
+          lastSeen: "",
         };
       }
 
@@ -62,11 +56,29 @@ export async function GET(request: Request) {
       summary[promptName].total++;
       entry.count++;
 
-      const status = d.status as string;
+      const status = (d.jsonStructureStatus ?? d.status) as string;
       if (status === "success") entry.success++;
       else if (status === "refusal") entry.refusal++;
       else if (status === "error") entry.error++;
       else if (status === "invalid_response") entry.invalid_response++;
+
+      const quality = d.qualityReview?.quality as string | undefined;
+      if (quality === "good") {
+        entry.reviewed++;
+        entry.good++;
+      } else if (quality === "bad") {
+        entry.reviewed++;
+        entry.bad++;
+      } else if (quality === "needs_review") {
+        entry.reviewed++;
+        entry.needs_review++;
+      } else {
+        entry.unreviewed++;
+      }
+
+      if (d.qualityReview?.keepAsExample === true) {
+        entry.examples++;
+      }
 
       const tokens = d.usage?.totalTokens as number | undefined;
       if (typeof tokens === "number") {
@@ -100,11 +112,20 @@ export async function GET(request: Request) {
               version,
               {
                 count: s.count,
+                jsonStructureSuccessRate: round2(s.success / s.count),
                 successRate: round2(s.success / s.count),
                 refusalRate: round2(s.refusal / s.count),
                 errorRate: round2(s.error / s.count),
                 invalidResponseRate: round2(s.invalid_response / s.count),
                 langMismatchRate: round2(s.langMismatch / s.count),
+                reviewedCount: s.reviewed,
+                unreviewedCount: s.unreviewed,
+                goodCount: s.good,
+                badCount: s.bad,
+                needsReviewCount: s.needs_review,
+                exampleCount: s.examples,
+                goodRate: s.reviewed > 0 ? round2(s.good / s.reviewed) : null,
+                badRate: s.reviewed > 0 ? round2(s.bad / s.reviewed) : null,
                 avgTokens: s.tokenSamples > 0 ? Math.round(s.totalTokens / s.tokenSamples) : null,
                 avgLatencyMs: Math.round(s.totalLatencyMs / s.count),
                 lastSeen: s.lastSeen || null,
@@ -123,7 +144,7 @@ export async function GET(request: Request) {
 // DELETE /api/admin/telemetry
 // Deletes ALL telemetry records. Returns count of deleted documents.
 export async function DELETE(request: Request) {
-  const authError = checkAuth(request);
+  const authError = checkTelemetryAdminAuth(request);
   if (authError) return authError;
 
   try {

@@ -9,6 +9,7 @@
  * Used for voice input in Study Notes.
  */
 import { PolishTranscriptionSchema, PolishTranscription } from "@/config/schemas/zod";
+import { normalizeSpokenScriptureReferences } from "@/utils/scriptureReferenceNormalizer";
 
 import { logger } from "./openAIHelpers";
 import { buildSimplePromptBlueprint } from "./promptBuilder";
@@ -54,6 +55,10 @@ WHAT TO PRESERVE (his voice on paper):
 - Any religious or biblical references as spoken
 
 SCRIPTURE QUOTES & REFERENCES (LANGUAGE-SPECIFIC):
+- Normalize dictated reference wording into written citation notation:
+  "Второзаконие 10 глава 11 стих" → "Втор. 10:11";
+  "Луки 15 глава с 11 по 32 стих" → "Лк. 15:11-32";
+  "John chapter 3 verse 16" → "John 3:16".
 - If the speaker clearly quotes Scripture or explicitly references a verse (e.g., "James 1:5", "Иак. 1:5"),
   append the verse reference in parentheses at the end of that sentence —
   ONLY IF THE REFERENCE IS NOT ALREADY PRESENT in the original text (do not duplicate).
@@ -116,7 +121,7 @@ export async function polishTranscription(
         const userMessage = `Clean up this voice transcription:\n\n${trimmed}`;
         const promptBlueprint = buildSimplePromptBlueprint({
             promptName: "polishTranscription",
-            promptVersion: "v2",
+            promptVersion: "v3",
             systemPrompt: POLISH_SYSTEM_PROMPT,
             userMessage,
             context: {
@@ -178,7 +183,7 @@ export async function polishTranscription(
 
         return {
             success: true,
-            polishedText: result.data.polishedText,
+            polishedText: normalizeSpokenScriptureReferences(result.data.polishedText),
             originalText: transcription,
             error: null,
         };

@@ -59,6 +59,7 @@ Add biblical references generously. The author wants citations added even for no
   Example: "как Иосиф был продан братьями" → "(Быт. 37:28)"
   Example: "кто верит в Него не погибнет" → "(Ин. 3:16)"
 - Format: "Book Chapter:Verse" e.g. "Рим. 14:20", "Ин. 3:16", "Мф. 5:3". For ranges: "Лк. 15:11-32".
+- Normalize dictated reference wording into citation notation: "Второзаконие 10 глава 11 стих" → "Втор. 10:11"; "Луки 15 глава с 11 по 32 стих" → "Лк. 15:11-32".
 - Use Синодальный перевод for any included quote text.
 - DO NOT include the full text of the main sermon scripture inside the thought (reference is allowed, full verse text is not).
 - NEVER fabricate references. If you are not confident of the exact reference, omit it.

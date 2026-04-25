@@ -142,7 +142,7 @@ export async function generateSermonVersesStructured(sermon: Sermon): Promise<Ve
     const userMessage = createVersesUserMessage(sermon, sermonContent);
     const promptBlueprint = buildSimplePromptBlueprint({
         promptName: "sermon_verses",
-        promptVersion: "v1",
+        promptVersion: "v2",
         systemPrompt: versesSystemPrompt,
         userMessage,
         context: {

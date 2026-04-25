@@ -1,23 +1,47 @@
-import { GET, DELETE } from '@/api/admin/telemetry/[promptName]/route';
+import { GET, PATCH, DELETE } from '@/api/admin/telemetry/[promptName]/route';
 
 // Mock data
 const mockRecords = [
-    { promptName: 'test-prompt', promptVersion: 'v1', timestamp: '2024-01-01T10:00:00Z' },
-    { promptName: 'test-prompt', promptVersion: 'v1', timestamp: '2024-01-01T10:05:00Z' },
+    {
+        eventId: 'event-1',
+        promptName: 'test-prompt',
+        promptVersion: 'v1',
+        timestamp: '2024-01-01T10:00:00Z',
+        jsonStructureStatus: 'success',
+        qualityReview: { quality: 'good', keepAsExample: true },
+    },
+    {
+        eventId: 'event-2',
+        promptName: 'test-prompt',
+        promptVersion: 'v1',
+        timestamp: '2024-01-01T10:05:00Z',
+        jsonStructureStatus: 'success',
+        qualityReview: { quality: 'bad', keepAsExample: false },
+    },
 ];
 
 const limitMock = jest.fn().mockReturnThis();
 const orderByMock = jest.fn().mockReturnThis();
 const whereMock = jest.fn().mockReturnThis();
 const getMock = jest.fn().mockResolvedValue({
-    docs: mockRecords.map(r => ({ data: () => r, ref: { id: 'doc' } })),
+    docs: mockRecords.map(r => ({ id: r.eventId, data: () => r, ref: { id: r.eventId } })),
     size: mockRecords.length
+});
+const docGetMock = jest.fn().mockResolvedValue({
+    exists: true,
+    data: () => mockRecords[0],
+});
+const docUpdateMock = jest.fn().mockResolvedValue(undefined);
+const docMock = jest.fn().mockReturnValue({
+    get: docGetMock,
+    update: docUpdateMock,
 });
 
 const collectionMock = jest.fn().mockReturnValue({
     where: whereMock,
     orderBy: orderByMock,
     limit: limitMock,
+    doc: docMock,
     get: getMock,
 });
 
@@ -32,6 +56,9 @@ jest.mock('@/config/firebaseAdminConfig', () => ({
     adminDb: {
         collection: collectionMock,
         batch: batchMock,
+    },
+    FieldValue: {
+        serverTimestamp: jest.fn(() => 'mocked-server-timestamp'),
     },
 }));
 
@@ -68,6 +95,7 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
             expect(response.status).toBe(200);
             expect(data.promptName).toBe('test-prompt');
             expect(data.records).toHaveLength(2);
+            expect(data.records[0].documentId).toBe('event-2');
             expect(whereMock).toHaveBeenCalledWith('promptName', '==', 'test-prompt');
         });
 
@@ -89,6 +117,31 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
             await GET(request, { params });
 
             expect(whereMock).toHaveBeenCalledWith('promptName', '==', 'encoded name');
+        });
+
+        it('filters reviewed examples by quality', async () => {
+            const request = new Request('http://localhost/api/admin/telemetry/test-prompt?quality=good&examples=true', {
+                headers: { 'x-admin-secret': 'test-secret' }
+            });
+            const params = Promise.resolve({ promptName: 'test-prompt' });
+            const response = await GET(request, { params });
+            const data: any = await response.json();
+
+            expect(response.status).toBe(200);
+            expect(data.quality).toBe('good');
+            expect(data.examplesOnly).toBe(true);
+            expect(data.records).toHaveLength(1);
+            expect(data.records[0].eventId).toBe('event-1');
+        });
+
+        it('rejects invalid quality filters', async () => {
+            const request = new Request('http://localhost/api/admin/telemetry/test-prompt?quality=excellent', {
+                headers: { 'x-admin-secret': 'test-secret' }
+            });
+            const params = Promise.resolve({ promptName: 'test-prompt' });
+            const response = await GET(request, { params });
+
+            expect(response.status).toBe(400);
         });
 
         it('returns 500 on error', async () => {
@@ -123,6 +176,83 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
             expect(response.status).toBe(503);
             const data: any = await response.json();
             expect(data.error).toBe('ADMIN_SECRET is not configured');
+        });
+    });
+
+    describe('PATCH review labels', () => {
+        it('marks a telemetry record as a bad example for prompt iteration', async () => {
+            const request = new Request('http://localhost/api/admin/telemetry/test-prompt', {
+                method: 'PATCH',
+                headers: { 'x-admin-secret': 'test-secret' },
+                body: JSON.stringify({
+                    eventId: 'event-1',
+                    quality: 'bad',
+                    reviewedBy: 'codex',
+                    issueTypes: ['scripture_reference_format'],
+                    notes: 'Reference stayed as dictated prose.',
+                    expectedOutput: 'Втор. 10:11',
+                }),
+            });
+            const params = Promise.resolve({ promptName: 'test-prompt' });
+
+            const response = await PATCH(request, { params });
+            const data: any = await response.json();
+
+            expect(response.status).toBe(200);
+            expect(docMock).toHaveBeenCalledWith('event-1');
+            expect(docUpdateMock).toHaveBeenCalledWith(expect.objectContaining({
+                qualityReview: expect.objectContaining({
+                    quality: 'bad',
+                    reviewedBy: 'codex',
+                    issueTypes: ['scripture_reference_format'],
+                    notes: 'Reference stayed as dictated prose.',
+                    keepAsExample: false,
+                    resolutionStatus: 'open',
+                    expectedOutput: expect.objectContaining({
+                        value: 'Втор. 10:11',
+                    }),
+                }),
+                updatedAt: 'mocked-server-timestamp',
+            }));
+            expect(data.qualityReview.quality).toBe('bad');
+        });
+
+        it('returns 400 for invalid review payloads', async () => {
+            const request = new Request('http://localhost/api/admin/telemetry/test-prompt', {
+                method: 'PATCH',
+                headers: { 'x-admin-secret': 'test-secret' },
+                body: JSON.stringify({
+                    eventId: 'event-1',
+                    quality: 'excellent',
+                }),
+            });
+            const params = Promise.resolve({ promptName: 'test-prompt' });
+
+            const response = await PATCH(request, { params });
+            const data: any = await response.json();
+
+            expect(response.status).toBe(400);
+            expect(data.error).toBe('Invalid review payload');
+        });
+
+        it('returns 409 when event belongs to another prompt', async () => {
+            docGetMock.mockResolvedValueOnce({
+                exists: true,
+                data: () => ({ ...mockRecords[0], promptName: 'other-prompt' }),
+            });
+            const request = new Request('http://localhost/api/admin/telemetry/test-prompt', {
+                method: 'PATCH',
+                headers: { 'x-admin-secret': 'test-secret' },
+                body: JSON.stringify({
+                    eventId: 'event-1',
+                    quality: 'good',
+                }),
+            });
+            const params = Promise.resolve({ promptName: 'test-prompt' });
+
+            const response = await PATCH(request, { params });
+
+            expect(response.status).toBe(409);
         });
     });
 

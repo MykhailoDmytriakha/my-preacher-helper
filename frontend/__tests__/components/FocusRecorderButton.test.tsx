@@ -16,6 +16,7 @@ jest.mock('react-i18next', () => ({
 // Mock MediaDevices and MediaRecorder
 const mockGetUserMedia = jest.fn();
 const mockStop = jest.fn();
+const mockMediaRecorderStart = jest.fn();
 
 // Mock MediaRecorder
 class MockMediaRecorder {
@@ -29,7 +30,8 @@ class MockMediaRecorder {
     this.mimeType = options?.mimeType || 'audio/webm';
   }
 
-  start() {
+  start(...args: unknown[]) {
+    mockMediaRecorderStart(...args);
     this.state = 'recording';
   }
 
@@ -89,6 +91,7 @@ describe('FocusRecorderButton', () => {
     // Reset mocks
     mockGetUserMedia.mockClear();
     mockStop.mockClear();
+    mockMediaRecorderStart.mockClear();
 
     // Setup MediaDevices mock
     Object.defineProperty(global.navigator, 'mediaDevices', {
@@ -223,6 +226,16 @@ describe('FocusRecorderButton', () => {
       await waitFor(() => {
         expect(button).toHaveClass('bg-red-500');
         expect(button).toHaveAttribute('aria-label', 'audio.stopRecording');
+      });
+    });
+
+    it('starts MediaRecorder without a timeslice to keep one valid audio container', async () => {
+      render(<FocusRecorderButton onRecordingComplete={jest.fn()} />);
+
+      fireEvent.click(screen.getByRole('button'));
+
+      await waitFor(() => {
+        expect(mockMediaRecorderStart).toHaveBeenCalledWith();
       });
     });
 

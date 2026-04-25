@@ -97,7 +97,7 @@ function buildSystemPrompt(languageHint: string, analysisType: AnalysisType): st
       extractionFocus = "1. ONLY a short, descriptive TITLE that captures the main theme (5-15 words). Do not return tags or scripture references.";
       break;
     case 'tags':
-      extractionFocus = "1. ONLY relevant TAGS for categorization (2-5 tags). Do not return a title or scripture references.";
+      extractionFocus = "1. ONLY all relevant unique TAGS for categorization. Do not return a title or scripture references.";
       break;
     case 'scriptureRefs':
       extractionFocus = "1. ONLY SCRIPTURE REFERENCES mentioned or alluded to in the note. Do not return a title or tags.";
@@ -182,6 +182,10 @@ Epistles (remove prefixes):
   * For chapter ranges (e.g., "Matthew 5-7", "chapters 40-48"): include "book", "chapter", and "toChapter"
   * For specific verse: include "book", "chapter", and "fromVerse"
   * For verse range: include "book", "chapter", "fromVerse", and "toVerse"
+- Avoid redundant range fields:
+  * Do NOT include "toChapter" when it is the same as "chapter"
+  * Do NOT include "toVerse" when it is the same as "fromVerse"
+  * For same-chapter verse ranges, use "chapter", "fromVerse", and "toVerse" only
 - If a verse range is mentioned (e.g., "verses 1-12"), include both fromVerse and toVerse
 - If only one verse is mentioned, only include fromVerse (omit toVerse)
 - Use your biblical knowledge to infer chapter numbers for well-known events even if not explicitly stated
@@ -395,7 +399,7 @@ export async function analyzeStudyNote(
     const userMessage = buildUserMessage(noteContent, existingTags);
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "studyNoteAnalysis",
-      promptVersion: "v1",
+      promptVersion: "v2",
       expectedLanguage: telemetryExpectedLanguage === "unknown" ? null : telemetryExpectedLanguage,
       systemPrompt,
       userMessage,

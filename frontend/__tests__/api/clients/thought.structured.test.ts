@@ -144,6 +144,44 @@ describe('generateThoughtStructured', () => {
     expect(result.formattedText).toBe('Formatted test transcription');
     expect(result.tags).toEqual(['Вступление']);
     expect(result.originalText).toBe('Test transcription');
+    expect(structuredOutput.callWithStructuredOutput).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.any(Object),
+      expect.objectContaining({
+        formatName: 'thought',
+        promptBlueprint: expect.objectContaining({
+          promptName: 'thought',
+          promptVersion: 'v4',
+        }),
+      })
+    );
+  });
+
+  it('should normalize dictated Scripture references in formatted thought text', async () => {
+    const mockResponse = {
+      originalText: 'Нужно прочитать Второзаконие 10 глава 11 стих',
+      formattedText: 'Нужно прочитать Второзаконие 10 глава 11 стих.',
+      tags: ['Основная часть'],
+      meaningPreserved: true,
+    };
+
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: mockResponse,
+      refusal: null,
+      error: null,
+    });
+
+    const result = await generateThoughtStructured(
+      'Нужно прочитать Второзаконие 10 глава 11 стих',
+      mockSermon,
+      availableTags
+    );
+
+    expect(result.meaningSuccessfullyPreserved).toBe(true);
+    expect(result.formattedText).toBe('Нужно прочитать Втор. 10:11.');
+    expect(result.originalText).toBe('Нужно прочитать Второзаконие 10 глава 11 стих');
   });
 
   it('should apply force tag when provided', async () => {
@@ -337,4 +375,3 @@ describe('generateThoughtStructured', () => {
     expect(result.meaningSuccessfullyPreserved).toBe(false);
   });
 });
-

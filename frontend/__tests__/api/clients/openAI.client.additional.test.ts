@@ -585,6 +585,19 @@ describe('openAI.client additional coverage', () => {
 
     expect(result.success).toBe(true);
     expect(result.content).toContain('Main Concept');
+
+    const callArgs = mockStructuredOutput.callWithStructuredOutput.mock.calls[0];
+    expect(callArgs[0]).toContain('STYLE: MEMORY HOOKS');
+    expect(callArgs[0]).toContain('ADJACENT OUTLINE CONTEXT');
+    expect(callArgs[0]).toContain('Previous point: Prev point');
+    expect(callArgs[3]).toEqual(
+      expect.objectContaining({
+        promptBlueprint: expect.objectContaining({
+          promptName: 'plan_point_content',
+          promptVersion: 'v4',
+        }),
+      })
+    );
   });
 
   it('includes structured sub-point tags in the plan point prompt when structured thoughts are provided', async () => {
