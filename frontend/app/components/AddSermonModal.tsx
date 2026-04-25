@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronDown } from 'lucide-react';
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
@@ -199,20 +200,26 @@ export default function AddSermonModal({
             <label htmlFor="series" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
               {t('addSermon.seriesLabel')}
             </label>
-            <select
-              id="series"
-              value={selectedSeriesId}
-              onChange={(e) => setSelectedSeriesId(e.target.value)}
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white"
-              disabled={isSubmitting}
-            >
-              <option value="">{t('addSermon.noSeriesOption')}</option>
-              {series.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.title || s.theme}
-                </option>
-              ))}
-            </select>
+            <div className="relative mt-1">
+              <select
+                id="series"
+                value={selectedSeriesId}
+                onChange={(e) => setSelectedSeriesId(e.target.value)}
+                className="block w-full appearance-none border border-gray-300 dark:border-gray-700 rounded-md p-3 pr-12 dark:bg-gray-700 dark:text-white"
+                disabled={isSubmitting}
+              >
+                <option value="">{t('addSermon.noSeriesOption')}</option>
+                {series.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.title || s.theme}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                aria-hidden="true"
+                className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-900 dark:text-gray-100"
+              />
+            </div>
           </div>
           {allowPlannedDate && (
             <div className="mb-6">

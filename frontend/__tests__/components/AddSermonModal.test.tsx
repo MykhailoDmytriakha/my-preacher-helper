@@ -188,6 +188,20 @@ describe('AddSermonModal Component', () => {
     expect(screen.queryByRole('button', { name: 'New Sermon' })).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'New Sermon' })).toBeInTheDocument();
   });
+
+  test('uses a controlled chevron position for the series selector', () => {
+    render(
+      <TestProviders>
+        <AddSermonModal isOpen={true} showTriggerButton={false} />
+      </TestProviders>
+    );
+
+    const seriesSelect = screen.getByLabelText('Series');
+
+    expect(seriesSelect).toHaveClass('appearance-none', 'pr-12');
+    expect(seriesSelect.parentElement).toHaveClass('relative');
+    expect(seriesSelect.parentElement?.querySelector('svg')).toHaveClass('right-3');
+  });
   
   test('calls createSermon with correct data when form is submitted', async () => {
     render(
