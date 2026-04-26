@@ -51,7 +51,7 @@ jest.mock('@hello-pangea/dnd', () => {
           {
             innerRef: jest.fn(),
             draggableProps: { style: {} },
-            dragHandleProps: {},
+            dragHandleProps: { 'data-testid': 'drag-handle' },
           },
           { isDragging: false }
         )}
@@ -765,6 +765,25 @@ describe('Column Component', () => {
               expect(actionsRail).toHaveClass('group-hover:pointer-events-auto');
               expect(badge).toHaveClass('absolute');
               expect(badge).toHaveClass('right-0');
+            }
+          },
+          {
+            name: 'sidebar outline entries keep a stable drag handle for new points',
+            run: () => {
+              render(
+                <Column
+                  {...focusScaffold}
+                  outlinePoints={[{ id: 'new-1777163841984', text: 'New outline point' }]}
+                />
+              );
+              const sidebarPoint = screen
+                .getAllByText('New outline point')
+                .map(el => el.closest('li'))
+                .find(Boolean) as HTMLElement;
+              const dragHandle = within(sidebarPoint).getByTestId('drag-handle');
+
+              expect(dragHandle).toHaveClass('cursor-grab');
+              expect(within(dragHandle).getByTestId('icon-bars-3')).toBeInTheDocument();
             }
           },
           {

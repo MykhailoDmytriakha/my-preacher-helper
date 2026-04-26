@@ -1166,7 +1166,7 @@ export default function Column({
                 const thoughtCount = thoughtsPerSermonPoint[point.id] ?? 0;
                 const hasThoughtCount = thoughtCount > 0;
                 return (
-                <Draggable key={point.id} draggableId={point.id} index={index}>
+                <Draggable key={point.id} draggableId={point.id} index={index} isDragDisabled={pointLocked}>
                   {(providedDraggable, snapshot) => (
                     <li
                       ref={providedDraggable.innerRef}
@@ -1176,12 +1176,14 @@ export default function Column({
                     >
                       <div className="relative flex min-h-[28px] items-start">
                         {/* Drag handle */}
-                        {!pointLocked && (
-                          <div {...providedDraggable.dragHandleProps} className="cursor-grab mr-2 mt-0.5 shrink-0 text-white dark:text-gray-100">
-                            <Bars3Icon className="h-5 w-5" />
-                          </div>
-                        )}
-                        {pointLocked && <div className="mr-2 h-5 w-5 shrink-0" />}
+                        <div
+                          {...(pointLocked ? {} : (providedDraggable.dragHandleProps ?? {}))}
+                          className={`mr-2 mt-0.5 h-5 w-5 shrink-0 text-white dark:text-gray-100 ${
+                            pointLocked ? 'cursor-default opacity-50' : 'cursor-grab'
+                          }`}
+                        >
+                          {!pointLocked && <Bars3Icon className="h-5 w-5" />}
+                        </div>
 
                         {/* Edit form or display */}
                         {editingPointId === point.id ? (
