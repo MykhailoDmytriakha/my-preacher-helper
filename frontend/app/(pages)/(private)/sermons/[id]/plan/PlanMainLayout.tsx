@@ -1,6 +1,6 @@
 import { FileText, Key, Lightbulb, List, Pencil, Save, Sparkles } from "lucide-react";
 import Link from "next/link";
-import React, { createContext, useContext } from "react";
+import React, { createContext, useContext, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -357,6 +357,12 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
 
   const currentSavedContent = sermonPlanSection?.outlinePoints?.[outlinePoint.id] || "";
   const sectionToneClasses = SECTION_TONE_CLASSES[sectionKey];
+  const currentGeneratedContent = generatedContent[outlinePoint.id] || "";
+  const isEditMode = Boolean(editModePoints[outlinePoint.id]);
+
+  useEffect(() => {
+    onSyncPairHeights(sectionKey, outlinePoint.id);
+  }, [currentGeneratedContent, isEditMode, onSyncPairHeights, outlinePoint.id, sectionKey]);
 
   return (
     <div
@@ -389,7 +395,7 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
       </h3>
 
       <div>
-        {editModePoints[outlinePoint.id] ? (
+        {isEditMode ? (
           <>
             <div className="flex justify-end mb-1">
               <Button
@@ -402,7 +408,7 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
               </Button>
             </div>
             <RichMarkdownEditor
-              value={generatedContent[outlinePoint.id] || ""}
+              value={currentGeneratedContent}
               placeholder={noContentText}
               minHeight="150px"
               onChange={(newContent) => {
@@ -424,8 +430,11 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
             />
           </>
         ) : (
-          <div className="relative border rounded-md dark:bg-gray-700 dark:border-gray-600 text-base min-h-[100px]">
-            <div className="absolute top-2 right-2 z-10">
+          <div
+            data-testid="plan-point-preview-surface"
+            className="relative min-h-[100px] overflow-visible rounded-md border border-gray-200 bg-gray-50/70 text-base dark:border-gray-700/70 dark:bg-gray-900/20"
+          >
+            <div className="absolute top-3 right-3 z-10">
               <Button
                 className="text-sm px-2 py-1 h-8"
                 onClick={() => onToggleEditMode(outlinePoint.id)}
@@ -435,9 +444,9 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
                 <Pencil className="h-4 w-4" />
               </Button>
             </div>
-            <div className="p-3 pr-12">
+            <div className="p-4 pr-14 md:p-5 md:pr-16">
               <MarkdownRenderer
-                markdown={generatedContent[outlinePoint.id] || noContentText}
+                markdown={currentGeneratedContent || noContentText}
                 section={sectionKey}
               />
             </div>

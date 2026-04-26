@@ -11,19 +11,22 @@ Your task is to generate a PREACHING-FRIENDLY plan for a specific point that can
   → Resolution: Sparing use (max 1-2 words). Only use for the single most important memory trigger word.
 - Contradiction B: "Full Bible text for context" VS "Short bullets for speed".
   → Resolution: Inline truncation (first sentence + ... + last clause). Keep it under 5 words if possible.
-- Contradiction C: "Detailed explanation" VS "2-second recall".
-  → Resolution: Action-Signal headings (###). They tell the preacher WHAT TO DO (signal), not what it IS (description).
+- Contradiction C: "Detailed explanation" VS "semantic route".
+  → Resolution: Action-Signal headings (###). They tell the preacher what meaning to move through next, not just what words appeared in the source.
 
 // 2. CRITICAL PRINCIPLES
 - INSTANT RECOGNITION: The preacher must recall the thought in < 2 seconds of scanning.
+- SEMANTIC MAP, NOT WORD MATCH: The plan must preserve the intended preaching route. If the output repeats similar words but loses the meaning flow, it failed.
 - ACTION-SIGNAL HEADINGS: Headings (###) must tell the preacher WHAT TO DO or SAY.
 - SPARING BOLD: Maximum 1-2 words per bullet. If no word stands out, use no bold.
 - NO BOLD IN HEADINGS: Do NOT use ** outside of bullets. 
 - BULLET LIMIT: STRICTLY Maximum 3 bullet points per heading block. 
 - HEADING CONTRACT:
   - If the user message includes SUB-POINTS STRUCTURE, create one ### heading per sub-point.
-  - Otherwise, create one ### heading per THOUGHT.
-  - Do not create extra headings that are not grounded in the provided structure.
+  - Otherwise, create one ### heading per required semantic move.
+  - A single THOUGHT may contain multiple required semantic moves. Explicit numbered lists, "five things", "we will walk through", and sermon-roadmap language must be preserved instead of collapsed.
+  - Do not force the output to equal the THOUGHT count when that would lose the meaning flow.
+  - Do not create headings that are not grounded in the provided thoughts or semantic signals.
 
 // 3. FORMAT REQUIREMENTS
 - Use ### for Section Headings (Action Signals). 
@@ -74,8 +77,9 @@ EXAMPLE 3 (Complex Verse Handling):
 
 // 7. FINAL INSTRUCTIONS
 - If SUB-POINTS STRUCTURE is provided, it overrides the THOUGHT count: one ### heading per sub-point.
-- If no SUB-POINTS STRUCTURE is provided, one ### heading per THOUGHT.
+- If no SUB-POINTS STRUCTURE is provided, organize by required semantic moves. Usually a thought is one move, but split a thought when it contains an explicit numbered/roadmap structure.
 - Maximum 3 bullets per ### heading.
+- If more than 3 bullets are needed to preserve the route, create another grounded ### heading instead of merging distinct meanings.
 - Use action-oriented language in headings.
 - Do not pad the output for length or caching; keep the generated plan scannable.
 `;

@@ -76,6 +76,8 @@ describe("usePairedPlanCardHeights", () => {
     const right = createSizedDiv(80);
     left.style.height = "50px";
     right.style.height = "60px";
+    left.style.minHeight = "50px";
+    right.style.minHeight = "60px";
 
     act(() => {
       result.current.registerPairRef("introduction", "p1", "left", left);
@@ -85,6 +87,8 @@ describe("usePairedPlanCardHeights", () => {
 
     expect(left.style.height).toBe("auto");
     expect(right.style.height).toBe("auto");
+    expect(left.style.minHeight).toBe("");
+    expect(right.style.minHeight).toBe("");
   });
 
   it("syncs a pair to max height on desktop viewport", () => {
@@ -106,8 +110,10 @@ describe("usePairedPlanCardHeights", () => {
       result.current.syncPairHeights("introduction", "p1");
     });
 
-    expect(left.style.height).toBe("140px");
-    expect(right.style.height).toBe("140px");
+    expect(left.style.height).toBe("auto");
+    expect(right.style.height).toBe("auto");
+    expect(left.style.minHeight).toBe("140px");
+    expect(right.style.minHeight).toBe("140px");
   });
 
   it("syncs all section pairs on desktop viewport", () => {
@@ -137,12 +143,14 @@ describe("usePairedPlanCardHeights", () => {
       result.current.syncAllHeights();
     });
 
-    expect(introLeft.style.height).toBe("130px");
-    expect(introRight.style.height).toBe("130px");
-    expect(mainLeft.style.height).toBe("170px");
-    expect(mainRight.style.height).toBe("170px");
-    expect(conclusionLeft.style.height).toBe("75px");
-    expect(conclusionRight.style.height).toBe("75px");
+    expect(introLeft.style.minHeight).toBe("130px");
+    expect(introRight.style.minHeight).toBe("130px");
+    expect(mainLeft.style.minHeight).toBe("170px");
+    expect(mainRight.style.minHeight).toBe("170px");
+    expect(conclusionLeft.style.minHeight).toBe("75px");
+    expect(conclusionRight.style.minHeight).toBe("75px");
+    expect(introLeft.style.height).toBe("auto");
+    expect(mainRight.style.height).toBe("auto");
   });
 
   it("syncs by point id and resets pair heights before applying max height", () => {
@@ -159,6 +167,8 @@ describe("usePairedPlanCardHeights", () => {
     const right = createSizedDiv(120);
     left.style.height = "1px";
     right.style.height = "2px";
+    left.style.minHeight = "1px";
+    right.style.minHeight = "2px";
 
     act(() => {
       result.current.registerPairRef("main", "p-reset", "left", left);
@@ -166,8 +176,10 @@ describe("usePairedPlanCardHeights", () => {
       result.current.syncPairHeightsByPointId("p-reset");
     });
 
-    expect(left.style.height).toBe("200px");
-    expect(right.style.height).toBe("200px");
+    expect(left.style.height).toBe("auto");
+    expect(right.style.height).toBe("auto");
+    expect(left.style.minHeight).toBe("200px");
+    expect(right.style.minHeight).toBe("200px");
   });
 
   it("debounces resize events and clears pending timer on unmount", () => {
@@ -190,6 +202,8 @@ describe("usePairedPlanCardHeights", () => {
       jest.advanceTimersByTime(150); // let initial sync settle
       left.style.height = "";
       right.style.height = "";
+      left.style.minHeight = "";
+      right.style.minHeight = "";
     });
 
     expect(left.style.height).toBe("");
@@ -203,8 +217,10 @@ describe("usePairedPlanCardHeights", () => {
     act(() => {
       jest.advanceTimersByTime(1);
     });
-    expect(left.style.height).toBe("140px");
-    expect(right.style.height).toBe("140px");
+    expect(left.style.height).toBe("auto");
+    expect(right.style.height).toBe("auto");
+    expect(left.style.minHeight).toBe("140px");
+    expect(right.style.minHeight).toBe("140px");
 
     act(() => {
       window.dispatchEvent(new Event("resize"));

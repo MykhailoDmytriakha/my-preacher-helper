@@ -51,8 +51,14 @@ export default function usePairedPlanCardHeights({
 
   const resetSectionRefsHeight = useCallback((sectionRefs: SectionPairRefs) => {
     Object.values(sectionRefs).forEach(({ left, right }) => {
-      if (left) left.style.height = "auto";
-      if (right) right.style.height = "auto";
+      if (left) {
+        left.style.height = "auto";
+        left.style.minHeight = "";
+      }
+      if (right) {
+        right.style.height = "auto";
+        right.style.minHeight = "";
+      }
     });
   }, []);
 
@@ -63,11 +69,17 @@ export default function usePairedPlanCardHeights({
 
   const applyPairHeight = useCallback((left: HTMLDivElement, right: HTMLDivElement, height: number) => {
     const nextHeight = `${height}px`;
-    if (left.style.height !== nextHeight) {
-      left.style.height = nextHeight;
+    if (left.style.height !== "auto") {
+      left.style.height = "auto";
     }
-    if (right.style.height !== nextHeight) {
-      right.style.height = nextHeight;
+    if (right.style.height !== "auto") {
+      right.style.height = "auto";
+    }
+    if (left.style.minHeight !== nextHeight) {
+      left.style.minHeight = nextHeight;
+    }
+    if (right.style.minHeight !== nextHeight) {
+      right.style.minHeight = nextHeight;
     }
   }, []);
 
@@ -109,6 +121,8 @@ export default function usePairedPlanCardHeights({
     if (!isLargeViewport()) {
       pair.left.style.height = "auto";
       pair.right.style.height = "auto";
+      pair.left.style.minHeight = "";
+      pair.right.style.minHeight = "";
       return;
     }
 
@@ -118,6 +132,8 @@ export default function usePairedPlanCardHeights({
 
       latestPair.left.style.height = "auto";
       latestPair.right.style.height = "auto";
+      latestPair.left.style.minHeight = "";
+      latestPair.right.style.minHeight = "";
 
       requestAnimationFrame(() => {
         const finalPair = sectionRefs.current[pointId];
@@ -137,6 +153,8 @@ export default function usePairedPlanCardHeights({
     if (!isLargeViewport()) {
       pair.left.style.height = "auto";
       pair.right.style.height = "auto";
+      pair.left.style.minHeight = "";
+      pair.right.style.minHeight = "";
       return;
     }
 

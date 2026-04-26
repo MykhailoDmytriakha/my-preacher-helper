@@ -588,16 +588,47 @@ describe('openAI.client additional coverage', () => {
 
     const callArgs = mockStructuredOutput.callWithStructuredOutput.mock.calls[0];
     expect(callArgs[0]).toContain('STYLE: MEMORY HOOKS');
+    expect(callArgs[0]).toContain('SEMANTIC MAP, NOT WORD MATCH');
     expect(callArgs[0]).toContain('ADJACENT OUTLINE CONTEXT');
     expect(callArgs[0]).toContain('Previous point: Prev point');
+    expect(callArgs[1]).toContain('STRICT: Build a semantic preaching map, not a word summary.');
+    expect(callArgs[1]).not.toContain('Create exactly 2 main points');
     expect(callArgs[3]).toEqual(
       expect.objectContaining({
         promptBlueprint: expect.objectContaining({
           promptName: 'plan_point_content',
-          promptVersion: 'v4',
+          promptVersion: 'v5',
         }),
       })
     );
+  });
+
+  it('surfaces numbered inner structures as required semantic moves in plan point prompts', async () => {
+    mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+      success: true,
+      data: { content: '### First move\n* Supporting detail' },
+      refusal: null,
+      error: null,
+    });
+
+    await generatePlanPointContent(
+      'Test Sermon',
+      'John 3:16',
+      'Outline Point',
+      [
+        'This thought contains a roadmap.\n1. First required move.\n2. Second required move.\n3. Third required move.',
+      ],
+      'introduction'
+    );
+
+    const userMessage = mockStructuredOutput.callWithStructuredOutput.mock.calls[0][1];
+    expect(userMessage).toContain('SEMANTIC STRUCTURE SIGNALS');
+    expect(userMessage).toContain('THOUGHT 1 contains an explicit numbered sequence');
+    expect(userMessage).toContain('1. First required move.');
+    expect(userMessage).toContain('2. Second required move.');
+    expect(userMessage).toContain('3. Third required move.');
+    expect(userMessage).toContain('Preserve every REQUIRED SEMANTIC MOVE');
+    expect(userMessage).not.toContain('Create exactly 1 main points');
   });
 
   it('includes structured sub-point tags in the plan point prompt when structured thoughts are provided', async () => {

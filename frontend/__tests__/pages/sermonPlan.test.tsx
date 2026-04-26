@@ -862,6 +862,9 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     });
 
     expect(screen.getAllByText('Mock Generated Content').length).toBeGreaterThan(0);
+    const previewSurfaces = screen.getAllByTestId('plan-point-preview-surface');
+    expect(previewSurfaces[0]).toHaveClass('overflow-visible');
+    expect(previewSurfaces[0]).toHaveClass('bg-gray-50/70');
   });
 
   it('opens key fragments modal for an outline point', async () => {

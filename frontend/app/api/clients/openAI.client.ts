@@ -1016,7 +1016,7 @@ export async function generatePlanPointContent(
     };
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "plan_point_content",
-      promptVersion: "v4",
+      promptVersion: "v5",
       expectedLanguage: languageInfo.telemetryLanguage,
       systemPrompt,
       userMessage,
