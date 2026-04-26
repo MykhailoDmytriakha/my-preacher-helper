@@ -41,6 +41,9 @@ describe('apiClient', () => {
 
     await apiClient('http://test.com', { category: 'metadata' });
     expect(fetchWithTimeout).toHaveBeenCalledWith('http://test.com', expect.objectContaining({ timeout: 5000 }));
+
+    await apiClient('http://test.com', { category: 'detail' });
+    expect(fetchWithTimeout).toHaveBeenCalledWith('http://test.com', expect.objectContaining({ timeout: 15000 }));
     
     // Default is crud
     await apiClient('http://test.com');

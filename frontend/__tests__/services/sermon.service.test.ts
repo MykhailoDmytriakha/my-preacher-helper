@@ -1,4 +1,5 @@
 import { apiClient } from '@/utils/apiClient';
+import { FetchTimeoutError } from '@/utils/fetchWithTimeout';
 
 jest.mock('@/utils/apiClient', () => ({
   apiClient: jest.fn(),
@@ -64,7 +65,7 @@ describe('Sermon Service', () => {
       const result = await getSermonById('test-id');
 
       expect(result).toEqual(mockSermon);
-      expect(mockApiClient).toHaveBeenCalledWith(`${API_BASE}/api/sermons/test-id`, expect.objectContaining({ cache: 'no-store', category: 'metadata' }));
+      expect(mockApiClient).toHaveBeenCalledWith(`${API_BASE}/api/sermons/test-id`, expect.objectContaining({ cache: 'no-store', category: 'detail' }));
     });
 
     it('returns undefined for 404 response (sermon not found)', async () => {
@@ -76,7 +77,7 @@ describe('Sermon Service', () => {
       const result = await getSermonById('non-existent-id');
 
       expect(result).toBeUndefined();
-      expect(mockApiClient).toHaveBeenCalledWith(`${API_BASE}/api/sermons/non-existent-id`, expect.objectContaining({ cache: 'no-store', category: 'metadata' }));
+      expect(mockApiClient).toHaveBeenCalledWith(`${API_BASE}/api/sermons/non-existent-id`, expect.objectContaining({ cache: 'no-store', category: 'detail' }));
     });
 
     it('throws error for other non-ok responses', async () => {
@@ -92,6 +93,16 @@ describe('Sermon Service', () => {
       mockApiClient.mockRejectedValueOnce(new Error('Network error'));
 
       await expect(getSermonById('test-id')).rejects.toThrow('Network error');
+    });
+
+    it('rethrows timeout fetch failures without writing duplicate console errors', async () => {
+      const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+      mockApiClient.mockRejectedValueOnce(new FetchTimeoutError('timeout'));
+
+      await expect(getSermonById('test-id')).rejects.toThrow(FetchTimeoutError);
+
+      expect(consoleSpy).not.toHaveBeenCalled();
+      consoleSpy.mockRestore();
     });
   });
 

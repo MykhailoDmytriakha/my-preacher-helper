@@ -1,7 +1,7 @@
 import { debugLog } from '@/utils/debugMode';
 import { fetchWithTimeout, FetchTimeoutError } from '@/utils/fetchWithTimeout';
 
-export type RequestCategory = 'metadata' | 'crud' | 'ai' | 'audio' | 'health';
+export type RequestCategory = 'metadata' | 'detail' | 'crud' | 'ai' | 'audio' | 'health';
 
 export interface ApiClientOptions extends RequestInit {
   category?: RequestCategory;
@@ -10,6 +10,7 @@ export interface ApiClientOptions extends RequestInit {
 
 const TIMEOUT_BY_CATEGORY: Record<RequestCategory, number> = {
   metadata: 5000,
+  detail: 15000,
   crud: 8000,
   ai: 90000,
   // Audio requests run transcription plus follow-up AI formatting/tagging.

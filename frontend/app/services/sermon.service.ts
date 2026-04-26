@@ -1,7 +1,24 @@
 import { Sermon, Preparation } from '@/models/models';
 import { apiClient } from '@/utils/apiClient';
+import { FetchTimeoutError } from '@/utils/fetchWithTimeout';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
+
+const isExpectedFetchFailure = (error: unknown): boolean => {
+  if (error instanceof FetchTimeoutError) {
+    return true;
+  }
+
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return (
+    error.message === 'Failed to fetch' ||
+    error.name === 'TypeError' ||
+    error.message.includes('NetworkError')
+  );
+};
 
 export const getSermons = async (userId: string): Promise<Sermon[]> => {
   try {
@@ -25,7 +42,7 @@ export const getSermonById = async (id: string): Promise<Sermon | undefined> => 
   try {
     const response = await apiClient(`${API_BASE}/api/sermons/${id}`, {
       cache: "no-store",
-      category: 'metadata'
+      category: 'detail'
     });
     if (!response.ok) {
       if (response.status === 404) {
@@ -38,7 +55,9 @@ export const getSermonById = async (id: string): Promise<Sermon | undefined> => 
     const data = await response.json();
     return data;
   } catch (error) {
-    console.error(`getSermonById: Error fetching sermon ${id}:`, error);
+    if (!isExpectedFetchFailure(error)) {
+      console.error(`getSermonById: Error fetching sermon ${id}:`, error);
+    }
     throw error;
   }
 };

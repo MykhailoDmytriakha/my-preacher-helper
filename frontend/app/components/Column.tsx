@@ -1163,6 +1163,8 @@ export default function Column({
             >
               {localSermonPoints.map((point, index) => {
                 const pointLocked = isPointLocked(point.id);
+                const thoughtCount = thoughtsPerSermonPoint[point.id] ?? 0;
+                const hasThoughtCount = thoughtCount > 0;
                 return (
                 <Draggable key={point.id} draggableId={point.id} index={index}>
                   {(providedDraggable, snapshot) => (
@@ -1172,10 +1174,10 @@ export default function Column({
                       className={`relative group rounded p-2 mb-2 ${snapshot.isDragging ? 'bg-white/30 dark:bg-gray-200/30 shadow-md' : 'hover:bg-white/15 dark:hover:bg-gray-200/15'}`}
                       style={providedDraggable.draggableProps.style}
                     >
-                      <div className="flex items-center">
+                      <div className="relative flex min-h-[28px] items-start">
                         {/* Drag handle */}
                         {!pointLocked && (
-                          <div {...providedDraggable.dragHandleProps} className="cursor-grab mr-2 text-white dark:text-gray-100">
+                          <div {...providedDraggable.dragHandleProps} className="cursor-grab mr-2 mt-0.5 shrink-0 text-white dark:text-gray-100">
                             <Bars3Icon className="h-5 w-5" />
                           </div>
                         )}
@@ -1203,9 +1205,16 @@ export default function Column({
                           </div>
                         ) : (
                           <>
-                            <div className="flex flex-1 min-w-0 items-center gap-2 mr-2">
+                            <div
+                              className={`min-w-0 flex-1 transition-[padding] duration-150 ${
+                                hasThoughtCount
+                                  ? 'pr-8 group-hover:pr-20 group-focus-within:pr-20'
+                                  : 'pr-0 group-hover:pr-12 group-focus-within:pr-12'
+                              }`}
+                            >
                               <span
-                                className="text-sm text-white dark:text-gray-100 flex-1 min-w-0 truncate"
+                                className="block min-w-0 whitespace-normal break-words text-sm leading-snug text-white group-hover:truncate group-focus-within:truncate dark:text-gray-100"
+                                title={point.text}
                                 onDoubleClick={() => {
                                   if (!pointLocked) handleStartEdit(point);
                                 }}
@@ -1213,21 +1222,23 @@ export default function Column({
                                 {point.text}
                               </span>
                             </div>
-                            <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0">
-                              {!pointLocked && (
-                                <>
-                                  <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
-                                    <PencilIcon className="h-4 w-4" />
-                                  </button>
-                                  <button aria-label={t('common.delete')} onClick={() => setDeletePointId(point.id)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
-                                    <TrashIcon className="h-4 w-4" />
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                            {thoughtsPerSermonPoint[point.id] > 0 && (
-                              <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-white px-1.5 text-xs leading-none align-middle tabular-nums text-gray-700 dark:bg-gray-200 dark:text-gray-700 flex-shrink-0">
-                                {thoughtsPerSermonPoint[point.id]}
+                            {!pointLocked && (
+                              <div
+                                className={`pointer-events-none absolute top-0 flex items-center space-x-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 ${
+                                  hasThoughtCount ? 'right-7' : 'right-0'
+                                }`}
+                              >
+                                <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
+                                  <PencilIcon className="h-4 w-4" />
+                                </button>
+                                <button aria-label={t('common.delete')} onClick={() => setDeletePointId(point.id)} className="p-1 text-white/70 dark:text-gray-400 hover:text-white dark:hover:text-gray-200">
+                                  <TrashIcon className="h-4 w-4" />
+                                </button>
+                              </div>
+                            )}
+                            {hasThoughtCount && (
+                              <span className="absolute right-0 top-0.5 inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-white px-1.5 text-xs leading-none align-middle tabular-nums text-gray-700 dark:bg-gray-200 dark:text-gray-700">
+                                {thoughtCount}
                               </span>
                             )}
                           </>

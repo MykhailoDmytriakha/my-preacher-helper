@@ -59,6 +59,36 @@
 - Сохранение заметок в облаке, и стуктурирование проповеди
 - expiration time (5 days) for guest mode to propagate user to use Google profile
 
+### **🧪 Локальная разработка: server logs**
+
+При локальном запуске dev-сервера серверные логи дополнительно сохраняются в файлы:
+
+```bash
+frontend/.local-logs/sessions/
+```
+
+Каждый запуск `npm run dev` создаёт отдельный файл вида:
+
+```bash
+server-<timestamp>-pid-<pid>-port-<port>.log
+```
+
+В начале файла записываются `pid`, порт и рабочая директория запуска. Это удобно, если локальный сервер стартовал несколько раз или на разных портах.
+
+Быстро найти последний лог:
+
+```bash
+ls -t frontend/.local-logs/sessions | head -n 1
+```
+
+Смотреть лог в реальном времени:
+
+```bash
+tail -f frontend/.local-logs/sessions/<log-file-name>.log
+```
+
+Эти файлы предназначены только для локальной разработки и игнорируются git.
+
 ---
 
 ## 🔄 **Разработка MVP (1 неделя)**

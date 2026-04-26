@@ -731,6 +731,41 @@ describe('Column Component', () => {
             }
           },
           {
+            name: 'sidebar title keeps its width until hover actions are revealed',
+            run: () => {
+              const longPointText = 'О практике жизни, доверия и ежедневного следования за Богом';
+              render(
+                <Column
+                  {...focusScaffold}
+                  outlinePoints={[{ id: 'point1', text: longPointText }]}
+                  thoughtsPerSermonPoint={{ point1: 4 }}
+                />
+              );
+              const sidebarPoint = screen
+                .getAllByText(longPointText)
+                .map(el => el.closest('li'))
+                .find(Boolean) as HTMLElement;
+              const label = within(sidebarPoint).getByText(longPointText);
+              const textSlot = label.parentElement as HTMLElement;
+              const actionsRail = screen.getByLabelText('Edit').parentElement as HTMLElement;
+              const badge = within(sidebarPoint).getByText('4');
+
+              expect(label).toHaveClass('break-words');
+              expect(label).toHaveClass('whitespace-normal');
+              expect(label).toHaveClass('group-hover:truncate');
+              expect(label).not.toHaveClass('truncate');
+              expect(textSlot).toHaveClass('pr-8');
+              expect(textSlot).toHaveClass('group-hover:pr-20');
+              expect(actionsRail).toHaveClass('absolute');
+              expect(actionsRail).toHaveClass('opacity-0');
+              expect(actionsRail).toHaveClass('group-hover:opacity-100');
+              expect(actionsRail).toHaveClass('pointer-events-none');
+              expect(actionsRail).toHaveClass('group-hover:pointer-events-auto');
+              expect(badge).toHaveClass('absolute');
+              expect(badge).toHaveClass('right-0');
+            }
+          },
+          {
             name: 'add outline point cta keeps hover tokens',
             run: () => {
               render(<Column {...focusScaffold} />);
@@ -831,7 +866,7 @@ describe('Column Component', () => {
             }
           },
           {
-            name: 'keeps outline badge aligned as a sibling flex item',
+            name: 'keeps outline badge fixed outside the title flow',
             run: () => {
               render(
                 <Column
@@ -847,13 +882,10 @@ describe('Column Component', () => {
                 .map(el => el.closest('li'))
                 .find(Boolean) as HTMLElement;
               expect(pointLabel).toBeInTheDocument();
-              const badge = within(pointLabel).getByText('1');
-              const badgeContainer = badge.parentElement as HTMLElement;
+              const badge = within(pointLabel).getByText('1') as HTMLElement;
               const textNode = within(pointLabel).getByText('Introduction Point 1');
-              expect(badgeContainer).toHaveClass('flex');
-              expect(badgeContainer).toHaveClass('items-center');
-              // Badge and text are in the inner flex container within the li
-              expect(badgeContainer).toContainElement(textNode);
+              expect(badge).toHaveClass('absolute');
+              expect(badge).toHaveClass('tabular-nums');
               expect(textNode).not.toContainElement(badge);
             }
           },
