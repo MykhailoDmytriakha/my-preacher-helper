@@ -69,6 +69,8 @@ class MockMediaRecorder {
 const origMediaDevices = navigator.mediaDevices as any;
 const origMediaRecorder = (global as any).MediaRecorder;
 const origAudioContext = (global as any).AudioContext;
+const origCreateObjectURL = URL.createObjectURL;
+const origRevokeObjectURL = URL.revokeObjectURL;
 
 beforeEach(() => {
   jest.useFakeTimers();
@@ -91,6 +93,14 @@ beforeEach(() => {
 
   (global as any).requestAnimationFrame = jest.fn(() => nextAnimationFrameId++);
   (global as any).cancelAnimationFrame = jest.fn();
+  Object.defineProperty(URL, 'createObjectURL', {
+    configurable: true,
+    value: jest.fn(() => 'blob:recovery-audio'),
+  });
+  Object.defineProperty(URL, 'revokeObjectURL', {
+    configurable: true,
+    value: jest.fn(),
+  });
 });
 
 afterEach(() => {
@@ -98,6 +108,22 @@ afterEach(() => {
   (navigator as any).mediaDevices = origMediaDevices;
   (global as any).MediaRecorder = origMediaRecorder;
   (global as any).AudioContext = origAudioContext;
+  if (origCreateObjectURL) {
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: origCreateObjectURL,
+    });
+  } else {
+    delete (URL as any).createObjectURL;
+  }
+  if (origRevokeObjectURL) {
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: origRevokeObjectURL,
+    });
+  } else {
+    delete (URL as any).revokeObjectURL;
+  }
   jest.clearAllMocks();
 });
 
@@ -283,6 +309,43 @@ describe('AudioRecorder interactions and errors', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'audio.closeError' }));
     expect(onClearError).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a failed recording playable and retries it from the recovery panel', async () => {
+    const onComplete = jest.fn();
+    const onClearError = jest.fn();
+    const { rerender } = render(
+      <AudioRecorder
+        variant="standard"
+        onRecordingComplete={onComplete}
+        onClearError={onClearError}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'audio.newRecording' }));
+    await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'audio.stopRecording' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'audio.stopRecording' }));
+
+    await waitFor(() => expect(onComplete).toHaveBeenCalledTimes(1));
+
+    rerender(
+      <AudioRecorder
+        variant="standard"
+        onRecordingComplete={onComplete}
+        transcriptionError="transcription failed"
+        onClearError={onClearError}
+      />
+    );
+
+    expect(await screen.findByText('audio.savedRecording')).toBeInTheDocument();
+    expect(screen.getByLabelText('audio.playRecording')).toHaveAttribute('src', 'blob:recovery-audio');
+
+    const clearCallsBeforeRetry = onClearError.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'audio.retryTranscription' }));
+
+    expect(onClearError).toHaveBeenCalledTimes(clearCallsBeforeRetry + 1);
+    expect(onComplete).toHaveBeenCalledTimes(2);
   });
 });
 

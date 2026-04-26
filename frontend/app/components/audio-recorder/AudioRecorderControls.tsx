@@ -8,6 +8,7 @@ import {
 
 import type {
   AudioLevelIndicatorProps,
+  AudioRecoveryPanelProps,
   ErrorBannerProps,
   MainRecordButtonProps,
   RecordingActionButtonsProps,
@@ -278,10 +279,83 @@ export const RetryTranscriptionButton = ({
       type="button"
       onClick={onRetry}
       className={`${appliedVariant === "mini" ? "px-4 py-2 text-sm font-medium" : "px-4 py-2"} rounded-lg border border-orange-300 bg-orange-50 text-orange-700 transition-colors hover:bg-orange-100 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 dark:border-orange-600 dark:bg-orange-900/30 dark:text-orange-300 dark:hover:bg-orange-900/50`}
-      aria-label={t("audio.retryTranscription")}
+      aria-label={t(AUDIO_TRANSLATION_KEYS.RETRY_TRANSCRIPTION)}
     >
-      {t("audio.retryTranscription")} ({retryCount + 1}/{maxRetries})
+      {t(AUDIO_TRANSLATION_KEYS.RETRY_TRANSCRIPTION)} ({retryCount + 1}/{maxRetries})
     </button>
+  );
+};
+
+export const AudioRecoveryPanel = ({
+  show,
+  audioUrl,
+  errorMessage,
+  appliedVariant,
+  retryCount,
+  maxRetries,
+  isProcessing,
+  onRetry,
+  onRecordAgain,
+  onDiscard,
+  t,
+  className = "",
+}: AudioRecoveryPanelProps) => {
+  if (!show || !audioUrl || !errorMessage) return null;
+
+  const canRetry = retryCount < maxRetries && !isProcessing;
+  const buttonBase =
+    "rounded-md px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
+  const retryLabel = `${t(AUDIO_TRANSLATION_KEYS.RETRY_TRANSCRIPTION)} (${retryCount + 1}/${maxRetries})`;
+
+  return (
+    <div className={`${appliedVariant === "mini" ? "p-3" : "p-4"} rounded-lg border border-amber-200 bg-amber-50 shadow-sm dark:border-amber-700 dark:bg-amber-900/30 ${className}`}>
+      <div className="flex min-w-0 items-start gap-2 text-amber-800 dark:text-amber-200">
+        <svg className="mt-0.5 h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.72-1.36 3.485 0l6.518 11.59c.75 1.334-.213 2.986-1.742 2.986H3.48c-1.53 0-2.492-1.652-1.742-2.986l6.518-11.59zM11 14a1 1 0 10-2 0 1 1 0 002 0zm-1-2a1 1 0 01-1-1V7a1 1 0 112 0v4a1 1 0 01-1 1z" clipRule="evenodd" />
+        </svg>
+        <div className="min-w-0 flex-1">
+          <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span className="text-sm font-semibold">{t("audio.savedRecording")}</span>
+            <span className="text-sm font-medium text-amber-700 dark:text-amber-200">{errorMessage}</span>
+          </div>
+          <audio
+            controls
+            src={audioUrl}
+            preload="metadata"
+            className="h-9 w-full min-w-0"
+            aria-label={t("audio.playRecording")}
+          />
+        </div>
+      </div>
+
+      <div className={appliedVariant === "mini" ? "mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3" : "mt-3 flex flex-wrap gap-2"}>
+        <button
+          type="button"
+          onClick={onRetry}
+          disabled={!canRetry}
+          className={`${buttonBase} border border-amber-300 bg-white text-amber-800 hover:bg-amber-100 focus:ring-amber-500 dark:border-amber-600 dark:bg-gray-900/40 dark:text-amber-200 dark:hover:bg-amber-900/50`}
+          aria-label={t(AUDIO_TRANSLATION_KEYS.RETRY_TRANSCRIPTION)}
+        >
+          {retryLabel}
+        </button>
+        <button
+          type="button"
+          onClick={onRecordAgain}
+          disabled={isProcessing}
+          className={`${buttonBase} border border-green-300 bg-green-50 text-green-800 hover:bg-green-100 focus:ring-green-500 dark:border-green-700 dark:bg-green-900/30 dark:text-green-200 dark:hover:bg-green-900/50`}
+        >
+          {t("audio.recordAgain")}
+        </button>
+        <button
+          type="button"
+          onClick={onDiscard}
+          disabled={isProcessing}
+          className={`${buttonBase} border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:ring-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700`}
+        >
+          {t("audio.discardRecording")}
+        </button>
+      </div>
+    </div>
   );
 };
 

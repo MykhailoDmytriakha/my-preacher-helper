@@ -17,6 +17,8 @@ jest.mock('react-i18next', () => ({
 const mockGetUserMedia = jest.fn();
 const mockStop = jest.fn();
 const mockMediaRecorderStart = jest.fn();
+const originalCreateObjectURL = URL.createObjectURL;
+const originalRevokeObjectURL = URL.revokeObjectURL;
 
 // Mock MediaRecorder
 class MockMediaRecorder {
@@ -119,12 +121,36 @@ describe('FocusRecorderButton', () => {
 
     // Mock cancelAnimationFrame
     global.cancelAnimationFrame = jest.fn();
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: jest.fn(() => 'blob:focus-recording'),
+    });
+    Object.defineProperty(URL, 'revokeObjectURL', {
+      configurable: true,
+      value: jest.fn(),
+    });
     delete process.env.NEXT_PUBLIC_AUDIO_GRACE_PERIOD;
   });
 
   afterEach(() => {
     jest.clearAllTimers();
     jest.useRealTimers();
+    if (originalCreateObjectURL) {
+      Object.defineProperty(URL, 'createObjectURL', {
+        configurable: true,
+        value: originalCreateObjectURL,
+      });
+    } else {
+      delete (URL as any).createObjectURL;
+    }
+    if (originalRevokeObjectURL) {
+      Object.defineProperty(URL, 'revokeObjectURL', {
+        configurable: true,
+        value: originalRevokeObjectURL,
+      });
+    } else {
+      delete (URL as any).revokeObjectURL;
+    }
   });
 
   describe('Rendering', () => {
@@ -355,6 +381,47 @@ describe('FocusRecorderButton', () => {
       await waitFor(() => {
         expect(onRecordingComplete).toHaveBeenCalledWith(expect.any(Blob));
       });
+    });
+
+    it('keeps a failed outline recording playable and retries the saved blob', async () => {
+      const onRecordingComplete = jest.fn();
+      const onClearError = jest.fn();
+      const { rerender } = render(
+        <FocusRecorderButton
+          onRecordingComplete={onRecordingComplete}
+          onClearError={onClearError}
+        />
+      );
+
+      const button = screen.getByRole('button', { name: 'audio.newRecording' });
+      fireEvent.click(button);
+
+      await waitFor(() => {
+        expect(button).toHaveClass('bg-red-500');
+      });
+
+      fireEvent.click(button);
+
+      await waitFor(() => {
+        expect(onRecordingComplete).toHaveBeenCalledTimes(1);
+      });
+
+      rerender(
+        <FocusRecorderButton
+          onRecordingComplete={onRecordingComplete}
+          transcriptionError="transcription failed"
+          onClearError={onClearError}
+        />
+      );
+
+      expect(await screen.findByText('audio.savedRecording')).toBeInTheDocument();
+      expect(screen.getByLabelText('audio.playRecording')).toHaveAttribute('src', 'blob:focus-recording');
+
+      fireEvent.click(screen.getByRole('button', { name: 'audio.retryTranscription' }));
+
+      expect(onClearError).toHaveBeenCalled();
+      expect(onRecordingComplete).toHaveBeenCalledTimes(2);
+      expect(onRecordingComplete).toHaveBeenLastCalledWith(expect.any(Blob));
     });
 
     it('should automatically stop recording after maxDuration plus grace period', async () => {

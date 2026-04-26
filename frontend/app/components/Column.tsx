@@ -4,7 +4,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
 import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "@locales/i18n";
 
@@ -361,7 +361,9 @@ const SermonPointPlaceholder: React.FC<{
   isFocusMode?: boolean;
   onAddThought?: (sectionId: string, outlinePointId?: string) => void;
   sectionTitle?: string;
+  audioError?: string | null;
   setAudioError: (error: string | null) => void;
+  onClearAudioError: () => void;
   onRetryPendingThought?: (itemId: string) => void;
   onAiSortPoint?: (outlinePointId: string) => void;
   isOnline: boolean;
@@ -400,7 +402,9 @@ const SermonPointPlaceholder: React.FC<{
   isFocusMode,
   onAddThought,
   sectionTitle,
+  audioError,
   setAudioError,
+  onClearAudioError,
   onRetryPendingThought,
   onAiSortPoint,
   isOnline,
@@ -657,6 +661,8 @@ const SermonPointPlaceholder: React.FC<{
                     <FocusRecorderButton
                       size="small"
                       disabled={isPointLocked}
+                      transcriptionError={audioError ?? null}
+                      onClearError={onClearAudioError}
                       onRecordingComplete={(audioBlob) => {
                         if (!sermonId) return;
                         void recordAudioThought({
@@ -929,13 +935,34 @@ export default function Column({
   // --- State for Audio Recording ---
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
   const [showAudioPopover, setShowAudioPopover] = useState<boolean>(false);
-  const [, setAudioError] = useState<string | null>(null);
+  const [sectionAudioError, setSectionAudioError] = useState<string | null>(null);
+  const [normalAudioError, setNormalAudioError] = useState<string | null>(null);
+  const [pointAudioErrors, setPointAudioErrors] = useState<Record<string, string>>({});
   const normalModePopoverRef = useRef<HTMLDivElement | null>(null);
+  const normalAudioErrorRef = useRef<string | null>(null);
+
+  const setNormalAudioErrorSafely = useCallback((error: string | null) => {
+    normalAudioErrorRef.current = error;
+    setNormalAudioError(error);
+  }, []);
+
+  const setPointAudioError = useCallback((pointId: string, error: string | null) => {
+    setPointAudioErrors((previous) => {
+      if (!error) {
+        const next = { ...previous };
+        delete next[pointId];
+        return next;
+      }
+
+      return { ...previous, [pointId]: error };
+    });
+  }, []);
 
   // Close normal-mode recorder popover on outside click
   useEffect(() => {
     if (!showAudioPopover) return;
     const handleOutside = (e: MouseEvent | TouchEvent) => {
+      if (normalAudioErrorRef.current) return;
       if (!normalModePopoverRef.current) return;
       const target = e.target as Node | null;
       if (target && !normalModePopoverRef.current.contains(target)) {
@@ -1054,6 +1081,8 @@ export default function Column({
             variant="mini"
             hideKeyboardShortcuts={true}
             disabled={allPointsBlocked}
+            transcriptionError={sectionAudioError}
+            onClearError={() => setSectionAudioError(null)}
             onRecordingComplete={(audioBlob) => {
               const sectionLabel = isPointAudioSection(id) ? getSectionLabel(t, id) : undefined;
               void recordAudioThought({
@@ -1061,7 +1090,7 @@ export default function Column({
                 sectionId: id,
                 sermonId,
                 setIsRecordingAudio,
-                setAudioError,
+                setAudioError: setSectionAudioError,
                 onAudioThoughtCreated,
                 t,
                 successMessage: sectionLabel
@@ -1072,7 +1101,7 @@ export default function Column({
             }}
             isProcessing={isRecordingAudio}
             onError={(error) => {
-              setAudioError(error);
+              setSectionAudioError(error);
               setIsRecordingAudio(false);
             }}
           />
@@ -1347,7 +1376,9 @@ export default function Column({
                     isFocusMode={isFocusMode}
                     onAddThought={onAddThought}
                     sectionTitle={title}
-                    setAudioError={setAudioError}
+                    audioError={pointAudioErrors[point.id] ?? null}
+                    setAudioError={(error) => setPointAudioError(point.id, error)}
+                    onClearAudioError={() => setPointAudioError(point.id, null)}
                     onRetryPendingThought={onRetryPendingThought}
                     onAiSortPoint={onAiSortPoint}
                     isOnline={isOnline}
@@ -1462,13 +1493,15 @@ export default function Column({
 	                      variant="mini"
 	                      hideKeyboardShortcuts={true}
 	                      autoStart={true}
+                        transcriptionError={normalAudioError}
+                        onClearError={() => setNormalAudioErrorSafely(null)}
 	                      onRecordingComplete={(audioBlob) => {
 	                        void recordAudioThought({
 	                          audioBlob,
 	                          sectionId: id,
 	                          sermonId,
 	                          setIsRecordingAudio,
-	                          setAudioError,
+	                          setAudioError: setNormalAudioErrorSafely,
 	                          onAudioThoughtCreated,
 	                          t,
 	                          onSuccess: () => setShowAudioPopover(false),
@@ -1477,7 +1510,7 @@ export default function Column({
 	                      }}
 	                      isProcessing={isRecordingAudio}
                       onError={(error) => {
-                        setAudioError(error);
+                        setNormalAudioErrorSafely(error);
                         setIsRecordingAudio(false);
                       }}
                     />
@@ -1738,7 +1771,9 @@ export default function Column({
                                 isFocusMode={false}
                                 onAddThought={onAddThought}
                                 sectionTitle={title}
-                                setAudioError={setAudioError}
+                                audioError={pointAudioErrors[point.id] ?? null}
+                                setAudioError={(error) => setPointAudioError(point.id, error)}
+                                onClearAudioError={() => setPointAudioError(point.id, null)}
                                 onRetryPendingThought={onRetryPendingThought}
                                 onAiSortPoint={onAiSortPoint}
                                 isOnline={isOnline}

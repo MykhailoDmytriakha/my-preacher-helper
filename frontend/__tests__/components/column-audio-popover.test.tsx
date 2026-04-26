@@ -21,9 +21,16 @@ jest.mock('@hello-pangea/dnd', () => ({
 // Mock the AudioRecorder to a lightweight component we can assert on
 jest.mock('@/components/AudioRecorder', () => ({
   AudioRecorder: (props: any) => (
-    <div data-testid="audio-recorder-stub" data-autostart={String(!!props.autoStart)}>
+    <div
+      data-testid="audio-recorder-stub"
+      data-autostart={String(!!props.autoStart)}
+      data-transcription-error={props.transcriptionError ?? ''}
+    >
       <button type="button" onClick={() => props.onRecordingComplete?.(new Blob(['audio'], { type: 'audio/webm' }))}>
         Complete audio
+      </button>
+      <button type="button" onClick={() => props.onClearError?.()}>
+        Clear audio error
       </button>
     </div>
   )
@@ -126,5 +133,32 @@ describe('Column mic popover and focus button', () => {
       expect.objectContaining({ id: 'thought-1' }),
       'main'
     );
+  });
+
+  it('keeps the normal-mode audio popover open after a failed transcription so the saved recording can be retried', async () => {
+    mockCreateAudioThoughtWithForceTag.mockRejectedValueOnce(new Error('Transcription failed'));
+
+    render(
+      <Column
+        id="main"
+        sermonId="sermon-1"
+        showFocusButton={true}
+        onAudioThoughtCreated={jest.fn()}
+        {...baseProps}
+      />
+    );
+
+    fireEvent.click(screen.getByTitle('structure.recordAudio'));
+    fireEvent.click(screen.getByRole('button', { name: 'Complete audio' }));
+
+    const recorder = await screen.findByTestId('audio-recorder-stub');
+    expect(recorder).toHaveAttribute('data-transcription-error', 'Transcription failed');
+
+    fireEvent.mouseDown(document.body);
+    expect(screen.getByTestId('audio-recorder-stub')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear audio error' }));
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByTestId('audio-recorder-stub')).not.toBeInTheDocument();
   });
 });

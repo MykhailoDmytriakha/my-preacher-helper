@@ -3,6 +3,7 @@ import "@testing-library/jest-dom";
 
 import {
   AudioLevelIndicator,
+  AudioRecoveryPanel,
   ErrorBanner,
   MainRecordButton,
   RecordingActionButtons,
@@ -239,6 +240,99 @@ describe("AudioRecorderControls", () => {
     fireEvent.click(screen.getByRole("button", { name: "audio.retryTranscription" }));
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(screen.getByText("audio.retryTranscription (2/3)")).toBeInTheDocument();
+  });
+
+  it("renders the saved-audio recovery panel and wires recovery actions", () => {
+    const onRetry = jest.fn();
+    const onRecordAgain = jest.fn();
+    const onDiscard = jest.fn();
+    const { rerender, container } = render(
+      <AudioRecoveryPanel
+        show={false}
+        audioUrl="blob:recording"
+        errorMessage="transcription failed"
+        appliedVariant="mini"
+        retryCount={0}
+        maxRetries={3}
+        isProcessing={false}
+        onRetry={onRetry}
+        onRecordAgain={onRecordAgain}
+        onDiscard={onDiscard}
+        t={t}
+      />
+    );
+
+    expect(container).toBeEmptyDOMElement();
+
+    rerender(
+      <AudioRecoveryPanel
+        show={true}
+        audioUrl="blob:recording"
+        errorMessage="transcription failed"
+        appliedVariant="standard"
+        retryCount={1}
+        maxRetries={3}
+        isProcessing={false}
+        onRetry={onRetry}
+        onRecordAgain={onRecordAgain}
+        onDiscard={onDiscard}
+        t={t}
+      />
+    );
+
+    expect(screen.getByText("audio.savedRecording")).toBeInTheDocument();
+    expect(screen.getByText("transcription failed")).toBeInTheDocument();
+    expect(screen.getByLabelText("audio.playRecording")).toHaveAttribute("src", "blob:recording");
+
+    fireEvent.click(screen.getByRole("button", { name: "audio.retryTranscription" }));
+    fireEvent.click(screen.getByRole("button", { name: "audio.recordAgain" }));
+    fireEvent.click(screen.getByRole("button", { name: "audio.discardRecording" }));
+
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onRecordAgain).toHaveBeenCalledTimes(1);
+    expect(onDiscard).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("audio.retryTranscription (2/3)")).toBeInTheDocument();
+  });
+
+  it("disables recovery retry actions while processing or after max attempts", () => {
+    const onRetry = jest.fn();
+    const { rerender } = render(
+      <AudioRecoveryPanel
+        show={true}
+        audioUrl="blob:recording"
+        errorMessage="boom"
+        appliedVariant="mini"
+        retryCount={3}
+        maxRetries={3}
+        isProcessing={false}
+        onRetry={onRetry}
+        onRecordAgain={jest.fn()}
+        onDiscard={jest.fn()}
+        t={t}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "audio.retryTranscription" })).toBeDisabled();
+
+    rerender(
+      <AudioRecoveryPanel
+        show={true}
+        audioUrl="blob:recording"
+        errorMessage="boom"
+        appliedVariant="mini"
+        retryCount={0}
+        maxRetries={3}
+        isProcessing={true}
+        onRetry={onRetry}
+        onRecordAgain={jest.fn()}
+        onDiscard={jest.fn()}
+        t={t}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "audio.retryTranscription" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "audio.recordAgain" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "audio.discardRecording" })).toBeDisabled();
   });
 
   it("covers recording progress for mini and standard variants", () => {

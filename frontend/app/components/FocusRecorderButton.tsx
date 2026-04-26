@@ -8,6 +8,9 @@ import { MicrophoneIcon } from "@/components/Icons";
 import { getBestSupportedFormat, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 import { getAudioGracePeriod, getAudioRecordingDuration } from "@/utils/audioRecorderConfig";
 
+import { AudioRecoveryPanel } from "./audio-recorder/AudioRecorderControls";
+import { AUDIO_RECORDER_CLEAR_EVENT } from "./audio-recorder/constants";
+
 // Error translation key constant to avoid duplicate strings
 const ERROR_AUDIO_PROCESSING = 'errors.audioProcessing';
 const AUDIO_NEW_RECORDING = 'audio.newRecording';
@@ -19,6 +22,11 @@ interface FocusRecorderButtonProps {
   onError?: (error: string) => void;
   disabled?: boolean;
   size?: 'normal' | 'small'; // Size variant for different contexts
+  onRetry?: () => void;
+  retryCount?: number;
+  maxRetries?: number;
+  transcriptionError?: string | null;
+  onClearError?: () => void;
 }
 
 type ButtonState = 'processing' | 'initializing' | 'paused' | 'recording' | 'idle';
@@ -300,11 +308,18 @@ export const FocusRecorderButton = ({
   onError,
   disabled = false,
   size = 'normal',
+  onRetry,
+  retryCount = 0,
+  maxRetries = 3,
+  transcriptionError,
+  onClearError,
 }: FocusRecorderButtonProps) => {
   const [recordingTime, setRecordingTime] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
+  const [storedAudioBlob, setStoredAudioBlob] = useState<Blob | null>(null);
+  const [storedAudioUrl, setStoredAudioUrl] = useState<string | null>(null);
 
   // Grace period state
   const gracePeriodDuration = getAudioGracePeriod();
@@ -319,6 +334,11 @@ export const FocusRecorderButton = ({
   const chunks = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const { t } = useTranslation();
+
+  const clearStoredAudio = useCallback(() => {
+    setStoredAudioBlob(null);
+    onClearError?.();
+  }, [onClearError]);
 
   // Cleanup function to properly dispose of resources
   const cleanup = useCallback(() => {
@@ -342,6 +362,40 @@ export const FocusRecorderButton = ({
     mediaRecorder.current = null;
     chunks.current = [];
   }, []);
+
+  useEffect(() => {
+    if (!storedAudioBlob || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
+      setStoredAudioUrl(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(storedAudioBlob);
+    setStoredAudioUrl(objectUrl);
+
+    return () => {
+      if (typeof URL.revokeObjectURL === "function") {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [storedAudioBlob]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const handleClear = () => {
+      clearStoredAudio();
+    };
+    const dispatchClearEvent = () => {
+      window.dispatchEvent(new Event(AUDIO_RECORDER_CLEAR_EVENT));
+    };
+
+    window.addEventListener(AUDIO_RECORDER_CLEAR_EVENT, handleClear);
+    (window as unknown as Record<string, unknown>).clearAudioRecorderStorage = dispatchClearEvent;
+
+    return () => {
+      window.removeEventListener(AUDIO_RECORDER_CLEAR_EVENT, handleClear);
+    };
+  }, [clearStoredAudio]);
 
   // Error handler
   const handleError = useCallback((error: Error, messageKey: string) => {
@@ -368,6 +422,8 @@ export const FocusRecorderButton = ({
     }
 
     console.log('FocusRecorderButton: Starting recording...');
+    setStoredAudioBlob(null);
+    onClearError?.();
     setIsInitializing(true);
 
     try {
@@ -419,6 +475,7 @@ export const FocusRecorderButton = ({
           // Log audio information for debugging
           logAudioInfo(blob, 'FocusRecorderButton Output');
 
+          setStoredAudioBlob(blob);
           onRecordingComplete(blob);
         }
         cleanup();
@@ -435,7 +492,7 @@ export const FocusRecorderButton = ({
     } catch (error) {
       handleError(error as Error, 'errors.microphoneUnavailable');
     }
-  }, [disabled, isProcessing, isInitializing, isRecording, onRecordingComplete, handleError, cleanup]);
+  }, [disabled, isProcessing, isInitializing, isRecording, onClearError, onRecordingComplete, handleError, cleanup]);
 
   // Stop recording function
   const stopRecording = useCallback(() => {
@@ -474,6 +531,8 @@ export const FocusRecorderButton = ({
       setIsRecording(false);
       setIsPaused(false);
       setRecordingTime(0);
+      setStoredAudioBlob(null);
+      onClearError?.();
       cleanup();
       console.log('FocusRecorderButton: Recording canceled successfully');
     } catch (error) {
@@ -482,8 +541,10 @@ export const FocusRecorderButton = ({
       setIsRecording(false);
       setIsPaused(false);
       setRecordingTime(0);
+      setStoredAudioBlob(null);
+      onClearError?.();
     }
-  }, [isRecording, cleanup]);
+  }, [isRecording, cleanup, onClearError]);
 
   // Pause recording function
   const pauseRecording = useCallback(() => {
@@ -526,6 +587,30 @@ export const FocusRecorderButton = ({
       handleError(error as Error, ERROR_AUDIO_PROCESSING);
     }
   }, [isRecording, isPaused, handleError]);
+
+  const retrySavedRecording = useCallback(() => {
+    if (!storedAudioBlob || isProcessing) {
+      return;
+    }
+
+    onClearError?.();
+
+    if (onRetry) {
+      onRetry();
+      return;
+    }
+
+    onRecordingComplete(storedAudioBlob);
+  }, [isProcessing, onClearError, onRecordingComplete, onRetry, storedAudioBlob]);
+
+  const recordAgain = useCallback(() => {
+    if (disabled || isProcessing || isInitializing || isRecording) {
+      return;
+    }
+
+    clearStoredAudio();
+    void startRecording();
+  }, [clearStoredAudio, disabled, isInitializing, isProcessing, isRecording, startRecording]);
 
   // Timer effect - pause timer when recording is paused, includes grace period logic
   useEffect(() => {
@@ -599,6 +684,10 @@ export const FocusRecorderButton = ({
 
   const sizeConfig = SIZE_CONFIG[size];
   const mainButtonLabel = t(MAIN_BUTTON_LABEL_KEYS[buttonState]);
+  const shouldShowRecovery = Boolean(transcriptionError && storedAudioUrl && storedAudioBlob);
+  const recoveryPanelClassName = size === 'small'
+    ? 'absolute right-0 top-full z-50 mt-2 w-[320px] max-w-[calc(100vw-2rem)]'
+    : 'absolute left-1/2 top-full z-50 mt-3 w-[340px] max-w-[calc(100vw-2rem)] -translate-x-1/2';
 
   const handleMainButtonClick = useCallback(() => {
     console.log('FocusRecorderButton: Main button clicked', { isRecording, isPaused, isProcessing, isInitializing });
@@ -661,6 +750,21 @@ export const FocusRecorderButton = ({
         onCancel={cancelRecording}
         sizeConfig={sizeConfig}
         t={t}
+      />
+
+      <AudioRecoveryPanel
+        show={shouldShowRecovery}
+        audioUrl={storedAudioUrl}
+        errorMessage={transcriptionError ?? null}
+        appliedVariant="mini"
+        retryCount={retryCount}
+        maxRetries={maxRetries}
+        isProcessing={isProcessing || disabled}
+        onRetry={retrySavedRecording}
+        onRecordAgain={recordAgain}
+        onDiscard={clearStoredAudio}
+        t={t}
+        className={recoveryPanelClassName}
       />
     </div>
   );

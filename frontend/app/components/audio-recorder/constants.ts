@@ -4,7 +4,10 @@ export const AUDIO_TRANSLATION_KEYS = {
   STOP_RECORDING: "audio.stopRecording",
   CANCEL_RECORDING: "audio.cancelRecording",
   NEW_RECORDING: "audio.newRecording",
+  RETRY_TRANSCRIPTION: "audio.retryTranscription",
 } as const;
+
+export const AUDIO_RECORDER_CLEAR_EVENT = "audio-recorder-storage-clear";
 
 export const ERROR_KEYS = {
   AUDIO_PROCESSING: "errors.audioProcessing",

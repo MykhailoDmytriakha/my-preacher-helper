@@ -9,7 +9,7 @@ import {
 } from "@/utils/audioFormatUtils";
 import { getAudioGracePeriod } from "@/utils/audioRecorderConfig";
 
-import { ERROR_KEYS } from "./constants";
+import { AUDIO_RECORDER_CLEAR_EVENT, ERROR_KEYS } from "./constants";
 
 import type {
   RecordingState,
@@ -38,6 +38,7 @@ export function useAudioRecorderLifecycle({
   const [audioLevel, setAudioLevel] = useState(0);
   const [isInitializing, setIsInitializing] = useState(false);
   const [storedAudioBlob, setStoredAudioBlob] = useState<Blob | null>(null);
+  const [storedAudioUrl, setStoredAudioUrl] = useState<string | null>(null);
   const [transcriptionErrorState, setTranscriptionErrorState] = useState<string | null>(null);
   const gracePeriodDuration = getAudioGracePeriod();
   const [isInGracePeriod, setIsInGracePeriod] = useState(false);
@@ -142,10 +143,12 @@ export function useAudioRecorderLifecycle({
   const initializeRecordingState = useCallback(() => {
     chunks.current = [];
     console.log("AudioRecorder: Cleared chunks array before starting");
+    setStoredAudioBlob(null);
     setIsInitializing(true);
     setAudioLevel(0);
     setTranscriptionErrorState(null);
-  }, []);
+    onClearError?.();
+  }, [onClearError]);
 
   const acquireMediaStream = useCallback(async (): Promise<MediaStream> => {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -317,6 +320,7 @@ export function useAudioRecorderLifecycle({
       setRecordingTime(0);
       setStoredAudioBlob(null);
       setTranscriptionErrorState(null);
+      onClearError?.();
 
       cleanup();
       console.log("AudioRecorder: Recording canceled successfully");
@@ -331,8 +335,9 @@ export function useAudioRecorderLifecycle({
       setRecordingTime(0);
       setStoredAudioBlob(null);
       setTranscriptionErrorState(null);
+      onClearError?.();
     }
-  }, [cleanup, isRecording]);
+  }, [cleanup, isRecording, onClearError]);
 
   const pauseRecording = useCallback(() => {
     console.log("AudioRecorder: pauseRecording called", {
@@ -392,33 +397,78 @@ export function useAudioRecorderLifecycle({
   }, [handleError, isPaused, isRecording, monitorAudioLevel]);
 
   const retryTranscription = useCallback(() => {
-    if (storedAudioBlob && onRetry) {
-      setTranscriptionErrorState(null);
-      onRetry();
+    if (!storedAudioBlob) {
+      return;
     }
-  }, [onRetry, storedAudioBlob]);
 
-  const closeError = useCallback(() => {
     setTranscriptionErrorState(null);
+    onClearError?.();
+
+    if (onRetry) {
+      onRetry();
+      return;
+    }
+
+    onRecordingComplete(storedAudioBlob);
+  }, [onClearError, onRecordingComplete, onRetry, storedAudioBlob]);
+
+  const discardStoredAudio = useCallback(() => {
     setStoredAudioBlob(null);
+    setTranscriptionErrorState(null);
     onClearError?.();
   }, [onClearError]);
+
+  const recordAgain = useCallback(() => {
+    discardStoredAudio();
+    void startRecording();
+  }, [discardStoredAudio, startRecording]);
+
+  const closeError = useCallback(() => {
+    discardStoredAudio();
+  }, [discardStoredAudio]);
 
   const clearStoredAudio = useCallback(() => {
     setStoredAudioBlob(null);
     setTranscriptionErrorState(null);
-  }, []);
+    onClearError?.();
+  }, [onClearError]);
+
+  useEffect(() => {
+    if (!storedAudioBlob || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
+      setStoredAudioUrl(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(storedAudioBlob);
+    setStoredAudioUrl(objectUrl);
+
+    return () => {
+      if (typeof URL.revokeObjectURL === "function") {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [storedAudioBlob]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      (window as unknown as Record<string, unknown>).clearAudioRecorderStorage = clearStoredAudio;
+      const clearAllRecorders = () => {
+        clearStoredAudio();
+      };
+      const dispatchClearEvent = () => {
+        window.dispatchEvent(new Event(AUDIO_RECORDER_CLEAR_EVENT));
+      };
+
+      window.addEventListener(AUDIO_RECORDER_CLEAR_EVENT, clearAllRecorders);
+      (window as unknown as Record<string, unknown>).clearAudioRecorderStorage = dispatchClearEvent;
+
+      return () => {
+        window.removeEventListener(AUDIO_RECORDER_CLEAR_EVENT, clearAllRecorders);
+      };
     }
   }, [clearStoredAudio]);
 
   useEffect(() => {
-    if (transcriptionError) {
-      setTranscriptionErrorState(transcriptionError);
-    }
+    setTranscriptionErrorState(transcriptionError ?? null);
   }, [transcriptionError]);
 
   useEffect(() => {
@@ -543,12 +593,15 @@ export function useAudioRecorderLifecycle({
     recordingState,
     transcriptionErrorMessage: transcriptionErrorState || transcriptionError || null,
     hasStoredAudio: Boolean(storedAudioBlob),
+    storedAudioUrl,
     startRecording,
     stopRecording,
     cancelRecording,
     pauseRecording,
     resumeRecording,
     retryTranscription,
+    recordAgain,
+    discardStoredAudio,
     closeError,
   };
 }

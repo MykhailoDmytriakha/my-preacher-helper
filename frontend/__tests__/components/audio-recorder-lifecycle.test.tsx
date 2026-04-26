@@ -39,6 +39,8 @@ const originalBlob = global.Blob;
 const originalRequestAnimationFrame = global.requestAnimationFrame;
 const originalCancelAnimationFrame = global.cancelAnimationFrame;
 const originalMatchMedia = window.matchMedia;
+const originalCreateObjectURL = URL.createObjectURL;
+const originalRevokeObjectURL = URL.revokeObjectURL;
 
 let recorder: RecorderMock;
 let recordedDataHandler: ((event: BlobEvent) => void) | null;
@@ -136,6 +138,14 @@ beforeEach(() => {
   global.alert = jest.fn();
   global.requestAnimationFrame = jest.fn(() => 101);
   global.cancelAnimationFrame = jest.fn();
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: jest.fn(() => "blob:stored-audio"),
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: jest.fn(),
+  });
   window.matchMedia = originalMatchMedia;
 });
 
@@ -152,6 +162,22 @@ afterEach(() => {
   global.Blob = originalBlob;
   global.requestAnimationFrame = originalRequestAnimationFrame;
   global.cancelAnimationFrame = originalCancelAnimationFrame;
+  if (originalCreateObjectURL) {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: originalCreateObjectURL,
+    });
+  } else {
+    delete (URL as unknown as { createObjectURL?: unknown }).createObjectURL;
+  }
+  if (originalRevokeObjectURL) {
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: originalRevokeObjectURL,
+    });
+  } else {
+    delete (URL as unknown as { revokeObjectURL?: unknown }).revokeObjectURL;
+  }
   window.matchMedia = originalMatchMedia;
 
   jest.clearAllMocks();
@@ -186,6 +212,9 @@ describe("useAudioRecorderLifecycle", () => {
     });
     expect(mockedAudioFormatUtils.logAudioInfo).toHaveBeenCalledTimes(1);
     expect(result.current.hasStoredAudio).toBe(true);
+    await waitFor(() => {
+      expect(result.current.storedAudioUrl).toBe("blob:stored-audio");
+    });
 
     rerender(createArgs({ ...args, transcriptionError: "boom" }));
     expect(result.current.transcriptionErrorMessage).toBe("boom");
@@ -196,11 +225,16 @@ describe("useAudioRecorderLifecycle", () => {
     expect(args.onRetry).toHaveBeenCalledTimes(1);
 
     rerender(createArgs({ ...args, transcriptionError: null }));
+    const onClearError = args.onClearError as jest.Mock;
+    const clearCallsBeforeClose = onClearError.mock.calls.length;
     act(() => {
       result.current.closeError();
     });
-    expect(args.onClearError).toHaveBeenCalledTimes(1);
+    expect(onClearError).toHaveBeenCalledTimes(clearCallsBeforeClose + 1);
     expect(result.current.hasStoredAudio).toBe(false);
+    await waitFor(() => {
+      expect(result.current.storedAudioUrl).toBeNull();
+    });
 
     await startRecording(result);
     emitRecordedBlob();
@@ -216,6 +250,37 @@ describe("useAudioRecorderLifecycle", () => {
     });
     expect(result.current.hasStoredAudio).toBe(false);
     expect(result.current.transcriptionErrorMessage).toBeNull();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:stored-audio");
+  });
+
+  it("retries a saved recording through the completion callback when no parent retry is supplied", async () => {
+    const args = createArgs({ onRetry: undefined });
+    const { result, rerender } = renderHook((props) => useAudioRecorderLifecycle(props), {
+      initialProps: args,
+    });
+
+    await startRecording(result);
+    emitRecordedBlob();
+
+    act(() => {
+      result.current.stopRecording();
+    });
+
+    await waitFor(() => {
+      expect(args.onRecordingComplete).toHaveBeenCalledTimes(1);
+    });
+
+    rerender(createArgs({ ...args, onRetry: undefined, transcriptionError: "transcription failed" }));
+
+    const onClearError = args.onClearError as jest.Mock;
+    const clearCallsBeforeRetry = onClearError.mock.calls.length;
+    act(() => {
+      result.current.retryTranscription();
+    });
+
+    expect(onClearError).toHaveBeenCalledTimes(clearCallsBeforeRetry + 1);
+    expect(args.onRecordingComplete).toHaveBeenCalledTimes(2);
+    expect(args.onRecordingComplete).toHaveBeenLastCalledWith(expect.any(Blob));
   });
 
   it("guards start and falls back to alert when microphone access fails", async () => {

@@ -8,11 +8,11 @@ import { getAudioRecordingDuration } from "@/utils/audioRecorderConfig";
 
 import {
   AudioLevelIndicator,
+  AudioRecoveryPanel,
   ErrorBanner,
   MainRecordButton,
   RecordingActionButtons,
   RecordingProgress,
-  RetryTranscriptionButton,
   SplitRecordButton,
 } from "./audio-recorder/AudioRecorderControls";
 import { useAudioRecorderLifecycle } from "./audio-recorder/useAudioRecorderLifecycle";
@@ -54,12 +54,15 @@ export const AudioRecorder = ({
     recordingState,
     transcriptionErrorMessage,
     hasStoredAudio,
+    storedAudioUrl,
     startRecording,
     stopRecording,
     cancelRecording,
     pauseRecording,
     resumeRecording,
     retryTranscription,
+    recordAgain,
+    discardStoredAudio,
     closeError,
   } = useAudioRecorderLifecycle({
     onRecordingComplete,
@@ -89,7 +92,7 @@ export const AudioRecorder = ({
   );
 
   const isButtonDisabled = disabled || isProcessing || isInitializing;
-  const shouldShowRetry = Boolean(transcriptionErrorMessage && hasStoredAudio && retryCount < maxRetries);
+  const shouldShowRecovery = Boolean(transcriptionErrorMessage && hasStoredAudio && storedAudioUrl);
   const isIdle = recordingState === "idle";
 
   return (
@@ -132,15 +135,6 @@ export const AudioRecorder = ({
             t={t}
           />
 
-          <RetryTranscriptionButton
-            show={shouldShowRetry}
-            onRetry={retryTranscription}
-            appliedVariant={appliedVariant}
-            retryCount={retryCount}
-            maxRetries={maxRetries}
-            t={t}
-          />
-
           <RecordingProgress
             isRecording={isRecording}
             isPaused={isPaused}
@@ -155,8 +149,22 @@ export const AudioRecorder = ({
         </div>
       )}
 
-      <ErrorBanner
+      <AudioRecoveryPanel
+        show={shouldShowRecovery}
+        audioUrl={storedAudioUrl}
         errorMessage={transcriptionErrorMessage}
+        appliedVariant={appliedVariant}
+        retryCount={retryCount}
+        maxRetries={maxRetries}
+        isProcessing={isProcessing || disabled}
+        onRetry={retryTranscription}
+        onRecordAgain={recordAgain}
+        onDiscard={discardStoredAudio}
+        t={t}
+      />
+
+      <ErrorBanner
+        errorMessage={shouldShowRecovery ? null : transcriptionErrorMessage}
         appliedVariant={appliedVariant}
         onClose={closeError}
         t={t}

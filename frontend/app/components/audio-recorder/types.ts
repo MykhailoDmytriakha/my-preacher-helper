@@ -56,6 +56,21 @@ export interface RetryTranscriptionButtonProps {
   t: TranslationFn;
 }
 
+export interface AudioRecoveryPanelProps {
+  show: boolean;
+  audioUrl: string | null;
+  errorMessage: string | null;
+  appliedVariant: RecorderVariant;
+  retryCount: number;
+  maxRetries: number;
+  isProcessing: boolean;
+  onRetry: () => void;
+  onRecordAgain: () => void;
+  onDiscard: () => void;
+  t: TranslationFn;
+  className?: string;
+}
+
 export interface RecordingProgressProps {
   isRecording: boolean;
   isPaused: boolean;
@@ -116,11 +131,14 @@ export interface UseAudioRecorderLifecycleResult {
   recordingState: RecordingState;
   transcriptionErrorMessage: string | null;
   hasStoredAudio: boolean;
+  storedAudioUrl: string | null;
   startRecording: () => Promise<void>;
   stopRecording: () => void;
   cancelRecording: () => void;
   pauseRecording: () => void;
   resumeRecording: () => void;
   retryTranscription: () => void;
+  recordAgain: () => void;
+  discardStoredAudio: () => void;
   closeError: () => void;
 }
