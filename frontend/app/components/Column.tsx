@@ -1210,8 +1210,8 @@ export default function Column({
                             <div
                               className={`min-w-0 flex-1 ${
                                 hasThoughtCount
-                                  ? 'pr-8'
-                                  : 'pr-0'
+                                  ? 'pr-20'
+                                  : 'pr-12'
                               }`}
                             >
                               <span
@@ -1226,7 +1226,7 @@ export default function Column({
                             </div>
                             {!pointLocked && (
                               <div
-                                className={`pointer-events-none absolute top-0 flex items-center space-x-1 rounded bg-black/10 opacity-0 backdrop-blur-[1px] transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 ${
+                                className={`pointer-events-none absolute top-1/2 flex -translate-y-1/2 items-center space-x-1 rounded bg-black/10 opacity-0 backdrop-blur-[1px] transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 ${
                                   hasThoughtCount ? 'right-7' : 'right-0'
                                 }`}
                               >
@@ -1239,7 +1239,7 @@ export default function Column({
                               </div>
                             )}
                             {hasThoughtCount && (
-                              <span className="absolute right-0 top-0.5 inline-flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-white px-1.5 text-xs leading-none align-middle tabular-nums text-gray-700 dark:bg-gray-200 dark:text-gray-700">
+                              <span className="absolute right-0 top-1/2 inline-flex h-5 min-w-[20px] -translate-y-1/2 shrink-0 items-center justify-center rounded-full bg-white px-1.5 text-xs leading-none align-middle tabular-nums text-gray-700 dark:bg-gray-200 dark:text-gray-700">
                                 {thoughtCount}
                               </span>
                             )}

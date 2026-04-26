@@ -59,6 +59,7 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-04-25 Absolute Action Rails Need Stable Space And Centering:** Hover-only edit/delete rails on multi-line rows should reserve stable text padding and use vertical centering (`top-1/2 -translate-y-1/2` or equivalent) so controls do not cover text, jump with wrapping, or sit visually pinned to the first line.
 - **2026-04-25 DnD Draggables Need Stable Handles:** With `@hello-pangea/dnd`, every active `Draggable` must render an element with `dragHandleProps` in all display/edit/transient states. If a point can become locked or conditionally hide its handle, pass `isDragDisabled` for that state and keep the unlocked handle wrapper structurally stable, especially for optimistic `new-*` items.
 - **2026-04-25 Hover Action Rails Must Not Change Row Geometry:** If edit/delete controls are hover-only, remove them from normal flex layout with an absolute action rail and reveal them with opacity only. Do not change padding, truncation, wrapping, or row height on hover; otherwise the pointer can enter a feedback loop where the row shrinks, loses hover, expands, and jitters.
 - **2026-04-25 Local Dev Logs Need Per-Process Session Files:** Local server logging must create a distinct file per dev server start, with a startup header containing pid/configured port and a detected-port line when Next prints `Local: ...`; a single shared `server.log` makes repeated local starts ambiguous.

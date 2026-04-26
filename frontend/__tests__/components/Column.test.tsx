@@ -754,10 +754,12 @@ describe('Column Component', () => {
               expect(label).toHaveClass('whitespace-normal');
               expect(label).not.toHaveClass('truncate');
               expect(label).not.toHaveClass('group-hover:truncate');
-              expect(textSlot).toHaveClass('pr-8');
+              expect(textSlot).toHaveClass('pr-20');
               expect(textSlot.className).not.toContain('group-hover:pr-');
               expect(textSlot).not.toHaveClass('transition-[padding]');
               expect(actionsRail).toHaveClass('absolute');
+              expect(actionsRail).toHaveClass('top-1/2');
+              expect(actionsRail).toHaveClass('-translate-y-1/2');
               expect(actionsRail).toHaveClass('bg-black/10');
               expect(actionsRail).toHaveClass('opacity-0');
               expect(actionsRail).toHaveClass('group-hover:opacity-100');
@@ -765,6 +767,8 @@ describe('Column Component', () => {
               expect(actionsRail).toHaveClass('group-hover:pointer-events-auto');
               expect(badge).toHaveClass('absolute');
               expect(badge).toHaveClass('right-0');
+              expect(badge).toHaveClass('top-1/2');
+              expect(badge).toHaveClass('-translate-y-1/2');
             }
           },
           {
