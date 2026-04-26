@@ -59,7 +59,7 @@
 
 > One-line principles. History in git blame. Newest first.
 
-- **2026-04-25 Hover Action Rails Must Not Permanently Steal Text Width:** If edit/delete controls are hover-only, remove them from normal flex layout with an absolute action rail. Let the title wrap/read fully at rest, reserve only stable counters, and apply truncation only during hover/focus when the rail becomes visible.
+- **2026-04-25 Hover Action Rails Must Not Change Row Geometry:** If edit/delete controls are hover-only, remove them from normal flex layout with an absolute action rail and reveal them with opacity only. Do not change padding, truncation, wrapping, or row height on hover; otherwise the pointer can enter a feedback loop where the row shrinks, loses hover, expands, and jitters.
 - **2026-04-25 Local Dev Logs Need Per-Process Session Files:** Local server logging must create a distinct file per dev server start, with a startup header containing pid/configured port and a detected-port line when Next prints `Local: ...`; a single shared `server.log` makes repeated local starts ambiguous.
 - **2026-04-25 Next Instrumentation Must Keep Node Builtins Lazy:** `instrumentation.ts` can be pulled into the Next dev browser overlay, so server-only helpers that need `fs`/`path` must not import Node builtins at module top level. Load them lazily inside the server-only branch or the browser build fails with `Can't resolve 'fs'`.
 - **2026-04-25 Full Sermon Detail Fetches Are Not Metadata:** `/api/sermons/[id]` returns a full working document, not lightweight list metadata. Give it a separate client timeout category so slow local Firestore/detail hydration does not get misclassified as a 5s metadata timeout.

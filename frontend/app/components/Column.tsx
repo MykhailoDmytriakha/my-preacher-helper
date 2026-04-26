@@ -1206,14 +1206,14 @@ export default function Column({
                         ) : (
                           <>
                             <div
-                              className={`min-w-0 flex-1 transition-[padding] duration-150 ${
+                              className={`min-w-0 flex-1 ${
                                 hasThoughtCount
-                                  ? 'pr-8 group-hover:pr-20 group-focus-within:pr-20'
-                                  : 'pr-0 group-hover:pr-12 group-focus-within:pr-12'
+                                  ? 'pr-8'
+                                  : 'pr-0'
                               }`}
                             >
                               <span
-                                className="block min-w-0 whitespace-normal break-words text-sm leading-snug text-white group-hover:truncate group-focus-within:truncate dark:text-gray-100"
+                                className="block min-w-0 whitespace-normal break-words text-sm leading-snug text-white dark:text-gray-100"
                                 title={point.text}
                                 onDoubleClick={() => {
                                   if (!pointLocked) handleStartEdit(point);
@@ -1224,7 +1224,7 @@ export default function Column({
                             </div>
                             {!pointLocked && (
                               <div
-                                className={`pointer-events-none absolute top-0 flex items-center space-x-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 ${
+                                className={`pointer-events-none absolute top-0 flex items-center space-x-1 rounded bg-black/10 opacity-0 backdrop-blur-[1px] transition-opacity duration-100 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 ${
                                   hasThoughtCount ? 'right-7' : 'right-0'
                                 }`}
                               >

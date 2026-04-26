@@ -731,7 +731,7 @@ describe('Column Component', () => {
             }
           },
           {
-            name: 'sidebar title keeps its width until hover actions are revealed',
+            name: 'sidebar title does not change layout when hover actions are revealed',
             run: () => {
               const longPointText = 'О практике жизни, доверия и ежедневного следования за Богом';
               render(
@@ -752,11 +752,13 @@ describe('Column Component', () => {
 
               expect(label).toHaveClass('break-words');
               expect(label).toHaveClass('whitespace-normal');
-              expect(label).toHaveClass('group-hover:truncate');
               expect(label).not.toHaveClass('truncate');
+              expect(label).not.toHaveClass('group-hover:truncate');
               expect(textSlot).toHaveClass('pr-8');
-              expect(textSlot).toHaveClass('group-hover:pr-20');
+              expect(textSlot.className).not.toContain('group-hover:pr-');
+              expect(textSlot).not.toHaveClass('transition-[padding]');
               expect(actionsRail).toHaveClass('absolute');
+              expect(actionsRail).toHaveClass('bg-black/10');
               expect(actionsRail).toHaveClass('opacity-0');
               expect(actionsRail).toHaveClass('group-hover:opacity-100');
               expect(actionsRail).toHaveClass('pointer-events-none');
