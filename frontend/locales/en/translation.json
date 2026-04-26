@@ -806,13 +806,13 @@
   "plan": {
     "pageTitle": "Sermon Plan",
     "style": {
-      "label": "Generation Style",
-      "memory": "Memory Hooks",
-      "memoryDesc": "Short, punchy, 3-6 words",
-      "narrative": "Narrative Flow",
-      "narrativeDesc": "Story-driven, smooth transitions",
-      "exegetical": "Exegetical",
-      "exegeticalDesc": "Deep theological depth"
+      "label": "Plan Length",
+      "memory": "Short",
+      "memoryDesc": "Minimal cue sheet: main anchors only",
+      "narrative": "Medium",
+      "narrativeDesc": "Balanced cue sheet: anchors and key details",
+      "exegetical": "Detailed",
+      "exegeticalDesc": "Fuller cue sheet: details, transitions, and references"
     },
     "preachButton": "Preach",
     "customTime": "Custom Time",

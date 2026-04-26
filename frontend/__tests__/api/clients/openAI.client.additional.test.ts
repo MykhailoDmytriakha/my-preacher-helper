@@ -587,23 +587,59 @@ describe('openAI.client additional coverage', () => {
     expect(result.content).toContain('Main Concept');
 
     const callArgs = mockStructuredOutput.callWithStructuredOutput.mock.calls[0];
-    expect(callArgs[0]).toContain('STYLE: MEMORY HOOKS');
+    expect(callArgs[0]).toContain('PLAN LENGTH: SHORT');
     expect(callArgs[0]).toContain('SEMANTIC MAP, NOT WORD MATCH');
+    expect(callArgs[0]).toContain('CUE SHEET, NOT MINI SERMON');
     expect(callArgs[0]).toContain('ADJACENT OUTLINE CONTEXT');
     expect(callArgs[0]).toContain('Previous point: Prev point');
-    expect(callArgs[1]).toContain('STRICT: Build a semantic preaching map, not a word summary.');
+    expect(callArgs[1]).toContain('STRICT: Produce a preacher cue sheet for this one outline point.');
+    expect(callArgs[1]).toContain('Do not create one ### heading per THOUGHT');
     expect(callArgs[1]).not.toContain('Create exactly 2 main points');
     expect(callArgs[3]).toEqual(
       expect.objectContaining({
         promptBlueprint: expect.objectContaining({
           promptName: 'plan_point_content',
-          promptVersion: 'v5',
+          promptVersion: 'v7',
         }),
       })
     );
   });
 
-  it('surfaces numbered inner structures as required semantic moves in plan point prompts', async () => {
+  it('maps plan style choices to plan length instructions', async () => {
+    mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+      success: true,
+      data: { content: '- Cue' },
+      refusal: null,
+      error: null,
+    });
+
+    await generatePlanPointContent(
+      'Test Sermon',
+      'John 3:16',
+      'Outline Point',
+      ['Thought A'],
+      'main',
+      [],
+      undefined,
+      'narrative'
+    );
+
+    await generatePlanPointContent(
+      'Test Sermon',
+      'John 3:16',
+      'Outline Point',
+      ['Thought A'],
+      'main',
+      [],
+      undefined,
+      'exegetical'
+    );
+
+    expect(mockStructuredOutput.callWithStructuredOutput.mock.calls[0][0]).toContain('PLAN LENGTH: MEDIUM');
+    expect(mockStructuredOutput.callWithStructuredOutput.mock.calls[1][0]).toContain('PLAN LENGTH: DETAILED');
+  });
+
+  it('surfaces numbered inner structures as internal cue lists in plan point prompts', async () => {
     mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
       success: true,
       data: { content: '### First move\n* Supporting detail' },
@@ -622,13 +658,38 @@ describe('openAI.client additional coverage', () => {
     );
 
     const userMessage = mockStructuredOutput.callWithStructuredOutput.mock.calls[0][1];
-    expect(userMessage).toContain('SEMANTIC STRUCTURE SIGNALS');
+    expect(userMessage).toContain('INTERNAL CUE LIST SIGNALS');
     expect(userMessage).toContain('THOUGHT 1 contains an explicit numbered sequence');
+    expect(userMessage).toContain('Keep these items as an INTERNAL CUE LIST');
     expect(userMessage).toContain('1. First required move.');
     expect(userMessage).toContain('2. Second required move.');
     expect(userMessage).toContain('3. Third required move.');
-    expect(userMessage).toContain('Preserve every REQUIRED SEMANTIC MOVE');
+    expect(userMessage).toContain('Preserve explicit numbered sequences as internal lists');
     expect(userMessage).not.toContain('Create exactly 1 main points');
+  });
+
+  it('detects inline numbered structures for cue-list preservation', async () => {
+    mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+      success: true,
+      data: { content: 'Five things:\n1. First cue' },
+      refusal: null,
+      error: null,
+    });
+
+    await generatePlanPointContent(
+      'Test Sermon',
+      'John 3:16',
+      'Outline Point',
+      ['Five things happen in turbulence: 1. Heart is revealed. 2. Faith learns to walk. 3. God is glorified.'],
+      'introduction'
+    );
+
+    const userMessage = mockStructuredOutput.callWithStructuredOutput.mock.calls[0][1];
+    expect(userMessage).toContain('INTERNAL CUE LIST SIGNALS');
+    expect(userMessage).toContain('1. Heart is revealed.');
+    expect(userMessage).toContain('2. Faith learns to walk.');
+    expect(userMessage).toContain('3. God is glorified.');
+    expect(userMessage).toContain('not as separate ### headings');
   });
 
   it('includes structured sub-point tags in the plan point prompt when structured thoughts are provided', async () => {
@@ -656,10 +717,14 @@ describe('openAI.client additional coverage', () => {
 
     expect(mockStructuredOutput.callWithStructuredOutput).toHaveBeenCalledWith(
       expect.any(String),
-      expect.stringContaining('THOUGHT 2 [sub-point: Sub-point title]: Sub-point thought'),
+      expect.stringContaining('STRICT: Produce a preacher cue sheet using ### headings for each sub-point.'),
       expect.anything(),
       expect.anything()
     );
+
+    const userMessage = mockStructuredOutput.callWithStructuredOutput.mock.calls[0][1];
+    expect(userMessage).toContain('THOUGHT 2 [sub-point: Sub-point title]: Sub-point thought');
+    expect(userMessage).toContain('Do not create extra ### headings for ordinary details inside a sub-point.');
   });
 
   it('generates plan point content for Cyrillic thoughts', async () => {

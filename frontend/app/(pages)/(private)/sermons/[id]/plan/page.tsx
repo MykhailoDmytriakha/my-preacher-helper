@@ -153,8 +153,8 @@ export default function PlanPage() {
 
   // Generated content by outline point ID
   const [generatedContent, setGeneratedContent] = useState<Record<string, string>>({});
-  // Currently generating outline point ID
-  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  // Currently generating outline point IDs. Multiple point generations can run in parallel.
+  const [generatingIds, setGeneratingIds] = useState<Record<string, boolean>>({});
 
   // Style for plan generation
   const [planStyle, setPlanStyle] = useState<PlanStyle>('memory');
@@ -538,7 +538,7 @@ export default function PlanPage() {
     outlineLookup,
     generatedContent,
     t,
-    setGeneratingId,
+    setGeneratingIds,
     onGenerated: handlePlanPointGenerated,
     onSaved: handlePlanPointSaved,
   });
@@ -1059,7 +1059,7 @@ export default function PlanPage() {
         planStyle={planStyle}
         setPlanStyle={setPlanStyle}
         isLoading={isLoading}
-        generatingId={generatingId}
+        generatingIds={generatingIds}
         sectionMenuRef={sectionMenuRef}
         showSectionMenu={showSectionMenu}
         setShowSectionMenu={setShowSectionMenu}

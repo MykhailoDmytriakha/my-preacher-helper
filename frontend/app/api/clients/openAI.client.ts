@@ -803,26 +803,24 @@ export async function generateSermonDirections(sermon: Sermon): Promise<Directio
 function getStyleInstructions(style: PlanStyle): string {
   switch (style) {
     case 'narrative':
-      return `STYLE: NARRATIVE FLOW
-- Focus on the story and connection between ideas. 
-- You may use complete sentences if they enhance the flow.
-- Ensure smooth transitions between points.
-- Tone should be engaging and storytelling-oriented.
-- Length: Main points can be slightly longer (up to 8-10 words) if needed for narrative flow.`;
+      return `PLAN LENGTH: MEDIUM
+- Produce a balanced preacher cue sheet.
+- Include the main anchors plus the key details needed to remember the flow.
+- Use short cue lines, bullets, and compact transitions.
+- Target: about 4-7 cue lines or bullets for a normal outline point, unless the source has an explicit internal list.`;
     case 'exegetical':
-      return `STYLE: EXEGETICAL DEEP DIVE
-- Focus on theological accuracy and scriptural depth.
-- Use precise theological terminology where appropriate.
-- Highlight Greek/Hebrew nuances if present in thoughts.
-- Structure should reflect the logical argument of the text.
-- Length: Main points can be descriptive (up to 8-10 words).`;
+      return `PLAN LENGTH: DETAILED
+- Produce a fuller preacher cue sheet.
+- Include main anchors, important support details, transitions, and compact Bible references.
+- Keep it scannable; do not turn it into a mini-sermon or full manuscript.
+- Target: about 7-12 cue lines or nested bullets for a normal outline point when the source supports that much detail.`;
     case 'memory':
     default:
-      return `STYLE: MEMORY HOOKS (Default)
-- Focus on short, punchy phrases that stick in the mind.
-- STRICT LIMIT: Main points MUST be 3-6 words maximum.
-- Use alliteration or parallel structure if possible.
-- Optimized for quick glancing while preaching.`;
+      return `PLAN LENGTH: SHORT (Default)
+- Produce the shortest useful preacher cue sheet.
+- Keep only the strongest anchors the preacher needs to remember the route.
+- Prefer fragments and compact phrases over explanatory sentences.
+- Target: about 2-4 short cue lines or bullets for a normal outline point, while preserving explicit internal lists if the source requires them.`;
   }
 }
 
@@ -1016,7 +1014,7 @@ export async function generatePlanPointContent(
     };
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "plan_point_content",
-      promptVersion: "v5",
+      promptVersion: "v7",
       expectedLanguage: languageInfo.telemetryLanguage,
       systemPrompt,
       userMessage,
@@ -1040,9 +1038,6 @@ export async function generatePlanPointContent(
     }
 
     const content = result.data.content.trim();
-
-    // Post-process: limit the number of main headings (###) to the number of THOUGHTS
-    // But if key fragments are present, allow more headings as AI may need them for better structure
 
     return { content, success: content.length > 0 };
   } catch (error) {

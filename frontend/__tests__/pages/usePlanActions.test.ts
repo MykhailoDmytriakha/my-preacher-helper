@@ -20,6 +20,7 @@ describe("usePlanActions", () => {
   const mockToast = toast as jest.Mocked<typeof toast>;
   const mockGeneratePlanPointContent = generatePlanPointContent as jest.MockedFunction<typeof generatePlanPointContent>;
   const mockSaveSermonPlan = saveSermonPlan as jest.MockedFunction<typeof saveSermonPlan>;
+  type GeneratingIds = Record<string, boolean>;
 
   const sermon = {
     id: "sermon-1",
@@ -79,10 +80,25 @@ describe("usePlanActions", () => {
     jest.clearAllMocks();
   });
 
+  function createGeneratingIdsHarness(initial: GeneratingIds = {}) {
+    let state = initial;
+    const states: GeneratingIds[] = [];
+    const setGeneratingIds = jest.fn((update: GeneratingIds | ((prev: GeneratingIds) => GeneratingIds)) => {
+      state = typeof update === "function" ? update(state) : update;
+      states.push(state);
+    });
+
+    return {
+      setGeneratingIds,
+      getState: () => state,
+      getStates: () => states,
+    };
+  }
+
   it("runs generate flow and triggers onGenerated callback", async () => {
     mockGeneratePlanPointContent.mockResolvedValue({ content: "Generated intro content" });
 
-    const setGeneratingId = jest.fn();
+    const { setGeneratingIds, getStates } = createGeneratingIdsHarness();
     const onGenerated = jest.fn();
     const onSaved = jest.fn();
 
@@ -93,7 +109,7 @@ describe("usePlanActions", () => {
         outlineLookup,
         generatedContent: {},
         t,
-        setGeneratingId,
+        setGeneratingIds,
         onGenerated,
         onSaved,
       })
@@ -103,8 +119,7 @@ describe("usePlanActions", () => {
       await result.current.generateSermonPointContent("p1");
     });
 
-    expect(setGeneratingId).toHaveBeenNthCalledWith(1, "p1");
-    expect(setGeneratingId).toHaveBeenLastCalledWith(null);
+    expect(getStates()).toEqual([{ p1: true }, {}]);
     expect(onGenerated).toHaveBeenCalledWith({
       outlinePointId: "p1",
       content: "Generated intro content",
@@ -113,10 +128,21 @@ describe("usePlanActions", () => {
     expect(mockToast.success).toHaveBeenCalledWith("plan.contentGenerated");
   });
 
-  it("shows generate error toast when API call fails", async () => {
-    mockGeneratePlanPointContent.mockRejectedValue(new Error("network fail"));
+  it("keeps parallel generate flows independent by point id", async () => {
+    const deferredByPoint = new Map<string, {
+      resolve: (value: { content: string }) => void;
+      promise: Promise<{ content: string }>;
+    }>();
+    mockGeneratePlanPointContent.mockImplementation(({ outlinePointId }) => {
+      let resolve!: (value: { content: string }) => void;
+      const promise = new Promise<{ content: string }>((res) => {
+        resolve = res;
+      });
+      deferredByPoint.set(outlinePointId, { resolve, promise });
+      return promise;
+    });
 
-    const setGeneratingId = jest.fn();
+    const { setGeneratingIds, getState } = createGeneratingIdsHarness();
     const onGenerated = jest.fn();
     const onSaved = jest.fn();
 
@@ -127,7 +153,61 @@ describe("usePlanActions", () => {
         outlineLookup,
         generatedContent: {},
         t,
-        setGeneratingId,
+        setGeneratingIds,
+        onGenerated,
+        onSaved,
+      })
+    );
+
+    let firstGenerate!: Promise<void>;
+    let secondGenerate!: Promise<void>;
+    await act(async () => {
+      firstGenerate = result.current.generateSermonPointContent("p1");
+      secondGenerate = result.current.generateSermonPointContent("p2");
+    });
+
+    expect(getState()).toEqual({ p1: true, p2: true });
+
+    await act(async () => {
+      deferredByPoint.get("p1")?.resolve({ content: "Generated p1" });
+      await firstGenerate;
+    });
+
+    expect(getState()).toEqual({ p2: true });
+
+    await act(async () => {
+      deferredByPoint.get("p2")?.resolve({ content: "Generated p2" });
+      await secondGenerate;
+    });
+
+    expect(getState()).toEqual({});
+    expect(onGenerated).toHaveBeenCalledWith({
+      outlinePointId: "p1",
+      content: "Generated p1",
+      section: "introduction",
+    });
+    expect(onGenerated).toHaveBeenCalledWith({
+      outlinePointId: "p2",
+      content: "Generated p2",
+      section: "introduction",
+    });
+  });
+
+  it("shows generate error toast when API call fails", async () => {
+    mockGeneratePlanPointContent.mockRejectedValue(new Error("network fail"));
+
+    const { setGeneratingIds } = createGeneratingIdsHarness();
+    const onGenerated = jest.fn();
+    const onSaved = jest.fn();
+
+    const { result } = renderHook(() =>
+      usePlanActions({
+        sermon,
+        planStyle: "memory",
+        outlineLookup,
+        generatedContent: {},
+        t,
+        setGeneratingIds,
         onGenerated,
         onSaved,
       })
@@ -142,7 +222,7 @@ describe("usePlanActions", () => {
   });
 
   it("shows not-found toast when outline point cannot be resolved", async () => {
-    const setGeneratingId = jest.fn();
+    const { setGeneratingIds, getStates } = createGeneratingIdsHarness();
     const onGenerated = jest.fn();
     const onSaved = jest.fn();
 
@@ -156,7 +236,7 @@ describe("usePlanActions", () => {
         },
         generatedContent: {},
         t,
-        setGeneratingId,
+        setGeneratingIds,
         onGenerated,
         onSaved,
       })
@@ -169,14 +249,13 @@ describe("usePlanActions", () => {
     expect(mockToast.error).toHaveBeenCalledWith("errors.outlinePointNotFound");
     expect(mockGeneratePlanPointContent).not.toHaveBeenCalled();
     expect(onGenerated).not.toHaveBeenCalled();
-    expect(setGeneratingId).toHaveBeenNthCalledWith(1, "missing-point");
-    expect(setGeneratingId).toHaveBeenLastCalledWith(null);
+    expect(getStates()).toEqual([{ "missing-point": true }, {}]);
   });
 
   it("builds deterministic combined section text on save and calls onSaved", async () => {
     mockSaveSermonPlan.mockResolvedValue(undefined);
 
-    const setGeneratingId = jest.fn();
+    const { setGeneratingIds } = createGeneratingIdsHarness();
     const onGenerated = jest.fn();
     const onSaved = jest.fn();
 
@@ -187,7 +266,7 @@ describe("usePlanActions", () => {
         outlineLookup,
         generatedContent: {},
         t,
-        setGeneratingId,
+        setGeneratingIds,
         onGenerated,
         onSaved,
       })
@@ -212,7 +291,7 @@ describe("usePlanActions", () => {
   it("shows save error toast when API request fails", async () => {
     mockSaveSermonPlan.mockRejectedValue(new Error("save fail"));
 
-    const setGeneratingId = jest.fn();
+    const { setGeneratingIds } = createGeneratingIdsHarness();
     const onGenerated = jest.fn();
     const onSaved = jest.fn();
 
@@ -223,7 +302,7 @@ describe("usePlanActions", () => {
         outlineLookup,
         generatedContent: {},
         t,
-        setGeneratingId,
+        setGeneratingIds,
         onGenerated,
         onSaved,
       })
@@ -272,7 +351,7 @@ describe("usePlanActions", () => {
         outlineLookup: outlineLookupSinglePoint,
         generatedContent: {},
         t,
-        setGeneratingId: jest.fn(),
+        setGeneratingIds: createGeneratingIdsHarness().setGeneratingIds,
         onGenerated: jest.fn(),
         onSaved,
       })

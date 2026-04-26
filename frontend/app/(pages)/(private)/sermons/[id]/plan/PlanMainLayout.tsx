@@ -177,7 +177,7 @@ interface PlanMainLayoutContextValue {
   planStyle: PlanStyle;
   setPlanStyle: React.Dispatch<React.SetStateAction<PlanStyle>>;
   isLoading: boolean;
-  generatingId: string | null;
+  generatingIds: Record<string, boolean>;
   registerPairRef: RegisterPairedCardRef;
   generatedContent: Record<string, string>;
   sermonId: string;
@@ -219,7 +219,7 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
   const {
     onGenerate,
     generatedContent,
-    generatingId,
+    generatingIds,
     onOpenFragmentsModal,
   } = usePlanMainLayoutContext();
 
@@ -228,7 +228,7 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
   const sectionToneClasses = SECTION_TONE_CLASSES[sectionName];
   const keyFragmentsCount = thoughts.reduce((count, thought) => count + (thought.keyFragments?.length || 0), 0);
   const currentGeneratedContent = generatedContent[outlinePoint.id] || null;
-  const isGenerating = generatingId === outlinePoint.id;
+  const isGenerating = Boolean(generatingIds[outlinePoint.id]);
 
   return (
     <Card
@@ -542,9 +542,10 @@ const PlanSectionBlock = ({
     planStyle,
     setPlanStyle,
     isLoading,
-    generatingId,
+    generatingIds,
     onSwitchToStructure,
   } = usePlanMainLayoutContext();
+  const hasGeneratingPoints = Object.values(generatingIds).some(Boolean);
 
   return (
     <>
@@ -553,7 +554,7 @@ const PlanSectionBlock = ({
           <PlanStyleSelector
             value={planStyle}
             onChange={setPlanStyle}
-            disabled={isLoading || !!generatingId}
+            disabled={isLoading || hasGeneratingPoints}
           />
         )}
 
@@ -583,7 +584,7 @@ export interface PlanMainLayoutProps {
   planStyle: PlanStyle;
   setPlanStyle: React.Dispatch<React.SetStateAction<PlanStyle>>;
   isLoading: boolean;
-  generatingId: string | null;
+  generatingIds: Record<string, boolean>;
   sectionMenuRef: React.RefObject<HTMLDivElement | null>;
   showSectionMenu: boolean;
   setShowSectionMenu: React.Dispatch<React.SetStateAction<boolean>>;
@@ -625,7 +626,7 @@ export default function PlanMainLayout({
   planStyle,
   setPlanStyle,
   isLoading,
-  generatingId,
+  generatingIds,
   sectionMenuRef,
   showSectionMenu,
   setShowSectionMenu,
@@ -665,7 +666,7 @@ export default function PlanMainLayout({
     planStyle,
     setPlanStyle,
     isLoading,
-    generatingId,
+    generatingIds,
     registerPairRef,
     generatedContent,
     sermonId,

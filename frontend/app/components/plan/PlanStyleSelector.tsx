@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Sparkles, BookOpen, ScrollText } from 'lucide-react';
+import { AlignLeft, List, ListTree } from 'lucide-react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -18,28 +18,28 @@ export default function PlanStyleSelector({ value, onChange, disabled }: PlanSty
     const styles: { id: PlanStyle; icon: React.ReactNode; label: string; description: string }[] = [
         {
             id: 'memory',
-            icon: <Sparkles className="w-4 h-4" />,
-            label: t('plan.style.memory', { defaultValue: 'Memory Hooks' }),
-            description: t('plan.style.memoryDesc', { defaultValue: 'Short, punchy, 3-6 words' })
+            icon: <AlignLeft className="w-4 h-4" />,
+            label: t('plan.style.memory', { defaultValue: 'Short' }),
+            description: t('plan.style.memoryDesc', { defaultValue: 'Minimal cue sheet: main anchors only' })
         },
         {
             id: 'narrative',
-            icon: <ScrollText className="w-4 h-4" />,
-            label: t('plan.style.narrative', { defaultValue: 'Narrative Flow' }),
-            description: t('plan.style.narrativeDesc', { defaultValue: 'Story-driven, smooth transitions' })
+            icon: <List className="w-4 h-4" />,
+            label: t('plan.style.narrative', { defaultValue: 'Medium' }),
+            description: t('plan.style.narrativeDesc', { defaultValue: 'Balanced cue sheet: anchors and key details' })
         },
         {
             id: 'exegetical',
-            icon: <BookOpen className="w-4 h-4" />,
-            label: t('plan.style.exegetical', { defaultValue: 'Exegetical' }),
-            description: t('plan.style.exegeticalDesc', { defaultValue: 'Deep theological depth' })
+            icon: <ListTree className="w-4 h-4" />,
+            label: t('plan.style.exegetical', { defaultValue: 'Detailed' }),
+            description: t('plan.style.exegeticalDesc', { defaultValue: 'Fuller cue sheet: details, transitions, and references' })
         }
     ];
 
     return (
         <div className="flex flex-col gap-2 mb-6">
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {t('plan.style.label', { defaultValue: 'Generation Style' })}
+                {t('plan.style.label', { defaultValue: 'Plan Length' })}
             </label>
             <div className="flex flex-wrap gap-2 p-1 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
                 {styles.map((style) => {

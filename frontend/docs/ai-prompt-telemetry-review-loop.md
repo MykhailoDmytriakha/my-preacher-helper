@@ -101,7 +101,7 @@ Use this table as the prompt-review watermark. A future review should start from
 | --- | --- | --- | --- | --- |
 | `thought` | `v5` | 2026-04-25 | Created after reviewing `thought@v3/v4` raw transcript → output examples where the model added sermon-context and thematic references. | Review new `thought@v5` records after 2026-04-25 usage. Treat `v3/v4` as history/regression examples. |
 | `polishTranscription` | `v3` | 2026-04-25 | Created after dictated Scripture reference formatting review; old retained records were `v2`. | Review new `polishTranscription@v3` records after 2026-04-25 usage. Treat `v2` as history. |
-| `plan_point_content` | `v5` | 2026-04-26 | Created after `v4` review found that one-heading-per-thought compressed sermon-roadmap meaning and lost explicit numbered inner structures. | Review new `plan_point_content@v5` records after 2026-04-26 usage. Treat `v4` as history/regression examples. |
+| `plan_point_content` | `v7` | 2026-04-26 | Created after the generation style selector was clarified from method labels (`memory/narrative/exegetical`) into plan length controls (`short/medium/detailed`). Prompt style instructions now explicitly control cue-sheet volume. | Review new `plan_point_content@v7` records after 2026-04-26 usage. Treat `v4/v5/v6` as history/regression examples. |
 | `studyNoteAnalysis` | `v2` | 2026-04-25 | Created after `v1` review found tag-count/schema mismatch and redundant reference ranges. | Review new `studyNoteAnalysis@v2` records after 2026-04-25 usage. |
 | `sermon_verses` | `v2` | 2026-04-25 | Created after prompt/schema key mismatch review. | Review new `sermon_verses@v2` records after 2026-04-25 usage. |
 | `sermon_directions` | `v2` | 2026-04-25 | Created after prompt/schema key mismatch review. | Review new `sermon_directions@v2` records after 2026-04-25 usage. |
@@ -121,7 +121,7 @@ Structured telemetry prompts:
 | `thought` | `v5` | Turn dictated sermon thought into polished prose + tags without adding sermon-context material not dictated by the user. |
 | `polishTranscription` | `v3` | Clean raw voice transcription for notes/thought text. |
 | `studyNoteAnalysis` | `v2` | Extract study-note title, Scripture refs, and tags. |
-| `plan_point_content` | `v5` | Generate a scannable semantic preaching map for one outline point. |
+| `plan_point_content` | `v7` | Generate a sparse preacher cue sheet for one outline point or its sub-points, with user-selected short/medium/detailed volume. |
 | `sermon_verses` | `v2` | Suggest related Bible verses. |
 | `sermon_directions` | `v2` | Suggest research/development directions. |
 | `sermon_insights` | `v1` | Generate topics, verses, and directions together. |

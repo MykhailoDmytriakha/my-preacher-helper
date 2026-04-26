@@ -867,6 +867,73 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     expect(previewSurfaces[0]).toHaveClass('bg-gray-50/70');
   });
 
+  it('keeps multiple plan point generate loaders independent', async () => {
+    const pendingGenerations = new Map<string, {
+      resolve: (value: unknown) => void;
+      promise: Promise<unknown>;
+    }>();
+
+    (global.fetch as jest.Mock).mockImplementation((url, options) => {
+      if (typeof url === 'string' && url.includes('/api/sermons/test-sermon-id/plan?outlinePointId=')) {
+        const pointId = new URL(url, 'http://localhost').searchParams.get('outlinePointId') || 'unknown';
+        let resolve!: (value: unknown) => void;
+        const promise = new Promise((res) => {
+          resolve = res;
+        });
+        pendingGenerations.set(pointId, { resolve, promise });
+        return promise;
+      }
+      if (options?.method === 'PUT') {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+      }
+      return Promise.resolve({ ok: false, status: 404 });
+    });
+
+    renderWithQueryClient(<SermonPlanPage />);
+    await screen.findByTestId('plan-introduction-left-section');
+
+    const generateButtons = screen.getAllByTitle(/Generate|Regenerate/);
+    fireEvent.click(generateButtons[0]);
+
+    await waitFor(() => {
+      expect(generateButtons[0]).toHaveAttribute('title', 'Generating...');
+    });
+
+    fireEvent.click(generateButtons[1]);
+
+    await waitFor(() => {
+      expect(generateButtons[0]).toHaveAttribute('title', 'Generating...');
+      expect(generateButtons[1]).toHaveAttribute('title', 'Generating...');
+    });
+
+    await act(async () => {
+      pendingGenerations.get('intro-p1')?.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ content: 'Intro regenerated independently' }),
+      });
+      await pendingGenerations.get('intro-p1')?.promise;
+    });
+
+    await waitFor(() => {
+      expect(generateButtons[0]).toHaveAttribute('title', 'Regenerate');
+      expect(generateButtons[1]).toHaveAttribute('title', 'Generating...');
+    });
+
+    await act(async () => {
+      pendingGenerations.get('main-p1')?.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ content: 'Main regenerated independently' }),
+      });
+      await pendingGenerations.get('main-p1')?.promise;
+    });
+
+    await waitFor(() => {
+      expect(generateButtons[1]).toHaveAttribute('title', 'Regenerate');
+    });
+  });
+
   it('opens key fragments modal for an outline point', async () => {
     renderWithQueryClient(<SermonPlanPage />);
     await screen.findByTestId('plan-introduction-left-section');

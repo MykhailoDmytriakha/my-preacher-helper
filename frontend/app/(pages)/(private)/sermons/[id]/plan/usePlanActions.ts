@@ -18,7 +18,7 @@ interface UsePlanActionsParams {
   outlineLookup: PlanOutlineLookup;
   generatedContent: Record<string, string>;
   t: (key: string, options?: Record<string, unknown>) => string;
-  setGeneratingId: React.Dispatch<React.SetStateAction<string | null>>;
+  setGeneratingIds: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onGenerated: (params: {
     outlinePointId: string;
     content: string;
@@ -38,14 +38,17 @@ export default function usePlanActions({
   outlineLookup,
   generatedContent,
   t,
-  setGeneratingId,
+  setGeneratingIds,
   onGenerated,
   onSaved,
 }: UsePlanActionsParams) {
   const generateSermonPointContent = useCallback(async (outlinePointId: string) => {
     if (!sermon) return;
 
-    setGeneratingId(outlinePointId);
+    setGeneratingIds((prev) => ({
+      ...prev,
+      [outlinePointId]: true,
+    }));
 
     try {
       const outlinePoint = getPointFromLookup(outlineLookup, outlinePointId);
@@ -73,9 +76,12 @@ export default function usePlanActions({
       debugLog("Plan generate failed", { sermonId: sermon.id, outlinePointId, error });
       toast.error(t("errors.failedToGenerateContent"));
     } finally {
-      setGeneratingId(null);
+      setGeneratingIds((prev) => {
+        const { [outlinePointId]: _finishedPoint, ...next } = prev;
+        return next;
+      });
     }
-  }, [onGenerated, outlineLookup, planStyle, sermon, setGeneratingId, t]);
+  }, [onGenerated, outlineLookup, planStyle, sermon, setGeneratingIds, t]);
 
   const saveSermonPoint = useCallback(async (
     outlinePointId: string,

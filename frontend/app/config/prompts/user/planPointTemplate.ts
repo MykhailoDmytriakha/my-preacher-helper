@@ -15,13 +15,25 @@ function trimSemanticMove(text: string): string {
 }
 
 function extractNumberedSemanticMoves(text: string): string[] {
-    const moves = text
+    const lineMoves = text
         .split(/\r?\n/)
         .map((line) => line.match(/^\s*(\d+)[.)]\s+(.+)$/))
         .filter((match): match is RegExpMatchArray => Boolean(match))
         .map((match) => trimSemanticMove(match[2]));
 
-    return moves.length >= 2 ? moves : [];
+    if (lineMoves.length >= 2) {
+        return lineMoves;
+    }
+
+    const inlineMoves = Array.from(
+        text
+            .replace(/\r?\n/g, ' ')
+            .matchAll(/(?:^|\s)(\d+)[.)]\s+([\s\S]*?)(?=\s+\d+[.)]\s+|$)/g)
+    )
+        .map((match) => trimSemanticMove(match[2]))
+        .filter((move) => move.length > 0);
+
+    return inlineMoves.length >= 2 ? inlineMoves : [];
 }
 
 function createSemanticStructureSignals(thoughts: (ThoughtInStructure | string)[]): string {
@@ -41,11 +53,11 @@ function createSemanticStructureSignals(thoughts: (ThoughtInStructure | string)[
             const moveLines = moves
                 .map((move, index) => `  ${index + 1}. ${move}`)
                 .join('\n');
-            return `- THOUGHT ${thoughtNumber} contains an explicit numbered sequence. Treat each item as a REQUIRED SEMANTIC MOVE:\n${moveLines}`;
+            return `- THOUGHT ${thoughtNumber} contains an explicit numbered sequence. Keep these items as an INTERNAL CUE LIST under the relevant cue, not as separate ### headings:\n${moveLines}`;
         })
         .join('\n');
 
-    return `\n\nSEMANTIC STRUCTURE SIGNALS (preserve these as meaning, not just words):\n${signals}`;
+    return `\n\nINTERNAL CUE LIST SIGNALS (preserve these as nested plan items, not expanded heading blocks):\n${signals}`;
 }
 
 /**
@@ -90,11 +102,17 @@ ${thoughtsList}${fragmentsList}${subPointsSection}${semanticStructureSignals}
 
 --------------------------------
 ${sortedSubPoints.length > 0
-        ? `STRICT: Organize content using ### headings for each sub-point. Include a heading for each sub-point even if no thoughts are directly tagged to it.`
-        : `STRICT: Build a semantic preaching map, not a word summary.
-- Usually start from one ### heading per THOUGHT, but split a THOUGHT into multiple ### headings when it contains an explicit numbered list, sermon roadmap, or multiple required semantic moves.
-- Preserve every REQUIRED SEMANTIC MOVE. Do not merge separate moves only to match the number of thoughts.
-- The preacher should be able to glance at the plan and understand the route without rereading the full thoughts.`
+        ? `STRICT: Produce a preacher cue sheet using ### headings for each sub-point.
+- Include a ### heading for each listed sub-point, even if no thoughts are directly tagged to it.
+- Keep content under each sub-point concise: short cue lines, bullets, or nested lists.
+- Do not create extra ### headings for ordinary details inside a sub-point.`
+        : `STRICT: Produce a preacher cue sheet for this one outline point.
+- The outline point title is already visible in the UI; do not repeat it as a heading unless the source has a major named internal transition.
+- Do not create one ### heading per THOUGHT, detail, or rhetorical action.
+- Use short cue lines, bullets, and nested numbered lists so the preacher can glance and remember the route.
+- Preserve explicit numbered sequences as internal lists under the relevant cue.
+- Merge repeated moves; keep memorable source phrases, contrast pairs, arrows, and compact Bible references.
+- Quote verse text only when the source thought itself provided that exact text.`
     }
 `;
 }
