@@ -4,6 +4,7 @@ const updateMock = jest.fn();
 const docMock = jest.fn(() => ({ update: updateMock }));
 const collectionMock = jest.fn(() => ({ doc: docMock }));
 const runTransactionMock = jest.fn();
+const RETRYABLE_ERROR_MESSAGE = 'Temporary transcription connection issue. The recording looked valid, but the transcription service connection failed. Please try again.';
 
 jest.mock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
@@ -278,6 +279,43 @@ describe('Thoughts API route additional coverage', () => {
 
       expect(response.status).toBe(400);
       expect(data).toEqual({ error: expected });
+    });
+
+    it('retries transient transcription connection errors before creating the thought', async () => {
+      createTranscriptionMock
+        .mockRejectedValueOnce(new Error('Connection error. read ECONNRESET'))
+        .mockResolvedValueOnce('transcribed after retry');
+
+      const formData = new FormData();
+      formData.append('audio', new Blob(['audio'], { type: 'audio/webm' }));
+      formData.append('sermonId', 'sermon-1');
+      const request = createFormRequest(formData);
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.text).toBe('formatted');
+      expect(createTranscriptionMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns a retryable 503 when transient transcription errors persist', async () => {
+      createTranscriptionMock.mockRejectedValue(new Error('Connection error. read ECONNRESET'));
+
+      const formData = new FormData();
+      formData.append('audio', new Blob(['audio'], { type: 'audio/webm' }));
+      formData.append('sermonId', 'sermon-1');
+      const request = createFormRequest(formData);
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(503);
+      expect(data).toEqual({
+        error: RETRYABLE_ERROR_MESSAGE,
+        retryable: true,
+        phase: 'transcribe_audio',
+      });
     });
 
     it('returns 500 for unknown transcription errors', async () => {

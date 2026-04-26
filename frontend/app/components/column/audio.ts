@@ -53,7 +53,7 @@ export const recordAudioThought = async ({
     );
     return newThought;
   } catch (error) {
-    console.error(errorContext, error);
+    console.warn(errorContext, error);
     const errorMessage = error instanceof Error ? error.message : t("errors.audioProcessing");
     setAudioError(String(errorMessage));
     toast.error(String(errorMessage));

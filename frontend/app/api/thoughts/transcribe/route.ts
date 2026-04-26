@@ -4,8 +4,12 @@ import { NextResponse } from 'next/server';
 
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
 import { createApiPerformanceTracker } from '@clients/apiPerformanceTelemetry';
-import { createTranscription } from '@clients/openAI.client';
 import { polishTranscription } from '@clients/polishTranscription.structured';
+import {
+  createTranscriptionWithRetry,
+  mapTranscriptionError,
+  type TranscriptionErrorResponse,
+} from '@clients/transcriptionRetry';
 
 /**
  * POST /api/thoughts/transcribe
@@ -31,14 +35,18 @@ export async function POST(request: Request) {
     operation: "thought_audio_transcribe_polish",
   });
 
-  const errorResponse = (errorMessage: string, status: number) => {
+  const errorResponse = (
+    errorMessage: string,
+    status: number,
+    extra?: Pick<TranscriptionErrorResponse, 'retryable' | 'phase'>
+  ) => {
     tracker.emit({
       status: "error",
       httpStatus: status,
       errorMessage,
     });
     return NextResponse.json(
-      { success: false, error: errorMessage },
+      { success: false, error: errorMessage, ...extra },
       { status }
     );
   };
@@ -94,7 +102,14 @@ export async function POST(request: Request) {
     try {
       transcriptionText = await tracker.timePhase(
         "transcribe_audio",
-        () => createTranscription(audioFile as Blob),
+        () => createTranscriptionWithRetry(audioFile as Blob, {
+          onRetry: ({ attempt, maxAttempts }) => {
+            tracker.addContext({
+              transcriptionRetryAttempt: attempt,
+              transcriptionMaxAttempts: maxAttempts,
+            });
+          },
+        }),
         {
           audioSizeBytes: audioFile.size,
           audioType: audioFile.type || null,
@@ -106,17 +121,12 @@ export async function POST(request: Request) {
     } catch (transcriptionError) {
       console.error("Thoughts transcribe route: Transcription failed:", transcriptionError);
 
-      if (transcriptionError instanceof Error) {
-        const errorMessage = transcriptionError.message.toLowerCase();
-        if (errorMessage.includes('corrupted') || errorMessage.includes('unsupported')) {
-          return errorResponse('Audio file might be corrupted or unsupported. Please try recording again.', 400);
-        }
-        if (errorMessage.includes('empty')) {
-          return errorResponse('Audio recording failed - file is empty. Please try recording again.', 400);
-        }
-        if (errorMessage.includes('too small') || errorMessage.includes('too short')) {
-          return errorResponse('Audio recording is too short. Please record for at least 1 second.', 400);
-        }
+      const mappedError = mapTranscriptionError(transcriptionError);
+      if (mappedError) {
+        return errorResponse(mappedError.error, mappedError.status, {
+          retryable: mappedError.retryable,
+          phase: mappedError.phase,
+        });
       }
 
       return errorResponse('Failed to transcribe audio. Please try again.', 500);

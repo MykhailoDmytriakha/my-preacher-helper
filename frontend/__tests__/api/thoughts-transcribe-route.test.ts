@@ -4,6 +4,8 @@ import * as thoughtsTranscribeRoute from 'app/api/thoughts/transcribe/route';
 import { createTranscription } from '@clients/openAI.client';
 import { polishTranscription } from '@clients/polishTranscription.structured';
 
+const RETRYABLE_ERROR_MESSAGE = 'Temporary transcription connection issue. The recording looked valid, but the transcription service connection failed. Please try again.';
+
 jest.mock('@clients/openAI.client', () => ({
   createTranscription: jest.fn(),
 }));
@@ -138,5 +140,21 @@ describe('Thoughts transcribe route', () => {
 
     expect(response.status).toBe(400);
     expect(data.error).toBe('Audio recording is too short. Please record for at least 1 second.');
+  });
+
+  it('returns retryable 503 when transient transcription errors persist', async () => {
+    (createTranscription as jest.Mock).mockRejectedValue(
+      new Error('Connection error. read ECONNRESET')
+    );
+
+    const request = buildRequest(new FakeBlob([new Uint8Array(1024)]));
+    const response = await thoughtsTranscribeRoute.POST(request as unknown as Request);
+    const data = await response.json();
+
+    expect(response.status).toBe(503);
+    expect(data.error).toBe(RETRYABLE_ERROR_MESSAGE);
+    expect(data.retryable).toBe(true);
+    expect(data.phase).toBe('transcribe_audio');
+    expect(createTranscription).toHaveBeenCalledTimes(2);
   });
 });

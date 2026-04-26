@@ -59,7 +59,32 @@ describe('Thought Service', () => {
       );
     });
 
-    it('should retry on failure and succeed on second attempt', async () => {
+    it('should retry retryable transcription failures and succeed on second attempt', async () => {
+      const mockErrorResponse = {
+        ok: false,
+        status: 503,
+        json: jest.fn().mockResolvedValue({
+          error: 'Temporary transcription connection issue',
+          retryable: true,
+          phase: 'transcribe_audio',
+        }),
+      };
+      const mockSuccessResponse = {
+        ok: true,
+        json: jest.fn().mockResolvedValue(mockThought),
+      };
+
+      mockFetch
+        .mockResolvedValueOnce(mockErrorResponse)
+        .mockResolvedValueOnce(mockSuccessResponse);
+
+      const result = await createAudioThought(mockBlob, mockSermonId, 0, 1);
+
+      expect(result).toEqual(mockThought);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not retry generic server failures without a retryable transcription contract', async () => {
       const mockErrorResponse = {
         ok: false,
         status: 500,
@@ -74,26 +99,29 @@ describe('Thought Service', () => {
         .mockResolvedValueOnce(mockErrorResponse)
         .mockResolvedValueOnce(mockSuccessResponse);
 
-      // This should throw on first attempt, but we're testing the retry logic
       await expect(createAudioThought(mockBlob, mockSermonId, 0, 1)).rejects.toThrow(
         'Transcription failed (attempt 1/2): Transcription failed'
       );
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
     it('should handle max retries correctly', async () => {
       const mockErrorResponse = {
         ok: false,
-        status: 500,
-        json: jest.fn().mockResolvedValue({ error: 'Transcription failed' }),
+        status: 503,
+        json: jest.fn().mockResolvedValue({
+          error: 'Temporary transcription connection issue',
+          retryable: true,
+          phase: 'transcribe_audio',
+        }),
       };
 
       mockFetch.mockResolvedValue(mockErrorResponse);
 
-      // Test that the function handles max retries properly
-      // When retryCount >= maxRetries, it should immediately throw
-      await expect(createAudioThought(mockBlob, mockSermonId, 3, 3)).rejects.toThrow(
-        'Transcription failed after all retries: Maximum retry attempts exceeded'
+      await expect(createAudioThought(mockBlob, mockSermonId, 1, 1)).rejects.toThrow(
+        'Transcription failed after all retries: Temporary transcription connection issue'
       );
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
 
     it('should handle network errors gracefully', async () => {

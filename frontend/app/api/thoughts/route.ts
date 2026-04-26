@@ -9,8 +9,12 @@ import { Sermon, Thought } from '@/models/models';
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
 import { createApiPerformanceTracker } from '@clients/apiPerformanceTelemetry';
 import { getCustomTags, getRequiredTags } from '@clients/firestore.client';
-import { createTranscription } from '@clients/openAI.client';
 import { generateThoughtStructured } from '@clients/thought.structured';
+import {
+  createTranscriptionWithRetry,
+  mapTranscriptionError,
+  type TranscriptionErrorResponse,
+} from '@clients/transcriptionRetry';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 // Error messages
@@ -62,27 +66,6 @@ function normalizeGenerationResult(params: {
   };
 }
 
-function mapTranscriptionError(transcriptionError: unknown): { status: number; error: string } | null {
-  if (!(transcriptionError instanceof Error)) {
-    return null;
-  }
-
-  const errorMessage = transcriptionError.message.toLowerCase();
-  if (errorMessage.includes('audio file might be corrupted or unsupported')) {
-    return { status: 400, error: 'Audio file might be corrupted or unsupported. Please try recording again.' };
-  }
-  if (errorMessage.includes('audio file is empty')) {
-    return { status: 400, error: 'Audio recording failed - file is empty. Please try recording again.' };
-  }
-  if (errorMessage.includes('audio file is too small')) {
-    return { status: 400, error: 'Audio recording is too short. Please record for at least 1 second.' };
-  }
-  if (errorMessage.includes('400') || errorMessage.includes('invalid_request_error')) {
-    return { status: 400, error: 'Audio file format not supported. Please try recording again.' };
-  }
-  return null;
-}
-
 async function handleManualPost(request: Request) {
   try {
     console.log("Thoughts route: Processing manual thought creation.");
@@ -116,13 +99,17 @@ async function handleAutoPost(request: Request) {
     operation: "thought_audio_create",
   });
 
-  const errorResponse = (errorMessage: string, status: number) => {
+  const errorResponse = (
+    errorMessage: string,
+    status: number,
+    extra?: Pick<TranscriptionErrorResponse, 'retryable' | 'phase'>
+  ) => {
     tracker.emit({
       status: "error",
       httpStatus: status,
       errorMessage,
     });
-    return NextResponse.json({ error: errorMessage }, { status });
+    return NextResponse.json({ error: errorMessage, ...extra }, { status });
   };
 
   try {
@@ -190,7 +177,14 @@ async function handleAutoPost(request: Request) {
     try {
       transcriptionText = await tracker.timePhase(
         "transcribe_audio",
-        () => createTranscription(audioFile as Blob),
+        () => createTranscriptionWithRetry(audioFile as Blob, {
+          onRetry: ({ attempt, maxAttempts }) => {
+            tracker.addContext({
+              transcriptionRetryAttempt: attempt,
+              transcriptionMaxAttempts: maxAttempts,
+            });
+          },
+        }),
         {
           audioSizeBytes: audioFile.size,
           audioType: audioFile.type || null,
@@ -203,7 +197,10 @@ async function handleAutoPost(request: Request) {
       console.error("Thoughts route: Transcription failed:", transcriptionError);
       const mappedError = mapTranscriptionError(transcriptionError);
       if (mappedError) {
-        return errorResponse(mappedError.error, mappedError.status);
+        return errorResponse(mappedError.error, mappedError.status, {
+          retryable: mappedError.retryable,
+          phase: mappedError.phase,
+        });
       }
       return errorResponse('Failed to transcribe audio. Please try again.', 500);
     }
