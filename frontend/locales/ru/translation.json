@@ -1,5 +1,6 @@
 {
   "navigation": {
+    "appName": "Помощник проповедника",
     "dashboard": "Панель управления",
     "guest": "Гостевой пользователь",
     "settings": "Настройки",
@@ -127,6 +128,167 @@
       "totalThoughts": "Всего мыслей",
       "withOutlines": "С планами",
       "latestSermon": "Последняя проповедь"
+    }
+  },
+  "dashboardHome": {
+    "title": "Панель",
+    "subtitle": "Сегодняшняя работа служения",
+    "actions": {
+      "newSermon": "Новая проповедь",
+      "addStudyNote": "Добавить заметку",
+      "addPrayer": "Добавить молитву"
+    },
+    "metrics": {
+      "label": "Метрики панели",
+      "activeSermons": {
+        "label": "Активные проповеди",
+        "helper": "В подготовке"
+      },
+      "activeSeries": {
+        "label": "Активные серии",
+        "helper": "Текущие серии"
+      },
+      "studyNotes": {
+        "label": "Заметки",
+        "helper": "Заметки и вопросы"
+      },
+      "upcomingDates": {
+        "label": "Ближайшие даты",
+        "helper": "Следующие 14 дней"
+      },
+      "activePrayers": {
+        "label": "Активные молитвы",
+        "helper": "Требуют внимания"
+      }
+    },
+    "time": {
+      "unknown": "Нет даты",
+      "today": "Сегодня",
+      "yesterday": "Вчера",
+      "allDay": "Весь день",
+      "daysAgo": "{{count}} дн. назад"
+    },
+    "sections": {
+      "sermons": {
+        "title": "Проповеди",
+        "viewAll": "Все проповеди",
+        "empty": "Пока нет проповедей. Создайте первую, чтобы начать подготовку.",
+        "untitled": "Проповедь без названия",
+        "noVerse": "Текст Писания не указан",
+        "status": {
+          "preparing": "Готовится",
+          "preached": "Проповедана"
+        },
+        "preachedAt": "Проповедана {{date}}",
+        "plannedFor": "Запланирована на {{date}}",
+        "updatedAt": "Обновлена {{date}}"
+      },
+      "week": {
+        "title": "Эта неделя",
+        "viewCalendar": "Открыть календарь",
+        "viewFullCalendar": "Весь календарь",
+        "empty": "Нет ближайших или недавних прошедших проповедей и групп.",
+        "types": {
+          "sermon": "Проповедь",
+          "group": "Группа"
+        }
+      },
+      "prayer": {
+        "title": "Молитвенный фокус",
+        "addPrayer": "Добавить молитву",
+        "addUpdate": "Добавить обновление",
+        "viewAll": "Все молитвы",
+        "empty": "Пока нет молитвенных нужд.",
+        "noUpdates": "Обновлений пока нет.",
+        "status": {
+          "active": "Активна",
+          "answered": "Отвечена",
+          "not_answered": "Без ответа"
+        }
+      },
+      "series": {
+        "title": "Активные серии",
+        "viewAll": "Все серии",
+        "empty": "Пока нет серий проповедей.",
+        "untitled": "Серия без названия",
+        "progress": "{{preached}} из {{total}} проповедано",
+        "noItems": "Нет материалов",
+        "next": "Далее: {{title}}",
+        "noNext": "Серия завершена или следующего материала нет",
+        "status": {
+          "draft": "Черновик",
+          "active": "Активна",
+          "completed": "Завершена"
+        }
+      },
+      "studies": {
+        "title": "Последние заметки",
+        "viewAll": "Все изучения",
+        "empty": "Пока нет заметок для изучения.",
+        "untitled": "Заметка без названия",
+        "noteTag": "Заметка",
+        "questionTag": "Вопрос",
+        "table": {
+          "study": "Изучение",
+          "tags": "Теги",
+          "notes": "Заметки",
+          "questions": "Вопросы"
+        }
+      },
+      "groups": {
+        "title": "Последние группы",
+        "viewAll": "Все группы",
+        "empty": "Пока нет групп.",
+        "progress": "Ход встречи готов на {{percent}}%",
+        "nextMeeting": "Следующая: {{date}}",
+        "noMeeting": "Дата встречи не задана",
+        "status": {
+          "active": "Активна",
+          "completed": "Завершена"
+        }
+      },
+      "attention": {
+        "title": "Требует внимания",
+        "empty": "Сейчас нет задач, требующих внимания.",
+        "viewAll": "Показать все ({{count}})",
+        "table": {
+          "item": "Элемент",
+          "category": "Категория",
+          "severity": "Важность",
+          "due": "Срок / возраст",
+          "notes": "Заметки",
+          "action": "Действие"
+        },
+        "severity": {
+          "low": "Низкая",
+          "medium": "Средняя",
+          "high": "Высокая"
+        },
+        "items": {
+          "unscheduledSermon": "Черновик проповеди без даты — «{{title}}»",
+          "studyQuestion": "Вопрос изучения требует ответа — {{title}}",
+          "draftStudy": "Черновик заметки не проверен — {{title}}",
+          "stalePrayer": "Молитвенная нужда давно без обновления — {{title}}",
+          "incompleteGroup": "План группы не завершён — {{title}}"
+        },
+        "notes": {
+          "outlineStarted": "Подготовка начата",
+          "questionsNeedAnswers": "Нужны ответы на вопросы",
+          "readyForReview": "Готово к проверке",
+          "noUpdate": "Нет недавнего обновления",
+          "agendaRemaining": "Остались пункты встречи"
+        },
+        "due": {
+          "noDate": "Нет даты",
+          "days": "{{count}} дней"
+        },
+        "actions": {
+          "review": "Проверить",
+          "openStudy": "Открыть изучение",
+          "addUpdate": "Добавить обновление",
+          "complete": "Завершить"
+        }
+      }
     }
   },
   "addSermon": {

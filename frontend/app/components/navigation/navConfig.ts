@@ -1,5 +1,6 @@
 import {
   BookOpenIcon,
+  HomeIcon,
   Squares2X2Icon,
   RectangleStackIcon,
   UsersIcon,
@@ -22,16 +23,22 @@ export type PrimaryNavItem = {
   isBeta?: boolean;
 };
 
-const dashboardMatcher = /^\/(dashboard|sermons)(\/|$)/;
-
 export const primaryNavItems: PrimaryNavItem[] = [
+  {
+    key: 'dashboard',
+    href: '/dashboard',
+    labelKey: 'navigation.dashboard',
+    defaultLabel: 'Dashboard',
+    icon: HomeIcon,
+    matchers: [/^\/dashboard(\/|$)/]
+  },
   {
     key: 'sermons',
     href: '/sermons',
     labelKey: 'navigation.sermons',
     defaultLabel: 'Sermons',
     icon: BookOpenIcon,
-    matchers: [dashboardMatcher]
+    matchers: [/^\/sermons(\/|$)/]
   },
   {
     key: 'series',

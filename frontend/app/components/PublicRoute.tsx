@@ -12,7 +12,7 @@ interface PublicRouteProps {
 
 export default function PublicRoute({
   children,
-  redirectTo = '/sermons'
+  redirectTo = '/dashboard'
 }: PublicRouteProps) {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -45,4 +45,4 @@ export default function PublicRoute({
   }
 
   return <>{children}</>;
-} 
+}

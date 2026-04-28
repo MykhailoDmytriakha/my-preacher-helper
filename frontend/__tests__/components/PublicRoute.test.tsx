@@ -100,7 +100,7 @@ describe('PublicRoute', () => {
     );
 
     await waitFor(() => {
-      expect(mockReplace).toHaveBeenCalledWith('/sermons');
+      expect(mockReplace).toHaveBeenCalledWith('/dashboard');
     });
 
     expect(screen.queryByText('Public Content')).not.toBeInTheDocument();
@@ -147,7 +147,7 @@ describe('PublicRoute', () => {
     );
 
     await waitFor(() => {
-      expect(mockReplace).toHaveBeenCalledWith('/sermons');
+      expect(mockReplace).toHaveBeenCalledWith('/dashboard');
     });
 
     expect(screen.queryByText('Public Content')).not.toBeInTheDocument();
@@ -174,4 +174,4 @@ describe('PublicRoute', () => {
     expect(screen.getByTestId('loading-spinner')).toBeInTheDocument();
     expect(screen.queryByText('Public Content')).not.toBeInTheDocument();
   });
-}); 
+});

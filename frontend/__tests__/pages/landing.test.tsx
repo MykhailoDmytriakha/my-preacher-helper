@@ -1,11 +1,27 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import React from 'react';
 
 import LandingPage from '@/(pages)/page';
 import '@testing-library/jest-dom';
+import { signInWithGoogle } from '@/services/firebaseAuth.service';
+
+const mockPush = jest.fn();
+const mockReplace = jest.fn();
 
 // Mock necessary components or hooks used by the landing page
-jest.mock('@/components/landing/LoginOptions', () => () => <div data-testid="login-options">Mocked Login Options</div>);
+jest.mock('@/components/landing/LoginOptions', () => ({
+  onGoogleLogin,
+  onTestLogin,
+}: {
+  onGoogleLogin: () => void;
+  onTestLogin: () => void;
+}) => (
+  <div data-testid="login-options">
+    <button type="button" onClick={onGoogleLogin}>Mock Google Login</button>
+    <button type="button" onClick={onTestLogin}>Mock Test Login</button>
+  </div>
+));
 jest.mock('@/components/landing/FeatureCards', () => () => <div data-testid="feature-cards">Mocked Feature Cards</div>);
 jest.mock('@/components/navigation/LanguageSwitcher', () => () => <div data-testid="language-switcher">Mocked Language Switcher</div>);
 
@@ -35,8 +51,8 @@ jest.mock('@/providers/AuthProvider', () => ({
 // Mock the router
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
-    push: jest.fn(),
-    replace: jest.fn(),
+    push: mockPush,
+    replace: mockReplace,
   }),
 }));
 
@@ -67,7 +83,14 @@ jest.mock('firebase/auth', () => ({
 }));
 
 describe('Landing Page UI Smoke Test', () => {
+  const mockSignInWithGoogle = signInWithGoogle as jest.MockedFunction<typeof signInWithGoogle>;
+  const mockSignInWithEmailAndPassword = signInWithEmailAndPassword as jest.MockedFunction<typeof signInWithEmailAndPassword>;
+
   beforeEach(async () => {
+    jest.clearAllMocks();
+    mockSignInWithGoogle.mockResolvedValue(null);
+    mockSignInWithEmailAndPassword.mockResolvedValue({} as Awaited<ReturnType<typeof signInWithEmailAndPassword>>);
+
     render(<LandingPage />);
     // Wait for any potential loading states to resolve
     await waitFor(() => {
@@ -119,5 +142,27 @@ describe('Landing Page UI Smoke Test', () => {
     });
   });
 
+  it('routes Google login to the dashboard', async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Mock Google Login' }));
+
+    await waitFor(() => {
+      expect(mockSignInWithGoogle).toHaveBeenCalled();
+      expect(mockPush).toHaveBeenCalledWith('/dashboard');
+    });
+  });
+
+  it('routes test login to the dashboard', async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Mock Test Login' }));
+
+    await waitFor(() => {
+      expect(mockSignInWithEmailAndPassword).toHaveBeenCalledWith(
+        {},
+        'testuser@example.com',
+        'TestPassword123'
+      );
+      expect(mockPush).toHaveBeenCalledWith('/dashboard');
+    });
+  });
+
   // Add more checks for other essential elements like headers, footers, specific sections if applicable
-}); 
+});

@@ -1,5 +1,6 @@
 'use client';
 
+import { BookOpenIcon } from '@heroicons/react/24/solid';
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -158,9 +159,13 @@ export default function DashboardNav() {
           <Link
             href="/dashboard"
             prefetch={isOnline}
-            className="flex items-center text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent"
+            className="flex shrink-0 items-center gap-2 text-lg font-bold text-gray-950 dark:text-gray-100"
             aria-label={t('navigation.dashboard') as string}
           >
+            <span className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-600 text-white shadow-sm">
+              <BookOpenIcon className="h-5 w-5" aria-hidden="true" />
+            </span>
+            <span>{t('navigation.appName', { defaultValue: 'My Preacher Helper' })}</span>
           </Link>
 
           {/* Navigation */}

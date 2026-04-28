@@ -1,5 +1,6 @@
 {
   "navigation": {
+    "appName": "My Preacher Helper",
     "dashboard": "Dashboard",
     "guest": "Guest User",
     "settings": "Settings",
@@ -127,6 +128,167 @@
       "totalThoughts": "Total Thoughts",
       "withOutlines": "With Outlines",
       "latestSermon": "Latest Sermon"
+    }
+  },
+  "dashboardHome": {
+    "title": "Dashboard",
+    "subtitle": "Today’s ministry work",
+    "actions": {
+      "newSermon": "New sermon",
+      "addStudyNote": "Add study note",
+      "addPrayer": "Add prayer"
+    },
+    "metrics": {
+      "label": "Dashboard metrics",
+      "activeSermons": {
+        "label": "Active sermons",
+        "helper": "In preparation"
+      },
+      "activeSeries": {
+        "label": "Active series",
+        "helper": "Ongoing series"
+      },
+      "studyNotes": {
+        "label": "Study notes",
+        "helper": "Notes and questions"
+      },
+      "upcomingDates": {
+        "label": "Upcoming dates",
+        "helper": "Next 14 days"
+      },
+      "activePrayers": {
+        "label": "Active prayers",
+        "helper": "Need attention"
+      }
+    },
+    "time": {
+      "unknown": "No date",
+      "today": "Today",
+      "yesterday": "Yesterday",
+      "allDay": "All day",
+      "daysAgo": "{{count}}d ago"
+    },
+    "sections": {
+      "sermons": {
+        "title": "Sermons",
+        "viewAll": "View all sermons",
+        "empty": "No sermons yet. Create one to begin preparation.",
+        "untitled": "Untitled sermon",
+        "noVerse": "Scripture passage not set",
+        "status": {
+          "preparing": "Preparing",
+          "preached": "Preached"
+        },
+        "preachedAt": "Preached {{date}}",
+        "plannedFor": "Planned for {{date}}",
+        "updatedAt": "Updated {{date}}"
+      },
+      "week": {
+        "title": "This week",
+        "viewCalendar": "View calendar",
+        "viewFullCalendar": "View full calendar",
+        "empty": "No upcoming or recent past sermons or group meetings to show.",
+        "types": {
+          "sermon": "Sermon",
+          "group": "Group"
+        }
+      },
+      "prayer": {
+        "title": "Prayer focus",
+        "addPrayer": "Add prayer",
+        "addUpdate": "Add update",
+        "viewAll": "View all prayers",
+        "empty": "No prayer requests yet.",
+        "noUpdates": "No updates recorded yet.",
+        "status": {
+          "active": "Active",
+          "answered": "Answered",
+          "not_answered": "Not answered"
+        }
+      },
+      "series": {
+        "title": "Active series",
+        "viewAll": "View all series",
+        "empty": "No sermon series yet.",
+        "untitled": "Untitled series",
+        "progress": "{{preached}} of {{total}} preached",
+        "noItems": "No items",
+        "next": "Next: {{title}}",
+        "noNext": "Series complete or no next item",
+        "status": {
+          "draft": "Draft",
+          "active": "Active",
+          "completed": "Completed"
+        }
+      },
+      "studies": {
+        "title": "Recent studies",
+        "viewAll": "View all studies",
+        "empty": "No study notes yet.",
+        "untitled": "Untitled study note",
+        "noteTag": "Note",
+        "questionTag": "Question",
+        "table": {
+          "study": "Study",
+          "tags": "Tags",
+          "notes": "Notes",
+          "questions": "Questions"
+        }
+      },
+      "groups": {
+        "title": "Latest groups",
+        "viewAll": "View all groups",
+        "empty": "No groups yet.",
+        "progress": "Flow {{percent}}% ready",
+        "nextMeeting": "Next: {{date}}",
+        "noMeeting": "No meeting date",
+        "status": {
+          "active": "Active",
+          "completed": "Completed"
+        }
+      },
+      "attention": {
+        "title": "Needs attention",
+        "empty": "No action items right now.",
+        "viewAll": "View all ({{count}})",
+        "table": {
+          "item": "Item",
+          "category": "Category",
+          "severity": "Severity",
+          "due": "Due / Age",
+          "notes": "Notes",
+          "action": "Action"
+        },
+        "severity": {
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High"
+        },
+        "items": {
+          "unscheduledSermon": "Unscheduled sermon draft — “{{title}}”",
+          "studyQuestion": "Study question needs an answer — {{title}}",
+          "draftStudy": "Draft study note not reviewed — {{title}}",
+          "stalePrayer": "Prayer request without recent update — {{title}}",
+          "incompleteGroup": "Group agenda incomplete — {{title}}"
+        },
+        "notes": {
+          "outlineStarted": "Preparation started",
+          "questionsNeedAnswers": "Questions need answers",
+          "readyForReview": "Ready for review",
+          "noUpdate": "No recent update recorded",
+          "agendaRemaining": "Agenda items remaining"
+        },
+        "due": {
+          "noDate": "No date",
+          "days": "{{count}} days"
+        },
+        "actions": {
+          "review": "Review",
+          "openStudy": "Open study",
+          "addUpdate": "Add update",
+          "complete": "Complete"
+        }
+      }
     }
   },
   "addSermon": {

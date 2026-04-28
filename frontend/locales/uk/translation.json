@@ -1,5 +1,6 @@
 {
   "navigation": {
+    "appName": "Помічник проповідника",
     "dashboard": "Панель управління",
     "guest": "Гостьовий користувач",
     "settings": "Налаштування",
@@ -127,6 +128,167 @@
       "totalThoughts": "Всього думок",
       "withOutlines": "З планами",
       "latestSermon": "Остання проповідь"
+    }
+  },
+  "dashboardHome": {
+    "title": "Панель",
+    "subtitle": "Сьогоднішня робота служіння",
+    "actions": {
+      "newSermon": "Нова проповідь",
+      "addStudyNote": "Додати нотатку",
+      "addPrayer": "Додати молитву"
+    },
+    "metrics": {
+      "label": "Метрики панелі",
+      "activeSermons": {
+        "label": "Активні проповіді",
+        "helper": "У підготовці"
+      },
+      "activeSeries": {
+        "label": "Активні серії",
+        "helper": "Поточні серії"
+      },
+      "studyNotes": {
+        "label": "Нотатки",
+        "helper": "Нотатки й питання"
+      },
+      "upcomingDates": {
+        "label": "Найближчі дати",
+        "helper": "Наступні 14 днів"
+      },
+      "activePrayers": {
+        "label": "Активні молитви",
+        "helper": "Потребують уваги"
+      }
+    },
+    "time": {
+      "unknown": "Немає дати",
+      "today": "Сьогодні",
+      "yesterday": "Вчора",
+      "allDay": "Увесь день",
+      "daysAgo": "{{count}} дн. тому"
+    },
+    "sections": {
+      "sermons": {
+        "title": "Проповіді",
+        "viewAll": "Усі проповіді",
+        "empty": "Поки немає проповідей. Створіть першу, щоб почати підготовку.",
+        "untitled": "Проповідь без назви",
+        "noVerse": "Текст Писання не вказано",
+        "status": {
+          "preparing": "Готується",
+          "preached": "Проповідана"
+        },
+        "preachedAt": "Проповідана {{date}}",
+        "plannedFor": "Запланована на {{date}}",
+        "updatedAt": "Оновлена {{date}}"
+      },
+      "week": {
+        "title": "Цей тиждень",
+        "viewCalendar": "Відкрити календар",
+        "viewFullCalendar": "Увесь календар",
+        "empty": "Немає найближчих або недавніх минулих проповідей і груп.",
+        "types": {
+          "sermon": "Проповідь",
+          "group": "Група"
+        }
+      },
+      "prayer": {
+        "title": "Молитовний фокус",
+        "addPrayer": "Додати молитву",
+        "addUpdate": "Додати оновлення",
+        "viewAll": "Усі молитви",
+        "empty": "Поки немає молитовних потреб.",
+        "noUpdates": "Оновлень поки немає.",
+        "status": {
+          "active": "Активна",
+          "answered": "Отримала відповідь",
+          "not_answered": "Без відповіді"
+        }
+      },
+      "series": {
+        "title": "Активні серії",
+        "viewAll": "Усі серії",
+        "empty": "Поки немає серій проповідей.",
+        "untitled": "Серія без назви",
+        "progress": "{{preached}} з {{total}} проповідано",
+        "noItems": "Немає матеріалів",
+        "next": "Далі: {{title}}",
+        "noNext": "Серія завершена або наступного матеріалу немає",
+        "status": {
+          "draft": "Чернетка",
+          "active": "Активна",
+          "completed": "Завершена"
+        }
+      },
+      "studies": {
+        "title": "Останні нотатки",
+        "viewAll": "Усі вивчення",
+        "empty": "Поки немає нотаток для вивчення.",
+        "untitled": "Нотатка без назви",
+        "noteTag": "Нотатка",
+        "questionTag": "Питання",
+        "table": {
+          "study": "Вивчення",
+          "tags": "Теги",
+          "notes": "Нотатки",
+          "questions": "Питання"
+        }
+      },
+      "groups": {
+        "title": "Останні групи",
+        "viewAll": "Усі групи",
+        "empty": "Поки немає груп.",
+        "progress": "Хід зустрічі готовий на {{percent}}%",
+        "nextMeeting": "Наступна: {{date}}",
+        "noMeeting": "Дата зустрічі не задана",
+        "status": {
+          "active": "Активна",
+          "completed": "Завершена"
+        }
+      },
+      "attention": {
+        "title": "Потребує уваги",
+        "empty": "Зараз немає задач, що потребують уваги.",
+        "viewAll": "Показати всі ({{count}})",
+        "table": {
+          "item": "Елемент",
+          "category": "Категорія",
+          "severity": "Важливість",
+          "due": "Термін / вік",
+          "notes": "Нотатки",
+          "action": "Дія"
+        },
+        "severity": {
+          "low": "Низька",
+          "medium": "Середня",
+          "high": "Висока"
+        },
+        "items": {
+          "unscheduledSermon": "Чернетка проповіді без дати — «{{title}}»",
+          "studyQuestion": "Питання вивчення потребує відповіді — {{title}}",
+          "draftStudy": "Чернетка нотатки не перевірена — {{title}}",
+          "stalePrayer": "Молитовна потреба давно без оновлення — {{title}}",
+          "incompleteGroup": "План групи не завершено — {{title}}"
+        },
+        "notes": {
+          "outlineStarted": "Підготовку розпочато",
+          "questionsNeedAnswers": "Потрібні відповіді на питання",
+          "readyForReview": "Готово до перевірки",
+          "noUpdate": "Немає недавнього оновлення",
+          "agendaRemaining": "Залишилися пункти зустрічі"
+        },
+        "due": {
+          "noDate": "Немає дати",
+          "days": "{{count}} днів"
+        },
+        "actions": {
+          "review": "Перевірити",
+          "openStudy": "Відкрити вивчення",
+          "addUpdate": "Додати оновлення",
+          "complete": "Завершити"
+        }
+      }
     }
   },
   "addSermon": {
