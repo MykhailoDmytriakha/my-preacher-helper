@@ -60,6 +60,7 @@
 > One-line principles. History in git blame. Newest first.
 
 - **2026-05-01 Compact Recorder Controls Need Fixed Slot Geometry:** If a compact recorder reveals pause/cancel/finish actions in-place, use one fixed outer width plus fixed timer/action slots; `min/max` width and `truncate` on the timer make active recording unreadable.
+- **2026-05-01 Export Toggles Need End-To-End Option Contracts:** When a shared export modal passes options such as `type`, every page-specific export callback must preserve and honor that second argument; otherwise segmented controls can update visually while still returning stale/default content.
 - **2026-05-01 Subpoint-Scoped Audio Needs End-To-End Destination Metadata:** A recorder placed inside a sub-point must persist both `outlinePointId` and `subPointId` through UI helper, service FormData, API creation, and immediate UI projection; visual placement alone is not enough.
 - **2026-05-01 Repeated Visual Concepts Need Renderer-Wide Audits:** If a visual bug appears on "subpoints", audit every renderer of that concept (sidebar summary, detail list, plan view, selector) before calling the UI fixed; shared data does not imply shared component styling.
 - **2026-05-01 Subpoints On Colored Dark Surfaces Need Contextual Contrast:** Subpoint microcopy rendered on saturated focus-mode panels must use light-tinted text, visible bullets/handles, and a subtle translucent backing; neutral gray dark tokens can be readable on slate cards but fail on vivid blue section backgrounds.

@@ -612,7 +612,10 @@ export interface PlanMainLayoutProps {
   onRequestPlanOverlay: () => void;
   onRequestPreachingMode: () => void;
   onStartPreachingMode: () => void;
-  getExportContent: (format: "plain" | "markdown") => Promise<string>;
+  getExportContent: (
+    format: "plain" | "markdown",
+    options?: { includeTags?: boolean; type?: "thoughts" | "plan" },
+  ) => Promise<string>;
   getPdfContent: () => Promise<React.ReactNode>;
 }
 

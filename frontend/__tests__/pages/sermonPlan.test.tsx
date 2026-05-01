@@ -168,7 +168,10 @@ jest.mock('@/components/plan/ViewPlanMenu', () => {
 jest.mock('@/components/ExportButtons', () => {
   const React = require('react');
   return function MockExportButtons(props: {
-    getExportContent?: (format: 'plain' | 'markdown') => Promise<string>;
+    getExportContent?: (
+      format: 'plain' | 'markdown',
+      options?: { includeTags?: boolean; type?: 'thoughts' | 'plan' }
+    ) => Promise<string>;
     getPdfContent?: () => Promise<React.ReactNode>;
   }) {
     const [result, setResult] = React.useState('');
@@ -188,6 +191,27 @@ jest.mock('@/components/ExportButtons', () => {
           onClick={async () => setResult(await props.getExportContent?.('markdown') || '')}
         >
           Export markdown
+        </button>
+        <button
+          type="button"
+          data-testid="export-thoughts"
+          onClick={async () => setResult(await props.getExportContent?.('plain', { type: 'thoughts' }) || '')}
+        >
+          Export thoughts
+        </button>
+        <button
+          type="button"
+          data-testid="export-plan"
+          onClick={async () => setResult(await props.getExportContent?.('plain', { type: 'plan' }) || '')}
+        >
+          Export plan
+        </button>
+        <button
+          type="button"
+          data-testid="export-thoughts-with-tags"
+          onClick={async () => setResult(await props.getExportContent?.('plain', { type: 'thoughts', includeTags: true }) || '')}
+        >
+          Export thoughts with tags
         </button>
         <button
           type="button"
@@ -1173,6 +1197,24 @@ describe('Sermon Plan Page UI Smoke Test', () => {
       expect(screen.getByTestId('export-result')).toHaveTextContent('# Test Sermon');
     });
     expect(screen.getByTestId('export-result')).toHaveTextContent('## Introduction');
+  });
+
+  it('exports thoughts and plan as distinct text content', async () => {
+    renderWithQueryClient(<SermonPlanPage />);
+
+    await screen.findByTestId('plan-introduction-left-section');
+
+    fireEvent.click(screen.getByTestId('export-thoughts'));
+    await waitFor(() => {
+      expect(screen.getByTestId('export-result')).toHaveTextContent('Thought 2');
+    });
+    expect(screen.getByTestId('export-result')).not.toHaveTextContent('Intro SermonOutline Mock');
+
+    fireEvent.click(screen.getByTestId('export-plan'));
+    await waitFor(() => {
+      expect(screen.getByTestId('export-result')).toHaveTextContent('Intro SermonOutline Mock');
+    });
+    expect(screen.getByTestId('export-result')).not.toHaveTextContent('Thought 2');
   });
 
   it('builds PDF export content through export button callbacks', async () => {

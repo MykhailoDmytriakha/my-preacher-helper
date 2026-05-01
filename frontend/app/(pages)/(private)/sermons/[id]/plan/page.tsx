@@ -15,6 +15,7 @@ import { SermonPoint, Sermon, Thought, Plan } from "@/models/models";
 import { updateThought } from "@/services/thought.service";
 import { TimerPhase } from "@/types/TimerState";
 import { debugLog } from "@/utils/debugMode";
+import { getExportContent as buildThoughtExportContent } from "@/utils/exportContent";
 import { projectOptimisticEntities } from "@/utils/optimisticEntityProjection";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { getThoughtsForOutlinePoint } from "@/utils/thoughtOrdering";
@@ -44,6 +45,7 @@ import type {
 
 const THOUGHT_SYNC_SUCCESS_MS = 3500;
 const PLAN_THOUGHT_SYNC_LOCAL_ID_PREFIX = "plan-thought-sync-";
+type ExportContentOptions = { includeTags?: boolean; type?: "thoughts" | "plan" };
 
 const Button = ({
   onClick,
@@ -741,8 +743,20 @@ export default function PlanPage() {
   const handleOpenTimePicker = handleStartPreachingMode;
 
   // Generate content for export as text
-  const getExportContent = async (format: 'plain' | 'markdown'): Promise<string> => {
+  const getExportContent = async (
+    format: 'plain' | 'markdown',
+    options: ExportContentOptions = {},
+  ): Promise<string> => {
     if (!sermon) return '';
+    const exportType = options.type ?? 'plan';
+
+    if (exportType === 'thoughts') {
+      return buildThoughtExportContent(displaySermon ?? sermon, undefined, {
+        format,
+        includeTags: Boolean(options.includeTags),
+        type: 'thoughts',
+      });
+    }
 
     const titleSection = `# ${sermon.title}\n\n`;
     const verseSection = sermon.verse ? `> ${sermon.verse}\n\n` : '';
