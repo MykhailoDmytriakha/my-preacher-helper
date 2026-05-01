@@ -146,6 +146,7 @@ describe('Thoughts API route additional coverage', () => {
             tags: ['Tag1'],
             date: '2024-01-01',
             outlinePointId: 'op-1',
+            subPointId: 'sp-1',
             position: 2,
           },
         },
@@ -163,6 +164,7 @@ describe('Thoughts API route additional coverage', () => {
           tags: ['Tag1'],
           date: '2024-01-01',
           outlinePointId: 'op-1',
+          subPointId: 'sp-1',
           position: 2,
         })
       );

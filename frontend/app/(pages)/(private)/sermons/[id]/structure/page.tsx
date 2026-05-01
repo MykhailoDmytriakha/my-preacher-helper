@@ -277,6 +277,7 @@ function StructurePageContent() {
           color: allowedTags.find((t) => t.name === name)?.color || '#4c51bf',
         })),
         outlinePointId: thought.outlinePointId,
+        subPointId: thought.subPointId ?? null,
         outlinePoint,
         isLocked: Boolean(thought.isLocked),
       };

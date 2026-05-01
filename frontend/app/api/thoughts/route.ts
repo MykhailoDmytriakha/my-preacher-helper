@@ -38,6 +38,10 @@ function buildManualThought(thought: Record<string, unknown>): Thought {
     thoughtWithId.outlinePointId = thought.outlinePointId as string;
   }
 
+  if (thought.subPointId) {
+    thoughtWithId.subPointId = thought.subPointId as string;
+  }
+
   if (typeof thought.position === 'number') {
     (thoughtWithId as unknown as Record<string, unknown>).position = thought.position;
   }
@@ -120,10 +124,12 @@ async function handleAutoPost(request: Request) {
     const sermonId = formData.get('sermonId') as string;
     const forceTag = formData.get('forceTag') as string | null;
     const outlinePointId = formData.get('outlinePointId') as string | null;
+    const subPointId = formData.get('subPointId') as string | null;
     tracker.addContext({
       sermonId: sermonId || null,
       hasForceTag: Boolean(forceTag),
       hasOutlinePointId: Boolean(outlinePointId),
+      hasSubPointId: Boolean(subPointId),
       audioPresent: audioFile instanceof Blob,
     });
 
@@ -255,6 +261,9 @@ async function handleAutoPost(request: Request) {
 
     if (outlinePointId) {
       thought.outlinePointId = outlinePointId;
+    }
+    if (subPointId) {
+      thought.subPointId = subPointId;
     }
 
     if (!isCompleteThought(thought)) {

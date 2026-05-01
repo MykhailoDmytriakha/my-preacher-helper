@@ -49,6 +49,7 @@ import {
   openPointEditor,
 } from "./column/utils";
 import ExportButtons from "./ExportButtons";
+import { FlatRecorderButton } from "./FlatRecorderButton";
 import FocusModeLayout from "./FocusModeLayout";
 import { FocusRecorderButton } from "./FocusRecorderButton";
 import FocusSidebar from "./FocusSidebar";
@@ -158,7 +159,8 @@ const SubPointDropTarget: React.FC<{
   renderItem: (item: Item) => React.ReactNode;
   activeId?: string | null;
   t: Translate;
-}> = ({ subPoint, items, containerId, outlinePointId, renderItem, activeId, t }) => {
+  renderRecorder?: (subPoint: SubPoint) => React.ReactNode;
+}> = ({ subPoint, items, containerId, outlinePointId, renderItem, activeId, t, renderRecorder }) => {
   const { setNodeRef, isOver } = useDroppable({
     id: `sub-point-${subPoint.id}`,
     data: {
@@ -192,16 +194,23 @@ const SubPointDropTarget: React.FC<{
           isHovered ? "bg-blue-400 dark:bg-blue-400" : "bg-slate-400 dark:bg-slate-500"
         }`}
       />
-      <div className="relative flex items-center gap-2 pl-4 pr-1">
-        <span
-          aria-hidden="true"
-          className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${
-            isHovered ? "bg-blue-400 dark:bg-blue-400" : "bg-slate-400 dark:bg-slate-500"
-          }`}
-        />
-        <span className="min-w-0 truncate text-xs font-semibold text-slate-600 dark:text-slate-300" title={subPoint.text}>
-          {subPoint.text}
-        </span>
+      <div className="relative flex items-center justify-between gap-2 pl-4 pr-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            aria-hidden="true"
+            className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${
+              isHovered ? "bg-blue-400 dark:bg-blue-400" : "bg-slate-400 dark:bg-slate-500"
+            }`}
+          />
+          <span className="min-w-0 truncate text-xs font-semibold text-slate-600 dark:text-slate-300" title={subPoint.text}>
+            {subPoint.text}
+          </span>
+        </div>
+        {renderRecorder ? (
+          <div className="shrink-0">
+            {renderRecorder(subPoint)}
+          </div>
+        ) : null}
       </div>
       <div
         data-testid={`sub-point-lane-${subPoint.id}`}
@@ -244,11 +253,12 @@ const SubPointAwareDropZone: React.FC<{
   onEditSubPoint?: (outlinePointId: string, subPointId: string, newText: string) => void;
   onDeleteSubPoint?: (outlinePointId: string, subPointId: string) => void;
   onReorderSubPoints?: (outlinePointId: string, sourceIndex: number, destinationIndex: number) => void;
+  renderSubPointRecorder?: (subPoint: SubPoint) => React.ReactNode;
   t: Translate;
 }> = ({
   setNodeRef, isOver, pointItems, subPoints, containerId, outlinePointId, hasItems, isPointLocked,
   onEdit, isHighlighted, getHighlightType, onKeepItem, onRevertItem, activeId, onMoveToAmbiguous,
-  onRetryPendingThought, onToggleThoughtLock, onAddSubPoint, onEditSubPoint, onDeleteSubPoint, onReorderSubPoints, t
+  onRetryPendingThought, onToggleThoughtLock, onAddSubPoint, onEditSubPoint, onDeleteSubPoint, onReorderSubPoints, renderSubPointRecorder, t
 }) => {
   const hasSubPoints = subPoints.length > 0;
 
@@ -325,6 +335,7 @@ const SubPointAwareDropZone: React.FC<{
                     renderItem={(item) => renderItem(item, sp.text)}
                     activeId={activeId}
                     t={t}
+                    renderRecorder={renderSubPointRecorder}
                   />
                   {gapSlot}
                 </React.Fragment>
@@ -442,6 +453,30 @@ const SermonPointPlaceholder: React.FC<{
 
     // Local state for audio recording (per outline point)
     const [isRecordingAudio, setIsRecordingAudio] = React.useState<boolean>(false);
+    const [subPointProcessingTarget, setSubPointProcessingTarget] = React.useState<string | null>(null);
+    const [subPointAudioErrors, setSubPointAudioErrors] = React.useState<Record<string, string>>({});
+
+    const createSubPointProcessingSetter = React.useCallback((subPointId: string): React.Dispatch<React.SetStateAction<boolean>> => {
+      return (value) => {
+        setSubPointProcessingTarget((current) => {
+          const next = value instanceof Function ? value(current === subPointId) : value;
+          if (next) return subPointId;
+          return current === subPointId ? null : current;
+        });
+      };
+    }, []);
+
+    const setSubPointAudioError = React.useCallback((subPointId: string, error: string | null) => {
+      setSubPointAudioErrors((previous) => {
+        if (!error) {
+          const next = { ...previous };
+          delete next[subPointId];
+          return next;
+        }
+
+        return { ...previous, [subPointId]: error };
+      });
+    }, []);
 
     // Local inline edit state (normal mode)
     const [isEditingLocally, setIsEditingLocally] = React.useState(false);
@@ -472,6 +507,35 @@ const SermonPointPlaceholder: React.FC<{
     const pointLockToggleLabel = getPointLockToggleLabel(isPointLocked, t);
     const pointToggleHandler = onTogglePointLock ?? onToggleReviewed;
     const canUseInlineRecorder = Boolean(sermonId && isPointAudioSection(containerId));
+    const renderSubPointRecorder = canUseInlineRecorder
+      ? (subPoint: SubPoint) => (
+        <FlatRecorderButton
+          disabled={isPointLocked}
+          transcriptionError={subPointAudioErrors[subPoint.id] ?? null}
+          onClearError={() => setSubPointAudioError(subPoint.id, null)}
+          onRecordingComplete={(audioBlob) => {
+            if (!sermonId) return;
+            void recordAudioThought({
+              audioBlob,
+              sectionId: containerId,
+              sermonId,
+              pointId: point.id,
+              subPointId: subPoint.id,
+              setIsRecordingAudio: createSubPointProcessingSetter(subPoint.id),
+              setAudioError: (error) => setSubPointAudioError(subPoint.id, error),
+              onAudioThoughtCreated,
+              t,
+              errorContext: "Error recording audio for sub-point:",
+            });
+          }}
+          isProcessing={subPointProcessingTarget === subPoint.id}
+          onError={(error) => {
+            setSubPointAudioError(subPoint.id, error);
+            setSubPointProcessingTarget((current) => current === subPoint.id ? null : current);
+          }}
+        />
+      )
+      : undefined;
     const aiSortTooltip = (() => {
       if (isSortingThisPoint) {
         return t("structure.sorting", { defaultValue: "Sorting..." });
@@ -726,6 +790,7 @@ const SermonPointPlaceholder: React.FC<{
             onEditSubPoint={onEditSubPoint}
             onDeleteSubPoint={onDeleteSubPoint}
             onReorderSubPoints={onReorderSubPoints}
+            renderSubPointRecorder={renderSubPointRecorder}
             t={t}
           />
         </div>

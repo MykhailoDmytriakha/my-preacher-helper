@@ -49,7 +49,8 @@ export const createAudioThoughtWithForceTag = async (
   forceTag: string | null = null,
   retryCount: number = 0,
   maxRetries: number = 3,
-  outlinePointId?: string
+  outlinePointId?: string,
+  subPointId?: string
 ): Promise<Thought> => {
   // maxRetries means retries after the first attempt, so attempt indexes are 0..maxRetries.
   if (retryCount > maxRetries) {
@@ -70,6 +71,9 @@ export const createAudioThoughtWithForceTag = async (
     }
     if (outlinePointId) {
       formData.append("outlinePointId", outlinePointId);
+    }
+    if (subPointId) {
+      formData.append("subPointId", subPointId);
     }
 
     console.log(
@@ -117,7 +121,8 @@ export const createAudioThoughtWithForceTag = async (
           forceTag,
           retryCount + 1,
           maxRetries,
-          outlinePointId
+          outlinePointId,
+          subPointId
         );
       }
       

@@ -403,20 +403,22 @@ describe('Thought Service', () => {
       const sermonId = 'test-sermon-123';
       const forceTag = 'Вступление';
       const outlinePointId = 'op-xyz';
+      const subPointId = 'sp-xyz';
 
       const fetchMock = jest.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ id: 't1', text: 'ok', tags: [forceTag], date: new Date().toISOString(), outlinePointId }),
+        json: () => Promise.resolve({ id: 't1', text: 'ok', tags: [forceTag], date: new Date().toISOString(), outlinePointId, subPointId }),
       });
       global.fetch = fetchMock;
 
-      await createAudioThoughtWithForceTag(mockAudioBlob, sermonId, forceTag, 0, 3, outlinePointId);
+      await createAudioThoughtWithForceTag(mockAudioBlob, sermonId, forceTag, 0, 3, outlinePointId, subPointId);
 
       const callArgs = fetchMock.mock.calls[0][1];
       const body = callArgs.body as FormData;
       expect(body.get('sermonId')).toBe(sermonId);
       expect(body.get('forceTag')).toBe(forceTag);
       expect(body.get('outlinePointId')).toBe(outlinePointId);
+      expect(body.get('subPointId')).toBe(subPointId);
     });
   });
 

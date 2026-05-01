@@ -15,6 +15,7 @@ interface RecordAudioThoughtArgs {
   onAudioThoughtCreated?: OnAudioThoughtCreated;
   t: Translate;
   pointId?: string;
+  subPointId?: string;
   successMessage?: string;
   onSuccess?: () => void;
   errorContext: string;
@@ -29,6 +30,7 @@ export const recordAudioThought = async ({
   onAudioThoughtCreated,
   t,
   pointId,
+  subPointId,
   successMessage,
   onSuccess,
   errorContext,
@@ -40,7 +42,9 @@ export const recordAudioThought = async ({
     const forceTag = getForceTagForContainer(sectionId);
     const { createAudioThoughtWithForceTag } = await import("@/services/thought.service");
     const newThought = pointId
-      ? await createAudioThoughtWithForceTag(audioBlob, sermonId, forceTag || null, 0, 3, pointId)
+      ? subPointId
+        ? await createAudioThoughtWithForceTag(audioBlob, sermonId, forceTag || null, 0, 3, pointId, subPointId)
+        : await createAudioThoughtWithForceTag(audioBlob, sermonId, forceTag || null, 0, 3, pointId)
       : await createAudioThoughtWithForceTag(audioBlob, sermonId, forceTag || null);
 
     if (isPointAudioSection(sectionId)) {

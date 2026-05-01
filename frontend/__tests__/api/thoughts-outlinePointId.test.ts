@@ -67,8 +67,8 @@ jest.mock('firebase-admin/firestore', () => ({
 
 jest.mock('uuid', () => ({ v4: () => 'thought-fixed-id' }));
 
-describe('api/thoughts POST attaches outlinePointId', () => {
-  it('returns Thought with outlinePointId when provided in FormData', async () => {
+describe('api/thoughts POST attaches outline metadata', () => {
+  it('returns Thought with outlinePointId and subPointId when provided in FormData', async () => {
     // Ensure Fetch API globals exist before importing the route
     try {
       const undici = await import('undici');
@@ -85,6 +85,7 @@ describe('api/thoughts POST attaches outlinePointId', () => {
     fd.append('audio', blob, 'recording.webm');
     fd.append('sermonId', 's-1');
     fd.append('outlinePointId', 'op-1');
+    fd.append('subPointId', 'sp-1');
 
     const req: any = { url: 'http://localhost/api/thoughts', formData: async () => fd };
     const { POST } = await import('@/api/thoughts/route');
@@ -94,5 +95,6 @@ describe('api/thoughts POST attaches outlinePointId', () => {
     expect(json.id).toBe('thought-fixed-id');
     expect(json.text).toBe('final text');
     expect(json.outlinePointId).toBe('op-1');
+    expect(json.subPointId).toBe('sp-1');
   });
 });
