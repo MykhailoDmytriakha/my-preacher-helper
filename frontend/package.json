@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:pwa": "cross-env NEXT_PUBLIC_ENABLE_SERVICE_WORKER=true next dev",
     "build": "npm run debug:directory && cross-env NODE_ENV=test npm run test:fast && next build",
+    "preview:pwa": "next build && next start",
     "start": "next start",
     "lint": "eslint .",
     "lint:full": "npm run lint && npm run lint:unused && npm run compile",

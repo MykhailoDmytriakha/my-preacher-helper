@@ -81,7 +81,7 @@ describe('useSermon', () => {
     expect(result.current.sermon).toEqual(baseSermon);
   });
 
-  it('returns null when online and only cached list exists', () => {
+  it('returns cached list data when online and detail data has not arrived yet', () => {
     const { wrapper, queryClient } = createWrapper();
     const cached = { ...baseSermon, id: 'sermon-1', title: 'Cached' };
     queryClient.setQueryData(['sermons', 'user-1'], [cached]);
@@ -96,7 +96,7 @@ describe('useSermon', () => {
 
     const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
 
-    expect(result.current.sermon).toBeNull();
+    expect(result.current.sermon).toEqual(cached);
   });
 
   it('hydrates cache from list when offline', async () => {

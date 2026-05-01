@@ -103,26 +103,26 @@ export const SubPointList: React.FC<SubPointListProps> = ({
     <>
       {canReorder && dragHandleProps ? (
         <div {...(dragHandleProps as React.HTMLAttributes<HTMLDivElement>)} className="cursor-grab flex-shrink-0 w-4 flex items-center justify-center touch-manipulation">
-          <Bars2Icon className="h-3 w-3 text-gray-300 dark:text-gray-600" />
+          <Bars2Icon className="h-3 w-3 text-slate-400 dark:text-blue-100/70" />
         </div>
       ) : (
-        <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-gray-500 flex-shrink-0" />
+        <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-blue-100/75 flex-shrink-0 shadow-sm dark:shadow-blue-950/20" />
       )}
-      <span className="flex-1 text-sm text-gray-500 dark:text-gray-400 min-w-0 truncate" title={sp.text}>
+      <span className="flex-1 min-w-0 truncate text-sm font-medium text-slate-600 dark:text-blue-50/90" title={sp.text}>
         {sp.text}
       </span>
       {!isPointLocked && (
         <div className="flex items-center gap-0.5 opacity-40 group-hover/sp:opacity-100 transition-opacity flex-shrink-0">
           <button
             onClick={() => { setEditingId(sp.id); setEditText(sp.text); }}
-            className="p-0.5 text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400"
+            className="p-0.5 text-slate-400 hover:text-slate-600 dark:text-blue-100/45 dark:hover:text-blue-50"
             aria-label={t("common.edit")}
           >
             <PencilIcon className="h-3.5 w-3.5" />
           </button>
           <button
             onClick={() => handleDeleteClick(sp.id)}
-            className="p-0.5 text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400"
+            className="p-0.5 text-slate-400 hover:text-red-500 dark:text-blue-100/45 dark:hover:text-red-200"
             aria-label={t("common.delete")}
           >
             <TrashIcon className="h-3.5 w-3.5" />
@@ -133,7 +133,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   );
 
   const renderSubPointItem = (sp: SubPoint, dragHandleProps?: React.HTMLAttributes<HTMLElement> | null) => (
-    <div className="group/sp flex items-center gap-2 py-1 px-1.5 rounded transition-colors hover:bg-gray-50/80 dark:hover:bg-gray-700/30">
+    <div className="group/sp flex items-center gap-2 py-1.5 px-2 rounded-lg transition-colors hover:bg-slate-100/80 dark:hover:bg-white/10">
       {editingId === sp.id ? (
         <div className="flex-1 flex items-center gap-1">
           <input
@@ -168,17 +168,17 @@ export const SubPointList: React.FC<SubPointListProps> = ({
         ref={provided.innerRef}
         {...provided.draggableProps}
         {...provided.dragHandleProps}
-        className="flex items-center gap-2 py-1 px-1.5 rounded bg-white dark:bg-gray-800 shadow-lg ring-1 ring-blue-400/50 text-sm"
+        className="flex items-center gap-2 py-1.5 px-2 rounded-lg bg-white dark:bg-slate-800 shadow-lg ring-1 ring-blue-400/50 text-sm"
         style={provided.draggableProps.style}
       >
-        <Bars2Icon className="h-3 w-3 text-gray-400 flex-shrink-0" />
-        <span className="text-gray-600 dark:text-gray-300">{sp.text}</span>
+        <Bars2Icon className="h-3 w-3 text-slate-400 dark:text-blue-100/70 flex-shrink-0" />
+        <span className="text-slate-600 dark:text-blue-50/90">{sp.text}</span>
       </div>
     );
   };
 
   return (
-    <div className="ml-7 mt-1 mb-1 border-l border-gray-200/60 dark:border-gray-600/40 pl-3">
+    <div className="ml-7 mt-2 mb-2 rounded-lg border-l border-slate-300/80 bg-white/30 py-1.5 pl-3 pr-2 dark:border-blue-100/35 dark:bg-white/[0.07]">
       {sorted.length > 0 && (
         canReorder ? (
           <DragDropContext onDragEnd={handleDragEnd}>

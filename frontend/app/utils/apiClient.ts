@@ -31,6 +31,8 @@ export const onConnectivityChange = (observer: ConnectivityObserver) => {
 let lastKnownOnlineStatus = true;
 let recoveryTimeoutId: NodeJS.Timeout | null = null;
 
+export const getConnectivityStatus = () => lastKnownOnlineStatus;
+
 const setOnlineStatus = (isOnline: boolean) => {
   // IF dropping to offline -> DO IT IMMEDIATELY
   if (!isOnline) {

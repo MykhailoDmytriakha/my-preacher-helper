@@ -1239,6 +1239,37 @@ describe('Column Component', () => {
             }
           },
           {
+            name: 'focus sidebar subpoints stay readable on colored dark surfaces',
+            run: () => {
+              const { container } = render(
+                <Column
+                  {...focusProps}
+                  outlinePoints={[
+                    {
+                      id: 'point-readable',
+                      text: 'Readable Point',
+                      subPoints: [{ id: 'sub-readable', text: 'Readable SubPoint', position: 1000 }]
+                    }
+                  ]}
+                  thoughtsPerSermonPoint={{ 'point-readable': 1 }}
+                />
+              );
+
+              const sidebarSubPoint = screen
+                .getAllByText('Readable SubPoint')
+                .find((node) => node.closest('li')?.className.includes('dark:text-blue-50/90'));
+              const sidebarItem = sidebarSubPoint?.closest('li');
+              const sidebarList = sidebarSubPoint?.closest('ul');
+
+              expect(sidebarItem).toHaveClass('text-blue-50/90');
+              expect(sidebarItem).toHaveClass('dark:text-blue-50/90');
+              expect(sidebarItem).toHaveClass('font-medium');
+              expect(sidebarList).toHaveClass('dark:border-blue-100/35');
+              const darkGrayNodes = Array.from(container.querySelectorAll('.dark\\:text-gray-500'));
+              expect(darkGrayNodes.some((node) => node.textContent?.includes('Readable SubPoint'))).toBe(false);
+            }
+          },
+          {
             name: 'focus content area uses neutral palette',
             run: () => {
               const { container } = render(<Column {...focusProps} />);

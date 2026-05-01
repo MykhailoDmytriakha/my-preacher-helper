@@ -59,6 +59,12 @@ function useSermon(sermonId: string) {
     queryKey: ["sermon", sermonId],
     queryFn: () => getSermonById(sermonId),
     enabled: Boolean(sermonId),
+    initialData: () => cachedSermonFromList ?? undefined,
+    initialDataUpdatedAt: () => {
+      if (!uid) return undefined;
+      return queryClient.getQueryState(["sermons", uid])?.dataUpdatedAt;
+    },
+    placeholderData: cachedSermonFromList ?? undefined,
   });
 
   useEffect(() => {
@@ -68,7 +74,7 @@ function useSermon(sermonId: string) {
     debugLog("Sermon cache hydrated from list", { sermonId });
   }, [cachedSermonFromList, data, isOnline, queryClient, sermonId]);
 
-  const sermon = data ?? (isOnline ? null : cachedSermonFromList) ?? null;
+  const sermon = data ?? cachedSermonFromList ?? null;
 
   const setSermon = useCallback(
     async (updater: SermonUpdater) => {
@@ -83,7 +89,7 @@ function useSermon(sermonId: string) {
       // Also invalidate the global list so the dashboard reflects updated timestamps (like updatedAt)
       const currentUid = resolveUid();
       if (currentUid) {
-        queryClient.invalidateQueries({ queryKey: ["sermons", currentUid] });
+        queryClient.invalidateQueries({ queryKey: ["sermons", currentUid], refetchType: 'none' });
       }
     },
     [queryClient, sermonId]

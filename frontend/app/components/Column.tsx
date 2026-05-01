@@ -1277,10 +1277,10 @@ export default function Column({
                       </div>
                       {/* Sub-points in sidebar */}
                       {point.subPoints && point.subPoints.length > 0 && (
-                        <ul className="ml-7 mt-0.5 space-y-0.5 border-l border-white/20 pl-2">
+                        <ul className="ml-7 mt-1 space-y-1 border-l border-white/35 pl-3 dark:border-blue-100/35">
                           {[...point.subPoints].sort((a, b) => a.position - b.position).map((sp) => (
-                            <li key={sp.id} className="flex items-center gap-1.5 text-xs text-white/50 dark:text-gray-500 truncate">
-                              <span className="w-1 h-1 rounded-full bg-white/40 flex-shrink-0" />
+                            <li key={sp.id} className="flex items-center gap-1.5 truncate rounded-md px-1.5 py-0.5 text-[13px] font-medium leading-5 text-blue-50/90 dark:text-blue-50/90" title={sp.text}>
+                              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-blue-100/80 shadow-sm" />
                               {sp.text}
                             </li>
                           ))}

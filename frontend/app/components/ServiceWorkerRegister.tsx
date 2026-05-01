@@ -5,10 +5,13 @@ import { useEffect } from "react";
 import { debugLog } from "@/utils/debugMode";
 
 const SERVICE_WORKER_URL = "/sw.js";
+const ENABLE_SERVICE_WORKER =
+  process.env.NODE_ENV === "production" ||
+  process.env.NEXT_PUBLIC_ENABLE_SERVICE_WORKER === "true";
 
 export function ServiceWorkerRegister() {
   useEffect(() => {
-    if (process.env.NODE_ENV !== "production") return;
+    if (!ENABLE_SERVICE_WORKER) return;
     if (typeof window === "undefined") return;
     if (!("serviceWorker" in navigator)) return;
 

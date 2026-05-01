@@ -1,5 +1,7 @@
 const defaultRuntimeCaching = require('next-pwa/cache');
 
+const enableServiceWorkerInDev = process.env.NEXT_PUBLIC_ENABLE_SERVICE_WORKER === 'true';
+
 const runtimeCaching = [
   {
     urlPattern: ({ url, request }) =>
@@ -66,8 +68,7 @@ const runtimeCaching = [
 
 const withPWA = require('next-pwa')({
   dest: 'public',
-  // disable: process.env.NODE_ENV === 'development',
-  disable: false,
+  disable: process.env.NODE_ENV === 'development' && !enableServiceWorkerInDev,
   register: true,
   skipWaiting: true,
   buildExcludes: [/app-build-manifest\.json$/],

@@ -18,14 +18,18 @@ async function fetchSermonData(
   queryClient: ReturnType<typeof useQueryClient>,
   isOnlineResolved: boolean
 ): Promise<Sermon | null> {
+  const cachedSermon = queryClient.getQueryData<Sermon>(["sermon", sermonId]);
+  if (cachedSermon) {
+    return cachedSermon;
+  }
+
   if (isOnlineResolved) {
     const fetched = await getSermonById(sermonId);
     queryClient.setQueryData(["sermon", sermonId], fetched ?? undefined);
     return fetched ?? null;
   }
 
-  const cachedSermon = queryClient.getQueryData<Sermon>(["sermon", sermonId]);
-  return cachedSermon ?? null;
+  return null;
 }
 
 // Helper: Fetch and process tags
@@ -43,11 +47,14 @@ async function fetchTagsData(
   const tagsQueryKey = ['tags', fetchedSermon.userId];
 
   try {
-    if (!isOnlineResolved) {
-      tagsData = queryClient.getQueryData(tagsQueryKey) ?? { requiredTags: [], customTags: [] };
-    } else {
+    const cachedTags = queryClient.getQueryData<{ requiredTags: Tag[]; customTags: Tag[] }>(tagsQueryKey);
+    if (cachedTags) {
+      tagsData = cachedTags;
+    } else if (isOnlineResolved) {
       tagsData = await getTags(fetchedSermon.userId);
       queryClient.setQueryData(tagsQueryKey, tagsData);
+    } else {
+      tagsData = { requiredTags: [], customTags: [] };
     }
   } catch (tagError) {
     console.error("Error fetching tags:", tagError);
@@ -186,8 +193,11 @@ async function fetchOutlineData(
   t: TFunction
 ): Promise<SermonOutline | undefined> {
   let outlineData: SermonOutline | undefined;
+  const cachedOutline = queryClient.getQueryData<SermonOutline>(["sermon-outline", sermonId]);
 
-  if (isOnlineResolved) {
+  if (cachedOutline) {
+    outlineData = cachedOutline;
+  } else if (isOnlineResolved) {
     try {
       outlineData = await getSermonOutline(sermonId);
       queryClient.setQueryData(["sermon-outline", sermonId], outlineData ?? undefined);
@@ -196,8 +206,6 @@ async function fetchOutlineData(
       toast.error(t('errors.fetchOutlineError'));
       outlineData = undefined;
     }
-  } else {
-    outlineData = queryClient.getQueryData<SermonOutline>(["sermon-outline", sermonId]);
   }
 
   return outlineData ?? fetchedSermon.outline;
