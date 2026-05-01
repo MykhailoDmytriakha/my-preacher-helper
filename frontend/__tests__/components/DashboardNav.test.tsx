@@ -524,12 +524,13 @@ describe('DashboardNav Component', () => {
 
     // Click to open dropdown
     fireEvent.click(navButton);
-    expect(screen.getByText('Settings')).toBeInTheDocument();
+    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
 
     // Click outside to close (simulated by manual click event if needed, but let's try direct)
     fireEvent.click(document.body);
     await waitFor(() => {
-      expect(screen.queryByText('Settings')).not.toBeInTheDocument();
+      expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
     });
   });
 

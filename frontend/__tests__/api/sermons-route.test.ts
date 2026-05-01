@@ -46,6 +46,7 @@ describe('Sermons API Route', () => {
   let mockWhere: jest.Mock;
   let mockGet: jest.Mock;
   let mockAdd: jest.Mock;
+  let mockDelete: jest.Mock;
   let mockDocs: any[];
   let mockDocRef: any;
 
@@ -78,8 +79,10 @@ describe('Sermons API Route', () => {
     ];
 
     // Set up mock docRef for POST tests
+    mockDelete = jest.fn().mockResolvedValue(undefined);
     mockDocRef = {
-      id: 'newSermonId123'
+      id: 'newSermonId123',
+      delete: mockDelete
     };
 
     // Create mock Firestore chain
@@ -357,7 +360,7 @@ describe('Sermons API Route', () => {
       expect(mockAddSermonToSeries).not.toHaveBeenCalled();
     });
 
-    test('should still return 200 if addSermonToSeries fails (non-fatal)', async () => {
+    test('should roll back sermon creation if addSermonToSeries fails', async () => {
       // Arrange
       const sermonData = {
         userId: 'user123',
@@ -374,10 +377,36 @@ describe('Sermons API Route', () => {
       const response = await sermonsRouteModule.POST(mockRequest as unknown as Request);
       const responseData = await response.json();
 
-      // Assert — sermon creation must succeed even if series sync fails
-      expect(response.status).toBe(200);
-      expect(responseData.sermon.id).toBe('newSermonId123');
+      // Assert — do not leave sermon.seriesId without the series reverse index
+      expect(response.status).toBe(500);
+      expect(responseData.error).toBe('Failed to create sermon');
+      expect(responseData.details).toBe('Failed to link sermon to series');
+      expect(mockDelete).toHaveBeenCalledTimes(1);
+    });
+
+    test('should still return 500 when rollback after series sync failure also fails', async () => {
+      // Arrange
+      const sermonData = {
+        userId: 'user123',
+        title: 'Series Sync And Rollback Failure Sermon',
+        verse: 'Acts 2:1',
+        date: '2023-02-01',
+        thoughts: [],
+        seriesId: 'broken-series-id',
+      };
+      mockRequest.json = jest.fn().mockResolvedValueOnce(sermonData);
+      mockAddSermonToSeries.mockRejectedValueOnce(new Error('Series not found'));
+      mockDelete.mockRejectedValueOnce(new Error('Cleanup failed'));
+
+      // Act
+      const response = await sermonsRouteModule.POST(mockRequest as unknown as Request);
+      const responseData = await response.json();
+
+      // Assert
+      expect(response.status).toBe(500);
+      expect(responseData.error).toBe('Failed to create sermon');
+      expect(responseData.details).toBe('Failed to link sermon to series');
+      expect(mockDelete).toHaveBeenCalledTimes(1);
     });
   });
 });
-

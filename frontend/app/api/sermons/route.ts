@@ -64,14 +64,22 @@ export async function POST(request: Request) {
     console.log("Sermon written with ID:", docRef.id);
 
     // Sync sermon into the series.items array so it appears in the series list.
-    // Previously only sermon.seriesId was saved, causing the sermon to be invisible in the series view.
     if (seriesId) {
       try {
         await seriesRepository.addSermonToSeries(seriesId, docRef.id, seriesPosition);
         console.log(`Sermon ${docRef.id} linked to series ${seriesId}`);
       } catch (seriesError) {
-        // Non-fatal: sermon is created, log and continue
         console.error(`Failed to link sermon ${docRef.id} to series ${seriesId}:`, seriesError);
+        try {
+          await docRef.delete();
+          console.log(`Rolled back sermon ${docRef.id} after series link failure`);
+        } catch (cleanupError) {
+          console.error(`Failed to roll back sermon ${docRef.id} after series link failure:`, cleanupError);
+        }
+        return NextResponse.json(
+          { error: 'Failed to create sermon', details: 'Failed to link sermon to series' },
+          { status: 500 }
+        );
       }
     }
 
