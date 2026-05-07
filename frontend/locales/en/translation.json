@@ -588,6 +588,7 @@
     "resumeRecording": "Resume Recording",
     "cancelRecording": "Cancel Recording",
     "processing": "Processing...",
+    "processingRecording": "Processing recording",
     "initializing": "Initializing...",
     "retryTranscription": "Retry Transcription",
     "savedRecording": "Saved recording",

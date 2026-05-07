@@ -179,6 +179,17 @@ export const TIMER_CONTROL_COLORS = {
   disabled: 'rgba(148, 163, 184, 0.45)',
 } as const;
 
+export const FLAT_RECORDER_COLORS = {
+  active: {
+    root: "border-rose-300 bg-rose-500 text-white shadow-sm shadow-rose-500/25 dark:border-rose-300/70 dark:bg-rose-500",
+    pause: "bg-amber-400 text-slate-950 hover:bg-amber-300 focus-visible:ring-amber-200",
+    resume: "bg-sky-500 text-white hover:bg-sky-400 focus-visible:ring-sky-200",
+    cancel: "border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 hover:text-rose-700 focus-visible:ring-rose-300 dark:border-rose-200/80 dark:bg-rose-100 dark:text-rose-700 dark:hover:bg-rose-200",
+    finish: "border-emerald-300/70 bg-emerald-500 text-white shadow-sm shadow-emerald-500/20 hover:bg-emerald-400 focus-visible:ring-emerald-200",
+    divider: "border-white/25",
+  },
+} as const;
+
 // Navigation item accent palettes (keep navigation styling consistent across workspaces)
 const NAV_ITEM_THEMES = {
   default: {

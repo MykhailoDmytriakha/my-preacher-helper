@@ -59,6 +59,8 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-05-07 Busy Recorder States Need Object Labels:** Compact recorder busy states must show what is happening to the recording (for example, “Processing recording”) instead of reusing a countdown like `1:30`; timer-only busy labels are ambiguous once the user is no longer actively recording.
+- **2026-05-07 Recorder Controls Need Semantic Color Separation:** In a compact active recorder, reserve green for the finish/check action, keep pause as amber, make cancel a soft destructive tint, and avoid repeating the same danger color on both cancel and finish or users cannot parse the action hierarchy quickly.
 - **2026-05-07 Subpoint Lists Need Right-Side Insets:** When a nested sub-point list sits inside a focus-mode outline card, give the list its own right inset/max-width and keep edit/delete controls in a fixed-width action slot; otherwise controls can align beyond the visual content boundary even when they remain technically inside the parent card.
 - **2026-05-01 Compact Recorder Controls Need Fixed Slot Geometry:** If a compact recorder reveals pause/cancel/finish actions in-place, use one fixed outer width plus fixed timer/action slots; `min/max` width and `truncate` on the timer make active recording unreadable.
 - **2026-05-03 Gemini Live Models Are Not Text Structured Models:** Do not put `*-live-*` Gemini model ids into `GEMINI_MODEL` for `callWithStructuredOutput`/OpenAI-compatible chat routes; Live API models require the Live API surface and will 404 on normal structured-output/chat completion calls.

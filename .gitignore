@@ -62,3 +62,4 @@ next-env.d.ts
 .sessions
 .playwright-cli
 .playwright-mcp
+output/

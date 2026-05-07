@@ -588,6 +588,7 @@
     "resumeRecording": "Продовжити",
     "cancelRecording": "Скасувати запис",
     "processing": "Обробка...",
+    "processingRecording": "Обробка запису",
     "initializing": "Ініціалізація...",
     "retryTranscription": "Повторити транскрипцію",
     "savedRecording": "Запис збережено",

@@ -1,4 +1,11 @@
-import { SERMON_SECTION_COLORS, UI_COLORS, getSectionStyling, getTagStyling, getFocusModeButtonColors } from '../../app/utils/themeColors';
+import {
+  FLAT_RECORDER_COLORS,
+  SERMON_SECTION_COLORS,
+  UI_COLORS,
+  getSectionStyling,
+  getTagStyling,
+  getFocusModeButtonColors,
+} from '../../app/utils/themeColors';
 import { runScenarios } from '../../test-utils/scenarioRunner';
 
 describe('themeColors', () => {
@@ -116,6 +123,16 @@ describe('themeColors', () => {
           }
         ]
       );
+    });
+  });
+
+  describe('FLAT_RECORDER_COLORS', () => {
+    it('defines balanced active recorder colors', () => {
+      expect(FLAT_RECORDER_COLORS.active.root).toContain('bg-rose-500');
+      expect(FLAT_RECORDER_COLORS.active.pause).toContain('bg-amber-400');
+      expect(FLAT_RECORDER_COLORS.active.cancel).toContain('bg-rose-50');
+      expect(FLAT_RECORDER_COLORS.active.finish).toContain('bg-emerald-500');
+      expect(FLAT_RECORDER_COLORS.active.resume).toContain('bg-sky-500');
     });
   });
 });

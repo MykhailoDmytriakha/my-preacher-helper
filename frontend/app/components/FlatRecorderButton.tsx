@@ -7,6 +7,7 @@ import "@locales/i18n";
 
 import { MicrophoneIcon } from "@/components/Icons";
 import { getAudioRecordingDuration } from "@/utils/audioRecorderConfig";
+import { FLAT_RECORDER_COLORS } from "@/utils/themeColors";
 
 import { AudioRecoveryPanel, ErrorBanner } from "./audio-recorder/AudioRecorderControls";
 import { useAudioRecorderLifecycle } from "./audio-recorder/useAudioRecorderLifecycle";
@@ -29,6 +30,8 @@ interface FlatRecorderButtonProps {
 
 const AUDIO_NEW_RECORDING_KEY = "audio.newRecording";
 const AUDIO_STOP_RECORDING_KEY = "audio.stopRecording";
+const AUDIO_INITIALIZING_KEY = "audio.initializing";
+const AUDIO_PROCESSING_RECORDING_KEY = "audio.processingRecording";
 const FLAT_RECORDER_WIDTH_CLASS = "w-[188px]";
 const FLAT_RECORDER_ACTIVE_GRID_CLASS = "grid-cols-[86px_34px_34px_34px]";
 
@@ -46,7 +49,7 @@ const getRootClasses = (disabled: boolean, recordingState: RecordingState) => {
   switch (recordingState) {
     case "recording":
     case "paused":
-      return "border-red-400 bg-red-500 text-white shadow-sm shadow-red-500/30 dark:border-red-400/70 dark:bg-red-500";
+      return FLAT_RECORDER_COLORS.active.root;
     case "processing":
       return "border-blue-300 bg-blue-500 text-white shadow-sm shadow-blue-500/20 dark:border-blue-300/70 dark:bg-blue-500";
     case "initializing":
@@ -58,8 +61,8 @@ const getRootClasses = (disabled: boolean, recordingState: RecordingState) => {
 
 const getPauseButtonClasses = (isPaused: boolean) => (
   isPaused
-    ? "bg-green-500 text-white hover:bg-green-600 focus-visible:ring-green-300"
-    : "bg-yellow-500 text-white hover:bg-yellow-600 focus-visible:ring-yellow-300"
+    ? FLAT_RECORDER_COLORS.active.resume
+    : FLAT_RECORDER_COLORS.active.pause
 );
 
 const ActiveRecorderControls = ({
@@ -98,7 +101,7 @@ const ActiveRecorderControls = ({
       <button
         type="button"
         onClick={isPaused ? resumeRecording : pauseRecording}
-        className={`flex h-full w-[34px] items-center justify-center border-l border-white/25 transition-colors focus-visible:outline-none focus-visible:ring-2 ${getPauseButtonClasses(isPaused)}`}
+        className={`flex h-full w-[34px] items-center justify-center border-l ${FLAT_RECORDER_COLORS.active.divider} transition-colors focus-visible:outline-none focus-visible:ring-2 ${getPauseButtonClasses(isPaused)}`}
         aria-label={pauseLabel}
         title={pauseLabel}
       >
@@ -107,7 +110,7 @@ const ActiveRecorderControls = ({
       <button
         type="button"
         onClick={cancelRecording}
-        className="flex h-full w-[34px] items-center justify-center border-l border-red-300 bg-white text-gray-700 transition-colors hover:bg-gray-100 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+        className={`flex h-full w-[34px] items-center justify-center border-l transition-colors focus-visible:outline-none focus-visible:ring-2 ${FLAT_RECORDER_COLORS.active.cancel}`}
         aria-label={t("audio.cancelRecording")}
         title={t("audio.cancelRecording")}
       >
@@ -116,7 +119,7 @@ const ActiveRecorderControls = ({
       <button
         type="button"
         onClick={stopRecording}
-        className="flex h-full w-[34px] items-center justify-center rounded-r-[5px] border-l border-white/25 bg-red-500 text-white transition-colors hover:bg-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+        className={`flex h-full w-[34px] items-center justify-center rounded-r-[5px] border-l transition-colors focus-visible:outline-none focus-visible:ring-2 ${FLAT_RECORDER_COLORS.active.finish}`}
         aria-label={t(AUDIO_STOP_RECORDING_KEY)}
         title={t(AUDIO_STOP_RECORDING_KEY)}
       >
@@ -128,39 +131,46 @@ const ActiveRecorderControls = ({
 
 const IdleRecorderControl = ({
   recordingState,
-  isInitializingOrProcessing,
-  timerLabel,
+  isInitializing,
+  isProcessing,
   mainLabel,
   isButtonDisabled,
   onMainClick,
   t,
 }: {
   recordingState: RecordingState;
-  isInitializingOrProcessing: boolean;
-  timerLabel: string;
+  isInitializing: boolean;
+  isProcessing: boolean;
   mainLabel: string;
   isButtonDisabled: boolean;
   onMainClick: () => void;
   t: TranslationFn;
-}) => (
-  <button
-    type="button"
-    onClick={onMainClick}
-    disabled={isButtonDisabled}
-    className="col-span-4 flex h-full min-w-0 items-center justify-center gap-1.5 rounded-[5px] px-2.5 text-xs font-semibold tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-green-300 disabled:cursor-not-allowed"
-    aria-label={mainLabel}
-    title={mainLabel}
-  >
-    {recordingState === "processing" ? (
-      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
-    ) : (
-      <MicrophoneIcon className={`h-3.5 w-3.5 shrink-0 ${isInitializingOrProcessing ? "animate-pulse" : ""}`} />
-    )}
-    <span className="min-w-0 truncate">
-      {isInitializingOrProcessing ? timerLabel : t(AUDIO_NEW_RECORDING_KEY)}
-    </span>
-  </button>
-);
+}) => {
+  const isProcessingState = recordingState === "processing" || isProcessing;
+  const isInitializingState = recordingState === "initializing" || isInitializing;
+  const shouldPulseMic = isInitializingState && !isProcessingState;
+  const displayLabel = isProcessingState || isInitializingState ? mainLabel : t(AUDIO_NEW_RECORDING_KEY);
+
+  return (
+    <button
+      type="button"
+      onClick={onMainClick}
+      disabled={isButtonDisabled}
+      className="col-span-4 flex h-full min-w-0 items-center justify-center gap-1.5 rounded-[5px] px-2.5 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-green-300 disabled:cursor-not-allowed"
+      aria-label={mainLabel}
+      title={mainLabel}
+    >
+      {isProcessingState ? (
+        <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
+      ) : (
+        <MicrophoneIcon className={`h-3.5 w-3.5 shrink-0 ${shouldPulseMic ? "animate-pulse" : ""}`} />
+      )}
+      <span className="min-w-0 truncate">
+        {displayLabel}
+      </span>
+    </button>
+  );
+};
 
 export function FlatRecorderButton({
   onRecordingComplete,
@@ -215,14 +225,17 @@ export function FlatRecorderButton({
   const timerLabel = isInGracePeriod && gracePeriodRemaining > 0
     ? String(gracePeriodRemaining)
     : formatTime(remainingTime);
-  const isInitializingOrProcessing = isInitializing || isProcessing;
   const isButtonDisabled = disabled || isInitializing || isProcessing;
 
   const rootClasses = getRootClasses(disabled, recordingState);
 
   const mainLabel = isRecording || isPaused
     ? t(AUDIO_STOP_RECORDING_KEY)
-    : t(AUDIO_NEW_RECORDING_KEY);
+    : recordingState === "processing" || isProcessing
+      ? t(AUDIO_PROCESSING_RECORDING_KEY)
+      : recordingState === "initializing" || isInitializing
+        ? t(AUDIO_INITIALIZING_KEY)
+        : t(AUDIO_NEW_RECORDING_KEY);
 
   const handleMainClick = useCallback(() => {
     if (isRecording) {
@@ -255,8 +268,8 @@ export function FlatRecorderButton({
         ) : (
           <IdleRecorderControl
             recordingState={recordingState}
-            isInitializingOrProcessing={isInitializingOrProcessing}
-            timerLabel={timerLabel}
+            isInitializing={isInitializing}
+            isProcessing={isProcessing}
             mainLabel={mainLabel}
             isButtonDisabled={isButtonDisabled}
             onMainClick={handleMainClick}

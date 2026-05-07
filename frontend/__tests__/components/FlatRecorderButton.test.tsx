@@ -105,7 +105,21 @@ describe('FlatRecorderButton', () => {
     expect(screen.getByTestId('flat-recorder-timer')).toHaveTextContent('0:29');
   });
 
-  it('uses focus recorder colors for pause/resume and cancel actions', () => {
+  it('labels processing state instead of showing an unexplained countdown', () => {
+    const lifecycle = makeLifecycle({
+      recordingTime: 0,
+      recordingState: 'processing' as const,
+    });
+    mockUseAudioRecorderLifecycle.mockReturnValue(lifecycle);
+
+    render(<FlatRecorderButton onRecordingComplete={jest.fn()} isProcessing={true} maxDuration={90} />);
+
+    expect(screen.getByRole('button', { name: 'audio.processingRecording' })).toBeDisabled();
+    expect(screen.getByText('audio.processingRecording')).toBeInTheDocument();
+    expect(screen.queryByText('1:30')).not.toBeInTheDocument();
+  });
+
+  it('uses balanced semantic colors for pause, cancel, and finish actions', () => {
     const lifecycle = makeLifecycle({
       recordingTime: 5,
       isRecording: true,
@@ -115,8 +129,10 @@ describe('FlatRecorderButton', () => {
 
     const { rerender } = render(<FlatRecorderButton onRecordingComplete={jest.fn()} maxDuration={30} />);
 
-    expect(screen.getByRole('button', { name: 'audio.pauseRecording' })).toHaveClass('bg-yellow-500');
-    expect(screen.getByRole('button', { name: 'audio.cancelRecording' })).toHaveClass('bg-white');
+    expect(screen.getByTestId('flat-recorder-button')).toHaveClass('bg-rose-500');
+    expect(screen.getByRole('button', { name: 'audio.pauseRecording' })).toHaveClass('bg-amber-400');
+    expect(screen.getByRole('button', { name: 'audio.cancelRecording' })).toHaveClass('bg-rose-50');
+    expect(screen.getByRole('button', { name: 'audio.stopRecording' })).toHaveClass('bg-emerald-500');
 
     mockUseAudioRecorderLifecycle.mockReturnValue(makeLifecycle({
       recordingTime: 5,
@@ -126,6 +142,6 @@ describe('FlatRecorderButton', () => {
     }));
     rerender(<FlatRecorderButton onRecordingComplete={jest.fn()} maxDuration={30} />);
 
-    expect(screen.getByRole('button', { name: 'audio.resumeRecording' })).toHaveClass('bg-green-500');
+    expect(screen.getByRole('button', { name: 'audio.resumeRecording' })).toHaveClass('bg-sky-500');
   });
 });
