@@ -1,6 +1,14 @@
 "use client";
 
-import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
+import {
+  DragDropContext,
+  Draggable,
+  Droppable,
+  type DraggableProvided,
+  type DraggableRubric,
+  type DraggableStateSnapshot,
+  type DropResult,
+} from "@hello-pangea/dnd";
 import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars2Icon } from "@heroicons/react/24/outline";
 import React, { useEffect, useRef, useState } from "react";
 
@@ -17,6 +25,14 @@ interface SubPointListProps {
   getAffectedThoughtCount?: (subPointId: string) => number;
   t: (key: string, options?: Record<string, unknown>) => string;
 }
+
+const SUB_POINT_LABEL_CLASS = "text-slate-600 dark:text-blue-50/90";
+const SMALL_ACTION_ICON_CLASS = "h-3.5 w-3.5";
+const DRAG_HANDLE_ICON_CLASS = "h-3 w-3 text-slate-400 dark:text-blue-100/70";
+const SECONDARY_ICON_BUTTON_CLASS = "p-0.5 text-gray-400 hover:text-gray-600 dark:text-gray-500";
+const COMMON_CANCEL_KEY = "common.cancel";
+const COMMON_DELETE_KEY = "common.delete";
+const COMMON_SAVE_KEY = "common.save";
 
 export const SubPointList: React.FC<SubPointListProps> = ({
   subPoints,
@@ -103,29 +119,29 @@ export const SubPointList: React.FC<SubPointListProps> = ({
     <>
       {canReorder && dragHandleProps ? (
         <div {...(dragHandleProps as React.HTMLAttributes<HTMLDivElement>)} className="cursor-grab flex-shrink-0 w-4 flex items-center justify-center touch-manipulation">
-          <Bars2Icon className="h-3 w-3 text-slate-400 dark:text-blue-100/70" />
+          <Bars2Icon className={DRAG_HANDLE_ICON_CLASS} />
         </div>
       ) : (
         <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-blue-100/75 flex-shrink-0 shadow-sm dark:shadow-blue-950/20" />
       )}
-      <span className="flex-1 min-w-0 truncate text-sm font-medium text-slate-600 dark:text-blue-50/90" title={sp.text}>
+      <span className={`flex-1 min-w-0 truncate text-sm font-medium ${SUB_POINT_LABEL_CLASS}`} title={sp.text}>
         {sp.text}
       </span>
       {!isPointLocked && (
-        <div className="flex items-center gap-0.5 opacity-40 group-hover/sp:opacity-100 transition-opacity flex-shrink-0">
+        <div className="flex w-10 flex-shrink-0 items-center justify-end gap-0.5 opacity-40 transition-opacity group-hover/sp:opacity-100">
           <button
             onClick={() => { setEditingId(sp.id); setEditText(sp.text); }}
             className="p-0.5 text-slate-400 hover:text-slate-600 dark:text-blue-100/45 dark:hover:text-blue-50"
             aria-label={t("common.edit")}
           >
-            <PencilIcon className="h-3.5 w-3.5" />
+            <PencilIcon className={SMALL_ACTION_ICON_CLASS} />
           </button>
           <button
             onClick={() => handleDeleteClick(sp.id)}
             className="p-0.5 text-slate-400 hover:text-red-500 dark:text-blue-100/45 dark:hover:text-red-200"
-            aria-label={t("common.delete")}
+            aria-label={t(COMMON_DELETE_KEY)}
           >
-            <TrashIcon className="h-3.5 w-3.5" />
+            <TrashIcon className={SMALL_ACTION_ICON_CLASS} />
           </button>
         </div>
       )}
@@ -133,7 +149,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   );
 
   const renderSubPointItem = (sp: SubPoint, dragHandleProps?: React.HTMLAttributes<HTMLElement> | null) => (
-    <div className="group/sp flex items-center gap-2 py-1.5 px-2 rounded-lg transition-colors hover:bg-slate-100/80 dark:hover:bg-white/10">
+    <div className="group/sp flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-100/80 dark:hover:bg-white/10">
       {editingId === sp.id ? (
         <div className="flex-1 flex items-center gap-1">
           <input
@@ -147,11 +163,11 @@ export const SubPointList: React.FC<SubPointListProps> = ({
             }}
             className="flex-1 px-2 py-0.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded border border-gray-300 dark:border-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
           />
-          <button onClick={handleEditSave} className="p-0.5 text-green-600 hover:text-green-700 dark:text-green-400" aria-label={t("common.save")}>
-            <CheckIcon className="h-3.5 w-3.5" />
+          <button onClick={handleEditSave} className="p-0.5 text-green-600 hover:text-green-700 dark:text-green-400" aria-label={t(COMMON_SAVE_KEY)}>
+            <CheckIcon className={SMALL_ACTION_ICON_CLASS} />
           </button>
-          <button onClick={() => { setEditingId(null); setEditText(""); }} className="p-0.5 text-gray-400 hover:text-gray-600 dark:text-gray-500" aria-label={t("common.cancel")}>
-            <XMarkIcon className="h-3.5 w-3.5" />
+          <button onClick={() => { setEditingId(null); setEditText(""); }} className={SECONDARY_ICON_BUTTON_CLASS} aria-label={t(COMMON_CANCEL_KEY)}>
+            <XMarkIcon className={SMALL_ACTION_ICON_CLASS} />
           </button>
         </div>
       ) : (
@@ -161,7 +177,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   );
 
   // Clone renderer for drag preview — renders at body level, avoids clipping
-  const renderClone = (provided: import("@hello-pangea/dnd").DraggableProvided, _snapshot: import("@hello-pangea/dnd").DraggableStateSnapshot, rubric: import("@hello-pangea/dnd").DraggableRubric) => {
+  const renderClone = (provided: DraggableProvided, _snapshot: DraggableStateSnapshot, rubric: DraggableRubric) => {
     const sp = sorted[rubric.source.index];
     return (
       <div
@@ -171,14 +187,14 @@ export const SubPointList: React.FC<SubPointListProps> = ({
         className="flex items-center gap-2 py-1.5 px-2 rounded-lg bg-white dark:bg-slate-800 shadow-lg ring-1 ring-blue-400/50 text-sm"
         style={provided.draggableProps.style}
       >
-        <Bars2Icon className="h-3 w-3 text-slate-400 dark:text-blue-100/70 flex-shrink-0" />
-        <span className="text-slate-600 dark:text-blue-50/90">{sp.text}</span>
+        <Bars2Icon className={`${DRAG_HANDLE_ICON_CLASS} flex-shrink-0`} />
+        <span className={SUB_POINT_LABEL_CLASS}>{sp.text}</span>
       </div>
     );
   };
 
   return (
-    <div className="ml-7 mt-2 mb-2 rounded-lg border-l border-slate-300/80 bg-white/30 py-1.5 pl-3 pr-2 dark:border-blue-100/35 dark:bg-white/[0.07]">
+    <div className="ml-7 mr-4 mt-2 mb-2 max-w-[calc(100%-2.75rem)] rounded-lg border-l border-slate-300/80 bg-white/30 py-1.5 pl-3 pr-2 dark:border-blue-100/35 dark:bg-white/[0.07]">
       {sorted.length > 0 && (
         canReorder ? (
           <DragDropContext onDragEnd={handleDragEnd}>
@@ -226,14 +242,14 @@ export const SubPointList: React.FC<SubPointListProps> = ({
             onClick={handleConfirmDelete}
             className="px-2 py-0.5 rounded bg-red-100 hover:bg-red-200 dark:bg-red-800/40 dark:hover:bg-red-800/60 text-red-700 dark:text-red-300 font-medium transition-colors"
           >
-            {t("common.delete")}
+            {t(COMMON_DELETE_KEY)}
           </button>
           <button
             onClick={() => setConfirmDeleteId(null)}
-            className="p-0.5 text-gray-400 hover:text-gray-600 dark:text-gray-500"
-            aria-label={t("common.cancel")}
+            className={SECONDARY_ICON_BUTTON_CLASS}
+            aria-label={t(COMMON_CANCEL_KEY)}
           >
-            <XMarkIcon className="h-3.5 w-3.5" />
+            <XMarkIcon className={SMALL_ACTION_ICON_CLASS} />
           </button>
         </div>
       )}
@@ -255,11 +271,11 @@ export const SubPointList: React.FC<SubPointListProps> = ({
                 placeholder={t("structure.subPointPlaceholder", { defaultValue: "Sub-point name..." })}
                 className="flex-1 px-2 py-0.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded border border-gray-300 dark:border-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
               />
-              <button onClick={handleAdd} className="p-0.5 text-green-600 hover:text-green-700 dark:text-green-400" aria-label={t("common.save")}>
-                <CheckIcon className="h-3.5 w-3.5" />
+              <button onClick={handleAdd} className="p-0.5 text-green-600 hover:text-green-700 dark:text-green-400" aria-label={t(COMMON_SAVE_KEY)}>
+                <CheckIcon className={SMALL_ACTION_ICON_CLASS} />
               </button>
-              <button onClick={() => { setIsAdding(false); setAddText(""); }} className="p-0.5 text-gray-400 hover:text-gray-600 dark:text-gray-500" aria-label={t("common.cancel")}>
-                <XMarkIcon className="h-3.5 w-3.5" />
+              <button onClick={() => { setIsAdding(false); setAddText(""); }} className={SECONDARY_ICON_BUTTON_CLASS} aria-label={t(COMMON_CANCEL_KEY)}>
+                <XMarkIcon className={SMALL_ACTION_ICON_CLASS} />
               </button>
             </div>
           ) : (
