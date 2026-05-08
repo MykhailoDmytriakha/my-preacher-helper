@@ -16,10 +16,16 @@
     "app/api/thoughts/route.ts": {
       "maxDuration": 60
     },
+    "app/api/thoughts/transcribe/route.ts": {
+      "maxDuration": 60
+    },
     "app/api/sort/route.ts": {
       "maxDuration": 60
     },
     "app/api/sermons/[id]/plan/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/studies/transcribe/route.ts": {
       "maxDuration": 60
     },
     "app/api/studies/analyze/route.ts": {
