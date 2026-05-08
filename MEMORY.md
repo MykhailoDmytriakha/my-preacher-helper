@@ -59,6 +59,8 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-05-08 Lint Warnings Are Delivery Issues:** Even when `npm run lint:full` exits 0, ESLint warnings for unused code, duplicate literals, or cognitive complexity should be cleaned before delivery because they hide real maintainability debt and can mask later CI hardening.
+- **2026-05-08 Transcribe Routes Need Platform Runtime Budget:** Audio routes that do STT plus a second AI polish phase must have an explicit Vercel `maxDuration` budget, or successful transcription can still be lost when the post-processing phase crosses the default runtime ceiling.
 - **2026-05-07 Busy Recorder States Need Object Labels:** Compact recorder busy states must show what is happening to the recording (for example, “Processing recording”) instead of reusing a countdown like `1:30`; timer-only busy labels are ambiguous once the user is no longer actively recording.
 - **2026-05-07 Recorder Controls Need Semantic Color Separation:** In a compact active recorder, reserve green for the finish/check action, keep pause as amber, make cancel a soft destructive tint, and avoid repeating the same danger color on both cancel and finish or users cannot parse the action hierarchy quickly.
 - **2026-05-07 Subpoint Lists Need Right-Side Insets:** When a nested sub-point list sits inside a focus-mode outline card, give the list its own right inset/max-width and keep edit/delete controls in a fixed-width action slot; otherwise controls can align beyond the visual content boundary even when they remain technically inside the parent card.

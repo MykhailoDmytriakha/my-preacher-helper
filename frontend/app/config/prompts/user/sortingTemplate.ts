@@ -1,5 +1,109 @@
 import { Item, SermonPoint, Sermon } from "@/models/models";
 
+const SECTION_NAMES: Record<string, string> = {
+  introduction: "Introduction (opening thoughts)",
+  main: "Main Part (core message)",
+  conclusion: "Conclusion (closing thoughts)",
+  ambiguous: "Unclassified thoughts"
+};
+
+interface LockedItemPrompt {
+  index: number;
+  key: string;
+  content: string;
+}
+
+interface OutlinePromptContext {
+  outlinePointsText: string;
+  hasSubPoints: boolean;
+  singleOutlinePoint?: SermonPoint;
+}
+
+const getItemKey = (item: Item) => item.id.slice(0, 4);
+
+const getLockedItems = (items: Item[]): LockedItemPrompt[] => (
+  items
+    .map((item, index) => (
+      item.isLocked
+        ? { index: index + 1, key: getItemKey(item), content: item.content }
+        : null
+    ))
+    .filter((item): item is LockedItemPrompt => item !== null)
+);
+
+const buildItemsList = (items: Item[]): string => (
+  items
+    .map((item, index) => (
+      `position: ${index + 1}, key: ${getItemKey(item)}, locked: ${item.isLocked ? "yes" : "no"}, content: ${item.content}`
+    ))
+    .join("\n")
+);
+
+const buildOutlinePromptContext = (outlinePoints?: SermonPoint[]): OutlinePromptContext => {
+  if (!outlinePoints?.length) {
+    return { outlinePointsText: "", hasSubPoints: false };
+  }
+
+  let hasSubPoints = false;
+  const lines = ["SermonOutline Points for this section (follow this exact order when sorting):"];
+
+  outlinePoints.forEach((outlinePoint, index) => {
+    lines.push(`${index + 1}. ${outlinePoint.text}`);
+
+    const subPoints = outlinePoint.subPoints;
+    if (subPoints?.length) {
+      hasSubPoints = true;
+      [...subPoints]
+        .sort((a, b) => a.position - b.position)
+        .forEach((subPoint) => {
+          lines.push(`   - ${subPoint.text}`);
+        });
+    }
+  });
+
+  return {
+    outlinePointsText: `${lines.join("\n")}\n`,
+    hasSubPoints,
+    singleOutlinePoint: outlinePoints.length === 1 ? outlinePoints[0] : undefined,
+  };
+};
+
+const buildLockedItemsText = (lockedItems: LockedItemPrompt[]): string => {
+  if (lockedItems.length === 0) {
+    return "";
+  }
+
+  return `Locked anchor items (must remain at the exact same position number as in the input):\n${lockedItems.map((item) => (
+    `${item.index}. key: ${item.key}, content: ${item.content}`
+  )).join("\n")}\n`;
+};
+
+const buildOutlinePointFieldInstruction = (
+  outlinePointsText: string,
+  outlinePoints?: SermonPoint[],
+): string => {
+  if (!outlinePointsText) {
+    return "The \"outlinePoint\" should indicate which outline point this item corresponds to. Use the EXACT text of one of the outline points provided.";
+  }
+
+  return "The \"outlinePoint\" field MUST match EXACTLY one of the following outline points (copy and paste the exact text to avoid errors):\n" +
+    outlinePoints?.map(op => `  - "${op.text}"`).join("\n");
+};
+
+const buildSubPointFieldInstruction = (
+  hasSubPoints: boolean,
+  outlinePoints?: SermonPoint[],
+): string => {
+  if (!hasSubPoints) {
+    return "";
+  }
+
+  return "The \"subPoint\" field is OPTIONAL. If an outline point has sub-points listed above, assign the item to the most appropriate sub-point using its EXACT text. If the item doesn't fit a specific sub-point, omit the field to assign directly to the outline point.\nAvailable sub-points:\n" +
+    outlinePoints?.filter(op => op.subPoints && op.subPoints.length > 0).map(op =>
+      `  Under "${op.text}":\n` + [...(op.subPoints ?? [])].sort((a, b) => a.position - b.position).map(sp => `    - "${sp.text}"`).join("\n")
+    ).join("\n");
+};
+
 /**
  * Creates a user message for the AI sorting function
  * @param columnId The column/section ID to sort (introduction, main, conclusion, etc.)
@@ -14,54 +118,15 @@ export function createSortingUserMessage(
   sermon: Sermon,
   outlinePoints?: SermonPoint[]
 ): string {
-  // Create a mapping for section names
-  const sectionNames: Record<string, string> = {
-    introduction: "Introduction (opening thoughts)",
-    main: "Main Part (core message)",
-    conclusion: "Conclusion (closing thoughts)",
-    ambiguous: "Unclassified thoughts"
-  };
-  
-  const sectionName = sectionNames[columnId] || columnId;
-  const lockedItems = items
-    .map((item, index) => (
-      item.isLocked
-        ? { index: index + 1, key: item.id.slice(0, 4), content: item.content }
-        : null
-    ))
-    .filter((item): item is { index: number; key: string; content: string } => item !== null);
-  
-  // Create the items list using the item key for clarity
-  let itemsList = "";
-  for (const [index, item] of items.entries()) {
-    const key = item.id.slice(0, 4);
-    itemsList += `position: ${index + 1}, key: ${key}, locked: ${item.isLocked ? "yes" : "no"}, content: ${item.content}\n`;
-  }
-  
-  // Add outline points information if available (including sub-points)
-  let outlinePointsText = "";
-  let hasSubPoints = false;
-  if (outlinePoints && outlinePoints.length > 0) {
-    outlinePointsText = "SermonOutline Points for this section (follow this exact order when sorting):\n";
-    for (let i = 0; i < outlinePoints.length; i++) {
-      outlinePointsText += `${i+1}. ${outlinePoints[i].text}\n`;
-      const subs = outlinePoints[i].subPoints;
-      if (subs && subs.length > 0) {
-        hasSubPoints = true;
-        const sorted = [...subs].sort((a, b) => a.position - b.position);
-        for (const sp of sorted) {
-          outlinePointsText += `   - ${sp.text}\n`;
-        }
-      }
-    }
-  }
-  const singleOutlinePoint = outlinePoints && outlinePoints.length === 1 ? outlinePoints[0] : undefined;
-
-  const lockedItemsText = lockedItems.length > 0
-    ? `Locked anchor items (must remain at the exact same position number as in the input):\n${lockedItems.map((item) => (
-      `${item.index}. key: ${item.key}, content: ${item.content}`
-    )).join("\n")}\n`
-    : "";
+  const sectionName = SECTION_NAMES[columnId] || columnId;
+  const lockedItems = getLockedItems(items);
+  const itemsList = buildItemsList(items);
+  const {
+    outlinePointsText,
+    hasSubPoints,
+    singleOutlinePoint,
+  } = buildOutlinePromptContext(outlinePoints);
+  const lockedItemsText = buildLockedItemsText(lockedItems);
   
   return `
     Sermon Title: ${sermon.title}
@@ -99,18 +164,8 @@ export function createSortingUserMessage(
     }
 
     The "key" should be the first 4 characters of the original item ID.
-    ${outlinePointsText ?
-      "The \"outlinePoint\" field MUST match EXACTLY one of the following outline points (copy and paste the exact text to avoid errors):\n" +
-      outlinePoints?.map(op => `  - "${op.text}"`).join("\n") :
-      "The \"outlinePoint\" should indicate which outline point this item corresponds to. Use the EXACT text of one of the outline points provided."
-    }
-    ${hasSubPoints ?
-      "The \"subPoint\" field is OPTIONAL. If an outline point has sub-points listed above, assign the item to the most appropriate sub-point using its EXACT text. If the item doesn't fit a specific sub-point, omit the field to assign directly to the outline point.\nAvailable sub-points:\n" +
-      outlinePoints?.filter(op => op.subPoints && op.subPoints.length > 0).map(op =>
-        `  Under "${op.text}":\n` + [...(op.subPoints ?? [])].sort((a, b) => a.position - b.position).map(sp => `    - "${sp.text}"`).join("\n")
-      ).join("\n") :
-      ""
-    }
+    ${buildOutlinePointFieldInstruction(outlinePointsText, outlinePoints)}
+    ${buildSubPointFieldInstruction(hasSubPoints, outlinePoints)}
     The "content" should be the first 5-10 words of the item to confirm you understand what you're sorting.
     ${!outlinePointsText ? "If no outline points are provided, use \"General\" for the outlinePoint field or create appropriate outline points based on the content." : ""}
     

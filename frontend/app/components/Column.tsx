@@ -239,7 +239,6 @@ const SubPointAwareDropZone: React.FC<{
   containerId: string;
   outlinePointId: string;
   hasItems: boolean;
-  isPointLocked: boolean;
   onEdit?: (item: Item) => void;
   isHighlighted: (itemId: string) => boolean;
   getHighlightType: (itemId: string) => 'assigned' | 'moved' | undefined;
@@ -249,16 +248,12 @@ const SubPointAwareDropZone: React.FC<{
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
   onRetryPendingThought?: (itemId: string) => void;
   onToggleThoughtLock?: (thoughtId: string, isLocked: boolean) => Promise<void> | void;
-  onAddSubPoint?: (outlinePointId: string, text: string) => void;
-  onEditSubPoint?: (outlinePointId: string, subPointId: string, newText: string) => void;
-  onDeleteSubPoint?: (outlinePointId: string, subPointId: string) => void;
-  onReorderSubPoints?: (outlinePointId: string, sourceIndex: number, destinationIndex: number) => void;
   renderSubPointRecorder?: (subPoint: SubPoint) => React.ReactNode;
   t: Translate;
 }> = ({
-  setNodeRef, isOver, pointItems, subPoints, containerId, outlinePointId, hasItems, isPointLocked,
+  setNodeRef, isOver, pointItems, subPoints, containerId, outlinePointId, hasItems,
   onEdit, isHighlighted, getHighlightType, onKeepItem, onRevertItem, activeId, onMoveToAmbiguous,
-  onRetryPendingThought, onToggleThoughtLock, onAddSubPoint, onEditSubPoint, onDeleteSubPoint, onReorderSubPoints, renderSubPointRecorder, t
+  onRetryPendingThought, onToggleThoughtLock, renderSubPointRecorder, t
 }) => {
   const hasSubPoints = subPoints.length > 0;
 
@@ -776,7 +771,6 @@ const SermonPointPlaceholder: React.FC<{
             containerId={containerId}
             outlinePointId={point.id}
             hasItems={hasItems}
-            isPointLocked={isPointLocked}
             onEdit={onEdit}
             isHighlighted={isHighlighted}
             getHighlightType={getHighlightType}
@@ -786,10 +780,6 @@ const SermonPointPlaceholder: React.FC<{
             onMoveToAmbiguous={onMoveToAmbiguous}
             onRetryPendingThought={onRetryPendingThought}
             onToggleThoughtLock={onToggleThoughtLock}
-            onAddSubPoint={onAddSubPoint}
-            onEditSubPoint={onEditSubPoint}
-            onDeleteSubPoint={onDeleteSubPoint}
-            onReorderSubPoints={onReorderSubPoints}
             renderSubPointRecorder={renderSubPointRecorder}
             t={t}
           />

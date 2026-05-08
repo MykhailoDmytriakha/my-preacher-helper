@@ -289,6 +289,118 @@ const identifyDropTarget = (
   };
 };
 
+const hasInsertIndex = (insertIndex: number | null | undefined): insertIndex is number => (
+  insertIndex !== null && typeof insertIndex !== 'undefined'
+);
+
+const moveItem = (items: Item[], fromIndex: number, toIndex: number): Item[] => {
+  const nextItems = [...items];
+  const [draggedItem] = nextItems.splice(fromIndex, 1);
+  nextItems.splice(toIndex, 0, draggedItem);
+  return nextItems;
+};
+
+const resolveSameContainerInsertIndex = (
+  items: Item[],
+  oldIndex: number,
+  droppedOnItem: boolean,
+  targetItemIndex: number,
+  explicitInsertIndex?: number | null,
+): number | null => {
+  if (hasInsertIndex(explicitInsertIndex)) {
+    return oldIndex < explicitInsertIndex ? explicitInsertIndex - 1 : explicitInsertIndex;
+  }
+
+  if (droppedOnItem && targetItemIndex !== -1) {
+    return targetItemIndex;
+  }
+
+  if (!droppedOnItem) {
+    return items.length - 1;
+  }
+
+  return null;
+};
+
+const moveWithinContainer = (
+  containers: Record<string, Item[]>,
+  activeContainer: string,
+  activeId: string | number,
+  droppedOnItem: boolean,
+  targetItemIndex: number,
+  explicitInsertIndex?: number | null,
+): Record<string, Item[]> => {
+  const items = containers[activeContainer];
+  const oldIndex = items.findIndex((item) => item.id === activeId);
+
+  if (oldIndex === -1) {
+    return containers;
+  }
+
+  const insertIndex = resolveSameContainerInsertIndex(
+    items,
+    oldIndex,
+    droppedOnItem,
+    targetItemIndex,
+    explicitInsertIndex,
+  );
+
+  if (insertIndex === null) {
+    return containers;
+  }
+
+  return {
+    ...containers,
+    [activeContainer]: moveItem(items, oldIndex, insertIndex),
+  };
+};
+
+const resolveCrossContainerInsertIndex = (
+  overItems: Item[],
+  droppedOnItem: boolean,
+  targetItemIndex: number,
+  explicitInsertIndex?: number | null,
+): number => {
+  if (hasInsertIndex(explicitInsertIndex)) {
+    return explicitInsertIndex;
+  }
+
+  return droppedOnItem && targetItemIndex !== -1 ? targetItemIndex : overItems.length;
+};
+
+const moveBetweenContainers = (
+  containers: Record<string, Item[]>,
+  activeContainer: string,
+  overContainer: string,
+  activeId: string | number,
+  droppedOnItem: boolean,
+  targetItemIndex: number,
+  explicitInsertIndex?: number | null,
+): Record<string, Item[]> => {
+  const activeItems = [...containers[activeContainer]];
+  const overItems = [...containers[overContainer]];
+  const activeIndex = activeItems.findIndex((item) => item.id === activeId);
+
+  if (activeIndex === -1) {
+    return containers;
+  }
+
+  const [draggedItem] = activeItems.splice(activeIndex, 1);
+  const insertIndex = resolveCrossContainerInsertIndex(
+    overItems,
+    droppedOnItem,
+    targetItemIndex,
+    explicitInsertIndex,
+  );
+  overItems.splice(insertIndex, 0, draggedItem);
+
+  return {
+    ...containers,
+    [activeContainer]: activeItems,
+    [overContainer]: overItems,
+  };
+};
+
 // Helper: Calculate item placement in containers
 const calculateItemPlacement = (
   containers: Record<string, Item[]>,
@@ -299,51 +411,26 @@ const calculateItemPlacement = (
   targetItemIndex: number,
   explicitInsertIndex?: number | null,
 ): Record<string, Item[]> => {
-  const updatedContainers = { ...containers };
-
   if (activeContainer === overContainer) {
-    const items = [...updatedContainers[activeContainer]];
-    const oldIndex = items.findIndex((item) => item.id === activeId);
-    const adjustedExplicitIndex = explicitInsertIndex !== null && explicitInsertIndex !== undefined
-      ? (oldIndex !== -1 && oldIndex < explicitInsertIndex ? explicitInsertIndex - 1 : explicitInsertIndex)
-      : null;
-
-    if (oldIndex !== -1) {
-      if (adjustedExplicitIndex !== null && adjustedExplicitIndex !== undefined) {
-        const [draggedItem] = items.splice(oldIndex, 1);
-        items.splice(adjustedExplicitIndex, 0, draggedItem);
-      } else if (droppedOnItem && targetItemIndex !== -1) {
-        const [draggedItem] = items.splice(oldIndex, 1);
-        items.splice(targetItemIndex, 0, draggedItem);
-      } else if (!droppedOnItem) {
-        const [draggedItem] = items.splice(oldIndex, 1);
-        items.push(draggedItem);
-      }
-
-      updatedContainers[activeContainer] = items;
-    }
-  } else {
-    const activeItems = [...updatedContainers[activeContainer]];
-    const overItems = [...updatedContainers[overContainer]];
-
-    const activeIndex = activeItems.findIndex((item) => item.id === activeId);
-    if (activeIndex !== -1) {
-      const [draggedItem] = activeItems.splice(activeIndex, 1);
-
-      if (explicitInsertIndex !== null && explicitInsertIndex !== undefined) {
-        overItems.splice(explicitInsertIndex, 0, draggedItem);
-      } else if (droppedOnItem && targetItemIndex !== -1) {
-        overItems.splice(targetItemIndex, 0, draggedItem);
-      } else {
-        overItems.push(draggedItem);
-      }
-
-      updatedContainers[activeContainer] = activeItems;
-      updatedContainers[overContainer] = overItems;
-    }
+    return moveWithinContainer(
+      containers,
+      activeContainer,
+      activeId,
+      droppedOnItem,
+      targetItemIndex,
+      explicitInsertIndex,
+    );
   }
 
-  return updatedContainers;
+  return moveBetweenContainers(
+    containers,
+    activeContainer,
+    overContainer,
+    activeId,
+    droppedOnItem,
+    targetItemIndex,
+    explicitInsertIndex,
+  );
 };
 
 // Helper: Determine outline point assignment

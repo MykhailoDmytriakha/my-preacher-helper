@@ -1061,7 +1061,6 @@ describe('Column Component', () => {
           {
             name: 'renders subpoint controls inside structure outline points',
             run: () => {
-              const handleAddSubPoint = jest.fn();
               render(
                 <Column
                   id="introduction"

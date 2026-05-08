@@ -35,6 +35,7 @@ import { isLocalThoughtId, findOutlinePoint } from "./utils/structure";
 const TRANSLATION_KEYS = {
   ERRORS: {
     SAVING_ERROR: 'errors.savingError',
+    SAVE_OUTLINE_ERROR: 'errors.saveOutlineError',
   },
 } as const;
 
@@ -566,7 +567,7 @@ function StructurePageContent() {
 
     } catch (error) {
       console.error('Error updating thoughts after outline point deletion:', error);
-      toast.error(t('errors.saveOutlineError', { defaultValue: 'Error updating thoughts' }));
+      toast.error(t(TRANSLATION_KEYS.ERRORS.SAVE_OUTLINE_ERROR, { defaultValue: 'Error updating thoughts' }));
     }
   };
 
@@ -607,7 +608,7 @@ function StructurePageContent() {
       });
     } catch (error) {
       console.error('Error updating thoughts after sub-point deletion:', error);
-      toast.error(t('errors.saveOutlineError', { defaultValue: 'Error updating thoughts' }));
+      toast.error(t(TRANSLATION_KEYS.ERRORS.SAVE_OUTLINE_ERROR, { defaultValue: 'Error updating thoughts' }));
     }
   };
 
@@ -647,7 +648,7 @@ function StructurePageContent() {
 
     } catch (error) {
       console.error('Error adding outline point:', error);
-      toast.error(t('errors.saveOutlineError', { defaultValue: 'Error updating outline' }));
+      toast.error(t(TRANSLATION_KEYS.ERRORS.SAVE_OUTLINE_ERROR, { defaultValue: 'Error updating outline' }));
     }
   };
 
