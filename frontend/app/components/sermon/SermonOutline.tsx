@@ -601,7 +601,12 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
                               </div>
                             ) : (
                               <>
-                                <span className="text-sm text-gray-800 dark:text-gray-200 flex-grow mr-2">{point.text}</span>
+                                <span
+                                  className={`text-sm text-gray-800 dark:text-gray-200 flex-grow mr-2 ${isReadOnly ? '' : 'cursor-text'}`}
+                                  onDoubleClick={() => handleStartEdit(point)}
+                                >
+                                  {point.text}
+                                </span>
                                 <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                   <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} disabled={isReadOnly} className={`p-1 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}>
                                     <PencilIcon className="h-4 w-4" />

@@ -88,6 +88,12 @@ export const SubPointList: React.FC<SubPointListProps> = ({
     setEditText("");
   };
 
+  const startEditingSubPoint = (sp: SubPoint) => {
+    if (isPointLocked) return;
+    setEditingId(sp.id);
+    setEditText(sp.text);
+  };
+
   const handleDeleteClick = (spId: string) => {
     const count = getAffectedThoughtCount?.(spId) ?? 0;
     if (count > 0) {
@@ -124,13 +130,17 @@ export const SubPointList: React.FC<SubPointListProps> = ({
       ) : (
         <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-blue-100/75 flex-shrink-0 shadow-sm dark:shadow-blue-950/20" />
       )}
-      <span className={`flex-1 min-w-0 truncate text-sm font-medium ${SUB_POINT_LABEL_CLASS}`} title={sp.text}>
+      <span
+        className={`flex-1 min-w-0 truncate text-sm font-medium ${SUB_POINT_LABEL_CLASS} ${isPointLocked ? "" : "cursor-text"}`}
+        title={sp.text}
+        onDoubleClick={() => startEditingSubPoint(sp)}
+      >
         {sp.text}
       </span>
       {!isPointLocked && (
         <div className="flex w-10 flex-shrink-0 items-center justify-end gap-0.5 opacity-40 transition-opacity group-hover/sp:opacity-100">
           <button
-            onClick={() => { setEditingId(sp.id); setEditText(sp.text); }}
+            onClick={() => startEditingSubPoint(sp)}
             className="p-0.5 text-slate-400 hover:text-slate-600 dark:text-blue-100/45 dark:hover:text-blue-50"
             aria-label={t("common.edit")}
           >
@@ -151,25 +161,32 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   const renderSubPointItem = (sp: SubPoint, dragHandleProps?: React.HTMLAttributes<HTMLElement> | null) => (
     <div className="group/sp flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-100/80 dark:hover:bg-white/10">
       {editingId === sp.id ? (
-        <div className="flex-1 flex items-center gap-1">
-          <input
-            ref={editingId === sp.id ? editInputRef : undefined}
-            type="text"
-            value={editText}
-            onChange={(e) => setEditText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleEditSave();
-              if (e.key === "Escape") { setEditingId(null); setEditText(""); }
-            }}
-            className="flex-1 px-2 py-0.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded border border-gray-300 dark:border-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
-          />
-          <button onClick={handleEditSave} className="p-0.5 text-green-600 hover:text-green-700 dark:text-green-400" aria-label={t(COMMON_SAVE_KEY)}>
-            <CheckIcon className={SMALL_ACTION_ICON_CLASS} />
-          </button>
-          <button onClick={() => { setEditingId(null); setEditText(""); }} className={SECONDARY_ICON_BUTTON_CLASS} aria-label={t(COMMON_CANCEL_KEY)}>
-            <XMarkIcon className={SMALL_ACTION_ICON_CLASS} />
-          </button>
-        </div>
+        <>
+          {canReorder && dragHandleProps && (
+            <div {...(dragHandleProps as React.HTMLAttributes<HTMLDivElement>)} className="cursor-grab flex-shrink-0 w-4 flex items-center justify-center touch-manipulation">
+              <Bars2Icon className={DRAG_HANDLE_ICON_CLASS} />
+            </div>
+          )}
+          <div className="flex-1 flex items-center gap-1">
+            <input
+              ref={editingId === sp.id ? editInputRef : undefined}
+              type="text"
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleEditSave();
+                if (e.key === "Escape") { setEditingId(null); setEditText(""); }
+              }}
+              className="flex-1 px-2 py-0.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded border border-gray-300 dark:border-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
+            />
+            <button onClick={handleEditSave} className="p-0.5 text-green-600 hover:text-green-700 dark:text-green-400" aria-label={t(COMMON_SAVE_KEY)}>
+              <CheckIcon className={SMALL_ACTION_ICON_CLASS} />
+            </button>
+            <button onClick={() => { setEditingId(null); setEditText(""); }} className={SECONDARY_ICON_BUTTON_CLASS} aria-label={t(COMMON_CANCEL_KEY)}>
+              <XMarkIcon className={SMALL_ACTION_ICON_CLASS} />
+            </button>
+          </div>
+        </>
       ) : (
         renderSubPointContent(sp, dragHandleProps)
       )}

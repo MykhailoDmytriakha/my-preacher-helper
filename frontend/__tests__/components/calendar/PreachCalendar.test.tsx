@@ -230,6 +230,23 @@ describe('PreachCalendar', () => {
     expect(styleTag?.textContent).toContain('.has-group .rdp-day_button::after');
   });
 
+  it('uses react-day-picker v9 selected-day selectors with filled dark-mode contrast', () => {
+    const selectedDate = new Date(2026, 1, 10);
+    const { container } = render(
+      <PreachCalendar
+        eventsByDate={sermonsByDate}
+        selectedDate={selectedDate}
+        onDateSelect={jest.fn()}
+      />
+    );
+
+    const styleTag = container.querySelector('style');
+    expect(styleTag?.textContent).toContain('.rdp-selected .rdp-day_button');
+    expect(styleTag?.textContent).toContain('--preach-calendar-selected-background: #2563eb');
+    expect(styleTag?.textContent).toContain('--preach-calendar-selected-border: #93c5fd');
+    expect(styleTag?.textContent).toContain('box-shadow: 0 0 0 2px var(--preach-calendar-selected-shadow)');
+  });
+
   it('renders legend Sermons and Groups toggle buttons', () => {
     const selectedDate = new Date(2024, 0, 15);
 

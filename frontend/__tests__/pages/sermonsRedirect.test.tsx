@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
@@ -9,6 +9,9 @@ const mockUseSeries = jest.fn();
 const mockUseStudyNotes = jest.fn();
 const mockUsePrayerRequests = jest.fn();
 const mockUseGroups = jest.fn();
+const mockCreatePrayer = jest.fn();
+const mockCreateSermon = jest.fn();
+const mockRouterPush = jest.fn();
 
 const mockTranslationMap: Record<string, string> = {
   'navigation.sermons': 'Проповеди',
@@ -118,6 +121,41 @@ const mockTranslationMap: Record<string, string> = {
   'dashboardHome.sections.attention.actions.openStudy': 'Открыть изучение',
   'dashboardHome.sections.attention.actions.addUpdate': 'Добавить обновление',
   'dashboardHome.sections.attention.actions.complete': 'Завершить',
+  'addSermon.newSermon': 'Новая проповедь',
+  'addSermon.titleLabel': 'Тема',
+  'addSermon.titlePlaceholder': 'Введите тему',
+  'addSermon.titleExample': 'Например: Верность',
+  'addSermon.verseLabel': 'Текст',
+  'addSermon.versePlaceholder': 'Введите текст',
+  'addSermon.verseExample': 'Например: Иоанна 3:16',
+  'addSermon.seriesLabel': 'Серия',
+  'addSermon.noSeriesOption': 'Без серии',
+  'addSermon.cancel': 'Отмена',
+  'addSermon.save': 'Сохранить',
+  'addSermon.plannedDateLabel': 'Планируемая дата',
+  'addSermon.plannedDateHint': 'Детали можно добавить позже.',
+  'common.saving': 'Сохранение...',
+  'studiesWorkspace.newNote': 'Новая заметка',
+  'studiesWorkspace.titleLabel': 'Заголовок',
+  'studiesWorkspace.titlePlaceholder': 'Необязательный заголовок заметки',
+  'studiesWorkspace.contentLabel': 'Ваши мысли',
+  'studiesWorkspace.contentPlaceholder': 'Запишите наблюдение',
+  'studiesWorkspace.type.note': 'Заметка',
+  'studiesWorkspace.type.question': 'Вопрос',
+  'studiesWorkspace.saveNote': 'Сохранить заметку',
+  'studiesWorkspace.createError': 'Ошибка создания заметки',
+  'prayer.create.title': 'Новая молитва',
+  'prayer.create.titleLabel': 'Название',
+  'prayer.create.titlePlaceholder': 'О чём молиться',
+  'prayer.create.descriptionLabel': 'Описание',
+  'prayer.create.descriptionPlaceholder': 'Детали молитвы',
+  'prayer.create.tagsLabel': 'Теги',
+  'prayer.create.tagsPlaceholder': 'семья, исцеление',
+  'prayer.create.cancel': 'Отмена',
+  'prayer.create.submit': 'Добавить молитву',
+  'buttons.cancel': 'Отмена',
+  'buttons.close': 'Закрыть',
+  'buttons.saving': 'Сохранение...',
 };
 
 const mockInterpolate = (value: string, options?: Record<string, unknown>) =>
@@ -135,6 +173,12 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, options?: Record<string, unknown>) => mockInterpolate(mockTranslationMap[key] || key, options),
     i18n: { language: 'ru' },
+  }),
+}));
+
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: mockRouterPush,
   }),
 }));
 
@@ -162,12 +206,41 @@ jest.mock('@/hooks/useGroups', () => ({
   useGroups: () => mockUseGroups(),
 }));
 
+jest.mock('@/components/ui/DatePickerField', () => ({
+  __esModule: true,
+  default: ({ id, value, onChange }: { id: string; value: string; onChange: (value: string) => void }) => (
+    <input id={id} value={value} onChange={(event) => onChange(event.target.value)} />
+  ),
+}));
+
+jest.mock('@/services/firebaseAuth.service', () => ({
+  auth: {
+    currentUser: { uid: 'user-1' },
+  },
+}));
+
+jest.mock('@/services/sermon.service', () => ({
+  createSermon: (...args: unknown[]) => mockCreateSermon(...args),
+}));
+
+jest.mock('@/services/preachDates.service', () => ({
+  addPreachDate: jest.fn(),
+}));
+
 describe('Dashboard page', () => {
   beforeEach(() => {
     const tomorrow = dateKeyFromToday(1);
     const staleDate = dateKeyFromToday(-10);
 
     mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } });
+    mockCreateSermon.mockResolvedValue({
+      id: 'created-sermon-id',
+      title: 'Created Sermon',
+      verse: 'John 1:1',
+      date: '2026-05-10T00:00:00.000Z',
+      thoughts: [],
+      userId: 'user-1',
+    });
     mockUseDashboardSermons.mockReturnValue({
       sermons: [
         {
@@ -278,6 +351,7 @@ describe('Dashboard page', () => {
       ],
       loading: false,
       error: null,
+      createPrayer: mockCreatePrayer,
     });
     mockUseGroups.mockReturnValue({
       groups: [
@@ -318,7 +392,9 @@ describe('Dashboard page', () => {
     render(<DashboardPage />);
 
     expect(screen.getByRole('heading', { name: 'Панель' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Новая проповедь/i })).toHaveAttribute('href', '/sermons');
+    expect(screen.getByRole('button', { name: /Новая проповедь/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Добавить заметку/i })).toHaveAttribute('href', '/studies/new');
+    expect(screen.getByRole('button', { name: /Добавить молитву/i })).toBeInTheDocument();
     expect(screen.getAllByText('Заметки').length).toBeGreaterThan(0);
     expect(screen.getByRole('heading', { name: 'Проповеди' })).toBeInTheDocument();
     expect(screen.getAllByText('Верность под давлением').length).toBeGreaterThan(0);
@@ -349,6 +425,65 @@ describe('Dashboard page', () => {
     expect(within(groupsSection).getByText('Активна')).toBeInTheDocument();
     expect(within(groupsSection).getByText('Завершена')).toBeInTheDocument();
     expect(screen.getByText('Требует внимания')).toBeInTheDocument();
+  });
+
+  it('opens create modals for sermon and prayer quick actions instead of navigating to sections', () => {
+    render(<DashboardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Новая проповедь/i }));
+    expect(screen.getByRole('heading', { name: 'Новая проповедь' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
+
+    fireEvent.click(screen.getByRole('button', { name: /Добавить молитву/i }));
+    expect(screen.getByRole('heading', { name: 'Новая молитва' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Отмена' }));
+
+    expect(mockRouterPush).not.toHaveBeenCalledWith('/sermons');
+    expect(mockRouterPush).not.toHaveBeenCalledWith('/prayers');
+  });
+
+  it('keeps the sermon create modal visible while redirecting to the created sermon', async () => {
+    render(<DashboardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Новая проповедь/i }));
+    fireEvent.change(screen.getByPlaceholderText('Введите тему'), {
+      target: { value: 'Created From Dashboard' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Введите текст'), {
+      target: { value: 'John 1:1' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
+
+    await screen.findByRole('button', { name: 'Сохранение...' });
+
+    expect(mockRouterPush).toHaveBeenCalledWith('/sermons/created-sermon-id');
+    expect(screen.getByRole('heading', { name: 'Новая проповедь' })).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Created From Dashboard')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Сохранение...' })).toBeDisabled();
+  });
+
+  it('keeps the prayer create modal visible while redirecting to the created prayer', async () => {
+    mockCreatePrayer.mockResolvedValue({
+      id: 'created-prayer-id',
+      title: 'Created Prayer',
+    });
+
+    render(<DashboardPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Добавить молитву/i }));
+    fireEvent.change(screen.getByPlaceholderText('О чём молиться'), {
+      target: { value: 'Created prayer from dashboard' },
+    });
+
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Добавить молитву' }));
+
+    await screen.findByRole('button', { name: 'Сохранение...' });
+
+    expect(mockRouterPush).toHaveBeenCalledWith('/prayers/created-prayer-id');
+    expect(screen.getByRole('heading', { name: 'Новая молитва' })).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Created prayer from dashboard')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Сохранение...' })).toBeDisabled();
   });
 
   it('shows recent past agenda events when there are no upcoming events', () => {

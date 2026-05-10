@@ -106,4 +106,18 @@ describe('DatePickerField', () => {
 
     expect(onChange).toHaveBeenCalledWith('2026-02-16');
   });
+
+  it('uses react-day-picker v9 selected-day selectors with a filled dark-mode style', () => {
+    render(<DatePickerField id="date" value="2026-05-10" onChange={jest.fn()} />);
+
+    fireEvent.click(screen.getByLabelText('Open calendar'));
+
+    const popover = screen.getByTestId('date-calendar-popover');
+    const calendarStyles = popover.querySelector('style')?.textContent;
+
+    expect(calendarStyles).toContain('.date-picker-field-calendar .rdp-selected .rdp-day_button');
+    expect(calendarStyles).toContain('--date-picker-selected-background: #2563eb');
+    expect(calendarStyles).toContain('--date-picker-selected-border: #93c5fd');
+    expect(calendarStyles).toContain('box-shadow: 0 0 0 2px var(--date-picker-selected-shadow)');
+  });
 });

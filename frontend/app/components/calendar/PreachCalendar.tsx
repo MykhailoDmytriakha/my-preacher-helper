@@ -138,20 +138,38 @@ export default function PreachCalendar({
     return (
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-4 overflow-hidden flex flex-col items-center">
             <style>{`
+        .rdp-root,
         .rdp {
           --rdp-cell-size: 38px; /* Slightly smaller for narrower viewports on desktop/tablet */
           --rdp-accent-color: #3b82f6;
+          --rdp-accent-background-color: #eff6ff;
           --rdp-background-color: #eff6ff;
+          --rdp-selected-border: 2px solid #2563eb;
+          --preach-calendar-selected-background: #2563eb;
+          --preach-calendar-selected-border: #2563eb;
+          --preach-calendar-selected-shadow: rgba(37, 99, 235, 0.24);
           margin: 0;
         }
         @media (min-width: 1280px) {
+          .rdp-root,
           .rdp {
             --rdp-cell-size: 45px; /* Original size for larger screens */
           }
         }
-        .rdp-day_selected, .rdp-day_selected:focus-visible, .rdp-day_selected:hover {
+        .rdp-selected {
           color: white;
-          background-color: var(--rdp-accent-color);
+          font-weight: 700;
+        }
+        .rdp-selected .rdp-day_button,
+        .rdp-day_selected,
+        .rdp-selected .rdp-day_button:focus-visible,
+        .rdp-day_selected:focus-visible,
+        .rdp-selected .rdp-day_button:hover,
+        .rdp-day_selected:hover {
+          color: white;
+          background-color: var(--preach-calendar-selected-background);
+          border-color: var(--preach-calendar-selected-border);
+          box-shadow: 0 0 0 2px var(--preach-calendar-selected-shadow);
         }
         .rdp-caption {
           padding-left: 8px;
@@ -162,11 +180,18 @@ export default function PreachCalendar({
           padding-right: 8px;
           overflow: visible;
         }
-        .rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
+        .rdp-day:not(.rdp-selected) .rdp-day_button:hover:not([disabled]) {
           background-color: var(--rdp-background-color);
         }
+        .dark .rdp-root,
         .dark .rdp {
+          --rdp-accent-color: #93c5fd;
+          --rdp-accent-background-color: #1e3a8a;
           --rdp-background-color: #1e293b;
+          --rdp-selected-border: 2px solid #bfdbfe;
+          --preach-calendar-selected-background: #2563eb;
+          --preach-calendar-selected-border: #93c5fd;
+          --preach-calendar-selected-shadow: rgba(147, 197, 253, 0.35);
         }
         .has-sermon .rdp-day_button,
         .has-group .rdp-day_button {
@@ -202,6 +227,8 @@ export default function PreachCalendar({
           left: calc(50% + 3px);
           transform: translateX(-50%);
         }
+        .rdp-selected.has-sermon .rdp-day_button::before,
+        .rdp-selected.has-group .rdp-day_button::after,
         .rdp-day_selected.has-sermon .rdp-day_button::before,
         .rdp-day_selected.has-group .rdp-day_button::after {
           background-color: white;

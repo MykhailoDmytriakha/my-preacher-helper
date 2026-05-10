@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "cross-env NEXT_PUBLIC_ENABLE_SERVICE_WORKER=true next dev",
+    "dev:no-pwa": "next dev",
     "dev:pwa": "cross-env NEXT_PUBLIC_ENABLE_SERVICE_WORKER=true next dev",
     "build": "npm run debug:directory && cross-env NODE_ENV=test npm run test:fast && next build",
     "preview:pwa": "next build && next start",

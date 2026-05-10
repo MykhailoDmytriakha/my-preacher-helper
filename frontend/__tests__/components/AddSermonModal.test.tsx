@@ -310,6 +310,43 @@ describe('AddSermonModal Component', () => {
     });
   });
 
+  test('keeps the modal in saving state after success when closeOnSuccess is false', async () => {
+    const onNewSermonCreated = jest.fn().mockResolvedValue(undefined);
+    const onClose = jest.fn();
+
+    render(
+      <TestProviders>
+        <AddSermonModal
+          isOpen
+          showTriggerButton={false}
+          closeOnSuccess={false}
+          onClose={onClose}
+          onNewSermonCreated={onNewSermonCreated}
+        />
+      </TestProviders>
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('Enter sermon title'), {
+      target: { value: 'Dashboard Sermon' },
+    });
+    fireEvent.change(screen.getByPlaceholderText('Enter scripture reference'), {
+      target: { value: 'John 1:1' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => {
+      expect(onNewSermonCreated).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'mocked-sermon-id' })
+      );
+    });
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'New Sermon' })).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Dashboard Sermon')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled();
+  });
+
   test('handles authentication errors gracefully', async () => {
     (auth as any).currentUser = null;
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation();

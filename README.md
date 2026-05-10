@@ -61,6 +61,20 @@
 
 ### **🧪 Локальная разработка: server logs**
 
+Локальный `npm run dev` запускает Next.js с включённой регистрацией service worker, чтобы PWA/offline-поведение не пропадало во время обычной локальной работы. Если нужен быстрый режим без PWA и без Workbox-watch шума, используй:
+
+```bash
+npm run dev:no-pwa
+```
+
+Для максимально точной проверки production PWA используй production preview:
+
+```bash
+npm run preview:pwa
+```
+
+Важно: `dev`/`dev:pwa` всё равно остаётся `next dev`; `next-pwa` в этом режиме отключает большую часть precache/offline-механики и может показывать предупреждение `GenerateSW has been called multiple times`. `preview:pwa` ближе к продакшену, потому что работает после `next build`.
+
 При локальном запуске dev-сервера серверные логи дополнительно сохраняются в файлы:
 
 ```bash

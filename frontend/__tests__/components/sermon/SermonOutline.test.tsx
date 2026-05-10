@@ -455,6 +455,45 @@ describe('SermonOutline Component', () => {
     });
   }, 15000);
 
+  test('edits an outline point when its text is double-clicked', async () => {
+    render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Introduction point 1')).toBeInTheDocument();
+    });
+
+    const introSection = screen.getByTestId('outline-section-introduction');
+    const pointText = within(introSection).getByText('Introduction point 1');
+    expect(pointText).toHaveClass('cursor-text');
+
+    fireEvent.doubleClick(pointText);
+
+    const editInput = within(introSection).getByPlaceholderText('structure.editPointPlaceholder');
+    expect(editInput).toHaveValue('Introduction point 1');
+  });
+
+  test('does not edit an outline point on double-click in read-only mode', async () => {
+    render(
+      <SermonOutline
+        sermon={mockSermon}
+        onOutlineUpdate={mockOnOutlineUpdate}
+        isReadOnly={true}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Introduction point 1')).toBeInTheDocument();
+    });
+
+    const introSection = screen.getByTestId('outline-section-introduction');
+    const pointText = within(introSection).getByText('Introduction point 1');
+    expect(pointText).not.toHaveClass('cursor-text');
+
+    fireEvent.doubleClick(pointText);
+
+    expect(within(introSection).queryByPlaceholderText('structure.editPointPlaceholder')).not.toBeInTheDocument();
+  });
+
   test('handles error when fetching outline fails', async () => {
     // Mock the service to throw an error
     mockGetSermonOutline.mockRejectedValueOnce(new Error('Failed to fetch'));

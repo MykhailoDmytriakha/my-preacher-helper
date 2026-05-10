@@ -15,10 +15,13 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
 
+import AddSermonModal from '@/components/AddSermonModal';
+import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useGroups } from '@/hooks/useGroups';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
@@ -154,20 +157,45 @@ const panelHeaderClass =
 const DEFAULT_SERIES_COLOR = '#2563EB';
 const rowLinkClass =
   'transition hover:bg-blue-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:hover:bg-gray-800/70';
+const quickActionBaseClass =
+  'inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950';
+const quickActionToneClasses = {
+  blue:
+    'border-blue-300 bg-white text-blue-700 hover:bg-blue-50 focus-visible:ring-blue-500 dark:border-blue-700 dark:bg-gray-900 dark:text-blue-300 dark:hover:bg-blue-950/40',
+  emerald:
+    'border-emerald-300 bg-white text-emerald-700 hover:bg-emerald-50 focus-visible:ring-emerald-500 dark:border-emerald-700 dark:bg-gray-900 dark:text-emerald-300 dark:hover:bg-emerald-950/40',
+  rose:
+    'border-rose-300 bg-white text-rose-600 hover:bg-rose-50 focus-visible:ring-rose-500 dark:border-rose-800 dark:bg-gray-900 dark:text-rose-300 dark:hover:bg-rose-950/40',
+} as const;
 
 export default function DashboardPage() {
   const { t, i18n } = useTranslation();
+  const router = useRouter();
   const { user } = useAuth();
   const { sermons } = useDashboardSermons();
   const { series } = useSeries(user?.uid || null);
   const { notes } = useStudyNotes();
-  const { prayerRequests } = usePrayerRequests(user?.uid || null);
+  const { prayerRequests, createPrayer } = usePrayerRequests(user?.uid || null);
   const { groups } = useGroups(user?.uid || null);
+  const [showSermonModal, setShowSermonModal] = useState(false);
+  const [showPrayerModal, setShowPrayerModal] = useState(false);
 
   const dashboardData = useMemo(
     () => buildDashboardData({ sermons, series, notes, prayerRequests, groups, t, locale: i18n.language }),
     [groups, i18n.language, notes, prayerRequests, sermons, series, t]
   );
+
+  const handleCreatePrayer = async (
+    payload: Pick<PrayerRequest, 'title'> &
+      Partial<Pick<PrayerRequest, 'description' | 'tags'>>
+  ) => {
+    if (!user?.uid) {
+      throw new Error('User is not authenticated');
+    }
+
+    const createdPrayer = await createPrayer({ userId: user.uid, ...payload });
+    router.push(`/prayers/${createdPrayer.id}`);
+  };
 
   const metrics: Metric[] = [
     {
@@ -225,27 +253,29 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[520px]">
-          <Link
-            href="/sermons"
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+          <button
+            type="button"
+            onClick={() => setShowSermonModal(true)}
+            className={`${quickActionBaseClass} ${quickActionToneClasses.blue}`}
           >
             <Plus className="h-4 w-4" />
             {t('dashboardHome.actions.newSermon')}
-          </Link>
+          </button>
           <Link
             href="/studies/new"
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-emerald-300 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-50 dark:border-emerald-700 dark:bg-gray-900 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+            className={`${quickActionBaseClass} ${quickActionToneClasses.emerald}`}
           >
             <Plus className="h-4 w-4" />
             {t('dashboardHome.actions.addStudyNote')}
           </Link>
-          <Link
-            href="/prayers"
-            className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-300 bg-white px-4 py-2.5 text-sm font-semibold text-rose-600 shadow-sm transition hover:bg-rose-50 dark:border-rose-800 dark:bg-gray-900 dark:text-rose-300 dark:hover:bg-rose-950/40"
+          <button
+            type="button"
+            onClick={() => setShowPrayerModal(true)}
+            className={`${quickActionBaseClass} ${quickActionToneClasses.rose}`}
           >
             <Plus className="h-4 w-4" />
             {t('dashboardHome.actions.addPrayer')}
-          </Link>
+          </button>
         </div>
       </header>
 
@@ -268,6 +298,26 @@ export default function DashboardPage() {
       </section>
 
       <NeedsAttentionPanel attentionItems={dashboardData.attentionItems} />
+
+      {showSermonModal && (
+        <AddSermonModal
+          isOpen
+          showTriggerButton={false}
+          allowPlannedDate
+          closeOnSuccess={false}
+          onClose={() => setShowSermonModal(false)}
+          onNewSermonCreated={(newSermon) => {
+            router.push(`/sermons/${newSermon.id}`);
+          }}
+        />
+      )}
+      {showPrayerModal && (
+        <CreatePrayerModal
+          onClose={() => setShowPrayerModal(false)}
+          onSubmit={handleCreatePrayer}
+          closeOnSuccess={false}
+        />
+      )}
     </div>
   );
 }

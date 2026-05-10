@@ -213,25 +213,47 @@ export default function DatePickerField({
           style={isCompactViewport ? undefined : popoverStyle}
         >
           <style>{`
+            .date-picker-field-calendar .rdp-root,
             .date-picker-field-calendar .rdp {
               --rdp-accent-color: #2563eb;
+              --rdp-accent-background-color: #eff6ff;
               --rdp-background-color: #eff6ff;
+              --rdp-selected-border: 2px solid #1d4ed8;
+              --date-picker-selected-background: #2563eb;
+              --date-picker-selected-border: #1d4ed8;
+              --date-picker-selected-shadow: rgba(37, 99, 235, 0.24);
               margin: 0;
             }
             .date-picker-field-calendar .rdp-months {
               justify-content: center;
             }
+            .date-picker-field-calendar .rdp-selected {
+              color: white;
+              font-weight: 700;
+            }
+            .date-picker-field-calendar .rdp-selected .rdp-day_button,
             .date-picker-field-calendar .rdp-day_selected,
+            .date-picker-field-calendar .rdp-selected .rdp-day_button:focus-visible,
             .date-picker-field-calendar .rdp-day_selected:focus-visible,
+            .date-picker-field-calendar .rdp-selected .rdp-day_button:hover,
             .date-picker-field-calendar .rdp-day_selected:hover {
               color: white;
-              background-color: var(--rdp-accent-color);
+              background-color: var(--date-picker-selected-background);
+              border-color: var(--date-picker-selected-border);
+              box-shadow: 0 0 0 2px var(--date-picker-selected-shadow);
             }
-            .date-picker-field-calendar .rdp-button:hover:not([disabled]):not(.rdp-day_selected) {
+            .date-picker-field-calendar .rdp-day:not(.rdp-selected) .rdp-day_button:hover:not([disabled]) {
               background-color: var(--rdp-background-color);
             }
+            .dark .date-picker-field-calendar .rdp-root,
             .dark .date-picker-field-calendar .rdp {
+              --rdp-accent-color: #93c5fd;
+              --rdp-accent-background-color: #1e3a8a;
               --rdp-background-color: #1e293b;
+              --rdp-selected-border: 2px solid #bfdbfe;
+              --date-picker-selected-background: #2563eb;
+              --date-picker-selected-border: #93c5fd;
+              --date-picker-selected-shadow: rgba(147, 197, 253, 0.35);
             }
           `}</style>
           <div className="date-picker-field-calendar">

@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "cd frontend && npm run dev",
+    "dev:no-pwa": "cd frontend && npm run dev:no-pwa",
     "dev:pwa": "cd frontend && npm run dev:pwa",
     "preview:pwa": "cd frontend && npm run preview:pwa",
     "build": "cd frontend && npm run build",

@@ -13,15 +13,22 @@ interface Props {
   onSubmit: (payload: Pick<PrayerRequest, 'title'> & Partial<Pick<PrayerRequest, 'description' | 'tags'>>) => Promise<void>;
   initialValues?: Partial<PrayerRequest>;
   mode?: 'create' | 'edit';
+  closeOnSuccess?: boolean;
 }
 
-export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mode = 'create' }: Props) {
+export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mode = 'create', closeOnSuccess = true }: Props) {
   const { t } = useTranslation();
   const [title, setTitle] = useState(initialValues?.title ?? '');
   const [description, setDescription] = useState(initialValues?.description ?? '');
   const [tagsInput, setTagsInput] = useState((initialValues?.tags ?? []).join(', '));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleClose = () => {
+    if (!saving) {
+      onClose();
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,10 +45,12 @@ export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mo
         description: description.trim() || undefined,
         tags: tags.length > 0 ? tags : undefined,
       });
-      onClose();
+      if (closeOnSuccess) {
+        onClose();
+        setSaving(false);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error');
-    } finally {
       setSaving(false);
     }
   };
@@ -51,13 +60,18 @@ export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mo
 
   const modal = (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={handleClose} />
       <div className="relative bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-md p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
             {t(`${i18nPrefix}.title`)}
           </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+          <button
+            type="button"
+            onClick={handleClose}
+            disabled={saving}
+            className="text-gray-400 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:text-gray-200"
+          >
             <XMarkIcon className="h-5 w-5" />
           </button>
         </div>
@@ -73,6 +87,7 @@ export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mo
               placeholder={t('prayer.create.titlePlaceholder') as string}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-400 resize-none text-sm"
               minRows={2}
+              disabled={saving}
               required
               autoFocus
             />
@@ -88,6 +103,7 @@ export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mo
               placeholder={t('prayer.create.descriptionPlaceholder') as string}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-400 resize-none text-sm"
               minRows={2}
+              disabled={saving}
             />
           </div>
 
@@ -101,6 +117,7 @@ export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mo
               onChange={(e) => setTagsInput(e.target.value)}
               placeholder={t('prayer.create.tagsPlaceholder') as string}
               className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-rose-400 text-sm"
+              disabled={saving}
             />
           </div>
 
@@ -109,8 +126,9 @@ export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mo
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+              onClick={handleClose}
+              disabled={saving}
+              className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-200"
             >
               {t(`${i18nPrefix}.cancel`)}
             </button>

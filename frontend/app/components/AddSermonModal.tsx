@@ -24,6 +24,7 @@ interface AddSermonModalProps {
   onClose?: () => void;
   showTriggerButton?: boolean;
   allowPlannedDate?: boolean;
+  closeOnSuccess?: boolean;
   onCreateRequest?: (input: DashboardCreateSermonInput) => Promise<void>;
 }
 
@@ -37,6 +38,7 @@ export default function AddSermonModal({
   onClose,
   showTriggerButton = true,
   allowPlannedDate = false,
+  closeOnSuccess = true,
   onCreateRequest
 }: AddSermonModalProps) {
   // showTriggerButton is used to conditionally render the trigger button
@@ -79,9 +81,11 @@ export default function AddSermonModal({
           plannedDate: allowPlannedDate ? plannedDate || undefined : undefined,
           unspecifiedChurchName: getUnspecifiedChurch().name,
         });
-        resetForm();
-        setIsSubmitting(false);
-        handleClose();
+        if (closeOnSuccess) {
+          resetForm();
+          setIsSubmitting(false);
+          handleClose();
+        }
       } catch (error) {
         console.error('Error creating sermon (optimistic request):', error);
         setIsSubmitting(false);
@@ -136,9 +140,11 @@ export default function AddSermonModal({
         await onNewSermonCreated(sermonForCallback);
       }
       // Note: router.refresh() moved to parent component to avoid modal flickering
-      resetForm();
-      setIsSubmitting(false);
-      handleClose();
+      if (closeOnSuccess) {
+        resetForm();
+        setIsSubmitting(false);
+        handleClose();
+      }
     } catch (error) {
       console.error('Error creating sermon:', error);
       setIsSubmitting(false);

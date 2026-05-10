@@ -62,6 +62,33 @@ describe('CreatePrayerModal', () => {
     });
   });
 
+  it('keeps the modal in saving state after success when closeOnSuccess is false', async () => {
+    const onClose = jest.fn();
+    const onSubmit = jest.fn().mockResolvedValue(undefined);
+
+    render(
+      <CreatePrayerModal
+        onClose={onClose}
+        onSubmit={onSubmit}
+        closeOnSuccess={false}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('What are you praying for?'), {
+      target: { value: 'Pray for family' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add Prayer' }));
+
+    await waitFor(() => {
+      expect(onSubmit).toHaveBeenCalledTimes(1);
+    });
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('heading', { name: 'New Prayer Request' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Saving...' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+  });
+
   it('shows the submit error message when saving fails', async () => {
     const onSubmit = jest.fn().mockRejectedValue(new Error('Save failed'));
 
