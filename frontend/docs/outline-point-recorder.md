@@ -4,14 +4,13 @@ Outline Point Mini Recorder
 What it does
 - Adds a tiny audio recorder button to every outline point header within each column (Introduction, Main, Conclusion).
 - After recording and transcription, the created thought is automatically:
-  - Tagged with the section (via localized tag names),
   - Linked to the specific outline point (`outlinePointId`),
   - Appended to the correct column in the UI under that point,
   - Persisted to Firestore through the existing `/api/thoughts` endpoint.
 
 How it works
 - UI: Implemented inside `app/components/Column.tsx` within `OutlinePointPlaceholder` using the existing `AudioRecorder` component (mini variant).
-- Client service: `createAudioThoughtWithForceTag(...)` now accepts an optional `outlinePointId` and sends it in `FormData`.
+- Client service: `createAudioThought(...)` accepts an optional `outlinePointId` and sends it in `FormData`.
 - API: `app/api/thoughts/route.ts` reads `outlinePointId` and writes it onto the saved `Thought`.
 - Page integration: `StructurePage`'s `handleAudioThoughtCreated` now preserves `outlinePointId` when constructing the UI `Item`.
 

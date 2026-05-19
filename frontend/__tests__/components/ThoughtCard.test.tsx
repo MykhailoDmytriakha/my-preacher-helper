@@ -38,6 +38,12 @@ jest.mock('@utils/tagUtils', () => ({
   getDefaultTagStyling: jest.fn().mockReturnValue({ bg: 'bg-blue-50', text: 'text-blue-800' }),
   getStructureIcon: jest.fn().mockReturnValue(null),
   getTagStyle: jest.fn().mockReturnValue({ className: 'px-2 py-0.5 rounded-full', style: { backgroundColor: '#333333', color: '#ffffff' } }),
+  getCanonicalTagForSection: jest.fn((section: string) => {
+    if (section === 'introduction') return 'intro';
+    if (section === 'main') return 'main';
+    if (section === 'conclusion') return 'conclusion';
+    return null;
+  }),
   normalizeStructureTag: jest.fn((tag: string) => {
     if (['Вступление', 'Introduction', 'intro'].includes(tag)) return 'intro';
     if (['Основная часть', 'Main Part', 'main'].includes(tag)) return 'main';
@@ -182,18 +188,48 @@ describe('ThoughtCard Component', () => {
     mockReset.mockClear();
   });
 
-  it('does not show warning when thought has required tag', () => {
+  it('does not show warning when legacy structure tag matches outline assignment', () => {
     const thoughtWithStructureTag = {
       ...mockThought,
-      tags: ['Tag1', 'Вступление']
+      tags: ['Tag1', 'Вступление'],
+      outlinePointId: 'intro-point',
     };
-    render(<ThoughtCard {...defaultProps} thought={thoughtWithStructureTag} />);
-    expect(screen.queryByText(/Please add one of these tags/)).not.toBeInTheDocument();
+    const sermonOutline = {
+      introduction: [{ id: 'intro-point', text: 'Intro point' }],
+      main: [],
+      conclusion: [],
+    };
+
+    render(
+      <ThoughtCard
+        {...defaultProps}
+        thought={thoughtWithStructureTag}
+        sermonOutline={sermonOutline}
+      />
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('shows warning when thought has no required tag', () => {
-    render(<ThoughtCard {...defaultProps} />);
-    expect(screen.getByText(/Please add one of these tags/)).toBeInTheDocument();
+  it('does not warn when an outline-linked thought has no structure tag', () => {
+    const outlineLinkedThought = {
+      ...mockThought,
+      tags: ['Tag1', 'Tag2'],
+      outlinePointId: 'main-point',
+    };
+    const sermonOutline = {
+      introduction: [],
+      main: [{ id: 'main-point', text: 'Main point' }],
+      conclusion: [],
+    };
+
+    render(
+      <ThoughtCard
+        {...defaultProps}
+        thought={outlineLinkedThought}
+        sermonOutline={sermonOutline}
+      />
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   // --- Options Menu Tests --- 

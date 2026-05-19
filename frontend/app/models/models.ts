@@ -8,7 +8,6 @@ export interface Thought {
   position?: number;
   isLocked?: boolean;
   keyFragments?: string[]; // Store important text fragments for AI generation
-  forceTag?: string; // Force tag for transcription (intro, main, conclusion)
 }
 
 /**

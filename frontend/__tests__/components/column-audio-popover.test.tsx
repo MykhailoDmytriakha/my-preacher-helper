@@ -37,7 +37,7 @@ jest.mock('@/components/AudioRecorder', () => ({
 }));
 
 jest.mock('@/services/thought.service', () => ({
-  createAudioThoughtWithForceTag: jest.fn(),
+  createAudioThought: jest.fn(),
 }));
 
 jest.mock('sonner', () => ({
@@ -49,9 +49,9 @@ jest.mock('sonner', () => ({
 
 // Import after mocks
 import Column from '@/components/Column';
-import { createAudioThoughtWithForceTag } from '@/services/thought.service';
+import { createAudioThought } from '@/services/thought.service';
 
-const mockCreateAudioThoughtWithForceTag = createAudioThoughtWithForceTag as jest.MockedFunction<typeof createAudioThoughtWithForceTag>;
+const mockCreateAudioThought = createAudioThought as jest.MockedFunction<typeof createAudioThought>;
 
 describe('Column mic popover and focus button', () => {
   const baseProps = {
@@ -98,7 +98,7 @@ describe('Column mic popover and focus button', () => {
   });
 
   it('closes the popover on outside click and creates a thought from recorder output', async () => {
-    mockCreateAudioThoughtWithForceTag.mockResolvedValueOnce({
+    mockCreateAudioThought.mockResolvedValueOnce({
       id: 'thought-1',
       text: 'Created from audio',
       tags: ['main'],
@@ -124,10 +124,9 @@ describe('Column mic popover and focus button', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Complete audio' }));
 
     expect(await screen.findByTitle('structure.recordAudio')).toBeInTheDocument();
-    expect(mockCreateAudioThoughtWithForceTag).toHaveBeenCalledWith(
+    expect(mockCreateAudioThought).toHaveBeenCalledWith(
       expect.any(Blob),
-      'sermon-1',
-      'main'
+      'sermon-1'
     );
     expect(onAudioThoughtCreated).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'thought-1' }),
@@ -136,7 +135,7 @@ describe('Column mic popover and focus button', () => {
   });
 
   it('keeps the normal-mode audio popover open after a failed transcription so the saved recording can be retried', async () => {
-    mockCreateAudioThoughtWithForceTag.mockRejectedValueOnce(new Error('Transcription failed'));
+    mockCreateAudioThought.mockRejectedValueOnce(new Error('Transcription failed'));
 
     render(
       <Column

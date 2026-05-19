@@ -15,7 +15,7 @@ import { Item, Sermon, SermonPoint, Thought, SermonOutline } from "@/models/mode
 import "@locales/i18n";
 import { updateThought } from "@/services/thought.service";
 import { getExportContent } from "@/utils/exportContent";
-import { getCanonicalTagForSection, normalizeStructureTag } from "@/utils/tagUtils";
+import { normalizeStructureTag } from "@/utils/tagUtils";
 import { getSectionLabel } from "@lib/sections";
 import { getSermonPlanData } from "@utils/sermonPlanAccess";
 import { insertThoughtIdInStructure, resolveSectionFromOutline } from "@utils/thoughtOrdering";
@@ -261,7 +261,6 @@ function StructurePageContent() {
     try {
       const outlineSection = resolveSectionFromOutline(sermon, thought.outlinePointId ?? null);
       const finalSection = outlineSection && outlineSection !== 'ambiguous' ? outlineSection : sectionId;
-      const sectionTag = getCanonicalTagForSection(finalSection);
 
       // Compute custom tags (exclude structural tag), preserving original order
       const customTags = (thought.tags || []).filter((tag) => normalizeStructureTag(tag) === null);
@@ -272,7 +271,7 @@ function StructurePageContent() {
       const newItem: Item = {
         id: thought.id,
         content: thought.text,
-        requiredTags: [sectionTag],
+        requiredTags: [],
         customTagNames: customTags.map((name) => ({
           name,
           color: allowedTags.find((t) => t.name === name)?.color || '#4c51bf',

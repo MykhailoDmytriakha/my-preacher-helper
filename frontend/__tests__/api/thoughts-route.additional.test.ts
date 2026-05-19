@@ -32,7 +32,6 @@ jest.mock('@clients/thought.structured', () => ({
 
 jest.mock('@clients/firestore.client', () => ({
   getCustomTags: jest.fn(),
-  getRequiredTags: jest.fn(),
 }));
 
 jest.mock('@repositories/sermons.repository', () => ({
@@ -80,7 +79,6 @@ describe('Thoughts API route additional coverage', () => {
 
   let createTranscriptionMock: jest.Mock;
   let generateThoughtStructuredMock: jest.Mock;
-  let getRequiredTagsMock: jest.Mock;
   let getCustomTagsMock: jest.Mock;
   let fetchSermonByIdMock: jest.Mock;
   let validateAudioDurationMock: jest.Mock;
@@ -117,13 +115,11 @@ describe('Thoughts API route additional coverage', () => {
 
     createTranscriptionMock = openAIClient.createTranscription as jest.Mock;
     generateThoughtStructuredMock = thoughtStructured.generateThoughtStructured as jest.Mock;
-    getRequiredTagsMock = firestoreClient.getRequiredTags as jest.Mock;
     getCustomTagsMock = firestoreClient.getCustomTags as jest.Mock;
     validateAudioDurationMock = audioServerUtils.validateAudioDuration as jest.Mock;
     sermonsRepoMock = sermonsRepo;
     fetchSermonByIdMock = sermonsRepo.sermonsRepository.fetchSermonById as jest.Mock;
 
-    getRequiredTagsMock.mockResolvedValue([]);
     getCustomTagsMock.mockResolvedValue([]);
     validateAudioDurationMock.mockResolvedValue({ valid: true, duration: 2, maxAllowed: 97 });
     fetchSermonByIdMock.mockResolvedValue({ userId: 'user-1', thoughts: [] });

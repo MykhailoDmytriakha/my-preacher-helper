@@ -89,7 +89,6 @@ jest.mock('sonner', () => ({
 
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
 jest.mock('@/utils/debugMode', () => ({ debugLog: jest.fn() }));
-jest.mock('@/utils/tagUtils', () => ({ getCanonicalTagForSection: jest.fn() }));
 jest.mock('@/services/outline.service', () => ({
     updateSermonOutline: jest.fn(),
     getSermonOutline: jest.fn(),

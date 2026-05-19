@@ -26,9 +26,6 @@ export const REQUIRED_TAG_TRANSLATIONS = {
   "Заключение": TAG_TRANSLATION_KEYS.CONCLUSION
 };
 
-// Standard required tag IDs (lowercase canonical versions)
-export const REQUIRED_TAG_IDS = ["intro", "main", "conclusion"];
-
 // Helper function to check if a tag name is a required tag
 export function isRequiredTag(tagName: string): boolean {
   return tagName in REQUIRED_TAG_TRANSLATIONS;
@@ -37,30 +34,6 @@ export function isRequiredTag(tagName: string): boolean {
 // Get translation key for a tag name if it's a required tag
 export function getTranslationKeyForTag(tagName: string): string | undefined {
   return REQUIRED_TAG_TRANSLATIONS[tagName as keyof typeof REQUIRED_TAG_TRANSLATIONS];
-}
-
-export async function getRequiredTags() {
-  try {
-    const tagPromises = REQUIRED_TAG_IDS.map(async (tagId) => {
-      const docRef = adminDb.collection("tags").doc(tagId);
-      const docSnap = await docRef.get();
-      if (docSnap.exists) {
-        // Add translationKey to the tag object
-        return { 
-          id: docSnap.id, 
-          ...docSnap.data(),
-          translationKey: getTranslationKeyForTag(tagId)
-        };
-      }
-      return null;
-    });
-    
-    const tags = await Promise.all(tagPromises);
-    return tags.filter((tag): tag is NonNullable<typeof tag> => tag !== null) as Tag[];
-  } catch (error) {
-    console.error("Error fetching required tags:", error);
-    throw error;
-  }
 }
 
 export async function getCustomTags(userId: string) {
@@ -200,5 +173,4 @@ export async function updateTagInDb(tag: Tag) {
     throw error;
   }
 }
-
 

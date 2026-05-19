@@ -45,13 +45,13 @@ jest.mock('@/components/FlatRecorderButton', () => ({
 }));
 
 jest.mock('@/services/thought.service', () => ({
-  createAudioThoughtWithForceTag: jest.fn(),
+  createAudioThought: jest.fn(),
 }));
 
 import Column from '@/components/Column';
-import { createAudioThoughtWithForceTag } from '@/services/thought.service';
+import { createAudioThought } from '@/services/thought.service';
 
-const mockCreateAudioThoughtWithForceTag = createAudioThoughtWithForceTag as jest.MockedFunction<typeof createAudioThoughtWithForceTag>;
+const mockCreateAudioThought = createAudioThought as jest.MockedFunction<typeof createAudioThought>;
 
 describe('Focus mode: mic icon per outline point', () => {
   beforeEach(() => {
@@ -83,7 +83,7 @@ describe('Focus mode: mic icon per outline point', () => {
   });
 
   it('renders a flat recorder in each sub-point lane and records into that sub-point', async () => {
-    mockCreateAudioThoughtWithForceTag.mockResolvedValueOnce({
+    mockCreateAudioThought.mockResolvedValueOnce({
       id: 'thought-1',
       text: 'Subpoint thought',
       tags: ['main'],
@@ -116,10 +116,9 @@ describe('Focus mode: mic icon per outline point', () => {
     fireEvent.click(screen.getByTestId('flat-recorder-stub'));
 
     await waitFor(() => {
-      expect(mockCreateAudioThoughtWithForceTag).toHaveBeenCalledWith(
+      expect(mockCreateAudioThought).toHaveBeenCalledWith(
         expect.any(Blob),
         's-1',
-        'main',
         0,
         3,
         'op-1',

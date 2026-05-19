@@ -28,6 +28,8 @@ interface SermonOutlineProps {
 type SectionType = 'introduction' | 'mainPart' | 'conclusion';
 
 const DISABLED_ACTION_CLASSES = 'opacity-50 cursor-not-allowed';
+const COMMON_COLLAPSE_KEY = 'common.collapse';
+const COMMON_EXPAND_KEY = 'common.expand';
 const SECTION_TO_SERMON_KEY: Record<SectionType, 'introduction' | 'main' | 'conclusion'> = {
   introduction: 'introduction',
   mainPart: 'main',
@@ -470,6 +472,69 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
     conclusion: getSectionStyling('conclusion'),
   };
 
+  const renderPointEditMode = () => (
+    <div ref={editInputRef} className="flex-grow flex items-center space-x-1">
+      <input
+        type="text"
+        value={editingText}
+        onChange={(e) => setEditingText(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') handleCancelEdit(); }}
+        className="flex-grow p-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        placeholder={t('structure.editPointPlaceholder')}
+        autoFocus
+        disabled={isReadOnly}
+      />
+      <button aria-label={t('common.save')} onClick={handleSaveEdit} disabled={isReadOnly} className={`p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}>
+        <CheckIcon className="h-5 w-5" />
+      </button>
+      <button aria-label={t('common.cancel')} onClick={handleCancelEdit} disabled={isReadOnly} className={`p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}>
+        <XMarkIcon className="h-5 w-5" />
+      </button>
+    </div>
+  );
+
+  const renderPointViewMode = (point: SermonPoint) => {
+    const isCollapsed = collapsedPoints[point.id];
+    const collapseLabel = isCollapsed ? t(COMMON_EXPAND_KEY) : t(COMMON_COLLAPSE_KEY);
+    const hasSubPoints = (point.subPoints?.length ?? 0) > 0;
+    const thoughtCount = getThoughtCount(point.id);
+    return (
+      <>
+        <div className="flex items-center gap-1.5 flex-grow min-w-0 mr-2">
+          {hasSubPoints && (
+            <button
+              onClick={() => setCollapsedPoints(prev => ({ ...prev, [point.id]: !prev[point.id] }))}
+              className="p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 transition-colors flex-shrink-0"
+              title={collapseLabel}
+              aria-label={collapseLabel}
+            >
+              <ChevronDownIcon className={`h-4 w-4 transform transition-transform duration-200 ${isCollapsed ? '-rotate-90' : ''}`} />
+            </button>
+          )}
+          <span
+            className={`text-sm text-gray-800 dark:text-gray-200 flex-grow truncate ${isReadOnly ? '' : 'cursor-text'}`}
+            onDoubleClick={() => handleStartEdit(point)}
+          >
+            {point.text}
+          </span>
+        </div>
+        <div className="flex items-center space-x-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+          <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} disabled={isReadOnly} className={`p-1 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}>
+            <PencilIcon className="h-4 w-4" />
+          </button>
+          <button aria-label={t('common.delete')} onClick={() => handleDeletePoint(point)} disabled={isReadOnly} className={`p-1 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}>
+            <TrashIcon className="h-4 w-4" />
+          </button>
+        </div>
+        {thoughtCount > 0 && (
+          <span className={`${countBadgeBaseClass} ml-2 bg-gray-200 text-gray-500 dark:bg-gray-600 dark:text-gray-400`}>
+            {thoughtCount}
+          </span>
+        )}
+      </>
+    );
+  };
+
   // Render each section
   const renderSection = (sectionType: SectionType) => {
     const points = sectionPoints[sectionType] || [];
@@ -509,7 +574,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
             <button
               type="button"
               onClick={() => toggleSection(sectionType)}
-              aria-label={isExpanded ? t('common.collapse') : t('common.expand')}
+              aria-label={isExpanded ? t(COMMON_COLLAPSE_KEY) : t(COMMON_EXPAND_KEY)}
               className="p-1 bg-black/5 hover:bg-black/10 dark:bg-white/10 dark:hover:bg-white/20 rounded-full transition-colors text-gray-500 hover:text-gray-700 dark:text-gray-300 dark:hover:text-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
             >
               <ChevronDownIcon className={`h-5 w-5 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
@@ -581,64 +646,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
                             >
                               <Bars3Icon className="h-5 w-5" />
                             </div>
-                            {editingPointId === point.id ? (
-                              <div ref={editInputRef} className="flex-grow flex items-center space-x-1">
-                                <input
-                                  type="text"
-                                  value={editingText}
-                                  onChange={(e) => setEditingText(e.target.value)}
-                                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') handleCancelEdit(); }}
-                                  className="flex-grow p-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                                  placeholder={t('structure.editPointPlaceholder')}
-                                  autoFocus
-                                  disabled={isReadOnly}
-                                />
-                                <button aria-label={t('common.save')} onClick={handleSaveEdit} disabled={isReadOnly} className={`p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}>
-                                  <CheckIcon className="h-5 w-5" />
-                                </button>
-                                <button aria-label={t('common.cancel')} onClick={handleCancelEdit} disabled={isReadOnly} className={`p-1 text-red-600 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}>
-                                  <XMarkIcon className="h-5 w-5" />
-                                </button>
-                              </div>
-                            ) : (
-                              <>
-                                <div className="flex items-center gap-1.5 flex-grow min-w-0 mr-2">
-                                  {point.subPoints && point.subPoints.length > 0 && (
-                                    <button
-                                      onClick={() => setCollapsedPoints(prev => ({ ...prev, [point.id]: !prev[point.id] }))}
-                                      className="p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 transition-colors flex-shrink-0"
-                                      title={collapsedPoints[point.id] ? t('common.expand') : t('common.collapse')}
-                                      aria-label={collapsedPoints[point.id] ? t('common.expand') : t('common.collapse')}
-                                    >
-                                      <ChevronDownIcon
-                                        className={`h-4 w-4 transform transition-transform duration-200 ${
-                                          collapsedPoints[point.id] ? '-rotate-90' : ''
-                                        }`}
-                                      />
-                                    </button>
-                                  )}
-                                  <span
-                                    className={`text-sm text-gray-800 dark:text-gray-200 flex-grow truncate ${isReadOnly ? '' : 'cursor-text'}`}
-                                    onDoubleClick={() => handleStartEdit(point)}
-                                  >
-                                    {point.text}
-                                  </span>
-                                </div>
-                                <div className="flex items-center space-x-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                                  <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} disabled={isReadOnly} className={`p-1 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}>
-                                    <PencilIcon className="h-4 w-4" />
-                                  </button>
-                                  <button aria-label={t('common.delete')} onClick={() => handleDeletePoint(point)} disabled={isReadOnly} className={`p-1 text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}>
-                                    <TrashIcon className="h-4 w-4" />
-                                  </button>
-                                </div>
-                                {getThoughtCount(point.id) > 0 && (
-                                  <span className={`${countBadgeBaseClass} ml-2 bg-gray-200 text-gray-500 dark:bg-gray-600 dark:text-gray-400`}>
-                                    {getThoughtCount(point.id)}
-                                  </span>
-                                )}
-                              </>
-                            )}
+                            {editingPointId === point.id ? renderPointEditMode() : renderPointViewMode(point)}
                           </div>
                           {/* Sub-points — inside Draggable so they move with parent */}
                           {editingPointId !== point.id && ((point.subPoints && point.subPoints.length > 0) || !isReadOnly) && !collapsedPoints[point.id] && (

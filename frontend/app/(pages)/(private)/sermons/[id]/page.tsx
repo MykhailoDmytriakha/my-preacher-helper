@@ -45,6 +45,7 @@ import { createAudioThought, createManualThought, deleteThought, updateThought }
 import { getCanonicalTagForSection, normalizeStructureTag } from '@utils/tagUtils';
 import { UI_COLORS } from "@utils/themeColors";
 import {
+  canonicalizeStructure,
   findThoughtSectionInStructure,
   insertThoughtIdInStructure,
   removeThoughtIdFromStructure,
@@ -53,6 +54,7 @@ import {
 } from "@utils/thoughtOrdering";
 
 import type { Sermon, Thought, SermonOutline as SermonOutlineType, Preparation, BrainstormSuggestion } from "@/models/models";
+import type { StructureSectionId } from '@utils/tagUtils';
 import type { ReactNode } from "react";
 
 export const dynamic = "force-dynamic";
@@ -182,16 +184,20 @@ const checkForInconsistentThoughtsHelper = (sermon: Sermon | null): boolean => {
   if (!sermon || !sermon.thoughts || !sermon.outline) return false;
 
   return sermon.thoughts.some(thought => {
-    const usedRequiredTags = thought.tags
+    const usedStructureTags = thought.tags
       .map((tag) => normalizeStructureTag(tag))
       .filter((tag): tag is NonNullable<typeof tag> => Boolean(tag));
-    if (usedRequiredTags.length > 1) {
+    if (usedStructureTags.length > 1) {
       return true;
     }
 
-    if (!thought.outlinePointId) return false;
+    if (usedStructureTags.length === 0) {
+      return false;
+    }
 
-    let outlinePointSection: string | undefined;
+    if (!thought.outlinePointId) return true;
+
+    let outlinePointSection: StructureSectionId | undefined;
 
     if (sermon.outline!.introduction.some(p => p.id === thought.outlinePointId)) {
       outlinePointSection = 'introduction';
@@ -201,17 +207,9 @@ const checkForInconsistentThoughtsHelper = (sermon: Sermon | null): boolean => {
       outlinePointSection = 'conclusion';
     }
 
-    if (!outlinePointSection) return false;
+    if (!outlinePointSection) return true;
 
-    const expectedTag = getCanonicalTagForSection(outlinePointSection as 'introduction' | 'main' | 'conclusion');
-
-    const hasExpectedTag = thought.tags.some(tag => normalizeStructureTag(tag) === expectedTag);
-
-    const hasOtherSectionTags = ['intro', 'main', 'conclusion']
-      .filter(tag => tag !== expectedTag)
-      .some(tag => thought.tags.some(t => normalizeStructureTag(t) === tag));
-
-    return !(!hasOtherSectionTags || hasExpectedTag);
+    return usedStructureTags[0] !== getCanonicalTagForSection(outlinePointSection);
   });
 };
 
@@ -1279,10 +1277,11 @@ useEffect(() => {
   }
 
   const thoughtsPerSermonPoint = calculateThoughtsPerSermonPoint(displaySermon);
+  const canonicalStructure = displaySermon ? canonicalizeStructure(displaySermon) : { introduction: [], main: [], conclusion: [], ambiguous: [] };
   const tagCounts = {
-    [STRUCTURE_TAGS.INTRODUCTION]: (displaySermon?.thoughts ?? []).reduce((c, t) => c + (t.tags.some(tag => normalizeStructureTag(tag) === 'intro') ? 1 : 0), 0),
-    [STRUCTURE_TAGS.MAIN_BODY]: (displaySermon?.thoughts ?? []).reduce((c, t) => c + (t.tags.some(tag => normalizeStructureTag(tag) === 'main') ? 1 : 0), 0),
-    [STRUCTURE_TAGS.CONCLUSION]: (displaySermon?.thoughts ?? []).reduce((c, t) => c + (t.tags.some(tag => normalizeStructureTag(tag) === 'conclusion') ? 1 : 0), 0),
+    [STRUCTURE_TAGS.INTRODUCTION]: canonicalStructure.introduction.length,
+    [STRUCTURE_TAGS.MAIN_BODY]: canonicalStructure.main.length,
+    [STRUCTURE_TAGS.CONCLUSION]: canonicalStructure.conclusion.length,
   };
   const hasInconsistentThoughts = checkForInconsistentThoughtsHelper(displaySermon);
 

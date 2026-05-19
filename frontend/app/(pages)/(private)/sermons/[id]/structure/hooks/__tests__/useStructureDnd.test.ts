@@ -1307,7 +1307,7 @@ describe('useStructureDnd', () => {
         expect.objectContaining({
           id: THOUGHT_ONE,
           outlinePointId: OUTLINE_INTRO,
-          tags: expect.arrayContaining(['intro', CUSTOM_TAG.name]),
+          tags: [CUSTOM_TAG.name],
         })
       );
       expect(mockUpdateStructure).not.toHaveBeenCalled();
@@ -1395,7 +1395,7 @@ describe('useStructureDnd', () => {
           outlinePointId: OUTLINE_INTRO,
           subPointId: null,
           position: 2000,
-          tags: expect.arrayContaining(['intro']),
+          tags: [],
         })
       );
       expect(mockUpdateStructure).toHaveBeenCalledWith(sermon.id, {
@@ -1451,7 +1451,7 @@ describe('useStructureDnd', () => {
         expect.objectContaining({
           id: THOUGHT_ONE,
           outlinePointId: OUTLINE_MAIN,
-          tags: expect.arrayContaining(['main']),
+          tags: [],
         })
       );
       expect(mockUpdateStructure).toHaveBeenCalledWith(sermon.id, {

@@ -1,7 +1,7 @@
 
 import { toast } from "sonner";
 
-import { isPointAudioSection, getForceTagForContainer } from "./utils";
+import { isPointAudioSection } from "./utils";
 
 import type { OnAudioThoughtCreated, Translate } from "./types";
 import type React from "react";
@@ -39,13 +39,12 @@ export const recordAudioThought = async ({
     setIsRecordingAudio(true);
     setAudioError(null);
 
-    const forceTag = getForceTagForContainer(sectionId);
-    const { createAudioThoughtWithForceTag } = await import("@/services/thought.service");
+    const { createAudioThought } = await import("@/services/thought.service");
     const newThought = pointId
       ? subPointId
-        ? await createAudioThoughtWithForceTag(audioBlob, sermonId, forceTag || null, 0, 3, pointId, subPointId)
-        : await createAudioThoughtWithForceTag(audioBlob, sermonId, forceTag || null, 0, 3, pointId)
-      : await createAudioThoughtWithForceTag(audioBlob, sermonId, forceTag || null);
+        ? await createAudioThought(audioBlob, sermonId, 0, 3, pointId, subPointId)
+        : await createAudioThought(audioBlob, sermonId, 0, 3, pointId)
+      : await createAudioThought(audioBlob, sermonId);
 
     if (isPointAudioSection(sectionId)) {
       onAudioThoughtCreated?.(newThought, sectionId);

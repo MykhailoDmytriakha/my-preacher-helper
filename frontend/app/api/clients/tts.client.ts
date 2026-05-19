@@ -1,3 +1,5 @@
+import 'openai/shims/node';
+
 /**
  * TTS (Text-to-Speech) Client
  * 

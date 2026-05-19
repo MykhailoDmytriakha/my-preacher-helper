@@ -8,7 +8,7 @@ import { Item, Sermon, SermonOutline, SermonPoint, Tag, Thought, ThoughtsBySecti
 import { getSermonOutline } from '@/services/outline.service';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
-import { getCanonicalTagForSection, normalizeStructureTag } from '@/utils/tagUtils';
+import { normalizeStructureTag } from '@/utils/tagUtils';
 import { canonicalizeStructure } from '@/utils/thoughtOrdering';
 import { getSectionBaseColor } from '@lib/sections';
 
@@ -100,10 +100,7 @@ function processThoughtsIntoItems(
       };
     });
 
-    const relevantTags = rawTags
-      .map((tag) => normalizeStructureTag(tag))
-      .filter((tag): tag is NonNullable<typeof tag> => Boolean(tag));
-    const uniqueRequiredTags = Array.from(new Set(relevantTags));
+    const uniqueRequiredTags: string[] = [];
 
     let outlinePointData;
     if (thought.outlinePointId && fetchedSermon.outline) {
@@ -148,39 +145,22 @@ function buildContainersFromCanonicalStructure(
   concl: Item[];
   ambiguous: Item[];
 } {
-  const buildSectionItems = (
-    ids: string[],
-    section?: 'introduction' | 'main' | 'conclusion'
-  ): Item[] => {
+  const buildSectionItems = (ids: string[]): Item[] => {
     const items = ids
       .map((id) => allThoughtItems[id])
       .filter(Boolean) as Item[];
 
-    if (!section) {
-      return items.map((item) => ({
-        ...item,
-        requiredTags: [],
-      }));
-    }
-
-    const sectionTag = getCanonicalTagForSection(section);
-    return items.map((item) => {
-      const requiredTags = item.requiredTags || [];
-      if (requiredTags.includes(sectionTag)) {
-        return item;
-      }
-      return {
-        ...item,
-        requiredTags: [...requiredTags, sectionTag],
-      };
-    });
+    return items.map((item) => ({
+      ...item,
+      requiredTags: [],
+    }));
   };
 
   return {
-    intro: buildSectionItems(canonicalStructure.introduction, 'introduction'),
-    main: buildSectionItems(canonicalStructure.main, 'main'),
-    concl: buildSectionItems(canonicalStructure.conclusion, 'conclusion'),
-    ambiguous: buildSectionItems(canonicalStructure.ambiguous ?? [], undefined),
+    intro: buildSectionItems(canonicalStructure.introduction),
+    main: buildSectionItems(canonicalStructure.main),
+    concl: buildSectionItems(canonicalStructure.conclusion),
+    ambiguous: buildSectionItems(canonicalStructure.ambiguous ?? []),
   };
 }
 

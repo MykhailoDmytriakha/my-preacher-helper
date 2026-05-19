@@ -161,7 +161,7 @@ describe('useSermonStructureData Hook', () => {
 
     // Verify container assignment logic
     expect(result.current.containers.introduction.find(item => item.id === 't7')).toBeDefined();
-    expect(result.current.containers.introduction[0].requiredTags).toEqual(['intro']);
+    expect(result.current.containers.introduction[0].requiredTags).toEqual([]);
     expect(result.current.containers.introduction.find(item => item.id === 't1')).toBeDefined();
 
     expect(result.current.containers.main.find(item => item.id === 't2')).toBeDefined();
@@ -176,17 +176,17 @@ describe('useSermonStructureData Hook', () => {
 
     // Check tags are correctly assigned to items in sections
     const t1Item = result.current.containers.introduction.find(item => item.id === 't1');
-    expect(t1Item?.requiredTags).toEqual(['intro']);
+    expect(t1Item?.requiredTags).toEqual([]);
     expect(t1Item?.customTagNames).toEqual([]); // No custom tags matched
     expect(t1Item?.isLocked).toBe(true);
 
     const t2Item = result.current.containers.main.find(item => item.id === 't2');
-    expect(t2Item?.requiredTags).toEqual(['main']);
+    expect(t2Item?.requiredTags).toEqual([]);
     expect(t2Item?.customTagNames).toEqual([{ name: 'Grace', color: '#ffff00' }]);
     expect(t2Item?.isLocked).toBe(false);
 
     const t3Item = result.current.containers.main.find(item => item.id === 't3');
-    expect(t3Item?.requiredTags).toEqual(['main']);
+    expect(t3Item?.requiredTags).toEqual([]);
     expect(t3Item?.customTagNames).toEqual([{ name: 'Faith', color: '#ff00ff' }]);
 
     // Verify outline points

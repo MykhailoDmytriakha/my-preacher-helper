@@ -37,8 +37,6 @@ export interface GenerateThoughtResult {
  * Options for thought generation.
  */
 interface GenerateThoughtOptions {
-  /** Force a specific tag to be applied (overrides AI suggestion) */
-  forceTag?: string | null;
   /** Maximum retry attempts for meaning preservation */
   maxRetries?: number;
 }
@@ -60,8 +58,7 @@ interface GenerateThoughtOptions {
  * const result = await generateThoughtStructured(
  *   "Бог есть любовь...",
  *   sermon,
- *   ["Вступление", "Основная часть"],
- *   { forceTag: "Основная часть" }
+ *   ["Вступление", "Основная часть"]
  * );
  * 
  * if (result.meaningSuccessfullyPreserved) {
@@ -75,7 +72,7 @@ export async function generateThoughtStructured(
   availableTags: string[] = [],
   options: GenerateThoughtOptions = {}
 ): Promise<GenerateThoughtResult> {
-  const { forceTag = null, maxRetries = 3 } = options;
+  const { maxRetries = 3 } = options;
 
   // Create user message with sermon context
   const userMessage = createThoughtUserMessage(
@@ -89,7 +86,6 @@ export async function generateThoughtStructured(
     logger.debug('GenerateThoughtStructured', "Starting generation", {
       contentPreview: content.substring(0, 300) + (content.length > 300 ? '...' : ''),
       availableTags,
-      forceTag,
     });
   }
 
@@ -100,7 +96,6 @@ export async function generateThoughtStructured(
       content,
       sermon,
       userMessage,
-      forceTag,
       attempt,
     });
 
@@ -128,10 +123,9 @@ async function runThoughtAttempt(params: {
   content: string;
   sermon: Sermon;
   userMessage: string;
-  forceTag: string | null;
   attempt: number;
 }): Promise<AttemptOutcome> {
-  const { content, sermon, userMessage, forceTag, attempt } = params;
+  const { content, sermon, userMessage, attempt } = params;
 
   try {
     const promptBlueprint = buildSimplePromptBlueprint({
@@ -164,7 +158,6 @@ async function runThoughtAttempt(params: {
     return handleStructuredResult({
       result,
       content,
-      forceTag,
       sermonVerse: sermon.verse,
       attempt,
     });
@@ -177,11 +170,10 @@ async function runThoughtAttempt(params: {
 function handleStructuredResult(params: {
   result: StructuredOutputResult<ThoughtResponse>;
   content: string;
-  forceTag: string | null;
   sermonVerse: string;
   attempt: number;
 }): AttemptOutcome {
-  const { result, content, forceTag, sermonVerse, attempt } = params;
+  const { result, content, sermonVerse, attempt } = params;
 
   if (result.refusal) {
     logger.warn('GenerateThoughtStructured', `Model refused: ${result.refusal}`);
@@ -214,11 +206,7 @@ function handleStructuredResult(params: {
     }
 
     logger.success('GenerateThoughtStructured', `Success on attempt ${attempt}. Meaning preserved.`);
-    if (forceTag) {
-      logger.info('GenerateThoughtStructured', 
-        `Force tag "${forceTag}" applied. Original tags: [${response.tags.join(", ")}]`);
-    }
-    return { type: "success", result: createSuccessResult(response, forceTag, content) };
+    return { type: "success", result: createSuccessResult(response, content) };
   }
 
   logger.warn('GenerateThoughtStructured', 
@@ -261,8 +249,8 @@ function containsUndictatedMainSermonReference(params: {
   );
 }
 
-function createSuccessResult(response: ThoughtResponse, forceTag: string | null, originalContent: string): GenerateThoughtResult {
-  const finalTags = forceTag ? [forceTag] : response.tags;
+function createSuccessResult(response: ThoughtResponse, originalContent: string): GenerateThoughtResult {
+  const finalTags = response.tags;
   return {
     originalText: originalContent,
     formattedText: normalizeSpokenScriptureReferences(response.formattedText),

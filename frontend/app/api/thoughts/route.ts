@@ -8,7 +8,7 @@ import { adminDb } from '@/config/firebaseAdminConfig';
 import { Sermon, Thought } from '@/models/models';
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
 import { createApiPerformanceTracker } from '@clients/apiPerformanceTelemetry';
-import { getCustomTags, getRequiredTags } from '@clients/firestore.client';
+import { getCustomTags } from '@clients/firestore.client';
 import { generateThoughtStructured } from '@clients/thought.structured';
 import {
   createTranscriptionWithRetry,
@@ -122,12 +122,10 @@ async function handleAutoPost(request: Request) {
     const formData = await tracker.timePhase("parse_form_data", () => request.formData());
     const audioFile = formData.get('audio');
     const sermonId = formData.get('sermonId') as string;
-    const forceTag = formData.get('forceTag') as string | null;
     const outlinePointId = formData.get('outlinePointId') as string | null;
     const subPointId = formData.get('subPointId') as string | null;
     tracker.addContext({
       sermonId: sermonId || null,
-      hasForceTag: Boolean(forceTag),
       hasOutlinePointId: Boolean(outlinePointId),
       hasSubPointId: Boolean(subPointId),
       audioPresent: audioFile instanceof Blob,
@@ -170,7 +168,6 @@ async function handleAutoPost(request: Request) {
       () => sermonsRepository.fetchSermonById(sermonId) as Promise<Sermon | null>,
       { sermonId }
     );
-    const requiredTagsPromise = tracker.timePhase("fetch_required_tags", () => getRequiredTags());
     const customTagsPromise = sermonPromise.then(async (sermon) => (
       tracker.timePhase(
         "fetch_custom_tags",
@@ -216,24 +213,18 @@ async function handleAutoPost(request: Request) {
       console.error("Thoughts route: Sermon not found.");
       return errorResponse('Sermon not found', 404);
     }
-
-    const [requiredTags, customTags] = await Promise.all([
-      requiredTagsPromise,
-      customTagsPromise,
-    ]);
-    const availableTags = [...requiredTags, ...customTags].map(t => t.name);
+    const customTags = await customTagsPromise;
+    const availableTags = customTags.map(t => t.name);
     tracker.addContext({
-      requiredTagsCount: requiredTags.length,
       customTagsCount: customTags.length,
       availableTagsCount: availableTags.length,
     });
 
     const generationResult = await tracker.timePhase(
       "generate_thought",
-      () => generateThoughtStructured(transcriptionText, sermon, availableTags, { forceTag }),
+      () => generateThoughtStructured(transcriptionText, sermon, availableTags),
       {
         availableTagsCount: availableTags.length,
-        hasForceTag: Boolean(forceTag),
       }
     );
     const normalized = normalizeGenerationResult({ generationResult, transcriptionText });
@@ -248,9 +239,6 @@ async function handleAutoPost(request: Request) {
     }
 
     console.log("Thoughts route: Thought generation successful. Original Text:", generationResult.originalText);
-    if (forceTag) {
-      console.log(`Thoughts route: Force tag "${forceTag}" applied. Tags overridden from [${normalized.tags.join(", ")}] to [${forceTag}]`);
-    }
 
     const thought: Thought = {
       id: uuidv4(),

@@ -1,6 +1,5 @@
 
 import { LOCAL_THOUGHT_PREFIX } from "@/utils/pendingThoughtsStore";
-import { getCanonicalTagForSection } from "@/utils/tagUtils";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 
 import {
@@ -65,13 +64,6 @@ export const getPlaceholderColors = (
     header: `${palette.bg} dark:${palette.darkBg}`,
     headerText: `${palette.text} dark:${palette.darkText}`,
   };
-};
-
-export const getForceTagForContainer = (containerId: string) => {
-  if (containerId === "introduction") return getCanonicalTagForSection("introduction");
-  if (containerId === "main") return getCanonicalTagForSection("main");
-  if (containerId === "conclusion") return getCanonicalTagForSection("conclusion");
-  return undefined;
 };
 
 export const isPointAudioSection = (containerId: string): containerId is ColumnSectionId =>

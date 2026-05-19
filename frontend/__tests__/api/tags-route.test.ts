@@ -19,7 +19,6 @@ jest.mock('next/server', () => ({
 }));
 
 jest.mock('@/api/clients/firestore.client', () => ({
-  getRequiredTags: jest.fn(),
   getCustomTags: jest.fn(),
   saveTag: jest.fn(),
   deleteTag: jest.fn(),
@@ -33,10 +32,7 @@ describe('Tags API Route', () => {
     jest.clearAllMocks();
   });
 
-  it('GET returns required and custom tags', async () => {
-    mockClients.getRequiredTags.mockResolvedValue([
-      { id: 'intro', name: 'Intro', color: '#111', required: true, userId: 'u1' },
-    ]);
+  it('GET returns empty requiredTags for compatibility and custom tags', async () => {
     mockClients.getCustomTags.mockResolvedValue([
       { id: 'c1', name: 'Custom', color: '#222', required: false, userId: 'u1' },
     ]);
@@ -45,8 +41,9 @@ describe('Tags API Route', () => {
     const res = await route.GET(req);
     const data = await res.json();
 
-    expect(data.requiredTags).toHaveLength(1);
+    expect(data.requiredTags).toHaveLength(0);
     expect(data.customTags).toHaveLength(1);
+    expect(mockClients.getCustomTags).toHaveBeenCalledWith('u1');
   });
 
   it('POST rejects reserved names with 400', async () => {

@@ -178,26 +178,25 @@ describe('openAI.client additional coverage', () => {
   });
 
   describe('generateThought', () => {
-    it('delegates to structured thought client and passes forceTag', async () => {
+    it('delegates to structured thought client', async () => {
       mockThoughtStructured.generateThoughtStructured.mockResolvedValue({
         originalText: 'Original idea',
         formattedText: 'Formatted idea',
-        tags: ['Forced'],
+        tags: ['TagA'],
         meaningSuccessfullyPreserved: true,
       });
 
-      const result = await generateThought('Original idea', baseSermon, ['TagA'], 'Forced');
+      const result = await generateThought('Original idea', baseSermon, ['TagA']);
 
       expect(mockThoughtStructured.generateThoughtStructured).toHaveBeenCalledWith(
         'Original idea',
         baseSermon,
-        ['TagA'],
-        { forceTag: 'Forced' }
+        ['TagA']
       );
       expect(result).toEqual({
         originalText: 'Original idea',
         formattedText: 'Formatted idea',
-        tags: ['Forced'],
+        tags: ['TagA'],
         meaningSuccessfullyPreserved: true,
       });
     });
@@ -215,8 +214,7 @@ describe('openAI.client additional coverage', () => {
       expect(mockThoughtStructured.generateThoughtStructured).toHaveBeenCalledWith(
         'Original idea',
         baseSermon,
-        ['TagA'],
-        { forceTag: undefined }
+        ['TagA']
       );
       expect(result).toEqual({
         originalText: 'Original idea',

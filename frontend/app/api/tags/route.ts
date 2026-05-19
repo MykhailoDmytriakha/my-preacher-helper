@@ -1,19 +1,18 @@
 import { NextResponse } from 'next/server';
 
 import { Tag } from '@/models/models';
-import { getRequiredTags, saveTag, getCustomTags, deleteTag, updateTagInDb } from '@clients/firestore.client'
+import { saveTag, getCustomTags, deleteTag, updateTagInDb } from '@clients/firestore.client'
 
 // GET api/tags?userId=123
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const userId = searchParams.get('userId');
-  const requiredTags = await getRequiredTags();
   let customTags: Tag[] = [];
   if (userId) {
     customTags = await getCustomTags(userId) as Tag[];
   }
   const tags = {
-    requiredTags: requiredTags,
+    requiredTags: [],
     customTags: customTags || [],
   };
   return NextResponse.json(tags);

@@ -1,6 +1,5 @@
 import {
   getAdjacentSectionIds,
-  getForceTagForContainer,
   getOutlineInsertAccent,
   getPlaceholderColors,
   getReviewToggleLabel,
@@ -13,11 +12,6 @@ import {
   openPointEditor,
 } from "@/components/column/utils";
 import type { SermonPoint } from "@/models/models";
-import { getCanonicalTagForSection } from "@/utils/tagUtils";
-
-jest.mock("@/utils/tagUtils", () => ({
-  getCanonicalTagForSection: jest.fn((section: string) => `${section}-tag`),
-}));
 
 describe("column utils", () => {
   const t = (key: string, options?: Record<string, unknown>) =>
@@ -46,12 +40,6 @@ describe("column utils", () => {
       header: "bg-gray-100 dark:bg-gray-700",
       headerText: "text-gray-700 dark:text-gray-200",
     });
-
-    expect(getForceTagForContainer("introduction")).toBe("introduction-tag");
-    expect(getForceTagForContainer("main")).toBe("main-tag");
-    expect(getForceTagForContainer("conclusion")).toBe("conclusion-tag");
-    expect(getForceTagForContainer("ambiguous")).toBeUndefined();
-    expect(getCanonicalTagForSection).toHaveBeenCalledWith("conclusion");
 
     expect(getSectionHeaderBgStyle("main")).toEqual({ backgroundColor: "#2563eb" });
     expect(getSectionHeaderBgStyle("other", "#abcdef")).toEqual({ backgroundColor: "#abcdef" });

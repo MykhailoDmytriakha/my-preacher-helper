@@ -231,7 +231,7 @@ jest.mock('../../app/components/AudioRecorder', () => ({
 
 // Mock dynamic thought service used by audio recorder
 jest.mock('@/services/thought.service', () => ({
-  createAudioThoughtWithForceTag: jest.fn(async () => ({ id: 'th1', content: 'Audio Thought', customTagNames: [] }))
+  createAudioThought: jest.fn(async () => ({ id: 'th1', content: 'Audio Thought', customTagNames: [] }))
 }));
 
 // Mock the ExportButtons component

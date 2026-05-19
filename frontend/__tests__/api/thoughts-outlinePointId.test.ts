@@ -27,7 +27,6 @@ jest.mock('next/server', () => ({
 }));
 
 jest.mock('@clients/firestore.client', () => ({
-  getRequiredTags: jest.fn().mockResolvedValue([{ name: 'Вступление' }, { name: 'Основная часть' }, { name: 'Заключение' }]),
   getCustomTags: jest.fn().mockResolvedValue([]),
 }));
 

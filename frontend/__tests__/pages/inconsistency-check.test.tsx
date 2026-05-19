@@ -1,25 +1,31 @@
 import { Sermon } from '@/models/models';
 import { getCanonicalTagForSection, normalizeStructureTag } from '@/utils/tagUtils';
+import type { StructureSectionId } from '@/utils/tagUtils';
 
 // Изолированная функция для тестирования
 const checkForInconsistentThoughts = (sermon: Sermon): boolean => {
   if (!sermon || !sermon.thoughts || !sermon.outline) return false;
-  
+
   // Проверяем каждую мысль
   return sermon.thoughts.some(thought => {
-    // 1. Проверка на несколько обязательных тегов у одной мысли
-    const usedRequiredTags = thought.tags
+    // 1. Legacy collision: more than one structure tag on one thought
+    const usedStructureTags = thought.tags
       .map((tag) => normalizeStructureTag(tag))
       .filter((tag): tag is NonNullable<typeof tag> => Boolean(tag));
-    if (usedRequiredTags.length > 1) {
-      return true; // Несогласованность: несколько обязательных тегов
+    if (usedStructureTags.length > 1) {
+      return true;
+    }
+
+    // New thoughts normally have outlinePointId without a structure tag.
+    if (usedStructureTags.length === 0) {
+      return false;
     }
     
-    // 2. Проверка на несогласованность между тегом и назначенным пунктом плана
-    if (!thought.outlinePointId) return false; // Если нет назначенного пункта плана, нет и проблемы
+    // 2. Legacy mismatch: a structure tag exists but placement does not match it.
+    if (!thought.outlinePointId) return true;
     
     // Определяем секцию пункта плана
-    let outlinePointSection: string | undefined;
+    let outlinePointSection: StructureSectionId | undefined;
     
     if (sermon.outline!.introduction.some(p => p.id === thought.outlinePointId)) {
       outlinePointSection = 'introduction';
@@ -29,21 +35,9 @@ const checkForInconsistentThoughts = (sermon: Sermon): boolean => {
       outlinePointSection = 'conclusion';
     }
     
-    if (!outlinePointSection) return false; // Если не нашли секцию, считаем что проблемы нет
+    if (!outlinePointSection) return true;
     
-    // Получаем ожидаемый тег для текущей секции
-    const expectedTag = getCanonicalTagForSection(outlinePointSection as 'introduction' | 'main' | 'conclusion');
-    
-    // Проверяем, имеет ли мысль тег соответствующей секции
-    const hasExpectedTag = thought.tags.some(tag => normalizeStructureTag(tag) === expectedTag);
-    
-    // Проверяем, имеет ли мысль теги других секций
-    const hasOtherSectionTags = ['intro', 'main', 'conclusion']
-      .filter(tag => tag !== expectedTag)
-      .some(tag => thought.tags.some(t => normalizeStructureTag(t) === tag));
-    
-    // Несогласованность, если нет ожидаемого тега или есть теги других секций
-    return !(!hasOtherSectionTags || hasExpectedTag);
+    return usedStructureTags[0] !== getCanonicalTagForSection(outlinePointSection);
   });
 };
 
@@ -73,7 +67,7 @@ describe('Inconsistency Check Function', () => {
     expect(checkForInconsistentThoughts(sermon)).toBe(false);
   });
 
-  it('returns false when all thoughts have consistent tags and assignments', () => {
+  it('returns false when legacy structure tags match assignments', () => {
     const sermon = { 
       ...baseSermon, 
       thoughts: [
@@ -97,17 +91,27 @@ describe('Inconsistency Check Function', () => {
           tags: ['Заключение'],
           date: '2023-01-01',
           outlinePointId: 'concl-1'
-        },
-        {
-          id: 'thought-4',
-          text: 'Unassigned thought',
-          tags: ['Вступление'],
-          date: '2023-01-01'
-          // No outlinePointId
         }
       ]
     };
     
+    expect(checkForInconsistentThoughts(sermon)).toBe(false);
+  });
+
+  it('returns false when new thoughts have outlinePointId without structure tags', () => {
+    const sermon = {
+      ...baseSermon,
+      thoughts: [
+        {
+          id: 'thought-1',
+          text: 'New outline-linked thought',
+          tags: ['application'],
+          date: '2023-01-01',
+          outlinePointId: 'main-1'
+        }
+      ]
+    };
+
     expect(checkForInconsistentThoughts(sermon)).toBe(false);
   });
 
@@ -125,6 +129,22 @@ describe('Inconsistency Check Function', () => {
       ]
     };
     
+    expect(checkForInconsistentThoughts(sermon)).toBe(true);
+  });
+
+  it('returns true when a legacy structure tag has no outline point assignment', () => {
+    const sermon = {
+      ...baseSermon,
+      thoughts: [
+        {
+          id: 'thought-1',
+          text: 'Tagged but unassigned thought',
+          tags: ['Вступление'],
+          date: '2023-01-01'
+        }
+      ]
+    };
+
     expect(checkForInconsistentThoughts(sermon)).toBe(true);
   });
 

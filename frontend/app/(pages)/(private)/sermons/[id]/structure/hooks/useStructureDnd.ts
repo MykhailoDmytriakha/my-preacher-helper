@@ -13,7 +13,6 @@ import { toast } from 'sonner';
 
 import { Item, Sermon, SermonPoint, Thought, ThoughtsBySection } from "@/models/models";
 import { updateStructure } from "@/services/structure.service";
-import { getCanonicalTagForSection } from "@/utils/tagUtils";
 
 
 import {
@@ -496,10 +495,7 @@ const buildUpdatedItem = (
   }
 ): Item => {
   // Determine the correct required tag for the destination container
-  let updatedRequiredTags: string[] = [];
-  if (["introduction", "main", "conclusion"].includes(String(overContainer))) {
-    updatedRequiredTags = [getCanonicalTagForSection(overContainer as 'introduction' | 'main' | 'conclusion')];
-  }
+  const updatedRequiredTags: string[] = [];
 
   // Compute new positional rank within the destination group
   const groupKey = finalSermonPointId || '__unassigned__';

@@ -1,5 +1,5 @@
 import { recordAudioThought } from "@/components/column/audio";
-import { createAudioThoughtWithForceTag } from "@/services/thought.service";
+import { createAudioThought } from "@/services/thought.service";
 import { toast } from "sonner";
 
 jest.mock("sonner", () => ({
@@ -10,11 +10,7 @@ jest.mock("sonner", () => ({
 }));
 
 jest.mock("@/services/thought.service", () => ({
-  createAudioThoughtWithForceTag: jest.fn(),
-}));
-
-jest.mock("@/utils/tagUtils", () => ({
-  getCanonicalTagForSection: jest.fn((section: string) => `${section}-tag`),
+  createAudioThought: jest.fn(),
 }));
 
 describe("column audio helper", () => {
@@ -33,7 +29,7 @@ describe("column audio helper", () => {
     const onAudioThoughtCreated = jest.fn();
     const onSuccess = jest.fn();
 
-    (createAudioThoughtWithForceTag as jest.Mock).mockResolvedValueOnce({ id: "thought-1" });
+    (createAudioThought as jest.Mock).mockResolvedValueOnce({ id: "thought-1" });
 
     const result = await recordAudioThought({
       audioBlob: new Blob(["audio"]),
@@ -48,10 +44,9 @@ describe("column audio helper", () => {
       errorContext: "record failed",
     });
 
-    expect(createAudioThoughtWithForceTag).toHaveBeenCalledWith(
+    expect(createAudioThought).toHaveBeenCalledWith(
       expect.any(Blob),
       "sermon-1",
-      "main-tag",
       0,
       3,
       "point-1"
@@ -70,7 +65,7 @@ describe("column audio helper", () => {
     const setAudioError = jest.fn();
     const onAudioThoughtCreated = jest.fn();
 
-    (createAudioThoughtWithForceTag as jest.Mock).mockResolvedValueOnce({ id: "thought-2" });
+    (createAudioThought as jest.Mock).mockResolvedValueOnce({ id: "thought-2" });
 
     await recordAudioThought({
       audioBlob: new Blob(["audio"]),
@@ -84,10 +79,9 @@ describe("column audio helper", () => {
       errorContext: "record failed",
     });
 
-    expect(createAudioThoughtWithForceTag).toHaveBeenCalledWith(
+    expect(createAudioThought).toHaveBeenCalledWith(
       expect.any(Blob),
-      "sermon-2",
-      "conclusion-tag"
+      "sermon-2"
     );
     expect(onAudioThoughtCreated).toHaveBeenCalledWith({ id: "thought-2" }, "conclusion");
     expect(toast.success).toHaveBeenCalledWith("Saved to conclusion");
@@ -98,7 +92,7 @@ describe("column audio helper", () => {
     const setAudioError = jest.fn();
     const consoleWarnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
 
-    (createAudioThoughtWithForceTag as jest.Mock).mockRejectedValueOnce("boom");
+    (createAudioThought as jest.Mock).mockRejectedValueOnce("boom");
 
     const result = await recordAudioThought({
       audioBlob: new Blob(["audio"]),

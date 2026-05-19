@@ -235,10 +235,9 @@ export async function createTranscription(file: File | Blob): Promise<string> {
 export async function generateThought(
   content: string,
   sermon: Sermon,
-  availableTags: string[] = [],
-  forceTag?: string | null
+  availableTags: string[] = []
 ): Promise<GenerateThoughtResult> {
-  return generateThoughtStructured(content, sermon, availableTags, { forceTag });
+  return generateThoughtStructured(content, sermon, availableTags);
 }
 
 /**

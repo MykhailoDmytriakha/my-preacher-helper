@@ -9,7 +9,7 @@ import "@locales/i18n";
 // Utils imports
 import MarkdownDisplay from '@components/MarkdownDisplay';
 import { formatDate } from "@utils/dateFormatter";
-import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag, CanonicalStructureId } from "@utils/tagUtils";
+import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag, getCanonicalTagForSection } from "@utils/tagUtils";
 
 // Components
 import SermonPointSelector from './SermonPointSelector';
@@ -19,6 +19,7 @@ import ConfirmModal from './ui/ConfirmModal';
 // Type imports
 import type { SermonOutline, Thought } from "@/models/models";
 import type { OptimisticEntitySyncState } from "@/models/optimisticEntities";
+import type { CanonicalStructureId, StructureSectionId } from "@utils/tagUtils";
 
 // Types
 type TagInfo = {
@@ -50,7 +51,7 @@ interface TagsDisplayProps {
 }
 
 interface WarningMessageProps {
-  type: 'inconsistentSection' | 'multipleStructureTags' | 'missingSectionTag';
+  type: 'inconsistentSection' | 'multipleStructureTags';
   sectionName?: string;
   actualTag?: string;
 }
@@ -153,7 +154,7 @@ const ThoughtCard = ({
   }, [t]);
 
   // Helper Functions
-  const findSermonPoint = useCallback((): { text: string; section: string } | undefined => {
+  const findSermonPoint = useCallback((): { text: string; section: StructureSectionId } | undefined => {
     if (!thought.outlinePointId || !sermonOutline) return undefined;
 
     const introPoint = sermonOutline.introduction.find(p => p.id === thought.outlinePointId);
@@ -168,44 +169,36 @@ const ThoughtCard = ({
     return undefined;
   }, [thought.outlinePointId, sermonOutline]);
 
-  const checkSectionTagAndOutlineConsistency = useCallback((tags: string[], outlinePointSection?: string): boolean => {
-    if (!outlinePointSection) return true;
-
-    // Get canonical ID for the section the outline point belongs to
-    // section values: 'introduction' | 'main' | 'conclusion'
-    let expectedCanonical: CanonicalStructureId | null = null;
-    if (outlinePointSection === 'introduction') expectedCanonical = 'intro';
-    else if (outlinePointSection === 'main') expectedCanonical = 'main';
-    else if (outlinePointSection === 'conclusion') expectedCanonical = 'conclusion';
-
-    if (!expectedCanonical) return true;
-
-    const normalizedTags = tags
+  const getStructureTags = useCallback((tags: string[]) =>
+    tags
       .map(t => normalizeStructureTag(t))
-      .filter((t): t is CanonicalStructureId => t !== null);
+      .filter((t): t is CanonicalStructureId => t !== null),
+    []
+  );
 
-    const hasExpectedTag = normalizedTags.includes(expectedCanonical);
-    const hasOtherSectionTags = normalizedTags.some(tag => tag !== expectedCanonical);
+  const checkSectionTagAndOutlineConsistency = useCallback((
+    tags: string[],
+    outlinePointId?: string | null,
+    outlinePointSection?: StructureSectionId
+  ): boolean => {
+    const normalizedTags = getStructureTags(tags);
+    if (normalizedTags.length > 1) return false;
+    if (normalizedTags.length === 0) return true;
+    if (!outlinePointId || !outlinePointSection) return false;
 
-    return !hasOtherSectionTags || hasExpectedTag;
-  }, []);
+    return normalizedTags[0] === getCanonicalTagForSection(outlinePointSection);
+  }, [getStructureTags]);
 
   // Memoize computed values
   const outlinePoint = useMemo(() => findSermonPoint(), [findSermonPoint]);
-  const hasRequiredTag = useMemo(() => thought.tags.some(tag => isStructureTag(tag)), [thought.tags]);
-  const hasInconsistentSection = useMemo(() =>
-    !checkSectionTagAndOutlineConsistency(thought.tags, outlinePoint?.section),
-    [thought.tags, outlinePoint, checkSectionTagAndOutlineConsistency]
-  );
+  const structureTags = useMemo(() => getStructureTags(thought.tags), [getStructureTags, thought.tags]);
   const hasMultipleStructureTags = useMemo(() => {
-    const structuralCanonicalTags = new Set(
-      thought.tags
-        .map(tag => normalizeStructureTag(tag))
-        .filter((t): t is CanonicalStructureId => t !== null)
-    );
-    return structuralCanonicalTags.size > 1;
-  }, [thought.tags]);
-  const needsSectionTag = useMemo(() => !hasRequiredTag, [hasRequiredTag]);
+    return structureTags.length > 1;
+  }, [structureTags]);
+  const hasInconsistentSection = useMemo(() => {
+    if (hasMultipleStructureTags) return false;
+    return !checkSectionTagAndOutlineConsistency(thought.tags, thought.outlinePointId, outlinePoint?.section);
+  }, [checkSectionTagAndOutlineConsistency, hasMultipleStructureTags, outlinePoint, thought.outlinePointId, thought.tags]);
 
   // Determine card style based on status with improved visual hierarchy
   const cardStyle = useMemo(() => {
@@ -227,12 +220,12 @@ const ThoughtCard = ({
       return `${baseStyle} bg-white dark:bg-gray-800 border border-green-300 dark:border-green-700`;
     }
 
-    if (hasInconsistentSection || hasMultipleStructureTags || needsSectionTag) {
+    if (hasInconsistentSection || hasMultipleStructureTags) {
       return `${baseStyle} border border-red-500 bg-red-50/50 dark:bg-red-900/50 dark:border-red-500 hover:bg-red-50 dark:hover:bg-red-900`;
     }
 
     return `${baseStyle} bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600`;
-  }, [hasInconsistentSection, hasMultipleStructureTags, isDeleting, isError, isPending, isSuccess, needsSectionTag]);
+  }, [hasInconsistentSection, hasMultipleStructureTags, isDeleting, isError, isPending, isSuccess]);
 
   const handleSermonPointChange = useCallback(async (outlinePointId: string | null | undefined, subPointId?: string | null) => {
     if (isReadOnly) return;
@@ -244,8 +237,10 @@ const ThoughtCard = ({
   const getWarningMessages = useCallback(() => {
     const warnings = [];
 
-    if (hasInconsistentSection && outlinePoint?.section) {
-      const expectedCanonical = normalizeStructureTag(outlinePoint.section);
+    if (hasInconsistentSection) {
+      const expectedCanonical = outlinePoint?.section
+        ? getCanonicalTagForSection(outlinePoint.section)
+        : null;
       const actualSectionTags = thought.tags.filter(tag => {
         const canonical = normalizeStructureTag(tag);
         return canonical !== null && canonical !== expectedCanonical;
@@ -260,7 +255,7 @@ const ThoughtCard = ({
           <WarningMessage
             key="inconsistent"
             type="inconsistentSection"
-            sectionName={outlinePoint.section}
+            sectionName={outlinePoint?.section}
             actualTag={displayTag}
             getSectionName={getSectionName}
           />
@@ -272,12 +267,8 @@ const ThoughtCard = ({
       warnings.push(<WarningMessage key="multiple" type="multipleStructureTags" getSectionName={getSectionName} />);
     }
 
-    if (needsSectionTag) {
-      warnings.push(<WarningMessage key="missing" type="missingSectionTag" getSectionName={getSectionName} />);
-    }
-
     return warnings;
-  }, [hasInconsistentSection, hasMultipleStructureTags, needsSectionTag, outlinePoint, thought.tags, getSectionName]);
+  }, [hasInconsistentSection, hasMultipleStructureTags, outlinePoint, thought.tags, getSectionName]);
 
 
   return (
@@ -465,21 +456,23 @@ function WarningMessage({
         return `${baseStyle} bg-red-50 text-red-700 dark:bg-red-900/50 dark:text-red-200 border border-red-200 dark:border-red-800`;
       case 'multipleStructureTags':
         return `${baseStyle} bg-orange-50 text-orange-700 dark:bg-orange-900/50 dark:text-orange-200 border border-orange-200 dark:border-orange-800`;
-      case 'missingSectionTag':
-        return `${baseStyle} bg-yellow-50 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-200 border border-yellow-200 dark:border-yellow-800`;
       default:
         return baseStyle;
     }
   };
 
   if (type === 'inconsistentSection') {
+    const expectedSection = sectionName
+      ? getSectionName(sectionName)
+      : t('editThought.noOutlinePointAssigned');
+
     return (
       <div className={getWarningStyle()} role="alert">
         <span className="flex-shrink-0">⚠️</span>
         <span>
           {t('thought.inconsistentSection', 'Inconsistency: thought has tag "{{actualTag}}" but assigned to {{expectedSection}} outline point', {
             actualTag,
-            expectedSection: getSectionName(sectionName)
+            expectedSection
           })}
         </span>
       </div>
@@ -492,21 +485,6 @@ function WarningMessage({
         <span className="flex-shrink-0">⚠️</span>
         <span>
           {t('thought.multipleStructureTags', 'Multiple structure tags detected. A thought should only have one structure tag.')}
-        </span>
-      </div>
-    );
-  }
-
-  if (type === 'missingSectionTag') {
-    return (
-      <div className={getWarningStyle()} role="alert">
-        <span className="flex-shrink-0">ℹ️</span>
-        <span>
-          {t('thought.missingRequiredTag', {
-            intro: getSectionName('introduction'),
-            main: getSectionName('main'),
-            conclusion: getSectionName('conclusion')
-          })}
         </span>
       </div>
     );

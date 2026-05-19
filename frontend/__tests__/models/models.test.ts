@@ -1,7 +1,7 @@
 import { Thought, SermonPoint } from '@/models/models';
 
-describe('Thought model with forceTag', () => {
-    it('should have forceTag as optional property', () => {
+describe('Thought model', () => {
+    it('should support the core thought fields', () => {
       const thought: Thought = {
         id: 'thought-1',
         text: 'Test thought',
@@ -9,44 +9,27 @@ describe('Thought model with forceTag', () => {
         date: new Date().toISOString(),
       };
 
-      // Should work without forceTag
       expect(thought).toHaveProperty('id', 'thought-1');
       expect(thought).toHaveProperty('text', 'Test thought');
       expect(thought).toHaveProperty('tags', ['tag1']);
       expect(thought).toHaveProperty('date');
-      expect(thought).not.toHaveProperty('forceTag');
     });
 
-    it('should support forceTag property', () => {
+    it('should support optional outline metadata', () => {
       const thought: Thought = {
         id: 'thought-2',
         text: 'Audio thought',
-        tags: ['Вступление'],
+        tags: ['custom-tag'],
         date: new Date().toISOString(),
-        forceTag: 'Вступление',
+        outlinePointId: 'op-1',
+        subPointId: 'sp-1',
       };
 
-      expect(thought).toHaveProperty('forceTag', 'Вступление');
-    });
-
-    it('should support different forceTag values', () => {
-      const forceTags = ['Вступление', 'Основная часть', 'Заключение'];
-      
-      forceTags.forEach(forceTag => {
-        const thought: Thought = {
-          id: `thought-${forceTag}`,
-          text: 'Audio thought',
-          tags: [forceTag],
-          date: new Date().toISOString(),
-          forceTag,
-        };
-
-        expect(thought.forceTag).toBe(forceTag);
-      });
+      expect(thought.outlinePointId).toBe('op-1');
+      expect(thought.subPointId).toBe('sp-1');
     });
 
     it('should maintain backward compatibility', () => {
-      // Old thought without forceTag should still work
       const oldThought: Thought = {
         id: 'old-thought',
         text: 'Old thought',
@@ -56,7 +39,7 @@ describe('Thought model with forceTag', () => {
 
       expect(oldThought).toBeDefined();
       expect(oldThought.id).toBe('old-thought');
-      expect(oldThought.forceTag).toBeUndefined();
+      expect(oldThought.outlinePointId).toBeUndefined();
     });
   });
 

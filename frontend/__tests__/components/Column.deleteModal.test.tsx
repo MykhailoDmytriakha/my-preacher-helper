@@ -121,7 +121,6 @@ jest.mock('react-i18next', () => ({
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
 jest.mock('@/utils/debugMode', () => ({ debugLog: jest.fn() }));
-jest.mock('@/utils/tagUtils', () => ({ getCanonicalTagForSection: jest.fn() }));
 
 jest.mock('@/services/outline.service', () => ({
   updateSermonOutline: jest.fn(() => Promise.resolve({ success: true })),

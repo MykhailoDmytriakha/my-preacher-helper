@@ -312,7 +312,7 @@ describe('generateThoughtStructured', () => {
     expect(result.originalText).toBe('Нужно прочитать Второзаконие 10 глава 11 стих');
   });
 
-  it('should apply force tag when provided', async () => {
+  it('should preserve model tags without force-tag overrides', async () => {
     // Arrange
     const mockResponse = {
       originalText: 'Test transcription',
@@ -333,11 +333,10 @@ describe('generateThoughtStructured', () => {
       'Test transcription',
       mockSermon,
       availableTags,
-      { forceTag: 'Заключение' }
     );
 
     // Assert
-    expect(result.tags).toEqual(['Заключение']);
+    expect(result.tags).toEqual(['Вступление']);
     expect(result.meaningSuccessfullyPreserved).toBe(true);
   });
 

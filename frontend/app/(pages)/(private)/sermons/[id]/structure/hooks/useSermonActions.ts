@@ -5,9 +5,8 @@ import { toast } from "sonner";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { Sermon, Item, Thought, ThoughtsBySection } from "@/models/models";
 import { updateStructure } from "@/services/structure.service";
-import { updateThought, deleteThought } from "@/services/thought.service";
+import { updateThought, deleteThought, createManualThought } from "@/services/thought.service";
 import { debugLog } from "@/utils/debugMode";
-import { getCanonicalTagForSection } from "@/utils/tagUtils";
 import { insertThoughtIdInStructure, resolveSectionFromOutline } from "@/utils/thoughtOrdering";
 
 import { buildStructureFromContainers, buildItemForUI, findOutlinePoint, isLocalThoughtId } from "../utils/structure";
@@ -151,20 +150,10 @@ export function useSermonActions({
         }
 
         try {
-            const thoughtService = await import('@/services/thought.service');
-            const sectionTag = getCanonicalTagForSection(sectionId);
-            const requestTags = [...tags, sectionTag];
-            debugLog('Structure: createManualThought payload', {
-                sermonId: sermon.id,
-                localId,
-                sectionId,
-                outlinePointId,
-                tags: requestTags,
-            });
-            const addedThought = await thoughtService.createManualThought(sermon.id, {
+            const addedThought = await createManualThought(sermon.id, {
                 id: localId,
                 text,
-                tags: requestTags,
+                tags,
                 outlinePointId: finalOutlinePointId,
                 subPointId: subPointId ?? undefined,
                 date: new Date().toISOString(),
@@ -185,7 +174,6 @@ export function useSermonActions({
                 text,
                 tags,
                 allowedTags,
-                sectionTag,
                 outlinePointId: finalOutlinePointId,
                 subPointId: finalSavedSubPointId,
                 outlinePoint,

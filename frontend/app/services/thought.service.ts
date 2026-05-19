@@ -37,17 +37,6 @@ export const createAudioThought = async (
   audioBlob: Blob,
   sermonId: string,
   retryCount: number = 0,
-  maxRetries: number = 3
-): Promise<Thought> => {
-  return createAudioThoughtWithForceTag(audioBlob, sermonId, null, retryCount, maxRetries);
-};
-
-// New function for creating audio thought with force tag
-export const createAudioThoughtWithForceTag = async (
-  audioBlob: Blob,
-  sermonId: string,
-  forceTag: string | null = null,
-  retryCount: number = 0,
   maxRetries: number = 3,
   outlinePointId?: string,
   subPointId?: string
@@ -59,16 +48,10 @@ export const createAudioThoughtWithForceTag = async (
 
   try {
     console.log(`transcribeAudio: Starting transcription process. Attempt ${retryCount + 1}/${maxRetries + 1}`);
-    if (forceTag) {
-      console.log(`transcribeAudio: Force tag "${forceTag}" will be applied`);
-    }
 
     const formData = new FormData();
     formData.append("audio", audioBlob, "recording.webm");
     formData.append("sermonId", sermonId);
-    if (forceTag) {
-      formData.append("forceTag", forceTag);
-    }
     if (outlinePointId) {
       formData.append("outlinePointId", outlinePointId);
     }
@@ -115,10 +98,9 @@ export const createAudioThoughtWithForceTag = async (
           `transcribeAudio: Retrying retryable transcription failure. Next attempt ${retryCount + 2}/${maxRetries + 1}`
         );
         await wait(AUDIO_RETRY_DELAY_MS * (retryCount + 1));
-        return createAudioThoughtWithForceTag(
+        return createAudioThought(
           audioBlob,
           sermonId,
-          forceTag,
           retryCount + 1,
           maxRetries,
           outlinePointId,
@@ -160,10 +142,9 @@ export const retryAudioTranscription = async (
   audioBlob: Blob,
   sermonId: string,
   retryCount: number,
-  maxRetries: number = 3,
-  forceTag: string | null = null
+  maxRetries: number = 3
 ): Promise<Thought> => {
-  return createAudioThoughtWithForceTag(audioBlob, sermonId, forceTag, retryCount, maxRetries);
+  return createAudioThought(audioBlob, sermonId, retryCount, maxRetries);
 };
 
 type ThoughtTranscriptionResult = {

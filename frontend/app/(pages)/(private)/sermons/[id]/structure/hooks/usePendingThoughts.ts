@@ -15,7 +15,6 @@ import {
   PENDING_THOUGHT_ENTITY_TYPE,
   savePendingThoughts,
 } from "@/utils/pendingThoughtsStore";
-import { getCanonicalTagForSection } from "@/utils/tagUtils";
 
 import { buildItemForUI, findOutlinePoint, isLocalThoughtId } from "../utils/structure";
 
@@ -127,13 +126,11 @@ export const usePendingThoughts = ({
 
   const buildPendingItem = useCallback((pending: PendingThoughtRecord): Item => {
     const outlinePoint = findOutlinePoint(pending.outlinePointId, sermon);
-    const sectionTag = getCanonicalTagForSection(pending.sectionId);
     const item = buildItemForUI({
       id: pending.localId,
       text: pending.text,
       tags: pending.tags,
       allowedTags,
-      sectionTag,
       outlinePointId: pending.outlinePointId,
       outlinePoint,
     });

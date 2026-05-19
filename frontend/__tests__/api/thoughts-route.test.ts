@@ -13,7 +13,6 @@ jest.mock('@clients/thought.structured', () => ({
 
 jest.mock('@clients/firestore.client', () => ({
   getCustomTags: jest.fn(),
-  getRequiredTags: jest.fn(),
 }));
 
 jest.mock('@repositories/sermons.repository', () => ({
@@ -102,7 +101,6 @@ describe('Thoughts API POST', () => {
     sermonsRepoMock = sermonsRepo;
 
     // Configure these new mock instances
-    (firestoreClient.getRequiredTags as jest.Mock).mockResolvedValue([]);
     (firestoreClient.getCustomTags as jest.Mock).mockResolvedValue([]);
     (sermonsRepo.sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue({ userId: 'user-1', thoughts: [] });
     (openAIClient.createTranscription as jest.Mock).mockResolvedValue(mockTranscription);

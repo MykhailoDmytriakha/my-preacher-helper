@@ -44,7 +44,6 @@ Recorded phases:
 - `parse_form_data`
 - `validate_audio_duration`
 - `fetch_sermon`
-- `fetch_required_tags`
 - `fetch_custom_tags`
 - `transcribe_audio`
 - `generate_thought`
@@ -53,7 +52,6 @@ Recorded phases:
 Safe context fields include:
 
 - `sermonId`
-- `hasForceTag`
 - `hasOutlinePointId`
 - `audioSizeBytes`
 - `audioType`
@@ -167,4 +165,4 @@ This measures server-side endpoint time. It does not yet measure full perceived 
 recording stopped -> upload started -> server work -> response downloaded -> React state updated -> thought visible
 ```
 
-If server telemetry shows acceptable timings but the UI still feels slow, add a second client-side telemetry event around `createAudioThoughtWithForceTag()` to capture browser upload/download/render time.
+If server telemetry shows acceptable timings but the UI still feels slow, add a second client-side telemetry event around `createAudioThought()` to capture browser upload/download/render time.
