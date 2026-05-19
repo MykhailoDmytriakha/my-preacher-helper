@@ -70,6 +70,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
     mainPart: '',
     conclusion: '',
   });
+  const [collapsedPoints, setCollapsedPoints] = useState<Record<string, boolean>>({});
 
   // --- All useRef hooks after useState ---
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -566,7 +567,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
                         <li
                           ref={providedDraggable.innerRef}
                           {...providedDraggable.draggableProps}
-                          className={`rounded transition-colors ${snapshot.isDragging ? 'opacity-50' : ''}`}
+                          className={`group rounded transition-colors ${snapshot.isDragging ? 'opacity-50' : ''}`}
                           style={providedDraggable.draggableProps.style}
                         >
                           <div className={`flex items-center group p-2 rounded ${!snapshot.isDragging ? 'hover:bg-gray-50 dark:hover:bg-gray-700' : ''}`}>
@@ -601,13 +602,29 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
                               </div>
                             ) : (
                               <>
-                                <span
-                                  className={`text-sm text-gray-800 dark:text-gray-200 flex-grow mr-2 ${isReadOnly ? '' : 'cursor-text'}`}
-                                  onDoubleClick={() => handleStartEdit(point)}
-                                >
-                                  {point.text}
-                                </span>
-                                <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="flex items-center gap-1.5 flex-grow min-w-0 mr-2">
+                                  {point.subPoints && point.subPoints.length > 0 && (
+                                    <button
+                                      onClick={() => setCollapsedPoints(prev => ({ ...prev, [point.id]: !prev[point.id] }))}
+                                      className="p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 transition-colors flex-shrink-0"
+                                      title={collapsedPoints[point.id] ? t('common.expand') : t('common.collapse')}
+                                      aria-label={collapsedPoints[point.id] ? t('common.expand') : t('common.collapse')}
+                                    >
+                                      <ChevronDownIcon
+                                        className={`h-4 w-4 transform transition-transform duration-200 ${
+                                          collapsedPoints[point.id] ? '-rotate-90' : ''
+                                        }`}
+                                      />
+                                    </button>
+                                  )}
+                                  <span
+                                    className={`text-sm text-gray-800 dark:text-gray-200 flex-grow truncate ${isReadOnly ? '' : 'cursor-text'}`}
+                                    onDoubleClick={() => handleStartEdit(point)}
+                                  >
+                                    {point.text}
+                                  </span>
+                                </div>
+                                <div className="flex items-center space-x-1 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                                   <button aria-label={t('common.edit')} onClick={() => handleStartEdit(point)} disabled={isReadOnly} className={`p-1 text-gray-500 hover:text-indigo-600 dark:text-gray-400 dark:hover:text-indigo-400 ${isReadOnly ? DISABLED_ACTION_CLASSES : ''}`}>
                                     <PencilIcon className="h-4 w-4" />
                                   </button>
@@ -624,7 +641,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
                             )}
                           </div>
                           {/* Sub-points — inside Draggable so they move with parent */}
-                          {editingPointId !== point.id && ((point.subPoints && point.subPoints.length > 0) || !isReadOnly) && (
+                          {editingPointId !== point.id && ((point.subPoints && point.subPoints.length > 0) || !isReadOnly) && !collapsedPoints[point.id] && (
                             <SubPointList
                               subPoints={point.subPoints ?? []}
                               outlinePointId={point.id}

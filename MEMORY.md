@@ -59,6 +59,9 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-05-19 Keep Empty List Containers Compact:** Empty drop targets or input triggers should collapse down completely and fade-in only when active or hovered. This saves vertical space without sacrificing usability.
+- **2026-05-19 Always Update Icon Mocks:** Introducing any new icon from a mocked package (e.g. `@heroicons/react`) requires immediately registering it in the test mock definition, or unit tests will crash due to invalid React element types.
+- **2026-05-19 Overlaid Absolute Controls Need Natural Container Flow:** Absolute overlay buttons can clash with sibling block elements (like warning/error banners) if they occupy the same spatial bounds; anchoring them inside a shared flex header container with `-mt-1.5 -mr-1.5` preserves the top-right alignment while automatically adjusting the layout height to prevent vertical overlaps.
 - **2026-05-10 DnD Edit Modes Must Keep Drag Handles Mounted:** If a `@hello-pangea/dnd` `Draggable` enters inline edit mode, keep a valid `dragHandleProps` element mounted in that mode too; otherwise ordinary editing gestures can trigger dev-time invariant errors about a missing drag handle.
 - **2026-05-10 React DayPicker v9 Selected Days Need `.rdp-selected .rdp-day_button`:** Do not style selected days only through legacy `.rdp-day_selected`; in v9 the state is on the cell and the visible circle is the child button, so dark-mode contrast fixes must target `.rdp-selected .rdp-day_button` and verify computed colors.
 - **2026-05-10 Dashboard Create Redirects Must Not Expose The Source Page:** When a dashboard modal creates an entity and then calls `router.push`, keep the modal in a saving/locked state until route unmount because App Router `push` is fire-and-forget and closing immediately makes the user see dashboard after success.

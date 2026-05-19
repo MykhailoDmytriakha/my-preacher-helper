@@ -290,15 +290,6 @@ const ThoughtCard = ({
       role="article"
       aria-labelledby={`thought-${thought.id}-text`}
     >
-      <div className="absolute top-4 right-4 z-10">
-        <ThoughtOptionsMenu
-          thoughtText={thought.text}
-          onEdit={() => onEditStart(thought, index)}
-          onDelete={() => setDeleteConfirmOpen(true)}
-          isReadOnly={isReadOnly || (isDeleting && isPending)}
-        />
-      </div>
-
       <ConfirmModal
         isOpen={deleteConfirmOpen}
         onClose={() => setDeleteConfirmOpen(false)}
@@ -316,6 +307,14 @@ const ThoughtCard = ({
       <ThoughtHeader
         thought={thought}
         allowedTags={allowedTags}
+        optionsMenu={
+          <ThoughtOptionsMenu
+            thoughtText={thought.text}
+            onEdit={() => onEditStart(thought, index)}
+            onDelete={() => setDeleteConfirmOpen(true)}
+            isReadOnly={isReadOnly || (isDeleting && isPending)}
+          />
+        }
       />
 
       <ThoughtSyncBanner
@@ -366,14 +365,16 @@ const ThoughtCard = ({
 // Sub-components
 const ThoughtHeader = memo(({
   thought,
-  allowedTags
+  allowedTags,
+  optionsMenu
 }: {
   thought: Thought;
   allowedTags: TagInfo[];
+  optionsMenu?: React.ReactNode;
 }) => {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-y-2 mb-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 order-first">
+    <div className="flex items-start justify-between gap-x-4 mb-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
           {formatDate(thought.date)}
         </span>
@@ -383,6 +384,11 @@ const ThoughtHeader = memo(({
           </div>
         )}
       </div>
+      {optionsMenu && (
+        <div className="flex-shrink-0 -mt-1.5 -mr-1.5">
+          {optionsMenu}
+        </div>
+      )}
     </div>
   );
 });

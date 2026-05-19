@@ -13,7 +13,8 @@ jest.mock('@heroicons/react/24/outline', () => {
     SparklesIcon: mockIcon('sparkles'),
     InformationCircleIcon: mockIcon('info'),
     ChevronLeftIcon: mockIcon('chevron-left'),
-    ChevronRightIcon: mockIcon('chevron-right')
+    ChevronRightIcon: mockIcon('chevron-right'),
+    ChevronDownIcon: mockIcon('chevron-down')
   };
 });
 

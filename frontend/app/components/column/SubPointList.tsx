@@ -138,7 +138,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
         {sp.text}
       </span>
       {!isPointLocked && (
-        <div className="flex w-10 flex-shrink-0 items-center justify-end gap-0.5 opacity-40 transition-opacity group-hover/sp:opacity-100">
+        <div className="flex w-10 flex-shrink-0 items-center justify-end gap-0.5 opacity-100 lg:opacity-40 transition-opacity lg:group-hover/sp:opacity-100">
           <button
             onClick={() => startEditingSubPoint(sp)}
             className="p-0.5 text-slate-400 hover:text-slate-600 dark:text-blue-100/45 dark:hover:text-blue-50"
@@ -210,8 +210,13 @@ export const SubPointList: React.FC<SubPointListProps> = ({
     );
   };
 
+  const showWrapper = sorted.length > 0 || isAdding || confirmDeleteId !== null;
+  const containerClass = showWrapper
+    ? "ml-7 mr-4 mt-2 mb-2 max-w-[calc(100%-2.75rem)] rounded-lg border-l border-slate-300/80 bg-white/30 py-1.5 pl-3 pr-2 dark:border-blue-100/35 dark:bg-white/[0.07] transition-all duration-150"
+    : "ml-7 mr-4 h-auto opacity-100 lg:h-0 lg:overflow-hidden lg:opacity-0 lg:group-hover:h-auto lg:group-hover:opacity-100 lg:group-hover/point:h-auto lg:group-hover/point:opacity-100 lg:focus-within:h-auto lg:focus-within:opacity-100 transition-all duration-150";
+
   return (
-    <div className="ml-7 mr-4 mt-2 mb-2 max-w-[calc(100%-2.75rem)] rounded-lg border-l border-slate-300/80 bg-white/30 py-1.5 pl-3 pr-2 dark:border-blue-100/35 dark:bg-white/[0.07]">
+    <div className={containerClass}>
       {sorted.length > 0 && (
         canReorder ? (
           <DragDropContext onDragEnd={handleDragEnd}>
@@ -272,7 +277,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
       )}
 
       {!isPointLocked && (
-        <div className={sorted.length > 0 ? "mt-0.5" : ""}>
+        <div className={sorted.length > 0 ? "mt-0.5" : "py-0.5"}>
           {isAdding ? (
             <div className="flex items-center gap-1 pl-1.5">
               <span className="w-1 h-1 rounded-full bg-blue-300 dark:bg-blue-500 flex-shrink-0" />
@@ -298,9 +303,9 @@ export const SubPointList: React.FC<SubPointListProps> = ({
           ) : (
             <button
               onClick={() => setIsAdding(true)}
-              className="flex items-center gap-1.5 pl-1.5 py-0.5 text-xs text-gray-300 hover:text-gray-500 dark:text-gray-600 dark:hover:text-gray-400 transition-colors"
+              className="flex items-center gap-1 pl-1.5 py-0.5 text-xs font-medium text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors rounded focus:outline-none focus-visible:ring-1 focus-visible:ring-indigo-500/50"
             >
-              <PlusIcon className="h-3 w-3" />
+              <PlusIcon className="h-3.5 w-3.5 mr-0.5" />
               <span>{t("structure.addSubPoint", { defaultValue: "Add sub-point" })}</span>
             </button>
           )}

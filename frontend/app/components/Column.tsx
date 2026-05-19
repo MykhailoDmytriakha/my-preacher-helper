@@ -3,7 +3,7 @@
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
-import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "@locales/i18n";
@@ -446,6 +446,8 @@ const SermonPointPlaceholder: React.FC<{
 
     const colors = getPlaceholderColors(containerId, headerColor);
 
+    const [isCollapsed, setIsCollapsed] = React.useState<boolean>(false);
+
     // Local state for audio recording (per outline point)
     const [isRecordingAudio, setIsRecordingAudio] = React.useState<boolean>(false);
     const [subPointProcessingTarget, setSubPointProcessingTarget] = React.useState<string | null>(null);
@@ -570,7 +572,7 @@ const SermonPointPlaceholder: React.FC<{
     return (
       <>
         <div
-          className={`${colors.border} ${colors.bg} rounded-lg transition duration-200 ${isOver ? 'ring-2 ring-blue-400 shadow-lg scale-[1.02]' : 'shadow-sm hover:shadow-md'
+          className={`group ${colors.border} ${colors.bg} rounded-lg transition duration-200 ${isOver ? 'ring-2 ring-blue-400 shadow-lg scale-[1.02]' : 'shadow-sm hover:shadow-md'
             }`}
           style={headerColor ? { borderColor: headerColor } : {}}
         >
@@ -610,7 +612,24 @@ const SermonPointPlaceholder: React.FC<{
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                  {point.subPoints && point.subPoints.length > 0 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsCollapsed(prev => !prev);
+                      }}
+                      className="p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 transition-colors flex-shrink-0"
+                      title={isCollapsed ? t('common.expand') : t('common.collapse')}
+                      aria-label={isCollapsed ? t('common.expand') : t('common.collapse')}
+                    >
+                      <ChevronDownIcon
+                        className={`h-3.5 w-3.5 transform transition-transform duration-200 ${
+                          isCollapsed ? '-rotate-90' : ''
+                        }`}
+                      />
+                    </button>
+                  )}
                   <h4
                     onClick={() => openPointEditor({
                       point,
@@ -748,7 +767,7 @@ const SermonPointPlaceholder: React.FC<{
             </div>
           </div>
 
-          {!isEditingLocally && ((point.subPoints?.length ?? 0) > 0 || Boolean(onAddSubPoint && onEditSubPoint && onDeleteSubPoint)) && (
+          {!isEditingLocally && !isCollapsed && ((point.subPoints?.length ?? 0) > 0 || Boolean(onAddSubPoint && onEditSubPoint && onDeleteSubPoint)) && (
             <SubPointList
               subPoints={point.subPoints ?? []}
               outlinePointId={point.id}
