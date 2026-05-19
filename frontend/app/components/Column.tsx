@@ -767,7 +767,7 @@ const SermonPointPlaceholder: React.FC<{
             </div>
           </div>
 
-          {!isEditingLocally && !isCollapsed && ((point.subPoints?.length ?? 0) > 0 || Boolean(onAddSubPoint && onEditSubPoint && onDeleteSubPoint)) && (
+          {!isFocusMode && !isEditingLocally && !isCollapsed && ((point.subPoints?.length ?? 0) > 0 || Boolean(onAddSubPoint && onEditSubPoint && onDeleteSubPoint)) && (
             <SubPointList
               subPoints={point.subPoints ?? []}
               outlinePointId={point.id}
@@ -1350,15 +1350,19 @@ export default function Column({
                         )}
                       </div>
                       {/* Sub-points in sidebar */}
-                      {point.subPoints && point.subPoints.length > 0 && (
-                        <ul className="ml-7 mt-1 space-y-1 border-l border-white/35 pl-3 dark:border-blue-100/35">
-                          {[...point.subPoints].sort((a, b) => a.position - b.position).map((sp) => (
-                            <li key={sp.id} className="flex items-center gap-1.5 truncate rounded-md px-1.5 py-0.5 text-[13px] font-medium leading-5 text-blue-50/90 dark:text-blue-50/90" title={sp.text}>
-                              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-blue-100/80 shadow-sm" />
-                              {sp.text}
-                            </li>
-                          ))}
-                        </ul>
+                      {((point.subPoints?.length ?? 0) > 0 || !pointLocked) && (
+                        <SubPointList
+                          subPoints={point.subPoints ?? []}
+                          outlinePointId={point.id}
+                          isPointLocked={pointLocked}
+                          onAdd={handleAddSubPoint}
+                          onEdit={handleEditSubPoint}
+                          onDelete={handleDeleteSubPoint}
+                          onReorder={handleReorderSubPoints}
+                          getAffectedThoughtCount={(spId) => items.filter((it) => it.subPointId === spId).length}
+                          t={t}
+                          isSidebar={true}
+                        />
                       )}
                     </li>
                   )}

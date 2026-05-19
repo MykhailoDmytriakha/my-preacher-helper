@@ -59,6 +59,8 @@
 
 > One-line principles. History in git blame. Newest first.
 
+- **2026-05-19 Subpoint Lists in Focus Sidebars Need Semantic List Elements:** When rendering nested subpoint lists in specialized focus mode sidebars, always use semantic list elements (`ul` and `li`) styled with accessible contrast classes to ensure correct screen reader navigation, DOM traversal, and theme compliance.
+- **2026-05-19 Deprecating Section Tags Requires Complete Unit Test Updates:** When removing or deprecating structural tags from thoughts, also update all associated unit and hook tests that assert on forceTag values (changing them to null) or check requiredTags arrays (expecting them to be empty), ensuring that test suites remain fully decoupled from legacy tagging mechanisms.
 - **2026-05-19 Keep Empty List Containers Compact:** Empty drop targets or input triggers should collapse down completely and fade-in only when active or hovered. This saves vertical space without sacrificing usability.
 - **2026-05-19 Always Update Icon Mocks:** Introducing any new icon from a mocked package (e.g. `@heroicons/react`) requires immediately registering it in the test mock definition, or unit tests will crash due to invalid React element types.
 - **2026-05-19 Overlaid Absolute Controls Need Natural Container Flow:** Absolute overlay buttons can clash with sibling block elements (like warning/error banners) if they occupy the same spatial bounds; anchoring them inside a shared flex header container with `-mt-1.5 -mr-1.5` preserves the top-right alignment while automatically adjusting the layout height to prevent vertical overlaps.
