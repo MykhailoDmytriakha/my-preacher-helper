@@ -415,6 +415,31 @@ export interface ScriptureReference {
   text?: string;
 }
 
+export type ContentNodeMediaType = 'image' | 'youtube' | 'file' | 'url';
+
+export interface ContentNodeMedia {
+  id: string;
+  type: ContentNodeMediaType;
+  url: string;
+  caption?: string;
+}
+
+/**
+ * Universal "Lego" primitive for node-based study notes.
+ * Recursive — children[] is the containment edge (ownership).
+ * `header`, `text`, `media` are all optional — an empty node is valid.
+ */
+export interface ContentNode {
+  id: string;
+  header?: string;
+  /** Markdown content inside the node. */
+  text?: string;
+  media?: ContentNodeMedia[];
+  children?: ContentNode[];
+  /** Per-user UI state — children are visually collapsed. */
+  collapsed?: boolean;
+}
+
 export interface StudyNote {
   id: string;
   userId: string;
@@ -432,6 +457,18 @@ export interface StudyNote {
   relatedSermonIds?: string[];
   /** Type of the note: standard note or a question to be answered later */
   type?: 'note' | 'question';
+  /**
+   * Tree-based content (single root). When present takes precedence over
+   * `content` for all read paths. Server keeps `content` in sync via
+   * `nodeTreeToMarkdown(rootNode)` on every write.
+   */
+  rootNode?: ContentNode;
+  /**
+   * Snapshot of the original plain-text `content` captured at node-tree
+   * migration time. Kept indefinitely so a converter regression can be
+   * rolled back even months later.
+   */
+  legacyContent?: string;
 }
 
 export interface StudyNoteShareLink {

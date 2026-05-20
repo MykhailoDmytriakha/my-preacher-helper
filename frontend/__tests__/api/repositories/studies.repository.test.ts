@@ -4,6 +4,7 @@ jest.mock('firebase-admin/firestore', () => ({
   FieldValue: {
     arrayUnion: jest.fn(),
     arrayRemove: jest.fn(),
+    delete: jest.fn(),
   },
 }));
 
@@ -25,6 +26,7 @@ const { FieldValue } = jest.requireMock('firebase-admin/firestore') as {
   FieldValue: {
     arrayUnion: jest.Mock;
     arrayRemove: jest.Mock;
+    delete: jest.Mock;
   };
 };
 
@@ -90,6 +92,7 @@ describe('StudiesRepository', () => {
 
     FieldValue.arrayUnion.mockImplementation((value: string) => ({ __op: 'arrayUnion', value }));
     FieldValue.arrayRemove.mockImplementation((value: string) => ({ __op: 'arrayRemove', value }));
+    FieldValue.delete.mockReturnValue({ __op: 'delete' });
 
     adminDb.batch.mockImplementation(() => {
       const batch = {
@@ -277,6 +280,154 @@ describe('StudiesRepository', () => {
     getNoteRef('missing').get.mockResolvedValue({ exists: false });
 
     await expect(repository.updateNote('missing', { content: 'Updated' })).rejects.toThrow('Study note not found');
+  });
+
+  it('derives content from rootNode on create (dual-write invariant)', async () => {
+    const dateSpy = jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2024-02-03T12:00:00.000Z');
+    noteAdd.mockResolvedValue({ id: 'note-with-tree' });
+
+    const rootNode = {
+      id: 'root',
+      header: 'Idea',
+      text: 'Body',
+      children: [{ id: 'c', text: 'child' }],
+    };
+
+    await repository.createNote({
+      userId: 'user-1',
+      content: 'will be overwritten',
+      scriptureRefs: [],
+      tags: ['t'],
+      rootNode,
+    } as any);
+
+    const persisted = noteAdd.mock.calls[0][0];
+    expect(persisted.rootNode).toEqual(rootNode);
+    // Child has text but no header, so it renders as plain paragraph (not a heading).
+    expect(persisted.content).toBe('# Idea\n\nBody\n\nchild');
+
+    dateSpy.mockRestore();
+  });
+
+  it('re-derives content from rootNode on update (dual-write invariant)', async () => {
+    const dateSpy = jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2024-02-03T12:00:00.000Z');
+    getNoteRef('note-1').get.mockResolvedValue({
+      exists: true,
+      id: 'note-1',
+      data: () => ({
+        userId: 'user-1',
+        content: 'old content',
+        scriptureRefs: [{ book: 'John', chapter: 1 }],
+        tags: ['t'],
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      }),
+    });
+
+    const rootNode = { id: 'root', text: 'fresh body' };
+    await repository.updateNote('note-1', { rootNode } as any);
+
+    expect(getNoteRef('note-1').set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rootNode,
+        content: 'fresh body',
+      }),
+      { merge: true }
+    );
+
+    dateSpy.mockRestore();
+  });
+
+  it('captures legacyContent when updating a legacy note with a rootNode', async () => {
+    const dateSpy = jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2024-02-03T12:00:00.000Z');
+    getNoteRef('note-legacy').get.mockResolvedValue({
+      exists: true,
+      id: 'note-legacy',
+      data: () => ({
+        userId: 'user-1',
+        content: 'Original legacy content',
+        scriptureRefs: [{ book: 'John', chapter: 1 }],
+        tags: ['t'],
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      }),
+    });
+
+    const rootNode = { id: 'root', text: 'tree body' };
+    const result = await repository.updateNote('note-legacy', { rootNode });
+
+    expect(getNoteRef('note-legacy').set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rootNode,
+        content: 'tree body',
+        legacyContent: 'Original legacy content',
+      }),
+      { merge: true }
+    );
+    expect(result.legacyContent).toBe('Original legacy content');
+
+    dateSpy.mockRestore();
+  });
+
+  it('restores legacyContent and deletes rootNode when clearing a tree note', async () => {
+    const dateSpy = jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2024-02-03T12:00:00.000Z');
+    getNoteRef('note-tree').get.mockResolvedValue({
+      exists: true,
+      id: 'note-tree',
+      data: () => ({
+        userId: 'user-1',
+        content: '# Derived tree content',
+        legacyContent: 'Original legacy content',
+        rootNode: { id: 'root', text: 'tree body' },
+        scriptureRefs: [{ book: 'John', chapter: 1 }],
+        tags: ['t'],
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      }),
+    });
+
+    const result = await repository.updateNote('note-tree', { rootNode: null });
+
+    expect(FieldValue.delete).toHaveBeenCalledTimes(1);
+    expect(getNoteRef('note-tree').set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'Original legacy content',
+        rootNode: { __op: 'delete' },
+      }),
+      { merge: true }
+    );
+    expect(result.content).toBe('Original legacy content');
+    expect(result.rootNode).toBeUndefined();
+
+    dateSpy.mockRestore();
+  });
+
+  it('leaves content untouched when update has no rootNode and existing has none', async () => {
+    const dateSpy = jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2024-02-03T12:00:00.000Z');
+    getNoteRef('note-1').get.mockResolvedValue({
+      exists: true,
+      id: 'note-1',
+      data: () => ({
+        userId: 'user-1',
+        content: 'legacy content stays',
+        scriptureRefs: [{ book: 'John', chapter: 1 }],
+        tags: ['t'],
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      }),
+    });
+
+    await repository.updateNote('note-1', { title: 'new title' });
+
+    expect(getNoteRef('note-1').set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: 'legacy content stays',
+        title: 'new title',
+      }),
+      { merge: true }
+    );
+
+    dateSpy.mockRestore();
   });
 
   it('removes note references from materials before deleting the note', async () => {

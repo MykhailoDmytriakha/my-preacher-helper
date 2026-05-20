@@ -285,7 +285,7 @@ jest.mock('next/navigation', () => ({
 jest.mock('react-i18next', () => ({
   useTranslation: () => {
     return {
-      t: (key) => {
+      t: (key, options = {}) => {
         // Provide translations for keys used in the ExportButtons component
         const translations = {
           'export.txtTitle': 'Export as Text',
@@ -294,8 +294,28 @@ jest.mock('react-i18next', () => ({
           'export.downloadTxt': 'Download as TXT',
           'export.prepareError': 'Error preparing export',
           'export.soonAvailable': 'Coming soon',
+          'studiesWorkspace.nodeTree.startPlaceholder': 'Click here to start',
+          'studiesWorkspace.nodeTree.ariaDrag': 'Drag node',
+          'studiesWorkspace.nodeTree.ariaExpand': 'Expand node',
+          'studiesWorkspace.nodeTree.ariaCollapse': 'Collapse node',
+          'studiesWorkspace.nodeTree.ariaRemoveMedia': 'Remove media',
+          'studiesWorkspace.nodeTree.insertLink': 'Link',
+          'studiesWorkspace.nodeTree.deleteNode': 'Delete node',
+          'studiesWorkspace.nodeTree.confirmDeleteNode': 'Delete node?',
+          'studiesWorkspace.nodeTree.confirmDeleteNodeWithChildren': 'Delete this node and all of its sub-nodes?',
+          'studiesWorkspace.convertModal.title': 'Convert to nodes',
+          'studiesWorkspace.convertModal.preview': 'Preview',
+          'studiesWorkspace.convertModal.nodeCountStat': 'Will create {{nodes}} nodes across {{levels}} nesting levels',
+          'studiesWorkspace.convertModal.cancel': 'Cancel',
+          'studiesWorkspace.convertModal.apply': 'Apply',
+          'studiesWorkspace.convertModal.undoToast': 'Converted to nodes.',
+          'studiesWorkspace.convertModal.undoAction': 'Undo',
+          'studiesWorkspace.wikilinkPicker.placeholder': 'Search notes...',
+          'studiesWorkspace.wikilinkPicker.empty': 'No notes found',
+          'studiesWorkspace.wikilinkPicker.currentNoteHint': 'Current note is hidden from this list',
         };
-        return translations[key] || key;
+        const value = translations[key] || key;
+        return value.replace(/{{(\w+)}}/g, (_match, name) => String(options[name] ?? ''));
       },
       i18n: {
         changeLanguage: jest.fn(),

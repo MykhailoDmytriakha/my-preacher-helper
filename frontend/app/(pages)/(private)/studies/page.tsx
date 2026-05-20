@@ -22,6 +22,7 @@ import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
 import { StudyNote } from '@/models/models';
+import { getStudyText } from '@/utils/nodeTreeAdapter';
 
 import { getBooksForDropdown, BibleLocale, getLocalizedBookName } from './bibleData';
 import ShareNoteModal from './components/ShareNoteModal';
@@ -114,7 +115,7 @@ export default function StudiesPage() {
 
       const tokens = searchTokens;
       const title = (note.title || '').toLowerCase();
-      const content = (note.content || '').toLowerCase();
+      const content = getStudyText(note).toLowerCase();
 
       const tagsMatch = note.tags.some((tag) => {
         const lowered = tag.toLowerCase();
@@ -171,7 +172,7 @@ export default function StudiesPage() {
       )
       .filter((note) => {
         if (searchTokens.length === 0) return true;
-        const haystack = `${note.title} ${note.content} ${note.tags.join(' ')} ${note.scriptureRefs
+        const haystack = `${note.title} ${getStudyText(note)} ${note.tags.join(' ')} ${note.scriptureRefs
           .map((ref) => `${getLocalizedBookName(ref.book, bibleLocale)} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`)
           .join(' ')}`.toLowerCase();
 

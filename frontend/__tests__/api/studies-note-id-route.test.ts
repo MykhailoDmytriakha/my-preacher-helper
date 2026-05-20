@@ -156,6 +156,47 @@ describe('studies notes [id] route', () => {
       expect(response.status).toBe(500);
       expect(data.error).toBe('Failed to update study note');
     });
+
+    it('strips server-derived fields from the request body', async () => {
+      mockRepo.getNote.mockResolvedValue({ id: 'note-1', userId: 'user-1' } as any);
+      mockRepo.updateNote.mockResolvedValue({ id: 'note-1', userId: 'user-1' } as any);
+
+      await route.PUT(
+        makeRequest('user-1', 'PUT', {
+          title: 'Updated',
+          isDraft: false,
+          createdAt: '1999-01-01T00:00:00Z',
+          updatedAt: '1999-01-01T00:00:00Z',
+          legacyContent: 'spoofed-snapshot',
+          arbitraryFromClient: 'should-not-pass',
+        }),
+        params
+      );
+
+      const updateCall = mockRepo.updateNote.mock.calls[0][1];
+      expect(updateCall).toEqual({ title: 'Updated', userId: 'user-1' });
+      expect(updateCall).not.toHaveProperty('isDraft');
+      expect(updateCall).not.toHaveProperty('createdAt');
+      expect(updateCall).not.toHaveProperty('legacyContent');
+      expect(updateCall).not.toHaveProperty('arbitraryFromClient');
+    });
+
+    it('forwards rootNode to repository when present', async () => {
+      mockRepo.getNote.mockResolvedValue({ id: 'note-1', userId: 'user-1' } as any);
+      mockRepo.updateNote.mockResolvedValue({ id: 'note-1', userId: 'user-1' } as any);
+
+      const rootNode = { id: 'root', text: 'hello' };
+      await route.PUT(
+        makeRequest('user-1', 'PUT', { rootNode, title: 'T' }),
+        params
+      );
+
+      expect(mockRepo.updateNote).toHaveBeenCalledWith('note-1', {
+        rootNode,
+        title: 'T',
+        userId: 'user-1',
+      });
+    });
   });
 
   describe('DELETE', () => {

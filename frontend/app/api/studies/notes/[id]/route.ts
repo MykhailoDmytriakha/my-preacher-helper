@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 
 import { studiesRepository } from '@repositories/studies.repository';
 
+import type { StudyNote } from '@/models/models';
+
 // Error messages
 const ERROR_MESSAGES = {
   USER_NOT_AUTHENTICATED: 'User not authenticated',
@@ -9,6 +11,32 @@ const ERROR_MESSAGES = {
 
 function getUserId(request: Request): string | null {
   return new URL(request.url).searchParams.get('userId');
+}
+
+/**
+ * Fields a client is allowed to set/change. `isDraft`, `createdAt`,
+ * `updatedAt`, and `legacyContent` are server-derived — never accept
+ * them from the request body.
+ */
+const ALLOWED_UPDATE_FIELDS = [
+  'title',
+  'content',
+  'scriptureRefs',
+  'tags',
+  'type',
+  'materialIds',
+  'relatedSermonIds',
+  'rootNode',
+] as const satisfies readonly (keyof StudyNote)[];
+
+function pickAllowedUpdates(body: Record<string, unknown>): Partial<StudyNote> {
+  const out: Partial<StudyNote> = {};
+  for (const key of ALLOWED_UPDATE_FIELDS) {
+    if (key in body) {
+      (out as Record<string, unknown>)[key] = body[key];
+    }
+  }
+  return out;
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -32,16 +60,17 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   const userId = getUserId(request);
   if (!userId) return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
   try {
-    const updates = await request.json();
+    const body = (await request.json()) as Record<string, unknown>;
     const existing = await studiesRepository.getNote(id);
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     if (existing.userId !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     // Never allow switching ownership
-    if (updates.userId && updates.userId !== userId) {
+    if (body.userId && body.userId !== userId) {
       return NextResponse.json({ error: 'Cannot change userId' }, { status: 400 });
     }
 
+    const updates = pickAllowedUpdates(body);
     const updated = await studiesRepository.updateNote(id, { ...updates, userId });
     return NextResponse.json(updated);
   } catch (error) {

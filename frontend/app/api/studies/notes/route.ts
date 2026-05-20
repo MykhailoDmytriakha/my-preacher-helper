@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { StudyNote } from '@/models/models';
+import { getStudyText } from '@/utils/nodeTreeAdapter';
 import { studiesRepository } from '@repositories/studies.repository';
 
 function filterNotes(notes: StudyNote[], params: URLSearchParams) {
@@ -36,7 +37,7 @@ function filterNotes(notes: StudyNote[], params: URLSearchParams) {
 
   if (search) {
     result = result.filter((note) => {
-      const text = `${note.title || ''} ${note.content} ${note.tags.join(' ')} ${note.scriptureRefs
+      const text = `${note.title || ''} ${getStudyText(note)} ${note.tags.join(' ')} ${note.scriptureRefs
         ?.map((ref) => `${ref.book} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`)
         .join(' ')}`.toLowerCase();
       return text.includes(search);
@@ -81,6 +82,7 @@ export async function POST(request: Request) {
       type: payload.type || 'note',
       materialIds: payload.materialIds || [],
       relatedSermonIds: payload.relatedSermonIds || [],
+      ...(payload.rootNode ? { rootNode: payload.rootNode } : {}),
     });
 
     return NextResponse.json(note, { status: 201 });

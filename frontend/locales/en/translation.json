@@ -1953,6 +1953,52 @@
     },
     "newNote": "New note",
     "editNote": "Edit note",
+    "convertToNodes": "Convert to nodes",
+    "convertToNodesHint": "Convert markdown headings into nested nodes",
+    "nodeTree": {
+      "startPlaceholder": "Click here to start writing",
+      "ariaDrag": "Drag node",
+      "ariaExpand": "Expand section",
+      "ariaCollapse": "Collapse section",
+      "ariaRemoveMedia": "Remove media",
+      "insertLink": "Link",
+      "deleteNode": "Delete node",
+      "confirmDeleteNode": "Delete node?",
+      "confirmDeleteNodeWithChildren": "Delete this node and all of its sub-nodes?"
+    },
+    "convertModal": {
+      "title": "Convert to nodes",
+      "preview": "Preview",
+      "nodeCountStat": "Will create {{nodes}} nodes across {{levels}} nesting levels",
+      "cancel": "Cancel",
+      "apply": "Apply",
+      "undoToast": "Converted to nodes.",
+      "undoAction": "Undo"
+    },
+    "wikilinkPicker": {
+      "placeholder": "Search notes...",
+      "empty": "No notes found",
+      "currentNoteHint": "Current note is hidden from this list"
+    },
+    "cheatsheet": {
+      "buttonLabel": "Keyboard shortcuts",
+      "title": "Keyboard shortcuts",
+      "toggleEdit": "Switch between read and edit mode",
+      "newSibling": "New sibling node",
+      "newChild": "New child node",
+      "demote": "Indent (make a child of previous sibling)",
+      "promote": "Outdent (move to grandparent's level)",
+      "move": "Move node up / down",
+      "deleteEmpty": "Delete empty focused node",
+      "exitEdit": "Exit text editing of current node",
+      "prevNext": "Navigate to previous / next note"
+    },
+    "saveStatus": {
+      "savedNow": "Saved just now",
+      "savedSecondsAgo": "Saved {{count}} sec ago",
+      "savedMinutesAgo": "Saved {{count}} min ago",
+      "savedAt": "Saved at {{time}}"
+    },
     "titleLabel": "Title",
     "titlePlaceholder": "Optional title for the note",
     "contentLabel": "Your thoughts",
@@ -2115,6 +2161,7 @@
       "button": "Record voice",
       "recording": "Recording...",
       "transcribing": "Processing...",
+      "addedToNode": "Transcription added as a new node.",
       "error": "Recording failed. Please try again."
     },
     "drawer": {

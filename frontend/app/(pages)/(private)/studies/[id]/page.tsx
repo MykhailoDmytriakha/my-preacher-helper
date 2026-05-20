@@ -8,23 +8,30 @@ import TextareaAutosize from 'react-textarea-autosize';
 import { toast } from 'sonner';
 
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
+import NodeTreeEditor from '@/components/studies/node/NodeTreeEditor';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { ScriptureReference, StudyNote } from '@/models/models';
 import { deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
+import { getStudyText, nodeTreeToMarkdown } from '@/utils/nodeTreeAdapter';
+import { markdownToNodeTree } from '@/utils/nodeTreeMigration';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
 import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfirmationModal';
 import { BibleLocale, getLocalizedBookName } from '../bibleData';
+import ConvertToNodesModal from '../components/ConvertToNodesModal';
+import KeyboardCheatsheet from '../components/KeyboardCheatsheet';
 import { STUDIES_INPUT_SHARED_CLASSES } from '../constants';
 import { parseReferenceText } from '../referenceParser';
 import ScriptureRefBadge from '../ScriptureRefBadge';
 import ScriptureRefPicker from '../ScriptureRefPicker';
 import TagCatalogModal from '../TagCatalogModal';
+
+import type { ContentNode } from '@/models/models';
 
 const makeId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 
@@ -59,7 +66,7 @@ function useFilteredNotes(notes: StudyNote[], searchParams: URLSearchParams, bib
             .filter((note: StudyNote) => bookFilter ? note.scriptureRefs.some((ref: ScriptureReference) => ref.book.toLowerCase() === bookFilter.toLowerCase()) : true)
             .filter((note: StudyNote) => {
                 if (searchTokens.length === 0) return true;
-                const haystack = `${note.title} ${note.content} ${note.tags.join(' ')} ${note.scriptureRefs.map((ref: ScriptureReference) => `${getLocalizedBookName(ref.book, bibleLocale)} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`).join(' ')}`.toLowerCase();
+                const haystack = `${note.title} ${getStudyText(note)} ${note.tags.join(' ')} ${note.scriptureRefs.map((ref: ScriptureReference) => `${getLocalizedBookName(ref.book, bibleLocale)} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`).join(' ')}`.toLowerCase();
                 return searchTokens.every((token: string) => haystack.includes(token));
             })
             .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
@@ -73,14 +80,31 @@ function useFilteredNotes(notes: StudyNote[], searchParams: URLSearchParams, bib
 }
 
 function useNoteKeyboardNavigation({
-    isEditing, prevNoteId, nextNoteId, router, searchParams
+    isEditing, prevNoteId, nextNoteId, router, searchParams, setIsEditing
 }: {
     isEditing: boolean; prevNoteId: string | null; nextNoteId: string | null;
     router: ReturnType<typeof useRouter>; searchParams: ReturnType<typeof useSearchParams>;
+    setIsEditing: (b: boolean) => void;
 }) {
+    // Read-mode arrow-key navigation. Skip when an input/textarea has focus
+    // OR the page is in edit mode — typing should not jump notes.
     useEffect(() => {
-        if (isEditing) return;
+        const isTypingTarget = (target: EventTarget | null): boolean =>
+            target instanceof HTMLTextAreaElement
+            || target instanceof HTMLInputElement
+            || (target instanceof HTMLElement && target.isContentEditable);
+
         const handleKeyDown = (e: globalThis.KeyboardEvent) => {
+            // Cmd/Ctrl+E toggles between read and edit mode anywhere on the page.
+            if ((e.metaKey || e.ctrlKey) && (e.key === 'e' || e.key === 'E')) {
+                if (isTypingTarget(e.target)) return;
+                e.preventDefault();
+                setIsEditing(!isEditing);
+                return;
+            }
+
+            if (isEditing) return;
+            if (isTypingTarget(e.target)) return;
             if (e.key === 'ArrowLeft' && prevNoteId) {
                 router.push(`/studies/${prevNoteId}?${searchParams.toString()}`);
             } else if (e.key === 'ArrowRight' && nextNoteId) {
@@ -89,13 +113,21 @@ function useNoteKeyboardNavigation({
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [isEditing, prevNoteId, nextNoteId, router, searchParams]);
+    }, [isEditing, prevNoteId, nextNoteId, router, searchParams, setIsEditing]);
 }
 
 function useNoteInitialization({
-    notesLoading, uid, isNew, isInitialized, existingNote, t,
-    setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setLastSaved
+    notesLoading, uid, isNew, isInitialized, existingNote, t, noteId,
+    setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setLastSaved, setRootNode
 }: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
+    // Reset the init guard whenever the active noteId changes (e.g. prev/next
+    // arrow navigation reuses the mounted page component). Without this the
+    // next note's data would never load into local state — `isInitialized`
+    // stays `true` from the previous note and the effect below short-circuits.
+    useEffect(() => {
+        setIsInitialized(false);
+    }, [noteId, setIsInitialized]);
+
     useEffect(() => {
         if (notesLoading || !uid) return;
 
@@ -105,6 +137,7 @@ function useNoteInitialization({
             setTags([]);
             setScriptureRefs([]);
             setType('note');
+            setRootNode?.(null);
             setIsInitialized(true);
             return;
         }
@@ -115,10 +148,11 @@ function useNoteInitialization({
             setTags(existingNote.tags || []);
             setScriptureRefs(existingNote.scriptureRefs || []);
             setType(existingNote.type || 'note');
+            setRootNode?.(existingNote.rootNode ?? null);
             setIsInitialized(true);
             setLastSaved(new Date(existingNote.updatedAt));
         }
-    }, [notesLoading, isNew, existingNote, isInitialized, uid, t, setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setLastSaved]);
+    }, [notesLoading, isNew, existingNote, isInitialized, uid, t, setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setLastSaved, setRootNode]);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -147,10 +181,11 @@ function useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router }: any) {
 }
 
 function useNoteAutoSave({
-    noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, t
+    noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, rootNode, updateNote, createNote, uid, setCreatedNoteId, t
 }: {
     noteId: string; isNew: boolean; isInitialized: boolean; existingNote?: StudyNote; title: string;
     content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: 'note' | 'question';
+    rootNode: ContentNode | null;
     updateNote: (args: { id: string; updates: Partial<StudyNote> }) => Promise<StudyNote>;
     createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>) => Promise<StudyNote>;
     uid: string | undefined; setCreatedNoteId: (id: string) => void;
@@ -164,14 +199,15 @@ function useNoteAutoSave({
         if (!noteId || !isInitialized) return;
 
         if (isNew) {
-            if (!title.trim() && !content.trim() && tags.length === 0 && scriptureRefs.length === 0) return;
+            if (!title.trim() && !content.trim() && tags.length === 0 && scriptureRefs.length === 0 && !rootNode) return;
 
             setIsSaving(true);
             setSaveError(null);
             try {
                 const newNote = await createNote({
                     title, content, tags, scriptureRefs, type,
-                    userId: uid ?? '', materialIds: [], relatedSermonIds: []
+                    userId: uid ?? '', materialIds: [], relatedSermonIds: [],
+                    ...(rootNode ? { rootNode } : {}),
                 });
                 setLastSaved(new Date());
                 window.history.replaceState(null, '', `/studies/${newNote.id}`);
@@ -186,12 +222,22 @@ function useNoteAutoSave({
         }
 
         if (existingNote) {
+            // When a node tree exists the server derives `content` from it on
+            // every write — so the local `content` state can lag the cached
+            // server value by one round-trip. Compare canonical text on both
+            // sides instead of raw `content` to avoid a save-loop where the
+            // mismatch is purely "I haven't caught up yet".
+            const localCanonical = rootNode ? nodeTreeToMarkdown(rootNode) : content;
+            const remoteCanonical = existingNote.rootNode
+                ? nodeTreeToMarkdown(existingNote.rootNode)
+                : (existingNote.content ?? '');
             const isUnchanged =
                 existingNote.title === title &&
-                existingNote.content === content &&
+                localCanonical === remoteCanonical &&
                 existingNote.type === type &&
                 JSON.stringify(existingNote.tags) === JSON.stringify(tags) &&
-                JSON.stringify(existingNote.scriptureRefs) === JSON.stringify(scriptureRefs);
+                JSON.stringify(existingNote.scriptureRefs) === JSON.stringify(scriptureRefs) &&
+                JSON.stringify(existingNote.rootNode ?? null) === JSON.stringify(rootNode ?? null);
 
             if (isUnchanged) return;
         }
@@ -199,9 +245,15 @@ function useNoteAutoSave({
         setIsSaving(true);
         setSaveError(null);
         try {
+            // Don't ship local `content` when a tree is present — the server
+            // will overwrite it via `syncContentWithTree` anyway, and sending
+            // a stale string just makes the diff noisy.
+            const updates: Partial<StudyNote> = rootNode
+                ? { title, tags, scriptureRefs, type, rootNode }
+                : { title, content, tags, scriptureRefs, type };
             await updateNote({
                 id: noteId,
-                updates: { title, content, tags, scriptureRefs, type }
+                updates,
             });
             setLastSaved(new Date());
         } catch (e) {
@@ -210,7 +262,7 @@ function useNoteAutoSave({
         } finally {
             setIsSaving(false);
         }
-    }, [noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, t]);
+    }, [noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, rootNode, updateNote, createNote, uid, setCreatedNoteId, t]);
 
     useEffect(() => {
         if (!isInitialized) return;
@@ -218,16 +270,31 @@ function useNoteAutoSave({
             saveChanges();
         }, 1500);
         return () => clearTimeout(timeoutId);
-    }, [title, content, tags, scriptureRefs, type, isInitialized, saveChanges]);
+    }, [title, content, tags, scriptureRefs, type, rootNode, isInitialized, saveChanges]);
 
     return { isSaving, lastSaved, saveError, setLastSaved };
 }
 
+function appendTranscriptNode(rootNode: ContentNode, text: string): ContentNode {
+    return {
+        ...rootNode,
+        children: [
+            ...(rootNode.children ?? []),
+            { id: makeId(), text },
+        ],
+    };
+}
+
+function getCanonicalStudyContent(content: string, rootNode: ContentNode | null): string {
+    return rootNode ? nodeTreeToMarkdown(rootNode) : content;
+}
+
 function useNoteAIAssistant({
-    content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t
+    content, rootNode, availableTags, setTitle, setContent, setRootNode, setScriptureRefs, setTags, t
 }: {
-    content: string; availableTags: string[];
+    content: string; rootNode: ContentNode | null; availableTags: string[];
     setTitle: (t: string) => void; setContent: (c: string | ((prev: string) => string)) => void;
+    setRootNode: (rootNode: ContentNode | null) => void;
     setScriptureRefs: (refs: ScriptureReference[] | ((prev: ScriptureReference[]) => ScriptureReference[])) => void; setTags: (tags: string[] | ((prev: string[]) => string[])) => void;
     t: ReturnType<typeof useTranslation>['t'];
 }) {
@@ -237,7 +304,8 @@ function useNoteAIAssistant({
     const [pendingAnalysisResult, setPendingAnalysisResult] = useState<AnalysisResultData | null>(null);
 
     const handleAIAnalyze = async (analysisType: 'all' | 'title' | 'tags' | 'scriptureRefs' = 'all') => {
-        if (!content.trim()) {
+        const canonicalContent = getCanonicalStudyContent(content, rootNode);
+        if (!canonicalContent.trim()) {
             toast.error(t('studiesWorkspace.aiAnalyze.emptyContent') || 'Please enter note content');
             return;
         }
@@ -247,7 +315,7 @@ function useNoteAIAssistant({
             const response = await fetch('/api/studies/analyze', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content, existingTags: availableTags, analysisType }),
+                body: JSON.stringify({ content: canonicalContent, existingTags: availableTags, analysisType }),
             });
             const result = await response.json();
 
@@ -306,7 +374,14 @@ function useNoteAIAssistant({
             if (!result.success) throw new Error(result.error);
 
             const newText = result.polishedText || result.originalText;
-            if (newText) setContent((prev: string) => (prev ? `${prev}\n\n${newText}` : newText));
+            if (newText) {
+                if (rootNode) {
+                    setRootNode(appendTranscriptNode(rootNode, newText));
+                    toast.success(t('studiesWorkspace.voiceInput.addedToNode') || 'Расшифровка добавлена в новую ноду');
+                } else {
+                    setContent((prev: string) => (prev ? `${prev}\n\n${newText}` : newText));
+                }
+            }
         } catch {
             toast.error(t('errors.audioProcessing') || 'Voice transcription failed');
         } finally {
@@ -318,6 +393,15 @@ function useNoteAIAssistant({
         isAnalyzing, isVoiceProcessing, handleAIAnalyze, handleVoiceRecordingComplete,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
     };
+}
+
+function formatSavedTooltip(savedAt: Date, t: ReturnType<typeof useTranslation>['t']): string {
+    const diffSec = Math.floor((Date.now() - savedAt.getTime()) / 1000);
+    if (diffSec < 5) return t('studiesWorkspace.saveStatus.savedNow');
+    if (diffSec < 60) return t('studiesWorkspace.saveStatus.savedSecondsAgo', { count: diffSec });
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return t('studiesWorkspace.saveStatus.savedMinutesAgo', { count: diffMin });
+    return t('studiesWorkspace.saveStatus.savedAt', { time: savedAt.toLocaleTimeString() });
 }
 
 function EditorHeader({
@@ -332,6 +416,7 @@ function EditorHeader({
     setIsEditing: (b: boolean) => void; handleDelete: () => void; handleCopy: () => void; isCopied: boolean;
 }) {
     const [showMenu, setShowMenu] = useState(false);
+    const [isCheatsheetOpen, setIsCheatsheetOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const copyLabel = isCopied ? t('common.copied') || 'Copied!' : t('common.copy') || 'Copy';
 
@@ -347,6 +432,7 @@ function EditorHeader({
     }, [showMenu]);
 
     return (
+        <>
         <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-y-2 border-b border-gray-200 bg-white/80 px-4 sm:px-6 py-3 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/80">
             <div className="flex items-center gap-1 sm:gap-2 lg:gap-4">
                 <div className="flex items-center gap-1">
@@ -394,7 +480,10 @@ function EditorHeader({
 
             {/* Sync Status Info */}
             <div className="flex items-center gap-3">
-                <div className="text-sm flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                <div
+                    className="text-sm flex items-center gap-1.5 text-gray-500 dark:text-gray-400"
+                    title={lastSaved ? formatSavedTooltip(lastSaved, t) : undefined}
+                >
                     {isSaving ? (
                         <><ArrowPathIcon className="h-4 w-4 animate-spin" /> <span>{t('common.saving') || 'Saving...'}</span></>
                     ) : saveError ? (
@@ -403,6 +492,16 @@ function EditorHeader({
                         <><CheckCircleIcon className="h-4 w-4 text-emerald-500" /> <span className="hidden sm:inline">{t('common.saved') || 'Saved'}</span></>
                     ) : null}
                 </div>
+
+                <button
+                    type="button"
+                    onClick={() => setIsCheatsheetOpen(true)}
+                    className="hidden md:inline-flex items-center justify-center rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+                    title={t('studiesWorkspace.cheatsheet.buttonLabel') || 'Keyboard shortcuts'}
+                    aria-label={t('studiesWorkspace.cheatsheet.buttonLabel') || 'Keyboard shortcuts'}
+                >
+                    <span className="text-sm font-semibold">?</span>
+                </button>
 
                 {!isEditing && (
                     <button
@@ -458,6 +557,8 @@ function EditorHeader({
                 </div>
             </div>
         </header>
+        <KeyboardCheatsheet open={isCheatsheetOpen} onClose={() => setIsCheatsheetOpen(false)} />
+        </>
     );
 }
 
@@ -531,7 +632,14 @@ export default function StudyNoteEditorPage() {
     const [tags, setTags] = useState<string[]>([]);
     const [scriptureRefs, setScriptureRefs] = useState<ScriptureReference[]>([]);
     const [type, setType] = useState<'note' | 'question'>('note');
+    const [rootNode, setRootNode] = useState<ContentNode | null>(null);
     const [isEditing, setIsEditing] = useState(isNew);
+    const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
+    const canonicalContent = useMemo(() => getCanonicalStudyContent(content, rootNode), [content, rootNode]);
+
+    // Search params for feature-flagged opt-in into the node tree editor.
+    const editorSearchParams = useSearchParams();
+    const nodeEditorOptIn = editorSearchParams?.get('nodes') === '1';
 
     // Input states
     const [tagInput, setTagInput] = useState('');
@@ -564,13 +672,13 @@ export default function StudyNoteEditorPage() {
     const searchParams = useSearchParams();
     const { filteredNotes, currentIndex, prevNoteId, nextNoteId, searchQuery } = useFilteredNotes(notes, searchParams, bibleLocale);
 
-    useNoteKeyboardNavigation({ isEditing, prevNoteId, nextNoteId, router, searchParams });
+    useNoteKeyboardNavigation({ isEditing, prevNoteId, nextNoteId, router, searchParams, setIsEditing });
 
     // Handle Initial Load
     const [isInitialized, setIsInitialized] = useState(false);
 
     const { isSaving, lastSaved, saveError, setLastSaved } = useNoteAutoSave({
-        noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type,
+        noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, rootNode,
         updateNote, createNote, uid, setCreatedNoteId, t
     });
 
@@ -581,12 +689,12 @@ export default function StudyNoteEditorPage() {
         isAnalyzing, isVoiceProcessing, handleAIAnalyze, handleVoiceRecordingComplete,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
     } = useNoteAIAssistant({
-        content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t
+        content, rootNode, availableTags, setTitle, setContent, setRootNode, setScriptureRefs, setTags, t
     });
 
     useNoteInitialization({
-        notesLoading, uid, isNew, isInitialized, existingNote, t,
-        setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setLastSaved
+        notesLoading, uid, isNew, isInitialized, existingNote, t, noteId,
+        setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setLastSaved, setRootNode
     });
 
     // ─── HANDLERS ─────────────────────────────────────────────────────────
@@ -598,6 +706,7 @@ export default function StudyNoteEditorPage() {
 
     const handleDelete = useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router });
     const handleCopy = useCallback(() => {
+        const copyRootNode = rootNode ?? existingNote?.rootNode ?? null;
         void copyToClipboard(
             formatStudyNoteForCopy({
                 id: noteId,
@@ -612,9 +721,21 @@ export default function StudyNoteEditorPage() {
                 createdAt: existingNote?.createdAt ?? new Date().toISOString(),
                 updatedAt: existingNote?.updatedAt ?? new Date().toISOString(),
                 isDraft: existingNote?.isDraft ?? false,
+                ...(copyRootNode ? { rootNode: copyRootNode } : {}),
             }, bibleLocale)
         );
-    }, [bibleLocale, content, copyToClipboard, existingNote, noteId, scriptureRefs, tags, title, type, uid]);
+    }, [bibleLocale, content, copyToClipboard, existingNote, noteId, rootNode, scriptureRefs, tags, title, type, uid]);
+
+    const handleConfirmConvertToNodes = useCallback((nextRootNode: ContentNode): void => {
+        setRootNode(nextRootNode);
+        setIsConvertModalOpen(false);
+        toast.success(t('studiesWorkspace.convertModal.undoToast'), {
+            action: {
+                label: t('studiesWorkspace.convertModal.undoAction'),
+                onClick: () => setRootNode(null),
+            },
+        });
+    }, [t]);
 
     const addTag = () => {
         const value = tagInput.trim();
@@ -663,7 +784,7 @@ export default function StudyNoteEditorPage() {
                             <button
                                 type="button"
                                 onClick={() => handleAIAnalyze('title')}
-                                disabled={isAnalyzing || !content.trim()}
+                                disabled={isAnalyzing || !canonicalContent.trim()}
                                 title={t('studiesWorkspace.aiAnalyze.generateTitle', { defaultValue: 'Generate Title' })}
                                 className="hidden group-hover/title:flex items-center justify-center p-2 rounded-lg text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50 shrink-0 mt-1"
                             >
@@ -682,21 +803,79 @@ export default function StudyNoteEditorPage() {
                 </div>
 
                 <div className="relative group">
-                    {isEditing ? (
-                        <div className="text-lg md:text-xl leading-relaxed">
-                            <RichMarkdownEditor
-                                value={content}
-                                onChange={setContent}
-                                placeholder={t('studiesWorkspace.contentPlaceholder') || 'Start typing your thoughts here...'}
-                                minHeight="300px"
-                            />
-                        </div>
-                    ) : (
-                        <div className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-800 dark:prose-p:text-gray-200 prose-p:leading-relaxed max-w-none text-lg md:text-xl">
-                            <MarkdownDisplay content={content} searchQuery={searchQuery} />
-                        </div>
-                    )}
+                    {(() => {
+                        // New notes default to the node editor — that's the new model.
+                        // Existing legacy notes (no rootNode) stay on the legacy editor unless
+                        // explicitly opted in via ?nodes=1 or the inline "Convert" button.
+                        const useNodeEditor = isNew || Boolean(rootNode) || Boolean(existingNote?.rootNode) || nodeEditorOptIn;
 
+                        if (isEditing && useNodeEditor) {
+                            // Lazily synthesize a root when opting in for the first time.
+                            // Existing legacy content becomes the root.text so nothing visible is lost.
+                            const effectiveRoot =
+                                rootNode
+                                ?? existingNote?.rootNode
+                                ?? (content.trim() ? markdownToNodeTree(content) : { id: makeId(), children: [] });
+                            return (
+                                <div className="text-lg md:text-xl leading-relaxed">
+                                    <NodeTreeEditor
+                                        rootNode={effectiveRoot}
+                                        onChange={setRootNode}
+                                        autoFocusFirst={!rootNode}
+                                        currentNoteId={isNew ? undefined : noteId}
+                                    />
+                                </div>
+                            );
+                        }
+
+                        if (isEditing) {
+                            return (
+                                <div className="text-lg md:text-xl leading-relaxed">
+                                    <RichMarkdownEditor
+                                        value={content}
+                                        onChange={setContent}
+                                        placeholder={t('studiesWorkspace.contentPlaceholder') || 'Start typing your thoughts here...'}
+                                        minHeight="300px"
+                                    />
+                                    {content.trim() && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsConvertModalOpen(true)}
+                                            className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 transition"
+                                            title={t('studiesWorkspace.convertToNodesHint') || 'Convert markdown headings into nested nodes'}
+                                        >
+                                            {t('studiesWorkspace.convertToNodes') || 'Convert to nodes'}
+                                        </button>
+                                    )}
+                                </div>
+                            );
+                        }
+
+                        // Read mode — when the note carries a node tree we render the
+                        // structure with foldable chevrons (read-only NodeTreeEditor),
+                        // so the user can collapse sections while reading. No drag
+                        // handles, no edit textareas, no buttons — pure reading view.
+                        if (useNodeEditor) {
+                            const readRoot = rootNode ?? existingNote?.rootNode;
+                            if (readRoot) {
+                                return (
+                                    <div className="text-lg md:text-xl leading-relaxed">
+                                        <NodeTreeEditor
+                                            rootNode={readRoot}
+                                            onChange={setRootNode}
+                                            currentNoteId={isNew ? undefined : noteId}
+                                            readOnly
+                                        />
+                                    </div>
+                                );
+                            }
+                        }
+                        return (
+                            <div className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-800 dark:prose-p:text-gray-200 prose-p:leading-relaxed max-w-none text-lg md:text-xl">
+                                <MarkdownDisplay content={content} searchQuery={searchQuery} enableWikiLinks />
+                            </div>
+                        );
+                    })()}
                 </div>
 
                 {isEditing && (
@@ -706,7 +885,7 @@ export default function StudyNoteEditorPage() {
                             <button
                                 type="button"
                                 onClick={() => setIsAIPopoverOpen(!isAIPopoverOpen)}
-                                disabled={isAnalyzing || !content.trim()}
+                                disabled={isAnalyzing || !canonicalContent.trim()}
                                 title={t('studiesWorkspace.aiAnalyze.button')}
                                 className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg hover:from-purple-600 hover:to-indigo-600 hover:scale-105 disabled:opacity-50 transition-all border border-purple-400 dark:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-2 dark:focus:ring-offset-gray-900 relative z-20"
                             >
@@ -785,7 +964,7 @@ export default function StudyNoteEditorPage() {
                                 <button
                                     type="button"
                                     onClick={() => handleAIAnalyze('scriptureRefs')}
-                                    disabled={isAnalyzing || !content.trim()}
+                                    disabled={isAnalyzing || !canonicalContent.trim()}
                                     title={t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
                                     className="hidden group-hover/refs:flex items-center justify-center p-1.5 rounded-lg text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
                                 >
@@ -870,7 +1049,7 @@ export default function StudyNoteEditorPage() {
                                 <button
                                     type="button"
                                     onClick={() => handleAIAnalyze('tags')}
-                                    disabled={isAnalyzing || !content.trim()}
+                                    disabled={isAnalyzing || !canonicalContent.trim()}
                                     title={t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
                                     className="hidden group-hover/tags:flex items-center justify-center p-1.5 rounded-lg text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
                                 >
@@ -933,6 +1112,13 @@ export default function StudyNoteEditorPage() {
                 currentTitle={title}
                 currentTags={tags}
                 currentScriptureRefs={scriptureRefs}
+            />
+
+            <ConvertToNodesModal
+                open={isConvertModalOpen}
+                sourceContent={content}
+                onConfirm={handleConfirmConvertToNodes}
+                onCancel={() => setIsConvertModalOpen(false)}
             />
         </div>
     );

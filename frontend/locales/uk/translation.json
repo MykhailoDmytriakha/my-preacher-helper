@@ -1957,6 +1957,52 @@
     },
     "newNote": "Нова нотатка",
     "editNote": "Редагувати нотатку",
+    "convertToNodes": "Перетворити на ноди",
+    "convertToNodesHint": "Перетворити markdown-заголовки на вкладені ноди",
+    "nodeTree": {
+      "startPlaceholder": "Натисніть, щоб почати писати",
+      "ariaDrag": "Перетягнути ноду",
+      "ariaExpand": "Розгорнути розділ",
+      "ariaCollapse": "Згорнути розділ",
+      "ariaRemoveMedia": "Видалити медіа",
+      "insertLink": "Посилання",
+      "deleteNode": "Видалити ноду",
+      "confirmDeleteNode": "Видалити ноду?",
+      "confirmDeleteNodeWithChildren": "Видалити і всі її під-ноди?"
+    },
+    "convertModal": {
+      "title": "Перетворити на ноди",
+      "preview": "Попередній перегляд",
+      "nodeCountStat": "Буде створено {{nodes}} нод, {{levels}} рівнів вкладеності",
+      "cancel": "Скасувати",
+      "apply": "Застосувати",
+      "undoToast": "Перетворено на ноди.",
+      "undoAction": "Скасувати"
+    },
+    "wikilinkPicker": {
+      "placeholder": "Пошук нотаток...",
+      "empty": "Нотаток не знайдено",
+      "currentNoteHint": "Поточну нотатку приховано зі списку"
+    },
+    "cheatsheet": {
+      "buttonLabel": "Гарячі клавіші",
+      "title": "Гарячі клавіші",
+      "toggleEdit": "Перемикання між читанням і редагуванням",
+      "newSibling": "Нова сусідня нода",
+      "newChild": "Нова дочірня нода",
+      "demote": "Зробити дочірньою попередньої ноди",
+      "promote": "Підняти на рівень вище",
+      "move": "Перемістити ноду вгору / вниз",
+      "deleteEmpty": "Видалити порожню ноду",
+      "exitEdit": "Вийти з редагування тексту",
+      "prevNext": "Попередня / наступна нотатка"
+    },
+    "saveStatus": {
+      "savedNow": "Збережено щойно",
+      "savedSecondsAgo": "Збережено {{count}} с тому",
+      "savedMinutesAgo": "Збережено {{count}} хв тому",
+      "savedAt": "Збережено о {{time}}"
+    },
     "titleLabel": "Заголовок",
     "titlePlaceholder": "Необов'язковий заголовок нотатки",
     "contentLabel": "Ваші думки",
@@ -2119,6 +2165,7 @@
       "button": "Записати голосом",
       "recording": "Запис...",
       "transcribing": "Обробка...",
+      "addedToNode": "Розшифровку додано як нову ноду.",
       "error": "Помилка запису. Спробуйте ще раз."
     },
     "drawer": {

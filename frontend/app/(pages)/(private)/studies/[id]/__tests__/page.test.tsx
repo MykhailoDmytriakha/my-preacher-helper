@@ -48,6 +48,13 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({
     ),
 }));
 
+jest.mock('@/components/studies/node/NodeTreeEditor', () => ({
+    __esModule: true,
+    default: ({ rootNode }: { rootNode: unknown }) => (
+        <div data-testid="node-tree-editor">{JSON.stringify(rootNode)}</div>
+    ),
+}));
+
 jest.mock('@/components/FocusRecorderButton', () => ({
     __esModule: true,
     FocusRecorderButton: ({ onRecordingComplete }: any) => (
@@ -87,6 +94,17 @@ const mockNotes: StudyNote[] = [
     { ...createMockNote('note-1', 'Current Note'), updatedAt: '2024-01-02T00:00:00.000Z' },
     { ...createMockNote('note-2', 'Next Note'), updatedAt: '2024-01-01T00:00:00.000Z' },
 ];
+
+const currentNodeNote: StudyNote = {
+    ...createMockNote('note-1', 'Current Note'),
+    content: 'Stale legacy content',
+    rootNode: {
+        id: 'root',
+        header: 'Canonical',
+        text: 'Fresh body',
+    },
+    updatedAt: '2024-01-02T00:00:00.000Z',
+};
 
 describe('StudyNoteEditorPage Pagination', () => {
     beforeEach(() => {
@@ -337,6 +355,68 @@ describe('StudyNoteEditorPage Pagination', () => {
         });
     });
 
+    it('sends derived node markdown to AI analysis when a note has rootNode', async () => {
+        const mockAIResponse = {
+            success: true,
+            data: { tags: ['tree-tag'] }
+        };
+        (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
+            ok: true,
+            json: jest.fn().mockResolvedValue(mockAIResponse)
+        });
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [mockNotes[0], currentNodeNote, mockNotes[2]],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
+        fireEvent.click(await screen.findByText('studiesWorkspace.aiAnalyze.full'));
+
+        await waitFor(() => {
+            expect(global.fetch).toHaveBeenCalledWith('/api/studies/analyze', expect.any(Object));
+        });
+
+        const init = (global.fetch as jest.Mock).mock.calls[0][1] as RequestInit;
+        expect(JSON.parse(init.body as string)).toMatchObject({
+            content: '# Canonical\n\nFresh body',
+            analysisType: 'all',
+        });
+    });
+
+    it('adds voice transcription as a new root child when a note has rootNode', async () => {
+        const mockVoiceResponse = {
+            success: true,
+            polishedText: 'Transcribed text',
+        };
+        (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
+            ok: true,
+            json: jest.fn().mockResolvedValue(mockVoiceResponse)
+        });
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [mockNotes[0], currentNodeNote, mockNotes[2]],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.click(screen.getByTitle('studiesWorkspace.voiceRecord'));
+
+        await waitFor(() => {
+            expect(screen.getByTestId('node-tree-editor')).toHaveTextContent('Transcribed text');
+        });
+        expect(screen.queryByTestId('rich-markdown-editor')).not.toBeInTheDocument();
+    });
+
     it('navigates back using the back button', () => {
         render(<StudyNoteEditorPage />);
 
@@ -363,6 +443,34 @@ describe('StudyNoteEditorPage Pagination', () => {
 
         await waitFor(() => {
             expect(mockWriteText).toHaveBeenCalledWith('# Current Note\n\nContent for Current Note');
+        });
+    });
+
+    it('copies derived node markdown when a note has rootNode', async () => {
+        const mockWriteText = jest.fn().mockResolvedValue(undefined);
+        Object.assign(navigator, {
+            clipboard: { writeText: mockWriteText },
+        });
+        Object.defineProperty(window, 'isSecureContext', {
+            writable: true,
+            value: true,
+        });
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: [mockNotes[0], currentNodeNote, mockNotes[2]],
+            loading: false,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+
+        const copyButton = screen.getByRole('button', { name: 'common.copy' });
+        fireEvent.click(copyButton);
+
+        await waitFor(() => {
+            expect(mockWriteText).toHaveBeenCalledWith('# Current Note\n\n# Canonical\n\nFresh body');
         });
     });
 

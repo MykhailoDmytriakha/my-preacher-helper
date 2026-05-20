@@ -63,3 +63,6 @@ next-env.d.ts
 .playwright-cli
 .playwright-mcp
 output/
+.claude/codex-logs
+.claude/settings.local.json
+.demo/

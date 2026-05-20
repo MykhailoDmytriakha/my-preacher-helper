@@ -1957,6 +1957,52 @@
     },
     "newNote": "Новая заметка",
     "editNote": "Редактировать заметку",
+    "convertToNodes": "Преобразовать в ноды",
+    "convertToNodesHint": "Преобразовать markdown-заголовки во вложенные ноды",
+    "nodeTree": {
+      "startPlaceholder": "Нажмите, чтобы начать писать",
+      "ariaDrag": "Перетащить ноду",
+      "ariaExpand": "Развернуть раздел",
+      "ariaCollapse": "Свернуть раздел",
+      "ariaRemoveMedia": "Удалить медиа",
+      "insertLink": "Ссылка",
+      "deleteNode": "Удалить ноду",
+      "confirmDeleteNode": "Удалить ноду?",
+      "confirmDeleteNodeWithChildren": "Удалить и все её под-ноды?"
+    },
+    "convertModal": {
+      "title": "Преобразовать в ноды",
+      "preview": "Предпросмотр",
+      "nodeCountStat": "Будет создано {{nodes}} нод, {{levels}} уровней вложенности",
+      "cancel": "Отменить",
+      "apply": "Применить",
+      "undoToast": "Преобразовано в ноды.",
+      "undoAction": "Отменить"
+    },
+    "wikilinkPicker": {
+      "placeholder": "Поиск заметок...",
+      "empty": "Заметки не найдены",
+      "currentNoteHint": "Текущая заметка скрыта из списка"
+    },
+    "cheatsheet": {
+      "buttonLabel": "Горячие клавиши",
+      "title": "Горячие клавиши",
+      "toggleEdit": "Переключить режим чтения и редактирования",
+      "newSibling": "Новая соседняя нода",
+      "newChild": "Новая дочерняя нода",
+      "demote": "Сделать дочерней предыдущей ноды",
+      "promote": "Поднять на уровень выше",
+      "move": "Переместить ноду вверх / вниз",
+      "deleteEmpty": "Удалить пустую ноду",
+      "exitEdit": "Выйти из редактирования текста",
+      "prevNext": "Предыдущая / следующая заметка"
+    },
+    "saveStatus": {
+      "savedNow": "Сохранено только что",
+      "savedSecondsAgo": "Сохранено {{count}} сек назад",
+      "savedMinutesAgo": "Сохранено {{count}} мин назад",
+      "savedAt": "Сохранено в {{time}}"
+    },
     "titleLabel": "Заголовок",
     "titlePlaceholder": "Необязательный заголовок заметки",
     "contentLabel": "Ваши мысли",
@@ -2119,6 +2165,7 @@
       "button": "Записать голосом",
       "recording": "Запись...",
       "transcribing": "Обработка...",
+      "addedToNode": "Расшифровка добавлена в новую ноду.",
       "error": "Ошибка записи. Попробуйте ещё раз."
     },
     "drawer": {

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import React, { memo, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -12,7 +13,16 @@ interface MarkdownDisplayProps {
     compact?: boolean;
     /** Optional search query to highlight within the content */
     searchQuery?: string;
+    /**
+     * When true, `[[noteId]]` substrings are rendered as inline chips linking
+     * to `/studies/<noteId>` (in-app navigation). Off by default so legacy
+     * callers keep their existing behaviour.
+     */
+    enableWikiLinks?: boolean;
 }
+
+const WIKI_LINK_PATTERN = /\[\[([a-zA-Z0-9_-]{4,})\]\]/g;
+const STUDIES_LINK_PREFIX = '/studies/';
 
 // Helper to transform [Type: Content] into code blocks for custom rendering
 const formatStructuredBlocks = (text: string) => {
@@ -28,8 +38,15 @@ const formatStructuredBlocks = (text: string) => {
     });
 };
 
-const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery = '' }: MarkdownDisplayProps) => {
-    const processedContent = useMemo(() => formatStructuredBlocks(content), [content]);
+/** `[[noteId]]` → markdown link to /studies/noteId so ReactMarkdown picks it up. */
+const transformWikiLinks = (text: string): string =>
+    text.replace(WIKI_LINK_PATTERN, (_match, id) => `[🔗 ${id}](${STUDIES_LINK_PREFIX}${id})`);
+
+const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery = '', enableWikiLinks = false }: MarkdownDisplayProps) => {
+    const processedContent = useMemo(() => {
+        const blocks = formatStructuredBlocks(content);
+        return enableWikiLinks ? transformWikiLinks(blocks) : blocks;
+    }, [content, enableWikiLinks]);
 
     const renderHighlighted = useCallback(
         (node: React.ReactNode) =>
@@ -44,10 +61,26 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
-                    // Override link behavior to open in new tab
-                    a: ({ ...props }) => (
-                        <a {...props} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline" />
-                    ),
+                    // Override link behavior — wiki-links to study notes stay in-app,
+                    // everything else opens in a new tab.
+                    a: ({ href, children, ...props }) => {
+                        const isStudyLink = typeof href === 'string' && href.startsWith(STUDIES_LINK_PREFIX);
+                        if (isStudyLink) {
+                            return (
+                                <Link
+                                    href={href}
+                                    className="inline-flex items-center rounded-md bg-indigo-50 px-1.5 py-0.5 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
+                                >
+                                    {children}
+                                </Link>
+                            );
+                        }
+                        return (
+                            <a {...props} href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 hover:underline">
+                                {children}
+                            </a>
+                        );
+                    },
                     // Ensure lists are properly spaced
                     ul: ({ ...props }) => <ul {...props} className="my-2 list-disc pl-4" />,
                     ol: ({ ...props }) => <ol {...props} className="my-2 list-decimal pl-4" />,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getStudyText } from '@/utils/nodeTreeAdapter';
 import { studiesRepository } from '@repositories/studies.repository';
 import { studyNoteShareLinksRepository } from '@repositories/studyNoteShareLinks.repository';
 
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const response = NextResponse.json(
-      { content: note.content },
+      { content: getStudyText(note) },
       { headers: { 'Cache-Control': 'no-store' } }
     );
 

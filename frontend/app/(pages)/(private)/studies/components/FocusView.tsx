@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote } from '@/models/models';
+import { getStudyText } from '@/utils/nodeTreeAdapter';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
@@ -220,7 +221,7 @@ export default function FocusView({
 
           {/* Content */}
           <div className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-p:leading-relaxed max-w-none">
-            <MarkdownDisplay content={note.content} searchQuery={searchQuery} />
+            <MarkdownDisplay content={getStudyText(note)} searchQuery={searchQuery} />
           </div>
         </div>
 

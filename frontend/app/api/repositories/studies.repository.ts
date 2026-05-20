@@ -1,14 +1,32 @@
 import { FieldValue } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { StudyMaterial, StudyNote } from '@/models/models';
+import { nodeTreeToMarkdown } from '@/utils/nodeTreeAdapter';
+
+import type { ContentNode, StudyMaterial, StudyNote } from '@/models/models';
 
 
 const NOTES_COLLECTION = 'studyNotes';
 const MATERIALS_COLLECTION = 'studyMaterials';
 
+type StudyNoteUpdatePayload = Partial<Omit<StudyNote, 'rootNode'>> & {
+  rootNode?: ContentNode | null;
+};
+
 function computeDraft(note: Pick<StudyNote, 'tags' | 'scriptureRefs'>): boolean {
   return (note.tags?.length ?? 0) === 0 || (note.scriptureRefs?.length ?? 0) === 0;
+}
+
+/**
+ * Dual-write invariant: when a note carries a node tree, `content` must
+ * always be the markdown rendering of that tree. Server derives it so
+ * clients can't drift the two fields out of sync (e.g. two tabs racing).
+ */
+function syncContentWithTree<T extends Partial<StudyNote>>(data: T): T {
+  if (data.rootNode) {
+    return { ...data, content: nodeTreeToMarkdown(data.rootNode) };
+  }
+  return data;
 }
 
 export class StudiesRepository {
@@ -45,8 +63,9 @@ export class StudiesRepository {
 
   async createNote(payload: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>): Promise<StudyNote> {
     const now = new Date().toISOString();
+    const synced = syncContentWithTree(payload);
     const note: Omit<StudyNote, 'id' | 'isDraft'> = {
-      ...payload,
+      ...synced,
       createdAt: now,
       updatedAt: now,
     };
@@ -57,25 +76,46 @@ export class StudiesRepository {
     return {
       ...note,
       id: docRef.id,
-      isDraft: computeDraft(payload),
+      isDraft: computeDraft(synced),
       materialIds: materialIds || [],
       relatedSermonIds: relatedSermonIds || [],
     };
   }
 
-  async updateNote(id: string, updates: Partial<StudyNote>): Promise<StudyNote> {
+  async updateNote(id: string, updates: StudyNoteUpdatePayload): Promise<StudyNote> {
     const existing = await this.getNote(id);
     if (!existing) throw new Error('Study note not found');
 
-    const merged: StudyNote = {
+    const { rootNode: updatedRootNode, ...updatesWithoutRootNode } = updates;
+    const isClearingRootNode = Boolean(existing.rootNode) && updatedRootNode === null;
+    let merged: StudyNote = {
       ...existing,
-      ...updates,
+      ...updatesWithoutRootNode,
       updatedAt: new Date().toISOString(),
     };
+
+    if (updatedRootNode) {
+      merged.rootNode = updatedRootNode;
+    }
+
+    if (!existing.rootNode && merged.rootNode) {
+      merged.legacyContent = existing.content;
+    }
+
+    if (isClearingRootNode) {
+      delete merged.rootNode;
+      merged.content = existing.legacyContent ?? existing.content;
+    } else {
+      merged = syncContentWithTree(merged);
+    }
+
     merged.isDraft = computeDraft(merged);
 
     // Never persist derived fields
-    const { ...persistable } = merged;
+    const persistable: Record<string, unknown> = { ...merged };
+    if (isClearingRootNode) {
+      persistable.rootNode = FieldValue.delete();
+    }
 
     await adminDb.collection(NOTES_COLLECTION).doc(id).set(persistable, { merge: true });
     return merged;
