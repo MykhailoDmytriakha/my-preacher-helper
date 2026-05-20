@@ -809,10 +809,13 @@ function getStyleInstructions(style: PlanStyle): string {
 - Target: about 4-7 cue lines or bullets for a normal outline point, unless the source has an explicit internal list.`;
     case 'exegetical':
       return `PLAN LENGTH: DETAILED
-- Produce a fuller preacher cue sheet.
-- Include main anchors, important support details, transitions, and compact Bible references.
-- Keep it scannable; do not turn it into a mini-sermon or full manuscript.
-- Target: about 7-12 cue lines or nested bullets for a normal outline point when the source supports that much detail.`;
+- Produce a fuller preacher cue sheet that is meaningfully richer than SHORT.
+- Expand the source-supported structure: include main anchors, support details, transitions, concrete examples, and compact Bible references.
+- Preserve more explicit Bible references from the THOUGHTS. Group related references when useful, but do not drop references that carry the argument.
+- Include short exact verse/text fragments only when the THOUGHT itself provided those words.
+- Show the preaching logic between details with compact transitions such as "therefore", "contrast", "danger", "application", or equivalent words in the sermon language.
+- Keep it scannable; do not turn it into a full manuscript or add theology that is not in the source.
+- Target: about 10-18 cue lines or nested bullets for a normal outline point when the source supports that much detail.`;
     case 'memory':
     default:
       return `PLAN LENGTH: SHORT (Default)
@@ -1013,7 +1016,7 @@ export async function generatePlanPointContent(
     };
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "plan_point_content",
-      promptVersion: "v7",
+      promptVersion: "v8",
       expectedLanguage: languageInfo.telemetryLanguage,
       systemPrompt,
       userMessage,

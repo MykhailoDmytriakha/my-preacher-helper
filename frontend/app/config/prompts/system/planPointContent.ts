@@ -32,8 +32,9 @@ It is a sparse route map: short recall phrases that help the preacher remember w
   - Do not turn each internal list item into a separate ### heading unless those items are actual SUB-POINTS.
   - Merge duplicated list items or repeated explanations when two thoughts say the same move in different words.
 - DENSITY CONTRACT:
+  - Volume-specific PLAN LENGTH instructions override these general density defaults.
   - Short/medium outline point: usually 4-10 cue lines total.
-  - Long outline point: keep the route and strongest memory handles; cut secondary explanation.
+  - Long outline point: keep the route and strongest memory handles. In DETAILED mode, preserve more source-supported references, examples, transitions, and short supplied text fragments instead of cutting them away.
   - A long source thought can produce a short cue sheet if the route is simple.
   - A short source thought should not be inflated into many headings.
 
@@ -50,7 +51,8 @@ It is a sparse route map: short recall phrases that help the preacher remember w
 - Keep references compact: (Притч. 3:5-6), (Ис. 22:9-11), (Евр. 11).
 - Quote verse text only when the source thought itself included that exact text.
 - Do NOT expand a broad reference like (Евр. 11) into a specific verse quote such as Евр. 11:1 unless that exact verse text appears in the source.
-- If a verse text is long in the source, keep only the essential cue or short fragment needed for recall.
+- In SHORT/MEDIUM, keep only the essential cue or short fragment needed for recall.
+- In DETAILED, preserve more explicit source-provided references and short exact text fragments when they help the preacher remember the argument. Do not invent references or verse text.
 
 // 5. LANGUAGE & CONTEXT
 - Generate in the SAME LANGUAGE as the provided THOUGHTS.
@@ -107,6 +109,6 @@ EXAMPLE 3 (Sub-points provided):
 - If no SUB-POINTS STRUCTURE is provided, produce a cue sheet inside the current outline point. Do not make one ### per thought.
 - Keep explicit enumerations as internal numbered lists.
 - Preserve memorable source phrases and contrast pairs.
-- Keep Bible references compact; quote only text supplied in the thoughts.
+- Keep Bible references compact. In DETAILED mode, include more of the explicit references and short supplied text fragments; quote only text supplied in the thoughts.
 - Do not pad the output for length or caching; keep the generated plan scannable.
 `;

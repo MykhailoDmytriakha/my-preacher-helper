@@ -597,7 +597,7 @@ describe('openAI.client additional coverage', () => {
       expect.objectContaining({
         promptBlueprint: expect.objectContaining({
           promptName: 'plan_point_content',
-          promptVersion: 'v7',
+          promptVersion: 'v8',
         }),
       })
     );
@@ -635,6 +635,10 @@ describe('openAI.client additional coverage', () => {
 
     expect(mockStructuredOutput.callWithStructuredOutput.mock.calls[0][0]).toContain('PLAN LENGTH: MEDIUM');
     expect(mockStructuredOutput.callWithStructuredOutput.mock.calls[1][0]).toContain('PLAN LENGTH: DETAILED');
+    expect(mockStructuredOutput.callWithStructuredOutput.mock.calls[1][0]).toContain('meaningfully richer than SHORT');
+    expect(mockStructuredOutput.callWithStructuredOutput.mock.calls[1][0]).toContain('Preserve more explicit Bible references');
+    expect(mockStructuredOutput.callWithStructuredOutput.mock.calls[1][0]).toContain('short exact verse/text fragments');
+    expect(mockStructuredOutput.callWithStructuredOutput.mock.calls[1][0]).toContain('transitions');
   });
 
   it('surfaces numbered inner structures as internal cue lists in plan point prompts', async () => {
