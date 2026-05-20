@@ -1968,7 +1968,9 @@
       "insertLink": "Ссылка",
       "deleteNode": "Удалить ноду",
       "confirmDeleteNode": "Удалить ноду?",
-      "confirmDeleteNodeWithChildren": "Удалить и все её под-ноды?"
+      "confirmDeleteNodeWithChildren": "Удалить и все её под-ноды?",
+      "headerPlaceholder": "Заголовок (опционально)",
+      "textPlaceholder": "Текст ноды (markdown поддерживается: # заголовок, **жирный**, - список)"
     },
     "convertModal": {
       "title": "Преобразовать в ноды",

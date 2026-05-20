@@ -1964,7 +1964,9 @@
       "insertLink": "Link",
       "deleteNode": "Delete node",
       "confirmDeleteNode": "Delete node?",
-      "confirmDeleteNodeWithChildren": "Delete this node and all of its sub-nodes?"
+      "confirmDeleteNodeWithChildren": "Delete this node and all of its sub-nodes?",
+      "headerPlaceholder": "Heading (optional)",
+      "textPlaceholder": "Node text (markdown supported: # heading, **bold**, - list)"
     },
     "convertModal": {
       "title": "Convert to nodes",

@@ -548,46 +548,57 @@ export function NodeView({
       </div>
 
       <div className="min-w-0 flex-1 space-y-2">
-        {isEditing && hasHeader ? (
-          <textarea
-            ref={headerRef}
-            aria-label="Заголовок ноды"
-            className="w-full resize-y rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-emerald-800 dark:bg-gray-900 dark:text-gray-100"
-            value={draftHeader}
-            onChange={(event) => setDraftHeader(event.target.value)}
-            onBlur={() => onHeaderChange(draftHeader)}
-            onClick={stopRowClick}
-            rows={1}
-          />
-        ) : hasHeader ? (
-          <div onClick={handleEditableRegionClick} onDoubleClick={onStartEdit}>
-            <HeadingTag
-              className={[
-                HEADING_CLASSES[headingLevel - 1],
-                'font-bold leading-tight text-gray-900 dark:text-gray-50',
-              ].join(' ')}
-            >
-              {node.header}
-            </HeadingTag>
-          </div>
-        ) : null}
-
-        {isEditing && (hasText || !hasHeader) ? (
-          <textarea
-            ref={textRef}
-            aria-label="Текст ноды"
-            placeholder="Текст ноды (markdown поддерживается: # заголовок, **жирный**, - список)"
-            className="min-h-24 w-full resize-y rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-            value={draftText}
-            onChange={handleTextAreaChange}
-            onBlur={handleTextBlur}
-            onClick={stopRowClick}
-          />
-        ) : hasText ? (
-          <div onClick={handleEditableRegionClick} onDoubleClick={onStartEdit}>
-            <MarkdownDisplay content={node.text ?? ''} compact enableWikiLinks />
-          </div>
-        ) : null}
+        {isEditing ? (
+          // Edit mode: always show BOTH textareas with placeholders, regardless
+          // of whether the node currently has a header or text. Without this,
+          // a node that only has text has no way to gain a header, and vice
+          // versa — a node that only has a header has no text field, and the
+          // user wonders "where do I type?" (same root cause as the
+          // empty-node case, just spread across all asymmetric content shapes).
+          <>
+            <textarea
+              ref={headerRef}
+              aria-label="Заголовок ноды"
+              placeholder={t('studiesWorkspace.nodeTree.headerPlaceholder') || 'Заголовок (опционально)'}
+              className="w-full resize-y rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-emerald-800 dark:bg-gray-900 dark:text-gray-100"
+              value={draftHeader}
+              onChange={(event) => setDraftHeader(event.target.value)}
+              onBlur={() => onHeaderChange(draftHeader)}
+              onClick={stopRowClick}
+              rows={1}
+            />
+            <textarea
+              ref={textRef}
+              aria-label="Текст ноды"
+              placeholder={t('studiesWorkspace.nodeTree.textPlaceholder') || 'Текст ноды (markdown поддерживается: # заголовок, **жирный**, - список)'}
+              className="min-h-24 w-full resize-y rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+              value={draftText}
+              onChange={handleTextAreaChange}
+              onBlur={handleTextBlur}
+              onClick={stopRowClick}
+            />
+          </>
+        ) : (
+          <>
+            {hasHeader && (
+              <div onClick={handleEditableRegionClick} onDoubleClick={onStartEdit}>
+                <HeadingTag
+                  className={[
+                    HEADING_CLASSES[headingLevel - 1],
+                    'font-bold leading-tight text-gray-900 dark:text-gray-50',
+                  ].join(' ')}
+                >
+                  {node.header}
+                </HeadingTag>
+              </div>
+            )}
+            {hasText && (
+              <div onClick={handleEditableRegionClick} onDoubleClick={onStartEdit}>
+                <MarkdownDisplay content={node.text ?? ''} compact enableWikiLinks />
+              </div>
+            )}
+          </>
+        )}
 
         {shouldShowActions && (
           <div className="flex flex-wrap items-center gap-2 text-xs" onClick={stopRowClick}>
