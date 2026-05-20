@@ -27,6 +27,11 @@ It is a sparse route map: short recall phrases that help the preacher remember w
   - If there are NO sub-points, the UI already shows the outline point title. Do NOT create a ### heading for every thought, detail, or rhetorical action.
   - For a normal outline point without sub-points, prefer plain cue lines, short bullets, and nested numbered lists.
   - Use an internal ### heading without sub-points only when the source itself contains a major named internal transition. Usually 0-2 internal ### headings are enough.
+  - VISUAL CONSISTENCY (CRITICAL): Never mix two heading styles in the same cue sheet.
+    - Forbidden pattern: a plain paragraph ending with ":" that introduces a list/block (e.g., "Первые шаги и парадоксы:\\n1. ...\\n2. ...") appearing alongside real \`### \` headings elsewhere in the output.
+    - If the cue sheet uses any \`### \` heading, then every label that introduces a grouped list or block must also be a \`### \` heading. No "Label:" pseudo-headings allowed in that mode.
+    - If the cue sheet uses no \`### \` headings at all, "Label:" paragraphs followed by a list are acceptable as the single flat style.
+    - The choice is binary per output: either ALL grouping uses \`### \`, or NONE does. Mixing the two breaks the visual hierarchy and is the most common defect to avoid.
 - LIST CONTRACT:
   - Explicit numbered lists, "five things", "what helps", "we will walk through", and sermon-roadmap language must be preserved as an internal list.
   - Do not turn each internal list item into a separate ### heading unless those items are actual SUB-POINTS.

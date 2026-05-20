@@ -12,6 +12,36 @@ import { runScenarios } from '@test-utils/scenarioRunner';
 // Enable fetch mocking
 fetchMock.enableMocks();
 
+// Skip i18n bootstrap side-effects — translations are mocked below.
+jest.mock('@locales/i18n', () => ({}));
+
+// Replace framer-motion animations with plain DOM nodes to keep render fast in jsdom.
+jest.mock('framer-motion', () => {
+  const stripMotionProps = (props: Record<string, unknown>) => {
+    const {
+      initial, animate, exit, transition, variants, layout, layoutId,
+      whileHover, whileTap, whileFocus, whileDrag, whileInView,
+      drag, dragConstraints, dragElastic, dragMomentum,
+      onAnimationStart, onAnimationComplete, onUpdate,
+      ...rest
+    } = props;
+    void initial; void animate; void exit; void transition; void variants;
+    void layout; void layoutId; void whileHover; void whileTap; void whileFocus;
+    void whileDrag; void whileInView; void drag; void dragConstraints;
+    void dragElastic; void dragMomentum;
+    void onAnimationStart; void onAnimationComplete; void onUpdate;
+    return rest;
+  };
+  return {
+    motion: {
+      div: ({ children, ...props }: any) => <div {...stripMotionProps(props)}>{children}</div>,
+      button: ({ children, ...props }: any) => <button {...stripMotionProps(props)}>{children}</button>,
+      span: ({ children, ...props }: any) => <span {...stripMotionProps(props)}>{children}</span>,
+    },
+    AnimatePresence: ({ children }: any) => <>{children}</>,
+  };
+});
+
 // Mock dependencies
 jest.mock('sonner', () => ({
   toast: {

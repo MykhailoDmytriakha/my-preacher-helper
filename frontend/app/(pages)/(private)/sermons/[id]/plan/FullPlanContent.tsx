@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { TimerPhase } from "@/types/TimerState";
-import { sanitizeMarkdown } from "@/utils/markdownUtils";
+import { normalizePlanPointHeadings, sanitizeMarkdown } from "@/utils/markdownUtils";
 
 import {
   MARKDOWN_SECTION_VARIANT_CLASSES,
@@ -24,7 +24,7 @@ const MarkdownRenderer = ({
   section?: SermonSectionKey;
 }) => {
   const sectionVariantClass = section ? MARKDOWN_SECTION_VARIANT_CLASSES[section] : "";
-  const sanitizedMarkdown = sanitizeMarkdown(markdown);
+  const sanitizedMarkdown = normalizePlanPointHeadings(sanitizeMarkdown(markdown));
 
   return (
     <div className={`prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content prose-scaled ${sectionVariantClass}`}>
