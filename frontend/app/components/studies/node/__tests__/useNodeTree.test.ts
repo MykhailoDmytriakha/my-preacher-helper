@@ -391,6 +391,39 @@ describe('useNodeTree', () => {
     expect(selectTree(state)).toEqual(makeTree());
   });
 
+  it('liftRootContent prepends the lifted preamble before existing root children', () => {
+    // markdownToNodeTree emits "preamble paragraph + heading children" when
+    // a doc starts with text before its first heading. liftRootContent has
+    // to insert the lifted child BEFORE the existing children so the
+    // preamble keeps its reading order.
+    const { result } = renderNodeTree({
+      id: 'root',
+      header: 'Preamble',
+      children: [{ id: 'existing-child', header: 'Existing' }],
+    });
+
+    act(() => {
+      result.current.dispatch({ type: 'liftRootContent', childId: 'lifted' });
+    });
+
+    const tree = result.current.selectors.selectTree();
+    expect(childIds(tree)).toEqual(['lifted', 'existing-child']);
+    // Root becomes a pure structural wrapper — header is gone.
+    expect(tree.header).toBeUndefined();
+    expect(tree.text).toBeUndefined();
+    // New child carries the lifted header.
+    expect(result.current.state.nodes.lifted).toMatchObject({
+      id: 'lifted',
+      header: 'Preamble',
+    });
+    // Existing child is untouched.
+    expect(result.current.state.nodes['existing-child']).toMatchObject({
+      id: 'existing-child',
+      header: 'Existing',
+    });
+    expect(result.current.state.focusedNodeId).toBe('lifted');
+  });
+
   it('rejects updates that exceed the hard serialized size budget', () => {
     global.__CONSOLE_OVERRIDDEN_BY_TEST__ = true;
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});

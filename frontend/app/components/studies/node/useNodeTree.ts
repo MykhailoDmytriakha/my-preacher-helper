@@ -56,7 +56,15 @@ export type NodeTreeAction =
    * raw markdown — which would cause the next split to adopt duplicate
    * children.
    */
-  | { type: 'splitFromMarkdown'; id: string; text: string };
+  | { type: 'splitFromMarkdown'; id: string; text: string }
+  /**
+   * Lift any header/text/media that lives directly on the root node into a
+   * brand-new first child (id = `childId`). The root itself becomes a pure
+   * structural wrapper — it stores only children. Used at editor mount when
+   * legacy data has content sitting on root; afterwards the editor renders
+   * children only and the user never sees the root row.
+   */
+  | { type: 'liftRootContent'; childId: string };
 
 let idCounter = 0;
 function makeFreshId(): string {
@@ -313,6 +321,44 @@ function insertSibling(state: NodeTreeState, id: string, newId: string): NodeTre
   };
 }
 
+function liftRootContent(state: NodeTreeState, childId: string): NodeTreeState {
+  const root = state.nodes[state.rootId];
+  if (!root) return state;
+  if (state.nodes[childId]) return state;
+
+  const hasContent = Boolean(root.header || root.text || (root.media?.length ?? 0) > 0);
+  if (!hasContent) return state;
+
+  const liftedChild: ContentNode = {
+    id: childId,
+    ...(root.header !== undefined ? { header: root.header } : {}),
+    ...(root.text !== undefined ? { text: root.text } : {}),
+    ...(root.media !== undefined ? { media: root.media } : {}),
+  };
+
+  // Strip header/text/media from root — it's now a pure structural wrapper.
+  // Prepend the lifted child before any existing children so converters that
+  // emit "preamble text + heading children" (e.g. markdownToNodeTree) don't
+  // lose the preamble: it becomes the first sibling.
+  const { header: _h, text: _t, media: _m, ...rootRest } = root;
+  const existingChildRefs = root.children ?? [];
+  const nextRoot: ContentNode = {
+    ...rootRest,
+    id: state.rootId,
+    children: [childRef(childId), ...existingChildRefs],
+  };
+
+  return {
+    ...state,
+    nodes: {
+      ...state.nodes,
+      [childId]: liftedChild,
+      [state.rootId]: nextRoot,
+    },
+    focusedNodeId: childId,
+  };
+}
+
 function insertChild(state: NodeTreeState, id: string, newId: string): NodeTreeState {
   if (!state.nodes[id] || state.nodes[newId]) return state;
 
@@ -540,6 +586,8 @@ function reduceNodeTree(state: NodeTreeState, action: NodeTreeAction): NodeTreeS
       return insertSibling(state, action.id, action.newId);
     case 'insertChild':
       return insertChild(state, action.id, action.newId);
+    case 'liftRootContent':
+      return liftRootContent(state, action.childId);
     case 'deleteNode':
       return deleteNode(state, action.id);
     case 'promote':

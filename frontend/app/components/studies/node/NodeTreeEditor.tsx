@@ -26,6 +26,9 @@ import {
 } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useClickOutside } from '@/hooks/useClickOutside';
+import { useWikilinkResolver } from '@/hooks/useWikilinkResolver';
+
 import NodeView from './NodeView';
 import { selectAncestorIds, selectFlat, selectTree, useNodeTree } from './useNodeTree';
 
@@ -75,8 +78,16 @@ function isEmptyLeaf(state: NodeTreeState, id: string | null): boolean {
     && (node.children?.length ?? 0) === 0;
 }
 
-function isTextAreaActive(): boolean {
-  return document.activeElement instanceof HTMLTextAreaElement;
+function isInteractiveTextEditor(): boolean {
+  const el = document.activeElement;
+  if (!el) return false;
+  if (el instanceof HTMLTextAreaElement) return true;
+  if (el instanceof HTMLInputElement) return true;
+  // Tiptap renders the text body as a contenteditable div, not a textarea —
+  // missing this case lets Enter/Tab inside the rich editor bubble up to
+  // the tree shortcut handler and mutate the node tree.
+  if (el instanceof HTMLElement && el.isContentEditable) return true;
+  return false;
 }
 
 const HORIZONTAL_DEPTH_THRESHOLD = 40;
@@ -293,14 +304,34 @@ export function NodeTreeEditor({
   const { t } = useTranslation();
   const { state, dispatch } = useNodeTree(rootNode);
   const containerRef = useRef<HTMLDivElement>(null);
+  const wikilinkResolver = useWikilinkResolver();
   const [dropProjection, setDropProjection] = useState<DropProjection | null>(null);
   const rootNodeSignature = useMemo(() => JSON.stringify(rootNode), [rootNode]);
   const lastKnownTreeSignatureRef = useRef(rootNodeSignature);
   const skippedInitialChangeRef = useRef(false);
   const didAutoFocusRef = useRef(false);
-  const flatNodes = useMemo(() => selectFlat(state), [state]);
+  // Editable view hides the root row — root is a structural wrapper around
+  // the children list, not a node the user types into. Any content that used
+  // to sit on root is migrated into a real first child via `liftRootContent`
+  // below, so legacy data stays editable.
+  const flatNodes = useMemo(() => selectFlat(state, { includeRoot: false }), [state]);
   const flatNodeIds = useMemo(() => flatNodes.map((node) => node.id), [flatNodes]);
   const rootStateNode = state.nodes[state.rootId];
+
+  // O(1) parent + sibling-index lookup, built once per state. Replaces the
+  // per-render-per-row `findParentId` (O(N) walk) which used to make
+  // can-move-up/-down computation O(N²) on large trees.
+  const locationByIdMap = useMemo(() => {
+    const map = new Map<string, { parentId: string; index: number; siblingCount: number }>();
+    for (const node of Object.values(state.nodes)) {
+      const children = node.children;
+      if (!children?.length) continue;
+      children.forEach((child, index) => {
+        map.set(child.id, { parentId: node.id, index, siblingCount: children.length });
+      });
+    }
+    return map;
+  }, [state]);
   // Read mode hides only the implicit empty root row; root text from legacy conversion stays visible.
   const readOnlyFlatNodes = useMemo(
     () => selectFlat(state, { includeRoot: hasVisibleNodeContent(rootStateNode) }),
@@ -321,6 +352,33 @@ export function NodeTreeEditor({
     dispatch({ type: 'setRoot', root: rootNode });
   }, [dispatch, rootNode, rootNodeSignature]);
 
+  // Migrate any legacy content that landed on the root node (header/text/media)
+  // into a real first child. After this runs, root is always a pure wrapper —
+  // matches the mental model "study title is the root, every note inside is
+  // a sibling list of children". One-shot per loaded tree: a `didLift` ref
+  // gates the dispatch so it doesn't re-fire if, later in the session, the
+  // user deletes the last child (root would temporarily have content + no
+  // children again, but the user did NOT mean to re-introduce a phantom row).
+  const rootHasContent = Boolean(rootStateNode?.header || rootStateNode?.text || (rootStateNode?.media?.length ?? 0) > 0);
+  // Gate: lift is checked exactly once per loaded tree. If the initial state
+  // has content sitting on root (with or without existing children), lift it
+  // into a new first child. After that, root staying empty (e.g. user deleted
+  // the last visible child) is a legitimate state — never re-lift.
+  const liftCheckedRef = useRef(false);
+  useEffect(() => {
+    liftCheckedRef.current = false;
+  }, [rootNodeSignature]);
+  useEffect(() => {
+    if (readOnly) return;
+    if (liftCheckedRef.current) return;
+    if (!rootStateNode) return;
+
+    liftCheckedRef.current = true;
+    if (rootHasContent) {
+      dispatch({ type: 'liftRootContent', childId: createNodeId() });
+    }
+  }, [dispatch, readOnly, rootHasContent, rootStateNode]);
+
   useEffect(() => {
     if (!skippedInitialChangeRef.current) {
       skippedInitialChangeRef.current = true;
@@ -340,6 +398,11 @@ export function NodeTreeEditor({
     dispatch({ type: 'setFocus', nodeId: state.rootId });
     containerRef.current?.focus();
   }, [autoFocusFirst, dispatch, state.rootId]);
+
+  useClickOutside([containerRef], () => {
+    dispatch({ type: 'stopEdit' });
+    dispatch({ type: 'setFocus', nodeId: null });
+  }, { enabled: state.isEditingText });
 
   const focusContainer = useCallback((): void => {
     containerRef.current?.focus();
@@ -387,11 +450,15 @@ export function NodeTreeEditor({
     event: KeyboardEvent<HTMLDivElement>,
     isCommandKey: boolean
   ): boolean => {
-    if (!state.isEditingText || !isTextAreaActive()) return false;
+    if (!state.isEditingText || !isInteractiveTextEditor()) return false;
 
     if (event.key === 'Escape') {
       event.preventDefault();
       dispatch({ type: 'stopEdit' });
+      // Also drop focus — otherwise an empty focused node would auto-restart
+      // edit via the NodeView "empty focused → startEdit" effect, looping
+      // Escape into a no-op for the user.
+      dispatch({ type: 'setFocus', nodeId: null });
       focusContainer();
       return true;
     }
@@ -470,7 +537,10 @@ export function NodeTreeEditor({
   ]);
 
   const handleStartEmptyTree = (): void => {
-    dispatch({ type: 'setFocus', nodeId: state.rootId });
+    // Root is structural — the first user-visible node is its first child.
+    // Create that child and start editing IT, so the user's first keystrokes
+    // land in a real node (not in the invisible wrapper).
+    dispatch({ type: 'insertChild', id: state.rootId, newId: createNodeId() });
     dispatch({ type: 'startEdit' });
     focusContainer();
   };
@@ -520,29 +590,33 @@ export function NodeTreeEditor({
               key={item.id}
               node={node}
               depth={item.depth}
-              isFocused={false}
-              isEditing={false}
-              showActions={false}
-              isRoot={item.id === state.rootId}
-              hasChildren={item.hasChildren}
-              isCollapsed={item.isCollapsed}
               readOnly
-              onFocus={() => undefined}
-              onStartEdit={() => undefined}
-              onStopEdit={() => undefined}
-              onHeaderChange={() => undefined}
-              onTextChange={() => undefined}
-              onToggleCollapse={() => dispatch({ type: 'toggleCollapse', id: item.id })}
-              onMediaRemove={() => undefined}
-              onMediaAdd={() => undefined}
-              onAddChild={() => undefined}
-              onAddSibling={() => undefined}
-              onMoveUp={() => undefined}
-              onMoveDown={() => undefined}
-              onDemote={() => undefined}
-              onPromote={() => undefined}
-              onDeleteNode={() => undefined}
-              onSplitFromMarkdown={() => undefined}
+              wikilinkResolver={wikilinkResolver}
+              state={{
+                isFocused: false,
+                isEditing: false,
+                showActions: false,
+                isRoot: item.id === state.rootId,
+                hasChildren: item.hasChildren,
+                isCollapsed: item.isCollapsed,
+              }}
+              treeActions={{
+                onFocus: () => undefined,
+                onStartEdit: () => undefined,
+                onHeaderChange: () => undefined,
+                onTextChange: () => undefined,
+                onToggleCollapse: () => dispatch({ type: 'toggleCollapse', id: item.id }),
+                onMediaRemove: () => undefined,
+                onMediaAdd: () => undefined,
+                onAddChild: () => undefined,
+                onAddSibling: () => undefined,
+                onMoveUp: () => undefined,
+                onMoveDown: () => undefined,
+                onDemote: () => undefined,
+                onPromote: () => undefined,
+                onDeleteNode: () => undefined,
+                onSplitFromMarkdown: () => undefined,
+              }}
             />
           );
         })}
@@ -580,6 +654,16 @@ export function NodeTreeEditor({
                 const node = state.nodes[item.id];
                 if (!node) return null;
 
+                const isRootItem = item.id === state.rootId;
+                const location = locationByIdMap.get(item.id);
+                const indexAmongSiblings = location?.index ?? -1;
+                const siblingCount = location?.siblingCount ?? 0;
+                const parentIsRoot = location?.parentId === state.rootId;
+                const canMoveUp = !isRootItem && indexAmongSiblings > 0;
+                const canMoveDown = !isRootItem && indexAmongSiblings >= 0 && indexAmongSiblings < siblingCount - 1;
+                const canDemote = !isRootItem && indexAmongSiblings > 0;
+                const canPromote = !isRootItem && !parentIsRoot;
+
                 return (
                   <SortableNodeRow
                     key={item.id}
@@ -590,34 +674,40 @@ export function NodeTreeEditor({
                       <NodeView
                         node={node}
                         depth={item.depth}
-                        isFocused={state.focusedNodeId === item.id}
-                        isEditing={state.isEditingText && state.focusedNodeId === item.id}
-                        showActions={state.focusedNodeId === item.id}
-                        isRoot={item.id === state.rootId}
-                        hasChildren={item.hasChildren}
-                        isCollapsed={item.isCollapsed}
                         currentNoteId={currentNoteId}
                         dragHandleProps={dragHandleProps}
-                        onFocus={() => focusNode(item.id)}
-                        onStartEdit={() => startEditingNode(item.id)}
-                        onStopEdit={() => {
-                          dispatch({ type: 'stopEdit' });
-                          dispatch({ type: 'setFocus', nodeId: null });
-                          focusContainer();
+                        wikilinkResolver={wikilinkResolver}
+                        state={{
+                          isFocused: state.focusedNodeId === item.id,
+                          isEditing: state.isEditingText && state.focusedNodeId === item.id,
+                          showActions: state.focusedNodeId === item.id,
+                          isRoot: isRootItem,
+                          hasChildren: item.hasChildren,
+                          isCollapsed: item.isCollapsed,
                         }}
-                        onHeaderChange={(header) => dispatch({ type: 'updateHeader', id: item.id, header })}
-                        onTextChange={(text) => dispatch({ type: 'updateText', id: item.id, text })}
-                        onToggleCollapse={() => dispatch({ type: 'toggleCollapse', id: item.id })}
-                        onMediaRemove={(mediaId) => dispatch({ type: 'removeMedia', id: item.id, mediaId })}
-                        onMediaAdd={(media) => dispatch({ type: 'addMedia', id: item.id, media })}
-                        onAddChild={() => dispatch({ type: 'insertChild', id: item.id, newId: createNodeId() })}
-                        onAddSibling={() => dispatch({ type: 'insertSibling', id: item.id, newId: createNodeId() })}
-                        onMoveUp={() => dispatch({ type: 'moveUp', id: item.id })}
-                        onMoveDown={() => dispatch({ type: 'moveDown', id: item.id })}
-                        onDemote={() => dispatch({ type: 'demote', id: item.id })}
-                        onPromote={() => dispatch({ type: 'promote', id: item.id })}
-                        onDeleteNode={() => dispatch({ type: 'deleteNode', id: item.id })}
-                        onSplitFromMarkdown={(text) => dispatch({ type: 'splitFromMarkdown', id: item.id, text })}
+                        capabilities={{
+                          canMoveUp,
+                          canMoveDown,
+                          canDemote,
+                          canPromote,
+                        }}
+                        treeActions={{
+                          onFocus: () => focusNode(item.id),
+                          onStartEdit: () => startEditingNode(item.id),
+                          onHeaderChange: (header) => dispatch({ type: 'updateHeader', id: item.id, header }),
+                          onTextChange: (text) => dispatch({ type: 'updateText', id: item.id, text }),
+                          onToggleCollapse: () => dispatch({ type: 'toggleCollapse', id: item.id }),
+                          onMediaRemove: (mediaId) => dispatch({ type: 'removeMedia', id: item.id, mediaId }),
+                          onMediaAdd: (media) => dispatch({ type: 'addMedia', id: item.id, media }),
+                          onAddChild: () => dispatch({ type: 'insertChild', id: item.id, newId: createNodeId() }),
+                          onAddSibling: () => dispatch({ type: 'insertSibling', id: item.id, newId: createNodeId() }),
+                          onMoveUp: () => dispatch({ type: 'moveUp', id: item.id }),
+                          onMoveDown: () => dispatch({ type: 'moveDown', id: item.id }),
+                          onDemote: () => dispatch({ type: 'demote', id: item.id }),
+                          onPromote: () => dispatch({ type: 'promote', id: item.id }),
+                          onDeleteNode: () => dispatch({ type: 'deleteNode', id: item.id }),
+                          onSplitFromMarkdown: (text) => dispatch({ type: 'splitFromMarkdown', id: item.id, text }),
+                        }}
                       />
                     )}
                   </SortableNodeRow>

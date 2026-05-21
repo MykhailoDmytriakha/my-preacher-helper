@@ -4,8 +4,18 @@ import Link from 'next/link';
 import React, { memo, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import type { Link as MdastLink, Root, Text } from 'mdast';
+import type { Node as UnistNode, Parent as UnistParent } from 'unist';
+import type { PluggableList, Plugin } from 'unified';
 
 import HighlightedText from '@components/HighlightedText';
+import {
+    STUDIES_LINK_PREFIX,
+    WIKILINK_CHIP_CLASS,
+    WIKILINK_CHIP_GLYPH,
+    WIKILINK_DATA_ATTR,
+    WIKILINK_ID_REGEX_SOURCE,
+} from '@components/studies/node/wikilinkConstants';
 
 interface MarkdownDisplayProps {
     content: string;
@@ -19,10 +29,24 @@ interface MarkdownDisplayProps {
      * callers keep their existing behaviour.
      */
     enableWikiLinks?: boolean;
+    /**
+     * Resolve a study note ID to its display title. When provided, wikilink
+     * chips show the resolved title instead of the raw ID. Returning
+     * `undefined`/empty falls back to the ID, so partially-loaded caches
+     * still render something useful instead of breaking.
+     */
+    wikilinkResolver?: (id: string) => string | undefined;
 }
 
-const WIKI_LINK_PATTERN = /\[\[([a-zA-Z0-9_-]{4,})\]\]/g;
-const STUDIES_LINK_PREFIX = '/studies/';
+const WIKI_LINK_PATTERN = new RegExp(`\\[\\[(${WIKILINK_ID_REGEX_SOURCE})\\]\\]`, 'g');
+const SKIP_WIKILINK_CHILDREN = new Set(['code', 'inlineCode', 'link']);
+
+interface RemarkWikilinksOptions {
+    resolver?: (id: string) => string | undefined;
+}
+
+type WikilinkReplacementNode = MdastLink | Text;
+type MutableUnistParent = UnistParent & { children: UnistNode[] };
 
 // Helper to transform [Type: Content] into code blocks for custom rendering
 const formatStructuredBlocks = (text: string) => {
@@ -38,15 +62,107 @@ const formatStructuredBlocks = (text: string) => {
     });
 };
 
-/** `[[noteId]]` → markdown link to /studies/noteId so ReactMarkdown picks it up. */
-const transformWikiLinks = (text: string): string =>
-    text.replace(WIKI_LINK_PATTERN, (_match, id) => `[🔗 ${id}](${STUDIES_LINK_PREFIX}${id})`);
+const createWikilinkNode = (
+    id: string,
+    resolver?: (id: string) => string | undefined
+): MdastLink => {
+    const resolved = resolver?.(id)?.trim();
+    const labelSource = resolved && resolved.length > 0 ? resolved : id;
+    // The `#wiki` hash marker distinguishes a wikilink-generated link
+    // from a hand-authored `[label](/studies/xxx)` markdown link. The
+    // `a:` renderer below treats only the marked variant as a chip;
+    // unmarked study links render as plain links.
+    return {
+        type: 'link',
+        url: `${STUDIES_LINK_PREFIX}${id}#wiki`,
+        children: [{ type: 'text', value: `${WIKILINK_CHIP_GLYPH} ${labelSource}` }],
+    };
+};
 
-const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery = '', enableWikiLinks = false }: MarkdownDisplayProps) => {
+const splitWikilinkText = (
+    value: string,
+    resolver?: (id: string) => string | undefined
+): WikilinkReplacementNode[] | null => {
+    WIKI_LINK_PATTERN.lastIndex = 0;
+
+    const replacement: WikilinkReplacementNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = WIKI_LINK_PATTERN.exec(value)) !== null) {
+        const [rawMatch, id] = match;
+        const matchIndex = match.index;
+
+        if (matchIndex > lastIndex) {
+            replacement.push({ type: 'text', value: value.slice(lastIndex, matchIndex) } satisfies Text);
+        }
+
+        replacement.push(createWikilinkNode(id, resolver));
+        lastIndex = matchIndex + rawMatch.length;
+    }
+
+    WIKI_LINK_PATTERN.lastIndex = 0;
+
+    if (replacement.length === 0) {
+        return null;
+    }
+
+    if (lastIndex < value.length) {
+        replacement.push({ type: 'text', value: value.slice(lastIndex) } satisfies Text);
+    }
+
+    return replacement;
+};
+
+const hasChildren = (node: UnistNode): node is MutableUnistParent =>
+    Array.isArray((node as { children?: unknown }).children);
+
+const transformWikilinkChildren = (
+    node: MutableUnistParent,
+    resolver?: (id: string) => string | undefined
+) => {
+    for (let index = 0; index < node.children.length; index += 1) {
+        const child = node.children[index];
+
+        if (SKIP_WIKILINK_CHILDREN.has(child.type)) {
+            continue;
+        }
+
+        if (child.type === 'text') {
+            const replacement = splitWikilinkText((child as Text).value, resolver);
+
+            if (replacement) {
+                node.children.splice(index, 1, ...replacement);
+                index += replacement.length - 1;
+            }
+
+            continue;
+        }
+
+        if (hasChildren(child)) {
+            transformWikilinkChildren(child, resolver);
+        }
+    }
+};
+
+export const remarkWikilinks: Plugin<[RemarkWikilinksOptions?], Root> = (options = {}) => {
+    return (tree) => {
+        transformWikilinkChildren(tree, options.resolver);
+    };
+};
+
+const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery = '', enableWikiLinks = false, wikilinkResolver }: MarkdownDisplayProps) => {
     const processedContent = useMemo(() => {
-        const blocks = formatStructuredBlocks(content);
-        return enableWikiLinks ? transformWikiLinks(blocks) : blocks;
-    }, [content, enableWikiLinks]);
+        return formatStructuredBlocks(content);
+    }, [content]);
+
+    const remarkPlugins = useMemo<PluggableList>(() => {
+        if (!enableWikiLinks) {
+            return [remarkGfm];
+        }
+
+        return [remarkGfm, [remarkWikilinks, { resolver: wikilinkResolver }]];
+    }, [enableWikiLinks, wikilinkResolver]);
 
     const renderHighlighted = useCallback(
         (node: React.ReactNode) =>
@@ -59,17 +175,29 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
     return (
         <div className={`prose dark:prose-invert max-w-none break-words ${compact ? 'prose-sm' : ''} ${className}`}>
             <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
+                remarkPlugins={remarkPlugins}
                 components={{
                     // Override link behavior — wiki-links to study notes stay in-app,
                     // everything else opens in a new tab.
                     a: ({ href, children, ...props }) => {
-                        const isStudyLink = typeof href === 'string' && href.startsWith(STUDIES_LINK_PREFIX);
-                        if (isStudyLink) {
+                        // Only marked wikilinks (`/studies/<id>#wiki`) get
+                        // chip treatment + click interception. Bare
+                        // `/studies/<id>` links the user typed by hand
+                        // route through the default in-app `<Link>` below.
+                        const isWikilinkChip =
+                            typeof href === 'string'
+                            && href.startsWith(STUDIES_LINK_PREFIX)
+                            && href.endsWith('#wiki');
+                        if (isWikilinkChip) {
+                            const wikilinkId = href.slice(
+                                STUDIES_LINK_PREFIX.length,
+                                href.length - '#wiki'.length
+                            );
                             return (
                                 <Link
-                                    href={href}
-                                    className="inline-flex items-center rounded-md bg-indigo-50 px-1.5 py-0.5 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
+                                    href={`${STUDIES_LINK_PREFIX}${wikilinkId}`}
+                                    {...{ [WIKILINK_DATA_ATTR]: wikilinkId }}
+                                    className={WIKILINK_CHIP_CLASS}
                                 >
                                     {children}
                                 </Link>

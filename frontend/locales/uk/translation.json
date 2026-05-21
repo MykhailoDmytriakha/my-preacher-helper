@@ -1970,7 +1970,7 @@
       "confirmDeleteNode": "Видалити ноду?",
       "confirmDeleteNodeWithChildren": "Видалити і всі її під-ноди?",
       "headerPlaceholder": "Заголовок (необов'язково)",
-      "textPlaceholder": "Текст ноди (markdown підтримується: # заголовок, **жирний**, - список)"
+      "textPlaceholder": "Текст ноди (markdown: **жирний**, *курсив*, - список; # → нова нода)"
     },
     "convertModal": {
       "title": "Перетворити на ноди",
@@ -1985,6 +1985,16 @@
       "placeholder": "Пошук нотаток...",
       "empty": "Нотаток не знайдено",
       "currentNoteHint": "Поточну нотатку приховано зі списку"
+    },
+    "notePreview": {
+      "ariaLabel": "Превʼю нотатки",
+      "eyebrow": "Нотатка · превʼю",
+      "untitled": "Без заголовка",
+      "loading": "Завантаження…",
+      "missingFromCache": "Нотатку ще не завантажено в локальному кеші. Відкрийте її на окремій сторінці, щоб прочитати.",
+      "openFullPage": "Відкрити на окремій сторінці",
+      "close": "Закрити (Esc)",
+      "closeShort": "Закрити"
     },
     "cheatsheet": {
       "buttonLabel": "Гарячі клавіші",

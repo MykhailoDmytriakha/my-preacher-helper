@@ -1,5 +1,6 @@
+import { type Extensions } from '@tiptap/core';
 import Placeholder from '@tiptap/extension-placeholder';
-import { EditorContent, useEditor } from '@tiptap/react';
+import { EditorContent, useEditor, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import React, { useEffect } from 'react';
 import { Markdown } from 'tiptap-markdown';
@@ -12,6 +13,31 @@ interface RichMarkdownEditorProps {
     placeholder?: string;
     minHeight?: string;
     autoFocus?: boolean;
+    /**
+     * Optional plain-text paste handler. Receives the pasted plain text and
+     * returns `true` to consume the paste (skip default insertion), or `false`
+     * to let tiptap insert it normally. Used by callers that want to
+     * intercept structured pastes (e.g. markdown headings → tree split).
+     */
+    onPastePlainText?: (text: string) => boolean;
+    onBlur?: () => void;
+    /** Hide the toolbar (caller is providing its own affordances). */
+    hideToolbar?: boolean;
+    /** Extra className for the outer wrapper. */
+    className?: string;
+    /**
+     * Feature-local extensions layered into the shared editor config.
+     * Keep shared Markdown/StarterKit wiring here while allowing specialized
+     * callers to add narrow schema nodes such as study wikilinks.
+     */
+    extraExtensions?: Extensions;
+    /**
+     * Receives the underlying tiptap `Editor` instance once it's available
+     * (and `null` on unmount). Lets callers wire features that need direct
+     * editor access — e.g. tracking selection for an external picker — while
+     * keeping this component otherwise opaque.
+     */
+    onEditorReady?: (editor: Editor | null) => void;
 }
 
 export function RichMarkdownEditor({
@@ -20,10 +46,17 @@ export function RichMarkdownEditor({
     placeholder = 'Введите текст...',
     minHeight = '150px',
     autoFocus = false,
+    onPastePlainText,
+    onBlur,
+    hideToolbar = false,
+    className = '',
+    extraExtensions = [],
+    onEditorReady,
 }: RichMarkdownEditorProps) {
     const editor = useEditor({
         extensions: [
             StarterKit,
+            ...extraExtensions,
             Markdown,
             Placeholder.configure({
                 placeholder,
@@ -35,14 +68,31 @@ export function RichMarkdownEditor({
         editorProps: {
             attributes: {
                 class:
-                    'prose prose-sm desktop:prose-base dark:prose-invert max-w-none focus:outline-none flex-1 min-h-0 w-full p-3 rounded-b-xl border border-t-0 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500',
+                    `prose prose-sm desktop:prose-base dark:prose-invert max-w-none focus:outline-none flex-1 min-h-0 w-full p-3 ${hideToolbar ? 'rounded-xl border' : 'rounded-b-xl border border-t-0'} border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500`,
             },
+            handlePaste: onPastePlainText
+                ? (_view, event) => {
+                    const text = event.clipboardData?.getData('text/plain') ?? '';
+                    if (!text) return false;
+                    return onPastePlainText(text);
+                }
+                : undefined,
         },
         onUpdate: ({ editor }) => {
             // @ts-expect-error - tiptap-markdown types don't extend core storage types properly
             onChange((editor.storage.markdown).getMarkdown());
         },
+        onBlur: onBlur ? () => onBlur() : undefined,
     });
+
+    // Expose the editor instance to callers that need direct access (e.g. for
+    // a wikilink picker that has to read selection coords and insert tokens
+    // at a specific range). Fires on mount + unmount so callers can clean up.
+    useEffect(() => {
+        if (!onEditorReady) return;
+        onEditorReady(editor);
+        return () => onEditorReady(null);
+    }, [editor, onEditorReady]);
 
     // Effect to sync external prop changes back into the editor (e.g., initial load or cancel changes)
     useEffect(() => {
@@ -64,8 +114,8 @@ export function RichMarkdownEditor({
     }
 
     return (
-        <div className="flex flex-col w-full flex-1 rounded-xl shadow-sm" style={{ minHeight }}>
-            <RichMarkdownToolbar editor={editor} />
+        <div className={`flex flex-col w-full flex-1 rounded-xl shadow-sm ${className}`} style={{ minHeight }}>
+            {!hideToolbar && <RichMarkdownToolbar editor={editor} />}
             <div className="flex-1 cursor-text flex flex-col">
                 <EditorContent
                     editor={editor}

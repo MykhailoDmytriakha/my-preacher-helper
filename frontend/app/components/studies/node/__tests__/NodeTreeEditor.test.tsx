@@ -49,6 +49,10 @@ jest.mock('@dnd-kit/utilities', () => ({
   },
 }));
 
+jest.mock('@/hooks/useWikilinkResolver', () => ({
+  useWikilinkResolver: () => () => undefined,
+}));
+
 jest.mock('@components/MarkdownDisplay', () => ({
   __esModule: true,
   default: ({ content }: { content: string }) => (
@@ -57,9 +61,12 @@ jest.mock('@components/MarkdownDisplay', () => ({
 }));
 
 function makeRoot(children: ContentNode[]): ContentNode {
+  // Root is a pure structural wrapper — no header/text/media. (If a fixture
+  // ever needs a top-level title, put it on a real first child.) Putting
+  // content on root here would trigger `liftRootContent` migration and shift
+  // children right by one, breaking the test expectations that index by `a`.
   return {
     id: 'root',
-    header: 'Root',
     children,
   };
 }
@@ -189,13 +196,18 @@ describe('NodeTreeEditor', () => {
     const { editor } = renderEditor({ id: 'root' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Click here to start' }));
-    expect(screen.getByLabelText('Текст ноды')).toBeInTheDocument();
+    // Edit mode shows the header textarea; the text body is now a tiptap
+    // contenteditable, so we key off the header textarea as the edit-mode
+    // marker instead of the old "Текст ноды" textarea label.
+    expect(screen.getByLabelText('Заголовок ноды')).toBeInTheDocument();
 
-    screen.getByLabelText('Текст ноды').focus();
+    screen.getByLabelText('Заголовок ноды').focus();
     fireEvent.keyDown(editor, { key: 'Escape' });
 
-    expect(screen.queryByLabelText('Текст ноды')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Click here to start' })).toBeInTheDocument();
+    // Editor exits edit mode; the empty child created by "Click here to start"
+    // stays in the tree (now hidden behind a non-focused row), so the empty-
+    // tree placeholder doesn't re-appear.
+    expect(screen.queryByLabelText('Заголовок ноды')).not.toBeInTheDocument();
   });
 
   it('calls onChange with the new tree after a keyboard action', async () => {
@@ -209,6 +221,43 @@ describe('NodeTreeEditor', () => {
       id: 'root',
       children: [{ id: 'a' }, { id: 'generated-1' }],
     });
+  });
+
+  it('does not insert a sibling when Enter fires from a contenteditable activeElement in edit mode', async () => {
+    // Tiptap renders the text body as a contenteditable <div>. Without the
+    // isContentEditable branch in isInteractiveTextEditor, Enter inside the
+    // rich editor would bubble up to the tree shortcut and split the node.
+    const { editor, onChange } = renderEditor(makeRoot([{ id: 'empty-leaf' }]));
+
+    // Click the empty leaf — empty + focused auto-starts edit mode
+    // (NodeView line 264-267), so state.isEditingText becomes true.
+    fireEvent.click(screen.getByTestId('node-view-empty-leaf'));
+
+    // Simulate the synthetic contenteditable host that tiptap mounts.
+    const contentEditableDiv = document.createElement('div');
+    contentEditableDiv.setAttribute('contenteditable', 'true');
+    // jsdom needs an explicit isContentEditable hook because the
+    // contenteditable attribute alone doesn't flip the IDL property there.
+    Object.defineProperty(contentEditableDiv, 'isContentEditable', {
+      configurable: true,
+      get: () => true,
+    });
+    document.body.appendChild(contentEditableDiv);
+    Object.defineProperty(document, 'activeElement', {
+      configurable: true,
+      get: () => contentEditableDiv,
+    });
+
+    try {
+      fireEvent.keyDown(editor, { key: 'Enter' });
+    } finally {
+      // Restore activeElement so subsequent tests aren't affected.
+      delete (document as unknown as { activeElement?: Element }).activeElement;
+      contentEditableDiv.remove();
+    }
+
+    // No tree mutation: insertSibling did NOT dispatch.
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it('moves a node through the dnd-kit drag end wiring', async () => {

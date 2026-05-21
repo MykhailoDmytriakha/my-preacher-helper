@@ -622,6 +622,157 @@ describe('StudyNoteEditorPage Pagination', () => {
             jest.useRealTimers();
         });
 
+        it('flushes a pending auto-save on unmount before the debounce delay fires', () => {
+            jest.useFakeTimers();
+            const mockUpdateNote = jest.fn().mockResolvedValue(true);
+            (useStudyNotes as jest.Mock).mockReturnValue({
+                uid: 'user-1',
+                notes: mockNotes,
+                loading: false,
+                createNote: jest.fn(),
+                updateNote: mockUpdateNote,
+                deleteNote: jest.fn(),
+            });
+
+            try {
+                const { unmount } = render(<StudyNoteEditorPage />);
+                fireEvent.click(screen.getByTitle('common.edit'));
+
+                const contentInput = screen.getByTestId('rich-markdown-editor');
+                fireEvent.change(contentInput, { target: { value: 'Changed then navigated away' } });
+
+                jest.advanceTimersByTime(1000);
+                expect(mockUpdateNote).not.toHaveBeenCalled();
+
+                unmount();
+
+                expect(mockUpdateNote).toHaveBeenCalledWith({
+                    id: 'note-1',
+                    updates: {
+                        title: 'Current Note',
+                        content: 'Changed then navigated away',
+                        tags: ['tag1'],
+                        scriptureRefs: [],
+                        type: 'note',
+                    },
+                });
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
+        it('resets the autosave signature when noteId changes so the new note saves on first edit', async () => {
+            // Two distinct existing notes with different content. If the
+            // autosave signature ref didn't reset when noteId flips from A→B,
+            // the very first edit on B would be skipped as "unchanged" because
+            // the stale ref still encodes A's last-saved state.
+            jest.useFakeTimers();
+            const noteA: StudyNote = {
+                ...createMockNote('note-A', 'Note A'),
+                content: 'Content for A',
+                updatedAt: '2024-01-02T00:00:00.000Z',
+            };
+            const noteB: StudyNote = {
+                ...createMockNote('note-B', 'Note B'),
+                content: 'Content for B',
+                updatedAt: '2024-01-02T00:00:00.000Z',
+            };
+            const mockUpdateNote = jest.fn().mockResolvedValue(true);
+            (useStudyNotes as jest.Mock).mockReturnValue({
+                uid: 'user-1',
+                notes: [noteA, noteB],
+                loading: false,
+                createNote: jest.fn(),
+                updateNote: mockUpdateNote,
+                deleteNote: jest.fn(),
+            });
+            (useParams as jest.Mock).mockReturnValue({ id: 'note-A' });
+            (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
+
+            try {
+                const { rerender } = render(<StudyNoteEditorPage />);
+                fireEvent.click(screen.getByTitle('common.edit'));
+
+                // Edit A → autosave fires for A.
+                const contentInput = screen.getByTestId('rich-markdown-editor');
+                fireEvent.change(contentInput, { target: { value: 'Changed A' } });
+                jest.advanceTimersByTime(2000);
+                await waitFor(() => {
+                    expect(mockUpdateNote).toHaveBeenCalledWith(expect.objectContaining({ id: 'note-A' }));
+                });
+
+                mockUpdateNote.mockClear();
+
+                // Navigate to B by changing the route param and re-render.
+                (useParams as jest.Mock).mockReturnValue({ id: 'note-B' });
+                rerender(<StudyNoteEditorPage />);
+
+                // Let the init effects settle so B's content loads. We may
+                // still be in edit mode from the A-side flow (the page keeps
+                // isEditing across the noteId flip — it only resets
+                // isInitialized), so the editor textarea is already mounted.
+                await waitFor(() => {
+                    expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Content for B');
+                });
+
+                const contentInputB = screen.getByTestId('rich-markdown-editor');
+                fireEvent.change(contentInputB, { target: { value: 'Changed B' } });
+                jest.advanceTimersByTime(2000);
+
+                await waitFor(() => {
+                    expect(mockUpdateNote).toHaveBeenCalledWith(expect.objectContaining({ id: 'note-B' }));
+                });
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
+        it('does not loop autosave attempts after the isUnchanged early-return advances the signature', async () => {
+            // When local state matches server state (e.g. after a server-side
+            // normalization round-trip), the autosave guard returns early but
+            // MUST advance `lastSavedSignatureRef` — otherwise every
+            // subsequent render would re-enter saveChanges with the same
+            // stale signature and the debounce timer would keep re-firing.
+            jest.useFakeTimers();
+            const mockUpdateNote = jest.fn().mockResolvedValue(true);
+            (useStudyNotes as jest.Mock).mockReturnValue({
+                uid: 'user-1',
+                notes: mockNotes,
+                loading: false,
+                createNote: jest.fn(),
+                updateNote: mockUpdateNote,
+                deleteNote: jest.fn(),
+            });
+            (useParams as jest.Mock).mockReturnValue({ id: 'note-1' });
+            (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('tag=tag1'));
+
+            try {
+                const { rerender } = render(<StudyNoteEditorPage />);
+
+                // Enter then exit edit mode without changing content. Local
+                // signature reflects the un-edited form; comparing against
+                // existingNote returns isUnchanged === true.
+                fireEvent.click(screen.getByTitle('common.edit'));
+                fireEvent.click(screen.getByTitle('common.done'));
+
+                jest.advanceTimersByTime(2000);
+
+                // No update should fire — local matches server.
+                expect(mockUpdateNote).not.toHaveBeenCalled();
+
+                // Force a couple of extra renders + ticks. If the signature
+                // ref hadn't advanced, debouncedSave would re-fire here.
+                rerender(<StudyNoteEditorPage />);
+                jest.advanceTimersByTime(2000);
+                rerender(<StudyNoteEditorPage />);
+                jest.advanceTimersByTime(2000);
+
+                expect(mockUpdateNote).not.toHaveBeenCalled();
+            } finally {
+                jest.useRealTimers();
+            }
+        });
+
         it('handles auto-save error', async () => {
             jest.useFakeTimers();
             const mockUpdateNote = jest.fn().mockRejectedValue(new Error('save failed'));

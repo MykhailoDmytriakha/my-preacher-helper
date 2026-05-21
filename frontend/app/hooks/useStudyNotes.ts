@@ -12,6 +12,12 @@ import {
 
 const notesKey = (uid: string | undefined) => ['study-notes', uid];
 
+// Module-level constant so consumers that derive memos from `notes` get a
+// stable reference when the query is still loading — otherwise `?? []`
+// would allocate a fresh array each render and invalidate every downstream
+// useMemo dep (e.g. wikilink resolver Map, autosave signature).
+const EMPTY_NOTES: readonly StudyNote[] = Object.freeze([]) as readonly StudyNote[];
+
 export function useStudyNotes() {
   const { uid, isAuthLoading } = useResolvedUid();
   const queryClient = useQueryClient();
@@ -54,7 +60,7 @@ export function useStudyNotes() {
 
   return {
     uid,
-    notes: notesQuery.data ?? [],
+    notes: (notesQuery.data ?? EMPTY_NOTES) as StudyNote[],
     // Show loading when auth is loading OR query is loading
     loading: isAuthLoading || notesQuery.isLoading,
     error: notesQuery.error as Error | null,

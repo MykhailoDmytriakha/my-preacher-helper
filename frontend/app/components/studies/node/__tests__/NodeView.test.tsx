@@ -11,10 +11,15 @@ jest.mock('@components/MarkdownDisplay', () => ({
   ),
 }));
 
-const defaultHandlers = {
+jest.mock('@/hooks/useWikilinkResolver', () => ({
+  useWikilinkResolver: () => () => undefined,
+}));
+
+type NodeViewComponentProps = React.ComponentProps<typeof NodeView>;
+
+const defaultTreeActions: NodeViewComponentProps['treeActions'] = {
   onFocus: jest.fn(),
   onStartEdit: jest.fn(),
-  onStopEdit: jest.fn(),
   onHeaderChange: jest.fn(),
   onTextChange: jest.fn(),
   onToggleCollapse: jest.fn(),
@@ -30,21 +35,39 @@ const defaultHandlers = {
   onSplitFromMarkdown: jest.fn(),
 };
 
+const defaultState: NodeViewComponentProps['state'] = {
+  isFocused: false,
+  isEditing: false,
+  showActions: false,
+  isRoot: false,
+  hasChildren: false,
+  isCollapsed: false,
+};
+
+type RenderNodeViewOverrides = Partial<Omit<NodeViewComponentProps, 'node' | 'state' | 'treeActions' | 'capabilities'>> & {
+  state?: Partial<NodeViewComponentProps['state']>;
+  treeActions?: Partial<NodeViewComponentProps['treeActions']>;
+  capabilities?: NodeViewComponentProps['capabilities'];
+};
+
 function renderNodeView(
   node: ContentNode,
-  overrides: Partial<React.ComponentProps<typeof NodeView>> = {}
+  overrides: RenderNodeViewOverrides = {}
 ) {
-  const props: React.ComponentProps<typeof NodeView> = {
+  const { state, treeActions, capabilities, ...restOverrides } = overrides;
+  const props: NodeViewComponentProps = {
     node,
     depth: 0,
-    isFocused: false,
-    isEditing: false,
-    showActions: false,
-    isRoot: false,
-    hasChildren: false,
-    isCollapsed: false,
-    ...defaultHandlers,
-    ...overrides,
+    state: {
+      ...defaultState,
+      ...state,
+    },
+    treeActions: {
+      ...defaultTreeActions,
+      ...treeActions,
+    },
+    ...restOverrides,
+    ...(capabilities ? { capabilities } : {}),
   };
 
   return render(<NodeView {...props} />);
@@ -58,23 +81,19 @@ describe('NodeView', () => {
   it('renders header at the correct depth', () => {
     const { rerender } = renderNodeView({ id: 'root', header: 'Root title' });
 
-    expect(screen.getByRole('heading', { level: 1, name: 'Root title' })).toBeInTheDocument();
+    // Study title is the page-level H1; node headers therefore start at H2.
+    expect(screen.getByRole('heading', { level: 2, name: 'Root title' })).toBeInTheDocument();
 
     rerender(
       <NodeView
         node={{ id: 'child', header: 'Child title' }}
         depth={1}
-        isFocused={false}
-        isEditing={false}
-        showActions={false}
-        isRoot={false}
-        hasChildren={false}
-        isCollapsed={false}
-        {...defaultHandlers}
+        state={defaultState}
+        treeActions={defaultTreeActions}
       />
     );
 
-    expect(screen.getByRole('heading', { level: 2, name: 'Child title' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { level: 3, name: 'Child title' })).toBeInTheDocument();
   });
 
   it('renders text through MarkdownDisplay', () => {
@@ -106,7 +125,7 @@ describe('NodeView', () => {
   });
 
   it('applies the focus ring when focused', () => {
-    renderNodeView({ id: 'focused-node', header: 'Focused' }, { isFocused: true });
+    renderNodeView({ id: 'focused-node', header: 'Focused' }, { state: { isFocused: true } });
 
     expect(screen.getByTestId('node-view-focused-node')).toHaveClass('ring-2');
     expect(screen.getByTestId('node-view-focused-node')).toHaveClass('ring-emerald-400');
@@ -117,18 +136,18 @@ describe('NodeView', () => {
 
     fireEvent.click(screen.getByTestId('node-view-click-node'));
 
-    expect(defaultHandlers.onFocus).toHaveBeenCalledTimes(1);
+    expect(defaultTreeActions.onFocus).toHaveBeenCalledTimes(1);
   });
 
   it('calls onToggleCollapse when the chevron is clicked', () => {
     renderNodeView(
       { id: 'parent-node', header: 'Parent' },
-      { hasChildren: true }
+      { state: { hasChildren: true } }
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Collapse node' }));
 
-    expect(defaultHandlers.onToggleCollapse).toHaveBeenCalledTimes(1);
+    expect(defaultTreeActions.onToggleCollapse).toHaveBeenCalledTimes(1);
   });
 
   it('applies drag handle props to the handle button without focusing the row', () => {
@@ -137,7 +156,7 @@ describe('NodeView', () => {
       {
         dragHandleProps: {
           'aria-describedby': 'sortable-description',
-          onPointerDown: defaultHandlers.onMoveUp,
+          onPointerDown: defaultTreeActions.onMoveUp,
         },
       }
     );
@@ -148,14 +167,14 @@ describe('NodeView', () => {
     fireEvent.pointerDown(handle);
     fireEvent.click(handle);
 
-    expect(defaultHandlers.onMoveUp).toHaveBeenCalledTimes(1);
-    expect(defaultHandlers.onFocus).not.toHaveBeenCalled();
+    expect(defaultTreeActions.onMoveUp).toHaveBeenCalledTimes(1);
+    expect(defaultTreeActions.onFocus).not.toHaveBeenCalled();
   });
 
   it('renders the delete button in edit mode for a non-root node', () => {
     renderNodeView(
       { id: 'delete-node', text: 'Body' },
-      { isEditing: true }
+      { state: { isEditing: true } }
     );
 
     expect(screen.getByRole('button', { name: 'Delete node' })).toBeInTheDocument();
@@ -164,7 +183,7 @@ describe('NodeView', () => {
   it('does not render the delete button for the root node', () => {
     renderNodeView(
       { id: 'root', text: 'Root body' },
-      { isEditing: true, isRoot: true }
+      { state: { isEditing: true, isRoot: true } }
     );
 
     expect(screen.queryByRole('button', { name: 'Delete node' })).not.toBeInTheDocument();
@@ -175,12 +194,12 @@ describe('NodeView', () => {
 
     renderNodeView(
       { id: 'empty-leaf' },
-      { isEditing: true }
+      { state: { isEditing: true } }
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete node' }));
 
-    expect(defaultHandlers.onDeleteNode).toHaveBeenCalledTimes(1);
+    expect(defaultTreeActions.onDeleteNode).toHaveBeenCalledTimes(1);
     expect(confirmSpy).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
@@ -190,20 +209,20 @@ describe('NodeView', () => {
 
     renderNodeView(
       { id: 'non-empty', text: 'Body' },
-      { isEditing: true }
+      { state: { isEditing: true } }
     );
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete node' }));
 
     expect(confirmSpy).toHaveBeenCalledWith('Delete node?');
-    expect(defaultHandlers.onDeleteNode).toHaveBeenCalledTimes(1);
+    expect(defaultTreeActions.onDeleteNode).toHaveBeenCalledTimes(1);
     confirmSpy.mockRestore();
   });
 
   it('shows actions for a focused node without opening the text textarea', () => {
     renderNodeView(
       { id: 'focused-actions', text: '**Preview**' },
-      { isFocused: true, showActions: true, isEditing: false }
+      { state: { isFocused: true, showActions: true, isEditing: false } }
     );
 
     expect(screen.getByRole('button', { name: 'Delete node' })).toBeInTheDocument();

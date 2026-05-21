@@ -1966,7 +1966,7 @@
       "confirmDeleteNode": "Delete node?",
       "confirmDeleteNodeWithChildren": "Delete this node and all of its sub-nodes?",
       "headerPlaceholder": "Heading (optional)",
-      "textPlaceholder": "Node text (markdown supported: # heading, **bold**, - list)"
+      "textPlaceholder": "Node text (markdown: **bold**, *italic*, - list; # → new node)"
     },
     "convertModal": {
       "title": "Convert to nodes",
@@ -1981,6 +1981,16 @@
       "placeholder": "Search notes...",
       "empty": "No notes found",
       "currentNoteHint": "Current note is hidden from this list"
+    },
+    "notePreview": {
+      "ariaLabel": "Note preview",
+      "eyebrow": "Note · preview",
+      "untitled": "Untitled",
+      "loading": "Loading…",
+      "missingFromCache": "This note isn't loaded yet. Open it on its own page to read it.",
+      "openFullPage": "Open on its own page",
+      "close": "Close (Esc)",
+      "closeShort": "Close"
     },
     "cheatsheet": {
       "buttonLabel": "Keyboard shortcuts",

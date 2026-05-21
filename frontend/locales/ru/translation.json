@@ -1970,7 +1970,7 @@
       "confirmDeleteNode": "Удалить ноду?",
       "confirmDeleteNodeWithChildren": "Удалить и все её под-ноды?",
       "headerPlaceholder": "Заголовок (опционально)",
-      "textPlaceholder": "Текст ноды (markdown поддерживается: # заголовок, **жирный**, - список)"
+      "textPlaceholder": "Текст ноды (markdown: **жирный**, *курсив*, - список; # → новая нода)"
     },
     "convertModal": {
       "title": "Преобразовать в ноды",
@@ -1985,6 +1985,16 @@
       "placeholder": "Поиск заметок...",
       "empty": "Заметки не найдены",
       "currentNoteHint": "Текущая заметка скрыта из списка"
+    },
+    "notePreview": {
+      "ariaLabel": "Превью заметки",
+      "eyebrow": "Заметка · превью",
+      "untitled": "Без заголовка",
+      "loading": "Загрузка…",
+      "missingFromCache": "Заметка ещё не загружена в локальном кэше. Откройте её на отдельной странице, чтобы прочитать.",
+      "openFullPage": "Открыть на отдельной странице",
+      "close": "Закрыть (Esc)",
+      "closeShort": "Закрыть"
     },
     "cheatsheet": {
       "buttonLabel": "Горячие клавиши",

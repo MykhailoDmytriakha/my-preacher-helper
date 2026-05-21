@@ -10,9 +10,11 @@ import { toast } from 'sonner';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import NodeTreeEditor from '@/components/studies/node/NodeTreeEditor';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
+import { useAutoSave } from '@/hooks/useAutoSave';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
+import { useWikilinkResolver } from '@/hooks/useWikilinkResolver';
 import { ScriptureReference, StudyNote } from '@/models/models';
 import { deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
 import { getStudyText, nodeTreeToMarkdown } from '@/utils/nodeTreeAdapter';
@@ -191,33 +193,55 @@ function useNoteAutoSave({
     uid: string | undefined; setCreatedNoteId: (id: string) => void;
     t: ReturnType<typeof useTranslation>['t'];
 }) {
-    const [isSaving, setIsSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
+
+    // Client-side signature of what we'd persist. Primary autosave guard:
+    // a tick fires `saveChanges` only when this signature differs from the
+    // signature at the last successful save. Independent of `existingNote`
+    // (which can momentarily diverge from local after server-side derivation
+    // like `syncContentWithTree`), so we don't get phantom saves while the
+    // server roundtrip catches up.
+    const editableSignature = useMemo(
+        () => JSON.stringify({ title, content, tags, scriptureRefs, type, rootNode: rootNode ?? null }),
+        [title, content, tags, scriptureRefs, type, rootNode]
+    );
+    const lastSavedSignatureRef = useRef<string | null>(null);
+    const lastSeenNoteIdRef = useRef<string | null>(null);
+    // Initialise the saved-signature ref to the *first* signature we see
+    // after the note is initialised — and reset when `noteId` changes
+    // (e.g. navigating between notes via the URL without a remount).
+    // Otherwise a stale signature from the previous note would let the
+    // autosave skip a real change or fire a normalization save on switch.
+    useEffect(() => {
+        if (!isInitialized) return;
+        if (lastSeenNoteIdRef.current !== noteId) {
+            lastSeenNoteIdRef.current = noteId;
+            lastSavedSignatureRef.current = editableSignature;
+        }
+    }, [isInitialized, noteId, editableSignature]);
 
     const saveChanges = useCallback(async () => {
         if (!noteId || !isInitialized) return;
 
+        // Primary guard: if the editable signature hasn't moved since our
+        // last save attempt, there is nothing to send.
+        if (lastSavedSignatureRef.current === editableSignature) return;
+        const signatureAtAttempt = editableSignature;
+
         if (isNew) {
             if (!title.trim() && !content.trim() && tags.length === 0 && scriptureRefs.length === 0 && !rootNode) return;
 
-            setIsSaving(true);
             setSaveError(null);
-            try {
-                const newNote = await createNote({
-                    title, content, tags, scriptureRefs, type,
-                    userId: uid ?? '', materialIds: [], relatedSermonIds: [],
-                    ...(rootNode ? { rootNode } : {}),
-                });
-                setLastSaved(new Date());
-                window.history.replaceState(null, '', `/studies/${newNote.id}`);
-                setCreatedNoteId(newNote.id);
-            } catch (e) {
-                console.error('Auto-create error', e);
-                setSaveError(t('common.saveError') || 'Error saving changes');
-            } finally {
-                setIsSaving(false);
-            }
+            const newNote = await createNote({
+                title, content, tags, scriptureRefs, type,
+                userId: uid ?? '', materialIds: [], relatedSermonIds: [],
+                ...(rootNode ? { rootNode } : {}),
+            });
+            lastSavedSignatureRef.current = signatureAtAttempt;
+            setLastSaved(new Date());
+            window.history.replaceState(null, '', `/studies/${newNote.id}`);
+            setCreatedNoteId(newNote.id);
             return;
         }
 
@@ -239,40 +263,54 @@ function useNoteAutoSave({
                 JSON.stringify(existingNote.scriptureRefs) === JSON.stringify(scriptureRefs) &&
                 JSON.stringify(existingNote.rootNode ?? null) === JSON.stringify(rootNode ?? null);
 
-            if (isUnchanged) return;
+            if (isUnchanged) {
+                // Advance the signature — server already has this state.
+                // Without this the next render will compare a stale ref and
+                // try to save again on every tick.
+                lastSavedSignatureRef.current = signatureAtAttempt;
+                return;
+            }
         }
 
-        setIsSaving(true);
         setSaveError(null);
-        try {
-            // Don't ship local `content` when a tree is present — the server
-            // will overwrite it via `syncContentWithTree` anyway, and sending
-            // a stale string just makes the diff noisy.
-            const updates: Partial<StudyNote> = rootNode
-                ? { title, tags, scriptureRefs, type, rootNode }
-                : { title, content, tags, scriptureRefs, type };
-            await updateNote({
-                id: noteId,
-                updates,
-            });
-            setLastSaved(new Date());
-        } catch (e) {
-            console.error('Auto-save error', e);
+        // Don't ship local `content` when a tree is present — the server
+        // will overwrite it via `syncContentWithTree` anyway, and sending
+        // a stale string just makes the diff noisy.
+        const updates: Partial<StudyNote> = rootNode
+            ? { title, tags, scriptureRefs, type, rootNode }
+            : { title, content, tags, scriptureRefs, type };
+        await updateNote({
+            id: noteId,
+            updates,
+        });
+        lastSavedSignatureRef.current = signatureAtAttempt;
+        setLastSaved(new Date());
+    }, [noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, rootNode, updateNote, createNote, uid, setCreatedNoteId, t, editableSignature]);
+
+    const { debouncedSave, status: saveStatus } = useAutoSave(saveChanges, {
+        delay: 1500,
+        onError: (error) => {
+            if (isNew) {
+                console.error('Auto-create error', error);
+            } else {
+                console.error('Auto-save error', error);
+            }
             setSaveError(t('common.saveError') || 'Error saving changes');
-        } finally {
-            setIsSaving(false);
-        }
-    }, [noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, rootNode, updateNote, createNote, uid, setCreatedNoteId, t]);
+        },
+    });
 
     useEffect(() => {
         if (!isInitialized) return;
-        const timeoutId = setTimeout(() => {
-            saveChanges();
-        }, 1500);
-        return () => clearTimeout(timeoutId);
-    }, [title, content, tags, scriptureRefs, type, rootNode, isInitialized, saveChanges]);
+        // Skip scheduling entirely if there's no actual change yet — avoids
+        // a 1.5s ghost timer firing right after page load.
+        if (lastSavedSignatureRef.current === editableSignature) {
+            debouncedSave.cancel();
+            return;
+        }
+        debouncedSave();
+    }, [debouncedSave, editableSignature, isInitialized]);
 
-    return { isSaving, lastSaved, saveError, setLastSaved };
+    return { isSaving: saveStatus === 'saving', lastSaved, saveError, setLastSaved };
 }
 
 function appendTranscriptNode(rootNode: ContentNode, text: string): ContentNode {
@@ -625,6 +663,7 @@ export default function StudyNoteEditorPage() {
     const { uid, notes, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
     const { tags: tagData } = useTags(uid);
     const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
+    const wikilinkResolver = useWikilinkResolver();
 
     // Local state for the editor
     const [title, setTitle] = useState('');
@@ -872,7 +911,7 @@ export default function StudyNoteEditorPage() {
                         }
                         return (
                             <div className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-800 dark:prose-p:text-gray-200 prose-p:leading-relaxed max-w-none text-lg md:text-xl">
-                                <MarkdownDisplay content={content} searchQuery={searchQuery} enableWikiLinks />
+                                <MarkdownDisplay content={content} searchQuery={searchQuery} enableWikiLinks wikilinkResolver={wikilinkResolver} />
                             </div>
                         );
                     })()}
@@ -952,7 +991,7 @@ export default function StudyNoteEditorPage() {
                 )}
 
                 {/* Metadata Tray (Tags & Refs) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t border-gray-100 dark:border-gray-800">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t border-gray-200 dark:border-gray-700">
                     {/* References */}
                     <div className="flex flex-col h-full space-y-4 group/refs">
                         <div className="flex items-center justify-between">
@@ -966,7 +1005,7 @@ export default function StudyNoteEditorPage() {
                                     onClick={() => handleAIAnalyze('scriptureRefs')}
                                     disabled={isAnalyzing || !canonicalContent.trim()}
                                     title={t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
-                                    className="hidden group-hover/refs:flex items-center justify-center p-1.5 rounded-lg text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
+                                    className="flex items-center justify-center p-1.5 rounded-lg text-purple-600 opacity-0 group-hover/refs:opacity-100 focus-visible:opacity-100 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-opacity disabled:opacity-30"
                                 >
                                     <SparklesIcon className="h-5 w-5" />
                                 </button>
@@ -1051,7 +1090,7 @@ export default function StudyNoteEditorPage() {
                                     onClick={() => handleAIAnalyze('tags')}
                                     disabled={isAnalyzing || !canonicalContent.trim()}
                                     title={t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
-                                    className="hidden group-hover/tags:flex items-center justify-center p-1.5 rounded-lg text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
+                                    className="flex items-center justify-center p-1.5 rounded-lg text-purple-600 opacity-0 group-hover/tags:opacity-100 focus-visible:opacity-100 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-opacity disabled:opacity-30"
                                 >
                                     <SparklesIcon className="h-5 w-5" />
                                 </button>

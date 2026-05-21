@@ -12,16 +12,16 @@ import {
   DocumentIcon,
   LinkIcon,
   PhotoIcon,
-  PlusIcon,
   Squares2X2Icon,
   TrashIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import WikilinkPicker from '@/(pages)/(private)/studies/components/WikilinkPicker';
 import MarkdownDisplay from '@components/MarkdownDisplay';
+
+import NodeTextEditor from './NodeTextEditor';
 
 import type { ContentNode, ContentNodeMedia } from '@/models/models';
 import type { HTMLAttributes, MouseEvent, ReactElement } from 'react';
@@ -29,37 +29,45 @@ import type { HTMLAttributes, MouseEvent, ReactElement } from 'react';
 interface NodeViewProps {
   node: ContentNode;
   depth: number;
-  isFocused: boolean;
-  isEditing: boolean;
-  showActions: boolean;
-  isRoot: boolean;
-  onFocus: () => void;
-  onStartEdit: () => void;
-  onStopEdit: () => void;
-  onHeaderChange: (v: string) => void;
-  onTextChange: (v: string) => void;
-  onToggleCollapse: () => void;
-  onMediaRemove: (mediaId: string) => void;
-  onMediaAdd: (media: ContentNodeMedia) => void;
-  onAddChild: () => void;
-  onAddSibling: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-  onDemote: () => void;
-  onPromote: () => void;
-  onDeleteNode: () => void;
-  onSplitFromMarkdown: (text: string) => void;
   dragHandleProps?: HTMLAttributes<HTMLElement>;
-  hasChildren: boolean;
-  isCollapsed: boolean;
   currentNoteId?: string;
-  /**
-   * When true, render a strictly read-only view — heading + markdown text + media tiles + chevron fold.
-   * No drag handle, no action buttons, no textareas, no double-click-to-edit.
-   * Read mode in `/studies/[id]` uses this so users see the structure (with folds)
-   * without any of the editing affordances spilling into a "just reading" context.
-   */
   readOnly?: boolean;
+  /** `(id) => title` for rendering `[[noteId]]` chips as note titles. */
+  wikilinkResolver?: (id: string) => string | undefined;
+
+  state: {
+    isFocused: boolean;
+    isEditing: boolean;
+    showActions: boolean;
+    isRoot: boolean;
+    hasChildren: boolean;
+    isCollapsed: boolean;
+  };
+
+  capabilities?: {
+    canMoveUp?: boolean;
+    canMoveDown?: boolean;
+    canDemote?: boolean;
+    canPromote?: boolean;
+  };
+
+  treeActions: {
+    onFocus: () => void;
+    onStartEdit: () => void;
+    onHeaderChange: (v: string) => void;
+    onTextChange: (v: string) => void;
+    onToggleCollapse: () => void;
+    onMediaRemove: (mediaId: string) => void;
+    onMediaAdd: (media: ContentNodeMedia) => void;
+    onAddChild: () => void;
+    onAddSibling: () => void;
+    onMoveUp: () => void;
+    onMoveDown: () => void;
+    onDemote: () => void;
+    onPromote: () => void;
+    onDeleteNode: () => void;
+    onSplitFromMarkdown: (text: string) => void;
+  };
 }
 
 const HEADING_PATTERN = /^#{1,6}\s/m;
@@ -68,35 +76,23 @@ const IMAGE_EXT_DETECT = /\.(png|jpe?g|gif|webp|svg)(\?|$)/i;
 
 type HeadingTag = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
 
-const HEADING_TAGS: HeadingTag[] = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'];
+// Study page already renders study.title as the visual H1 — node headers
+// therefore start at H2 (depth=0 → H2, depth=1 → H3, ...). This preserves
+// document outline semantics (one H1 per page) and gives node headers a
+// visible hierarchy that always sits below the study title.
+const HEADING_TAGS: HeadingTag[] = ['h2', 'h3', 'h4', 'h5', 'h6', 'h6'];
 const HEADING_CLASSES = [
   'text-2xl',
   'text-xl',
   'text-lg',
   'text-base',
   'text-sm',
-  'text-xs',
+  'text-sm',
 ];
 const YOUTUBE_VIDEO_ID_PATTERN = /(?:youtu\.be\/|v=)([\w-]{11})/;
-const VALID_WIKILINK_QUERY_PATTERN = /^[A-Za-z0-9_-]*$/;
 const ICON_BUTTON_CLASS = 'rounded-md p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200';
 const MOVE_BUTTON_CLASS = 'inline-flex h-7 w-7 items-center justify-center rounded-md bg-gray-50 text-gray-600 transition hover:bg-gray-100 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100';
 const MEDIA_TILE_CLASS = 'group relative flex w-36 flex-col overflow-hidden rounded-md border border-gray-200 bg-white text-xs shadow-sm dark:border-gray-700 dark:bg-gray-900';
-
-interface WikilinkPickerState {
-  open: boolean;
-  position?: {
-    top: number;
-    left: number;
-  };
-  rangeStart: number;
-  rangeEnd: number;
-}
-
-interface WikilinkCandidate {
-  rangeStart: number;
-  rangeEnd: number;
-}
 
 function clampHeadingLevel(depth: number): number {
   return Math.min(Math.max(depth + 1, 1), 6);
@@ -104,38 +100,6 @@ function clampHeadingLevel(depth: number): number {
 
 function stopRowClick(event: MouseEvent<HTMLElement>): void {
   event.stopPropagation();
-}
-
-function getWikilinkCandidate(value: string, caretIndex: number): WikilinkCandidate | null {
-  const beforeCaret = value.slice(0, caretIndex);
-  const triggerIndex = beforeCaret.lastIndexOf('[[');
-  if (triggerIndex === -1) return null;
-
-  const query = beforeCaret.slice(triggerIndex + 2);
-  if (!VALID_WIKILINK_QUERY_PATTERN.test(query)) return null;
-
-  return {
-    rangeStart: triggerIndex,
-    rangeEnd: caretIndex,
-  };
-}
-
-function getTextareaCaretPosition(textarea: HTMLTextAreaElement, caretIndex: number): { top: number; left: number } {
-  const rect = textarea.getBoundingClientRect();
-  const computed = window.getComputedStyle(textarea);
-  const lineHeight = Number.parseFloat(computed.lineHeight) || 20;
-  const fontSize = Number.parseFloat(computed.fontSize) || 14;
-  const lines = textarea.value.slice(0, caretIndex).split('\n');
-  const rowIndex = Math.max(lines.length - 1, 0);
-  const columnIndex = lines[lines.length - 1]?.length ?? 0;
-  const estimatedCharWidth = fontSize * 0.56;
-  const top = rect.top + rowIndex * lineHeight - textarea.scrollTop + lineHeight + 6;
-  const left = rect.left + columnIndex * estimatedCharWidth - textarea.scrollLeft;
-
-  return {
-    top: Math.max(8, Math.min(top, window.innerHeight - 80)),
-    left: Math.max(8, Math.min(left, window.innerWidth - 336)),
-  };
 }
 
 function getMediaLabel(media: ContentNodeMedia): string {
@@ -195,44 +159,39 @@ function detectMediaType(url: string): ContentNodeMedia['type'] {
 export function NodeView({
   node,
   depth,
-  isFocused,
-  isEditing,
-  showActions,
-  isRoot,
-  onFocus,
-  onStartEdit,
-  onStopEdit,
-  onHeaderChange,
-  onTextChange,
-  onToggleCollapse,
-  onMediaRemove,
-  onMediaAdd,
-  onAddChild,
-  onAddSibling,
-  onMoveUp,
-  onMoveDown,
-  onDemote,
-  onPromote,
-  onDeleteNode,
-  onSplitFromMarkdown,
   dragHandleProps,
-  hasChildren,
-  isCollapsed,
   currentNoteId,
   readOnly = false,
+  wikilinkResolver,
+  state,
+  capabilities,
+  treeActions,
 }: NodeViewProps) {
+  const { isFocused, isEditing, showActions, isRoot, hasChildren, isCollapsed } = state;
+  const { canMoveUp = true, canMoveDown = true, canDemote = true, canPromote = true } = capabilities ?? {};
+  const {
+    onFocus,
+    onStartEdit,
+    onHeaderChange,
+    onTextChange,
+    onToggleCollapse,
+    onMediaRemove,
+    onMediaAdd,
+    onAddChild,
+    onAddSibling,
+    onMoveUp,
+    onMoveDown,
+    onDemote,
+    onPromote,
+    onDeleteNode,
+    onSplitFromMarkdown,
+  } = treeActions;
   const { t } = useTranslation();
   const [draftHeader, setDraftHeader] = useState(node.header ?? '');
   const [draftText, setDraftText] = useState(node.text ?? '');
   const [isAddingMedia, setIsAddingMedia] = useState(false);
   const [mediaDraft, setMediaDraft] = useState({ url: '', caption: '' });
-  const [wikilinkPicker, setWikilinkPicker] = useState<WikilinkPickerState>({
-    open: false,
-    rangeStart: 0,
-    rangeEnd: 0,
-  });
   const headerRef = useRef<HTMLTextAreaElement>(null);
-  const textRef = useRef<HTMLTextAreaElement>(null);
   const lastSplitTextRef = useRef<string | null>(null);
   const headingLevel = clampHeadingLevel(depth);
   const HeadingTag = HEADING_TAGS[headingLevel - 1];
@@ -248,12 +207,21 @@ export function NodeView({
     setDraftText(node.text ?? '');
   }, [node.header, node.text, isEditing]);
 
+  // Auto-resize the single-line header textarea (text body is handled by
+  // RichMarkdownEditor which manages its own height).
+  useLayoutEffect(() => {
+    if (!isEditing) return;
+    const el = headerRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draftHeader, isEditing]);
+
   // When edit mode opens on the focused node, move keyboard focus into the
-  // most relevant textarea so typing lands in it (otherwise the parent
-  // container keeps focus and keystrokes are eaten by the keyboard handler).
+  // header textarea so the first keystroke lands there.
   useEffect(() => {
     if (!isEditing || !isFocused) return;
-    const target = textRef.current ?? headerRef.current;
+    const target = headerRef.current;
     if (!target) return;
     target.focus();
     const length = target.value.length;
@@ -287,14 +255,6 @@ export function NodeView({
     }
     wasEditingRef.current = isEditing;
   }, [isEditing, node.text, node.header, onTextChange, onHeaderChange, splitDraftMarkdown]);
-
-  const closeWikilinkPicker = useCallback((): void => {
-    setWikilinkPicker((current) => ({ ...current, open: false }));
-  }, []);
-
-  useEffect(() => {
-    if (!isFocused) closeWikilinkPicker();
-  }, [closeWikilinkPicker, isFocused]);
 
   // Empty focused node: there's nothing to read, so jump straight into
   // text-editing instead of forcing a second click to reveal the textarea.
@@ -348,7 +308,7 @@ export function NodeView({
           )}
 
           {hasText && (
-            <MarkdownDisplay content={node.text ?? ''} compact enableWikiLinks />
+            <MarkdownDisplay content={node.text ?? ''} compact enableWikiLinks wikilinkResolver={wikilinkResolver} />
           )}
 
           {hasMedia && (
@@ -396,77 +356,6 @@ export function NodeView({
   const handleEditableRegionClick = (): void => {
     if (isFocused && !isEditing) {
       onStartEdit();
-    }
-  };
-
-  const handleTextBlur = (): void => {
-    if (HEADING_PATTERN.test(draftText)) {
-      // Split takes the full markdown atomically — no separate text flush,
-      // otherwise a follow-up `updateText` (with the original markdown) can
-      // overwrite the post-split remaining text and trigger another split.
-      splitDraftMarkdown(draftText);
-    } else {
-      onTextChange(draftText);
-    }
-  };
-
-  const handleTextAreaChange = (event: React.ChangeEvent<HTMLTextAreaElement>): void => {
-    const nextText = event.target.value;
-    const caretIndex = event.target.selectionStart ?? nextText.length;
-    const candidate = getWikilinkCandidate(nextText, caretIndex);
-    setDraftText(nextText);
-
-    if (!candidate) {
-      closeWikilinkPicker();
-      return;
-    }
-
-    setWikilinkPicker({
-      open: true,
-      position: getTextareaCaretPosition(event.target, candidate.rangeEnd),
-      rangeStart: candidate.rangeStart,
-      rangeEnd: candidate.rangeEnd,
-    });
-  };
-
-  const handleOpenWikilinkPicker = (event: MouseEvent<HTMLButtonElement>): void => {
-    event.stopPropagation();
-    const textarea = textRef.current;
-    const caretIndex = textarea?.selectionStart ?? draftText.length;
-    const buttonRect = event.currentTarget.getBoundingClientRect();
-    const position = textarea
-      ? getTextareaCaretPosition(textarea, caretIndex)
-      : {
-        top: Math.max(8, Math.min(buttonRect.bottom + 8, window.innerHeight - 80)),
-        left: Math.max(8, Math.min(buttonRect.left, window.innerWidth - 336)),
-      };
-
-    setWikilinkPicker({
-      open: true,
-      position,
-      rangeStart: caretIndex,
-      rangeEnd: caretIndex,
-    });
-    textarea?.focus();
-  };
-
-  const handlePickWikilink = (noteId: string): void => {
-    const rangeStart = Math.max(0, Math.min(wikilinkPicker.rangeStart, draftText.length));
-    const rangeEnd = Math.max(rangeStart, Math.min(wikilinkPicker.rangeEnd, draftText.length));
-    const insertedLink = `[[${noteId}]]`;
-    const nextText = `${draftText.slice(0, rangeStart)}${insertedLink}${draftText.slice(rangeEnd)}`;
-    const nextCaret = rangeStart + insertedLink.length;
-
-    setDraftText(nextText);
-    closeWikilinkPicker();
-
-    if (isEditing) {
-      requestAnimationFrame(() => {
-        textRef.current?.focus();
-        textRef.current?.setSelectionRange(nextCaret, nextCaret);
-      });
-    } else {
-      onTextChange(nextText);
     }
   };
 
@@ -560,23 +449,65 @@ export function NodeView({
               ref={headerRef}
               aria-label="Заголовок ноды"
               placeholder={t('studiesWorkspace.nodeTree.headerPlaceholder') || 'Заголовок (опционально)'}
-              className="w-full resize-y rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-emerald-800 dark:bg-gray-900 dark:text-gray-100"
+              className="w-full resize-none overflow-hidden rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-emerald-800 dark:bg-gray-900 dark:text-gray-100"
               value={draftHeader}
-              onChange={(event) => setDraftHeader(event.target.value)}
+              onChange={(event) => setDraftHeader(event.target.value.replace(/\n/g, ' '))}
+              onKeyDown={(event) => {
+                // Header is a single logical line — Enter must not insert a
+                // newline. Soft-wrap (visual line break on long content)
+                // still happens; only the literal \n is forbidden.
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }
+              }}
+              onPaste={(event) => {
+                const pasted = event.clipboardData.getData('text/plain');
+                if (!/\n/.test(pasted)) return;
+                event.preventDefault();
+                const sanitized = pasted.replace(/\s*\n+\s*/g, ' ');
+                const textarea = event.currentTarget;
+                const start = textarea.selectionStart ?? draftHeader.length;
+                const end = textarea.selectionEnd ?? draftHeader.length;
+                const next = `${draftHeader.slice(0, start)}${sanitized}${draftHeader.slice(end)}`;
+                setDraftHeader(next);
+              }}
               onBlur={() => onHeaderChange(draftHeader)}
               onClick={stopRowClick}
               rows={1}
             />
-            <textarea
-              ref={textRef}
-              aria-label="Текст ноды"
-              placeholder={t('studiesWorkspace.nodeTree.textPlaceholder') || 'Текст ноды (markdown поддерживается: # заголовок, **жирный**, - список)'}
-              className="min-h-24 w-full resize-y rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-              value={draftText}
-              onChange={handleTextAreaChange}
-              onBlur={handleTextBlur}
-              onClick={stopRowClick}
-            />
+            <div onClick={stopRowClick}>
+              <NodeTextEditor
+                value={draftText}
+                onChange={(next) => {
+                  setDraftText(next);
+                  // Auto-split when the user pastes/types markdown headings:
+                  // any `# ` block becomes a real sibling node, matching the
+                  // mental model that headings inside a node are themselves
+                  // node boundaries.
+                  if (/^#{1,6}\s/m.test(next)) {
+                    splitDraftMarkdown(next);
+                  }
+                }}
+                onPastePlainText={(text) => {
+                  if (!/^#{1,6}\s/m.test(text)) return false;
+                  const merged = draftText ? `${draftText}\n${text}` : text;
+                  setDraftText(merged);
+                  splitDraftMarkdown(merged);
+                  return true;
+                }}
+                onBlur={() => {
+                  if (HEADING_PATTERN.test(draftText)) {
+                    splitDraftMarkdown(draftText);
+                  } else if ((node.text ?? '') !== draftText) {
+                    onTextChange(draftText);
+                  }
+                }}
+                placeholder={t('studiesWorkspace.nodeTree.textPlaceholder') || 'Текст ноды'}
+                minHeight="120px"
+                currentNoteId={currentNoteId}
+              />
+            </div>
           </>
         ) : (
           <>
@@ -594,7 +525,7 @@ export function NodeView({
             )}
             {hasText && (
               <div onClick={handleEditableRegionClick} onDoubleClick={onStartEdit}>
-                <MarkdownDisplay content={node.text ?? ''} compact enableWikiLinks />
+                <MarkdownDisplay content={node.text ?? ''} compact enableWikiLinks wikilinkResolver={wikilinkResolver} />
               </div>
             )}
           </>
@@ -604,19 +535,19 @@ export function NodeView({
           <div className="flex flex-wrap items-center gap-2 text-xs" onClick={stopRowClick}>
             <button
               type="button"
-              onClick={onAddChild}
+              onClick={onAddSibling}
               className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 font-medium text-emerald-700 transition hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/60"
-              title="Cmd+Enter — добавить дочернюю ноду"
+              title="Enter (вне текста) — соседняя нода"
             >
-              <ArrowDownRightIcon className="h-3.5 w-3.5" /> Дочерняя
+              <ArrowDownIcon className="h-3.5 w-3.5" /> Соседняя
             </button>
             <button
               type="button"
-              onClick={onAddSibling}
-              className="inline-flex items-center gap-1 rounded-md bg-gray-50 px-2 py-1 font-medium text-gray-700 transition hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-              title="Enter (вне текста) — соседняя нода"
+              onClick={onAddChild}
+              className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 font-medium text-amber-700 transition hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-300 dark:hover:bg-amber-900/60"
+              title="Cmd+Enter — добавить дочернюю ноду"
             >
-              <PlusIcon className="h-3.5 w-3.5" /> Соседняя
+              <ArrowDownRightIcon className="h-3.5 w-3.5" /> Дочерняя
             </button>
             <button
               type="button"
@@ -625,20 +556,14 @@ export function NodeView({
             >
               <PhotoIcon className="h-3.5 w-3.5" /> Медиа
             </button>
-            <button
-              type="button"
-              onClick={handleOpenWikilinkPicker}
-              className="inline-flex items-center gap-1 rounded-md bg-gray-50 px-2 py-1 font-medium text-gray-700 transition hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-            >
-              <LinkIcon className="h-3.5 w-3.5" /> {t('studiesWorkspace.nodeTree.insertLink')}
-            </button>
             <div className="inline-flex items-center gap-1">
               <button
                 type="button"
                 aria-label="Переместить вверх"
                 title="Cmd+ArrowUp — переместить вверх"
                 onClick={onMoveUp}
-                className={MOVE_BUTTON_CLASS}
+                disabled={!canMoveUp}
+                className={`${MOVE_BUTTON_CLASS} disabled:cursor-not-allowed disabled:bg-transparent disabled:text-gray-300 disabled:hover:bg-transparent disabled:hover:text-gray-300 dark:disabled:text-gray-600 dark:disabled:hover:text-gray-600`}
               >
                 <ArrowUpIcon className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -647,7 +572,8 @@ export function NodeView({
                 aria-label="Переместить вниз"
                 title="Cmd+ArrowDown — переместить вниз"
                 onClick={onMoveDown}
-                className={MOVE_BUTTON_CLASS}
+                disabled={!canMoveDown}
+                className={`${MOVE_BUTTON_CLASS} disabled:cursor-not-allowed disabled:bg-transparent disabled:text-gray-300 disabled:hover:bg-transparent disabled:hover:text-gray-300 dark:disabled:text-gray-600 dark:disabled:hover:text-gray-600`}
               >
                 <ArrowDownIcon className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -656,7 +582,8 @@ export function NodeView({
                 aria-label="Сделать дочерней"
                 title="Tab — сделать дочерней"
                 onClick={onDemote}
-                className={MOVE_BUTTON_CLASS}
+                disabled={!canDemote}
+                className={`${MOVE_BUTTON_CLASS} disabled:cursor-not-allowed disabled:bg-transparent disabled:text-gray-300 disabled:hover:bg-transparent disabled:hover:text-gray-300 dark:disabled:text-gray-600 dark:disabled:hover:text-gray-600`}
               >
                 <ArrowRightIcon className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -665,7 +592,8 @@ export function NodeView({
                 aria-label="Повысить уровень"
                 title="Shift+Tab — повысить уровень"
                 onClick={onPromote}
-                className={MOVE_BUTTON_CLASS}
+                disabled={!canPromote}
+                className={`${MOVE_BUTTON_CLASS} disabled:cursor-not-allowed disabled:bg-transparent disabled:text-gray-300 disabled:hover:bg-transparent disabled:hover:text-gray-300 dark:disabled:text-gray-600 dark:disabled:hover:text-gray-600`}
               >
                 <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -691,22 +619,6 @@ export function NodeView({
                 <TrashIcon className="h-4 w-4" aria-hidden="true" />
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => {
-                // useEffect on isEditing->false will flush the latest draft
-                // (and run split if needed), so we just toggle edit off here.
-                onHeaderChange(draftHeader);
-                onStopEdit();
-              }}
-              className={[
-                isRoot ? 'ml-auto' : '',
-                'inline-flex items-center gap-1 rounded-md bg-emerald-600 px-3 py-1 font-semibold text-white shadow-sm transition hover:bg-emerald-700',
-              ].join(' ')}
-              title="Esc — выйти из редактирования"
-            >
-              Готово
-            </button>
           </div>
         )}
 
@@ -789,15 +701,6 @@ export function NodeView({
           </div>
         ) : null}
 
-        {wikilinkPicker.open ? (
-          <WikilinkPicker
-            open
-            position={wikilinkPicker.position}
-            currentNoteId={currentNoteId}
-            onPick={handlePickWikilink}
-            onClose={closeWikilinkPicker}
-          />
-        ) : null}
       </div>
     </div>
   );
