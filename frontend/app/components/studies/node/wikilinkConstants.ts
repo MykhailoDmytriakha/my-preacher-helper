@@ -21,3 +21,14 @@ export const WIKILINK_CHIP_CLASS =
  * `WIKI_LINK_PATTERN` / `WIKILINK_MARKDOWN_PATTERN` / `WIKILINK_INPUT_RULE`.
  */
 export const WIKILINK_ID_REGEX_SOURCE = '[A-Za-z0-9_-]+';
+
+const VALID_WIKILINK_ID = new RegExp(`^${WIKILINK_ID_REGEX_SOURCE}$`);
+
+/**
+ * Validates a wikilink id pulled from an untrusted source (DOM attribute,
+ * pasted markdown, etc.). Rejects path traversal and other shenanigans
+ * before the id reaches the modal or a fetch call.
+ */
+export function isValidWikilinkId(value: string | null | undefined): value is string {
+  return typeof value === 'string' && VALID_WIKILINK_ID.test(value);
+}

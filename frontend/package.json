@@ -3,9 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/init-dev-log-session.js",
     "dev": "cross-env NEXT_PUBLIC_ENABLE_SERVICE_WORKER=true next dev",
+    "predev:no-pwa": "node scripts/init-dev-log-session.js",
     "dev:no-pwa": "next dev",
+    "predev:pwa": "node scripts/init-dev-log-session.js",
     "dev:pwa": "cross-env NEXT_PUBLIC_ENABLE_SERVICE_WORKER=true next dev",
+    "logs:clean": "rm -rf ../.logs && echo 'Cleared ../.logs/'",
     "build": "npm run debug:directory && cross-env NODE_ENV=test npm run test:fast && next build",
     "preview:pwa": "next build && next start",
     "start": "next start",

@@ -2,7 +2,11 @@
 
 import { Dispatch, useMemo, useReducer } from 'react';
 
+import { createDebug } from '@/utils/debug';
+
 import type { ContentNode, ContentNodeMedia } from '@/models/models';
+
+const debug = createDebug('studies/node/reducer');
 
 const HARD_SIZE_LIMIT = 900_000;
 const SOFT_SIZE_LIMIT = 700_000;
@@ -105,6 +109,14 @@ export function flatten(root: ContentNode): NodeTreeState {
   };
 }
 
+// WeakMap cache keyed by `state.nodes` so `selectTree(state)` returns the
+// same `ContentNode` ref while the underlying node graph hasn't changed.
+// Focus/edit-mode-only mutations (`setFocus`, `startEdit`, `stopEdit`) keep
+// `state.nodes` referentially stable, so tree consumers don't see a "change"
+// when none of the content moved. Downstream `tree === lastEmittedTreeRef`
+// checks then collapse to O(1).
+const treeCache = new WeakMap<Record<string, ContentNode>, ContentNode>();
+
 function serializeNode(state: NodeTreeState, id: string, visited: Set<string>): ContentNode {
   const node = state.nodes[id];
   if (!node || visited.has(id)) {
@@ -127,7 +139,11 @@ function serializeNode(state: NodeTreeState, id: string, visited: Set<string>): 
 }
 
 export function selectTree(state: NodeTreeState): ContentNode {
-  return serializeNode(state, state.rootId, new Set<string>());
+  const cached = treeCache.get(state.nodes);
+  if (cached) return cached;
+  const tree = serializeNode(state, state.rootId, new Set<string>());
+  treeCache.set(state.nodes, tree);
+  return tree;
 }
 
 export function selectFlat(state: NodeTreeState, options: SelectFlatOptions = {}): FlatNode[] {
@@ -161,14 +177,37 @@ export function selectFlat(state: NodeTreeState, options: SelectFlatOptions = {}
   return flatNodes;
 }
 
-function findParentId(state: NodeTreeState, id: string): string | null {
-  for (const node of Object.values(state.nodes)) {
-    if (getChildIds(node).includes(id)) {
-      return node.id;
-    }
-  }
+export interface NodeLocation {
+  parentId: string;
+  index: number;
+  siblingCount: number;
+}
 
-  return null;
+// WeakMap-cached child→parent index. Built lazily on first lookup for a
+// given `state.nodes` reference and reused for every subsequent query. Kills
+// the O(N) `Object.values(state.nodes)` walk that every parent lookup used
+// to do — `promote`/`demote`/`moveNode` and the renderer's per-row
+// up/down-eligibility checks now run in O(1) per node.
+const locationMapCache = new WeakMap<Record<string, ContentNode>, Map<string, NodeLocation>>();
+
+export function selectLocationMap(state: NodeTreeState): Map<string, NodeLocation> {
+  const cached = locationMapCache.get(state.nodes);
+  if (cached) return cached;
+  const map = new Map<string, NodeLocation>();
+  for (const node of Object.values(state.nodes)) {
+    const children = node.children;
+    if (!children?.length) continue;
+    const siblingCount = children.length;
+    children.forEach((child, index) => {
+      map.set(child.id, { parentId: node.id, index, siblingCount });
+    });
+  }
+  locationMapCache.set(state.nodes, map);
+  return map;
+}
+
+export function findParentId(state: NodeTreeState, id: string): string | null {
+  return selectLocationMap(state).get(id)?.parentId ?? null;
 }
 
 export function selectAncestorIds(state: NodeTreeState, id: string): string[] {
@@ -186,14 +225,10 @@ export function selectAncestorIds(state: NodeTreeState, id: string): string[] {
   return ancestors;
 }
 
-function findLocation(state: NodeTreeState, id: string): { parentId: string; index: number } | null {
-  const parentId = findParentId(state, id);
-  if (!parentId) return null;
-
-  const index = getChildIds(state.nodes[parentId]).indexOf(id);
-  if (index === -1) return null;
-
-  return { parentId, index };
+export function findLocation(state: NodeTreeState, id: string): { parentId: string; index: number } | null {
+  const loc = selectLocationMap(state).get(id);
+  if (!loc) return null;
+  return { parentId: loc.parentId, index: loc.index };
 }
 
 function updateNode(
@@ -251,7 +286,7 @@ function insertSibling(state: NodeTreeState, id: string, newId: string): NodeTre
   };
 }
 
-function nodeContentEquals(a: ContentNode, b: ContentNode): boolean {
+export function nodeContentEquals(a: ContentNode, b: ContentNode): boolean {
   return (a.header ?? '') === (b.header ?? '')
     && (a.text ?? '') === (b.text ?? '')
     && JSON.stringify(a.media ?? []) === JSON.stringify(b.media ?? []);
@@ -272,11 +307,20 @@ function stripRootContent(state: NodeTreeState): NodeTreeState {
 
 function liftRootContent(state: NodeTreeState, childId: string): NodeTreeState {
   const root = state.nodes[state.rootId];
-  if (!root) return state;
-  if (state.nodes[childId]) return state;
+  if (!root) {
+    debug.warn('liftRootContent: no root node', { rootId: state.rootId });
+    return state;
+  }
+  if (state.nodes[childId]) {
+    debug.warn('liftRootContent: childId already exists, skipping', { childId });
+    return state;
+  }
 
   const hasContent = Boolean(root.header || root.text || (root.media?.length ?? 0) > 0);
-  if (!hasContent) return state;
+  if (!hasContent) {
+    debug.log('liftRootContent: root has no content, skipping');
+    return state;
+  }
 
   // Dedup guard: if root content is byte-identical to the first child, this
   // is a legacy save that already mirrors the data in both places (likely a
@@ -287,8 +331,20 @@ function liftRootContent(state: NodeTreeState, childId: string): NodeTreeState {
   const firstChildId = existingChildRefs[0]?.id;
   const firstChild = firstChildId ? state.nodes[firstChildId] : undefined;
   if (firstChild && nodeContentEquals(root, firstChild)) {
+    debug.warn('liftRootContent: dedup — root content matches first child, stripping root', {
+      rootHeader: root.header,
+      firstChildId,
+      firstChildHeader: firstChild.header,
+    });
     return stripRootContent(state);
   }
+
+  debug.log('liftRootContent: lifting root content into new child', {
+    childId,
+    rootHeader: root.header,
+    rootTextPreview: root.text?.slice(0, 60),
+    existingChildCount: existingChildRefs.length,
+  });
 
   const liftedChild: ContentNode = {
     id: childId,
@@ -338,7 +394,7 @@ function insertChild(state: NodeTreeState, id: string, newId: string): NodeTreeS
   };
 }
 
-function collectSubtreeIds(state: NodeTreeState, id: string): string[] {
+export function collectSubtreeIds(state: NodeTreeState, id: string): string[] {
   const node = state.nodes[id];
   if (!node) return [];
 
@@ -567,24 +623,49 @@ function reduceNodeTree(state: NodeTreeState, action: NodeTreeAction): NodeTreeS
   }
 }
 
+// Cheap, allocation-free upper-bound estimate of the tree's serialised size.
+// Sums header/text lengths and a flat per-media estimate. Avoids the
+// `JSON.stringify(selectTree(...))` round-trip that previously fired on every
+// reducer action (and twice in React Strict Mode).
+function estimateTreeSize(state: NodeTreeState): number {
+  let bytes = 0;
+  for (const node of Object.values(state.nodes)) {
+    bytes += (node.header?.length ?? 0) + (node.text?.length ?? 0);
+    if (node.media) {
+      for (const item of node.media) {
+        bytes += (item.url?.length ?? 0) + (item.caption?.length ?? 0) + 32;
+      }
+    }
+    bytes += 24; // structural overhead per node (id, braces, commas)
+  }
+  return bytes;
+}
+
 function guardedNodeTreeReducer(state: NodeTreeState, action: NodeTreeAction): NodeTreeState {
   const nextState = reduceNodeTree(state, action);
-  if (nextState === state) return state;
+  if (nextState === state) {
+    debug.log(`action:${action.type} no-op`, { action });
+    return state;
+  }
+  debug.log(`action:${action.type} applied`, {
+    action,
+    nodeCount: Object.keys(nextState.nodes).length,
+  });
 
-  const nextSize = JSON.stringify(selectTree(nextState)).length;
+  const nextSize = estimateTreeSize(nextState);
   if (nextSize > HARD_SIZE_LIMIT) {
     console.warn(
-      `Node tree action "${action.type}" rejected: serialized size ${nextSize} exceeds ${HARD_SIZE_LIMIT}.`
+      `Node tree action "${action.type}" rejected: estimated size ${nextSize} exceeds ${HARD_SIZE_LIMIT}.`
     );
     return state;
   }
 
   if (!hasWarnedAboutLargeTree && nextSize > SOFT_SIZE_LIMIT) {
-    const previousSize = JSON.stringify(selectTree(state)).length;
+    const previousSize = estimateTreeSize(state);
     if (previousSize < SOFT_SIZE_LIMIT) {
       hasWarnedAboutLargeTree = true;
       console.warn(
-        `Node tree serialized size is ${nextSize}; autosave payload is approaching the ${HARD_SIZE_LIMIT} limit.`
+        `Node tree estimated size is ${nextSize}; autosave payload is approaching the ${HARD_SIZE_LIMIT} limit.`
       );
     }
   }

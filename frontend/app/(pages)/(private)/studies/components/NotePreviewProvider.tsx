@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
-import { WIKILINK_DATA_ATTR, WIKILINK_SELECTOR } from '@components/studies/node/wikilinkConstants';
+import { WIKILINK_DATA_ATTR, WIKILINK_SELECTOR, isValidWikilinkId } from '@components/studies/node/wikilinkConstants';
 
 import NotePreviewModal from './NotePreviewModal';
 
@@ -51,7 +51,10 @@ export function NotePreviewProvider({ children }: { children: ReactNode }) {
       if (!chip) return;
 
       const noteId = chip.getAttribute(WIKILINK_DATA_ATTR);
-      if (!noteId) return;
+      // Validate the id before trusting a DOM attribute (could be stale,
+      // pasted-from-elsewhere, or path-traversal). Bare-`!noteId` was not
+      // enough — `"../admin"` would have passed.
+      if (!isValidWikilinkId(noteId)) return;
 
       event.preventDefault();
       event.stopPropagation();

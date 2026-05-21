@@ -1,3 +1,5 @@
+import { makeId as makeFreshId } from './makeId';
+
 import type { ContentNode } from '@/models/models';
 
 /**
@@ -19,17 +21,8 @@ import type { ContentNode } from '@/models/models';
 const HEADING_RE = /^(#{1,6})\s+(.+?)\s*$/;
 const FENCE_RE = /^```/;
 
-let idCounter = 0;
-const makeId = (): string => {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID();
-  }
-  idCounter += 1;
-  return `mn-${Date.now()}-${idCounter}`;
-};
-
 const emptyNode = (header?: string): ContentNode => ({
-  id: makeId(),
+  id: makeFreshId('mn'),
   ...(header ? { header } : {}),
   children: [],
 });

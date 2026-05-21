@@ -28,13 +28,27 @@ import { useTranslation } from 'react-i18next';
 
 import { useClickOutside } from '@/hooks/useClickOutside';
 import { useWikilinkResolver } from '@/hooks/useWikilinkResolver';
+import { createDebug } from '@/utils/debug';
+import { makeId } from '@/utils/makeId';
 
 import NodeView from './NodeView';
-import { selectAncestorIds, selectFlat, selectTree, useNodeTree } from './useNodeTree';
+import {
+  collectSubtreeIds,
+  findLocation,
+  findParentId,
+  nodeContentEquals,
+  selectAncestorIds,
+  selectFlat,
+  selectLocationMap,
+  selectTree,
+  useNodeTree,
+} from './useNodeTree';
 
 import type { FlatNode, NodeTreeState } from './useNodeTree';
 import type { ContentNode } from '@/models/models';
 import type { CSSProperties, HTMLAttributes, ReactElement } from 'react';
+
+const debug = createDebug('studies/node/tree');
 
 interface NodeTreeEditorProps {
   rootNode: ContentNode;
@@ -50,13 +64,7 @@ interface NodeTreeEditorProps {
   readOnly?: boolean;
 }
 
-function createNodeId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-
-  return `node-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
+const createNodeId = (): string => makeId('node');
 
 function hasTextValue(value: string | undefined): boolean {
   return Boolean(value?.trim());
@@ -64,6 +72,18 @@ function hasTextValue(value: string | undefined): boolean {
 
 function hasVisibleNodeContent(node: ContentNode | undefined): boolean {
   return Boolean(node?.header?.trim() || node?.text?.trim() || (node?.media?.length ?? 0) > 0);
+}
+
+// Read-mode dedup: hide root row when it visibly mirrors the first child.
+// Uses the same equality helper the reducer's lift dedup applies so both
+// modes stay consistent.
+function rootContentMirrorsFirstChild(
+  root: ContentNode | undefined,
+  firstChild: ContentNode | undefined
+): boolean {
+  if (!root || !firstChild) return false;
+  if (!hasVisibleNodeContent(root)) return false;
+  return nodeContentEquals(root, firstChild);
 }
 
 function isEmptyLeaf(state: NodeTreeState, id: string | null): boolean {
@@ -108,33 +128,6 @@ function getNodeChildIds(state: NodeTreeState, id: string): string[] {
   return state.nodes[id]?.children?.map((child) => child.id) ?? [];
 }
 
-function findParentId(state: NodeTreeState, id: string): string | null {
-  for (const node of Object.values(state.nodes)) {
-    if (node.children?.some((child) => child.id === id)) {
-      return node.id;
-    }
-  }
-
-  return null;
-}
-
-function findNodeLocation(state: NodeTreeState, id: string): { parentId: string; index: number } | null {
-  const parentId = findParentId(state, id);
-  if (!parentId) return null;
-
-  const index = getNodeChildIds(state, parentId).indexOf(id);
-  if (index === -1) return null;
-
-  return { parentId, index };
-}
-
-function collectNodeSubtreeIds(state: NodeTreeState, id: string): string[] {
-  return [
-    id,
-    ...getNodeChildIds(state, id).flatMap((childId) => collectNodeSubtreeIds(state, childId)),
-  ];
-}
-
 function isInvalidDropTarget(state: NodeTreeState, draggedId: string, targetParentId: string): boolean {
   return targetParentId === draggedId || selectAncestorIds(state, targetParentId).includes(draggedId);
 }
@@ -148,7 +141,7 @@ function computeSiblingProjection(
   const overItem = flatNodes.find((item) => item.id === overId);
   if (!overItem) return null;
 
-  const sourceLocation = findNodeLocation(state, activeId);
+  const sourceLocation = findLocation(state, activeId);
   if (!sourceLocation) return null;
 
   if (overId === state.rootId) {
@@ -191,7 +184,7 @@ function computeNestProjection(
   activeId: string
 ): DropProjection | null {
   const activeItem = flatNodes.find((item) => item.id === activeId);
-  const sourceLocation = findNodeLocation(state, activeId);
+  const sourceLocation = findLocation(state, activeId);
   if (!activeItem || !sourceLocation || sourceLocation.index === 0 || activeItem.depth === 0) return null;
 
   const previousSiblingId = getNodeChildIds(state, sourceLocation.parentId)[sourceLocation.index - 1];
@@ -212,7 +205,7 @@ function computeOutdentProjection(
   activeId: string
 ): DropProjection | null {
   const activeItem = flatNodes.find((item) => item.id === activeId);
-  const sourceLocation = findNodeLocation(state, activeId);
+  const sourceLocation = findLocation(state, activeId);
   if (!activeItem || !sourceLocation || sourceLocation.parentId === state.rootId) return null;
 
   const grandParentId = findParentId(state, sourceLocation.parentId);
@@ -241,7 +234,7 @@ function computeDropProjection(
     return null;
   }
 
-  const draggedSubtreeIds = new Set(collectNodeSubtreeIds(state, activeId));
+  const draggedSubtreeIds = new Set(collectSubtreeIds(state, activeId));
   if (draggedSubtreeIds.has(overId)) return null;
 
   if (deltaX > HORIZONTAL_DEPTH_THRESHOLD) {
@@ -306,8 +299,15 @@ export function NodeTreeEditor({
   const containerRef = useRef<HTMLDivElement>(null);
   const wikilinkResolver = useWikilinkResolver();
   const [dropProjection, setDropProjection] = useState<DropProjection | null>(null);
-  const rootNodeSignature = useMemo(() => JSON.stringify(rootNode), [rootNode]);
-  const lastKnownTreeSignatureRef = useRef(rootNodeSignature);
+  // Reference-based change detection. selectTree() returns the same cached
+  // object ref while state hasn't changed (WeakMap-memoised in useNodeTree),
+  // so `tree !== lastEmittedTreeRef.current` is true only after a real
+  // mutation. Replaces the O(N) `JSON.stringify(tree)` signature we used to
+  // recompute on every render. Initialised to the first-seen tree/prop so
+  // the very first effect tick has the "no change since mount" baseline —
+  // otherwise we'd see a phantom onChange before the user does anything.
+  const lastEmittedTreeRef = useRef<ContentNode | null>(null);
+  const lastSeenRootNodePropRef = useRef<ContentNode | null>(rootNode);
   const skippedInitialChangeRef = useRef(false);
   const didAutoFocusRef = useRef(false);
   // Editable view hides the root row — root is a structural wrapper around
@@ -318,39 +318,47 @@ export function NodeTreeEditor({
   const flatNodeIds = useMemo(() => flatNodes.map((node) => node.id), [flatNodes]);
   const rootStateNode = state.nodes[state.rootId];
 
-  // O(1) parent + sibling-index lookup, built once per state. Replaces the
-  // per-render-per-row `findParentId` (O(N) walk) which used to make
-  // can-move-up/-down computation O(N²) on large trees.
-  const locationByIdMap = useMemo(() => {
-    const map = new Map<string, { parentId: string; index: number; siblingCount: number }>();
-    for (const node of Object.values(state.nodes)) {
-      const children = node.children;
-      if (!children?.length) continue;
-      children.forEach((child, index) => {
-        map.set(child.id, { parentId: node.id, index, siblingCount: children.length });
+  // Shared O(1) parent + sibling-index lookup. Selector caches by
+  // `state.nodes` ref so this rebuilds only when the actual node graph
+  // changes — focus/edit toggles don't invalidate it.
+  const locationByIdMap = useMemo(() => selectLocationMap(state), [state]);
+  // Read mode hides the root row when (a) it has no content at all (empty
+  // structural wrapper), OR (b) its content is byte-identical to the first
+  // child — a legacy lift artifact that would otherwise render a visible
+  // duplicate. Edit mode applies the same dedup via `liftRootContent` in the
+  // reducer; this keeps both views consistent.
+  const readOnlyFlatNodes = useMemo(() => {
+    const firstChildId = rootStateNode?.children?.[0]?.id;
+    const firstChild = firstChildId ? state.nodes[firstChildId] : undefined;
+    const mirrors = rootContentMirrorsFirstChild(rootStateNode, firstChild);
+    const includeRoot = hasVisibleNodeContent(rootStateNode) && !mirrors;
+    if (mirrors) {
+      debug.warn('read-mode dedup — hiding root row that mirrors first child', {
+        rootHeader: rootStateNode?.header,
+        firstChildId,
       });
     }
-    return map;
-  }, [state]);
-  // Read mode hides only the implicit empty root row; root text from legacy conversion stays visible.
-  const readOnlyFlatNodes = useMemo(
-    () => selectFlat(state, { includeRoot: hasVisibleNodeContent(rootStateNode) }),
-    [rootStateNode, state]
-  );
+    return selectFlat(state, { includeRoot });
+  }, [rootStateNode, state]);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
   );
   const tree = useMemo(() => selectTree(state), [state]);
-  const treeSignature = useMemo(() => JSON.stringify(tree), [tree]);
   const isEmptyTree = isEmptyLeaf(state, state.rootId);
 
   useEffect(() => {
-    if (rootNodeSignature === lastKnownTreeSignatureRef.current) return;
+    // Prop rootNode is the same reference we just emitted — no foreign change
+    // arrived from the parent. Skip the resetting setRoot dispatch.
+    if (lastSeenRootNodePropRef.current === rootNode) return;
+    lastSeenRootNodePropRef.current = rootNode;
 
-    lastKnownTreeSignatureRef.current = rootNodeSignature;
+    debug.log('prop rootNode changed — resetting state via setRoot', {
+      rootHeader: rootNode.header,
+      childCount: rootNode.children?.length ?? 0,
+    });
     dispatch({ type: 'setRoot', root: rootNode });
-  }, [dispatch, rootNode, rootNodeSignature]);
+  }, [dispatch, rootNode]);
 
   // Migrate any legacy content that landed on the root node (header/text/media)
   // into a real first child. After this runs, root is always a pure wrapper —
@@ -364,32 +372,51 @@ export function NodeTreeEditor({
   // has content sitting on root (with or without existing children), lift it
   // into a new first child. After that, root staying empty (e.g. user deleted
   // the last visible child) is a legitimate state — never re-lift.
-  const liftCheckedRef = useRef(false);
-  useEffect(() => {
-    liftCheckedRef.current = false;
-  }, [rootNodeSignature]);
+  // Single effect: reset the "have we checked lift for this loaded tree" flag
+  // when a new root signature arrives AND run the check in the same tick.
+  // Folding the previous two effects removes the temporal coupling — there's
+  // no longer a "reset first, check second" ordering invariant for future
+  // refactors to accidentally break.
+  const liftCheckedForPropRef = useRef<ContentNode | null>(null);
   useEffect(() => {
     if (readOnly) return;
-    if (liftCheckedRef.current) return;
     if (!rootStateNode) return;
+    // Reference compare — only re-run lift when a *new* rootNode prop arrives.
+    if (liftCheckedForPropRef.current === rootNode) return;
+    liftCheckedForPropRef.current = rootNode;
 
-    liftCheckedRef.current = true;
+    debug.log('lift-check fired', {
+      rootHasContent,
+      rootHeader: rootStateNode.header,
+      rootText: rootStateNode.text?.slice(0, 60),
+      mediaCount: rootStateNode.media?.length ?? 0,
+      childCount: rootStateNode.children?.length ?? 0,
+    });
     if (rootHasContent) {
       dispatch({ type: 'liftRootContent', childId: createNodeId() });
     }
-  }, [dispatch, readOnly, rootHasContent, rootStateNode]);
+  }, [dispatch, readOnly, rootHasContent, rootStateNode, rootNode]);
 
   useEffect(() => {
     if (!skippedInitialChangeRef.current) {
       skippedInitialChangeRef.current = true;
+      lastEmittedTreeRef.current = tree;
       return;
     }
 
-    if (treeSignature === lastKnownTreeSignatureRef.current) return;
+    // `tree` is a stable ref while state hasn't changed (WeakMap-memoised in
+    // selectTree). Pure reference compare — no full-tree JSON.stringify.
+    if (tree === lastEmittedTreeRef.current) return;
 
-    lastKnownTreeSignatureRef.current = treeSignature;
+    debug.log('tree mutated — emitting onChange to parent', {
+      childCount: tree.children?.length ?? 0,
+    });
+    lastEmittedTreeRef.current = tree;
+    // Mark the same tree as "what we last gave parent" so when the parent
+    // hands it right back as the rootNode prop, the setRoot effect skips.
+    lastSeenRootNodePropRef.current = tree;
     onChange(tree);
-  }, [onChange, tree, treeSignature]);
+  }, [onChange, tree]);
 
   useEffect(() => {
     if (!autoFocusFirst || didAutoFocusRef.current) return;

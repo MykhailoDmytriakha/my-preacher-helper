@@ -16,6 +16,8 @@ import { useTags } from '@/hooks/useTags';
 import { useWikilinkResolver } from '@/hooks/useWikilinkResolver';
 import { ScriptureReference, StudyNote } from '@/models/models';
 import { deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
+import { createDebug } from '@/utils/debug';
+import { makeId } from '@/utils/makeId';
 import { getStudyText, nodeTreeToMarkdown } from '@/utils/nodeTreeAdapter';
 import { markdownToNodeTree } from '@/utils/nodeTreeMigration';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
@@ -34,7 +36,7 @@ import TagCatalogModal from '../TagCatalogModal';
 
 import type { ContentNode } from '@/models/models';
 
-const makeId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+const debug = createDebug('studies/page');
 
 // Local helper until API has a specific noteId delete
 const deleteStudyNoteShareLinkByNoteId = async (userId: string, noteId: string, currentLinks: { noteId: string; id: string }[]) => {
@@ -181,18 +183,80 @@ function useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router }: any) {
     };
 }
 
-function useNoteAutoSave({
-    noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, rootNode, updateNote, createNote, uid, setCreatedNoteId, t, autoSaveEnabled
-}: {
-    noteId: string; isNew: boolean; isInitialized: boolean; existingNote?: StudyNote; title: string;
-    content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: 'note' | 'question';
+// ---------------------------------------------------------------------------
+// Editor-state ownership invariant
+// ---------------------------------------------------------------------------
+// Tree state lives in **four** layers; this is intentional but only safe as
+// long as the ownership rules stay clear:
+//
+//   1. `useNodeTree` useReducer (inside <NodeTreeEditor>) — the only place
+//      that *mutates* tree shape during an editing session. Hot path.
+//
+//   2. page.tsx `rootNode` useState (this file) — mirrors the reducer through
+//      `onChange`. Source for autosave + AI + copy-to-clipboard. Single
+//      writer is `setRootNode`, called either from NodeTreeEditor's onChange
+//      or from the convert-to-nodes modal.
+//
+//   3. React Query cache (`useStudyNotes`) — owns `existingNote.rootNode`,
+//      updated by `updateNote` mutations + invalidation. Not written
+//      directly from here; the local mirror (layer 2) is authoritative
+//      between edits.
+//
+//   4. Firestore — durable persistence; mutated only via `updateNote`.
+//
+// Invariant: at rest, layer 2 ≡ layer 3 ≡ layer 4. During an edit the local
+// layer leads and the autosave debounce ferries the diff up the stack.
+//
+// A future refactor could collapse 1+2 (have <NodeTreeEditor> reach into the
+// page's reducer) or 2+3 (drop the local mirror and write straight through
+// React Query). Both are out-of-scope for this wave because they reshape
+// the autosave dirty-detect mechanism and would require touching every
+// consumer of `rootNode`.
+// ---------------------------------------------------------------------------
+
+function shallowArrayEquals<T>(a: readonly T[] | undefined, b: readonly T[] | undefined): boolean {
+    if (a === b) return true;
+    if (!a || !b || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i += 1) {
+        if (a[i] !== b[i]) return false;
+    }
+    return true;
+}
+
+/**
+ * What the autosave hook needs to evaluate "is anything dirty?" and persist.
+ * Splits into three concerns: identity (which note + initialised gate),
+ * draft (editable fields currently in local state), and capabilities
+ * (mutations + context). Replaces the prior 15-param positional explosion.
+ */
+interface AutoSaveDraft {
+    title: string;
+    content: string;
+    tags: string[];
+    scriptureRefs: ScriptureReference[];
+    type: 'note' | 'question';
     rootNode: ContentNode | null;
+}
+interface AutoSaveContext {
+    noteId: string;
+    isNew: boolean;
+    isInitialized: boolean;
+    autoSaveEnabled: boolean;
+    existingNote?: StudyNote;
+    draft: AutoSaveDraft;
+    uid: string | undefined;
     updateNote: (args: { id: string; updates: Partial<StudyNote> }) => Promise<StudyNote>;
     createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>) => Promise<StudyNote>;
-    uid: string | undefined; setCreatedNoteId: (id: string) => void;
+    setCreatedNoteId: (id: string) => void;
     t: ReturnType<typeof useTranslation>['t'];
-    autoSaveEnabled: boolean;
-}) {
+}
+
+function useNoteAutoSave(ctx: AutoSaveContext) {
+    const {
+        noteId, isNew, isInitialized, existingNote, draft, updateNote, createNote, uid,
+        setCreatedNoteId, t, autoSaveEnabled,
+    } = ctx;
+    const { title, content, tags, scriptureRefs, type, rootNode } = draft;
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -222,11 +286,24 @@ function useNoteAutoSave({
     }, [isInitialized, noteId, editableSignature]);
 
     const saveChanges = useCallback(async () => {
-        if (!noteId || !isInitialized) return;
+        if (!noteId || !isInitialized) {
+            debug.log('saveChanges: skip — not initialized', { noteId, isInitialized });
+            return;
+        }
 
         // Primary guard: if the editable signature hasn't moved since our
         // last save attempt, there is nothing to send.
-        if (lastSavedSignatureRef.current === editableSignature) return;
+        if (lastSavedSignatureRef.current === editableSignature) {
+            debug.log('saveChanges: skip — signature unchanged');
+            return;
+        }
+        debug.log('saveChanges: triggered', {
+            noteId,
+            isNew,
+            hasRootNode: Boolean(rootNode),
+            rootNodeChildren: rootNode?.children?.length ?? 0,
+            autoSaveEnabled,
+        });
         const signatureAtAttempt = editableSignature;
 
         if (isNew) {
@@ -255,24 +332,36 @@ function useNoteAutoSave({
             const remoteCanonical = existingNote.rootNode
                 ? nodeTreeToMarkdown(existingNote.rootNode)
                 : (existingNote.content ?? '');
+            // Shallow compares everywhere we can — the rootNode case relies
+            // on the WeakMap-memoised `selectTree` keeping the same object
+            // ref when nothing structural changed. The localCanonical /
+            // remoteCanonical strings remain the only string-level check
+            // because the server re-derives `content` from rootNode on every
+            // write — comparing strings is the only way to detect "the
+            // server normalised my draft into the same canonical form".
             const isUnchanged =
                 existingNote.title === title &&
                 localCanonical === remoteCanonical &&
                 existingNote.type === type &&
-                JSON.stringify(existingNote.tags) === JSON.stringify(tags) &&
-                JSON.stringify(existingNote.scriptureRefs) === JSON.stringify(scriptureRefs) &&
-                JSON.stringify(existingNote.rootNode ?? null) === JSON.stringify(rootNode ?? null);
+                shallowArrayEquals(existingNote.tags, tags) &&
+                shallowArrayEquals(existingNote.scriptureRefs, scriptureRefs) &&
+                (existingNote.rootNode ?? null) === (rootNode ?? null);
 
             if (isUnchanged) {
                 // Advance the signature — server already has this state.
                 // Without this the next render will compare a stale ref and
                 // try to save again on every tick.
+                debug.log('saveChanges: server-side already matches, advancing signature');
                 lastSavedSignatureRef.current = signatureAtAttempt;
                 return;
             }
         }
 
         setSaveError(null);
+        debug.log('saveChanges: sending update to server', {
+            noteId,
+            rootChildCount: rootNode?.children?.length ?? 0,
+        });
         // Don't ship local `content` when a tree is present — the server
         // will overwrite it via `syncContentWithTree` anyway, and sending
         // a stale string just makes the diff noisy.
@@ -777,8 +866,9 @@ export default function StudyNoteEditorPage() {
     const [isInitialized, setIsInitialized] = useState(false);
 
     const { isSaving, lastSaved, saveError, setLastSaved, hasUnsavedChanges, flushSave } = useNoteAutoSave({
-        noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, rootNode,
-        updateNote, createNote, uid, setCreatedNoteId, t, autoSaveEnabled
+        noteId, isNew, isInitialized, existingNote, autoSaveEnabled,
+        draft: { title, content, tags, scriptureRefs, type, rootNode },
+        updateNote, createNote, uid, setCreatedNoteId, t,
     });
 
     // Leaving edit mode with autosave off — flush pending changes so the user

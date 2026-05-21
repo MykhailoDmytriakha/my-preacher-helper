@@ -18,6 +18,7 @@ import {
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { makeId } from '@/utils/makeId';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
 import NodeTextEditor from './NodeTextEditor';
@@ -183,24 +184,19 @@ export function NodeView({
     onDeleteNode,
   } = treeActions;
   const { t } = useTranslation();
-  const [draftHeader, setDraftHeader] = useState(node.header ?? '');
-  const [draftText, setDraftText] = useState(node.text ?? '');
   const [isAddingMedia, setIsAddingMedia] = useState(false);
   const [mediaDraft, setMediaDraft] = useState({ url: '', caption: '' });
   const headerRef = useRef<HTMLTextAreaElement>(null);
   const headingLevel = clampHeadingLevel(depth);
   const HeadingTag = HEADING_TAGS[headingLevel - 1];
+  const headerValue = node.header ?? '';
+  const textValue = node.text ?? '';
   const hasHeader = Boolean(node.header);
   const hasText = Boolean(node.text);
   const hasMedia = Boolean(node.media?.length);
   const isEmptyNode = !hasHeader && !hasText && !hasMedia;
   const hasNodeContent = Boolean(node.header?.trim() || node.text?.trim() || hasMedia);
   const shouldShowActions = showActions || isEditing;
-
-  useEffect(() => {
-    setDraftHeader(node.header ?? '');
-    setDraftText(node.text ?? '');
-  }, [node.header, node.text, isEditing]);
 
   // Auto-resize the single-line header textarea (text body is handled by
   // RichMarkdownEditor which manages its own height).
@@ -210,7 +206,7 @@ export function NodeView({
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
-  }, [draftHeader, isEditing]);
+  }, [headerValue, isEditing]);
 
   // When edit mode opens on the focused node, move keyboard focus into the
   // header textarea so the first keystroke lands there.
@@ -222,25 +218,6 @@ export function NodeView({
     const length = target.value.length;
     target.setSelectionRange(length, length);
   }, [isEditing, isFocused]);
-
-  // Keep refs to the latest drafts so we can flush them if the user exits
-  // edit mode via a keyboard shortcut (e.g. Escape) instead of blurring the
-  // textarea — `onBlur` doesn't fire when the textarea unmounts.
-  const draftHeaderRef = useRef(draftHeader);
-  const draftTextRef = useRef(draftText);
-  draftHeaderRef.current = draftHeader;
-  draftTextRef.current = draftText;
-  const wasEditingRef = useRef(false);
-
-  useEffect(() => {
-    if (wasEditingRef.current && !isEditing) {
-      const draftText = draftTextRef.current;
-      const draftHeader = draftHeaderRef.current;
-      if ((node.header ?? '') !== draftHeader) onHeaderChange(draftHeader);
-      if ((node.text ?? '') !== draftText) onTextChange(draftText);
-    }
-    wasEditingRef.current = isEditing;
-  }, [isEditing, node.text, node.header, onTextChange, onHeaderChange]);
 
   // Empty focused node: there's nothing to read, so jump straight into
   // text-editing instead of forcing a second click to reveal the textarea.
@@ -367,9 +344,7 @@ export function NodeView({
     const url = mediaDraft.url.trim();
     if (!url) return;
     onMediaAdd({
-      id: typeof crypto !== 'undefined' && 'randomUUID' in crypto
-        ? crypto.randomUUID()
-        : `media-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      id: makeId('media'),
       type: detectMediaType(url),
       url,
       ...(mediaDraft.caption.trim() ? { caption: mediaDraft.caption.trim() } : {}),
@@ -436,20 +411,10 @@ export function NodeView({
               aria-label="Заголовок ноды"
               placeholder={t('studiesWorkspace.nodeTree.headerPlaceholder') || 'Заголовок (опционально)'}
               className="w-full resize-none overflow-hidden rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-emerald-800 dark:bg-gray-900 dark:text-gray-100"
-              value={draftHeader}
-              onChange={(event) => {
-                const next = event.target.value.replace(/\n/g, ' ');
-                setDraftHeader(next);
-                // Forward to parent immediately so autosave debounce starts
-                // ticking while the user is still typing — without this the
-                // change sits in local draft state until blur, which means
-                // a long edit session has zero saves until focus leaves.
-                onHeaderChange(next);
-              }}
+              value={headerValue}
+              onChange={(event) => onHeaderChange(event.target.value.replace(/\n/g, ' '))}
               onKeyDown={(event) => {
-                // Header is a single logical line — Enter must not insert a
-                // newline. Soft-wrap (visual line break on long content)
-                // still happens; only the literal \n is forbidden.
+                // Header is one logical line — Enter must not insert a newline.
                 if (event.key === 'Enter') {
                   event.preventDefault();
                   event.stopPropagation();
@@ -461,26 +426,17 @@ export function NodeView({
                 event.preventDefault();
                 const sanitized = pasted.replace(/\s*\n+\s*/g, ' ');
                 const textarea = event.currentTarget;
-                const start = textarea.selectionStart ?? draftHeader.length;
-                const end = textarea.selectionEnd ?? draftHeader.length;
-                const next = `${draftHeader.slice(0, start)}${sanitized}${draftHeader.slice(end)}`;
-                setDraftHeader(next);
-                onHeaderChange(next);
+                const start = textarea.selectionStart ?? headerValue.length;
+                const end = textarea.selectionEnd ?? headerValue.length;
+                onHeaderChange(`${headerValue.slice(0, start)}${sanitized}${headerValue.slice(end)}`);
               }}
-              onBlur={() => onHeaderChange(draftHeader)}
               onClick={stopRowClick}
               rows={1}
             />
             <div onClick={stopRowClick}>
               <NodeTextEditor
-                value={draftText}
-                onChange={(next) => {
-                  setDraftText(next);
-                  // Same reasoning as the header textarea: pipe every keystroke
-                  // straight through to the parent so autosave's debounce
-                  // window starts immediately, not at blur.
-                  onTextChange(next);
-                }}
+                value={textValue}
+                onChange={onTextChange}
                 placeholder={t('studiesWorkspace.nodeTree.textPlaceholder') || 'Текст ноды'}
                 minHeight="120px"
                 currentNoteId={currentNoteId}

@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server';
 
+import { createServerDebug } from '@/utils/serverDebug';
 import { studiesRepository } from '@repositories/studies.repository';
 
 import type { StudyNote } from '@/models/models';
+
+const debug = createServerDebug('studies/api/notes');
 
 // Error messages
 const ERROR_MESSAGES = {
@@ -71,9 +74,18 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     }
 
     const updates = pickAllowedUpdates(body);
+    const rootNodeForLog = updates.rootNode as { children?: unknown[] } | undefined;
+    debug.log('PUT note update', {
+      noteId: id,
+      keys: Object.keys(updates),
+      hasRootNode: Boolean(updates.rootNode),
+      rootChildren: Array.isArray(rootNodeForLog?.children) ? rootNodeForLog.children.length : 0,
+    });
     const updated = await studiesRepository.updateNote(id, { ...updates, userId });
+    debug.log('PUT note update — persisted', { noteId: id });
     return NextResponse.json(updated);
   } catch (error) {
+    debug.error('PUT note update failed', { noteId: id, error });
     console.error(`PUT /api/studies/notes/${id} error`, error);
     return NextResponse.json({ error: 'Failed to update study note' }, { status: 500 });
   }
