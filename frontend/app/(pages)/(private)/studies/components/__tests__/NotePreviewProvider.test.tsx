@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 
 import NotePreviewProvider from '../NotePreviewProvider';
 
@@ -65,6 +65,7 @@ describe('NotePreviewProvider', () => {
 
   it('intercepts plain left-clicks on wikilink chips and opens the preview modal without navigating', () => {
     renderProvider(
+      // eslint-disable-next-line @next/next/no-html-link-for-pages -- Test fixture intentionally uses raw <a> to exercise the capture-phase document click delegator on a non-Link anchor.
       <a data-wikilink-id="abc" href="/studies/abc">
         chip
       </a>
@@ -98,6 +99,7 @@ describe('NotePreviewProvider', () => {
 
   it('lets Cmd+click on wikilink chips fall through to default navigation (no preventDefault)', () => {
     renderProvider(
+      // eslint-disable-next-line @next/next/no-html-link-for-pages -- Test fixture intentionally uses raw <a> to exercise the capture-phase document click delegator on a non-Link anchor.
       <a data-wikilink-id="abc" href="/studies/abc">
         chip
       </a>
@@ -123,6 +125,7 @@ describe('NotePreviewProvider', () => {
 
   it('removes the capture-phase listener on unmount so wikilink clicks stop opening the modal', () => {
     const { unmount } = renderProvider(
+      // eslint-disable-next-line @next/next/no-html-link-for-pages -- Test fixture intentionally uses raw <a> to exercise the capture-phase document click delegator on a non-Link anchor.
       <a data-wikilink-id="abc" href="/studies/abc">
         chip
       </a>

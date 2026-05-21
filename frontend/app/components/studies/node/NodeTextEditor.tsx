@@ -1,12 +1,13 @@
 'use client';
 
-import { LinkIcon } from '@heroicons/react/24/outline';
 import { type Editor } from '@tiptap/react';
+import { Link2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import WikilinkPicker from '@/(pages)/(private)/studies/components/WikilinkPicker';
 import { useClickOutside } from '@/hooks/useClickOutside';
 import { RichMarkdownEditor } from '@components/ui/RichMarkdownEditor';
+import { ToolbarButton } from '@components/ui/RichMarkdownToolbar';
 
 import Wikilink from './wikilinkExtension';
 
@@ -185,17 +186,20 @@ export function NodeTextEditor({
         minHeight={minHeight}
         extraExtensions={wikilinkExtensions}
         onEditorReady={setEditor}
+        toolbarHideHeadings
+        toolbarExtras={() => (
+          <ToolbarButton
+            onClick={(event) => {
+              event.preventDefault();
+              handleOpenToolbarPicker();
+            }}
+            isActive={picker.open}
+            ariaLabel="Вставить ссылку на заметку"
+          >
+            <Link2 className="w-4 h-4" />
+          </ToolbarButton>
+        )}
       />
-      <button
-        type="button"
-        title="Вставить ссылку на заметку"
-        aria-label="Вставить ссылку на заметку"
-        onMouseDown={(e) => e.preventDefault()}
-        onClick={handleOpenToolbarPicker}
-        className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md bg-gray-50 px-2 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-      >
-        <LinkIcon className="h-3.5 w-3.5" aria-hidden="true" /> Ссылка
-      </button>
       {picker.open ? (
         <div ref={pickerRef}>
           <WikilinkPicker

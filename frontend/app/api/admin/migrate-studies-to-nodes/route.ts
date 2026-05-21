@@ -53,6 +53,49 @@ interface MigrationReport {
 
 const SCAN_BATCH_SIZE = 100;
 
+type DocOutcome = 'already' | 'empty' | 'migrated' | 'failed';
+
+/**
+ * Process one Firestore doc: classify (already migrated / empty / migrate)
+ * and, when not in dry-run mode, write the new shape. Mutates `report`
+ * counters so the caller doesn't have to branch again on the outcome.
+ */
+async function processNoteDoc(
+  doc: FirebaseFirestore.QueryDocumentSnapshot,
+  report: MigrationReport,
+  dryRun: boolean
+): Promise<DocOutcome> {
+  try {
+    const data = doc.data() as StudyNote;
+    if (data.rootNode) {
+      report.alreadyMigrated += 1;
+      return 'already';
+    }
+    const content = data.content ?? '';
+    if (!content.trim()) {
+      report.skippedEmpty += 1;
+      return 'empty';
+    }
+
+    const rootNode = markdownToNodeTree(content);
+    const derivedContent = nodeTreeToMarkdown(rootNode);
+
+    if (!dryRun) {
+      await doc.ref.update({
+        rootNode,
+        content: derivedContent,
+        legacyContent: content,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    report.newlyMigrated += 1;
+    return 'migrated';
+  } catch (err) {
+    report.failed.push({ id: doc.id, error: err instanceof Error ? err.message : String(err) });
+    return 'failed';
+  }
+}
+
 /**
  * Batch-migrate legacy `content: string` study notes into the node-tree
  * model. Default is dryRun=true — the report shows what *would* change
@@ -117,37 +160,11 @@ export async function POST(request: Request) {
     for (const doc of snapshot.docs) {
       report.totalScanned += 1;
       lastSeenId = doc.id;
-      try {
-        const data = doc.data() as StudyNote;
-        if (data.rootNode) {
-          report.alreadyMigrated += 1;
-          continue;
-        }
-        const content = data.content ?? '';
-        if (!content.trim()) {
-          report.skippedEmpty += 1;
-          continue;
-        }
-
-        const rootNode = markdownToNodeTree(content);
-        const derivedContent = nodeTreeToMarkdown(rootNode);
-
-        if (!dryRun) {
-          await doc.ref.update({
-            rootNode,
-            content: derivedContent,
-            legacyContent: content,
-            updatedAt: new Date().toISOString(),
-          });
-        }
-        report.newlyMigrated += 1;
-        if (report.newlyMigrated >= newlyMigratedCap) {
-          hitCap = true;
-          processedAllInThisBatch = false;
-          break;
-        }
-      } catch (err) {
-        report.failed.push({ id: doc.id, error: err instanceof Error ? err.message : String(err) });
+      const outcome = await processNoteDoc(doc, report, dryRun);
+      if (outcome === 'migrated' && report.newlyMigrated >= newlyMigratedCap) {
+        hitCap = true;
+        processedAllInThisBatch = false;
+        break;
       }
     }
 

@@ -2,6 +2,7 @@ import { mergeAttributes, Node, nodeInputRule } from '@tiptap/core';
 import { Fragment, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 
+import WikilinkChip from './WikilinkChip';
 import {
   STUDIES_LINK_PREFIX,
   WIKILINK_CHIP_CLASS,
@@ -9,7 +10,6 @@ import {
   WIKILINK_DATA_ATTR,
   WIKILINK_ID_REGEX_SOURCE,
 } from './wikilinkConstants';
-import WikilinkChip from './WikilinkChip';
 
 import type MarkdownIt from 'markdown-it';
 import type StateInline from 'markdown-it/lib/rules_inline/state_inline.mjs';

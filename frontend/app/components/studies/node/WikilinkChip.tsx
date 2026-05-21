@@ -4,6 +4,7 @@ import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import Link from 'next/link';
 
 import { useWikilinkResolver } from '@/hooks/useWikilinkResolver';
+
 import {
   STUDIES_LINK_PREFIX,
   WIKILINK_CHIP_CLASS,

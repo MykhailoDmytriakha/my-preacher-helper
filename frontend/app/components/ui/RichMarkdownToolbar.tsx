@@ -14,9 +14,21 @@ import React from 'react';
 
 interface RichMarkdownToolbarProps {
     editor: Editor | null;
+    /**
+     * Hide the H1/H2/H3 cluster. Useful where heading marks have host-side
+     * side-effects (e.g. NodeTextEditor auto-splits `# heading` into a
+     * separate child node — exposing the buttons there is a footgun).
+     */
+    hideHeadings?: boolean;
+    /**
+     * Optional render slot appended at the end of the toolbar, after the
+     * built-in formatting buttons. Receives the live editor so callers can
+     * wire custom commands. Used for things like a wikilink picker trigger.
+     */
+    extraButtons?: (editor: Editor) => React.ReactNode;
 }
 
-export function RichMarkdownToolbar({ editor }: RichMarkdownToolbarProps) {
+export function RichMarkdownToolbar({ editor, hideHeadings = false, extraButtons }: RichMarkdownToolbarProps) {
     const toolbarState = useEditorState({
         editor,
         selector: ({ editor: currentEditor }) => ({
@@ -65,29 +77,33 @@ export function RichMarkdownToolbar({ editor }: RichMarkdownToolbarProps) {
                 <Strikethrough className="w-4 h-4" />
             </ToolbarButton>
 
-            <div className="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1" />
+            {!hideHeadings ? (
+                <>
+                    <div className="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1" />
 
-            <ToolbarButton
-                onClick={(e) => handleToggle(() => editor.chain().focus().toggleHeading({ level: 1 }).run(), e)}
-                isActive={toolbarState.heading1}
-                ariaLabel="Heading 1"
-            >
-                <Heading1 className="w-4 h-4" />
-            </ToolbarButton>
-            <ToolbarButton
-                onClick={(e) => handleToggle(() => editor.chain().focus().toggleHeading({ level: 2 }).run(), e)}
-                isActive={toolbarState.heading2}
-                ariaLabel="Heading 2"
-            >
-                <Heading2 className="w-4 h-4" />
-            </ToolbarButton>
-            <ToolbarButton
-                onClick={(e) => handleToggle(() => editor.chain().focus().toggleHeading({ level: 3 }).run(), e)}
-                isActive={toolbarState.heading3}
-                ariaLabel="Heading 3"
-            >
-                <Heading3 className="w-4 h-4" />
-            </ToolbarButton>
+                    <ToolbarButton
+                        onClick={(e) => handleToggle(() => editor.chain().focus().toggleHeading({ level: 1 }).run(), e)}
+                        isActive={toolbarState.heading1}
+                        ariaLabel="Heading 1"
+                    >
+                        <Heading1 className="w-4 h-4" />
+                    </ToolbarButton>
+                    <ToolbarButton
+                        onClick={(e) => handleToggle(() => editor.chain().focus().toggleHeading({ level: 2 }).run(), e)}
+                        isActive={toolbarState.heading2}
+                        ariaLabel="Heading 2"
+                    >
+                        <Heading2 className="w-4 h-4" />
+                    </ToolbarButton>
+                    <ToolbarButton
+                        onClick={(e) => handleToggle(() => editor.chain().focus().toggleHeading({ level: 3 }).run(), e)}
+                        isActive={toolbarState.heading3}
+                        ariaLabel="Heading 3"
+                    >
+                        <Heading3 className="w-4 h-4" />
+                    </ToolbarButton>
+                </>
+            ) : null}
 
             <div className="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1" />
 
@@ -112,9 +128,18 @@ export function RichMarkdownToolbar({ editor }: RichMarkdownToolbarProps) {
             >
                 <Quote className="w-4 h-4" />
             </ToolbarButton>
+
+            {extraButtons ? (
+                <>
+                    <div className="w-px h-4 bg-gray-300 dark:bg-gray-600 mx-1" />
+                    {extraButtons(editor)}
+                </>
+            ) : null}
         </div>
     );
 }
+
+export { ToolbarButton };
 
 const DEFAULT_TOOLBAR_STATE = {
     bold: false,

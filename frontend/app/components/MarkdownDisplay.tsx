@@ -4,9 +4,6 @@ import Link from 'next/link';
 import React, { memo, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { Link as MdastLink, Root, Text } from 'mdast';
-import type { Node as UnistNode, Parent as UnistParent } from 'unist';
-import type { PluggableList, Plugin } from 'unified';
 
 import HighlightedText from '@components/HighlightedText';
 import {
@@ -16,6 +13,11 @@ import {
     WIKILINK_DATA_ATTR,
     WIKILINK_ID_REGEX_SOURCE,
 } from '@components/studies/node/wikilinkConstants';
+
+import type { Link as MdastLink, Root, Text } from 'mdast';
+import type { PluggableList, Plugin } from 'unified';
+import type { Node as UnistNode, Parent as UnistParent } from 'unist';
+
 
 interface MarkdownDisplayProps {
     content: string;

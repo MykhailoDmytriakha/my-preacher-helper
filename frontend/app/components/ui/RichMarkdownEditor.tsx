@@ -38,6 +38,10 @@ interface RichMarkdownEditorProps {
      * keeping this component otherwise opaque.
      */
     onEditorReady?: (editor: Editor | null) => void;
+    /** Hide the H1/H2/H3 cluster from the toolbar. */
+    toolbarHideHeadings?: boolean;
+    /** Render slot for extra toolbar buttons (e.g. wikilink picker trigger). */
+    toolbarExtras?: (editor: Editor) => React.ReactNode;
 }
 
 export function RichMarkdownEditor({
@@ -52,6 +56,8 @@ export function RichMarkdownEditor({
     className = '',
     extraExtensions = [],
     onEditorReady,
+    toolbarHideHeadings = false,
+    toolbarExtras,
 }: RichMarkdownEditorProps) {
     const editor = useEditor({
         extensions: [
@@ -115,7 +121,13 @@ export function RichMarkdownEditor({
 
     return (
         <div className={`flex flex-col w-full flex-1 rounded-xl shadow-sm ${className}`} style={{ minHeight }}>
-            {!hideToolbar && <RichMarkdownToolbar editor={editor} />}
+            {!hideToolbar && (
+                <RichMarkdownToolbar
+                    editor={editor}
+                    hideHeadings={toolbarHideHeadings}
+                    extraButtons={toolbarExtras}
+                />
+            )}
             <div className="flex-1 cursor-text flex flex-col">
                 <EditorContent
                     editor={editor}

@@ -285,7 +285,7 @@ function useNoteAutoSave({
         });
         lastSavedSignatureRef.current = signatureAtAttempt;
         setLastSaved(new Date());
-    }, [noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, rootNode, updateNote, createNote, uid, setCreatedNoteId, t, editableSignature]);
+    }, [noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, rootNode, updateNote, createNote, uid, setCreatedNoteId, editableSignature]);
 
     const { debouncedSave, status: saveStatus } = useAutoSave(saveChanges, {
         delay: 1500,
@@ -516,20 +516,24 @@ function EditorHeader({
                 />
             </div>
 
-            {/* Sync Status Info */}
+            {/* Sync Status Info — only meaningful while editing. Read mode
+                doesn't save anything, so the "Сохранено" badge there is just
+                noise that suggests the user is doing something they aren't. */}
             <div className="flex items-center gap-3">
-                <div
-                    className="text-sm flex items-center gap-1.5 text-gray-500 dark:text-gray-400"
-                    title={lastSaved ? formatSavedTooltip(lastSaved, t) : undefined}
-                >
-                    {isSaving ? (
-                        <><ArrowPathIcon className="h-4 w-4 animate-spin" /> <span>{t('common.saving') || 'Saving...'}</span></>
-                    ) : saveError ? (
-                        <span className="text-red-500">{saveError}</span>
-                    ) : lastSaved ? (
-                        <><CheckCircleIcon className="h-4 w-4 text-emerald-500" /> <span className="hidden sm:inline">{t('common.saved') || 'Saved'}</span></>
-                    ) : null}
-                </div>
+                {isEditing ? (
+                    <div
+                        className="text-sm flex items-center gap-1.5 text-gray-500 dark:text-gray-400"
+                        title={lastSaved ? formatSavedTooltip(lastSaved, t) : undefined}
+                    >
+                        {isSaving ? (
+                            <><ArrowPathIcon className="h-4 w-4 animate-spin" /> <span>{t('common.saving') || 'Saving...'}</span></>
+                        ) : saveError ? (
+                            <span className="text-red-500">{saveError}</span>
+                        ) : lastSaved ? (
+                            <><CheckCircleIcon className="h-4 w-4 text-emerald-500" /> <span className="hidden sm:inline">{t('common.saved') || 'Saved'}</span></>
+                        ) : null}
+                    </div>
+                ) : null}
 
                 <button
                     type="button"
@@ -545,15 +549,14 @@ function EditorHeader({
                     <button
                         type="button"
                         onClick={handleCopy}
-                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isCopied
+                        className={`p-2 rounded-lg transition-colors ${isCopied
                             ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-gray-100'
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-100'
                             }`}
                         title={copyLabel}
                         aria-label={copyLabel}
                     >
                         {isCopied ? <CheckIcon className="h-5 w-5" /> : <DocumentDuplicateIcon className="h-5 w-5" />}
-                        <span className="hidden sm:inline">{copyLabel}</span>
                     </button>
                 )}
 
