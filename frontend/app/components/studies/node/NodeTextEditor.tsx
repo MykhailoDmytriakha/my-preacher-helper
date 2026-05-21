@@ -9,13 +9,13 @@ import { useClickOutside } from '@/hooks/useClickOutside';
 import { RichMarkdownEditor } from '@components/ui/RichMarkdownEditor';
 import { ToolbarButton } from '@components/ui/RichMarkdownToolbar';
 
+import ToolbarMicButton from './ToolbarMicButton';
 import Wikilink from './wikilinkExtension';
 
 interface NodeTextEditorProps {
   value: string;
   onChange: (value: string) => void;
   onBlur?: () => void;
-  onPastePlainText?: (text: string) => boolean;
   placeholder?: string;
   minHeight?: string;
   /** Excluded from picker results so a note can't link to itself. */
@@ -61,7 +61,6 @@ export function NodeTextEditor({
   value,
   onChange,
   onBlur,
-  onPastePlainText,
   placeholder,
   minHeight,
   currentNoteId,
@@ -175,29 +174,36 @@ export function NodeTextEditor({
     editor.commands.focus();
   }, [editor]);
 
+  const handleTranscribed = useCallback((text: string): void => {
+    if (!editor) return;
+    editor.chain().focus().insertContent(text).run();
+  }, [editor]);
+
   return (
     <div ref={wrapperRef} className="relative">
       <RichMarkdownEditor
         value={value}
         onChange={onChange}
         onBlur={onBlur}
-        onPastePlainText={onPastePlainText}
         placeholder={placeholder}
         minHeight={minHeight}
         extraExtensions={wikilinkExtensions}
         onEditorReady={setEditor}
         toolbarHideHeadings
         toolbarExtras={() => (
-          <ToolbarButton
-            onClick={(event) => {
-              event.preventDefault();
-              handleOpenToolbarPicker();
-            }}
-            isActive={picker.open}
-            ariaLabel="Вставить ссылку на заметку"
-          >
-            <Link2 className="w-4 h-4" />
-          </ToolbarButton>
+          <>
+            <ToolbarButton
+              onClick={(event) => {
+                event.preventDefault();
+                handleOpenToolbarPicker();
+              }}
+              isActive={picker.open}
+              ariaLabel="Вставить ссылку на заметку"
+            >
+              <Link2 className="w-4 h-4" />
+            </ToolbarButton>
+            <ToolbarMicButton onTranscribed={handleTranscribed} />
+          </>
         )}
       />
       {picker.open ? (

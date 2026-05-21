@@ -2015,6 +2015,8 @@
       "savedMinutesAgo": "Сохранено {{count}} мин назад",
       "savedAt": "Сохранено в {{time}}"
     },
+    "autoSave": "Автосохранение",
+    "unsavedChanges": "Не сохранено",
     "titleLabel": "Заголовок",
     "titlePlaceholder": "Необязательный заголовок заметки",
     "contentLabel": "Ваши мысли",

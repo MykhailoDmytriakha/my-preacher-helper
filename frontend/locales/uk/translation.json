@@ -2015,6 +2015,8 @@
       "savedMinutesAgo": "Збережено {{count}} хв тому",
       "savedAt": "Збережено о {{time}}"
     },
+    "autoSave": "Автозбереження",
+    "unsavedChanges": "Не збережено",
     "titleLabel": "Заголовок",
     "titlePlaceholder": "Необов'язковий заголовок нотатки",
     "contentLabel": "Ваші думки",

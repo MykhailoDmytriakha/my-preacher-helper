@@ -7,7 +7,6 @@ import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 import { toast } from 'sonner';
 
-import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import NodeTreeEditor from '@/components/studies/node/NodeTreeEditor';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { useAutoSave } from '@/hooks/useAutoSave';
@@ -183,7 +182,7 @@ function useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router }: any) {
 }
 
 function useNoteAutoSave({
-    noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, rootNode, updateNote, createNote, uid, setCreatedNoteId, t
+    noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, rootNode, updateNote, createNote, uid, setCreatedNoteId, t, autoSaveEnabled
 }: {
     noteId: string; isNew: boolean; isInitialized: boolean; existingNote?: StudyNote; title: string;
     content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: 'note' | 'question';
@@ -192,6 +191,7 @@ function useNoteAutoSave({
     createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>) => Promise<StudyNote>;
     uid: string | undefined; setCreatedNoteId: (id: string) => void;
     t: ReturnType<typeof useTranslation>['t'];
+    autoSaveEnabled: boolean;
 }) {
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
@@ -307,19 +307,24 @@ function useNoteAutoSave({
             debouncedSave.cancel();
             return;
         }
+        // Autosave off: keep tracking dirty signature, but don't schedule any
+        // background save. The user is expected to click the manual Save button.
+        if (!autoSaveEnabled) {
+            debouncedSave.cancel();
+            return;
+        }
         debouncedSave();
-    }, [debouncedSave, editableSignature, isInitialized]);
+    }, [debouncedSave, editableSignature, isInitialized, autoSaveEnabled]);
 
-    return { isSaving: saveStatus === 'saving', lastSaved, saveError, setLastSaved };
-}
+    const hasUnsavedChanges = isInitialized && lastSavedSignatureRef.current !== editableSignature;
 
-function appendTranscriptNode(rootNode: ContentNode, text: string): ContentNode {
     return {
-        ...rootNode,
-        children: [
-            ...(rootNode.children ?? []),
-            { id: makeId(), text },
-        ],
+        isSaving: saveStatus === 'saving',
+        lastSaved,
+        saveError,
+        setLastSaved,
+        hasUnsavedChanges,
+        flushSave: saveChanges,
     };
 }
 
@@ -328,16 +333,14 @@ function getCanonicalStudyContent(content: string, rootNode: ContentNode | null)
 }
 
 function useNoteAIAssistant({
-    content, rootNode, availableTags, setTitle, setContent, setRootNode, setScriptureRefs, setTags, t
+    content, rootNode, availableTags, setTitle, setScriptureRefs, setTags, t
 }: {
     content: string; rootNode: ContentNode | null; availableTags: string[];
-    setTitle: (t: string) => void; setContent: (c: string | ((prev: string) => string)) => void;
-    setRootNode: (rootNode: ContentNode | null) => void;
+    setTitle: (t: string) => void;
     setScriptureRefs: (refs: ScriptureReference[] | ((prev: ScriptureReference[]) => ScriptureReference[])) => void; setTags: (tags: string[] | ((prev: string[]) => string[])) => void;
     t: ReturnType<typeof useTranslation>['t'];
 }) {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
-    const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
 
     const [pendingAnalysisResult, setPendingAnalysisResult] = useState<AnalysisResultData | null>(null);
 
@@ -400,35 +403,8 @@ function useNoteAIAssistant({
         }
     };
 
-    const handleVoiceRecordingComplete = async (audioBlob: Blob) => {
-        setIsVoiceProcessing(true);
-        const formData = new FormData();
-        formData.append('audio', audioBlob);
-
-        try {
-            const response = await fetch('/api/studies/transcribe', { method: 'POST', body: formData });
-            const result = await response.json();
-
-            if (!result.success) throw new Error(result.error);
-
-            const newText = result.polishedText || result.originalText;
-            if (newText) {
-                if (rootNode) {
-                    setRootNode(appendTranscriptNode(rootNode, newText));
-                    toast.success(t('studiesWorkspace.voiceInput.addedToNode') || 'Расшифровка добавлена в новую ноду');
-                } else {
-                    setContent((prev: string) => (prev ? `${prev}\n\n${newText}` : newText));
-                }
-            }
-        } catch {
-            toast.error(t('errors.audioProcessing') || 'Voice transcription failed');
-        } finally {
-            setIsVoiceProcessing(false);
-        }
-    };
-
     return {
-        isAnalyzing, isVoiceProcessing, handleAIAnalyze, handleVoiceRecordingComplete,
+        isAnalyzing, handleAIAnalyze,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
     };
 }
@@ -442,9 +418,91 @@ function formatSavedTooltip(savedAt: Date, t: ReturnType<typeof useTranslation>[
     return t('studiesWorkspace.saveStatus.savedAt', { time: savedAt.toLocaleTimeString() });
 }
 
+function AutoSaveControls({
+    t, autoSaveEnabled, setAutoSaveEnabled, hasUnsavedChanges, onManualSave, isSaving, saveError, lastSaved
+}: {
+    t: ReturnType<typeof useTranslation>['t'];
+    autoSaveEnabled: boolean; setAutoSaveEnabled: (b: boolean) => void;
+    hasUnsavedChanges: boolean; onManualSave: () => void;
+    isSaving: boolean; saveError: string | null; lastSaved: Date | null;
+}) {
+    return (
+        <>
+            <label className="hidden sm:flex items-center gap-2 cursor-pointer group select-none">
+                <span
+                    className={`relative inline-block w-8 h-4 rounded-full transition-colors ${autoSaveEnabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-700'}`}
+                >
+                    <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${autoSaveEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
+                </span>
+                <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={autoSaveEnabled}
+                    onChange={(e) => setAutoSaveEnabled(e.target.checked)}
+                    aria-label={t('studiesWorkspace.autoSave') || 'Autosave'}
+                />
+                <span className="text-xs text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200 transition-colors">
+                    {t('studiesWorkspace.autoSave') || 'Autosave'}
+                </span>
+            </label>
+
+            {!autoSaveEnabled && (
+                <button
+                    type="button"
+                    onClick={onManualSave}
+                    disabled={!hasUnsavedChanges || isSaving}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${hasUnsavedChanges && !isSaving
+                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                        }`}
+                    title={t('common.save') || 'Save'}
+                >
+                    {isSaving ? (t('common.saving') || 'Saving...') : (t('common.save') || 'Save')}
+                </button>
+            )}
+
+            <SaveStatusBadge
+                t={t}
+                isSaving={isSaving}
+                saveError={saveError}
+                lastSaved={lastSaved}
+                showUnsavedHint={!autoSaveEnabled && hasUnsavedChanges}
+            />
+        </>
+    );
+}
+
+function SaveStatusBadge({
+    t, isSaving, saveError, lastSaved, showUnsavedHint
+}: {
+    t: ReturnType<typeof useTranslation>['t'];
+    isSaving: boolean; saveError: string | null; lastSaved: Date | null; showUnsavedHint: boolean;
+}) {
+    let body: React.ReactNode = null;
+    if (isSaving) {
+        body = <><ArrowPathIcon className="h-4 w-4 animate-spin" /> <span>{t('common.saving') || 'Saving...'}</span></>;
+    } else if (saveError) {
+        body = <span className="text-red-500">{saveError}</span>;
+    } else if (showUnsavedHint) {
+        body = <span className="text-amber-500">{t('studiesWorkspace.unsavedChanges') || 'Unsaved'}</span>;
+    } else if (lastSaved) {
+        body = <><CheckCircleIcon className="h-4 w-4 text-emerald-500" /> <span className="hidden sm:inline">{t('common.saved') || 'Saved'}</span></>;
+    }
+
+    return (
+        <div
+            className="text-sm flex items-center gap-1.5 text-gray-500 dark:text-gray-400"
+            title={lastSaved ? formatSavedTooltip(lastSaved, t) : undefined}
+        >
+            {body}
+        </div>
+    );
+}
+
 function EditorHeader({
     handleBack, t, isEditing, filteredNotes, prevNoteId, nextNoteId, router, searchParams,
-    currentIndex, type, setType, isSaving, saveError, lastSaved, setIsEditing, handleDelete, handleCopy, isCopied
+    currentIndex, type, setType, isSaving, saveError, lastSaved, setIsEditing, handleDelete, handleCopy, isCopied,
+    autoSaveEnabled, setAutoSaveEnabled, hasUnsavedChanges, onManualSave
 }: {
     handleBack: () => void; t: ReturnType<typeof useTranslation>['t']; isEditing: boolean;
     filteredNotes: StudyNote[]; prevNoteId: string | null; nextNoteId: string | null;
@@ -452,6 +510,8 @@ function EditorHeader({
     currentIndex: number; type: 'note' | 'question'; setType: (t: 'note' | 'question') => void;
     isSaving: boolean; saveError: string | null; lastSaved: Date | null;
     setIsEditing: (b: boolean) => void; handleDelete: () => void; handleCopy: () => void; isCopied: boolean;
+    autoSaveEnabled: boolean; setAutoSaveEnabled: (b: boolean) => void;
+    hasUnsavedChanges: boolean; onManualSave: () => void;
 }) {
     const [showMenu, setShowMenu] = useState(false);
     const [isCheatsheetOpen, setIsCheatsheetOpen] = useState(false);
@@ -521,18 +581,16 @@ function EditorHeader({
                 noise that suggests the user is doing something they aren't. */}
             <div className="flex items-center gap-3">
                 {isEditing ? (
-                    <div
-                        className="text-sm flex items-center gap-1.5 text-gray-500 dark:text-gray-400"
-                        title={lastSaved ? formatSavedTooltip(lastSaved, t) : undefined}
-                    >
-                        {isSaving ? (
-                            <><ArrowPathIcon className="h-4 w-4 animate-spin" /> <span>{t('common.saving') || 'Saving...'}</span></>
-                        ) : saveError ? (
-                            <span className="text-red-500">{saveError}</span>
-                        ) : lastSaved ? (
-                            <><CheckCircleIcon className="h-4 w-4 text-emerald-500" /> <span className="hidden sm:inline">{t('common.saved') || 'Saved'}</span></>
-                        ) : null}
-                    </div>
+                    <AutoSaveControls
+                        t={t}
+                        autoSaveEnabled={autoSaveEnabled}
+                        setAutoSaveEnabled={setAutoSaveEnabled}
+                        hasUnsavedChanges={hasUnsavedChanges}
+                        onManualSave={onManualSave}
+                        isSaving={isSaving}
+                        saveError={saveError}
+                        lastSaved={lastSaved}
+                    />
                 ) : null}
 
                 <button
@@ -675,7 +733,8 @@ export default function StudyNoteEditorPage() {
     const [scriptureRefs, setScriptureRefs] = useState<ScriptureReference[]>([]);
     const [type, setType] = useState<'note' | 'question'>('note');
     const [rootNode, setRootNode] = useState<ContentNode | null>(null);
-    const [isEditing, setIsEditing] = useState(isNew);
+    const [isEditing, setIsEditingRaw] = useState(isNew);
+    const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
     const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
     const canonicalContent = useMemo(() => getCanonicalStudyContent(content, rootNode), [content, rootNode]);
 
@@ -714,24 +773,34 @@ export default function StudyNoteEditorPage() {
     const searchParams = useSearchParams();
     const { filteredNotes, currentIndex, prevNoteId, nextNoteId, searchQuery } = useFilteredNotes(notes, searchParams, bibleLocale);
 
-    useNoteKeyboardNavigation({ isEditing, prevNoteId, nextNoteId, router, searchParams, setIsEditing });
-
     // Handle Initial Load
     const [isInitialized, setIsInitialized] = useState(false);
 
-    const { isSaving, lastSaved, saveError, setLastSaved } = useNoteAutoSave({
+    const { isSaving, lastSaved, saveError, setLastSaved, hasUnsavedChanges, flushSave } = useNoteAutoSave({
         noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, rootNode,
-        updateNote, createNote, uid, setCreatedNoteId, t
+        updateNote, createNote, uid, setCreatedNoteId, t, autoSaveEnabled
     });
+
+    // Leaving edit mode with autosave off — flush pending changes so the user
+    // never loses work silently. They can still cancel by reloading before this
+    // resolves, which is the same guarantee autosave-on gives them.
+    const setIsEditing = useCallback((next: boolean) => {
+        setIsEditingRaw(next);
+        if (!next && !autoSaveEnabled && hasUnsavedChanges) {
+            void flushSave();
+        }
+    }, [autoSaveEnabled, hasUnsavedChanges, flushSave]);
+
+    useNoteKeyboardNavigation({ isEditing, prevNoteId, nextNoteId, router, searchParams, setIsEditing });
 
     const [isAIPopoverOpen, setIsAIPopoverOpen] = useState(false);
 
     // AI assistant hook
     const {
-        isAnalyzing, isVoiceProcessing, handleAIAnalyze, handleVoiceRecordingComplete,
+        isAnalyzing, handleAIAnalyze,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
     } = useNoteAIAssistant({
-        content, rootNode, availableTags, setTitle, setContent, setRootNode, setScriptureRefs, setTags, t
+        content, rootNode, availableTags, setTitle, setScriptureRefs, setTags, t
     });
 
     useNoteInitialization({
@@ -809,6 +878,8 @@ export default function StudyNoteEditorPage() {
                 currentIndex={currentIndex} type={type} setType={setType} isSaving={isSaving} saveError={saveError}
                 lastSaved={lastSaved} setIsEditing={setIsEditing} handleDelete={handleDelete}
                 handleCopy={handleCopy} isCopied={isCopied}
+                autoSaveEnabled={autoSaveEnabled} setAutoSaveEnabled={setAutoSaveEnabled}
+                hasUnsavedChanges={hasUnsavedChanges} onManualSave={() => { void flushSave(); }}
             />
 
             {/* EDITOR CONTENT */}
@@ -982,13 +1053,6 @@ export default function StudyNoteEditorPage() {
                                     aria-hidden="true"
                                 />
                             )}
-                        </div>
-                        <div className="shadow-lg rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 relative z-20">
-                            <FocusRecorderButton
-                                onRecordingComplete={handleVoiceRecordingComplete}
-                                isProcessing={isVoiceProcessing}
-                                onError={(err: unknown) => toast.error(String(err) || 'Error')}
-                            />
                         </div>
                     </div>
                 )}

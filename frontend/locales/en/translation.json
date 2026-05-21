@@ -2011,6 +2011,8 @@
       "savedMinutesAgo": "Saved {{count}} min ago",
       "savedAt": "Saved at {{time}}"
     },
+    "autoSave": "Autosave",
+    "unsavedChanges": "Unsaved",
     "titleLabel": "Title",
     "titlePlaceholder": "Optional title for the note",
     "contentLabel": "Your thoughts",

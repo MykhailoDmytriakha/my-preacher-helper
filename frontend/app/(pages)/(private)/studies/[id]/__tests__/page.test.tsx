@@ -55,18 +55,6 @@ jest.mock('@/components/studies/node/NodeTreeEditor', () => ({
     ),
 }));
 
-jest.mock('@/components/FocusRecorderButton', () => ({
-    __esModule: true,
-    FocusRecorderButton: ({ onRecordingComplete }: any) => (
-        <button
-            title="studiesWorkspace.voiceRecord"
-            onClick={() => onRecordingComplete(new Blob())}
-        >
-            Mic
-        </button>
-    ),
-}));
-
 const mockRouter = {
     push: jest.fn(),
     replace: jest.fn(),
@@ -330,31 +318,6 @@ describe('StudyNoteEditorPage Pagination', () => {
         expect(screen.getByText('ai-tag')).toBeInTheDocument();
     });
 
-    it('handles voice recording completion', async () => {
-        const mockVoiceResponse = {
-            success: true,
-            polishedText: 'Transcribed text',
-        };
-        (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
-            ok: true,
-            json: jest.fn().mockResolvedValue(mockVoiceResponse)
-        });
-
-        render(<StudyNoteEditorPage />);
-
-        // Enter edit mode
-        fireEvent.click(screen.getByTitle('common.edit'));
-
-        // Trigger recording completion via the mocked button
-        const micButton = screen.getByTitle('studiesWorkspace.voiceRecord');
-        fireEvent.click(micButton);
-
-        // Wait for transcription to appear in content
-        await waitFor(() => {
-            expect(screen.getByPlaceholderText('studiesWorkspace.contentPlaceholder')).toHaveValue('Content for Current Note\n\nTranscribed text');
-        });
-    });
-
     it('sends derived node markdown to AI analysis when a note has rootNode', async () => {
         const mockAIResponse = {
             success: true,
@@ -387,34 +350,6 @@ describe('StudyNoteEditorPage Pagination', () => {
             content: '# Canonical\n\nFresh body',
             analysisType: 'all',
         });
-    });
-
-    it('adds voice transcription as a new root child when a note has rootNode', async () => {
-        const mockVoiceResponse = {
-            success: true,
-            polishedText: 'Transcribed text',
-        };
-        (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
-            ok: true,
-            json: jest.fn().mockResolvedValue(mockVoiceResponse)
-        });
-        (useStudyNotes as jest.Mock).mockReturnValue({
-            uid: 'user-1',
-            notes: [mockNotes[0], currentNodeNote, mockNotes[2]],
-            loading: false,
-            createNote: jest.fn(),
-            updateNote: jest.fn(),
-            deleteNote: jest.fn(),
-        });
-
-        render(<StudyNoteEditorPage />);
-        fireEvent.click(screen.getByTitle('common.edit'));
-        fireEvent.click(screen.getByTitle('studiesWorkspace.voiceRecord'));
-
-        await waitFor(() => {
-            expect(screen.getByTestId('node-tree-editor')).toHaveTextContent('Transcribed text');
-        });
-        expect(screen.queryByTestId('rich-markdown-editor')).not.toBeInTheDocument();
     });
 
     it('navigates back using the back button', () => {

@@ -615,7 +615,6 @@ export function NodeTreeEditor({
                 onDemote: () => undefined,
                 onPromote: () => undefined,
                 onDeleteNode: () => undefined,
-                onSplitFromMarkdown: () => undefined,
               }}
             />
           );
@@ -706,7 +705,6 @@ export function NodeTreeEditor({
                           onDemote: () => dispatch({ type: 'demote', id: item.id }),
                           onPromote: () => dispatch({ type: 'promote', id: item.id }),
                           onDeleteNode: () => dispatch({ type: 'deleteNode', id: item.id }),
-                          onSplitFromMarkdown: (text) => dispatch({ type: 'splitFromMarkdown', id: item.id, text }),
                         }}
                       />
                     )}

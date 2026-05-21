@@ -13,13 +13,6 @@ interface RichMarkdownEditorProps {
     placeholder?: string;
     minHeight?: string;
     autoFocus?: boolean;
-    /**
-     * Optional plain-text paste handler. Receives the pasted plain text and
-     * returns `true` to consume the paste (skip default insertion), or `false`
-     * to let tiptap insert it normally. Used by callers that want to
-     * intercept structured pastes (e.g. markdown headings → tree split).
-     */
-    onPastePlainText?: (text: string) => boolean;
     onBlur?: () => void;
     /** Hide the toolbar (caller is providing its own affordances). */
     hideToolbar?: boolean;
@@ -50,7 +43,6 @@ export function RichMarkdownEditor({
     placeholder = 'Введите текст...',
     minHeight = '150px',
     autoFocus = false,
-    onPastePlainText,
     onBlur,
     hideToolbar = false,
     className = '',
@@ -76,13 +68,6 @@ export function RichMarkdownEditor({
                 class:
                     `prose prose-sm desktop:prose-base dark:prose-invert max-w-none focus:outline-none flex-1 min-h-0 w-full p-3 ${hideToolbar ? 'rounded-xl border' : 'rounded-b-xl border border-t-0'} border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500`,
             },
-            handlePaste: onPastePlainText
-                ? (_view, event) => {
-                    const text = event.clipboardData?.getData('text/plain') ?? '';
-                    if (!text) return false;
-                    return onPastePlainText(text);
-                }
-                : undefined,
         },
         onUpdate: ({ editor }) => {
             // @ts-expect-error - tiptap-markdown types don't extend core storage types properly

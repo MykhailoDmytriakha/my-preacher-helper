@@ -2,8 +2,6 @@
 
 import { Dispatch, useMemo, useReducer } from 'react';
 
-import { markdownToNodeTree } from '@/utils/nodeTreeMigration';
-
 import type { ContentNode, ContentNodeMedia } from '@/models/models';
 
 const HARD_SIZE_LIMIT = 900_000;
@@ -16,7 +14,6 @@ export interface NodeTreeState {
   rootId: string;
   focusedNodeId: string | null;
   isEditingText: boolean;
-  splitAppliedHash?: Record<string, string>;
 }
 
 export interface FlatNode {
@@ -49,15 +46,6 @@ export type NodeTreeAction =
   | { type: 'moveUp'; id: string }
   | { type: 'moveDown'; id: string }
   /**
-   * Atomically replace a node's text with the parsed `text` argument and
-   * append the new headings as child nodes. Taking `text` as payload (rather
-   * than re-reading `state.nodes[id].text`) avoids a race where a stale
-   * `updateText` flush runs after `splitFromMarkdown` and re-introduces the
-   * raw markdown — which would cause the next split to adopt duplicate
-   * children.
-   */
-  | { type: 'splitFromMarkdown'; id: string; text: string }
-  /**
    * Lift any header/text/media that lives directly on the root node into a
    * brand-new first child (id = `childId`). The root itself becomes a pure
    * structural wrapper — it stores only children. Used at editor mount when
@@ -65,46 +53,6 @@ export type NodeTreeAction =
    * children only and the user never sees the root row.
    */
   | { type: 'liftRootContent'; childId: string };
-
-let idCounter = 0;
-function makeFreshId(): string {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID();
-  }
-  idCounter += 1;
-  return `node-${Date.now()}-${idCounter}`;
-}
-
-/**
- * Walks a freshly-parsed subtree, mints new ids for every node, and
- * registers each one in the flat `target` map. Returns the renormalised
- * subtree where children are id-refs (matching the rest of the state).
- *
- * Why fresh ids: the parser is deterministic per call but a tree may be
- * split multiple times, and the existing reducer assumes unique ids in
- * `nodes`. Reusing parser-minted ids risks collisions on the second split.
- */
-function adoptParsedSubtree(
-  node: ContentNode,
-  target: Record<string, ContentNode>
-): ContentNode {
-  const newId = makeFreshId();
-  const childRefs = node.children?.map((child) => {
-    const adopted = adoptParsedSubtree(child, target);
-    return childRef(adopted.id);
-  }) ?? [];
-
-  const flatNode: ContentNode = {
-    id: newId,
-    ...(node.header !== undefined ? { header: node.header } : {}),
-    ...(node.text !== undefined ? { text: node.text } : {}),
-    ...(node.media !== undefined ? { media: node.media } : {}),
-    ...(node.collapsed !== undefined ? { collapsed: node.collapsed } : {}),
-    ...(childRefs.length > 0 ? { children: childRefs } : {}),
-  };
-  target[newId] = flatNode;
-  return flatNode;
-}
 
 type BoundSelectors = {
   selectFlat: (options?: SelectFlatOptions) => FlatNode[];
@@ -131,24 +79,6 @@ function withChildIds(node: ContentNode, childIds: string[]): ContentNode {
     ...rest,
     children: childIds.map(childRef),
   };
-}
-
-function hashSplitText(text: string): string {
-  let hash = 2166136261;
-  for (let i = 0; i < text.length; i += 1) {
-    hash ^= text.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 0).toString(16);
-}
-
-function hasAppliedSplit(appliedHashes: string | undefined, hash: string): boolean {
-  return appliedHashes?.split(',').includes(hash) ?? false;
-}
-
-function appendAppliedSplit(appliedHashes: string | undefined, hash: string): string {
-  if (!appliedHashes) return hash;
-  return `${appliedHashes},${hash}`;
 }
 
 function flattenNode(node: ContentNode, nodes: Record<string, ContentNode>): void {
@@ -321,6 +251,25 @@ function insertSibling(state: NodeTreeState, id: string, newId: string): NodeTre
   };
 }
 
+function nodeContentEquals(a: ContentNode, b: ContentNode): boolean {
+  return (a.header ?? '') === (b.header ?? '')
+    && (a.text ?? '') === (b.text ?? '')
+    && JSON.stringify(a.media ?? []) === JSON.stringify(b.media ?? []);
+}
+
+function stripRootContent(state: NodeTreeState): NodeTreeState {
+  const root = state.nodes[state.rootId];
+  if (!root) return state;
+  const { header: _h, text: _t, media: _m, ...rootRest } = root;
+  return {
+    ...state,
+    nodes: {
+      ...state.nodes,
+      [state.rootId]: rootRest as ContentNode,
+    },
+  };
+}
+
 function liftRootContent(state: NodeTreeState, childId: string): NodeTreeState {
   const root = state.nodes[state.rootId];
   if (!root) return state;
@@ -328,6 +277,18 @@ function liftRootContent(state: NodeTreeState, childId: string): NodeTreeState {
 
   const hasContent = Boolean(root.header || root.text || (root.media?.length ?? 0) > 0);
   if (!hasContent) return state;
+
+  // Dedup guard: if root content is byte-identical to the first child, this
+  // is a legacy save that already mirrors the data in both places (likely a
+  // ghost from a prior auto-lift cycle). Creating another lifted child would
+  // produce the visible duplicate the user has been reporting. Just strip
+  // root content silently so subsequent saves persist a clean shape.
+  const existingChildRefs = root.children ?? [];
+  const firstChildId = existingChildRefs[0]?.id;
+  const firstChild = firstChildId ? state.nodes[firstChildId] : undefined;
+  if (firstChild && nodeContentEquals(root, firstChild)) {
+    return stripRootContent(state);
+  }
 
   const liftedChild: ContentNode = {
     id: childId,
@@ -341,7 +302,6 @@ function liftRootContent(state: NodeTreeState, childId: string): NodeTreeState {
   // emit "preamble text + heading children" (e.g. markdownToNodeTree) don't
   // lose the preamble: it becomes the first sibling.
   const { header: _h, text: _t, media: _m, ...rootRest } = root;
-  const existingChildRefs = root.children ?? [];
   const nextRoot: ContentNode = {
     ...rootRest,
     id: state.rootId,
@@ -600,49 +560,6 @@ function reduceNodeTree(state: NodeTreeState, action: NodeTreeAction): NodeTreeS
       return moveWithinSiblings(state, action.id, -1);
     case 'moveDown':
       return moveWithinSiblings(state, action.id, 1);
-    case 'splitFromMarkdown': {
-      const target = state.nodes[action.id];
-      if (!target) return state;
-      const text = action.text;
-      if (!/^#{1,6}\s/m.test(text)) return state;
-      const textHash = hashSplitText(text);
-      if (hasAppliedSplit(state.splitAppliedHash?.[action.id], textHash)) return state;
-
-      const parsed = markdownToNodeTree(text);
-      if (!parsed.children || parsed.children.length === 0) return state;
-
-      const nextNodes: Record<string, ContentNode> = { ...state.nodes };
-      const adoptedChildIds: string[] = [];
-      for (const child of parsed.children) {
-        const adopted = adoptParsedSubtree(child, nextNodes);
-        adoptedChildIds.push(adopted.id);
-      }
-
-      const existingChildIds = getChildIds(target);
-      const remainingText = parsed.text?.trim() ?? '';
-
-      const updatedTarget = withChildIds(
-        {
-          ...target,
-          ...(remainingText ? { text: remainingText } : { text: undefined }),
-        },
-        [...adoptedChildIds, ...existingChildIds]
-      );
-      // Remove undefined text key so persistence stays clean.
-      if (updatedTarget.text === undefined) {
-        delete (updatedTarget as Partial<ContentNode>).text;
-      }
-      nextNodes[action.id] = updatedTarget;
-
-      return {
-        ...state,
-        nodes: nextNodes,
-        splitAppliedHash: {
-          ...state.splitAppliedHash,
-          [action.id]: appendAppliedSplit(state.splitAppliedHash?.[action.id], textHash),
-        },
-      };
-    }
     default: {
       const _exhaustiveCheck: never = action;
       return _exhaustiveCheck;

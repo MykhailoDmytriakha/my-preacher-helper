@@ -32,7 +32,6 @@ const defaultTreeActions: NodeViewComponentProps['treeActions'] = {
   onDemote: jest.fn(),
   onPromote: jest.fn(),
   onDeleteNode: jest.fn(),
-  onSplitFromMarkdown: jest.fn(),
 };
 
 const defaultState: NodeViewComponentProps['state'] = {

@@ -319,48 +319,6 @@ describe('useNodeTree', () => {
     expect(result.current.state.nodes.a.media).toBeUndefined();
   });
 
-  it('does not split the same markdown text twice for a node', () => {
-    const { result } = renderNodeTree({ id: 'root', text: 'Draft' });
-    const markdown = '# First heading\n\nFirst body\n\n## Nested heading\n\nNested body';
-
-    act(() => {
-      result.current.dispatch({ type: 'splitFromMarkdown', id: 'root', text: markdown });
-    });
-
-    const firstTree = result.current.selectors.selectTree();
-    expect(childIds(firstTree)).toHaveLength(1);
-
-    act(() => {
-      result.current.dispatch({ type: 'splitFromMarkdown', id: 'root', text: markdown });
-    });
-
-    expect(result.current.selectors.selectTree()).toEqual(firstTree);
-  });
-
-  it('keeps previously materialized split texts idempotent after another split', () => {
-    const { result } = renderNodeTree({ id: 'root', text: 'Draft' });
-    const firstMarkdown = '# First heading\n\nFirst body';
-    const secondMarkdown = '# Second heading\n\nSecond body\n\n# Third heading\n\nThird body';
-
-    act(() => {
-      result.current.dispatch({ type: 'splitFromMarkdown', id: 'root', text: firstMarkdown });
-    });
-
-    expect(childIds(result.current.selectors.selectTree())).toHaveLength(1);
-
-    act(() => {
-      result.current.dispatch({ type: 'splitFromMarkdown', id: 'root', text: secondMarkdown });
-    });
-
-    expect(childIds(result.current.selectors.selectTree())).toHaveLength(3);
-
-    act(() => {
-      result.current.dispatch({ type: 'splitFromMarkdown', id: 'root', text: firstMarkdown });
-    });
-
-    expect(childIds(result.current.selectors.selectTree())).toHaveLength(3);
-  });
-
   it('selectFlat skips collapsed descendants', () => {
     const state = flatten({
       id: 'root',

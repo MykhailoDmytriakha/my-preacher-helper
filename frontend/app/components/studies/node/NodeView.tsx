@@ -12,11 +12,10 @@ import {
   DocumentIcon,
   LinkIcon,
   PhotoIcon,
-  Squares2X2Icon,
   TrashIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import MarkdownDisplay from '@components/MarkdownDisplay';
@@ -66,11 +65,9 @@ interface NodeViewProps {
     onDemote: () => void;
     onPromote: () => void;
     onDeleteNode: () => void;
-    onSplitFromMarkdown: (text: string) => void;
   };
 }
 
-const HEADING_PATTERN = /^#{1,6}\s/m;
 const YOUTUBE_DETECT = /(?:youtu\.be\/|youtube\.com)/;
 const IMAGE_EXT_DETECT = /\.(png|jpe?g|gif|webp|svg)(\?|$)/i;
 
@@ -184,7 +181,6 @@ export function NodeView({
     onDemote,
     onPromote,
     onDeleteNode,
-    onSplitFromMarkdown,
   } = treeActions;
   const { t } = useTranslation();
   const [draftHeader, setDraftHeader] = useState(node.header ?? '');
@@ -192,7 +188,6 @@ export function NodeView({
   const [isAddingMedia, setIsAddingMedia] = useState(false);
   const [mediaDraft, setMediaDraft] = useState({ url: '', caption: '' });
   const headerRef = useRef<HTMLTextAreaElement>(null);
-  const lastSplitTextRef = useRef<string | null>(null);
   const headingLevel = clampHeadingLevel(depth);
   const HeadingTag = HEADING_TAGS[headingLevel - 1];
   const hasHeader = Boolean(node.header);
@@ -236,25 +231,16 @@ export function NodeView({
   draftHeaderRef.current = draftHeader;
   draftTextRef.current = draftText;
   const wasEditingRef = useRef(false);
-  const splitDraftMarkdown = useCallback((text: string): void => {
-    if (text === lastSplitTextRef.current) return;
-    lastSplitTextRef.current = text;
-    onSplitFromMarkdown(text);
-  }, [onSplitFromMarkdown]);
 
   useEffect(() => {
     if (wasEditingRef.current && !isEditing) {
       const draftText = draftTextRef.current;
       const draftHeader = draftHeaderRef.current;
       if ((node.header ?? '') !== draftHeader) onHeaderChange(draftHeader);
-      if (HEADING_PATTERN.test(draftText)) {
-        splitDraftMarkdown(draftText);
-      } else if ((node.text ?? '') !== draftText) {
-        onTextChange(draftText);
-      }
+      if ((node.text ?? '') !== draftText) onTextChange(draftText);
     }
     wasEditingRef.current = isEditing;
-  }, [isEditing, node.text, node.header, onTextChange, onHeaderChange, splitDraftMarkdown]);
+  }, [isEditing, node.text, node.header, onTextChange, onHeaderChange]);
 
   // Empty focused node: there's nothing to read, so jump straight into
   // text-editing instead of forcing a second click to reveal the textarea.
@@ -451,7 +437,15 @@ export function NodeView({
               placeholder={t('studiesWorkspace.nodeTree.headerPlaceholder') || 'Заголовок (опционально)'}
               className="w-full resize-none overflow-hidden rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:ring-2 focus:ring-emerald-400 dark:border-emerald-800 dark:bg-gray-900 dark:text-gray-100"
               value={draftHeader}
-              onChange={(event) => setDraftHeader(event.target.value.replace(/\n/g, ' '))}
+              onChange={(event) => {
+                const next = event.target.value.replace(/\n/g, ' ');
+                setDraftHeader(next);
+                // Forward to parent immediately so autosave debounce starts
+                // ticking while the user is still typing — without this the
+                // change sits in local draft state until blur, which means
+                // a long edit session has zero saves until focus leaves.
+                onHeaderChange(next);
+              }}
               onKeyDown={(event) => {
                 // Header is a single logical line — Enter must not insert a
                 // newline. Soft-wrap (visual line break on long content)
@@ -471,6 +465,7 @@ export function NodeView({
                 const end = textarea.selectionEnd ?? draftHeader.length;
                 const next = `${draftHeader.slice(0, start)}${sanitized}${draftHeader.slice(end)}`;
                 setDraftHeader(next);
+                onHeaderChange(next);
               }}
               onBlur={() => onHeaderChange(draftHeader)}
               onClick={stopRowClick}
@@ -481,27 +476,10 @@ export function NodeView({
                 value={draftText}
                 onChange={(next) => {
                   setDraftText(next);
-                  // Auto-split when the user pastes/types markdown headings:
-                  // any `# ` block becomes a real sibling node, matching the
-                  // mental model that headings inside a node are themselves
-                  // node boundaries.
-                  if (/^#{1,6}\s/m.test(next)) {
-                    splitDraftMarkdown(next);
-                  }
-                }}
-                onPastePlainText={(text) => {
-                  if (!/^#{1,6}\s/m.test(text)) return false;
-                  const merged = draftText ? `${draftText}\n${text}` : text;
-                  setDraftText(merged);
-                  splitDraftMarkdown(merged);
-                  return true;
-                }}
-                onBlur={() => {
-                  if (HEADING_PATTERN.test(draftText)) {
-                    splitDraftMarkdown(draftText);
-                  } else if ((node.text ?? '') !== draftText) {
-                    onTextChange(draftText);
-                  }
+                  // Same reasoning as the header textarea: pipe every keystroke
+                  // straight through to the parent so autosave's debounce
+                  // window starts immediately, not at blur.
+                  onTextChange(next);
                 }}
                 placeholder={t('studiesWorkspace.nodeTree.textPlaceholder') || 'Текст ноды'}
                 minHeight="120px"
@@ -598,16 +576,6 @@ export function NodeView({
                 <ArrowLeftIcon className="h-4 w-4" aria-hidden="true" />
               </button>
             </div>
-            {HEADING_PATTERN.test(draftText) && (
-              <button
-                type="button"
-                onClick={() => splitDraftMarkdown(draftText)}
-                className="inline-flex items-center gap-1 rounded-md bg-indigo-50 px-2 py-1 font-medium text-indigo-700 transition hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
-                title="Каждый markdown-заголовок станет отдельной нодой"
-              >
-                <Squares2X2Icon className="h-3.5 w-3.5" /> Разбить заголовки на ноды
-              </button>
-            )}
             {!isRoot && (
               <button
                 type="button"
