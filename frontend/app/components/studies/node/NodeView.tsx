@@ -232,7 +232,17 @@ export function NodeView({
   // Read-only render: just the structure with chevron folds and rendered
   // markdown. No focus ring, no drag handle, no edit textareas, no buttons,
   // no double-click → edit. This is the "режим просмотра" path.
+  //
+  // Collapse semantics (TRIZ/IFR — "one gesture hides everything inside"):
+  // when `node.collapsed` is true, hide BOTH the text/media body of this
+  // node AND its descendant children (descendant hiding is handled in
+  // `selectFlat`). The header always stays visible — it's the user's
+  // anchor for "this node exists, click chevron to re-open". Chevron
+  // therefore shows whenever there's anything to hide: text OR media OR
+  // children — previously only `hasChildren` qualified.
+  const hasFoldableContent = hasText || hasMedia || hasChildren;
   if (readOnly) {
+    const showBody = !isCollapsed;
     return (
       <div
         data-testid={`node-view-${node.id}`}
@@ -240,7 +250,7 @@ export function NodeView({
         style={{ paddingLeft: depth * 20 }}
       >
         <div className="flex shrink-0 items-start pt-1 text-gray-400 dark:text-gray-500">
-          {hasChildren ? (
+          {hasFoldableContent ? (
             <button
               type="button"
               aria-label={isCollapsed ? t('studiesWorkspace.nodeTree.ariaExpand') : t('studiesWorkspace.nodeTree.ariaCollapse')}
@@ -270,11 +280,11 @@ export function NodeView({
             </HeadingTag>
           )}
 
-          {hasText && (
+          {showBody && hasText && (
             <MarkdownDisplay content={node.text ?? ''} compact enableWikiLinks wikilinkResolver={wikilinkResolver} />
           )}
 
-          {hasMedia && (
+          {showBody && hasMedia && (
             <div className="flex flex-wrap gap-2">
               {node.media?.map((media) => {
                 const label = getMediaLabel(media);
@@ -376,7 +386,7 @@ export function NodeView({
         >
           <Bars3Icon className="h-4 w-4 cursor-grab" aria-hidden="true" />
         </button>
-        {hasChildren ? (
+        {hasFoldableContent ? (
           <button
             type="button"
             aria-label={isCollapsed ? t('studiesWorkspace.nodeTree.ariaExpand') : t('studiesWorkspace.nodeTree.ariaCollapse')}
@@ -457,7 +467,7 @@ export function NodeView({
                 </HeadingTag>
               </div>
             )}
-            {hasText && (
+            {hasText && !isCollapsed && (
               <div onClick={handleEditableRegionClick} onDoubleClick={onStartEdit}>
                 <MarkdownDisplay content={node.text ?? ''} compact enableWikiLinks wikilinkResolver={wikilinkResolver} />
               </div>
@@ -583,7 +593,7 @@ export function NodeView({
           </form>
         )}
 
-        {hasMedia ? (
+        {hasMedia && !isCollapsed ? (
           <div className="flex flex-wrap gap-2" onClick={stopRowClick}>
             {node.media?.map((media) => {
               const label = getMediaLabel(media);
