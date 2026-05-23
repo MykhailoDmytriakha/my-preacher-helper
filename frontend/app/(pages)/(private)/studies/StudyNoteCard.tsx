@@ -17,7 +17,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote } from '@/models/models';
-import { getStudyText } from '@/utils/nodeTreeAdapter';
+import { getStudyBodyText } from '@/utils/nodeTreeAdapter';
 import { extractSearchSnippets } from '@/utils/searchUtils';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { UI_COLORS } from '@/utils/themeColors';
@@ -199,20 +199,20 @@ export default function StudyNoteCard({
   );
 
 
-  const noteText = useMemo(() => getStudyText(note), [note]);
+  const bodyText = useMemo(() => getStudyBodyText(note), [note]);
 
   const contentMatches = useMemo(() => {
     if (!searchTokens.length) return false;
-    const lowered = noteText.toLowerCase();
+    const lowered = bodyText.toLowerCase();
     return searchTokens.some((token) => lowered.includes(token));
-  }, [noteText, searchTokens]);
+  }, [bodyText, searchTokens]);
 
   const contentSnippets = useMemo(() => {
     if (!contentMatches || !searchQuery) return [];
     // Use the first token (or the full query) to build the snippet window
     const token = searchTokens[0] || searchQuery;
-    return extractSearchSnippets(noteText, token, 300);
-  }, [contentMatches, noteText, searchQuery, searchTokens]);
+    return extractSearchSnippets(bodyText, token, 300);
+  }, [bodyText, contentMatches, searchQuery, searchTokens]);
 
   const matchingTags = useMemo(
     () =>
@@ -431,14 +431,14 @@ export default function StudyNoteCard({
                     </div>
                   ) : (
                     <div className="line-clamp-2">
-                      <MarkdownDisplay content={noteText} compact searchQuery={searchQuery} />
+                      <MarkdownDisplay content={bodyText} compact searchQuery={searchQuery} />
                     </div>
                   )
-                ) : (
+                ) : bodyText.trim() ? (
                   <div className="line-clamp-2">
-                    <MarkdownDisplay content={noteText} compact />
+                    <MarkdownDisplay content={bodyText} compact />
                   </div>
-                )}
+                ) : null}
               </div>
             )}
 
@@ -468,7 +468,7 @@ export default function StudyNoteCard({
           {/* Full content */}
           <div className="px-4 py-4 pl-4 sm:pl-12">
             <div className="text-sm text-gray-700 dark:text-gray-200">
-              <MarkdownDisplay content={noteText} searchQuery={searchQuery} />
+              <MarkdownDisplay content={bodyText} searchQuery={searchQuery} />
             </div>
           </div>
 

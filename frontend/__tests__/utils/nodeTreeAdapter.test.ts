@@ -1,7 +1,10 @@
 import type { ContentNode, StudyNote } from '@/models/models';
 import {
+  getStudyBodyText,
+  getStudyPreviewText,
   getStudyText,
   hasNodeTree,
+  nodeTreeToBodyMarkdown,
   nodeTreeToMarkdown,
   nodeTreeToPlainText,
 } from '@/utils/nodeTreeAdapter';
@@ -138,6 +141,87 @@ describe('nodeTreeToPlainText', () => {
   });
 });
 
+describe('nodeTreeToBodyMarkdown', () => {
+  it('omits the root header when a title-bearing shell renders it separately', () => {
+    const out = nodeTreeToBodyMarkdown(
+      makeNode({
+        header: 'Путешествие Павла в Рим',
+        text: 'Intro paragraph.',
+        children: [
+          makeNode({ id: 'c1', header: 'Места Писания', text: 'Деяния 27-28' }),
+        ],
+      }),
+      'Путешествие Павла в Рим'
+    );
+
+    expect(out).toBe('Intro paragraph.\n\n## Места Писания\n\nДеяния 27-28');
+    expect(out).not.toContain('Путешествие Павла в Рим');
+  });
+
+  it('preserves a root header that does not match the shell title', () => {
+    const out = nodeTreeToBodyMarkdown(
+      makeNode({
+        header: 'Canonical',
+        text: 'Fresh body',
+      }),
+      'Current Note'
+    );
+
+    expect(out).toBe('# Canonical\n\nFresh body');
+  });
+
+  it('renders pure-wrapper root children as the body', () => {
+    expect(
+      nodeTreeToBodyMarkdown(
+        makeNode({
+          children: [makeNode({ id: 'c1', header: 'Места Писания', text: 'Деяния 27' })],
+        })
+      )
+    ).toBe('## Места Писания\n\nДеяния 27');
+  });
+
+  it('renders a mirrored root and first child only once', () => {
+    expect(
+      nodeTreeToBodyMarkdown(
+        makeNode({
+          header: 'Места Писания',
+          text: 'Деяния 27',
+          children: [makeNode({ id: 'c1', header: 'Места Писания', text: 'Деяния 27' })],
+        }),
+        'Путешествие Павла в Рим'
+      )
+    ).toBe('## Места Писания\n\nДеяния 27');
+  });
+
+  it('preserves root media as body content when the root title is rendered by the shell', () => {
+    const out = nodeTreeToBodyMarkdown(
+      makeNode({
+        header: 'Путешествие Павла в Рим',
+        media: [{ id: 'm1', type: 'url', url: 'https://example.com/source', caption: 'Source' }],
+      }),
+      'Путешествие Павла в Рим'
+    );
+
+    expect(out).toBe('[Source](https://example.com/source)');
+  });
+
+  it('renders mirrored root and first-child media only once', () => {
+    const media = [{ id: 'm1', type: 'url' as const, url: 'https://example.com/source', caption: 'Source' }];
+    const out = nodeTreeToBodyMarkdown(
+      makeNode({
+        header: 'Места Писания',
+        text: 'Деяния 27',
+        media,
+        children: [makeNode({ id: 'c1', header: 'Места Писания', text: 'Деяния 27', media })],
+      }),
+      'Путешествие Павла в Рим'
+    );
+
+    expect(out).toBe('## Места Писания\n\nДеяния 27\n\n[Source](https://example.com/source)');
+    expect(out.match(/\[Source\]\(https:\/\/example\.com\/source\)/g) ?? []).toHaveLength(1);
+  });
+});
+
 describe('getStudyText', () => {
   it('returns legacy content when no rootNode', () => {
     expect(getStudyText(baseNote)).toBe('hello world');
@@ -156,5 +240,54 @@ describe('getStudyText', () => {
   it('returns empty string for empty rootNode', () => {
     const note = { ...baseNote, content: 'ignored', rootNode: makeNode() };
     expect(getStudyText(note)).toBe('');
+  });
+});
+
+describe('getStudyBodyText', () => {
+  it('returns the tree body under the root title', () => {
+    const note = {
+      ...baseNote,
+      title: 'Путешествие Павла в Рим',
+      rootNode: makeNode({
+        header: 'Путешествие Павла в Рим',
+        children: [{ id: 'c1', header: 'Места Писания', text: 'Список мест' }],
+      }),
+    };
+    expect(getStudyBodyText(note)).toBe('## Места Писания\n\nСписок мест');
+  });
+
+  it('returns empty body when a tree has only the root title', () => {
+    const note = {
+      ...baseNote,
+      title: 'Путешествие Павла в Рим',
+      rootNode: makeNode({
+        header: 'Путешествие Павла в Рим',
+      }),
+    };
+    expect(getStudyBodyText(note)).toBe('');
+  });
+
+  it('returns legacy content unchanged when no rootNode exists', () => {
+    const note = {
+      ...baseNote,
+      title: 'Путешествие Павла в Рим',
+      content: '## Места Писания\n\nДеяния 27',
+    };
+    expect(getStudyBodyText(note)).toBe('## Места Писания\n\nДеяния 27');
+  });
+});
+
+describe('getStudyPreviewText', () => {
+  it('uses the same structural body projection as getStudyBodyText', () => {
+    const note = {
+      ...baseNote,
+      title: 'Путешествие Павла в Рим',
+      rootNode: makeNode({
+        header: 'Путешествие Павла в Рим',
+        children: [{ id: 'c1', header: 'Места Писания', text: 'Деяния 27' }],
+      }),
+    };
+
+    expect(getStudyPreviewText(note)).toBe(getStudyBodyText(note));
   });
 });

@@ -1,7 +1,7 @@
 import { BibleLocale } from '../(pages)/(private)/studies/bibleData';
 import { formatScriptureRef } from '../(pages)/(private)/studies/bookAbbreviations';
 
-import { getStudyText } from './nodeTreeAdapter';
+import { getStudyBodyText } from './nodeTreeAdapter';
 
 import type { StudyNote } from '@/models/models';
 
@@ -21,7 +21,7 @@ export function formatStudyNoteForCopy(
   }
 
   // Add content if exists
-  const noteText = getStudyText(note);
+  const noteText = getStudyBodyText(note);
   if (noteText.trim()) {
     markdown += `${noteText.trim()}\n\n`;
   }

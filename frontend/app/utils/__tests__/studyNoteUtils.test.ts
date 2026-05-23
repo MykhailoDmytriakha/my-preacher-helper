@@ -51,6 +51,23 @@ describe('formatStudyNoteForCopy', () => {
     expect(result).toBe('Test content');
   });
 
+  it('does not duplicate the root node title when formatting tree notes', () => {
+    const note: StudyNote = {
+      ...baseNote,
+      title: 'Путешествие Павла в Рим',
+      content: 'stale legacy content',
+      rootNode: {
+        id: 'root',
+        header: 'Путешествие Павла в Рим',
+        children: [{ id: 'c1', header: 'Места Писания', text: 'Деяния 27-28' }],
+      },
+    };
+
+    const result = formatStudyNoteForCopy(note, 'ru');
+
+    expect(result).toBe('# Путешествие Павла в Рим\n\n## Места Писания\n\nДеяния 27-28');
+  });
+
   it('formats note with scripture references in English', () => {
     mockFormatScriptureRef
       .mockReturnValueOnce('John.3:16')

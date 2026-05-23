@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useStudyNotes } from '@/hooks/useStudyNotes';
-import { getStudyText } from '@/utils/nodeTreeAdapter';
+import { getStudyBodyText } from '@/utils/nodeTreeAdapter';
 
 interface WikilinkPickerPosition {
   top: number;
@@ -62,7 +62,7 @@ export default function WikilinkPicker({
       .filter((note) => note.id !== currentNoteId)
       .filter((note) => {
         if (!normalizedQuery) return true;
-        const haystack = `${note.title ?? ''} ${getStudyText(note)}`.toLowerCase();
+        const haystack = `${note.title ?? ''} ${getStudyBodyText(note)}`.toLowerCase();
         return haystack.includes(normalizedQuery);
       });
   }, [currentNoteId, notes, query]);
@@ -109,7 +109,7 @@ export default function WikilinkPicker({
           <div className="space-y-1">
             {visibleNotes.map((note) => {
               const title = note.title?.trim() || t('studiesWorkspace.untitled');
-              const snippet = getSnippet(getStudyText(note));
+              const snippet = getSnippet(getStudyBodyText(note));
 
               return (
                 <button

@@ -76,6 +76,80 @@ describe('StudyNoteCard', () => {
     expect(heading).toHaveClass('leading-tight');
   });
 
+  it('does not repeat the root node title in the collapsed preview', () => {
+    const note = createTestNote({
+      title: 'Путешествие Павла в Рим',
+      rootNode: {
+        id: 'root',
+        header: 'Путешествие Павла в Рим',
+        children: [{ id: 'c1', header: 'Места Писания', text: 'Акты 27–28' }],
+      },
+    });
+
+    render(
+      <StudyNoteCard
+        note={note}
+        bibleLocale="ru"
+        isExpanded={false}
+        onEdit={jest.fn()}
+      />
+    );
+
+    expect(screen.getByRole('heading', { name: 'Путешествие Павла в Рим' })).toBeInTheDocument();
+    expect(screen.queryAllByText(/^Путешествие Павла в Рим$/)).toHaveLength(1);
+    expect(screen.getByTestId('markdown')).toHaveTextContent('## Места Писания');
+    expect(screen.getByTestId('markdown')).toHaveTextContent('Акты 27–28');
+  });
+
+  it('does not repeat legacy mirrored root content in the collapsed preview', () => {
+    const note = createTestNote({
+      title: 'Путешествие Павла в Рим',
+      rootNode: {
+        id: 'root',
+        header: 'Места Писания',
+        text: 'Акты 27–28',
+        children: [{ id: 'c1', header: 'Места Писания', text: 'Акты 27–28' }],
+      },
+    });
+
+    render(
+      <StudyNoteCard
+        note={note}
+        bibleLocale="ru"
+        isExpanded={false}
+        onEdit={jest.fn()}
+      />
+    );
+
+    expect(screen.getByRole('heading', { name: 'Путешествие Павла в Рим' })).toBeInTheDocument();
+    expect(screen.getAllByText(/Места Писания/)).toHaveLength(1);
+    expect(screen.getAllByText(/Акты 27–28/)).toHaveLength(1);
+  });
+
+  it('does not repeat the root node title in expanded card content', () => {
+    const note = createTestNote({
+      title: 'Путешествие Павла в Рим',
+      rootNode: {
+        id: 'root',
+        header: 'Путешествие Павла в Рим',
+        children: [{ id: 'c1', header: 'Места Писания', text: 'Акты 27–28' }],
+      },
+    });
+
+    render(
+      <StudyNoteCard
+        note={note}
+        bibleLocale="ru"
+        isExpanded
+        onEdit={jest.fn()}
+      />
+    );
+
+    expect(screen.queryAllByText(/^Путешествие Павла в Рим$/)).toHaveLength(1);
+    expect(screen.getByTestId('markdown')).toHaveTextContent('## Места Писания');
+    expect(screen.getByTestId('markdown')).toHaveTextContent('Акты 27–28');
+  });
+
 
 
   describe('Search Highlighting', () => {
@@ -281,6 +355,35 @@ describe('StudyNoteCard', () => {
       expect(
         screen.getByText(/4.*(matchingNotes|matching notes)/i)
       ).toBeInTheDocument();
+    });
+
+    it('searches root-node body content without repeating the root title in snippets', () => {
+      const note = createTestNote({
+        id: 'tree-search-note',
+        title: 'Путешествие Павла в Рим',
+        content: 'stale legacy content',
+        rootNode: {
+          id: 'root',
+          header: 'Путешествие Павла в Рим',
+          children: [{ id: 'c1', header: 'Места Писания', text: 'Акты 27–28' }],
+        },
+      });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="ru"
+          isExpanded={false}
+          onEdit={jest.fn()}
+          searchQuery="Акты"
+        />
+      );
+
+      expect(screen.getByRole('heading', { name: 'Путешествие Павла в Рим' })).toBeInTheDocument();
+      expect(screen.getByText(/1.*(matchingNotes|matching notes)/i)).toBeInTheDocument();
+      expect(screen.getByTestId('markdown')).toHaveTextContent('Места Писания');
+      expect(screen.getByTestId('markdown')).toHaveTextContent('Акты 27–28');
+      expect(screen.queryAllByText(/^Путешествие Павла в Рим$/)).toHaveLength(1);
     });
 
     it('falls back to a content preview when only the title matches (no empty search box)', () => {

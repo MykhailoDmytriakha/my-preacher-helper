@@ -72,6 +72,40 @@ describe('WikilinkPicker', () => {
     expect(screen.getByText('John study')).toBeInTheDocument();
   });
 
+  it('shows root-node body snippets without repeating the root title', () => {
+    (useStudyNotes as jest.Mock).mockReturnValue({
+      notes: [
+        makeNote('romans', 'Romans study', 'Grace and faith'),
+        {
+          ...makeNote('paul', 'Путешествие Павла в Рим', 'stale'),
+          rootNode: {
+            id: 'root',
+            header: 'Путешествие Павла в Рим',
+            children: [{ id: 'c1', header: 'Места Писания', text: 'Акты 27–28' }],
+          },
+        },
+      ],
+      loading: false,
+    });
+
+    render(
+      <WikilinkPicker
+        open
+        onPick={jest.fn()}
+        onClose={jest.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByPlaceholderText('Search notes...'), {
+      target: { value: 'Акты' },
+    });
+
+    expect(screen.getByText('Путешествие Павла в Рим')).toBeInTheDocument();
+    expect(screen.queryByText('Romans study')).not.toBeInTheDocument();
+    expect(screen.getByText(/Места Писания/)).toBeInTheDocument();
+    expect(screen.queryAllByText(/Путешествие Павла в Рим/)).toHaveLength(1);
+  });
+
   it('picks a note id and closes the picker', () => {
     const onPick = jest.fn();
     const onClose = jest.fn();

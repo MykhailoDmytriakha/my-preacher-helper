@@ -59,6 +59,24 @@ describe('FocusView', () => {
     expect(screen.getByText(/This is a test note about grace and faith/)).toBeInTheDocument();
   });
 
+  it('does not repeat the root node title in the body content', () => {
+    const note = createTestNote({
+      title: 'Путешествие Павла в Рим',
+      content: 'stale legacy content',
+      rootNode: {
+        id: 'root',
+        header: 'Путешествие Павла в Рим',
+        children: [{ id: 'c1', header: 'Места Писания', text: 'Акты 27–28' }],
+      },
+    });
+
+    render(<FocusView {...defaultProps} note={note} />);
+
+    expect(screen.queryAllByText(/^Путешествие Павла в Рим$/)).toHaveLength(1);
+    expect(screen.getByTestId('markdown')).toHaveTextContent('## Места Писания');
+    expect(screen.getByTestId('markdown')).toHaveTextContent('Акты 27–28');
+  });
+
   it('renders scripture references', () => {
     render(<FocusView {...defaultProps} />);
 
@@ -171,4 +189,3 @@ describe('FocusView', () => {
     });
   });
 });
-
