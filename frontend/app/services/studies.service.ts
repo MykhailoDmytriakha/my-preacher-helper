@@ -46,6 +46,7 @@ export async function updateStudyNote(id: string, updates: Partial<StudyNote> & 
   const res = await fetch(`${API_BASE}/api/studies/notes/${id}?userId=${updates.userId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
+    keepalive: true,
     body: JSON.stringify(updates),
   });
   if (!res.ok) {

@@ -180,6 +180,7 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({
     push: mockRouterPush,
   }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 jest.mock('@/providers/AuthProvider', () => ({
@@ -333,8 +334,10 @@ describe('Dashboard page', () => {
           updatedAt: dateKeyFromToday(-1),
         },
       ],
+      uid: 'user-1',
       loading: false,
       error: null,
+      createNote: jest.fn(),
     });
     mockUsePrayerRequests.mockReturnValue({
       prayerRequests: [
@@ -393,7 +396,7 @@ describe('Dashboard page', () => {
 
     expect(screen.getByRole('heading', { name: 'Панель' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Новая проповедь/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Добавить заметку/i })).toHaveAttribute('href', '/studies/new');
+    expect(screen.getByRole('button', { name: /Добавить заметку/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Добавить молитву/i })).toBeInTheDocument();
     expect(screen.getAllByText('Заметки').length).toBeGreaterThan(0);
     expect(screen.getByRole('heading', { name: 'Проповеди' })).toBeInTheDocument();

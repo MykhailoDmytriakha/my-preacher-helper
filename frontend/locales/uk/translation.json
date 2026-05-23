@@ -17,6 +17,7 @@
     "seriesDetail": "Серія",
     "groupDetail": "Група",
     "studyDetail": "Дослідження",
+    "studyEdit": "Редагування",
     "prayerDetail": "Молитва",
     "calendar": "Календар",
     "prayer": "Молитва",
@@ -1945,6 +1946,13 @@
   },
   "studiesWorkspace": {
     "createError": "Помилка під час створення навчальної нотатки.",
+    "noteNotFound": "Нотатку не знайдено",
+    "noAccess": "Немає доступу до цієї нотатки",
+    "outline": {
+      "toggle": "Структура",
+      "title": "Структура",
+      "empty": "Поки немає заголовків"
+    },
     "browseTags": "Каталог тегів",
     "tabs": {
       "all": "Всі",
@@ -2013,7 +2021,9 @@
       "savedNow": "Збережено щойно",
       "savedSecondsAgo": "Збережено {{count}} с тому",
       "savedMinutesAgo": "Збережено {{count}} хв тому",
-      "savedAt": "Збережено о {{time}}"
+      "savedAt": "Збережено о {{time}}",
+      "saveFailed": "Не вдалося зберегти",
+      "retry": "Повторити"
     },
     "autoSave": "Автозбереження",
     "unsavedChanges": "Не збережено",

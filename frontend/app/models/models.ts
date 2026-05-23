@@ -462,7 +462,7 @@ export interface StudyNote {
    * `content` for all read paths. Server keeps `content` in sync via
    * `nodeTreeToMarkdown(rootNode)` on every write.
    */
-  rootNode?: ContentNode;
+  rootNode?: ContentNode | null;
   /**
    * Snapshot of the original plain-text `content` captured at node-tree
    * migration time. Kept indefinitely so a converter regression can be

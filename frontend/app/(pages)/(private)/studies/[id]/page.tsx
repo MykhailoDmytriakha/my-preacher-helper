@@ -1,789 +1,193 @@
 'use client';
 
-import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
-import { useRouter, useParams, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
+import {
+    ArrowLeftIcon,
+    ArrowPathIcon,
+    BookmarkIcon,
+    CheckIcon,
+    ChevronLeftIcon,
+    ChevronRightIcon,
+    DocumentDuplicateIcon,
+    EllipsisVerticalIcon,
+    LinkIcon,
+    PencilIcon,
+    QuestionMarkCircleIcon,
+    TagIcon,
+    TrashIcon,
+} from '@heroicons/react/24/outline';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import TextareaAutosize from 'react-textarea-autosize';
-import { toast } from 'sonner';
 
 import NodeTreeEditor from '@/components/studies/node/NodeTreeEditor';
-import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
-import { useAutoSave } from '@/hooks/useAutoSave';
 import { useClipboard } from '@/hooks/useClipboard';
+import { useNoteAccessGuard } from '@/hooks/useNoteAccessGuard';
+import { useStudyNoteDraft } from '@/hooks/useStudyNoteDraft';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
-import { useTags } from '@/hooks/useTags';
+import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useWikilinkResolver } from '@/hooks/useWikilinkResolver';
-import { ScriptureReference, StudyNote } from '@/models/models';
+import { StudyNote } from '@/models/models';
 import { deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
-import { createDebug } from '@/utils/debug';
-import { makeId } from '@/utils/makeId';
-import { getStudyText, nodeTreeToMarkdown } from '@/utils/nodeTreeAdapter';
-import { markdownToNodeTree } from '@/utils/nodeTreeMigration';
+import { getStudyText } from '@/utils/nodeTreeAdapter';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
-import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfirmationModal';
 import { BibleLocale, getLocalizedBookName } from '../bibleData';
-import ConvertToNodesModal from '../components/ConvertToNodesModal';
 import KeyboardCheatsheet from '../components/KeyboardCheatsheet';
-import { STUDIES_INPUT_SHARED_CLASSES } from '../constants';
-import { parseReferenceText } from '../referenceParser';
+import ShareNoteModal from '../components/ShareNoteModal';
 import ScriptureRefBadge from '../ScriptureRefBadge';
-import ScriptureRefPicker from '../ScriptureRefPicker';
-import TagCatalogModal from '../TagCatalogModal';
 
-import type { ContentNode } from '@/models/models';
+type SearchParamsLike = Pick<URLSearchParams, 'toString'>;
 
-const debug = createDebug('studies/page');
+function withSearchParams(path: string, searchParams: SearchParamsLike): string {
+    const query = searchParams.toString();
+    return query ? `${path}?${query}` : path;
+}
 
-// Local helper until API has a specific noteId delete
-const deleteStudyNoteShareLinkByNoteId = async (userId: string, noteId: string, currentLinks: { noteId: string; id: string }[]) => {
-    const link = currentLinks.find(l => l.noteId === noteId);
+// Local helper until API has a specific noteId delete.
+const deleteStudyNoteShareLinkByNoteId = async (
+    userId: string,
+    noteId: string,
+    currentLinks: { noteId: string; id: string }[]
+) => {
+    const link = currentLinks.find((item) => item.noteId === noteId);
     if (link) {
         await deleteStudyNoteShareLink(userId, link.id);
     }
 };
 
-function useFilteredNotes(notes: StudyNote[], searchParams: URLSearchParams, bibleLocale: BibleLocale) {
-    const params = useParams();
-    const noteId = params.id as string;
-
-    const searchQuery = searchParams.get('search')?.trim() || '';
-    const tagFilter = searchParams.get('tag') || '';
-    const bookFilter = searchParams.get('book') || '';
-    const activeTab = searchParams.get('tab') || 'all';
-
+function useFilteredNotes(notes: StudyNote[], noteId: string, searchParams: SearchParamsLike, bibleLocale: BibleLocale) {
+    const searchParamString = searchParams.toString();
+    const parsedSearchParams = useMemo(() => new URLSearchParams(searchParamString), [searchParamString]);
+    const searchQuery = parsedSearchParams.get('search')?.trim() || '';
+    const tagFilter = parsedSearchParams.get('tag') || '';
+    const bookFilter = parsedSearchParams.get('book') || '';
+    const activeTab = parsedSearchParams.get('tab') || 'all';
     const searchTokens = useMemo(() => searchQuery.toLowerCase().split(/\s+/).filter(Boolean), [searchQuery]);
 
-    // Replicate matching logic from studies/page.tsx
     const filteredNotes = useMemo(() => {
         return notes
-            .filter((note: StudyNote) => {
+            .filter((note) => {
                 if (activeTab === 'notes') return note.type !== 'question';
                 if (activeTab === 'questions') return note.type === 'question';
                 return true;
             })
-            .filter((note: StudyNote) => (tagFilter ? note.tags.includes(tagFilter) : true))
-            .filter((note: StudyNote) => bookFilter ? note.scriptureRefs.some((ref: ScriptureReference) => ref.book.toLowerCase() === bookFilter.toLowerCase()) : true)
-            .filter((note: StudyNote) => {
+            .filter((note) => (tagFilter ? note.tags.includes(tagFilter) : true))
+            .filter((note) => (
+                bookFilter
+                    ? note.scriptureRefs.some((ref) => ref.book.toLowerCase() === bookFilter.toLowerCase())
+                    : true
+            ))
+            .filter((note) => {
                 if (searchTokens.length === 0) return true;
-                const haystack = `${note.title} ${getStudyText(note)} ${note.tags.join(' ')} ${note.scriptureRefs.map((ref: ScriptureReference) => `${getLocalizedBookName(ref.book, bibleLocale)} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`).join(' ')}`.toLowerCase();
-                return searchTokens.every((token: string) => haystack.includes(token));
+                const refs = note.scriptureRefs
+                    .map((ref) => `${getLocalizedBookName(ref.book, bibleLocale)} ${ref.chapter}:${ref.fromVerse}${ref.toVerse ? '-' + ref.toVerse : ''}`)
+                    .join(' ');
+                const haystack = `${note.title} ${getStudyText(note)} ${note.tags.join(' ')} ${refs}`.toLowerCase();
+                return searchTokens.every((token) => haystack.includes(token));
             })
             .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
     }, [notes, activeTab, tagFilter, bookFilter, searchTokens, bibleLocale]);
 
-    const currentIndex = useMemo(() => filteredNotes.findIndex(n => n.id === noteId), [filteredNotes, noteId]);
+    const currentIndex = useMemo(() => filteredNotes.findIndex((note) => note.id === noteId), [filteredNotes, noteId]);
     const prevNoteId = currentIndex > 0 ? filteredNotes[currentIndex - 1].id : null;
-    const nextNoteId = currentIndex >= 0 && currentIndex < filteredNotes.length - 1 ? filteredNotes[currentIndex + 1].id : null;
+    const nextNoteId = currentIndex >= 0 && currentIndex < filteredNotes.length - 1
+        ? filteredNotes[currentIndex + 1].id
+        : null;
 
     return { filteredNotes, currentIndex, prevNoteId, nextNoteId, searchQuery };
 }
 
 function useNoteKeyboardNavigation({
-    isEditing, prevNoteId, nextNoteId, router, searchParams, setIsEditing
+    noteId,
+    prevNoteId,
+    nextNoteId,
+    router,
+    searchParams,
 }: {
-    isEditing: boolean; prevNoteId: string | null; nextNoteId: string | null;
-    router: ReturnType<typeof useRouter>; searchParams: ReturnType<typeof useSearchParams>;
-    setIsEditing: (b: boolean) => void;
+    noteId: string;
+    prevNoteId: string | null;
+    nextNoteId: string | null;
+    router: ReturnType<typeof useRouter>;
+    searchParams: SearchParamsLike;
 }) {
-    // Read-mode arrow-key navigation. Skip when an input/textarea has focus
-    // OR the page is in edit mode — typing should not jump notes.
     useEffect(() => {
         const isTypingTarget = (target: EventTarget | null): boolean =>
             target instanceof HTMLTextAreaElement
             || target instanceof HTMLInputElement
             || (target instanceof HTMLElement && target.isContentEditable);
 
-        const handleKeyDown = (e: globalThis.KeyboardEvent) => {
-            // Cmd/Ctrl+E toggles between read and edit mode anywhere on the page.
-            if ((e.metaKey || e.ctrlKey) && (e.key === 'e' || e.key === 'E')) {
-                if (isTypingTarget(e.target)) return;
-                e.preventDefault();
-                setIsEditing(!isEditing);
+        const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+            if (isTypingTarget(event.target)) return;
+
+            if ((event.metaKey || event.ctrlKey) && (event.key === 'e' || event.key === 'E')) {
+                event.preventDefault();
+                router.push(withSearchParams(`/studies/${noteId}/edit`, searchParams));
                 return;
             }
 
-            if (isEditing) return;
-            if (isTypingTarget(e.target)) return;
-            if (e.key === 'ArrowLeft' && prevNoteId) {
-                router.push(`/studies/${prevNoteId}?${searchParams.toString()}`);
-            } else if (e.key === 'ArrowRight' && nextNoteId) {
-                router.push(`/studies/${nextNoteId}?${searchParams.toString()}`);
+            if (event.key === 'ArrowLeft' && prevNoteId) {
+                router.push(withSearchParams(`/studies/${prevNoteId}`, searchParams));
+            } else if (event.key === 'ArrowRight' && nextNoteId) {
+                router.push(withSearchParams(`/studies/${nextNoteId}`, searchParams));
             }
         };
+
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [isEditing, prevNoteId, nextNoteId, router, searchParams, setIsEditing]);
+    }, [noteId, prevNoteId, nextNoteId, router, searchParams]);
 }
 
-function useNoteInitialization({
-    notesLoading, uid, isNew, isInitialized, existingNote, t, noteId,
-    setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setLastSaved, setRootNode
-}: any /* eslint-disable-line @typescript-eslint/no-explicit-any */) {
-    // Reset the init guard whenever the active noteId changes (e.g. prev/next
-    // arrow navigation reuses the mounted page component). Without this the
-    // next note's data would never load into local state — `isInitialized`
-    // stays `true` from the previous note and the effect below short-circuits.
-    useEffect(() => {
-        setIsInitialized(false);
-    }, [noteId, setIsInitialized]);
+type DeleteNoteFn = (id: string) => Promise<unknown>;
 
-    useEffect(() => {
-        if (notesLoading || !uid) return;
-
-        if (isNew && !isInitialized) {
-            setTitle('');
-            setContent('');
-            setTags([]);
-            setScriptureRefs([]);
-            setType('note');
-            setRootNode?.(null);
-            setIsInitialized(true);
-            return;
-        }
-
-        if (existingNote && !isInitialized) {
-            setTitle(existingNote.title || '');
-            setContent(existingNote.content || '');
-            setTags(existingNote.tags || []);
-            setScriptureRefs(existingNote.scriptureRefs || []);
-            setType(existingNote.type || 'note');
-            setRootNode?.(existingNote.rootNode ?? null);
-            setIsInitialized(true);
-            setLastSaved(new Date(existingNote.updatedAt));
-        }
-    }, [notesLoading, isNew, existingNote, isInitialized, uid, t, setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setLastSaved, setRootNode]);
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router }: any) {
-    return async () => {
-        if (window.confirm(t('studiesWorkspace.deleteConfirm'))) {
-            if (noteId && !isNew && uid) {
-                try {
-                    await deleteNote(noteId);
-                } catch (e) {
-                    console.error('Error deleting note', e);
-                }
-                try {
-                    const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || ''}/api/studies/share-links?userId=${uid}`);
-                    if (res.ok) {
-                        const links = await res.json();
-                        await deleteStudyNoteShareLinkByNoteId(uid, noteId, links);
-                    }
-                } catch (e) {
-                    console.error('Error deleting share link', e);
-                }
-            }
-            router.push('/studies');
-        }
-    };
-}
-
-// ---------------------------------------------------------------------------
-// Editor-state ownership invariant
-// ---------------------------------------------------------------------------
-// Tree state lives in **four** layers; this is intentional but only safe as
-// long as the ownership rules stay clear:
-//
-//   1. `useNodeTree` useReducer (inside <NodeTreeEditor>) — the only place
-//      that *mutates* tree shape during an editing session. Hot path.
-//
-//   2. page.tsx `rootNode` useState (this file) — mirrors the reducer through
-//      `onChange`. Source for autosave + AI + copy-to-clipboard. Single
-//      writer is `setRootNode`, called either from NodeTreeEditor's onChange
-//      or from the convert-to-nodes modal.
-//
-//   3. React Query cache (`useStudyNotes`) — owns `existingNote.rootNode`,
-//      updated by `updateNote` mutations + invalidation. Not written
-//      directly from here; the local mirror (layer 2) is authoritative
-//      between edits.
-//
-//   4. Firestore — durable persistence; mutated only via `updateNote`.
-//
-// Invariant: at rest, layer 2 ≡ layer 3 ≡ layer 4. During an edit the local
-// layer leads and the autosave debounce ferries the diff up the stack.
-//
-// A future refactor could collapse 1+2 (have <NodeTreeEditor> reach into the
-// page's reducer) or 2+3 (drop the local mirror and write straight through
-// React Query). Both are out-of-scope for this wave because they reshape
-// the autosave dirty-detect mechanism and would require touching every
-// consumer of `rootNode`.
-// ---------------------------------------------------------------------------
-
-function shallowArrayEquals<T>(a: readonly T[] | undefined, b: readonly T[] | undefined): boolean {
-    if (a === b) return true;
-    if (!a || !b || a.length !== b.length) return false;
-    for (let i = 0; i < a.length; i += 1) {
-        if (a[i] !== b[i]) return false;
-    }
-    return true;
-}
-
-/**
- * What the autosave hook needs to evaluate "is anything dirty?" and persist.
- * Splits into three concerns: identity (which note + initialised gate),
- * draft (editable fields currently in local state), and capabilities
- * (mutations + context). Replaces the prior 15-param positional explosion.
- */
-interface AutoSaveDraft {
-    title: string;
-    content: string;
-    tags: string[];
-    scriptureRefs: ScriptureReference[];
-    type: 'note' | 'question';
-    rootNode: ContentNode | null;
-}
-interface AutoSaveContext {
+function useNoteDeletion({
+    t,
+    noteId,
+    isNew,
+    uid,
+    deleteNote,
+    router,
+}: {
+    t: ReturnType<typeof useTranslation>['t'];
     noteId: string;
     isNew: boolean;
-    isInitialized: boolean;
-    autoSaveEnabled: boolean;
-    existingNote?: StudyNote;
-    draft: AutoSaveDraft;
     uid: string | undefined;
-    updateNote: (args: { id: string; updates: Partial<StudyNote> }) => Promise<StudyNote>;
-    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>) => Promise<StudyNote>;
-    setCreatedNoteId: (id: string) => void;
-    t: ReturnType<typeof useTranslation>['t'];
-}
+    deleteNote: DeleteNoteFn;
+    router: ReturnType<typeof useRouter>;
+}) {
+    return async () => {
+        if (!window.confirm(t('studiesWorkspace.deleteConfirm'))) return;
 
-function useNoteAutoSave(ctx: AutoSaveContext) {
-    const {
-        noteId, isNew, isInitialized, existingNote, draft, updateNote, createNote, uid,
-        setCreatedNoteId, t, autoSaveEnabled,
-    } = ctx;
-    const { title, content, tags, scriptureRefs, type, rootNode } = draft;
-    const [lastSaved, setLastSaved] = useState<Date | null>(null);
-    const [saveError, setSaveError] = useState<string | null>(null);
+        if (noteId && !isNew && uid) {
+            try {
+                await deleteNote(noteId);
+            } catch (error) {
+                console.error('Error deleting note', error);
+            }
 
-    // Client-side signature of what we'd persist. Primary autosave guard:
-    // a tick fires `saveChanges` only when this signature differs from the
-    // signature at the last successful save. Independent of `existingNote`
-    // (which can momentarily diverge from local after server-side derivation
-    // like `syncContentWithTree`), so we don't get phantom saves while the
-    // server roundtrip catches up.
-    const editableSignature = useMemo(
-        () => JSON.stringify({ title, content, tags, scriptureRefs, type, rootNode: rootNode ?? null }),
-        [title, content, tags, scriptureRefs, type, rootNode]
-    );
-    const lastSavedSignatureRef = useRef<string | null>(null);
-    const lastSeenNoteIdRef = useRef<string | null>(null);
-    // Initialise the saved-signature ref to the *first* signature we see
-    // after the note is initialised — and reset when `noteId` changes
-    // (e.g. navigating between notes via the URL without a remount).
-    // Otherwise a stale signature from the previous note would let the
-    // autosave skip a real change or fire a normalization save on switch.
-    useEffect(() => {
-        if (!isInitialized) return;
-        if (lastSeenNoteIdRef.current !== noteId) {
-            lastSeenNoteIdRef.current = noteId;
-            lastSavedSignatureRef.current = editableSignature;
-        }
-    }, [isInitialized, noteId, editableSignature]);
-
-    const saveChanges = useCallback(async () => {
-        if (!noteId || !isInitialized) {
-            debug.log('saveChanges: skip — not initialized', { noteId, isInitialized });
-            return;
-        }
-
-        // Primary guard: if the editable signature hasn't moved since our
-        // last save attempt, there is nothing to send.
-        if (lastSavedSignatureRef.current === editableSignature) {
-            debug.log('saveChanges: skip — signature unchanged');
-            return;
-        }
-        debug.log('saveChanges: triggered', {
-            noteId,
-            isNew,
-            hasRootNode: Boolean(rootNode),
-            rootNodeChildren: rootNode?.children?.length ?? 0,
-            autoSaveEnabled,
-        });
-        const signatureAtAttempt = editableSignature;
-
-        if (isNew) {
-            if (!title.trim() && !content.trim() && tags.length === 0 && scriptureRefs.length === 0 && !rootNode) return;
-
-            setSaveError(null);
-            const newNote = await createNote({
-                title, content, tags, scriptureRefs, type,
-                userId: uid ?? '', materialIds: [], relatedSermonIds: [],
-                ...(rootNode ? { rootNode } : {}),
-            });
-            lastSavedSignatureRef.current = signatureAtAttempt;
-            setLastSaved(new Date());
-            window.history.replaceState(null, '', `/studies/${newNote.id}`);
-            setCreatedNoteId(newNote.id);
-            return;
-        }
-
-        if (existingNote) {
-            // When a node tree exists the server derives `content` from it on
-            // every write — so the local `content` state can lag the cached
-            // server value by one round-trip. Compare canonical text on both
-            // sides instead of raw `content` to avoid a save-loop where the
-            // mismatch is purely "I haven't caught up yet".
-            const localCanonical = rootNode ? nodeTreeToMarkdown(rootNode) : content;
-            const remoteCanonical = existingNote.rootNode
-                ? nodeTreeToMarkdown(existingNote.rootNode)
-                : (existingNote.content ?? '');
-            // Shallow compares everywhere we can — the rootNode case relies
-            // on the WeakMap-memoised `selectTree` keeping the same object
-            // ref when nothing structural changed. The localCanonical /
-            // remoteCanonical strings remain the only string-level check
-            // because the server re-derives `content` from rootNode on every
-            // write — comparing strings is the only way to detect "the
-            // server normalised my draft into the same canonical form".
-            const isUnchanged =
-                existingNote.title === title &&
-                localCanonical === remoteCanonical &&
-                existingNote.type === type &&
-                shallowArrayEquals(existingNote.tags, tags) &&
-                shallowArrayEquals(existingNote.scriptureRefs, scriptureRefs) &&
-                (existingNote.rootNode ?? null) === (rootNode ?? null);
-
-            if (isUnchanged) {
-                // Advance the signature — server already has this state.
-                // Without this the next render will compare a stale ref and
-                // try to save again on every tick.
-                debug.log('saveChanges: server-side already matches, advancing signature');
-                lastSavedSignatureRef.current = signatureAtAttempt;
-                return;
+            try {
+                const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || ''}/api/studies/share-links?userId=${uid}`);
+                if (response.ok) {
+                    const links = await response.json() as { noteId: string; id: string }[];
+                    await deleteStudyNoteShareLinkByNoteId(uid, noteId, links);
+                }
+            } catch (error) {
+                console.error('Error deleting share link', error);
             }
         }
 
-        setSaveError(null);
-        debug.log('saveChanges: sending update to server', {
-            noteId,
-            rootChildCount: rootNode?.children?.length ?? 0,
-        });
-        // Don't ship local `content` when a tree is present — the server
-        // will overwrite it via `syncContentWithTree` anyway, and sending
-        // a stale string just makes the diff noisy.
-        const updates: Partial<StudyNote> = rootNode
-            ? { title, tags, scriptureRefs, type, rootNode }
-            : { title, content, tags, scriptureRefs, type };
-        await updateNote({
-            id: noteId,
-            updates,
-        });
-        lastSavedSignatureRef.current = signatureAtAttempt;
-        setLastSaved(new Date());
-    }, [noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, rootNode, updateNote, createNote, uid, setCreatedNoteId, editableSignature]);
-
-    const { debouncedSave, status: saveStatus } = useAutoSave(saveChanges, {
-        delay: 1500,
-        onError: (error) => {
-            if (isNew) {
-                console.error('Auto-create error', error);
-            } else {
-                console.error('Auto-save error', error);
-            }
-            setSaveError(t('common.saveError') || 'Error saving changes');
-        },
-    });
-
-    useEffect(() => {
-        if (!isInitialized) return;
-        // Skip scheduling entirely if there's no actual change yet — avoids
-        // a 1.5s ghost timer firing right after page load.
-        if (lastSavedSignatureRef.current === editableSignature) {
-            debouncedSave.cancel();
-            return;
-        }
-        // Autosave off: keep tracking dirty signature, but don't schedule any
-        // background save. The user is expected to click the manual Save button.
-        if (!autoSaveEnabled) {
-            debouncedSave.cancel();
-            return;
-        }
-        debouncedSave();
-    }, [debouncedSave, editableSignature, isInitialized, autoSaveEnabled]);
-
-    const hasUnsavedChanges = isInitialized && lastSavedSignatureRef.current !== editableSignature;
-
-    return {
-        isSaving: saveStatus === 'saving',
-        lastSaved,
-        saveError,
-        setLastSaved,
-        hasUnsavedChanges,
-        flushSave: saveChanges,
+        router.push('/studies');
     };
 }
 
-function getCanonicalStudyContent(content: string, rootNode: ContentNode | null): string {
-    return rootNode ? nodeTreeToMarkdown(rootNode) : content;
-}
-
-function useNoteAIAssistant({
-    content, rootNode, availableTags, setTitle, setScriptureRefs, setTags, t
-}: {
-    content: string; rootNode: ContentNode | null; availableTags: string[];
-    setTitle: (t: string) => void;
-    setScriptureRefs: (refs: ScriptureReference[] | ((prev: ScriptureReference[]) => ScriptureReference[])) => void; setTags: (tags: string[] | ((prev: string[]) => string[])) => void;
-    t: ReturnType<typeof useTranslation>['t'];
-}) {
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
-
-    const [pendingAnalysisResult, setPendingAnalysisResult] = useState<AnalysisResultData | null>(null);
-
-    const handleAIAnalyze = async (analysisType: 'all' | 'title' | 'tags' | 'scriptureRefs' = 'all') => {
-        const canonicalContent = getCanonicalStudyContent(content, rootNode);
-        if (!canonicalContent.trim()) {
-            toast.error(t('studiesWorkspace.aiAnalyze.emptyContent') || 'Please enter note content');
-            return;
-        }
-
-        setIsAnalyzing(true);
-        try {
-            const response = await fetch('/api/studies/analyze', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: canonicalContent, existingTags: availableTags, analysisType }),
-            });
-            const result = await response.json();
-
-            if (!result.success || !result.data) {
-                throw new Error(result.error);
-            }
-
-            const aiResult = result.data;
-            let hasAnyResult = false;
-
-            // Check if AI actually returned anything based on what we requested
-            if ((analysisType === 'all' || analysisType === 'title') && aiResult.title) hasAnyResult = true;
-            if ((analysisType === 'all' || analysisType === 'tags') && aiResult.tags?.length > 0) hasAnyResult = true;
-            if ((analysisType === 'all' || analysisType === 'scriptureRefs') && aiResult.scriptureRefs?.length > 0) hasAnyResult = true;
-
-            if (hasAnyResult) {
-                setPendingAnalysisResult(aiResult);
-                toast.success(t('studiesWorkspace.aiAnalyze.success') || 'Analysis complete. Please review suggestions.');
-            } else {
-                toast.info(t('studiesWorkspace.aiAnalyze.noResults') || 'No useful suggestions found for this content.');
-            }
-
-        } catch {
-            toast.error(t('studiesWorkspace.aiAnalyze.error') || 'Failed to analyze');
-        } finally {
-            setIsAnalyzing(false);
-        }
-    };
-
-    const handleApplyAnalysis = (data: AnalysisResultData) => {
-        if (data.title) setTitle(data.title);
-
-        if (data.scriptureRefs && data.scriptureRefs.length > 0) {
-            setScriptureRefs((prev: ScriptureReference[]) => {
-                const newRefs = data.scriptureRefs!.filter((nr: ScriptureReference) =>
-                    !prev.some((er: ScriptureReference) => er.book === nr.book && er.chapter === nr.chapter && er.fromVerse === nr.fromVerse)
-                ).map((ref: Omit<ScriptureReference, 'id'>) => ({ ...ref, id: makeId() }));
-                return [...prev, ...newRefs];
-            });
-        }
-
-        if (data.tags && data.tags.length > 0) {
-            setTags((prev: string[]) => Array.from(new Set([...prev, ...data.tags!])));
-        }
-    };
-
-    return {
-        isAnalyzing, handleAIAnalyze,
-        pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
-    };
-}
-
-function formatSavedTooltip(savedAt: Date, t: ReturnType<typeof useTranslation>['t']): string {
-    const diffSec = Math.floor((Date.now() - savedAt.getTime()) / 1000);
-    if (diffSec < 5) return t('studiesWorkspace.saveStatus.savedNow');
-    if (diffSec < 60) return t('studiesWorkspace.saveStatus.savedSecondsAgo', { count: diffSec });
-    const diffMin = Math.floor(diffSec / 60);
-    if (diffMin < 60) return t('studiesWorkspace.saveStatus.savedMinutesAgo', { count: diffMin });
-    return t('studiesWorkspace.saveStatus.savedAt', { time: savedAt.toLocaleTimeString() });
-}
-
-function AutoSaveControls({
-    t, autoSaveEnabled, setAutoSaveEnabled, hasUnsavedChanges, onManualSave, isSaving, saveError, lastSaved
-}: {
-    t: ReturnType<typeof useTranslation>['t'];
-    autoSaveEnabled: boolean; setAutoSaveEnabled: (b: boolean) => void;
-    hasUnsavedChanges: boolean; onManualSave: () => void;
-    isSaving: boolean; saveError: string | null; lastSaved: Date | null;
-}) {
-    return (
-        <>
-            <label className="hidden sm:flex items-center gap-2 cursor-pointer group select-none">
-                <span
-                    className={`relative inline-block w-8 h-4 rounded-full transition-colors ${autoSaveEnabled ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-700'}`}
-                >
-                    <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${autoSaveEnabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                </span>
-                <input
-                    type="checkbox"
-                    className="sr-only"
-                    checked={autoSaveEnabled}
-                    onChange={(e) => setAutoSaveEnabled(e.target.checked)}
-                    aria-label={t('studiesWorkspace.autoSave') || 'Autosave'}
-                />
-                <span className="text-xs text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-200 transition-colors">
-                    {t('studiesWorkspace.autoSave') || 'Autosave'}
-                </span>
-            </label>
-
-            {!autoSaveEnabled && (
-                <button
-                    type="button"
-                    onClick={onManualSave}
-                    disabled={!hasUnsavedChanges || isSaving}
-                    className={`px-2.5 py-1 text-xs font-semibold rounded transition-colors ${hasUnsavedChanges && !isSaving
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed'
-                        }`}
-                    title={t('common.save') || 'Save'}
-                >
-                    {isSaving ? (t('common.saving') || 'Saving...') : (t('common.save') || 'Save')}
-                </button>
-            )}
-
-            <SaveStatusBadge
-                t={t}
-                isSaving={isSaving}
-                saveError={saveError}
-                lastSaved={lastSaved}
-                showUnsavedHint={!autoSaveEnabled && hasUnsavedChanges}
-            />
-        </>
-    );
-}
-
-function SaveStatusBadge({
-    t, isSaving, saveError, lastSaved, showUnsavedHint
-}: {
-    t: ReturnType<typeof useTranslation>['t'];
-    isSaving: boolean; saveError: string | null; lastSaved: Date | null; showUnsavedHint: boolean;
-}) {
-    let body: React.ReactNode = null;
-    if (isSaving) {
-        body = <><ArrowPathIcon className="h-4 w-4 animate-spin" /> <span>{t('common.saving') || 'Saving...'}</span></>;
-    } else if (saveError) {
-        body = <span className="text-red-500">{saveError}</span>;
-    } else if (showUnsavedHint) {
-        body = <span className="text-amber-500">{t('studiesWorkspace.unsavedChanges') || 'Unsaved'}</span>;
-    } else if (lastSaved) {
-        body = <><CheckCircleIcon className="h-4 w-4 text-emerald-500" /> <span className="hidden sm:inline">{t('common.saved') || 'Saved'}</span></>;
-    }
-
-    return (
-        <div
-            className="text-sm flex items-center gap-1.5 text-gray-500 dark:text-gray-400"
-            title={lastSaved ? formatSavedTooltip(lastSaved, t) : undefined}
-        >
-            {body}
-        </div>
-    );
-}
-
-function EditorHeader({
-    handleBack, t, isEditing, filteredNotes, prevNoteId, nextNoteId, router, searchParams,
-    currentIndex, type, setType, isSaving, saveError, lastSaved, setIsEditing, handleDelete, handleCopy, isCopied,
-    autoSaveEnabled, setAutoSaveEnabled, hasUnsavedChanges, onManualSave
-}: {
-    handleBack: () => void; t: ReturnType<typeof useTranslation>['t']; isEditing: boolean;
-    filteredNotes: StudyNote[]; prevNoteId: string | null; nextNoteId: string | null;
-    router: ReturnType<typeof useRouter>; searchParams: ReturnType<typeof useSearchParams>;
-    currentIndex: number; type: 'note' | 'question'; setType: (t: 'note' | 'question') => void;
-    isSaving: boolean; saveError: string | null; lastSaved: Date | null;
-    setIsEditing: (b: boolean) => void; handleDelete: () => void; handleCopy: () => void; isCopied: boolean;
-    autoSaveEnabled: boolean; setAutoSaveEnabled: (b: boolean) => void;
-    hasUnsavedChanges: boolean; onManualSave: () => void;
-}) {
-    const [showMenu, setShowMenu] = useState(false);
-    const [isCheatsheetOpen, setIsCheatsheetOpen] = useState(false);
-    const menuRef = useRef<HTMLDivElement>(null);
-    const copyLabel = isCopied ? t('common.copied') || 'Copied!' : t('common.copy') || 'Copy';
-
-    useEffect(() => {
-        if (!showMenu) return;
-        const handleClickOutside = (e: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-                setShowMenu(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [showMenu]);
-
-    return (
-        <>
-        <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-y-2 border-b border-gray-200 bg-white/80 px-4 sm:px-6 py-3 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/80">
-            <div className="flex items-center gap-1 sm:gap-2 lg:gap-4">
-                <div className="flex items-center gap-1">
-                    <button
-                        onClick={handleBack}
-                        className="flex items-center justify-center rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
-                        title={t('common.back')}
-                    >
-                        <ArrowLeftIcon className="h-5 w-5" />
-                    </button>
-
-                    {/* Pagination Chevrons + Counter */}
-                    {!isEditing && filteredNotes.length > 1 && (
-                        <div className="flex items-center border-l border-gray-200 dark:border-gray-700 pl-2 gap-0.5">
-                            <button
-                                onClick={() => router.push(`/studies/${prevNoteId}?${searchParams.toString()}`)}
-                                disabled={!prevNoteId}
-                                className="flex items-center justify-center rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-900 focus:outline-none disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-100 transition-colors"
-                                title={t('common.previous') || 'Previous (←)'}
-                            >
-                                <ChevronLeftIcon className="h-4 w-4" />
-                            </button>
-                            <span className="text-xs font-mono text-gray-400 dark:text-gray-500 min-w-[3rem] text-center select-none tabular-nums">
-                                {currentIndex >= 0 ? `${currentIndex + 1} / ${filteredNotes.length}` : '—'}
-                            </span>
-                            <button
-                                onClick={() => router.push(`/studies/${nextNoteId}?${searchParams.toString()}`)}
-                                disabled={!nextNoteId}
-                                className="flex items-center justify-center rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-900 focus:outline-none disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-100 transition-colors"
-                                title={t('common.next') || 'Next (→)'}
-                            >
-                                <ChevronRightIcon className="h-4 w-4" />
-                            </button>
-                        </div>
-                    )}
-                </div>
-
-                <EditorHeaderTypeControl
-                    isEditing={isEditing}
-                    type={type}
-                    setType={setType}
-                    t={t}
-                />
-            </div>
-
-            {/* Sync Status Info — only meaningful while editing. Read mode
-                doesn't save anything, so the "Сохранено" badge there is just
-                noise that suggests the user is doing something they aren't. */}
-            <div className="flex items-center gap-3">
-                {isEditing ? (
-                    <AutoSaveControls
-                        t={t}
-                        autoSaveEnabled={autoSaveEnabled}
-                        setAutoSaveEnabled={setAutoSaveEnabled}
-                        hasUnsavedChanges={hasUnsavedChanges}
-                        onManualSave={onManualSave}
-                        isSaving={isSaving}
-                        saveError={saveError}
-                        lastSaved={lastSaved}
-                    />
-                ) : null}
-
-                <button
-                    type="button"
-                    onClick={() => setIsCheatsheetOpen(true)}
-                    className="hidden md:inline-flex items-center justify-center rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
-                    title={t('studiesWorkspace.cheatsheet.buttonLabel') || 'Keyboard shortcuts'}
-                    aria-label={t('studiesWorkspace.cheatsheet.buttonLabel') || 'Keyboard shortcuts'}
-                >
-                    <span className="text-sm font-semibold">?</span>
-                </button>
-
-                {!isEditing && (
-                    <button
-                        type="button"
-                        onClick={handleCopy}
-                        className={`p-2 rounded-lg transition-colors ${isCopied
-                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-100'
-                            }`}
-                        title={copyLabel}
-                        aria-label={copyLabel}
-                    >
-                        {isCopied ? <CheckIcon className="h-5 w-5" /> : <DocumentDuplicateIcon className="h-5 w-5" />}
-                    </button>
-                )}
-
-                <button
-                    onClick={() => setIsEditing(!isEditing)}
-                    className={`p-2 rounded-lg transition-colors ${isEditing
-                        ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300'
-                        : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-100'
-                        }`}
-                    title={isEditing ? t('common.done') || 'Done' : t('common.edit') || 'Edit'}
-                    aria-label={isEditing ? t('common.done') || 'Done' : t('common.edit') || 'Edit'}
-                >
-                    {isEditing ? <CheckIcon className="h-5 w-5" /> : <PencilIcon className="h-5 w-5" />}
-                </button>
-
-                <div className="relative" ref={menuRef}>
-                    <button
-                        onClick={() => setShowMenu(!showMenu)}
-                        className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
-                        title={t('common.more') || 'More'}
-                        aria-label={t('common.more') || 'More'}
-                    >
-                        <EllipsisVerticalIcon className="h-5 w-5" />
-                    </button>
-                    {showMenu && (
-                        <div className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800 z-50">
-                            <button
-                                onClick={() => {
-                                    setShowMenu(false);
-                                    setTimeout(() => handleDelete(), 10);
-                                }}
-                                className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
-                            >
-                                <TrashIcon className="h-4 w-4" />
-                                {t('common.delete')}
-                            </button>
-                        </div>
-                    )}
-                </div>
-            </div>
-        </header>
-        <KeyboardCheatsheet open={isCheatsheetOpen} onClose={() => setIsCheatsheetOpen(false)} />
-        </>
-    );
-}
-
-function EditorHeaderTypeControl({
-    isEditing,
+function StudyNoteTypeBadge({
     type,
-    setType,
     t,
 }: {
-    isEditing: boolean;
     type: 'note' | 'question';
-    setType: (t: 'note' | 'question') => void;
     t: ReturnType<typeof useTranslation>['t'];
 }) {
-    if (isEditing) {
-        return (
-            <div className="flex flex-col">
-                <div className="flex items-center gap-2">
-                    <button
-                        type="button"
-                        onClick={() => setType('note')}
-                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'note' ? 'bg-gray-100 text-gray-900 dark:bg-gray-800 dark:text-gray-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-                    >
-                        {t('studiesWorkspace.type.note') || 'Note'}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setType('question')}
-                        className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${type === 'question' ? 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-100' : 'text-gray-500 hover:text-gray-700 dark:text-gray-400'}`}
-                    >
-                        {t('studiesWorkspace.type.question') || 'Question'}
-                    </button>
-                </div>
-            </div>
-        );
-    }
-
     return (
         <div className="flex flex-col">
             <div className="flex items-center gap-2">
@@ -802,47 +206,207 @@ function EditorHeaderTypeControl({
     );
 }
 
-export default function StudyNoteEditorPage() {
+function StudyNoteViewHeader({
+    handleBack,
+    handleCopy,
+    handleDelete,
+    handleEdit,
+    handleShare,
+    isCopied,
+    hasShareLink,
+    t,
+    filteredNotes,
+    prevNoteId,
+    nextNoteId,
+    router,
+    searchParams,
+    currentIndex,
+    type,
+}: {
+    handleBack: () => void;
+    handleCopy: () => void;
+    handleDelete: () => void;
+    handleEdit: () => void;
+    handleShare: () => void;
+    isCopied: boolean;
+    hasShareLink: boolean;
+    t: ReturnType<typeof useTranslation>['t'];
+    filteredNotes: StudyNote[];
+    prevNoteId: string | null;
+    nextNoteId: string | null;
+    router: ReturnType<typeof useRouter>;
+    searchParams: SearchParamsLike;
+    currentIndex: number;
+    type: 'note' | 'question';
+}) {
+    const [showMenu, setShowMenu] = useState(false);
+    const [isCheatsheetOpen, setIsCheatsheetOpen] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+    const copyLabel = isCopied ? t('common.copied') || 'Copied!' : t('common.copy') || 'Copy';
+
+    useEffect(() => {
+        if (!showMenu) return undefined;
+
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setShowMenu(false);
+            }
+        };
+
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [showMenu]);
+
+    return (
+        <>
+            <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-y-2 border-b border-gray-200 bg-white/80 px-4 py-3 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/80 sm:px-6">
+                <div className="flex items-center gap-1 sm:gap-2 lg:gap-4">
+                    <div className="flex items-center gap-1">
+                        <button
+                            type="button"
+                            onClick={handleBack}
+                            className="flex items-center justify-center rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+                            title={t('common.back')}
+                        >
+                            <ArrowLeftIcon className="h-5 w-5" />
+                        </button>
+
+                        {filteredNotes.length > 1 && (
+                            <div className="flex items-center gap-0.5 border-l border-gray-200 pl-2 dark:border-gray-700">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (prevNoteId) router.push(withSearchParams(`/studies/${prevNoteId}`, searchParams));
+                                    }}
+                                    disabled={!prevNoteId}
+                                    className="flex items-center justify-center rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+                                    title={t('common.previous') || 'Previous (←)'}
+                                >
+                                    <ChevronLeftIcon className="h-4 w-4" />
+                                </button>
+                                <span className="min-w-[3rem] select-none text-center font-mono text-xs tabular-nums text-gray-400 dark:text-gray-500">
+                                    {currentIndex >= 0 ? `${currentIndex + 1} / ${filteredNotes.length}` : '-'}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (nextNoteId) router.push(withSearchParams(`/studies/${nextNoteId}`, searchParams));
+                                    }}
+                                    disabled={!nextNoteId}
+                                    className="flex items-center justify-center rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-900 focus:outline-none disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+                                    title={t('common.next') || 'Next (→)'}
+                                >
+                                    <ChevronRightIcon className="h-4 w-4" />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    <StudyNoteTypeBadge type={type} t={t} />
+                </div>
+
+                <div className="flex items-center gap-3">
+                    <button
+                        type="button"
+                        onClick={() => setIsCheatsheetOpen(true)}
+                        className="hidden items-center justify-center rounded-lg p-2 text-gray-500 transition hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100 md:inline-flex"
+                        title={t('studiesWorkspace.cheatsheet.buttonLabel') || 'Keyboard shortcuts'}
+                        aria-label={t('studiesWorkspace.cheatsheet.buttonLabel') || 'Keyboard shortcuts'}
+                    >
+                        <span className="text-sm font-semibold">?</span>
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={handleShare}
+                        className={`rounded-lg p-2 transition-colors ${hasShareLink
+                            ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50'
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-100'
+                            }`}
+                        title={t('studiesWorkspace.shareLinks.shareButton')}
+                        aria-label={t('studiesWorkspace.shareLinks.shareButton')}
+                    >
+                        <LinkIcon className="h-5 w-5" />
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={handleCopy}
+                        className={`rounded-lg p-2 transition-colors ${isCopied
+                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-100'
+                            }`}
+                        title={copyLabel}
+                        aria-label={copyLabel}
+                    >
+                        {isCopied ? <CheckIcon className="h-5 w-5" /> : <DocumentDuplicateIcon className="h-5 w-5" />}
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={handleEdit}
+                        className="rounded-lg bg-gray-100 p-2 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-100"
+                        title={t('common.edit') || 'Edit'}
+                        aria-label={t('common.edit') || 'Edit'}
+                    >
+                        <PencilIcon className="h-5 w-5" />
+                    </button>
+
+                    <div className="relative" ref={menuRef}>
+                        <button
+                            type="button"
+                            onClick={() => setShowMenu(!showMenu)}
+                            className="rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+                            title={t('common.more') || 'More'}
+                            aria-label={t('common.more') || 'More'}
+                        >
+                            <EllipsisVerticalIcon className="h-5 w-5" />
+                        </button>
+                        {showMenu && (
+                            <div className="absolute right-0 top-full z-50 mt-1 w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowMenu(false);
+                                        setTimeout(() => handleDelete(), 10);
+                                    }}
+                                    className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30"
+                                >
+                                    <TrashIcon className="h-4 w-4" />
+                                    {t('common.delete')}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </header>
+            <KeyboardCheatsheet open={isCheatsheetOpen} onClose={() => setIsCheatsheetOpen(false)} />
+        </>
+    );
+}
+
+export default function StudyNoteViewPage() {
     const { t, i18n } = useTranslation();
     const router = useRouter();
     const params = useParams();
-    const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
-    const noteId = createdNoteId || (params.id as string);
-    const isNew = noteId === 'new';
+    const noteId = params.id as string;
 
-    const { uid, notes, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
-    const { tags: tagData } = useTags(uid);
+    const { notes, deleteNote, loading: notesLoading, error: notesError } = useStudyNotes();
+    const {
+        draft: { title, content, tags, scriptureRefs, type, rootNode },
+        setters: { setRootNode },
+        meta: { isInitialized, existingNote, isNew, uid },
+    } = useStudyNoteDraft(noteId);
+    const {
+        shareLinks,
+        loading: shareLinksLoading,
+        createShareLink,
+        deleteShareLink,
+    } = useStudyNoteShareLinks();
     const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
     const wikilinkResolver = useWikilinkResolver();
-
-    // Local state for the editor
-    const [title, setTitle] = useState('');
-    const [content, setContent] = useState('');
-    const [tags, setTags] = useState<string[]>([]);
-    const [scriptureRefs, setScriptureRefs] = useState<ScriptureReference[]>([]);
-    const [type, setType] = useState<'note' | 'question'>('note');
-    const [rootNode, setRootNode] = useState<ContentNode | null>(null);
-    const [isEditing, setIsEditingRaw] = useState(isNew);
-    const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
-    const [isConvertModalOpen, setIsConvertModalOpen] = useState(false);
-    const canonicalContent = useMemo(() => getCanonicalStudyContent(content, rootNode), [content, rootNode]);
-
-    // Search params for feature-flagged opt-in into the node tree editor.
-    const editorSearchParams = useSearchParams();
-    const nodeEditorOptIn = editorSearchParams?.get('nodes') === '1';
-
-    // Input states
-    const [tagInput, setTagInput] = useState('');
-    const [quickRefInput, setQuickRefInput] = useState('');
-    const [quickRefError, setQuickRefError] = useState<string | null>(null);
-
-    // Tag / Reference Pickers
-    const [showTagCatalog, setShowTagCatalog] = useState(false);
-    const [editingRefIndex, setEditingRefIndex] = useState<number | null>(null);
-    const [showRefPicker, setShowRefPicker] = useState(false);
-
-    // Load existing note data or create a new empty template
-    const existingNote = useMemo(() => notes.find(n => n.id === noteId), [notes, noteId]);
+    const searchParams = useSearchParams();
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
     const bibleLocale: BibleLocale = useMemo(() => {
         const lang = i18n.language?.toLowerCase() || 'en';
@@ -851,61 +415,44 @@ export default function StudyNoteEditorPage() {
         return 'en';
     }, [i18n.language]);
 
-    const availableTags = useMemo(() => {
-        const fromTags = [...(tagData.requiredTags ?? []), ...(tagData.customTags ?? [])].map(t => t.name);
-        const fromNotes = new Set<string>();
-        notes.forEach(n => n.tags.forEach(t => fromNotes.add(t)));
-        return Array.from(new Set([...fromTags, ...Array.from(fromNotes)])).sort((a, b) => a.localeCompare(b));
-    }, [tagData, notes]);
+    const { filteredNotes, currentIndex, prevNoteId, nextNoteId, searchQuery } = useFilteredNotes(
+        notes,
+        noteId,
+        searchParams,
+        bibleLocale
+    );
 
-    // ─── PAGINATION LOGIC ──────────────────────────────────────────────────
-    const searchParams = useSearchParams();
-    const { filteredNotes, currentIndex, prevNoteId, nextNoteId, searchQuery } = useFilteredNotes(notes, searchParams, bibleLocale);
+    useNoteKeyboardNavigation({ noteId, prevNoteId, nextNoteId, router, searchParams });
+    useNoteAccessGuard({ noteId, isNew, notesLoading, error: notesError, existingNote, uid, redirectTo: '/studies' });
 
-    // Handle Initial Load
-    const [isInitialized, setIsInitialized] = useState(false);
+    const activeShareLink = useMemo(
+        () => shareLinks.find((link) => link.noteId === noteId),
+        [shareLinks, noteId]
+    );
 
-    const { isSaving, lastSaved, saveError, setLastSaved, hasUnsavedChanges, flushSave } = useNoteAutoSave({
-        noteId, isNew, isInitialized, existingNote, autoSaveEnabled,
-        draft: { title, content, tags, scriptureRefs, type, rootNode },
-        updateNote, createNote, uid, setCreatedNoteId, t,
-    });
+    const noteForShare = useMemo<StudyNote | null>(() => {
+        if (!existingNote) return null;
+        return {
+            ...existingNote,
+            title,
+            content,
+            tags,
+            scriptureRefs,
+            type,
+            ...(rootNode ? { rootNode } : {}),
+        };
+    }, [content, existingNote, rootNode, scriptureRefs, tags, title, type]);
 
-    // Leaving edit mode with autosave off — flush pending changes so the user
-    // never loses work silently. They can still cancel by reloading before this
-    // resolves, which is the same guarantee autosave-on gives them.
-    const setIsEditing = useCallback((next: boolean) => {
-        setIsEditingRaw(next);
-        if (!next && !autoSaveEnabled && hasUnsavedChanges) {
-            void flushSave();
-        }
-    }, [autoSaveEnabled, hasUnsavedChanges, flushSave]);
+    const handleBack = useCallback(() => {
+        router.push(withSearchParams('/studies', searchParams));
+    }, [router, searchParams]);
 
-    useNoteKeyboardNavigation({ isEditing, prevNoteId, nextNoteId, router, searchParams, setIsEditing });
-
-    const [isAIPopoverOpen, setIsAIPopoverOpen] = useState(false);
-
-    // AI assistant hook
-    const {
-        isAnalyzing, handleAIAnalyze,
-        pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
-    } = useNoteAIAssistant({
-        content, rootNode, availableTags, setTitle, setScriptureRefs, setTags, t
-    });
-
-    useNoteInitialization({
-        notesLoading, uid, isNew, isInitialized, existingNote, t, noteId,
-        setIsInitialized, setTitle, setContent, setTags, setScriptureRefs, setType, setLastSaved, setRootNode
-    });
-
-    // ─── HANDLERS ─────────────────────────────────────────────────────────
-
-    const handleBack = () => {
-        const queryParams = searchParams.toString();
-        router.push(queryParams ? `/studies?${queryParams}` : '/studies');
-    };
+    const handleEdit = useCallback(() => {
+        router.push(withSearchParams(`/studies/${noteId}/edit`, searchParams));
+    }, [noteId, router, searchParams]);
 
     const handleDelete = useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router });
+
     const handleCopy = useCallback(() => {
         const copyRootNode = rootNode ?? existingNote?.rootNode ?? null;
         void copyToClipboard(
@@ -927,30 +474,6 @@ export default function StudyNoteEditorPage() {
         );
     }, [bibleLocale, content, copyToClipboard, existingNote, noteId, rootNode, scriptureRefs, tags, title, type, uid]);
 
-    const handleConfirmConvertToNodes = useCallback((nextRootNode: ContentNode): void => {
-        setRootNode(nextRootNode);
-        setIsConvertModalOpen(false);
-        toast.success(t('studiesWorkspace.convertModal.undoToast'), {
-            action: {
-                label: t('studiesWorkspace.convertModal.undoAction'),
-                onClick: () => setRootNode(null),
-            },
-        });
-    }, [t]);
-
-    const addTag = () => {
-        const value = tagInput.trim();
-        if (!value) return;
-        setTags((prev) => Array.from(new Set([...prev, value])));
-        setTagInput('');
-    };
-
-    const toggleTag = (tag: string) => {
-        setTags((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
-    };
-
-    // ─── RENDER ─────────────────────────────────────────────────────────────
-
     if (notesLoading || (!isInitialized && !isNew)) {
         return (
             <div className="flex items-center justify-center p-12">
@@ -959,362 +482,111 @@ export default function StudyNoteEditorPage() {
         );
     }
 
+    const readRoot = rootNode ?? existingNote?.rootNode ?? null;
+
     return (
-        <div className="min-h-screen bg-white dark:bg-gray-900 flex flex-col -m-4 md:-m-6 lg:-m-8 relative">
-            {/* HEADER TRAY */}
-            <EditorHeader
-                handleBack={handleBack} t={t} isEditing={isEditing} filteredNotes={filteredNotes}
-                prevNoteId={prevNoteId} nextNoteId={nextNoteId} router={router} searchParams={searchParams}
-                currentIndex={currentIndex} type={type} setType={setType} isSaving={isSaving} saveError={saveError}
-                lastSaved={lastSaved} setIsEditing={setIsEditing} handleDelete={handleDelete}
-                handleCopy={handleCopy} isCopied={isCopied}
-                autoSaveEnabled={autoSaveEnabled} setAutoSaveEnabled={setAutoSaveEnabled}
-                hasUnsavedChanges={hasUnsavedChanges} onManualSave={() => { void flushSave(); }}
+        <div className="relative -m-4 flex min-h-screen flex-col bg-white dark:bg-gray-900 md:-m-6 lg:-m-8">
+            <StudyNoteViewHeader
+                handleBack={handleBack}
+                handleCopy={handleCopy}
+                handleDelete={handleDelete}
+                handleEdit={handleEdit}
+                handleShare={() => setIsShareModalOpen(true)}
+                isCopied={isCopied}
+                hasShareLink={Boolean(activeShareLink)}
+                t={t}
+                filteredNotes={filteredNotes}
+                prevNoteId={prevNoteId}
+                nextNoteId={nextNoteId}
+                router={router}
+                searchParams={searchParams}
+                currentIndex={currentIndex}
+                type={type}
             />
 
-            {/* EDITOR CONTENT */}
-            <div className="flex-1 w-full max-w-full mx-auto px-4 py-8 md:px-12 md:py-16 space-y-8 pb-48 md:pb-32 transition-all duration-300">
-                {/* Title Area */}
-                <div className="relative group/title">
-                    {isEditing ? (
-                        <div className="flex items-start gap-4 w-full">
-                            <TextareaAutosize
-                                value={title}
-                                onChange={e => setTitle(e.target.value)}
-                                placeholder={t('studiesWorkspace.titlePlaceholder') || 'Note Title...'}
-                                className="flex-1 text-4xl md:text-5xl font-extrabold tracking-tight bg-transparent border-none outline-none resize-none placeholder:text-gray-200 dark:placeholder:text-gray-800 text-gray-900 dark:text-gray-50 transition-colors"
+            <div className="mx-auto w-full max-w-full flex-1 space-y-8 px-4 py-8 transition-all duration-300 md:px-12 md:py-16 md:pb-32">
+                <div className="relative">
+                    <h1 className="min-h-[1em] w-full text-4xl font-extrabold leading-tight tracking-tight text-gray-900 dark:text-gray-50 md:text-5xl">
+                        {title ? (
+                            searchQuery ? <HighlightedText text={title} searchQuery={searchQuery} /> : title
+                        ) : (
+                            isNew ? '' : t('studiesWorkspace.untitled')
+                        )}
+                    </h1>
+                </div>
+
+                <div className="relative">
+                    {readRoot ? (
+                        <div className="text-lg leading-relaxed md:text-xl">
+                            <NodeTreeEditor
+                                rootNode={readRoot}
+                                onChange={setRootNode}
+                                currentNoteId={isNew ? undefined : noteId}
+                                readOnly
                             />
-                            <button
-                                type="button"
-                                onClick={() => handleAIAnalyze('title')}
-                                disabled={isAnalyzing || !canonicalContent.trim()}
-                                title={t('studiesWorkspace.aiAnalyze.generateTitle', { defaultValue: 'Generate Title' })}
-                                className="hidden group-hover/title:flex items-center justify-center p-2 rounded-lg text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50 shrink-0 mt-1"
-                            >
-                                <SparklesIcon className="h-6 w-6" />
-                            </button>
                         </div>
                     ) : (
-                        <h1 className="w-full text-4xl md:text-5xl font-extrabold tracking-tight text-gray-900 dark:text-gray-50 leading-tight min-h-[1em]">
-                            {title ? (
-                                searchQuery ? <HighlightedText text={title} searchQuery={searchQuery} /> : title
-                            ) : (
-                                isNew ? '' : t('studiesWorkspace.untitled')
-                            )}
-                        </h1>
+                        <div className="prose prose-emerald max-w-none text-lg dark:prose-invert prose-headings:text-gray-900 prose-p:leading-relaxed prose-p:text-gray-800 dark:prose-headings:text-gray-50 dark:prose-p:text-gray-200 md:text-xl">
+                            <MarkdownDisplay
+                                content={content}
+                                searchQuery={searchQuery}
+                                enableWikiLinks
+                                wikilinkResolver={wikilinkResolver}
+                            />
+                        </div>
                     )}
                 </div>
 
-                <div className="relative group">
-                    {(() => {
-                        // New notes default to the node editor — that's the new model.
-                        // Existing legacy notes (no rootNode) stay on the legacy editor unless
-                        // explicitly opted in via ?nodes=1 or the inline "Convert" button.
-                        const useNodeEditor = isNew || Boolean(rootNode) || Boolean(existingNote?.rootNode) || nodeEditorOptIn;
-
-                        if (isEditing && useNodeEditor) {
-                            // Lazily synthesize a root when opting in for the first time.
-                            // Existing legacy content becomes the root.text so nothing visible is lost.
-                            const effectiveRoot =
-                                rootNode
-                                ?? existingNote?.rootNode
-                                ?? (content.trim() ? markdownToNodeTree(content) : { id: makeId(), children: [] });
-                            return (
-                                <div className="text-lg md:text-xl leading-relaxed">
-                                    <NodeTreeEditor
-                                        rootNode={effectiveRoot}
-                                        onChange={setRootNode}
-                                        autoFocusFirst={!rootNode}
-                                        currentNoteId={isNew ? undefined : noteId}
-                                    />
-                                </div>
-                            );
-                        }
-
-                        if (isEditing) {
-                            return (
-                                <div className="text-lg md:text-xl leading-relaxed">
-                                    <RichMarkdownEditor
-                                        value={content}
-                                        onChange={setContent}
-                                        placeholder={t('studiesWorkspace.contentPlaceholder') || 'Start typing your thoughts here...'}
-                                        minHeight="300px"
-                                    />
-                                    {content.trim() && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsConvertModalOpen(true)}
-                                            className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 transition"
-                                            title={t('studiesWorkspace.convertToNodesHint') || 'Convert markdown headings into nested nodes'}
-                                        >
-                                            {t('studiesWorkspace.convertToNodes') || 'Convert to nodes'}
-                                        </button>
-                                    )}
-                                </div>
-                            );
-                        }
-
-                        // Read mode — when the note carries a node tree we render the
-                        // structure with foldable chevrons (read-only NodeTreeEditor),
-                        // so the user can collapse sections while reading. No drag
-                        // handles, no edit textareas, no buttons — pure reading view.
-                        if (useNodeEditor) {
-                            const readRoot = rootNode ?? existingNote?.rootNode;
-                            if (readRoot) {
-                                return (
-                                    <div className="text-lg md:text-xl leading-relaxed">
-                                        <NodeTreeEditor
-                                            rootNode={readRoot}
-                                            onChange={setRootNode}
-                                            currentNoteId={isNew ? undefined : noteId}
-                                            readOnly
-                                        />
-                                    </div>
-                                );
-                            }
-                        }
-                        return (
-                            <div className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-800 dark:prose-p:text-gray-200 prose-p:leading-relaxed max-w-none text-lg md:text-xl">
-                                <MarkdownDisplay content={content} searchQuery={searchQuery} enableWikiLinks wikilinkResolver={wikilinkResolver} />
-                            </div>
-                        );
-                    })()}
-                </div>
-
-                {isEditing && (
-                    <div className="fixed bottom-6 right-4 md:bottom-8 md:right-8 z-50 flex flex-col gap-3">
-                        <div className="relative">
-                            {/* Inner wrapper to handle outside clicks or state toggling */}
-                            <button
-                                type="button"
-                                onClick={() => setIsAIPopoverOpen(!isAIPopoverOpen)}
-                                disabled={isAnalyzing || !canonicalContent.trim()}
-                                title={t('studiesWorkspace.aiAnalyze.button')}
-                                className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg hover:from-purple-600 hover:to-indigo-600 hover:scale-105 disabled:opacity-50 transition-all border border-purple-400 dark:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-2 dark:focus:ring-offset-gray-900 relative z-20"
-                            >
-                                <SparklesIcon className={`h-6 w-6 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                            </button>
-
-                            {/* Popover Menu */}
-                            {isAIPopoverOpen && (
-                                <div className="absolute bottom-full right-0 mb-3 w-56 rounded-xl bg-white shadow-xl border border-gray-100 dark:bg-gray-800 dark:border-gray-700 py-2 z-10 origin-bottom-right animate-in slide-in-from-bottom-2 fade-in duration-200">
-                                    <div className="px-4 py-2 border-b border-gray-50 dark:border-gray-700/50 mb-1">
-                                        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                            {t('studiesWorkspace.aiAnalyze.popoverTitle', { defaultValue: 'AI Actions' })}
-                                        </p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        className="w-full text-left px-4 py-2.5 text-sm font-medium text-purple-700 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/30 transition-colors flex items-center justify-between group"
-                                        onClick={() => { handleAIAnalyze('all'); setIsAIPopoverOpen(false); }}
-                                    >
-                                        {t('studiesWorkspace.aiAnalyze.full', { defaultValue: 'Full Analysis' })}
-                                        <SparklesIcon className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
-                                        onClick={() => { handleAIAnalyze('title'); setIsAIPopoverOpen(false); }}
-                                    >
-                                        {t('studiesWorkspace.aiAnalyze.generateTitle', { defaultValue: 'Generate Title' })}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
-                                        onClick={() => { handleAIAnalyze('scriptureRefs'); setIsAIPopoverOpen(false); }}
-                                    >
-                                        {t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
-                                        onClick={() => { handleAIAnalyze('tags'); setIsAIPopoverOpen(false); }}
-                                    >
-                                        {t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* Invisible overlay to close popover when clicking outside */}
-                            {isAIPopoverOpen && (
-                                <div
-                                    className="fixed inset-0 z-0"
-                                    onClick={() => setIsAIPopoverOpen(false)}
-                                    aria-hidden="true"
-                                />
-                            )}
-                        </div>
-                    </div>
-                )}
-
-                {/* Metadata Tray (Tags & Refs) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t border-gray-200 dark:border-gray-700">
-                    {/* References */}
-                    <div className="flex flex-col h-full space-y-4 group/refs">
+                <div className="grid grid-cols-1 gap-8 border-t border-gray-200 pt-8 dark:border-gray-700 md:grid-cols-2">
+                    <div className="flex h-full flex-col space-y-4">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-500" title={t('studiesWorkspace.scriptureRefs')}>
                                 <BookmarkIcon className="h-5 w-5" />
                                 <span className="text-sm font-medium">{t('studiesWorkspace.scriptureRefs')}</span>
                             </div>
-                            {isEditing && (
-                                <button
-                                    type="button"
-                                    onClick={() => handleAIAnalyze('scriptureRefs')}
-                                    disabled={isAnalyzing || !canonicalContent.trim()}
-                                    title={t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
-                                    className="flex items-center justify-center p-1.5 rounded-lg text-purple-600 opacity-0 group-hover/refs:opacity-100 focus-visible:opacity-100 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-opacity disabled:opacity-30"
-                                >
-                                    <SparklesIcon className="h-5 w-5" />
-                                </button>
-                            )}
                         </div>
 
                         {scriptureRefs.length > 0 && (
                             <div className="flex flex-wrap gap-2">
-                                {scriptureRefs.map((ref, idx) => (
-                                    <ScriptureRefBadge
-                                        key={ref.id}
-                                        reference={ref}
-                                        isEditing={isEditing ? editingRefIndex === idx : false}
-                                        onClick={isEditing ? () => { setEditingRefIndex(idx); setShowRefPicker(false); } : undefined}
-                                        onRemove={isEditing ? () => setScriptureRefs(prev => prev.filter((_, i) => i !== idx)) : undefined}
-                                    />
+                                {scriptureRefs.map((ref) => (
+                                    <ScriptureRefBadge key={ref.id} reference={ref} />
                                 ))}
                             </div>
                         )}
-
-                        {isEditing && (
-                            <div className="flex items-center gap-2 mt-auto pt-2">
-                                <input
-                                    value={quickRefInput}
-                                    onChange={(e) => { setQuickRefInput(e.target.value); setQuickRefError(null); }}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            const parsed = parseReferenceText(quickRefInput.trim(), bibleLocale);
-                                            if (!parsed) { setQuickRefError(t('studiesWorkspace.quickRefError') || 'Cannot parse'); return; }
-                                            setScriptureRefs(prev => [...prev, { ...parsed, id: makeId() }]);
-                                            setQuickRefInput('');
-                                        }
-                                    }}
-                                    placeholder={t('studiesWorkspace.quickRefPlaceholder')}
-                                    className={`flex-1 ${STUDIES_INPUT_SHARED_CLASSES} py-1.5`}
-                                />
-                                <button
-                                    onClick={() => setShowRefPicker(true)}
-                                    className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors dark:text-gray-400 dark:hover:bg-gray-800"
-                                    title={t('studiesWorkspace.browseBooks')}
-                                >
-                                    <BookOpenIcon className="h-5 w-5" />
-                                </button>
-                            </div>
-                        )}
-                        {isEditing && quickRefError && <p className="text-xs text-red-500 mt-1">{quickRefError}</p>}
-
-                        {showRefPicker && (
-                            <ScriptureRefPicker
-                                mode="add"
-                                onConfirm={(ref) => { setScriptureRefs(prev => [...prev, { ...ref, id: makeId() }]); setShowRefPicker(false); }}
-                                onCancel={() => setShowRefPicker(false)}
-                            />
-                        )}
-
-                        {editingRefIndex !== null && (
-                            <ScriptureRefPicker
-                                mode="edit"
-                                initialRef={scriptureRefs[editingRefIndex]}
-                                onConfirm={(ref) => {
-                                    setScriptureRefs(prev => {
-                                        const r = [...prev]; r[editingRefIndex] = { ...ref, id: r[editingRefIndex].id }; return r;
-                                    });
-                                    setEditingRefIndex(null);
-                                }}
-                                onCancel={() => setEditingRefIndex(null)}
-                            />
-                        )}
                     </div>
 
-                    {/* Tags */}
-                    <div className="flex flex-col h-full space-y-4 group/tags">
+                    <div className="flex h-full flex-col space-y-4">
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-500" title={t('studiesWorkspace.tags')}>
                                 <TagIcon className="h-5 w-5" />
                                 <span className="text-sm font-medium">{t('studiesWorkspace.tags')}</span>
                             </div>
-                            {isEditing && (
-                                <button
-                                    type="button"
-                                    onClick={() => handleAIAnalyze('tags')}
-                                    disabled={isAnalyzing || !canonicalContent.trim()}
-                                    title={t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
-                                    className="flex items-center justify-center p-1.5 rounded-lg text-purple-600 opacity-0 group-hover/tags:opacity-100 focus-visible:opacity-100 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-opacity disabled:opacity-30"
-                                >
-                                    <SparklesIcon className="h-5 w-5" />
-                                </button>
-                            )}
                         </div>
 
                         {tags.length > 0 && (
                             <div className="flex flex-wrap gap-2">
-                                {tags.map(tag => (
-                                    <span key={tag} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800">
+                                {tags.map((tag) => (
+                                    <span
+                                        key={tag}
+                                        className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-800 dark:border-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200"
+                                    >
                                         {tag}
-                                        {isEditing && (
-                                            <button onClick={() => toggleTag(tag)} className="hover:text-emerald-900 dark:hover:text-emerald-100 ml-1">
-                                                <XMarkIcon className="h-3.5 w-3.5" />
-                                            </button>
-                                        )}
                                     </span>
                                 ))}
                             </div>
                         )}
-
-                        {isEditing && (
-                            <div className="flex items-center gap-2 mt-auto pt-2">
-                                <input
-                                    value={tagInput}
-                                    onChange={(e) => setTagInput(e.target.value)}
-                                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
-                                    placeholder={t('studiesWorkspace.addTag')}
-                                    className={`flex-1 ${STUDIES_INPUT_SHARED_CLASSES} py-1.5`}
-                                />
-                                <button onClick={addTag} className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors dark:text-gray-400 dark:hover:bg-gray-800">
-                                    <PlusIcon className="h-5 w-5" />
-                                </button>
-                                <button onClick={() => setShowTagCatalog(true)} className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors dark:text-gray-400 dark:hover:bg-gray-800" title={t('studiesWorkspace.browseTags', { defaultValue: 'Browse tags' })}>
-                                    <MagnifyingGlassIcon className="h-5 w-5" />
-                                </button>
-                            </div>
-                        )}
                     </div>
                 </div>
-
             </div>
 
-            <TagCatalogModal
-                isOpen={showTagCatalog}
-                onClose={() => setShowTagCatalog(false)}
-                availableTags={availableTags}
-                selectedTags={tags}
-                onToggleTag={toggleTag}
-            />
-
-            <AnalysisConfirmationModal
-                isOpen={!!pendingAnalysisResult}
-                onClose={() => setPendingAnalysisResult(null)}
-                result={pendingAnalysisResult}
-                onApply={handleApplyAnalysis}
-                bibleLocale={bibleLocale}
-                currentTitle={title}
-                currentTags={tags}
-                currentScriptureRefs={scriptureRefs}
-            />
-
-            <ConvertToNodesModal
-                open={isConvertModalOpen}
-                sourceContent={content}
-                onConfirm={handleConfirmConvertToNodes}
-                onCancel={() => setIsConvertModalOpen(false)}
+            <ShareNoteModal
+                isOpen={isShareModalOpen}
+                note={noteForShare}
+                shareLink={activeShareLink}
+                loading={shareLinksLoading}
+                onClose={() => setIsShareModalOpen(false)}
+                onCreate={createShareLink}
+                onDelete={deleteShareLink}
             />
         </div>
     );

@@ -1,12 +1,13 @@
-import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
-import { useStudyNotes } from '@/hooks/useStudyNotes';
-import { useTags } from '@/hooks/useTags';
-import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import StudyNoteEditorPage from '../page';
+import { toast } from 'sonner';
+
+import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
+import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { StudyNote } from '@/models/models';
 
-// Mock next/navigation
+import StudyNoteViewPage from '../page';
+
 jest.mock('next/navigation', () => ({
     useRouter: jest.fn(),
     useParams: jest.fn(),
@@ -20,38 +21,38 @@ jest.mock('react-i18next', () => ({
     }),
 }));
 
-// Mock hooks
 jest.mock('@/hooks/useStudyNotes');
-jest.mock('@/hooks/useTags');
 jest.mock('@/hooks/useStudyNoteShareLinks');
 
-// Mock components to avoid deep rendering issues in this test
+jest.mock('sonner', () => ({
+    toast: {
+        error: jest.fn(),
+    },
+}));
+
 jest.mock('@components/MarkdownDisplay', () => ({
     __esModule: true,
     default: ({ content }: { content: string }) => <div data-testid="markdown-display">{content}</div>,
 }));
 
-jest.mock('react-textarea-autosize', () => ({
+jest.mock('@/components/studies/node/NodeTreeEditor', () => ({
     __esModule: true,
-    default: (props: any) => <textarea {...props} />,
-}));
-
-jest.mock('@/components/ui/RichMarkdownEditor', () => ({
-    __esModule: true,
-    RichMarkdownEditor: ({ value, onChange, placeholder }: any) => (
-        <textarea
-            data-testid="rich-markdown-editor"
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-        />
+    default: ({ rootNode, readOnly }: { rootNode: unknown; readOnly?: boolean }) => (
+        <div data-testid="node-tree-editor" data-readonly={readOnly ? 'true' : 'false'}>
+            {JSON.stringify(rootNode)}
+        </div>
     ),
 }));
 
-jest.mock('@/components/studies/node/NodeTreeEditor', () => ({
+jest.mock('../../components/KeyboardCheatsheet', () => ({
     __esModule: true,
-    default: ({ rootNode }: { rootNode: unknown }) => (
-        <div data-testid="node-tree-editor">{JSON.stringify(rootNode)}</div>
+    default: ({ open }: { open: boolean }) => (open ? <div data-testid="keyboard-cheatsheet" /> : null),
+}));
+
+jest.mock('../../components/ShareNoteModal', () => ({
+    __esModule: true,
+    default: ({ isOpen, note }: { isOpen: boolean; note: StudyNote | null }) => (
+        isOpen && note ? <div data-testid="share-note-modal">{note.title}</div> : null
     ),
 }));
 
@@ -60,9 +61,6 @@ const mockRouter = {
     replace: jest.fn(),
     back: jest.fn(),
 };
-
-const mockParams = { id: 'note-1' };
-const mockSearchParams = new URLSearchParams('tag=tag1'); // Matches all mock notes
 
 const createMockNote = (id: string, title: string): StudyNote => ({
     id,
@@ -94,274 +92,118 @@ const currentNodeNote: StudyNote = {
     updatedAt: '2024-01-02T00:00:00.000Z',
 };
 
-describe('StudyNoteEditorPage Pagination', () => {
+describe('StudyNoteViewPage', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         (useRouter as jest.Mock).mockReturnValue(mockRouter);
-        (useParams as jest.Mock).mockReturnValue(mockParams);
-        (useSearchParams as jest.Mock).mockReturnValue(mockSearchParams);
+        (useParams as jest.Mock).mockReturnValue({ id: 'note-1' });
+        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('tag=tag1'));
 
         (useStudyNotes as jest.Mock).mockReturnValue({
             uid: 'user-1',
             notes: mockNotes,
             loading: false,
+            error: null,
             createNote: jest.fn(),
             updateNote: jest.fn(),
             deleteNote: jest.fn(),
-        });
-
-        (useTags as jest.Mock).mockReturnValue({
-            tags: { requiredTags: [], customTags: [] },
         });
 
         (useStudyNoteShareLinks as jest.Mock).mockReturnValue({
             shareLinks: [],
             loading: false,
+            createShareLink: jest.fn(),
+            deleteShareLink: jest.fn(),
         });
     });
 
-    it('renders correctly and identifies prev/next notes based on search params', () => {
-        render(<StudyNoteEditorPage />);
+    it('renders read-only title, body, tags, and pagination from filtered notes', async () => {
+        render(<StudyNoteViewPage />);
 
-        // Check if the current note content is rendered
-        expect(screen.getByText('Content for Current Note')).toBeInTheDocument();
+        expect(await screen.findByText('Current Note')).toBeInTheDocument();
+        expect(screen.getByTestId('markdown-display')).toHaveTextContent('Content for Current Note');
+        expect(screen.getByText('tag1')).toBeInTheDocument();
+        expect(screen.queryByPlaceholderText('studiesWorkspace.titlePlaceholder')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('rich-markdown-editor')).not.toBeInTheDocument();
 
-        // The header should contain the navigation chevrons for prev and next
-        // because note-1 is in the middle of our mockNotes and matches the tag 'tag1'
-        const prevButton = screen.getByTitle('common.previous');
-        const nextButton = screen.getByTitle('common.next');
-
-        expect(prevButton).toBeInTheDocument();
-        expect(nextButton).toBeInTheDocument();
-
-        // Check the counter (Note 2 of 3 -> "2 / 3")
+        expect(screen.getByTitle('common.previous')).toBeInTheDocument();
+        expect(screen.getByTitle('common.next')).toBeInTheDocument();
         expect(screen.getByText('2 / 3')).toBeInTheDocument();
     });
 
-    it('navigates to the previous note when the left chevron is clicked', () => {
-        render(<StudyNoteEditorPage />);
+    it('navigates to previous and next notes with preserved search params', async () => {
+        render(<StudyNoteViewPage />);
+        await screen.findByText('Current Note');
 
-        const prevButton = screen.getByTitle('common.previous');
-        fireEvent.click(prevButton);
+        fireEvent.click(screen.getByTitle('common.previous'));
+        fireEvent.click(screen.getByTitle('common.next'));
 
         expect(mockRouter.push).toHaveBeenCalledWith('/studies/note-0?tag=tag1');
-    });
-
-    it('navigates to the next note when the right chevron is clicked', () => {
-        render(<StudyNoteEditorPage />);
-
-        const nextButton = screen.getByTitle('common.next');
-        fireEvent.click(nextButton);
-
         expect(mockRouter.push).toHaveBeenCalledWith('/studies/note-2?tag=tag1');
     });
 
-    it('responds to ArrowLeft and ArrowRight keyboard events when not editing', () => {
-        render(<StudyNoteEditorPage />);
+    it('supports keyboard arrow navigation in read-only mode', async () => {
+        render(<StudyNoteViewPage />);
+        await screen.findByText('Current Note');
 
-        // Trigger ArrowLeft
         fireEvent.keyDown(document, { key: 'ArrowLeft' });
-        expect(mockRouter.push).toHaveBeenCalledWith('/studies/note-0?tag=tag1');
-
-        // Trigger ArrowRight
         fireEvent.keyDown(document, { key: 'ArrowRight' });
+
+        expect(mockRouter.push).toHaveBeenCalledWith('/studies/note-0?tag=tag1');
         expect(mockRouter.push).toHaveBeenCalledWith('/studies/note-2?tag=tag1');
     });
 
-    it('does NOT respond to keyboard navigation when in editing mode', () => {
-        render(<StudyNoteEditorPage />);
-
-        // Switch to editing mode
-        const editButton = screen.getByTitle('common.edit');
-        fireEvent.click(editButton);
-
-        // Try ArrowLeft
-        fireEvent.keyDown(document, { key: 'ArrowLeft' });
-        expect(mockRouter.push).not.toHaveBeenCalled();
-    });
-
-    it('renders disabled buttons when at the boundaries of a list', () => {
-        // Search 'Note' matches all 3: note-0, note-1, note-2
-        const searchNoteParams = new URLSearchParams('search=Note');
-        (useSearchParams as jest.Mock).mockReturnValue(searchNoteParams);
-
-        // At the start (note-0)
+    it('shows disabled pagination buttons at list boundaries', async () => {
+        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('search=Note'));
         (useParams as jest.Mock).mockReturnValue({ id: 'note-0' });
-        const { rerender } = render(<StudyNoteEditorPage />);
+        const { rerender } = render(<StudyNoteViewPage />);
 
+        expect(await screen.findByText('Content for Prev Note')).toBeInTheDocument();
         expect(screen.getByTitle('common.previous')).toBeDisabled();
         expect(screen.getByTitle('common.next')).toBeEnabled();
         expect(screen.getByText('1 / 3')).toBeInTheDocument();
 
-        // At the end (note-2)
         (useParams as jest.Mock).mockReturnValue({ id: 'note-2' });
-        rerender(<StudyNoteEditorPage />);
+        rerender(<StudyNoteViewPage />);
 
+        expect(await screen.findByText('Content for Next Note')).toBeInTheDocument();
         expect(screen.getByTitle('common.previous')).toBeEnabled();
         expect(screen.getByTitle('common.next')).toBeDisabled();
         expect(screen.getByText('3 / 3')).toBeInTheDocument();
     });
 
-    it('hides navigation when only one note matches the filter', () => {
-        const singleNoteParams = new URLSearchParams('search=Next');
-        (useSearchParams as jest.Mock).mockReturnValue(singleNoteParams);
+    it('hides pagination when only one note matches the filter', async () => {
+        (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('search=Next'));
         (useParams as jest.Mock).mockReturnValue({ id: 'note-2' });
 
-        render(<StudyNoteEditorPage />);
+        render(<StudyNoteViewPage />);
 
+        expect(await screen.findByText('Content for Next Note')).toBeInTheDocument();
         expect(screen.queryByTitle('common.previous')).not.toBeInTheDocument();
         expect(screen.queryByText('1 / 1')).not.toBeInTheDocument();
     });
 
-    describe('Note / Question Mode Toggle', () => {
-        it('toggles between Note and Question type in edit mode', () => {
-            render(<StudyNoteEditorPage />);
-            expect(screen.getByText('Current Note')).toBeInTheDocument();
+    it('opens the edit route from the edit button and Cmd+E with preserved search params', async () => {
+        render(<StudyNoteViewPage />);
+        await screen.findByText('Current Note');
 
-            // Enter edit mode
-            fireEvent.click(screen.getByTitle('common.edit'));
-
-            const noteBtn = screen.getByRole('button', { name: 'studiesWorkspace.type.note' });
-            const qBtn = screen.getByRole('button', { name: 'studiesWorkspace.type.question' });
-
-            fireEvent.click(qBtn);
-            expect(qBtn).toHaveClass('bg-amber-100'); // the selected class for question
-
-            fireEvent.click(noteBtn);
-            expect(noteBtn).toHaveClass('bg-gray-100'); // the selected class for note
-        });
-
-        it('displays badges for Note and Question type in read-only mode', () => {
-            render(<StudyNoteEditorPage />);
-
-            // By default, it's a note. In read-only mode, check if note badge is shown
-            expect(screen.getByText('studiesWorkspace.type.note')).toHaveClass('bg-gray-50');
-
-            // Switch to edit mode, change to question, then switch back to read-only
-            fireEvent.click(screen.getByTitle('common.edit'));
-            fireEvent.click(screen.getByRole('button', { name: 'studiesWorkspace.type.question' }));
-            fireEvent.click(screen.getByTitle('common.done')); // exit edit mode
-
-            // Check if question badge is shown with amber text
-            expect(screen.getByText('studiesWorkspace.type.question')).toHaveClass('text-amber-700');
-        });
-    });
-
-    it('adds and toggles tags correctly', async () => {
-        render(<StudyNoteEditorPage />);
-
-        // Check initial tag
-        expect(screen.getByText('tag1')).toBeInTheDocument();
-        // Enter edit mode
         fireEvent.click(screen.getByTitle('common.edit'));
+        fireEvent.keyDown(document, { key: 'e', metaKey: true });
 
-        // Toggle off tag1 (click the X button)
-        const tag1Container = screen.getByText('tag1').parentElement;
-        const xButton = within(tag1Container!).getByRole('button');
-        fireEvent.click(xButton);
-        await waitFor(() => {
-            expect(screen.queryByText('tag1')).not.toBeInTheDocument();
-        });
-
-        // Add a new tag
-        const tagInput = screen.getByPlaceholderText('studiesWorkspace.addTag');
-        fireEvent.change(tagInput, { target: { value: 'new-tag' } });
-        fireEvent.keyDown(tagInput, { key: 'Enter' });
-
-        expect(screen.getByText('new-tag')).toBeInTheDocument();
+        expect(mockRouter.push).toHaveBeenCalledWith('/studies/note-1/edit?tag=tag1');
+        expect(mockRouter.push).toHaveBeenCalledTimes(2);
     });
 
-    it('triggers AI analysis and applies results', async () => {
-        // Mock fetch for AI analysis
-        const mockAIResponse = {
-            success: true,
-            data: {
-                title: 'AI Title',
-                tags: ['ai-tag'],
-                scriptureRefs: [{ book: 'John', chapter: 3, fromVerse: 16 }]
-            }
-        };
-        (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
-            ok: true,
-            json: jest.fn().mockResolvedValue(mockAIResponse)
-        });
+    it('navigates back to the list with preserved search params', async () => {
+        render(<StudyNoteViewPage />);
+        await screen.findByText('Current Note');
 
-        render(<StudyNoteEditorPage />);
-
-        // Enter edit mode
-        fireEvent.click(screen.getByTitle('common.edit'));
-
-        // Clear the title first (AI only sets title if it's empty)
-        const titleInput = screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder');
-        fireEvent.change(titleInput, { target: { value: '' } });
-
-        // Trigger AI Analyze
-        const aiButton = screen.getByTitle('studiesWorkspace.aiAnalyze.button');
-        fireEvent.click(aiButton);
-
-        const fullOption = await screen.findByText('studiesWorkspace.aiAnalyze.full');
-        fireEvent.click(fullOption);
-
-        await waitFor(() => {
-            expect(global.fetch).toHaveBeenCalledWith('/api/studies/analyze', expect.any(Object));
-        });
-
-        // Apply results from modal
-        const applyBtn = await screen.findByText('studiesWorkspace.aiAnalyze.applySelected');
-        fireEvent.click(applyBtn);
-
-        // Wait for AI results to be applied
-        await waitFor(() => {
-            expect(screen.getByDisplayValue('AI Title')).toBeInTheDocument();
-        }, { timeout: 2000 });
-
-        expect(screen.getByText('ai-tag')).toBeInTheDocument();
-    });
-
-    it('sends derived node markdown to AI analysis when a note has rootNode', async () => {
-        const mockAIResponse = {
-            success: true,
-            data: { tags: ['tree-tag'] }
-        };
-        (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
-            ok: true,
-            json: jest.fn().mockResolvedValue(mockAIResponse)
-        });
-        (useStudyNotes as jest.Mock).mockReturnValue({
-            uid: 'user-1',
-            notes: [mockNotes[0], currentNodeNote, mockNotes[2]],
-            loading: false,
-            createNote: jest.fn(),
-            updateNote: jest.fn(),
-            deleteNote: jest.fn(),
-        });
-
-        render(<StudyNoteEditorPage />);
-        fireEvent.click(screen.getByTitle('common.edit'));
-        fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
-        fireEvent.click(await screen.findByText('studiesWorkspace.aiAnalyze.full'));
-
-        await waitFor(() => {
-            expect(global.fetch).toHaveBeenCalledWith('/api/studies/analyze', expect.any(Object));
-        });
-
-        const init = (global.fetch as jest.Mock).mock.calls[0][1] as RequestInit;
-        expect(JSON.parse(init.body as string)).toMatchObject({
-            content: '# Canonical\n\nFresh body',
-            analysisType: 'all',
-        });
-    });
-
-    it('navigates back using the back button', () => {
-        render(<StudyNoteEditorPage />);
-
-        const backButton = screen.getByTitle('common.back');
-        fireEvent.click(backButton);
+        fireEvent.click(screen.getByTitle('common.back'));
 
         expect(mockRouter.push).toHaveBeenCalledWith('/studies?tag=tag1');
     });
 
-    it('renders a copy button in read-only mode and copies formatted note content', async () => {
+    it('copies formatted markdown for a legacy note', async () => {
         const mockWriteText = jest.fn().mockResolvedValue(undefined);
         Object.assign(navigator, {
             clipboard: { writeText: mockWriteText },
@@ -371,17 +213,17 @@ describe('StudyNoteEditorPage Pagination', () => {
             value: true,
         });
 
-        render(<StudyNoteEditorPage />);
+        render(<StudyNoteViewPage />);
+        await screen.findByText('Current Note');
 
-        const copyButton = screen.getByRole('button', { name: 'common.copy' });
-        fireEvent.click(copyButton);
+        fireEvent.click(screen.getByRole('button', { name: 'common.copy' }));
 
         await waitFor(() => {
             expect(mockWriteText).toHaveBeenCalledWith('# Current Note\n\nContent for Current Note');
         });
     });
 
-    it('copies derived node markdown when a note has rootNode', async () => {
+    it('renders node notes with read-only NodeTreeEditor and copies derived node markdown', async () => {
         const mockWriteText = jest.fn().mockResolvedValue(undefined);
         Object.assign(navigator, {
             clipboard: { writeText: mockWriteText },
@@ -394,337 +236,85 @@ describe('StudyNoteEditorPage Pagination', () => {
             uid: 'user-1',
             notes: [mockNotes[0], currentNodeNote, mockNotes[2]],
             loading: false,
+            error: null,
             createNote: jest.fn(),
             updateNote: jest.fn(),
             deleteNote: jest.fn(),
         });
 
-        render(<StudyNoteEditorPage />);
+        render(<StudyNoteViewPage />);
+        await screen.findByText('Current Note');
 
-        const copyButton = screen.getByRole('button', { name: 'common.copy' });
-        fireEvent.click(copyButton);
+        expect(screen.getByTestId('node-tree-editor')).toHaveAttribute('data-readonly', 'true');
+        fireEvent.click(screen.getByRole('button', { name: 'common.copy' }));
 
         await waitFor(() => {
             expect(mockWriteText).toHaveBeenCalledWith('# Current Note\n\n# Canonical\n\nFresh body');
         });
     });
 
-    describe('Missing Coverage Tests', () => {
-        it('handles new note creation on input', async () => {
-            jest.useFakeTimers();
-            const mockCreateNote = jest.fn().mockResolvedValue({ id: 'new-note-id' });
-            (useStudyNotes as jest.Mock).mockReturnValue({
-                uid: 'user-1',
-                notes: mockNotes,
-                loading: false,
-                createNote: mockCreateNote,
-                updateNote: jest.fn(),
-                deleteNote: jest.fn(),
-            });
-            (useParams as jest.Mock).mockReturnValue({ id: 'new' });
-
-            render(<StudyNoteEditorPage />);
-
-            const titleInput = screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder');
-            fireEvent.change(titleInput, { target: { value: 'New Note' } });
-
-            jest.advanceTimersByTime(2000);
-
-            await waitFor(() => {
-                expect(mockCreateNote).toHaveBeenCalled();
-            });
-
-            jest.useRealTimers();
+    it('deletes a note from the more menu and returns to the study list', async () => {
+        const mockDeleteNote = jest.fn().mockResolvedValue(undefined);
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: mockNotes,
+            loading: false,
+            error: null,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: mockDeleteNote,
+        });
+        window.confirm = jest.fn(() => true);
+        (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
+            ok: true,
+            json: jest.fn().mockResolvedValue([{ noteId: 'note-1', id: 'link-1' }]),
         });
 
-        it('shows error if new note creation fails', async () => {
-            jest.useFakeTimers();
-            const mockCreateNote = jest.fn().mockRejectedValue(new Error('fail'));
-            (useStudyNotes as jest.Mock).mockReturnValue({
-                uid: 'user-1',
-                notes: mockNotes,
-                loading: false,
-                createNote: mockCreateNote,
-                updateNote: jest.fn(),
-                deleteNote: jest.fn(),
-            });
-            (useParams as jest.Mock).mockReturnValue({ id: 'new' });
+        render(<StudyNoteViewPage />);
+        await screen.findByText('Current Note');
 
-            render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.more'));
+        fireEvent.click(screen.getByText('common.delete'));
 
-            const titleInput = screen.getByPlaceholderText('studiesWorkspace.titlePlaceholder');
-            fireEvent.change(titleInput, { target: { value: 'New Note' } });
+        await waitFor(() => {
+            expect(mockDeleteNote).toHaveBeenCalledWith('note-1');
+            expect(mockRouter.push).toHaveBeenCalledWith('/studies');
+        });
+    });
 
-            jest.advanceTimersByTime(2000);
+    it('opens the existing share-link modal from the read-only header', async () => {
+        render(<StudyNoteViewPage />);
+        await screen.findByText('Current Note');
 
-            await waitFor(() => {
-                expect(mockCreateNote).toHaveBeenCalled();
-            });
+        fireEvent.click(screen.getByRole('button', { name: 'studiesWorkspace.shareLinks.shareButton' }));
 
-            jest.useRealTimers();
+        expect(screen.getByTestId('share-note-modal')).toHaveTextContent('Current Note');
+    });
+
+    it('redirects invalid note ids back to the studies list after the access guard delay', async () => {
+        jest.useFakeTimers();
+        (useParams as jest.Mock).mockReturnValue({ id: 'missing-note' });
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: mockNotes,
+            loading: false,
+            error: null,
+            createNote: jest.fn(),
+            updateNote: jest.fn(),
+            deleteNote: jest.fn(),
         });
 
-        it('handles delete note click correctly', async () => {
-            const mockDeleteNote = jest.fn().mockResolvedValue(undefined);
-            (useStudyNotes as jest.Mock).mockReturnValue({
-                uid: 'user-1',
-                notes: mockNotes,
-                loading: false,
-                createNote: jest.fn(),
-                updateNote: jest.fn(),
-                deleteNote: mockDeleteNote,
-            });
-            window.confirm = jest.fn(() => true);
-            (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
-                ok: true,
-                json: jest.fn().mockResolvedValue([{ noteId: 'note-1', id: 'link-1' }])
-            });
+        render(<StudyNoteViewPage />);
 
-            render(<StudyNoteEditorPage />);
+        expect(toast.error).not.toHaveBeenCalled();
+        expect(mockRouter.push).not.toHaveBeenCalledWith('/studies');
 
-            // Open ⋯ menu first, then click Delete
-            const moreButton = screen.getByTitle('common.more');
-            fireEvent.click(moreButton);
-            const deleteButton = screen.getByText('common.delete');
-            fireEvent.click(deleteButton);
-
-            await waitFor(() => {
-                expect(mockDeleteNote).toHaveBeenCalledWith('note-1');
-                expect(mockRouter.push).toHaveBeenCalledWith('/studies');
-            });
+        act(() => {
+            jest.advanceTimersByTime(500);
         });
 
-        it('handles AI analysis validation error (empty content)', async () => {
-            render(<StudyNoteEditorPage />);
-            fireEvent.click(screen.getByTitle('common.edit'));
-            const contentInput = screen.getByTestId('rich-markdown-editor');
-            fireEvent.change(contentInput, { target: { value: '   ' } });
-            fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
-            expect(screen.getByTitle('studiesWorkspace.aiAnalyze.button')).toBeDisabled();
-            // Button click is just a no-op that shows a toast.
-        });
-
-        it('handles AI analysis API failure response', async () => {
-            render(<StudyNoteEditorPage />);
-            fireEvent.click(screen.getByTitle('common.edit'));
-            const contentInput = screen.getByTestId('rich-markdown-editor');
-            fireEvent.change(contentInput, { target: { value: 'Something' } });
-            (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
-                ok: true,
-                json: jest.fn().mockResolvedValue({ success: false, error: 'AI Error' })
-            });
-            fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
-            const fullOption = await screen.findByText('studiesWorkspace.aiAnalyze.full');
-            fireEvent.click(fullOption);
-            await waitFor(() => expect(global.fetch).toHaveBeenCalled());
-        });
-
-        it('handles AI analysis network exception', async () => {
-            render(<StudyNoteEditorPage />);
-            fireEvent.click(screen.getByTitle('common.edit'));
-            const contentInput = screen.getByTestId('rich-markdown-editor');
-            fireEvent.change(contentInput, { target: { value: 'Something' } });
-            (global.fetch as jest.Mock) = jest.fn().mockRejectedValue(new Error('Network error'));
-            fireEvent.click(screen.getByTitle('studiesWorkspace.aiAnalyze.button'));
-            const fullOption = await screen.findByText('studiesWorkspace.aiAnalyze.full');
-            fireEvent.click(fullOption);
-            await waitFor(() => expect(global.fetch).toHaveBeenCalled());
-        });
-
-        it('triggers auto-save when content changes', async () => {
-            jest.useFakeTimers();
-            const mockUpdateNote = jest.fn().mockResolvedValue(true);
-            (useStudyNotes as jest.Mock).mockReturnValue({
-                uid: 'user-1',
-                notes: mockNotes,
-                loading: false,
-                createNote: jest.fn(),
-                updateNote: mockUpdateNote,
-                deleteNote: jest.fn(),
-            });
-
-            render(<StudyNoteEditorPage />);
-            fireEvent.click(screen.getByTitle('common.edit'));
-
-            const contentInput = screen.getByTestId('rich-markdown-editor');
-            fireEvent.change(contentInput, { target: { value: 'Changed auto save content' } });
-
-            jest.advanceTimersByTime(2000);
-
-            await waitFor(() => {
-                expect(mockUpdateNote).toHaveBeenCalled();
-            });
-            jest.useRealTimers();
-        });
-
-        it('flushes a pending auto-save on unmount before the debounce delay fires', () => {
-            jest.useFakeTimers();
-            const mockUpdateNote = jest.fn().mockResolvedValue(true);
-            (useStudyNotes as jest.Mock).mockReturnValue({
-                uid: 'user-1',
-                notes: mockNotes,
-                loading: false,
-                createNote: jest.fn(),
-                updateNote: mockUpdateNote,
-                deleteNote: jest.fn(),
-            });
-
-            try {
-                const { unmount } = render(<StudyNoteEditorPage />);
-                fireEvent.click(screen.getByTitle('common.edit'));
-
-                const contentInput = screen.getByTestId('rich-markdown-editor');
-                fireEvent.change(contentInput, { target: { value: 'Changed then navigated away' } });
-
-                jest.advanceTimersByTime(1000);
-                expect(mockUpdateNote).not.toHaveBeenCalled();
-
-                unmount();
-
-                expect(mockUpdateNote).toHaveBeenCalledWith({
-                    id: 'note-1',
-                    updates: {
-                        title: 'Current Note',
-                        content: 'Changed then navigated away',
-                        tags: ['tag1'],
-                        scriptureRefs: [],
-                        type: 'note',
-                    },
-                });
-            } finally {
-                jest.useRealTimers();
-            }
-        });
-
-        it('resets the autosave signature when noteId changes so the new note saves on first edit', async () => {
-            // Two distinct existing notes with different content. If the
-            // autosave signature ref didn't reset when noteId flips from A→B,
-            // the very first edit on B would be skipped as "unchanged" because
-            // the stale ref still encodes A's last-saved state.
-            jest.useFakeTimers();
-            const noteA: StudyNote = {
-                ...createMockNote('note-A', 'Note A'),
-                content: 'Content for A',
-                updatedAt: '2024-01-02T00:00:00.000Z',
-            };
-            const noteB: StudyNote = {
-                ...createMockNote('note-B', 'Note B'),
-                content: 'Content for B',
-                updatedAt: '2024-01-02T00:00:00.000Z',
-            };
-            const mockUpdateNote = jest.fn().mockResolvedValue(true);
-            (useStudyNotes as jest.Mock).mockReturnValue({
-                uid: 'user-1',
-                notes: [noteA, noteB],
-                loading: false,
-                createNote: jest.fn(),
-                updateNote: mockUpdateNote,
-                deleteNote: jest.fn(),
-            });
-            (useParams as jest.Mock).mockReturnValue({ id: 'note-A' });
-            (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams());
-
-            try {
-                const { rerender } = render(<StudyNoteEditorPage />);
-                fireEvent.click(screen.getByTitle('common.edit'));
-
-                // Edit A → autosave fires for A.
-                const contentInput = screen.getByTestId('rich-markdown-editor');
-                fireEvent.change(contentInput, { target: { value: 'Changed A' } });
-                jest.advanceTimersByTime(2000);
-                await waitFor(() => {
-                    expect(mockUpdateNote).toHaveBeenCalledWith(expect.objectContaining({ id: 'note-A' }));
-                });
-
-                mockUpdateNote.mockClear();
-
-                // Navigate to B by changing the route param and re-render.
-                (useParams as jest.Mock).mockReturnValue({ id: 'note-B' });
-                rerender(<StudyNoteEditorPage />);
-
-                // Let the init effects settle so B's content loads. We may
-                // still be in edit mode from the A-side flow (the page keeps
-                // isEditing across the noteId flip — it only resets
-                // isInitialized), so the editor textarea is already mounted.
-                await waitFor(() => {
-                    expect(screen.getByTestId('rich-markdown-editor')).toHaveValue('Content for B');
-                });
-
-                const contentInputB = screen.getByTestId('rich-markdown-editor');
-                fireEvent.change(contentInputB, { target: { value: 'Changed B' } });
-                jest.advanceTimersByTime(2000);
-
-                await waitFor(() => {
-                    expect(mockUpdateNote).toHaveBeenCalledWith(expect.objectContaining({ id: 'note-B' }));
-                });
-            } finally {
-                jest.useRealTimers();
-            }
-        });
-
-        it('does not loop autosave attempts after the isUnchanged early-return advances the signature', async () => {
-            // When local state matches server state (e.g. after a server-side
-            // normalization round-trip), the autosave guard returns early but
-            // MUST advance `lastSavedSignatureRef` — otherwise every
-            // subsequent render would re-enter saveChanges with the same
-            // stale signature and the debounce timer would keep re-firing.
-            jest.useFakeTimers();
-            const mockUpdateNote = jest.fn().mockResolvedValue(true);
-            (useStudyNotes as jest.Mock).mockReturnValue({
-                uid: 'user-1',
-                notes: mockNotes,
-                loading: false,
-                createNote: jest.fn(),
-                updateNote: mockUpdateNote,
-                deleteNote: jest.fn(),
-            });
-            (useParams as jest.Mock).mockReturnValue({ id: 'note-1' });
-            (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('tag=tag1'));
-
-            try {
-                const { rerender } = render(<StudyNoteEditorPage />);
-
-                // Enter then exit edit mode without changing content. Local
-                // signature reflects the un-edited form; comparing against
-                // existingNote returns isUnchanged === true.
-                fireEvent.click(screen.getByTitle('common.edit'));
-                fireEvent.click(screen.getByTitle('common.done'));
-
-                jest.advanceTimersByTime(2000);
-
-                // No update should fire — local matches server.
-                expect(mockUpdateNote).not.toHaveBeenCalled();
-
-                // Force a couple of extra renders + ticks. If the signature
-                // ref hadn't advanced, debouncedSave would re-fire here.
-                rerender(<StudyNoteEditorPage />);
-                jest.advanceTimersByTime(2000);
-                rerender(<StudyNoteEditorPage />);
-                jest.advanceTimersByTime(2000);
-
-                expect(mockUpdateNote).not.toHaveBeenCalled();
-            } finally {
-                jest.useRealTimers();
-            }
-        });
-
-        it('handles auto-save error', async () => {
-            jest.useFakeTimers();
-            const mockUpdateNote = jest.fn().mockRejectedValue(new Error('save failed'));
-            (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, loading: false, createNote: jest.fn(), updateNote: mockUpdateNote, deleteNote: jest.fn() });
-
-            render(<StudyNoteEditorPage />);
-            fireEvent.click(screen.getByTitle('common.edit'));
-
-            const contentInput = screen.getByTestId('rich-markdown-editor');
-            fireEvent.change(contentInput, { target: { value: 'Changed for error' } });
-
-            jest.advanceTimersByTime(2000);
-
-            await waitFor(() => {
-                expect(mockUpdateNote).toHaveBeenCalled();
-            });
-            jest.useRealTimers();
-        });
+        expect(toast.error).toHaveBeenCalledWith('studiesWorkspace.noteNotFound');
+        expect(mockRouter.push).toHaveBeenCalledWith('/studies');
+        jest.useRealTimers();
     });
 });

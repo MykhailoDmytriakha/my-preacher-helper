@@ -327,9 +327,8 @@ export function NodeView({
   };
 
   const handleEditableRegionClick = (): void => {
-    if (isFocused && !isEditing) {
-      onStartEdit();
-    }
+    if (!isFocused) onFocus();
+    if (!isEditing) onStartEdit();
   };
 
   const handleDeleteClick = (event: MouseEvent<HTMLButtonElement>): void => {

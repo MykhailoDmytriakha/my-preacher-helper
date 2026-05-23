@@ -1,6 +1,6 @@
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { Markdown } from 'tiptap-markdown';
 
 import NodeTextEditor from '../NodeTextEditor';
@@ -64,6 +64,20 @@ describe('NodeTextEditor wikilinks', () => {
     expect(chip).toHaveAttribute('href', '/studies/abc');
     expect(chip).toHaveClass('bg-emerald-50');
     expect(chip).toHaveClass('rounded-full');
+  });
+
+  it('stops wikilink chip clicks from bubbling into parent edit handlers', async () => {
+    const parentClick = jest.fn();
+
+    render(
+      <div onClick={parentClick}>
+        <NodeTextEditor value="See [[abc]]" onChange={jest.fn()} />
+      </div>
+    );
+
+    fireEvent.click(await screen.findByRole('link', { name: '● Resolved Note' }));
+
+    expect(parentClick).not.toHaveBeenCalled();
   });
 
   it('re-renders an existing chip when the resolver cache hydrates', async () => {

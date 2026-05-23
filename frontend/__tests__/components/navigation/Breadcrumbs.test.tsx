@@ -5,6 +5,7 @@ import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
+import { useStudyNoteDetail } from '@/hooks/useStudyNoteDetail';
 import useSermon from '@/hooks/useSermon';
 
 // Mock the hooks
@@ -22,6 +23,9 @@ jest.mock('@/hooks/useGroupDetail', () => ({
 }));
 jest.mock('@/hooks/usePrayerDetail', () => ({
   usePrayerDetail: jest.fn(),
+}));
+jest.mock('@/hooks/useStudyNoteDetail', () => ({
+  useStudyNoteDetail: jest.fn(() => ({ note: null, loading: false })),
 }));
 
 jest.mock('react-i18next', () => ({
@@ -42,9 +46,11 @@ describe('Breadcrumbs', () => {
   const mockUseSeriesDetail = useSeriesDetail as jest.Mock;
   const mockUseGroupDetail = useGroupDetail as jest.Mock;
   const mockUsePrayerDetail = usePrayerDetail as jest.Mock;
+  const mockUseStudyNoteDetail = useStudyNoteDetail as jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseStudyNoteDetail.mockReturnValue({ note: null, loading: false });
   });
 
   it('should not render for standalone structure page without context', () => {
@@ -130,6 +136,68 @@ describe('Breadcrumbs', () => {
 
     // Single segment pages don't render breadcrumbs (need at least 2 crumbs)
     expect(screen.queryByTestId('breadcrumbs')).not.toBeInTheDocument();
+  });
+
+  it('should show Studies > Note Title > Edit for study note edit page', () => {
+    mockUsePathname.mockReturnValue('/studies/note-1/edit');
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn().mockReturnValue(null),
+    });
+    mockUseSermon.mockReturnValue({ sermon: null });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
+    mockUseStudyNoteDetail.mockReturnValue({
+      note: { id: 'note-1', title: 'Romans Study' },
+      loading: false,
+    });
+
+    render(<Breadcrumbs />);
+
+    expect(mockUseStudyNoteDetail).toHaveBeenCalledWith('note-1');
+    expect(screen.getByText('Studies')).toBeInTheDocument();
+    expect(screen.getByText('Romans Study')).toBeInTheDocument();
+    expect(screen.getByText('Edit')).toBeInTheDocument();
+  });
+
+  it('should show Studies > default study label > Edit for unresolved study note edit page', () => {
+    mockUsePathname.mockReturnValue('/studies/missing-note/edit');
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn().mockReturnValue(null),
+    });
+    mockUseSermon.mockReturnValue({ sermon: null });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
+    mockUseStudyNoteDetail.mockReturnValue({ note: null, loading: true });
+
+    render(<Breadcrumbs />);
+
+    expect(mockUseStudyNoteDetail).toHaveBeenCalledWith('missing-note');
+    expect(screen.getByText('Studies')).toBeInTheDocument();
+    expect(screen.getByText('Study')).toBeInTheDocument();
+    expect(screen.queryByText('missing-note')).not.toBeInTheDocument();
+    expect(screen.getByText('Edit')).toBeInTheDocument();
+  });
+
+  it('should show Studies > default study label > Edit for the new study edit route', () => {
+    mockUsePathname.mockReturnValue('/studies/new/edit');
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn().mockReturnValue(null),
+    });
+    mockUseSermon.mockReturnValue({ sermon: null });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
+    mockUseStudyNoteDetail.mockReturnValue({ note: null, loading: false });
+
+    render(<Breadcrumbs />);
+
+    expect(mockUseStudyNoteDetail).toHaveBeenCalledWith(null);
+    expect(screen.getByText('Studies')).toBeInTheDocument();
+    expect(screen.getByText('Study')).toBeInTheDocument();
+    expect(screen.queryByText('new')).not.toBeInTheDocument();
+    expect(screen.getByText('Edit')).toBeInTheDocument();
   });
 
   it('should show Settings as root for settings page', () => {

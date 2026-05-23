@@ -12,10 +12,11 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useQueryState } from 'nuqs';
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import '@locales/i18n';
 
 import { useStudyNotes } from '@/hooks/useStudyNotes';
@@ -28,6 +29,14 @@ import { getBooksForDropdown, BibleLocale, getLocalizedBookName } from './bibleD
 import ShareNoteModal from './components/ShareNoteModal';
 import StudyNoteCard from './StudyNoteCard';
 
+function isEmptyDraftNote(note: StudyNote): boolean {
+  return !note.title?.trim()
+    && !note.content?.trim()
+    && (!note.tags || note.tags.length === 0)
+    && (!note.scriptureRefs || note.scriptureRefs.length === 0)
+    && (!note.rootNode || !note.rootNode.children?.length);
+}
+
 export default function StudiesPage() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
@@ -36,7 +45,9 @@ export default function StudiesPage() {
     notes,
     loading: notesLoading,
     error: notesError,
+    createNote,
   } = useStudyNotes();
+  const searchParams = useSearchParams();
   const {
     shareLinks,
     loading: shareLinksLoading,
@@ -44,6 +55,11 @@ export default function StudiesPage() {
     deleteShareLink,
   } = useStudyNoteShareLinks();
   const { tags: tagData } = useTags(uid);
+
+  const visibleDraftNotes = useMemo(
+    () => notes.filter((note) => !isEmptyDraftNote(note)),
+    [notes]
+  );
 
 
   // Get current locale for Bible data
@@ -74,10 +90,10 @@ export default function StudiesPage() {
 
   // Note counts by type (computed from all notes, not filtered)
   const noteCounts = useMemo(() => ({
-    all: notes.length,
-    notes: notes.filter(n => n.type !== 'question').length,
-    questions: notes.filter(n => n.type === 'question').length,
-  }), [notes]);
+    all: visibleDraftNotes.length,
+    notes: visibleDraftNotes.filter(n => n.type !== 'question').length,
+    questions: visibleDraftNotes.filter(n => n.type === 'question').length,
+  }), [visibleDraftNotes]);
 
   const shareLinksByNoteId = useMemo(
     () => new Map(shareLinks.map((link) => [link.noteId, link])),
@@ -85,6 +101,7 @@ export default function StudiesPage() {
   );
 
   const [shareNote, setShareNote] = useState<StudyNote | null>(null);
+  const [isCreatingNote, setIsCreatingNote] = useState(false);
 
   // Expand state
   const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(new Set());
@@ -94,11 +111,11 @@ export default function StudiesPage() {
   // Merge available tags with tags from notes
   const tagOptions = useMemo(() => {
     const fromNotes = new Set<string>();
-    notes.forEach((n) => n.tags.forEach((tag) => fromNotes.add(tag)));
+    visibleDraftNotes.forEach((n) => n.tags.forEach((tag) => fromNotes.add(tag)));
     return Array.from(new Set([...(availableTags || []), ...Array.from(fromNotes)])).sort((a, b) =>
       a.localeCompare(b)
     );
-  }, [availableTags, notes]);
+  }, [availableTags, visibleDraftNotes]);
 
   // Trimmed search query for filtering and highlighting
   const searchQuery = useMemo(() => searchQueryParam.trim(), [searchQueryParam]);
@@ -157,7 +174,7 @@ export default function StudiesPage() {
 
   // Filter notes
   const filteredNotes = useMemo(() => {
-    return notes
+    return visibleDraftNotes
       // Tab filter
       .filter((note) => {
         if (activeTab === 'notes') return note.type !== 'question';
@@ -179,7 +196,7 @@ export default function StudiesPage() {
         return searchTokens.every((token) => haystack.includes(token));
       })
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-  }, [notes, activeTab, tagFilter, bookFilter, searchTokens, bibleLocale]);
+  }, [visibleDraftNotes, activeTab, tagFilter, bookFilter, searchTokens, bibleLocale]);
 
   const visibleNotes = useMemo(
     () => filteredNotes.filter((note) => matchesSearchTokens(note)),
@@ -199,14 +216,14 @@ export default function StudiesPage() {
 
   // Stats
   const stats = useMemo(() => {
-    const booksCount = notes.reduce<Record<string, number>>((acc, note) => {
+    const booksCount = visibleDraftNotes.reduce<Record<string, number>>((acc, note) => {
       note.scriptureRefs.forEach((ref) => {
         acc[ref.book] = (acc[ref.book] || 0) + 1;
       });
       return acc;
     }, {});
-    return { total: notes.length, booksCount };
-  }, [notes]);
+    return { total: visibleDraftNotes.length, booksCount };
+  }, [visibleDraftNotes]);
 
   const booksLeaderboard = useMemo(
     () =>
@@ -228,9 +245,31 @@ export default function StudiesPage() {
     }
   };
 
-  const handleAddNote = () => {
-    router.push('/studies/new');
-  };
+  const handleAddNote = useCallback(async () => {
+    if (!uid) {
+      toast.error(t('studiesWorkspace.createError'));
+      return;
+    }
+
+    setIsCreatingNote(true);
+    try {
+      const newNote = await createNote({
+        userId: uid,
+        title: '',
+        content: '',
+        tags: [],
+        scriptureRefs: [],
+        type: 'note',
+        rootNode: null,
+      });
+      const query = searchParams.toString();
+      router.push(`/studies/${newNote.id}/edit${query ? `?${query}` : ''}`);
+    } catch {
+      toast.error(t('studiesWorkspace.createError'));
+    } finally {
+      setIsCreatingNote(false);
+    }
+  }, [createNote, router, searchParams, t, uid]);
 
 
   const handleShareNote = useCallback((note: StudyNote) => {
@@ -274,7 +313,8 @@ export default function StudiesPage() {
             </Link>
             <button
               onClick={handleAddNote}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 sm:w-auto"
+              disabled={isCreatingNote}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
             >
               <PlusIcon className="h-4 w-4" />
               {t('studiesWorkspace.newNote')}
@@ -464,7 +504,8 @@ export default function StudiesPage() {
           {!hasActiveFilters && (
             <button
               onClick={handleAddNote}
-              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700"
+              disabled={isCreatingNote}
+              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <PlusIcon className="h-4 w-4" />
               {t('studiesWorkspace.createFirstNote') || 'Create your first note'}

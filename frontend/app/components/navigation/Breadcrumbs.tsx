@@ -9,7 +9,9 @@ import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
 import useSermon from '@/hooks/useSermon';
+import { useStudyNoteDetail } from '@/hooks/useStudyNoteDetail';
 import { debugLog } from '@/utils/debugMode';
+import { isStudyEditRoute } from '@/utils/routes';
 import '@locales/i18n';
 
 // Route constants
@@ -104,9 +106,31 @@ type SermonData = ReturnType<typeof useSermon>['sermon'];
 type SeriesData = ReturnType<typeof useSeriesDetail>['series'];
 type GroupData = ReturnType<typeof useGroupDetail>['group'];
 type PrayerData = ReturnType<typeof usePrayerDetail>['prayer'];
+type StudyNoteData = ReturnType<typeof useStudyNoteDetail>['note'];
 
 const shouldSkipRootSegment = (segment: string, index: number) =>
   segment === 'sermons' || (index === 0 && Boolean(segmentLabels[segment]));
+
+const getRouteSegments = (pathname: string) =>
+  pathname.split('/')
+    .filter(Boolean)
+    .filter((segment) => !segment.startsWith('(') && !segment.endsWith(')'));
+
+const getStudyNoteId = (pathname: string): string | null => {
+  const segments = getRouteSegments(pathname);
+  if (segments[0] !== 'studies' || !segments[1]) {
+    return null;
+  }
+
+  if (segments[1] === 'new' || segments[1] === 'share-links') {
+    return null;
+  }
+
+  return segments[1];
+};
+
+const isStudyEditSegment = (segment: string, currentPath: string) =>
+  segment === 'edit' && isStudyEditRoute(currentPath);
 
 type BuildSegmentCrumbParams = {
   segment: string;
@@ -118,6 +142,7 @@ type BuildSegmentCrumbParams = {
   series: SeriesData;
   group: GroupData;
   prayer: PrayerData;
+  studyNote: StudyNoteData;
 };
 
 type DetailLabelContext = {
@@ -125,6 +150,8 @@ type DetailLabelContext = {
   series: SeriesData;
   group: GroupData;
   prayer: PrayerData;
+  studyNote: StudyNoteData;
+  segment: string;
 };
 
 type DetailLabelResolver = (context: DetailLabelContext) => string | null;
@@ -133,6 +160,7 @@ const detailLabelResolvers: Record<string, DetailLabelResolver> = {
   sermons: ({ sermon }) => sermon?.title || null,
   series: ({ series }) => (series ? series.title || `Series ${series.id.slice(-4)}` : null),
   groups: ({ group }) => group?.title || null,
+  studies: ({ studyNote }) => studyNote?.title || null,
   prayers: ({ prayer }) => prayer?.title || null,
 };
 
@@ -170,7 +198,16 @@ const buildSegmentCrumb = ({
   series,
   group,
   prayer,
+  studyNote,
 }: BuildSegmentCrumbParams): BreadcrumbItem => {
+  if (isStudyEditSegment(segment, currentPath)) {
+    return buildCrumb(
+      t('navigation.studyEdit', { defaultValue: 'Edit' }),
+      isLast,
+      currentPath
+    );
+  }
+
   const config = segmentLabels[segment];
   if (config) {
     return buildCrumb(
@@ -182,7 +219,7 @@ const buildSegmentCrumb = ({
   }
 
   if (parent) {
-    const detailLabel = resolveDetailLabel(parent, t, { sermon, series, group, prayer });
+    const detailLabel = resolveDetailLabel(parent, t, { sermon, series, group, prayer, studyNote, segment });
     if (detailLabel) {
       return buildCrumb(detailLabel, isLast, currentPath);
     }
@@ -198,6 +235,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
 
   const isPreachingMode = searchParams?.get('planView') === 'preaching';
   const shouldHide = isPreachingMode && !forceShow;
+  const studyNoteId = useMemo(() => getStudyNoteId(pathname), [pathname]);
 
   // Get sermonId from different sources
   const sermonId = useMemo(() => {
@@ -253,6 +291,8 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
   // Get prayer data if we have prayerId
   const { prayer } = usePrayerDetail(prayerId || '');
 
+  const { note: studyNote } = useStudyNoteDetail(studyNoteId);
+
   const items = useMemo<BreadcrumbItem[]>(() => {
     if (shouldHide) {
       return [];
@@ -262,10 +302,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
       return [];
     }
 
-    const segments = pathname.split('/')
-      .filter(Boolean)
-      // Ignore dynamic route groups like "(private)"
-      .filter((segment) => !segment.startsWith('(') && !segment.endsWith(')'));
+    const segments = getRouteSegments(pathname);
 
     if (segments.length === 0) {
       return [];
@@ -303,7 +340,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
 
       const isLast = index === segments.length - 1;
       const parent = segments[index - 1];
-      crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series, group, prayer }));
+      crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series, group, prayer, studyNote }));
     });
 
     // Handle "Preaching" mode overlay
@@ -332,12 +369,14 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
       sermonTitle: sermon?.title,
       groupId,
       groupTitle: group?.title,
+      studyNoteId,
+      studyNoteTitle: studyNote?.title,
       itemsLength: crumbs.length,
       items: JSON.stringify(crumbs)
     });
 
     return crumbs.length > 1 ? crumbs : [];
-  }, [pathname, searchParams, sermon, sermonId, series, group, groupId, prayer, shouldHide, t]);
+  }, [pathname, searchParams, sermon, sermonId, series, group, groupId, prayer, shouldHide, studyNote, studyNoteId, t]);
 
   if (shouldHide) {
     return null;

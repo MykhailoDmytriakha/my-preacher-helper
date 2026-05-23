@@ -1,7 +1,7 @@
 import debounce from 'lodash/debounce';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-export type AutoSaveStatus = 'idle' | 'saving' | 'saved';
+export type AutoSaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 
 interface UseAutoSaveOptions {
     /**
@@ -27,6 +27,7 @@ export function useAutoSave<T extends (...args: any[]) => Promise<void>>(
 
     const [status, setStatus] = useState<AutoSaveStatus>('idle');
     const statusTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+    const isMountedRef = useRef(false);
 
     // Update refs during the render phase so they are instantly available 
     // to asynchronous callbacks and tests without waiting for passive effects.
@@ -38,17 +39,23 @@ export function useAutoSave<T extends (...args: any[]) => Promise<void>>(
     const performSave = useCallback(
         async (...args: Parameters<T>) => {
             try {
-                setStatus('saving');
+                clearTimeout(statusTimerRef.current);
+                if (isMountedRef.current) setStatus('saving');
                 await saveFunctionRef.current(...args);
+
+                if (!isMountedRef.current) return;
 
                 setStatus('saved');
                 clearTimeout(statusTimerRef.current);
-                statusTimerRef.current = setTimeout(() => setStatus('idle'), 2000);
+                statusTimerRef.current = setTimeout(() => {
+                    if (isMountedRef.current) setStatus('idle');
+                }, 2000);
             } catch (error) {
                 console.error('Failed auto-save operation:', error);
-                setStatus('idle');
+                clearTimeout(statusTimerRef.current);
+                if (isMountedRef.current) setStatus('error');
                 const { onError } = optionsRef.current;
-                if (onError) {
+                if (isMountedRef.current && onError) {
                     onError(error);
                 }
             }
@@ -62,17 +69,31 @@ export function useAutoSave<T extends (...args: any[]) => Promise<void>>(
         [performSave, delay]
     );
 
+    const saveNow = useCallback(
+        async (...args: Parameters<T>) => {
+            debouncedSave.cancel();
+            await performSave(...args);
+        },
+        [debouncedSave, performSave]
+    );
+
     // Flush any pending saves on unmount
     useEffect(() => {
+        isMountedRef.current = true;
+
         return () => {
+            isMountedRef.current = false;
             // eslint-disable-next-line react-hooks/exhaustive-deps
             debouncedSave.flush();
+            debouncedSave.cancel();
             clearTimeout(statusTimerRef.current);
+            statusTimerRef.current = undefined;
         };
     }, [debouncedSave]);
 
     return {
         debouncedSave,
+        saveNow,
         status,
     };
 }

@@ -24,6 +24,7 @@ export function WikilinkChip({ node }: NodeViewProps) {
       <Link
         href={`${STUDIES_LINK_PREFIX}${id}`}
         className={WIKILINK_CHIP_CLASS}
+        onClick={(event) => event.stopPropagation()}
         {...wikilinkDataAttribute}
       >
         {WIKILINK_CHIP_GLYPH} {label}

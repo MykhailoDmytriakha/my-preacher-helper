@@ -84,8 +84,8 @@ function mockRandomIds(...ids: string[]): void {
   });
 }
 
-function renderEditor(rootNode: ContentNode, onChange = jest.fn()) {
-  render(<NodeTreeEditor rootNode={rootNode} onChange={onChange} />);
+function renderEditor(rootNode: ContentNode, onChange = jest.fn(), readOnly = false) {
+  render(<NodeTreeEditor rootNode={rootNode} onChange={onChange} readOnly={readOnly} />);
   const editor = screen.getByTestId('node-tree-editor');
 
   return { editor, onChange };
@@ -278,5 +278,21 @@ describe('NodeTreeEditor', () => {
 
     await waitFor(() => expect(onChange).toHaveBeenCalled());
     expect(getLastChangedRoot(onChange).children?.map((child) => child.id)).toEqual(['b', 'a']);
+  });
+
+  it('does not emit onChange in read-only mode when the rootNode prop changes', async () => {
+    const onChange = jest.fn();
+    const firstRoot = makeRoot([{ id: 'a', header: 'A' }]);
+    const nextRoot = makeRoot([{ id: 'b', header: 'B' }]);
+    const { rerender } = render(
+      <NodeTreeEditor rootNode={firstRoot} onChange={onChange} readOnly />
+    );
+
+    expect(await screen.findByRole('heading', { name: 'A' })).toBeInTheDocument();
+
+    rerender(<NodeTreeEditor rootNode={nextRoot} onChange={onChange} readOnly />);
+
+    expect(await screen.findByRole('heading', { name: 'B' })).toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

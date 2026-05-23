@@ -15,9 +15,10 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import '@locales/i18n';
 
 import AddSermonModal from '@/components/AddSermonModal';
@@ -171,14 +172,16 @@ const quickActionToneClasses = {
 export default function DashboardPage() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const { sermons } = useDashboardSermons();
   const { series } = useSeries(user?.uid || null);
-  const { notes } = useStudyNotes();
+  const { uid, notes, createNote } = useStudyNotes();
   const { prayerRequests, createPrayer } = usePrayerRequests(user?.uid || null);
   const { groups } = useGroups(user?.uid || null);
   const [showSermonModal, setShowSermonModal] = useState(false);
   const [showPrayerModal, setShowPrayerModal] = useState(false);
+  const [isCreatingStudyNote, setIsCreatingStudyNote] = useState(false);
 
   const dashboardData = useMemo(
     () => buildDashboardData({ sermons, series, notes, prayerRequests, groups, t, locale: i18n.language }),
@@ -195,6 +198,32 @@ export default function DashboardPage() {
 
     const createdPrayer = await createPrayer({ userId: user.uid, ...payload });
     router.push(`/prayers/${createdPrayer.id}`);
+  };
+
+  const handleAddStudyNote = async () => {
+    if (!uid) {
+      toast.error(t('studiesWorkspace.createError'));
+      return;
+    }
+
+    setIsCreatingStudyNote(true);
+    try {
+      const newNote = await createNote({
+        userId: uid,
+        title: '',
+        content: '',
+        tags: [],
+        scriptureRefs: [],
+        type: 'note',
+        rootNode: null,
+      });
+      const query = searchParams.toString();
+      router.push(`/studies/${newNote.id}/edit${query ? `?${query}` : ''}`);
+    } catch {
+      toast.error(t('studiesWorkspace.createError'));
+    } finally {
+      setIsCreatingStudyNote(false);
+    }
   };
 
   const metrics: Metric[] = [
@@ -261,13 +290,15 @@ export default function DashboardPage() {
             <Plus className="h-4 w-4" />
             {t('dashboardHome.actions.newSermon')}
           </button>
-          <Link
-            href="/studies/new"
-            className={`${quickActionBaseClass} ${quickActionToneClasses.emerald}`}
+          <button
+            type="button"
+            onClick={handleAddStudyNote}
+            disabled={isCreatingStudyNote}
+            className={`${quickActionBaseClass} ${quickActionToneClasses.emerald} disabled:cursor-not-allowed disabled:opacity-60`}
           >
             <Plus className="h-4 w-4" />
             {t('dashboardHome.actions.addStudyNote')}
-          </Link>
+          </button>
           <button
             type="button"
             onClick={() => setShowPrayerModal(true)}

@@ -348,6 +348,12 @@ export function NodeTreeEditor({
   const isEmptyTree = isEmptyLeaf(state, state.rootId);
 
   useEffect(() => {
+    if (readOnly) {
+      lastSeenRootNodePropRef.current = rootNode;
+      dispatch({ type: 'setRoot', root: rootNode });
+      return;
+    }
+
     // Prop rootNode is the same reference we just emitted — no foreign change
     // arrived from the parent. Skip the resetting setRoot dispatch.
     if (lastSeenRootNodePropRef.current === rootNode) return;
@@ -358,7 +364,7 @@ export function NodeTreeEditor({
       childCount: rootNode.children?.length ?? 0,
     });
     dispatch({ type: 'setRoot', root: rootNode });
-  }, [dispatch, rootNode]);
+  }, [dispatch, readOnly, rootNode]);
 
   // Migrate any legacy content that landed on the root node (header/text/media)
   // into a real first child. After this runs, root is always a pure wrapper —
@@ -404,6 +410,11 @@ export function NodeTreeEditor({
       return;
     }
 
+    if (readOnly) {
+      lastEmittedTreeRef.current = tree;
+      return;
+    }
+
     // `tree` is a stable ref while state hasn't changed (WeakMap-memoised in
     // selectTree). Pure reference compare — no full-tree JSON.stringify.
     if (tree === lastEmittedTreeRef.current) return;
@@ -416,7 +427,7 @@ export function NodeTreeEditor({
     // hands it right back as the rootNode prop, the setRoot effect skips.
     lastSeenRootNodePropRef.current = tree;
     onChange(tree);
-  }, [onChange, tree]);
+  }, [onChange, readOnly, tree]);
 
   useEffect(() => {
     if (!autoFocusFirst || didAutoFocusRef.current) return;

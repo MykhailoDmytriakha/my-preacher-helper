@@ -82,7 +82,9 @@ export async function POST(request: Request) {
       type: payload.type || 'note',
       materialIds: payload.materialIds || [],
       relatedSermonIds: payload.relatedSermonIds || [],
-      ...(payload.rootNode ? { rootNode: payload.rootNode } : {}),
+      ...(Object.prototype.hasOwnProperty.call(payload, 'rootNode')
+        ? { rootNode: payload.rootNode ?? null }
+        : {}),
     });
 
     return NextResponse.json(note, { status: 201 });

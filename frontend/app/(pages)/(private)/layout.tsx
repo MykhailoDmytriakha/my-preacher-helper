@@ -8,6 +8,7 @@ import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import DashboardNav from '@/components/navigation/DashboardNav';
 import DevQuickNav from '@/components/navigation/DevQuickNav';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { isStudyEditRoute } from '@/utils/routes';
 
 export default function PrivateLayout({ children }: { children: ReactNode }) {
   return (
@@ -27,10 +28,14 @@ function PrivateLayoutContent({ children }: { children: ReactNode }) {
       pathname?.includes('/plan') &&
       searchParams?.get('planView') === 'preaching'
   );
+  const isStudyEditFocus = Boolean(
+    isStudyEditRoute(pathname)
+  );
+  const isFocusMode = isPreachingPlan || isStudyEditFocus;
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
-      {!isPreachingPlan && (
+      {!isFocusMode && (
         <>
           <DashboardNav />
           <GuestBanner />

@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { toast } from 'sonner';
 
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
@@ -8,15 +9,18 @@ import { StudyNote } from '@/models/models';
 
 import StudiesPage from '../page';
 
+const mockRouterPush = jest.fn();
+let mockSearchParams = new URLSearchParams();
+
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
-    push: jest.fn(),
+    push: mockRouterPush,
     refresh: jest.fn(),
     back: jest.fn(),
     replace: jest.fn(),
   }),
   usePathname: () => '/studies',
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => mockSearchParams,
 }));
 
 jest.mock('nuqs', () => {
@@ -42,6 +46,12 @@ jest.mock('@/hooks/useTags', () => ({
   useTags: jest.fn(),
 }));
 
+jest.mock('sonner', () => ({
+  toast: {
+    error: jest.fn(),
+  },
+}));
+
 jest.mock('../bibleData', () => ({
   getBooksForDropdown: jest.fn().mockReturnValue([]),
   getLocalizedBookName: jest.fn().mockImplementation((book) => book),
@@ -50,6 +60,7 @@ jest.mock('../bibleData', () => ({
 const mockUseStudyNotes = useStudyNotes as jest.MockedFunction<typeof useStudyNotes>;
 const mockUseStudyNoteShareLinks = useStudyNoteShareLinks as jest.MockedFunction<typeof useStudyNoteShareLinks>;
 const mockUseTags = useTags as jest.MockedFunction<typeof useTags>;
+const mockToastError = toast.error as jest.Mock;
 
 const createMockNote = (overrides: Partial<StudyNote> = {}): StudyNote => ({
   id: `note-${Math.random().toString(36).substr(2, 9)}`,
@@ -89,6 +100,8 @@ const baseUseStudyNoteShareLinksValue = (): ReturnType<typeof useStudyNoteShareL
 
 describe('StudiesPage', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
+    mockSearchParams = new URLSearchParams();
     mockUseStudyNotes.mockReturnValue(baseUseStudyNotesValue());
     mockUseStudyNoteShareLinks.mockReturnValue(baseUseStudyNoteShareLinksValue());
     mockUseTags.mockReturnValue({
@@ -110,6 +123,88 @@ describe('StudiesPage', () => {
 
     expect(screen.getByText('0 studiesWorkspace.stats.notesLabel')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'studiesWorkspace.newNote' })).toBeInTheDocument();
+  });
+
+  it('creates an empty note and redirects to the edit route when New is clicked', async () => {
+    const createNote = jest.fn().mockResolvedValue(createMockNote({
+      id: 'created-note',
+      title: '',
+      content: '',
+      tags: [],
+      scriptureRefs: [],
+      type: 'note',
+      rootNode: null,
+    }));
+    mockSearchParams = new URLSearchParams('search=grace&tag=faith');
+    mockUseStudyNotes.mockReturnValue({
+      ...baseUseStudyNotesValue(),
+      createNote,
+    });
+
+    render(<StudiesPage />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'studiesWorkspace.newNote' }));
+
+    await waitFor(() => {
+      expect(createNote).toHaveBeenCalledWith({
+        userId: 'mock-user',
+        title: '',
+        content: '',
+        tags: [],
+        scriptureRefs: [],
+        type: 'note',
+        rootNode: null,
+      });
+    });
+    expect(mockRouterPush).toHaveBeenCalledWith('/studies/created-note/edit?search=grace&tag=faith');
+  });
+
+  it('hides pure empty draft notes from the studies list', () => {
+    const notes: StudyNote[] = [
+      createMockNote({
+        id: 'empty-draft',
+        title: '',
+        content: '',
+        tags: [],
+        scriptureRefs: [],
+        rootNode: null,
+      }),
+      createMockNote({
+        id: 'real-note',
+        title: 'Visible draft',
+        content: '',
+        tags: [],
+        scriptureRefs: [],
+        rootNode: null,
+      }),
+    ];
+    mockUseStudyNotes.mockReturnValue({
+      ...baseUseStudyNotesValue(),
+      notes,
+    });
+
+    render(<StudiesPage />);
+
+    expect(screen.getByRole('heading', { name: 'Visible draft' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'studiesWorkspace.untitled' })).not.toBeInTheDocument();
+    expect(screen.getByText('1 studiesWorkspace.stats.notesLabel')).toBeInTheDocument();
+  });
+
+  it('shows a toast and does not navigate when creating a note fails', async () => {
+    const createNote = jest.fn().mockRejectedValue(new Error('Create failed'));
+    mockUseStudyNotes.mockReturnValue({
+      ...baseUseStudyNotesValue(),
+      createNote,
+    });
+
+    render(<StudiesPage />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'studiesWorkspace.newNote' }));
+
+    await waitFor(() => {
+      expect(mockToastError).toHaveBeenCalledWith('studiesWorkspace.createError');
+    });
+    expect(mockRouterPush).not.toHaveBeenCalled();
   });
 
   describe('Type Tabs', () => {

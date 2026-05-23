@@ -17,6 +17,7 @@
     "seriesDetail": "Series",
     "groupDetail": "Group",
     "studyDetail": "Study",
+    "studyEdit": "Edit",
     "prayerDetail": "Prayer",
     "calendar": "Calendar",
     "prayer": "Prayer",
@@ -1941,6 +1942,13 @@
   },
   "studiesWorkspace": {
     "createError": "Error creating study note.",
+    "noteNotFound": "Note not found",
+    "noAccess": "No access to this note",
+    "outline": {
+      "toggle": "Outline",
+      "title": "Outline",
+      "empty": "No headings yet"
+    },
     "browseTags": "Browse tags",
     "tabs": {
       "all": "All",
@@ -2009,7 +2017,9 @@
       "savedNow": "Saved just now",
       "savedSecondsAgo": "Saved {{count}} sec ago",
       "savedMinutesAgo": "Saved {{count}} min ago",
-      "savedAt": "Saved at {{time}}"
+      "savedAt": "Saved at {{time}}",
+      "saveFailed": "Couldn't save",
+      "retry": "Retry"
     },
     "autoSave": "Autosave",
     "unsavedChanges": "Unsaved",

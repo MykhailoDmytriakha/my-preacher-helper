@@ -17,6 +17,7 @@
     "seriesDetail": "Серия",
     "groupDetail": "Группа",
     "studyDetail": "Исследование",
+    "studyEdit": "Редактирование",
     "prayerDetail": "Молитва",
     "calendar": "Календарь",
     "prayer": "Молитва",
@@ -1945,6 +1946,13 @@
   },
   "studiesWorkspace": {
     "createError": "Ошибка при создании учебной заметки.",
+    "noteNotFound": "Заметка не найдена",
+    "noAccess": "Нет доступа к этой заметке",
+    "outline": {
+      "toggle": "Структура",
+      "title": "Структура",
+      "empty": "Пока нет заголовков"
+    },
     "browseTags": "Каталог тегов",
     "tabs": {
       "all": "Все",
@@ -2013,7 +2021,9 @@
       "savedNow": "Сохранено только что",
       "savedSecondsAgo": "Сохранено {{count}} сек назад",
       "savedMinutesAgo": "Сохранено {{count}} мин назад",
-      "savedAt": "Сохранено в {{time}}"
+      "savedAt": "Сохранено в {{time}}",
+      "saveFailed": "Не удалось сохранить",
+      "retry": "Повторить"
     },
     "autoSave": "Автосохранение",
     "unsavedChanges": "Не сохранено",
