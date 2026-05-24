@@ -13,6 +13,7 @@ jest.mock('next/server', () => ({
   NextResponse: {
     json: jest.fn().mockImplementation((data, options = {}) => ({
       status: options.status || 200,
+      headers: new Headers(options.headers),
       json: async () => data,
     })),
   },
@@ -291,6 +292,7 @@ describe('Sermon Plan Route', () => {
       const response = await GET(mockRequestWithOutline, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       const responseData = await response.json();
 
+      expect(response.headers.get('Cache-Control')).toContain('no-store');
       expect(generatePlanPointContent).toHaveBeenCalledWith(
         mockSermon.title,
         mockSermon.verse,

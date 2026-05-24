@@ -17,6 +17,10 @@ interface SaveSermonPlanParams {
   plan: Plan;
 }
 
+function createPlanGenerationRequestId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export async function generatePlanPointContent({
   sermonId,
   outlinePointId,
@@ -25,8 +29,11 @@ export async function generatePlanPointContent({
   const queryParams = new URLSearchParams({
     outlinePointId,
     style,
+    requestId: createPlanGenerationRequestId(),
   });
-  const response = await fetch(`/api/sermons/${sermonId}/plan?${queryParams.toString()}`);
+  const response = await fetch(`/api/sermons/${sermonId}/plan?${queryParams.toString()}`, {
+    cache: "no-store",
+  });
 
   if (!response.ok) {
     throw new Error(`Failed to generate content: ${response.status}`);
