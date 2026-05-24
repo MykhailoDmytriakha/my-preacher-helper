@@ -56,5 +56,9 @@ describe('next-pwa runtime caching', () => {
 
     expect(planRuleIndex).toBeGreaterThanOrEqual(0);
     expect(defaultApiRuleIndex).toBeGreaterThan(planRuleIndex);
+    expect(runtimeCaching[planRuleIndex].options).toEqual(
+      expect.objectContaining({ cacheName: 'sermon-plan-generation' })
+    );
+    expect(runtimeCaching.every((entry) => entry.options)).toBe(true);
   });
 });

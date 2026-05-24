@@ -81,6 +81,9 @@ if (!shouldRegisterPWA) {
         /^\/api\/sermons\/[^/]+\/plan$/.test(url.pathname),
       handler: 'NetworkOnly',
       method: 'GET',
+      options: {
+        cacheName: 'sermon-plan-generation',
+      },
     },
     ...defaultRuntimeCaching.map((entry) => {
       if (!entry?.options?.cacheName) return entry;
