@@ -136,35 +136,50 @@ export async function POST(
             async start(controller) {
                 try {
                     const total = chunks.length;
-                    const audioBlobs: Blob[] = [];
 
-                    // Phase 1: Generate TTS for each chunk (0-80%)
+                    // Phase 1: Generate TTS for each chunk IN PARALLEL (0-80%)
+                    // Serial generation blew past Vercel's function limit: one full chunk
+                    // takes ~32s, so a 6-chunk sermon ran ~190s and was killed at the 60s
+                    // cap. A bounded-concurrency pool keeps wall time near a single chunk
+                    // while respecting OpenAI rate limits and preserving chunk order for
+                    // concatenation (audioBlobs is index-addressed, not push-ordered).
                     const ttsOptions = {
                         voice,
                         model: getTTSModel(quality),
                         format: 'wav' as const,
                     };
 
-                    for (let i = 0; i < chunks.length; i++) {
-                        const chunk = chunks[i];
-                        const preview = chunk.text.substring(0, 60).replace(/\n/g, ' ');
+                    const TTS_CONCURRENCY = 6;
+                    const audioBlobs: Blob[] = new Array<Blob>(chunks.length);
+                    let completed = 0;
+                    let cursor = 0;
 
-                        console.log(`[TTS] Generating chunk ${i + 1}/${total}: "${preview}..."`);
+                    const worker = async () => {
+                        while (cursor < chunks.length) {
+                            const i = cursor++;
+                            const chunk = chunks[i];
+                            const preview = chunk.text.substring(0, 60).replace(/\n/g, ' ');
 
-                        // Generate audio
-                        const result = await generateChunkAudio(chunk.text, ttsOptions);
-                        audioBlobs.push(result.audioBlob);
+                            console.log(`[TTS] Generating chunk ${i + 1}/${total}: "${preview}..."`);
 
-                        // Send progress (distribute 0-80% across chunks)
-                        const percent = Math.round(((i + 1) / total) * 80);
-                        sendEvent(controller, {
-                            type: 'progress',
-                            current: i + 1,
-                            total,
-                            percent,
-                            status: `Generating chunk ${i + 1}/${total}...`,
-                        });
-                    }
+                            const result = await generateChunkAudio(chunk.text, ttsOptions);
+                            audioBlobs[i] = result.audioBlob;
+
+                            completed++;
+                            const percent = Math.round((completed / total) * 80);
+                            sendEvent(controller, {
+                                type: 'progress',
+                                current: completed,
+                                total,
+                                percent,
+                                status: `Generating chunk ${completed}/${total}...`,
+                            });
+                        }
+                    };
+
+                    await Promise.all(
+                        Array.from({ length: Math.min(TTS_CONCURRENCY, chunks.length) }, worker)
+                    );
 
                     // Phase 2: Add silence between chunks (80-90%)
                     // Phase 2: Add silence between chunks (80-90%)
