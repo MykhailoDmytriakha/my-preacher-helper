@@ -1,3 +1,6 @@
+/**
+ * @jest-environment node
+ */
 import { ReadableStream } from 'node:stream/web';
 import { TextDecoder, TextEncoder } from 'util';
 
@@ -256,12 +259,12 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
   it('streams progress, chunk data, and completion for a successful generation', async () => {
     (generateChunkAudio as jest.Mock)
       .mockResolvedValueOnce({
-        audioBlob: new Blob(['chunk-1'], { type: 'audio/wav' }),
+        audioBlob: new Blob([new Uint8Array(250_000)], { type: 'audio/mpeg' }),
         index: 0,
         durationSeconds: 1,
       })
       .mockResolvedValueOnce({
-        audioBlob: new Blob(['chunk-2'], { type: 'audio/wav' }),
+        audioBlob: new Blob([new Uint8Array(250_000)], { type: 'audio/mpeg' }),
         index: 1,
         durationSeconds: 1,
       });
@@ -287,7 +290,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
       {
         voice: 'ash',
         model: 'gpt-audio-test',
-        format: 'wav',
+        format: 'mp3',
       }
     );
     expect(generateChunkAudio).toHaveBeenNthCalledWith(
@@ -296,15 +299,9 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
       {
         voice: 'ash',
         model: 'gpt-audio-test',
-        format: 'wav',
+        format: 'mp3',
       }
     );
-    expect(insertSilenceBetweenBlobs).toHaveBeenCalledWith(
-      expect.arrayContaining([expect.any(Blob), expect.any(Blob)]),
-      500
-    );
-    expect(concatenateAudioBlobs).toHaveBeenCalled();
-
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -313,11 +310,6 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
           total: 2,
           percent: 40,
           status: 'Generating chunk 1/2...',
-        }),
-        expect.objectContaining({
-          type: 'progress',
-          percent: 82,
-          status: 'Adding pauses...',
         }),
         expect.objectContaining({
           type: 'progress',
@@ -331,7 +323,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
         }),
         expect.objectContaining({
           type: 'download_complete',
-          filename: 'grace-peace-audio.wav',
+          filename: 'grace-peace-audio.mp3',
           audioUrl: '',
         }),
       ])
@@ -377,7 +369,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
       expect.arrayContaining([
         expect.objectContaining({
           type: 'download_complete',
-          filename: 'grace-peace-audio.wav',
+          filename: 'grace-peace-audio.mp3',
         }),
       ])
     );

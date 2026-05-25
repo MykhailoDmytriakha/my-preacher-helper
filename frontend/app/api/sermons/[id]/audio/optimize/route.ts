@@ -15,7 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { optimizeTextForSpeech } from '@/api/clients/speechOptimization.client';
-import { createAudioChunks } from '@/api/clients/tts.client';
+import { createAudioChunks, splitTextIntoChunks } from '@/api/clients/tts.client';
 import { SectionKey, SECTION_CONFIG, getSectionThoughts } from '@/api/services/sermonTextService';
 import { adminDb } from '@/config/firebaseAdminConfig';
 
@@ -47,6 +47,9 @@ export async function POST(
         const body = await request.json();
         const requestedSections: SectionSelection = body.sections || 'all';
         const userId = body.userId;
+        // "Use as-is" mode: skip GPT rewrite, voice the exact sermon text and only
+        // split it mechanically into TTS-sized chunks.
+        const useRawText = body.useRawText === true;
 
         // Default to true for backward compatibility
         const saveToDb = body.saveToDb !== false;
@@ -92,6 +95,20 @@ export async function POST(
 
         for (const segment of segments) {
             console.log(`[OptimizeAPI] Processing: ${segment.section} - ${segment.title}`);
+
+            if (useRawText) {
+                // Speak the thoughts verbatim; only split mechanically for TTS limits.
+                // No markdown header and no GPT rewrite — what was written is what is read.
+                const rawText = segment.thoughts.map(t => t.text).join('\n\n').trim();
+                if (!rawText) {
+                    console.log(`[OptimizeAPI] Skipping empty segment: ${segment.title}`);
+                    continue;
+                }
+                totalOriginalLength += rawText.length;
+                totalOptimizedLength += rawText.length;
+                allChunks.push(...createAudioChunks(splitTextIntoChunks(rawText), segment.section));
+                continue;
+            }
 
             // Construct text for this segment
             const segmentText = formatSegmentText(segment);

@@ -493,7 +493,7 @@ describe('StepByStepWizard', () => {
         fireEvent.click(screen.getByText('Generate Audio'));
 
         expect(await screen.findByText('Audio Ready!', {}, { timeout: 3000 })).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: 'Download Again' })).toHaveAttribute('download', 'sermon_audio.wav');
+        expect(screen.getByRole('link', { name: 'Download Again' })).toHaveAttribute('download', 'sermon_audio.mp3');
 
         fireEvent.click(screen.getByRole('button', { name: 'Close Window' }));
         expect(onClose).toHaveBeenCalledTimes(1);

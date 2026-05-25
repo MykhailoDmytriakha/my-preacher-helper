@@ -197,7 +197,7 @@ export default function StepByStepWizard({
             let finalUrl = event.audioUrl;
             if (audioDataParts.length > 0) {
                 const fullBase64 = audioDataParts.join('');
-                finalUrl = fullBase64.startsWith('data:') ? fullBase64 : `data:audio/wav;base64,${fullBase64}`;
+                finalUrl = fullBase64.startsWith('data:') ? fullBase64 : `data:audio/mpeg;base64,${fullBase64}`;
             }
             onComplete({ ...event, audioUrl: finalUrl });
         }
@@ -267,7 +267,7 @@ export default function StepByStepWizard({
     // Step 1: Optimize (GPT)
     // ============================================================================
 
-    const handleOptimize = useCallback(async () => {
+    const handleOptimize = useCallback(async (useRawText: boolean = false) => {
         setIsLoading(true);
         setError(null);
 
@@ -282,7 +282,8 @@ export default function StepByStepWizard({
                 body: JSON.stringify({
                     sections, // can be 'all' or specific sectionId
                     saveToDb: false,
-                    userId: user?.uid
+                    userId: user?.uid,
+                    useRawText, // true = voice sermon text as-is (no GPT optimization)
                 }),
             });
 
@@ -381,7 +382,7 @@ export default function StepByStepWizard({
                 (data) => {
                     const link = document.createElement('a');
                     link.href = data.audioUrl || '';
-                    link.download = data.filename || 'sermon_audio.wav';
+                    link.download = data.filename || 'sermon_audio.mp3';
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
@@ -390,7 +391,7 @@ export default function StepByStepWizard({
                     if (data.audioUrl) {
                         setGeneratedFile({
                             url: data.audioUrl,
-                            filename: data.filename || 'sermon_audio.wav'
+                            filename: data.filename || 'sermon_audio.mp3'
                         });
                         onStepChange('success');
                     }
@@ -684,12 +685,20 @@ export default function StepByStepWizard({
                                 <p className="max-w-xs text-sm mb-6">
                                     {t('audioExport.readyDesc', { defaultValue: 'We will analyze the text and break it into speech-friendly chunks.' })}
                                 </p>
-                                <button
-                                    onClick={handleOptimize}
-                                    className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-full font-bold shadow-md transition-colors"
-                                >
-                                    {t('audioExport.prepareTextBtn', { defaultValue: 'Prepare Text for Audio' })}
-                                </button>
+                                <div className="flex flex-col items-center gap-3">
+                                    <button
+                                        onClick={() => handleOptimize(false)}
+                                        className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-full font-bold shadow-md transition-colors"
+                                    >
+                                        {t('audioExport.prepareTextBtn', { defaultValue: 'Prepare Text for Audio' })}
+                                    </button>
+                                    <button
+                                        onClick={() => handleOptimize(true)}
+                                        className="text-sm text-gray-600 dark:text-gray-300 hover:text-purple-600 dark:hover:text-purple-400 underline underline-offset-4 transition-colors"
+                                    >
+                                        {t('audioExport.useAsIsBtn', { defaultValue: 'Use text as-is (no AI)' })}
+                                    </button>
+                                </div>
                             </div>
                         ) : (
                             visibleSections.map((section) => {
@@ -751,7 +760,7 @@ export default function StepByStepWizard({
                         <div className="flex gap-2">
                             {chunks.length > 0 && (
                                 <button
-                                    onClick={handleOptimize}
+                                    onClick={() => handleOptimize(false)}
                                     disabled={isLoading}
                                     className="bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-600 text-sm font-semibold transition-colors flex items-center gap-2 disabled:opacity-50"
                                 >

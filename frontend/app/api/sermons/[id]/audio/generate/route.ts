@@ -11,7 +11,6 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { generateChunkAudio, getTTSModel } from '@/api/clients/tts.client';
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { concatenateAudioBlobs, insertSilenceBetweenBlobs } from '@/utils/audioConcat';
 
 import type { Sermon } from '@/models/models';
 import type { AudioChunk, TTSVoice, AudioQuality } from '@/types/audioGeneration.types';
@@ -146,7 +145,7 @@ export async function POST(
                     const ttsOptions = {
                         voice,
                         model: getTTSModel(quality),
-                        format: 'wav' as const,
+                        format: 'mp3' as const,
                     };
 
                     const TTS_CONCURRENCY = 6;
@@ -181,37 +180,20 @@ export async function POST(
                         Array.from({ length: Math.min(TTS_CONCURRENCY, chunks.length) }, worker)
                     );
 
-                    // Phase 2: Add silence between chunks (80-90%)
-                    // Phase 2: Add silence between chunks (80-90%)
-                    console.log(`[TTS] chunks generated. Adding silence (${audioBlobs.length} blobs)...`);
-                    sendEvent(controller, {
-                        type: 'progress',
-                        percent: 82,
-                        status: 'Adding pauses...',
-                    });
-
-                    // Log sizes for debugging
+                    // Phase 2: Concatenate MP3 chunks (80-90%)
+                    // MP3 frames are self-contained, so a plain byte-level concat plays
+                    // back as one continuous file — no WAV header surgery, and the payload
+                    // is ~10x smaller than WAV, which is what keeps a sermon under Vercel's
+                    // function size/time limits.
+                    console.log(`[TTS] Concatenating ${audioBlobs.length} MP3 chunks...`);
                     audioBlobs.forEach((b, idx) => console.log(`[TTS] Blob ${idx}: ${b.size} bytes`));
-
-                    const withSilence = await insertSilenceBetweenBlobs(audioBlobs, 500);
-
-                    // Phase 3: Concatenate all audio (90-100%)
-                    console.log('[TTS] Concatenating audio files...');
                     sendEvent(controller, {
                         type: 'progress',
                         percent: 85,
                         status: 'Merging audio files...',
                     });
 
-                    let finalAudio: Blob;
-                    try {
-                        finalAudio = await concatenateAudioBlobs(withSilence);
-                    } catch (mergeError) {
-                        console.error('[TTS] Merge error:', mergeError);
-                        // Fallback: just take the first one or error out? 
-                        // For now let's throw to see the error, but log it clearly
-                        throw mergeError;
-                    }
+                    const finalAudio = new Blob(audioBlobs, { type: 'audio/mpeg' });
 
                     // Phase 4: Convert to data URL and STREAM it
                     // NOTE: We convert the FULL buffer to Base64 first to avoid padding corruption.
@@ -274,7 +256,7 @@ export async function POST(
                         .toLowerCase()
                         .replace(/[^a-zа-яё0-9\s]/gi, '')
                         .replace(/\s+/g, '-')
-                        .slice(0, 50) + '-audio.wav';
+                        .slice(0, 50) + '-audio.mp3';
 
                     // Update metadata
                     await adminDb.collection('sermons').doc(sermonId).update({

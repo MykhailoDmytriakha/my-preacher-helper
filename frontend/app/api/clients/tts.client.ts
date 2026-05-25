@@ -65,9 +65,10 @@ export async function generateChunkAudio(
         response_format: options.format || 'wav',
     });
 
-    // Convert response to Blob
+    // Convert response to Blob (mime must match the requested format)
     const arrayBuffer = await response.arrayBuffer();
-    const audioBlob = new Blob([arrayBuffer], { type: 'audio/wav' });
+    const mimeType = (options.format || 'wav') === 'mp3' ? 'audio/mpeg' : 'audio/wav';
+    const audioBlob = new Blob([arrayBuffer], { type: mimeType });
 
     return {
         audioBlob,

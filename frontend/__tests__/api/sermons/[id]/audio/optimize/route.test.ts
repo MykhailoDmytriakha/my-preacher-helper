@@ -2,7 +2,7 @@
 import { POST } from '@/api/sermons/[id]/audio/optimize/route';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { optimizeTextForSpeech } from '@/api/clients/speechOptimization.client';
-import { createAudioChunks } from '@/api/clients/tts.client';
+import { createAudioChunks, splitTextIntoChunks } from '@/api/clients/tts.client';
 
 // Mock Next.js Server objects
 jest.mock('next/server', () => {
@@ -43,6 +43,7 @@ jest.mock('@/api/clients/speechOptimization.client', () => ({
 
 jest.mock('@/api/clients/tts.client', () => ({
     createAudioChunks: jest.fn(),
+    splitTextIntoChunks: jest.fn((text: string) => [text]),
 }));
 
 describe('POST /api/sermons/[id]/audio/optimize', () => {
@@ -274,6 +275,30 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
         await POST(req, { params });
 
         expect(optimizeTextForSpeech).toHaveBeenCalledTimes(2);
+    });
+
+    it('should voice text as-is (no GPT) when useRawText is true', async () => {
+        const req = new NextRequest('http://localhost:3000/api/optimize', {
+            method: 'POST',
+            body: JSON.stringify({
+                userId: mockUserId,
+                sections: 'introduction',
+                useRawText: true,
+                saveToDb: false,
+            })
+        });
+
+        const params = Promise.resolve({ id: mockSermonId });
+        const res = await POST(req, { params });
+        const json = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(json.success).toBe(true);
+        // Raw mode must NOT call GPT optimization
+        expect(optimizeTextForSpeech).not.toHaveBeenCalled();
+        // Raw thought text is split mechanically instead
+        expect(splitTextIntoChunks).toHaveBeenCalledWith(expect.stringContaining('Thought 1'));
+        expect(createAudioChunks).toHaveBeenCalled();
     });
 
     it('should respect saveToDb: false', async () => {

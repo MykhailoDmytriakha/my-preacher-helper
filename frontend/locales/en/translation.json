@@ -428,6 +428,7 @@
     "noChunks": "No text generated yet",
     "chunksLabel": "Text Chunks",
     "prepareTextBtn": "Prepare Text for Audio",
+    "useAsIsBtn": "Use text as-is (no AI)",
     "generateAudioButton": "Generate Audio",
     "chunksTitle": "Text Chunks",
     "edit": "Edit",
