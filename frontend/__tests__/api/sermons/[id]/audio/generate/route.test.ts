@@ -384,7 +384,10 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
   });
 
   it('sends an error event when generation fails inside the stream', async () => {
-    (generateChunkAudio as jest.Mock).mockRejectedValueOnce(new Error('TTS failed'));
+    // Chunks are generated in parallel, so make every chunk fail to keep the
+    // stream deterministic: a single failing chunk could otherwise race with a
+    // sibling chunk's progress event.
+    (generateChunkAudio as jest.Mock).mockRejectedValue(new Error('TTS failed'));
 
     const response = await POST(
       createRequest({

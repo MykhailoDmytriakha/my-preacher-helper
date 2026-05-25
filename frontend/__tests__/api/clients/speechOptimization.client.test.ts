@@ -15,6 +15,7 @@ jest.mock('@/api/clients/promptBuilder', () => ({
 
 jest.mock('@/api/clients/structuredOutput', () => ({
   callWithStructuredOutput: jest.fn(),
+  getCurrentAIProvider: jest.fn(() => 'OPENAI'),
 }));
 
 const sermon: Sermon = {

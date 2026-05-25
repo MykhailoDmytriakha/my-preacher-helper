@@ -9,7 +9,7 @@
 import { SpeechOptimizationResponseSchema } from "@/config/schemas/zod";
 
 import { buildSimplePromptBlueprint } from "./promptBuilder";
-import { callWithStructuredOutput } from "./structuredOutput";
+import { callWithStructuredOutput, getCurrentAIProvider } from "./structuredOutput";
 
 import type { Sermon } from '@/models/models';
 import type {
@@ -54,6 +54,13 @@ export async function optimizeTextForSpeech(
     options: SpeechOptimizationOptions
 ): Promise<SpeechOptimizationResult> {
     const userPrompt = buildOptimizationPrompt(rawText, options);
+
+    // OPENAI_OPTIMIZATION_MODEL is an OpenAI model id. When AI_MODEL_TO_USE selects a
+    // non-OpenAI provider (e.g. Gemini), the structured-output client is that provider's
+    // client, and handing it an OpenAI model name fails with a 404 ("model not found").
+    // Only force the override on OpenAI; otherwise fall through to the provider's model.
+    const optimizationModel = getCurrentAIProvider() === 'OPENAI' ? OPTIMIZATION_MODEL : undefined;
+
     const promptBlueprint = buildSimplePromptBlueprint({
         promptName: "speech_optimization",
         promptVersion: "v1",
@@ -75,7 +82,7 @@ export async function optimizeTextForSpeech(
     if (options.previousContext) {
         console.log('PREVIOUS CONTEXT (Snippet):', options.previousContext.slice(-200));
     }
-    console.log('Model:', OPTIMIZATION_MODEL);
+    console.log('Model:', optimizationModel ?? '(provider default)');
     console.log('USER PROMPT:', userPrompt);
     console.log('-------------------------------------\n');
 
@@ -85,7 +92,7 @@ export async function optimizeTextForSpeech(
         SpeechOptimizationResponseSchema,
         {
             formatName: "speech_optimization",
-            model: OPTIMIZATION_MODEL,
+            model: optimizationModel,
             promptBlueprint,
             logContext: {
                 sermonTitle: options.sermonTitle,
