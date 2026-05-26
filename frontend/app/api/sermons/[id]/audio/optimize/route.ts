@@ -20,7 +20,7 @@ import { SectionKey, SECTION_CONFIG, getSectionThoughts } from '@/api/services/s
 import { adminDb } from '@/config/firebaseAdminConfig';
 
 import type { Sermon, Thought } from '@/models/models';
-import type { AudioChunk, AudioMetadata, SectionSelection } from '@/types/audioGeneration.types';
+import type { AudioChunk, SectionSelection } from '@/types/audioGeneration.types';
 
 // ============================================================================
 // Types
@@ -163,17 +163,14 @@ export async function POST(
         allChunks = allChunks.map((chunk, idx) => ({ ...chunk, index: idx }));
 
         // 5. Save to DB
+        // Use dot-path updates so we record the source mode and refresh chunk/optimize
+        // metadata WITHOUT clobbering voice/model/lastGenerated from a previous render.
         if (saveToDb) {
-            const metadata: AudioMetadata = {
-                voice: 'onyx',
-                model: 'gpt-4o-mini-tts',
-                lastGenerated: new Date().toISOString(),
-                chunksCount: allChunks.length,
-            };
-
             await adminDb.collection('sermons').doc(sermonId).update({
                 audioChunks: allChunks,
-                audioMetadata: metadata,
+                'audioMetadata.mode': useRawText ? 'raw' : 'ai',
+                'audioMetadata.chunksCount': allChunks.length,
+                'audioMetadata.lastOptimized': new Date().toISOString(),
             });
         }
 

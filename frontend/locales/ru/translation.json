@@ -464,7 +464,22 @@
     "generationCancelled": "Генерация отменена",
     "mergingAudio": "Объединение аудиофайлов...",
     "addingSilence": "Добавление пауз между фрагментами...",
-    "generatingChunk": "Генерация фрагмента {{current}}/{{total}}..."
+    "generatingChunk": "Генерация фрагмента {{current}}/{{total}}...",
+    "voiceDeep": "Глубокий",
+    "voiceNatural": "Натуральный",
+    "sourceLabel": "Источник озвучки",
+    "sourceAi": "AI-оптимизация",
+    "sourceRaw": "Оригинал как есть",
+    "sourceAiHint": "Ссылки и числа раскрыты, текст очищен для естественной речи",
+    "sourceRawHint": "Ваш текст без изменений, только разбит на части для озвучки",
+    "audioText": "Для озвучки",
+    "back": "Назад",
+    "chunkLabel": "Фрагмент {{index}}",
+    "editHint": "Нажмите на фрагмент, чтобы изменить",
+    "processingFragments": "Обработка фрагментов",
+    "prepareSubtitle": "Выберите источник выше и подготовьте текст к озвучке.",
+    "switchingSource": "Меняем источник...",
+    "previewVoice": "Прослушать голос"
   },
   "tags": {
     "introduction": "Вступление",

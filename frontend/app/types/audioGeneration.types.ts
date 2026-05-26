@@ -16,11 +16,18 @@ export type TTSVoice = 'onyx' | 'echo' | 'ash';
 export interface VoiceOption {
     id: TTSVoice;
     nameKey: string;        // i18n key, e.g., 'audioExport.voiceOnyx'
-    description: string;    // For display: 'deep', 'natural', 'strong'
+    descKey: string;        // i18n key for short description, e.g., 'audioExport.voiceDeep'
 }
 
 /** Audio quality levels */
 export type AudioQuality = 'standard' | 'hd';
+
+/**
+ * Source of the audio text:
+ * - 'ai'  — GPT-optimized for natural speech (references expanded, numbers spelled out, markdown stripped)
+ * - 'raw' — the original sermon text as-is, only mechanically split into TTS-sized chunks
+ */
+export type AudioSourceMode = 'ai' | 'raw';
 
 /** Quality to model mapping */
 export const QUALITY_MODEL_MAP: Record<AudioQuality, string> = {
@@ -73,6 +80,10 @@ export interface AudioMetadata {
     lastGenerated: string;
     /** Total chunks count */
     chunksCount: number;
+    /** Which source produced the current chunks: AI-optimized or original-as-is */
+    mode?: AudioSourceMode;
+    /** ISO timestamp of last text preparation (optimize/use-as-is) */
+    lastOptimized?: string;
 }
 
 // ============================================================================
@@ -211,8 +222,8 @@ export const MAX_CHUNK_SIZE = 4000;
 
 /** Available voices with metadata */
 export const AVAILABLE_VOICES: VoiceOption[] = [
-    { id: 'onyx', nameKey: 'audioExport.voiceOnyx', description: 'deep' },
-    { id: 'echo', nameKey: 'audioExport.voiceEcho', description: 'natural' },
+    { id: 'onyx', nameKey: 'audioExport.voiceOnyx', descKey: 'audioExport.voiceDeep' },
+    { id: 'echo', nameKey: 'audioExport.voiceEcho', descKey: 'audioExport.voiceNatural' },
 ];
 
 /** Steps in the audio generation wizard */

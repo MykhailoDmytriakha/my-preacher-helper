@@ -464,7 +464,22 @@
     "generationCancelled": "Генерація скасована",
     "mergingAudio": "Об'єднання аудіофайлів...",
     "addingSilence": "Додавання пауз між фрагментами...",
-    "generatingChunk": "Генерація фрагмента {{current}}/{{total}}..."
+    "generatingChunk": "Генерація фрагмента {{current}}/{{total}}...",
+    "voiceDeep": "Глибокий",
+    "voiceNatural": "Натуральний",
+    "sourceLabel": "Джерело озвучення",
+    "sourceAi": "AI-оптимізація",
+    "sourceRaw": "Оригінал як є",
+    "sourceAiHint": "Посилання й числа розкрито, текст очищено для природної мови",
+    "sourceRawHint": "Ваш текст без змін, лише розбитий на частини для озвучення",
+    "audioText": "Для озвучення",
+    "back": "Назад",
+    "chunkLabel": "Фрагмент {{index}}",
+    "editHint": "Натисніть на фрагмент, щоб змінити",
+    "processingFragments": "Обробка фрагментів",
+    "prepareSubtitle": "Оберіть джерело вгорі та підготуйте текст до озвучення.",
+    "switchingSource": "Змінюємо джерело...",
+    "previewVoice": "Прослухати голос"
   },
   "tags": {
     "introduction": "Вступ",

@@ -464,7 +464,22 @@
     "generationCancelled": "Generation cancelled",
     "mergingAudio": "Merging audio files...",
     "addingSilence": "Adding pauses between chunks...",
-    "generatingChunk": "Generating chunk {{current}}/{{total}}..."
+    "generatingChunk": "Generating chunk {{current}}/{{total}}...",
+    "voiceDeep": "Deep",
+    "voiceNatural": "Natural",
+    "sourceLabel": "Audio source",
+    "sourceAi": "AI-optimized",
+    "sourceRaw": "Original as-is",
+    "sourceAiHint": "References and numbers expanded, cleaned up for natural speech",
+    "sourceRawHint": "Your exact text, only split into narration-sized parts",
+    "audioText": "For narration",
+    "back": "Back",
+    "chunkLabel": "Fragment {{index}}",
+    "editHint": "Tap a fragment to edit it",
+    "processingFragments": "Processing fragments",
+    "prepareSubtitle": "Pick a source above, then prepare the text for narration.",
+    "switchingSource": "Switching source...",
+    "previewVoice": "Preview voice"
   },
   "tags": {
     "introduction": "Introduction",

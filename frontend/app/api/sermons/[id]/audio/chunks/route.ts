@@ -35,6 +35,9 @@ export async function PUT(
         }
 
         const chunks: AudioChunk[] = body.chunks;
+        // Optional source mode ('ai' | 'raw') so the modal can persist which source
+        // produced these chunks when switching between modes from cache (no re-optimize).
+        const mode: string | undefined = body.mode === 'ai' || body.mode === 'raw' ? body.mode : undefined;
 
         // Load sermon to verify ownership
         const sermonDoc = await adminDb.collection('sermons').doc(sermonId).get();
@@ -48,10 +51,15 @@ export async function PUT(
         }
 
         // Update firestore
-        await adminDb.collection('sermons').doc(sermonId).update({
+        const updates: Record<string, unknown> = {
             audioChunks: chunks,
+            'audioMetadata.chunksCount': chunks.length,
             'audioMetadata.lastOptimized': new Date().toISOString(),
-        });
+        };
+        if (mode) {
+            updates['audioMetadata.mode'] = mode;
+        }
+        await adminDb.collection('sermons').doc(sermonId).update(updates);
 
         return NextResponse.json({ success: true, count: chunks.length });
     } catch (error) {
