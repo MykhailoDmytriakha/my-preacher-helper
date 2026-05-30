@@ -9,6 +9,18 @@ export const SECTION_CONFIG = {
 
 export type SectionKey = keyof typeof SECTION_CONFIG;
 
+/**
+ * Normalizes a `sections` request value ('all' | key | array of keys) into the
+ * concrete list of valid section keys, in canonical order. Returns [] when an
+ * array/string carries no valid keys — callers decide how to treat empty.
+ */
+export function resolveSections(input: unknown): SectionKey[] {
+    const all = Object.keys(SECTION_CONFIG) as SectionKey[];
+    if (input === 'all' || input == null) return all;
+    const arr = Array.isArray(input) ? input : [input];
+    return all.filter(k => (arr as unknown[]).includes(k));
+}
+
 export function getSectionThoughts(sermon: Sermon, sectionKey: SectionKey): Thought[] {
     const sectionMap: Record<SectionKey, 'introduction' | 'main' | 'conclusion'> = {
         introduction: 'introduction',

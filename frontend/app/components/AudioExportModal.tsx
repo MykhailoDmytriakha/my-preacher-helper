@@ -32,6 +32,7 @@ export default function AudioExportModal({
 }: AudioExportModalProps) {
     const { t } = useTranslation();
     const [isGenerating, setIsGenerating] = useState(false);
+    const [currentStep, setCurrentStep] = useState(1);
 
     const handleClose = useCallback(() => {
         if (isGenerating) return;
@@ -56,12 +57,12 @@ export default function AudioExportModal({
 
     return (
         <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm"
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-4"
             onClick={handleClose}
             data-testid="modal-overlay"
         >
             <div
-                className="flex h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200/70 bg-white shadow-2xl ring-1 ring-gray-100/80 dark:border-gray-800 dark:bg-gray-900 dark:ring-gray-800"
+                className="flex h-[95vh] w-full max-w-[1600px] flex-col overflow-hidden rounded-2xl border border-gray-200/70 bg-white shadow-2xl ring-1 ring-gray-100/80 dark:border-gray-800 dark:bg-gray-900 dark:ring-gray-800"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Accent stripe — orange = audio */}
@@ -83,6 +84,34 @@ export default function AudioExportModal({
                         </div>
                     </div>
 
+                    {/* Stepper — current step is driven by the wizard */}
+                    <div className="hidden flex-1 items-center justify-center gap-2 px-4 text-xs lg:flex">
+                        {[
+                            t('audioExport.stepSettings', { defaultValue: 'Settings' }),
+                            t('audioExport.stepSource', { defaultValue: 'Source' }),
+                            t('audioExport.stepPreview', { defaultValue: 'Preview' }),
+                            t('audioExport.stepGenerate', { defaultValue: 'Generation' }),
+                        ].map((label, i) => {
+                            const n = i + 1;
+                            const on = currentStep === n;
+                            const done = currentStep > n;
+                            const dot = on
+                                ? 'bg-orange-500 text-white'
+                                : done ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-300'
+                                    : 'bg-gray-200 text-gray-400 dark:bg-gray-700 dark:text-gray-500';
+                            const txt = on ? 'font-semibold text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500';
+                            return (
+                                <React.Fragment key={label}>
+                                    <span className={`flex items-center gap-1.5 ${txt}`}>
+                                        <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${dot}`}>{done ? '✓' : n}</span>
+                                        {label}
+                                    </span>
+                                    {i < 3 && <span className="h-px w-6 bg-gray-200 dark:bg-gray-700" />}
+                                </React.Fragment>
+                            );
+                        })}
+                    </div>
+
                     <button
                         onClick={handleClose}
                         disabled={isGenerating}
@@ -99,6 +128,7 @@ export default function AudioExportModal({
                         sermonTitle={sermonTitle}
                         onClose={handleClose}
                         onGeneratingChange={handleGeneratingChange}
+                        onStepChange={setCurrentStep}
                         isEnabled={isEnabled}
                     />
                 </div>

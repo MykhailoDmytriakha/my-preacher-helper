@@ -137,6 +137,7 @@ export interface Sermon {
   }[];
   /** Metadata about last audio generation */
   audioMetadata?: {
+    provider?: string;
     voice: string;
     model: string;
     lastGenerated: string;

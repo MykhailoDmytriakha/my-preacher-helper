@@ -39,11 +39,13 @@ const createSpeechResponse = (content: string) => ({
 
 describe('tts client', () => {
   let mockSpeechCreate: jest.Mock;
+  const originalFetch = global.fetch;
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockSpeechCreate = getMockSpeechCreate();
     mockSpeechCreate.mockReset();
+    (global as any).fetch = originalFetch;
   });
 
   it('generates chunk audio with default wav format and estimated duration', async () => {
@@ -91,6 +93,82 @@ describe('tts client', () => {
     ).rejects.toThrow('Text exceeds maximum length of 4096 characters');
 
     expect(mockSpeechCreate).not.toHaveBeenCalled();
+  });
+
+  it('generates Google Gemini TTS audio as a WAV blob', async () => {
+    const pcm = new Uint8Array([1, 0, 2, 0]);
+    (global as any).fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  inlineData: {
+                    data: Buffer.from(pcm).toString('base64'),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    });
+
+    const result = await generateChunkAudio('Say warmly: Grace and peace.', {
+      provider: 'google',
+      voice: 'Kore',
+      model: 'gemini-3.1-flash-tts-preview',
+      format: 'wav',
+    });
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'x-goog-api-key': 'test_key_gemini',
+        }),
+        body: expect.any(String),
+      })
+    );
+    expect(JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body)).toMatchObject({
+      contents: [{ parts: [{ text: 'Say warmly: Grace and peace.' }] }],
+      generationConfig: {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: {
+              voiceName: 'Kore',
+            },
+          },
+        },
+      },
+    });
+    expect(result.audioBlob.type).toBe('audio/wav');
+    expect(result.mimeType).toBe('audio/wav');
+    expect(result.audioBlob.size).toBe(48);
+    expect(mockSpeechCreate).not.toHaveBeenCalled();
+  });
+
+  it('surfaces Google Gemini TTS API errors', async () => {
+    (global as any).fetch = jest.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 429,
+      statusText: 'Too Many Requests',
+      text: async () => 'quota exceeded',
+    });
+
+    await expect(
+      generateChunkAudio('Too much text', {
+        provider: 'google',
+        voice: 'Kore',
+        model: 'gemini-3.1-flash-tts-preview',
+        format: 'wav',
+      })
+    ).rejects.toThrow('Google TTS failed (429): quota exceeded');
   });
 
   it('generates all chunk audio in order and emits progress updates', async () => {

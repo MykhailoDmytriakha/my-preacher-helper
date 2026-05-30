@@ -1,38 +1,46 @@
 /**
- * Audio Studio — single working surface for sermon audio generation.
+ * Audio Studio — step-by-step wizard for sermon audio generation.
  *
- * One screen does the whole job:
- *  - a compact settings bar (voice / quality / sections) at the top,
- *  - two panels: original sermon text (left) and the narration text (right),
- *  - a persistent SOURCE toggle on the right panel — AI-optimized vs original
- *    as-is — that can be flipped back and forth at any time, even after chunks
- *    already exist. Each mode is cached so switching back is instant.
- *  - generation progress and the success/player view replace the body in place.
+ * Four screens, all inside one near-fullscreen modal:
+ *  1. Settings — provider (OpenAI / Google), model, voice (with preview), sections.
+ *  2. Source — "Original as-is" (one read-only column) or "AI-optimized"
+ *     (two columns: original on the left for comparison, editable AI chunks on
+ *     the right; the optimized text is produced on demand with a button).
+ *     AI optimization is OpenAI-only, so the tab is hidden for Google.
+ *  3. Preview — the final narration text assembled into one read-only block per
+ *     major section (introduction / main / conclusion).
+ *  4. Generation — streaming progress, then the player + download (unchanged).
  *
- * Styling follows the site design system (clean white / gray-900 surfaces,
- * orange accent — the audio feature's color among the export siblings).
+ * Invariant: the DB is the source of truth for generation — /generate reads
+ * chunks from Firestore, so every source switch syncs the DB before Generate.
+ *
+ * Styling follows the site design system: clean white / gray-900 surfaces,
+ * orange accent used sparingly (soft active states, one strong primary CTA).
  */
 
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-    ArrowRight, Loader2, FileText, Activity, Play, Square, Sparkles,
-    RefreshCw, AlertTriangle, Check, Copy, Pencil, Download, AudioLines,
+    ArrowRight, ArrowLeft, Loader2, FileText, Play, Square, Sparkles,
+    AlertTriangle, Check, Download, AudioLines, Pencil, Mic, Cpu, Clock, Eye, Layers,
 } from 'lucide-react';
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useAuth } from '@/hooks/useAuth';
-import { useClipboard } from '@/hooks/useClipboard';
 import useSermon from '@/hooks/useSermon';
 import {
     AVAILABLE_VOICES,
+    GOOGLE_TTS_MODELS,
+    SERMON_SECTIONS,
     AudioChunk,
     AudioQuality,
     AudioSourceMode,
-    SectionSelection,
+    GoogleTTSModel,
+    GoogleTTSVoice,
+    TTSProvider,
     TTSVoice,
     SermonSection,
 } from '@/types/audioGeneration.types';
@@ -49,13 +57,6 @@ interface ChunkPreview extends AudioChunk {
     preview?: string;
 }
 
-interface OptimizationStats {
-    originalLength: number;
-    optimizedLength: number;
-    totalChunks: number;
-    estimatedMinutes: number;
-}
-
 interface StreamEvent {
     type: 'progress' | 'complete' | 'error' | 'audio_chunk' | 'download_complete';
     current?: number;
@@ -64,10 +65,12 @@ interface StreamEvent {
     status?: string;
     audioUrl?: string;
     filename?: string;
+    mimeType?: string;
     message?: string;
     data?: string;
 }
 
+type WizardStep = 1 | 2 | 3;
 type StudioView = 'working' | 'generating' | 'success';
 
 export interface StepByStepWizardProps {
@@ -75,22 +78,37 @@ export interface StepByStepWizardProps {
     sermonTitle: string;
     onClose: () => void;
     onGeneratingChange?: (generating: boolean) => void;
+    onStepChange?: (step: number) => void;
     isEnabled?: boolean;
 }
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const GOOGLE_MODEL_GEMINI_31: GoogleTTSModel = 'gemini-3.1-flash-tts-preview';
+const GOOGLE_MODEL_GEMINI_25: GoogleTTSModel = 'gemini-2.5-flash-preview-tts';
+
+/** Curated male voices for Google TTS, ordered youngest → oldest sounding. */
+const GOOGLE_VOICE_OPTIONS: { id: GoogleTTSVoice; descKey: string; descDefault: string }[] = [
+    { id: 'Puck', descKey: 'audioExport.googleVoicePuck', descDefault: 'молодой, бодрый' },
+    { id: 'Iapetus', descKey: 'audioExport.googleVoiceIapetus', descDefault: 'чёткий, ровный' },
+    { id: 'Orus', descKey: 'audioExport.googleVoiceOrus', descDefault: 'твёрдый, уверенный' },
+    { id: 'Charon', descKey: 'audioExport.googleVoiceCharon', descDefault: 'глубокий, тёплый' },
+];
+
+const ACTIVE_PILL = 'border-orange-400 bg-orange-50 text-orange-700 dark:border-orange-500/60 dark:bg-orange-500/10 dark:text-orange-300';
+const INACTIVE_PILL = 'border-gray-200 bg-white text-gray-600 hover:border-orange-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300';
+
+/** Class for a secondary description: dimmed when its option is active, muted otherwise. */
+const mutedDescClass = (active: boolean): string => (active ? 'opacity-70' : 'text-gray-400');
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
-const statsFromChunks = (chunks: ChunkPreview[]): OptimizationStats => {
-    const totalChars = chunks.reduce((sum, c) => sum + c.text.length, 0);
-    return {
-        originalLength: totalChars,
-        optimizedLength: totalChars,
-        totalChunks: chunks.length,
-        estimatedMinutes: Math.max(1, Math.ceil(totalChars / 800)),
-    };
-};
+const googleModelShort = (model: GoogleTTSModel): string =>
+    model === GOOGLE_MODEL_GEMINI_25 ? '2.5' : '3.1';
 
 // ============================================================================
 // Main Component
@@ -101,31 +119,37 @@ export default function StepByStepWizard({
     sermonTitle: _sermonTitle,
     onClose,
     onGeneratingChange,
+    onStepChange,
     isEnabled: _isEnabled = true,
 }: StepByStepWizardProps) {
     const { t, i18n } = useTranslation();
     const { user } = useAuth();
+    const charsLabel = t('audioExport.chars', { defaultValue: 'симв.' });
+    const aiSourceLabel = t('audioExport.sourceAi', { defaultValue: 'AI-optimized' });
 
     // Settings
+    const [ttsProvider, setTtsProvider] = useState<TTSProvider>('openai');
     const [voice, setVoice] = useState<TTSVoice>('onyx');
     const [quality, setQuality] = useState<AudioQuality>('standard');
-    const [sections, setSections] = useState<SectionSelection>('all');
+    const [googleModel, setGoogleModel] = useState<GoogleTTSModel>(GOOGLE_MODEL_GEMINI_31);
+    const [googleVoice, setGoogleVoice] = useState<GoogleTTSVoice>('Puck');
+    const [sections, setSections] = useState<SermonSection[]>([...SERMON_SECTIONS]);
 
     // Source mode + per-mode cache so flipping back and forth is instant
     const [mode, setMode] = useState<AudioSourceMode>('ai');
     const chunksByMode = useRef<Partial<Record<AudioSourceMode, ChunkPreview[]>>>({});
 
-    // Content state
+    // Content
     const [chunks, setChunks] = useState<ChunkPreview[]>([]);
-    const [stats, setStats] = useState<OptimizationStats | null>(null);
 
-    // View + flow state
+    // Wizard + view state
+    const [step, setStep] = useState<WizardStep>(1);
     const [view, setView] = useState<StudioView>('working');
-    const [isLoading, setIsLoading] = useState(false);     // preparing/switching text
+    const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [editingChunk, setEditingChunk] = useState<ChunkPreview | null>(null);
 
-    // Generation state
+    // Generation
     const [genProgress, setGenProgress] = useState<{ current: number; total: number; percent?: number; status?: string }>({ current: 0, total: 0 });
     const [abortController, setAbortController] = useState<AbortController | null>(null);
     const [generatedFile, setGeneratedFile] = useState<{ url: string; filename: string } | null>(null);
@@ -134,7 +158,6 @@ export default function StepByStepWizard({
     const [playingPreview, setPlayingPreview] = useState<string | null>(null);
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
-    const { isCopied, copyToClipboard } = useClipboard({ successDuration: 2000 });
     const { sermon } = useSermon(sermonId);
 
     // Report "busy" so the modal can guard its close button
@@ -142,33 +165,61 @@ export default function StepByStepWizard({
         onGeneratingChange?.(isLoading || view === 'generating');
     }, [isLoading, view, onGeneratingChange]);
 
+    // Report the active step (1-3 = wizard, 4 = generation/success) so the modal
+    // header can render the stepper above the body.
+    useEffect(() => {
+        onStepChange?.(view === 'working' ? step : 4);
+    }, [step, view, onStepChange]);
+
+    // A stale error from a previous step shouldn't follow the user around.
+    useEffect(() => { setError(null); }, [step]);
+
     // ------------------------------------------------------------------
     // Load existing chunks (from a previous session) once the sermon loads
     // ------------------------------------------------------------------
     const seeded = useRef(false);
     useEffect(() => {
         if (seeded.current || !sermon) return;
-        const existing = (sermon.audioChunks || []) as AudioChunk[];
-        if (existing.length === 0) {
-            seeded.current = true;
-            return;
+        const savedProvider: TTSProvider = sermon.audioMetadata?.provider === 'google' ? 'google' : 'openai';
+        setTtsProvider(savedProvider);
+        if (savedProvider === 'google') {
+            if (sermon.audioMetadata?.model === GOOGLE_MODEL_GEMINI_25 || sermon.audioMetadata?.model === GOOGLE_MODEL_GEMINI_31) {
+                setGoogleModel(sermon.audioMetadata.model);
+            }
+            if (sermon.audioMetadata?.voice) setGoogleVoice(sermon.audioMetadata.voice as GoogleTTSVoice);
+        } else if (sermon.audioMetadata?.voice) {
+            setVoice(sermon.audioMetadata.voice as TTSVoice);
         }
-        const loaded: ChunkPreview[] = existing.map(c => ({
-            ...c,
-            sectionId: c.sectionId as SermonSection,
-            preview: c.text,
-        }));
-        const savedMode: AudioSourceMode = sermon.audioMetadata?.mode === 'raw' ? 'raw' : 'ai';
-        chunksByMode.current[savedMode] = loaded;
-        setMode(savedMode);
-        setChunks(loaded);
-        setStats(statsFromChunks(loaded));
-        if (sermon.audioMetadata?.voice) setVoice(sermon.audioMetadata.voice as TTSVoice);
+
+        const existing = (sermon.audioChunks || []) as AudioChunk[];
+        if (existing.length > 0) {
+            const loaded: ChunkPreview[] = existing.map(c => ({ ...c, sectionId: c.sectionId as SermonSection, preview: c.text }));
+            // Restore the section selection from the sections that actually have chunks,
+            // so the checkboxes match what /generate will read from the DB.
+            const present = SERMON_SECTIONS.filter(k => loaded.some(c => c.sectionId === k));
+            if (present.length > 0) setSections(present);
+            // The true source label of the persisted chunks.
+            const trueMode: AudioSourceMode = sermon.audioMetadata?.mode === 'raw' ? 'raw' : 'ai';
+            chunksByMode.current[trueMode] = loaded;
+            if (savedProvider === 'google') {
+                // Google only supports raw. If the persisted chunks are AI-optimized,
+                // do NOT present them as raw — leave raw empty so the user re-prepares.
+                setMode('raw');
+                if (trueMode === 'raw') setChunks(loaded);
+            } else {
+                setMode(trueMode);
+                setChunks(loaded);
+            }
+        } else if (savedProvider === 'google') {
+            setMode('raw');
+        }
         seeded.current = true;
     }, [sermon]);
 
     // ------------------------------------------------------------------
-    // Voice preview
+    // Voice preview (samples in /public/samples)
+    //   OpenAI:  {voice}-{quality}-{lang}.mp3
+    //   Google:  {voice}-{modelShort}-{lang}.wav   (per Gemini 3.1 / 2.5)
     // ------------------------------------------------------------------
     const togglePreview = useCallback((voiceId: string) => {
         if (playingPreview === voiceId) {
@@ -181,21 +232,26 @@ export default function StepByStepWizard({
 
         const lang = i18n.language.split('-')[0] || 'en';
         const fileLang = ['en', 'ru', 'uk'].includes(lang) ? lang : 'en';
-        const url = `/samples/${voiceId}-${quality}-${fileLang}.mp3`;
+        const url = ttsProvider === 'google'
+            ? `/samples/${voiceId}-${googleModelShort(googleModel)}-${fileLang}.wav`
+            : `/samples/${voiceId}-${quality}-${fileLang}.mp3`;
+
         const audio = new Audio(url);
-        audio.volume = 0.7;
+        audio.volume = 0.8;
         audio.onended = () => setPlayingPreview(null);
         audio.onerror = () => {
-            console.error(`Failed to load sample: ${url}`);
+            console.warn(`Failed to load sample: ${url}`);
             toast.error(t('audioExport.sampleError', { defaultValue: 'Sample not available' }));
             setPlayingPreview(null);
         };
         audio.play().catch(e => console.error('Playback failed', e));
         audioRef.current = audio;
         setPlayingPreview(voiceId);
-    }, [playingPreview, quality, t, i18n.language]);
+    }, [playingPreview, ttsProvider, googleModel, quality, t, i18n.language]);
 
     useEffect(() => () => { audioRef.current?.pause(); }, []);
+    // Stop any preview when provider/model/quality changes (the sample URL changes).
+    useEffect(() => { audioRef.current?.pause(); setPlayingPreview(null); }, [ttsProvider, googleModel, quality, voice, googleVoice]);
 
     // ------------------------------------------------------------------
     // Stream parsing for generation
@@ -215,7 +271,8 @@ export default function StepByStepWizard({
             let finalUrl = event.audioUrl;
             if (audioDataParts.length > 0) {
                 const fullBase64 = audioDataParts.join('');
-                finalUrl = fullBase64.startsWith('data:') ? fullBase64 : `data:audio/mpeg;base64,${fullBase64}`;
+                const mimeType = event.mimeType || 'audio/mpeg';
+                finalUrl = fullBase64.startsWith('data:') ? fullBase64 : `data:${mimeType};base64,${fullBase64}`;
             }
             onComplete({ ...event, audioUrl: finalUrl });
         } else if (event.type === 'error') {
@@ -246,17 +303,31 @@ export default function StepByStepWizard({
                 try {
                     event = JSON.parse(trimmed);
                 } catch (e) {
-                    // Malformed line — log and skip, but keep reading the stream.
                     console.error('Failed to parse stream line:', trimmed, e);
                     continue;
                 }
-                // Dispatch is OUTSIDE the parse try so that an 'error' event
-                // (onError throws) propagates to the caller instead of being
-                // swallowed and logged, which would hang the progress view forever.
                 dispatchStreamEvent(event, audioDataParts, onProgress, onComplete, onError);
             }
         }
     }, [dispatchStreamEvent]);
+
+    // ------------------------------------------------------------------
+    // Persist a cached chunk set so /generate (which reads the DB) stays in sync
+    // ------------------------------------------------------------------
+    const syncChunksToDb = useCallback(async (cached: ChunkPreview[], targetMode: AudioSourceMode) => {
+        setIsLoading(true);
+        try {
+            await fetch(`/api/sermons/${sermonId}/audio/chunks`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chunks: cached, userId: user?.uid, mode: targetMode }),
+            });
+        } catch (err) {
+            console.error('Mode sync failed:', err);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [sermonId, user?.uid]);
 
     // ------------------------------------------------------------------
     // Prepare text for a given source (AI optimize OR raw split)
@@ -264,13 +335,14 @@ export default function StepByStepWizard({
     const prepareSource = useCallback(async (targetMode: AudioSourceMode) => {
         setIsLoading(true);
         setError(null);
+        setMode(targetMode); // switch the layout to the target source now so loading shows in place
         try {
             const response = await fetch(`/api/sermons/${sermonId}/audio/optimize`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     sections,
-                    saveToDb: true, // optimize persists chunks + audioMetadata.mode
+                    saveToDb: true,
                     userId: user?.uid,
                     useRawText: targetMode === 'raw',
                 }),
@@ -285,12 +357,6 @@ export default function StepByStepWizard({
             chunksByMode.current[targetMode] = newChunks;
             setMode(targetMode);
             setChunks(newChunks);
-            setStats({
-                originalLength: data.originalLength || 0,
-                optimizedLength: data.optimizedLength || 0,
-                totalChunks: newChunks.length,
-                estimatedMinutes: Math.max(1, Math.ceil((data.optimizedLength || 0) / 800)),
-            });
         } catch (err: unknown) {
             console.error('Prepare error:', err);
             setError(err instanceof Error ? err.message : 'Optimization failed');
@@ -300,34 +366,34 @@ export default function StepByStepWizard({
     }, [sermonId, user, sections]);
 
     // ------------------------------------------------------------------
-    // Switch source mode — instant from cache, otherwise prepare it.
-    // We keep the invariant "DB reflects the active mode" because /generate
-    // reads chunks from the DB, not from the request body.
+    // Switch source tab. Raw is mechanical (auto-prepared); AI is explicit
+    // (a button triggers prepareSource('ai')).
     // ------------------------------------------------------------------
-    const switchMode = useCallback(async (targetMode: AudioSourceMode) => {
-        if (targetMode === mode && chunks.length > 0) return;
+    const selectSource = useCallback(async (targetMode: AudioSourceMode) => {
+        if (targetMode === mode) return;
+        setError(null);
         const cached = chunksByMode.current[targetMode];
-        if (!cached) {
-            await prepareSource(targetMode);
+
+        if (targetMode === 'ai') {
+            setMode('ai');
+            if (cached && cached.length > 0) {
+                setChunks(cached);
+                await syncChunksToDb(cached, 'ai');
+            } else {
+                setChunks([]);
+            }
             return;
         }
-        setMode(targetMode);
-        setChunks(cached);
-        setStats(statsFromChunks(cached));
-        // Sync DB so the next Generate uses this mode's chunks.
-        setIsLoading(true);
-        try {
-            await fetch(`/api/sermons/${sermonId}/audio/chunks`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chunks: cached, userId: user?.uid, mode: targetMode }),
-            });
-        } catch (err) {
-            console.error('Mode sync failed:', err);
-        } finally {
-            setIsLoading(false);
+
+        // raw
+        if (cached && cached.length > 0) {
+            setMode('raw');
+            setChunks(cached);
+            await syncChunksToDb(cached, 'raw');
+        } else {
+            await prepareSource('raw');
         }
-    }, [mode, chunks.length, prepareSource, sermonId, user?.uid]);
+    }, [mode, prepareSource, syncChunksToDb]);
 
     // ------------------------------------------------------------------
     // Edit a single chunk
@@ -366,7 +432,14 @@ export default function StepByStepWizard({
             const response = await fetch(`/api/sermons/${sermonId}/audio/generate`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ voice, quality, sections, userId: user?.uid }),
+                body: JSON.stringify({
+                    provider: ttsProvider,
+                    voice: ttsProvider === 'google' ? googleVoice : voice,
+                    quality,
+                    model: ttsProvider === 'google' ? googleModel : undefined,
+                    sections,
+                    userId: user?.uid,
+                }),
                 signal: controller.signal,
             });
             if (!response.ok || !response.body) {
@@ -405,306 +478,430 @@ export default function StepByStepWizard({
         } finally {
             setAbortController(null);
         }
-    }, [sermonId, voice, quality, sections, chunks.length, user?.uid, processStream, t]);
+    }, [sermonId, ttsProvider, googleVoice, voice, quality, googleModel, sections, chunks.length, user?.uid, processStream, t]);
 
     const handleCancelGeneration = useCallback(() => abortController?.abort(), [abortController]);
 
+    // ------------------------------------------------------------------
+    // Navigation
+    // ------------------------------------------------------------------
+    const goToStep2 = useCallback(async () => {
+        setStep(2);
+        // Ensure the DB reflects the raw source before Generate: prepare it if missing,
+        // otherwise sync the cached set (covers the provider→Google switch).
+        if (mode === 'raw') {
+            const cached = chunksByMode.current['raw'];
+            if (cached?.length) {
+                setChunks(cached);
+                await syncChunksToDb(cached, 'raw');
+            } else {
+                await prepareSource('raw');
+            }
+        }
+    }, [mode, prepareSource, syncChunksToDb]);
+
+    const setProvider = useCallback((p: TTSProvider) => {
+        setTtsProvider(p);
+        if (p === 'google') {
+            // Google has no AI optimization — force the raw source.
+            setMode('raw');
+            setGoogleVoice(prev => prev || 'Puck');
+        }
+    }, []);
+
     // ============================================================================
-    // Section config
+    // Section config / derived
     // ============================================================================
     const SECTIONS_CONFIG = [
-        { id: 'introduction', label: t('audioExport.sectionsIntro', { defaultValue: 'Introduction' }), colorKey: 'introduction' },
-        { id: 'mainPart', label: t('audioExport.sectionsMain', { defaultValue: 'Main Part' }), colorKey: 'mainPart' },
-        { id: 'conclusion', label: t('audioExport.sectionsConclusion', { defaultValue: 'Conclusion' }), colorKey: 'conclusion' },
-    ] as const;
-    const visibleSections = SECTIONS_CONFIG.filter(s => sections === 'all' || s.id === sections);
+        { id: 'introduction' as SermonSection, label: t('audioExport.sectionsIntro', { defaultValue: 'Introduction' }), colorKey: 'introduction' },
+        { id: 'mainPart' as SermonSection, label: t('audioExport.sectionsMain', { defaultValue: 'Main Part' }), colorKey: 'mainPart' },
+        { id: 'conclusion' as SermonSection, label: t('audioExport.sectionsConclusion', { defaultValue: 'Conclusion' }), colorKey: 'conclusion' },
+    ];
+    const visibleSections = SECTIONS_CONFIG.filter(s => sections.includes(s.id));
 
-    const getThoughtsForSection = (sectionId: string) => {
+    const getThoughtsForSection = (sectionId: SermonSection) => {
         if (!sermon) return [];
         const mapped = sectionId === 'mainPart' ? 'main' : sectionId as 'introduction' | 'main' | 'conclusion';
         return getSortedThoughts(sermon, mapped);
     };
 
-    // ============================================================================
-    // Render: settings bar
-    // ============================================================================
-    const renderSettingsBar = () => (
-        <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-800/50">
-            {/* Voice */}
-            <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    {t('audioExport.voiceLabel', { defaultValue: 'Voice' })}
-                </span>
-                <div className="flex gap-1.5">
-                    {AVAILABLE_VOICES.map((v) => {
-                        const selected = voice === v.id;
-                        const isPlaying = playingPreview === v.id;
-                        return (
-                            <button
-                                key={v.id}
-                                onClick={() => setVoice(v.id)}
-                                className={`group flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm font-medium transition-colors ${selected
-                                    ? 'border-orange-400 bg-orange-50 text-orange-700 dark:border-orange-500/60 dark:bg-orange-500/10 dark:text-orange-300'
-                                    : 'border-gray-200 bg-white text-gray-600 hover:border-orange-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300'}`}
-                            >
-                                <span
-                                    role="button"
-                                    tabIndex={-1}
-                                    onClick={(e) => { e.stopPropagation(); togglePreview(v.id); }}
-                                    className={`flex h-5 w-5 items-center justify-center rounded-full transition-colors ${selected ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-500 group-hover:bg-orange-200 dark:bg-gray-700 dark:text-gray-300'}`}
-                                    title={t('audioExport.previewVoice', { defaultValue: 'Preview voice' })}
-                                >
-                                    {isPlaying ? <Square className="h-2.5 w-2.5 fill-current" /> : <Play className="h-2.5 w-2.5 fill-current ml-0.5" />}
-                                </span>
-                                <span>{v.id.charAt(0).toUpperCase() + v.id.slice(1)}</span>
-                                <span className="text-xs text-gray-400">{t(v.descKey, { defaultValue: '' })}</span>
-                            </button>
-                        );
-                    })}
-                </div>
-            </div>
+    const toggleSection = (id: SermonSection) => {
+        const has = sections.includes(id);
+        if (has && sections.length === 1) return; // keep at least one
+        const next = has
+            ? sections.filter(x => x !== id)
+            : SERMON_SECTIONS.filter(k => k === id || sections.includes(k)); // canonical order
+        setSections(next);
+        // Prepared chunks no longer match the selection — invalidate so the user
+        // re-prepares for the new set (keeps DB / preview / generate consistent).
+        chunksByMode.current = {};
+        setChunks([]);
+    };
 
-            {/* Quality */}
-            <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    {t('audioExport.qualityLabel', { defaultValue: 'Quality' })}
-                </span>
-                <div className="flex rounded-lg border border-gray-200 bg-white p-0.5 dark:border-gray-700 dark:bg-gray-900">
-                    {(['standard', 'hd'] as AudioQuality[]).map((q) => (
-                        <button
-                            key={q}
-                            onClick={() => setQuality(q)}
-                            className={`rounded-md px-3 py-1 text-sm font-medium transition-colors ${quality === q
-                                ? 'bg-orange-500 text-white shadow-sm'
-                                : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'}`}
-                        >
-                            {q === 'standard'
-                                ? t('audioExport.qualityStandard', { defaultValue: 'Standard' })
-                                : t('audioExport.qualityHd', { defaultValue: 'HD' })}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {/* Sections */}
-            <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    {t('audioExport.sectionsLabel', { defaultValue: 'Sections' })}
-                </span>
-                <select
-                    value={sections}
-                    onChange={(e) => setSections(e.target.value as SectionSelection)}
-                    className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 transition-colors focus:border-orange-400 focus:ring-1 focus:ring-orange-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-                >
-                    <option value="all">{t('audioExport.sectionsAll', { defaultValue: 'All sections' })}</option>
-                    <option value="introduction">{t('audioExport.sectionsIntro', { defaultValue: 'Introduction' })}</option>
-                    <option value="mainPart">{t('audioExport.sectionsMain', { defaultValue: 'Main part' })}</option>
-                    <option value="conclusion">{t('audioExport.sectionsConclusion', { defaultValue: 'Conclusion' })}</option>
-                </select>
-            </div>
-        </div>
+    const labelRow = (text: string) => (
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{text}</span>
     );
 
     // ============================================================================
-    // Render: source toggle (right panel header)
+    // Render: STEP 1 — settings
     // ============================================================================
-    const renderSourceToggle = () => {
-        const opts: { id: AudioSourceMode; label: string; icon: React.ReactNode }[] = [
-            { id: 'ai', label: t('audioExport.sourceAi', { defaultValue: 'AI-optimized' }), icon: <Sparkles className="h-3.5 w-3.5" /> },
-            { id: 'raw', label: t('audioExport.sourceRaw', { defaultValue: 'Original as-is' }), icon: <FileText className="h-3.5 w-3.5" /> },
+    const renderStep1 = () => {
+        const providerOptions: { id: TTSProvider; label: string; sub: string }[] = [
+            { id: 'openai', label: t('audioExport.providerOpenai', { defaultValue: 'OpenAI' }), sub: t('audioExport.providerOpenaiSub', { defaultValue: 'Onyx · Echo' }) },
+            { id: 'google', label: t('audioExport.providerGoogle', { defaultValue: 'Google' }), sub: t('audioExport.providerGoogleSub', { defaultValue: 'Gemini · 4 голоса' }) },
         ];
+
         return (
-            <div className="flex rounded-lg border border-gray-200 bg-white p-0.5 dark:border-gray-700 dark:bg-gray-900">
-                {opts.map((o) => {
-                    const active = mode === o.id;
-                    return (
-                        <button
-                            key={o.id}
-                            onClick={() => switchMode(o.id)}
-                            disabled={isLoading}
-                            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-60 ${active
-                                ? 'bg-orange-500 text-white shadow-sm'
-                                : 'text-gray-500 hover:text-orange-600 dark:text-gray-400 dark:hover:text-orange-300'}`}
-                        >
-                            {o.icon}
-                            {o.label}
-                        </button>
-                    );
-                })}
+            <div className="space-y-6">
+                <div className="flex flex-col gap-6 sm:flex-row sm:gap-8">
+                    {/* Provider — vertical list */}
+                    <div className="flex flex-col items-start gap-2 sm:w-52 sm:flex-shrink-0">
+                        {labelRow(t('audioExport.providerLabel', { defaultValue: 'Provider' }))}
+                        <div className="flex w-full flex-col gap-2">
+                            {providerOptions.map(p => {
+                                const sel = ttsProvider === p.id;
+                                return (
+                                    <button
+                                        key={p.id}
+                                        onClick={() => setProvider(p.id)}
+                                        className={`flex w-full items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left text-sm font-semibold transition-colors ${sel ? ACTIVE_PILL : INACTIVE_PILL}`}
+                                    >
+                                        <span className={`flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 ${sel ? 'border-orange-500' : 'border-gray-300 dark:border-gray-600'}`}>
+                                            {sel && <span className="h-1.5 w-1.5 rounded-full bg-orange-500" />}
+                                        </span>
+                                        <span className="flex flex-col leading-tight">
+                                            <span>{p.label}</span>
+                                            <span className={`text-[11px] font-medium ${mutedDescClass(sel)}`}>{p.sub}</span>
+                                        </span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Model + Voice (reserved height so switching provider doesn't jump) */}
+                    <div className="flex min-w-0 flex-1 flex-col gap-5">
+                        <div className="flex flex-col items-start gap-2">
+                            {labelRow(t('audioExport.modelLabel', { defaultValue: 'Model' }))}
+                            {ttsProvider === 'openai' ? (
+                                <div className="flex flex-wrap gap-2">
+                                    {(['standard', 'hd'] as AudioQuality[]).map(q => {
+                                        const sel = quality === q;
+                                        return (
+                                            <button
+                                                key={q}
+                                                onClick={() => setQuality(q)}
+                                                className={`rounded-lg border px-3 py-2 text-left transition-colors ${sel ? ACTIVE_PILL : INACTIVE_PILL}`}
+                                            >
+                                                <span className="block text-sm font-semibold leading-tight">
+                                                    {q === 'standard' ? t('audioExport.qualityStandard', { defaultValue: 'Standard' }) : t('audioExport.qualityHd', { defaultValue: 'HD' })}
+                                                </span>
+                                                <span className={`block text-[11px] ${mutedDescClass(sel)}`}>
+                                                    {q === 'standard' ? t('audioExport.qualityStandardDesc', { defaultValue: 'быстрее, дешевле' }) : t('audioExport.qualityHdDesc', { defaultValue: 'чище звук' })}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="flex flex-wrap gap-2">
+                                    {GOOGLE_TTS_MODELS.map(m => {
+                                        const sel = googleModel === m.id;
+                                        const defLabel = m.id === GOOGLE_MODEL_GEMINI_31 ? 'Gemini 3.1 TTS' : 'Gemini 2.5 TTS';
+                                        const defDesc = m.id === GOOGLE_MODEL_GEMINI_31 ? 'выразительный' : 'надёжный';
+                                        return (
+                                            <button
+                                                key={m.id}
+                                                onClick={() => setGoogleModel(m.id)}
+                                                className={`rounded-lg border px-3 py-2 text-left transition-colors ${sel ? ACTIVE_PILL : INACTIVE_PILL}`}
+                                            >
+                                                <span className="block text-sm font-semibold leading-tight">{t(m.labelKey, { defaultValue: defLabel })}</span>
+                                                <span className={`block text-[11px] ${mutedDescClass(sel)}`}>{t(m.descKey, { defaultValue: defDesc })}</span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex w-full flex-col items-start gap-2">
+                            {labelRow(t('audioExport.voiceLabel', { defaultValue: 'Voice' }))}
+                            <div className="min-h-[7.5rem] w-full">
+                                <div className="flex flex-wrap gap-2">
+                                    {ttsProvider === 'openai'
+                                        ? AVAILABLE_VOICES.map(v => renderVoicePill(v.id, v.id.charAt(0).toUpperCase() + v.id.slice(1), t(v.descKey, { defaultValue: '' }), voice === v.id, () => setVoice(v.id)))
+                                        : GOOGLE_VOICE_OPTIONS.map(v => renderVoicePill(v.id, v.id, t(v.descKey, { defaultValue: v.descDefault }), googleVoice === v.id, () => setGoogleVoice(v.id)))}
+                                </div>
+                                <p className="mt-2 text-[11px] text-gray-400">
+                                    {ttsProvider === 'google'
+                                        ? t('audioExport.googleVoiceHint', { defaultValue: '4 мужских голоса — от молодого (слева) к старшему (справа). ▷ — прослушать.' })
+                                        : t('audioExport.openaiVoiceHint', { defaultValue: 'Голоса OpenAI. ▷ — прослушать.' })}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Sections — checkboxes */}
+                <div className="flex flex-col items-start gap-2 border-t border-gray-100 pt-5 dark:border-gray-800">
+                    {labelRow(t('audioExport.sectionsLabel', { defaultValue: 'Sections' }))}
+                    <div className="flex flex-wrap gap-2">
+                        {SECTIONS_CONFIG.map(s => {
+                            const on = sections.includes(s.id);
+                            const theme = SERMON_SECTION_COLORS[s.colorKey as keyof typeof SERMON_SECTION_COLORS];
+                            return (
+                                <button
+                                    key={s.id}
+                                    onClick={() => toggleSection(s.id)}
+                                    className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${on ? 'border-gray-300 bg-white text-gray-700 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200' : 'border-gray-200 bg-gray-50 text-gray-400 dark:border-gray-800 dark:bg-gray-800/40'}`}
+                                >
+                                    <span className={`flex h-4 w-4 items-center justify-center rounded border ${on ? 'border-orange-500 bg-orange-500 text-white' : 'border-gray-300 dark:border-gray-600'}`}>
+                                        {on && <Check className="h-3 w-3" />}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1.5">
+                                        <span className="h-2 w-2 rounded-full" style={{ background: theme.base }} />
+                                        {s.label}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    const renderVoicePill = (id: string, label: string, desc: string, selected: boolean, onSelect: () => void) => {
+        const isPlaying = playingPreview === id;
+        return (
+            <div key={id} className={`flex items-center overflow-hidden rounded-lg border text-sm font-medium transition-colors ${selected ? ACTIVE_PILL : INACTIVE_PILL}`}>
+                <button
+                    type="button"
+                    onClick={() => togglePreview(id)}
+                    className={`flex h-9 w-9 items-center justify-center transition-colors ${selected ? 'text-orange-600 dark:text-orange-300' : 'text-gray-400'} hover:bg-orange-50 dark:hover:bg-orange-900/20`}
+                    title={t('audioExport.previewVoice', { defaultValue: 'Preview voice' })}
+                    aria-label={`${t('audioExport.previewVoice', { defaultValue: 'Preview voice' })}: ${id}`}
+                >
+                    {isPlaying ? <Square className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current ml-0.5" />}
+                </button>
+                <button type="button" onClick={onSelect} className="flex items-center gap-2 py-2 pr-3 pl-1.5">
+                    <span className="font-semibold">{label}</span>
+                    {desc && <span className={`text-[11px] ${mutedDescClass(selected)}`}>{desc}</span>}
+                </button>
             </div>
         );
     };
 
     // ============================================================================
-    // Render: the two-panel working surface
+    // Render: thought / chunk cards
     // ============================================================================
-    const renderWorking = () => (
-        <div className="flex h-full min-h-0 flex-col gap-4">
-            {renderSettingsBar()}
-
-            <div className="flex min-h-0 flex-1 flex-col gap-4 md:flex-row">
-                {/* LEFT: original text */}
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-                    <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-gray-100 bg-white/90 px-5 py-3.5 backdrop-blur dark:border-gray-800 dark:bg-gray-900/90">
-                        <FileText className="h-4 w-4 text-gray-400" />
-                        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">
-                            {t('audioExport.originalText', { defaultValue: 'Original Text' })}
-                        </h3>
-                    </div>
-                    <div className="flex-1 space-y-6 overflow-y-auto p-5">
-                        {visibleSections.map((section) => {
-                            const thoughts = getThoughtsForSection(section.id);
-                            if (thoughts.length === 0) return null;
-                            const theme = SERMON_SECTION_COLORS[section.colorKey as keyof typeof SERMON_SECTION_COLORS];
-                            return (
-                                <div key={section.id} className="border-l-2 pl-4" style={{ borderColor: theme.base }}>
-                                    <h4 className={`mb-2 text-xs font-bold uppercase tracking-wider ${theme.text} dark:${theme.darkText}`}>
-                                        {section.label}
-                                    </h4>
-                                    <div className="space-y-3">
-                                        {thoughts.map((th) => (
-                                            <p key={th.id} className="text-sm leading-relaxed text-gray-600 dark:text-gray-400">{th.text}</p>
-                                        ))}
-                                    </div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </div>
-
-                {/* RIGHT: narration text + source toggle */}
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-                    <div className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-white/90 px-5 py-3 backdrop-blur dark:border-gray-800 dark:bg-gray-900/90">
-                        <div className="flex items-center gap-2">
-                            <AudioLines className="h-4 w-4 text-orange-500" />
-                            <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300">
-                                {t('audioExport.audioText', { defaultValue: 'For narration' })}
-                            </h3>
+    const renderOriginalCards = () => (
+        <div className="space-y-3">
+            {visibleSections.map(section => {
+                const thoughts = getThoughtsForSection(section.id);
+                if (thoughts.length === 0) return null;
+                const theme = SERMON_SECTION_COLORS[section.colorKey as keyof typeof SERMON_SECTION_COLORS];
+                return thoughts.map(th => (
+                    <div key={`${section.id}-${th.id}`} className="relative flex gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+                        <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl" style={{ background: theme.base }} />
+                        <div className="min-w-0 flex-1">
+                            <div className="mb-1 flex items-center gap-2">
+                                <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${theme.text} dark:${theme.darkText}`} style={{ backgroundColor: `${theme.base}24` }}>{section.label}</span>
+                                <span className="text-[10px] text-gray-400">{th.text.length} {charsLabel}</span>
+                            </div>
+                            <p className="text-sm leading-relaxed text-gray-700 dark:text-gray-300">{th.text}</p>
                         </div>
-                        {renderSourceToggle()}
                     </div>
+                ));
+            })}
+        </div>
+    );
 
-                    {/* Source hint */}
-                    <div className="border-b border-gray-100 px-5 py-2 dark:border-gray-800">
-                        <p className="text-xs text-gray-400 dark:text-gray-500">
-                            {mode === 'ai'
-                                ? t('audioExport.sourceAiHint', { defaultValue: 'References and numbers expanded, cleaned up for natural speech' })
-                                : t('audioExport.sourceRawHint', { defaultValue: 'Your exact text, only split into narration-sized parts' })}
-                        </p>
-                    </div>
-
-                    <div className="flex-1 space-y-4 overflow-y-auto p-5">
-                        {isLoading ? (
-                            <div className="flex h-full flex-col items-center justify-center text-center">
-                                <Loader2 className="mb-4 h-9 w-9 animate-spin text-orange-500" />
-                                <p className="font-medium text-gray-500 dark:text-gray-400">
-                                    {t('audioExport.optimizing', { defaultValue: 'Preparing...' })}
-                                </p>
-                            </div>
-                        ) : chunks.length === 0 ? (
-                            <div className="flex h-full flex-col items-center justify-center text-center text-gray-500">
-                                <Sparkles className="mb-4 h-12 w-12 text-gray-200 dark:text-gray-700" />
-                                <h4 className="mb-2 text-lg font-bold text-gray-900 dark:text-white">
-                                    {t('audioExport.readyToOptimize', { defaultValue: 'Transform to Audio' })}
-                                </h4>
-                                <p className="mb-6 max-w-xs text-sm">
-                                    {t('audioExport.prepareSubtitle', { defaultValue: 'Pick a source above, then prepare the text for narration.' })}
-                                </p>
-                                <button
-                                    onClick={() => prepareSource(mode)}
-                                    className="rounded-xl bg-orange-600 px-6 py-2.5 font-bold text-white shadow-sm transition-colors hover:bg-orange-700"
-                                >
-                                    {t('audioExport.prepareTextBtn', { defaultValue: 'Prepare Text for Audio' })}
-                                </button>
-                            </div>
-                        ) : (
-                            <>
-                                <p className="flex items-center gap-1.5 text-xs text-gray-400">
-                                    <Pencil className="h-3 w-3" />
-                                    {t('audioExport.editHint', { defaultValue: 'Tap a fragment to edit it' })}
-                                </p>
-                                {visibleSections.map((section) => {
-                                    const sectionChunks = chunks.filter(c => c.sectionId === section.id);
-                                    if (sectionChunks.length === 0) return null;
-                                    const theme = SERMON_SECTION_COLORS[section.colorKey as keyof typeof SERMON_SECTION_COLORS];
-                                    return (
-                                        <div key={section.id}>
-                                            <div className={`mb-3 pl-1 text-xs font-bold uppercase tracking-wider ${theme.text} dark:${theme.darkText}`}>
-                                                {section.label}
-                                            </div>
-                                            <div className="space-y-3">
-                                                {sectionChunks.map((chunk) => (
-                                                    <motion.div
-                                                        key={chunk.index}
-                                                        onClick={() => setEditingChunk(chunk)}
-                                                        whileHover={{ scale: 1.01 }}
-                                                        className="group relative cursor-pointer overflow-hidden rounded-xl border border-gray-100 bg-white p-4 shadow-sm transition-all hover:border-orange-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-orange-600"
-                                                    >
-                                                        <div className="absolute left-0 top-0 h-full w-1 bg-gray-100 transition-colors group-hover:bg-orange-400 dark:bg-gray-700" />
-                                                        <div className="mb-2 flex items-center justify-between gap-4">
-                                                            <span className="rounded bg-gray-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:bg-gray-900">
-                                                                {t('audioExport.chunkLabel', { defaultValue: 'Fragment {{index}}', index: chunk.index + 1 })}
-                                                            </span>
-                                                            <Pencil className="h-3.5 w-3.5 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 group-hover:text-orange-500" />
-                                                        </div>
-                                                        <p className="text-sm font-medium leading-relaxed text-gray-700 dark:text-gray-300">{chunk.text}</p>
-                                                    </motion.div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </>
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            {/* Footer action bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-gray-800 dark:bg-gray-800/50">
-                <div className="flex items-center gap-4 text-xs font-medium text-gray-500 dark:text-gray-400">
-                    <span className="flex items-center gap-1.5"><Activity className="h-3.5 w-3.5 text-orange-500" />{stats?.estimatedMinutes || 0} {t('audioExport.mins', { defaultValue: 'min audio' })}</span>
-                    <span className="h-3 w-px bg-gray-300 dark:bg-gray-600" />
-                    <span className="flex items-center gap-1.5"><FileText className="h-3.5 w-3.5 text-gray-400" />{stats?.totalChunks || 0} {t('audioExport.chunks', { defaultValue: 'chunks' })}</span>
-                </div>
-
-                <div className="flex items-center gap-2">
-                    {chunks.length > 0 && (
-                        <>
-                            <button
-                                onClick={() => copyToClipboard(chunks.map(c => c.text).join('\n\n'))}
-                                className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                            >
-                                {isCopied
-                                    ? <><Check className="h-4 w-4 text-green-500" /><span className="text-green-600 dark:text-green-400">{t('export.copied', { defaultValue: 'Copied' })}</span></>
-                                    : <><Copy className="h-4 w-4" />{t('export.copyAll', { defaultValue: 'Copy All' })}</>}
-                            </button>
-                            <button
-                                onClick={() => prepareSource(mode)}
-                                disabled={isLoading}
-                                className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                                title={t('audioExport.regenerate', { defaultValue: 'Re-generate' })}
-                            >
-                                <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-                                {t('audioExport.regenerate', { defaultValue: 'Re-generate' })}
-                            </button>
-                        </>
-                    )}
-                    <button
-                        onClick={handleGenerate}
-                        disabled={isLoading || chunks.length === 0}
-                        className="flex items-center gap-2 rounded-xl bg-orange-600 px-6 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-orange-700 disabled:opacity-50"
+    const renderChunkCards = (editable: boolean) => (
+        <div className="space-y-3">
+            {visibleSections.map(section => {
+                const sectionChunks = chunks.filter(c => c.sectionId === section.id);
+                if (sectionChunks.length === 0) return null;
+                const theme = SERMON_SECTION_COLORS[section.colorKey as keyof typeof SERMON_SECTION_COLORS];
+                return sectionChunks.map(chunk => (
+                    <div
+                        key={chunk.index}
+                        className={`group relative flex gap-3 rounded-xl border border-gray-100 bg-white p-4 shadow-sm transition dark:border-gray-800 dark:bg-gray-900 ${editable ? 'cursor-pointer hover:border-orange-300 hover:shadow-md dark:hover:border-orange-700' : ''}`}
+                        onClick={editable ? () => setEditingChunk(chunk) : undefined}
                     >
-                        {t('audioExport.generateAudioButton', { defaultValue: 'Generate Audio' })}
-                        <ArrowRight className="h-4 w-4" />
-                    </button>
-                </div>
-            </div>
+                        <div className="absolute left-0 top-0 h-full w-1 rounded-l-xl" style={{ background: theme.base }} />
+                        <div className="min-w-0 flex-1">
+                            <div className="mb-1 flex items-center gap-2">
+                                <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${theme.text} dark:${theme.darkText}`} style={{ backgroundColor: `${theme.base}24` }}>{section.label}</span>
+                                <span className="text-[10px] text-gray-400">{chunk.text.length} {charsLabel}</span>
+                                {editable && <Pencil className="ml-auto h-3.5 w-3.5 text-gray-300 opacity-0 transition group-hover:opacity-100 group-hover:text-orange-500" />}
+                            </div>
+                            <p className="text-sm font-medium leading-relaxed text-gray-800 dark:text-gray-200">{chunk.text}</p>
+                        </div>
+                    </div>
+                ));
+            })}
         </div>
     );
 
     // ============================================================================
-    // Render: generation progress
+    // Render: STEP 2 — source
+    // ============================================================================
+    const colHead = (icon: React.ReactNode, title: string, editBadge?: boolean) => (
+        <div className="mb-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            {icon}{title}
+            {editBadge && (
+                <span className="inline-flex items-center gap-1 rounded bg-orange-50 px-1.5 py-0.5 normal-case font-medium text-orange-600 dark:bg-orange-900/20 dark:text-orange-300">
+                    <Pencil className="h-3 w-3" />{t('audioExport.editable', { defaultValue: 'редактируемо' })}
+                </span>
+            )}
+        </div>
+    );
+
+    const renderStep2 = () => {
+        const sourceTabs: { id: AudioSourceMode; label: string; icon: React.ReactNode }[] = [
+            { id: 'raw', label: t('audioExport.sourceRaw', { defaultValue: 'Original as-is' }), icon: <FileText className="h-4 w-4" /> },
+            { id: 'ai', label: aiSourceLabel, icon: <Sparkles className="h-4 w-4" /> },
+        ];
+        const availTabs = ttsProvider === 'google' ? sourceTabs.filter(s => s.id === 'raw') : sourceTabs;
+
+        const loadingPanel = (
+            <div className="flex h-72 flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 text-center dark:border-gray-700">
+                <Loader2 className="mb-4 h-9 w-9 animate-spin text-orange-500" />
+                <p className="font-medium text-gray-500 dark:text-gray-400">{t('audioExport.optimizing', { defaultValue: 'Preparing...' })}</p>
+            </div>
+        );
+
+        return (
+            <div className="space-y-4">
+                <div className="flex flex-col items-start gap-2">
+                    {labelRow(t('audioExport.sourceTitle', { defaultValue: 'Источник текста для озвучки' }))}
+                    <div className="flex flex-wrap items-center gap-2">
+                        {availTabs.map(s => {
+                            const sel = mode === s.id;
+                            return (
+                                <button
+                                    key={s.id}
+                                    onClick={() => selectSource(s.id)}
+                                    disabled={isLoading}
+                                    className={`inline-flex items-center gap-2 rounded-lg border px-3.5 py-2 text-sm font-semibold transition-colors disabled:opacity-60 ${sel ? ACTIVE_PILL : INACTIVE_PILL}`}
+                                >
+                                    {s.icon}{s.label}
+                                </button>
+                            );
+                        })}
+                        {ttsProvider === 'google' && (
+                            <span className="ml-1 text-[11px] text-gray-400">{t('audioExport.aiOpenaiOnly', { defaultValue: 'AI-оптимизация — только для OpenAI' })}</span>
+                        )}
+                    </div>
+                </div>
+
+                <div className="flex items-start gap-2 rounded-lg bg-orange-50/60 px-3 py-2 text-xs text-orange-700/90 dark:bg-orange-900/15 dark:text-orange-200/80">
+                    <Sparkles className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                    <span>{mode === 'ai'
+                        ? t('audioExport.sourceAiHint2', { defaultValue: 'Слева — оригинал как есть, справа — AI-оптимизация. Правую колонку можно править по мыслям. Сравнивай рядом.' })
+                        : t('audioExport.sourceRawHint2', { defaultValue: 'Точный текст проповеди по мыслям, без изменений. Править нечего — только просмотр.' })}
+                    </span>
+                </div>
+
+                {mode === 'raw' ? (
+                    <div className="max-h-[calc(95vh-360px)] min-h-[16rem] overflow-y-auto pr-1">
+                        {isLoading ? loadingPanel : renderChunkCards(false)}
+                    </div>
+                ) : (
+                    <div className="grid max-h-[calc(95vh-360px)] min-h-[16rem] gap-4 overflow-y-auto pr-1 md:grid-cols-2">
+                        <div>
+                            {colHead(<FileText className="h-3.5 w-3.5" />, t('audioExport.originalText', { defaultValue: 'Original' }))}
+                            {renderOriginalCards()}
+                        </div>
+                        <div>
+                            {colHead(<Sparkles className="h-3.5 w-3.5" />, aiSourceLabel, chunks.length > 0)}
+                            {isLoading ? loadingPanel : chunks.length > 0 ? renderChunkCards(true) : (
+                                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 px-4 py-12 text-center dark:border-gray-700">
+                                    <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 dark:bg-orange-900/20">
+                                        <Sparkles className="h-5 w-5 text-orange-500" />
+                                    </div>
+                                    <p className="mb-4 max-w-[16rem] text-sm text-gray-500 dark:text-gray-400">
+                                        {t('audioExport.aiEmpty', { defaultValue: 'Оптимизированного текста ещё нет. Сгенерируйте — потом сможете править каждую мысль.' })}
+                                    </p>
+                                    <button
+                                        onClick={() => prepareSource('ai')}
+                                        disabled={isLoading}
+                                        className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-orange-700 disabled:opacity-50"
+                                    >
+                                        <Sparkles className="h-4 w-4" />
+                                        {t('audioExport.generateOptimized', { defaultValue: 'Сгенерировать оптимизированный текст' })}
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    // ============================================================================
+    // Render: STEP 3 — preview (3 section blocks, read-only)
+    // ============================================================================
+    const renderStep3 = () => {
+        const notReady = mode === 'ai' && chunks.length === 0;
+        const voiceLabel = ttsProvider === 'google' ? googleVoice : voice.charAt(0).toUpperCase() + voice.slice(1);
+        const modelLabel = ttsProvider === 'google'
+            ? (googleModel === GOOGLE_MODEL_GEMINI_31 ? 'Gemini 3.1 TTS' : 'Gemini 2.5 TTS')
+            : (quality === 'hd' ? t('audioExport.qualityHd', { defaultValue: 'HD' }) : t('audioExport.qualityStandard', { defaultValue: 'Standard' }));
+        const providerLabel = ttsProvider === 'google' ? t('audioExport.providerGoogle', { defaultValue: 'Google' }) : t('audioExport.providerOpenai', { defaultValue: 'OpenAI' });
+        const srcLabel = mode === 'ai' ? aiSourceLabel : t('audioExport.sourceRaw', { defaultValue: 'Original as-is' });
+        // Estimate from the chunks actually in the current selection (not stale stats).
+        const visibleChunks = chunks.filter(c => sections.includes(c.sectionId));
+        const minutes = visibleChunks.length ? Math.max(1, Math.ceil(visibleChunks.reduce((a, c) => a + c.text.length, 0) / 800)) : 0;
+
+        return (
+            <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-xs font-medium text-gray-500 dark:border-gray-800 dark:bg-gray-800/50 dark:text-gray-400">
+                    <span className="inline-flex items-center gap-1.5"><Cpu className="h-3.5 w-3.5 text-orange-500" />{providerLabel} · {modelLabel}</span>
+                    <span className="h-3 w-px bg-gray-300 dark:bg-gray-600" />
+                    <span className="inline-flex items-center gap-1.5"><Mic className="h-3.5 w-3.5 text-orange-500" />{voiceLabel}</span>
+                    <span className="h-3 w-px bg-gray-300 dark:bg-gray-600" />
+                    <span className="inline-flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5 text-orange-500" />{srcLabel}</span>
+                    <span className="h-3 w-px bg-gray-300 dark:bg-gray-600" />
+                    <span className="inline-flex items-center gap-1.5"><Layers className="h-3.5 w-3.5" /><b className="text-gray-800 dark:text-gray-200">{visibleSections.length}</b> {t('audioExport.sectionsCount', { defaultValue: 'секции' })}</span>
+                    <span className="h-3 w-px bg-gray-300 dark:bg-gray-600" />
+                    <span className="inline-flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" />≈ {minutes} {t('audioExport.mins', { defaultValue: 'мин' })}</span>
+                </div>
+
+                {notReady ? (
+                    <div className="flex h-72 flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 text-center dark:border-gray-700">
+                        <Sparkles className="mb-3 h-8 w-8 text-gray-300" />
+                        <p className="max-w-sm text-sm text-gray-500 dark:text-gray-400">{t('audioExport.previewNotReady', { defaultValue: 'Сначала сгенерируйте оптимизированный текст на шаге «Источник».' })}</p>
+                    </div>
+                ) : (
+                    <>
+                        <p className="flex items-center gap-1.5 text-xs text-gray-400"><Eye className="h-3 w-3" />{t('audioExport.previewHint', { defaultValue: 'Финальный текст одним блоком на каждую секцию — только просмотр. Правки делаются на шаге «Источник».' })}</p>
+                        <div className="max-h-[calc(95vh-360px)] min-h-[16rem] space-y-3 overflow-y-auto pr-1">
+                            {visibleSections.map(section => {
+                                const text = chunks.filter(c => c.sectionId === section.id).map(c => c.text.trim()).filter(Boolean).join('\n\n');
+                                if (!text) return null;
+                                const theme = SERMON_SECTION_COLORS[section.colorKey as keyof typeof SERMON_SECTION_COLORS];
+                                return (
+                                    <div key={section.id} className="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800">
+                                        <div className="flex items-center gap-2 border-b border-gray-100 px-4 py-2.5 dark:border-gray-800" style={{ backgroundColor: `${theme.base}1f` }}>
+                                            <span className={`text-xs font-bold uppercase tracking-wider ${theme.text} dark:${theme.darkText}`}>{section.label}</span>
+                                            <span className="ml-auto text-[10px] text-gray-400 dark:text-gray-500">{text.length} {charsLabel}</span>
+                                        </div>
+                                        <p className="whitespace-pre-wrap px-5 py-4 text-sm leading-relaxed text-gray-800 dark:text-gray-200">{text}</p>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </>
+                )}
+            </div>
+        );
+    };
+
+    // ============================================================================
+    // Render: STEP 4 — generation progress + success
     // ============================================================================
     const renderGenerating = () => {
         const percent = Math.round(genProgress.percent ?? (genProgress.current / (genProgress.total || 1)) * 100) || 0;
@@ -716,12 +913,8 @@ export default function StepByStepWizard({
                         <AudioLines className="h-10 w-10 animate-pulse text-white" />
                     </div>
                 </div>
-                <h2 className="mb-2 text-2xl font-bold text-gray-900 dark:text-white">
-                    {t('audioExport.generatingAudio', { defaultValue: 'Generating Audio' })}
-                </h2>
-                <p className="mb-8 max-w-md text-gray-500 dark:text-gray-400">
-                    {t('audioExport.generatingDesc', { defaultValue: 'Synthesizing high-quality speech...' })}
-                </p>
+                <h2 className="mb-2 text-2xl font-bold text-gray-900 dark:text-white">{t('audioExport.generatingAudio', { defaultValue: 'Generating Audio' })}</h2>
+                <p className="mb-8 max-w-md text-gray-500 dark:text-gray-400">{t('audioExport.generatingDesc', { defaultValue: 'Synthesizing high-quality speech...' })}</p>
                 <div className="w-full max-w-md">
                     <div className="mb-2 flex justify-between text-xs font-bold uppercase tracking-wider text-gray-500">
                         <span>{t('audioExport.processingFragments', { defaultValue: 'Processing fragments' })}</span>
@@ -746,9 +939,6 @@ export default function StepByStepWizard({
         );
     };
 
-    // ============================================================================
-    // Render: success
-    // ============================================================================
     const renderSuccess = () => {
         if (!generatedFile) return null;
         return (
@@ -757,12 +947,8 @@ export default function StepByStepWizard({
                     <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-green-100 ring-8 ring-green-50 dark:bg-green-900/30 dark:ring-green-900/10">
                         <Check className="h-10 w-10 text-green-600 dark:text-green-400" />
                     </div>
-                    <h2 className="mb-2 text-2xl font-bold text-gray-900 dark:text-white">
-                        {t('audioExport.successTitle', { defaultValue: 'Audio Ready!' })}
-                    </h2>
-                    <p className="mb-8 text-gray-500 dark:text-gray-400">
-                        {t('audioExport.successDesc', { defaultValue: 'Your file has been generated and downloaded.' })}
-                    </p>
+                    <h2 className="mb-2 text-2xl font-bold text-gray-900 dark:text-white">{t('audioExport.successTitle', { defaultValue: 'Audio Ready!' })}</h2>
+                    <p className="mb-8 text-gray-500 dark:text-gray-400">{t('audioExport.successDesc', { defaultValue: 'Your file has been generated and downloaded.' })}</p>
                     <div className="mb-6 w-full rounded-xl border border-gray-100 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800">
                         <audio controls src={generatedFile.url} className="h-10 w-full" controlsList="nodownload" />
                     </div>
@@ -776,14 +962,9 @@ export default function StepByStepWizard({
                     </a>
                     <div className="flex w-full gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-left dark:border-amber-800 dark:bg-amber-900/20">
                         <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
-                        <p className="text-sm text-amber-800 dark:text-amber-200">
-                            {t('audioExport.closeWarning', { defaultValue: 'This file is saved locally. Closing this window will remove access to the playback.' })}
-                        </p>
+                        <p className="text-sm text-amber-800 dark:text-amber-200">{t('audioExport.closeWarning', { defaultValue: 'This file is saved locally. Closing this window will remove access to the playback.' })}</p>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="mt-8 text-sm font-medium text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200"
-                    >
+                    <button onClick={onClose} className="mt-8 text-sm font-medium text-gray-400 transition-colors hover:text-gray-600 dark:hover:text-gray-200">
                         {t('buttons.close', { defaultValue: 'Close' })}
                     </button>
                 </div>
@@ -792,12 +973,66 @@ export default function StepByStepWizard({
     };
 
     // ============================================================================
+    // Render: wizard footer
+    // ============================================================================
+    const renderFooter = () => {
+        if (step === 1) {
+            return (
+                <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400">{t('audioExport.stepCount', { defaultValue: 'Шаг {{n}} из 3', n: 1 })}</span>
+                    <button
+                        onClick={goToStep2}
+                        disabled={sections.length === 0}
+                        className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-orange-700 disabled:opacity-50"
+                    >
+                        {t('audioExport.nextSource', { defaultValue: 'Далее: источник текста' })}<ArrowRight className="h-4 w-4" />
+                    </button>
+                </div>
+            );
+        }
+        if (step === 2) {
+            return (
+                <div className="flex items-center justify-between">
+                    <button onClick={() => setStep(1)} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">
+                        <ArrowLeft className="h-4 w-4" />{t('buttons.back', { defaultValue: 'Назад' })}
+                    </button>
+                    <button
+                        onClick={() => setStep(3)}
+                        disabled={isLoading}
+                        className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-orange-700 disabled:opacity-50"
+                    >
+                        {t('audioExport.nextPreview', { defaultValue: 'Далее: предпросмотр' })}<ArrowRight className="h-4 w-4" />
+                    </button>
+                </div>
+            );
+        }
+        // step 3
+        return (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <button onClick={() => setStep(2)} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700">
+                    <ArrowLeft className="h-4 w-4" />{t('buttons.back', { defaultValue: 'Назад' })}
+                </button>
+                <button
+                    onClick={handleGenerate}
+                    disabled={isLoading || chunks.length === 0}
+                    className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-orange-700 disabled:opacity-50"
+                >
+                    <AudioLines className="h-4 w-4" />{t('audioExport.generateAudioButton', { defaultValue: 'Generate Audio' })}
+                </button>
+            </div>
+        );
+    };
+
+    // ============================================================================
     // Main wrapper
     // ============================================================================
+    if (view === 'generating') return <div className="flex h-full min-h-0 flex-1 flex-col">{renderGenerating()}</div>;
+    if (view === 'success') return <div className="flex h-full min-h-0 flex-1 flex-col">{renderSuccess()}</div>;
+
     return (
         <div className="flex h-full min-h-0 flex-1 flex-col">
             <AnimatePresence>
-                {error && view === 'working' && (
+                {error && (
                     <motion.div
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -810,11 +1045,17 @@ export default function StepByStepWizard({
                 )}
             </AnimatePresence>
 
-            <div className="relative min-h-0 flex-1">
-                {view === 'working' && renderWorking()}
-                {view === 'generating' && renderGenerating()}
-                {view === 'success' && renderSuccess()}
+            {/* Step body (the stepper lives in the modal header now) */}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+                <div className={`w-full ${step === 1 ? 'mx-auto flex min-h-full max-w-3xl flex-col justify-center py-4' : 'py-2'}`}>
+                    {step === 1 && renderStep1()}
+                    {step === 2 && renderStep2()}
+                    {step === 3 && renderStep3()}
+                </div>
             </div>
+
+            {/* Footer */}
+            <div className="mt-4 flex-shrink-0 border-t border-gray-100 pt-4 dark:border-gray-800">{renderFooter()}</div>
 
             {!!editingChunk && (
                 <ChunkEditorModal

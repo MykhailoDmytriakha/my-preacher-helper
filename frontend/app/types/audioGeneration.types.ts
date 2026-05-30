@@ -12,11 +12,61 @@
 /** Available TTS voice options */
 export type TTSVoice = 'onyx' | 'echo' | 'ash';
 
+/** Available TTS providers */
+export type TTSProvider = 'openai' | 'google';
+
+/** Hardcoded Google/Gemini TTS models for the audio export experiment */
+export type GoogleTTSModel = 'gemini-3.1-flash-tts-preview' | 'gemini-2.5-flash-preview-tts';
+
+/** Hardcoded Gemini TTS prebuilt voice names */
+export type GoogleTTSVoice =
+    | 'Zephyr'
+    | 'Puck'
+    | 'Charon'
+    | 'Kore'
+    | 'Fenrir'
+    | 'Leda'
+    | 'Orus'
+    | 'Aoede'
+    | 'Callirrhoe'
+    | 'Autonoe'
+    | 'Enceladus'
+    | 'Iapetus'
+    | 'Umbriel'
+    | 'Algieba'
+    | 'Despina'
+    | 'Erinome'
+    | 'Algenib'
+    | 'Rasalgethi'
+    | 'Laomedeia'
+    | 'Achernar'
+    | 'Alnilam'
+    | 'Schedar'
+    | 'Gacrux'
+    | 'Pulcherrima'
+    | 'Achird'
+    | 'Zubenelgenubi'
+    | 'Vindemiatrix'
+    | 'Sadachbia'
+    | 'Sadaltager'
+    | 'Sulafat';
+
 /** Voice metadata for UI display */
 export interface VoiceOption {
     id: TTSVoice;
     nameKey: string;        // i18n key, e.g., 'audioExport.voiceOnyx'
     descKey: string;        // i18n key for short description, e.g., 'audioExport.voiceDeep'
+}
+
+export interface GoogleTTSModelOption {
+    id: GoogleTTSModel;
+    labelKey: string;
+    descKey: string;
+}
+
+export interface GoogleVoiceOption {
+    id: GoogleTTSVoice;
+    tone: string;
 }
 
 /** Audio quality levels */
@@ -48,6 +98,9 @@ export type SermonSection = 'introduction' | 'mainPart' | 'conclusion';
 /** Section selection options */
 export type SectionSelection = 'all' | SermonSection;
 
+/** Canonical sermon section keys, in narration order. Single source of truth. */
+export const SERMON_SECTIONS: SermonSection[] = ['introduction', 'mainPart', 'conclusion'];
+
 // ============================================================================
 // Audio Chunk (Persisted to Firestore)
 // ============================================================================
@@ -72,8 +125,10 @@ export interface AudioChunk {
  * Saved to sermon.audioMetadata for cache validation.
  */
 export interface AudioMetadata {
+    /** TTS provider used for generation */
+    provider?: TTSProvider;
     /** Voice used for generation */
-    voice: TTSVoice;
+    voice: TTSVoice | GoogleTTSVoice;
     /** Model used for TTS */
     model: string;
     /** ISO timestamp of last generation */
@@ -92,12 +147,16 @@ export interface AudioMetadata {
 
 /** Request body for POST /api/sermons/[id]/audio */
 export interface GenerateAudioRequest {
+    /** Provider to use for TTS generation */
+    provider?: TTSProvider;
     /** Voice to use for TTS */
-    voice: TTSVoice;
+    voice: TTSVoice | GoogleTTSVoice;
     /** Audio quality (maps to TTS model) */
     quality: AudioQuality;
-    /** Sections to include (default: all) */
-    sections?: SectionSelection;
+    /** Explicit model override, used by Google/Gemini TTS */
+    model?: string;
+    /** Sections to include (default: all) — single key, 'all', or an array of keys */
+    sections?: SectionSelection | SermonSection[];
     /** Force regenerate chunks even if cached */
     forceRegenerate?: boolean;
 }
@@ -162,8 +221,10 @@ export interface SpeechOptimizationResult {
 
 /** Options for TTS generation */
 export interface TTSGenerationOptions {
+    /** TTS provider */
+    provider?: TTSProvider;
     /** Voice to use */
-    voice: TTSVoice;
+    voice: TTSVoice | GoogleTTSVoice;
     /** Model to use (derived from quality) */
     model: string;
     /** Audio format */
@@ -178,6 +239,8 @@ export interface TTSChunkResult {
     index: number;
     /** Duration in seconds (approximate) */
     durationSeconds: number;
+    /** MIME type of the returned audio blob */
+    mimeType?: string;
 }
 
 // ============================================================================
@@ -186,12 +249,18 @@ export interface TTSChunkResult {
 
 /** State of the audio export modal */
 export interface AudioExportModalState {
+    /** Selected TTS provider */
+    provider: TTSProvider;
     /** Whether modal is open */
     isOpen: boolean;
     /** Selected voice */
     voice: TTSVoice;
     /** Selected quality */
     quality: AudioQuality;
+    /** Selected Google/Gemini TTS model */
+    googleModel: GoogleTTSModel;
+    /** Selected Google/Gemini voice */
+    googleVoice: GoogleTTSVoice;
     /** Selected sections */
     sections: SectionSelection;
     /** Force regenerate flag */
@@ -204,9 +273,12 @@ export interface AudioExportModalState {
 
 /** Initial state for audio export modal */
 export const INITIAL_AUDIO_EXPORT_STATE: AudioExportModalState = {
+    provider: 'openai',
     isOpen: false,
     voice: 'onyx',
     quality: 'standard',
+    googleModel: 'gemini-3.1-flash-tts-preview',
+    googleVoice: 'Kore',
     sections: 'all',
     forceRegenerate: false,
     progress: null,
@@ -224,6 +296,52 @@ export const MAX_CHUNK_SIZE = 4000;
 export const AVAILABLE_VOICES: VoiceOption[] = [
     { id: 'onyx', nameKey: 'audioExport.voiceOnyx', descKey: 'audioExport.voiceDeep' },
     { id: 'echo', nameKey: 'audioExport.voiceEcho', descKey: 'audioExport.voiceNatural' },
+];
+
+export const GOOGLE_TTS_MODELS: GoogleTTSModelOption[] = [
+    {
+        id: 'gemini-3.1-flash-tts-preview',
+        labelKey: 'audioExport.googleModelGemini31',
+        descKey: 'audioExport.googleModelGemini31Desc',
+    },
+    {
+        id: 'gemini-2.5-flash-preview-tts',
+        labelKey: 'audioExport.googleModelGemini25',
+        descKey: 'audioExport.googleModelGemini25Desc',
+    },
+];
+
+export const GOOGLE_TTS_VOICES: GoogleVoiceOption[] = [
+    { id: 'Kore', tone: 'Firm' },
+    { id: 'Puck', tone: 'Upbeat' },
+    { id: 'Charon', tone: 'Informative' },
+    { id: 'Aoede', tone: 'Breezy' },
+    { id: 'Algieba', tone: 'Smooth' },
+    { id: 'Sulafat', tone: 'Warm' },
+    { id: 'Achird', tone: 'Friendly' },
+    { id: 'Gacrux', tone: 'Mature' },
+    { id: 'Schedar', tone: 'Even' },
+    { id: 'Vindemiatrix', tone: 'Gentle' },
+    { id: 'Iapetus', tone: 'Clear' },
+    { id: 'Algenib', tone: 'Gravelly' },
+    { id: 'Zephyr', tone: 'Bright' },
+    { id: 'Fenrir', tone: 'Excitable' },
+    { id: 'Leda', tone: 'Youthful' },
+    { id: 'Orus', tone: 'Firm' },
+    { id: 'Callirrhoe', tone: 'Easy-going' },
+    { id: 'Autonoe', tone: 'Bright' },
+    { id: 'Enceladus', tone: 'Breathy' },
+    { id: 'Umbriel', tone: 'Easy-going' },
+    { id: 'Despina', tone: 'Smooth' },
+    { id: 'Erinome', tone: 'Clear' },
+    { id: 'Rasalgethi', tone: 'Informative' },
+    { id: 'Laomedeia', tone: 'Upbeat' },
+    { id: 'Achernar', tone: 'Soft' },
+    { id: 'Alnilam', tone: 'Firm' },
+    { id: 'Pulcherrima', tone: 'Forward' },
+    { id: 'Zubenelgenubi', tone: 'Casual' },
+    { id: 'Sadachbia', tone: 'Lively' },
+    { id: 'Sadaltager', tone: 'Knowledgeable' },
 ];
 
 /** Steps in the audio generation wizard */

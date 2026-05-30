@@ -30,6 +30,11 @@ const openai = new OpenAI({
 const TTS_MODEL_STANDARD = process.env.OPENAI_TTS_MODEL_STANDARD || 'gpt-4o-mini-tts';
 const TTS_MODEL_HD = process.env.OPENAI_TTS_MODEL_HD || 'tts-1';
 
+const GOOGLE_TTS_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
+const GOOGLE_TTS_SAMPLE_RATE = 24000;
+const GOOGLE_TTS_CHANNELS = 1;
+const GOOGLE_TTS_BYTES_PER_SAMPLE = 2;
+
 // ============================================================================
 // Public API
 // ============================================================================
@@ -53,6 +58,10 @@ export async function generateChunkAudio(
     text: string,
     options: TTSGenerationOptions
 ): Promise<TTSChunkResult> {
+    if (options.provider === 'google') {
+        return generateGeminiChunkAudio(text, options);
+    }
+
     // Validate text length
     if (text.length > 4096) {
         throw new Error(`Text exceeds maximum length of 4096 characters (got ${text.length})`);
@@ -74,7 +83,108 @@ export async function generateChunkAudio(
         audioBlob,
         index: 0, // Will be set by caller
         durationSeconds: estimateDuration(text),
+        mimeType,
     };
+}
+
+async function generateGeminiChunkAudio(
+    text: string,
+    options: TTSGenerationOptions
+): Promise<TTSChunkResult> {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+        throw new Error('GEMINI_API_KEY is required for Google TTS generation');
+    }
+
+    const response = await fetch(`${GOOGLE_TTS_ENDPOINT}/${options.model}:generateContent`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': apiKey,
+        },
+        body: JSON.stringify({
+            contents: [
+                {
+                    parts: [
+                        {
+                            text,
+                        },
+                    ],
+                },
+            ],
+            generationConfig: {
+                responseModalities: ['AUDIO'],
+                speechConfig: {
+                    voiceConfig: {
+                        prebuiltVoiceConfig: {
+                            voiceName: options.voice,
+                        },
+                    },
+                },
+            },
+        }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Google TTS failed (${response.status}): ${errorText || response.statusText}`);
+    }
+
+    const payload = await response.json();
+    const part = payload?.candidates?.[0]?.content?.parts?.find(
+        (candidatePart: { inlineData?: { data?: string }; inline_data?: { data?: string } }) =>
+            candidatePart.inlineData?.data || candidatePart.inline_data?.data
+    );
+    const base64Audio = part?.inlineData?.data || part?.inline_data?.data;
+
+    if (!base64Audio) {
+        throw new Error('Google TTS response did not include audio data');
+    }
+
+    const pcmBuffer = Buffer.from(base64Audio, 'base64');
+    const audioBlob = pcm16ToWavBlob(pcmBuffer);
+
+    return {
+        audioBlob,
+        index: 0,
+        durationSeconds: estimateDuration(text),
+        mimeType: 'audio/wav',
+    };
+}
+
+function pcm16ToWavBlob(
+    pcmData: Uint8Array,
+    sampleRate: number = GOOGLE_TTS_SAMPLE_RATE,
+    channels: number = GOOGLE_TTS_CHANNELS,
+    bytesPerSample: number = GOOGLE_TTS_BYTES_PER_SAMPLE
+): Blob {
+    const dataSize = pcmData.byteLength;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+
+    writeAscii(view, 0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeAscii(view, 8, 'WAVE');
+    writeAscii(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, channels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * channels * bytesPerSample, true);
+    view.setUint16(32, channels * bytesPerSample, true);
+    view.setUint16(34, bytesPerSample * 8, true);
+    writeAscii(view, 36, 'data');
+    view.setUint32(40, dataSize, true);
+
+    new Uint8Array(buffer, 44).set(pcmData);
+
+    return new Blob([buffer], { type: 'audio/wav' });
+}
+
+function writeAscii(view: DataView, offset: number, value: string): void {
+    for (let i = 0; i < value.length; i++) {
+        view.setUint8(offset + i, value.charCodeAt(i));
+    }
 }
 
 /**
