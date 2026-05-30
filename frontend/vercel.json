@@ -25,6 +25,12 @@
     "app/api/sermons/[id]/plan/route.ts": {
       "maxDuration": 60
     },
+    "app/api/sermons/[id]/audio/generate/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/sermons/[id]/audio/optimize/route.ts": {
+      "maxDuration": 60
+    },
     "app/api/studies/transcribe/route.ts": {
       "maxDuration": 60
     },

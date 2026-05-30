@@ -1,9 +1,12 @@
+/**
+ * @jest-environment node
+ */
 import { ReadableStream } from 'node:stream/web';
 import { TextDecoder, TextEncoder } from 'util';
 
 import { generateChunkAudio, getTTSModel } from '@/api/clients/tts.client';
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { concatenateAudioBlobs, insertSilenceBetweenBlobs } from '@/utils/audioConcat';
+import { concatenateAudioBlobs, createSilenceBlob } from '@/utils/audioConcat';
 
 globalThis.ReadableStream = globalThis.ReadableStream || ReadableStream;
 globalThis.TextEncoder = globalThis.TextEncoder || (TextEncoder as typeof globalThis.TextEncoder);
@@ -75,11 +78,12 @@ jest.mock('@/config/firebaseAdminConfig', () => ({
 jest.mock('@/api/clients/tts.client', () => ({
   generateChunkAudio: jest.fn(),
   getTTSModel: jest.fn(),
+  splitTextIntoChunks: jest.fn((text: string) => [text]),
 }));
 
 jest.mock('@/utils/audioConcat', () => ({
   concatenateAudioBlobs: jest.fn(),
-  insertSilenceBetweenBlobs: jest.fn(),
+  createSilenceBlob: jest.fn(),
 }));
 
 const { NextRequest } = require('next/server') as {
@@ -143,7 +147,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     });
 
     (getTTSModel as jest.Mock).mockReturnValue('gpt-audio-test');
-    (insertSilenceBetweenBlobs as jest.Mock).mockImplementation(async (blobs: Blob[]) => blobs);
+    (createSilenceBlob as jest.Mock).mockReturnValue(new Blob([new Uint8Array(8)], { type: 'audio/wav' }));
     (concatenateAudioBlobs as jest.Mock).mockResolvedValue(createFinalAudioBlob(400_000));
 
     mockGet.mockResolvedValue({
@@ -249,19 +253,19 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: 'No chunks found for section: conclusion',
+      error: 'No chunks found for sections: conclusion',
     });
   });
 
   it('streams progress, chunk data, and completion for a successful generation', async () => {
     (generateChunkAudio as jest.Mock)
       .mockResolvedValueOnce({
-        audioBlob: new Blob(['chunk-1'], { type: 'audio/wav' }),
+        audioBlob: new Blob([new Uint8Array(250_000)], { type: 'audio/mpeg' }),
         index: 0,
         durationSeconds: 1,
       })
       .mockResolvedValueOnce({
-        audioBlob: new Blob(['chunk-2'], { type: 'audio/wav' }),
+        audioBlob: new Blob([new Uint8Array(250_000)], { type: 'audio/mpeg' }),
         index: 1,
         durationSeconds: 1,
       });
@@ -285,26 +289,22 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
       1,
       'Introduction chunk text.',
       {
+        provider: 'openai',
         voice: 'ash',
         model: 'gpt-audio-test',
-        format: 'wav',
+        format: 'mp3',
       }
     );
     expect(generateChunkAudio).toHaveBeenNthCalledWith(
       2,
       'Main part chunk text.',
       {
+        provider: 'openai',
         voice: 'ash',
         model: 'gpt-audio-test',
-        format: 'wav',
+        format: 'mp3',
       }
     );
-    expect(insertSilenceBetweenBlobs).toHaveBeenCalledWith(
-      expect.arrayContaining([expect.any(Blob), expect.any(Blob)]),
-      500
-    );
-    expect(concatenateAudioBlobs).toHaveBeenCalled();
-
     expect(events).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -313,11 +313,6 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
           total: 2,
           percent: 40,
           status: 'Generating chunk 1/2...',
-        }),
-        expect.objectContaining({
-          type: 'progress',
-          percent: 82,
-          status: 'Adding pauses...',
         }),
         expect.objectContaining({
           type: 'progress',
@@ -331,7 +326,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
         }),
         expect.objectContaining({
           type: 'download_complete',
-          filename: 'grace-peace-audio.wav',
+          filename: 'grace-peace-audio.mp3',
           audioUrl: '',
         }),
       ])
@@ -346,6 +341,127 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
         'audioMetadata.voice': 'ash',
         'audioMetadata.model': 'gpt-audio-test',
         'audioMetadata.lastGenerated': expect.any(String),
+      })
+    );
+  });
+
+  it('groups saved chunks into major sermon sections for Google Gemini TTS', async () => {
+    mockGet.mockResolvedValueOnce({
+      exists: true,
+      id: 'sermon-1',
+      data: () => ({
+        id: 'sermon-1',
+        title: 'Grace & Peace',
+        userId: 'user-1',
+        audioChunks: [
+          {
+            text: 'Intro chunk.',
+            sectionId: 'introduction',
+            createdAt: '2026-02-27T00:00:00.000Z',
+            index: 0,
+          },
+          {
+            text: 'Main chunk one.',
+            sectionId: 'mainPart',
+            createdAt: '2026-02-27T00:00:00.000Z',
+            index: 1,
+          },
+          {
+            text: 'Main chunk two.',
+            sectionId: 'mainPart',
+            createdAt: '2026-02-27T00:00:00.000Z',
+            index: 2,
+          },
+          {
+            text: 'Conclusion chunk.',
+            sectionId: 'conclusion',
+            createdAt: '2026-02-27T00:00:00.000Z',
+            index: 3,
+          },
+        ],
+      }),
+    });
+    (generateChunkAudio as jest.Mock)
+      .mockResolvedValueOnce({
+        audioBlob: new Blob([new Uint8Array(10)], { type: 'audio/wav' }),
+        index: 0,
+        durationSeconds: 1,
+        mimeType: 'audio/wav',
+      })
+      .mockResolvedValueOnce({
+        audioBlob: new Blob([new Uint8Array(10)], { type: 'audio/wav' }),
+        index: 1,
+        durationSeconds: 1,
+        mimeType: 'audio/wav',
+      })
+      .mockResolvedValueOnce({
+        audioBlob: new Blob([new Uint8Array(10)], { type: 'audio/wav' }),
+        index: 2,
+        durationSeconds: 1,
+        mimeType: 'audio/wav',
+      });
+
+    const response = await POST(
+      createRequest({
+        userId: 'user-1',
+        provider: 'google',
+        voice: 'Sulafat',
+        model: 'gemini-2.5-flash-preview-tts',
+        quality: 'standard',
+        sections: 'all',
+      }) as never,
+      { params: Promise.resolve({ id: 'sermon-1' }) }
+    );
+
+    const events = await readStreamEvents(response.body as ReadableStream<Uint8Array>);
+
+    expect(generateChunkAudio).toHaveBeenNthCalledWith(
+      1,
+      'Intro chunk.',
+      {
+        provider: 'google',
+        voice: 'Sulafat',
+        model: 'gemini-2.5-flash-preview-tts',
+        format: 'wav',
+      }
+    );
+    expect(generateChunkAudio).toHaveBeenNthCalledWith(
+      2,
+      'Main chunk one.\n\nMain chunk two.',
+      {
+        provider: 'google',
+        voice: 'Sulafat',
+        model: 'gemini-2.5-flash-preview-tts',
+        format: 'wav',
+      }
+    );
+    expect(generateChunkAudio).toHaveBeenNthCalledWith(
+      3,
+      'Conclusion chunk.',
+      {
+        provider: 'google',
+        voice: 'Sulafat',
+        model: 'gemini-2.5-flash-preview-tts',
+        format: 'wav',
+      }
+    );
+    expect(createSilenceBlob).toHaveBeenCalledWith(700, 24000, 1);
+    const mergedBlobs = (concatenateAudioBlobs as jest.Mock).mock.calls[0][0] as Blob[];
+    expect(mergedBlobs).toHaveLength(5);
+    expect(events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'download_complete',
+          filename: 'grace-peace-audio.wav',
+          mimeType: 'audio/wav',
+        }),
+      ])
+    );
+    expect(mockUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        'audioMetadata.provider': 'google',
+        'audioMetadata.voice': 'Sulafat',
+        'audioMetadata.model': 'gemini-2.5-flash-preview-tts',
       })
     );
   });
@@ -377,14 +493,17 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
       expect.arrayContaining([
         expect.objectContaining({
           type: 'download_complete',
-          filename: 'grace-peace-audio.wav',
+          filename: 'grace-peace-audio.mp3',
         }),
       ])
     );
   });
 
   it('sends an error event when generation fails inside the stream', async () => {
-    (generateChunkAudio as jest.Mock).mockRejectedValueOnce(new Error('TTS failed'));
+    // Chunks are generated in parallel, so make every chunk fail to keep the
+    // stream deterministic: a single failing chunk could otherwise race with a
+    // sibling chunk's progress event.
+    (generateChunkAudio as jest.Mock).mockRejectedValue(new Error('TTS failed'));
 
     const response = await POST(
       createRequest({

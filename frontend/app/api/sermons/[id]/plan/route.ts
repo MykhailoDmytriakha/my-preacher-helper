@@ -8,6 +8,22 @@ import { getThoughtsForOutlinePoint } from '@/utils/thoughtOrdering';
 import { generatePlanForSection, generatePlanPointContent, PlanStyle } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
+export const dynamic = 'force-dynamic';
+
+const NO_STORE_HEADERS = {
+  'Cache-Control': 'no-store, no-cache, max-age=0, must-revalidate',
+  Pragma: 'no-cache',
+  Expires: '0',
+} as const;
+
+function jsonNoStore(body: unknown, init: ResponseInit = {}) {
+  const headers = new Headers(init.headers);
+  Object.entries(NO_STORE_HEADERS).forEach(([key, value]) => {
+    headers.set(key, value);
+  });
+  return NextResponse.json(body, { ...init, headers });
+}
+
 // Error message constants
 const ERROR_MESSAGES = {
   UNKNOWN_ERROR: 'Unknown error occurred',
@@ -37,7 +53,7 @@ export async function GET(
   // Validate section parameter - must be provided and valid
   if (!section) {
     console.log('Missing section parameter');
-    return NextResponse.json(
+    return jsonNoStore(
       { error: 'Section parameter is required. Must be one of: introduction, main, conclusion' },
       { status: 400 }
     );
@@ -45,7 +61,7 @@ export async function GET(
 
   if (!['introduction', 'main', 'conclusion'].includes(section.toLowerCase())) {
     console.log('Invalid section parameter:', section);
-    return NextResponse.json(
+    return jsonNoStore(
       { error: 'Invalid section. Must be one of: introduction, main, conclusion' },
       { status: 400 }
     );
@@ -57,7 +73,7 @@ export async function GET(
     // Fetch the sermon
     const sermon = await sermonsRepository.fetchSermonById(id);
     if (!sermon) {
-      return NextResponse.json({ error: ERROR_MESSAGES.SERMON_NOT_FOUND }, { status: 404 });
+      return jsonNoStore({ error: ERROR_MESSAGES.SERMON_NOT_FOUND }, { status: 404 });
     }
 
     // Generate the plan for the specified section (only pass style when provided)
@@ -68,7 +84,7 @@ export async function GET(
 
     // If generation failed, return error status
     if (!result.success) {
-      return NextResponse.json(
+      return jsonNoStore(
         {
           error: `Failed to generate ${section} plan`,
           plan: result.plan
@@ -127,11 +143,11 @@ export async function GET(
       // Continue and return the plan even if saving fails
     }
 
-    return NextResponse.json(normalizedPlan);
+    return jsonNoStore(normalizedPlan);
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : ERROR_MESSAGES.UNKNOWN_ERROR;
     console.error(`Error generating plan for section ${section}:`, error);
-    return NextResponse.json(
+    return jsonNoStore(
       { error: 'Failed to generate plan', details: errorMessage },
       { status: 500 }
     );
@@ -144,7 +160,7 @@ async function generateSermonPointContent(sermonId: string, outlinePointId: stri
     // Fetch the sermon
     const sermon = await sermonsRepository.fetchSermonById(sermonId);
     if (!sermon) {
-      return NextResponse.json({ error: ERROR_MESSAGES.SERMON_NOT_FOUND }, { status: 404 });
+      return jsonNoStore({ error: ERROR_MESSAGES.SERMON_NOT_FOUND }, { status: 404 });
     }
 
     // Find the outline point in the sermon structure
@@ -163,7 +179,7 @@ async function generateSermonPointContent(sermonId: string, outlinePointId: stri
     }
 
     if (!outlinePoint || !sectionName) {
-      return NextResponse.json(
+      return jsonNoStore(
         { error: 'SermonOutline point not found in sermon structure' },
         { status: 404 }
       );
@@ -173,7 +189,7 @@ async function generateSermonPointContent(sermonId: string, outlinePointId: stri
     const relatedThoughts = getThoughtsForOutlinePoint(sermon, outlinePointId);
 
     if (relatedThoughts.length === 0) {
-      return NextResponse.json(
+      return jsonNoStore(
         { error: 'No thoughts associated with this outline point' },
         { status: 400 }
       );
@@ -214,16 +230,16 @@ async function generateSermonPointContent(sermonId: string, outlinePointId: stri
     );
 
     if (!success) {
-      return NextResponse.json(
+      return jsonNoStore(
         { error: 'Failed to generate content for outline point' },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ content });
+    return jsonNoStore({ content });
   } catch (error: unknown) {
     console.error(`Error generating content for outline point ${outlinePointId}:`, error);
-    return NextResponse.json(
+    return jsonNoStore(
       { error: 'Failed to generate content', details: (error as Error).message },
       { status: 500 }
     );
@@ -241,7 +257,7 @@ export async function PUT(
     // Get the sermon to confirm it exists
     const sermon = await sermonsRepository.fetchSermonById(id);
     if (!sermon) {
-      return NextResponse.json({ error: ERROR_MESSAGES.SERMON_NOT_FOUND }, { status: 404 });
+      return jsonNoStore({ error: ERROR_MESSAGES.SERMON_NOT_FOUND }, { status: 404 });
     }
 
     // Parse the request body to get the plan
@@ -250,7 +266,7 @@ export async function PUT(
 
     // Validate the plan structure
     if (!planData || typeof planData !== 'object') {
-      return NextResponse.json({ error: 'Invalid plan data' }, { status: 400 });
+      return jsonNoStore({ error: 'Invalid plan data' }, { status: 400 });
     }
 
     // Ensure the content has all required sections
@@ -288,10 +304,10 @@ export async function PUT(
     // Save content to database
     await sermonsRepository.updateSermonContent(id, content);
 
-    return NextResponse.json({ success: true, plan: content });
+    return jsonNoStore({ success: true, plan: content });
   } catch (error: unknown) {
     console.error(`Error saving plan for sermon ${id}:`, error);
-    return NextResponse.json(
+    return jsonNoStore(
       { error: 'Failed to save plan', details: (error as Error).message },
       { status: 500 }
     );

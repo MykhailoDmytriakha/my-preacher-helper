@@ -137,10 +137,15 @@ export interface Sermon {
   }[];
   /** Metadata about last audio generation */
   audioMetadata?: {
+    provider?: string;
     voice: string;
     model: string;
     lastGenerated: string;
     chunksCount: number;
+    /** Which source produced the current chunks: 'ai' (GPT-optimized) | 'raw' (original as-is) */
+    mode?: 'ai' | 'raw';
+    /** ISO timestamp of last text preparation */
+    lastOptimized?: string;
   };
   updatedAt?: string;
 }

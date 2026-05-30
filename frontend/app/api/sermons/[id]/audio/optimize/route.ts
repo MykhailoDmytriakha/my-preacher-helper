@@ -15,12 +15,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { optimizeTextForSpeech } from '@/api/clients/speechOptimization.client';
-import { createAudioChunks } from '@/api/clients/tts.client';
-import { SectionKey, SECTION_CONFIG, getSectionThoughts } from '@/api/services/sermonTextService';
+import { createAudioChunks, splitTextIntoChunks } from '@/api/clients/tts.client';
+import { SectionKey, SECTION_CONFIG, getSectionThoughts, resolveSections } from '@/api/services/sermonTextService';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { SERMON_SECTIONS } from '@/types/audioGeneration.types';
 
 import type { Sermon, Thought } from '@/models/models';
-import type { AudioChunk, AudioMetadata, SectionSelection } from '@/types/audioGeneration.types';
+import type { AudioChunk, SectionSelection } from '@/types/audioGeneration.types';
 
 // ============================================================================
 // Types
@@ -45,8 +46,11 @@ export async function POST(
     try {
         const { id: sermonId } = await params;
         const body = await request.json();
-        const requestedSections: SectionSelection = body.sections || 'all';
+        const requestedSections: SectionSelection | string[] = body.sections ?? 'all';
         const userId = body.userId;
+        // "Use as-is" mode: skip GPT rewrite, voice the exact sermon text and only
+        // split it mechanically into TTS-sized chunks.
+        const useRawText = body.useRawText === true;
 
         // Default to true for backward compatibility
         const saveToDb = body.saveToDb !== false;
@@ -67,9 +71,10 @@ export async function POST(
         }
 
         // 2. Prepare Segments based on Outline & Thoughts
-        const sectionsToProcess: SectionKey[] = requestedSections === 'all'
-            ? ['introduction', 'mainPart', 'conclusion']
-            : [requestedSections as SectionKey];
+        // `sections` may be 'all', a single section key, or an array of keys (checkboxes).
+        const resolved = resolveSections(requestedSections);
+        const sectionsToProcess: SectionKey[] = resolved.length > 0 ? resolved : (SERMON_SECTIONS as SectionKey[]);
+        const isAllSections = sectionsToProcess.length === SERMON_SECTIONS.length;
 
         const segments: GenerationSegment[] = buildGenerationSegments(sermon, sectionsToProcess);
 
@@ -83,15 +88,30 @@ export async function POST(
         // Current logic: we overwrite what we touch. If user requested specific section,
         // we might want to keep others.
         const existingChunks = (sermon.audioChunks || []) as AudioChunk[];
-        if (requestedSections !== 'all') {
-            // Keep chunks from other sections
-            allChunks = existingChunks.filter(c => c.sectionId !== requestedSections);
+        if (!isAllSections) {
+            // Keep chunks from sections we are NOT re-processing this run.
+            const processing = new Set<string>(sectionsToProcess);
+            allChunks = existingChunks.filter(c => !processing.has(c.sectionId));
         }
 
         console.log(`[OptimizeAPI] Starting generation for ${segments.length} segments.`);
 
         for (const segment of segments) {
             console.log(`[OptimizeAPI] Processing: ${segment.section} - ${segment.title}`);
+
+            if (useRawText) {
+                // Speak the thoughts verbatim; only split mechanically for TTS limits.
+                // No markdown header and no GPT rewrite — what was written is what is read.
+                const rawText = segment.thoughts.map(t => t.text).join('\n\n').trim();
+                if (!rawText) {
+                    console.log(`[OptimizeAPI] Skipping empty segment: ${segment.title}`);
+                    continue;
+                }
+                totalOriginalLength += rawText.length;
+                totalOptimizedLength += rawText.length;
+                allChunks.push(...createAudioChunks(splitTextIntoChunks(rawText), segment.section));
+                continue;
+            }
 
             // Construct text for this segment
             const segmentText = formatSegmentText(segment);
@@ -146,17 +166,14 @@ export async function POST(
         allChunks = allChunks.map((chunk, idx) => ({ ...chunk, index: idx }));
 
         // 5. Save to DB
+        // Use dot-path updates so we record the source mode and refresh chunk/optimize
+        // metadata WITHOUT clobbering voice/model/lastGenerated from a previous render.
         if (saveToDb) {
-            const metadata: AudioMetadata = {
-                voice: 'onyx',
-                model: 'gpt-4o-mini-tts',
-                lastGenerated: new Date().toISOString(),
-                chunksCount: allChunks.length,
-            };
-
             await adminDb.collection('sermons').doc(sermonId).update({
                 audioChunks: allChunks,
-                audioMetadata: metadata,
+                'audioMetadata.mode': useRawText ? 'raw' : 'ai',
+                'audioMetadata.chunksCount': allChunks.length,
+                'audioMetadata.lastOptimized': new Date().toISOString(),
             });
         }
 

@@ -9,12 +9,21 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { generateChunkAudio, getTTSModel } from '@/api/clients/tts.client';
+import { generateChunkAudio, getTTSModel, splitTextIntoChunks } from '@/api/clients/tts.client';
+import { resolveSections } from '@/api/services/sermonTextService';
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { concatenateAudioBlobs, insertSilenceBetweenBlobs } from '@/utils/audioConcat';
+import { SERMON_SECTIONS, GOOGLE_TTS_VOICES } from '@/types/audioGeneration.types';
+import { concatenateAudioBlobs, createSilenceBlob } from '@/utils/audioConcat';
 
 import type { Sermon } from '@/models/models';
-import type { AudioChunk, TTSVoice, AudioQuality } from '@/types/audioGeneration.types';
+import type {
+    AudioChunk,
+    TTSVoice,
+    AudioQuality,
+    TTSProvider,
+    GoogleTTSVoice,
+    GoogleTTSModel,
+} from '@/types/audioGeneration.types';
 
 // ============================================================================
 // Types
@@ -43,6 +52,7 @@ type DownloadCompleteEvent = {
     type: 'download_complete';
     filename: string;
     audioUrl: string;
+    mimeType?: string;
 };
 
 type ErrorEvent = {
@@ -71,6 +81,58 @@ function sendEvent(controller: ReadableStreamDefaultController, event: StreamEve
     }
 }
 
+const SECTION_ORDER = SERMON_SECTIONS;
+const GOOGLE_TTS_SAMPLE_RATE = 24000;
+const GOOGLE_TTS_CHANNELS = 1;
+const GOOGLE_SECTION_PAUSE_MS = 700;
+
+function groupChunksByMajorSection(chunks: AudioChunk[]): AudioChunk[] {
+    const now = new Date().toISOString();
+    return SECTION_ORDER.flatMap((sectionId) => {
+        const text = chunks
+            .filter(chunk => chunk.sectionId === sectionId)
+            .map(chunk => chunk.text.trim())
+            .filter(Boolean)
+            .join('\n\n');
+
+        if (!text) return [];
+        // Keep each Gemini request within the TTS input limit (split long sections).
+        return splitTextIntoChunks(text).map(part => ({ text: part, sectionId, createdAt: now, index: 0 }));
+    }).map((chunk, index) => ({ ...chunk, index }));
+}
+
+function getGoogleModel(model: unknown): GoogleTTSModel {
+    return model === 'gemini-2.5-flash-preview-tts'
+        ? 'gemini-2.5-flash-preview-tts'
+        : 'gemini-3.1-flash-tts-preview';
+}
+
+function getGoogleVoice(voice: unknown): GoogleTTSVoice {
+    return typeof voice === 'string' && GOOGLE_TTS_VOICES.some(v => v.id === voice)
+        ? voice as GoogleTTSVoice
+        : 'Puck';
+}
+
+function insertGoogleSectionPauses(blobs: Blob[]): Blob[] {
+    if (blobs.length <= 1) return blobs;
+
+    const silenceBlob = createSilenceBlob(
+        GOOGLE_SECTION_PAUSE_MS,
+        GOOGLE_TTS_SAMPLE_RATE,
+        GOOGLE_TTS_CHANNELS
+    );
+    const result: Blob[] = [];
+
+    blobs.forEach((blob, index) => {
+        result.push(blob);
+        if (index < blobs.length - 1) {
+            result.push(silenceBlob);
+        }
+    });
+
+    return result;
+}
+
 // ============================================================================
 // Route Handler
 // ============================================================================
@@ -82,9 +144,13 @@ export async function POST(
     try {
         const { id: sermonId } = await params;
         const body = await request.json();
-        const voice: TTSVoice = body.voice || 'onyx';
+        const provider: TTSProvider = body.provider === 'google' ? 'google' : 'openai';
+        const voice: TTSVoice | GoogleTTSVoice = provider === 'google'
+            ? getGoogleVoice(body.voice)
+            : body.voice || 'onyx';
         const quality: AudioQuality = body.quality || 'standard';
-        const sections: string = body.sections || 'all'; // 'all' | 'introduction' | 'mainPart' | 'conclusion'
+        const selectedModel = provider === 'google' ? getGoogleModel(body.model) : getTTSModel(quality);
+        const sections: string | string[] = body.sections ?? 'all'; // 'all' | section key | array of keys
         const userId = body.userId;
 
         if (!userId) {
@@ -92,7 +158,7 @@ export async function POST(
         }
 
         console.log(`[TTS] Starting audio generation for sermon ${sermonId}`);
-        console.log(`[TTS] Settings: voice=${voice}, quality=${quality}, sections=${sections}`);
+        console.log(`[TTS] Settings: provider=${provider}, voice=${voice}, model=${selectedModel}, quality=${quality}, sections=${sections}`);
 
         // 1. Load sermon with chunks
         const sermonDoc = await adminDb.collection('sermons').doc(sermonId).get();
@@ -115,88 +181,104 @@ export async function POST(
             );
         }
 
-        // 3. Filter chunks by selected sections
-        if (sections !== 'all') {
+        // 3. Filter chunks by selected sections. Always filter (even 'all') so the
+        //    "no chunks found" guard runs; an empty/invalid selection is a 400.
+        const sectionList = resolveSections(sections);
+        if (sectionList.length === 0) {
+            return NextResponse.json({ error: 'No valid sections selected' }, { status: 400 });
+        }
+        {
+            const selected = new Set<string>(sectionList);
             const originalCount = chunks.length;
-            chunks = chunks.filter(chunk => chunk.sectionId === sections);
-            console.log(`[TTS] Filtered chunks: ${originalCount} → ${chunks.length} (section: ${sections})`);
-
+            chunks = chunks.filter(chunk => selected.has(chunk.sectionId));
+            console.log(`[TTS] Filtered chunks: ${originalCount} → ${chunks.length} (sections: ${sectionList.join(', ')})`);
             if (chunks.length === 0) {
                 return NextResponse.json(
-                    { error: `No chunks found for section: ${sections}` },
+                    { error: `No chunks found for sections: ${sectionList.join(', ')}` },
                     { status: 400 }
                 );
             }
         }
 
-        console.log(`[TTS] Processing ${chunks.length} chunks`);
+        const chunksForGeneration = provider === 'google' ? groupChunksByMajorSection(chunks) : chunks;
+
+        if (chunksForGeneration.length === 0) {
+            return NextResponse.json(
+                { error: 'No chunks available for generation.' },
+                { status: 400 }
+            );
+        }
+
+        console.log(`[TTS] Processing ${chunksForGeneration.length} ${provider === 'google' ? 'section chunks' : 'chunks'}`);
 
         // 3. Create streaming response
         const stream = new ReadableStream({
             async start(controller) {
                 try {
-                    const total = chunks.length;
-                    const audioBlobs: Blob[] = [];
+                    const total = chunksForGeneration.length;
 
-                    // Phase 1: Generate TTS for each chunk (0-80%)
+                    // Phase 1: Generate TTS for each chunk IN PARALLEL (0-80%)
+                    // Serial generation blew past Vercel's function limit: one full chunk
+                    // takes ~32s, so a 6-chunk sermon ran ~190s and was killed at the 60s
+                    // cap. A bounded-concurrency pool keeps wall time near a single chunk
+                    // while respecting OpenAI rate limits and preserving chunk order for
+                    // concatenation (audioBlobs is index-addressed, not push-ordered).
                     const ttsOptions = {
+                        provider,
                         voice,
-                        model: getTTSModel(quality),
-                        format: 'wav' as const,
+                        model: selectedModel,
+                        format: provider === 'google' ? 'wav' as const : 'mp3' as const,
                     };
 
-                    for (let i = 0; i < chunks.length; i++) {
-                        const chunk = chunks[i];
-                        const preview = chunk.text.substring(0, 60).replace(/\n/g, ' ');
+                    const TTS_CONCURRENCY = provider === 'google' ? 1 : 6;
+                    const audioBlobs: Blob[] = new Array<Blob>(chunksForGeneration.length);
+                    let completed = 0;
+                    let cursor = 0;
 
-                        console.log(`[TTS] Generating chunk ${i + 1}/${total}: "${preview}..."`);
+                    const worker = async () => {
+                        while (cursor < chunksForGeneration.length) {
+                            const i = cursor++;
+                            const chunk = chunksForGeneration[i];
+                            const preview = chunk.text.substring(0, 60).replace(/\n/g, ' ');
 
-                        // Generate audio
-                        const result = await generateChunkAudio(chunk.text, ttsOptions);
-                        audioBlobs.push(result.audioBlob);
+                            console.log(`[TTS] Generating chunk ${i + 1}/${total}: "${preview}..."`);
 
-                        // Send progress (distribute 0-80% across chunks)
-                        const percent = Math.round(((i + 1) / total) * 80);
-                        sendEvent(controller, {
-                            type: 'progress',
-                            current: i + 1,
-                            total,
-                            percent,
-                            status: `Generating chunk ${i + 1}/${total}...`,
-                        });
-                    }
+                            const result = await generateChunkAudio(chunk.text, ttsOptions);
+                            audioBlobs[i] = result.audioBlob;
 
-                    // Phase 2: Add silence between chunks (80-90%)
-                    // Phase 2: Add silence between chunks (80-90%)
-                    console.log(`[TTS] chunks generated. Adding silence (${audioBlobs.length} blobs)...`);
-                    sendEvent(controller, {
-                        type: 'progress',
-                        percent: 82,
-                        status: 'Adding pauses...',
-                    });
+                            completed++;
+                            const percent = Math.round((completed / total) * 80);
+                            sendEvent(controller, {
+                                type: 'progress',
+                                current: completed,
+                                total,
+                                percent,
+                                status: `Generating chunk ${completed}/${total}...`,
+                            });
+                        }
+                    };
 
-                    // Log sizes for debugging
+                    await Promise.all(
+                        Array.from({ length: Math.min(TTS_CONCURRENCY, chunksForGeneration.length) }, worker)
+                    );
+
+                    // Phase 2: Concatenate MP3 chunks (80-90%)
+                    // MP3 frames are self-contained, so a plain byte-level concat plays
+                    // back as one continuous file — no WAV header surgery, and the payload
+                    // is ~10x smaller than WAV, which is what keeps a sermon under Vercel's
+                    // function size/time limits.
+                    console.log(`[TTS] Concatenating ${audioBlobs.length} ${provider === 'google' ? 'WAV' : 'MP3'} chunks...`);
                     audioBlobs.forEach((b, idx) => console.log(`[TTS] Blob ${idx}: ${b.size} bytes`));
-
-                    const withSilence = await insertSilenceBetweenBlobs(audioBlobs, 500);
-
-                    // Phase 3: Concatenate all audio (90-100%)
-                    console.log('[TTS] Concatenating audio files...');
                     sendEvent(controller, {
                         type: 'progress',
                         percent: 85,
                         status: 'Merging audio files...',
                     });
 
-                    let finalAudio: Blob;
-                    try {
-                        finalAudio = await concatenateAudioBlobs(withSilence);
-                    } catch (mergeError) {
-                        console.error('[TTS] Merge error:', mergeError);
-                        // Fallback: just take the first one or error out? 
-                        // For now let's throw to see the error, but log it clearly
-                        throw mergeError;
-                    }
+                    const finalMimeType = provider === 'google' ? 'audio/wav' : 'audio/mpeg';
+                    const finalAudio = provider === 'google'
+                        ? await concatenateAudioBlobs(insertGoogleSectionPauses(audioBlobs))
+                        : new Blob(audioBlobs, { type: finalMimeType });
 
                     // Phase 4: Convert to data URL and STREAM it
                     // NOTE: We convert the FULL buffer to Base64 first to avoid padding corruption.
@@ -259,12 +341,13 @@ export async function POST(
                         .toLowerCase()
                         .replace(/[^a-zа-яё0-9\s]/gi, '')
                         .replace(/\s+/g, '-')
-                        .slice(0, 50) + '-audio.wav';
+                        .slice(0, 50) + (provider === 'google' ? '-audio.wav' : '-audio.mp3');
 
                     // Update metadata
                     await adminDb.collection('sermons').doc(sermonId).update({
+                        'audioMetadata.provider': provider,
                         'audioMetadata.voice': voice,
-                        'audioMetadata.model': getTTSModel(quality),
+                        'audioMetadata.model': selectedModel,
                         'audioMetadata.lastGenerated': new Date().toISOString(),
                     });
 
@@ -275,6 +358,7 @@ export async function POST(
                         type: 'download_complete',
                         filename: safeFilename,
                         audioUrl: '', // Client reassembles it
+                        mimeType: finalMimeType,
                     });
 
                     controller.close();

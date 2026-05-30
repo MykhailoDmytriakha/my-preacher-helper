@@ -26,9 +26,14 @@ describe("planApi", () => {
     });
 
     expect(response).toEqual({ content: "Generated text" });
-    expect(global.fetch).toHaveBeenCalledWith(
-      "/api/sermons/sermon-1/plan?outlinePointId=point-1&style=memory"
-    );
+    const [url, options] = (global.fetch as jest.Mock).mock.calls[0];
+    expect(options).toEqual({ cache: "no-store" });
+    expect(url).toEqual(expect.stringContaining("/api/sermons/sermon-1/plan?"));
+    const parsedUrl = new URL(url, "http://localhost");
+    expect(parsedUrl.pathname).toBe("/api/sermons/sermon-1/plan");
+    expect(parsedUrl.searchParams.get("outlinePointId")).toBe("point-1");
+    expect(parsedUrl.searchParams.get("style")).toBe("memory");
+    expect(parsedUrl.searchParams.get("requestId")).toEqual(expect.any(String));
   });
 
   it("throws when generate request returns non-ok status", async () => {

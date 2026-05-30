@@ -66,4 +66,5 @@ next-env.d.ts
 output/
 .claude/codex-logs
 .claude/settings.local.json
+.logs/
 .demo/

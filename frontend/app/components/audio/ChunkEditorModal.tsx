@@ -105,7 +105,7 @@ export default function ChunkEditorModal({
                     <button
                         onClick={handleSave}
                         disabled={isSaving || text.length > 4000}
-                        className="flex-1 px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                        className="flex-1 px-4 py-2 text-white bg-orange-600 rounded-lg hover:bg-orange-700 disabled:opacity-50"
                     >
                         {isSaving ? t('buttons.saving', { defaultValue: 'Saving...' }) : t('buttons.save', { defaultValue: 'Save' })}
                     </button>
