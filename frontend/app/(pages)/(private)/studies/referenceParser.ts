@@ -147,7 +147,7 @@ const ORDERED_BOOKS: Array<{ english: string; aliases: string[] }> = [
     english: '3 John',
     aliases: ['3 иоанна', '3-е послание иоанна', '3 иоан', '3иоан', '3и', '3 івана', '3ів'],
   },
-  { english: 'Jude', aliases: ['иуде', 'послание иуде', 'иуд', 'иу', 'юди', 'юд'] },
+  { english: 'Jude', aliases: ['иуде', 'иуда', 'иуды', 'послание иуде', 'послание иуды', 'иуд', 'иу', 'юди', 'юд'] },
   // Apocalypse
   {
     english: 'Revelation',

@@ -345,6 +345,53 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     );
   });
 
+  it('normalizes saved Scripture references before sending text to TTS', async () => {
+    mockGet.mockResolvedValueOnce({
+      exists: true,
+      id: 'sermon-1',
+      data: () => ({
+        id: 'sermon-1',
+        title: 'Grace & Peace',
+        userId: 'user-1',
+        audioChunks: [
+          {
+            text: 'Мат 24:42: бодрствуйте.',
+            sectionId: 'introduction',
+            createdAt: '2026-02-27T00:00:00.000Z',
+            index: 0,
+          },
+        ],
+      }),
+    });
+    (generateChunkAudio as jest.Mock).mockResolvedValueOnce({
+      audioBlob: new Blob([new Uint8Array(10)], { type: 'audio/mpeg' }),
+      index: 0,
+      durationSeconds: 1,
+    });
+
+    const response = await POST(
+      createRequest({
+        userId: 'user-1',
+        voice: 'ash',
+        quality: 'standard',
+        sections: 'introduction',
+      }) as never,
+      { params: Promise.resolve({ id: 'sermon-1' }) }
+    );
+
+    await readStreamEvents(response.body as ReadableStream<Uint8Array>);
+
+    expect(generateChunkAudio).toHaveBeenCalledWith(
+      'Матфея, двадцать четвертая глава, сорок второй стих: бодрствуйте.',
+      {
+        provider: 'openai',
+        voice: 'ash',
+        model: 'gpt-audio-test',
+        format: 'mp3',
+      }
+    );
+  });
+
   it('groups saved chunks into major sermon sections for Google Gemini TTS', async () => {
     const longMainChunkOne = 'Main chunk one. '.repeat(160);
     const longMainChunkTwo = 'Main chunk two. '.repeat(160);

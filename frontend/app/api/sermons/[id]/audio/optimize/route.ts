@@ -19,6 +19,7 @@ import { createAudioChunks, splitTextIntoChunks } from '@/api/clients/tts.client
 import { SectionKey, SECTION_CONFIG, getSectionThoughts, resolveSections } from '@/api/services/sermonTextService';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { SERMON_SECTIONS } from '@/types/audioGeneration.types';
+import { normalizeScriptureReferencesForTts } from '@/utils/scriptureReferenceNormalizer';
 import { GOOGLE_TTS_MAX_CHUNK_SIZE, splitGoogleTextForRequestLimit } from '@/utils/server/googleTtsChunking';
 
 import type { Sermon, Thought } from '@/models/models';
@@ -101,12 +102,13 @@ export async function POST(
         if (useRawText && provider === 'google') {
             console.log(`[OptimizeAPI] Preparing Google raw text by major section (max ${GOOGLE_TTS_MAX_CHUNK_SIZE} chars/request).`);
             for (const section of sectionsToProcess) {
-                const rawText = getRawSectionText(sermon, section);
+                const originalRawText = getRawSectionText(sermon, section);
+                const rawText = normalizeScriptureReferencesForTts(originalRawText);
                 if (!rawText) {
                     console.log(`[OptimizeAPI] Skipping empty section: ${section}`);
                     continue;
                 }
-                totalOriginalLength += rawText.length;
+                totalOriginalLength += originalRawText.length;
                 totalOptimizedLength += rawText.length;
                 allChunks.push(...createAudioChunks(splitGoogleTextForRequestLimit(rawText), section));
             }
@@ -117,12 +119,13 @@ export async function POST(
                 if (useRawText) {
                     // Speak the thoughts verbatim; only split mechanically for TTS limits.
                     // No markdown header and no GPT rewrite — what was written is what is read.
-                    const rawText = segment.thoughts.map(t => t.text).join('\n\n').trim();
+                    const originalRawText = segment.thoughts.map(t => t.text).join('\n\n').trim();
+                    const rawText = normalizeScriptureReferencesForTts(originalRawText);
                     if (!rawText) {
                         console.log(`[OptimizeAPI] Skipping empty segment: ${segment.title}`);
                         continue;
                     }
-                    totalOriginalLength += rawText.length;
+                    totalOriginalLength += originalRawText.length;
                     totalOptimizedLength += rawText.length;
                     allChunks.push(...createAudioChunks(splitTextIntoChunks(rawText), segment.section));
                     continue;
@@ -151,14 +154,16 @@ export async function POST(
                 );
 
                 // Update stats
-                totalOptimizedLength += result.optimizedLength;
+                const optimizedTextForTts = normalizeScriptureReferencesForTts(result.optimizedText);
+                const chunksForTts = result.chunks.map(normalizeScriptureReferencesForTts);
+                totalOptimizedLength += optimizedTextForTts.length;
 
                 // Update context for NEXT iteration
                 // We use the last generated chunk (or full text if small) as context
-                accumulatedContext = result.optimizedText.slice(-1000); // Last 1000 chars
+                accumulatedContext = optimizedTextForTts.slice(-1000); // Last 1000 chars
 
                 // Convert to AudioChunk objects
-                const newChunks = createAudioChunks(result.chunks, segment.section);
+                const newChunks = createAudioChunks(chunksForTts, segment.section);
 
                 // Push to our local collection
                 // Note: we will re-index globally at the end

@@ -14,6 +14,7 @@ import { resolveSections } from '@/api/services/sermonTextService';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { SERMON_SECTIONS, GOOGLE_TTS_VOICES } from '@/types/audioGeneration.types';
 import { concatenateAudioBlobs, createSilenceBlob } from '@/utils/audioConcat';
+import { normalizeScriptureReferencesForTts } from '@/utils/scriptureReferenceNormalizer';
 import { GOOGLE_TTS_MAX_CHUNK_SIZE, splitGoogleTextForRequestLimit } from '@/utils/server/googleTtsChunking';
 
 import type { Sermon } from '@/models/models';
@@ -216,6 +217,11 @@ export async function POST(
                 );
             }
         }
+
+        chunks = chunks.map(chunk => ({
+            ...chunk,
+            text: normalizeScriptureReferencesForTts(chunk.text),
+        }));
 
         const chunksForGeneration = provider === 'google' ? groupChunksByMajorSection(chunks) : chunks;
 
