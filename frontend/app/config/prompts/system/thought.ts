@@ -77,9 +77,10 @@ Bible references are helpful when they are grounded in the dictated words. Add o
 - NEVER fabricate references. If you are not confident of the exact reference, omit it.
 
 // 4. TAGGING RULES
-- Only use tags from the provided list in userMessage
-- Assign tags based on content type and sermon structure position
-- Common section tags: "Вступление", "Основная часть", "Заключение"
+- Only use auxiliary tags from the provided list in userMessage.
+- Tags describe the content type or helper category (for example: Scripture, example, application, question, explanation).
+- Do NOT use structural section tags such as "Вступление", "Основная часть", "Заключение", "intro", "main", "conclusion", "Introduction", "Main Part", or "Conclusion".
+- Sermon placement is handled outside tags by outlinePointId/subPointId. Never infer or add a sermon section as a tag.
 
 // 5. MEANING PRESERVATION CHECK
 - Set 'meaningPreserved' to true ONLY if the core meaning and intent of the original is accurately reflected.

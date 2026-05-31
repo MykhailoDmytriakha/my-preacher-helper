@@ -1,5 +1,9 @@
 import { adminDb } from "@/config/firebaseAdminConfig";
 import { Tag } from "@/models/models";
+import {
+  getTranslationKeyForTag as getStructureTranslationKeyForTag,
+  isStructureTag,
+} from "@/utils/structureTags";
 
 // Translation key constants
 const TAG_TRANSLATION_KEYS = {
@@ -28,12 +32,12 @@ export const REQUIRED_TAG_TRANSLATIONS = {
 
 // Helper function to check if a tag name is a required tag
 export function isRequiredTag(tagName: string): boolean {
-  return tagName in REQUIRED_TAG_TRANSLATIONS;
+  return isStructureTag(tagName);
 }
 
 // Get translation key for a tag name if it's a required tag
 export function getTranslationKeyForTag(tagName: string): string | undefined {
-  return REQUIRED_TAG_TRANSLATIONS[tagName as keyof typeof REQUIRED_TAG_TRANSLATIONS];
+  return getStructureTranslationKeyForTag(tagName) ?? undefined;
 }
 
 export async function getCustomTags(userId: string) {
@@ -44,21 +48,18 @@ export async function getCustomTags(userId: string) {
       .where("userId", "==", userId)
       .get();
       
-    const customTags = querySnapshot.docs.map((doc) => {
+    const customTags = querySnapshot.docs.flatMap((doc) => {
       const data = doc.data();
       const tagId = doc.id;
       const tagName = data.name;
       
-      // Check if this custom tag matches any of the required tag variations
+      // Legacy structural tags may still exist as required=false docs. They are no
+      // longer valid custom tags and must not be offered to AI or UI tag pickers.
       if (isRequiredTag(tagId) || (tagName && isRequiredTag(tagName))) {
-        return {
-          ...data,
-          id: tagId,
-          translationKey: getTranslationKeyForTag(tagId) || (tagName && getTranslationKeyForTag(tagName))
-        };
+        return [];
       }
       
-      return { ...data, id: tagId };
+      return [{ ...data, id: tagId }];
     });
     
     return customTags as Tag[];
@@ -173,4 +174,3 @@ export async function updateTagInDb(tag: Tag) {
     throw error;
   }
 }
-

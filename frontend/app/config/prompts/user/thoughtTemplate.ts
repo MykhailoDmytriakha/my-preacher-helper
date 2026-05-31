@@ -1,4 +1,5 @@
 import { Sermon, Thought } from "@/models/models";
+import { sanitizeAvailableThoughtTags, sanitizeThoughtTags } from "@/utils/thoughtTagSanitizer";
 
 const MAX_EXAMPLE_THOUGHTS = 5;
 const MAX_EXAMPLE_CHARS = 300;
@@ -9,6 +10,7 @@ export function createThoughtUserMessage(
   availableTags: string[],
   exampleThoughts: Pick<Thought, 'text' | 'tags'>[]
 ): string {
+  const auxiliaryTags = sanitizeAvailableThoughtTags(availableTags);
   const limitedExamples = exampleThoughts.slice(-MAX_EXAMPLE_THOUGHTS);
 
   const examplesString = limitedExamples.length > 0
@@ -17,7 +19,8 @@ export function createThoughtUserMessage(
           const text = example.text.length > MAX_EXAMPLE_CHARS
             ? `${example.text.slice(0, MAX_EXAMPLE_CHARS)}…`
             : example.text;
-          return `- Мысль: "${text}" - Теги: [${example.tags.join(', ')}]`;
+          const exampleTags = sanitizeThoughtTags(example.tags, auxiliaryTags);
+          return `- Мысль: "${text}" - Теги: [${exampleTags.join(', ')}]`;
         })
         .join('\n')}\n`
     : '';
@@ -25,7 +28,7 @@ export function createThoughtUserMessage(
   return `Контекст проповеди (только для понимания и тегов; не добавляй эти данные в мысль, если они не сказаны в транскрипции):
 Название: ${sermon.title}
 Основной текст проповеди: ${sermon.verse}
-Теги: ${availableTags.join(', ')}
+Теги: ${auxiliaryTags.join(', ')}
 Примеры существующих мыслей:${examplesString}
 --------------------------------
 Транскрипция: ${thoughtText}

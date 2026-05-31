@@ -358,10 +358,10 @@ describe('Thought Service', () => {
       expect(result.tags).toContain('auto-generated-tag');
     });
 
-    it('should preserve different server tag values', async () => {
+    it('should preserve different auxiliary server tag values', async () => {
       const mockAudioBlob = new Blob(['audio content'], { type: 'audio/wav' });
       const sermonId = 'test-sermon-123';
-      const serverTags = ['Вступление', 'Основная часть', 'Заключение'];
+      const serverTags = ['Стих', 'Примеры', 'Объяснение'];
 
       for (const serverTag of serverTags) {
         global.fetch = jest.fn().mockResolvedValue({

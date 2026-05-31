@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { Sermon, Thought } from '@/models/models';
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
+import { sanitizeAvailableThoughtTags, stripStructureTags } from '@/utils/thoughtTagSanitizer';
 import { createApiPerformanceTracker } from '@clients/apiPerformanceTelemetry';
 import { getCustomTags } from '@clients/firestore.client';
 import { generateThoughtStructured } from '@clients/thought.structured';
@@ -30,7 +31,7 @@ function buildManualThought(thought: Record<string, unknown>): Thought {
   const thoughtWithId: Thought = {
     id: uuidv4(),
     text: thought.text as string,
-    tags: (thought.tags as string[]) || [],
+    tags: stripStructureTags(thought.tags as string[]),
     date: (thought.date as string) || new Date().toISOString(),
   };
 
@@ -65,7 +66,7 @@ function normalizeGenerationResult(params: {
   }
   return {
     formattedText: generationResult.formattedText,
-    tags: generationResult.tags,
+    tags: stripStructureTags(generationResult.tags),
     usedFallback: false,
   };
 }
@@ -214,7 +215,7 @@ async function handleAutoPost(request: Request) {
       return errorResponse('Sermon not found', 404);
     }
     const customTags = await customTagsPromise;
-    const availableTags = customTags.map(t => t.name);
+    const availableTags = sanitizeAvailableThoughtTags(customTags.map(t => t.name));
     tracker.addContext({
       customTagsCount: customTags.length,
       availableTagsCount: availableTags.length,
@@ -363,7 +364,7 @@ export async function PUT(request: Request) {
       id: updatedThoughtNew.id,
       text: updatedThoughtNew.text ?? oldThought.text,
       date: updatedThoughtNew.date ?? oldThought.date,
-      tags: Array.isArray(updatedThoughtNew.tags) ? updatedThoughtNew.tags : oldThought.tags,
+      tags: stripStructureTags(Array.isArray(updatedThoughtNew.tags) ? updatedThoughtNew.tags : oldThought.tags),
     };
 
     // Ensure outlinePointId is explicitly updated when provided (including clearing)

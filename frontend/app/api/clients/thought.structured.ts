@@ -15,6 +15,7 @@ import { thoughtSystemPrompt, createThoughtUserMessage } from "@/config/prompts"
 import { ThoughtResponseSchema, ThoughtResponse } from "@/config/schemas/zod";
 import { Sermon } from "@/models/models";
 import { normalizeSpokenScriptureReferences } from "@/utils/scriptureReferenceNormalizer";
+import { sanitizeAvailableThoughtTags, sanitizeThoughtTags } from "@/utils/thoughtTagSanitizer";
 
 import { logger } from "./openAIHelpers";
 import { buildSimplePromptBlueprint } from "./promptBuilder";
@@ -58,7 +59,7 @@ interface GenerateThoughtOptions {
  * const result = await generateThoughtStructured(
  *   "Бог есть любовь...",
  *   sermon,
- *   ["Вступление", "Основная часть"]
+ *   ["Стих", "Примеры"]
  * );
  * 
  * if (result.meaningSuccessfullyPreserved) {
@@ -73,19 +74,20 @@ export async function generateThoughtStructured(
   options: GenerateThoughtOptions = {}
 ): Promise<GenerateThoughtResult> {
   const { maxRetries = 3 } = options;
+  const auxiliaryTags = sanitizeAvailableThoughtTags(availableTags);
 
   // Create user message with sermon context
   const userMessage = createThoughtUserMessage(
     content, 
     sermon, 
-    availableTags, 
+    auxiliaryTags,
     sermon.thoughts
   );
 
   if (isDebugMode) {
     logger.debug('GenerateThoughtStructured', "Starting generation", {
       contentPreview: content.substring(0, 300) + (content.length > 300 ? '...' : ''),
-      availableTags,
+      availableTags: auxiliaryTags,
     });
   }
 
@@ -96,6 +98,7 @@ export async function generateThoughtStructured(
       content,
       sermon,
       userMessage,
+      availableTags: auxiliaryTags,
       attempt,
     });
 
@@ -123,14 +126,15 @@ async function runThoughtAttempt(params: {
   content: string;
   sermon: Sermon;
   userMessage: string;
+  availableTags: string[];
   attempt: number;
 }): Promise<AttemptOutcome> {
-  const { content, sermon, userMessage, attempt } = params;
+  const { content, sermon, userMessage, availableTags, attempt } = params;
 
   try {
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "thought",
-      promptVersion: "v5",
+      promptVersion: "v6",
       systemPrompt: thoughtSystemPrompt,
       userMessage,
       context: {
@@ -159,6 +163,7 @@ async function runThoughtAttempt(params: {
       result,
       content,
       sermonVerse: sermon.verse,
+      availableTags,
       attempt,
     });
   } catch (error) {
@@ -171,9 +176,10 @@ function handleStructuredResult(params: {
   result: StructuredOutputResult<ThoughtResponse>;
   content: string;
   sermonVerse: string;
+  availableTags: string[];
   attempt: number;
 }): AttemptOutcome {
-  const { result, content, sermonVerse, attempt } = params;
+  const { result, content, sermonVerse, availableTags, attempt } = params;
 
   if (result.refusal) {
     logger.warn('GenerateThoughtStructured', `Model refused: ${result.refusal}`);
@@ -206,7 +212,7 @@ function handleStructuredResult(params: {
     }
 
     logger.success('GenerateThoughtStructured', `Success on attempt ${attempt}. Meaning preserved.`);
-    return { type: "success", result: createSuccessResult(response, content) };
+    return { type: "success", result: createSuccessResult(response, content, availableTags) };
   }
 
   logger.warn('GenerateThoughtStructured', 
@@ -249,8 +255,12 @@ function containsUndictatedMainSermonReference(params: {
   );
 }
 
-function createSuccessResult(response: ThoughtResponse, originalContent: string): GenerateThoughtResult {
-  const finalTags = response.tags;
+function createSuccessResult(
+  response: ThoughtResponse,
+  originalContent: string,
+  availableTags: string[]
+): GenerateThoughtResult {
+  const finalTags = sanitizeThoughtTags(response.tags, availableTags);
   return {
     originalText: originalContent,
     formattedText: normalizeSpokenScriptureReferences(response.formattedText),

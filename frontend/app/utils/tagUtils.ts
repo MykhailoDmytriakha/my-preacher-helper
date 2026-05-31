@@ -1,92 +1,26 @@
+import {
+  isStructureTag,
+  normalizeStructureTag,
+} from '@/utils/structureTags';
 import { getTagStyling } from '@/utils/themeColors';
 import { getContrastColor } from "@utils/color";
 
+export type {
+  CanonicalStructureId,
+  StructureSectionId,
+} from '@/utils/structureTags';
+export {
+  CANONICAL_TO_SECTION,
+  CANONICAL_TO_TRANSLATION_KEY,
+  getCanonicalTagForSection,
+  getTranslationKeyForTag,
+  isStructureTag,
+  normalizeStructureTag,
+  SECTION_TO_CANONICAL,
+} from '@/utils/structureTags';
+
 // Constants for repeated strings
 const ICON_CLASS_NAME = "w-3.5 h-3.5 mr-1";
-
-/**
- * Canonical structure tag ids used across the app for logic
- */
-export type CanonicalStructureId = 'intro' | 'main' | 'conclusion';
-
-/**
- * Section ids used by the structure page
- */
-export type StructureSectionId = 'introduction' | 'main' | 'conclusion';
-
-export const SECTION_TO_CANONICAL: Record<StructureSectionId, CanonicalStructureId> = {
-  introduction: 'intro',
-  main: 'main',
-  conclusion: 'conclusion',
-};
-
-export const CANONICAL_TO_SECTION: Record<CanonicalStructureId, StructureSectionId> = {
-  intro: 'introduction',
-  main: 'main',
-  conclusion: 'conclusion',
-};
-
-/**
- * Map of aliases (in different languages/cases) to canonical ids
- * Note: keys are stored in lowercase for case-insensitive matching
- */
-const STRUCTURE_ALIAS_TO_CANONICAL: Record<string, CanonicalStructureId> = {
-  // English long and short
-  'introduction': 'intro',
-  'intro': 'intro',
-  'main part': 'main',
-  'mainpart': 'main',
-  'main': 'main',
-  'conclusion': 'conclusion',
-
-  // No duplicates needed after resolving spaces
-
-  // Russian
-  'вступление': 'intro',
-  'основная часть': 'main',
-  'заключение': 'conclusion',
-
-  // Ukrainian
-  'вступ': 'intro',
-  'основна частина': 'main',
-  'висновок': 'conclusion',
-};
-
-/**
- * Normalize any structure-like tag to a canonical id or return null if not a structure tag
- */
-export function normalizeStructureTag(tag: string | undefined | null): CanonicalStructureId | null {
-  if (!tag) return null;
-  const key = String(tag).trim().toLowerCase();
-  return STRUCTURE_ALIAS_TO_CANONICAL[key] ?? null;
-}
-
-export function getCanonicalTagForSection(sectionId: StructureSectionId): CanonicalStructureId {
-  return SECTION_TO_CANONICAL[sectionId];
-}
-
-/**
- * Mapping of canonical IDs to translation keys
- */
-export const CANONICAL_TO_TRANSLATION_KEY: Record<CanonicalStructureId, string> = {
-  intro: 'tags.introduction',
-  main: 'tags.mainPart',
-  conclusion: 'tags.conclusion',
-};
-
-/**
- * Get translation key for a tag (canonical ID or structural identifier)
- */
-export function getTranslationKeyForTag(tag: string): string | null {
-  const canonical = normalizeStructureTag(tag);
-  if (canonical) return CANONICAL_TO_TRANSLATION_KEY[canonical];
-  return null;
-}
-
-/**
- * Check if a tag is a structure tag (Introduction, Main, Conclusion in any supported language)
- */
-export const isStructureTag = (tag: string): boolean => normalizeStructureTag(tag) !== null;
 
 /**
  * Get default styling for tags without custom colors
