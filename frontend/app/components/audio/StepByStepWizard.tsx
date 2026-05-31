@@ -131,7 +131,7 @@ export default function StepByStepWizard({
     const [ttsProvider, setTtsProvider] = useState<TTSProvider>('openai');
     const [voice, setVoice] = useState<TTSVoice>('onyx');
     const [quality, setQuality] = useState<AudioQuality>('standard');
-    const [googleModel, setGoogleModel] = useState<GoogleTTSModel>(GOOGLE_MODEL_GEMINI_31);
+    const [googleModel, setGoogleModel] = useState<GoogleTTSModel>(GOOGLE_MODEL_GEMINI_25);
     const [googleVoice, setGoogleVoice] = useState<GoogleTTSVoice>('Puck');
     const [sections, setSections] = useState<SermonSection[]>([...SERMON_SECTIONS]);
 

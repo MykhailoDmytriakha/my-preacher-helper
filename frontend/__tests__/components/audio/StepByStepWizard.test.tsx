@@ -101,6 +101,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
 
         expect(screen.getByText(/Gemini 3\.1 TTS/)).toBeInTheDocument();
         expect(screen.getByText(/Gemini 2\.5 TTS/)).toBeInTheDocument();
+        expect(screen.getByText(/Gemini 2\.5 TTS/).compareDocumentPosition(screen.getByText(/Gemini 3\.1 TTS/))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
         expect(screen.getByText('Puck')).toBeInTheDocument();
         expect(screen.getByText('Charon')).toBeInTheDocument();
         expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
@@ -175,7 +176,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         fireEvent.click(screen.getByText('Google'));
         fireEvent.click(screen.getAllByTitle('Preview voice')[0]); // Puck
 
-        expect((global as any).Audio).toHaveBeenCalledWith('/samples/Puck-3.1-en.wav');
+        expect((global as any).Audio).toHaveBeenCalledWith('/samples/Puck-2.5-en.wav');
     });
 
     it('falls back to english samples for unsupported locales and pauses on unmount', () => {

@@ -466,6 +466,91 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     );
   });
 
+  it('defaults Google TTS generation to the configured Gemini 2.5 env model', async () => {
+    const previousModel25 = process.env.GEMINI_AUDIO_2_5_TTS;
+    process.env.GEMINI_AUDIO_2_5_TTS = 'configured-gemini-2.5-tts';
+    try {
+      (generateChunkAudio as jest.Mock).mockResolvedValue({
+        audioBlob: new Blob([new Uint8Array(10)], { type: 'audio/wav' }),
+        index: 0,
+        durationSeconds: 1,
+        mimeType: 'audio/wav',
+      });
+
+      const response = await POST(
+        createRequest({
+          userId: 'user-1',
+          provider: 'google',
+          voice: 'Charon',
+          quality: 'standard',
+          sections: 'introduction',
+        }) as never,
+        { params: Promise.resolve({ id: 'sermon-1' }) }
+      );
+
+      await readStreamEvents(response.body as ReadableStream<Uint8Array>);
+
+      expect(generateChunkAudio).toHaveBeenCalledWith(
+        'Introduction chunk text.',
+        expect.objectContaining({
+          provider: 'google',
+          voice: 'Charon',
+          model: 'configured-gemini-2.5-tts',
+          format: 'wav',
+        })
+      );
+    } finally {
+      if (previousModel25 === undefined) {
+        delete process.env.GEMINI_AUDIO_2_5_TTS;
+      } else {
+        process.env.GEMINI_AUDIO_2_5_TTS = previousModel25;
+      }
+    }
+  });
+
+  it('uses the configured Gemini 3.1 env model when that UI model is selected', async () => {
+    const previousModel31 = process.env.GEMINI_AUDIO_3_1_TTS;
+    process.env.GEMINI_AUDIO_3_1_TTS = 'configured-gemini-3.1-tts';
+    try {
+      (generateChunkAudio as jest.Mock).mockResolvedValue({
+        audioBlob: new Blob([new Uint8Array(10)], { type: 'audio/wav' }),
+        index: 0,
+        durationSeconds: 1,
+        mimeType: 'audio/wav',
+      });
+
+      const response = await POST(
+        createRequest({
+          userId: 'user-1',
+          provider: 'google',
+          voice: 'Charon',
+          model: 'gemini-3.1-flash-tts-preview',
+          quality: 'standard',
+          sections: 'introduction',
+        }) as never,
+        { params: Promise.resolve({ id: 'sermon-1' }) }
+      );
+
+      await readStreamEvents(response.body as ReadableStream<Uint8Array>);
+
+      expect(generateChunkAudio).toHaveBeenCalledWith(
+        'Introduction chunk text.',
+        expect.objectContaining({
+          provider: 'google',
+          voice: 'Charon',
+          model: 'configured-gemini-3.1-tts',
+          format: 'wav',
+        })
+      );
+    } finally {
+      if (previousModel31 === undefined) {
+        delete process.env.GEMINI_AUDIO_3_1_TTS;
+      } else {
+        process.env.GEMINI_AUDIO_3_1_TTS = previousModel31;
+      }
+    }
+  });
+
   it('stops streaming chunk data when the client disconnects', async () => {
     (generateChunkAudio as jest.Mock).mockResolvedValue({
       audioBlob: new Blob(['chunk-1'], { type: 'audio/wav' }),

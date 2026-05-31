@@ -22,7 +22,6 @@ import type {
     AudioQuality,
     TTSProvider,
     GoogleTTSVoice,
-    GoogleTTSModel,
 } from '@/types/audioGeneration.types';
 
 // ============================================================================
@@ -85,6 +84,8 @@ const SECTION_ORDER = SERMON_SECTIONS;
 const GOOGLE_TTS_SAMPLE_RATE = 24000;
 const GOOGLE_TTS_CHANNELS = 1;
 const GOOGLE_SECTION_PAUSE_MS = 700;
+const GOOGLE_TTS_MODEL_25_KEY = 'gemini-2.5-flash-preview-tts';
+const GOOGLE_TTS_MODEL_31_KEY = 'gemini-3.1-flash-tts-preview';
 
 function groupChunksByMajorSection(chunks: AudioChunk[]): AudioChunk[] {
     const now = new Date().toISOString();
@@ -101,10 +102,20 @@ function groupChunksByMajorSection(chunks: AudioChunk[]): AudioChunk[] {
     }).map((chunk, index) => ({ ...chunk, index }));
 }
 
-function getGoogleModel(model: unknown): GoogleTTSModel {
-    return model === 'gemini-2.5-flash-preview-tts'
-        ? 'gemini-2.5-flash-preview-tts'
-        : 'gemini-3.1-flash-tts-preview';
+function getConfiguredGoogleModel25(): string {
+    return process.env.GEMINI_AUDIO_2_5_TTS || GOOGLE_TTS_MODEL_25_KEY;
+}
+
+function getConfiguredGoogleModel31(): string {
+    return process.env.GEMINI_AUDIO_3_1_TTS || GOOGLE_TTS_MODEL_31_KEY;
+}
+
+function getGoogleModel(model: unknown): string {
+    const model25 = getConfiguredGoogleModel25();
+    const model31 = getConfiguredGoogleModel31();
+    return model === GOOGLE_TTS_MODEL_31_KEY || model === model31
+        ? model31
+        : model25;
 }
 
 function getGoogleVoice(voice: unknown): GoogleTTSVoice {

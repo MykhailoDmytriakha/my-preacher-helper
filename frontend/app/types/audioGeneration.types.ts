@@ -277,7 +277,7 @@ export const INITIAL_AUDIO_EXPORT_STATE: AudioExportModalState = {
     isOpen: false,
     voice: 'onyx',
     quality: 'standard',
-    googleModel: 'gemini-3.1-flash-tts-preview',
+    googleModel: 'gemini-2.5-flash-preview-tts',
     googleVoice: 'Kore',
     sections: 'all',
     forceRegenerate: false,
@@ -300,14 +300,14 @@ export const AVAILABLE_VOICES: VoiceOption[] = [
 
 export const GOOGLE_TTS_MODELS: GoogleTTSModelOption[] = [
     {
-        id: 'gemini-3.1-flash-tts-preview',
-        labelKey: 'audioExport.googleModelGemini31',
-        descKey: 'audioExport.googleModelGemini31Desc',
-    },
-    {
         id: 'gemini-2.5-flash-preview-tts',
         labelKey: 'audioExport.googleModelGemini25',
         descKey: 'audioExport.googleModelGemini25Desc',
+    },
+    {
+        id: 'gemini-3.1-flash-tts-preview',
+        labelKey: 'audioExport.googleModelGemini31',
+        descKey: 'audioExport.googleModelGemini31Desc',
     },
 ];
 
