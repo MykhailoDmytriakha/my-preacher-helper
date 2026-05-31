@@ -4,7 +4,7 @@
 import { ReadableStream } from 'node:stream/web';
 import { TextDecoder, TextEncoder } from 'util';
 
-import { generateChunkAudio, getTTSModel } from '@/api/clients/tts.client';
+import { generateChunkAudio, getTTSModel, splitTextIntoChunks } from '@/api/clients/tts.client';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { concatenateAudioBlobs, createSilenceBlob } from '@/utils/audioConcat';
 
@@ -346,6 +346,8 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
   });
 
   it('groups saved chunks into major sermon sections for Google Gemini TTS', async () => {
+    const longMainChunkOne = 'Main chunk one. '.repeat(160);
+    const longMainChunkTwo = 'Main chunk two. '.repeat(160);
     mockGet.mockResolvedValueOnce({
       exists: true,
       id: 'sermon-1',
@@ -361,13 +363,13 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
             index: 0,
           },
           {
-            text: 'Main chunk one.',
+            text: longMainChunkOne,
             sectionId: 'mainPart',
             createdAt: '2026-02-27T00:00:00.000Z',
             index: 1,
           },
           {
-            text: 'Main chunk two.',
+            text: longMainChunkTwo,
             sectionId: 'mainPart',
             createdAt: '2026-02-27T00:00:00.000Z',
             index: 2,
@@ -427,7 +429,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     );
     expect(generateChunkAudio).toHaveBeenNthCalledWith(
       2,
-      'Main chunk one.\n\nMain chunk two.',
+      `${longMainChunkOne.trim()}\n\n${longMainChunkTwo.trim()}`,
       {
         provider: 'google',
         voice: 'Sulafat',
@@ -457,6 +459,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
         }),
       ])
     );
+    expect(splitTextIntoChunks).not.toHaveBeenCalled();
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         'audioMetadata.provider': 'google',
@@ -464,6 +467,90 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
         'audioMetadata.model': 'gemini-2.5-flash-preview-tts',
       })
     );
+  });
+
+  it('splits oversized Google section requests with the Google-specific limit only', async () => {
+    const oversizedMainText = 'Main oversized section. '.repeat(1300);
+    (splitTextIntoChunks as jest.Mock).mockReturnValueOnce([
+      'Main oversized section part one.',
+      'Main oversized section part two.',
+    ]);
+    mockGet.mockResolvedValueOnce({
+      exists: true,
+      id: 'sermon-1',
+      data: () => ({
+        id: 'sermon-1',
+        title: 'Grace & Peace',
+        userId: 'user-1',
+        audioChunks: [
+          {
+            text: oversizedMainText,
+            sectionId: 'mainPart',
+            createdAt: '2026-02-27T00:00:00.000Z',
+            index: 0,
+          },
+          {
+            text: 'Conclusion chunk.',
+            sectionId: 'conclusion',
+            createdAt: '2026-02-27T00:00:00.000Z',
+            index: 1,
+          },
+        ],
+      }),
+    });
+    (generateChunkAudio as jest.Mock)
+      .mockResolvedValueOnce({
+        audioBlob: new Blob([new Uint8Array(10)], { type: 'audio/wav' }),
+        index: 0,
+        durationSeconds: 1,
+        mimeType: 'audio/wav',
+      })
+      .mockResolvedValueOnce({
+        audioBlob: new Blob([new Uint8Array(10)], { type: 'audio/wav' }),
+        index: 1,
+        durationSeconds: 1,
+        mimeType: 'audio/wav',
+      })
+      .mockResolvedValueOnce({
+        audioBlob: new Blob([new Uint8Array(10)], { type: 'audio/wav' }),
+        index: 2,
+        durationSeconds: 1,
+        mimeType: 'audio/wav',
+      });
+
+    const response = await POST(
+      createRequest({
+        userId: 'user-1',
+        provider: 'google',
+        voice: 'Sulafat',
+        model: 'gemini-2.5-flash-preview-tts',
+        quality: 'standard',
+        sections: 'all',
+      }) as never,
+      { params: Promise.resolve({ id: 'sermon-1' }) }
+    );
+
+    await readStreamEvents(response.body as ReadableStream<Uint8Array>);
+
+    expect(splitTextIntoChunks).toHaveBeenCalledWith(oversizedMainText.trim(), 24576);
+    expect(generateChunkAudio).toHaveBeenNthCalledWith(
+      1,
+      'Main oversized section part one.',
+      expect.objectContaining({ provider: 'google', format: 'wav' })
+    );
+    expect(generateChunkAudio).toHaveBeenNthCalledWith(
+      2,
+      'Main oversized section part two.',
+      expect.objectContaining({ provider: 'google', format: 'wav' })
+    );
+    expect(generateChunkAudio).toHaveBeenNthCalledWith(
+      3,
+      'Conclusion chunk.',
+      expect.objectContaining({ provider: 'google', format: 'wav' })
+    );
+    expect(createSilenceBlob).toHaveBeenCalledTimes(1);
+    const mergedBlobs = (concatenateAudioBlobs as jest.Mock).mock.calls[0][0] as Blob[];
+    expect(mergedBlobs).toHaveLength(4);
   });
 
   it('defaults Google TTS generation to the configured Gemini 2.5 env model', async () => {

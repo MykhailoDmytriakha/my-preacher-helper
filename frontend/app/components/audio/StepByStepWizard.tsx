@@ -342,6 +342,7 @@ export default function StepByStepWizard({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     sections,
+                    provider: ttsProvider,
                     saveToDb: true,
                     userId: user?.uid,
                     useRawText: targetMode === 'raw',
@@ -363,7 +364,7 @@ export default function StepByStepWizard({
         } finally {
             setIsLoading(false);
         }
-    }, [sermonId, user, sections]);
+    }, [sermonId, user, sections, ttsProvider]);
 
     // ------------------------------------------------------------------
     // Switch source tab. Raw is mechanical (auto-prepared); AI is explicit
@@ -490,6 +491,10 @@ export default function StepByStepWizard({
         // Ensure the DB reflects the raw source before Generate: prepare it if missing,
         // otherwise sync the cached set (covers the provider→Google switch).
         if (mode === 'raw') {
+            if (ttsProvider === 'google') {
+                await prepareSource('raw');
+                return;
+            }
             const cached = chunksByMode.current['raw'];
             if (cached?.length) {
                 setChunks(cached);
@@ -498,7 +503,7 @@ export default function StepByStepWizard({
                 await prepareSource('raw');
             }
         }
-    }, [mode, prepareSource, syncChunksToDb]);
+    }, [mode, ttsProvider, prepareSource, syncChunksToDb]);
 
     const setProvider = useCallback((p: TTSProvider) => {
         setTtsProvider(p);

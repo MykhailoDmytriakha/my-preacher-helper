@@ -301,6 +301,99 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
         expect(createAudioChunks).toHaveBeenCalled();
     });
 
+    it('should group Google raw text by major section before applying the Google request limit', async () => {
+        (createAudioChunks as jest.Mock).mockImplementation((textChunks: string[], sectionId: string) =>
+            textChunks.map((text, index) => ({ text, sectionId, index }))
+        );
+        mockGet.mockResolvedValue({
+            exists: true,
+            id: mockSermonId,
+            data: () => ({
+                title: 'Test Sermon',
+                userId: mockUserId,
+                verse: 'John 3:16',
+                outline: {
+                    introduction: [
+                        { id: 'intro-1', text: 'Intro point 1' },
+                        { id: 'intro-2', text: 'Intro point 2' },
+                    ],
+                },
+                thoughts: [
+                    { id: 't1', text: 'Intro thought one.', outlinePointId: 'intro-1', tags: ['introduction'] },
+                    { id: 't2', text: 'Intro thought two.', outlinePointId: 'intro-2', tags: ['introduction'] },
+                ],
+                audioChunks: [],
+            }),
+        });
+
+        const req = new NextRequest('http://localhost:3000/api/optimize', {
+            method: 'POST',
+            body: JSON.stringify({
+                userId: mockUserId,
+                provider: 'google',
+                sections: 'introduction',
+                useRawText: true,
+                saveToDb: false,
+            })
+        });
+
+        const params = Promise.resolve({ id: mockSermonId });
+        const res = await POST(req, { params });
+        const json = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(json.totalChunks).toBe(1);
+        expect(optimizeTextForSpeech).not.toHaveBeenCalled();
+        expect(splitTextIntoChunks).not.toHaveBeenCalled();
+        expect(createAudioChunks).toHaveBeenCalledWith([
+            'Intro thought one.\n\nIntro thought two.'
+        ], 'introduction');
+        expect(json.chunks[0]).toEqual(expect.objectContaining({
+            sectionId: 'introduction',
+            text: 'Intro thought one.\n\nIntro thought two.',
+        }));
+    });
+
+    it('should split oversized Google raw sections with the Google request limit', async () => {
+        const oversizedText = 'Google raw main text. '.repeat(1300);
+        (splitTextIntoChunks as jest.Mock).mockReturnValueOnce(['Google part one.', 'Google part two.']);
+        (createAudioChunks as jest.Mock).mockImplementation((textChunks: string[], sectionId: string) =>
+            textChunks.map((text, index) => ({ text, sectionId, index }))
+        );
+        mockGet.mockResolvedValue({
+            exists: true,
+            id: mockSermonId,
+            data: () => ({
+                title: 'Test Sermon',
+                userId: mockUserId,
+                thoughts: [
+                    { id: 't1', text: oversizedText, tags: ['mainPart'] },
+                ],
+                audioChunks: [],
+            }),
+        });
+
+        const req = new NextRequest('http://localhost:3000/api/optimize', {
+            method: 'POST',
+            body: JSON.stringify({
+                userId: mockUserId,
+                provider: 'google',
+                sections: 'mainPart',
+                useRawText: true,
+                saveToDb: false,
+            })
+        });
+
+        const params = Promise.resolve({ id: mockSermonId });
+        const res = await POST(req, { params });
+        const json = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(json.totalChunks).toBe(2);
+        expect(splitTextIntoChunks).toHaveBeenCalledWith(oversizedText.trim(), 24576);
+        expect(createAudioChunks).toHaveBeenCalledWith(['Google part one.', 'Google part two.'], 'mainPart');
+    });
+
     it('should respect saveToDb: false', async () => {
         const req = new NextRequest('http://localhost:3000/api/optimize', {
             method: 'POST',

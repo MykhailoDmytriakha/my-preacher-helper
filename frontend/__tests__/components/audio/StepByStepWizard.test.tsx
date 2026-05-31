@@ -144,6 +144,37 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         expect(JSON.parse(optimizeCalls[0][1].body)).toMatchObject({ useRawText: true });
     });
 
+    it('re-prepares Google raw chunks on step 2 instead of reusing old persisted chunk splits', async () => {
+        mockUseSermon.mockReturnValue(sermonWithChunks(
+            [
+                { index: 0, text: 'Old raw intro part one', sectionId: 'introduction' },
+                { index: 1, text: 'Old raw intro part two', sectionId: 'introduction' },
+            ],
+            { audioMetadata: { provider: 'google', mode: 'raw', voice: 'Puck', model: 'gemini-2.5-flash-preview-tts' } }
+        ));
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                chunks: [{ index: 0, text: 'Regrouped intro section', sectionId: 'introduction' }],
+                originalLength: 24,
+                optimizedLength: 24,
+            }),
+        });
+
+        render(<StepByStepWizard {...defaultProps} />);
+        await goToSource();
+
+        await waitFor(() => expect(screen.getByText('Regrouped intro section')).toBeInTheDocument());
+        expect(screen.queryByText('Old raw intro part one')).not.toBeInTheDocument();
+
+        const optimizeCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).includes('/audio/optimize'));
+        expect(optimizeCalls).toHaveLength(1);
+        expect(JSON.parse(optimizeCalls[0][1].body)).toMatchObject({
+            provider: 'google',
+            useRawText: true,
+        });
+    });
+
     it('plays and stops a voice preview, and surfaces sample errors', async () => {
         const pause = jest.fn();
         const play = jest.fn().mockResolvedValue(undefined);
