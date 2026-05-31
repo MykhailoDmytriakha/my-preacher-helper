@@ -109,6 +109,60 @@ describe('SubPointList', () => {
     expect(handleEdit).toHaveBeenCalledWith('point-1', 'sub-1', 'Paul');
   });
 
+  it('capitalizes the first letter while adding a sub-point', () => {
+    const handleAdd = jest.fn();
+
+    render(
+      <SubPointList
+        subPoints={[]}
+        outlinePointId="point-1"
+        isPointLocked={false}
+        onAdd={handleAdd}
+        onEdit={jest.fn()}
+        onDelete={jest.fn()}
+        t={t}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Add sub-point'));
+
+    const input = screen.getByPlaceholderText('Sub-point name...');
+    fireEvent.change(input, { target: { value: '"хочется спать' } });
+
+    expect(input).toHaveValue('"Хочется спать');
+
+    fireEvent.click(screen.getByLabelText('common.save'));
+
+    expect(handleAdd).toHaveBeenCalledWith('point-1', '"Хочется спать');
+  });
+
+  it('capitalizes the first letter while editing a sub-point', () => {
+    const handleEdit = jest.fn();
+
+    render(
+      <SubPointList
+        subPoints={[{ id: 'sub-1', text: 'Saul', position: 1000 }]}
+        outlinePointId="point-1"
+        isPointLocked={false}
+        onAdd={jest.fn()}
+        onEdit={handleEdit}
+        onDelete={jest.fn()}
+        t={t}
+      />
+    );
+
+    fireEvent.doubleClick(screen.getByText('Saul'));
+
+    const input = screen.getByDisplayValue('Saul');
+    fireEvent.change(input, { target: { value: 'бодрствуйте' } });
+
+    expect(input).toHaveValue('Бодрствуйте');
+
+    fireEvent.click(screen.getByLabelText('common.save'));
+
+    expect(handleEdit).toHaveBeenCalledWith('point-1', 'sub-1', 'Бодрствуйте');
+  });
+
   it('keeps the drag handle mounted while editing a reorderable sub-point', () => {
     render(
       <SubPointList

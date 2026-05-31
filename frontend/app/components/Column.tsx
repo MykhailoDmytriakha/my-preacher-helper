@@ -15,6 +15,7 @@ import { Item, SermonPoint, SubPoint } from "@/models/models";
 import { getOutlinePointAiSortState } from "@/utils/aiSorting";
 import { debugLog } from "@/utils/debugMode";
 import { buildSubPointRenderableEntries } from "@/utils/subPoints";
+import { capitalizeFirstLetter, normalizeCapitalizedTitle } from "@/utils/textNormalization";
 import { UI_COLORS } from "@/utils/themeColors";
 
 import { AudioRecorder } from "./AudioRecorder";
@@ -487,12 +488,13 @@ const SermonPointPlaceholder: React.FC<{
     }, [isEditingLocally]);
 
     const handleLocalSave = () => {
-      if (!localEditText.trim()) {
+      const textToSave = normalizeCapitalizedTitle(localEditText);
+      if (!textToSave) {
         setIsEditingLocally(false);
         setLocalEditText(point.text);
         return;
       }
-      onSaveEdit?.(point.id, localEditText.trim());
+      onSaveEdit?.(point.id, textToSave);
       setIsEditingLocally(false);
     };
 
@@ -600,7 +602,7 @@ const SermonPointPlaceholder: React.FC<{
                     ref={localEditRef}
                     type="text"
                     value={localEditText}
-                    onChange={(e) => setLocalEditText(e.target.value)}
+                    onChange={(e) => setLocalEditText(capitalizeFirstLetter(e.target.value))}
                     onKeyDown={(e) => { if (e.key === 'Enter') handleLocalSave(); if (e.key === 'Escape') handleLocalCancel(); }}
                     className="flex-1 px-2 py-0.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded border border-gray-300 dark:border-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
                   />

@@ -8,6 +8,7 @@ import {
   getSermonOutline,
   updateSermonOutline,
 } from "@/services/outline.service";
+import { capitalizeFirstLetter, normalizeCapitalizedTitle } from "@/utils/textNormalization";
 
 import { OUTLINE_SAVE_DEBOUNCE_MS } from "./constants";
 import { mapColumnIdToSectionType } from "./utils";
@@ -132,20 +133,33 @@ export function useColumnOutlineState({
     setEditingPointId(null);
   };
 
+  const setCapitalizedEditingText = (value: string) => {
+    setEditingText(capitalizeFirstLetter(value));
+  };
+
+  const setCapitalizedNewPointText = (value: string) => {
+    setNewPointText(capitalizeFirstLetter(value));
+  };
+
+  const setCapitalizedInsertPointText = (value: string) => {
+    setInsertPointText(capitalizeFirstLetter(value));
+  };
+
   const cancelAddingNewPoint = () => {
     setAddingNewPoint(false);
     setNewPointText("");
   };
 
   const handleAddPoint = () => {
-    if (!newPointText.trim()) {
+    const textToSave = normalizeCapitalizedTitle(newPointText);
+    if (!textToSave) {
       setAddingNewPoint(false);
       return;
     }
 
     const newPoint: SermonPoint = {
       id: `new-${Date.now().toString()}`,
-      text: newPointText.trim(),
+      text: textToSave,
     };
 
     const updatedPoints = [...localSermonPoints, newPoint];
@@ -157,7 +171,7 @@ export function useColumnOutlineState({
 
   const handleStartEdit = (point: SermonPoint) => {
     setEditingPointId(point.id);
-    setEditingText(point.text);
+    setEditingText(capitalizeFirstLetter(point.text));
     setAddingNewPoint(false);
   };
 
@@ -167,13 +181,14 @@ export function useColumnOutlineState({
   };
 
   const handleSaveEdit = () => {
-    if (!editingPointId || !editingText.trim()) {
+    const textToSave = normalizeCapitalizedTitle(editingText);
+    if (!editingPointId || !textToSave) {
       handleCancelEdit();
       return;
     }
 
     const updatedPoints = localSermonPoints.map((point) =>
-      point.id === editingPointId ? { ...point, text: editingText.trim() } : point
+      point.id === editingPointId ? { ...point, text: textToSave } : point
     );
 
     setLocalSermonPoints(updatedPoints);
@@ -182,10 +197,11 @@ export function useColumnOutlineState({
   };
 
   const handleSaveEditDirect = (pointId: string, newText: string) => {
-    if (!newText.trim()) return;
+    const textToSave = normalizeCapitalizedTitle(newText);
+    if (!textToSave) return;
 
     const updatedPoints = localSermonPoints.map((point) =>
-      point.id === pointId ? { ...point, text: newText.trim() } : point
+      point.id === pointId ? { ...point, text: textToSave } : point
     );
 
     setLocalSermonPoints(updatedPoints);
@@ -223,8 +239,9 @@ export function useColumnOutlineState({
 
   const handleInsertSave = async (index: number, specificText?: string) => {
     const textToSave = specificText !== undefined ? specificText : insertPointText;
+    const normalizedText = normalizeCapitalizedTitle(textToSave);
 
-    if (!textToSave.trim() || !onAddOutlinePoint) {
+    if (!normalizedText || !onAddOutlinePoint) {
       if (specificText === undefined) {
         closeInsertPointForm();
       } else {
@@ -234,7 +251,7 @@ export function useColumnOutlineState({
     }
 
     try {
-      await onAddOutlinePoint(id, index, textToSave);
+      await onAddOutlinePoint(id, index, normalizedText);
       if (specificText === undefined) {
         closeInsertPointForm();
       } else {
@@ -307,7 +324,8 @@ export function useColumnOutlineState({
   // --- Sub-point operations ---
 
   const handleAddSubPoint = (outlinePointId: string, text: string) => {
-    if (!text.trim()) return;
+    const textToSave = normalizeCapitalizedTitle(text);
+    if (!textToSave) return;
 
     const updatedPoints = localSermonPoints.map((point) => {
       if (point.id !== outlinePointId) return point;
@@ -317,7 +335,7 @@ export function useColumnOutlineState({
         : 0;
       const newSubPoint: SubPoint = {
         id: `sp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        text: text.trim(),
+        text: textToSave,
         position: maxPos + 1000,
       };
       return { ...point, subPoints: [...existing, newSubPoint] };
@@ -328,14 +346,15 @@ export function useColumnOutlineState({
   };
 
   const handleEditSubPoint = (outlinePointId: string, subPointId: string, newText: string) => {
-    if (!newText.trim()) return;
+    const textToSave = normalizeCapitalizedTitle(newText);
+    if (!textToSave) return;
 
     const updatedPoints = localSermonPoints.map((point) => {
       if (point.id !== outlinePointId || !point.subPoints) return point;
       return {
         ...point,
         subPoints: point.subPoints.map((sp) =>
-          sp.id === subPointId ? { ...sp, text: newText.trim() } : sp
+          sp.id === subPointId ? { ...sp, text: textToSave } : sp
         ),
       };
     });
@@ -382,13 +401,13 @@ export function useColumnOutlineState({
     localSermonPoints,
     editingPointId,
     editingText,
-    setEditingText,
+    setEditingText: setCapitalizedEditingText,
     addingNewPoint,
     newPointText,
-    setNewPointText,
+    setNewPointText: setCapitalizedNewPointText,
     insertPointIndex,
     insertPointText,
-    setInsertPointText,
+    setInsertPointText: setCapitalizedInsertPointText,
     isGeneratingSermonPoints,
     deletePointId,
     setDeletePointId,

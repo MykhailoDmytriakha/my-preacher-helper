@@ -266,14 +266,15 @@ describe('SermonOutline Component', () => {
 
     // Enter text and press Enter
     await act(async () => {
-      fireEvent.change(input, { target: { value: 'New intro point' } });
-      fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+    fireEvent.change(input, { target: { value: '"new intro point' } });
+    expect(input).toHaveValue('"New intro point');
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
     });
 
     // Verify the API was called correctly
     await waitFor(() => {
       const expectedOutline: SermonOutlineType = {
-        introduction: [{ id: 'intro1', text: 'Introduction point 1' }, expect.objectContaining({ text: 'New intro point' })],
+        introduction: [{ id: 'intro1', text: 'Introduction point 1' }, expect.objectContaining({ text: '"New intro point' })],
         main: [{ id: 'main1', text: 'Main point 1' }],
         conclusion: [{ id: 'concl1', text: 'Conclusion point 1' }]
       };
@@ -439,7 +440,8 @@ describe('SermonOutline Component', () => {
 
     // Change the text and press Enter
     await act(async () => {
-      fireEvent.change(editInput, { target: { value: 'Edited introduction point' } });
+      fireEvent.change(editInput, { target: { value: 'edited introduction point' } });
+      expect(editInput).toHaveValue('Edited introduction point');
       fireEvent.keyDown(editInput, { key: 'Enter', code: 'Enter' });
     });
 
