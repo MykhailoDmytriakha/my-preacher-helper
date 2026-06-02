@@ -2,7 +2,7 @@
 import { POST } from '@/api/sermons/[id]/audio/optimize/route';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { optimizeTextForSpeech } from '@/api/clients/speechOptimization.client';
-import { createAudioChunks, splitTextIntoChunks } from '@/api/clients/tts.client';
+import { createAudioChunks, splitTextIntoChunks, splitTextEvenly } from '@/api/clients/tts.client';
 
 // Mock Next.js Server objects
 jest.mock('next/server', () => {
@@ -44,6 +44,7 @@ jest.mock('@/api/clients/speechOptimization.client', () => ({
 jest.mock('@/api/clients/tts.client', () => ({
     createAudioChunks: jest.fn(),
     splitTextIntoChunks: jest.fn((text: string) => [text]),
+    splitTextEvenly: jest.fn((text: string) => [text]),
 }));
 
 describe('POST /api/sermons/[id]/audio/optimize', () => {
@@ -296,8 +297,8 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
         expect(json.success).toBe(true);
         // Raw mode must NOT call GPT optimization
         expect(optimizeTextForSpeech).not.toHaveBeenCalled();
-        // Raw thought text is split mechanically instead
-        expect(splitTextIntoChunks).toHaveBeenCalledWith(expect.stringContaining('Thought 1'));
+        // Raw thought text is split mechanically (even-split, OpenAI quality path)
+        expect(splitTextEvenly).toHaveBeenCalledWith(expect.stringContaining('Thought 1'));
         expect(createAudioChunks).toHaveBeenCalled();
     });
 
@@ -335,7 +336,7 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
         const spokenReference = 'Матфея, двадцать четвертая глава, сорок второй стих: бодрствуйте.';
         expect(res.status).toBe(200);
         expect(optimizeTextForSpeech).not.toHaveBeenCalled();
-        expect(splitTextIntoChunks).toHaveBeenCalledWith(spokenReference);
+        expect(splitTextEvenly).toHaveBeenCalledWith(spokenReference);
         expect(json.chunks[0]).toEqual(expect.objectContaining({
             sectionId: 'introduction',
             text: spokenReference,

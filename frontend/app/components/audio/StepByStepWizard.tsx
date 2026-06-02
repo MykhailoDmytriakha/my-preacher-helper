@@ -647,6 +647,17 @@ export default function StepByStepWizard({
                     </div>
                 </div>
 
+                {ttsProvider === 'google' && (
+                    <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-snug text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                        <span>
+                            {t('audioExport.googleQualityWarning', {
+                                defaultValue: 'Google: на длинных текстах голос может искажаться к концу (свист, металл). Gemini 3.1 выразительнее, но «плывёт» раньше 2.5. Для длинных проповедей надёжнее OpenAI.',
+                            })}
+                        </span>
+                    </div>
+                )}
+
                 {/* Sections — checkboxes */}
                 <div className="flex flex-col items-start gap-2 border-t border-gray-100 pt-5 dark:border-gray-800">
                     {labelRow(t('audioExport.sectionsLabel', { defaultValue: 'Sections' }))}

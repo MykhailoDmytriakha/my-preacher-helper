@@ -490,6 +490,7 @@
     "qualityStandardDesc": "быстрее, дешевле",
     "qualityHdDesc": "чище звук",
     "googleVoiceHint": "4 мужских голоса — от молодого (слева) к старшему (справа). ▷ — прослушать.",
+    "googleQualityWarning": "Google: на длинных текстах голос может искажаться к концу (свист, металл). Gemini 3.1 выразительнее, но «плывёт» раньше 2.5. Для длинных проповедей надёжнее OpenAI.",
     "openaiVoiceHint": "Голоса OpenAI. ▷ — прослушать.",
     "googleVoicePuck": "молодой, бодрый",
     "googleVoiceIapetus": "чёткий, ровный",

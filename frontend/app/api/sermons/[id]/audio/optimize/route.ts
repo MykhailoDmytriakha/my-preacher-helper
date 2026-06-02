@@ -15,7 +15,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 import { optimizeTextForSpeech } from '@/api/clients/speechOptimization.client';
-import { createAudioChunks, splitTextIntoChunks } from '@/api/clients/tts.client';
+import { createAudioChunks, splitTextEvenly } from '@/api/clients/tts.client';
 import { SectionKey, SECTION_CONFIG, getSectionThoughts, resolveSections } from '@/api/services/sermonTextService';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { SERMON_SECTIONS } from '@/types/audioGeneration.types';
@@ -127,7 +127,7 @@ export async function POST(
                     }
                     totalOriginalLength += originalRawText.length;
                     totalOptimizedLength += rawText.length;
-                    allChunks.push(...createAudioChunks(splitTextIntoChunks(rawText), segment.section));
+                    allChunks.push(...createAudioChunks(splitTextEvenly(rawText), segment.section));
                     continue;
                 }
 
@@ -155,7 +155,11 @@ export async function POST(
 
                 // Update stats
                 const optimizedTextForTts = normalizeScriptureReferencesForTts(result.optimizedText);
-                const chunksForTts = result.chunks.map(normalizeScriptureReferencesForTts);
+                // OpenAI is the quality path: re-chunk GPT output to even ~1500-2000 clips
+                // (the model returns arbitrary-sized chunks). Google keeps its own chunks.
+                const chunksForTts = provider === 'openai'
+                    ? splitTextEvenly(optimizedTextForTts)
+                    : result.chunks.map(normalizeScriptureReferencesForTts);
                 totalOptimizedLength += optimizedTextForTts.length;
 
                 // Update context for NEXT iteration

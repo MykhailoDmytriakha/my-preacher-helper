@@ -490,6 +490,7 @@
     "qualityStandardDesc": "faster, cheaper",
     "qualityHdDesc": "clearer sound",
     "googleVoiceHint": "4 male voices — youngest (left) to oldest (right). ▷ to preview.",
+    "googleQualityWarning": "Google: on long texts the voice may distort toward the end (whistling, metallic). Gemini 3.1 is more expressive but drifts earlier than 2.5. For long sermons OpenAI is more reliable.",
     "openaiVoiceHint": "OpenAI voices. ▷ to preview.",
     "googleVoicePuck": "young, upbeat",
     "googleVoiceIapetus": "clear, even",

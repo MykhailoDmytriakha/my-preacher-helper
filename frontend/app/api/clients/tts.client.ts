@@ -338,6 +338,64 @@ export function splitTextIntoChunks(
 }
 
 /**
+ * Quality-path chunking target. Autoregressive TTS models (gpt-4o-mini-tts, Gemini
+ * TTS) drift/whistle the longer the generated audio gets, so we keep each clip in
+ * the ~1500-2000 char band. With the round() rule below the largest single chunk is
+ * ~2625 chars — safely under OpenAI's 4096-char hard cap.
+ */
+export const EVEN_SPLIT_IDEAL_SIZE = 1750;
+const EVEN_SPLIT_HARD_MAX = 4000;
+
+/**
+ * Splits text into N EVEN chunks on sentence boundaries, where
+ *   N = max(1, round(len / idealSize)).
+ *
+ * Unlike the greedy splitTextIntoChunks (fills each chunk to the max and leaves a
+ * small tail), this balances every chunk to ~equal size:
+ *   1500 → [1500]      2000 → [2000]      2500 → [2500]
+ *   3000 → [1500, 1500]      5000 → [~1667 ×3]
+ * Shorter, uniform clips = better TTS quality and no tiny tail chunks.
+ */
+export function splitTextEvenly(
+    text: string,
+    idealSize: number = EVEN_SPLIT_IDEAL_SIZE
+): string[] {
+    const clean = text.trim();
+    if (!clean) return [];
+
+    const n = Math.max(1, Math.round(clean.length / idealSize));
+    if (n === 1) return [clean];
+
+    const sentences = splitBySentences(clean);
+    if (sentences.length <= 1) {
+        // A single very long sentence — fall back to even-ish word splitting.
+        return splitByWords(clean, Math.ceil(clean.length / n));
+    }
+
+    // Distribute sentences across n buckets by position so each lands ~len/n chars —
+    // balanced, and never cutting mid-sentence.
+    const target = clean.length / n;
+    const buckets: string[] = Array.from({ length: n }, () => '');
+    let pos = 0;
+    for (const sentence of sentences) {
+        const bucket = Math.min(n - 1, Math.floor((pos + sentence.length / 2) / target));
+        buckets[bucket] = buckets[bucket] ? `${buckets[bucket]} ${sentence}` : sentence;
+        pos += sentence.length + 1;
+    }
+
+    // Safety net: a pathological giant sentence could overflow a bucket past the hard
+    // cap — word-split just that one so we never exceed the API limit.
+    const result: string[] = [];
+    for (const bucket of buckets) {
+        const trimmed = bucket.trim();
+        if (!trimmed) continue;
+        if (trimmed.length > EVEN_SPLIT_HARD_MAX) result.push(...splitByWords(trimmed, idealSize));
+        else result.push(trimmed);
+    }
+    return result;
+}
+
+/**
  * Splits text by sentence boundaries.
  * @internal
  */
