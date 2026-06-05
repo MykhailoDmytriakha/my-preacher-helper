@@ -110,13 +110,16 @@ describe('User Settings Service - Prep Mode Functions', () => {
             }
           },
           {
-            name: 'throws when browser is offline',
+            name: 'still attempts the request when offline (no pre-throw)',
             run: async () => {
               setNavigatorOnline(false);
               const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+              mockFetch.mockRejectedValue(new TypeError('Failed to fetch'));
 
-              await expect(getUserSettings('user1')).rejects.toThrow('Offline: operation not available.');
-              expect(mockFetch).not.toHaveBeenCalled();
+              // Stage 2: reads no longer short-circuit offline — they attempt the
+              // fetch (and the caller falls back to React Query's persisted cache).
+              await expect(getUserSettings('user1')).rejects.toThrow('Failed to fetch');
+              expect(mockFetch).toHaveBeenCalled();
 
               consoleSpy.mockRestore();
               setNavigatorOnline(true);
@@ -217,13 +220,15 @@ describe('User Settings Service - Prep Mode Functions', () => {
             }
           },
           {
-            name: 'throws when browser is offline',
+            name: 'still attempts the request when offline (no pre-throw)',
             run: async () => {
               setNavigatorOnline(false);
               const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+              mockFetch.mockRejectedValue(new TypeError('Failed to fetch'));
 
-              await expect(updatePrepModeAccess('user1', true)).rejects.toThrow('Offline: operation not available.');
-              expect(mockFetch).not.toHaveBeenCalled();
+              // Stage 2: the write attempts the fetch; React Query buffers + replays.
+              await expect(updatePrepModeAccess('user1', true)).rejects.toThrow('Failed to fetch');
+              expect(mockFetch).toHaveBeenCalled();
 
               consoleSpy.mockRestore();
               setNavigatorOnline(true);
@@ -403,12 +408,14 @@ describe('User Settings Service - Prep Mode Functions', () => {
             }
           },
           {
-            name: 'throws when browser is offline',
+            name: 'still attempts the request when offline (no pre-throw)',
             run: async () => {
               setNavigatorOnline(false);
+              mockFetch.mockRejectedValue(new TypeError('Failed to fetch'));
 
-              await expect(updateGroupsAccess('user1', true)).rejects.toThrow('Offline: operation not available.');
-              expect(mockFetch).not.toHaveBeenCalled();
+              // Stage 2: the write attempts the fetch; React Query buffers + replays.
+              await expect(updateGroupsAccess('user1', true)).rejects.toThrow('Failed to fetch');
+              expect(mockFetch).toHaveBeenCalled();
 
               setNavigatorOnline(true);
             }
@@ -848,11 +855,14 @@ describe('User Settings Service - Prep Mode Functions', () => {
       );
     });
 
-    it('throws on offline and request failures', async () => {
+    it('attempts the request when offline and surfaces request failures', async () => {
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
+      // Stage 2: offline no longer pre-throws — the write attempts the fetch
+      // (which the browser rejects) so React Query can buffer + replay it.
       setNavigatorOnline(false);
-      await expect(updateFirstDayOfWeek('user1', 'sunday')).rejects.toThrow('Offline: operation not available.');
+      mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      await expect(updateFirstDayOfWeek('user1', 'sunday')).rejects.toThrow('Failed to fetch');
 
       setNavigatorOnline(true);
       mockFetch.mockResolvedValueOnce({ ok: false, statusText: 'Bad Request' });

@@ -193,8 +193,8 @@ export default function DashboardPage() {
       throw new Error('User is not authenticated');
     }
 
-    const createdPrayer = await createPrayer({ userId: user.uid, ...payload });
-    router.push(`/prayers/${createdPrayer.id}`);
+    const createdPrayerId = await createPrayer({ userId: user.uid, ...payload });
+    router.push(`/prayers/${createdPrayerId}`);
   };
 
   const metrics: Metric[] = [

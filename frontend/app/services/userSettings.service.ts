@@ -6,8 +6,10 @@ import type { FirstDayOfWeek } from '@/utils/weekStart';
 
 // Constants for repeated strings
 const USER_SETTINGS_API_URL = '/api/user/settings';
-const OFFLINE_ERROR = 'Offline: operation not available.';
 
+// Setting-write functions no longer pre-throw when offline — see groups.service.
+// The fetch attempts, fails, and React Query buffers + replays the toggle on
+// reconnect. Read/language helpers below keep their graceful cookie fallback.
 const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
 
 /**
@@ -155,11 +157,6 @@ export async function updateFirstDayOfWeek(
 ): Promise<void> {
   try {
     if (!userId) return;
-
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
-
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
       headers: {
@@ -261,11 +258,6 @@ export async function getUserSettings(userId: string): Promise<UserSettings | nu
     if (!userId) {
       return null;
     }
-
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
-
     const response = await fetch(`/api/user/settings?userId=${encodeURIComponent(userId)}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch user settings: ${response.statusText}`);
@@ -287,11 +279,6 @@ export async function getUserSettings(userId: string): Promise<UserSettings | nu
 export async function updatePrepModeAccess(userId: string, enabled: boolean): Promise<void> {
   try {
     if (!userId) return;
-
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
-
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
       headers: {
@@ -348,11 +335,6 @@ export async function hasPrepModeAccess(userId: string): Promise<boolean> {
 export async function updateAudioGenerationAccess(userId: string, enabled: boolean): Promise<void> {
   try {
     if (!userId) return;
-
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
-
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
       headers: {
@@ -378,11 +360,6 @@ export async function updateAudioGenerationAccess(userId: string, enabled: boole
 export async function updateShowAppVersion(userId: string, enabled: boolean): Promise<void> {
   try {
     if (!userId) return;
-
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
-
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
       headers: {
@@ -408,11 +385,6 @@ export async function updateShowAppVersion(userId: string, enabled: boolean): Pr
 export async function updateGroupsAccess(userId: string, enabled: boolean): Promise<void> {
   try {
     if (!userId) return;
-
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
-
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
       headers: {
@@ -461,11 +433,6 @@ export async function hasGroupsAccess(userId: string): Promise<boolean> {
 export async function updateStructurePreviewAccess(userId: string, enabled: boolean): Promise<void> {
   try {
     if (!userId) return;
-
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
-
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
       headers: {

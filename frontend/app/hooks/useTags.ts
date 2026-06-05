@@ -1,10 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { addCustomTag, getTags, removeCustomTag, updateTag } from '@/services/tag.service';
 import { debugLog } from '@/utils/debugMode';
+import { TAG_MUTATION_KEYS } from '@/utils/mutationDefaults';
 
 import type { Tag } from '@/models/models';
 
@@ -51,38 +52,31 @@ export function useTags(userId: string | null | undefined) {
     [tags.customTags, tags.requiredTags]
   );
 
-  const mutationGuard = useCallback(
-    async <TResult>(action: () => Promise<TResult>) => {
-      if (!isOnline) {
-        throw new Error('Offline: operation not available.');
-      }
-      return action();
-    },
-    [isOnline]
-  );
-
+  // Offline-buffered: the offline pre-throw is gone, so writes attempt the fetch,
+  // pause + persist when offline, and replay on reconnect (mutationKey ties each
+  // to its resumable default in mutationDefaults.ts). mutateAsync is kept so
+  // callers still receive the server result (e.g. removeCustomTag's affected
+  // count); offline the promise settles once the write replays on reconnect.
   const addTagMutation = useMutation({
-    mutationFn: (tag: Tag) => mutationGuard(() => addCustomTag(tag)),
+    mutationKey: TAG_MUTATION_KEYS.add,
+    mutationFn: (tag: Tag) => addCustomTag(tag),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
     },
   });
 
   const removeTagMutation = useMutation({
-    mutationFn: (tagName: string) =>
-      mutationGuard(() => {
-        if (!userId) {
-          throw new Error('No user');
-        }
-        return removeCustomTag(userId, tagName);
-      }),
+    mutationKey: TAG_MUTATION_KEYS.remove,
+    mutationFn: ({ userId: uid, tagName }: { userId: string; tagName: string }) =>
+      removeCustomTag(uid, tagName),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
     },
   });
 
   const updateTagMutation = useMutation({
-    mutationFn: (tag: Tag) => mutationGuard(() => updateTag(tag)),
+    mutationKey: TAG_MUTATION_KEYS.update,
+    mutationFn: (tag: Tag) => updateTag(tag),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
     },
@@ -97,7 +91,10 @@ export function useTags(userId: string | null | undefined) {
     error: tagsQuery.error as Error | null,
     refreshTags: tagsQuery.refetch,
     addCustomTag: addTagMutation.mutateAsync,
-    removeCustomTag: removeTagMutation.mutateAsync,
+    removeCustomTag: (tagName: string) => {
+      if (!userId) return Promise.reject(new Error('No user'));
+      return removeTagMutation.mutateAsync({ userId, tagName });
+    },
     updateTag: updateTagMutation.mutateAsync,
   };
 }

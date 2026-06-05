@@ -1,14 +1,11 @@
 import { Tag } from '@/models/models';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
-const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
-const OFFLINE_ERROR = 'Offline: operation not available.';
-
+// NOTE: writes intentionally do NOT pre-check connectivity — see groups.service.
+// Reads also attempt the fetch (and fall back to React Query's persisted cache
+// on failure) rather than returning empty, which would clobber the cache.
 export async function getTags(userId: string) {
   try {
-    if (isBrowserOffline()) {
-      return { requiredTags: [], customTags: [] };
-    }
     const res = await fetch(`${API_BASE}/api/tags?userId=${userId}`, { cache: 'no-store' });
     if (!res.ok) {
       throw new Error('Failed to fetch tags');
@@ -23,9 +20,6 @@ export async function getTags(userId: string) {
 
 export async function addCustomTag(tag: Tag) {
   try {
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
     const res = await fetch(`${API_BASE}/api/tags`, {
       method: 'POST',
       headers: {
@@ -50,9 +44,6 @@ export async function addCustomTag(tag: Tag) {
 
 export async function removeCustomTag(userId: string, tagName: string) {
   try {
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
     const res = await fetch(`${API_BASE}/api/tags?userId=${userId}&tagName=${encodeURIComponent(tagName)}`, {
       method: 'DELETE',
     });
@@ -69,9 +60,6 @@ export async function removeCustomTag(userId: string, tagName: string) {
 
 export async function updateTag(tag: Tag) {
   try {
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
     const res = await fetch(`${API_BASE}/api/tags`, {
       method: 'PUT',
       headers: {

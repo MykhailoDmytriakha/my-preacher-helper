@@ -106,14 +106,17 @@ describe('useTags', () => {
     expect(queryResult).toEqual(tagsResponse);
   });
 
-  it('rejects mutations when offline', async () => {
+  it('does not reject writes when offline — buffers them (Stage 2)', async () => {
+    // Offline no longer short-circuits: the write attempts the fetch and, when it
+    // fails, React Query pauses + persists the mutation to replay on reconnect.
     mockUseOnlineStatus.mockReturnValue(false);
     mockUseServerFirstQuery.mockReturnValue(buildServerFirstResult({ requiredTags: [], customTags: [] }));
+    const tag = { id: '1', name: 'tag', color: '#000' } as Tag;
+    mockAddCustomTag.mockResolvedValue(tag);
 
     const { result } = renderHook(() => useTags('user-1'), { wrapper: createWrapper() });
 
-    await expect(result.current.addCustomTag({ id: '1', name: 'tag', color: '#000' } as Tag))
-      .rejects.toThrow('Offline: operation not available.');
+    await expect(result.current.addCustomTag(tag)).resolves.toEqual(tag);
   });
 
   it('throws when removing tags without a user id', async () => {

@@ -140,7 +140,7 @@ describe('useSeries', () => {
   });
 
   describe('createNewSeries', () => {
-    it('should create a new series and update state', async () => {
+    it('should create a new series and reconcile to server state (optimistic + fire-and-forget)', async () => {
       const newSeriesData = {
         userId: 'user-1',
         title: 'New Series',
@@ -156,26 +156,27 @@ describe('useSeries', () => {
 
       const createdSeries = { ...newSeriesData, id: 'new-series-id' };
       mockCreateSeries.mockResolvedValue(createdSeries);
+      // onSuccess invalidates → refetch returns the authoritative list (incl. created).
+      mockGetAllSeries.mockResolvedValue([createdSeries, ...mockSeries]);
 
       const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
-      // Wait for initial load
       await waitFor(() => {
         expect(result.current.loading).toBe(false);
       });
 
-      let returnedSeries;
       await act(async () => {
-        returnedSeries = await result.current.createNewSeries(newSeriesData);
+        await result.current.createNewSeries(newSeriesData);
       });
 
       expect(mockCreateSeries).toHaveBeenCalledWith(newSeriesData);
-      expect(returnedSeries).toEqual(createdSeries);
-      expect(result.current.series).toEqual([createdSeries, ...mockSeries]);
+      await waitFor(() => {
+        expect(result.current.series).toEqual([createdSeries, ...mockSeries]);
+      });
       expect(result.current.error).toBeNull();
     });
 
-    it('should handle create error and set error state', async () => {
+    it('should surface create error via hook error state (no reject)', async () => {
       const error = new Error('Create failed');
       mockCreateSeries.mockRejectedValue(error);
 
@@ -185,20 +186,21 @@ describe('useSeries', () => {
         expect(result.current.loading).toBe(false);
       });
 
-      await expect(result.current.createNewSeries({
-        userId: 'user-1',
-        title: 'New Series',
-        theme: 'New Theme',
-        description: 'New Description',
-        bookOrTopic: 'New Book',
-        sermonIds: [],
-        status: 'draft' as const,
-        color: '#0000FF',
-        createdAt: '2024-01-03T00:00:00Z',
-        updatedAt: '2024-01-03T00:00:00Z',
-      })).rejects.toThrow('Create failed');
+      await act(async () => {
+        await result.current.createNewSeries({
+          userId: 'user-1',
+          title: 'New Series',
+          theme: 'New Theme',
+          description: 'New Description',
+          bookOrTopic: 'New Book',
+          sermonIds: [],
+          status: 'draft' as const,
+          color: '#0000FF',
+          createdAt: '2024-01-03T00:00:00Z',
+          updatedAt: '2024-01-03T00:00:00Z',
+        });
+      });
 
-      // Wait for error state to be set
       await waitFor(() => {
         expect(result.current.error).toEqual(error);
       });
@@ -206,10 +208,11 @@ describe('useSeries', () => {
   });
 
   describe('updateExistingSeries', () => {
-    it('should update existing series and update state', async () => {
+    it('should update existing series and reconcile to server state', async () => {
       const updates = { title: 'Updated Title', theme: 'Updated Theme' };
       const updatedSeries = { ...mockSeries[0], ...updates };
       mockUpdateSeries.mockResolvedValue(updatedSeries);
+      mockGetAllSeries.mockResolvedValue([updatedSeries, mockSeries[1]]);
 
       const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
@@ -217,14 +220,14 @@ describe('useSeries', () => {
         expect(result.current.loading).toBe(false);
       });
 
-      let returnedSeries;
       await act(async () => {
-        returnedSeries = await result.current.updateExistingSeries('series-1', updates);
+        await result.current.updateExistingSeries('series-1', updates);
       });
 
       expect(mockUpdateSeries).toHaveBeenCalledWith('series-1', updates);
-      expect(returnedSeries).toEqual(updatedSeries);
-      expect(result.current.series[0]).toEqual(updatedSeries);
+      await waitFor(() => {
+        expect(result.current.series[0]).toEqual(updatedSeries);
+      });
       expect(result.current.series[1]).toEqual(mockSeries[1]); // unchanged
       expect(result.current.error).toBeNull();
     });
@@ -248,15 +251,14 @@ describe('useSeries', () => {
         await result.current.updateExistingSeries('series-1', updates);
       });
 
-      // Verify the cache was updated correctly
-      const cached = queryClient.getQueryData<any>(['series-detail', 'series-1']);
-      expect(cached).toEqual({
-        series: updatedSeries,
-        other: 'data'
+      // Optimistic onMutate + onSuccess both merge updates into the detail cache.
+      await waitFor(() => {
+        const cached = queryClient.getQueryData<any>(['series-detail', 'series-1']);
+        expect(cached).toEqual({ series: updatedSeries, other: 'data' });
       });
     });
 
-    it('should handle update error and set error state', async () => {
+    it('should surface update error via hook error state (no reject)', async () => {
       const error = new Error('Update failed');
       mockUpdateSeries.mockRejectedValue(error);
 
@@ -266,30 +268,34 @@ describe('useSeries', () => {
         expect(result.current.loading).toBe(false);
       });
 
-      await expect(result.current.updateExistingSeries('series-1', { title: 'Updated' })).rejects.toThrow('Update failed');
+      await act(async () => {
+        await result.current.updateExistingSeries('series-1', { title: 'Updated' });
+      });
 
-      // Wait for error state to be set
       await waitFor(() => {
         expect(result.current.error).toEqual(error);
       });
     });
 
-    it('should handle offline error in mutationGuard', async () => {
+    it('should NOT throw on writes when offline — buffers them (Stage 2)', async () => {
+      // Offline no longer short-circuits: the write is optimistic + fire-and-forget,
+      // so the call resolves and React Query pauses/persists the underlying mutation.
       mockUseOnlineStatus.mockReturnValue(false);
+      mockUpdateSeries.mockResolvedValue({ ...mockSeries[0], title: 'x' });
       const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
-      await expect(result.current.updateExistingSeries('series-1', {})).rejects.toThrow('Offline: operation not available.');
-
-      await waitFor(() => {
-        expect(result.current.error).toBeInstanceOf(Error);
-        expect((result.current.error as Error).message).toBe('Offline: operation not available.');
+      await act(async () => {
+        await expect(
+          result.current.updateExistingSeries('series-1', { title: 'x' })
+        ).resolves.toBeUndefined();
       });
     });
   });
 
   describe('deleteExistingSeries', () => {
-    it('should delete series and update state', async () => {
+    it('should delete series and reconcile to server state', async () => {
       mockDeleteSeries.mockResolvedValue(undefined);
+      mockGetAllSeries.mockResolvedValue([mockSeries[1]]); // server reflects deletion
 
       const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
@@ -302,11 +308,13 @@ describe('useSeries', () => {
       });
 
       expect(mockDeleteSeries).toHaveBeenCalledWith('series-1');
-      expect(result.current.series).toEqual([mockSeries[1]]); // series-1 removed
+      await waitFor(() => {
+        expect(result.current.series).toEqual([mockSeries[1]]); // series-1 removed
+      });
       expect(result.current.error).toBeNull();
     });
 
-    it('should handle delete error and set error state', async () => {
+    it('should surface delete error via hook error state (no reject)', async () => {
       const error = new Error('Delete failed');
       mockDeleteSeries.mockRejectedValue(error);
 
@@ -316,9 +324,10 @@ describe('useSeries', () => {
         expect(result.current.loading).toBe(false);
       });
 
-      await expect(result.current.deleteExistingSeries('series-1')).rejects.toThrow('Delete failed');
+      await act(async () => {
+        await result.current.deleteExistingSeries('series-1');
+      });
 
-      // Wait for error state to be set
       await waitFor(() => {
         expect(result.current.error).toEqual(error);
       });

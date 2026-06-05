@@ -41,7 +41,10 @@ export class PrayerRequestsRepository {
     return hydrate(doc.data() as Omit<PrayerRequest, 'id'>, doc.id);
   }
 
-  async create(payload: Omit<PrayerRequest, 'id' | 'createdAt' | 'updatedAt'>): Promise<PrayerRequest> {
+  async create(
+    payload: Omit<PrayerRequest, 'id' | 'createdAt' | 'updatedAt'>,
+    clientId?: string
+  ): Promise<PrayerRequest> {
     const now = new Date().toISOString();
     const data = stripUndefined({
       ...payload,
@@ -51,6 +54,24 @@ export class PrayerRequestsRepository {
       createdAt: now,
       updatedAt: now,
     });
+
+    // Idempotent create when the client supplies the id: a replayed offline
+    // write reuses the same doc instead of duplicating. Guard ownership so a
+    // client cannot overwrite another user's document by guessing an id.
+    if (clientId) {
+      const ref = adminDb.collection(COLLECTION).doc(clientId);
+      const existing = await ref.get();
+      if (existing.exists) {
+        const existingData = existing.data() as Omit<PrayerRequest, 'id'>;
+        if (existingData.userId && existingData.userId !== payload.userId) {
+          throw new Error('Forbidden: prayer id belongs to another user');
+        }
+        return hydrate(existingData, clientId);
+      }
+      await ref.set(data);
+      return hydrate(data as Omit<PrayerRequest, 'id'>, clientId);
+    }
+
     const ref = await adminDb.collection(COLLECTION).add(data);
     return hydrate(data as Omit<PrayerRequest, 'id'>, ref.id);
   }

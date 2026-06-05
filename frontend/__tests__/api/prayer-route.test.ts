@@ -76,15 +76,18 @@ describe('prayer route', () => {
       }),
     } as Request);
 
-    expect(mockCreate).toHaveBeenCalledWith({
-      userId: 'user-1',
-      title: 'New prayer',
-      description: 'Context',
-      categoryId: 'cat-1',
-      tags: ['family'],
-      status: 'active',
-      updates: [],
-    });
+    expect(mockCreate).toHaveBeenCalledWith(
+      {
+        userId: 'user-1',
+        title: 'New prayer',
+        description: 'Context',
+        categoryId: 'cat-1',
+        tags: ['family'],
+        status: 'active',
+        updates: [],
+      },
+      undefined // no client-supplied id in this request
+    );
     expect(response.status).toBe(201);
     await expect(response.json()).resolves.toEqual({ id: 'p1', title: 'New prayer' });
   });

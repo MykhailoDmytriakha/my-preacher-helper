@@ -1,13 +1,31 @@
 import { createGroup, deleteGroup, updateGroup } from '@/services/groups.service';
+import {
+  addPrayerUpdate,
+  createPrayerRequest,
+  deletePrayerRequest,
+  setPrayerStatus,
+  updatePrayerRequest,
+} from '@/services/prayerRequests.service';
+import { createSeries, deleteSeries, updateSeries } from '@/services/series.service';
+import { addCustomTag, removeCustomTag, updateTag } from '@/services/tag.service';
+import {
+  updateAudioGenerationAccess,
+  updateFirstDayOfWeek,
+  updatePrepModeAccess,
+  updateShowAppVersion,
+  updateStructurePreviewAccess,
+} from '@/services/userSettings.service';
 
-import type { Group } from '@/models/models';
+import type { Group, PrayerRequest, PrayerStatus, Series, Tag } from '@/models/models';
+import type { FirstDayOfWeek } from '@/utils/weekStart';
 import type { QueryClient } from '@tanstack/react-query';
 
 /**
  * Stable mutation keys shared between the hooks (where the in-session mutation
  * is defined) and {@link registerOfflineMutationDefaults} (where the resumable
- * default lives). They MUST be identical strings — React Query matches a
- * persisted/paused mutation back to its registered `mutationFn` by this key.
+ * default lives). They MUST be identical between the two places — React Query
+ * matches a persisted/paused mutation back to its registered `mutationFn` by
+ * this key after a reload.
  */
 export const GROUP_MUTATION_KEYS = {
   create: ['groups', 'create'] as const,
@@ -15,10 +33,43 @@ export const GROUP_MUTATION_KEYS = {
   delete: ['groups', 'delete'] as const,
 };
 
-const GROUPS_QUERY_PREFIX = ['groups'];
+export const SERIES_MUTATION_KEYS = {
+  create: ['series', 'create'] as const,
+  update: ['series', 'update'] as const,
+  delete: ['series', 'delete'] as const,
+};
+
+export const PRAYER_MUTATION_KEYS = {
+  create: ['prayerRequests', 'create'] as const,
+  update: ['prayerRequests', 'update'] as const,
+  delete: ['prayerRequests', 'delete'] as const,
+  addUpdate: ['prayerRequests', 'addUpdate'] as const,
+  status: ['prayerRequests', 'status'] as const,
+};
+
+export const TAG_MUTATION_KEYS = {
+  add: ['tags', 'add'] as const,
+  remove: ['tags', 'remove'] as const,
+  update: ['tags', 'update'] as const,
+};
+
+export const SETTINGS_MUTATION_KEYS = {
+  prepMode: ['user-settings', 'prepMode'] as const,
+  audioGeneration: ['user-settings', 'audioGeneration'] as const,
+  structurePreview: ['user-settings', 'structurePreview'] as const,
+  firstDayOfWeek: ['user-settings', 'firstDayOfWeek'] as const,
+  showAppVersion: ['user-settings', 'showAppVersion'] as const,
+};
+
+// Variable shapes carried by each mutation. They MUST be self-contained (no
+// closure state) so a mutation rehydrated from IndexedDB after a reload can be
+// replayed by the registered mutationFn alone.
+type TagRemoveVars = { userId: string; tagName: string };
+type SettingVars = { userId: string; value: boolean };
+type FirstDayVars = { userId: string; value: FirstDayOfWeek };
 
 /**
- * Why this exists (Stage 2 — offline write buffer):
+ * Why this exists (offline write buffer):
  *
  * React Query persists paused/error mutations to IndexedDB and calls
  * `resumePausedMutations()` on reload. But a persisted mutation only carries
@@ -29,29 +80,104 @@ const GROUPS_QUERY_PREFIX = ['groups'];
  *
  * `setMutationDefaults(key, { mutationFn })` registers the function to call for
  * any mutation with that key — including ones rehydrated from IndexedDB after a
- * reload. `onSuccess` re-fetches the authoritative server list so the optimistic
- * placeholder (a client-only temp row) is reconciled with the real record.
+ * reload. `onSuccess` re-fetches the authoritative server list so any optimistic
+ * placeholder is reconciled with the real record.
  *
  * Call this once, against the same QueryClient that PersistQueryClientProvider
  * uses, before mutations can be resumed.
  */
 export function registerOfflineMutationDefaults(queryClient: QueryClient) {
-  const invalidateGroups = () =>
-    queryClient.invalidateQueries({ queryKey: GROUPS_QUERY_PREFIX });
+  const invalidate = (queryKey: readonly unknown[]) => () =>
+    queryClient.invalidateQueries({ queryKey });
 
+  // ---- groups ----
   queryClient.setMutationDefaults(GROUP_MUTATION_KEYS.create, {
     mutationFn: (payload: Omit<Group, 'id'>) => createGroup(payload),
-    onSuccess: invalidateGroups,
+    onSuccess: invalidate(['groups']),
   });
-
   queryClient.setMutationDefaults(GROUP_MUTATION_KEYS.update, {
-    mutationFn: ({ id, updates }: { id: string; updates: Partial<Group> }) =>
-      updateGroup(id, updates),
-    onSuccess: invalidateGroups,
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<Group> }) => updateGroup(id, updates),
+    onSuccess: invalidate(['groups']),
   });
-
   queryClient.setMutationDefaults(GROUP_MUTATION_KEYS.delete, {
     mutationFn: (groupId: string) => deleteGroup(groupId),
-    onSuccess: invalidateGroups,
+    onSuccess: invalidate(['groups']),
+  });
+
+  // ---- series ----
+  queryClient.setMutationDefaults(SERIES_MUTATION_KEYS.create, {
+    mutationFn: (payload: Omit<Series, 'id'>) => createSeries(payload),
+    onSuccess: invalidate(['series']),
+  });
+  queryClient.setMutationDefaults(SERIES_MUTATION_KEYS.update, {
+    mutationFn: ({ seriesId, updates }: { seriesId: string; updates: Partial<Series> }) =>
+      updateSeries(seriesId, updates),
+    onSuccess: invalidate(['series']),
+  });
+  queryClient.setMutationDefaults(SERIES_MUTATION_KEYS.delete, {
+    mutationFn: (seriesId: string) => deleteSeries(seriesId),
+    onSuccess: invalidate(['series']),
+  });
+
+  // ---- prayer requests ----
+  queryClient.setMutationDefaults(PRAYER_MUTATION_KEYS.create, {
+    mutationFn: (payload: Pick<PrayerRequest, 'userId' | 'title'> &
+      Partial<Pick<PrayerRequest, 'description' | 'categoryId' | 'tags'>> & { id?: string }) =>
+      createPrayerRequest(payload),
+    onSuccess: invalidate(['prayerRequests']),
+  });
+  queryClient.setMutationDefaults(PRAYER_MUTATION_KEYS.update, {
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<PrayerRequest> }) =>
+      updatePrayerRequest(id, updates),
+    onSuccess: invalidate(['prayerRequests']),
+  });
+  queryClient.setMutationDefaults(PRAYER_MUTATION_KEYS.delete, {
+    mutationFn: (id: string) => deletePrayerRequest(id),
+    onSuccess: invalidate(['prayerRequests']),
+  });
+  queryClient.setMutationDefaults(PRAYER_MUTATION_KEYS.addUpdate, {
+    mutationFn: ({ id, text }: { id: string; text: string }) => addPrayerUpdate(id, text),
+    onSuccess: invalidate(['prayerRequests']),
+  });
+  queryClient.setMutationDefaults(PRAYER_MUTATION_KEYS.status, {
+    mutationFn: ({ id, status, answerText }: { id: string; status: PrayerStatus; answerText?: string }) =>
+      setPrayerStatus(id, status, answerText),
+    onSuccess: invalidate(['prayerRequests']),
+  });
+
+  // ---- tags ----
+  queryClient.setMutationDefaults(TAG_MUTATION_KEYS.add, {
+    mutationFn: (tag: Tag) => addCustomTag(tag),
+    onSuccess: invalidate(['tags']),
+  });
+  queryClient.setMutationDefaults(TAG_MUTATION_KEYS.remove, {
+    mutationFn: ({ userId, tagName }: TagRemoveVars) => removeCustomTag(userId, tagName),
+    onSuccess: invalidate(['tags']),
+  });
+  queryClient.setMutationDefaults(TAG_MUTATION_KEYS.update, {
+    mutationFn: (tag: Tag) => updateTag(tag),
+    onSuccess: invalidate(['tags']),
+  });
+
+  // ---- user settings ----
+  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.prepMode, {
+    mutationFn: ({ userId, value }: SettingVars) => updatePrepModeAccess(userId, value),
+    onSuccess: invalidate(['user-settings']),
+  });
+  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.audioGeneration, {
+    mutationFn: ({ userId, value }: SettingVars) => updateAudioGenerationAccess(userId, value),
+    onSuccess: invalidate(['user-settings']),
+  });
+  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.structurePreview, {
+    mutationFn: ({ userId, value }: SettingVars) => updateStructurePreviewAccess(userId, value),
+    onSuccess: invalidate(['user-settings']),
+  });
+  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.firstDayOfWeek, {
+    mutationFn: ({ userId, value }: FirstDayVars) => updateFirstDayOfWeek(userId, value),
+    onSuccess: invalidate(['user-settings']),
+  });
+  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.showAppVersion, {
+    mutationFn: ({ userId, value }: SettingVars) => updateShowAppVersion(userId, value),
+    onSuccess: invalidate(['user-settings']),
   });
 }

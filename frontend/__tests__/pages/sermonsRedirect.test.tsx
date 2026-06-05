@@ -464,10 +464,8 @@ describe('Dashboard page', () => {
   });
 
   it('keeps the prayer create modal visible while redirecting to the created prayer', async () => {
-    mockCreatePrayer.mockResolvedValue({
-      id: 'created-prayer-id',
-      title: 'Created Prayer',
-    });
+    // createPrayer now returns the client-generated id string (for navigation).
+    mockCreatePrayer.mockResolvedValue('created-prayer-id');
 
     render(<DashboardPage />);
 
