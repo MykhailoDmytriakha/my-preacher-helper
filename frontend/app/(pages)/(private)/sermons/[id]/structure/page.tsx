@@ -10,7 +10,6 @@ import Column from "@/components/Column";
 import EditThoughtModal from "@/components/EditThoughtModal";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
 import { SortableItemPreview } from "@/components/SortableItem";
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useSermonStructureData } from "@/hooks/useSermonStructureData";
 import { Item, Sermon, SermonPoint, Thought, SermonOutline } from "@/models/models";
 import "@locales/i18n";
@@ -172,23 +171,23 @@ function StructurePageContent() {
     pendingActions,
   });
 
-  // Stage 2 — auto-flush: when connectivity is restored, silently replay any
-  // thoughts that were created/edited/deleted while offline (status error or
-  // pending). handleRetryPendingThought routes each back through the same submit
-  // path as a manual retry, so the user's offline edits sync without action.
-  // Edge-triggered on the offline→online transition to avoid re-firing.
-  const isOnline = useOnlineStatus();
-  const wasOnlineRef = useRef(isOnline);
+  // Stage 2 — auto-flush: when connectivity returns, silently replay any thoughts
+  // created/edited/deleted while offline (status error or pending), routing each
+  // back through the same submit path as a manual retry. Triggered on the window
+  // `online` event (navigator-based, like React Query's onlineManager) rather than
+  // the apiClient-derived useOnlineStatus, which can stay "offline" after a blip
+  // until an apiClient() call recovers it — too unreliable for auto-flush.
   useEffect(() => {
-    const reconnected = wasOnlineRef.current === false && isOnline === true;
-    wasOnlineRef.current = isOnline;
-    if (!reconnected) return;
-    pendingActions.pendingThoughts
-      .filter((pending) => pending.status === 'error' || pending.status === 'pending')
-      .forEach((pending) => {
-        void handleRetryPendingThought(pending.localId).catch(() => {});
-      });
-  }, [isOnline, pendingActions.pendingThoughts, handleRetryPendingThought]);
+    const flush = () => {
+      pendingActions.pendingThoughts
+        .filter((pending) => pending.status === 'error' || pending.status === 'pending')
+        .forEach((pending) => {
+          void handleRetryPendingThought(pending.localId).catch(() => {});
+        });
+    };
+    window.addEventListener('online', flush);
+    return () => window.removeEventListener('online', flush);
+  }, [pendingActions.pendingThoughts, handleRetryPendingThought]);
 
   // Focus mode hook
   const {

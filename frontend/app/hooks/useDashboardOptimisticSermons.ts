@@ -1,7 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { getNextPlannedDate, getPreachDatesByStatus } from '@/utils/preachDateStatus';
 import { auth } from '@services/firebaseAuth.service';
 import { addPreachDate, deletePreachDate, updatePreachDate } from '@services/preachDates.service';
@@ -171,20 +170,21 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
     await retryAction();
   }, []);
 
-  // Stage 2 — auto-flush: when connectivity is restored, silently replay every
-  // sermon create/edit/delete/mark that failed while offline. Each registered
-  // retry action is the same closure manual retrySync runs. Edge-triggered on the
-  // offline→online transition so it does not re-fire on unrelated re-renders.
-  const isOnline = useOnlineStatus();
-  const wasOnlineRef = useRef(isOnline);
+  // Stage 2 — auto-flush: when connectivity returns, silently replay every sermon
+  // create/edit/delete/mark that failed while offline. Each registered retry
+  // action is the same closure manual retrySync runs. Triggered on the window
+  // `online` event (navigator-based, like React Query's onlineManager) rather than
+  // the apiClient-derived useOnlineStatus, which can stay "offline" after a blip
+  // until an apiClient() call recovers it — too unreliable for auto-flush.
   useEffect(() => {
-    const reconnected = wasOnlineRef.current === false && isOnline === true;
-    wasOnlineRef.current = isOnline;
-    if (!reconnected) return;
-    Object.keys(retryActionsRef.current).forEach((sermonId) => {
-      void retryActionsRef.current[sermonId]?.().catch(() => {});
-    });
-  }, [isOnline]);
+    const flush = () => {
+      Object.keys(retryActionsRef.current).forEach((sermonId) => {
+        void retryActionsRef.current[sermonId]?.().catch(() => {});
+      });
+    };
+    window.addEventListener('online', flush);
+    return () => window.removeEventListener('online', flush);
+  }, []);
 
   const createSermon = useCallback(
     async (input: DashboardCreateSermonInput) => {
