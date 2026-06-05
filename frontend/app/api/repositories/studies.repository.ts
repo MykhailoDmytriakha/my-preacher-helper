@@ -43,7 +43,10 @@ export class StudiesRepository {
     return normalized;
   }
 
-  async createNote(payload: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>): Promise<StudyNote> {
+  async createNote(
+    payload: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>,
+    clientId?: string
+  ): Promise<StudyNote> {
     const now = new Date().toISOString();
     const note: Omit<StudyNote, 'id' | 'isDraft'> = {
       ...payload,
@@ -53,14 +56,34 @@ export class StudiesRepository {
     // Do not persist derived/extraneous fields
     const { materialIds, relatedSermonIds, ...persistable } = note;
 
-    const docRef = await adminDb.collection(NOTES_COLLECTION).add(persistable);
-    return {
-      ...note,
-      id: docRef.id,
-      isDraft: computeDraft(payload),
+    const hydrate = (id: string, base: Omit<StudyNote, 'id' | 'isDraft'>): StudyNote => ({
+      ...base,
+      id,
+      isDraft: computeDraft(base),
       materialIds: materialIds || [],
       relatedSermonIds: relatedSermonIds || [],
-    };
+    });
+
+    // Idempotent create when the client supplies the id (offline autosave): a
+    // replayed create reuses the same doc instead of duplicating. Ownership
+    // mismatch (incl. a missing userId) is rejected so a client id can never
+    // reach another user's note.
+    if (clientId) {
+      const ref = adminDb.collection(NOTES_COLLECTION).doc(clientId);
+      const existing = await ref.get();
+      if (existing.exists) {
+        const existingData = existing.data() as Omit<StudyNote, 'id' | 'isDraft'>;
+        if (existingData.userId !== payload.userId) {
+          throw new Error('Forbidden: study note id belongs to another user');
+        }
+        return hydrate(clientId, existingData);
+      }
+      await ref.set(persistable);
+      return hydrate(clientId, note);
+    }
+
+    const docRef = await adminDb.collection(NOTES_COLLECTION).add(persistable);
+    return hydrate(docRef.id, note);
   }
 
   async updateNote(id: string, updates: Partial<StudyNote>): Promise<StudyNote> {

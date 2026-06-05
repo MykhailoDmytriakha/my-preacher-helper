@@ -29,7 +29,9 @@ export async function getStudyNotes(userId: string, filters: NoteFilters = {}): 
   return res.json();
 }
 
-export async function createStudyNote(note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>): Promise<StudyNote> {
+export async function createStudyNote(
+  note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'> & { id?: string }
+): Promise<StudyNote> {
   const res = await fetch(`${API_BASE}/api/studies/notes`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

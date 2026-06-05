@@ -72,16 +72,19 @@ export async function POST(request: Request) {
     }
     const content: string = payload.content ?? '';
 
-    const note = await studiesRepository.createNote({
-      userId,
-      content,
-      title: payload.title || '',
-      scriptureRefs: payload.scriptureRefs || [],
-      tags: payload.tags || [],
-      type: payload.type || 'note',
-      materialIds: payload.materialIds || [],
-      relatedSermonIds: payload.relatedSermonIds || [],
-    });
+    const note = await studiesRepository.createNote(
+      {
+        userId,
+        content,
+        title: payload.title || '',
+        scriptureRefs: payload.scriptureRefs || [],
+        tags: payload.tags || [],
+        type: payload.type || 'note',
+        materialIds: payload.materialIds || [],
+        relatedSermonIds: payload.relatedSermonIds || [],
+      },
+      typeof payload.id === 'string' ? payload.id : undefined
+    );
 
     return NextResponse.json(note, { status: 201 });
   } catch (error) {

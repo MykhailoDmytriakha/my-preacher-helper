@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { StudyNote } from '@/models/models';
+import { newClientId } from '@/utils/clientId';
 import { STUDY_NOTE_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import {
   createStudyNote,
@@ -25,11 +26,26 @@ export function useStudyNotes() {
   // mutationKey + self-contained variables (userId carried in the payload) tie
   // each write to its resumable default in mutationDefaults.ts so an edit made
   // offline survives a reload and replays on reconnect.
-  const createNote = useMutation({
+  // Create uses a client-generated id: the autosave gets the id back immediately
+  // (no await on the network), so it can set the route/createdNoteId and switch
+  // out of "new" mode — which prevents the offline autosave from firing repeated
+  // creates (duplicates) while a paused create waits to replay. The server
+  // upserts by that id, so a replayed create is idempotent.
+  const createNoteMutation = useMutation({
     mutationKey: STUDY_NOTE_MUTATION_KEYS.create,
-    mutationFn: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>) => createStudyNote(note),
-    onSuccess: (created) => {
-      queryClient.setQueryData<StudyNote[]>(notesKey(uid), (old = []) => [created, ...(old ?? [])]);
+    mutationFn: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'> & { id: string }) =>
+      createStudyNote(note),
+    onMutate: async (note) => {
+      await queryClient.cancelQueries({ queryKey: notesKey(uid) });
+      const previous = queryClient.getQueryData<StudyNote[]>(notesKey(uid));
+      queryClient.setQueryData<StudyNote[]>(notesKey(uid), (old = []) => [note as StudyNote, ...(old ?? [])]);
+      return { previous };
+    },
+    onError: (_e, _note, ctx) => {
+      if (ctx?.previous) queryClient.setQueryData(notesKey(uid), ctx.previous);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['study-notes'] });
     },
   });
 
@@ -61,7 +77,26 @@ export function useStudyNotes() {
     loading: isAuthLoading || notesQuery.isLoading,
     error: notesQuery.error as Error | null,
     refetch: notesQuery.refetch,
-    createNote: createNote.mutateAsync,
+    // Returns the client-generated id immediately (resolved) so the autosave can
+    // set the route/createdNoteId without awaiting the network; the write buffers
+    // and replays on reconnect.
+    createNote: async (
+      note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>
+    ): Promise<StudyNote> => {
+      const id = newClientId();
+      const now = new Date().toISOString();
+      const optimistic: StudyNote = {
+        ...note,
+        id,
+        createdAt: now,
+        updatedAt: now,
+        isDraft: false,
+        materialIds: note.materialIds || [],
+        relatedSermonIds: note.relatedSermonIds || [],
+      };
+      createNoteMutation.mutate({ ...note, id });
+      return optimistic;
+    },
     updating: updateNoteMutation.isPending,
     updateNote: ({ id, updates }: { id: string; updates: Partial<StudyNote> }) => {
       if (!uid) return Promise.reject(new Error('No user'));

@@ -176,11 +176,14 @@ describe('Study Notes API Route', () => {
             const data = await response.json();
 
             expect(response.status).toBe(201);
-            expect(studiesRepository.createNote).toHaveBeenCalledWith(expect.objectContaining({
-                userId: validPayload.userId,
-                content: validPayload.content,
-                type: 'question', // CRITICAL: verify the fix is tested
-            }));
+            expect(studiesRepository.createNote).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    userId: validPayload.userId,
+                    content: validPayload.content,
+                    type: 'question', // CRITICAL: verify the fix is tested
+                }),
+                undefined // no client-supplied id in this request
+            );
             expect(data.id).toBe('new-id');
         });
 

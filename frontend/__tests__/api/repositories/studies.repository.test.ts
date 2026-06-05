@@ -240,6 +240,50 @@ describe('StudiesRepository', () => {
     dateSpy.mockRestore();
   });
 
+  it('creates a note with a client-supplied id via doc().set() (idempotent path)', async () => {
+    getNoteRef('client-note-1').get.mockResolvedValue({ exists: false });
+
+    const result = await repository.createNote(
+      { userId: 'user-1', content: 'C', scriptureRefs: [], tags: [], materialIds: [], relatedSermonIds: [], type: 'note', title: 'Client note' },
+      'client-note-1'
+    );
+
+    expect(getNoteRef('client-note-1').set).toHaveBeenCalledTimes(1);
+    expect(noteAdd).not.toHaveBeenCalled();
+    expect(result.id).toBe('client-note-1');
+  });
+
+  it('is idempotent: replaying a create for an existing same-user note returns it without re-writing', async () => {
+    getNoteRef('client-note-1').get.mockResolvedValue({
+      exists: true,
+      data: () => ({ userId: 'user-1', content: 'Existing', scriptureRefs: [], tags: [], type: 'note', title: 'Existing', createdAt: 'x', updatedAt: 'x' }),
+    });
+
+    const result = await repository.createNote(
+      { userId: 'user-1', content: 'Replay', scriptureRefs: [], tags: [], materialIds: [], relatedSermonIds: [], type: 'note', title: 'Replay' },
+      'client-note-1'
+    );
+
+    expect(result.id).toBe('client-note-1');
+    expect(result.title).toBe('Existing'); // existing doc, not re-written
+    expect(getNoteRef('client-note-1').set).not.toHaveBeenCalled();
+  });
+
+  it('rejects a client id that belongs to another user (ownership guard)', async () => {
+    getNoteRef('client-note-1').get.mockResolvedValue({
+      exists: true,
+      data: () => ({ userId: 'other-user', content: 'Theirs', scriptureRefs: [], tags: [], type: 'note', title: 'Theirs', createdAt: 'x', updatedAt: 'x' }),
+    });
+
+    await expect(
+      repository.createNote(
+        { userId: 'user-1', content: 'Hijack', scriptureRefs: [], tags: [], materialIds: [], relatedSermonIds: [], type: 'note', title: 'Hijack' },
+        'client-note-1'
+      )
+    ).rejects.toThrow('Forbidden');
+    expect(getNoteRef('client-note-1').set).not.toHaveBeenCalled();
+  });
+
   it('updates a note, recomputes draft status, and persists merged data', async () => {
     const dateSpy = jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2024-02-02T12:00:00.000Z');
     getNoteRef('note-1').get.mockResolvedValue({

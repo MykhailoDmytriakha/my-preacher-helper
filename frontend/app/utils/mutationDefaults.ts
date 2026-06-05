@@ -224,7 +224,8 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
 
   // ---- study notes ----
   queryClient.setMutationDefaults(STUDY_NOTE_MUTATION_KEYS.create, {
-    mutationFn: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>) => createStudyNote(note),
+    mutationFn: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'> & { id?: string }) =>
+      createStudyNote(note),
     onSuccess: invalidate(['study-notes']),
   });
   queryClient.setMutationDefaults(STUDY_NOTE_MUTATION_KEYS.update, {
