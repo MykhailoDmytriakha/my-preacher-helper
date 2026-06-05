@@ -63,7 +63,10 @@ export class PrayerRequestsRepository {
       const existing = await ref.get();
       if (existing.exists) {
         const existingData = existing.data() as Omit<PrayerRequest, 'id'>;
-        if (existingData.userId && existingData.userId !== payload.userId) {
+        // Idempotent replay only when the doc is the SAME user's. Any mismatch
+        // (including a missing userId on the stored doc) is treated as a foreign
+        // id and rejected, so a client can never reach another user's document.
+        if (existingData.userId !== payload.userId) {
           throw new Error('Forbidden: prayer id belongs to another user');
         }
         return hydrate(existingData, clientId);

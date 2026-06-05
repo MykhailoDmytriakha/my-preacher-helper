@@ -10,6 +10,7 @@ import Column from "@/components/Column";
 import EditThoughtModal from "@/components/EditThoughtModal";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
 import { SortableItemPreview } from "@/components/SortableItem";
+import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useSermonStructureData } from "@/hooks/useSermonStructureData";
 import { Item, Sermon, SermonPoint, Thought, SermonOutline } from "@/models/models";
 import "@locales/i18n";
@@ -170,6 +171,24 @@ function StructurePageContent() {
     },
     pendingActions,
   });
+
+  // Stage 2 — auto-flush: when connectivity is restored, silently replay any
+  // thoughts that were created/edited/deleted while offline (status error or
+  // pending). handleRetryPendingThought routes each back through the same submit
+  // path as a manual retry, so the user's offline edits sync without action.
+  // Edge-triggered on the offline→online transition to avoid re-firing.
+  const isOnline = useOnlineStatus();
+  const wasOnlineRef = useRef(isOnline);
+  useEffect(() => {
+    const reconnected = wasOnlineRef.current === false && isOnline === true;
+    wasOnlineRef.current = isOnline;
+    if (!reconnected) return;
+    pendingActions.pendingThoughts
+      .filter((pending) => pending.status === 'error' || pending.status === 'pending')
+      .forEach((pending) => {
+        void handleRetryPendingThought(pending.localId).catch(() => {});
+      });
+  }, [isOnline, pendingActions.pendingThoughts, handleRetryPendingThought]);
 
   // Focus mode hook
   const {

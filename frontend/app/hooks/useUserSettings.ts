@@ -1,7 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
-import { SETTINGS_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import {
   getUserSettings,
   updatePrepModeAccess,
@@ -10,6 +9,7 @@ import {
   updateShowAppVersion,
   updateFirstDayOfWeek,
 } from '@/services/userSettings.service';
+import { SETTINGS_MUTATION_KEYS } from '@/utils/mutationDefaults';
 
 import type { UserSettings } from '@/models/models';
 import type { FirstDayOfWeek } from '@/utils/weekStart';

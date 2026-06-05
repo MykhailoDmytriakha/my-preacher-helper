@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { StudyNote } from '@/models/models';
+import { STUDY_NOTE_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import {
   createStudyNote,
   deleteStudyNote,
@@ -21,7 +22,11 @@ export function useStudyNotes() {
     enabled: !!uid,
   });
 
+  // mutationKey + self-contained variables (userId carried in the payload) tie
+  // each write to its resumable default in mutationDefaults.ts so an edit made
+  // offline survives a reload and replays on reconnect.
   const createNote = useMutation({
+    mutationKey: STUDY_NOTE_MUTATION_KEYS.create,
     mutationFn: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>) => createStudyNote(note),
     onSuccess: (created) => {
       queryClient.setQueryData<StudyNote[]>(notesKey(uid), (old = []) => [created, ...(old ?? [])]);
@@ -29,10 +34,9 @@ export function useStudyNotes() {
   });
 
   const updateNoteMutation = useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: Partial<StudyNote> }) => {
-      if (!uid) throw new Error('No user');
-      return updateStudyNote(id, { ...updates, userId: uid });
-    },
+    mutationKey: STUDY_NOTE_MUTATION_KEYS.update,
+    mutationFn: ({ id, updates, userId }: { id: string; updates: Partial<StudyNote>; userId: string }) =>
+      updateStudyNote(id, { ...updates, userId }),
     onSuccess: (updated) => {
       queryClient.setQueryData<StudyNote[]>(notesKey(uid), (old = []) =>
         (old ?? []).map((n) => (n.id === updated.id ? updated : n))
@@ -41,11 +45,9 @@ export function useStudyNotes() {
   });
 
   const deleteNoteMutation = useMutation({
-    mutationFn: (id: string) => {
-      if (!uid) throw new Error('No user');
-      return deleteStudyNote(id, uid);
-    },
-    onSuccess: (_data, id) => {
+    mutationKey: STUDY_NOTE_MUTATION_KEYS.delete,
+    mutationFn: ({ id, userId }: { id: string; userId: string }) => deleteStudyNote(id, userId),
+    onSuccess: (_data, { id }) => {
       queryClient.setQueryData<StudyNote[]>(notesKey(uid), (old = []) =>
         (old ?? []).filter((n) => n.id !== id)
       );
@@ -61,7 +63,13 @@ export function useStudyNotes() {
     refetch: notesQuery.refetch,
     createNote: createNote.mutateAsync,
     updating: updateNoteMutation.isPending,
-    updateNote: updateNoteMutation.mutateAsync,
-    deleteNote: deleteNoteMutation.mutateAsync,
+    updateNote: ({ id, updates }: { id: string; updates: Partial<StudyNote> }) => {
+      if (!uid) return Promise.reject(new Error('No user'));
+      return updateNoteMutation.mutateAsync({ id, updates, userId: uid });
+    },
+    deleteNote: (id: string) => {
+      if (!uid) return Promise.reject(new Error('No user'));
+      return deleteNoteMutation.mutateAsync({ id, userId: uid });
+    },
   };
 }

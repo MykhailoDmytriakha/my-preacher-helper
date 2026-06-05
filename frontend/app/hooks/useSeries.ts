@@ -216,7 +216,7 @@ export function useSeries(userId?: string | null) {
       queryClient.setQueryData(buildQueryKey(effectiveUserId), updated);
       return updated;
     } catch (e: unknown) {
-      const errorObj = e instanceof Error ? e : new Error(String(e));
+      const errorObj = normalizeError(e);
       setMutationError(errorObj);
       throw errorObj;
     }

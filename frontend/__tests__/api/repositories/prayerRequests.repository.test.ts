@@ -6,6 +6,7 @@ const mockPrayerGet = jest.fn();
 const mockPrayerDoc = jest.fn();
 const mockPrayerUpdate = jest.fn();
 const mockPrayerDelete = jest.fn();
+const mockPrayerSet = jest.fn();
 const mockCategoryAdd = jest.fn();
 const mockCategoryWhere = jest.fn();
 const mockCategoryGet = jest.fn();
@@ -45,6 +46,7 @@ const setupFirestoreMocks = () => {
         where: mockPrayerWhere.mockReturnValue({ get: mockPrayerGet }),
         doc: mockPrayerDoc.mockReturnValue({
           get: mockPrayerGet,
+          set: mockPrayerSet.mockResolvedValue(undefined),
           update: mockPrayerUpdate.mockResolvedValue(undefined),
           delete: mockPrayerDelete.mockResolvedValue(undefined),
         }),
@@ -138,6 +140,51 @@ describe('PrayerRequestsRepository', () => {
     });
     expect(created.id).toBe('new-prayer-id');
     nowSpy.mockRestore();
+  });
+
+  it('creates with a client-supplied id via doc().set() (idempotent path)', async () => {
+    mockPrayerGet.mockResolvedValue({ exists: false });
+
+    const created = await repository.create(
+      { userId: 'user-1', title: 'Client id prayer', tags: [], status: 'active', updates: [] },
+      'client-uuid-1'
+    );
+
+    expect(mockPrayerDoc).toHaveBeenCalledWith('client-uuid-1');
+    expect(mockPrayerSet).toHaveBeenCalledTimes(1);
+    expect(mockPrayerAdd).not.toHaveBeenCalled(); // not the auto-id path
+    expect(created.id).toBe('client-uuid-1');
+  });
+
+  it('is idempotent: replaying a create for an existing same-user doc returns it without re-writing', async () => {
+    mockPrayerGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ userId: 'user-1', title: 'Already there', tags: [], status: 'active', updates: [] }),
+    });
+
+    const created = await repository.create(
+      { userId: 'user-1', title: 'Replay', tags: [], status: 'active', updates: [] },
+      'client-uuid-1'
+    );
+
+    expect(created.id).toBe('client-uuid-1');
+    expect(created.title).toBe('Already there'); // existing doc, not re-written
+    expect(mockPrayerSet).not.toHaveBeenCalled(); // no duplicate write
+  });
+
+  it('rejects a client id that belongs to another user (ownership guard)', async () => {
+    mockPrayerGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ userId: 'other-user', title: 'Theirs', tags: [], status: 'active', updates: [] }),
+    });
+
+    await expect(
+      repository.create(
+        { userId: 'user-1', title: 'Hijack', tags: [], status: 'active', updates: [] },
+        'client-uuid-1'
+      )
+    ).rejects.toThrow('Forbidden');
+    expect(mockPrayerSet).not.toHaveBeenCalled();
   });
 
   it('updates prayers and rejects unknown ids', async () => {

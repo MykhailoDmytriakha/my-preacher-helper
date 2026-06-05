@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { PreachDate } from '@/models/models';
+import { PREACH_DATE_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import * as preachDatesService from '@services/preachDates.service';
 
 export function usePreachDates(sermonId: string) {
@@ -13,40 +14,43 @@ export function usePreachDates(sermonId: string) {
         enabled: !!sermonId,
     });
 
+    // mutationKey + self-contained variables (sermonId carried in the payload) tie
+    // each write to its resumable default in mutationDefaults.ts so a preach-date
+    // edit made offline survives a reload and replays on reconnect.
+    const invalidate = () => {
+        queryClient.invalidateQueries({ queryKey: ['preachDates', sermonId] });
+        queryClient.invalidateQueries({ queryKey: ['sermons'] });
+    };
+
     const addMutation = useMutation({
-        mutationFn: (data: Omit<PreachDate, 'id' | 'createdAt'>) =>
-            preachDatesService.addPreachDate(sermonId, data),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['preachDates', sermonId] });
-            queryClient.invalidateQueries({ queryKey: ['sermons'] }); // Also invalidate sermon list to show warnings/stats correctly
-        },
+        mutationKey: PREACH_DATE_MUTATION_KEYS.add,
+        mutationFn: ({ sermonId: sid, data }: { sermonId: string; data: Omit<PreachDate, 'id' | 'createdAt'> }) =>
+            preachDatesService.addPreachDate(sid, data),
+        onSuccess: invalidate,
     });
 
     const updateMutation = useMutation({
-        mutationFn: ({ dateId, updates }: { dateId: string; updates: Partial<PreachDate> }) =>
-            preachDatesService.updatePreachDate(sermonId, dateId, updates),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['preachDates', sermonId] });
-            queryClient.invalidateQueries({ queryKey: ['sermons'] });
-        },
+        mutationKey: PREACH_DATE_MUTATION_KEYS.update,
+        mutationFn: ({ sermonId: sid, dateId, updates }: { sermonId: string; dateId: string; updates: Partial<PreachDate> }) =>
+            preachDatesService.updatePreachDate(sid, dateId, updates),
+        onSuccess: invalidate,
     });
 
     const deleteMutation = useMutation({
-        mutationFn: (dateId: string) =>
-            preachDatesService.deletePreachDate(sermonId, dateId),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['preachDates', sermonId] });
-            queryClient.invalidateQueries({ queryKey: ['sermons'] });
-        },
+        mutationKey: PREACH_DATE_MUTATION_KEYS.delete,
+        mutationFn: ({ sermonId: sid, dateId }: { sermonId: string; dateId: string }) =>
+            preachDatesService.deletePreachDate(sid, dateId),
+        onSuccess: invalidate,
     });
 
     return {
         preachDates,
         isLoading,
         error,
-        addDate: addMutation.mutateAsync,
-        updateDate: updateMutation.mutateAsync,
-        deleteDate: deleteMutation.mutateAsync,
+        addDate: (data: Omit<PreachDate, 'id' | 'createdAt'>) => addMutation.mutateAsync({ sermonId, data }),
+        updateDate: ({ dateId, updates }: { dateId: string; updates: Partial<PreachDate> }) =>
+            updateMutation.mutateAsync({ sermonId, dateId, updates }),
+        deleteDate: (dateId: string) => deleteMutation.mutateAsync({ sermonId, dateId }),
         isAdding: addMutation.isPending,
         isUpdating: updateMutation.isPending,
         isDeleting: deleteMutation.isPending,

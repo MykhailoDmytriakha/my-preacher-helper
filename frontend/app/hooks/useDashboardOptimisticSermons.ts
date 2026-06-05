@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { getNextPlannedDate, getPreachDatesByStatus } from '@/utils/preachDateStatus';
 import { auth } from '@services/firebaseAuth.service';
 import { addPreachDate, deletePreachDate, updatePreachDate } from '@services/preachDates.service';
@@ -169,6 +170,21 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
     if (!retryAction) return;
     await retryAction();
   }, []);
+
+  // Stage 2 — auto-flush: when connectivity is restored, silently replay every
+  // sermon create/edit/delete/mark that failed while offline. Each registered
+  // retry action is the same closure manual retrySync runs. Edge-triggered on the
+  // offline→online transition so it does not re-fire on unrelated re-renders.
+  const isOnline = useOnlineStatus();
+  const wasOnlineRef = useRef(isOnline);
+  useEffect(() => {
+    const reconnected = wasOnlineRef.current === false && isOnline === true;
+    wasOnlineRef.current = isOnline;
+    if (!reconnected) return;
+    Object.keys(retryActionsRef.current).forEach((sermonId) => {
+      void retryActionsRef.current[sermonId]?.().catch(() => {});
+    });
+  }, [isOnline]);
 
   const createSermon = useCallback(
     async (input: DashboardCreateSermonInput) => {

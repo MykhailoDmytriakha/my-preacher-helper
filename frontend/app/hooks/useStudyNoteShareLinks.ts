@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { StudyNoteShareLink } from '@/models/models';
+import { SHARE_LINK_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import {
   createStudyNoteShareLink,
   deleteStudyNoteShareLink,
@@ -20,11 +21,13 @@ export function useStudyNoteShareLinks() {
     enabled: !!uid,
   });
 
+  // mutationKey + self-contained variables (userId in the payload) tie each write
+  // to its resumable default in mutationDefaults.ts so it survives a reload and
+  // replays on reconnect.
   const createLinkMutation = useMutation({
-    mutationFn: (noteId: string) => {
-      if (!uid) throw new Error('No user');
-      return createStudyNoteShareLink(uid, noteId);
-    },
+    mutationKey: SHARE_LINK_MUTATION_KEYS.create,
+    mutationFn: ({ userId, noteId }: { userId: string; noteId: string }) =>
+      createStudyNoteShareLink(userId, noteId),
     onSuccess: (created) => {
       queryClient.setQueryData<StudyNoteShareLink[]>(shareLinksKey(uid), (old = []) => {
         const filtered = (old ?? []).filter((link) => link.noteId !== created.noteId);
@@ -34,11 +37,10 @@ export function useStudyNoteShareLinks() {
   });
 
   const deleteLinkMutation = useMutation({
-    mutationFn: (linkId: string) => {
-      if (!uid) throw new Error('No user');
-      return deleteStudyNoteShareLink(uid, linkId);
-    },
-    onSuccess: (_data, linkId) => {
+    mutationKey: SHARE_LINK_MUTATION_KEYS.delete,
+    mutationFn: ({ userId, linkId }: { userId: string; linkId: string }) =>
+      deleteStudyNoteShareLink(userId, linkId),
+    onSuccess: (_data, { linkId }) => {
       queryClient.setQueryData<StudyNoteShareLink[]>(shareLinksKey(uid), (old = []) =>
         (old ?? []).filter((link) => link.id !== linkId)
       );
@@ -51,7 +53,13 @@ export function useStudyNoteShareLinks() {
     loading: isAuthLoading || shareLinksQuery.isLoading,
     error: shareLinksQuery.error as Error | null,
     refetch: shareLinksQuery.refetch,
-    createShareLink: createLinkMutation.mutateAsync,
-    deleteShareLink: deleteLinkMutation.mutateAsync,
+    createShareLink: (noteId: string) => {
+      if (!uid) return Promise.reject(new Error('No user'));
+      return createLinkMutation.mutateAsync({ userId: uid, noteId });
+    },
+    deleteShareLink: (linkId: string) => {
+      if (!uid) return Promise.reject(new Error('No user'));
+      return deleteLinkMutation.mutateAsync({ userId: uid, linkId });
+    },
   };
 }
