@@ -118,13 +118,12 @@ describe('UserSettingsRepository', () => {
                 exists: false
               });
 
-              const result = await userSettingsRepository.createOrUpdate(
-                'new-user-id',
-                'en',
-                'new@example.com',
-                'New User',
-                true
-              );
+              const result = await userSettingsRepository.createOrUpdate('new-user-id', {
+                language: 'en',
+                email: 'new@example.com',
+                displayName: 'New User',
+                enablePrepMode: true,
+              });
 
               expect(result).toBe('new-user-id');
               expect(mockSet).toHaveBeenCalledWith({
@@ -139,13 +138,12 @@ describe('UserSettingsRepository', () => {
           {
             name: 'updates existing document with all fields',
             run: async () => {
-              const result = await userSettingsRepository.createOrUpdate(
-                'existing-user-id',
-                'ru',
-                'updated@example.com',
-                'Updated User',
-                false
-              );
+              const result = await userSettingsRepository.createOrUpdate('existing-user-id', {
+                language: 'ru',
+                email: 'updated@example.com',
+                displayName: 'Updated User',
+                enablePrepMode: false,
+              });
 
               expect(result).toBe('existing-user-id');
               expect(mockUpdate).toHaveBeenCalledWith({
@@ -160,13 +158,9 @@ describe('UserSettingsRepository', () => {
           {
             name: 'handles partial updates (only some fields provided)',
             run: async () => {
-              const result = await userSettingsRepository.createOrUpdate(
-                'existing-user-id',
-                undefined, // language not provided
-                'email@example.com', // email provided
-                undefined, // displayName not provided
-                undefined // enablePrepMode not provided
-              );
+              const result = await userSettingsRepository.createOrUpdate('existing-user-id', {
+                email: 'email@example.com',
+              });
 
               expect(result).toBe('existing-user-id');
               expect(mockUpdate).toHaveBeenCalledWith({
@@ -180,13 +174,7 @@ describe('UserSettingsRepository', () => {
             run: async () => {
               const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 
-              const result = await userSettingsRepository.createOrUpdate(
-                'existing-user-id',
-                undefined,
-                undefined,
-                undefined,
-                undefined
-              );
+              const result = await userSettingsRepository.createOrUpdate('existing-user-id', {});
 
               expect(result).toBe('existing-user-id');
               expect(mockUpdate).not.toHaveBeenCalled();
@@ -201,13 +189,10 @@ describe('UserSettingsRepository', () => {
             run: async () => {
               const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
 
-              await userSettingsRepository.createOrUpdate(
-                'existing-user-id',
-                'fr',
-                undefined,
-                undefined,
-                true
-              );
+              await userSettingsRepository.createOrUpdate('existing-user-id', {
+                language: 'fr',
+                enablePrepMode: true,
+              });
 
               expect(consoleSpy).toHaveBeenCalledWith(
                 "Updating user settings for user:",
@@ -229,11 +214,10 @@ describe('UserSettingsRepository', () => {
 
               const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
-              await expect(userSettingsRepository.createOrUpdate(
-                'new-user-id',
-                'en',
-                'test@example.com'
-              )).rejects.toThrow('Creation failed');
+              await expect(userSettingsRepository.createOrUpdate('new-user-id', {
+                language: 'en',
+                email: 'test@example.com',
+              })).rejects.toThrow('Creation failed');
 
               expect(consoleSpy).toHaveBeenCalledWith('Error creating/updating user settings:', expect.any(Error));
 
@@ -247,10 +231,9 @@ describe('UserSettingsRepository', () => {
 
               const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
 
-              await expect(userSettingsRepository.createOrUpdate(
-                'existing-user-id',
-                'es'
-              )).rejects.toThrow('Update failed');
+              await expect(userSettingsRepository.createOrUpdate('existing-user-id', {
+                language: 'es',
+              })).rejects.toThrow('Update failed');
 
               expect(consoleSpy).toHaveBeenCalledWith('Error creating/updating user settings:', expect.any(Error));
 
@@ -272,13 +255,10 @@ describe('UserSettingsRepository', () => {
                 exists: false
               });
 
-              await userSettingsRepository.createOrUpdate(
-                'new-user-id',
-                'en',
-                undefined,
-                undefined,
-                true
-              );
+              await userSettingsRepository.createOrUpdate('new-user-id', {
+                language: 'en',
+                enablePrepMode: true,
+              });
 
               expect(mockSet).toHaveBeenCalledWith({
                 language: 'en',
@@ -289,13 +269,9 @@ describe('UserSettingsRepository', () => {
           {
             name: 'updates prep mode from enabled to disabled',
             run: async () => {
-              await userSettingsRepository.createOrUpdate(
-                'existing-user-id',
-                undefined,
-                undefined,
-                undefined,
-                false
-              );
+              await userSettingsRepository.createOrUpdate('existing-user-id', {
+                enablePrepMode: false,
+              });
 
               expect(mockUpdate).toHaveBeenCalledWith({
                 enablePrepMode: false
@@ -317,13 +293,9 @@ describe('UserSettingsRepository', () => {
                 })
               });
 
-              await userSettingsRepository.createOrUpdate(
-                'existing-user-id',
-                undefined,
-                undefined,
-                undefined,
-                false
-              );
+              await userSettingsRepository.createOrUpdate('existing-user-id', {
+                enablePrepMode: false,
+              });
 
               expect(mockUpdate).toHaveBeenCalledWith({
                 enablePrepMode: false
@@ -335,15 +307,9 @@ describe('UserSettingsRepository', () => {
           {
             name: 'updates groups access flag explicitly',
             run: async () => {
-              await userSettingsRepository.createOrUpdate(
-                'existing-user-id',
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                true
-              );
+              await userSettingsRepository.createOrUpdate('existing-user-id', {
+                enableGroups: true,
+              });
 
               expect(mockUpdate).toHaveBeenCalledWith({
                 enableGroups: true
@@ -353,16 +319,9 @@ describe('UserSettingsRepository', () => {
           {
             name: 'updates first day of week explicitly',
             run: async () => {
-              await userSettingsRepository.createOrUpdate(
-                'existing-user-id',
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                'monday'
-              );
+              await userSettingsRepository.createOrUpdate('existing-user-id', {
+                firstDayOfWeek: 'monday',
+              });
 
               expect(mockUpdate).toHaveBeenCalledWith({
                 firstDayOfWeek: 'monday'

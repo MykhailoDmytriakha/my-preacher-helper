@@ -349,6 +349,7 @@ export interface UserSettings {
   enableAudioGeneration?: boolean; // Beta: audio generation feature
   enableStructurePreview?: boolean; // Beta: Structure Preview feature
   enableGroups?: boolean; // Beta: groups workspace feature
+  showAppVersion?: boolean; // Show deployed build version in Settings
   email?: string;
   displayName?: string;
 }

@@ -31,7 +31,14 @@ export const getSermons = async (userId: string): Promise<Sermon[]> => {
       throw new Error('Failed to fetch sermons');
     }
     const data = await response.json();
-    return data.sort((a: Sermon, b: Sermon) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return (data as Sermon[]).sort((a, b) => {
+      const byDate = new Date(b.date).getTime() - new Date(a.date).getTime();
+      if (byDate !== 0) return byDate;
+      // Deterministic tiebreaker on equal dates: keeps array order stable across
+      // fetches so React Query structural sharing holds (prevents the cache→server
+      // "reorder flash" on cold load).
+      return String(a.id).localeCompare(String(b.id));
+    });
   } catch (error) {
     console.error('getSermons: Error fetching sermons:', error);
     throw error;

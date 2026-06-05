@@ -10,6 +10,7 @@ import DebugModeToggle from "@/components/settings/DebugModeToggle";
 import GroupsFeatureToggle from "@/components/settings/GroupsFeatureToggle";
 import PrepModeToggle from "@/components/settings/PrepModeToggle";
 import SettingsLayout from "@/components/settings/SettingsLayout";
+import ShowVersionToggle from "@/components/settings/ShowVersionToggle";
 import StructurePreviewToggle from "@/components/settings/StructurePreviewToggle";
 import TagsSection from "@/components/settings/TagsSection";
 import UserSettingsSection from "@/components/settings/UserSettingsSection";
@@ -52,6 +53,7 @@ export default function SettingsPage() {
             <StructurePreviewToggle />
             <GroupsFeatureToggle />
             <DebugModeToggle />
+            <ShowVersionToggle />
           </div>
         );
       case 'tags':

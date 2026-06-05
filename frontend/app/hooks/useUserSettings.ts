@@ -8,6 +8,7 @@ import {
   updatePrepModeAccess,
   updateAudioGenerationAccess,
   updateStructurePreviewAccess,
+  updateShowAppVersion,
   updateFirstDayOfWeek,
 } from '@/services/userSettings.service';
 
@@ -100,6 +101,21 @@ export function useUserSettings(userId: string | null | undefined) {
     },
   });
 
+  const updateShowAppVersionMutation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      mutationGuard(() => {
+        if (!userId) {
+          throw new Error('No user');
+        }
+        return updateShowAppVersion(userId, enabled);
+      }),
+    onSuccess: (_data, enabled) => {
+      queryClient.setQueryData<UserSettings | null>(buildQueryKey(userId), (prev) =>
+        prev ? { ...prev, showAppVersion: enabled } : prev
+      );
+    },
+  });
+
   return {
     settings: settingsQuery.data ?? null,
     loading: settingsQuery.isLoading,
@@ -113,5 +129,7 @@ export function useUserSettings(userId: string | null | undefined) {
     updatingStructurePreview: updateStructurePreviewMutation.isPending,
     updateFirstDayOfWeek: updateFirstDayOfWeekMutation.mutateAsync,
     updatingFirstDayOfWeek: updateFirstDayOfWeekMutation.isPending,
+    updateShowAppVersion: updateShowAppVersionMutation.mutateAsync,
+    updatingShowAppVersion: updateShowAppVersionMutation.isPending,
   };
 }

@@ -19,8 +19,8 @@ export const getAllSeries = async (userId: string): Promise<Series[]> => {
     }
 
     const data = await response.json();
-    return data.sort((a: Series, b: Series) => {
-      // Sort by start date (desc), then by title
+    return (data as Series[]).sort((a, b) => {
+      // Sort by start date (desc), then by title, then by id.
       const aDate = a.startDate ? new Date(a.startDate).getTime() : 0;
       const bDate = b.startDate ? new Date(b.startDate).getTime() : 0;
 
@@ -28,7 +28,14 @@ export const getAllSeries = async (userId: string): Promise<Series[]> => {
         return bDate - aDate;
       }
 
-      return (a.title || '').localeCompare(b.title || '');
+      const byTitle = (a.title || '').localeCompare(b.title || '');
+      if (byTitle !== 0) {
+        return byTitle;
+      }
+
+      // Deterministic final tiebreaker: stable array order across fetches so
+      // React Query structural sharing holds (prevents the reorder flash).
+      return String(a.id).localeCompare(String(b.id));
     });
   } catch (error) {
     console.error('getAllSeries: Error fetching series:', error);

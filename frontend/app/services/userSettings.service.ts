@@ -371,6 +371,36 @@ export async function updateAudioGenerationAccess(userId: string, enabled: boole
 }
 
 /**
+ * Update user's "show app version" display flag
+ * @param userId The user ID
+ * @param enabled Whether the deployed app version should be shown in Settings
+ */
+export async function updateShowAppVersion(userId: string, enabled: boolean): Promise<void> {
+  try {
+    if (!userId) return;
+
+    if (isBrowserOffline()) {
+      throw new Error(OFFLINE_ERROR);
+    }
+
+    const response = await fetch(USER_SETTINGS_API_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId, showAppVersion: enabled }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to update show app version: ${response.statusText}`);
+    }
+  } catch (error) {
+    console.error('Error updating show app version:', error);
+    throw error;
+  }
+}
+
+/**
  * Update user's groups workspace feature flag
  * @param userId The user ID
  * @param enabled Whether groups workspace should be enabled

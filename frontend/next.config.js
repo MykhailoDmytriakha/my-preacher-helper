@@ -19,6 +19,15 @@ if (process.env.NODE_ENV === 'development') {
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true, // Enable Strict Mode to surface issues early
+
+  // Build identity exposed to the client (used by the optional "Show version"
+  // setting). VERCEL_GIT_COMMIT_SHA is provided on Vercel builds; falls back to
+  // 'dev' locally. Lets us confirm a redeploy actually landed in production.
+  env: {
+    NEXT_PUBLIC_APP_VERSION: (process.env.VERCEL_GIT_COMMIT_SHA || 'dev').slice(0, 7),
+    NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
+  },
+
   eslint: {
     // Block builds when ESLint finds issues
     ignoreDuringBuilds: true,

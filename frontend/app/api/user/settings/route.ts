@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { userSettingsRepository } from '@/api/repositories/userSettings.repository';
+import { userSettingsRepository, type UserSettingsUpdate } from '@/api/repositories/userSettings.repository';
 import { isFirstDayOfWeek } from '@/utils/weekStart';
 
 // Error messages
@@ -8,6 +8,24 @@ const ERROR_MESSAGES = {
   USER_ID_REQUIRED: 'User ID is required',
   INVALID_FIRST_DAY_OF_WEEK: 'First day of week must be sunday or monday',
 } as const;
+
+/**
+ * Build a settings-update object from a request body, copying only the
+ * fields that are explicitly present (so partial updates stay partial).
+ */
+function pickSettingsUpdates(body: Record<string, unknown>): UserSettingsUpdate {
+  const updates: UserSettingsUpdate = {};
+  if ('language' in body) updates.language = body.language as string;
+  if ('email' in body) updates.email = body.email as string;
+  if ('displayName' in body) updates.displayName = body.displayName as string;
+  if ('firstDayOfWeek' in body) updates.firstDayOfWeek = body.firstDayOfWeek as 'sunday' | 'monday';
+  if ('enablePrepMode' in body) updates.enablePrepMode = body.enablePrepMode as boolean;
+  if ('enableAudioGeneration' in body) updates.enableAudioGeneration = body.enableAudioGeneration as boolean;
+  if ('enableStructurePreview' in body) updates.enableStructurePreview = body.enableStructurePreview as boolean;
+  if ('enableGroups' in body) updates.enableGroups = body.enableGroups as boolean;
+  if ('showAppVersion' in body) updates.showAppVersion = body.showAppVersion as boolean;
+  return updates;
+}
 
 /**
  * GET /api/user/settings
@@ -37,36 +55,17 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, language, email, displayName, enablePrepMode, enableAudioGeneration, enableGroups, firstDayOfWeek } = body;
+    const { userId } = body;
 
     if (!userId) {
       return NextResponse.json({ error: ERROR_MESSAGES.USER_ID_REQUIRED }, { status: 400 });
     }
 
-    if ('firstDayOfWeek' in body && !isFirstDayOfWeek(firstDayOfWeek)) {
+    if ('firstDayOfWeek' in body && !isFirstDayOfWeek(body.firstDayOfWeek)) {
       return NextResponse.json({ error: ERROR_MESSAGES.INVALID_FIRST_DAY_OF_WEEK }, { status: 400 });
     }
 
-    // Only pass fields that are explicitly provided in the request
-    const updates: Record<string, unknown> = {};
-    if ('language' in body) updates.language = language;
-    if ('email' in body) updates.email = email;
-    if ('displayName' in body) updates.displayName = displayName;
-    if ('enablePrepMode' in body) updates.enablePrepMode = enablePrepMode;
-    if ('enableAudioGeneration' in body) updates.enableAudioGeneration = enableAudioGeneration;
-    if ('enableGroups' in body) updates.enableGroups = enableGroups;
-    if ('firstDayOfWeek' in body) updates.firstDayOfWeek = firstDayOfWeek;
-
-    await userSettingsRepository.createOrUpdate(
-      userId,
-      updates.language as string | undefined,
-      updates.email as string | undefined,
-      updates.displayName as string | undefined,
-      updates.enablePrepMode as boolean | undefined,
-      updates.enableAudioGeneration as boolean | undefined,
-      updates.enableGroups as boolean | undefined,
-      updates.firstDayOfWeek as 'sunday' | 'monday' | undefined
-    );
+    await userSettingsRepository.createOrUpdate(userId, pickSettingsUpdates(body));
 
     return NextResponse.json({ success: true });
   } catch (error) {
@@ -82,33 +81,27 @@ export async function PUT(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { userId, language, email, displayName, enablePrepMode, enableAudioGeneration, enableGroups, firstDayOfWeek } = body;
+    const { userId } = body;
 
     if (!userId) {
       return NextResponse.json({ error: ERROR_MESSAGES.USER_ID_REQUIRED }, { status: 400 });
     }
 
-    if ('firstDayOfWeek' in body && !isFirstDayOfWeek(firstDayOfWeek)) {
+    if ('firstDayOfWeek' in body && !isFirstDayOfWeek(body.firstDayOfWeek)) {
       return NextResponse.json({ error: ERROR_MESSAGES.INVALID_FIRST_DAY_OF_WEEK }, { status: 400 });
     }
 
-    // For new users, provide default language if not specified
-    const langToUse = 'language' in body ? language : 'en';
+    const updates = pickSettingsUpdates(body);
+    // New users get a default language when none was supplied.
+    if (!('language' in body)) {
+      updates.language = 'en';
+    }
 
-    await userSettingsRepository.createOrUpdate(
-      userId,
-      langToUse,
-      'email' in body ? email : undefined,
-      'displayName' in body ? displayName : undefined,
-      'enablePrepMode' in body ? enablePrepMode : undefined,
-      'enableAudioGeneration' in body ? enableAudioGeneration : undefined,
-      'enableGroups' in body ? enableGroups : undefined,
-      'firstDayOfWeek' in body ? firstDayOfWeek : undefined
-    );
+    await userSettingsRepository.createOrUpdate(userId, updates);
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('Error creating user settings:', error);
     return NextResponse.json({ error: 'Failed to create user settings' }, { status: 500 });
   }
-} 
+}

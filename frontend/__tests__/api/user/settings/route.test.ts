@@ -144,16 +144,14 @@ describe('User Settings API Route', () => {
               const response = await PUT(request);
               const data = await response.json();
 
-              expect(mockCreateOrUpdate).toHaveBeenCalledWith(
-                'user1',
-                'ru',
-                'updated@example.com',
-                'Updated User',
-                true,
-                undefined,
-                true,
-                'monday'
-              );
+              expect(mockCreateOrUpdate).toHaveBeenCalledWith('user1', {
+                language: 'ru',
+                email: 'updated@example.com',
+                displayName: 'Updated User',
+                enablePrepMode: true,
+                enableGroups: true,
+                firstDayOfWeek: 'monday',
+              });
               expect(response.status).toBe(200);
               expect(data).toEqual({ success: true });
             }
@@ -173,16 +171,9 @@ describe('User Settings API Route', () => {
 
               const response = await PUT(request);
 
-              expect(mockCreateOrUpdate).toHaveBeenCalledWith(
-                'user1',
-                undefined,
-                undefined,
-                undefined,
-                false,
-                undefined,
-                undefined,
-                undefined
-              );
+              expect(mockCreateOrUpdate).toHaveBeenCalledWith('user1', {
+                enablePrepMode: false,
+              });
               expect(response.status).toBe(200);
             }
           },
@@ -203,16 +194,10 @@ describe('User Settings API Route', () => {
 
               const response = await PUT(request);
 
-              expect(mockCreateOrUpdate).toHaveBeenCalledWith(
-                'user1',
-                'fr',
-                undefined,
-                undefined,
-                true,
-                undefined,
-                undefined,
-                undefined
-              );
+              expect(mockCreateOrUpdate).toHaveBeenCalledWith('user1', {
+                language: 'fr',
+                enablePrepMode: true,
+              });
               expect(response.status).toBe(200);
             }
           },
@@ -325,16 +310,14 @@ describe('User Settings API Route', () => {
               const response = await POST(request);
               const data = await response.json();
 
-              expect(mockCreateOrUpdate).toHaveBeenCalledWith(
-                'new-user',
-                'de',
-                'new@example.com',
-                'New User',
-                true,
-                undefined,
-                true,
-                'sunday'
-              );
+              expect(mockCreateOrUpdate).toHaveBeenCalledWith('new-user', {
+                language: 'de',
+                email: 'new@example.com',
+                displayName: 'New User',
+                enablePrepMode: true,
+                enableGroups: true,
+                firstDayOfWeek: 'sunday',
+              });
               expect(response.status).toBe(200);
               expect(data).toEqual({ success: true });
             }
@@ -355,16 +338,11 @@ describe('User Settings API Route', () => {
 
               const response = await POST(request);
 
-              expect(mockCreateOrUpdate).toHaveBeenCalledWith(
-                'new-user',
-                'en', // Default language
-                'test@example.com',
-                undefined,
-                false,
-                undefined,
-                undefined,
-                undefined
-              );
+              expect(mockCreateOrUpdate).toHaveBeenCalledWith('new-user', {
+                language: 'en', // Default language
+                email: 'test@example.com',
+                enablePrepMode: false,
+              });
               expect(response.status).toBe(200);
             }
           },
@@ -382,16 +360,9 @@ describe('User Settings API Route', () => {
 
               const response = await POST(request);
 
-              expect(mockCreateOrUpdate).toHaveBeenCalledWith(
-                'minimal-user',
-                'en', // Default language
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined
-              );
+              expect(mockCreateOrUpdate).toHaveBeenCalledWith('minimal-user', {
+                language: 'en', // Default language
+              });
               expect(response.status).toBe(200);
             }
           },
