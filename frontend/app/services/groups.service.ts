@@ -1,14 +1,12 @@
 import { Group, GroupMeetingDate } from '@/models/models';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
-const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
-const OFFLINE_ERROR = 'Offline: operation not available.';
 
+// NOTE: write paths intentionally do NOT pre-check connectivity. When offline,
+// the fetch below rejects with a network error and React Query (networkMode
+// 'offlineFirst') pauses + persists the mutation, resuming it on reconnect.
+// Throwing early here would short-circuit that buffer and lose the write.
 export const getAllGroups = async (userId: string): Promise<Group[]> => {
-  if (isBrowserOffline()) {
-    throw new Error(OFFLINE_ERROR);
-  }
-
   const response = await fetch(`${API_BASE}/api/groups?userId=${userId}`, {
     cache: 'no-store',
   });
@@ -21,10 +19,6 @@ export const getAllGroups = async (userId: string): Promise<Group[]> => {
 };
 
 export const getGroupById = async (groupId: string): Promise<Group | undefined> => {
-  if (isBrowserOffline()) {
-    throw new Error(OFFLINE_ERROR);
-  }
-
   const response = await fetch(`${API_BASE}/api/groups/${groupId}`, {
     cache: 'no-store',
   });
@@ -36,10 +30,6 @@ export const getGroupById = async (groupId: string): Promise<Group | undefined> 
 };
 
 export const createGroup = async (group: Omit<Group, 'id'>): Promise<Group> => {
-  if (isBrowserOffline()) {
-    throw new Error(OFFLINE_ERROR);
-  }
-
   const response = await fetch(`${API_BASE}/api/groups`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -55,10 +45,6 @@ export const createGroup = async (group: Omit<Group, 'id'>): Promise<Group> => {
 };
 
 export const updateGroup = async (groupId: string, updates: Partial<Group>): Promise<Group> => {
-  if (isBrowserOffline()) {
-    throw new Error(OFFLINE_ERROR);
-  }
-
   const response = await fetch(`${API_BASE}/api/groups/${groupId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -73,10 +59,6 @@ export const updateGroup = async (groupId: string, updates: Partial<Group>): Pro
 };
 
 export const deleteGroup = async (groupId: string): Promise<void> => {
-  if (isBrowserOffline()) {
-    throw new Error(OFFLINE_ERROR);
-  }
-
   const response = await fetch(`${API_BASE}/api/groups/${groupId}`, {
     method: 'DELETE',
   });

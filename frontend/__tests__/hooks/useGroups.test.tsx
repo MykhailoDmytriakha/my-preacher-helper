@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 
 import { useGroups } from '@/hooks/useGroups';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -106,34 +106,39 @@ describe('useGroups', () => {
     expect(refreshedOffline).toBeUndefined();
   });
 
-  it('blocks mutations when offline', async () => {
+  it('does not throw on writes when offline — buffers them instead (Stage 2)', async () => {
+    // Offline no longer short-circuits with an error: the write is optimistic +
+    // fire-and-forget, so createNewGroup resolves immediately and React Query
+    // pauses/persists the underlying mutation to replay on reconnect.
     mockUseOnlineStatus.mockReturnValue(false);
     const { result } = renderHook(() => useGroups(), { wrapper: createWrapper() });
 
-    await expect(
-      result.current.createNewGroup({
-        userId: 'user-1',
-        title: 'X',
-        status: 'draft',
-        templates: [],
-        flow: [],
-        meetingDates: [],
-        createdAt: 'x',
-        updatedAt: 'x',
-        seriesId: null,
-        seriesPosition: null,
-      } as any)
-    ).rejects.toThrow('Offline: operation not available.');
-
-    expect(mockCreateGroup).not.toHaveBeenCalled();
+    await act(async () => {
+      await expect(
+        result.current.createNewGroup({
+          userId: 'user-1',
+          title: 'X',
+          status: 'draft',
+          templates: [],
+          flow: [],
+          meetingDates: [],
+          createdAt: 'x',
+          updatedAt: 'x',
+          seriesId: null,
+          seriesPosition: null,
+        } as any)
+      ).resolves.toBeUndefined();
+    });
   });
 
-  it('normalizes mutation errors to Error instances', async () => {
+  it('surfaces mutation errors via hook error state (normalized to Error)', async () => {
+    // Fire-and-forget: the call resolves; a genuine failure surfaces through the
+    // hook `error` (via the mutation onError handler), normalized to an Error.
     mockCreateGroup.mockRejectedValue('broken');
     const { result } = renderHook(() => useGroups(), { wrapper: createWrapper() });
 
-    await expect(
-      result.current.createNewGroup({
+    await act(async () => {
+      await result.current.createNewGroup({
         userId: 'user-1',
         title: 'X',
         status: 'draft',
@@ -144,8 +149,12 @@ describe('useGroups', () => {
         updatedAt: 'x',
         seriesId: null,
         seriesPosition: null,
-      } as any)
-    ).rejects.toThrow('broken');
+      } as any);
+    });
 
+    await waitFor(() => {
+      expect(result.current.error).toBeInstanceOf(Error);
+      expect(result.current.error?.message).toBe('broken');
+    });
   });
 });

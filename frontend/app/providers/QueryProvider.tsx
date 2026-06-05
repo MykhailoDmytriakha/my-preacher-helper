@@ -5,14 +5,14 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
 import { createIDBPersister } from '@/utils/queryPersister';
 
 const ONE_WEEK_MS = 1000 * 60 * 60 * 24 * 7;
 
 export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
         mutationCache: new MutationCache({
           onError: (error: unknown) => {
             // GLOBAL 401 GUARD (C2 Fix)
@@ -50,8 +50,11 @@ export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
             },
           },
         },
-      })
-  );
+    });
+
+    registerOfflineMutationDefaults(client);
+    return client;
+  });
 
   const [persister] = useState(() => createIDBPersister());
 
