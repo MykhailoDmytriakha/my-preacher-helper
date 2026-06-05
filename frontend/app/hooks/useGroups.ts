@@ -1,22 +1,21 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { Group } from '@/models/models';
+import { buildId } from '@/utils/groupFlow';
 import { GROUP_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import { createGroup, deleteGroup, getAllGroups, updateGroup } from '@services/groups.service';
 
 const GROUPS_PREFIX = ['groups'];
 const buildQueryKey = (userId: string | null) => ['groups', userId];
 
-const genTempId = () =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? `temp-${crypto.randomUUID()}`
-    : `temp-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-
 export function useGroups(userId?: string | null) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [mutationError, setMutationError] = useState<Error | null>(null);
   const isOnline = useOnlineStatus();
@@ -44,21 +43,31 @@ export function useGroups(userId?: string | null) {
     onMutate: async (payload) => {
       await queryClient.cancelQueries({ queryKey: buildQueryKey(effectiveUserId) });
       const previous = queryClient.getQueryData<Group[]>(buildQueryKey(effectiveUserId));
-      const optimistic = { ...payload, id: genTempId() } as Group;
+      const tempId = buildId('temp');
+      const optimistic = { ...payload, id: tempId } as Group;
       queryClient.setQueryData<Group[]>(buildQueryKey(effectiveUserId), (old = []) => [
         optimistic,
         ...old,
       ]);
       setMutationError(null);
-      return { previous };
+      return { previous, tempId };
     },
     onError: (errorValue: unknown, _payload, context) => {
       if (context?.previous) {
         queryClient.setQueryData(buildQueryKey(effectiveUserId), context.previous);
       }
       setMutationError(errorValue instanceof Error ? errorValue : new Error(String(errorValue)));
+      toast.error(t('workspaces.groups.errors.createFailed', { defaultValue: 'Failed to create group' }));
     },
-    onSuccess: () => {
+    onSuccess: (created, _payload, context) => {
+      // Swap the temp row for the real record directly (don't depend on the
+      // refetch landing) so the cache is correct even if invalidate's refetch
+      // is delayed or briefly fails; invalidate then confirms against the server.
+      if (created?.id && context?.tempId) {
+        queryClient.setQueryData<Group[]>(buildQueryKey(effectiveUserId), (old = []) =>
+          old.map((group) => (group.id === context.tempId ? created : group))
+        );
+      }
       queryClient.invalidateQueries({ queryKey: GROUPS_PREFIX });
       setMutationError(null);
     },
@@ -88,6 +97,7 @@ export function useGroups(userId?: string | null) {
         queryClient.setQueryData(['group-detail', context.id], context.previousDetail ?? null);
       }
       setMutationError(errorValue instanceof Error ? errorValue : new Error(String(errorValue)));
+      toast.error(t('workspaces.groups.errors.updateFailed', { defaultValue: 'Failed to update group' }));
     },
     onSuccess: (updated) => {
       if (updated?.id) {
@@ -114,6 +124,7 @@ export function useGroups(userId?: string | null) {
         queryClient.setQueryData(buildQueryKey(effectiveUserId), context.previous);
       }
       setMutationError(errorValue instanceof Error ? errorValue : new Error(String(errorValue)));
+      toast.error(t('workspaces.groups.errors.deleteFailed', { defaultValue: 'Failed to delete group' }));
     },
     onSuccess: (_result, groupId) => {
       queryClient.removeQueries({ queryKey: ['group-detail', groupId] });

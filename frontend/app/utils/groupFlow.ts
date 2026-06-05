@@ -5,7 +5,7 @@ import {
   GroupFlowItem,
 } from '@/models/models';
 
-const buildId = (prefix: string) => {
+export const buildId = (prefix: string) => {
   const unique =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
