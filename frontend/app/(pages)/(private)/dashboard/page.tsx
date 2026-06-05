@@ -22,6 +22,7 @@ import '@locales/i18n';
 
 import AddSermonModal from '@/components/AddSermonModal';
 import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
+import { useDashboardOptimisticSermons } from '@/hooks/useDashboardOptimisticSermons';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useGroups } from '@/hooks/useGroups';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
@@ -173,6 +174,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { sermons } = useDashboardSermons();
+  const { actions: optimisticSermonActions } = useDashboardOptimisticSermons();
   const { series } = useSeries(user?.uid || null);
   const { notes } = useStudyNotes();
   const { prayerRequests, createPrayer } = usePrayerRequests(user?.uid || null);
@@ -304,10 +306,18 @@ export default function DashboardPage() {
           isOpen
           showTriggerButton={false}
           allowPlannedDate
-          closeOnSuccess={false}
+          closeOnSuccess
           onClose={() => setShowSermonModal(false)}
-          onNewSermonCreated={(newSermon) => {
-            router.push(`/sermons/${newSermon.id}`);
+          onCreateRequest={async (input) => {
+            // Optimistic + offline-buffered create (same path as /sermons): the
+            // sermon is never lost offline and replays on reconnect.
+            const createdId = await optimisticSermonActions.createSermon(input);
+            // Navigate to the editor only when online — offline the sermon hasn't
+            // synced yet and its editor route can't load it; the dashboard stays
+            // put and the create flushes on reconnect.
+            if (createdId && typeof navigator !== 'undefined' && navigator.onLine) {
+              router.push(`/sermons/${createdId}`);
+            }
           }}
         />
       )}

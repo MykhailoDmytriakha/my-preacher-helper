@@ -70,7 +70,7 @@ export const getSermonById = async (id: string): Promise<Sermon | undefined> => 
   }
 };
 
-export const createSermon = async (sermon: Omit<Sermon, 'id'>): Promise<Sermon> => {
+export const createSermon = async (sermon: Omit<Sermon, 'id'> & { id?: string }): Promise<Sermon> => {
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const response = await apiClient(`${API_BASE}/api/sermons`, {

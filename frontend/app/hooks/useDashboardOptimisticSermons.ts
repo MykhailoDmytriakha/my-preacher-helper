@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { newClientId } from '@/utils/clientId';
 import { getNextPlannedDate, getPreachDatesByStatus } from '@/utils/preachDateStatus';
 import { auth } from '@services/firebaseAuth.service';
 import { addPreachDate, deletePreachDate, updatePreachDate } from '@services/preachDates.service';
@@ -19,7 +20,6 @@ import type {
 } from '@/models/dashboardOptimistic';
 import type { Church, PreachDate, Sermon } from '@/models/models';
 
-const TEMP_SERMON_PREFIX = 'temp-sermon-';
 const TEMP_PREACH_DATE_PREFIX = 'temp-preach-date-';
 const UNSPECIFIED_CHURCH_ID = 'church-unspecified';
 const PREACH_STATUS_OPERATION: DashboardSermonSyncState['operation'] = 'preach-status';
@@ -157,7 +157,11 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
 
       clearSyncState(sermonId);
 
-      if (current.operation === 'create' && sermonId.startsWith(TEMP_SERMON_PREFIX)) {
+      // A create that never succeeded leaves no server doc, so discard the
+      // optimistic row on dismiss. (The id is now a client-generated uuid, so the
+      // old temp-prefix check no longer applies — the 'create' operation alone
+      // identifies an unsynced create.)
+      if (current.operation === 'create') {
         void mutateSermonCache((old) => old.filter((sermon) => sermon.id !== sermonId));
       }
     },
@@ -187,16 +191,19 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
   }, []);
 
   const createSermon = useCallback(
-    async (input: DashboardCreateSermonInput) => {
+    async (input: DashboardCreateSermonInput): Promise<string | undefined> => {
       const uid = resolveUid();
-      if (!uid) return;
+      if (!uid) return undefined;
 
-      const tempId = buildTempId(TEMP_SERMON_PREFIX);
+      // Client-generated id (see clientId.ts): the optimistic row, the POST body
+      // and the server doc share one id, so the create is idempotent on replay
+      // and callers can navigate to the new sermon's route immediately.
+      const clientId = newClientId();
       const now = new Date().toISOString();
       const tempPreachDateId = buildTempId(TEMP_PREACH_DATE_PREFIX);
 
       const optimisticSermon: Sermon = {
-        id: tempId,
+        id: clientId,
         title: input.title,
         verse: input.verse,
         date: now,
@@ -216,13 +223,14 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
           : undefined,
       };
 
-      await mutateSermonCache((old) => [optimisticSermon, ...old.filter((sermon) => sermon.id !== tempId)]);
-      setPendingState(tempId, 'create');
+      await mutateSermonCache((old) => [optimisticSermon, ...old.filter((sermon) => sermon.id !== clientId)]);
+      setPendingState(clientId, 'create');
 
       const executeCreate = async () => {
-        setPendingState(tempId, 'create');
+        setPendingState(clientId, 'create');
         try {
           const createdSermon = await createSermonRequest({
+            id: clientId,
             title: input.title,
             verse: input.verse,
             date: now,
@@ -242,16 +250,17 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
           }
 
           await mutateSermonCache((old) =>
-            old.map((sermon) => (sermon.id === tempId ? persistedSermon : sermon))
+            old.map((sermon) => (sermon.id === clientId ? persistedSermon : sermon))
           );
-          clearSyncState(tempId);
+          clearSyncState(clientId);
         } catch (error) {
-          setErrorState(tempId, 'create', toMessage(error), executeCreate);
+          setErrorState(clientId, 'create', toMessage(error), executeCreate);
         }
       };
 
-      retryActionsRef.current[tempId] = executeCreate;
+      retryActionsRef.current[clientId] = executeCreate;
       void executeCreate();
+      return clientId;
     },
     [clearSyncState, mutateSermonCache, setErrorState, setPendingState]
   );

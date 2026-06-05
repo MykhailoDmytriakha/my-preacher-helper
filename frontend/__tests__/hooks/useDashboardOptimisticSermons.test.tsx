@@ -98,29 +98,35 @@ describe('useDashboardOptimisticSermons', () => {
     mockDeletePreachDate.mockReset();
   });
 
-  it('creates temporary sermon immediately and replaces it with persisted sermon', async () => {
+  it('creates a sermon with a client id and reconciles it with the persisted sermon', async () => {
     const queryClient = createTestQueryClient();
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
-    const persisted = createSermon('sermon-real-1', { title: 'Persisted Sermon' });
     const createFlow = createDeferred<Sermon>();
     mockCreateSermon.mockReturnValueOnce(createFlow.promise);
 
     const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
 
+    let createdId: string | undefined;
     await act(async () => {
-      await result.current.actions.createSermon({
+      createdId = await result.current.actions.createSermon({
         title: 'Optimistic Sermon',
         verse: 'Psalm 1',
       });
     });
 
+    // The optimistic row carries the client-generated id (not a temp- placeholder),
+    // so navigation and idempotent server replay both reference the same id.
     const cacheAfterAction = getCachedSermons(queryClient);
     expect(cacheAfterAction).toHaveLength(1);
-    expect(cacheAfterAction[0].id.startsWith('temp-sermon-')).toBe(true);
-    expect(result.current.syncStatesById[cacheAfterAction[0].id]?.status).toBe('pending');
+    expect(createdId).toBeTruthy();
+    expect(cacheAfterAction[0].id).toBe(createdId);
+    expect(cacheAfterAction[0].id.startsWith('temp-sermon-')).toBe(false);
+    expect(result.current.syncStatesById[createdId as string]?.status).toBe('pending');
 
+    // The server echoes the same id back (idempotent create).
+    const persisted = createSermon(createdId as string, { title: 'Persisted Sermon' });
     await act(async () => {
       createFlow.resolve(persisted);
     });
@@ -128,8 +134,9 @@ describe('useDashboardOptimisticSermons', () => {
     await waitFor(() => {
       const cache = getCachedSermons(queryClient);
       expect(cache).toHaveLength(1);
-      expect(cache[0].id).toBe('sermon-real-1');
+      expect(cache[0].id).toBe(createdId);
       expect(cache[0].title).toBe('Persisted Sermon');
+      expect(result.current.syncStatesById[createdId as string]).toBeUndefined();
     });
   });
 

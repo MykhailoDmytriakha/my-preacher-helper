@@ -25,7 +25,9 @@ interface AddSermonModalProps {
   showTriggerButton?: boolean;
   allowPlannedDate?: boolean;
   closeOnSuccess?: boolean;
-  onCreateRequest?: (input: DashboardCreateSermonInput) => Promise<void>;
+  // May resolve to the created sermon's id (used by callers that navigate); the
+  // modal itself ignores the resolved value.
+  onCreateRequest?: (input: DashboardCreateSermonInput) => Promise<string | undefined | void>;
 }
 
 const NEW_SERMON_KEY = 'addSermon.newSermon';

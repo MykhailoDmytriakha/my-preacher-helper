@@ -30,7 +30,9 @@ export interface DashboardEditSermonInput {
 export type PreachDateDraft = Omit<PreachDate, 'id' | 'createdAt'>;
 
 export interface DashboardOptimisticActions {
-  createSermon: (input: DashboardCreateSermonInput) => Promise<void>;
+  // Resolves to the client-generated id of the new sermon (or undefined if no
+  // authenticated user), so callers can navigate to its route immediately.
+  createSermon: (input: DashboardCreateSermonInput) => Promise<string | undefined>;
   saveEditedSermon: (input: DashboardEditSermonInput) => Promise<void>;
   deleteSermon: (sermon: Sermon) => Promise<void>;
   markAsPreachedFromPreferred: (sermon: Sermon, preferredDate: PreachDate) => Promise<void>;

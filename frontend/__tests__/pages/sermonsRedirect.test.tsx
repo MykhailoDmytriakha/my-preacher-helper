@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
@@ -190,6 +190,19 @@ jest.mock('@/hooks/useDashboardSermons', () => ({
   useDashboardSermons: () => mockUseDashboardSermons(),
 }));
 
+jest.mock('@/hooks/useDashboardOptimisticSermons', () => ({
+  useDashboardOptimisticSermons: () => ({
+    syncStatesById: {},
+    actions: {
+      createSermon: (...args: unknown[]) => mockCreateSermon(...args),
+      saveEditedSermon: jest.fn(),
+      deleteSermon: jest.fn(),
+      retrySync: jest.fn(),
+      dismissSyncError: jest.fn(),
+    },
+  }),
+}));
+
 jest.mock('@/hooks/useSeries', () => ({
   useSeries: () => mockUseSeries(),
 }));
@@ -233,14 +246,9 @@ describe('Dashboard page', () => {
     const staleDate = dateKeyFromToday(-10);
 
     mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } });
-    mockCreateSermon.mockResolvedValue({
-      id: 'created-sermon-id',
-      title: 'Created Sermon',
-      verse: 'John 1:1',
-      date: '2026-05-10T00:00:00.000Z',
-      thoughts: [],
-      userId: 'user-1',
-    });
+    // Dashboard now creates via the optimistic buffered path, whose createSermon
+    // resolves to the new client-generated id string (used to navigate).
+    mockCreateSermon.mockResolvedValue('created-sermon-id');
     mockUseDashboardSermons.mockReturnValue({
       sermons: [
         {
@@ -442,7 +450,7 @@ describe('Dashboard page', () => {
     expect(mockRouterPush).not.toHaveBeenCalledWith('/prayers');
   });
 
-  it('keeps the sermon create modal visible while redirecting to the created sermon', async () => {
+  it('creates the sermon via the optimistic path and redirects to the created sermon', async () => {
     render(<DashboardPage />);
 
     fireEvent.click(screen.getByRole('button', { name: /Новая проповедь/i }));
@@ -455,12 +463,23 @@ describe('Dashboard page', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
 
-    await screen.findByRole('button', { name: 'Сохранение...' });
+    // The dashboard delegates to the optimistic buffered create (not the direct
+    // service), passing the typed title/verse.
+    await waitFor(() => {
+      expect(mockCreateSermon).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Created From Dashboard', verse: 'John 1:1' })
+      );
+    });
 
-    expect(mockRouterPush).toHaveBeenCalledWith('/sermons/created-sermon-id');
-    expect(screen.getByRole('heading', { name: 'Новая проповедь' })).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Created From Dashboard')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Сохранение...' })).toBeDisabled();
+    // Online, it navigates to the new sermon's editor route...
+    await waitFor(() => {
+      expect(mockRouterPush).toHaveBeenCalledWith('/sermons/created-sermon-id');
+    });
+
+    // ...and the modal closes (closeOnSuccess).
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'Новая проповедь' })).not.toBeInTheDocument();
+    });
   });
 
   it('keeps the prayer create modal visible while redirecting to the created prayer', async () => {
