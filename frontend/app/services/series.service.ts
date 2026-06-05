@@ -1,4 +1,5 @@
 import { Series } from '@/models/models';
+import { timeOrZero, compareById } from '@/utils/sortHelpers';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
@@ -21,11 +22,9 @@ export const getAllSeries = async (userId: string): Promise<Series[]> => {
     const data = await response.json();
     return (data as Series[]).sort((a, b) => {
       // Sort by start date (desc), then by title, then by id.
-      const aDate = a.startDate ? new Date(a.startDate).getTime() : 0;
-      const bDate = b.startDate ? new Date(b.startDate).getTime() : 0;
-
-      if (aDate !== bDate) {
-        return bDate - aDate;
+      const byDate = timeOrZero(b.startDate) - timeOrZero(a.startDate);
+      if (byDate !== 0) {
+        return byDate;
       }
 
       const byTitle = (a.title || '').localeCompare(b.title || '');
@@ -35,7 +34,7 @@ export const getAllSeries = async (userId: string): Promise<Series[]> => {
 
       // Deterministic final tiebreaker: stable array order across fetches so
       // React Query structural sharing holds (prevents the reorder flash).
-      return String(a.id).localeCompare(String(b.id));
+      return compareById(a, b);
     });
   } catch (error) {
     console.error('getAllSeries: Error fetching series:', error);

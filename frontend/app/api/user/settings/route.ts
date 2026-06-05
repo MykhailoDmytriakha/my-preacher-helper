@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-import { userSettingsRepository, type UserSettingsUpdate } from '@/api/repositories/userSettings.repository';
+import { userSettingsRepository, UPDATABLE_FIELDS, type UserSettingsUpdate } from '@/api/repositories/userSettings.repository';
 import { isFirstDayOfWeek } from '@/utils/weekStart';
 
 // Error messages
@@ -14,16 +14,14 @@ const ERROR_MESSAGES = {
  * fields that are explicitly present (so partial updates stay partial).
  */
 function pickSettingsUpdates(body: Record<string, unknown>): UserSettingsUpdate {
+  // Single source of truth for the field list is UPDATABLE_FIELDS in the
+  // repository, so the route and the persistence layer can never drift.
   const updates: UserSettingsUpdate = {};
-  if ('language' in body) updates.language = body.language as string;
-  if ('email' in body) updates.email = body.email as string;
-  if ('displayName' in body) updates.displayName = body.displayName as string;
-  if ('firstDayOfWeek' in body) updates.firstDayOfWeek = body.firstDayOfWeek as 'sunday' | 'monday';
-  if ('enablePrepMode' in body) updates.enablePrepMode = body.enablePrepMode as boolean;
-  if ('enableAudioGeneration' in body) updates.enableAudioGeneration = body.enableAudioGeneration as boolean;
-  if ('enableStructurePreview' in body) updates.enableStructurePreview = body.enableStructurePreview as boolean;
-  if ('enableGroups' in body) updates.enableGroups = body.enableGroups as boolean;
-  if ('showAppVersion' in body) updates.showAppVersion = body.showAppVersion as boolean;
+  for (const field of UPDATABLE_FIELDS) {
+    if (field in body) {
+      (updates as Record<string, unknown>)[field] = body[field];
+    }
+  }
   return updates;
 }
 

@@ -1,6 +1,7 @@
 import { Sermon, Preparation } from '@/models/models';
 import { apiClient } from '@/utils/apiClient';
 import { FetchTimeoutError } from '@/utils/fetchWithTimeout';
+import { timeOrZero, compareById } from '@/utils/sortHelpers';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -32,12 +33,12 @@ export const getSermons = async (userId: string): Promise<Sermon[]> => {
     }
     const data = await response.json();
     return (data as Sermon[]).sort((a, b) => {
-      const byDate = new Date(b.date).getTime() - new Date(a.date).getTime();
+      const byDate = timeOrZero(b.date) - timeOrZero(a.date);
       if (byDate !== 0) return byDate;
       // Deterministic tiebreaker on equal dates: keeps array order stable across
       // fetches so React Query structural sharing holds (prevents the cache→server
       // "reorder flash" on cold load).
-      return String(a.id).localeCompare(String(b.id));
+      return compareById(a, b);
     });
   } catch (error) {
     console.error('getSermons: Error fetching sermons:', error);

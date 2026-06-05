@@ -18,7 +18,7 @@ export default function ShowVersionToggle() {
   const { user } = useAuth();
   const [enabled, setEnabled] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
-  const { settings, loading, updateShowAppVersion } = useUserSettings(user?.uid);
+  const { settings, loading, updateShowAppVersion, updatingShowAppVersion } = useUserSettings(user?.uid);
 
   useEffect(() => {
     let isActive = true;
@@ -44,7 +44,8 @@ export default function ShowVersionToggle() {
   }, [user?.uid, settings, loading]);
 
   const handleToggle = async () => {
-    if (!user?.uid) return;
+    // Ignore clicks while a write is in flight to avoid optimistic desync.
+    if (!user?.uid || updatingShowAppVersion) return;
 
     const newValue = !enabled;
     setEnabled(newValue); // optimistic

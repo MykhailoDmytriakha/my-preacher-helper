@@ -28,6 +28,17 @@ const mockGetByUserId = jest.fn();
 const mockCreateOrUpdate = jest.fn();
 
 jest.mock('@/api/repositories/userSettings.repository', () => ({
+  UPDATABLE_FIELDS: [
+    'language',
+    'email',
+    'displayName',
+    'firstDayOfWeek',
+    'enablePrepMode',
+    'enableAudioGeneration',
+    'enableStructurePreview',
+    'enableGroups',
+    'showAppVersion',
+  ],
   userSettingsRepository: {
     getByUserId: (...args: any[]) => mockGetByUserId(...args),
     createOrUpdate: (...args: any[]) => mockCreateOrUpdate(...args)
@@ -197,6 +208,29 @@ describe('User Settings API Route', () => {
               expect(mockCreateOrUpdate).toHaveBeenCalledWith('user1', {
                 language: 'fr',
                 enablePrepMode: true,
+              });
+              expect(response.status).toBe(200);
+            }
+          },
+          {
+            name: 'persists enableStructurePreview and showAppVersion',
+            run: async () => {
+              mockCreateOrUpdate.mockResolvedValue('user1');
+
+              const request = new NextRequest('http://localhost/api/user/settings', {
+                method: 'PUT',
+                body: JSON.stringify({
+                  userId: 'user1',
+                  enableStructurePreview: true,
+                  showAppVersion: true
+                })
+              });
+
+              const response = await PUT(request);
+
+              expect(mockCreateOrUpdate).toHaveBeenCalledWith('user1', {
+                enableStructurePreview: true,
+                showAppVersion: true,
               });
               expect(response.status).toBe(200);
             }

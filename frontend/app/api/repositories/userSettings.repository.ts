@@ -7,7 +7,7 @@ import { UserSettings } from '@/models/models';
  */
 export type UserSettingsUpdate = Partial<Omit<UserSettings, 'id' | 'userId' | 'isAdmin'>>;
 
-const UPDATABLE_FIELDS: (keyof UserSettingsUpdate)[] = [
+export const UPDATABLE_FIELDS: (keyof UserSettingsUpdate)[] = [
   'language',
   'email',
   'displayName',
