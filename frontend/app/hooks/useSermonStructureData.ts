@@ -254,8 +254,13 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     // Sync local state
     setSermonState(nextSermon);
 
-    // Invalidate to ensure persisted cache syncs without immediate refetch
-    queryClient.invalidateQueries({ queryKey: ["sermon", sermonId], refetchType: 'none' });
+    // NOTE: do NOT invalidateQueries here. setQueryData already updates the cache
+    // AND triggers the IndexedDB persister. Marking ["sermon", id] stale used to make
+    // the detail page (useSermon is cache-first with refetchOnMount) refetch on return
+    // from structure mode — and that background refetch could clobber the just-edited
+    // structure with server data that hadn't caught up with the debounced save yet,
+    // so the right-side structure panel "loaded as if the cache wasn't applied".
+    // The cache is authoritative for the local edits; let the detail page trust it.
   }, [queryClient, sermonId]);
 
   useEffect(() => {
