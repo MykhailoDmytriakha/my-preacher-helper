@@ -23,6 +23,10 @@ import type { Group, PreachDate, PrayerRequest, PrayerStatus, Series, StudyNote,
 import type { FirstDayOfWeek } from '@/utils/weekStart';
 import type { QueryClient } from '@tanstack/react-query';
 
+const USER_SETTINGS_KEY = 'user-settings';
+const STUDY_NOTES_KEY = 'study-notes';
+const STUDY_NOTE_SHARE_LINKS_KEY = 'study-note-share-links';
+
 /**
  * Stable mutation keys shared between the hooks (where the in-session mutation
  * is defined) and {@link registerOfflineMutationDefaults} (where the resumable
@@ -57,11 +61,11 @@ export const TAG_MUTATION_KEYS = {
 };
 
 export const SETTINGS_MUTATION_KEYS = {
-  prepMode: ['user-settings', 'prepMode'] as const,
-  audioGeneration: ['user-settings', 'audioGeneration'] as const,
-  structurePreview: ['user-settings', 'structurePreview'] as const,
-  firstDayOfWeek: ['user-settings', 'firstDayOfWeek'] as const,
-  showAppVersion: ['user-settings', 'showAppVersion'] as const,
+  prepMode: [USER_SETTINGS_KEY, 'prepMode'] as const,
+  audioGeneration: [USER_SETTINGS_KEY, 'audioGeneration'] as const,
+  structurePreview: [USER_SETTINGS_KEY, 'structurePreview'] as const,
+  firstDayOfWeek: [USER_SETTINGS_KEY, 'firstDayOfWeek'] as const,
+  showAppVersion: [USER_SETTINGS_KEY, 'showAppVersion'] as const,
 };
 
 export const PREACH_DATE_MUTATION_KEYS = {
@@ -71,14 +75,14 @@ export const PREACH_DATE_MUTATION_KEYS = {
 };
 
 export const STUDY_NOTE_MUTATION_KEYS = {
-  create: ['study-notes', 'create'] as const,
-  update: ['study-notes', 'update'] as const,
-  delete: ['study-notes', 'delete'] as const,
+  create: [STUDY_NOTES_KEY, 'create'] as const,
+  update: [STUDY_NOTES_KEY, 'update'] as const,
+  delete: [STUDY_NOTES_KEY, 'delete'] as const,
 };
 
 export const SHARE_LINK_MUTATION_KEYS = {
-  create: ['study-note-share-links', 'create'] as const,
-  delete: ['study-note-share-links', 'delete'] as const,
+  create: [STUDY_NOTE_SHARE_LINKS_KEY, 'create'] as const,
+  delete: [STUDY_NOTE_SHARE_LINKS_KEY, 'delete'] as const,
 };
 
 // Variable shapes carried by each mutation. They MUST be self-contained (no
@@ -182,23 +186,23 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
   // ---- user settings ----
   queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.prepMode, {
     mutationFn: ({ userId, value }: SettingVars) => updatePrepModeAccess(userId, value),
-    onSuccess: invalidate(['user-settings']),
+    onSuccess: invalidate([USER_SETTINGS_KEY]),
   });
   queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.audioGeneration, {
     mutationFn: ({ userId, value }: SettingVars) => updateAudioGenerationAccess(userId, value),
-    onSuccess: invalidate(['user-settings']),
+    onSuccess: invalidate([USER_SETTINGS_KEY]),
   });
   queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.structurePreview, {
     mutationFn: ({ userId, value }: SettingVars) => updateStructurePreviewAccess(userId, value),
-    onSuccess: invalidate(['user-settings']),
+    onSuccess: invalidate([USER_SETTINGS_KEY]),
   });
   queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.firstDayOfWeek, {
     mutationFn: ({ userId, value }: FirstDayVars) => updateFirstDayOfWeek(userId, value),
-    onSuccess: invalidate(['user-settings']),
+    onSuccess: invalidate([USER_SETTINGS_KEY]),
   });
   queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.showAppVersion, {
     mutationFn: ({ userId, value }: SettingVars) => updateShowAppVersion(userId, value),
-    onSuccess: invalidate(['user-settings']),
+    onSuccess: invalidate([USER_SETTINGS_KEY]),
   });
 
   // ---- preach dates (sermon-scoped) ----
@@ -226,27 +230,27 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
   queryClient.setMutationDefaults(STUDY_NOTE_MUTATION_KEYS.create, {
     mutationFn: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'> & { id?: string }) =>
       createStudyNote(note),
-    onSuccess: invalidate(['study-notes']),
+    onSuccess: invalidate([STUDY_NOTES_KEY]),
   });
   queryClient.setMutationDefaults(STUDY_NOTE_MUTATION_KEYS.update, {
     mutationFn: ({ id, updates, userId }: { id: string; updates: Partial<StudyNote>; userId: string }) =>
       updateStudyNote(id, { ...updates, userId }),
-    onSuccess: invalidate(['study-notes']),
+    onSuccess: invalidate([STUDY_NOTES_KEY]),
   });
   queryClient.setMutationDefaults(STUDY_NOTE_MUTATION_KEYS.delete, {
     mutationFn: ({ id, userId }: { id: string; userId: string }) => deleteStudyNote(id, userId),
-    onSuccess: invalidate(['study-notes']),
+    onSuccess: invalidate([STUDY_NOTES_KEY]),
   });
 
   // ---- study-note share links ----
   queryClient.setMutationDefaults(SHARE_LINK_MUTATION_KEYS.create, {
     mutationFn: ({ userId, noteId }: { userId: string; noteId: string }) =>
       createStudyNoteShareLink(userId, noteId),
-    onSuccess: invalidate(['study-note-share-links']),
+    onSuccess: invalidate([STUDY_NOTE_SHARE_LINKS_KEY]),
   });
   queryClient.setMutationDefaults(SHARE_LINK_MUTATION_KEYS.delete, {
     mutationFn: ({ userId, linkId }: { userId: string; linkId: string }) =>
       deleteStudyNoteShareLink(userId, linkId),
-    onSuccess: invalidate(['study-note-share-links']),
+    onSuccess: invalidate([STUDY_NOTE_SHARE_LINKS_KEY]),
   });
 }

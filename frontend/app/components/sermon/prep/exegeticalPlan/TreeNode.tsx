@@ -131,7 +131,7 @@ const TreeNode: React.FC<TreeNodeProps> = ({
             className={`w-full ${hasMarker ? 'pl-8' : 'pl-2.5'} pr-24 py-1.5 text-sm bg-white dark:bg-gray-800 border rounded-md outline-none transition-colors ${isFocused
               ? 'border-blue-500 dark:border-blue-400'
               : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-              } placeholder-gray-400 dark:placeholder-gray-500 text-gray-900 dark:text-gray-100`}
+              } placeholder-gray-400 dark:placeholder-gray-500 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-offset-0`}
             placeholder={t('wizard.steps.exegeticalPlan.builder.placeholder') as string}
           />
 

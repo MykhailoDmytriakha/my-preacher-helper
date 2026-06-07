@@ -174,7 +174,7 @@ export default function AddSermonModal({
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder={t('addSermon.titlePlaceholder')}
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white resize-none"
+              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white resize-none transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
               minRows={1}
               maxRows={6}
               disabled={isSubmitting}
@@ -194,7 +194,7 @@ export default function AddSermonModal({
                 value={verse}
                 onChange={e => setVerse(e.target.value)}
                 placeholder={t('addSermon.versePlaceholder')}
-                className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white resize-none"
+                className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white resize-none transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
                 minRows={3}
                 maxRows={16}
                 disabled={isSubmitting}
@@ -214,7 +214,7 @@ export default function AddSermonModal({
                 id="series"
                 value={selectedSeriesId}
                 onChange={(e) => setSelectedSeriesId(e.target.value)}
-                className="block w-full appearance-none border border-gray-300 dark:border-gray-700 rounded-md p-3 pr-12 dark:bg-gray-700 dark:text-white"
+                className="block w-full appearance-none border border-gray-300 dark:border-gray-700 rounded-md p-3 pr-12 dark:bg-gray-700 dark:text-white transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
                 disabled={isSubmitting}
               >
                 <option value="">{t('addSermon.noSeriesOption')}</option>
@@ -240,7 +240,7 @@ export default function AddSermonModal({
                 value={plannedDate}
                 onChange={setPlannedDate}
                 wrapperClassName="mt-1"
-                inputClassName="block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 pr-12 dark:bg-gray-700 dark:text-white"
+                inputClassName="block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 pr-12 dark:bg-gray-700 dark:text-white transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
                 disabled={isSubmitting}
               />
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">

@@ -180,19 +180,19 @@ const ThesisStepContent: React.FC<ThesisStepContentProps> = ({
           <h4 className="text-sm font-semibold">{t('wizard.steps.thesis.homiletical.title')}</h4>
         </div>
         <label className="block text-xs font-medium mb-1">{t('wizard.steps.thesis.homiletical.q.why')}</label>
-        <textarea rows={2} value={whyDraft} onChange={(e)=>setWhyDraft(e.target.value)} placeholder={t('wizard.steps.thesis.homiletical.q.whyPh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}/>
+        <textarea rows={2} value={whyDraft} onChange={(e)=>setWhyDraft(e.target.value)} placeholder={t('wizard.steps.thesis.homiletical.q.whyPh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}/>
         {renderSaveCancel('why', whyDraft !== (whyPreach || ''), async () => onSaveWhyPreach && onSaveWhyPreach(whyDraft), () => setWhyDraft(whyPreach || ''))}
 
         <label className="block text-xs font-medium mt-3 mb-1">{t('wizard.steps.thesis.homiletical.q.impact')}</label>
-        <textarea rows={2} value={impactDraft} onChange={(e)=>setImpactDraft(e.target.value)} placeholder={t('wizard.steps.thesis.homiletical.q.impactPh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}/>
+        <textarea rows={2} value={impactDraft} onChange={(e)=>setImpactDraft(e.target.value)} placeholder={t('wizard.steps.thesis.homiletical.q.impactPh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}/>
         {renderSaveCancel('impact', impactDraft !== (impactOnChurch || ''), async () => onSaveImpactOnChurch && onSaveImpactOnChurch(impactDraft), () => setImpactDraft(impactOnChurch || ''))}
 
         <label className="block text-xs font-medium mt-3 mb-1">{t('wizard.steps.thesis.homiletical.q.practical')}</label>
-        <textarea rows={2} value={practicalDraft} onChange={(e)=>setPracticalDraft(e.target.value)} placeholder={t('wizard.steps.thesis.homiletical.q.practicalPh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}/>
+        <textarea rows={2} value={practicalDraft} onChange={(e)=>setPracticalDraft(e.target.value)} placeholder={t('wizard.steps.thesis.homiletical.q.practicalPh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}/>
         {renderSaveCancel('practical', practicalDraft !== (practicalQuestions || ''), async () => onSavePracticalQuestions && onSavePracticalQuestions(practicalDraft), () => setPracticalDraft(practicalQuestions || ''))}
 
         <label className="block text-xs font-medium mt-3 mb-1">{t('wizard.steps.thesis.homiletical.own')}</label>
-        <textarea rows={3} value={homoDraft} onChange={(e)=>setHomoDraft(e.target.value)} placeholder={t('wizard.steps.thesis.homiletical.ownPh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}/>
+        <textarea rows={3} value={homoDraft} onChange={(e)=>setHomoDraft(e.target.value)} placeholder={t('wizard.steps.thesis.homiletical.ownPh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}/>
         {renderSaveCancel('homiletical', homoDraft !== (homiletical || ''), async () => onSaveHomiletical && onSaveHomiletical(homoDraft), () => setHomoDraft(homiletical || ''))}
       </div>
 
@@ -205,25 +205,25 @@ const ThesisStepContent: React.FC<ThesisStepContentProps> = ({
         <div className="grid sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium mb-1">{t('wizard.steps.thesis.oneSentence.questionLabel')}</label>
-            <input type="text" value={questionDraft} onChange={(e)=>setQuestionDraft(e.target.value)} placeholder={t('wizard.steps.thesis.oneSentence.questionPh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}/>
+            <input type="text" value={questionDraft} onChange={(e)=>setQuestionDraft(e.target.value)} placeholder={t('wizard.steps.thesis.oneSentence.questionPh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}/>
             {renderSaveCancel('question', questionDraft !== (questionWord || ''), async () => onSaveQuestionWord && onSaveQuestionWord(questionDraft), () => setQuestionDraft(questionWord || ''))}
           </div>
           <div>
             <label className="block text-xs font-medium mb-1">{t('wizard.steps.thesis.oneSentence.pluralKeyLabel')}</label>
-            <input type="text" value={pluralKeyDraft} onChange={(e)=>setPluralKeyDraft(e.target.value)} placeholder={t('wizard.steps.thesis.oneSentence.pluralKeyPh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}/>
+            <input type="text" value={pluralKeyDraft} onChange={(e)=>setPluralKeyDraft(e.target.value)} placeholder={t('wizard.steps.thesis.oneSentence.pluralKeyPh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}/>
             {renderSaveCancel('pluralKey', pluralKeyDraft !== (pluralKey || ''), async () => onSavePluralKey && onSavePluralKey(pluralKeyDraft), () => setPluralKeyDraft(pluralKey || ''))}
           </div>
         </div>
         <label className="block text-xs font-medium mt-3 mb-1">{t('wizard.steps.thesis.oneSentence.transitionLabel')}</label>
-        <textarea rows={2} value={transitionDraft} onChange={(e)=>setTransitionDraft(e.target.value)} placeholder={t('wizard.steps.thesis.oneSentence.transitionPh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}/>
+        <textarea rows={2} value={transitionDraft} onChange={(e)=>setTransitionDraft(e.target.value)} placeholder={t('wizard.steps.thesis.oneSentence.transitionPh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}/>
         {renderSaveCancel('transition', transitionDraft !== (transitionSentence || ''), async () => onSaveTransitionSentence && onSaveTransitionSentence(transitionDraft), () => setTransitionDraft(transitionSentence || ''))}
 
         <label className="block text-xs font-medium mt-3 mb-1">{t('wizard.steps.thesis.oneSentence.oneLabel')}</label>
-        <textarea rows={2} value={oneSentenceDraft} onChange={(e)=>setOneSentenceDraft(e.target.value)} placeholder={t('wizard.steps.thesis.oneSentence.onePh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}/>
+        <textarea rows={2} value={oneSentenceDraft} onChange={(e)=>setOneSentenceDraft(e.target.value)} placeholder={t('wizard.steps.thesis.oneSentence.onePh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}/>
         {renderSaveCancel('one', oneSentenceDraft !== (oneSentence || ''), async () => onSaveOneSentence && onSaveOneSentence(oneSentenceDraft), () => setOneSentenceDraft(oneSentence || ''))}
 
         <label className="block text-xs font-medium mt-3 mb-1">{t('wizard.steps.thesis.oneSentence.sermonLabel')}</label>
-        <textarea rows={2} value={sermonOneDraft} onChange={(e)=>setSermonOneDraft(e.target.value)} placeholder={t('wizard.steps.thesis.oneSentence.sermonPh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}/>
+        <textarea rows={2} value={sermonOneDraft} onChange={(e)=>setSermonOneDraft(e.target.value)} placeholder={t('wizard.steps.thesis.oneSentence.sermonPh') || ''} className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}/>
         {renderSaveCancel('sermon', sermonOneDraft !== (sermonInOneSentence || ''), async () => onSaveSermonInOneSentence && onSaveSermonInOneSentence(sermonOneDraft), () => setSermonOneDraft(sermonInOneSentence || ''))}
       </div>
     </div>

@@ -12,6 +12,7 @@ import { GROUP_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import { createGroup, deleteGroup, getAllGroups, updateGroup } from '@services/groups.service';
 
 const GROUPS_PREFIX = ['groups'];
+const GROUP_DETAIL_KEY = 'group-detail';
 const buildQueryKey = (userId: string | null) => ['groups', userId];
 
 export function useGroups(userId?: string | null) {
@@ -79,11 +80,11 @@ export function useGroups(userId?: string | null) {
     onMutate: async ({ id, updates }) => {
       await queryClient.cancelQueries({ queryKey: buildQueryKey(effectiveUserId) });
       const previous = queryClient.getQueryData<Group[]>(buildQueryKey(effectiveUserId));
-      const previousDetail = queryClient.getQueryData<Group | null>(['group-detail', id]);
+      const previousDetail = queryClient.getQueryData<Group | null>([GROUP_DETAIL_KEY, id]);
       queryClient.setQueryData<Group[]>(buildQueryKey(effectiveUserId), (old = []) =>
         old.map((group) => (group.id === id ? ({ ...group, ...updates } as Group) : group))
       );
-      queryClient.setQueryData<Group | null>(['group-detail', id], (old) =>
+      queryClient.setQueryData<Group | null>([GROUP_DETAIL_KEY, id], (old) =>
         old ? ({ ...old, ...updates } as Group) : old
       );
       setMutationError(null);
@@ -94,14 +95,14 @@ export function useGroups(userId?: string | null) {
         queryClient.setQueryData(buildQueryKey(effectiveUserId), context.previous);
       }
       if (context?.id !== undefined) {
-        queryClient.setQueryData(['group-detail', context.id], context.previousDetail ?? null);
+        queryClient.setQueryData([GROUP_DETAIL_KEY, context.id], context.previousDetail ?? null);
       }
       setMutationError(errorValue instanceof Error ? errorValue : new Error(String(errorValue)));
       toast.error(t('workspaces.groups.errors.updateFailed', { defaultValue: 'Failed to update group' }));
     },
     onSuccess: (updated) => {
       if (updated?.id) {
-        queryClient.setQueryData<Group | null>(['group-detail', updated.id], updated);
+        queryClient.setQueryData<Group | null>([GROUP_DETAIL_KEY, updated.id], updated);
       }
       queryClient.invalidateQueries({ queryKey: GROUPS_PREFIX });
       setMutationError(null);
@@ -127,7 +128,7 @@ export function useGroups(userId?: string | null) {
       toast.error(t('workspaces.groups.errors.deleteFailed', { defaultValue: 'Failed to delete group' }));
     },
     onSuccess: (_result, groupId) => {
-      queryClient.removeQueries({ queryKey: ['group-detail', groupId] });
+      queryClient.removeQueries({ queryKey: [GROUP_DETAIL_KEY, groupId] });
       queryClient.invalidateQueries({ queryKey: GROUPS_PREFIX });
       setMutationError(null);
     },

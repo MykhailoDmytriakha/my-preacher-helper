@@ -27,6 +27,8 @@ type SeriesDetailCache = {
 };
 
 const SERIES_PREFIX = ["series"];
+const SAVE_ERROR_KEY = "common.saveError";
+const SAVE_ERROR_FALLBACK = "Failed to save. Please try again.";
 const buildQueryKey = (userId: string | null) => ["series", userId];
 
 // Query key constants
@@ -87,7 +89,7 @@ export function useSeries(userId?: string | null) {
         queryClient.setQueryData(buildQueryKey(effectiveUserId), ctx.previous);
       }
       setMutationError(normalizeError(err));
-      toast.error(t("common.saveError", { defaultValue: "Failed to save. Please try again." }));
+      toast.error(t(SAVE_ERROR_KEY, { defaultValue: SAVE_ERROR_FALLBACK }));
     },
     onSuccess: (createdSeries, _payload, ctx) => {
       if (createdSeries?.id && ctx?.tempId) {
@@ -130,7 +132,7 @@ export function useSeries(userId?: string | null) {
         queryClient.setQueryData([QUERY_KEYS.SERIES_DETAIL, ctx.seriesId], ctx.previousDetail);
       }
       setMutationError(normalizeError(err));
-      toast.error(t("common.saveError", { defaultValue: "Failed to save. Please try again." }));
+      toast.error(t(SAVE_ERROR_KEY, { defaultValue: SAVE_ERROR_FALLBACK }));
     },
     onSuccess: (updated) => {
       if (updated?.id) {
@@ -160,7 +162,7 @@ export function useSeries(userId?: string | null) {
         queryClient.setQueryData(buildQueryKey(effectiveUserId), ctx.previous);
       }
       setMutationError(normalizeError(err));
-      toast.error(t("common.saveError", { defaultValue: "Failed to save. Please try again." }));
+      toast.error(t(SAVE_ERROR_KEY, { defaultValue: SAVE_ERROR_FALLBACK }));
     },
     onSuccess: (_data, seriesId) => {
       queryClient.removeQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });

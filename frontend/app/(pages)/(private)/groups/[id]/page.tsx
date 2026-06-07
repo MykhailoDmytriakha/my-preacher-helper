@@ -464,13 +464,13 @@ export default function GroupDetailPage() {
             <input
               value={title}
               onChange={(event) => { setTitle(event.target.value); debouncedSave(); }}
-              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-2xl font-bold text-gray-900 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-2xl font-bold text-gray-900 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
             />
             <textarea
               value={description}
               onChange={(event) => { setDescription(event.target.value); debouncedSave(); }}
               rows={2}
-              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+              className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
               placeholder={t('workspaces.groups.form.descriptionPlaceholder', {
                 defaultValue: 'Optional description',
               })}
@@ -479,7 +479,7 @@ export default function GroupDetailPage() {
               <select
                 value={status}
                 onChange={(event) => { setStatus(event.target.value as typeof status); debouncedSave(); }}
-                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                className="rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
               >
                 <option value="draft">{t('workspaces.series.form.statuses.draft')}</option>
                 <option value="active">{t('workspaces.series.form.statuses.active')}</option>
@@ -541,7 +541,7 @@ export default function GroupDetailPage() {
                 }}
                 placeholder={t('workspaces.groups.meetings.datePlaceholder', { defaultValue: 'No date' })}
                 wrapperClassName="w-full"
-                inputClassName="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 pr-12 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                inputClassName="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 pr-12 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -550,7 +550,7 @@ export default function GroupDetailPage() {
                 value={meetingLocation}
                 onChange={(event) => { setMeetingLocation(event.target.value); debouncedSave(); }}
                 placeholder={t('workspaces.groups.meetings.location', { defaultValue: 'Location' })}
-                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -559,7 +559,7 @@ export default function GroupDetailPage() {
                 value={meetingAudience}
                 onChange={(event) => { setMeetingAudience(event.target.value); debouncedSave(); }}
                 placeholder={t('workspaces.groups.meetings.audience', { defaultValue: 'Audience' })}
-                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
               />
             </div>
           </div>

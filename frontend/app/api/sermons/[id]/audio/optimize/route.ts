@@ -37,6 +37,12 @@ interface GenerationSegment {
     contextType: 'start' | 'transition';
 }
 
+interface GenerationResult {
+    chunks: AudioChunk[];
+    originalLength: number;
+    optimizedLength: number;
+}
+
 // ============================================================================
 // Route Handler
 // ============================================================================
@@ -82,98 +88,23 @@ export async function POST(
         const segments: GenerationSegment[] = buildGenerationSegments(sermon, sectionsToProcess);
 
         // 3. Sequential Generation Loop with Context
-        let allChunks: AudioChunk[] = [];
-        let accumulatedContext = '';
-        let totalOriginalLength = 0;
-        let totalOptimizedLength = 0;
-
-        // If filtering, load existing chunks to preserve what we don't change?
-        // Current logic: we overwrite what we touch. If user requested specific section,
-        // we might want to keep others.
+        // If filtering, preserve chunks from sections we are NOT re-processing this run.
         const existingChunks = (sermon.audioChunks || []) as AudioChunk[];
+        let allChunks: AudioChunk[] = [];
         if (!isAllSections) {
-            // Keep chunks from sections we are NOT re-processing this run.
             const processing = new Set<string>(sectionsToProcess);
             allChunks = existingChunks.filter(c => !processing.has(c.sectionId));
         }
 
         console.log(`[OptimizeAPI] Starting generation for ${segments.length} segments.`);
 
-        if (useRawText && provider === 'google') {
-            console.log(`[OptimizeAPI] Preparing Google raw text by major section (max ${GOOGLE_TTS_MAX_CHUNK_SIZE} chars/request).`);
-            for (const section of sectionsToProcess) {
-                const originalRawText = getRawSectionText(sermon, section);
-                const rawText = normalizeScriptureReferencesForTts(originalRawText);
-                if (!rawText) {
-                    console.log(`[OptimizeAPI] Skipping empty section: ${section}`);
-                    continue;
-                }
-                totalOriginalLength += originalRawText.length;
-                totalOptimizedLength += rawText.length;
-                allChunks.push(...createAudioChunks(splitGoogleTextForRequestLimit(rawText), section));
-            }
-        } else {
-            for (const segment of segments) {
-                console.log(`[OptimizeAPI] Processing: ${segment.section} - ${segment.title}`);
+        const generated = (useRawText && provider === 'google')
+            ? buildGoogleRawChunks(sermon, sectionsToProcess)
+            : await buildSegmentChunks(segments, sermon, provider, useRawText);
 
-                if (useRawText) {
-                    // Speak the thoughts verbatim; only split mechanically for TTS limits.
-                    // No markdown header and no GPT rewrite — what was written is what is read.
-                    const originalRawText = segment.thoughts.map(t => t.text).join('\n\n').trim();
-                    const rawText = normalizeScriptureReferencesForTts(originalRawText);
-                    if (!rawText) {
-                        console.log(`[OptimizeAPI] Skipping empty segment: ${segment.title}`);
-                        continue;
-                    }
-                    totalOriginalLength += originalRawText.length;
-                    totalOptimizedLength += rawText.length;
-                    allChunks.push(...createAudioChunks(splitTextEvenly(rawText), segment.section));
-                    continue;
-                }
-
-                // Construct text for this segment
-                const segmentText = formatSegmentText(segment);
-
-                if (!segmentText) {
-                    console.log(`[OptimizeAPI] Skipping empty segment: ${segment.title}`);
-                    continue;
-                }
-
-                totalOriginalLength += segmentText.length;
-
-                // Generate with context from previous loop
-                const result = await optimizeTextForSpeech(
-                    segmentText,
-                    sermon,
-                    {
-                        sermonTitle: sermon.title,
-                        scriptureVerse: sermon.verse,
-                        sections: segment.section,
-                        previousContext: accumulatedContext || undefined
-                    }
-                );
-
-                // Update stats
-                const optimizedTextForTts = normalizeScriptureReferencesForTts(result.optimizedText);
-                // OpenAI is the quality path: re-chunk GPT output to even ~1500-2000 clips
-                // (the model returns arbitrary-sized chunks). Google keeps its own chunks.
-                const chunksForTts = provider === 'openai'
-                    ? splitTextEvenly(optimizedTextForTts)
-                    : result.chunks.map(normalizeScriptureReferencesForTts);
-                totalOptimizedLength += optimizedTextForTts.length;
-
-                // Update context for NEXT iteration
-                // We use the last generated chunk (or full text if small) as context
-                accumulatedContext = optimizedTextForTts.slice(-1000); // Last 1000 chars
-
-                // Convert to AudioChunk objects
-                const newChunks = createAudioChunks(chunksForTts, segment.section);
-
-                // Push to our local collection
-                // Note: we will re-index globally at the end
-                allChunks.push(...newChunks);
-            }
-        }
+        allChunks.push(...generated.chunks);
+        const totalOriginalLength = generated.originalLength;
+        const totalOptimizedLength = generated.optimizedLength;
 
         // 4. Global Re-indexing
         // Sort by section order first, then by existing sequence
@@ -294,6 +225,101 @@ function buildGenerationSegments(
     }
 
     return segments;
+}
+
+/**
+ * Google "use as-is" path: voice the exact section text, split only for request limits.
+ */
+function buildGoogleRawChunks(
+    sermon: Sermon,
+    sectionsToProcess: SectionKey[]
+): GenerationResult {
+    const chunks: AudioChunk[] = [];
+    let originalLength = 0;
+    let optimizedLength = 0;
+
+    console.log(`[OptimizeAPI] Preparing Google raw text by major section (max ${GOOGLE_TTS_MAX_CHUNK_SIZE} chars/request).`);
+    for (const section of sectionsToProcess) {
+        const originalRawText = getRawSectionText(sermon, section);
+        const rawText = normalizeScriptureReferencesForTts(originalRawText);
+        if (!rawText) {
+            console.log(`[OptimizeAPI] Skipping empty section: ${section}`);
+            continue;
+        }
+        originalLength += originalRawText.length;
+        optimizedLength += rawText.length;
+        chunks.push(...createAudioChunks(splitGoogleTextForRequestLimit(rawText), section));
+    }
+
+    return { chunks, originalLength, optimizedLength };
+}
+
+/**
+ * Per-segment generation. In raw mode the thoughts are voiced verbatim; otherwise each
+ * segment is GPT-optimized with the previous segment's tail carried over as context.
+ */
+async function buildSegmentChunks(
+    segments: GenerationSegment[],
+    sermon: Sermon,
+    provider: 'google' | 'openai',
+    useRawText: boolean
+): Promise<GenerationResult> {
+    const chunks: AudioChunk[] = [];
+    let originalLength = 0;
+    let optimizedLength = 0;
+    let accumulatedContext = '';
+
+    for (const segment of segments) {
+        console.log(`[OptimizeAPI] Processing: ${segment.section} - ${segment.title}`);
+
+        if (useRawText) {
+            // Speak the thoughts verbatim; only split mechanically for TTS limits.
+            const originalRawText = segment.thoughts.map(t => t.text).join('\n\n').trim();
+            const rawText = normalizeScriptureReferencesForTts(originalRawText);
+            if (!rawText) {
+                console.log(`[OptimizeAPI] Skipping empty segment: ${segment.title}`);
+                continue;
+            }
+            originalLength += originalRawText.length;
+            optimizedLength += rawText.length;
+            chunks.push(...createAudioChunks(splitTextEvenly(rawText), segment.section));
+            continue;
+        }
+
+        const segmentText = formatSegmentText(segment);
+        if (!segmentText) {
+            console.log(`[OptimizeAPI] Skipping empty segment: ${segment.title}`);
+            continue;
+        }
+        originalLength += segmentText.length;
+
+        // Generate with context from previous loop
+        const result = await optimizeTextForSpeech(
+            segmentText,
+            sermon,
+            {
+                sermonTitle: sermon.title,
+                scriptureVerse: sermon.verse,
+                sections: segment.section,
+                previousContext: accumulatedContext || undefined
+            }
+        );
+
+        const optimizedTextForTts = normalizeScriptureReferencesForTts(result.optimizedText);
+        // OpenAI is the quality path: re-chunk GPT output to even ~1500-2000 clips
+        // (the model returns arbitrary-sized chunks). Google keeps its own chunks.
+        const chunksForTts = provider === 'openai'
+            ? splitTextEvenly(optimizedTextForTts)
+            : result.chunks.map(normalizeScriptureReferencesForTts);
+        optimizedLength += optimizedTextForTts.length;
+
+        // Carry the last 1000 chars into the next iteration as context.
+        accumulatedContext = optimizedTextForTts.slice(-1000);
+
+        chunks.push(...createAudioChunks(chunksForTts, segment.section));
+    }
+
+    return { chunks, originalLength, optimizedLength };
 }
 
 function formatSegmentText(segment: GenerationSegment): string {

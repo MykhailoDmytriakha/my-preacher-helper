@@ -13,7 +13,7 @@ jest.mock('openai', () => ({
   default: jest.fn().mockImplementation(() => ({})),
 }));
 
-import { splitTextEvenly, EVEN_SPLIT_IDEAL_SIZE } from '@/api/clients/tts.client';
+import { splitTextEvenly } from '@/api/clients/tts.client';
 
 /** Build text of ~`chars` length out of short, period-terminated sentences. */
 function makeText(chars: number): string {
@@ -22,8 +22,6 @@ function makeText(chars: number): string {
   while (t.length < chars) t += sentence;
   return t.slice(0, chars).trim();
 }
-
-const IDEAL = EVEN_SPLIT_IDEAL_SIZE; // 1750
 
 describe('splitTextEvenly — chunk count follows N = round(len / 1750)', () => {
   // [inputLen, expectedChunks] — mirrors the examples the user gave verbatim.

@@ -50,7 +50,7 @@ export default function DevQuickNav() {
             value={sermonId}
             onChange={(e) => setSermonId(e.target.value.trim())}
             placeholder="e.g. test-sermon-id"
-            className="flex-1 px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200"
+            className="flex-1 px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
           />
         </div>
 

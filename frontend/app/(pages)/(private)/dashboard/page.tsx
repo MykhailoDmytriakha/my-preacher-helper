@@ -171,9 +171,7 @@ const toneClasses = {
   },
 } as const;
 
-const panelClass =
-  'rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900';
-// Category-colored card: same structure as panelClass, but tinted fill + vivid border per tone.
+// Category-colored card: neutral rounded panel with a tinted fill + vivid border per tone.
 const panelBaseClass = 'rounded-lg border shadow-sm';
 const tonedCardClass = (tone: Tone) => `${panelBaseClass} ${toneClasses[tone].card}`;
 const panelHeaderClass =
