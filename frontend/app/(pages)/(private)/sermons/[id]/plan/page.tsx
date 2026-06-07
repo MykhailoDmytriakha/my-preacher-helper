@@ -17,8 +17,8 @@ import { TimerPhase } from "@/types/TimerState";
 import { debugLog } from "@/utils/debugMode";
 import { getExportContent as buildThoughtExportContent } from "@/utils/exportContent";
 import { projectOptimisticEntities } from "@/utils/optimisticEntityProjection";
+import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrder";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
-import { getThoughtsForOutlinePoint } from "@/utils/thoughtOrdering";
 import { normalizeStructureTag, getTranslationKeyForTag } from "@utils/tagUtils";
 
 import { buildSectionOutlineMarkdown } from "./buildSectionOutlineMarkdown";
@@ -463,7 +463,7 @@ export default function PlanPage() {
   // Get thoughts for a specific outline point
   const getThoughtsForSermonPoint = useCallback((outlinePointId: string): Thought[] => {
     if (!displaySermon) return [];
-    return getThoughtsForOutlinePoint(displaySermon, outlinePointId);
+    return getVisualOrderedThoughtsForOutlinePoint(displaySermon, outlinePointId);
   }, [displaySermon]);
 
   // Update section outline deterministically from ordered points + point-content map.

@@ -135,6 +135,64 @@ describe('exportContent tag normalization', () => {
     expect(result).toContain('Point A:'); // Block title
     expect(result).toContain('Assigned Thought');
   });
-});
 
+  test('exports TXT thoughts in the same visual order as the plan page', async () => {
+    const thoughts: Thought[] = [
+      {
+        id: 'after',
+        text: 'Matthew thought',
+        tags: ['main'],
+        date: '2023-01-01T10:03:00Z',
+        outlinePointId: 'op-main',
+        position: 3000,
+      },
+      {
+        id: 'sub',
+        text: 'Isaiah thought',
+        tags: ['main'],
+        date: '2023-01-01T10:02:00Z',
+        outlinePointId: 'op-main',
+        subPointId: 'sp-main',
+        position: 1500,
+      },
+      {
+        id: 'before',
+        text: 'Psalm thought',
+        tags: ['main'],
+        date: '2023-01-01T10:01:00Z',
+        outlinePointId: 'op-main',
+        position: 1000,
+      },
+    ];
+    const sermon: Sermon = {
+      ...baseSermon,
+      thoughts,
+      outline: {
+        introduction: [],
+        main: [
+          {
+            id: 'op-main',
+            text: 'Foundations',
+            subPoints: [{ id: 'sp-main', text: 'Isaiah 28:16', position: 2000 }],
+          },
+        ],
+        conclusion: [],
+      },
+      structure: {
+        introduction: [],
+        main: ['after', 'sub', 'before'],
+        conclusion: [],
+        ambiguous: [],
+      },
+    };
+
+    const result = await getExportContent(sermon, 'mainPart', {
+      format: 'plain',
+      includeMetadata: false,
+    });
+
+    expect(result.indexOf('Psalm thought')).toBeLessThan(result.indexOf('Isaiah thought'));
+    expect(result.indexOf('Isaiah thought')).toBeLessThan(result.indexOf('Matthew thought'));
+  });
+});
 

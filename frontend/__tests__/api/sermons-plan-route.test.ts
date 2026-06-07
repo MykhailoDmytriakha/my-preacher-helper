@@ -3,12 +3,12 @@ import { NextRequest } from 'next/server';
 import { generatePlanForSection, generatePlanPointContent } from '@/api/clients/openAI.client';
 import { GET, PUT } from '@/api/sermons/[id]/plan/route';
 import { sermonsRepository } from '@/api/repositories/sermons.repository';
-import { getThoughtsForOutlinePoint } from '@/utils/thoughtOrdering';
+import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 
 // Mock dependencies
 jest.mock('@/api/repositories/sermons.repository');
 jest.mock('@/api/clients/openAI.client');
-jest.mock('@/utils/thoughtOrdering');
+jest.mock('@/utils/sermonVisualOrder');
 jest.mock('next/server', () => ({
   NextResponse: {
     json: jest.fn().mockImplementation((data, options = {}) => ({
@@ -272,7 +272,7 @@ describe('Sermon Plan Route', () => {
 
   describe('GET /api/sermons/:id/plan?outlinePointId=<id>', () => {
     it('should generate content for outline point', async () => {
-      (getThoughtsForOutlinePoint as jest.Mock).mockReturnValue([
+      (getVisualOrderedThoughtsForOutlinePoint as jest.Mock).mockReturnValue([
         { id: 't1', text: 'First thought', tags: [], date: '2023-01-01', outlinePointId: 'p1', keyFragments: ['k1'] },
         { id: 't2', text: 'Second thought', tags: [], date: '2023-01-01', outlinePointId: 'p1', keyFragments: ['k2'] },
       ]);
@@ -315,7 +315,7 @@ describe('Sermon Plan Route', () => {
     });
 
     it('should generate content for main outline point with mixed key fragments', async () => {
-      (getThoughtsForOutlinePoint as jest.Mock).mockReturnValue([
+      (getVisualOrderedThoughtsForOutlinePoint as jest.Mock).mockReturnValue([
         { id: 't3', text: 'Main thought', tags: [], date: '2023-01-01', outlinePointId: 'p2' },
         { id: 't4', text: 'Main thought 2', tags: [], date: '2023-01-01', outlinePointId: 'p2', keyFragments: ['k3'] },
       ]);
@@ -375,7 +375,7 @@ describe('Sermon Plan Route', () => {
     });
 
     it('should return 400 when no thoughts exist for outline point', async () => {
-      (getThoughtsForOutlinePoint as jest.Mock).mockReturnValue([]);
+      (getVisualOrderedThoughtsForOutlinePoint as jest.Mock).mockReturnValue([]);
 
       const mockRequestWithOutline = {
         nextUrl: {
@@ -411,7 +411,7 @@ describe('Sermon Plan Route', () => {
         },
       };
       (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue(sermonWithSubPoints);
-      (getThoughtsForOutlinePoint as jest.Mock).mockReturnValue([
+      (getVisualOrderedThoughtsForOutlinePoint as jest.Mock).mockReturnValue([
         { id: 't2', text: 'Sub-point thought', tags: [], date: '2023-01-01', outlinePointId: 'p1', subPointId: 'sp-1', position: 3000 },
         { id: 't3', text: 'Orphan thought', tags: [], date: '2023-01-01', outlinePointId: 'p1', subPointId: 'missing-sub-point', position: 2000 },
         { id: 't1', text: 'Direct thought', tags: [], date: '2023-01-01', outlinePointId: 'p1', position: 1000 },
@@ -452,7 +452,7 @@ describe('Sermon Plan Route', () => {
     });
 
     it('should return 500 when outline point generation fails', async () => {
-      (getThoughtsForOutlinePoint as jest.Mock).mockReturnValue([
+      (getVisualOrderedThoughtsForOutlinePoint as jest.Mock).mockReturnValue([
         { id: 't5', text: 'Thought', tags: [], date: '2023-01-01', outlinePointId: 'p1' },
       ]);
       (generatePlanPointContent as jest.Mock).mockResolvedValue({ content: '', success: false });

@@ -258,7 +258,7 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
                 title: 'Test Sermon',
                 userId: mockUserId,
                 outline: {
-                    mainPart: [{ id: 'p1', text: 'Point 1' }]
+                    main: [{ id: 'p1', text: 'Point 1' }]
                 },
                 thoughts: [
                     { id: 't1', text: 'Thought attached to P1', outlinePointId: 'p1', tags: ['mainPart'] },
@@ -341,6 +341,63 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
             sectionId: 'introduction',
             text: spokenReference,
         }));
+    });
+
+    it('should prepare raw chunks in the same visual order as the Structure page', async () => {
+        (createAudioChunks as jest.Mock).mockImplementation((textChunks: string[], sectionId: string) =>
+            textChunks.map((text, index) => ({ text, sectionId, index }))
+        );
+        mockGet.mockResolvedValue({
+            exists: true,
+            id: mockSermonId,
+            data: () => ({
+                title: 'Test Sermon',
+                userId: mockUserId,
+                outline: {
+                    main: [
+                        {
+                            id: 'p1',
+                            text: 'Point 1',
+                            subPoints: [{ id: 'sp1', text: 'Sub-point 1', position: 2000 }],
+                        },
+                    ],
+                },
+                thoughts: [
+                    { id: 'sub', text: 'Sub-point thought.', outlinePointId: 'p1', subPointId: 'sp1', position: 1500, tags: ['mainPart'] },
+                    { id: 'after', text: 'Direct after.', outlinePointId: 'p1', subPointId: null, position: 3000, tags: ['mainPart'] },
+                    { id: 'before', text: 'Direct before.', outlinePointId: 'p1', subPointId: null, position: 1000, tags: ['mainPart'] },
+                ],
+                structure: {
+                    introduction: [],
+                    main: ['sub', 'after', 'before'],
+                    conclusion: [],
+                    ambiguous: [],
+                },
+                audioChunks: [],
+            }),
+        });
+
+        const req = new NextRequest('http://localhost:3000/api/optimize', {
+            method: 'POST',
+            body: JSON.stringify({
+                userId: mockUserId,
+                sections: 'mainPart',
+                useRawText: true,
+                saveToDb: false,
+            })
+        });
+
+        const params = Promise.resolve({ id: mockSermonId });
+        const res = await POST(req, { params });
+        const json = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(optimizeTextForSpeech).not.toHaveBeenCalled();
+        expect(json.chunks.map((chunk: { text: string }) => chunk.text)).toEqual([
+            'Direct before.',
+            'Sub-point thought.',
+            'Direct after.',
+        ]);
     });
 
     it('should normalize Scripture references returned by speech optimization before saving chunks', async () => {

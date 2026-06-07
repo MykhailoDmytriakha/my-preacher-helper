@@ -175,6 +175,40 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         });
     });
 
+    it('re-prepares OpenAI raw chunks on step 2 so stale saved order is not reused', async () => {
+        mockUseSermon.mockReturnValue(sermonWithChunks(
+            [
+                { index: 0, text: 'Old second thought', sectionId: 'introduction' },
+                { index: 1, text: 'Old first thought', sectionId: 'introduction' },
+            ],
+            { audioMetadata: { provider: 'openai', mode: 'raw', voice: 'onyx', model: 'gpt-4o-mini-tts' } }
+        ));
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+            ok: true,
+            json: async () => ({
+                chunks: [
+                    { index: 0, text: 'Fresh first thought', sectionId: 'introduction' },
+                    { index: 1, text: 'Fresh second thought', sectionId: 'introduction' },
+                ],
+                originalLength: 38,
+                optimizedLength: 38,
+            }),
+        });
+
+        render(<StepByStepWizard {...defaultProps} />);
+        await goToSource();
+
+        await waitFor(() => expect(screen.getByText('Fresh first thought')).toBeInTheDocument());
+        expect(screen.queryByText('Old second thought')).not.toBeInTheDocument();
+
+        const optimizeCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).includes('/audio/optimize'));
+        expect(optimizeCalls).toHaveLength(1);
+        expect(JSON.parse(optimizeCalls[0][1].body)).toMatchObject({
+            provider: 'openai',
+            useRawText: true,
+        });
+    });
+
     it('plays and stops a voice preview, and surfaces sample errors', async () => {
         const pause = jest.fn();
         const play = jest.fn().mockResolvedValue(undefined);
@@ -302,12 +336,22 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
                 .mockResolvedValueOnce({ done: false, value: encoder.encode(JSON.stringify({ type: 'download_complete', filename: 'sermon.wav', mimeType: 'audio/wav' }) + '\n') })
                 .mockResolvedValueOnce({ done: true, value: undefined }),
         };
-        (global.fetch as jest.Mock).mockResolvedValueOnce({ ok: true, body: { getReader: () => mockReader } });
+        (global.fetch as jest.Mock)
+            .mockResolvedValueOnce({
+                ok: true,
+                json: async () => ({
+                    chunks: [{ index: 0, text: 'Fresh Google intro', sectionId: 'introduction' }],
+                    originalLength: 18,
+                    optimizedLength: 18,
+                }),
+            })
+            .mockResolvedValueOnce({ ok: true, body: { getReader: () => mockReader } });
 
         render(<StepByStepWizard {...defaultProps} />);
         fireEvent.click(screen.getByText(/Gemini 2\.5 TTS/));
         fireEvent.click(screen.getByText('Charon'));
         await goToSource();
+        await waitFor(() => expect(screen.getByText('Fresh Google intro')).toBeInTheDocument());
         await goToPreview();
         fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
 

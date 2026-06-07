@@ -386,14 +386,9 @@ export default function StepByStepWizard({
             return;
         }
 
-        // raw
-        if (cached && cached.length > 0) {
-            setMode('raw');
-            setChunks(cached);
-            await syncChunksToDb(cached, 'raw');
-        } else {
-            await prepareSource('raw');
-        }
+        // raw preview is view-only and must mirror the current Structure order,
+        // so rebuild it instead of trusting possibly stale persisted chunks.
+        await prepareSource('raw');
     }, [mode, prepareSource, syncChunksToDb]);
 
     // ------------------------------------------------------------------
@@ -488,22 +483,11 @@ export default function StepByStepWizard({
     // ------------------------------------------------------------------
     const goToStep2 = useCallback(async () => {
         setStep(2);
-        // Ensure the DB reflects the raw source before Generate: prepare it if missing,
-        // otherwise sync the cached set (covers the provider→Google switch).
+        // Ensure raw preview/generation mirrors the current Structure order.
         if (mode === 'raw') {
-            if (ttsProvider === 'google') {
-                await prepareSource('raw');
-                return;
-            }
-            const cached = chunksByMode.current['raw'];
-            if (cached?.length) {
-                setChunks(cached);
-                await syncChunksToDb(cached, 'raw');
-            } else {
-                await prepareSource('raw');
-            }
+            await prepareSource('raw');
         }
-    }, [mode, ttsProvider, prepareSource, syncChunksToDb]);
+    }, [mode, prepareSource]);
 
     const setProvider = useCallback((p: TTSProvider) => {
         setTtsProvider(p);

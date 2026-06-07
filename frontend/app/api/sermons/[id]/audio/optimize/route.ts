@@ -16,7 +16,13 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { optimizeTextForSpeech } from '@/api/clients/speechOptimization.client';
 import { createAudioChunks, splitTextEvenly } from '@/api/clients/tts.client';
-import { SectionKey, SECTION_CONFIG, getSectionThoughts, resolveSections } from '@/api/services/sermonTextService';
+import {
+    SectionKey,
+    SECTION_CONFIG,
+    getSectionOutlinePoints,
+    getSectionThoughtsInVisualOrder,
+    resolveSections,
+} from '@/api/services/sermonTextService';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { SERMON_SECTIONS } from '@/types/audioGeneration.types';
 import { normalizeScriptureReferencesForTts } from '@/utils/scriptureReferenceNormalizer';
@@ -170,8 +176,8 @@ function buildGenerationSegments(
 
     for (const sectionKey of sectionsToProcess) {
         const config = SECTION_CONFIG[sectionKey];
-        const outlinePoints = sermon.outline?.[sectionKey as keyof typeof sermon.outline] || [];
-        const allThoughts = getSectionThoughts(sermon, sectionKey);
+        const outlinePoints = getSectionOutlinePoints(sermon, sectionKey);
+        const allThoughts = getSectionThoughtsInVisualOrder(sermon, sectionKey);
 
         // 1. If we have Outline Points, prioritize them
         if (outlinePoints.length > 0) {
@@ -273,16 +279,17 @@ async function buildSegmentChunks(
         console.log(`[OptimizeAPI] Processing: ${segment.section} - ${segment.title}`);
 
         if (useRawText) {
-            // Speak the thoughts verbatim; only split mechanically for TTS limits.
-            const originalRawText = segment.thoughts.map(t => t.text).join('\n\n').trim();
-            const rawText = normalizeScriptureReferencesForTts(originalRawText);
-            if (!rawText) {
-                console.log(`[OptimizeAPI] Skipping empty segment: ${segment.title}`);
-                continue;
+            // Keep raw chunks aligned to the Structure page's visible thought order.
+            // Scripture references are still expanded for speech, but each thought
+            // is chunked independently so neighboring cards cannot swap or merge.
+            for (const thought of segment.thoughts) {
+                const originalRawText = thought.text.trim();
+                const rawText = normalizeScriptureReferencesForTts(originalRawText);
+                if (!rawText) continue;
+                originalLength += originalRawText.length;
+                optimizedLength += rawText.length;
+                chunks.push(...createAudioChunks(splitTextEvenly(rawText), segment.section));
             }
-            originalLength += originalRawText.length;
-            optimizedLength += rawText.length;
-            chunks.push(...createAudioChunks(splitTextEvenly(rawText), segment.section));
             continue;
         }
 
@@ -337,7 +344,7 @@ function formatSegmentText(segment: GenerationSegment): string {
 }
 
 function getRawSectionText(sermon: Sermon, section: SectionKey): string {
-    return getSectionThoughts(sermon, section)
+    return getSectionThoughtsInVisualOrder(sermon, section)
         .map(thought => thought.text.trim())
         .filter(Boolean)
         .join('\n\n')

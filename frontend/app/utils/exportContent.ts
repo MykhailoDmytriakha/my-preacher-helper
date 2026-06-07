@@ -1,5 +1,11 @@
+import {
+  getVisualOrderedThoughtsBySection,
+  getVisualSectionOutlinePoints,
+  normalizeVisualSectionKey,
+  VISUAL_SECTION_ORDER,
+  type VisualSectionKey,
+} from "@/utils/sermonVisualOrder";
 import { normalizeStructureTag, isStructureTag } from "@/utils/tagUtils";
-import { getPreachOrderedThoughtsBySection } from "@/utils/thoughtOrdering";
 import { i18n } from '@locales/i18n';
 
 import type { Sermon, ThoughtsBySection, Thought, SermonPoint } from "@/models/models";
@@ -76,24 +82,21 @@ function organizeSermonContent(
   }
 
   // Determine which sections to process
-  const sectionsToProcess = focusedSection
-    ? [focusedSection]
-    : ['introduction', 'main', 'conclusion', 'ambiguous']; // Standard sections + ambiguous
+  const focusedVisualSection = normalizeVisualSectionKey(focusedSection);
+  const sectionsToProcess: VisualSectionKey[] = focusedSection
+    ? (focusedVisualSection ? [focusedVisualSection] : [])
+    : [...VISUAL_SECTION_ORDER]; // Standard sections + ambiguous
 
   const processedSections: ProcessedSection[] = [];
 
   sectionsToProcess.forEach(sectionKey => {
     const sectionTitle = getSectionTitle(sectionKey);
-    const sectionThoughts = getPreachOrderedThoughtsBySection(
-      sermon,
-      sectionKey as 'introduction' | 'main' | 'conclusion' | 'ambiguous',
-      { includeOrphans: true }
-    );
+    const sectionThoughts = getVisualOrderedThoughtsBySection(sermon, sectionKey);
 
     debugLog(`Processing section ${sectionKey}`, { thoughtCount: sectionThoughts.length });
 
-    // Get outline points for this section, ensure array exists
-    const outlinePoints = sermon.outline?.[sectionKey as keyof typeof sermon.outline] || [];
+    // Get outline points from the same visual-order source used by Structure/Plan.
+    const outlinePoints = getVisualSectionOutlinePoints(sermon, sectionKey);
 
     // Process the section using the waterfall logic
     const organizedBlocks = processSection(
