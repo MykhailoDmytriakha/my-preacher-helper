@@ -32,7 +32,11 @@ const AUDIO_NEW_RECORDING_KEY = "audio.newRecording";
 const AUDIO_STOP_RECORDING_KEY = "audio.stopRecording";
 const AUDIO_INITIALIZING_KEY = "audio.initializing";
 const AUDIO_PROCESSING_RECORDING_KEY = "audio.processingRecording";
-const FLAT_RECORDER_WIDTH_CLASS = "w-[188px]";
+// 190px = 188px of grid tracks (86+34+34+34) + 1px border on each side.
+// The container is border-box, so the width must include the border; otherwise the
+// fixed tracks overflow the inner content edge and the right (finish) cell pokes
+// past the rounded border.
+const FLAT_RECORDER_WIDTH_CLASS = "w-[190px]";
 const FLAT_RECORDER_ACTIVE_GRID_CLASS = "grid-cols-[86px_34px_34px_34px]";
 
 const formatTime = (seconds: number) => {
