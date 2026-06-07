@@ -159,6 +159,10 @@
       "activePrayers": {
         "label": "Active prayers",
         "helper": "Need attention"
+      },
+      "activeGroups": {
+        "label": "Active groups",
+        "helper": "Ongoing meetings"
       }
     },
     "time": {

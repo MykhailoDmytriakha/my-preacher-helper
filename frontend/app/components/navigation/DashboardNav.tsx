@@ -207,7 +207,7 @@ export default function DashboardNav() {
                         aria-current={active ? 'page' : undefined}
                         className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${active
                           ? themeClasses.menu
-                          : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
+                          : `text-gray-700 dark:text-gray-300 ${themeClasses.hover}`
                           }`}
                         onClick={() => setNavDropdownOpen(false)}
                       >
@@ -243,7 +243,7 @@ export default function DashboardNav() {
                       aria-label={item.label}
                       className={`inline-flex h-8 max-w-[9.75rem] items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-sm font-medium transition ${active
                         ? themeClasses.pill
-                        : 'border-transparent text-gray-600 hover:border-gray-200 hover:bg-white hover:text-gray-950 dark:text-gray-300 dark:hover:border-gray-600 dark:hover:bg-gray-800 dark:hover:text-white'
+                        : `border-transparent text-gray-600 dark:text-gray-300 ${themeClasses.hover}`
                         }`}
                     >
                       <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />

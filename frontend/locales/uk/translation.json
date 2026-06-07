@@ -159,6 +159,10 @@
       "activePrayers": {
         "label": "Активні молитви",
         "helper": "Потребують уваги"
+      },
+      "activeGroups": {
+        "label": "Активні групи",
+        "helper": "Поточні зустрічі"
       }
     },
     "time": {

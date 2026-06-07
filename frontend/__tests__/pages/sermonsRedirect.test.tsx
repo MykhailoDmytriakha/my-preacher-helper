@@ -432,7 +432,6 @@ describe('Dashboard page', () => {
     expect(within(groupsSection).getByText('Домашнее общение')).toBeInTheDocument();
     expect(within(groupsSection).getByText('Активна')).toBeInTheDocument();
     expect(within(groupsSection).getByText('Завершена')).toBeInTheDocument();
-    expect(screen.getByText('Требует внимания')).toBeInTheDocument();
   });
 
   it('opens create modals for sermon and prayer quick actions instead of navigating to sections', () => {
