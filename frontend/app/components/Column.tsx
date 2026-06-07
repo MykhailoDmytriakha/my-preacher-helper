@@ -654,7 +654,7 @@ const SermonPointPlaceholder: React.FC<{
                       title={aiSortTooltip}
                       aria-label={aiSortTooltip}
                       data-testid={`outline-point-ai-sort-${point.id}`}
-                      className={`p-1 rounded-full border transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:focus-visible:ring-amber-300 ${
+                      className={`p-1 rounded-full border transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:focus-visible:ring-amber-300 ${
                         isSortingThisPoint
                           ? "bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-200 border-amber-300 dark:border-amber-700"
                           : aiSortState.disabledReason
@@ -693,7 +693,7 @@ const SermonPointPlaceholder: React.FC<{
                 {pointToggleHandler && hasItems && (
                   <button
                     onClick={() => void pointToggleHandler?.(point.id, !isPointLocked)}
-                    className={`p-1.5 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300 flex-shrink-0 ${isPointLocked
+                    className={`p-1.5 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300 flex-shrink-0 ${isPointLocked
                       ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900 dark:hover:bg-green-800 text-green-700 dark:text-green-300'
                       : 'bg-white/20 hover:bg-white/30 text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                       }`}
@@ -728,7 +728,7 @@ const SermonPointPlaceholder: React.FC<{
                     onAddThought?.(containerId, point.id);
                   }}
                     disabled={isPointLocked}
-                    className={`w-[30px] h-[30px] flex-shrink-0 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:focus-visible:ring-green-300 flex items-center justify-center ${isPointLocked ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50' : 'bg-gray-400 hover:bg-green-500'}`}
+                    className={`w-[30px] h-[30px] flex-shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:focus-visible:ring-green-300 flex items-center justify-center ${isPointLocked ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50' : 'bg-gray-400 hover:bg-green-500'}`}
                     title={isPointLocked ? t('structure.pointLocked', { defaultValue: 'All thoughts in this outline point are locked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
                     aria-label={isPointLocked ? t('structure.pointLocked', { defaultValue: 'All thoughts in this outline point are locked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
                   >

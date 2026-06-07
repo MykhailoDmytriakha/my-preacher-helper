@@ -179,12 +179,12 @@ const panelHeaderClass =
 const DEFAULT_SERIES_COLOR = '#2563EB';
 // Row hover tinted to the panel's category (visible bg-X-100 over the X-50 card) + matching focus ring.
 const rowLink = (tone: Tone) =>
-  `transition focus-visible:outline-none focus-visible:ring-2 ${toneClasses[tone].rowHover}`;
+  `transition focus:outline-none focus-visible:ring-2 ${toneClasses[tone].rowHover}`;
 // Header "view all" link: transparent at rest, clear bordered+tinted rectangle on hover.
 const panelLinkClass = (tone: Tone) =>
   `inline-flex items-center gap-1 rounded-md border border-transparent px-2 py-1 text-xs font-medium transition ${toneClasses[tone].link}`;
 const quickActionBaseClass =
-  'inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950';
+  'inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950';
 const quickActionToneClasses = {
   blue:
     'border-blue-300 bg-white text-blue-700 hover:bg-blue-50 focus-visible:ring-blue-500 dark:border-blue-700 dark:bg-gray-900 dark:text-blue-300 dark:hover:bg-blue-950/40',

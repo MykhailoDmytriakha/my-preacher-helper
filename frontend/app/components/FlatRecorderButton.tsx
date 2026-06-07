@@ -101,7 +101,7 @@ const ActiveRecorderControls = ({
       <button
         type="button"
         onClick={isPaused ? resumeRecording : pauseRecording}
-        className={`flex h-full w-[34px] items-center justify-center border-l ${FLAT_RECORDER_COLORS.active.divider} transition-colors focus-visible:outline-none focus-visible:ring-2 ${getPauseButtonClasses(isPaused)}`}
+        className={`flex h-full w-[34px] items-center justify-center border-l ${FLAT_RECORDER_COLORS.active.divider} transition-colors focus:outline-none focus-visible:ring-2 ${getPauseButtonClasses(isPaused)}`}
         aria-label={pauseLabel}
         title={pauseLabel}
       >
@@ -110,7 +110,7 @@ const ActiveRecorderControls = ({
       <button
         type="button"
         onClick={cancelRecording}
-        className={`flex h-full w-[34px] items-center justify-center border-l transition-colors focus-visible:outline-none focus-visible:ring-2 ${FLAT_RECORDER_COLORS.active.cancel}`}
+        className={`flex h-full w-[34px] items-center justify-center border-l transition-colors focus:outline-none focus-visible:ring-2 ${FLAT_RECORDER_COLORS.active.cancel}`}
         aria-label={t("audio.cancelRecording")}
         title={t("audio.cancelRecording")}
       >
@@ -119,7 +119,7 @@ const ActiveRecorderControls = ({
       <button
         type="button"
         onClick={stopRecording}
-        className={`flex h-full w-[34px] items-center justify-center rounded-r-[5px] border-l transition-colors focus-visible:outline-none focus-visible:ring-2 ${FLAT_RECORDER_COLORS.active.finish}`}
+        className={`flex h-full w-[34px] items-center justify-center rounded-r-[5px] border-l transition-colors focus:outline-none focus-visible:ring-2 ${FLAT_RECORDER_COLORS.active.finish}`}
         aria-label={t(AUDIO_STOP_RECORDING_KEY)}
         title={t(AUDIO_STOP_RECORDING_KEY)}
       >

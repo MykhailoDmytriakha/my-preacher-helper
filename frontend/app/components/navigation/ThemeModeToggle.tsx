@@ -98,7 +98,7 @@ export default function ThemeModeToggle({ variant = 'full', className = '' }: Th
           const isActive = preference === option.value;
           const Icon = option.icon;
           const baseClasses =
-            'flex flex-1 items-center justify-center px-2 h-full text-[11px] font-semibold uppercase tracking-[0.2em] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 focus-visible:ring-offset-white dark:focus-visible:ring-offset-gray-900';
+            'flex flex-1 items-center justify-center px-2 h-full text-[11px] font-semibold uppercase tracking-[0.2em] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500 focus-visible:ring-offset-white dark:focus-visible:ring-offset-gray-900';
           const activeClasses = `bg-gradient-to-r ${option.gradient} ${option.textClass}`;
           const inactiveClasses = 'bg-transparent hover:bg-gray-100 dark:hover:bg-gray-800';
 
