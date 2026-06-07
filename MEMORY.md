@@ -433,6 +433,7 @@
 - **Label Duplicates:** Use `getAllByText` or specific selectors when UI duplicates labels.
 - **Type-Safe Fixtures:** Treat test fixtures as first-class types — update mocks with model changes.
 - **Export Order:** Use same ordering source (`ThoughtsBySection`) for export as for UI.
+- **Visual Thought Order Source of Truth:** User-facing order for Structure, Plan, audio raw/optimized previews, and TXT/thought export must go through `frontend/app/utils/sermonVisualOrder.ts` (or a wrapper such as `getSortedThoughts`). Do not make export/audio code call low-level `thoughtOrdering` directly for display order; it misses the final outline/sub-point visual interleave and can reorder ideas against the Plan page.
 - **Helper Extraction Audit:** After extraction, audit downstream usage + add targeted tests for new paths.
 - **Coverage Honesty:** For strict coverage workflows, exclude types-only contracts from `collectCoverageFrom` and cover IndexedDB branches with isolated module imports plus `idb-keyval` mocks instead of warping runtime code to satisfy the metric.
 - **Browser-Heavy Component Refactor:** For client components that mix browser APIs and UI (`MediaRecorder`, timers, responsive listeners, keyboard shortcuts), keep the public entry import stable and split into `types` + `constants` + presentational leaves + lifecycle hook + module `README`. *(small, explicit seams make AI edits safer without breaking caller contracts)*

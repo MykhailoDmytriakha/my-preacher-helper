@@ -279,17 +279,17 @@ async function buildSegmentChunks(
         console.log(`[OptimizeAPI] Processing: ${segment.section} - ${segment.title}`);
 
         if (useRawText) {
-            // Keep raw chunks aligned to the Structure page's visible thought order.
-            // Scripture references are still expanded for speech, but each thought
-            // is chunked independently so neighboring cards cannot swap or merge.
-            for (const thought of segment.thoughts) {
-                const originalRawText = thought.text.trim();
-                const rawText = normalizeScriptureReferencesForTts(originalRawText);
-                if (!rawText) continue;
-                originalLength += originalRawText.length;
-                optimizedLength += rawText.length;
-                chunks.push(...createAudioChunks(splitTextEvenly(rawText), segment.section));
+            // Thoughts are already in visual order; build the full segment first,
+            // then split mechanically by TTS chunk size.
+            const originalRawText = segment.thoughts.map(t => t.text).join('\n\n').trim();
+            const rawText = normalizeScriptureReferencesForTts(originalRawText);
+            if (!rawText) {
+                console.log(`[OptimizeAPI] Skipping empty segment: ${segment.title}`);
+                continue;
             }
+            originalLength += originalRawText.length;
+            optimizedLength += rawText.length;
+            chunks.push(...createAudioChunks(splitTextEvenly(rawText), segment.section));
             continue;
         }
 
