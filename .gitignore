@@ -56,6 +56,13 @@ next-env.d.ts
 
 # firebase
 *firebase-adminsdk*.json
+firestore-debug.log
+firebase-debug.log
+ui-debug.log
+
+# Firestore client-SDK migration: local-only spike / dev verification tools (not shipped)
+/frontend/.spike/
+/frontend/app/dev/
 
 # agetns 
 .temp
