@@ -3,9 +3,9 @@ import { UserSettings } from '@/models/models';
 
 /**
  * Fields a client may create/update on their own settings document.
- * Intentionally excludes identity (id/userId) and privilege (isAdmin).
+ * Intentionally excludes identity (id/userId).
  */
-export type UserSettingsUpdate = Partial<Omit<UserSettings, 'id' | 'userId' | 'isAdmin'>>;
+export type UserSettingsUpdate = Partial<Omit<UserSettings, 'id' | 'userId'>>;
 
 export const UPDATABLE_FIELDS: (keyof UserSettingsUpdate)[] = [
   'language',
@@ -52,7 +52,7 @@ export class UserSettingsRepository {
   /**
    * Create or update a user's settings document. Only whitelisted fields that
    * are explicitly provided (not undefined) are written, so a partial update
-   * never clobbers unrelated fields (e.g. isAdmin).
+   * never clobbers unrelated fields.
    * @param userId User ID
    * @param updates Partial settings to apply
    * @returns ID of the created or updated document
@@ -86,7 +86,7 @@ export class UserSettingsRepository {
         return userId;
       }
 
-      // Update existing settings, preserving all other fields including isAdmin.
+      // Update existing settings, preserving all other (unspecified) fields.
       await docRef.update(allowedUpdates);
       return userId;
     } catch (error) {

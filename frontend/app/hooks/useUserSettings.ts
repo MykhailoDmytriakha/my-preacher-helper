@@ -35,7 +35,7 @@ export function useUserSettings(userId: string | null | undefined) {
       prev
         ? { ...prev, ...patch }
         : userId
-          ? ({ id: userId, userId, language: 'en', isAdmin: false, ...patch } as UserSettings)
+          ? ({ id: userId, userId, language: 'en', ...patch } as UserSettings)
           : prev
     );
 

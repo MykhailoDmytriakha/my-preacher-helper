@@ -288,8 +288,7 @@ describe('UserSettingsRepository', () => {
                   language: 'en',
                   email: 'existing@example.com',
                   displayName: 'Existing User',
-                  enablePrepMode: true,
-                  isAdmin: false
+                  enablePrepMode: true
                 })
               });
 
@@ -301,7 +300,7 @@ describe('UserSettingsRepository', () => {
                 enablePrepMode: false
               });
               // Note: Firebase update() only updates the specified fields,
-              // other fields like isAdmin should remain unchanged
+              // other fields like displayName should remain unchanged
             }
           },
           {

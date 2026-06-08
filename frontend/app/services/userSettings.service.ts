@@ -19,8 +19,8 @@ const USE_CLIENT_SETTINGS = process.env.NEXT_PUBLIC_USE_CLIENT_SETTINGS === 'tru
 const USERS_COLLECTION = 'users';
 
 // UX / preference fields the client may write to its own settings doc. NEVER
-// id/userId (identity) or isAdmin (privilege): those are server-managed; the
-// client whitelist keeps the app from ever writing them via the client SDK.
+// id/userId (identity): those are server-managed; the client whitelist keeps the
+// app from ever writing them via the client SDK.
 const SETTINGS_WRITABLE_FIELDS = [
   'language', 'email', 'displayName', 'firstDayOfWeek',
   'enablePrepMode', 'enableAudioGeneration', 'enableStructurePreview', 'enableGroups', 'showAppVersion',
@@ -36,8 +36,8 @@ async function getUserSettingsViaClient(userId: string): Promise<UserSettings | 
 }
 
 // setDoc(merge) = create-or-update, mirroring the server's createOrUpdate: a new
-// user gets a doc with just these fields; an existing doc keeps everything else
-// (incl. isAdmin). Only whitelisted UX fields are ever written from the client.
+// user gets a doc with just these fields; an existing doc keeps everything else.
+// Only whitelisted UX fields are ever written from the client.
 async function updateUserSettingsViaClient(userId: string, updates: Record<string, unknown>): Promise<void> {
   const db = getClientDb();
   const allowed: Record<string, unknown> = {};
