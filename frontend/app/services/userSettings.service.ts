@@ -1,4 +1,7 @@
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+
 import { DEFAULT_LANGUAGE, COOKIE_LANG_KEY, COOKIE_MAX_AGE } from '@/../../frontend/locales/constants';
+import { getClientDb } from '@/config/firebaseClientDb';
 import { UserSettings } from '@/models/models';
 import { debugLog } from '@/utils/debugMode';
 
@@ -6,6 +9,44 @@ import type { FirstDayOfWeek } from '@/utils/weekStart';
 
 // Constants for repeated strings
 const USER_SETTINGS_API_URL = '/api/user/settings';
+
+// Strangler-fig flag: when ON, settings READS + writes go through the client
+// Firestore SDK (the `users` doc, keyed by doc-id == uid) instead of
+// /api/user/settings. The doc-id ownership rule (request.auth.uid == uid) makes
+// reads of a not-yet-existing own doc safe (it doesn't touch resource.data).
+// Default OFF — identical to before unless the flag is set.
+const USE_CLIENT_SETTINGS = process.env.NEXT_PUBLIC_USE_CLIENT_SETTINGS === 'true';
+const USERS_COLLECTION = 'users';
+
+// UX / preference fields the client may write to its own settings doc. NEVER
+// id/userId (identity) or isAdmin (privilege): those are server-managed; the
+// client whitelist keeps the app from ever writing them via the client SDK.
+const SETTINGS_WRITABLE_FIELDS = [
+  'language', 'email', 'displayName', 'firstDayOfWeek',
+  'enablePrepMode', 'enableAudioGeneration', 'enableStructurePreview', 'enableGroups', 'showAppVersion',
+];
+
+const clientSettingsActive = () => USE_CLIENT_SETTINGS && typeof window !== 'undefined';
+
+async function getUserSettingsViaClient(userId: string): Promise<UserSettings | null> {
+  const db = getClientDb();
+  const snap = await getDoc(doc(db, USERS_COLLECTION, userId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...(snap.data() as Omit<UserSettings, 'id'>) } as UserSettings;
+}
+
+// setDoc(merge) = create-or-update, mirroring the server's createOrUpdate: a new
+// user gets a doc with just these fields; an existing doc keeps everything else
+// (incl. isAdmin). Only whitelisted UX fields are ever written from the client.
+async function updateUserSettingsViaClient(userId: string, updates: Record<string, unknown>): Promise<void> {
+  const db = getClientDb();
+  const allowed: Record<string, unknown> = {};
+  for (const field of SETTINGS_WRITABLE_FIELDS) {
+    if (updates[field] !== undefined) allowed[field] = updates[field];
+  }
+  if (Object.keys(allowed).length === 0) return;
+  await setDoc(doc(db, USERS_COLLECTION, userId), allowed, { merge: true });
+}
 
 // Setting-write functions no longer pre-throw when offline — see groups.service.
 // The fetch attempts, fails, and React Query buffers + replays the toggle on
@@ -85,6 +126,11 @@ export async function updateUserLanguage(userId: string, language: string): Prom
       return;
     }
 
+    if (clientSettingsActive()) {
+      await updateUserSettingsViaClient(userId, { language });
+      return;
+    }
+
     // For authenticated users, also update DB (source of truth)
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
@@ -129,6 +175,11 @@ export async function updateUserProfile(
     // Don't make the API call if there's nothing to update
     if (Object.keys(updates).length === 0) return;
 
+    if (clientSettingsActive()) {
+      await updateUserSettingsViaClient(userId, updates);
+      return;
+    }
+
     // Update settings through API without specifying language
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
@@ -157,6 +208,10 @@ export async function updateFirstDayOfWeek(
 ): Promise<void> {
   try {
     if (!userId) return;
+    if (clientSettingsActive()) {
+      await updateUserSettingsViaClient(userId, { firstDayOfWeek });
+      return;
+    }
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
       headers: {
@@ -202,6 +257,15 @@ export async function initializeUserSettings(
     if (language !== undefined) payload.language = language;
     if (email !== undefined) payload.email = email;
     if (displayName !== undefined) payload.displayName = displayName;
+
+    if (clientSettingsActive()) {
+      // setDoc(merge) only writes the provided fields; we deliberately do NOT
+      // force a default language here (unlike the server create), so a re-init
+      // can't clobber an existing preference.
+      await updateUserSettingsViaClient(userId, { language, email, displayName });
+      if (language) setLanguageCookie(language);
+      return;
+    }
 
     // Create settings through API
     const response = await fetch(USER_SETTINGS_API_URL, {
@@ -258,6 +322,9 @@ export async function getUserSettings(userId: string): Promise<UserSettings | nu
     if (!userId) {
       return null;
     }
+    if (clientSettingsActive()) {
+      return getUserSettingsViaClient(userId);
+    }
     const response = await fetch(`/api/user/settings?userId=${encodeURIComponent(userId)}`);
     if (!response.ok) {
       throw new Error(`Failed to fetch user settings: ${response.statusText}`);
@@ -279,6 +346,10 @@ export async function getUserSettings(userId: string): Promise<UserSettings | nu
 export async function updatePrepModeAccess(userId: string, enabled: boolean): Promise<void> {
   try {
     if (!userId) return;
+    if (clientSettingsActive()) {
+      await updateUserSettingsViaClient(userId, { enablePrepMode: enabled });
+      return;
+    }
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
       headers: {
@@ -335,6 +406,10 @@ export async function hasPrepModeAccess(userId: string): Promise<boolean> {
 export async function updateAudioGenerationAccess(userId: string, enabled: boolean): Promise<void> {
   try {
     if (!userId) return;
+    if (clientSettingsActive()) {
+      await updateUserSettingsViaClient(userId, { enableAudioGeneration: enabled });
+      return;
+    }
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
       headers: {
@@ -360,6 +435,10 @@ export async function updateAudioGenerationAccess(userId: string, enabled: boole
 export async function updateShowAppVersion(userId: string, enabled: boolean): Promise<void> {
   try {
     if (!userId) return;
+    if (clientSettingsActive()) {
+      await updateUserSettingsViaClient(userId, { showAppVersion: enabled });
+      return;
+    }
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
       headers: {
@@ -385,6 +464,10 @@ export async function updateShowAppVersion(userId: string, enabled: boolean): Pr
 export async function updateGroupsAccess(userId: string, enabled: boolean): Promise<void> {
   try {
     if (!userId) return;
+    if (clientSettingsActive()) {
+      await updateUserSettingsViaClient(userId, { enableGroups: enabled });
+      return;
+    }
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
       headers: {
@@ -433,6 +516,10 @@ export async function hasGroupsAccess(userId: string): Promise<boolean> {
 export async function updateStructurePreviewAccess(userId: string, enabled: boolean): Promise<void> {
   try {
     if (!userId) return;
+    if (clientSettingsActive()) {
+      await updateUserSettingsViaClient(userId, { enableStructurePreview: enabled });
+      return;
+    }
     const response = await fetch(USER_SETTINGS_API_URL, {
       method: 'PUT',
       headers: {
