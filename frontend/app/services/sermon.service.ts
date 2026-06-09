@@ -1,9 +1,17 @@
 import { Sermon, Preparation } from '@/models/models';
+import {
+  USE_CLIENT_SERMONS,
+  getSermonByIdViaClient,
+  getSermonsViaClient,
+  updateSermonPreparationViaClient,
+  updateSermonViaClient,
+} from '@/services/sermons.client';
 import { apiClient } from '@/utils/apiClient';
 import { FetchTimeoutError } from '@/utils/fetchWithTimeout';
 import { timeOrZero, compareById } from '@/utils/sortHelpers';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
+const clientActive = () => USE_CLIENT_SERMONS && typeof window !== 'undefined';
 
 const isExpectedFetchFailure = (error: unknown): boolean => {
   if (error instanceof FetchTimeoutError) {
@@ -22,6 +30,9 @@ const isExpectedFetchFailure = (error: unknown): boolean => {
 };
 
 export const getSermons = async (userId: string): Promise<Sermon[]> => {
+  if (clientActive()) {
+    return getSermonsViaClient(userId);
+  }
   try {
     const response = await apiClient(`${API_BASE}/api/sermons?userId=${userId}`, {
       cache: "no-store",
@@ -47,6 +58,9 @@ export const getSermons = async (userId: string): Promise<Sermon[]> => {
 };
 
 export const getSermonById = async (id: string): Promise<Sermon | undefined> => {
+  if (clientActive()) {
+    return getSermonByIdViaClient(id);
+  }
   try {
     const response = await apiClient(`${API_BASE}/api/sermons/${id}`, {
       cache: "no-store",
@@ -71,6 +85,16 @@ export const getSermonById = async (id: string): Promise<Sermon | undefined> => 
 };
 
 export const createSermon = async (sermon: Omit<Sermon, 'id'> & { id?: string }): Promise<Sermon> => {
+  // createSermon stays on the server even when the flag is ON — as a principled
+  // boundary, not a workaround. A create can cascade into a series
+  // (addSermonToSeries), so it follows the same "cross-collection cascade -> server"
+  // rule every other collection uses (groups series-link, series membership, tag
+  // delete). The server's get-then-set is already idempotent by client id, and
+  // addPreachDate is now idempotent by id too (see preachDates), so there is no
+  // replay-dup landmine. Moving create to a client setDoc would only add a
+  // replay-clobber risk (a late online-flush resetting thoughts[]) for no real gain.
+  // All sermon READS and own-doc EDITS (structure/outline/thoughts/preachDates/update)
+  // are on the client.
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const response = await apiClient(`${API_BASE}/api/sermons`, {
@@ -102,6 +126,9 @@ export async function deleteSermon(sermonId: string): Promise<void> {
 }
 
 export const updateSermon = async (updatedSermon: Sermon): Promise<Sermon | null> => {
+  if (clientActive()) {
+    return updateSermonViaClient(updatedSermon);
+  }
   try {
     const response = await apiClient(`${API_BASE}/api/sermons/${updatedSermon.id}`, {
       method: "PUT",
@@ -122,6 +149,9 @@ export const updateSermon = async (updatedSermon: Sermon): Promise<Sermon | null
 };
 
 export const updateSermonPreparation = async (sermonId: string, updates: Preparation): Promise<Preparation | null> => {
+  if (clientActive()) {
+    return updateSermonPreparationViaClient(sermonId, updates);
+  }
   try {
     const response = await apiClient(`${API_BASE}/api/sermons/${sermonId}`, {
       method: 'PUT',

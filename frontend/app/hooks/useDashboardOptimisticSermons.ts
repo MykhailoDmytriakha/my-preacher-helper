@@ -20,7 +20,6 @@ import type {
 } from '@/models/dashboardOptimistic';
 import type { Church, PreachDate, Sermon } from '@/models/models';
 
-const TEMP_PREACH_DATE_PREFIX = 'temp-preach-date-';
 const UNSPECIFIED_CHURCH_ID = 'church-unspecified';
 const PREACH_STATUS_OPERATION: DashboardSermonSyncState['operation'] = 'preach-status';
 const PREACHED_STATUS_UPDATE_ERROR = 'Failed to update preached status.';
@@ -61,9 +60,6 @@ const buildUnspecifiedChurch = (name?: string): Church => ({
   name: name?.trim() || 'Church not specified',
   city: '',
 });
-
-const buildTempId = (prefix: string) =>
-  `${prefix}${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
 const toMessage = (error: unknown): string => {
   if (error instanceof Error && error.message.trim()) {
@@ -200,7 +196,7 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
       // and callers can navigate to the new sermon's route immediately.
       const clientId = newClientId();
       const now = new Date().toISOString();
-      const tempPreachDateId = buildTempId(TEMP_PREACH_DATE_PREFIX);
+      const plannedDateId = newClientId();
 
       const optimisticSermon: Sermon = {
         id: clientId,
@@ -213,7 +209,7 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
         preachDates: input.plannedDate
           ? [
               {
-                id: tempPreachDateId,
+                id: plannedDateId,
                 date: input.plannedDate,
                 status: 'planned',
                 church: buildUnspecifiedChurch(input.unspecifiedChurchName),
@@ -241,7 +237,11 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
 
           let persistedSermon = createdSermon;
           if (input.plannedDate) {
+            // Reuse the optimistic row's id so the write is idempotent: a replayed
+            // create (online-flush) upserts the same preach-date instead of adding a
+            // duplicate, and mergePreachDate matches by id without a temp->real swap.
             const createdPlannedDate = await addPreachDate(createdSermon.id, {
+              id: plannedDateId,
               date: input.plannedDate,
               status: 'planned',
               church: buildUnspecifiedChurch(input.unspecifiedChurchName),
@@ -276,6 +276,9 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
 
       const existingPlannedDate = getNextPlannedDate(sermon);
       const optimisticPreachDates = [...(sermon.preachDates || [])];
+      // Stable id for a newly-added planned date, shared by the optimistic row and
+      // the persisted write so a replay (online-flush) upserts instead of duplicating.
+      const newPlannedDateId = newClientId();
 
       if (plannedDate !== initialPlannedDate) {
         if (plannedDate) {
@@ -290,7 +293,7 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
             }
           } else {
             optimisticPreachDates.push({
-              id: buildTempId(TEMP_PREACH_DATE_PREFIX),
+              id: newPlannedDateId,
               date: plannedDate,
               status: 'planned',
               church: buildUnspecifiedChurch(unspecifiedChurchName),
@@ -340,6 +343,7 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
                 persistedSermon = mergePreachDate(persistedSermon, updatedPlannedDate);
               } else {
                 const createdPlannedDate = await addPreachDate(sermon.id, {
+                  id: newPlannedDateId,
                   date: plannedDate,
                   status: 'planned',
                   church: buildUnspecifiedChurch(unspecifiedChurchName),
@@ -537,6 +541,8 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
       }
 
       const optimisticStatus = data.status || 'preached';
+      // Stable id shared by the optimistic row and the persisted add -> idempotent on replay.
+      const newPreachDateId = newClientId();
       const optimisticSermon: Sermon = preachDateToMark
         ? {
             ...sermon,
@@ -553,7 +559,7 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
             preachDates: [
               ...(sermon.preachDates || []),
               {
-                id: buildTempId(TEMP_PREACH_DATE_PREFIX),
+                id: newPreachDateId,
                 ...data,
                 status: optimisticStatus,
                 createdAt: new Date().toISOString(),
@@ -571,7 +577,7 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
         try {
           const persistedPreachDate = preachDateToMark
             ? await updatePreachDate(sermon.id, preachDateToMark.id, { ...data, status: 'preached' })
-            : await addPreachDate(sermon.id, { ...data, status: optimisticStatus });
+            : await addPreachDate(sermon.id, { id: newPreachDateId, ...data, status: optimisticStatus });
 
           const updatedSermon = await updateSermonRequest({
             ...sermon,

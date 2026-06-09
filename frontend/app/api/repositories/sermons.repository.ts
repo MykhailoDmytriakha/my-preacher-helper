@@ -258,12 +258,43 @@ export class SermonsRepository {
     }
   }
 
-  async addPreachDate(sermonId: string, preachDate: Omit<PreachDate, 'id' | 'createdAt'>): Promise<PreachDate> {
+  async addPreachDate(sermonId: string, preachDate: Omit<PreachDate, 'id' | 'createdAt'> & { id?: string }): Promise<PreachDate> {
     console.log(`Firestore: adding preach date to sermon ${sermonId}`);
     try {
       const normalizedDate = toDateOnlyKey(preachDate.date);
       if (!normalizedDate) {
         throw new Error("Invalid preach date format");
+      }
+
+      // Idempotent by client-supplied id: a replayed add (offline retry / the
+      // dashboard online-flush double-fire) carrying the same id must not append a
+      // duplicate. We read-modify-write instead of arrayUnion, because two replays
+      // build objects with different createdAt -> arrayUnion would treat them as
+      // distinct and append both. With a client id, the SECOND add is a no-op.
+      if (preachDate.id) {
+        const docRef = adminDb.collection(this.collection).doc(sermonId);
+        const docSnap = await docRef.get();
+        if (!docSnap.exists) {
+          throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
+        }
+        const existingDates = (docSnap.data() as Sermon).preachDates || [];
+        const existing = existingDates.find(pd => pd.id === preachDate.id);
+        if (existing) {
+          console.log(`Firestore: preach date ${preachDate.id} already on sermon ${sermonId} (idempotent no-op)`);
+          return existing;
+        }
+        const newPreachDate: PreachDate = {
+          ...preachDate,
+          date: normalizedDate,
+          status: preachDate.status || 'planned',
+          id: preachDate.id,
+          createdAt: new Date().toISOString()
+        };
+        await this.updateSermonData(sermonId, {
+          preachDates: [...existingDates, newPreachDate]
+        });
+        console.log(`Firestore: added preach date ${newPreachDate.id} to sermon ${sermonId}`);
+        return newPreachDate;
       }
 
       const newPreachDate: PreachDate = {
