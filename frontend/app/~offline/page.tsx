@@ -1,6 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import {
+  Component,
+  Suspense,
+  lazy,
+  useEffect,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from 'react';
 
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
 
@@ -8,18 +16,46 @@ import DashboardPage from '@/(pages)/(private)/dashboard/page';
 // document as the navigation fallback whenever an offline navigation misses the
 // cache (App Router SPA-visited routes only cache their RSC, not the HTML, so
 // reloading them offline used to dead-end at /offline.html). The shell boots the
-// React app from cache; here we dispatch on the requested path so high-value
-// routes render their REAL content from the Firestore offline cache (deep
-// per-route render — Phase 4 Increment 2) instead of a generic notice. Routes not
-// yet wired fall back to the generic offline card below.
+// React app from cache and dispatches on the requested path so high-value routes
+// render their REAL content from the Firestore offline cache (deep per-route
+// render — Phase 4 Increment 2) instead of a generic notice.
 //
-// Safe by construction: this file is ONLY rendered on an offline document-miss
-// (online routes are untouched), and the page components it renders are
-// self-contained w.r.t. providers — Auth, the React Query client and the
-// Firestore offline cache all live in the ROOT layout, so a page rendered here
-// reads the exact same cached data it would online. The (private) layout only
-// adds nav chrome + the auth guard, neither of which the page body needs to
-// render its cached content.
+// Bundle discipline: the dashboard (the home, always relevant offline) is a STATIC
+// import so it is part of the precached shell and guaranteed available offline. The
+// other overview/list routes are LAZY (separate chunks, not in the precache) — their
+// chunk is cached by the runtime defaultCache when the route is visited online, so a
+// previously-visited route renders offline; a never-visited one fails to load its
+// chunk and the error boundary shows the generic card. This keeps the precached
+// shell small (static-importing all of them ballooned /~offline to ~939kB First Load
+// vs ~427kB for the dashboard alone) without losing graceful coverage.
+//
+// Safe by construction: this file renders ONLY on an offline document-miss (online
+// routes are untouched); the page bodies are self-contained w.r.t. providers (Auth,
+// the React Query client and the Firestore cache live in the ROOT layout). Only
+// paramless pages are wired; the Suspense boundary covers pages reading
+// useSearchParams (e.g. /sermons). Param routes (/sermons/[id]) need a hook-free
+// component first — see the journal plan.
+
+const LAZY_ROUTES: { test: (path: string) => boolean; Component: ComponentType }[] = [
+  { test: (p) => p === '/sermons', Component: lazy(() => import('@/(pages)/(private)/sermons/page')) },
+  { test: (p) => p === '/series', Component: lazy(() => import('@/(pages)/(private)/series/page')) },
+  { test: (p) => p === '/groups', Component: lazy(() => import('@/(pages)/(private)/groups/page')) },
+  { test: (p) => p === '/prayers', Component: lazy(() => import('@/(pages)/(private)/prayers/page')) },
+  { test: (p) => p === '/studies', Component: lazy(() => import('@/(pages)/(private)/studies/page')) },
+  { test: (p) => p === '/calendar', Component: lazy(() => import('@/(pages)/(private)/calendar/page')) },
+];
+
+// Renders the generic card if a lazy route's chunk can't be loaded (offline +
+// never visited online, so defaultCache never cached the chunk) or the page throws.
+class OfflineRouteBoundary extends Component<{ fallback: ReactNode; children: ReactNode }, { hasError: boolean }> {
+  state = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  render() {
+    return this.state.hasError ? this.props.fallback : this.props.children;
+  }
+}
 
 function GenericOfflineCard({ requestedPath }: { requestedPath: string }) {
   return (
@@ -59,9 +95,9 @@ function GenericOfflineCard({ requestedPath }: { requestedPath: string }) {
 }
 
 export default function OfflineShell() {
-  // null until the effect reads the real URL the user tried to open (the shell
-  // HTML is served at that URL). Rendering null first also keeps the precached
-  // static HTML (path unknown) hydration-stable before we pick a branch.
+  // null until the effect reads the real URL the user tried to open (the shell HTML
+  // is served at that URL). Rendering null first keeps the precached static HTML
+  // (path unknown at build) hydration-stable before we pick a branch.
   const [requestedPath, setRequestedPath] = useState<string | null>(null);
 
   useEffect(() => {
@@ -72,11 +108,22 @@ export default function OfflineShell() {
     return null;
   }
 
-  // Deep per-route render (wired incrementally). The dashboard page uses only
-  // useRouter (no route-param hooks), so it renders correctly outside its own
-  // route, reading sermons/series/notes/etc. from the Firestore offline cache.
+  // Dashboard: static, guaranteed offline (the home).
   if (requestedPath === '/dashboard' || requestedPath === '/') {
     return <DashboardPage />;
+  }
+
+  // Other overview routes: lazy chunk (cached on online visit) + graceful fallback.
+  const lazyMatch = LAZY_ROUTES.find((route) => route.test(requestedPath));
+  if (lazyMatch) {
+    const RouteComponent = lazyMatch.Component;
+    return (
+      <OfflineRouteBoundary fallback={<GenericOfflineCard requestedPath={requestedPath} />}>
+        <Suspense fallback={null}>
+          <RouteComponent />
+        </Suspense>
+      </OfflineRouteBoundary>
+    );
   }
 
   return <GenericOfflineCard requestedPath={requestedPath} />;
