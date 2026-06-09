@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { Group, GroupFlowItem, GroupMeetingDate } from '@/models/models';
@@ -66,18 +66,28 @@ async function getGroupByIdViaClient(groupId: string): Promise<Group | undefined
   return hydrateGroup({ ...(snap.data() as Omit<Group, 'id'>), id: snap.id } as Group);
 }
 
-async function createGroupViaClient(group: Omit<Group, 'id'>): Promise<Group> {
+async function createGroupViaClient(group: Omit<Group, 'id'> & { id?: string }): Promise<Group> {
   const db = getClientDb();
   const now = new Date().toISOString();
+  const { id: providedId, ...rest } = group;
   const clean = deepCleanUndefined({
-    ...group,
-    templates: group.templates || [],
-    flow: normalizeFlow(group.flow || []),
-    meetingDates: group.meetingDates || [],
-    status: group.status || 'draft',
+    ...rest,
+    templates: rest.templates || [],
+    flow: normalizeFlow(rest.flow || []),
+    meetingDates: rest.meetingDates || [],
+    status: rest.status || 'draft',
     createdAt: now,
     updatedAt: now,
   });
+  // Idempotent create when the caller supplies a client id: setDoc on a known doc
+  // id makes an offline-buffered create a no-op overwrite if it ever replays (no
+  // duplicate), where addDoc would allocate a fresh id each run. No pre-read — a
+  // getDoc on a missing doc trips the ownsExisting read rule (see
+  // project_no_getdoc_precheck_on_create); create: ownsIncoming guarantees ownership.
+  if (providedId) {
+    await setDoc(doc(db, GROUPS_COLLECTION, providedId), clean);
+    return hydrateGroup({ ...clean, id: providedId } as Group);
+  }
   const ref = await addDoc(collection(db, GROUPS_COLLECTION), clean);
   return hydrateGroup({ ...clean, id: ref.id } as Group);
 }
@@ -149,7 +159,7 @@ export const getGroupById = async (groupId: string): Promise<Group | undefined> 
   return response.json();
 };
 
-export const createGroup = async (group: Omit<Group, 'id'>): Promise<Group> => {
+export const createGroup = async (group: Omit<Group, 'id'> & { id?: string }): Promise<Group> => {
   if (USE_CLIENT_GROUPS && typeof window !== 'undefined') {
     return createGroupViaClient(group);
   }

@@ -7,7 +7,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { Group } from '@/models/models';
-import { buildId } from '@/utils/groupFlow';
+import { newClientId } from '@/utils/clientId';
 import { GROUP_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import { createGroup, deleteGroup, getAllGroups, updateGroup } from '@services/groups.service';
 
@@ -40,11 +40,11 @@ export function useGroups(userId?: string | null) {
   // offline survives a page reload and replays on reconnect.
   const createMutation = useMutation({
     mutationKey: GROUP_MUTATION_KEYS.create,
-    mutationFn: (payload: Omit<Group, 'id'>) => createGroup(payload),
+    mutationFn: (payload: Omit<Group, 'id'> & { id?: string }) => createGroup(payload),
     onMutate: async (payload) => {
       await queryClient.cancelQueries({ queryKey: buildQueryKey(effectiveUserId) });
       const previous = queryClient.getQueryData<Group[]>(buildQueryKey(effectiveUserId));
-      const tempId = buildId('temp');
+      const tempId = payload.id ?? newClientId();
       const optimistic = { ...payload, id: tempId } as Group;
       queryClient.setQueryData<Group[]>(buildQueryKey(effectiveUserId), (old = []) => [
         optimistic,
@@ -151,8 +151,11 @@ export function useGroups(userId?: string | null) {
     // toast) proceeds without awaiting the network. Offline, the underlying
     // mutation pauses + persists and replays on reconnect; the optimistic cache
     // update from onMutate keeps the write visible meanwhile.
-    createNewGroup: async (payload: Omit<Group, 'id'>) => {
-      createMutation.mutate(payload);
+    createNewGroup: async (payload: Omit<Group, 'id'> & { id?: string }) => {
+      // Mint a stable client id so the create is idempotent (setDoc by this id):
+      // a buffered create that ever replays overwrites the same doc instead of
+      // allocating a fresh id and duplicating the group.
+      createMutation.mutate({ ...payload, id: payload.id ?? newClientId() });
     },
     updateExistingGroup: async (id: string, updates: Partial<Group>) => {
       updateMutation.mutate({ id, updates });

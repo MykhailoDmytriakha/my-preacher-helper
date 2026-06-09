@@ -6,8 +6,8 @@ import { toast } from "sonner";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useResolvedUid } from "@/hooks/useResolvedUid";
 import { useServerFirstQuery } from "@/hooks/useServerFirstQuery";
+import { newClientId } from "@/utils/clientId";
 import { debugLog } from "@/utils/debugMode";
-import { buildId } from "@/utils/groupFlow";
 import { SERIES_MUTATION_KEYS } from "@/utils/mutationDefaults";
 import { normalizeError } from "@/utils/normalizeError";
 import {
@@ -71,11 +71,11 @@ export function useSeries(userId?: string | null) {
   // onError rolls back + surfaces genuine (online) failures.
   const createSeriesMutation = useMutation({
     mutationKey: SERIES_MUTATION_KEYS.create,
-    mutationFn: (payload: Omit<Series, "id">) => createSeries(payload),
+    mutationFn: (payload: Omit<Series, "id"> & { id?: string }) => createSeries(payload),
     onMutate: async (payload) => {
       await queryClient.cancelQueries({ queryKey: buildQueryKey(effectiveUserId) });
       const previous = queryClient.getQueryData<Series[]>(buildQueryKey(effectiveUserId));
-      const tempId = buildId("temp");
+      const tempId = payload.id ?? newClientId();
       const optimistic = { ...payload, id: tempId } as Series;
       queryClient.setQueryData<Series[]>(buildQueryKey(effectiveUserId), (old = []) => [
         optimistic,
@@ -190,8 +190,10 @@ export function useSeries(userId?: string | null) {
   // Fire-and-forget + optimistic: resolve immediately so the UI does not hang
   // awaiting the network; offline the mutation pauses + persists and replays.
   const createNewSeries = useCallback(
-    async (seriesData: Omit<Series, "id">) => {
-      createSeriesMutation.mutate(seriesData);
+    async (seriesData: Omit<Series, "id"> & { id?: string }) => {
+      // Mint a stable client id so the create is idempotent (setDoc by this id) —
+      // a buffered create that ever replays overwrites the same doc, no duplicate.
+      createSeriesMutation.mutate({ ...seriesData, id: seriesData.id ?? newClientId() });
     },
     [createSeriesMutation]
   );

@@ -1,4 +1,4 @@
-import { addDoc, collection, doc, getDoc, getDocs, query, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { Series } from '@/models/models';
@@ -76,18 +76,25 @@ async function getSeriesByIdViaClient(seriesId: string): Promise<Series | undefi
   return hydrateSeries({ ...(snap.data() as Omit<Series, 'id'>), id: snap.id } as Series);
 }
 
-async function createSeriesViaClient(series: Omit<Series, 'id'>): Promise<Series> {
+async function createSeriesViaClient(series: Omit<Series, 'id'> & { id?: string }): Promise<Series> {
   const db = getClientDb();
   const now = new Date().toISOString();
-  const items = normalizeSeriesItems(series.items, series.sermonIds || []);
+  const { id: providedId, ...rest } = series;
+  const items = normalizeSeriesItems(rest.items, rest.sermonIds || []);
   const clean = deepCleanUndefined({
-    ...series,
+    ...rest,
     items,
     sermonIds: deriveSermonIdsFromItems(items),
-    seriesKind: series.seriesKind || inferSeriesKind(items),
+    seriesKind: rest.seriesKind || inferSeriesKind(items),
     createdAt: now,
     updatedAt: now,
   });
+  // Idempotent create when the caller supplies a client id — see groups.service
+  // (setDoc on a known id makes a replayed offline create a no-op overwrite, not a dup).
+  if (providedId) {
+    await setDoc(doc(db, SERIES_COLLECTION, providedId), clean);
+    return hydrateSeries({ ...clean, id: providedId } as Series);
+  }
   const ref = await addDoc(collection(db, SERIES_COLLECTION), clean);
   return hydrateSeries({ ...clean, id: ref.id } as Series);
 }
@@ -173,7 +180,7 @@ export const getSeriesById = async (seriesId: string): Promise<Series | undefine
   }
 };
 
-export const createSeries = async (series: Omit<Series, 'id'>): Promise<Series> => {
+export const createSeries = async (series: Omit<Series, 'id'> & { id?: string }): Promise<Series> => {
   if (USE_CLIENT_SERIES && typeof window !== 'undefined') {
     return createSeriesViaClient(series);
   }

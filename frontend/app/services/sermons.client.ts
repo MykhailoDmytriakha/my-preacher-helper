@@ -35,6 +35,10 @@ export const USE_CLIENT_SERMONS = process.env.NEXT_PUBLIC_USE_CLIENT_SERMONS ===
 
 const SERMONS_COLLECTION = 'sermons';
 const SERMON_NOT_FOUND = 'Sermon not found';
+// Prefix the structure/sermon-page optimistic layers put on a not-yet-saved
+// thought id (see pendingThoughtsStore LOCAL_THOUGHT_PREFIX + useOptimisticEntitySync).
+// We strip it when persisting so the saved thought reads as real, not pending.
+const LOCAL_OPTIMISTIC_ID_PREFIX = 'local-';
 
 // Firestore's updateDoc payload type: any field may hold a value or a FieldValue
 // sentinel (arrayUnion). Matches the shape updateDoc accepts for untyped docs.
@@ -212,13 +216,29 @@ export async function updateSermonOutlineViaClient(
 
 // --- thoughts[] ---
 
-/** Mirror POST /api/thoughts?manual=true — server allocates the id + strips structure tags. */
+/**
+ * Mirror POST /api/thoughts?manual=true — but idempotent by id.
+ *
+ * The id is reused from the caller's optimistic thought (which survives a reload
+ * and is replayed unchanged on retry) instead of being minted fresh each call;
+ * the optimistic "local-" prefix is stripped so the saved thought is classified
+ * as real, not pending. Combined with upsert-by-id (read-modify-write), a create
+ * that gets sent twice — the native Firestore offline queue committing the
+ * original write AND a reload-recovered retry — collapses to ONE thought instead
+ * of two. (Plain arrayUnion would append a near-duplicate whenever a replay
+ * carries a different `date`/field.)
+ */
 export async function createManualThoughtViaClient(
   sermonId: string,
   thought: Thought
 ): Promise<Thought> {
+  const stableId =
+    thought.id && thought.id.startsWith(LOCAL_OPTIMISTIC_ID_PREFIX)
+      ? thought.id.slice(LOCAL_OPTIMISTIC_ID_PREFIX.length)
+      : thought.id || newClientId();
+
   const built: Thought = {
-    id: newClientId(),
+    id: stableId,
     text: thought.text,
     tags: stripStructureTags(thought.tags),
     date: thought.date || now(),
@@ -231,10 +251,19 @@ export async function createManualThoughtViaClient(
     throw new Error('Thought is missing required fields');
   }
 
-  await updateDoc(sermonRef(sermonId), {
-    thoughts: arrayUnion(deepCleanUndefined(built)),
-    updatedAt: now(),
-  });
+  // Upsert by id: replace a thought already carrying this id, else append. The
+  // sermon doc exists here (we're adding to it), so the getDoc read passes the
+  // ownsExisting rule — unlike a create-on-missing-doc pre-read, which would not.
+  const ref = sermonRef(sermonId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error(SERMON_NOT_FOUND);
+  const existing = (snap.data() as Sermon).thoughts || [];
+  const cleanBuilt = deepCleanUndefined(built);
+  const idx = existing.findIndex((t) => t.id === built.id);
+  const nextThoughts =
+    idx === -1 ? [...existing, cleanBuilt] : existing.map((t, i) => (i === idx ? cleanBuilt : t));
+
+  await updateDoc(ref, { thoughts: nextThoughts, updatedAt: now() });
   return built;
 }
 

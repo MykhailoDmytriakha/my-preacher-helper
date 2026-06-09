@@ -116,7 +116,7 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
 
   // ---- groups ----
   queryClient.setMutationDefaults(GROUP_MUTATION_KEYS.create, {
-    mutationFn: (payload: Omit<Group, 'id'>) => createGroup(payload),
+    mutationFn: (payload: Omit<Group, 'id'> & { id?: string }) => createGroup(payload),
     onSuccess: invalidate(['groups']),
   });
   queryClient.setMutationDefaults(GROUP_MUTATION_KEYS.update, {
@@ -130,7 +130,7 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
 
   // ---- series ----
   queryClient.setMutationDefaults(SERIES_MUTATION_KEYS.create, {
-    mutationFn: (payload: Omit<Series, 'id'>) => createSeries(payload),
+    mutationFn: (payload: Omit<Series, 'id'> & { id?: string }) => createSeries(payload),
     onSuccess: invalidate(['series']),
   });
   queryClient.setMutationDefaults(SERIES_MUTATION_KEYS.update, {

@@ -169,7 +169,12 @@ describe('useSeries', () => {
         await result.current.createNewSeries(newSeriesData);
       });
 
-      expect(mockCreateSeries).toHaveBeenCalledWith(newSeriesData);
+      // createNewSeries now mints a stable client id and passes it through so the
+      // create is idempotent (setDoc by that id) — a replayed offline create is a
+      // no-op overwrite, not a duplicate.
+      expect(mockCreateSeries).toHaveBeenCalledWith(
+        expect.objectContaining({ ...newSeriesData, id: expect.any(String) })
+      );
       await waitFor(() => {
         expect(result.current.series).toEqual([createdSeries, ...mockSeries]);
       });
