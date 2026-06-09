@@ -2374,5 +2374,12 @@
       "updateAdded": "Update added",
       "statusChanged": "Status updated"
     }
+  },
+  "pwa": {
+    "updateAvailable": {
+      "title": "New version available",
+      "description": "Reload to get the latest version of the app.",
+      "action": "Reload"
+    }
   }
 }
