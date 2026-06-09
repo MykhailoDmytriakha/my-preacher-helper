@@ -1,7 +1,7 @@
 "use client";
 
 import { useIsRestoring } from "@tanstack/react-query";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
@@ -10,6 +10,7 @@ import remarkGfm from "remark-gfm";
 import { PlanStyle } from "@/api/clients/openAI.client";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useOptimisticEntitySync } from "@/hooks/useOptimisticEntitySync";
+import { useRouteId } from "@/hooks/useRouteId";
 import useSermon from "@/hooks/useSermon";
 import { SermonPoint, Sermon, Thought, Plan } from "@/models/models";
 import { updateThought } from "@/services/thought.service";
@@ -117,8 +118,7 @@ const LoadingSpinner = ({ size = "medium", className = "" }: { size?: "small" | 
 export default function PlanPage() {
   const { t } = useTranslation();
   const noContentText = t(TRANSLATION_KEYS.NO_CONTENT);
-  const params = useParams();
-  const sermonId = params?.id as string;
+  const sermonId = useRouteId();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -860,7 +860,7 @@ export default function PlanPage() {
       <div className="p-6 text-center">
         <h1 className="text-2xl font-bold text-red-600 mb-4">{error}</h1>
         <Button
-          onClick={() => router.push(`/sermons/${params.id}`)}
+          onClick={() => router.push(`/sermons/${sermonId}`)}
           variant="default"
           className="px-6 py-3 text-base"
         >
@@ -891,14 +891,14 @@ export default function PlanPage() {
         </div>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Button
-            onClick={() => router.push(`/sermons/${params.id}/structure`)}
+            onClick={() => router.push(`/sermons/${sermonId}/structure`)}
             variant="structure"
             className="px-6 py-3 text-base"
           >
             {t("plan.goToStructure")}
           </Button>
           <Button
-            onClick={() => router.push(`/sermons/${params.id}`)}
+            onClick={() => router.push(`/sermons/${sermonId}`)}
             variant="default"
             className="px-6 py-3 text-base"
           >
@@ -988,14 +988,14 @@ export default function PlanPage() {
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <Button
-            onClick={() => router.push(`/sermons/${params.id}`)}
+            onClick={() => router.push(`/sermons/${sermonId}`)}
             variant="plan"
             className="px-6 py-3 text-base"
           >
             {t("plan.workOnSermon")}
           </Button>
           <Button
-            onClick={() => router.push(`/sermons/${params.id}/structure`)}
+            onClick={() => router.push(`/sermons/${sermonId}/structure`)}
             variant="structure"
             className="px-6 py-3 text-base"
           >
@@ -1065,7 +1065,7 @@ export default function PlanPage() {
       />
       <PlanMainLayout
         sermon={displaySermon ?? sermon}
-        params={{ id: params.id as string }}
+        params={{ id: sermonId as string }}
         sermonId={sermonId}
         t={t}
         combinedPlan={combinedPlan}

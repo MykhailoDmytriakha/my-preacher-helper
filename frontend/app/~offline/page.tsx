@@ -46,12 +46,15 @@ const LAZY_ROUTES: { test: (path: string) => boolean; Component: ComponentType }
   { test: (p) => p === '/prayers', Component: lazy(() => import('@/(pages)/(private)/prayers/page')) },
   { test: (p) => p === '/studies', Component: lazy(() => import('@/(pages)/(private)/studies/page')) },
   { test: (p) => p === '/calendar', Component: lazy(() => import('@/(pages)/(private)/calendar/page')) },
-  // Param detail routes — exact single-segment match (so /sermons/[id]/structure,
-  // /plan etc. fall through to the generic card; those aren't wired offline).
+  // Param detail routes — single-segment match.
   { test: (p) => /^\/sermons\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/sermons/[id]/page')) },
   { test: (p) => /^\/series\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/series/[id]/page')) },
   { test: (p) => /^\/studies\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/studies/[id]/page')) },
   { test: (p) => /^\/groups\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/groups/[id]/page')) },
+  // Nested sermon routes (preaching plan + structure editor). useRouteId reads the
+  // [id] from the 2nd path segment, so these self-resolve in the shell too.
+  { test: (p) => /^\/sermons\/[^/]+\/plan$/.test(p), Component: lazy(() => import('@/(pages)/(private)/sermons/[id]/plan/page')) },
+  { test: (p) => /^\/sermons\/[^/]+\/structure$/.test(p), Component: lazy(() => import('@/(pages)/(private)/sermons/[id]/structure/page')) },
 ];
 
 // Renders the generic card if a lazy route's chunk can't be loaded (offline +
@@ -145,16 +148,26 @@ export default function OfflineShell() {
     );
   }
 
-  // Other overview routes: lazy chunk (cached on online visit) + graceful fallback.
+  // Other routes: lazy chunk (cached on online visit) + graceful fallback.
   const lazyMatch = LAZY_ROUTES.find((route) => route.test(requestedPath));
   if (lazyMatch) {
     const RouteComponent = lazyMatch.Component;
+    // The preaching plan is immersive online (the (private) layout hides the nav for
+    // ?planView=preaching) — match that offline by rendering without the chrome.
+    const isPreachingPlan =
+      /\/plan$/.test(requestedPath) &&
+      typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('planView') === 'preaching';
     return (
       <OfflineRouteBoundary fallback={<GenericOfflineCard requestedPath={requestedPath} />}>
         <Suspense fallback={null}>
-          <ShellChrome>
+          {isPreachingPlan ? (
             <RouteComponent />
-          </ShellChrome>
+          ) : (
+            <ShellChrome>
+              <RouteComponent />
+            </ShellChrome>
+          )}
         </Suspense>
       </OfflineRouteBoundary>
     );
