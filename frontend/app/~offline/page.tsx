@@ -33,8 +33,9 @@ import DashboardPage from '@/(pages)/(private)/dashboard/page';
 // routes are untouched); the page bodies are self-contained w.r.t. providers (Auth,
 // the React Query client and the Firestore cache live in the ROOT layout). Only
 // paramless pages are wired; the Suspense boundary covers pages reading
-// useSearchParams (e.g. /sermons). Param routes (/sermons/[id]) need a hook-free
-// component first — see the journal plan.
+// useSearchParams (e.g. /sermons). Param detail routes (/sermons/[id] etc.) are
+// wired too: their pages read the id via useRouteId (useParams ?? location.pathname),
+// so they self-resolve the id when rendered in the shell — no body extraction needed.
 
 const LAZY_ROUTES: { test: (path: string) => boolean; Component: ComponentType }[] = [
   { test: (p) => p === '/sermons', Component: lazy(() => import('@/(pages)/(private)/sermons/page')) },
@@ -43,6 +44,12 @@ const LAZY_ROUTES: { test: (path: string) => boolean; Component: ComponentType }
   { test: (p) => p === '/prayers', Component: lazy(() => import('@/(pages)/(private)/prayers/page')) },
   { test: (p) => p === '/studies', Component: lazy(() => import('@/(pages)/(private)/studies/page')) },
   { test: (p) => p === '/calendar', Component: lazy(() => import('@/(pages)/(private)/calendar/page')) },
+  // Param detail routes — exact single-segment match (so /sermons/[id]/structure,
+  // /plan etc. fall through to the generic card; those aren't wired offline).
+  { test: (p) => /^\/sermons\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/sermons/[id]/page')) },
+  { test: (p) => /^\/series\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/series/[id]/page')) },
+  { test: (p) => /^\/studies\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/studies/[id]/page')) },
+  { test: (p) => /^\/groups\/[^/]+$/.test(p), Component: lazy(() => import('@/(pages)/(private)/groups/[id]/page')) },
 ];
 
 // Renders the generic card if a lazy route's chunk can't be loaded (offline +

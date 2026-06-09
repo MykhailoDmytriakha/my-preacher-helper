@@ -27,7 +27,7 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -41,6 +41,7 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
 import DatePickerField from '@/components/ui/DatePickerField';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useGroupDetail } from '@/hooks/useGroupDetail';
+import { useRouteId } from '@/hooks/useRouteId';
 import { useSeries } from '@/hooks/useSeries';
 import { GroupBlockStatus, GroupBlockTemplate, GroupBlockTemplateType, GroupFlowItem } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
@@ -57,7 +58,7 @@ import {
 const STATUS_CYCLE: GroupBlockStatus[] = ['empty', 'draft', 'filled'];
 
 export default function GroupDetailPage() {
-  const { id } = useParams();
+  const id = useRouteId();
   const router = useRouter();
   const { t } = useTranslation();
   const { user } = useAuth();

@@ -1,7 +1,7 @@
 'use client';
 
 import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, XMarkIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
-import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { useClipboard } from '@/hooks/useClipboard';
+import { useRouteId } from '@/hooks/useRouteId';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { ScriptureReference, StudyNote } from '@/models/models';
@@ -37,8 +38,7 @@ const deleteStudyNoteShareLinkByNoteId = async (userId: string, noteId: string, 
 };
 
 function useFilteredNotes(notes: StudyNote[], searchParams: URLSearchParams, bibleLocale: BibleLocale) {
-    const params = useParams();
-    const noteId = params.id as string;
+    const noteId = useRouteId();
 
     const searchQuery = searchParams.get('search')?.trim() || '';
     const tagFilter = searchParams.get('tag') || '';
@@ -516,9 +516,9 @@ function EditorHeaderTypeControl({
 export default function StudyNoteEditorPage() {
     const { t, i18n } = useTranslation();
     const router = useRouter();
-    const params = useParams();
+    const routeId = useRouteId();
     const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
-    const noteId = createdNoteId || (params.id as string);
+    const noteId = createdNoteId || routeId;
     const isNew = noteId === 'new';
 
     const { uid, notes, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();

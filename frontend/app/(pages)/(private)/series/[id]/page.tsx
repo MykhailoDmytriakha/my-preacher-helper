@@ -24,7 +24,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { ArrowPathIcon, ClockIcon, SparklesIcon } from '@heroicons/react/24/solid';
 import { useQueryClient } from '@tanstack/react-query';
-import { useParams, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -36,6 +36,7 @@ import AddSermonToSeriesModal from '@/components/series/AddSermonToSeriesModal';
 import EditSeriesModal from '@/components/series/EditSeriesModal';
 import SeriesItemCard from '@/components/series/SeriesItemCard';
 import { SeriesDetailSkeleton } from '@/components/skeletons/SeriesDetailSkeleton';
+import { useRouteId } from '@/hooks/useRouteId';
 import { useSeries } from '@/hooks/useSeries';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
 import { useAuth } from '@/providers/AuthProvider';
@@ -60,7 +61,7 @@ type PendingRemoval = {
 } | null;
 
 export default function SeriesDetailPage() {
-  const { id } = useParams();
+  const id = useRouteId();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { t } = useTranslation();

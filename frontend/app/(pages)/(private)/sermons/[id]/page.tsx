@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { BookOpen, Sparkles } from "lucide-react";
 import dynamicImport from "next/dynamic";
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from 'sonner';
@@ -28,6 +28,7 @@ import StructurePreview from "@/components/sermon/StructurePreview";
 import StructureStats from "@/components/sermon/StructureStats";
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
 import { useOptimisticEntitySync } from "@/hooks/useOptimisticEntitySync";
+import { useRouteId } from "@/hooks/useRouteId";
 import { useSeries } from "@/hooks/useSeries";
 import useSermon from "@/hooks/useSermon";
 import { useTags } from "@/hooks/useTags";
@@ -214,7 +215,7 @@ const checkForInconsistentThoughtsHelper = (sermon: Sermon | null): boolean => {
 };
 
 export default function SermonPage() {
-  const { id } = useParams<{ id: string }>();
+  const id = useRouteId();
   const { user } = useAuth();
   const { series } = useSeries(user?.uid || null);
   const { settings: userSettings } = useUserSettings(user?.uid);
