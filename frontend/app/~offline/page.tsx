@@ -2,22 +2,26 @@
 
 import { useEffect, useState } from 'react';
 
+import DashboardPage from '@/(pages)/(private)/dashboard/page';
+
 // Route-agnostic offline app-shell. The service worker serves this precached
 // document as the navigation fallback whenever an offline navigation misses the
 // cache (App Router SPA-visited routes only cache their RSC, not the HTML, so
-// reloading them offline used to dead-end at /offline.html). Serving this shell
-// instead boots the React app from cache, so the user lands in a live app rather
-// than a dead page. Deep per-route rendering (showing the exact requested route's
-// content offline) is a later increment — this closes the "boots from cache
-// instead of a dead-end" gap (task #14).
-export default function OfflineShell() {
-  const [requestedPath, setRequestedPath] = useState<string>('');
+// reloading them offline used to dead-end at /offline.html). The shell boots the
+// React app from cache; here we dispatch on the requested path so high-value
+// routes render their REAL content from the Firestore offline cache (deep
+// per-route render — Phase 4 Increment 2) instead of a generic notice. Routes not
+// yet wired fall back to the generic offline card below.
+//
+// Safe by construction: this file is ONLY rendered on an offline document-miss
+// (online routes are untouched), and the page components it renders are
+// self-contained w.r.t. providers — Auth, the React Query client and the
+// Firestore offline cache all live in the ROOT layout, so a page rendered here
+// reads the exact same cached data it would online. The (private) layout only
+// adds nav chrome + the auth guard, neither of which the page body needs to
+// render its cached content.
 
-  useEffect(() => {
-    // The real URL the user tried to open (the shell HTML is served at it).
-    setRequestedPath(window.location.pathname);
-  }, []);
-
+function GenericOfflineCard({ requestedPath }: { requestedPath: string }) {
   return (
     <main className="min-h-screen grid place-items-center bg-[#0b1220] px-6 text-slate-100">
       <div className="w-full max-w-md rounded-2xl border border-slate-700/60 bg-slate-900/60 p-8 text-center shadow-xl">
@@ -52,4 +56,28 @@ export default function OfflineShell() {
       </div>
     </main>
   );
+}
+
+export default function OfflineShell() {
+  // null until the effect reads the real URL the user tried to open (the shell
+  // HTML is served at that URL). Rendering null first also keeps the precached
+  // static HTML (path unknown) hydration-stable before we pick a branch.
+  const [requestedPath, setRequestedPath] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRequestedPath(window.location.pathname);
+  }, []);
+
+  if (requestedPath === null) {
+    return null;
+  }
+
+  // Deep per-route render (wired incrementally). The dashboard page uses only
+  // useRouter (no route-param hooks), so it renders correctly outside its own
+  // route, reading sermons/series/notes/etc. from the Firestore offline cache.
+  if (requestedPath === '/dashboard' || requestedPath === '/') {
+    return <DashboardPage />;
+  }
+
+  return <GenericOfflineCard requestedPath={requestedPath} />;
 }
