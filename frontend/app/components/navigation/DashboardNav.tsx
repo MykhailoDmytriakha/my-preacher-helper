@@ -2,7 +2,7 @@
 
 import { BookOpenIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/solid';
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "@locales/i18n";
@@ -16,6 +16,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFeedback } from "@/hooks/useFeedback";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrepModeAccess } from "@/hooks/usePrepModeAccess";
+import { useShellPathname } from "@/hooks/useShellPathname";
 import { hasGroupsAccess } from "@/services/userSettings.service";
 import { debugLog } from "@/utils/debugMode";
 import { getNavItemTheme } from "@/utils/themeColors";
@@ -37,7 +38,7 @@ export default function DashboardNav() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [navDropdownOpen, setNavDropdownOpen] = useState(false);
   const [showGroupsNav, setShowGroupsNav] = useState(true);
-  const pathname = usePathname();
+  const pathname = useShellPathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const navItems = useMemo(() => (

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -9,6 +9,7 @@ import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
 import useSermon from '@/hooks/useSermon';
+import { useShellPathname } from '@/hooks/useShellPathname';
 import { debugLog } from '@/utils/debugMode';
 import '@locales/i18n';
 
@@ -192,7 +193,7 @@ const buildSegmentCrumb = ({
 };
 
 export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean }) {
-  const pathname = usePathname();
+  const pathname = useShellPathname();
   const searchParams = useSearchParams();
   const { t } = useTranslation();
 

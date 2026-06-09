@@ -11,6 +11,8 @@ import {
 } from 'react';
 
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
+import Breadcrumbs from '@/components/navigation/Breadcrumbs';
+import DashboardNav from '@/components/navigation/DashboardNav';
 
 // Route-agnostic offline app-shell. The service worker serves this precached
 // document as the navigation fallback whenever an offline navigation misses the
@@ -101,6 +103,23 @@ function GenericOfflineCard({ requestedPath }: { requestedPath: string }) {
   );
 }
 
+// Wraps an offline-rendered page in the same nav chrome the (private) layout gives
+// online (top nav + breadcrumbs + main container), so a never-visited page served by
+// the shell looks consistent with a visited one (served from the cached real route).
+// DashboardNav/Breadcrumbs read the real path via useShellPathname, so they're correct
+// here even though the router context is /~offline.
+function ShellChrome({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-h-screen bg-white dark:bg-gray-900">
+      <DashboardNav />
+      <div className="mx-auto w-full px-4 sm:px-6 lg:px-8">
+        <Breadcrumbs />
+      </div>
+      <main className="mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">{children}</main>
+    </div>
+  );
+}
+
 export default function OfflineShell() {
   // null until the effect reads the real URL the user tried to open (the shell HTML
   // is served at that URL). Rendering null first keeps the precached static HTML
@@ -117,7 +136,13 @@ export default function OfflineShell() {
 
   // Dashboard: static, guaranteed offline (the home).
   if (requestedPath === '/dashboard' || requestedPath === '/') {
-    return <DashboardPage />;
+    return (
+      <Suspense fallback={null}>
+        <ShellChrome>
+          <DashboardPage />
+        </ShellChrome>
+      </Suspense>
+    );
   }
 
   // Other overview routes: lazy chunk (cached on online visit) + graceful fallback.
@@ -127,7 +152,9 @@ export default function OfflineShell() {
     return (
       <OfflineRouteBoundary fallback={<GenericOfflineCard requestedPath={requestedPath} />}>
         <Suspense fallback={null}>
-          <RouteComponent />
+          <ShellChrome>
+            <RouteComponent />
+          </ShellChrome>
         </Suspense>
       </OfflineRouteBoundary>
     );
