@@ -178,8 +178,11 @@ const panelHeaderClass =
   'flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-800';
 const DEFAULT_SERIES_COLOR = '#2563EB';
 // Row hover tinted to the panel's category (visible bg-X-100 over the X-50 card) + matching focus ring.
+// Rounded + inset padding so the hover fill is a soft pill with breathing room from the card's
+// vivid border and the row dividers — not a hard rectangle butting against them. Pairs with the
+// list container's px-2 (8px gutter) so text still lines up with the px-4 panel header.
 const rowLink = (tone: Tone) =>
-  `transition focus:outline-none focus-visible:ring-2 ${toneClasses[tone].rowHover}`;
+  `rounded-lg px-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-inset ${toneClasses[tone].rowHover}`;
 // Header "view all" link: transparent at rest, clear bordered+tinted rectangle on hover.
 const panelLinkClass = (tone: Tone) =>
   `inline-flex items-center gap-1 rounded-md border border-transparent px-2 py-1 text-xs font-medium transition ${toneClasses[tone].link}`;
@@ -420,7 +423,7 @@ function SermonsPanel({ sermons }: { sermons: SermonRow[] }) {
       {sermons.length === 0 ? (
         <EmptyPanel icon={BookOpen} text={t('dashboardHome.sections.sermons.empty')} />
       ) : (
-        <div className="divide-y divide-gray-100 px-4 pb-1 dark:divide-gray-800">
+        <div className="divide-y divide-gray-100 px-2 pb-1 dark:divide-gray-800">
           {sermons.map((sermon) => (
             <Link key={sermon.id} href={`/sermons/${sermon.id}`} className={`grid grid-cols-[40px_1fr_auto] gap-3 py-3 ${rowLink('blue')}`}>
               <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses.blue.badge}`}>
@@ -469,7 +472,7 @@ function AgendaPanel({ agendaItems }: { agendaItems: AgendaItem[] }) {
       {agendaItems.length === 0 ? (
         <EmptyPanel icon={CalendarDays} text={t('dashboardHome.sections.week.empty')} />
       ) : (
-        <div className="p-4">
+        <div className="p-2">
           <div className="space-y-0">
             {agendaItems.map((item, index) => (
               <Link key={item.id} href={item.href} className={`grid grid-cols-[70px_1fr_auto_18px] gap-3 py-1 ${rowLink('cyan')}`}>
@@ -518,7 +521,7 @@ function PrayerFocusPanel({ prayers }: { prayers: PrayerItem[] }) {
       {prayers.length === 0 ? (
         <EmptyPanel icon={Heart} text={t('dashboardHome.sections.prayer.empty')} />
       ) : (
-        <div className="divide-y divide-gray-100 px-4 dark:divide-gray-800">
+        <div className="divide-y divide-gray-100 px-2 dark:divide-gray-800">
           {prayers.map((prayer) => (
             <Link key={prayer.id} href={prayer.href} className={`grid grid-cols-[36px_1fr_18px] gap-3 py-3 ${rowLink('rose')}`}>
               <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses.rose.badge}`}>
@@ -561,9 +564,9 @@ function ActiveSeriesPanel({ seriesItems }: { seriesItems: SeriesItem[] }) {
       {seriesItems.length === 0 ? (
         <EmptyPanel icon={NotebookTabs} text={t('dashboardHome.sections.series.empty')} />
       ) : (
-        <div className="divide-y divide-gray-100 px-4 dark:divide-gray-800">
+        <div className="divide-y divide-gray-100 px-2 dark:divide-gray-800">
           {seriesItems.map((seriesItem) => (
-            <Link key={seriesItem.id} href={`/series/${seriesItem.id}`} className={`relative grid grid-cols-[44px_1fr_auto] gap-3 py-3 pl-3 ${rowLink('violet')}`}>
+            <Link key={seriesItem.id} href={`/series/${seriesItem.id}`} className={`relative grid grid-cols-[44px_1fr_auto] gap-3 py-3 ${rowLink('violet')}`}>
               <span
                 className="absolute left-0 top-3 bottom-3 w-1 rounded-full"
                 style={{ backgroundColor: seriesItem.color }}
@@ -610,7 +613,7 @@ function RecentStudiesPanel({ studies }: { studies: StudyItem[] }) {
       {studies.length === 0 ? (
         <EmptyPanel icon={StickyNote} text={t('dashboardHome.sections.studies.empty')} />
       ) : (
-        <div className="divide-y divide-gray-100 px-4 dark:divide-gray-800">
+        <div className="divide-y divide-gray-100 px-2 dark:divide-gray-800">
           {studies.map((study) => (
             <Link key={study.id} href={study.href} className={`grid grid-cols-[1fr_18px] gap-3 py-3 ${rowLink('emerald')}`}>
               <div className="min-w-0">
@@ -653,7 +656,7 @@ function LatestGroupsPanel({ groups }: { groups: GroupItem[] }) {
       {groups.length === 0 ? (
         <EmptyPanel icon={UsersRound} text={t('dashboardHome.sections.groups.empty')} />
       ) : (
-        <div className="divide-y divide-gray-100 px-4 dark:divide-gray-800">
+        <div className="divide-y divide-gray-100 px-2 dark:divide-gray-800">
           {groups.map((group) => (
             <Link key={group.id} href={`/groups/${group.id}`} className={`grid grid-cols-[40px_1fr_auto] gap-3 py-3 ${rowLink('amber')}`}>
               <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses.amber.icon}`}>
