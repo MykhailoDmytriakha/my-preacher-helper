@@ -21,6 +21,14 @@ for (const key of Object.keys(process.env)) {
   }
 }
 
+// Same hazard, different flag: NEXT_PUBLIC_GOOGLE_CLIENT_ID lives in the Vercel env and
+// is present during the build's test run. When set, the landing mounts @react-oauth/google's
+// GoogleOAuthProvider, which injects the GSI <script> into <head> and then throws
+// "The node to be removed is not a child of this node" on jsdom unmount — failing the whole
+// landing suite non-deterministically. Unit tests assert the fallback (popup) path; force it
+// off so the suite is deterministic regardless of the ambient env it runs in.
+delete process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+
 // Lazy load heavy mocks only when NODE_ENV is test
 if (process.env.NODE_ENV === 'test') {
   // Pre-configure fetch mock for better performance
