@@ -133,7 +133,7 @@ const SectionHeader = ({ section, onSwitchPage }: { section: SermonSectionKey; o
         {onSwitchPage && (
           <button
             onClick={onSwitchPage}
-            className="group p-1 bg-white/20 rounded-full border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
+            className="group p-1 bg-white/20 rounded-full border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
             title={t("plan.switchToStructure", { defaultValue: "Switch to ThoughtsBySection view" })}
             aria-label={t("plan.switchToStructure", { defaultValue: "Switch to ThoughtsBySection view" })}
           >

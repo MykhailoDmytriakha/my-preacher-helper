@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { SubPointList } from '@/components/column/SubPointList';
 import { useConnection } from '@/providers/ConnectionProvider';
 import { getSermonOutline, updateSermonOutline } from '@/services/outline.service';
+import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 import { getSectionStyling } from '@/utils/themeColors';
 import { getPreachOrderedThoughtsBySection } from '@/utils/thoughtOrdering';
 import { getFocusModeUrl } from '@/utils/urlUtils';
@@ -170,14 +171,15 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
   // Handlers for managing points
   const addPoint = async (section: SectionType) => {
     if (isReadOnly) return;
-    if (!newPointTexts[section].trim()) {
+    const textToSave = normalizeCapitalizedTitle(newPointTexts[section]);
+    if (!textToSave) {
       setAddingNewToSection(null); // Close if empty
       return;
     }
 
     const newPoint = {
       id: Date.now().toString(),
-      text: newPointTexts[section].trim(),
+      text: textToSave,
     };
 
     // Create new points array for this section
@@ -284,7 +286,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
   const handleStartEdit = (point: SermonPoint) => {
     if (isReadOnly) return;
     setEditingPointId(point.id);
-    setEditingText(point.text); // Set initial text for editing
+    setEditingText(capitalizeFirstLetter(point.text)); // Set initial text for editing
     setAddingNewToSection(null); // Ensure add mode is off
   };
 
@@ -295,14 +297,15 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
 
   const handleSaveEdit = () => {
     if (isReadOnly) return;
-    if (!editingPointId || !editingText.trim()) {
+    const textToSave = normalizeCapitalizedTitle(editingText);
+    if (!editingPointId || !textToSave) {
       handleCancelEdit(); // Cancel if empty
       return;
     }
 
     const updatedPoints = Object.entries(sectionPoints).reduce((acc, [section, points]) => {
       acc[section as SectionType] = points.map(p =>
-        p.id === editingPointId ? { ...p, text: editingText.trim() } : p
+        p.id === editingPointId ? { ...p, text: textToSave } : p
       );
       return acc;
     }, {} as Record<SectionType, SermonPoint[]>);
@@ -365,13 +368,14 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
 
   // --- Sub-point operations ---
   const handleAddSubPoint = (outlinePointId: string, text: string) => {
-    if (isReadOnly || !text.trim()) return;
+    const textToSave = normalizeCapitalizedTitle(text);
+    if (isReadOnly || !textToSave) return;
     const updatedPoints = Object.entries(sectionPoints).reduce((acc, [section, points]) => {
       acc[section as SectionType] = points.map((p) => {
         if (p.id !== outlinePointId) return p;
         const existing = p.subPoints ?? [];
         const maxPos = existing.length > 0 ? Math.max(...existing.map((sp) => sp.position)) : 0;
-        const newSp: SubPoint = { id: `sp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, text: text.trim(), position: maxPos + 1000 };
+        const newSp: SubPoint = { id: `sp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, text: textToSave, position: maxPos + 1000 };
         return { ...p, subPoints: [...existing, newSp] };
       });
       return acc;
@@ -381,11 +385,12 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
   };
 
   const handleEditSubPoint = (outlinePointId: string, subPointId: string, newText: string) => {
-    if (isReadOnly || !newText.trim()) return;
+    const textToSave = normalizeCapitalizedTitle(newText);
+    if (isReadOnly || !textToSave) return;
     const updatedPoints = Object.entries(sectionPoints).reduce((acc, [section, points]) => {
       acc[section as SectionType] = points.map((p) => {
         if (p.id !== outlinePointId || !p.subPoints) return p;
-        return { ...p, subPoints: p.subPoints.map((sp) => sp.id === subPointId ? { ...sp, text: newText.trim() } : sp) };
+        return { ...p, subPoints: p.subPoints.map((sp) => sp.id === subPointId ? { ...sp, text: textToSave } : sp) };
       });
       return acc;
     }, {} as Record<SectionType, SermonPoint[]>);
@@ -477,7 +482,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
       <input
         type="text"
         value={editingText}
-        onChange={(e) => setEditingText(e.target.value)}
+        onChange={(e) => setEditingText(capitalizeFirstLetter(e.target.value))}
         onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEdit(); if (e.key === 'Escape') handleCancelEdit(); }}
         className="flex-grow p-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
         placeholder={t('structure.editPointPlaceholder')}
@@ -678,7 +683,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
                   <input
                     type="text"
                     value={newPointTexts[sectionType]}
-                    onChange={(e) => setNewPointTexts({ ...newPointTexts, [sectionType]: e.target.value })}
+                    onChange={(e) => setNewPointTexts({ ...newPointTexts, [sectionType]: capitalizeFirstLetter(e.target.value) })}
                     onKeyDown={(e) => { if (e.key === 'Enter') addPoint(sectionType); if (e.key === 'Escape') handleCancelAdd(sectionType); }}
                     placeholder={t('structure.addPointPlaceholder')}
                     className="flex-grow p-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 placeholder-gray-500 dark:placeholder-gray-400"

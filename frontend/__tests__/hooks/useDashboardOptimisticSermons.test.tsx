@@ -1,8 +1,9 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, dehydrate, hydrate, onlineManager } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import { useDashboardOptimisticSermons } from '@/hooks/useDashboardOptimisticSermons';
+import { registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
 import type { Sermon } from '@/models/models';
 
 const mockCreateSermon = jest.fn();
@@ -34,15 +35,47 @@ const { auth: mockAuth } = jest.requireMock('@services/firebaseAuth.service') as
   auth: { currentUser: { uid: string } | null };
 };
 
-const createTestQueryClient = () =>
-  new QueryClient({
+const createTestQueryClient = () => {
+  const queryClient = new QueryClient({
     defaultOptions: {
       queries: {
         retry: false,
         gcTime: Infinity,
       },
+      mutations: {
+        retry: false,
+        // Mirror production (QueryProvider): the first attempt runs, an offline
+        // failure pauses the mutation instead of erroring it.
+        networkMode: 'offlineFirst',
+      },
     },
   });
+  // The hook's mutations are bare {mutationKey} consumers — mutationFn and all
+  // cache handlers live in the registered defaults, exactly like production.
+  registerOfflineMutationDefaults(queryClient);
+  return queryClient;
+};
+
+// For the offline-pause tests: pausing happens BETWEEN retries (no retries ->
+// an offline failure errors out instead of pausing), so these need
+// production's retry>0 — with zero delay to keep the tests fast.
+const createOfflineTestQueryClient = () => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        gcTime: Infinity,
+      },
+      mutations: {
+        retry: 5,
+        retryDelay: 0,
+        networkMode: 'offlineFirst',
+      },
+    },
+  });
+  registerOfflineMutationDefaults(queryClient);
+  return queryClient;
+};
 
 const createSermon = (id: string, overrides: Partial<Sermon> = {}): Sermon => ({
   id,
@@ -98,29 +131,40 @@ describe('useDashboardOptimisticSermons', () => {
     mockDeletePreachDate.mockReset();
   });
 
-  it('creates temporary sermon immediately and replaces it with persisted sermon', async () => {
+  it('creates a sermon with a client id and reconciles it with the persisted sermon', async () => {
     const queryClient = createTestQueryClient();
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
-    const persisted = createSermon('sermon-real-1', { title: 'Persisted Sermon' });
     const createFlow = createDeferred<Sermon>();
     mockCreateSermon.mockReturnValueOnce(createFlow.promise);
 
     const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
 
+    let createdId: string | undefined;
     await act(async () => {
-      await result.current.actions.createSermon({
+      createdId = await result.current.actions.createSermon({
         title: 'Optimistic Sermon',
         verse: 'Psalm 1',
       });
     });
 
+    // The optimistic row carries the client-generated id (not a temp- placeholder),
+    // so navigation and idempotent server replay both reference the same id.
     const cacheAfterAction = getCachedSermons(queryClient);
     expect(cacheAfterAction).toHaveLength(1);
-    expect(cacheAfterAction[0].id.startsWith('temp-sermon-')).toBe(true);
-    expect(result.current.syncStatesById[cacheAfterAction[0].id]?.status).toBe('pending');
+    expect(createdId).toBeTruthy();
+    expect(cacheAfterAction[0].id).toBe(createdId);
+    expect(cacheAfterAction[0].id.startsWith('temp-sermon-')).toBe(false);
+    // The badge map is derived from the mutation cache via useMutationState,
+    // whose subscription notifies on the next tick — poll instead of reading
+    // synchronously.
+    await waitFor(() => {
+      expect(result.current.syncStatesById[createdId as string]?.status).toBe('pending');
+    });
 
+    // The server echoes the same id back (idempotent create).
+    const persisted = createSermon(createdId as string, { title: 'Persisted Sermon' });
     await act(async () => {
       createFlow.resolve(persisted);
     });
@@ -128,8 +172,9 @@ describe('useDashboardOptimisticSermons', () => {
     await waitFor(() => {
       const cache = getCachedSermons(queryClient);
       expect(cache).toHaveLength(1);
-      expect(cache[0].id).toBe('sermon-real-1');
+      expect(cache[0].id).toBe(createdId);
       expect(cache[0].title).toBe('Persisted Sermon');
+      expect(result.current.syncStatesById[createdId as string]).toBeUndefined();
     });
   });
 
@@ -623,8 +668,13 @@ describe('useDashboardOptimisticSermons', () => {
       });
     });
 
-    const tempId = Object.keys(result.current.syncStatesById)[0];
-    expect(result.current.syncStatesById[tempId]?.status).toBe('pending');
+    let tempId = '';
+    await waitFor(() => {
+      const ids = Object.keys(result.current.syncStatesById);
+      expect(ids).toHaveLength(1);
+      tempId = ids[0];
+      expect(result.current.syncStatesById[tempId]?.status).toBe('pending');
+    });
 
     await act(async () => {
       result.current.actions.dismissSyncError(tempId);
@@ -635,6 +685,190 @@ describe('useDashboardOptimisticSermons', () => {
 
     await act(async () => {
       createFlow.resolve(createSermon('sermon-pending-done'));
+    });
+  });
+
+  // The guarantees the persisted-mutation mechanism adds over the old
+  // hand-rolled retry closures: offline ops pause (instead of erroring),
+  // auto-replay on reconnect, survive a reload, and replay in submission
+  // order — including the old mechanism's data-loss case where an offline
+  // edit of an offline-created sermon overwrote the create's retry closure.
+  describe('offline persistence (mechanism B semantics)', () => {
+    afterEach(() => {
+      act(() => {
+        onlineManager.setOnline(true);
+      });
+    });
+
+    it('pauses an offline edit (pending badge, no server call) and replays it on reconnect', async () => {
+      const queryClient = createOfflineTestQueryClient();
+      const original = createSermon('sermon-offline');
+      setCachedSermons(queryClient, [original]);
+      const wrapper = ({ children }: { children: React.ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      );
+
+      act(() => {
+        onlineManager.setOnline(false);
+      });
+      // offlineFirst: the first attempt runs, fails (offline), then pauses.
+      mockUpdateSermon.mockRejectedValueOnce(new Error('network down'));
+
+      const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
+
+      await act(async () => {
+        await result.current.actions.saveEditedSermon({
+          sermon: original,
+          title: 'Offline Title',
+          verse: original.verse,
+          plannedDate: '',
+          initialPlannedDate: '',
+        });
+      });
+
+      // Optimistic edit applied; the op is queued (pending), NOT an error.
+      expect(getCachedSermons(queryClient)[0].title).toBe('Offline Title');
+      await waitFor(() => {
+        expect(result.current.syncStatesById['sermon-offline']?.status).toBe('pending');
+      });
+      const paused = queryClient.getMutationCache().getAll();
+      expect(paused).toHaveLength(1);
+      expect(paused[0].state.isPaused).toBe(true);
+
+      mockUpdateSermon.mockResolvedValueOnce({ ...original, title: 'Offline Title' });
+      act(() => {
+        onlineManager.setOnline(true);
+      });
+
+      await waitFor(() => {
+        expect(mockUpdateSermon).toHaveBeenCalledTimes(2);
+        expect(result.current.syncStatesById['sermon-offline']).toBeUndefined();
+        expect(getCachedSermons(queryClient)[0].title).toBe('Offline Title');
+      });
+    });
+
+    it('replays a paused offline edit after a simulated reload (dehydrate -> hydrate -> resume)', async () => {
+      const clientA = createOfflineTestQueryClient();
+      const original = createSermon('sermon-reload');
+      setCachedSermons(clientA, [original]);
+      const wrapperA = ({ children }: { children: React.ReactNode }) => (
+        <QueryClientProvider client={clientA}>{children}</QueryClientProvider>
+      );
+
+      act(() => {
+        onlineManager.setOnline(false);
+      });
+      mockUpdateSermon.mockRejectedValueOnce(new Error('network down'));
+
+      const { result, unmount } = renderHook(() => useDashboardOptimisticSermons(), { wrapper: wrapperA });
+      await act(async () => {
+        await result.current.actions.saveEditedSermon({
+          sermon: original,
+          title: 'Survives Reload',
+          verse: original.verse,
+          plannedDate: '',
+          initialPlannedDate: '',
+        });
+      });
+      await waitFor(() => {
+        expect(clientA.getMutationCache().getAll()[0]?.state.isPaused).toBe(true);
+      });
+
+      // Simulated reload: dehydrate with the same predicate QueryProvider uses,
+      // hydrate into a FRESH client whose only knowledge is the registered
+      // defaults (the in-memory closures are gone — like after a real reload).
+      const dehydrated = dehydrate(clientA, {
+        shouldDehydrateQuery: (query) => query.state.status === 'success',
+        shouldDehydrateMutation: (mutation) =>
+          mutation.state.status === 'pending' || mutation.state.isPaused || mutation.state.status === 'error',
+      });
+      // The "old tab" dies with the reload: unmount its hook and drop its
+      // caches so it cannot also resume the paused mutation on reconnect.
+      unmount();
+      clientA.clear();
+      const clientB = createOfflineTestQueryClient();
+      hydrate(clientB, dehydrated);
+
+      act(() => {
+        onlineManager.setOnline(true);
+      });
+      mockUpdateSermon.mockResolvedValueOnce({ ...original, title: 'Survives Reload' });
+
+      await act(async () => {
+        await clientB.resumePausedMutations();
+      });
+
+      // Replayed with the SAME persisted variables, and the defaults' onSuccess
+      // reconciled the fresh client's list cache.
+      expect(mockUpdateSermon).toHaveBeenCalledTimes(2);
+      expect(mockUpdateSermon).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: 'sermon-reload', title: 'Survives Reload' })
+      );
+      const reloadedList = clientB.getQueryData<Sermon[]>(['sermons', 'user-1']);
+      expect(reloadedList?.[0].title).toBe('Survives Reload');
+    });
+
+    it('replays an offline create then edit of the SAME sermon in submission order (old mechanism lost the create)', async () => {
+      const queryClient = createOfflineTestQueryClient();
+      setCachedSermons(queryClient, []);
+      const wrapper = ({ children }: { children: React.ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      );
+
+      act(() => {
+        onlineManager.setOnline(false);
+      });
+      mockCreateSermon.mockRejectedValueOnce(new Error('network down'));
+
+      const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
+
+      let createdId: string | undefined;
+      await act(async () => {
+        createdId = await result.current.actions.createSermon({ title: 'Offline Created', verse: 'V' });
+      });
+      await waitFor(() => {
+        expect(queryClient.getMutationCache().getAll()[0]?.state.isPaused).toBe(true);
+      });
+
+      // Edit the still-unsynced optimistic row while offline: queues a SECOND
+      // mutation (paused offline ops deliberately don't block new edits).
+      const optimisticRow = getCachedSermons(queryClient).find((sermon) => sermon.id === createdId);
+      expect(optimisticRow).toBeTruthy();
+      mockUpdateSermon.mockRejectedValueOnce(new Error('network down'));
+      await act(async () => {
+        await result.current.actions.saveEditedSermon({
+          sermon: optimisticRow as Sermon,
+          title: 'Edited Offline',
+          verse: 'V',
+          plannedDate: '',
+          initialPlannedDate: '',
+        });
+      });
+      await waitFor(() => {
+        expect(queryClient.getMutationCache().getAll()).toHaveLength(2);
+      });
+
+      const replayOrder: string[] = [];
+      mockCreateSermon.mockImplementationOnce(async () => {
+        replayOrder.push('create');
+        return { ...(optimisticRow as Sermon), title: 'Offline Created' };
+      });
+      mockUpdateSermon.mockImplementationOnce(async () => {
+        replayOrder.push('update');
+        return { ...(optimisticRow as Sermon), title: 'Edited Offline' };
+      });
+
+      act(() => {
+        onlineManager.setOnline(true);
+      });
+
+      await waitFor(() => {
+        // Create replays BEFORE the edit (serial, submission order) — the old
+        // retryActionsRef keyed by sermonId would have dropped the create.
+        expect(replayOrder).toEqual(['create', 'update']);
+        expect(result.current.syncStatesById[createdId as string]).toBeUndefined();
+        expect(getCachedSermons(queryClient)[0].title).toBe('Edited Offline');
+      });
     });
   });
 });

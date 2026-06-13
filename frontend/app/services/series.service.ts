@@ -1,14 +1,131 @@
+import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
+
+import { getClientDb } from '@/config/firebaseClientDb';
 import { Series } from '@/models/models';
+import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
+import { timeOrZero, compareById } from '@/utils/sortHelpers';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
-const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
-const OFFLINE_ERROR = 'Offline: operation not available.';
+
+// Strangler-fig flag: when ON, series READS + simple WRITES (create, metadata-only
+// update) go through the client Firestore SDK (offline replica + deployed Security
+// Rules) instead of the /api/series server routes. Operations that cross into the
+// `sermons`/`groups` collections stay on the server: DELETE (clears seriesId on all
+// referenced sermons/groups) and every membership op (add/remove/reorder sermon &
+// group items — they sync sermon.seriesId / group.seriesId). Default OFF.
+const USE_CLIENT_SERIES = process.env.NEXT_PUBLIC_USE_CLIENT_SERIES === 'true';
+const SERIES_COLLECTION = 'series';
+
+// Fields the server PUT /api/series/[id] route allows — metadata only, never items
+// or sermonIds (membership flows through the dedicated cascade endpoints). The client
+// update path mirrors this whitelist exactly so it can never desync the back-refs.
+const SERIES_UPDATE_FIELDS: (keyof Series)[] = [
+  'title', 'theme', 'description', 'bookOrTopic', 'startDate', 'duration', 'color', 'status', 'seriesKind',
+];
+
+// --- helpers mirroring series.repository.ts (kept byte-identical) ---
+
+function deepCleanUndefined<T>(value: T): T {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => deepCleanUndefined(item)) as T;
+  }
+  if (typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, deepCleanUndefined(v)])
+    ) as T;
+  }
+  return value;
+}
+
+function hydrateSeries(series: Series): Series {
+  const items = normalizeSeriesItems(series.items, series.sermonIds || []);
+  return {
+    ...series,
+    items,
+    sermonIds: deriveSermonIdsFromItems(items),
+    seriesKind: series.seriesKind || inferSeriesKind(items),
+  };
+}
+
+function sortSeries(list: Series[]): Series[] {
+  return [...list].sort((a, b) => {
+    const byDate = timeOrZero(b.startDate) - timeOrZero(a.startDate);
+    if (byDate !== 0) return byDate;
+    const byTitle = (a.title || '').localeCompare(b.title || '');
+    if (byTitle !== 0) return byTitle;
+    return compareById(a, b);
+  });
+}
+
+// --- client-SDK read/write paths (behind the flag) ---
+
+async function getAllSeriesViaClient(userId: string): Promise<Series[]> {
+  const db = getClientDb();
+  const snap = await getDocs(query(collection(db, SERIES_COLLECTION), where('userId', '==', userId)));
+  const list = snap.docs.map((d) => hydrateSeries({ ...(d.data() as Omit<Series, 'id'>), id: d.id } as Series));
+  return sortSeries(list);
+}
+
+async function getSeriesByIdViaClient(seriesId: string): Promise<Series | undefined> {
+  const db = getClientDb();
+  const snap = await getDoc(doc(db, SERIES_COLLECTION, seriesId));
+  if (!snap.exists()) return undefined;
+  return hydrateSeries({ ...(snap.data() as Omit<Series, 'id'>), id: snap.id } as Series);
+}
+
+async function createSeriesViaClient(series: Omit<Series, 'id'> & { id?: string }): Promise<Series> {
+  const db = getClientDb();
+  const now = new Date().toISOString();
+  const { id: providedId, ...rest } = series;
+  const items = normalizeSeriesItems(rest.items, rest.sermonIds || []);
+  const clean = deepCleanUndefined({
+    ...rest,
+    items,
+    sermonIds: deriveSermonIdsFromItems(items),
+    seriesKind: rest.seriesKind || inferSeriesKind(items),
+    createdAt: now,
+    updatedAt: now,
+  });
+  // Idempotent create when the caller supplies a client id — see groups.service
+  // (setDoc on a known id makes a replayed offline create a no-op overwrite, not a dup).
+  if (providedId) {
+    await setDoc(doc(db, SERIES_COLLECTION, providedId), clean);
+    return hydrateSeries({ ...clean, id: providedId } as Series);
+  }
+  const ref = await addDoc(collection(db, SERIES_COLLECTION), clean);
+  return hydrateSeries({ ...clean, id: ref.id } as Series);
+}
+
+async function updateSeriesViaClient(seriesId: string, updates: Partial<Series>): Promise<Series> {
+  const db = getClientDb();
+  const ref = doc(db, SERIES_COLLECTION, seriesId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error(`Series ${seriesId} not found`);
+  const current = hydrateSeries({ ...(snap.data() as Omit<Series, 'id'>), id: snap.id } as Series);
+  // Whitelist metadata fields only — mirror the server route; never write items/sermonIds.
+  const whitelisted: Record<string, unknown> = {};
+  for (const field of SERIES_UPDATE_FIELDS) {
+    if (updates[field] !== undefined) whitelisted[field] = updates[field];
+  }
+  const cleanUpdates = deepCleanUndefined({ ...whitelisted, updatedAt: new Date().toISOString() });
+  await updateDoc(ref, cleanUpdates);
+  return hydrateSeries({ ...current, ...cleanUpdates } as Series);
+}
+
+// NOTE: writes intentionally do NOT pre-check connectivity. Offline, the fetch
+// rejects with a network error and React Query (networkMode 'offlineFirst')
+// pauses + persists the mutation, replaying it on reconnect. A pre-throw would
+// short-circuit that buffer and lose the write. (Client-SDK writes queue natively
+// in Firestore's offline buffer instead.)
 
 export const getAllSeries = async (userId: string): Promise<Series[]> => {
+  if (USE_CLIENT_SERIES && typeof window !== 'undefined') {
+    return getAllSeriesViaClient(userId);
+  }
   try {
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
     const response = await fetch(`${API_BASE}/api/series?userId=${userId}`, {
       cache: "no-store"
     });
@@ -19,16 +136,21 @@ export const getAllSeries = async (userId: string): Promise<Series[]> => {
     }
 
     const data = await response.json();
-    return data.sort((a: Series, b: Series) => {
-      // Sort by start date (desc), then by title
-      const aDate = a.startDate ? new Date(a.startDate).getTime() : 0;
-      const bDate = b.startDate ? new Date(b.startDate).getTime() : 0;
-
-      if (aDate !== bDate) {
-        return bDate - aDate;
+    return (data as Series[]).sort((a, b) => {
+      // Sort by start date (desc), then by title, then by id.
+      const byDate = timeOrZero(b.startDate) - timeOrZero(a.startDate);
+      if (byDate !== 0) {
+        return byDate;
       }
 
-      return (a.title || '').localeCompare(b.title || '');
+      const byTitle = (a.title || '').localeCompare(b.title || '');
+      if (byTitle !== 0) {
+        return byTitle;
+      }
+
+      // Deterministic final tiebreaker: stable array order across fetches so
+      // React Query structural sharing holds (prevents the reorder flash).
+      return compareById(a, b);
     });
   } catch (error) {
     console.error('getAllSeries: Error fetching series:', error);
@@ -37,10 +159,10 @@ export const getAllSeries = async (userId: string): Promise<Series[]> => {
 };
 
 export const getSeriesById = async (seriesId: string): Promise<Series | undefined> => {
+  if (USE_CLIENT_SERIES && typeof window !== 'undefined') {
+    return getSeriesByIdViaClient(seriesId);
+  }
   try {
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
     const response = await fetch(`${API_BASE}/api/series/${seriesId}`, {
       cache: "no-store",
     });
@@ -58,11 +180,11 @@ export const getSeriesById = async (seriesId: string): Promise<Series | undefine
   }
 };
 
-export const createSeries = async (series: Omit<Series, 'id'>): Promise<Series> => {
+export const createSeries = async (series: Omit<Series, 'id'> & { id?: string }): Promise<Series> => {
+  if (USE_CLIENT_SERIES && typeof window !== 'undefined') {
+    return createSeriesViaClient(series);
+  }
   try {
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const response = await fetch(`${API_BASE}/api/series`, {
       method: 'POST',
@@ -84,10 +206,13 @@ export const createSeries = async (series: Omit<Series, 'id'>): Promise<Series> 
 };
 
 export const updateSeries = async (seriesId: string, updates: Partial<Series>): Promise<Series> => {
+  // Items/sermonIds membership flows through the dedicated cascade endpoints, never
+  // updateSeries; the client path whitelists metadata only (same as the server route),
+  // so it stays a pure own-doc write with no cross-collection effect.
+  if (USE_CLIENT_SERIES && typeof window !== 'undefined') {
+    return updateSeriesViaClient(seriesId, updates);
+  }
   try {
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const response = await fetch(`${API_BASE}/api/series/${seriesId}`, {
       method: 'PUT',
@@ -110,9 +235,6 @@ export const updateSeries = async (seriesId: string, updates: Partial<Series>): 
 
 export const deleteSeries = async (seriesId: string): Promise<void> => {
   try {
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
     const response = await fetch(`${API_BASE}/api/series/${seriesId}`, {
       method: 'DELETE',
     });
@@ -129,9 +251,6 @@ export const deleteSeries = async (seriesId: string): Promise<void> => {
 
 export const addSermonToSeries = async (seriesId: string, sermonId: string, position?: number): Promise<void> => {
   try {
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const response = await fetch(`${API_BASE}/api/series/${seriesId}/sermons`, {
       method: 'POST',
@@ -151,9 +270,6 @@ export const addSermonToSeries = async (seriesId: string, sermonId: string, posi
 
 export const removeSermonFromSeries = async (seriesId: string, sermonId: string): Promise<void> => {
   try {
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
     const response = await fetch(`${API_BASE}/api/series/${seriesId}/sermons?sermonId=${sermonId}`, {
       method: 'DELETE',
     });
@@ -170,9 +286,6 @@ export const removeSermonFromSeries = async (seriesId: string, sermonId: string)
 
 export const reorderSermons = async (seriesId: string, sermonIds: string[]): Promise<void> => {
   try {
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const response = await fetch(`${API_BASE}/api/series/${seriesId}/sermons`, {
       method: 'PUT',
@@ -196,9 +309,6 @@ export const addGroupToSeries = async (
   position?: number
 ): Promise<void> => {
   try {
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const response = await fetch(`${API_BASE}/api/series/${seriesId}/items`, {
       method: 'POST',
@@ -225,9 +335,6 @@ export const removeSeriesItem = async (
   refId: string
 ): Promise<void> => {
   try {
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
     const params = new URLSearchParams({ type, refId });
     const response = await fetch(`${API_BASE}/api/series/${seriesId}/items?${params.toString()}`, {
       method: 'DELETE',
@@ -251,9 +358,6 @@ export const removeSeriesItem = async (
 
 export const reorderSeriesItems = async (seriesId: string, itemIds: string[]): Promise<void> => {
   try {
-    if (isBrowserOffline()) {
-      throw new Error(OFFLINE_ERROR);
-    }
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const response = await fetch(`${API_BASE}/api/series/${seriesId}/items`, {
       method: 'PUT',

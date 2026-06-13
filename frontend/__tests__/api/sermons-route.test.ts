@@ -46,6 +46,7 @@ describe('Sermons API Route', () => {
   let mockWhere: jest.Mock;
   let mockGet: jest.Mock;
   let mockAdd: jest.Mock;
+  let mockDoc: jest.Mock;
   let mockDelete: jest.Mock;
   let mockDocs: any[];
   let mockDocRef: any;
@@ -89,9 +90,18 @@ describe('Sermons API Route', () => {
     mockGet = jest.fn().mockResolvedValue({ docs: mockDocs });
     mockWhere = jest.fn().mockReturnValue({ get: mockGet });
     mockAdd = jest.fn().mockResolvedValue(mockDocRef);
+    // doc(id) — for the client-supplied-id (idempotent) create path. By default
+    // the doc does not exist, so the route writes via .set() and keeps the id.
+    mockDoc = jest.fn().mockImplementation((id: string) => ({
+      id,
+      get: jest.fn().mockResolvedValue({ exists: false }),
+      set: jest.fn().mockResolvedValue(undefined),
+      delete: mockDelete,
+    }));
     mockCollection = jest.fn().mockReturnValue({
       where: mockWhere,
-      add: mockAdd
+      add: mockAdd,
+      doc: mockDoc,
     });
 
     // Apply the mocks
@@ -298,10 +308,12 @@ describe('Sermons API Route', () => {
       expect(responseData.sermon.id).toBe('newSermonId123');
     });
 
-    test('should override id properly in returned sermon object', async () => {
-      // Arrange - test the case where input already has an id
+    test('uses a client-supplied id via the idempotent create path', async () => {
+      // A client-supplied id is now honored (offline buffer / navigation): the
+      // route writes via doc(id).set() and returns that id, instead of allocating
+      // a new one with .add().
       const sermonData = {
-        id: 'existingId', // This should be overridden
+        id: 'client-id-xyz',
         userId: 'user123',
         title: 'New Sermon',
         verse: 'Matthew 5:1-12',
@@ -315,8 +327,9 @@ describe('Sermons API Route', () => {
       const responseData = await response.json();
 
       // Assert
-      expect(responseData.sermon.id).toBe('newSermonId123'); // Should use the new ID
-      expect(responseData.sermon.id).not.toBe('existingId'); // Should not keep the old ID
+      expect(mockDoc).toHaveBeenCalledWith('client-id-xyz');
+      expect(mockAdd).not.toHaveBeenCalled(); // client-id path uses doc().set(), not add()
+      expect(responseData.sermon.id).toBe('client-id-xyz');
     });
 
     test('should call addSermonToSeries when seriesId is provided', async () => {

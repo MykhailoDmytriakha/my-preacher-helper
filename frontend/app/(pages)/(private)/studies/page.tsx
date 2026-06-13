@@ -407,7 +407,7 @@ export default function StudiesPage() {
             <select
               value={bookFilter || ''}
               onChange={(e) => setBookFilter(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:w-auto"
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:w-auto focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-500"
             >
               <option value="">{t('studiesWorkspace.filterByBook')}</option>
               {bookList.map((book) => (
@@ -420,7 +420,7 @@ export default function StudiesPage() {
             <select
               value={tagFilter || ''}
               onChange={(e) => setTagFilter(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:w-auto"
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-white sm:w-auto focus:outline-none focus:ring-2 focus:ring-emerald-200 focus:border-emerald-500"
             >
               <option value="">{t('studiesWorkspace.filterByTag')}</option>
               {tagOptions.map((tag) => (

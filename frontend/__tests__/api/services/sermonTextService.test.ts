@@ -1,13 +1,20 @@
 import { Sermon, Thought } from '@/models/models';
-import { extractSermonText, getSectionThoughts } from '@/api/services/sermonTextService';
+import { extractSermonText, getSectionThoughts, getSectionThoughtsInVisualOrder } from '@/api/services/sermonTextService';
 
 describe('sermonTextService', () => {
-    const mockThought = (id: string, text: string, tags: string[] = [], outlinePointId?: string): Thought => ({
+    const mockThought = (
+        id: string,
+        text: string,
+        tags: string[] = [],
+        outlinePointId?: string,
+        extra: Partial<Thought> = {}
+    ): Thought => ({
         id,
         text,
         tags,
         outlinePointId,
         date: new Date().toISOString(),
+        ...extra,
     });
 
     const mockSermon: Partial<Sermon> = {
@@ -59,6 +66,42 @@ describe('sermonTextService', () => {
             expect(result).toHaveLength(2);
             expect(result[0].id).toBe('t2');
             expect(result[1].id).toBe('t1');
+        });
+    });
+
+    describe('getSectionThoughtsInVisualOrder', () => {
+        it('matches Structure page order for main outline points and sub-point position interleave', () => {
+            const sermonWithSubPoints = {
+                title: 'Visual Order',
+                userId: 'user-1',
+                verse: '',
+                outline: {
+                    introduction: [],
+                    main: [
+                        {
+                            id: 'p1',
+                            text: 'Point 1',
+                            subPoints: [{ id: 'sp1', text: 'Sub-point 1', position: 2000 }],
+                        },
+                    ],
+                    conclusion: [],
+                },
+                thoughts: [
+                    mockThought('sub', 'Sub-point thought', ['main'], 'p1', { subPointId: 'sp1', position: 1500 }),
+                    mockThought('after', 'Direct after', ['main'], 'p1', { subPointId: null, position: 3000 }),
+                    mockThought('before', 'Direct before', ['main'], 'p1', { subPointId: null, position: 1000 }),
+                ],
+                structure: {
+                    introduction: [],
+                    main: ['sub', 'after', 'before'],
+                    conclusion: [],
+                    ambiguous: [],
+                },
+            };
+
+            const result = getSectionThoughtsInVisualOrder(sermonWithSubPoints as unknown as Sermon, 'mainPart');
+
+            expect(result.map((thought) => thought.id)).toEqual(['before', 'sub', 'after']);
         });
     });
 

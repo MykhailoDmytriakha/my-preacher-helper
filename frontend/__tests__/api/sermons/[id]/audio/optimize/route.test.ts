@@ -2,7 +2,7 @@
 import { POST } from '@/api/sermons/[id]/audio/optimize/route';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { optimizeTextForSpeech } from '@/api/clients/speechOptimization.client';
-import { createAudioChunks, splitTextIntoChunks } from '@/api/clients/tts.client';
+import { createAudioChunks, splitTextIntoChunks, splitTextEvenly } from '@/api/clients/tts.client';
 
 // Mock Next.js Server objects
 jest.mock('next/server', () => {
@@ -44,6 +44,7 @@ jest.mock('@/api/clients/speechOptimization.client', () => ({
 jest.mock('@/api/clients/tts.client', () => ({
     createAudioChunks: jest.fn(),
     splitTextIntoChunks: jest.fn((text: string) => [text]),
+    splitTextEvenly: jest.fn((text: string) => [text]),
 }));
 
 describe('POST /api/sermons/[id]/audio/optimize', () => {
@@ -257,7 +258,7 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
                 title: 'Test Sermon',
                 userId: mockUserId,
                 outline: {
-                    mainPart: [{ id: 'p1', text: 'Point 1' }]
+                    main: [{ id: 'p1', text: 'Point 1' }]
                 },
                 thoughts: [
                     { id: 't1', text: 'Thought attached to P1', outlinePointId: 'p1', tags: ['mainPart'] },
@@ -296,9 +297,370 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
         expect(json.success).toBe(true);
         // Raw mode must NOT call GPT optimization
         expect(optimizeTextForSpeech).not.toHaveBeenCalled();
-        // Raw thought text is split mechanically instead
-        expect(splitTextIntoChunks).toHaveBeenCalledWith(expect.stringContaining('Thought 1'));
+        // Raw thought text is split mechanically (even-split, OpenAI quality path)
+        expect(splitTextEvenly).toHaveBeenCalledWith(expect.stringContaining('Thought 1'));
         expect(createAudioChunks).toHaveBeenCalled();
+    });
+
+    it('should normalize Scripture references before raw TTS chunking', async () => {
+        (createAudioChunks as jest.Mock).mockImplementation((textChunks: string[], sectionId: string) =>
+            textChunks.map((text, index) => ({ text, sectionId, index }))
+        );
+        mockGet.mockResolvedValue({
+            exists: true,
+            id: mockSermonId,
+            data: () => ({
+                title: 'Test Sermon',
+                userId: mockUserId,
+                thoughts: [
+                    { id: 't1', text: 'Мат 24:42: бодрствуйте.', tags: ['introduction'] },
+                ],
+                audioChunks: [],
+            }),
+        });
+
+        const req = new NextRequest('http://localhost:3000/api/optimize', {
+            method: 'POST',
+            body: JSON.stringify({
+                userId: mockUserId,
+                sections: 'introduction',
+                useRawText: true,
+                saveToDb: false,
+            })
+        });
+
+        const params = Promise.resolve({ id: mockSermonId });
+        const res = await POST(req, { params });
+        const json = await res.json();
+
+        const spokenReference = 'Матфея, двадцать четвертая глава, сорок второй стих: бодрствуйте.';
+        expect(res.status).toBe(200);
+        expect(optimizeTextForSpeech).not.toHaveBeenCalled();
+        expect(splitTextEvenly).toHaveBeenCalledWith(spokenReference);
+        expect(json.chunks[0]).toEqual(expect.objectContaining({
+            sectionId: 'introduction',
+            text: spokenReference,
+        }));
+    });
+
+    it('should prepare raw chunks in the same visual order as the Structure page before size chunking', async () => {
+        (createAudioChunks as jest.Mock).mockImplementation((textChunks: string[], sectionId: string) =>
+            textChunks.map((text, index) => ({ text, sectionId, index }))
+        );
+        mockGet.mockResolvedValue({
+            exists: true,
+            id: mockSermonId,
+            data: () => ({
+                title: 'Test Sermon',
+                userId: mockUserId,
+                outline: {
+                    main: [
+                        {
+                            id: 'p1',
+                            text: 'Point 1',
+                            subPoints: [{ id: 'sp1', text: 'Sub-point 1', position: 2000 }],
+                        },
+                    ],
+                },
+                thoughts: [
+                    { id: 'sub', text: 'Sub-point thought.', outlinePointId: 'p1', subPointId: 'sp1', position: 1500, tags: ['mainPart'] },
+                    { id: 'after', text: 'Direct after.', outlinePointId: 'p1', subPointId: null, position: 3000, tags: ['mainPart'] },
+                    { id: 'before', text: 'Direct before.', outlinePointId: 'p1', subPointId: null, position: 1000, tags: ['mainPart'] },
+                ],
+                structure: {
+                    introduction: [],
+                    main: ['sub', 'after', 'before'],
+                    conclusion: [],
+                    ambiguous: [],
+                },
+                audioChunks: [],
+            }),
+        });
+
+        const req = new NextRequest('http://localhost:3000/api/optimize', {
+            method: 'POST',
+            body: JSON.stringify({
+                userId: mockUserId,
+                sections: 'mainPart',
+                useRawText: true,
+                saveToDb: false,
+            })
+        });
+
+        const params = Promise.resolve({ id: mockSermonId });
+        const res = await POST(req, { params });
+        const json = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(optimizeTextForSpeech).not.toHaveBeenCalled();
+        expect(splitTextEvenly).toHaveBeenCalledWith([
+            'Direct before.',
+            'Sub-point thought.',
+            'Direct after.',
+        ].join('\n\n'));
+        expect(json.chunks.map((chunk: { text: string }) => chunk.text)).toEqual([
+            ['Direct before.', 'Sub-point thought.', 'Direct after.'].join('\n\n'),
+        ]);
+    });
+
+    it('should size-split the ordered raw segment around the 1750-char OpenAI target instead of per thought', async () => {
+        const makeLongThought = (label: string) => `${label} `.repeat(45).trim();
+        (splitTextEvenly as jest.Mock).mockImplementation((text: string) => {
+            const chunkCount = Math.max(1, Math.round(text.length / 1750));
+            const chunkSize = Math.ceil(text.length / chunkCount);
+            return Array.from({ length: chunkCount }, (_, index) =>
+                text.slice(index * chunkSize, (index + 1) * chunkSize).trim()
+            ).filter(Boolean);
+        });
+        (createAudioChunks as jest.Mock).mockImplementation((textChunks: string[], sectionId: string) =>
+            textChunks.map((text, index) => ({ text, sectionId, index }))
+        );
+        mockGet.mockResolvedValue({
+            exists: true,
+            id: mockSermonId,
+            data: () => ({
+                title: 'Test Sermon',
+                userId: mockUserId,
+                outline: {
+                    main: [{ id: 'p1', text: 'Point 1' }],
+                },
+                thoughts: [
+                    { id: 'first', text: makeLongThought('First thought sentence.'), outlinePointId: 'p1', position: 1000, tags: ['mainPart'] },
+                    { id: 'second', text: makeLongThought('Second thought sentence.'), outlinePointId: 'p1', position: 2000, tags: ['mainPart'] },
+                    { id: 'third', text: makeLongThought('Third thought sentence.'), outlinePointId: 'p1', position: 3000, tags: ['mainPart'] },
+                ],
+                structure: {
+                    introduction: [],
+                    main: ['first', 'second', 'third'],
+                    conclusion: [],
+                    ambiguous: [],
+                },
+                audioChunks: [],
+            }),
+        });
+
+        const req = new NextRequest('http://localhost:3000/api/optimize', {
+            method: 'POST',
+            body: JSON.stringify({
+                userId: mockUserId,
+                sections: 'mainPart',
+                useRawText: true,
+                saveToDb: false,
+            })
+        });
+
+        const params = Promise.resolve({ id: mockSermonId });
+        const res = await POST(req, { params });
+        const json = await res.json();
+        const combinedRawText = (splitTextEvenly as jest.Mock).mock.calls[0][0] as string;
+
+        expect(res.status).toBe(200);
+        expect(splitTextEvenly).toHaveBeenCalledTimes(1);
+        expect(combinedRawText).toContain('First thought sentence.');
+        expect(combinedRawText).toContain('Second thought sentence.');
+        expect(combinedRawText).toContain('Third thought sentence.');
+        expect(combinedRawText.length).toBeGreaterThan(2625);
+        expect(combinedRawText.length).toBeLessThan(3500);
+        expect(json.chunks).toHaveLength(2);
+        expect(json.chunks.every((chunk: { text: string }) => chunk.text.length > 1200)).toBe(true);
+    });
+
+    it('should normalize Scripture references returned by speech optimization before saving chunks', async () => {
+        (createAudioChunks as jest.Mock).mockImplementation((textChunks: string[], sectionId: string) =>
+            textChunks.map((text, index) => ({ text, sectionId, index }))
+        );
+        (optimizeTextForSpeech as jest.Mock).mockResolvedValueOnce({
+            optimizedText: 'Мат 24:42: бодрствуйте.',
+            optimizedLength: 23,
+            chunks: ['Мат 24:42: бодрствуйте.'],
+        });
+        mockGet.mockResolvedValue({
+            exists: true,
+            id: mockSermonId,
+            data: () => ({
+                title: 'Test Sermon',
+                userId: mockUserId,
+                thoughts: [
+                    { id: 't1', text: 'Мат 24:42: бодрствуйте.', tags: ['introduction'] },
+                ],
+                audioChunks: [],
+            }),
+        });
+
+        const req = new NextRequest('http://localhost:3000/api/optimize', {
+            method: 'POST',
+            body: JSON.stringify({
+                userId: mockUserId,
+                sections: 'introduction',
+                saveToDb: false,
+            })
+        });
+
+        const params = Promise.resolve({ id: mockSermonId });
+        const res = await POST(req, { params });
+        const json = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(createAudioChunks).toHaveBeenCalledWith(
+            ['Матфея, двадцать четвертая глава, сорок второй стих: бодрствуйте.'],
+            'introduction'
+        );
+        expect(json.chunks[0]).toEqual(expect.objectContaining({
+            text: 'Матфея, двадцать четвертая глава, сорок второй стих: бодрствуйте.',
+        }));
+    });
+
+    it('should group Google raw text by major section before applying the Google request limit', async () => {
+        (createAudioChunks as jest.Mock).mockImplementation((textChunks: string[], sectionId: string) =>
+            textChunks.map((text, index) => ({ text, sectionId, index }))
+        );
+        mockGet.mockResolvedValue({
+            exists: true,
+            id: mockSermonId,
+            data: () => ({
+                title: 'Test Sermon',
+                userId: mockUserId,
+                verse: 'John 3:16',
+                outline: {
+                    introduction: [
+                        { id: 'intro-1', text: 'Intro point 1' },
+                        { id: 'intro-2', text: 'Intro point 2' },
+                    ],
+                },
+                thoughts: [
+                    { id: 't1', text: 'Intro thought one.', outlinePointId: 'intro-1', tags: ['introduction'] },
+                    { id: 't2', text: 'Intro thought two.', outlinePointId: 'intro-2', tags: ['introduction'] },
+                ],
+                audioChunks: [],
+            }),
+        });
+
+        const req = new NextRequest('http://localhost:3000/api/optimize', {
+            method: 'POST',
+            body: JSON.stringify({
+                userId: mockUserId,
+                provider: 'google',
+                sections: 'introduction',
+                useRawText: true,
+                saveToDb: false,
+            })
+        });
+
+        const params = Promise.resolve({ id: mockSermonId });
+        const res = await POST(req, { params });
+        const json = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(json.totalChunks).toBe(1);
+        expect(optimizeTextForSpeech).not.toHaveBeenCalled();
+        expect(splitTextIntoChunks).not.toHaveBeenCalled();
+        expect(createAudioChunks).toHaveBeenCalledWith([
+            'Intro thought one.\n\nIntro thought two.'
+        ], 'introduction');
+        expect(json.chunks[0]).toEqual(expect.objectContaining({
+            sectionId: 'introduction',
+            text: 'Intro thought one.\n\nIntro thought two.',
+        }));
+    });
+
+    it('should apply the same visual-order-first rule before Google raw chunking', async () => {
+        (createAudioChunks as jest.Mock).mockImplementation((textChunks: string[], sectionId: string) =>
+            textChunks.map((text, index) => ({ text, sectionId, index }))
+        );
+        mockGet.mockResolvedValue({
+            exists: true,
+            id: mockSermonId,
+            data: () => ({
+                title: 'Test Sermon',
+                userId: mockUserId,
+                outline: {
+                    main: [
+                        {
+                            id: 'p1',
+                            text: 'Point 1',
+                            subPoints: [{ id: 'sp1', text: 'Sub-point 1', position: 2000 }],
+                        },
+                    ],
+                },
+                thoughts: [
+                    { id: 'sub', text: 'Google sub-point thought.', outlinePointId: 'p1', subPointId: 'sp1', position: 1500, tags: ['mainPart'] },
+                    { id: 'after', text: 'Google direct after.', outlinePointId: 'p1', position: 3000, tags: ['mainPart'] },
+                    { id: 'before', text: 'Google direct before.', outlinePointId: 'p1', position: 1000, tags: ['mainPart'] },
+                ],
+                structure: {
+                    introduction: [],
+                    main: ['sub', 'after', 'before'],
+                    conclusion: [],
+                    ambiguous: [],
+                },
+                audioChunks: [],
+            }),
+        });
+
+        const req = new NextRequest('http://localhost:3000/api/optimize', {
+            method: 'POST',
+            body: JSON.stringify({
+                userId: mockUserId,
+                provider: 'google',
+                sections: 'mainPart',
+                useRawText: true,
+                saveToDb: false,
+            })
+        });
+
+        const params = Promise.resolve({ id: mockSermonId });
+        const res = await POST(req, { params });
+        const json = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(splitTextIntoChunks).not.toHaveBeenCalled();
+        expect(json.chunks.map((chunk: { text: string }) => chunk.text)).toEqual([
+            [
+                'Google direct before.',
+                'Google sub-point thought.',
+                'Google direct after.',
+            ].join('\n\n'),
+        ]);
+    });
+
+    it('should split oversized Google raw sections with the Google request limit', async () => {
+        const oversizedText = 'Google raw main text. '.repeat(1300);
+        (splitTextIntoChunks as jest.Mock).mockReturnValueOnce(['Google part one.', 'Google part two.']);
+        (createAudioChunks as jest.Mock).mockImplementation((textChunks: string[], sectionId: string) =>
+            textChunks.map((text, index) => ({ text, sectionId, index }))
+        );
+        mockGet.mockResolvedValue({
+            exists: true,
+            id: mockSermonId,
+            data: () => ({
+                title: 'Test Sermon',
+                userId: mockUserId,
+                thoughts: [
+                    { id: 't1', text: oversizedText, tags: ['mainPart'] },
+                ],
+                audioChunks: [],
+            }),
+        });
+
+        const req = new NextRequest('http://localhost:3000/api/optimize', {
+            method: 'POST',
+            body: JSON.stringify({
+                userId: mockUserId,
+                provider: 'google',
+                sections: 'mainPart',
+                useRawText: true,
+                saveToDb: false,
+            })
+        });
+
+        const params = Promise.resolve({ id: mockSermonId });
+        const res = await POST(req, { params });
+        const json = await res.json();
+
+        expect(res.status).toBe(200);
+        expect(json.totalChunks).toBe(2);
+        expect(splitTextIntoChunks).toHaveBeenCalledWith(oversizedText.trim(), 24576);
+        expect(createAudioChunks).toHaveBeenCalledWith(['Google part one.', 'Google part two.'], 'mainPart');
     });
 
     it('should respect saveToDb: false', async () => {

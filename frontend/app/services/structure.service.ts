@@ -1,6 +1,12 @@
+import { ThoughtsBySection } from '@/models/models';
+import { USE_CLIENT_SERMONS, updateStructureViaClient } from '@/services/sermons.client';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 export const updateStructure = async (sermonId: string, structure: unknown): Promise<unknown> => {
+  if (USE_CLIENT_SERMONS && typeof window !== 'undefined') {
+    return updateStructureViaClient(sermonId, structure as ThoughtsBySection);
+  }
   try {
     const response = await fetch(`${API_BASE}/api/structure?sermonId=${sermonId}`, {
       method: "PUT",

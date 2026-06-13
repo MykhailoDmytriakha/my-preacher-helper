@@ -46,7 +46,8 @@ export const primaryNavItems: PrimaryNavItem[] = [
     labelKey: 'navigation.series',
     defaultLabel: 'Series',
     icon: Squares2X2Icon,
-    matchers: [/^\/series(\/|$)/]
+    matchers: [/^\/series(\/|$)/],
+    theme: 'series'
   },
   {
     key: 'studies',
@@ -64,7 +65,8 @@ export const primaryNavItems: PrimaryNavItem[] = [
     defaultLabel: 'Groups',
     icon: UsersIcon,
     matchers: [/^\/groups(\/|$)/],
-    isBeta: true
+    isBeta: true,
+    theme: 'groups'
   },
   {
     key: 'prayer',
@@ -81,7 +83,8 @@ export const primaryNavItems: PrimaryNavItem[] = [
     labelKey: 'navigation.calendar',
     defaultLabel: 'Calendar',
     icon: CalendarDaysIcon,
-    matchers: [/^\/calendar(\/|$)/]
+    matchers: [/^\/calendar(\/|$)/],
+    theme: 'calendar'
   },
   {
     key: 'settings',

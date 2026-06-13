@@ -3,7 +3,7 @@ import { render, waitFor } from '@testing-library/react';
 import React, { useEffect } from 'react';
 import { toast } from 'sonner';
 
-import { QueryProvider } from '@/providers/QueryProvider';
+import { QueryProvider, shouldDehydrateMutation } from '@/providers/QueryProvider';
 import { createIDBPersister } from '@/utils/queryPersister';
 
 jest.mock('@/utils/queryPersister', () => ({
@@ -93,5 +93,23 @@ describe('QueryProvider', () => {
       expect.stringContaining('session has expired'),
       expect.objectContaining({ id: 'auth-expired-error' })
     );
+  });
+
+  describe('shouldDehydrateMutation', () => {
+    it('persists paused (offline-queued) mutations — resumePausedMutations replays them', () => {
+      expect(shouldDehydrateMutation({ state: { isPaused: true, status: 'pending' } })).toBe(true);
+    });
+
+    it('persists error mutations — rehydrated as retryable error badges', () => {
+      expect(shouldDehydrateMutation({ state: { isPaused: false, status: 'error' } })).toBe(true);
+    });
+
+    it('does NOT persist in-flight pending mutations — v5 cannot resume them (zombie badges)', () => {
+      expect(shouldDehydrateMutation({ state: { isPaused: false, status: 'pending' } })).toBe(false);
+    });
+
+    it('does NOT persist successful mutations', () => {
+      expect(shouldDehydrateMutation({ state: { isPaused: false, status: 'success' } })).toBe(false);
+    });
   });
 });

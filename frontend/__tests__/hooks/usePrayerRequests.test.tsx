@@ -116,7 +116,9 @@ describe('usePrayerRequests', () => {
       await result.current.deletePrayer('p1');
     });
 
-    expect(mockCreatePrayerRequest).toHaveBeenCalledWith({ userId: 'user-1', title: 'New prayer' });
+    expect(mockCreatePrayerRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user-1', title: 'New prayer', id: expect.any(String) })
+    );
     expect(mockUpdatePrayerRequest).toHaveBeenCalledWith('p1', { title: 'Updated prayer' });
     expect(mockAddPrayerUpdate).toHaveBeenCalledWith('p1', 'Fresh update');
     expect(mockSetPrayerStatus).toHaveBeenCalledWith('p1', 'answered', 'God answered');
@@ -127,29 +129,31 @@ describe('usePrayerRequests', () => {
     expect(queryClient.getQueryData(['prayerRequest', 'p1'])).toBeUndefined();
   });
 
-  it('blocks mutations when offline and exposes the offline error', async () => {
+  it('does not throw on writes when offline — buffers them (Stage 2)', async () => {
+    // Offline no longer short-circuits: the write is optimistic + fire-and-forget,
+    // so createPrayer resolves (returning the client id) and React Query
+    // pauses/persists the underlying mutation to replay on reconnect.
     mockUseOnlineStatus.mockReturnValue(false);
     const { wrapper } = createWrapper();
     const { result } = renderHook(() => usePrayerRequests(), { wrapper });
 
-    await expect(
-      result.current.createPrayer({ userId: 'user-1', title: 'Offline prayer' } as any)
-    ).rejects.toThrow('Offline: operation not available.');
-
-    await waitFor(() => {
-      expect(result.current.error?.message).toBe('Offline: operation not available.');
+    let createdId: string | undefined;
+    await act(async () => {
+      createdId = await result.current.createPrayer({ userId: 'user-1', title: 'Offline prayer' } as any);
     });
-    expect(mockCreatePrayerRequest).not.toHaveBeenCalled();
+
+    expect(typeof createdId).toBe('string');
+    expect((createdId as string).length).toBeGreaterThan(0);
   });
 
-  it('normalizes service failures into Error instances', async () => {
+  it('surfaces service failures via hook error state (normalized to Error)', async () => {
     mockCreatePrayerRequest.mockRejectedValue('broken');
     const { wrapper } = createWrapper();
     const { result } = renderHook(() => usePrayerRequests(), { wrapper });
 
-    await expect(
-      result.current.createPrayer({ userId: 'user-1', title: 'Broken prayer' } as any)
-    ).rejects.toThrow('broken');
+    await act(async () => {
+      await result.current.createPrayer({ userId: 'user-1', title: 'Broken prayer' } as any);
+    });
 
     await waitFor(() => {
       expect(result.current.error?.message).toBe('broken');
@@ -163,7 +167,7 @@ describe('usePrayerRequests', () => {
     const { result } = renderHook(() => usePrayerRequests(), { wrapper });
 
     await act(async () => {
-      await expect(result.current.deletePrayer('p1')).rejects.toThrow('delete failed');
+      await result.current.deletePrayer('p1');
     });
 
     await waitFor(() => {

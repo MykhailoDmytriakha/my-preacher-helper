@@ -160,6 +160,10 @@
       "activePrayers": {
         "label": "Active prayers",
         "helper": "Need attention"
+      },
+      "activeGroups": {
+        "label": "Active groups",
+        "helper": "Ongoing meetings"
       }
     },
     "time": {
@@ -491,6 +495,7 @@
     "qualityStandardDesc": "faster, cheaper",
     "qualityHdDesc": "clearer sound",
     "googleVoiceHint": "4 male voices — youngest (left) to oldest (right). ▷ to preview.",
+    "googleQualityWarning": "Google: on long texts the voice may distort toward the end (whistling, metallic). Gemini 3.1 is more expressive but drifts earlier than 2.5. For long sermons OpenAI is more reliable.",
     "openaiVoiceHint": "OpenAI voices. ▷ to preview.",
     "googleVoicePuck": "young, upbeat",
     "googleVoiceIapetus": "clear, even",
@@ -553,6 +558,12 @@
     "debugMode": {
       "title": "Debug Mode",
       "description": "Enable extra console logging for troubleshooting"
+    },
+    "showVersion": {
+      "title": "Show app version",
+      "description": "Display the deployed build version in Settings (handy for confirming an update went live).",
+      "versionLabel": "Version",
+      "builtLabel": "Built"
     },
     "appearance": {
       "title": "Appearance",
@@ -2433,6 +2444,13 @@
       "deleted": "Prayer request deleted",
       "updateAdded": "Update added",
       "statusChanged": "Status updated"
+    }
+  },
+  "pwa": {
+    "updateAvailable": {
+      "title": "New version available",
+      "description": "Reload to get the latest version of the app.",
+      "action": "Reload"
     }
   }
 }

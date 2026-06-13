@@ -1,0 +1,96 @@
+rules_version = '2';
+
+// Firestore Security Rules — Firestore client-SDK migration (Variant B), Phase 1.
+//
+// Invariant: a signed-in user may touch ONLY the documents they own.
+//   - Most collections own via a `userId` field.
+//   - studyNoteShareLinks owns via `ownerId`.
+//   - users (settings) is owned by DOC ID == the caller's uid.
+//   - Telemetry collections have NO user owner -> client access denied (default-deny).
+//
+// These rules are deployed in Phase 1 but DORMANT until a collection is moved to the
+// client SDK (Phase 2+): today all data flows through the server's Admin SDK, which
+// bypasses rules. Public note-sharing reads stay server-only (Admin), not here.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    // The EXISTING doc's owner field equals the caller.
+    function ownsExisting(field) {
+      return signedIn() && resource.data[field] == request.auth.uid;
+    }
+    // The INCOMING doc's owner field equals the caller (and can't be reassigned away).
+    function ownsIncoming(field) {
+      return signedIn() && request.resource.data[field] == request.auth.uid;
+    }
+
+    // ---- Collections owned via a `userId` field ----
+    match /sermons/{id} {
+      allow read, delete: if ownsExisting('userId');
+      allow create:       if ownsIncoming('userId');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+    }
+    match /studyNotes/{id} {
+      allow read, delete: if ownsExisting('userId');
+      allow create:       if ownsIncoming('userId');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+    }
+    match /studyNoteBranchStates/{id} {
+      allow read, delete: if ownsExisting('userId');
+      allow create:       if ownsIncoming('userId');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+    }
+    match /series/{id} {
+      allow read, delete: if ownsExisting('userId');
+      allow create:       if ownsIncoming('userId');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+    }
+    match /groups/{id} {
+      allow read, delete: if ownsExisting('userId');
+      allow create:       if ownsIncoming('userId');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+    }
+    match /prayerRequests/{id} {
+      allow read, delete: if ownsExisting('userId');
+      allow create:       if ownsIncoming('userId');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+    }
+    match /prayerCategories/{id} {
+      allow read, delete: if ownsExisting('userId');
+      allow create:       if ownsIncoming('userId');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+    }
+    match /tags/{id} {
+      allow read, delete: if ownsExisting('userId');
+      allow create:       if ownsIncoming('userId');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+    }
+    match /feedback/{id} {
+      allow read, delete: if ownsExisting('userId');
+      allow create:       if ownsIncoming('userId');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+    }
+
+    // ---- Share links: owned via `ownerId` (public READ is server-only via Admin, not here) ----
+    match /studyNoteShareLinks/{id} {
+      allow read, delete: if ownsExisting('ownerId');
+      allow create:       if ownsIncoming('ownerId');
+      allow update:       if ownsExisting('ownerId') && ownsIncoming('ownerId');
+    }
+
+    // ---- User settings: owned by DOC ID == uid ----
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // ---- Server-only telemetry (no user owner): ai_prompt_telemetry, api_performance_telemetry ----
+    // Not matched above => denied by the default-deny rule below. Admin SDK still writes them server-side.
+
+    // ---- Default deny: anything not explicitly allowed ----
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

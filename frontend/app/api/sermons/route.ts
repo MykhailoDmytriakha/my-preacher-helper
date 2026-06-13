@@ -60,7 +60,28 @@ export async function POST(request: Request) {
     if (seriesPosition) {
       sermonData.seriesPosition = seriesPosition;
     }
-    const docRef = await adminDb.collection('sermons').add(sermonData);
+
+    // Idempotent create when the client supplies the id (offline buffer): a
+    // replayed create reuses the same doc instead of duplicating. Ownership
+    // mismatch (incl. a missing userId) is rejected so a client id can never
+    // reach another user's sermon.
+    const clientId = typeof sermon.id === 'string' && sermon.id ? sermon.id : undefined;
+    let docRef;
+    if (clientId) {
+      const ref = adminDb.collection('sermons').doc(clientId);
+      const existing = await ref.get();
+      if (existing.exists) {
+        const existingData = existing.data() as { userId?: string } | undefined;
+        if (!existingData || existingData.userId !== userId) {
+          return NextResponse.json({ error: 'Forbidden: sermon id belongs to another user' }, { status: 403 });
+        }
+        return NextResponse.json({ message: 'Sermon already exists', sermon: { ...existingData, id: clientId } });
+      }
+      await ref.set(sermonData);
+      docRef = ref;
+    } else {
+      docRef = await adminDb.collection('sermons').add(sermonData);
+    }
     console.log("Sermon written with ID:", docRef.id);
 
     // Sync sermon into the series.items array so it appears in the series list.

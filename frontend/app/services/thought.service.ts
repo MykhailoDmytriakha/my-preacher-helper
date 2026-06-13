@@ -1,9 +1,16 @@
 import { toast } from 'sonner';
 
 import { Thought } from "@/models/models";
+import {
+  USE_CLIENT_SERMONS,
+  createManualThoughtViaClient,
+  deleteThoughtViaClient,
+  updateThoughtViaClient,
+} from '@/services/sermons.client';
 import { apiClient } from '@/utils/apiClient';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
+const clientActive = () => USE_CLIENT_SERMONS && typeof window !== 'undefined';
 const AUDIO_RETRY_DELAY_MS = process.env.NODE_ENV === 'test' ? 0 : 1200;
 
 type AudioThoughtErrorResponse = {
@@ -191,6 +198,9 @@ export const deleteThought = async (
   sermonId: string,
   thought: Thought
 ): Promise<void> => {
+  if (clientActive()) {
+    return deleteThoughtViaClient(sermonId, thought);
+  }
   try {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -216,11 +226,14 @@ export const updateThought = async (
   sermonId: string,
   thought: Thought
 ): Promise<Thought> => {
+  if (clientActive()) {
+    return updateThoughtViaClient(sermonId, thought);
+  }
   try {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
-    
+
     const requestBody = JSON.stringify({ sermonId, thought });
     const response = await apiClient(`${API_BASE}/api/thoughts`, {
       method: "PUT",
@@ -249,6 +262,9 @@ export const createManualThought = async (
   sermonId: string,
   thought: Thought
 ): Promise<Thought> => {
+  if (clientActive()) {
+    return createManualThoughtViaClient(sermonId, thought);
+  }
   try {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",

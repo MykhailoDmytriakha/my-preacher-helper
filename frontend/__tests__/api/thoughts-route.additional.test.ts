@@ -128,7 +128,7 @@ describe('Thoughts API route additional coverage', () => {
       meaningSuccessfullyPreserved: true,
       originalText: 'transcribed',
       formattedText: 'formatted',
-      tags: ['Intro'],
+      tags: ['Примеры'],
     });
   });
 
@@ -165,6 +165,34 @@ describe('Thoughts API route additional coverage', () => {
         })
       );
       expect(sermonsRepoMock.sermonsRepository.updateSermonData).toHaveBeenCalledTimes(1);
+    });
+
+    it('removes deprecated structural tags from manual thoughts', async () => {
+      const request = createJsonRequest(
+        {
+          sermonId: 'sermon-1',
+          thought: {
+            text: 'Manual thought',
+            tags: ['Основная часть', 'Примеры'],
+            date: '2024-01-01',
+          },
+        },
+        'http://localhost/api/thoughts?manual=true'
+      );
+
+      const response = await POST(request);
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.tags).toEqual(['Примеры']);
+      expect(sermonsRepoMock.sermonsRepository.updateSermonData).toHaveBeenCalledWith(
+        'sermon-1',
+        expect.objectContaining({
+          thoughts: expect.objectContaining({
+            elements: [expect.objectContaining({ tags: ['Примеры'] })],
+          }),
+        })
+      );
     });
 
     it('returns 400 when sermonId or thought is missing', async () => {
@@ -245,6 +273,28 @@ describe('Thoughts API route additional coverage', () => {
       expect(response.status).toBe(400);
       expect(data).toEqual({ error: 'Audio duration (132.0s) exceeds maximum allowed (97s).' });
       expect(createTranscriptionMock).not.toHaveBeenCalled();
+    });
+
+    it('passes only auxiliary available tags into thought generation', async () => {
+      getCustomTagsMock.mockResolvedValueOnce([
+        { name: 'Основная часть' },
+        { name: 'Стих' },
+        { name: 'Примеры' },
+      ]);
+
+      const formData = new FormData();
+      formData.append('audio', new Blob(['audio'], { type: 'audio/webm' }));
+      formData.append('sermonId', 'sermon-1');
+      const request = createFormRequest(formData);
+
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      expect(generateThoughtStructuredMock).toHaveBeenCalledWith(
+        'transcribed',
+        expect.any(Object),
+        ['Стих', 'Примеры']
+      );
     });
 
     it.each([
@@ -494,6 +544,49 @@ describe('Thoughts API route additional coverage', () => {
         thoughts: expect.arrayContaining([
           expect.objectContaining({ id: 'thought-1', text: 'new' }),
         ]),
+        updatedAt: expect.any(String),
+      });
+    });
+
+    it('removes deprecated structural tags during thought updates', async () => {
+      const oldThought = {
+        id: 'thought-1',
+        text: 'old',
+        date: '2024-01-01',
+        tags: ['Основная часть', 'Примеры'],
+      };
+
+      fetchSermonByIdMock.mockResolvedValueOnce({
+        id: 'sermon-1',
+        thoughts: [oldThought],
+        userId: 'user-1',
+      });
+
+      const sermonDocRef = { id: 'sermon-1', update: jest.fn() };
+      docMock.mockReturnValueOnce(sermonDocRef);
+
+      const transactionUpdateMock = jest.fn();
+      runTransactionMock.mockImplementationOnce(async (callback: (transaction: any) => Promise<void>) => {
+        const transaction = {
+          get: jest.fn().mockResolvedValue({
+            exists: true,
+            data: () => ({ thoughts: [oldThought] }),
+          }),
+          update: transactionUpdateMock,
+        };
+        await callback(transaction);
+      });
+
+      const response = await PUT(createJsonRequest({
+        sermonId: 'sermon-1',
+        thought: { id: 'thought-1', text: 'new' },
+      }));
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.tags).toEqual(['Примеры']);
+      expect(transactionUpdateMock).toHaveBeenCalledWith(sermonDocRef, {
+        thoughts: [expect.objectContaining({ id: 'thought-1', tags: ['Примеры'] })],
         updatedAt: expect.any(String),
       });
     });

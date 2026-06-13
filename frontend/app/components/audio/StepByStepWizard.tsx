@@ -131,7 +131,7 @@ export default function StepByStepWizard({
     const [ttsProvider, setTtsProvider] = useState<TTSProvider>('openai');
     const [voice, setVoice] = useState<TTSVoice>('onyx');
     const [quality, setQuality] = useState<AudioQuality>('standard');
-    const [googleModel, setGoogleModel] = useState<GoogleTTSModel>(GOOGLE_MODEL_GEMINI_31);
+    const [googleModel, setGoogleModel] = useState<GoogleTTSModel>(GOOGLE_MODEL_GEMINI_25);
     const [googleVoice, setGoogleVoice] = useState<GoogleTTSVoice>('Puck');
     const [sections, setSections] = useState<SermonSection[]>([...SERMON_SECTIONS]);
 
@@ -342,6 +342,7 @@ export default function StepByStepWizard({
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     sections,
+                    provider: ttsProvider,
                     saveToDb: true,
                     userId: user?.uid,
                     useRawText: targetMode === 'raw',
@@ -363,7 +364,7 @@ export default function StepByStepWizard({
         } finally {
             setIsLoading(false);
         }
-    }, [sermonId, user, sections]);
+    }, [sermonId, user, sections, ttsProvider]);
 
     // ------------------------------------------------------------------
     // Switch source tab. Raw is mechanical (auto-prepared); AI is explicit
@@ -385,14 +386,9 @@ export default function StepByStepWizard({
             return;
         }
 
-        // raw
-        if (cached && cached.length > 0) {
-            setMode('raw');
-            setChunks(cached);
-            await syncChunksToDb(cached, 'raw');
-        } else {
-            await prepareSource('raw');
-        }
+        // raw preview is view-only and must mirror the current Structure order,
+        // so rebuild it instead of trusting possibly stale persisted chunks.
+        await prepareSource('raw');
     }, [mode, prepareSource, syncChunksToDb]);
 
     // ------------------------------------------------------------------
@@ -487,18 +483,11 @@ export default function StepByStepWizard({
     // ------------------------------------------------------------------
     const goToStep2 = useCallback(async () => {
         setStep(2);
-        // Ensure the DB reflects the raw source before Generate: prepare it if missing,
-        // otherwise sync the cached set (covers the provider→Google switch).
+        // Ensure raw preview/generation mirrors the current Structure order.
         if (mode === 'raw') {
-            const cached = chunksByMode.current['raw'];
-            if (cached?.length) {
-                setChunks(cached);
-                await syncChunksToDb(cached, 'raw');
-            } else {
-                await prepareSource('raw');
-            }
+            await prepareSource('raw');
         }
-    }, [mode, prepareSource, syncChunksToDb]);
+    }, [mode, prepareSource]);
 
     const setProvider = useCallback((p: TTSProvider) => {
         setTtsProvider(p);
@@ -641,6 +630,17 @@ export default function StepByStepWizard({
                         </div>
                     </div>
                 </div>
+
+                {ttsProvider === 'google' && (
+                    <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-snug text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                        <span>
+                            {t('audioExport.googleQualityWarning', {
+                                defaultValue: 'Google: на длинных текстах голос может искажаться к концу (свист, металл). Gemini 3.1 выразительнее, но «плывёт» раньше 2.5. Для длинных проповедей надёжнее OpenAI.',
+                            })}
+                        </span>
+                    </div>
+                )}
 
                 {/* Sections — checkboxes */}
                 <div className="flex flex-col items-start gap-2 border-t border-gray-100 pt-5 dark:border-gray-800">

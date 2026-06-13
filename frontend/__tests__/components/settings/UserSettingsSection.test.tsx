@@ -45,7 +45,6 @@ const mockSettings: UserSettings = {
   id: 'settings-1',
   userId: 'user-123',
   language: 'en',
-  isAdmin: false,
   email: 'settings-email@example.com', // Different email to test override
   displayName: 'Settings Display Name', // Different name to test override
 };

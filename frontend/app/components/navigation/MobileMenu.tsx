@@ -52,7 +52,7 @@ export default function MobileMenu({ isOpen, onLogout, pathname, showGroups = tr
                 aria-current={active ? 'page' : undefined}
                 className={`flex items-center justify-between rounded-md px-3 py-2 text-base font-medium transition ${active
                   ? themeClasses.menu
-                  : 'text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
+                  : `text-gray-700 dark:text-gray-300 ${themeClasses.hover}`
                   }`}
               >
                 <span className="flex items-center gap-2" suppressHydrationWarning={true}>

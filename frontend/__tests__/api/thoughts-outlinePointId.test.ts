@@ -35,7 +35,7 @@ jest.mock('@clients/openAI.client', () => ({
   generateThought: jest.fn().mockResolvedValue({
     originalText: 'audio text',
     formattedText: 'final text',
-    tags: ['Основная часть'],
+    tags: ['Примеры'],
     meaningSuccessfullyPreserved: true,
   }),
 }));
@@ -44,7 +44,7 @@ jest.mock('@clients/thought.structured', () => ({
   generateThoughtStructured: jest.fn().mockResolvedValue({
     originalText: 'audio text',
     formattedText: 'final text',
-    tags: ['Основная часть'],
+    tags: ['Примеры'],
     meaningSuccessfullyPreserved: true,
   }),
 }));

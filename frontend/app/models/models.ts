@@ -343,12 +343,12 @@ export interface UserSettings {
   id: string;
   userId: string;
   language: string;
-  isAdmin: boolean;
   firstDayOfWeek?: 'sunday' | 'monday';
   enablePrepMode?: boolean;  // Per-user prep mode access
   enableAudioGeneration?: boolean; // Beta: audio generation feature
   enableStructurePreview?: boolean; // Beta: Structure Preview feature
   enableGroups?: boolean; // Beta: groups workspace feature
+  showAppVersion?: boolean; // Show deployed build version in Settings
   email?: string;
   displayName?: string;
 }

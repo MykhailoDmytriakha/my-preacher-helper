@@ -214,7 +214,7 @@ export default function AddThoughtManual({
                 <select
                   value={selectedSermonPointId || ""}
                   onChange={handleSermonPointChange}
-                  className="w-full p-2 border rounded dark:bg-gray-700 dark:text-gray-200"
+                  className="w-full p-2 border rounded dark:bg-gray-700 dark:text-gray-200 transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
                   disabled={dataLoading || disabled}
                 >
                   <option value="">{t('editThought.noSermonPoint') || 'No outline point selected'}</option>

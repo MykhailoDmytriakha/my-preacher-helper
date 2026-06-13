@@ -5,14 +5,27 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
 import { createIDBPersister } from '@/utils/queryPersister';
 
 const ONE_WEEK_MS = 1000 * 60 * 60 * 24 * 7;
 
+// Persist what the next session can actually act on:
+//  - paused (offline-queued): resumePausedMutations replays them;
+//  - error: rehydrated as a visible error badge with manual Retry.
+// Do NOT persist in-flight (pending, non-paused) mutations: React Query v5
+// never continues a rehydrated pending mutation (it only resumes paused ones),
+// so persisting them creates unresumable "zombie" entries that surface as
+// eternal pending badges. The data they carry is not lost — an offline
+// client-SDK write sits in Firestore's own persistent queue, and a killed
+// in-flight server call could not be replayed from here either way.
+export const shouldDehydrateMutation = (mutation: {
+  state: { isPaused: boolean; status: string };
+}): boolean => mutation.state.isPaused || mutation.state.status === 'error';
+
 export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
         mutationCache: new MutationCache({
           onError: (error: unknown) => {
             // GLOBAL 401 GUARD (C2 Fix)
@@ -50,8 +63,11 @@ export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
             },
           },
         },
-      })
-  );
+    });
+
+    registerOfflineMutationDefaults(client);
+    return client;
+  });
 
   const [persister] = useState(() => createIDBPersister());
 
@@ -64,11 +80,7 @@ export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
         dehydrateOptions: {
           // MUTATION PERSISTENCE (C1 Fix): Crucial for zero-data-loss
           shouldDehydrateQuery: (query) => query.state.status === 'success',
-          shouldDehydrateMutation: (mutation) => {
-            // Persist everything that isn't finished successfully yet, including errors 
-            // from 401s so they can be retried on next session.
-            return mutation.state.status === 'pending' || mutation.state.isPaused || mutation.state.status === 'error';
-          },
+          shouldDehydrateMutation,
         },
       }}
       onSuccess={() => {

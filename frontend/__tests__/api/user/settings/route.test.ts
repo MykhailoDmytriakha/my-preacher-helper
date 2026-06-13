@@ -28,6 +28,17 @@ const mockGetByUserId = jest.fn();
 const mockCreateOrUpdate = jest.fn();
 
 jest.mock('@/api/repositories/userSettings.repository', () => ({
+  UPDATABLE_FIELDS: [
+    'language',
+    'email',
+    'displayName',
+    'firstDayOfWeek',
+    'enablePrepMode',
+    'enableAudioGeneration',
+    'enableStructurePreview',
+    'enableGroups',
+    'showAppVersion',
+  ],
   userSettingsRepository: {
     getByUserId: (...args: any[]) => mockGetByUserId(...args),
     createOrUpdate: (...args: any[]) => mockCreateOrUpdate(...args)
@@ -144,16 +155,14 @@ describe('User Settings API Route', () => {
               const response = await PUT(request);
               const data = await response.json();
 
-              expect(mockCreateOrUpdate).toHaveBeenCalledWith(
-                'user1',
-                'ru',
-                'updated@example.com',
-                'Updated User',
-                true,
-                undefined,
-                true,
-                'monday'
-              );
+              expect(mockCreateOrUpdate).toHaveBeenCalledWith('user1', {
+                language: 'ru',
+                email: 'updated@example.com',
+                displayName: 'Updated User',
+                enablePrepMode: true,
+                enableGroups: true,
+                firstDayOfWeek: 'monday',
+              });
               expect(response.status).toBe(200);
               expect(data).toEqual({ success: true });
             }
@@ -173,16 +182,9 @@ describe('User Settings API Route', () => {
 
               const response = await PUT(request);
 
-              expect(mockCreateOrUpdate).toHaveBeenCalledWith(
-                'user1',
-                undefined,
-                undefined,
-                undefined,
-                false,
-                undefined,
-                undefined,
-                undefined
-              );
+              expect(mockCreateOrUpdate).toHaveBeenCalledWith('user1', {
+                enablePrepMode: false,
+              });
               expect(response.status).toBe(200);
             }
           },
@@ -203,16 +205,33 @@ describe('User Settings API Route', () => {
 
               const response = await PUT(request);
 
-              expect(mockCreateOrUpdate).toHaveBeenCalledWith(
-                'user1',
-                'fr',
-                undefined,
-                undefined,
-                true,
-                undefined,
-                undefined,
-                undefined
-              );
+              expect(mockCreateOrUpdate).toHaveBeenCalledWith('user1', {
+                language: 'fr',
+                enablePrepMode: true,
+              });
+              expect(response.status).toBe(200);
+            }
+          },
+          {
+            name: 'persists enableStructurePreview and showAppVersion',
+            run: async () => {
+              mockCreateOrUpdate.mockResolvedValue('user1');
+
+              const request = new NextRequest('http://localhost/api/user/settings', {
+                method: 'PUT',
+                body: JSON.stringify({
+                  userId: 'user1',
+                  enableStructurePreview: true,
+                  showAppVersion: true
+                })
+              });
+
+              const response = await PUT(request);
+
+              expect(mockCreateOrUpdate).toHaveBeenCalledWith('user1', {
+                enableStructurePreview: true,
+                showAppVersion: true,
+              });
               expect(response.status).toBe(200);
             }
           },
@@ -325,16 +344,14 @@ describe('User Settings API Route', () => {
               const response = await POST(request);
               const data = await response.json();
 
-              expect(mockCreateOrUpdate).toHaveBeenCalledWith(
-                'new-user',
-                'de',
-                'new@example.com',
-                'New User',
-                true,
-                undefined,
-                true,
-                'sunday'
-              );
+              expect(mockCreateOrUpdate).toHaveBeenCalledWith('new-user', {
+                language: 'de',
+                email: 'new@example.com',
+                displayName: 'New User',
+                enablePrepMode: true,
+                enableGroups: true,
+                firstDayOfWeek: 'sunday',
+              });
               expect(response.status).toBe(200);
               expect(data).toEqual({ success: true });
             }
@@ -355,16 +372,11 @@ describe('User Settings API Route', () => {
 
               const response = await POST(request);
 
-              expect(mockCreateOrUpdate).toHaveBeenCalledWith(
-                'new-user',
-                'en', // Default language
-                'test@example.com',
-                undefined,
-                false,
-                undefined,
-                undefined,
-                undefined
-              );
+              expect(mockCreateOrUpdate).toHaveBeenCalledWith('new-user', {
+                language: 'en', // Default language
+                email: 'test@example.com',
+                enablePrepMode: false,
+              });
               expect(response.status).toBe(200);
             }
           },
@@ -382,16 +394,9 @@ describe('User Settings API Route', () => {
 
               const response = await POST(request);
 
-              expect(mockCreateOrUpdate).toHaveBeenCalledWith(
-                'minimal-user',
-                'en', // Default language
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined,
-                undefined
-              );
+              expect(mockCreateOrUpdate).toHaveBeenCalledWith('minimal-user', {
+                language: 'en', // Default language
+              });
               expect(response.status).toBe(200);
             }
           },

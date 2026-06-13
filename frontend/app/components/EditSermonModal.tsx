@@ -163,7 +163,7 @@ export default function EditSermonModal({ sermon, onClose, onUpdate, onSaveReque
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder={t('editSermon.titlePlaceholder')}
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none dark:bg-gray-700 dark:text-white"
+              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none dark:bg-gray-700 dark:text-white transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
               minRows={1}
               maxRows={6}
               required
@@ -179,7 +179,7 @@ export default function EditSermonModal({ sermon, onClose, onUpdate, onSaveReque
               value={verse}
               onChange={e => setVerse(e.target.value)}
               placeholder={t('editSermon.versePlaceholder')}
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none dark:bg-gray-700 dark:text-white"
+              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none dark:bg-gray-700 dark:text-white transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
               minRows={3}
               maxRows={16}
               required
@@ -196,7 +196,7 @@ export default function EditSermonModal({ sermon, onClose, onUpdate, onSaveReque
                 value={plannedDate}
                 onChange={setPlannedDate}
                 wrapperClassName="w-full"
-                inputClassName="block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 pr-12 dark:bg-gray-700 dark:text-white"
+                inputClassName="block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 pr-12 dark:bg-gray-700 dark:text-white transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
                 disabled={isSubmitting || isReadOnly}
               />
               <button

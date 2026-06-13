@@ -32,7 +32,11 @@ const AUDIO_NEW_RECORDING_KEY = "audio.newRecording";
 const AUDIO_STOP_RECORDING_KEY = "audio.stopRecording";
 const AUDIO_INITIALIZING_KEY = "audio.initializing";
 const AUDIO_PROCESSING_RECORDING_KEY = "audio.processingRecording";
-const FLAT_RECORDER_WIDTH_CLASS = "w-[188px]";
+// 190px = 188px of grid tracks (86+34+34+34) + 1px border on each side.
+// The container is border-box, so the width must include the border; otherwise the
+// fixed tracks overflow the inner content edge and the right (finish) cell pokes
+// past the rounded border.
+const FLAT_RECORDER_WIDTH_CLASS = "w-[190px]";
 const FLAT_RECORDER_ACTIVE_GRID_CLASS = "grid-cols-[86px_34px_34px_34px]";
 
 const formatTime = (seconds: number) => {
@@ -101,7 +105,7 @@ const ActiveRecorderControls = ({
       <button
         type="button"
         onClick={isPaused ? resumeRecording : pauseRecording}
-        className={`flex h-full w-[34px] items-center justify-center border-l ${FLAT_RECORDER_COLORS.active.divider} transition-colors focus-visible:outline-none focus-visible:ring-2 ${getPauseButtonClasses(isPaused)}`}
+        className={`flex h-full w-[34px] items-center justify-center border-l ${FLAT_RECORDER_COLORS.active.divider} transition-colors focus:outline-none focus-visible:ring-2 ${getPauseButtonClasses(isPaused)}`}
         aria-label={pauseLabel}
         title={pauseLabel}
       >
@@ -110,7 +114,7 @@ const ActiveRecorderControls = ({
       <button
         type="button"
         onClick={cancelRecording}
-        className={`flex h-full w-[34px] items-center justify-center border-l transition-colors focus-visible:outline-none focus-visible:ring-2 ${FLAT_RECORDER_COLORS.active.cancel}`}
+        className={`flex h-full w-[34px] items-center justify-center border-l transition-colors focus:outline-none focus-visible:ring-2 ${FLAT_RECORDER_COLORS.active.cancel}`}
         aria-label={t("audio.cancelRecording")}
         title={t("audio.cancelRecording")}
       >
@@ -119,7 +123,7 @@ const ActiveRecorderControls = ({
       <button
         type="button"
         onClick={stopRecording}
-        className={`flex h-full w-[34px] items-center justify-center rounded-r-[5px] border-l transition-colors focus-visible:outline-none focus-visible:ring-2 ${FLAT_RECORDER_COLORS.active.finish}`}
+        className={`flex h-full w-[34px] items-center justify-center rounded-r-[5px] border-l transition-colors focus:outline-none focus-visible:ring-2 ${FLAT_RECORDER_COLORS.active.finish}`}
         aria-label={t(AUDIO_STOP_RECORDING_KEY)}
         title={t(AUDIO_STOP_RECORDING_KEY)}
       >

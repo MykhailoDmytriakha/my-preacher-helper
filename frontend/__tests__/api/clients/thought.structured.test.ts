@@ -36,7 +36,7 @@ describe('generateThoughtStructured', () => {
     outline: { introduction: [], main: [], conclusion: [] },
   };
 
-  const availableTags = ['Вступление', 'Основная часть', 'Заключение'];
+  const availableTags = ['Стих', 'Примеры', 'Объяснение', 'Применение'];
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -58,7 +58,7 @@ describe('generateThoughtStructured', () => {
       const mockResponse = {
         originalText: 'Test transcription',
         formattedText: 'Formatted',
-        tags: ['Вступление'],
+        tags: ['Примеры'],
         meaningPreserved: true,
       };
 
@@ -92,7 +92,7 @@ describe('generateThoughtStructured', () => {
       const mockResponse = {
         originalText: longContent,
         formattedText: 'Formatted',
-        tags: ['Вступление'],
+        tags: ['Примеры'],
         meaningPreserved: true,
       };
 
@@ -121,7 +121,7 @@ describe('generateThoughtStructured', () => {
     const mockResponse = {
       originalText: 'Test transcription',
       formattedText: 'Formatted test transcription',
-      tags: ['Вступление'],
+      tags: ['Примеры'],
       meaningPreserved: true,
     };
 
@@ -142,7 +142,7 @@ describe('generateThoughtStructured', () => {
     // Assert
     expect(result.meaningSuccessfullyPreserved).toBe(true);
     expect(result.formattedText).toBe('Formatted test transcription');
-    expect(result.tags).toEqual(['Вступление']);
+    expect(result.tags).toEqual(['Примеры']);
     expect(result.originalText).toBe('Test transcription');
     expect(structuredOutput.callWithStructuredOutput).toHaveBeenCalledWith(
       expect.any(String),
@@ -152,10 +152,52 @@ describe('generateThoughtStructured', () => {
         formatName: 'thought',
         promptBlueprint: expect.objectContaining({
           promptName: 'thought',
-          promptVersion: 'v5',
+          promptVersion: 'v6',
         }),
       })
     );
+  });
+
+  it('should remove structural tags from prompts, examples, and model output', async () => {
+    const sermonWithLegacyTag: Sermon = {
+      ...mockSermon,
+      thoughts: [
+        {
+          id: 'legacy-thought',
+          text: 'Existing thought',
+          tags: ['Основная часть', 'Примеры'],
+          date: '2024-01-01',
+        },
+      ],
+    };
+
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockResolvedValue({
+      success: true,
+      data: {
+        originalText: 'Test transcription',
+        formattedText: 'Formatted test transcription',
+        tags: ['Основная часть', 'стих', 'Unknown', 'Примеры', 'СТИХ'],
+        meaningPreserved: true,
+      },
+      refusal: null,
+      error: null,
+    });
+
+    const result = await generateThoughtStructured(
+      'Test transcription',
+      sermonWithLegacyTag,
+      ['Основная часть', 'Стих', 'Примеры']
+    );
+
+    const [systemPrompt, userMessage] = (structuredOutput.callWithStructuredOutput as jest.Mock).mock.calls[0];
+
+    expect(result.tags).toEqual(['Стих', 'Примеры']);
+    expect(systemPrompt).toContain('Do NOT use structural section tags');
+    expect(systemPrompt).toContain('Never infer or add a sermon section as a tag');
+    expect(systemPrompt).not.toContain('Common section tags');
+    expect(userMessage).toContain('Теги: Стих, Примеры');
+    expect(userMessage).toContain('- Мысль: "Existing thought" - Теги: [Примеры]');
+    expect(userMessage).not.toContain('Теги: Основная часть');
   });
 
   it('should instruct the model not to inject the sermon main verse when it was not dictated', async () => {
@@ -167,7 +209,7 @@ describe('generateThoughtStructured', () => {
         {
           id: 'existing-thought-1',
           text: 'A'.repeat(320),
-          tags: ['Вступление'],
+          tags: ['Примеры'],
           date: '2024-01-01',
         },
       ],
@@ -176,7 +218,7 @@ describe('generateThoughtStructured', () => {
     const mockResponse = {
       originalText: 'AI-mutated original text',
       formattedText: 'Поиск работы занял чуть больше месяца, и это было большим чудом.',
-      tags: ['Вступление'],
+      tags: ['Примеры'],
       meaningPreserved: true,
     };
 
@@ -205,7 +247,7 @@ describe('generateThoughtStructured', () => {
     expect(options).toEqual(
       expect.objectContaining({
         promptBlueprint: expect.objectContaining({
-          promptVersion: 'v5',
+          promptVersion: 'v6',
         }),
       })
     );
@@ -226,7 +268,7 @@ describe('generateThoughtStructured', () => {
         data: {
           originalText: dictatedText,
           formattedText: 'Поиск работы занял чуть больше месяца, и это было большим чудом (Прит. 3:5-6).',
-          tags: ['Вступление'],
+          tags: ['Примеры'],
           meaningPreserved: true,
         },
         refusal: null,
@@ -237,7 +279,7 @@ describe('generateThoughtStructured', () => {
         data: {
           originalText: dictatedText,
           formattedText: 'Поиск работы занял чуть больше месяца, и это было большим чудом.',
-          tags: ['Вступление'],
+          tags: ['Примеры'],
           meaningPreserved: true,
         },
         refusal: null,
@@ -268,7 +310,7 @@ describe('generateThoughtStructured', () => {
       data: {
         originalText: dictatedText,
         formattedText: 'Прочитаем Прит. 3:5 и посмотрим на доверие Богу.',
-        tags: ['Основная часть'],
+        tags: ['Стих'],
         meaningPreserved: true,
       },
       refusal: null,
@@ -290,7 +332,7 @@ describe('generateThoughtStructured', () => {
     const mockResponse = {
       originalText: 'Нужно прочитать Второзаконие 10 глава 11 стих',
       formattedText: 'Нужно прочитать Второзаконие 10 глава 11 стих.',
-      tags: ['Основная часть'],
+      tags: ['Стих'],
       meaningPreserved: true,
     };
 
@@ -317,7 +359,7 @@ describe('generateThoughtStructured', () => {
     const mockResponse = {
       originalText: 'Test transcription',
       formattedText: 'Formatted text',
-      tags: ['Вступление'],
+      tags: ['Примеры'],
       meaningPreserved: true,
     };
 
@@ -336,7 +378,7 @@ describe('generateThoughtStructured', () => {
     );
 
     // Assert
-    expect(result.tags).toEqual(['Вступление']);
+    expect(result.tags).toEqual(['Примеры']);
     expect(result.meaningSuccessfullyPreserved).toBe(true);
   });
 
@@ -405,14 +447,14 @@ describe('generateThoughtStructured', () => {
     const notPreservedResponse = {
       originalText: 'Test',
       formattedText: 'Changed',
-      tags: ['Вступление'],
+      tags: ['Примеры'],
       meaningPreserved: false,
     };
 
     const preservedResponse = {
       originalText: 'Test',
       formattedText: 'Good format',
-      tags: ['Основная часть'],
+      tags: ['Стих'],
       meaningPreserved: true,
     };
 
@@ -449,7 +491,7 @@ describe('generateThoughtStructured', () => {
     const notPreservedResponse = {
       originalText: 'Test',
       formattedText: 'Changed',
-      tags: ['Вступление'],
+      tags: ['Примеры'],
       meaningPreserved: false,
     };
 
@@ -478,7 +520,7 @@ describe('generateThoughtStructured', () => {
     const invalidResponse = {
       originalText: 'Test',
       formattedText: '', // Empty - invalid
-      tags: ['Вступление'],
+      tags: ['Примеры'],
       meaningPreserved: true,
     };
 

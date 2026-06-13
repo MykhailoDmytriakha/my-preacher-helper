@@ -482,9 +482,11 @@ describe('Column Component', () => {
       );
 
       fireEvent.click(screen.getByText('Add outline point'));
-      fireEvent.change(screen.getByPlaceholderText('Enter new outline point'), {
-        target: { value: 'New Point' }
+      const input = screen.getByPlaceholderText('Enter new outline point');
+      fireEvent.change(input, {
+        target: { value: '"new point' }
       });
+      expect(input).toHaveValue('"New point');
       fireEvent.click(screen.getByLabelText('Save'));
 
       await act(async () => {
@@ -495,7 +497,7 @@ describe('Column Component', () => {
       const [sermonId, outline] = (updateSermonOutline as jest.Mock).mock.calls[0];
       expect(sermonId).toBe('sermon-123');
       expect(outline.introduction).toHaveLength(1);
-      expect(outline.introduction[0].text).toBe('New Point');
+      expect(outline.introduction[0].text).toBe('"New point');
 
       nowSpy.mockRestore();
     });
@@ -1110,7 +1112,9 @@ describe('Column Component', () => {
       );
 
       fireEvent.click(screen.getByText('Add sub-point'));
-      fireEvent.change(screen.getByPlaceholderText('Sub-point name...'), { target: { value: 'Sub-point B' } });
+      const input = screen.getByPlaceholderText('Sub-point name...');
+      fireEvent.change(input, { target: { value: 'sub-point b' } });
+      expect(input).toHaveValue('Sub-point b');
       fireEvent.click(screen.getByLabelText('Save'));
 
       await waitFor(() => {
@@ -1118,7 +1122,7 @@ describe('Column Component', () => {
           introduction: [
             expect.objectContaining({
               id: 'point1',
-              subPoints: [expect.objectContaining({ text: 'Sub-point B' })],
+              subPoints: [expect.objectContaining({ text: 'Sub-point b' })],
             }),
           ],
         }));

@@ -9,11 +9,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { generateChunkAudio, getTTSModel, splitTextIntoChunks } from '@/api/clients/tts.client';
+import { generateChunkAudio, getTTSModel } from '@/api/clients/tts.client';
 import { resolveSections } from '@/api/services/sermonTextService';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { SERMON_SECTIONS, GOOGLE_TTS_VOICES } from '@/types/audioGeneration.types';
 import { concatenateAudioBlobs, createSilenceBlob } from '@/utils/audioConcat';
+import { normalizeScriptureReferencesForTts } from '@/utils/scriptureReferenceNormalizer';
+import { GOOGLE_TTS_MAX_CHUNK_SIZE, splitGoogleTextForRequestLimit } from '@/utils/server/googleTtsChunking';
 
 import type { Sermon } from '@/models/models';
 import type {
@@ -22,7 +24,6 @@ import type {
     AudioQuality,
     TTSProvider,
     GoogleTTSVoice,
-    GoogleTTSModel,
 } from '@/types/audioGeneration.types';
 
 // ============================================================================
@@ -85,6 +86,8 @@ const SECTION_ORDER = SERMON_SECTIONS;
 const GOOGLE_TTS_SAMPLE_RATE = 24000;
 const GOOGLE_TTS_CHANNELS = 1;
 const GOOGLE_SECTION_PAUSE_MS = 700;
+const GOOGLE_TTS_MODEL_25_KEY = 'gemini-2.5-flash-preview-tts';
+const GOOGLE_TTS_MODEL_31_KEY = 'gemini-3.1-flash-tts-preview';
 
 function groupChunksByMajorSection(chunks: AudioChunk[]): AudioChunk[] {
     const now = new Date().toISOString();
@@ -96,15 +99,24 @@ function groupChunksByMajorSection(chunks: AudioChunk[]): AudioChunk[] {
             .join('\n\n');
 
         if (!text) return [];
-        // Keep each Gemini request within the TTS input limit (split long sections).
-        return splitTextIntoChunks(text).map(part => ({ text: part, sectionId, createdAt: now, index: 0 }));
+        return splitGoogleTextForRequestLimit(text).map(part => ({ text: part, sectionId, createdAt: now, index: 0 }));
     }).map((chunk, index) => ({ ...chunk, index }));
 }
 
-function getGoogleModel(model: unknown): GoogleTTSModel {
-    return model === 'gemini-2.5-flash-preview-tts'
-        ? 'gemini-2.5-flash-preview-tts'
-        : 'gemini-3.1-flash-tts-preview';
+function getConfiguredGoogleModel25(): string {
+    return process.env.GEMINI_AUDIO_2_5_TTS || GOOGLE_TTS_MODEL_25_KEY;
+}
+
+function getConfiguredGoogleModel31(): string {
+    return process.env.GEMINI_AUDIO_3_1_TTS || GOOGLE_TTS_MODEL_31_KEY;
+}
+
+function getGoogleModel(model: unknown): string {
+    const model25 = getConfiguredGoogleModel25();
+    const model31 = getConfiguredGoogleModel31();
+    return model === GOOGLE_TTS_MODEL_31_KEY || model === model31
+        ? model31
+        : model25;
 }
 
 function getGoogleVoice(voice: unknown): GoogleTTSVoice {
@@ -113,20 +125,26 @@ function getGoogleVoice(voice: unknown): GoogleTTSVoice {
         : 'Puck';
 }
 
-function insertGoogleSectionPauses(blobs: Blob[]): Blob[] {
+function insertGoogleSectionPauses(blobs: Blob[], chunks: AudioChunk[]): Blob[] {
     if (blobs.length <= 1) return blobs;
 
-    const silenceBlob = createSilenceBlob(
-        GOOGLE_SECTION_PAUSE_MS,
-        GOOGLE_TTS_SAMPLE_RATE,
-        GOOGLE_TTS_CHANNELS
-    );
     const result: Blob[] = [];
+    let silenceBlob: Blob | null = null;
+
+    const getSilenceBlob = () => {
+        silenceBlob ??= createSilenceBlob(
+            GOOGLE_SECTION_PAUSE_MS,
+            GOOGLE_TTS_SAMPLE_RATE,
+            GOOGLE_TTS_CHANNELS
+        );
+        return silenceBlob;
+    };
 
     blobs.forEach((blob, index) => {
         result.push(blob);
-        if (index < blobs.length - 1) {
-            result.push(silenceBlob);
+        const nextChunk = chunks[index + 1];
+        if (nextChunk && nextChunk.sectionId !== chunks[index]?.sectionId) {
+            result.push(getSilenceBlob());
         }
     });
 
@@ -200,6 +218,11 @@ export async function POST(
             }
         }
 
+        chunks = chunks.map(chunk => ({
+            ...chunk,
+            text: normalizeScriptureReferencesForTts(chunk.text),
+        }));
+
         const chunksForGeneration = provider === 'google' ? groupChunksByMajorSection(chunks) : chunks;
 
         if (chunksForGeneration.length === 0) {
@@ -209,7 +232,10 @@ export async function POST(
             );
         }
 
-        console.log(`[TTS] Processing ${chunksForGeneration.length} ${provider === 'google' ? 'section chunks' : 'chunks'}`);
+        if (provider === 'google') {
+            console.log(`[TTS] Google grouping: ${chunks.length} prepared chunks → ${chunksForGeneration.length} request chunks (max ${GOOGLE_TTS_MAX_CHUNK_SIZE} chars/request)`);
+        }
+        console.log(`[TTS] Processing ${chunksForGeneration.length} ${provider === 'google' ? 'Google request chunks' : 'chunks'}`);
 
         // 3. Create streaming response
         const stream = new ReadableStream({
@@ -277,7 +303,7 @@ export async function POST(
 
                     const finalMimeType = provider === 'google' ? 'audio/wav' : 'audio/mpeg';
                     const finalAudio = provider === 'google'
-                        ? await concatenateAudioBlobs(insertGoogleSectionPauses(audioBlobs))
+                        ? await concatenateAudioBlobs(insertGoogleSectionPauses(audioBlobs, chunksForGeneration))
                         : new Blob(audioBlobs, { type: finalMimeType });
 
                     // Phase 4: Convert to data URL and STREAM it

@@ -12,6 +12,8 @@ import {
 import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars2Icon } from "@heroicons/react/24/outline";
 import React, { useEffect, useRef, useState } from "react";
 
+import { capitalizeFirstLetter, normalizeCapitalizedTitle } from "@/utils/textNormalization";
+
 import type { SubPoint } from "@/models/models";
 
 interface SubPointListProps {
@@ -108,23 +110,25 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   }, [editingId]);
 
   const handleAdd = () => {
-    if (!addText.trim()) {
+    const textToSave = normalizeCapitalizedTitle(addText);
+    if (!textToSave) {
       setIsAdding(false);
       setAddText("");
       return;
     }
-    onAdd(outlinePointId, addText.trim());
+    onAdd(outlinePointId, textToSave);
     setIsAdding(false);
     setAddText("");
   };
 
   const handleEditSave = () => {
-    if (!editingId || !editText.trim()) {
+    const textToSave = normalizeCapitalizedTitle(editText);
+    if (!editingId || !textToSave) {
       setEditingId(null);
       setEditText("");
       return;
     }
-    onEdit(outlinePointId, editingId, editText.trim());
+    onEdit(outlinePointId, editingId, textToSave);
     setEditingId(null);
     setEditText("");
   };
@@ -217,7 +221,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
                 ref={editingId === sp.id ? editInputRef : undefined}
                 type="text"
                 value={editText}
-                onChange={(e) => setEditText(e.target.value)}
+                onChange={(e) => setEditText(capitalizeFirstLetter(e.target.value))}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleEditSave();
                   if (e.key === "Escape") { setEditingId(null); setEditText(""); }
@@ -337,7 +341,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
                 ref={addInputRef}
                 type="text"
                 value={addText}
-                onChange={(e) => setAddText(e.target.value)}
+                onChange={(e) => setAddText(capitalizeFirstLetter(e.target.value))}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleAdd();
                   if (e.key === "Escape") { setIsAdding(false); setAddText(""); }

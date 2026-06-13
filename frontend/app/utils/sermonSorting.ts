@@ -1,18 +1,18 @@
 import { Sermon, Thought } from '@/models/models';
-import { getPreachOrderedThoughtsBySection } from '@/utils/thoughtOrdering';
+import { getVisualOrderedThoughtsBySection } from '@/utils/sermonVisualOrder';
 
 /**
- * Gets thoughts for a specific section, strictly following the manual sort order
- * defined in `sermon.structure`.
+ * Gets thoughts for a specific section in the same visible order used by
+ * Structure and Plan.
  * 
  * Logic:
- * 1. If `sermon.structure[section]` exists, return thoughts in that EXACT order.
- * 2. Append any "orphaned" thoughts (tagged for this section but missing from structure), sorted by Date.
- * 3. Fallback: If no structure exists, return all section thoughts sorted by Date.
+ * 1. Resolve section membership from outline, structure, tags, then ambiguity.
+ * 2. Follow outline point order when points exist.
+ * 3. Interleave direct thoughts and sub-points by position inside each outline point.
  */
 export function getSortedThoughts(
     sermon: Sermon,
     section: 'introduction' | 'main' | 'conclusion' | 'ambiguous'
 ): Thought[] {
-    return getPreachOrderedThoughtsBySection(sermon, section, { includeOrphans: true });
+    return getVisualOrderedThoughtsBySection(sermon, section);
 }

@@ -135,19 +135,17 @@ describe('prayerRequests.service', () => {
     await expect(setPrayerStatus('p1', 'active')).rejects.toThrow('Failed to update prayer status');
   });
 
-  it('blocks every network operation while offline', async () => {
+  it('still issues the request when offline so React Query can buffer the write', async () => {
+    // Stage 2: writes no longer short-circuit offline — the service attempts the
+    // fetch; the browser rejects it; React Query (offlineFirst) pauses + persists
+    // the mutation and replays it on reconnect. A pre-throw would lose the write.
     Object.defineProperty(global.navigator, 'onLine', { configurable: true, value: false });
+    mockFetch.mockRejectedValue(new TypeError('Failed to fetch'));
 
-    await expect(getAllPrayerRequests('user-1')).rejects.toThrow('Offline: operation not available.');
-    await expect(getPrayerRequestById('p1')).rejects.toThrow('Offline: operation not available.');
-    await expect(createPrayerRequest({ userId: 'user-1', title: 'x' } as any)).rejects.toThrow(
-      'Offline: operation not available.'
-    );
-    await expect(updatePrayerRequest('p1', { title: 'x' })).rejects.toThrow('Offline: operation not available.');
-    await expect(deletePrayerRequest('p1')).rejects.toThrow('Offline: operation not available.');
-    await expect(addPrayerUpdate('p1', 'x')).rejects.toThrow('Offline: operation not available.');
-    await expect(setPrayerStatus('p1', 'active')).rejects.toThrow('Offline: operation not available.');
+    await expect(createPrayerRequest({ userId: 'user-1', title: 'x' } as any)).rejects.toThrow('Failed to fetch');
+    await expect(updatePrayerRequest('p1', { title: 'x' })).rejects.toThrow('Failed to fetch');
+    await expect(deletePrayerRequest('p1')).rejects.toThrow('Failed to fetch');
 
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalled();
   });
 });

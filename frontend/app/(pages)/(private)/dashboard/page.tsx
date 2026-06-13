@@ -1,10 +1,8 @@
 'use client';
 
 import {
-  AlertTriangle,
   BookOpen,
   CalendarDays,
-  CheckCircle2,
   ChevronRight,
   Clock3,
   Heart,
@@ -23,6 +21,7 @@ import '@locales/i18n';
 
 import AddSermonModal from '@/components/AddSermonModal';
 import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
+import { useDashboardOptimisticSermons } from '@/hooks/useDashboardOptimisticSermons';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useGroups } from '@/hooks/useGroups';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
@@ -36,7 +35,7 @@ import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 
 import type { TFunction } from 'i18next';
 
-type Tone = 'blue' | 'emerald' | 'amber' | 'rose' | 'gray';
+type Tone = 'blue' | 'emerald' | 'amber' | 'rose' | 'gray' | 'violet' | 'cyan';
 
 type Metric = {
   label: string;
@@ -106,60 +105,87 @@ type GroupItem = {
   tone: Tone;
 };
 
-type AttentionItem = {
-  id: string;
-  item: string;
-  category: string;
-  severity: 'low' | 'medium' | 'high';
-  due: string;
-  notes: string;
-  action: string;
-  href: string;
-  tone: Tone;
-};
-
 const toneClasses = {
   blue: {
     icon: 'bg-blue-600 text-white',
     badge: 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-200',
     dot: 'bg-blue-500',
     bar: 'bg-blue-600',
+    // card: subtle category-tinted fill + vivid category border (from the color demo)
+    card: 'bg-blue-50/60 border-blue-500 dark:bg-blue-950/30 dark:border-blue-600/80',
+    rowHover: 'hover:bg-blue-100/60 focus-visible:ring-blue-500/40 dark:hover:bg-blue-900/40',
+    link: 'text-blue-600 hover:border-blue-300 hover:bg-blue-100 dark:text-blue-300 dark:hover:border-blue-700 dark:hover:bg-blue-900/40',
   },
   emerald: {
     icon: 'bg-emerald-600 text-white',
     badge: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-200',
     dot: 'bg-emerald-500',
     bar: 'bg-emerald-600',
+    card: 'bg-emerald-50/60 border-emerald-500 dark:bg-emerald-950/30 dark:border-emerald-600/80',
+    rowHover: 'hover:bg-emerald-100/60 focus-visible:ring-emerald-500/40 dark:hover:bg-emerald-900/40',
+    link: 'text-emerald-600 hover:border-emerald-300 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:border-emerald-700 dark:hover:bg-emerald-900/40',
   },
   amber: {
     icon: 'bg-amber-500 text-white',
     badge: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-200',
     dot: 'bg-amber-500',
     bar: 'bg-amber-500',
+    card: 'bg-amber-50/60 border-amber-500 dark:bg-amber-950/30 dark:border-amber-600/80',
+    rowHover: 'hover:bg-amber-100/60 focus-visible:ring-amber-500/40 dark:hover:bg-amber-900/40',
+    link: 'text-amber-600 hover:border-amber-300 hover:bg-amber-100 dark:text-amber-300 dark:hover:border-amber-700 dark:hover:bg-amber-900/40',
   },
   rose: {
     icon: 'bg-rose-500 text-white',
     badge: 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-200',
     dot: 'bg-rose-500',
     bar: 'bg-rose-500',
+    card: 'bg-rose-50/60 border-rose-500 dark:bg-rose-950/30 dark:border-rose-600/80',
+    rowHover: 'hover:bg-rose-100/60 focus-visible:ring-rose-500/40 dark:hover:bg-rose-900/40',
+    link: 'text-rose-600 hover:border-rose-300 hover:bg-rose-100 dark:text-rose-300 dark:hover:border-rose-700 dark:hover:bg-rose-900/40',
+  },
+  violet: {
+    icon: 'bg-violet-600 text-white',
+    badge: 'bg-violet-50 text-violet-700 dark:bg-violet-950/50 dark:text-violet-200',
+    dot: 'bg-violet-500',
+    bar: 'bg-violet-600',
+    card: 'bg-violet-50/60 border-violet-500 dark:bg-violet-950/30 dark:border-violet-600/80',
+    rowHover: 'hover:bg-violet-100/60 focus-visible:ring-violet-500/40 dark:hover:bg-violet-900/40',
+    link: 'text-violet-600 hover:border-violet-300 hover:bg-violet-100 dark:text-violet-300 dark:hover:border-violet-700 dark:hover:bg-violet-900/40',
+  },
+  cyan: {
+    icon: 'bg-cyan-600 text-white',
+    badge: 'bg-cyan-50 text-cyan-700 dark:bg-cyan-950/50 dark:text-cyan-200',
+    dot: 'bg-cyan-500',
+    bar: 'bg-cyan-600',
+    card: 'bg-cyan-50/60 border-cyan-500 dark:bg-cyan-950/30 dark:border-cyan-600/80',
+    rowHover: 'hover:bg-cyan-100/60 focus-visible:ring-cyan-500/40 dark:hover:bg-cyan-900/40',
+    link: 'text-cyan-600 hover:border-cyan-300 hover:bg-cyan-100 dark:text-cyan-300 dark:hover:border-cyan-700 dark:hover:bg-cyan-900/40',
   },
   gray: {
     icon: 'bg-gray-500 text-white',
     badge: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
     dot: 'bg-gray-400',
     bar: 'bg-gray-500',
+    card: 'bg-white border-gray-200 dark:bg-gray-900 dark:border-gray-800',
+    rowHover: 'hover:bg-gray-100/70 focus-visible:ring-gray-400/40 dark:hover:bg-gray-800/70',
+    link: 'text-gray-600 hover:border-gray-300 hover:bg-gray-100 dark:text-gray-300 dark:hover:border-gray-700 dark:hover:bg-gray-800/40',
   },
 } as const;
 
-const panelClass =
-  'rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900';
+// Category-colored card: neutral rounded panel with a tinted fill + vivid border per tone.
+const panelBaseClass = 'rounded-lg border shadow-sm';
+const tonedCardClass = (tone: Tone) => `${panelBaseClass} ${toneClasses[tone].card}`;
 const panelHeaderClass =
   'flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-800';
 const DEFAULT_SERIES_COLOR = '#2563EB';
-const rowLinkClass =
-  'transition hover:bg-blue-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 dark:hover:bg-gray-800/70';
+// Row hover tinted to the panel's category (visible bg-X-100 over the X-50 card) + matching focus ring.
+const rowLink = (tone: Tone) =>
+  `transition focus:outline-none focus-visible:ring-2 ${toneClasses[tone].rowHover}`;
+// Header "view all" link: transparent at rest, clear bordered+tinted rectangle on hover.
+const panelLinkClass = (tone: Tone) =>
+  `inline-flex items-center gap-1 rounded-md border border-transparent px-2 py-1 text-xs font-medium transition ${toneClasses[tone].link}`;
 const quickActionBaseClass =
-  'inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950';
+  'inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950';
 const quickActionToneClasses = {
   blue:
     'border-blue-300 bg-white text-blue-700 hover:bg-blue-50 focus-visible:ring-blue-500 dark:border-blue-700 dark:bg-gray-900 dark:text-blue-300 dark:hover:bg-blue-950/40',
@@ -175,6 +201,7 @@ export default function DashboardPage() {
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const { sermons } = useDashboardSermons();
+  const { actions: optimisticSermonActions } = useDashboardOptimisticSermons();
   const { series } = useSeries(user?.uid || null);
   const { uid, notes, createNote } = useStudyNotes();
   const { prayerRequests, createPrayer } = usePrayerRequests(user?.uid || null);
@@ -196,8 +223,8 @@ export default function DashboardPage() {
       throw new Error('User is not authenticated');
     }
 
-    const createdPrayer = await createPrayer({ userId: user.uid, ...payload });
-    router.push(`/prayers/${createdPrayer.id}`);
+    const createdPrayerId = await createPrayer({ userId: user.uid, ...payload });
+    router.push(`/prayers/${createdPrayerId}`);
   };
 
   const handleAddStudyNote = async () => {
@@ -241,7 +268,7 @@ export default function DashboardPage() {
       helper: t('dashboardHome.metrics.activeSeries.helper'),
       href: '/series',
       icon: NotebookTabs,
-      tone: 'emerald',
+      tone: 'violet',
     },
     {
       label: t('dashboardHome.metrics.studyNotes.label'),
@@ -252,12 +279,20 @@ export default function DashboardPage() {
       tone: 'emerald',
     },
     {
+      label: t('dashboardHome.metrics.activeGroups.label'),
+      value: String(dashboardData.activeGroupsCount),
+      helper: t('dashboardHome.metrics.activeGroups.helper'),
+      href: '/groups',
+      icon: UsersRound,
+      tone: 'amber',
+    },
+    {
       label: t('dashboardHome.metrics.upcomingDates.label'),
       value: String(dashboardData.upcomingDatesCount),
       helper: t('dashboardHome.metrics.upcomingDates.helper'),
       href: '/calendar',
       icon: CalendarDays,
-      tone: 'blue',
+      tone: 'cyan',
     },
     {
       label: t('dashboardHome.metrics.activePrayers.label'),
@@ -310,35 +345,43 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5" aria-label={t('dashboardHome.metrics.label')}>
+      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6" aria-label={t('dashboardHome.metrics.label')}>
         {metrics.map((metric) => (
           <MetricCard key={metric.label} metric={metric} />
         ))}
       </section>
 
-      <section className="grid gap-3 xl:grid-cols-[1.04fr_0.96fr_1.08fr]">
+      {/* Row order matches the approved color demo: Sermons · Studies · Calendar */}
+      <section className="grid gap-3 xl:grid-cols-6">
         <SermonsPanel sermons={dashboardData.sermonRows} />
+        <RecentStudiesPanel studies={dashboardData.studyItems} />
         <AgendaPanel agendaItems={dashboardData.agendaItems} />
+      </section>
+
+      {/* Series · Groups · Prayer — same column template as row 1 so panel edges line up */}
+      <section className="grid gap-3 xl:grid-cols-6">
+        <ActiveSeriesPanel seriesItems={dashboardData.seriesItems} />
+        <LatestGroupsPanel groups={dashboardData.groupItems} />
         <PrayerFocusPanel prayers={dashboardData.prayerItems} />
       </section>
-
-      <section className="grid gap-3 xl:grid-cols-[1.05fr_0.95fr_1.08fr]">
-        <ActiveSeriesPanel seriesItems={dashboardData.seriesItems} />
-        <RecentStudiesPanel studies={dashboardData.studyItems} />
-        <LatestGroupsPanel groups={dashboardData.groupItems} />
-      </section>
-
-      <NeedsAttentionPanel attentionItems={dashboardData.attentionItems} />
 
       {showSermonModal && (
         <AddSermonModal
           isOpen
           showTriggerButton={false}
           allowPlannedDate
-          closeOnSuccess={false}
+          closeOnSuccess
           onClose={() => setShowSermonModal(false)}
-          onNewSermonCreated={(newSermon) => {
-            router.push(`/sermons/${newSermon.id}`);
+          onCreateRequest={async (input) => {
+            // Optimistic + offline-buffered create (same path as /sermons): the
+            // sermon is never lost offline and replays on reconnect.
+            const createdId = await optimisticSermonActions.createSermon(input);
+            // Navigate to the editor only when online — offline the sermon hasn't
+            // synced yet and its editor route can't load it; the dashboard stays
+            // put and the create flushes on reconnect.
+            if (createdId && typeof navigator !== 'undefined' && navigator.onLine) {
+              router.push(`/sermons/${createdId}`);
+            }
           }}
         />
       )}
@@ -360,7 +403,7 @@ function MetricCard({ metric }: { metric: Metric }) {
   return (
     <Link
       href={metric.href}
-      className={`${panelClass} group flex min-h-[96px] items-center gap-4 p-4 transition hover:border-gray-300 hover:shadow-md dark:hover:border-gray-700`}
+      className={`${tonedCardClass(metric.tone)} group flex min-h-[96px] items-center gap-4 p-4 transition hover:shadow-md hover:brightness-[0.99] dark:hover:brightness-110`}
     >
       <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full ${tone.icon}`}>
         <Icon className="h-6 w-6" />
@@ -396,10 +439,10 @@ function SermonsPanel({ sermons }: { sermons: SermonRow[] }) {
   const { t } = useTranslation();
 
   return (
-    <section className={panelClass} aria-labelledby="sermons-overview-title">
+    <section className={`${tonedCardClass('blue')} xl:col-span-2`} aria-labelledby="sermons-overview-title">
       <div className={panelHeaderClass}>
         <PanelTitle icon={BookOpen} id="sermons-overview-title" title={t('dashboardHome.sections.sermons.title')} />
-        <Link href="/sermons" className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-300">
+        <Link href="/sermons" className={panelLinkClass('blue')}>
           {t('dashboardHome.sections.sermons.viewAll')}
           <ChevronRight className="h-3.5 w-3.5" />
         </Link>
@@ -410,8 +453,8 @@ function SermonsPanel({ sermons }: { sermons: SermonRow[] }) {
       ) : (
         <div className="divide-y divide-gray-100 px-4 pb-1 dark:divide-gray-800">
           {sermons.map((sermon) => (
-            <Link key={sermon.id} href={`/sermons/${sermon.id}`} className={`grid grid-cols-[40px_1fr_auto] gap-3 py-3 ${rowLinkClass}`}>
-              <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses[sermon.tone].badge}`}>
+            <Link key={sermon.id} href={`/sermons/${sermon.id}`} className={`grid grid-cols-[40px_1fr_auto] gap-3 py-3 ${rowLink('blue')}`}>
+              <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses.blue.badge}`}>
                 <BookOpen className="h-5 w-5" />
               </div>
               <div className="min-w-0">
@@ -424,7 +467,13 @@ function SermonsPanel({ sermons }: { sermons: SermonRow[] }) {
                   </span>
                 </div>
               </div>
-              <span className={`self-start rounded-md px-2 py-1 text-xs font-medium ${toneClasses[sermon.tone].badge}`}>
+              {/* Both statuses stay blue (sermon category); distinguished by intensity:
+                  preparing = solid (active work), preached = soft (done). */}
+              <span className={`self-start rounded-md px-2 py-1 text-xs font-medium ${
+                sermon.tone === 'emerald'
+                  ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300'
+                  : 'bg-blue-600 text-white dark:bg-blue-500'
+              }`}>
                 {sermon.status}
               </span>
             </Link>
@@ -439,11 +488,12 @@ function AgendaPanel({ agendaItems }: { agendaItems: AgendaItem[] }) {
   const { t } = useTranslation();
 
   return (
-    <section className={panelClass} aria-labelledby="agenda-title">
+    <section className={`${tonedCardClass('cyan')} xl:col-span-2`} aria-labelledby="agenda-title">
       <div className={panelHeaderClass}>
         <PanelTitle icon={CalendarDays} id="agenda-title" title={t('dashboardHome.sections.week.title')} />
-        <Link href="/calendar" className="rounded-md border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100 dark:border-blue-900/70 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/70">
-          {t('dashboardHome.sections.week.viewCalendar')}
+        <Link href="/calendar" className={panelLinkClass('cyan')}>
+          {t('dashboardHome.sections.week.viewFullCalendar')}
+          <ChevronRight className="h-3.5 w-3.5" />
         </Link>
       </div>
 
@@ -453,10 +503,10 @@ function AgendaPanel({ agendaItems }: { agendaItems: AgendaItem[] }) {
         <div className="p-4">
           <div className="space-y-0">
             {agendaItems.map((item, index) => (
-              <Link key={item.id} href={item.href} className={`grid grid-cols-[70px_1fr_auto_18px] gap-3 py-1 ${rowLinkClass}`}>
+              <Link key={item.id} href={item.href} className={`grid grid-cols-[70px_1fr_auto_18px] gap-3 py-1 ${rowLink('cyan')}`}>
                 <div className="flex gap-2">
                   <div className="flex flex-col items-center">
-                    <span className={`mt-1 h-2.5 w-2.5 rounded-full ${toneClasses[item.tone].dot}`} />
+                    <span className="mt-1 h-2.5 w-2.5 rounded-full bg-cyan-500" />
                     {index < agendaItems.length - 1 && <span className="mt-1 h-full min-h-[44px] w-px bg-gray-200 dark:bg-gray-800" />}
                   </div>
                   <div className="text-xs">
@@ -469,7 +519,7 @@ function AgendaPanel({ agendaItems }: { agendaItems: AgendaItem[] }) {
                   <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{item.title}</p>
                 </div>
                 <div className="pb-4">
-                  <span className={`rounded-md px-2 py-1 text-xs font-medium ${toneClasses[item.tone].badge}`}>
+                  <span className={`rounded-md px-2 py-1 text-xs font-medium ${toneClasses.cyan.badge}`}>
                     {item.type}
                   </span>
                 </div>
@@ -477,10 +527,6 @@ function AgendaPanel({ agendaItems }: { agendaItems: AgendaItem[] }) {
               </Link>
             ))}
           </div>
-          <Link href="/calendar" className="mt-2 inline-flex w-full items-center justify-center gap-2 text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-300">
-            {t('dashboardHome.sections.week.viewFullCalendar')}
-            <ChevronRight className="h-4 w-4" />
-          </Link>
         </div>
       )}
     </section>
@@ -491,12 +537,12 @@ function PrayerFocusPanel({ prayers }: { prayers: PrayerItem[] }) {
   const { t } = useTranslation();
 
   return (
-    <section className={panelClass} aria-labelledby="prayer-focus-title">
+    <section className={`${tonedCardClass('rose')} xl:col-span-2`} aria-labelledby="prayer-focus-title">
       <div className={panelHeaderClass}>
         <PanelTitle icon={Heart} id="prayer-focus-title" title={t('dashboardHome.sections.prayer.title')} />
-        <Link href="/prayers" className="inline-flex items-center gap-1.5 rounded-md border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-100 dark:border-rose-900/70 dark:bg-rose-950/40 dark:text-rose-200 dark:hover:bg-rose-950/70">
-          <Plus className="h-3.5 w-3.5" />
-          {t('dashboardHome.sections.prayer.addPrayer')}
+        <Link href="/prayers" className={panelLinkClass('rose')}>
+          {t('dashboardHome.sections.prayer.viewAll')}
+          <ChevronRight className="h-3.5 w-3.5" />
         </Link>
       </div>
 
@@ -505,14 +551,14 @@ function PrayerFocusPanel({ prayers }: { prayers: PrayerItem[] }) {
       ) : (
         <div className="divide-y divide-gray-100 px-4 dark:divide-gray-800">
           {prayers.map((prayer) => (
-            <Link key={prayer.id} href={prayer.href} className={`grid grid-cols-[36px_1fr_18px] gap-3 py-3 ${rowLinkClass}`}>
-              <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses[prayer.tone].badge}`}>
+            <Link key={prayer.id} href={prayer.href} className={`grid grid-cols-[36px_1fr_18px] gap-3 py-3 ${rowLink('rose')}`}>
+              <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses.rose.badge}`}>
                 <Heart className="h-4 w-4" />
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="truncate text-sm font-semibold text-gray-950 dark:text-white">{prayer.title}</p>
-                  <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${toneClasses[prayer.tone].badge}`}>
+                  <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${toneClasses.rose.badge}`}>
                     {prayer.status}
                   </span>
                 </div>
@@ -526,11 +572,6 @@ function PrayerFocusPanel({ prayers }: { prayers: PrayerItem[] }) {
           ))}
         </div>
       )}
-
-      <Link href="/prayers" className="flex items-center justify-center gap-2 border-t border-gray-100 px-4 py-3 text-sm font-semibold text-rose-600 hover:bg-rose-50 dark:border-gray-800 dark:text-rose-300 dark:hover:bg-rose-950/30">
-        {t('dashboardHome.sections.prayer.viewAll')}
-        <ChevronRight className="h-4 w-4" />
-      </Link>
     </section>
   );
 }
@@ -539,10 +580,10 @@ function ActiveSeriesPanel({ seriesItems }: { seriesItems: SeriesItem[] }) {
   const { t } = useTranslation();
 
   return (
-    <section className={panelClass} aria-labelledby="active-series-title">
+    <section className={`${tonedCardClass('violet')} xl:col-span-2`} aria-labelledby="active-series-title">
       <div className={panelHeaderClass}>
         <PanelTitle icon={NotebookTabs} id="active-series-title" title={t('dashboardHome.sections.series.title')} />
-        <Link href="/series" className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 dark:text-blue-300">
+        <Link href="/series" className={panelLinkClass('violet')}>
           {t('dashboardHome.sections.series.viewAll')}
           <ChevronRight className="h-3.5 w-3.5" />
         </Link>
@@ -553,7 +594,7 @@ function ActiveSeriesPanel({ seriesItems }: { seriesItems: SeriesItem[] }) {
       ) : (
         <div className="divide-y divide-gray-100 px-4 dark:divide-gray-800">
           {seriesItems.map((seriesItem) => (
-            <Link key={seriesItem.id} href={`/series/${seriesItem.id}`} className={`relative grid grid-cols-[44px_1fr_auto] gap-3 py-3 pl-3 ${rowLinkClass}`}>
+            <Link key={seriesItem.id} href={`/series/${seriesItem.id}`} className={`relative grid grid-cols-[44px_1fr_auto] gap-3 py-3 pl-3 ${rowLink('violet')}`}>
               <span
                 className="absolute left-0 top-3 bottom-3 w-1 rounded-full"
                 style={{ backgroundColor: seriesItem.color }}
@@ -571,15 +612,9 @@ function ActiveSeriesPanel({ seriesItems }: { seriesItems: SeriesItem[] }) {
                   <p className="truncate text-sm font-semibold text-gray-950 dark:text-white">{seriesItem.title}</p>
                   <span className="text-xs text-gray-500 dark:text-gray-400">{seriesItem.progress}</span>
                 </div>
-                <div className="mt-2 h-1.5 rounded-full bg-gray-200 dark:bg-gray-800">
-                  <div className="h-1.5 rounded-full" style={{ width: `${seriesItem.value}%`, backgroundColor: seriesItem.color }} />
-                </div>
                 <p className="mt-2 truncate text-xs text-gray-500 dark:text-gray-400">{seriesItem.next}</p>
               </div>
-              <span
-                className={`self-start rounded-md border px-2 py-1 text-xs font-medium ${toneClasses[seriesItem.tone].badge}`}
-                style={{ borderColor: seriesItem.color }}
-              >
+              <span className={`self-start rounded-md px-2 py-1 text-xs font-medium ${toneClasses.violet.badge}`}>
                 {seriesItem.status}
               </span>
             </Link>
@@ -594,10 +629,10 @@ function RecentStudiesPanel({ studies }: { studies: StudyItem[] }) {
   const { t } = useTranslation();
 
   return (
-    <section className={panelClass} aria-labelledby="recent-studies-title">
+    <section className={`${tonedCardClass('emerald')} xl:col-span-2`} aria-labelledby="recent-studies-title">
       <div className={panelHeaderClass}>
         <PanelTitle icon={StickyNote} id="recent-studies-title" title={t('dashboardHome.sections.studies.title')} />
-        <Link href="/studies" className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200">
+        <Link href="/studies" className={panelLinkClass('emerald')}>
           {t('dashboardHome.sections.studies.viewAll')}
           <ChevronRight className="h-3.5 w-3.5" />
         </Link>
@@ -608,17 +643,17 @@ function RecentStudiesPanel({ studies }: { studies: StudyItem[] }) {
       ) : (
         <div className="divide-y divide-gray-100 px-4 dark:divide-gray-800">
           {studies.map((study) => (
-            <Link key={study.id} href={study.href} className={`grid grid-cols-[1fr_18px] gap-3 py-3 ${rowLinkClass}`}>
+            <Link key={study.id} href={study.href} className={`grid grid-cols-[1fr_18px] gap-3 py-3 ${rowLink('emerald')}`}>
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-gray-950 dark:text-white">{study.passage}</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {study.references.map((reference, index) => (
-                    <span key={`reference-${reference}-${index}`} className="rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-950/50 dark:text-blue-200">
+                    <span key={`reference-${reference}-${index}`} className="rounded-md border border-emerald-300 bg-emerald-50/60 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:border-emerald-700/60 dark:bg-emerald-950/30 dark:text-emerald-200">
                       {reference}
                     </span>
                   ))}
                   {study.tags.map((tag, index) => (
-                    <span key={`tag-${tag}-${index}`} className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-200">
+                    <span key={`tag-${tag}-${index}`} className="rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
                       {tag}
                     </span>
                   ))}
@@ -637,10 +672,10 @@ function LatestGroupsPanel({ groups }: { groups: GroupItem[] }) {
   const { t } = useTranslation();
 
   return (
-    <section className={panelClass} aria-labelledby="latest-groups-title">
+    <section className={`${tonedCardClass('amber')} xl:col-span-2`} aria-labelledby="latest-groups-title">
       <div className={panelHeaderClass}>
         <PanelTitle icon={UsersRound} id="latest-groups-title" title={t('dashboardHome.sections.groups.title')} />
-        <Link href="/groups" className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200">
+        <Link href="/groups" className={panelLinkClass('amber')}>
           {t('dashboardHome.sections.groups.viewAll')}
           <ChevronRight className="h-3.5 w-3.5" />
         </Link>
@@ -651,89 +686,29 @@ function LatestGroupsPanel({ groups }: { groups: GroupItem[] }) {
       ) : (
         <div className="divide-y divide-gray-100 px-4 dark:divide-gray-800">
           {groups.map((group) => (
-            <Link key={group.id} href={`/groups/${group.id}`} className={`grid grid-cols-[40px_1fr_auto] gap-3 py-3 ${rowLinkClass}`}>
-              <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses[group.tone].icon}`}>
+            <Link key={group.id} href={`/groups/${group.id}`} className={`grid grid-cols-[40px_1fr_auto] gap-3 py-3 ${rowLink('amber')}`}>
+              <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses.amber.icon}`}>
                 <UsersRound className="h-5 w-5" />
               </div>
               <div className="min-w-0">
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <p className="truncate text-sm font-semibold text-gray-950 dark:text-white">{group.title}</p>
-                  <span className={`shrink-0 rounded-md px-2 py-0.5 text-xs font-medium ${toneClasses[group.tone].badge}`}>
-                    {group.status}
-                  </span>
-                </div>
+                <p className="truncate text-sm font-semibold text-gray-950 dark:text-white">{group.title}</p>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{group.progress}</p>
-                <div className="mt-2 h-1.5 rounded-full bg-gray-200 dark:bg-gray-800">
-                  <div className={`h-1.5 rounded-full ${toneClasses[group.tone].bar}`} style={{ width: `${group.value}%` }} />
-                </div>
+                {group.next && (
+                  <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{group.next}</p>
+                )}
               </div>
-              <div className="self-center text-right text-xs text-gray-500 dark:text-gray-400">
-                {group.next}
-              </div>
+              {/* Status on the right (like sermons/series); amber category, active=solid / completed=soft */}
+              <span className={`self-start rounded-md px-2 py-0.5 text-xs font-medium ${
+                group.tone === 'emerald'
+                  ? 'bg-amber-500 text-white dark:bg-amber-500'
+                  : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
+              }`}>
+                {group.status}
+              </span>
             </Link>
           ))}
         </div>
       )}
-    </section>
-  );
-}
-
-function NeedsAttentionPanel({ attentionItems }: { attentionItems: AttentionItem[] }) {
-  const { t } = useTranslation();
-
-  return (
-    <section className={panelClass} aria-labelledby="needs-attention-title">
-      <div className={panelHeaderClass}>
-        <PanelTitle icon={AlertTriangle} id="needs-attention-title" title={t('dashboardHome.sections.attention.title')} />
-      </div>
-
-      {attentionItems.length === 0 ? (
-        <EmptyPanel icon={CheckCircle2} text={t('dashboardHome.sections.attention.empty')} />
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className="border-b border-gray-100 text-xs font-medium text-gray-500 dark:border-gray-800 dark:text-gray-400">
-              <tr>
-                <th className="px-4 py-3">{t('dashboardHome.sections.attention.table.item')}</th>
-                <th className="px-4 py-3">{t('dashboardHome.sections.attention.table.category')}</th>
-                <th className="px-4 py-3">{t('dashboardHome.sections.attention.table.severity')}</th>
-                <th className="px-4 py-3">{t('dashboardHome.sections.attention.table.due')}</th>
-                <th className="px-4 py-3">{t('dashboardHome.sections.attention.table.notes')}</th>
-                <th className="px-4 py-3 text-right">{t('dashboardHome.sections.attention.table.action')}</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {attentionItems.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50/70 dark:hover:bg-gray-800/50">
-                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{item.item}</td>
-                  <td className="px-4 py-3">
-                    <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${toneClasses[item.tone].badge}`}>
-                      {item.category}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${severityColor(item.severity)}`}>
-                      {t(`dashboardHome.sections.attention.severity.${item.severity}`)}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{item.due}</td>
-                  <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{item.notes}</td>
-                  <td className="px-4 py-3 text-right">
-                    <Link href={item.href} className="font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-300">
-                      {item.action}
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <Link href="/dashboard" className="flex items-center justify-center gap-2 border-t border-gray-100 px-4 py-3 text-sm font-semibold text-blue-600 hover:bg-blue-50 dark:border-gray-800 dark:text-blue-300 dark:hover:bg-blue-950/30">
-        {t('dashboardHome.sections.attention.viewAll', { count: attentionItems.length })}
-        <ChevronRight className="h-4 w-4" />
-      </Link>
     </section>
   );
 }
@@ -777,6 +752,7 @@ function buildDashboardData({
   const activeSermons = sermons.filter((sermon) => !getEffectiveIsPreached(sermon));
   const activeSeries = series.filter((item) => item.status === 'active');
   const activePrayers = prayerRequests.filter((prayer) => prayer.status === 'active');
+  const activeGroups = groups.filter((group) => group.status === 'active');
   const upcomingEvents = buildCalendarEvents({
     sermons,
     groups,
@@ -804,13 +780,13 @@ function buildDashboardData({
     studyNotesCount: notes.length,
     upcomingDatesCount: upcomingEvents.length,
     activePrayersCount: activePrayers.length,
+    activeGroupsCount: activeGroups.length,
     sermonRows: buildSermonRows(sermons, t, locale),
     agendaItems: agendaEvents.slice(0, 5),
     prayerItems: buildPrayerItems(prayerRequests, t, locale),
     seriesItems: buildSeriesItems(series, sermons, t),
     studyItems: buildStudyItems(notes, t),
     groupItems: buildGroupItems(groups, t, locale),
-    attentionItems: buildAttentionItems({ sermons, notes, prayerRequests, groups, t, locale }),
   };
 }
 
@@ -984,119 +960,12 @@ function buildGroupItems(groups: Group[], t: TFunction, locale: string): GroupIt
         progress: t('dashboardHome.sections.groups.progress', { percent: value }),
         next: nextMeeting
           ? t('dashboardHome.sections.groups.nextMeeting', { date: formatDate(nextMeeting, locale) })
-          : t('dashboardHome.sections.groups.noMeeting'),
+          : '',
         value,
         status: t(`dashboardHome.sections.groups.status.${group.status}`),
         tone,
       };
     });
-}
-
-function buildAttentionItems({
-  sermons,
-  notes,
-  prayerRequests,
-  groups,
-  t,
-  locale,
-}: {
-  sermons: Sermon[];
-  notes: StudyNote[];
-  prayerRequests: PrayerRequest[];
-  groups: Group[];
-  t: TFunction;
-  locale: string;
-}): AttentionItem[] {
-  const items: AttentionItem[] = [];
-
-  sermons
-    .filter((sermon) => !getEffectiveIsPreached(sermon) && !getUpcomingPreachDate(sermon))
-    .slice(0, 2)
-    .forEach((sermon) => {
-      items.push({
-        id: `sermon-${sermon.id}`,
-        item: t('dashboardHome.sections.attention.items.unscheduledSermon', { title: sermon.title }),
-        category: t('navigation.sermons'),
-        severity: 'medium',
-        due: t('dashboardHome.sections.attention.due.noDate'),
-        notes: t('dashboardHome.sections.attention.notes.outlineStarted'),
-        action: t('dashboardHome.sections.attention.actions.review'),
-        href: `/sermons/${sermon.id}`,
-        tone: 'blue',
-      });
-    });
-
-  notes
-    .filter((note) => note.type === 'question')
-    .slice(0, 2)
-    .forEach((note) => {
-      items.push({
-        id: `question-${note.id}`,
-        item: t('dashboardHome.sections.attention.items.studyQuestion', { title: getStudyDisplayTitle(note, t) }),
-        category: t('navigation.studies'),
-        severity: 'medium',
-        due: '-',
-        notes: t('dashboardHome.sections.attention.notes.questionsNeedAnswers'),
-        action: t('dashboardHome.sections.attention.actions.openStudy'),
-        href: `/studies/${note.id}`,
-        tone: 'emerald',
-      });
-    });
-
-  notes
-    .filter((note) => note.isDraft && note.type !== 'question')
-    .slice(0, 1)
-    .forEach((note) => {
-      items.push({
-        id: `draft-note-${note.id}`,
-        item: t('dashboardHome.sections.attention.items.draftStudy', { title: getStudyDisplayTitle(note, t) }),
-        category: t('navigation.studies'),
-        severity: 'low',
-        due: formatRelativeDate(note.updatedAt, locale, t),
-        notes: t('dashboardHome.sections.attention.notes.readyForReview'),
-        action: t('dashboardHome.sections.attention.actions.review'),
-        href: `/studies/${note.id}`,
-        tone: 'emerald',
-      });
-    });
-
-  prayerRequests
-    .filter((prayer) => prayer.status === 'active' && daysSince(prayer.updatedAt || prayer.createdAt) >= 7)
-    .slice(0, 2)
-    .forEach((prayer) => {
-      items.push({
-        id: `prayer-${prayer.id}`,
-        item: t('dashboardHome.sections.attention.items.stalePrayer', { title: prayer.title }),
-        category: t('navigation.prayer'),
-        severity: 'high',
-        due: t('dashboardHome.sections.attention.due.days', { count: daysSince(prayer.updatedAt || prayer.createdAt) }),
-        notes: t('dashboardHome.sections.attention.notes.noUpdate'),
-        action: t('dashboardHome.sections.attention.actions.addUpdate'),
-        href: `/prayers/${prayer.id}`,
-        tone: 'rose',
-      });
-    });
-
-  groups
-    .filter((group) => group.status !== 'completed' && (group.templates || []).some((template) => template.status !== 'filled'))
-    .slice(0, 2)
-    .forEach((group) => {
-      const nextMeeting = getNextMeetingDate(group);
-
-      items.push({
-        id: `group-${group.id}`,
-        item: t('dashboardHome.sections.attention.items.incompleteGroup', { title: group.title }),
-        category: t('navigation.groups'),
-        severity: 'medium',
-        due: nextMeeting ? formatDate(nextMeeting, locale) : t('dashboardHome.sections.groups.noMeeting'),
-        notes: t('dashboardHome.sections.attention.notes.agendaRemaining'),
-        action: t('dashboardHome.sections.attention.actions.complete'),
-        href: `/groups/${group.id}`,
-        tone: 'emerald',
-      });
-    });
-
-  return items.slice(0, 5);
 }
 
 function latestPrayerUpdate(prayer: PrayerRequest) {
@@ -1203,12 +1072,3 @@ function startOfDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-function severityColor(severity: AttentionItem['severity']) {
-  const classes = {
-    low: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-    medium: 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-200',
-    high: 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-200',
-  };
-
-  return classes[severity];
-}

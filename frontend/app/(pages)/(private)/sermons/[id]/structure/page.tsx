@@ -1,7 +1,7 @@
 "use client";
 
 import { DndContext, DragOverlay, pointerWithin, type DragEndEvent } from "@dnd-kit/core";
-import { useParams, useSearchParams, useRouter } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import React, { useState, useEffect, Suspense, useRef, useCallback, useMemo } from "react";
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -10,6 +10,7 @@ import Column from "@/components/Column";
 import EditThoughtModal from "@/components/EditThoughtModal";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
 import { SortableItemPreview } from "@/components/SortableItem";
+import { useRouteId } from "@/hooks/useRouteId";
 import { useSermonStructureData } from "@/hooks/useSermonStructureData";
 import { Item, Sermon, SermonPoint, Thought, SermonOutline } from "@/models/models";
 import "@locales/i18n";
@@ -65,10 +66,9 @@ export default function StructurePage() {
 function StructurePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const params = useParams<{ id?: string }>();
-  const sermonIdFromPath = params?.id;
+  const sermonIdFromPath = useRouteId();
   const sermonIdFromQuery = searchParams?.get("sermonId");
-  const sermonId = sermonIdFromPath ?? sermonIdFromQuery ?? null;
+  const sermonId = sermonIdFromPath || sermonIdFromQuery || null;
   const { t } = useTranslation();
   const [isClient, setIsClient] = useState(false);
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(() => {
@@ -170,6 +170,24 @@ function StructurePageContent() {
     },
     pendingActions,
   });
+
+  // Stage 2 — auto-flush: when connectivity returns, silently replay any thoughts
+  // created/edited/deleted while offline (status error or pending), routing each
+  // back through the same submit path as a manual retry. Triggered on the window
+  // `online` event (navigator-based, like React Query's onlineManager) rather than
+  // the apiClient-derived useOnlineStatus, which can stay "offline" after a blip
+  // until an apiClient() call recovers it — too unreliable for auto-flush.
+  useEffect(() => {
+    const flush = () => {
+      pendingActions.pendingThoughts
+        .filter((pending) => pending.status === 'error' || pending.status === 'pending')
+        .forEach((pending) => {
+          void handleRetryPendingThought(pending.localId).catch(() => {});
+        });
+    };
+    window.addEventListener('online', flush);
+    return () => window.removeEventListener('online', flush);
+  }, [pendingActions.pendingThoughts, handleRetryPendingThought]);
 
   // Focus mode hook
   const {

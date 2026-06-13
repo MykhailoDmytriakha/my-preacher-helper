@@ -9,6 +9,7 @@ describe('referenceParser', () => {
     ['евангелие от матфея 5 3', 'Matthew'],
     ['откровение 22 21', 'Revelation'],
     ['песнь песней 1 1', 'Song of Solomon'],
+    ['иуда 1 3', 'Jude'],
   ];
 
   it.each(aliasCases)('parses %s as %s', (input, expectedBook) => {
@@ -123,4 +124,3 @@ describe('referenceParser', () => {
     });
   });
 });
-

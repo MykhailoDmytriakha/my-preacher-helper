@@ -9,6 +9,18 @@ import React from 'react';
 process.env.OPENAI_API_KEY = 'test_key_openai';
 process.env.GEMINI_API_KEY = 'test_key_gemini';
 
+// Strangler-fig migration flags (NEXT_PUBLIC_USE_CLIENT_*) live in the Vercel project
+// env and are present during the build's test run, which would non-deterministically
+// flip a service to its client-Firestore path (and crash on Firebase init in jsdom).
+// Unit tests assert the server-contract (fallback) path; a test that wants the client
+// path must opt in explicitly with its own mocks. Force every such flag OFF here so the
+// suite is deterministic regardless of the ambient env it runs in.
+for (const key of Object.keys(process.env)) {
+  if (key.startsWith('NEXT_PUBLIC_USE_CLIENT_')) {
+    delete process.env[key];
+  }
+}
+
 // Lazy load heavy mocks only when NODE_ENV is test
 if (process.env.NODE_ENV === 'test') {
   // Pre-configure fetch mock for better performance

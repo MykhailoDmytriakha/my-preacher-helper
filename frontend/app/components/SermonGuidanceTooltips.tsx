@@ -73,7 +73,7 @@ export const SermonSectionGuidanceTooltip: React.FC<{
     <div className="relative" ref={popoverRef}>
       <button
         onClick={() => setOpen((prev) => !prev)}
-        className="p-1 bg-white/20 hover:bg-white/30 rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+        className="p-1 bg-white/20 hover:bg-white/30 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
         title={t(`${config.baseKey}.ariaLabel`, { defaultValue: config.defaultAriaLabel })}
         aria-label={t(`${config.baseKey}.ariaLabel`, { defaultValue: config.defaultAriaLabel })}
         aria-expanded={open}
@@ -164,7 +164,7 @@ export const OutlinePointGuidanceTooltip: React.FC<{
     <div className="relative shrink-0" ref={popoverRef}>
       <button
         onClick={() => setOpen(v => !v)}
-        className="group p-1.5 rounded-full bg-white/10 hover:bg-white/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
+        className="group p-1.5 rounded-full bg-white/10 hover:bg-white/20 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
         title={t('structure.outlineHelp.ariaLabel', { defaultValue: 'Quick help for outline point' })}
         aria-label={t('structure.outlineHelp.ariaLabel', { defaultValue: 'Quick help for outline point' })}
         aria-expanded={open}

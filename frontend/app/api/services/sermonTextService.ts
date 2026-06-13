@@ -1,5 +1,11 @@
-import { Sermon, Thought } from '@/models/models';
 import { getSortedThoughts } from '@/utils/sermonSorting';
+import {
+    getVisualOrderedThoughtsBySection,
+    getVisualSectionOutlinePoints,
+    type VisualOutlineSectionKey
+} from '@/utils/sermonVisualOrder';
+
+import type { Sermon, Thought } from '@/models/models';
 
 export const SECTION_CONFIG = {
     introduction: { tag: 'introduction', title: 'Вступление' },
@@ -8,6 +14,12 @@ export const SECTION_CONFIG = {
 } as const;
 
 export type SectionKey = keyof typeof SECTION_CONFIG;
+
+const SECTION_TO_VISUAL_KEY: Record<SectionKey, VisualOutlineSectionKey> = {
+    introduction: 'introduction',
+    mainPart: 'main',
+    conclusion: 'conclusion',
+};
 
 /**
  * Normalizes a `sections` request value ('all' | key | array of keys) into the
@@ -28,8 +40,20 @@ export function getSectionThoughts(sermon: Sermon, sectionKey: SectionKey): Thou
         conclusion: 'conclusion'
     };
 
-    // Use the shared 'Structure First' sorting utility
+    // Use the shared visual-order utility via getSortedThoughts.
     return getSortedThoughts(sermon, sectionMap[sectionKey]);
+}
+
+export function getSectionOutlinePoints(sermon: Sermon, sectionKey: SectionKey) {
+    return getVisualSectionOutlinePoints(sermon, SECTION_TO_VISUAL_KEY[sectionKey]);
+}
+
+/**
+ * Returns thoughts in the same visible order as the Structure page:
+ * section structure order -> outline point order -> sub-point/direct interleave by position.
+ */
+export function getSectionThoughtsInVisualOrder(sermon: Sermon, sectionKey: SectionKey): Thought[] {
+    return getVisualOrderedThoughtsBySection(sermon, SECTION_TO_VISUAL_KEY[sectionKey]);
 }
 
 /**
@@ -53,7 +77,7 @@ export function extractSermonText(sermon: Sermon, targetSection?: SectionKey): s
         : (['introduction', 'mainPart', 'conclusion'] as SectionKey[]);
 
     for (const sectionKey of sectionsToProcess) {
-        const sectionThoughts = getSectionThoughts(sermon, sectionKey);
+        const sectionThoughts = getSectionThoughtsInVisualOrder(sermon, sectionKey);
         const config = SECTION_CONFIG[sectionKey];
 
         if (sectionThoughts.length > 0) {

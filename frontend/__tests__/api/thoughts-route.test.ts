@@ -170,7 +170,7 @@ describe('Thoughts API POST', () => {
       meaningSuccessfullyPreserved: true,
       originalText: mockTranscription,
       formattedText: "Formatted text",
-      tags: ["Introduction"]
+      tags: ["Примеры"]
     });
 
     const formData = new FormData();
@@ -185,7 +185,7 @@ describe('Thoughts API POST', () => {
     expect(response.status).toBe(200);
     expect(data).toEqual(expect.objectContaining({
       text: "Formatted text",
-      tags: ["Introduction"]
+      tags: ["Примеры"]
     }));
   });
 });

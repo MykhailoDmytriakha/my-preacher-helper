@@ -326,7 +326,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
           value={modernDraft}
           onChange={(e) => setModernDraft(e.target.value)}
           placeholder={t('wizard.steps.homileticPlan.fields.modernTranslation.placeholder') || ''}
-          className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
+          className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
           aria-label={t('wizard.steps.homileticPlan.fields.modernTranslation.label') || 'Modern translation'}
         />
         <div className="mt-2 flex items-center justify-end gap-2">
@@ -380,7 +380,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
                   setUpdatedPlanDraft(prev => prev.map((it, i) => i === idx ? { ...it, title: val } : it));
                 }}
                 placeholder={t('wizard.steps.homileticPlan.fields.updatedPlan.itemPlaceholder') || ''}
-                className={`flex-1 rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
+                className={`flex-1 rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
                 aria-label={t('wizard.steps.homileticPlan.fields.updatedPlan.itemLabel') || 'Plan item'}
               />
               <button
@@ -462,7 +462,7 @@ const HomileticPlanStepContent: React.FC<HomileticPlanStepContentProps> = ({
                   setSermonPlanDraft(prev => prev.map((it, i) => i === idx ? { ...it, title: val } : it));
                 }}
                 placeholder={t('wizard.steps.homileticPlan.fields.sermonPlan.itemPlaceholder') || ''}
-                className={`flex-1 rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
+                className={`flex-1 rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
                 aria-label={t('wizard.steps.homileticPlan.fields.sermonPlan.itemLabel') || 'Plan item'}
               />
               <button

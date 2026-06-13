@@ -15,13 +15,14 @@ import {
     TagIcon,
     TrashIcon,
 } from '@heroicons/react/24/outline';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import NodeTreeEditor from '@/components/studies/node/NodeTreeEditor';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useNoteAccessGuard } from '@/hooks/useNoteAccessGuard';
+import { useRouteId } from '@/hooks/useRouteId';
 import { useStudyNoteDraft } from '@/hooks/useStudyNoteDraft';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
@@ -388,8 +389,7 @@ function StudyNoteViewHeader({
 export default function StudyNoteViewPage() {
     const { t, i18n } = useTranslation();
     const router = useRouter();
-    const params = useParams();
-    const noteId = params.id as string;
+    const noteId = useRouteId();
 
     const { notes, deleteNote, loading: notesLoading, error: notesError } = useStudyNotes();
     const {

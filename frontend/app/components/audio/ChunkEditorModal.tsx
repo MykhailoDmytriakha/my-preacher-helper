@@ -77,7 +77,7 @@ export default function ChunkEditorModal({
                 <textarea
                     value={text}
                     onChange={(e) => setText(e.target.value)}
-                    className="w-full h-48 p-3 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none"
+                    className="w-full h-48 p-3 border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white resize-none transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
                     disabled={isSaving}
                 />
 

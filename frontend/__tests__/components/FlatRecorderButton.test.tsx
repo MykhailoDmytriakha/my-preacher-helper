@@ -72,7 +72,7 @@ describe('FlatRecorderButton', () => {
 
     render(<FlatRecorderButton onRecordingComplete={jest.fn()} maxDuration={30} />);
 
-    expect(screen.getByTestId('flat-recorder-button')).toHaveClass('w-[188px]');
+    expect(screen.getByTestId('flat-recorder-button')).toHaveClass('w-[190px]');
     expect(screen.getByTestId('flat-recorder-timer')).toHaveTextContent('0:25');
     expect(screen.getByText('0:25')).toHaveClass('whitespace-nowrap');
 
@@ -96,12 +96,12 @@ describe('FlatRecorderButton', () => {
 
     const { rerender } = render(<FlatRecorderButton onRecordingComplete={jest.fn()} maxDuration={90} />);
 
-    expect(screen.getByTestId('flat-recorder-button')).toHaveClass('w-[188px]');
+    expect(screen.getByTestId('flat-recorder-button')).toHaveClass('w-[190px]');
 
     mockUseAudioRecorderLifecycle.mockReturnValue(recordingLifecycle);
     rerender(<FlatRecorderButton onRecordingComplete={jest.fn()} maxDuration={90} />);
 
-    expect(screen.getByTestId('flat-recorder-button')).toHaveClass('w-[188px]');
+    expect(screen.getByTestId('flat-recorder-button')).toHaveClass('w-[190px]');
     expect(screen.getByTestId('flat-recorder-timer')).toHaveTextContent('0:29');
   });
 

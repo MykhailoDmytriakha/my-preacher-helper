@@ -191,21 +191,44 @@ export const FLAT_RECORDER_COLORS = {
 } as const;
 
 // Navigation item accent palettes (keep navigation styling consistent across workspaces)
+// Each category nav item carries its own accent: `pill`/`menu`/`indicator` for the
+// active state, and `hover` for the inactive hover state (category-tinted highlight).
 const NAV_ITEM_THEMES = {
   default: {
     pill: 'border-blue-500 text-blue-600 dark:border-blue-400 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40',
     menu: 'text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40',
-    indicator: 'text-blue-600 dark:text-blue-300'
+    indicator: 'text-blue-600 dark:text-blue-300',
+    hover: 'hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 dark:hover:border-blue-500/40 dark:hover:bg-blue-950/40 dark:hover:text-blue-300'
   },
   studies: {
     pill: 'border-emerald-500 text-emerald-600 dark:border-emerald-400 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-900/30',
     menu: 'text-emerald-600 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-900/30',
-    indicator: 'text-emerald-600 dark:text-emerald-200'
+    indicator: 'text-emerald-600 dark:text-emerald-200',
+    hover: 'hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-700 dark:hover:border-emerald-500/40 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-200'
   },
   prayer: {
     pill: 'border-rose-400 text-rose-600 dark:border-rose-400 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40',
     menu: 'text-rose-600 dark:text-rose-300 bg-rose-50 dark:bg-rose-950/40',
-    indicator: 'text-rose-600 dark:text-rose-300'
+    indicator: 'text-rose-600 dark:text-rose-300',
+    hover: 'hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700 dark:hover:border-rose-500/40 dark:hover:bg-rose-950/40 dark:hover:text-rose-300'
+  },
+  series: {
+    pill: 'border-violet-500 text-violet-600 dark:border-violet-400 dark:text-violet-200 bg-violet-50 dark:bg-violet-950/40',
+    menu: 'text-violet-600 dark:text-violet-200 bg-violet-50 dark:bg-violet-950/40',
+    indicator: 'text-violet-600 dark:text-violet-200',
+    hover: 'hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 dark:hover:border-violet-500/40 dark:hover:bg-violet-950/40 dark:hover:text-violet-200'
+  },
+  groups: {
+    pill: 'border-amber-500 text-amber-700 dark:border-amber-400 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40',
+    menu: 'text-amber-700 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40',
+    indicator: 'text-amber-700 dark:text-amber-200',
+    hover: 'hover:border-amber-200 hover:bg-amber-50 hover:text-amber-700 dark:hover:border-amber-500/40 dark:hover:bg-amber-950/40 dark:hover:text-amber-200'
+  },
+  calendar: {
+    pill: 'border-cyan-500 text-cyan-700 dark:border-cyan-400 dark:text-cyan-200 bg-cyan-50 dark:bg-cyan-950/40',
+    menu: 'text-cyan-700 dark:text-cyan-200 bg-cyan-50 dark:bg-cyan-950/40',
+    indicator: 'text-cyan-700 dark:text-cyan-200',
+    hover: 'hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-700 dark:hover:border-cyan-500/40 dark:hover:bg-cyan-950/40 dark:hover:text-cyan-200'
   }
 } as const;
 

@@ -1,6 +1,13 @@
 import { SermonOutline, SermonPoint } from '@/models/models';
+import {
+  USE_CLIENT_SERMONS,
+  getSermonOutlineViaClient,
+  updateSermonOutlineViaClient,
+} from '@/services/sermons.client';
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
+const clientActive = () => USE_CLIENT_SERMONS && typeof window !== 'undefined';
 
 /**
  * Fetches the outline for a specific sermon
@@ -8,6 +15,9 @@ const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.on
  * @returns The sermon outline or undefined if not found
  */
 export const getSermonOutline = async (sermonId: string): Promise<SermonOutline | undefined> => {
+  if (clientActive()) {
+    return getSermonOutlineViaClient(sermonId);
+  }
   try {
     if (isBrowserOffline()) {
       return undefined;
@@ -46,7 +56,11 @@ export const updateSermonOutline = async (sermonId: string, outline: SermonOutli
   if (!outline.main) {
     outline.main = [];
   }
-  
+
+  if (clientActive()) {
+    return updateSermonOutlineViaClient(sermonId, outline);
+  }
+
   try {
     if (isBrowserOffline()) {
       return null;

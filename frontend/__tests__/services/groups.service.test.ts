@@ -147,15 +147,23 @@ describe('groups.service', () => {
     await expect(fetchCalendarGroups('user-1')).rejects.toThrow('Bad calendar');
   });
 
-  it('blocks network operations when browser is offline', async () => {
+  it('still issues the request when offline so React Query can buffer the write', async () => {
+    // Stage 2: writes intentionally do NOT short-circuit when offline. The
+    // service attempts the fetch; the browser rejects it with a network error,
+    // which React Query (networkMode 'offlineFirst') turns into a paused +
+    // persisted mutation that replays on reconnect. A pre-throw here would
+    // bypass that buffer and silently lose the write.
     Object.defineProperty(global.navigator, 'onLine', { configurable: true, value: false });
+    mockFetch.mockRejectedValue(new TypeError('Failed to fetch'));
 
-    await expect(getAllGroups('user-1')).rejects.toThrow('Offline: operation not available.');
-    await expect(getGroupById('g1')).rejects.toThrow('Offline: operation not available.');
-    await expect(createGroup(baseGroup)).rejects.toThrow('Offline: operation not available.');
-    await expect(updateGroup('g1', { title: 'x' })).rejects.toThrow('Offline: operation not available.');
-    await expect(deleteGroup('g1')).rejects.toThrow('Offline: operation not available.');
+    await expect(createGroup(baseGroup)).rejects.toThrow('Failed to fetch');
+    await expect(updateGroup('g1', { title: 'x' })).rejects.toThrow('Failed to fetch');
+    await expect(deleteGroup('g1')).rejects.toThrow('Failed to fetch');
 
-    expect(mockFetch).not.toHaveBeenCalled();
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/groups'),
+      expect.objectContaining({ method: 'POST' })
+    );
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 });

@@ -26,15 +26,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Missing required fields: userId, title' }, { status: 400 });
     }
 
-    const created = await prayerRequestsRepository.create({
-      userId,
-      title: title.trim(),
-      description: payload.description?.trim() || undefined,
-      categoryId: payload.categoryId || undefined,
-      tags: payload.tags || [],
-      status: 'active',
-      updates: [],
-    });
+    const created = await prayerRequestsRepository.create(
+      {
+        userId,
+        title: title.trim(),
+        description: payload.description?.trim() || undefined,
+        categoryId: payload.categoryId || undefined,
+        tags: payload.tags || [],
+        status: 'active',
+        updates: [],
+      },
+      typeof payload.id === 'string' ? payload.id : undefined
+    );
 
     return NextResponse.json(created, { status: 201 });
   } catch (error) {

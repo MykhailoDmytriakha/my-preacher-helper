@@ -291,7 +291,7 @@ const GoalsStepContent: React.FC<GoalsStepContentProps> = ({
             <select
               value={typeDraft}
               onChange={(e) => setTypeDraft(e.target.value as GoalType)}
-              className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder}`}
+              className={`w-full rounded-md border px-3 py-2 bg-white dark:bg-gray-800 ${UI_COLORS.neutral.border} dark:${UI_COLORS.neutral.darkBorder} focus:outline-none focus:ring-2 focus:ring-offset-0`}
             >
               <option value="">{t('wizard.steps.goals.goal.typePlaceholder')}</option>
               <option value="informative">{t('wizard.steps.goals.goal.types.informative')}</option>

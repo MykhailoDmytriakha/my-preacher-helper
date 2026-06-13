@@ -99,7 +99,7 @@ Use this table as the prompt-review watermark. A future review should start from
 
 | Prompt | Baseline version | Baseline review date | Reviewed window / reason | Next primary review scope |
 | --- | --- | --- | --- | --- |
-| `thought` | `v5` | 2026-04-25 | Created after reviewing `thought@v3/v4` raw transcript → output examples where the model added sermon-context and thematic references. | Review new `thought@v5` records after 2026-04-25 usage. Treat `v3/v4` as history/regression examples. |
+| `thought` | `v6` | 2026-05-31 | Created after `thought@v5` telemetry for sermon `tbStMzcL9xcKjMJuLVfk` showed deprecated structural tag `Основная часть` added even though the available tag list contained only auxiliary tags. Removed structural-tag prompt guidance and added deterministic tag sanitization. | Review new `thought@v6` records after 2026-05-31 usage. Treat `v3/v4/v5` as history/regression examples. |
 | `polishTranscription` | `v3` | 2026-04-25 | Created after dictated Scripture reference formatting review; old retained records were `v2`. | Review new `polishTranscription@v3` records after 2026-04-25 usage. Treat `v2` as history. |
 | `plan_point_content` | `v8` | 2026-05-19 | Created after paired `short` vs `detailed` telemetry showed `Detailed` reached the model but did not add enough references, source text fragments, transitions, or detail for source-rich sermon points. | Review new `plan_point_content@v8` records after 2026-05-19 usage. Treat `v4/v5/v6/v7` as history/regression examples. |
 | `studyNoteAnalysis` | `v2` | 2026-04-25 | Created after `v1` review found tag-count/schema mismatch and redundant reference ranges. | Review new `studyNoteAnalysis@v2` records after 2026-04-25 usage. |
@@ -118,7 +118,7 @@ Structured telemetry prompts:
 
 | Prompt | Version | Main purpose |
 | --- | --- | --- |
-| `thought` | `v5` | Turn dictated sermon thought into polished prose + tags without adding sermon-context material not dictated by the user. |
+| `thought` | `v6` | Turn dictated sermon thought into polished prose + auxiliary tags only, without adding sermon-context material or deprecated structural section tags. |
 | `polishTranscription` | `v3` | Clean raw voice transcription for notes/thought text. |
 | `studyNoteAnalysis` | `v2` | Extract study-note title, Scripture refs, and tags. |
 | `plan_point_content` | `v8` | Generate a preacher cue sheet for one outline point or its sub-points, with detailed mode preserving more source-supported references, text fragments, examples, and transitions. |
@@ -164,4 +164,5 @@ Suggested issue types:
 - `under_generation`
 - `format_too_verbose`
 - `tags_wrong_or_missing`
+- `deprecated_structural_tag`
 - `meaning_not_preserved`

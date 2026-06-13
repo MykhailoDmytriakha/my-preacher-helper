@@ -121,15 +121,15 @@ describe('useUserSettings', () => {
     expect(mockUpdateFirstDayOfWeek).toHaveBeenCalledWith('user1', 'monday');
   });
 
-  it('throws when offline (mutationGuard)', async () => {
+  it('does not throw on a toggle when offline — buffers it (Stage 2)', async () => {
+    // Offline no longer short-circuits: the toggle flips optimistically and the
+    // mutation pauses + persists, replaying on reconnect. So the call resolves.
     mockUseOnlineStatus.mockReturnValue(false);
     const { result } = renderHook(() => useUserSettings('user1'), { wrapper: makeWrapper() });
 
-    await expect(
-      act(async () => {
-        await result.current.updateStructurePreviewAccess(true);
-      })
-    ).rejects.toThrow('Offline');
+    await act(async () => {
+      await expect(result.current.updateStructurePreviewAccess(true)).resolves.toBeUndefined();
+    });
   });
 
   it('throws when userId is not provided', async () => {

@@ -1,7 +1,23 @@
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { UserSettings } from '@/models/models';
 
-import type { FirstDayOfWeek } from '@/utils/weekStart';
+/**
+ * Fields a client may create/update on their own settings document.
+ * Intentionally excludes identity (id/userId).
+ */
+export type UserSettingsUpdate = Partial<Omit<UserSettings, 'id' | 'userId'>>;
+
+export const UPDATABLE_FIELDS: (keyof UserSettingsUpdate)[] = [
+  'language',
+  'email',
+  'displayName',
+  'firstDayOfWeek',
+  'enablePrepMode',
+  'enableAudioGeneration',
+  'enableStructurePreview',
+  'enableGroups',
+  'showAppVersion',
+];
 
 /**
  * Repository for user settings database operations
@@ -34,42 +50,24 @@ export class UserSettingsRepository {
   }
 
   /**
-   * Create or update user settings
+   * Create or update a user's settings document. Only whitelisted fields that
+   * are explicitly provided (not undefined) are written, so a partial update
+   * never clobbers unrelated fields.
    * @param userId User ID
-   * @param language Preferred language (optional)
-   * @param email User email (optional)
-   * @param displayName User display name (optional)
-   * @param enablePrepMode Enable prep mode access (optional)
-   * @param enableAudioGeneration Enable audio generation access (optional)
-   * @param enableGroups Enable groups workspace access (optional)
-   * @param firstDayOfWeek Preferred first day for app-controlled calendars (optional)
+   * @param updates Partial settings to apply
    * @returns ID of the created or updated document
    */
-  async createOrUpdate(
-    userId: string,
-    language?: string,
-    email?: string,
-    displayName?: string,
-    enablePrepMode?: boolean,
-    enableAudioGeneration?: boolean,
-    enableGroups?: boolean,
-    firstDayOfWeek?: FirstDayOfWeek
-  ): Promise<string> {
+  async createOrUpdate(userId: string, updates: UserSettingsUpdate): Promise<string> {
     try {
       const docRef = adminDb.collection(this.collection).doc(userId);
       const doc = await docRef.get();
 
-      // Initialize updates object with only the fields that are provided
       const allowedUpdates: Record<string, unknown> = {};
-
-      // Only add fields that are explicitly provided
-      if (language !== undefined) allowedUpdates.language = language;
-      if (email !== undefined) allowedUpdates.email = email;
-      if (displayName !== undefined) allowedUpdates.displayName = displayName;
-      if (enablePrepMode !== undefined) allowedUpdates.enablePrepMode = enablePrepMode;
-      if (enableAudioGeneration !== undefined) allowedUpdates.enableAudioGeneration = enableAudioGeneration;
-      if (enableGroups !== undefined) allowedUpdates.enableGroups = enableGroups;
-      if (firstDayOfWeek !== undefined) allowedUpdates.firstDayOfWeek = firstDayOfWeek;
+      for (const field of UPDATABLE_FIELDS) {
+        if (updates[field] !== undefined) {
+          allowedUpdates[field] = updates[field];
+        }
+      }
 
       // If no fields to update, return early
       if (Object.keys(allowedUpdates).length === 0) {
@@ -80,17 +78,17 @@ export class UserSettingsRepository {
       console.log("Updating user settings for user:", userId, "with updates:", allowedUpdates);
 
       if (!doc.exists) {
-        // For new documents, ensure language is set by providing a default if not specified
-        if (language === undefined) allowedUpdates.language = 'en';
-
-        // Create new settings with userId as document ID
+        // For new documents, ensure language is always set.
+        if (allowedUpdates.language === undefined) {
+          allowedUpdates.language = 'en';
+        }
         await docRef.set(allowedUpdates);
         return userId;
-      } else {
-        // Update existing settings, preserving all other fields including isAdmin if it exists
-        await docRef.update(allowedUpdates);
-        return userId;
       }
+
+      // Update existing settings, preserving all other (unspecified) fields.
+      await docRef.update(allowedUpdates);
+      return userId;
     } catch (error) {
       console.error('Error creating/updating user settings:', error);
       throw error;
@@ -99,4 +97,4 @@ export class UserSettingsRepository {
 }
 
 // Export singleton instance
-export const userSettingsRepository = new UserSettingsRepository(); 
+export const userSettingsRepository = new UserSettingsRepository();

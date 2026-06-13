@@ -97,7 +97,7 @@ const ColorPickerModal: React.FC<ColorPickerModalProps> = ({ tagName, initialCol
               value={customColor}
               onChange={(e) => handleSelectColor(e.target.value)}
               className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md 
-                        bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-mono"
+                        bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-200 font-mono focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1"
               placeholder="#000000"
             />
           </div>

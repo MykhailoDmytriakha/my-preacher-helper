@@ -547,7 +547,6 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
 
   // UI state
   const [expanded, setExpanded] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [successNotification, setSuccessNotification] = useState(false);
   const [showAllTopics, setShowAllTopics] = useState(true);
   const [showAllVerses, setShowAllVerses] = useState(true);
@@ -659,11 +658,6 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
     setShowAllDirections(true);
   }, [sermon.id]);
 
-  useEffect(() => {
-    // Simulate data loading
-    setTimeout(() => setLoading(false), 500);
-  }, [sermon]);
-
   // Check if sermon has enough thoughts to generate insights
   const thoughtsCount = sermon.thoughts?.length || 0;
   const hasEnoughThoughts = thoughtsCount >= THOUGHTS_THRESHOLD;
@@ -685,20 +679,6 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
     threshold: THOUGHTS_THRESHOLD,
     defaultValue: `You need {{count}} more thoughts to unlock insights. Currently: ${thoughtsCount}/${THOUGHTS_THRESHOLD}`
   });
-
-  // Loading placeholder
-  if (loading) {
-    return (
-      <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 animate-pulse">
-        <div className="h-6 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-4"></div>
-        <div className="space-y-3">
-          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4"></div>
-          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full"></div>
-          <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-5/6"></div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="p-3 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 relative">

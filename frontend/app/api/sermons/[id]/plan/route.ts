@@ -3,8 +3,8 @@ import 'openai/shims/node';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { SermonContent, ThoughtInStructure } from '@/models/models';
+import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 import { buildSubPointRenderableEntries, flattenSubPointRenderableEntries, normalizeSubPointId } from '@/utils/subPoints';
-import { getThoughtsForOutlinePoint } from '@/utils/thoughtOrdering';
 import { generatePlanForSection, generatePlanPointContent, PlanStyle } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -185,8 +185,8 @@ async function generateSermonPointContent(sermonId: string, outlinePointId: stri
       );
     }
 
-    // Find thoughts related to this outline point in canonical order
-    const relatedThoughts = getThoughtsForOutlinePoint(sermon, outlinePointId);
+    // Find thoughts related to this outline point in the shared visual order.
+    const relatedThoughts = getVisualOrderedThoughtsForOutlinePoint(sermon, outlinePointId);
 
     if (relatedThoughts.length === 0) {
       return jsonNoStore(
