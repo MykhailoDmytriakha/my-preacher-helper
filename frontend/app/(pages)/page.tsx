@@ -1,5 +1,6 @@
 'use client';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { GoogleOAuthProvider } from '@react-oauth/google';
+import { GoogleAuthProvider, signInWithCredential, signInWithEmailAndPassword } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -13,11 +14,16 @@ import '@locales/i18n';
 import { auth, signInWithGoogle } from '@/services/firebaseAuth.service';
 import { CheckIcon, DocumentIcon, LightBulbIcon, MicrophoneIcon } from '@components/Icons';
 
+// Public Web OAuth client ID for this Firebase project (not a secret). When set,
+// the landing renders Google's inline FedCM account dropdown instead of the popup.
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+
 export default function Home() {
   const router = useRouter();
   const { t } = useTranslation();
   const [loadingProvider, setLoadingProvider] = useState<'google' | 'test' | null>(null);
 
+  // Legacy popup flow — kept as the fallback when no client ID is configured.
   const handleLogin = async () => {
     if (loadingProvider) return;
     try {
@@ -27,6 +33,20 @@ export default function Home() {
     } catch (error) {
       console.error('Login error', error);
     } finally {
+      setLoadingProvider(null);
+    }
+  };
+
+  // FedCM flow — exchange the Google ID token from the inline dropdown for a
+  // Firebase session via signInWithCredential (no popup, no redirect).
+  const handleGoogleCredential = async (credential: string) => {
+    if (loadingProvider) return;
+    try {
+      setLoadingProvider('google');
+      await signInWithCredential(auth, GoogleAuthProvider.credential(credential));
+      router.push('/dashboard');
+    } catch (error) {
+      console.error('Google credential login failed:', error);
       setLoadingProvider(null);
     }
   };
@@ -225,12 +245,25 @@ export default function Home() {
           </section>
 
           <section className="flex justify-center">
-            <LoginOptions
-              onGoogleLogin={handleLogin}
-              onTestLogin={handleTestLogin}
-              googleLoading={loadingProvider === 'google'}
-              testLoading={loadingProvider === 'test'}
-            />
+            {GOOGLE_CLIENT_ID ? (
+              <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+                <LoginOptions
+                  googleClientId={GOOGLE_CLIENT_ID}
+                  onGoogleCredential={handleGoogleCredential}
+                  onGoogleLogin={handleLogin}
+                  onTestLogin={handleTestLogin}
+                  googleLoading={loadingProvider === 'google'}
+                  testLoading={loadingProvider === 'test'}
+                />
+              </GoogleOAuthProvider>
+            ) : (
+              <LoginOptions
+                onGoogleLogin={handleLogin}
+                onTestLogin={handleTestLogin}
+                googleLoading={loadingProvider === 'google'}
+                testLoading={loadingProvider === 'test'}
+              />
+            )}
           </section>
 
           <section className="space-y-6">
