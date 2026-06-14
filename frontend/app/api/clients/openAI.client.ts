@@ -849,8 +849,13 @@ function assemblePlanPointMarkdown(data: PlanPointContentResponse): string {
   const turn = (data.turn ?? "").trim();
   if (turn) lines.push("", `**→ ${turn}**`);
 
+  // refs now carry recognizable verse text (not bare references), so render each on
+  // its own line instead of joining with " · " — a long joined string is unreadable.
   const refs = (data.refs ?? []).map((r) => r.trim()).filter(Boolean);
-  if (refs.length) lines.push("", `*${refs.join(" · ")}*`);
+  if (refs.length) {
+    lines.push("");
+    refs.forEach((r) => lines.push(`*${r}*`));
+  }
 
   return lines.join("\n").trim();
 }
@@ -1045,7 +1050,7 @@ export async function generatePlanPointContent(
     };
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "plan_point_content",
-      promptVersion: "v9",
+      promptVersion: "v10",
       expectedLanguage: languageInfo.telemetryLanguage,
       systemPrompt,
       userMessage,

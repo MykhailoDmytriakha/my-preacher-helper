@@ -603,7 +603,7 @@ describe('openAI.client additional coverage', () => {
       expect.objectContaining({
         promptBlueprint: expect.objectContaining({
           promptName: 'plan_point_content',
-          promptVersion: 'v9',
+          promptVersion: 'v10',
         }),
       })
     );
@@ -628,7 +628,8 @@ describe('openAI.client additional coverage', () => {
     expect(result.content).toContain('- возомнил мастером');
     expect(result.content).toContain('- не едет');
     expect(result.content).toContain('**→ мастером -> лишняя деталь -> не едет**');
-    expect(result.content).toContain('*Ис. 66:2 · Флп. 2:9*');
+    expect(result.content).toContain('*Ис. 66:2*');
+    expect(result.content).toContain('*Флп. 2:9*');
   });
 
   it('renders sub-point groups as #### headings', async () => {

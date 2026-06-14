@@ -26,7 +26,7 @@ If you replace a living word with an abstraction, the cue fails — the preacher
   - Otherwise: exactly ONE group with heading = null.
 - cues: 2-5 short recall triggers per group, in the AUTHOR'S OWN words. Fragments, contrasts, arrows, punch lines, images — not explanatory sentences. Merge two thoughts that say the same move. Preserve explicit numbered sequences as ordered cues.
 - turn: the climax / pivot of the thought in the author's words (e.g. "возомнил мастером -> лишняя деталь -> не едет"). null if there is no real turn.
-- refs: compact Bible references (Притч. 3:5-6), (Ис. 66:2), (Евр. 11). Include the full verse text ONLY if the author quoted that exact text AND it is very key; otherwise just the reference. Do NOT invent references or verse text, and do NOT expand (Евр. 11) into (Евр. 11:1).
+- refs: EVERY reference MUST carry recognizable text — NEVER a bare reference. Each entry = the reference + at least 5-7 key words of that verse (a recognizable fragment), OR the whole verse if it is short or very key. Format: "Ис. 66:2: на смиренного и сокрушённого духом". Take the text from the author's thought when the author quoted it; otherwise supply the key words of that actual verse. The preacher scans 3-4 refs and must grasp what each is about WITHOUT opening a Bible. Do NOT invent NON-existent references; for a broad ref like (Евр. 11) give its theme in a few words rather than inventing a specific verse the author never cited.
 
 // 3. LANGUAGE & CONTENT
 - Produce all fields in the SAME LANGUAGE as the THOUGHTS.
@@ -48,5 +48,5 @@ EXAMPLE B — теологическая мысль о Христе как кр�
 anchor: "Краеугольный камень"
 groups: [{ heading: null, cues: ["Бог воплотился", "отвергли строители", "уничижил Себя Самого", "стройно возрастает в храм"] }]
 turn: "Бог превознёс Его -> имя выше всякого имени"
-refs: ["1 Пет. 2:7", "Флп. 2:6-9", "Еф. 2:20-22"]
+refs: ["1 Пет. 2:7: камень, который отвергли строители, сделался главою угла", "Флп. 2:8: смирил Себя, быв послушным до смерти крестной", "Еф. 2:20-22: на Христе краеугольном всё здание возрастает в храм"]
 `;
