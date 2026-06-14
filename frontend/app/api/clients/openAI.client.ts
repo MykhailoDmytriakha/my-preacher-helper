@@ -11,6 +11,7 @@ import {
 import {
   DirectionsResponseSchema,
   PlanPointContentResponseSchema,
+  type PlanPointContentResponse,
   PlanSectionResponseSchema,
   SortingResponseSchema,
 } from "@/config/schemas/zod";
@@ -826,6 +827,34 @@ function getStyleInstructions(style: PlanStyle): string {
   }
 }
 
+/**
+ * Deterministically assemble the v9 structured cue card into the markdown the UI
+ * already renders. The FORM lives here (always the same shape) — not in the model's
+ * free text — which is what kills the old form-drift and essay-mode rephrasing.
+ */
+function assemblePlanPointMarkdown(data: PlanPointContentResponse): string {
+  const lines: string[] = [];
+  const anchor = (data.anchor ?? "").trim();
+  if (anchor) lines.push(`### ${anchor}`);
+
+  for (const group of data.groups ?? []) {
+    const heading = (group.heading ?? "").trim();
+    if (heading) lines.push("", `#### ${heading}`);
+    for (const cue of group.cues ?? []) {
+      const c = cue.trim();
+      if (c) lines.push(`- ${c}`);
+    }
+  }
+
+  const turn = (data.turn ?? "").trim();
+  if (turn) lines.push("", `**→ ${turn}**`);
+
+  const refs = (data.refs ?? []).map((r) => r.trim()).filter(Boolean);
+  if (refs.length) lines.push("", `*${refs.join(" · ")}*`);
+
+  return lines.join("\n").trim();
+}
+
 function getStructuredBlocksInstructions(): string {
   return `STRUCTURED BLOCKS:
 You may include special content blocks if the THOUGHTS contain them. Format them exactly as follows on their own line:
@@ -1016,7 +1045,7 @@ export async function generatePlanPointContent(
     };
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "plan_point_content",
-      promptVersion: "v8",
+      promptVersion: "v9",
       expectedLanguage: languageInfo.telemetryLanguage,
       systemPrompt,
       userMessage,
@@ -1039,7 +1068,7 @@ export async function generatePlanPointContent(
       return { content: "", success: false };
     }
 
-    const content = result.data.content.trim();
+    const content = assemblePlanPointMarkdown(result.data);
 
     return { content, success: content.length > 0 };
   } catch (error) {

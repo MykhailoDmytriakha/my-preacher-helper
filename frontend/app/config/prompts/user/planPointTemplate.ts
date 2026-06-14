@@ -89,7 +89,7 @@ export function createPlanPointContentUserMessage(
         : [];
 
     const subPointsSection = sortedSubPoints.length > 0
-        ? `\n\nSUB-POINTS STRUCTURE (organize the content following this inner skeleton):\n${sortedSubPoints.map((sp, i) => `${i + 1}. ${sp.text}`).join('\n')}\n\nIMPORTANT: Structure your output with ### headings matching these sub-points. Thoughts tagged with a sub-point should appear under its heading. Thoughts without a sub-point tag must be folded into the most relevant sub-point heading or omitted if redundant — do NOT leave orphan content above the first ### heading, and do NOT introduce "Label:" pseudo-headings (plain paragraph ending with ":" that introduces a list); every grouping label must be a ### heading.`
+        ? `\n\nSUB-POINTS STRUCTURE (inner skeleton):\n${sortedSubPoints.map((sp, i) => `${i + 1}. ${sp.text}`).join('\n')}\n\nProduce ONE cue group per sub-point, with heading = that sub-point's text. Thoughts tagged to a sub-point go in its group; untagged thoughts fold into the most relevant group or are omitted if redundant.`
         : '';
 
     const semanticStructureSignals = sortedSubPoints.length === 0
@@ -101,19 +101,10 @@ export function createPlanPointContentUserMessage(
 ${thoughtsList}${fragmentsList}${subPointsSection}${semanticStructureSignals}
 
 --------------------------------
+Extract the cue card fields (anchor, groups[].cues, turn, refs) from the thoughts above.
+Use the AUTHOR'S OWN words as cues — do not rephrase them into abstractions.
 ${sortedSubPoints.length > 0
-        ? `STRICT: Produce a preacher cue sheet using ### headings for each sub-point.
-- Include a ### heading for each listed sub-point, even if no thoughts are directly tagged to it.
-- Keep content under each sub-point concise: short cue lines, bullets, or nested lists.
-- Do not create extra ### headings for ordinary details inside a sub-point.
-- All content must live under a ### heading. Never produce a plain "Label:" paragraph that introduces a list — that creates an inconsistent visual hierarchy next to real ### headings.`
-        : `STRICT: Produce a preacher cue sheet for this one outline point.
-- The outline point title is already visible in the UI; do not repeat it as a heading unless the source has a major named internal transition.
-- Do not create one ### heading per THOUGHT, detail, or rhetorical action.
-- Use short cue lines, bullets, and nested numbered lists so the preacher can glance and remember the route.
-- Preserve explicit numbered sequences as internal lists under the relevant cue.
-- Merge repeated moves; keep memorable source phrases, contrast pairs, arrows, and compact Bible references.
-- Quote verse text only when the source thought itself provided that exact text.`
-    }
+        ? 'Produce one group per sub-point (heading = that sub-point text).'
+        : 'Produce exactly one group with heading = null.'}
 `;
 }
