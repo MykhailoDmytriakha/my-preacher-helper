@@ -610,7 +610,7 @@ describe('Column Component', () => {
             }
           },
           {
-            name: 'disables point AI sort when the outline point contains pending thoughts',
+            name: 'allows point AI sort for two unlocked thoughts without a pending guard',
             run: () => {
               render(
                 <Column
@@ -622,7 +622,7 @@ describe('Column Component', () => {
                   onAiSortPoint={mockAiSortPoint}
                 />
               );
-              expect(screen.getByTestId('outline-point-ai-sort-point1')).toBeDisabled();
+              expect(screen.getByTestId('outline-point-ai-sort-point1')).toBeEnabled();
             }
           },
           // Temporarily skipped due to complex ExportButtons dependencies

@@ -22,23 +22,14 @@ jest.mock('@/hooks/useOnlineStatus', () => ({
 describe('useSermonActions', () => {
   let mockSetSermon: jest.Mock;
   let mockSetContainers: jest.Mock;
-  let mockPendingActions: any;
+  let mockRetryThoughtSave: jest.Mock;
   let defaultProps: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockSetSermon = jest.fn();
     mockSetContainers = jest.fn();
-
-    mockPendingActions = {
-      createPendingThought: jest.fn(),
-      updatePendingThought: jest.fn(),
-      markPendingStatus: jest.fn(),
-      removePendingThought: jest.fn(),
-      replacePendingThought: jest.fn(),
-      updateItemSyncStatus: jest.fn(),
-      getPendingById: jest.fn(),
-    };
+    mockRetryThoughtSave = jest.fn();
 
     defaultProps = {
       sermon: createMockSermon({ id: 'sermon-1' }),
@@ -49,7 +40,7 @@ describe('useSermonActions', () => {
       allowedTags: [{ name: 'test', color: '#000' }],
       debouncedSaveThought: jest.fn(),
       debouncedSaveStructure: jest.fn(),
-      pendingActions: mockPendingActions,
+      retryThoughtSave: mockRetryThoughtSave,
     };
   });
 
@@ -64,12 +55,12 @@ describe('useSermonActions', () => {
     expect(result.current.editingItem).toBeNull();
   });
 
-  // Empty cases test omitted for brevity initially but they were working. Let's include them.
   it('handleSaveEdit cancels creation if text is empty for a new temp thought', async () => {
     const { result } = renderHook(() => useSermonActions(defaultProps));
     act(() => { result.current.handleAddThoughtToSection('introduction'); });
     await act(async () => { await result.current.handleSaveEdit('', []); });
     expect(result.current.editingItem).toBeNull();
+    expect(thoughtService.createManualThought).not.toHaveBeenCalled();
   });
 
   it('handleSaveEdit deletes an existing thought if text is empty', async () => {
@@ -78,6 +69,7 @@ describe('useSermonActions', () => {
 
     defaultProps.sermon = createMockSermon({ id: 'sermon-1', thoughts: [existingThought] });
     defaultProps.containers.introduction = [existingItem];
+    defaultProps.containersRef = { current: { ...defaultProps.containers } };
 
     const { result } = renderHook(() => useSermonActions(defaultProps));
     act(() => { result.current.handleEdit(existingItem); });
@@ -86,8 +78,7 @@ describe('useSermonActions', () => {
     expect(thoughtService.deleteThought).toHaveBeenCalled();
   });
 
-  it('handleSaveEdit creates a new thought when saving temp item', async () => {
-    mockPendingActions.createPendingThought.mockReturnValue({ localId: 'local-123' });
+  it('handleSaveEdit creates a new thought optimistically when saving a temp item', async () => {
     (thoughtService.createManualThought as jest.Mock).mockResolvedValueOnce({
       id: 'server-123', text: 'new text', tags: [], date: new Date().toISOString()
     });
@@ -97,11 +88,17 @@ describe('useSermonActions', () => {
     act(() => { result.current.handleAddThoughtToSection('introduction'); });
     await act(async () => { await result.current.handleSaveEdit('new text', ['tag1']); });
 
-    expect(mockPendingActions.createPendingThought).toHaveBeenCalled();
-    expect(mockPendingActions.markPendingStatus).toHaveBeenCalledWith('local-123', 'sending', expect.any(Object));
-    expect(thoughtService.createManualThought).toHaveBeenCalled();
-    expect(mockPendingActions.replacePendingThought).toHaveBeenCalled();
+    // The thought is created with a client-minted id (not a "local-" placeholder).
+    expect(thoughtService.createManualThought).toHaveBeenCalledWith(
+      'sermon-1',
+      expect.objectContaining({ text: 'new text', tags: ['tag1'] }),
+    );
+    const createdArg = (thoughtService.createManualThought as jest.Mock).mock.calls[0][1];
+    expect(createdArg.id).not.toMatch(/^local-/);
+    // Optimistic cache + container writes happened.
     expect(mockSetSermon).toHaveBeenCalled();
+    expect(mockSetContainers).toHaveBeenCalled();
+    expect(result.current.editingItem).toBeNull();
   });
 
   it('preserves subPointId in the UI item when saving a new thought into a sub-point', async () => {
@@ -119,7 +116,6 @@ describe('useSermonActions', () => {
         conclusion: [],
       },
     });
-    mockPendingActions.createPendingThought.mockReturnValue({ localId: 'local-123' });
     (thoughtService.createManualThought as jest.Mock).mockResolvedValueOnce({
       id: 'server-123',
       text: 'new text',
@@ -143,14 +139,13 @@ describe('useSermonActions', () => {
         subPointId: 'sp-1',
       }),
     );
-    expect(mockPendingActions.replacePendingThought).toHaveBeenCalledWith(
-      'local-123',
-      expect.objectContaining({
-        id: 'server-123',
-        outlinePointId: 'op-1',
-        subPointId: 'sp-1',
-      }),
-    );
+
+    // The optimistic UI item added to the container carries the sub-point id.
+    const firstUpdater = mockSetContainers.mock.calls[0][0];
+    const nextContainers = firstUpdater({ introduction: [], main: [], conclusion: [], ambiguous: [] });
+    const addedItem = nextContainers.main.find((it: any) => it.subPointId === 'sp-1');
+    expect(addedItem).toBeTruthy();
+    expect(addedItem.outlinePointId).toBe('op-1');
   });
 
   it('handleSaveEdit updates an existing thought', async () => {
@@ -159,6 +154,7 @@ describe('useSermonActions', () => {
 
     defaultProps.sermon = createMockSermon({ id: 'sermon-1', thoughts: [existingThought] });
     defaultProps.containers.introduction = [existingItem];
+    defaultProps.containersRef = { current: { ...defaultProps.containers } };
 
     (thoughtService.updateThought as jest.Mock).mockResolvedValueOnce({ ...existingThought, text: 'New' });
 
@@ -171,24 +167,6 @@ describe('useSermonActions', () => {
     expect(mockSetSermon).toHaveBeenCalled();
     expect(mockSetContainers).toHaveBeenCalled();
     expect(result.current.editingItem).toBeNull();
-  });
-
-  it('handleSaveEdit updates a pending thought', async () => {
-    const localItem = createMockItem({ id: 'local-1' });
-    defaultProps.sermon = createMockSermon({ id: 'sermon-1', thoughts: [] });
-
-    mockPendingActions.getPendingById.mockReturnValue({ sectionId: 'main', text: 'Old', tags: [] });
-    (thoughtService.createManualThought as jest.Mock).mockResolvedValueOnce({
-      id: 'server-1', text: 'New', tags: []
-    });
-
-    const { result } = renderHook(() => useSermonActions(defaultProps));
-
-    act(() => { result.current.handleEdit(localItem); });
-    await act(async () => { await result.current.handleSaveEdit('New', []); });
-
-    expect(mockPendingActions.updatePendingThought).toHaveBeenCalledWith('local-1', expect.any(Object));
-    expect(thoughtService.createManualThought).toHaveBeenCalled();
   });
 
   it('handleMoveToAmbiguous moves item to ambiguous container', () => {
@@ -208,14 +186,11 @@ describe('useSermonActions', () => {
     expect(defaultProps.debouncedSaveStructure).toHaveBeenCalled();
   });
 
-  it('handleRetryPendingThought calls submitPendingThought', async () => {
-    mockPendingActions.getPendingById.mockReturnValue({ sectionId: 'conclusion', text: 'retry', tags: [] });
+  it('handleRetryPendingThought re-fires the debounced thought save', async () => {
     const { result } = renderHook(() => useSermonActions(defaultProps));
 
-    await act(async () => { await result.current.handleRetryPendingThought('local-2'); });
+    await act(async () => { await result.current.handleRetryPendingThought('t-2'); });
 
-    expect(mockPendingActions.getPendingById).toHaveBeenCalledWith('local-2');
-    expect(mockPendingActions.markPendingStatus).toHaveBeenCalledWith('local-2', 'sending', expect.any(Object));
-    expect(thoughtService.createManualThought).toHaveBeenCalled();
+    expect(mockRetryThoughtSave).toHaveBeenCalledWith('t-2');
   });
 });

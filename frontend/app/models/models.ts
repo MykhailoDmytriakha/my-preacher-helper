@@ -332,11 +332,6 @@ export interface ThoughtInStructure {
   subPointId?: string | null;
   position?: number;
   isLocked?: boolean;
-  syncStatus?: 'pending' | 'error' | 'success';
-  syncOperation?: 'create' | 'update' | 'delete';
-  syncExpiresAt?: string;
-  syncLastError?: string;
-  syncSuccessAt?: string;
 }
 
 export interface UserSettings {

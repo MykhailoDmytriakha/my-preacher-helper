@@ -6,7 +6,6 @@ import {
   getSectionBorderColor,
   getSectionHeaderBgStyle,
   isColumnSectionId,
-  isPendingItem,
   isPointAudioSection,
   mapColumnIdToSectionType,
   openPointEditor,
@@ -119,11 +118,5 @@ describe("column utils", () => {
     expect(mapColumnIdToSectionType("main")).toBe("mainPart");
     expect(mapColumnIdToSectionType("conclusion")).toBe("conclusion");
     expect(mapColumnIdToSectionType("ambiguous")).toBeNull();
-
-    expect(isPendingItem({ id: "local-thought-1", content: "", customTagNames: [] } as any)).toBe(true);
-    expect(
-      isPendingItem({ id: "server-1", content: "", customTagNames: [], syncStatus: "error" } as any)
-    ).toBe(true);
-    expect(isPendingItem({ id: "server-2", content: "", customTagNames: [] } as any)).toBe(false);
   });
 });

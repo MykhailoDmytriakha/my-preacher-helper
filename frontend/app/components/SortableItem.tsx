@@ -3,9 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS, type Transform } from "@dnd-kit/utilities";
 import {
-  ArrowPathIcon,
   ArrowTopRightOnSquareIcon,
-  CheckCircleIcon,
   LockClosedIcon,
   LockOpenIcon,
 } from "@heroicons/react/24/outline";
@@ -14,36 +12,25 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 
 import { Item } from "@/models/models";
-import { LOCAL_THOUGHT_PREFIX } from "@/utils/pendingThoughtsStore";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { EditIcon, TrashIcon } from "@components/Icons";
 
 import CardContent from "./CardContent";
 
 const ACTION_BUTTON_BASE_CLASS = "flex h-8 w-8 items-center justify-center rounded-full shadow-sm transition-colors";
-const ACTION_STATUS_BASE_CLASS = "flex h-8 w-8 items-center justify-center rounded-full";
 
 const hasVisibleRailActions = ({
   canToggleLock,
-  isPending,
-  showRetrySync,
-  isSuccess,
   canEdit,
   showMoveAction,
   showDeleteAction,
 }: {
   canToggleLock: boolean;
-  isPending: boolean;
-  showRetrySync: boolean;
-  isSuccess: boolean;
   canEdit: boolean;
   showMoveAction: boolean;
   showDeleteAction: boolean;
 }) => (
   canToggleLock ||
-  isPending ||
-  showRetrySync ||
-  isSuccess ||
   canEdit ||
   showMoveAction ||
   showDeleteAction
@@ -65,7 +52,6 @@ interface SortableItemProps {
   onRevert?: (itemId: string, containerId: string) => void;
   activeId?: string | null;
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
-  onRetrySync?: (itemId: string) => void;
   onToggleLock?: (itemId: string, isLocked: boolean) => void;
   disabled?: boolean;
   isLocked?: boolean;
@@ -115,31 +101,9 @@ export const getSectionIconClasses = (containerId: string) => {
   return "text-gray-600 dark:text-gray-300";
 };
 
-export const getSyncBorderClass = (isError: boolean, isPending: boolean, isSuccess: boolean) => {
-  if (isError) return "border-red-300 dark:border-red-600";
-  if (isPending) return "border-amber-300 dark:border-amber-500";
-  if (isSuccess) return "border-green-300 dark:border-green-600";
-  return "";
-};
-
-export const getSyncRingClass = (isError: boolean, isPending: boolean) => {
-  if (isError) return "ring-1 ring-red-300/60";
-  if (isPending) return "ring-1 ring-amber-300/60";
-  return "";
-};
-
-export const getRemainingTime = (syncExpiresAt: string | undefined, now: number) => {
-  if (!syncExpiresAt) return null;
-  const remainingMs = Math.max(0, new Date(syncExpiresAt).getTime() - now);
-  const remainingSeconds = Math.ceil(remainingMs / 1000);
-  return `${String(Math.floor(remainingSeconds / 60)).padStart(2, "0")}:${String(remainingSeconds % 60).padStart(2, "0")}`;
-};
-
 export const getCardClassName = ({
   isHighlighted,
   highlightType,
-  syncBorderClass,
-  syncRingClass,
   hoverShadowClass,
   isDeleting,
   isDragDisabled,
@@ -149,8 +113,6 @@ export const getCardClassName = ({
 }: {
   isHighlighted: boolean;
   highlightType: "assigned" | "moved";
-  syncBorderClass: string;
-  syncRingClass: string;
   hoverShadowClass: string;
   isDeleting: boolean;
   isDragDisabled: boolean;
@@ -168,13 +130,13 @@ export const getCardClassName = ({
       : "border-blue-400 shadow-blue-200"}`
     : `border ${isLocked
       ? "border-slate-300 dark:border-slate-700 shadow-sm"
-      : "border-gray-200 dark:border-gray-700 shadow-md"} ${syncBorderClass}`;
+      : "border-gray-200 dark:border-gray-700 shadow-md"}`;
 
   const dragStateClass = isDeleting ? "pointer-events-none" : "";
   const dragOpacityClass = isDragDisabled && !isLocked ? `opacity-75 ${cursorClass}` : cursorClass;
   const marginClass = isOverlay ? "" : "mb-6";
 
-  return `relative group min-h-[144px] rounded-lg p-5 ${surfaceClass} ${marginClass} ${highlightClass} ${hoverShadowClass} ${dragStateClass} ${dragOpacityClass} ${syncBorderClass} ${syncRingClass}`;
+  return `relative group min-h-[144px] rounded-lg p-5 ${surfaceClass} ${marginClass} ${highlightClass} ${hoverShadowClass} ${dragStateClass} ${dragOpacityClass}`;
 };
 
 export const HighlightBadge = ({
@@ -204,38 +166,12 @@ export const HighlightBadge = ({
   );
 };
 
-export const SyncMeta = ({
-  show,
-  isError,
-  remainingTime,
-  t,
-}: {
-  show: boolean;
-  isError: boolean;
-  remainingTime: string | null;
-  t: TranslateFn;
-}) => {
-  if (!show || !remainingTime) return null;
-  return (
-    <div className={`text-xs font-medium ${isError ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`}>
-      {isError
-        ? t("structure.localThoughtFailed", { time: remainingTime, defaultValue: `Not synced · ${remainingTime}` })
-        : t("structure.localThoughtPending", { time: remainingTime, defaultValue: `Saving locally · ${remainingTime}` })
-      }
-    </div>
-  );
-};
-
 export const SortableItemActions = ({
   item,
   containerId,
   isHighlighted,
   isDragging,
   isDeleting,
-  isPending,
-  isError,
-  isSuccess,
-  isLocal,
   canEdit,
   isLocked,
   mutationDisabled,
@@ -244,10 +180,8 @@ export const SortableItemActions = ({
   onDelete,
   onEdit,
   onMoveToAmbiguous,
-  onRetrySync,
   onToggleLock,
   sectionIconColorClasses,
-  successOpacityClass,
   t,
   isOverlay,
   className,
@@ -257,10 +191,6 @@ export const SortableItemActions = ({
   isHighlighted: boolean;
   isDragging: boolean;
   isDeleting: boolean;
-  isPending: boolean;
-  isError: boolean;
-  isSuccess: boolean;
-  isLocal: boolean;
   canEdit: boolean;
   isLocked: boolean;
   mutationDisabled: boolean;
@@ -269,10 +199,8 @@ export const SortableItemActions = ({
   onDelete?: (itemId: string, containerId: string) => void;
   onEdit?: (item: Item) => void;
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
-  onRetrySync?: (itemId: string) => void;
   onToggleLock?: (itemId: string, isLocked: boolean) => void;
   sectionIconColorClasses: string;
-  successOpacityClass: string;
   t: TranslateFn;
   isOverlay: boolean;
   className?: string;
@@ -283,14 +211,10 @@ export const SortableItemActions = ({
   const lockLabel = isLocked
     ? t("structure.unlockThought", { defaultValue: "Unlock thought" })
     : t("structure.lockThought", { defaultValue: "Lock thought" });
-  const showRetrySync = Boolean(isError && onRetrySync);
-  const showMoveAction = Boolean(onMoveToAmbiguous && containerId !== "ambiguous" && !isLocal && !isPending && !isError && !isSuccess && !mutationDisabled);
-  const showDeleteAction = Boolean(showDeleteIcon && onDelete && !isLocal && !isPending && !isError && !isSuccess && !mutationDisabled);
+  const showMoveAction = Boolean(onMoveToAmbiguous && containerId !== "ambiguous" && !mutationDisabled);
+  const showDeleteAction = Boolean(showDeleteIcon && onDelete && !mutationDisabled);
   const hasAnyVisibleAction = hasVisibleRailActions({
     canToggleLock,
-    isPending,
-    showRetrySync,
-    isSuccess,
     canEdit,
     showMoveAction,
     showDeleteAction,
@@ -328,32 +252,6 @@ export const SortableItemActions = ({
             <LockOpenIcon className={`h-5 w-5 ${sectionIconColorClasses}`} />
           )}
         </button>
-      )}
-
-      {isPending && (
-        <div className={`${ACTION_STATUS_BASE_CLASS} border border-amber-200 bg-amber-100 dark:border-amber-700 dark:bg-amber-900/40`}>
-          <ArrowPathIcon className="h-5 w-5 animate-spin text-amber-600 dark:text-amber-400" />
-        </div>
-      )}
-      {showRetrySync && (
-        <button
-          onPointerDown={stopEvent}
-          onMouseDown={stopEvent}
-          onClick={(event) => {
-            stopEvent(event);
-            onRetrySync?.(item.id);
-          }}
-          className={`focus:outline-none border border-red-200 bg-red-50 hover:bg-red-100 hover:shadow-md dark:border-red-700 dark:bg-red-900/40 dark:hover:bg-red-900/60 ${ACTION_BUTTON_BASE_CLASS}`}
-          title={t("structure.localThoughtRetry", { defaultValue: "Retry sync" })}
-          disabled={isOverlay}
-        >
-          <ArrowPathIcon className="h-5 w-5 text-red-600 dark:text-red-400" />
-        </button>
-      )}
-      {isSuccess && (
-        <div className={`${ACTION_STATUS_BASE_CLASS} border border-green-200 bg-green-100 transition-opacity dark:border-green-700 dark:bg-green-900/40 ${successOpacityClass}`}>
-          <CheckCircleIcon className="h-5 w-5 text-green-600 dark:text-green-400" />
-        </div>
       )}
 
       <div className={`flex flex-col items-center gap-1.5 transition-opacity ${hoverActionsClass}`}>
@@ -487,7 +385,6 @@ function SortableItemCard({
   onKeep,
   onRevert,
   onMoveToAmbiguous,
-  onRetrySync,
   onToggleLock,
   disabled = false,
   isLocked = false,
@@ -500,46 +397,23 @@ function SortableItemCard({
   transform,
   transition,
 }: SortableCardProps) {
-  const syncStatus = item.syncStatus;
-  const isPending = syncStatus === "pending";
-  const isError = syncStatus === "error";
-  const isSuccess = syncStatus === "success";
-  const isSyncDeleting = item.syncOperation === "delete" && isPending;
-  const isLocal = item.id.startsWith(LOCAL_THOUGHT_PREFIX);
-  const effectiveDeleting = isDeleting || isSyncDeleting;
+  const effectiveDeleting = isDeleting;
   const mutationDisabled = disabled || isLocked;
   const isDragDisabled = effectiveDeleting || mutationDisabled || isOverlay;
   const { t } = useTranslation();
-  const [now, setNow] = React.useState(Date.now());
-
-  React.useEffect(() => {
-    const needsTick = (item.syncExpiresAt && (isPending || isError)) || (item.syncSuccessAt && isSuccess);
-    if (!needsTick) return;
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, [isError, isPending, isSuccess, item.syncExpiresAt, item.syncSuccessAt]);
 
   const highlightStyles = getHighlightStyles(isHighlighted, highlightType);
   const hoverShadowClass = isDragDisabled ? "" : "hover:shadow-xl";
   const cursorClass = isDragDisabled ? "cursor-default" : "cursor-grab";
-  const syncBorderClass = getSyncBorderClass(isError, isPending, isSuccess);
-  const syncRingClass = getSyncRingClass(isError, isPending);
   const sectionIconColorClasses = getSectionIconClasses(containerId);
-  const remainingTime = getRemainingTime(item.syncExpiresAt, now);
-  const successFaded = Boolean(isSuccess && item.syncSuccessAt && (now - new Date(item.syncSuccessAt).getTime() > 1500));
-  const successOpacityClass = successFaded ? "opacity-50" : "opacity-100";
-  const showSyncMeta = Boolean(remainingTime && (isPending || isError));
-  const canEdit = Boolean(onEdit) && !isPending && !isSuccess && !mutationDisabled;
-  const canToggleLock = Boolean(onToggleLock) && !isLocal && !isPending && !isError && !isSuccess;
-  const showRetryAction = Boolean(isError && onRetrySync);
-  const showMoveAction = Boolean(onMoveToAmbiguous && containerId !== "ambiguous" && !isLocal && !isPending && !isError && !isSuccess && !mutationDisabled);
-  const showDeleteAction = Boolean(showDeleteIcon && onDelete && !isLocal && !isPending && !isError && !isSuccess && !mutationDisabled);
+  const canEdit = Boolean(onEdit) && !mutationDisabled;
+  const canToggleLock = Boolean(onToggleLock);
+  const showMoveAction = Boolean(onMoveToAmbiguous && containerId !== "ambiguous" && !mutationDisabled);
+  const showDeleteAction = Boolean(showDeleteIcon && onDelete && !mutationDisabled);
   const isSemanticallyDisabled = effectiveDeleting || disabled || isOverlay;
   const cardClassName = getCardClassName({
     isHighlighted,
     highlightType,
-    syncBorderClass,
-    syncRingClass,
     hoverShadowClass,
     isDeleting: effectiveDeleting,
     isDragDisabled,
@@ -568,22 +442,16 @@ function SortableItemCard({
       {...attributes}
       {...(isDragDisabled ? {} : (listeners as Record<string, unknown> | undefined))}
       aria-disabled={isSemanticallyDisabled || undefined}
-        className={cardClassName}
+      className={cardClassName}
     >
       <div className={`grid items-start gap-x-4 ${hasVisibleRailActions({
         canToggleLock,
-        isPending,
-        showRetrySync: showRetryAction,
-        isSuccess,
         canEdit,
         showMoveAction,
         showDeleteAction,
       }) ? "grid-cols-[minmax(0,1fr)_2.5rem]" : "grid-cols-1"}`}>
         <div className="min-w-0">
           <CardContent item={item} locationContext={locationContext} />
-          <div className="mt-2 flex min-h-[24px] flex-col justify-end gap-1">
-            <SyncMeta show={showSyncMeta} isError={isError} remainingTime={remainingTime} t={t} />
-          </div>
           <SortableItemReviewFooter
             item={item}
             containerId={containerId}
@@ -601,10 +469,6 @@ function SortableItemCard({
           isHighlighted={isHighlighted}
           isDragging={isDragging}
           isDeleting={effectiveDeleting}
-          isPending={isPending}
-          isError={isError}
-          isSuccess={isSuccess}
-          isLocal={isLocal}
           canEdit={canEdit}
           isLocked={isLocked}
           mutationDisabled={mutationDisabled}
@@ -613,10 +477,8 @@ function SortableItemCard({
           onDelete={onDelete}
           onEdit={onEdit}
           onMoveToAmbiguous={onMoveToAmbiguous}
-          onRetrySync={onRetrySync}
           onToggleLock={onToggleLock}
           sectionIconColorClasses={sectionIconColorClasses}
-          successOpacityClass={successOpacityClass}
           t={t}
           isOverlay={isOverlay}
           className="justify-self-end self-start"
@@ -644,7 +506,6 @@ export default function SortableItem({
   onRevert,
   activeId,
   onMoveToAmbiguous,
-  onRetrySync,
   onToggleLock,
   disabled = false,
   isLocked = false,
@@ -677,7 +538,6 @@ export default function SortableItem({
       onKeep={onKeep}
       onRevert={onRevert}
       onMoveToAmbiguous={onMoveToAmbiguous}
-      onRetrySync={onRetrySync}
       onToggleLock={onToggleLock}
       disabled={disabled}
       isLocked={isLocked}

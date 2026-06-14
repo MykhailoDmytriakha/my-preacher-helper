@@ -1,5 +1,6 @@
 import { ThoughtsBySection, Item, Sermon, SermonPoint } from "@/models/models";
-import { LOCAL_THOUGHT_PREFIX } from "@/utils/pendingThoughtsStore";
+
+const LOCAL_THOUGHT_PREFIX = "local-";
 
 /**
  * Check if structure has changed between two states

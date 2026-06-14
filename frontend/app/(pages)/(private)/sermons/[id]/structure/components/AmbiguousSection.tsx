@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next';
 
 import SortableItem from "@/components/SortableItem";
 import { Item } from "@/models/models";
-import { LOCAL_THOUGHT_PREFIX } from "@/utils/pendingThoughtsStore";
 
 interface DummyDropZoneProps {
   container: string;
@@ -126,7 +125,6 @@ export const AmbiguousSection: React.FC<AmbiguousSectionProps> = ({
                   {safeItems.map((item, index) => {
                     const itemId = typeof item.id === 'string' ? item.id : `ambiguous-${index}`;
                     const safeItem = item.id === itemId ? item : { ...item, id: itemId };
-                    const isPendingItem = itemId.startsWith(LOCAL_THOUGHT_PREFIX) || Boolean(item.syncStatus);
                     return (
                       <SortableItem
                         key={itemId}
@@ -137,7 +135,6 @@ export const AmbiguousSection: React.FC<AmbiguousSectionProps> = ({
                         onDelete={onDelete}
                         isDeleting={itemId === deletingItemId}
                         activeId={activeId}
-                        disabled={isPendingItem}
                       />
                     );
                   })}

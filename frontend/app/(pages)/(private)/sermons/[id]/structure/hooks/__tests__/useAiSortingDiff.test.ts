@@ -197,7 +197,6 @@ describe('useAiSortingDiff', () => {
         { disabledReason: 'offline', expectedToast: 'info' },
         { disabledReason: 'sorting', expectedToast: null },
         { disabledReason: 'review', expectedToast: 'info' },
-        { disabledReason: 'pending', expectedToast: 'info' },
         { disabledReason: 'tooMany', expectedToast: 'warning' },
         { disabledReason: 'insufficientUnlocked', expectedToast: 'info' },
       ];

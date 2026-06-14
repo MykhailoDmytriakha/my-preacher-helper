@@ -1,5 +1,4 @@
 import { Item } from "@/models/models";
-import { LOCAL_THOUGHT_PREFIX } from "@/utils/pendingThoughtsStore";
 
 export const MAX_AI_SORT_ITEMS = 25;
 
@@ -7,7 +6,6 @@ export type AiSortDisabledReason =
   | "offline"
   | "sorting"
   | "review"
-  | "pending"
   | "tooMany"
   | "insufficientUnlocked";
 
@@ -16,9 +14,6 @@ export type OutlinePointAiSortState = {
   totalCount: number;
   unlockedStableCount: number;
 };
-
-const isPendingAiSortItem = (item: Item) =>
-  item.id.startsWith(LOCAL_THOUGHT_PREFIX) || Boolean(item.syncStatus);
 
 export const getOutlinePointAiSortState = ({
   items,
@@ -35,9 +30,8 @@ export const getOutlinePointAiSortState = ({
 }): OutlinePointAiSortState => {
   const pointItems = items.filter((item) => item.outlinePointId === outlinePointId);
   const totalCount = pointItems.length;
-  const hasPendingItems = pointItems.some(isPendingAiSortItem);
   const unlockedStableCount = pointItems.filter(
-    (item) => !item.isLocked && !isPendingAiSortItem(item),
+    (item) => !item.isLocked,
   ).length;
 
   let disabledReason: AiSortDisabledReason | null = null;
@@ -48,8 +42,6 @@ export const getOutlinePointAiSortState = ({
     disabledReason = "sorting";
   } else if (isDiffModeActive) {
     disabledReason = "review";
-  } else if (hasPendingItems) {
-    disabledReason = "pending";
   } else if (totalCount > MAX_AI_SORT_ITEMS) {
     disabledReason = "tooMany";
   } else if (unlockedStableCount < 2) {

@@ -45,7 +45,6 @@ import {
   getPointLockToggleLabel,
   getSectionBorderColor,
   getSectionHeaderBgStyle,
-  isPendingItem,
   isPointAudioSection,
   openPointEditor,
 } from "./column/utils";
@@ -247,14 +246,13 @@ const SubPointAwareDropZone: React.FC<{
   onRevertItem?: (itemId: string, columnId: string) => void;
   activeId?: string | null;
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
-  onRetryPendingThought?: (itemId: string) => void;
   onToggleThoughtLock?: (thoughtId: string, isLocked: boolean) => Promise<void> | void;
   renderSubPointRecorder?: (subPoint: SubPoint) => React.ReactNode;
   t: Translate;
 }> = ({
   setNodeRef, isOver, pointItems, subPoints, containerId, outlinePointId, hasItems,
   onEdit, isHighlighted, getHighlightType, onKeepItem, onRevertItem, activeId, onMoveToAmbiguous,
-  onRetryPendingThought, onToggleThoughtLock, renderSubPointRecorder, t
+  onToggleThoughtLock, renderSubPointRecorder, t
 }) => {
   const hasSubPoints = subPoints.length > 0;
 
@@ -273,10 +271,8 @@ const SubPointAwareDropZone: React.FC<{
       onRevert={onRevertItem}
       activeId={activeId}
       onMoveToAmbiguous={onMoveToAmbiguous}
-      onRetrySync={onRetryPendingThought}
       onToggleLock={onToggleThoughtLock}
       isLocked={Boolean(item.isLocked)}
-      disabled={isPendingItem(item)}
     />
   );
 
@@ -371,7 +367,6 @@ const SermonPointPlaceholder: React.FC<{
   audioError?: string | null;
   setAudioError: (error: string | null) => void;
   onClearAudioError: () => void;
-  onRetryPendingThought?: (itemId: string) => void;
   onAiSortPoint?: (outlinePointId: string) => void;
   isOnline: boolean;
   isSorting?: boolean;
@@ -412,7 +407,6 @@ const SermonPointPlaceholder: React.FC<{
   audioError,
   setAudioError,
   onClearAudioError,
-  onRetryPendingThought,
   onAiSortPoint,
   isOnline,
   isSorting = false,
@@ -551,10 +545,6 @@ const SermonPointPlaceholder: React.FC<{
         case "review":
           return t("structure.aiSortPointDisabledReview", {
             defaultValue: "Review or revert current AI suggestions first.",
-          });
-        case "pending":
-          return t("structure.aiSortPointDisabledPending", {
-            defaultValue: "Finish syncing local thoughts in this outline point first.",
           });
         case "tooMany":
           return t("structure.aiSortPointDisabledTooMany", {
@@ -799,7 +789,6 @@ const SermonPointPlaceholder: React.FC<{
             onRevertItem={onRevertItem}
             activeId={activeId}
             onMoveToAmbiguous={onMoveToAmbiguous}
-            onRetryPendingThought={onRetryPendingThought}
             onToggleThoughtLock={onToggleThoughtLock}
             renderSubPointRecorder={renderSubPointRecorder}
             t={t}
@@ -821,7 +810,6 @@ const UnassignedThoughtsDropTarget: React.FC<{
   t: Translate;
   activeId?: string | null;
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
-  onRetryPendingThought?: (itemId: string) => void;
   onToggleThoughtLock?: (thoughtId: string, isLocked: boolean) => Promise<void> | void;
 }> = ({
   items,
@@ -834,7 +822,6 @@ const UnassignedThoughtsDropTarget: React.FC<{
   t,
   activeId,
   onMoveToAmbiguous,
-  onRetryPendingThought,
   onToggleThoughtLock,
 }) => {
     const { setNodeRef, isOver } = useDroppable({
@@ -867,10 +854,8 @@ const UnassignedThoughtsDropTarget: React.FC<{
                   onRevert={onRevertItem}
                   activeId={activeId}
                   onMoveToAmbiguous={onMoveToAmbiguous}
-                  onRetrySync={onRetryPendingThought}
                   onToggleLock={onToggleThoughtLock}
                   isLocked={Boolean(item.isLocked)}
-                  disabled={isPendingItem(item)}
                 />
               ))}
 
@@ -920,7 +905,6 @@ export default function Column({
   onToggleReviewed,
   onSwitchPage,
   onNavigateToSection,
-  onRetryPendingThought,
   planData,
   onOutlinePointDeleted,
   onSubPointDeleted,
@@ -1084,7 +1068,6 @@ export default function Column({
           t={t}
           activeId={activeId}
           onMoveToAmbiguous={onMoveToAmbiguous}
-          onRetryPendingThought={onRetryPendingThought}
           onToggleThoughtLock={onToggleThoughtLock}
         />
       </div>
@@ -1459,7 +1442,6 @@ export default function Column({
                     audioError={pointAudioErrors[point.id] ?? null}
                     setAudioError={(error) => setPointAudioError(point.id, error)}
                     onClearAudioError={() => setPointAudioError(point.id, null)}
-                    onRetryPendingThought={onRetryPendingThought}
                     onAiSortPoint={onAiSortPoint}
                     isOnline={isOnline}
                     isSorting={isLoading}
@@ -1495,10 +1477,8 @@ export default function Column({
                     onRevert={onRevertItem}
                     activeId={activeId}
                     onMoveToAmbiguous={onMoveToAmbiguous}
-                    onRetrySync={onRetryPendingThought}
                     onToggleLock={onToggleThoughtLock}
                     isLocked={Boolean(item.isLocked)}
-                    disabled={isPendingItem(item)}
                   />
                 ))}
               </div>
@@ -1854,7 +1834,6 @@ export default function Column({
                                 audioError={pointAudioErrors[point.id] ?? null}
                                 setAudioError={(error) => setPointAudioError(point.id, error)}
                                 onClearAudioError={() => setPointAudioError(point.id, null)}
-                                onRetryPendingThought={onRetryPendingThought}
                                 onAiSortPoint={onAiSortPoint}
                                 isOnline={isOnline}
                                 isSorting={isLoading}
@@ -1909,10 +1888,8 @@ export default function Column({
                   onRevert={onRevertItem}
                   activeId={activeId}
                   onMoveToAmbiguous={onMoveToAmbiguous}
-                  onRetrySync={onRetryPendingThought}
                   onToggleLock={onToggleThoughtLock}
                   isLocked={Boolean(item.isLocked)}
-                  disabled={isPendingItem(item)}
                 />
               ))}
             </div>

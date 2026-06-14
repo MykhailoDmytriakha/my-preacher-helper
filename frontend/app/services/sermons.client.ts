@@ -35,9 +35,8 @@ export const USE_CLIENT_SERMONS = process.env.NEXT_PUBLIC_USE_CLIENT_SERMONS ===
 
 const SERMONS_COLLECTION = 'sermons';
 const SERMON_NOT_FOUND = 'Sermon not found';
-// Prefix the structure/sermon-page optimistic layers put on a not-yet-saved
-// thought id (see pendingThoughtsStore LOCAL_THOUGHT_PREFIX + useOptimisticEntitySync).
-// We strip it when persisting so the saved thought reads as real, not pending.
+// Prefix historically used for not-yet-saved local thought ids. Keep stripping
+// it as a defensive migration backstop so saved thoughts read as real ids.
 const LOCAL_OPTIMISTIC_ID_PREFIX = 'local-';
 
 // Firestore's updateDoc payload type: any field may hold a value or a FieldValue

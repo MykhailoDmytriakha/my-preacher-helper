@@ -59,7 +59,6 @@ export interface ColumnProps {
   onToggleReviewed?: (outlinePointId: string, isReviewed: boolean) => Promise<void> | void;
   onSwitchPage?: (sectionId?: string) => void;
   onNavigateToSection?: (sectionId: ColumnSectionId) => void;
-  onRetryPendingThought?: (itemId: string) => void;
   planData?: PlanData;
 }
 

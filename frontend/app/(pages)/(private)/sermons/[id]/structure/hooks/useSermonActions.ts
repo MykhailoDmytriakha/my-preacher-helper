@@ -2,20 +2,18 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { Sermon, Item, Thought, ThoughtsBySection } from "@/models/models";
 import { updateStructure } from "@/services/structure.service";
 import { updateThought, deleteThought, createManualThought } from "@/services/thought.service";
+import { newClientId } from "@/utils/clientId";
 import { debugLog } from "@/utils/debugMode";
-import { insertThoughtIdInStructure, resolveSectionFromOutline } from "@/utils/thoughtOrdering";
+import { insertThoughtIdInStructure, replaceThoughtIdInStructure, resolveSectionFromOutline } from "@/utils/thoughtOrdering";
 
-import { buildStructureFromContainers, buildItemForUI, findOutlinePoint, isLocalThoughtId } from "../utils/structure";
-
-import type { PendingThoughtInput } from "./usePendingThoughts";
+import { buildStructureFromContainers, buildItemForUI, findOutlinePoint } from "../utils/structure";
 
 const FAILED_TO_ADD_THOUGHT_KEY = 'errors.failedToAddThought';
-const SYNC_TTL_MS = 30 * 60 * 1000;
-const SYNC_SUCCESS_MS = 3500;
+
+type StructureSection = 'introduction' | 'main' | 'conclusion';
 
 interface UseSermonActionsProps {
     sermon: Sermon | null;
@@ -27,16 +25,14 @@ interface UseSermonActionsProps {
     debouncedSaveThought: (sermonId: string, thought: Thought) => void;
     debouncedSaveStructure: (sermonId: string, structure: ThoughtsBySection) => void;
     retryThoughtSave?: (thoughtId: string) => Promise<void>;
-    pendingActions: {
-        createPendingThought: (input: PendingThoughtInput) => { localId: string } | null;
-        updatePendingThought: (localId: string, input: Partial<PendingThoughtInput>) => void;
-        markPendingStatus: (localId: string, status: 'pending' | 'error' | 'sending', options?: { error?: string; resetExpiry?: boolean }) => void;
-        removePendingThought: (localId: string, options?: { removeFromContainers?: boolean }) => void;
-        replacePendingThought: (localId: string, newItem: Item) => void;
-        updateItemSyncStatus: (itemId: string, status?: 'pending' | 'error' | 'success', meta?: { expiresAt?: string; lastError?: string; successAt?: string; operation?: 'create' | 'update' | 'delete' }) => void;
-        getPendingById: (localId: string) => { sectionId: 'introduction' | 'main' | 'conclusion'; text: string; tags: string[]; outlinePointId?: string | null; subPointId?: string | null } | undefined;
-    };
 }
+
+const structureFromContainers = (containers: Record<string, Item[]>): ThoughtsBySection => ({
+    introduction: (containers.introduction || []).map((it) => it.id),
+    main: (containers.main || []).map((it) => it.id),
+    conclusion: (containers.conclusion || []).map((it) => it.id),
+    ambiguous: (containers.ambiguous || []).map((it) => it.id),
+});
 
 export function useSermonActions({
     sermon,
@@ -48,14 +44,11 @@ export function useSermonActions({
     debouncedSaveThought,
     debouncedSaveStructure,
     retryThoughtSave,
-    pendingActions,
 }: UseSermonActionsProps) {
     const { t } = useTranslation();
-    const isOnline = useOnlineStatus();
     const [editingItem, setEditingItem] = useState<Item | null>(null);
     const [addingThoughtToSection, setAddingThoughtToSection] = useState<string | null>(null);
     const sermonRef = useRef(sermon);
-    const retryThoughtActionsRef = useRef<Record<string, () => Promise<void>>>({});
     const latestThoughtDraftsRef = useRef<Record<string, Thought>>({});
     const thoughtUpdateVersionRef = useRef<Record<string, number>>({});
 
@@ -64,20 +57,9 @@ export function useSermonActions({
     }, [sermon]);
 
     useEffect(() => {
-        retryThoughtActionsRef.current = {};
         latestThoughtDraftsRef.current = {};
         thoughtUpdateVersionRef.current = {};
     }, [sermon?.id]);
-
-    const buildSyncExpiresAt = useCallback(() => {
-        return new Date(Date.now() + SYNC_TTL_MS).toISOString();
-    }, []);
-
-    const scheduleSyncClear = useCallback((itemId: string) => {
-        window.setTimeout(() => {
-            pendingActions.updateItemSyncStatus(itemId);
-        }, SYNC_SUCCESS_MS);
-    }, [pendingActions]);
 
     const updateItemInContainers = useCallback((itemId: string, updater: (item: Item) => Item) => {
         setContainers((prev) => {
@@ -125,181 +107,179 @@ export function useSermonActions({
         setAddingThoughtToSection(sectionId);
     }, []);
 
-    const submitPendingThought = useCallback(async (payload: {
-        localId: string;
-        sectionId: 'introduction' | 'main' | 'conclusion';
-        text: string;
-        tags: string[];
-        outlinePointId?: string | null;
-        subPointId?: string | null;
-    }) => {
-        if (!sermon) return;
-        const { localId, sectionId, text, tags, outlinePointId, subPointId } = payload;
-
-        const outlineSection = resolveSectionFromOutline(sermon, outlinePointId ?? null);
-        const finalOutlinePointId = outlineSection && outlineSection !== sectionId ? undefined : outlinePointId;
-
-        debugLog('Structure: submit pending thought', { localId, sectionId, textLength: text.length, tags, outlinePointId });
-        pendingActions.markPendingStatus(localId, 'sending', { resetExpiry: true });
-
-        if (isOnline === false) {
-            pendingActions.markPendingStatus(localId, 'error', {
-                error: t('manualThought.offlineWarning', { defaultValue: 'You are currently offline.' })
-            });
-            return;
-        }
-
-        try {
-            const addedThought = await createManualThought(sermon.id, {
-                id: localId,
-                text,
-                tags,
-                outlinePointId: finalOutlinePointId,
-                subPointId: subPointId ?? undefined,
-                date: new Date().toISOString(),
-            });
-            const finalSavedSubPointId = finalOutlinePointId
-                ? (addedThought.subPointId ?? subPointId ?? null)
-                : null;
-            debugLog('Structure: createManualThought result', {
-                id: addedThought.id,
-                tags: addedThought.tags,
-                outlinePointId: addedThought.outlinePointId,
-                subPointId: finalSavedSubPointId,
-            });
-
-            const outlinePoint = findOutlinePoint(finalOutlinePointId, sermon);
-            const newItem = buildItemForUI({
-                id: addedThought.id,
-                text,
-                tags,
-                allowedTags,
-                outlinePointId: finalOutlinePointId,
-                subPointId: finalSavedSubPointId,
-                outlinePoint,
-            });
-
-            const successAt = new Date().toISOString();
-            pendingActions.replacePendingThought(localId, {
-                ...newItem,
-                syncStatus: 'success',
-                syncSuccessAt: successAt,
-            });
-            pendingActions.removePendingThought(localId, { removeFromContainers: false });
-
-            // Prepare updated structure immediately to avoid race conditions with containersRef
-            const currentStructure = buildStructureFromContainers(containersRef.current);
-            const thoughtsById = new Map(
-                [...sermon.thoughts, addedThought].map((thought) => [thought.id, thought])
-            );
-            const updatedStructure = insertThoughtIdInStructure({
-                structure: currentStructure,
-                section: sectionId,
-                thoughtId: addedThought.id,
-                outlinePointId: finalOutlinePointId,
-                thoughtsById,
-                thoughts: [...sermon.thoughts, addedThought],
-                outline: sermon.outline,
-            });
-
-            setSermon((prev) => {
-                if (!prev) return null;
-                return {
-                    ...prev,
-                    thoughts: [...prev.thoughts, addedThought],
-                    structure: updatedStructure,
-                    thoughtsBySection: updatedStructure,
-                };
-            });
-
-            try {
-                await updateStructure(sermon.id, updatedStructure);
-            } catch (structureError) {
-                console.error("Error updating structure after add:", structureError);
-                toast.error(t('errors.failedToSaveStructure'));
-            }
-
-            pendingActions.updateItemSyncStatus(addedThought.id, 'success', { successAt });
-            setTimeout(() => {
-                pendingActions.updateItemSyncStatus(addedThought.id);
-            }, 3500);
-        } catch (error) {
-            console.error("Error adding thought:", error);
-            pendingActions.markPendingStatus(localId, 'error', { error: t(FAILED_TO_ADD_THOUGHT_KEY) });
-            toast.error(t(FAILED_TO_ADD_THOUGHT_KEY));
-        }
-    }, [allowedTags, containersRef, isOnline, pendingActions, sermon, setSermon, t]);
-
-    const handleCreateNewThought = async (
+    // CREATE — optimistic + idempotent by client id (mirrors useGroups/usePrayer):
+    // the thought id is minted up front (newClientId) so the container Item, the
+    // sermon.thoughts entry, the structure id and the persisted doc all share ONE
+    // stable id. No "local-" placeholder ever reaches the structure, so the
+    // structure can never reference a non-existent thought (#13). The client-SDK
+    // write lands in the native Firestore offline queue; on a real failure we roll
+    // containers + sermon back and surface a toast.
+    const handleCreateNewThought = useCallback(async (
         updatedText: string,
         updatedTags: string[],
         outlinePointId: string | null | undefined,
         subPointId?: string | null,
     ) => {
-        if (!sermon) return;
+        const currentSermon = sermonRef.current;
+        if (!currentSermon) return;
         const section = addingThoughtToSection;
-
-        debugLog('Structure: handleCreateNewThought', {
-            section,
-            textLength: updatedText.length,
-            tags: updatedTags,
-            outlinePointId,
-            subPointId,
-        });
         if (!section || !['introduction', 'main', 'conclusion'].includes(section)) {
             debugLog('Structure: handleCreateNewThought aborted - invalid section', { section });
             return;
         }
+        const sectionId = section as StructureSection;
 
-        try {
-            const pending = pendingActions.createPendingThought({
-                sectionId: section as 'introduction' | 'main' | 'conclusion',
-                text: updatedText,
-                tags: updatedTags,
-                outlinePointId,
-                subPointId: subPointId ?? null,
-            });
-            if (pending) {
-                await submitPendingThought({
-                    localId: pending.localId,
-                    sectionId: section as 'introduction' | 'main' | 'conclusion',
-                    text: updatedText,
-                    tags: updatedTags,
-                    outlinePointId,
-                    subPointId: subPointId ?? null,
+        const outlineSection = resolveSectionFromOutline(currentSermon, outlinePointId ?? null);
+        const finalOutlinePointId = outlineSection && outlineSection !== sectionId ? undefined : (outlinePointId ?? undefined);
+        const finalSubPointId = finalOutlinePointId ? (subPointId ?? null) : null;
+
+        const newId = newClientId();
+        const newThought: Thought = {
+            id: newId,
+            text: updatedText,
+            tags: updatedTags,
+            outlinePointId: finalOutlinePointId,
+            subPointId: finalSubPointId ?? undefined,
+            date: new Date().toISOString(),
+        };
+
+        // Snapshots for rollback
+        const prevContainers = containersRef.current;
+        const prevSermon = sermonRef.current;
+
+        const outlinePoint = findOutlinePoint(finalOutlinePointId, currentSermon);
+        const newItem = buildItemForUI({
+            id: newId,
+            text: updatedText,
+            tags: updatedTags,
+            allowedTags,
+            outlinePointId: finalOutlinePointId,
+            subPointId: finalSubPointId,
+            outlinePoint,
+        });
+
+        // Optimistic: append the real item to its section, grouped after the last
+        // item that shares its outline point (matches prior pending-insert order).
+        setContainers((prev) => {
+            const next = { ...prev };
+            const items = next[sectionId] ? [...next[sectionId]] : [];
+            let insertAt = items.length;
+            if (finalOutlinePointId) {
+                let lastIndex = -1;
+                items.forEach((existing, index) => {
+                    if (existing.outlinePointId === finalOutlinePointId) lastIndex = index;
                 });
+                if (lastIndex !== -1) insertAt = lastIndex + 1;
             }
-        } catch (error) {
-            console.error("Error adding thought:", error);
-            toast.error(t(FAILED_TO_ADD_THOUGHT_KEY));
-        } finally {
-            handleCloseEdit();
-        }
-    };
+            items.splice(insertAt, 0, newItem);
+            next[sectionId] = items;
+            containersRef.current = next;
+            return next;
+        });
 
-    const handleUpdateExistingThought = async (
+        const optimisticStructure = insertThoughtIdInStructure({
+            structure: buildStructureFromContainers(containersRef.current),
+            section: sectionId,
+            thoughtId: newId,
+            outlinePointId: finalOutlinePointId,
+            thoughtsById: new Map([...currentSermon.thoughts, newThought].map((th) => [th.id, th])),
+            thoughts: [...currentSermon.thoughts, newThought],
+            outline: currentSermon.outline,
+        });
+
+        setSermon((prev) => prev ? {
+            ...prev,
+            thoughts: [...prev.thoughts, newThought],
+            structure: optimisticStructure,
+            thoughtsBySection: optimisticStructure,
+        } : null);
+
+        // Close the editor immediately — the card is already on screen. The write
+        // is fired-and-forgotten so the modal never blocks on the network; offline
+        // it parks in the native Firestore queue.
+        handleCloseEdit();
+
+        void (async () => {
+            try {
+                const addedThought = await createManualThought(currentSermon.id, newThought);
+
+                // The client SDK echoes the id (no-op). A server fallback that mints a
+                // different id is reconciled here: swap temp->real in the container item,
+                // sermon.thoughts AND the cached structure so it never references a
+                // non-existent id (#13). The persisted structure is rebuilt from the
+                // post-swap containers below, so the DB is always consistent too.
+                if (addedThought.id !== newId) {
+                    updateItemInContainers(newId, (item) => ({ ...item, id: addedThought.id }));
+                    setSermon((prev) => {
+                        if (!prev) return null;
+                        const nextStructure = replaceThoughtIdInStructure({
+                            structure: prev.structure,
+                            fromThoughtId: newId,
+                            toThoughtId: addedThought.id,
+                        });
+                        return {
+                            ...prev,
+                            thoughts: prev.thoughts.map((th) => th.id === newId ? addedThought : th),
+                            structure: nextStructure,
+                            thoughtsBySection: nextStructure,
+                        };
+                    });
+                } else {
+                    setSermon((prev) => prev ? {
+                        ...prev,
+                        thoughts: prev.thoughts.map((th) => th.id === newId ? addedThought : th),
+                    } : null);
+                }
+
+                const persistStructure = buildStructureFromContainers(containersRef.current);
+                try {
+                    await updateStructure(currentSermon.id, persistStructure);
+                } catch (structureError) {
+                    console.error("Error updating structure after add:", structureError);
+                    toast.error(t('errors.failedToSaveStructure'));
+                }
+            } catch (error) {
+                console.error("Error adding thought:", error);
+                // Roll back the optimistic container + sermon writes.
+                setContainers(prevContainers);
+                containersRef.current = prevContainers;
+                setSermon(() => prevSermon);
+                toast.error(t(FAILED_TO_ADD_THOUGHT_KEY));
+            }
+        })();
+    }, [addingThoughtToSection, allowedTags, containersRef, handleCloseEdit, setContainers, setSermon, t, updateItemInContainers]);
+
+    // UPDATE — optimistic + version-guarded (a newer edit must win over an older
+    // in-flight save). Rolls the cache back + toasts on a real failure.
+    const handleUpdateExistingThought = useCallback(async (
         updatedText: string,
         updatedTags: string[],
         outlinePointId: string | null | undefined,
         subPointId?: string | null,
     ) => {
-        if (!sermon || !editingItem) return;
-        if (isLocalThoughtId(editingItem.id)) return;
+        const currentSermon = sermonRef.current;
+        if (!currentSermon || !editingItem) return;
+
+        const existingThought = currentSermon.thoughts.find((thought) => thought.id === editingItem.id);
+        if (!existingThought) return;
 
         const outlineChanged = outlinePointId !== (editingItem.outlinePointId ?? null);
         const updatedItem: Thought = {
-            ...sermon.thoughts.find((thought) => thought.id === editingItem.id)!,
+            ...existingThought,
             text: updatedText,
             tags: [...(editingItem.requiredTags || []), ...updatedTags],
             outlinePointId,
             subPointId: subPointId !== undefined ? subPointId : (outlineChanged ? null : editingItem.subPointId ?? null),
         };
-        const syncExpiresAt = buildSyncExpiresAt();
-        const outlinePoint = findOutlinePoint(outlinePointId, sermon);
+        const outlinePoint = findOutlinePoint(outlinePointId, currentSermon);
         const nextVersion = (thoughtUpdateVersionRef.current[updatedItem.id] ?? 0) + 1;
 
         latestThoughtDraftsRef.current[updatedItem.id] = updatedItem;
         thoughtUpdateVersionRef.current[updatedItem.id] = nextVersion;
+
+        // Snapshots for a faithful rollback (restores ALL container fields —
+        // content, tags, outline — not just a subset).
+        const prevContainers = containersRef.current;
 
         setSermon((prev) => prev ? {
             ...prev,
@@ -318,29 +298,16 @@ export function useSermonActions({
             outlinePointId,
             outlinePoint,
             subPointId: updatedItem.subPointId,
-            syncStatus: 'pending',
-            syncOperation: 'update',
-            syncExpiresAt,
-            syncLastError: undefined,
         }));
 
-        const executeUpdate = async (thoughtId: string, requestVersion: number) => {
-            const currentSermon = sermonRef.current;
-            const latestThought = latestThoughtDraftsRef.current[thoughtId];
-            if (!currentSermon || !latestThought) return;
-
-            pendingActions.updateItemSyncStatus(thoughtId, 'pending', {
-                expiresAt: buildSyncExpiresAt(),
-                operation: 'update',
-            });
-
+        // Fire-and-forget so the edit modal closes without waiting on the network.
+        void (async () => {
             try {
-                const updatedThought = await updateThought(currentSermon.id, latestThought);
-                if (thoughtUpdateVersionRef.current[thoughtId] !== requestVersion) {
+                const updatedThought = await updateThought(currentSermon.id, updatedItem);
+                if (thoughtUpdateVersionRef.current[updatedItem.id] !== nextVersion) {
                     return;
                 }
 
-                const successAt = new Date().toISOString();
                 const latestOutlinePoint = findOutlinePoint(
                     updatedThought.outlinePointId ?? undefined,
                     sermonRef.current ?? currentSermon
@@ -366,116 +333,95 @@ export function useSermonActions({
                     outlinePoint: latestOutlinePoint,
                     subPointId: updatedThought.subPointId ?? null,
                 }));
-                pendingActions.updateItemSyncStatus(updatedThought.id, 'success', {
-                    successAt,
-                    operation: 'update',
-                });
 
-                delete retryThoughtActionsRef.current[thoughtId];
-                delete latestThoughtDraftsRef.current[thoughtId];
-                delete thoughtUpdateVersionRef.current[thoughtId];
-                scheduleSyncClear(thoughtId);
+                delete latestThoughtDraftsRef.current[updatedItem.id];
+                delete thoughtUpdateVersionRef.current[updatedItem.id];
             } catch (error) {
-                if (thoughtUpdateVersionRef.current[thoughtId] !== requestVersion) {
+                if (thoughtUpdateVersionRef.current[updatedItem.id] !== nextVersion) {
                     return;
                 }
                 console.error("Error updating thought:", error);
-                pendingActions.updateItemSyncStatus(thoughtId, 'error', {
-                    expiresAt: buildSyncExpiresAt(),
-                    lastError: t('errors.failedToSaveThought'),
-                    operation: 'update',
-                });
-            }
-        };
-
-        retryThoughtActionsRef.current[updatedItem.id] = async () => {
-            const latestVersion = thoughtUpdateVersionRef.current[updatedItem.id];
-            if (!latestVersion) return;
-            await executeUpdate(updatedItem.id, latestVersion);
-        };
-        void executeUpdate(updatedItem.id, nextVersion);
-    };
-
-    const handleDeleteThought = useCallback(async (thoughtId: string) => {
-        if (!sermonRef.current) return;
-
-        pendingActions.updateItemSyncStatus(thoughtId, 'pending', {
-            expiresAt: buildSyncExpiresAt(),
-            operation: 'delete',
-        });
-
-        const executeDelete = async () => {
-            const currentSermon = sermonRef.current;
-            const thoughtToDelete = currentSermon?.thoughts.find((thought) => thought.id === thoughtId);
-            if (!currentSermon || !thoughtToDelete) return;
-
-            try {
-                await deleteThought(currentSermon.id, thoughtToDelete);
-
-                const newContainers = Object.keys(containersRef.current).reduce((acc, key) => {
-                    acc[key] = (containersRef.current[key] || []).filter((item) => item.id !== thoughtId);
-                    return acc;
-                }, {} as Record<string, Item[]>);
-
-                const newStructure: ThoughtsBySection = {
-                    introduction: (newContainers.introduction || []).map((it) => it.id),
-                    main: (newContainers.main || []).map((it) => it.id),
-                    conclusion: (newContainers.conclusion || []).map((it) => it.id),
-                    ambiguous: (newContainers.ambiguous || []).map((it) => it.id),
-                };
-
-                setContainers(newContainers);
-                containersRef.current = newContainers;
+                // Roll the thought back to its pre-edit value in cache + restore the
+                // full pre-edit container snapshot (tags/outline included).
                 setSermon((prev) => prev ? {
                     ...prev,
-                    thoughts: prev.thoughts.filter((thought) => thought.id !== thoughtId),
-                    structure: newStructure,
-                    thoughtsBySection: newStructure,
+                    thoughts: prev.thoughts.map((thought) =>
+                        thought.id === existingThought.id ? existingThought : thought
+                    ),
                 } : null);
+                setContainers(prevContainers);
+                containersRef.current = prevContainers;
+                toast.error(t('errors.failedToSaveThought'));
+            }
+        })();
+    }, [allowedTags, containersRef, editingItem, setContainers, setSermon, t, updateItemInContainers]);
 
-                await updateStructure(currentSermon.id, newStructure);
+    const handleDeleteThought = useCallback(async (thoughtId: string) => {
+        const currentSermon = sermonRef.current;
+        const thoughtToDelete = currentSermon?.thoughts.find((thought) => thought.id === thoughtId);
+        if (!currentSermon || !thoughtToDelete) return;
 
-                delete retryThoughtActionsRef.current[thoughtId];
+        // Snapshots for rollback
+        const prevContainers = containersRef.current;
+        const prevSermon = sermonRef.current;
+
+        const newContainers = Object.keys(containersRef.current).reduce((acc, key) => {
+            acc[key] = (containersRef.current[key] || []).filter((item) => item.id !== thoughtId);
+            return acc;
+        }, {} as Record<string, Item[]>);
+        const newStructure = structureFromContainers(newContainers);
+
+        // Optimistic delete.
+        setContainers(newContainers);
+        containersRef.current = newContainers;
+        setSermon((prev) => prev ? {
+            ...prev,
+            thoughts: prev.thoughts.filter((thought) => thought.id !== thoughtId),
+            structure: newStructure,
+            thoughtsBySection: newStructure,
+        } : null);
+
+        // Fire-and-forget so the card disappears immediately without blocking on
+        // the network.
+        void (async () => {
+            try {
+                await deleteThought(currentSermon.id, thoughtToDelete);
+                // Persist the structure rebuilt from the CURRENT containers (post-await),
+                // so a DnD reorder made while the delete was in flight is preserved
+                // instead of being overwritten by the older pre-await snapshot.
+                const persistStructure = structureFromContainers(containersRef.current);
+                await updateStructure(currentSermon.id, persistStructure);
                 toast.success(t('structure.thoughtDeletedSuccess') || "Thought deleted successfully.");
             } catch (error) {
-                console.error("Error deleting empty thought:", error);
-                pendingActions.updateItemSyncStatus(thoughtId, 'error', {
-                    expiresAt: buildSyncExpiresAt(),
-                    lastError: t('errors.deletingError') || "Failed to delete thought.",
-                    operation: 'delete',
-                });
+                console.error("Error deleting thought:", error);
+                setContainers(prevContainers);
+                containersRef.current = prevContainers;
+                setSermon(() => prevSermon);
                 toast.error(t('errors.deletingError') || "Failed to delete thought.");
             }
-        };
+        })();
+    }, [containersRef, setContainers, setSermon, t]);
 
-        retryThoughtActionsRef.current[thoughtId] = executeDelete;
-        void executeDelete();
-    }, [buildSyncExpiresAt, containersRef, pendingActions, setContainers, setSermon, t]);
-
-    const handleSaveEdit = async (updatedText: string, updatedTags: string[], outlinePointId?: string | null, subPointId?: string | null) => {
-        if (!sermon) return;
+    const handleSaveEdit = useCallback(async (updatedText: string, updatedTags: string[], outlinePointId?: string | null, subPointId?: string | null) => {
+        if (!sermonRef.current) return;
 
         const trimmedText = updatedText.trim();
 
-        // TRIZ+IFR: Empty text means "Cancel" for new thoughts and "Delete" for existing ones
+        // TRIZ+IFR: Empty text means "Cancel" for new thoughts and "Delete" for existing ones.
         if (!trimmedText) {
             debugLog('Structure: empty text in handleSaveEdit - interpreting as cancel/delete', {
                 editingId: editingItem?.id,
                 isTemp: Boolean(editingItem?.id?.startsWith('temp-')),
             });
 
-            if (!editingItem || editingItem.id.startsWith('temp-') || isLocalThoughtId(editingItem.id)) {
-                // New thought or unsynced pending thought -> Just cancel
-                if (editingItem && isLocalThoughtId(editingItem.id)) {
-                    pendingActions.removePendingThought(editingItem.id, { removeFromContainers: true });
-                }
+            if (!editingItem || editingItem.id.startsWith('temp-')) {
+                // New, never-persisted thought -> just cancel.
                 handleCloseEdit();
                 return;
             }
 
-            // Existing thought -> Delete
-            const thoughtId = editingItem.id;
-            await handleDeleteThought(thoughtId);
+            // Existing thought -> Delete.
+            await handleDeleteThought(editingItem.id);
             handleCloseEdit();
             return;
         }
@@ -483,7 +429,6 @@ export function useSermonActions({
         debugLog('Structure: handleSaveEdit', {
             editingId: editingItem?.id,
             isTemp: Boolean(editingItem?.id?.startsWith('temp-')),
-            isLocal: Boolean(editingItem && isLocalThoughtId(editingItem.id)),
             section: addingThoughtToSection,
             textLength: trimmedText.length,
             tags: updatedTags,
@@ -492,55 +437,20 @@ export function useSermonActions({
 
         if (editingItem?.id.startsWith('temp-')) {
             await handleCreateNewThought(trimmedText, updatedTags, outlinePointId, subPointId);
-        } else if (editingItem && isLocalThoughtId(editingItem.id)) {
-            pendingActions.updatePendingThought(editingItem.id, {
-                text: trimmedText,
-                tags: updatedTags,
-                outlinePointId,
-                subPointId: subPointId ?? null,
-            });
-            const pending = pendingActions.getPendingById(editingItem.id);
-            if (pending) {
-                await submitPendingThought({
-                    localId: editingItem.id,
-                    sectionId: pending.sectionId,
-                    text: trimmedText,
-                    tags: updatedTags,
-                    outlinePointId,
-                    subPointId: subPointId ?? null,
-                });
-            }
-            handleCloseEdit();
         } else {
             await handleUpdateExistingThought(trimmedText, updatedTags, outlinePointId, subPointId);
             handleCloseEdit();
         }
-    };
+    }, [addingThoughtToSection, editingItem, handleCloseEdit, handleCreateNewThought, handleDeleteThought, handleUpdateExistingThought]);
 
-    const handleRetryPendingThought = useCallback(async (localId: string) => {
-        const pending = pendingActions.getPendingById(localId);
-        if (pending) {
-            await submitPendingThought({
-                localId,
-                sectionId: pending.sectionId,
-                text: pending.text,
-                tags: pending.tags,
-                outlinePointId: pending.outlinePointId,
-                subPointId: pending.subPointId ?? null,
-            });
-            return;
-        }
-
-        const retryAction = retryThoughtActionsRef.current[localId];
-        if (retryAction) {
-            await retryAction();
-            return;
-        }
-
+    // Retained for the offline replay path: a debounced thought save that failed
+    // can be re-fired. Thought create/edit/delete now ride the native Firestore
+    // offline queue (idempotent by id), so they need no hand-rolled retry.
+    const handleRetryPendingThought = useCallback(async (thoughtId: string) => {
         if (retryThoughtSave) {
-            await retryThoughtSave(localId);
+            await retryThoughtSave(thoughtId);
         }
-    }, [pendingActions, retryThoughtSave, submitPendingThought]);
+    }, [retryThoughtSave]);
 
     const handleMoveToAmbiguous = (itemId: string, fromContainerId: string) => {
         if (!sermon) return;
@@ -576,12 +486,7 @@ export function useSermonActions({
             debouncedSaveThought(sermon.id, updatedThought);
         }
 
-        const newStructure: ThoughtsBySection = {
-            introduction: (updatedContainers.introduction || []).map((it) => it.id),
-            main: (updatedContainers.main || []).map((it) => it.id),
-            conclusion: (updatedContainers.conclusion || []).map((it) => it.id),
-            ambiguous: (updatedContainers.ambiguous || []).map((it) => it.id),
-        };
+        const newStructure = structureFromContainers(updatedContainers);
         debouncedSaveStructure(sermon.id, newStructure);
     };
 

@@ -1,5 +1,3 @@
-
-import { LOCAL_THOUGHT_PREFIX } from "@/utils/pendingThoughtsStore";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 
 import {
@@ -16,7 +14,6 @@ import type {
   SectionType,
   Translate,
 } from "./types";
-import type { Item } from "@/models/models";
 import type { CSSProperties } from "react";
 
 type OutlineInsertAccent = {
@@ -108,9 +105,6 @@ export const mapColumnIdToSectionType = (columnId: string): SectionType | null =
       return null;
   }
 };
-
-export const isPendingItem = (item: Item) =>
-  item.id.startsWith(LOCAL_THOUGHT_PREFIX) || Boolean(item.syncStatus);
 
 export const getSectionHeaderBgStyle = (sectionId: string, headerColor?: string) => {
   if (headerColor) return { backgroundColor: headerColor };

@@ -26,7 +26,6 @@ import { FocusNav } from "./components/FocusNav";
 import { useAiSortingDiff } from "./hooks/useAiSortingDiff";
 import { useFocusMode } from "./hooks/useFocusMode";
 import { useOutlineStats } from "./hooks/useOutlineStats";
-import { usePendingThoughts } from "./hooks/usePendingThoughts";
 import { usePersistence } from "./hooks/usePersistence";
 import { useSermonActions } from "./hooks/useSermonActions";
 import { useStructureDnd } from "./hooks/useStructureDnd";
@@ -129,19 +128,12 @@ function StructurePageContent() {
     ambiguous: getSectionLabel(t, 'ambiguous'),
   }), [t]);
 
-  const pendingActions = usePendingThoughts({
-    sermonId,
-    sermon,
-    allowedTags,
-    setContainers,
-    containersRef,
-    containers,
-  });
-
-  // Persistence hook
+  // Persistence hook. The optional sync-state callback (the old per-card "saving"
+  // badge feed) is intentionally not passed: thought create/edit/delete are now
+  // optimistic via the React Query cache and ride the native Firestore offline
+  // queue, so there is no separate pending layer to report to.
   const { debouncedSaveThought, debouncedSaveStructure, retryThoughtSave } = usePersistence({
     setSermon,
-    onThoughtSyncStateChange: pendingActions.updateItemSyncStatus,
   });
 
   // Sermon actions hook
@@ -154,7 +146,6 @@ function StructurePageContent() {
     handleSaveEdit,
     handleDeleteThought,
     handleMoveToAmbiguous,
-    handleRetryPendingThought,
   } = useSermonActions({
     sermon,
     setSermon,
@@ -168,26 +159,7 @@ function StructurePageContent() {
       if (!sermonId) return;
       await retryThoughtSave(sermonId, thoughtId);
     },
-    pendingActions,
   });
-
-  // Stage 2 — auto-flush: when connectivity returns, silently replay any thoughts
-  // created/edited/deleted while offline (status error or pending), routing each
-  // back through the same submit path as a manual retry. Triggered on the window
-  // `online` event (navigator-based, like React Query's onlineManager) rather than
-  // the apiClient-derived useOnlineStatus, which can stay "offline" after a blip
-  // until an apiClient() call recovers it — too unreliable for auto-flush.
-  useEffect(() => {
-    const flush = () => {
-      pendingActions.pendingThoughts
-        .filter((pending) => pending.status === 'error' || pending.status === 'pending')
-        .forEach((pending) => {
-          void handleRetryPendingThought(pending.localId).catch(() => {});
-        });
-    };
-    window.addEventListener('online', flush);
-    return () => window.removeEventListener('online', flush);
-  }, [pendingActions.pendingThoughts, handleRetryPendingThought]);
 
   // Focus mode hook
   const {
@@ -800,7 +772,6 @@ function StructurePageContent() {
                 onToggleThoughtLock={handleToggleThoughtLock}
                 onSwitchPage={handleSwitchToPlan}
                 onNavigateToSection={navigateToSection}
-                onRetryPendingThought={handleRetryPendingThought}
                 planData={planData}
                 onOutlinePointDeleted={handleOutlinePointDeleted}
                 onSubPointDeleted={handleSubPointDeleted}
@@ -842,7 +813,6 @@ function StructurePageContent() {
                 onToggleThoughtLock={handleToggleThoughtLock}
                 onSwitchPage={handleSwitchToPlan}
                 onNavigateToSection={navigateToSection}
-                onRetryPendingThought={handleRetryPendingThought}
                 planData={planData}
                 onOutlinePointDeleted={handleOutlinePointDeleted}
                 onSubPointDeleted={handleSubPointDeleted}
@@ -882,7 +852,6 @@ function StructurePageContent() {
                 onToggleThoughtLock={handleToggleThoughtLock}
                 onSwitchPage={handleSwitchToPlan}
                 onNavigateToSection={navigateToSection}
-                onRetryPendingThought={handleRetryPendingThought}
                 planData={planData}
                 onOutlinePointDeleted={handleOutlinePointDeleted}
                 onSubPointDeleted={handleSubPointDeleted}

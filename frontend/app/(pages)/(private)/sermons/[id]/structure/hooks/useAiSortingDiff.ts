@@ -110,11 +110,6 @@ const notifyOutlinePointSortBlocked = (
         defaultValue: "Review or revert current AI suggestions first.",
       }));
       return true;
-    case "pending":
-      toast.info(t("structure.aiSortPointDisabledPending", {
-        defaultValue: "Finish syncing local thoughts in this outline point first.",
-      }));
-      return true;
     case "tooMany":
       toast.warning(t("structure.aiSortPointDisabledTooMany", {
         defaultValue: "AI sorting supports up to 25 thoughts in one outline point.",

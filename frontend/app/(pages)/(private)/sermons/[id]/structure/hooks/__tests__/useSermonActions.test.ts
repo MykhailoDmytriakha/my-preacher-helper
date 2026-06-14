@@ -46,16 +46,6 @@ describe('useSermonActions', () => {
         outlinePointId: 'point-1'
     };
 
-    const pendingActions = {
-        createPendingThought: jest.fn().mockReturnValue({ localId: 'local-1' }),
-        updatePendingThought: jest.fn(),
-        markPendingStatus: jest.fn(),
-        removePendingThought: jest.fn(),
-        replacePendingThought: jest.fn(),
-        updateItemSyncStatus: jest.fn(),
-        getPendingById: jest.fn(),
-    };
-
     const defaultProps = {
         sermon: mockSermon,
         setSermon: jest.fn(),
@@ -70,7 +60,6 @@ describe('useSermonActions', () => {
         allowedTags: [{ name: 'intro', color: '#ff0000' }],
         debouncedSaveThought: jest.fn(),
         debouncedSaveStructure: jest.fn(),
-        pendingActions,
     };
 
     beforeEach(() => {
@@ -120,8 +109,6 @@ describe('useSermonActions', () => {
 
             expect(mockCreateManualThought).toHaveBeenCalled();
             expect(defaultProps.setSermon).toHaveBeenCalled();
-            expect(pendingActions.replacePendingThought).toHaveBeenCalled();
-            expect(pendingActions.removePendingThought).toHaveBeenCalled();
             expect(mockUpdateStructure).toHaveBeenCalled();
             expect(result.current.editingItem).toBeNull();
         });
@@ -139,7 +126,6 @@ describe('useSermonActions', () => {
             });
 
             expect(mockToast.error).toHaveBeenCalledWith('errors.failedToAddThought');
-            expect(pendingActions.markPendingStatus).toHaveBeenCalled();
             expect(result.current.editingItem).toBeNull();
         });
 
@@ -225,7 +211,7 @@ describe('useSermonActions', () => {
     });
 
     describe('handleDeleteThought', () => {
-        it('deletes an existing thought with sync state', async () => {
+        it('deletes an existing thought', async () => {
             mockDeleteThought.mockResolvedValue(undefined as never);
             mockUpdateStructure.mockResolvedValue({});
 
@@ -235,11 +221,6 @@ describe('useSermonActions', () => {
                 await result.current.handleDeleteThought('thought-1');
             });
 
-            expect(pendingActions.updateItemSyncStatus).toHaveBeenCalledWith(
-                'thought-1',
-                'pending',
-                expect.objectContaining({ operation: 'delete' })
-            );
             expect(mockDeleteThought).toHaveBeenCalled();
             expect(defaultProps.setContainers).toHaveBeenCalled();
             expect(defaultProps.setSermon).toHaveBeenCalled();

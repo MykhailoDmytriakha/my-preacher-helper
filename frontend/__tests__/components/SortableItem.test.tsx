@@ -5,12 +5,10 @@ import '@testing-library/jest-dom';
 import SortableItem, {
   getCardClassName,
   getHighlightStyles,
-  getRemainingTime,
   getSectionIconClasses,
   HighlightBadge,
   SortableItemActions,
   SortableItemPreview,
-  SyncMeta,
 } from '@/components/SortableItem';
 
 import { useSortable } from '@dnd-kit/sortable';
@@ -490,44 +488,6 @@ Second paragraph with indentation.
     expect(screen.getByTestId('edit-icon')).toHaveClass('text-gray-600');
   });
 
-  test('renders sync meta states and retries failed sync items', () => {
-    const retrySpy = jest.fn();
-    const now = new Date('2026-03-18T10:00:00.000Z').getTime();
-    jest.spyOn(Date, 'now').mockReturnValue(now);
-
-    const { rerender } = render(
-      <SortableItem
-        item={{
-          ...mockItem,
-          syncStatus: 'pending',
-          syncExpiresAt: new Date(now + 30_000).toISOString(),
-        }}
-        containerId={mockContainerId}
-        onRetrySync={retrySpy}
-      />
-    );
-
-    expect(screen.getByText('structure.localThoughtPending')).toBeInTheDocument();
-
-    rerender(
-      <SortableItem
-        item={{
-          ...mockItem,
-          syncStatus: 'error',
-          syncExpiresAt: new Date(now + 30_000).toISOString(),
-        }}
-        containerId={mockContainerId}
-        onRetrySync={retrySpy}
-      />
-    );
-
-    expect(screen.getByText('structure.localThoughtFailed')).toBeInTheDocument();
-    fireEvent.click(screen.getByTitle('structure.localThoughtRetry'));
-    expect(retrySpy).toHaveBeenCalledWith(mockItem.id);
-
-    jest.restoreAllMocks();
-  });
-
   test('invokes keep and revert actions for highlighted items', () => {
     const keepSpy = jest.fn();
     const revertSpy = jest.fn();
@@ -631,13 +591,10 @@ Second paragraph with indentation.
     });
     expect(getSectionIconClasses('conclusion')).toContain('text-green-800');
     expect(getSectionIconClasses('custom')).toBe('text-gray-600 dark:text-gray-300');
-    expect(getRemainingTime('2026-03-18T10:01:01.000Z', new Date('2026-03-18T10:00:00.000Z').getTime())).toBe('01:01');
 
     expect(getCardClassName({
       isHighlighted: false,
       highlightType: 'moved',
-      syncBorderClass: '',
-      syncRingClass: '',
       hoverShadowClass: '',
       isDeleting: false,
       isDragDisabled: false,
@@ -649,8 +606,6 @@ Second paragraph with indentation.
     expect(getCardClassName({
       isHighlighted: true,
       highlightType: 'assigned',
-      syncBorderClass: '',
-      syncRingClass: '',
       hoverShadowClass: '',
       isDeleting: false,
       isDragDisabled: false,
@@ -660,7 +615,7 @@ Second paragraph with indentation.
     })).toContain('border-yellow-400');
   });
 
-  test('renders exported badge helpers for assigned, moved, pending, and error states', () => {
+  test('renders exported badge helpers for assigned and moved states', () => {
     const t = (key: string) => key;
     const { rerender } = render(
       <HighlightBadge
@@ -681,28 +636,6 @@ Second paragraph with indentation.
     );
 
     expect(screen.getByText('structure.aiMoved')).toHaveClass('text-blue-800');
-
-    rerender(
-      <SyncMeta
-        show={true}
-        isError={true}
-        remainingTime="00:30"
-        t={t}
-      />
-    );
-
-    expect(screen.getByText('structure.localThoughtFailed')).toBeInTheDocument();
-
-    rerender(
-      <SyncMeta
-        show={true}
-        isError={false}
-        remainingTime="00:30"
-        t={t}
-      />
-    );
-
-    expect(screen.getByText('structure.localThoughtPending')).toBeInTheDocument();
   });
 
   test('renders exported actions branches for locked and unlocked lock controls', () => {
@@ -714,17 +647,12 @@ Second paragraph with indentation.
         isHighlighted={true}
         isDragging={false}
         isDeleting={false}
-        isPending={false}
-        isError={false}
-        isSuccess={false}
-        isLocal={false}
         canEdit={false}
         isLocked={true}
         mutationDisabled={false}
         canToggleLock={true}
         showDeleteIcon={false}
         sectionIconColorClasses="text-blue-800"
-        successOpacityClass=""
         t={t}
         isOverlay={false}
       />
@@ -742,17 +670,12 @@ Second paragraph with indentation.
         isHighlighted={false}
         isDragging={false}
         isDeleting={false}
-        isPending={false}
-        isError={false}
-        isSuccess={false}
-        isLocal={false}
         canEdit={false}
         isLocked={false}
         mutationDisabled={false}
         canToggleLock={true}
         showDeleteIcon={false}
         sectionIconColorClasses="text-blue-800"
-        successOpacityClass=""
         t={t}
         isOverlay={false}
       />
