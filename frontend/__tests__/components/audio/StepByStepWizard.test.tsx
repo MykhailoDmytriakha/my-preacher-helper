@@ -373,7 +373,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         });
     });
 
-    it('reassembles a streamed data url on download_complete', async () => {
+    it('stitches a streamed batch into a downloadable blob on download_complete', async () => {
         mockUseSermon.mockReturnValue(sermonWithChunks([{ index: 0, text: 'Saved intro', sectionId: 'introduction' }]));
 
         const encoder = new TextEncoder();
@@ -390,8 +390,51 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
 
         const link = await screen.findByRole('link', { name: /Download Again/ });
-        expect(link).toHaveAttribute('href', 'data:audio/mpeg;base64,AAAA');
+        expect(link).toHaveAttribute('href', 'blob:url');
         expect(link).toHaveAttribute('download', 'sermon_audio.mp3');
+
+        // The base64 'AAAA' is decoded to BYTES (3 bytes) before going into the blob —
+        // proving byte-level assembly, not base64-string concatenation.
+        const blob = (global.URL.createObjectURL as jest.Mock).mock.calls.at(-1)?.[0] as Blob;
+        expect(blob.type).toBe('audio/mpeg');
+        expect(blob.size).toBe(3);
+    });
+
+    it('drives several sub-60s batches and byte-concatenates them (OpenAI)', async () => {
+        // 4 intro chunks → 2 batches of 3 (offset 0/limit 3, then offset 3/limit 3).
+        mockUseSermon.mockReturnValue(sermonWithChunks([0, 1, 2, 3].map(i => ({ index: i, text: `Intro ${i}`, sectionId: 'introduction' }))));
+
+        const encoder = new TextEncoder();
+        const streamFor = (data: string) => ({
+            ok: true,
+            body: {
+                getReader: () => ({
+                    read: jest.fn()
+                        .mockResolvedValueOnce({ done: false, value: encoder.encode(JSON.stringify({ type: 'audio_chunk', data }) + '\n' + JSON.stringify({ type: 'download_complete', filename: 'sermon-audio.mp3', mimeType: 'audio/mpeg' }) + '\n') })
+                        .mockResolvedValueOnce({ done: true, value: undefined }),
+                }),
+            },
+        });
+        (global.fetch as jest.Mock)
+            .mockResolvedValueOnce(streamFor('AAAA'))  // batch 1 → 3 bytes
+            .mockResolvedValueOnce(streamFor('BBBB')); // batch 2 → 3 bytes
+
+        render(<StepByStepWizard {...defaultProps} />);
+        await goToSource();
+        await goToPreview();
+        fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+
+        await screen.findByRole('link', { name: /Download Again/ });
+
+        const generateCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).includes('/audio/generate'));
+        expect(generateCalls).toHaveLength(2);
+        expect(JSON.parse(generateCalls[0][1].body)).toMatchObject({ provider: 'openai', sections: ['introduction'], offset: 0, limit: 3 });
+        expect(JSON.parse(generateCalls[1][1].body)).toMatchObject({ provider: 'openai', sections: ['introduction'], offset: 3, limit: 3 });
+
+        // Both batches' bytes land in one blob (3 + 3 = 6), concatenated in order.
+        const blob = (global.URL.createObjectURL as jest.Mock).mock.calls.at(-1)?.[0] as Blob;
+        expect(blob.size).toBe(6);
+        expect(blob.type).toBe('audio/mpeg');
     });
 
     it('returns to the wizard on a stream error event and logs malformed lines', async () => {

@@ -151,6 +151,17 @@ function insertGoogleSectionPauses(blobs: Blob[], chunks: AudioChunk[]): Blob[] 
     return result;
 }
 
+/**
+ * Reads the optional batch window from the request body. The browser drives
+ * several sub-60s requests, each asking for a slice [offset, offset+limit) of the
+ * chunk list; absent/invalid values mean "whole set".
+ */
+function resolveBatchWindow(body: { offset?: unknown; limit?: unknown }): { offset: number; limit?: number } {
+    const offset = Number.isInteger(body.offset) ? Math.max(0, body.offset as number) : 0;
+    const limit = Number.isInteger(body.limit) && (body.limit as number) > 0 ? (body.limit as number) : undefined;
+    return { offset, limit };
+}
+
 // ============================================================================
 // Route Handler
 // ============================================================================
@@ -223,7 +234,19 @@ export async function POST(
             text: normalizeScriptureReferencesForTts(chunk.text),
         }));
 
-        const chunksForGeneration = provider === 'google' ? groupChunksByMajorSection(chunks) : chunks;
+        const baseChunksForGeneration = provider === 'google' ? groupChunksByMajorSection(chunks) : chunks;
+
+        // Batched generation: the browser drives several sub-60s requests, each
+        // generating a slice [offset, offset+limit) of the section-filtered chunk
+        // list, then byte-concatenates the returned MP3 streams client-side. Without
+        // offset/limit → whole set (back-compat). Slicing is OpenAI-only: Google
+        // regroups by major section and its section-pause logic assumes the full
+        // grouped list, so it always stays a single request.
+        const { offset: batchOffset, limit: batchLimit } = resolveBatchWindow(body);
+        const isBatched = provider !== 'google' && batchLimit !== undefined;
+        const chunksForGeneration = isBatched
+            ? baseChunksForGeneration.slice(batchOffset, batchOffset + batchLimit)
+            : baseChunksForGeneration;
 
         if (chunksForGeneration.length === 0) {
             return NextResponse.json(
@@ -234,6 +257,9 @@ export async function POST(
 
         if (provider === 'google') {
             console.log(`[TTS] Google grouping: ${chunks.length} prepared chunks → ${chunksForGeneration.length} request chunks (max ${GOOGLE_TTS_MAX_CHUNK_SIZE} chars/request)`);
+        }
+        if (isBatched) {
+            console.log(`[TTS] Batch slice: offset=${batchOffset}, limit=${batchLimit} → ${chunksForGeneration.length}/${baseChunksForGeneration.length} chunks`);
         }
         console.log(`[TTS] Processing ${chunksForGeneration.length} ${provider === 'google' ? 'Google request chunks' : 'chunks'}`);
 
@@ -369,13 +395,16 @@ export async function POST(
                         .replace(/\s+/g, '-')
                         .slice(0, 50) + (provider === 'google' ? '-audio.wav' : '-audio.mp3');
 
-                    // Update metadata
-                    await adminDb.collection('sermons').doc(sermonId).update({
-                        'audioMetadata.provider': provider,
-                        'audioMetadata.voice': voice,
-                        'audioMetadata.model': selectedModel,
-                        'audioMetadata.lastGenerated': new Date().toISOString(),
-                    });
+                    // Update metadata once per generation (first batch only — later
+                    // batches would just rewrite identical values).
+                    if (batchOffset === 0) {
+                        await adminDb.collection('sermons').doc(sermonId).update({
+                            'audioMetadata.provider': provider,
+                            'audioMetadata.voice': voice,
+                            'audioMetadata.model': selectedModel,
+                            'audioMetadata.lastGenerated': new Date().toISOString(),
+                        });
+                    }
 
                     console.log('[TTS] Generation complete!');
 

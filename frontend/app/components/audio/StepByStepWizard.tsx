@@ -110,6 +110,56 @@ const mutedDescClass = (active: boolean): string => (active ? 'opacity-70' : 'te
 const googleModelShort = (model: GoogleTTSModel): string =>
     model === GOOGLE_MODEL_GEMINI_25 ? '2.5' : '3.1';
 
+/**
+ * How many chunks one /generate request handles. Each OpenAI TTS chunk takes
+ * ~15-30s, and Vercel's free-tier function cap is a hard 60s, so the browser
+ * drives several small requests instead of one big one that would time out.
+ * 3 chunks run in parallel server-side (~one chunk's wall time + margin) — safely
+ * under 60s — and the browser stitches the batches into one file.
+ */
+const GENERATION_BATCH_SIZE = 3;
+
+/**
+ * Decode a complete base64 string to raw bytes. We decode each batch to BYTES and
+ * concatenate those (via Blob) — concatenating the base64 STRINGS instead would
+ * inject padding '=' mid-stream wherever a part's length isn't a multiple of 3 and
+ * corrupt the audio. MP3 frames are self-contained, so byte-concat plays back as
+ * one continuous file.
+ */
+function base64ToUint8Array(base64: string): Uint8Array {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+}
+
+/** Mutable accumulator for one batch's stream: base64 audio parts + final metadata. */
+interface BatchAccumulator {
+    audioDataParts: string[];
+    filename?: string;
+    mimeType?: string;
+}
+
+/** Apply one parsed stream event to the accumulator. Throws on an `error` event. */
+function applyBatchEvent(
+    event: StreamEvent,
+    acc: BatchAccumulator,
+    onChunkProgress: (current: number, total: number) => void,
+): void {
+    if (event.type === 'audio_chunk') {
+        if (event.data) acc.audioDataParts.push(event.data);
+    } else if (event.type === 'progress') {
+        if (typeof event.current === 'number' && typeof event.total === 'number') {
+            onChunkProgress(event.current, event.total);
+        }
+    } else if (event.type === 'download_complete' || event.type === 'complete') {
+        acc.filename = event.filename;
+        acc.mimeType = event.mimeType;
+    } else if (event.type === 'error') {
+        throw new Error(event.message || 'Generation failed');
+    }
+}
+
 // ============================================================================
 // Main Component
 // ============================================================================
@@ -173,6 +223,13 @@ export default function StepByStepWizard({
 
     // A stale error from a previous step shouldn't follow the user around.
     useEffect(() => { setError(null); }, [step]);
+
+    // The generated file is now a blob: object URL (batches are stitched in-browser),
+    // so revoke the previous one when it's replaced or the modal unmounts.
+    useEffect(() => {
+        const url = generatedFile?.url;
+        return () => { if (url && url.startsWith('blob:')) URL.revokeObjectURL(url); };
+    }, [generatedFile]);
 
     // ------------------------------------------------------------------
     // Load existing chunks (from a previous session) once the sermon loads
@@ -254,41 +311,31 @@ export default function StepByStepWizard({
     useEffect(() => { audioRef.current?.pause(); setPlayingPreview(null); }, [ttsProvider, googleModel, quality, voice, googleVoice]);
 
     // ------------------------------------------------------------------
-    // Stream parsing for generation
+    // Generate one request's worth of audio (a batch of chunks) and return its
+    // decoded bytes. Parses the server's newline-delimited JSON stream: `progress`
+    // events drive the callback, `audio_chunk` events carry base64 audio, and
+    // `download_complete` carries the filename + mime type.
     // ------------------------------------------------------------------
-    const dispatchStreamEvent = useCallback((
-        event: StreamEvent,
-        audioDataParts: string[],
-        onProgress: (data: StreamEvent) => void,
-        onComplete: (data: StreamEvent) => void,
-        onError: (message: string) => void,
-    ) => {
-        if (event.type === 'progress') {
-            onProgress(event);
-        } else if (event.type === 'audio_chunk') {
-            if (event.data) audioDataParts.push(event.data);
-        } else if (event.type === 'complete' || event.type === 'download_complete') {
-            let finalUrl = event.audioUrl;
-            if (audioDataParts.length > 0) {
-                const fullBase64 = audioDataParts.join('');
-                const mimeType = event.mimeType || 'audio/mpeg';
-                finalUrl = fullBase64.startsWith('data:') ? fullBase64 : `data:${mimeType};base64,${fullBase64}`;
-            }
-            onComplete({ ...event, audioUrl: finalUrl });
-        } else if (event.type === 'error') {
-            onError(event.message || 'Unknown error');
+    const fetchBatchBytes = useCallback(async (
+        body: Record<string, unknown>,
+        signal: AbortSignal,
+        onChunkProgress: (current: number, total: number) => void,
+    ): Promise<{ bytes: Uint8Array; filename?: string; mimeType?: string }> => {
+        const response = await fetch(`/api/sermons/${sermonId}/audio/generate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            signal,
+        });
+        if (!response.ok || !response.body) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || 'Generation failed');
         }
-    }, []);
 
-    const processStream = useCallback(async (
-        reader: ReadableStreamDefaultReader<Uint8Array>,
-        onProgress: (data: StreamEvent) => void,
-        onComplete: (data: StreamEvent) => void,
-        onError: (message: string) => void,
-    ) => {
+        const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        const audioDataParts: string[] = [];
+        const acc: BatchAccumulator = { audioDataParts: [] };
 
         while (true) {
             const { done, value } = await reader.read();
@@ -306,10 +353,12 @@ export default function StepByStepWizard({
                     console.error('Failed to parse stream line:', trimmed, e);
                     continue;
                 }
-                dispatchStreamEvent(event, audioDataParts, onProgress, onComplete, onError);
+                applyBatchEvent(event, acc, onChunkProgress);
             }
         }
-    }, [dispatchStreamEvent]);
+
+        return { bytes: base64ToUint8Array(acc.audioDataParts.join('')), filename: acc.filename, mimeType: acc.mimeType };
+    }, [sermonId]);
 
     // ------------------------------------------------------------------
     // Persist a cached chunk set so /generate (which reads the DB) stays in sync
@@ -418,52 +467,75 @@ export default function StepByStepWizard({
     // Generate audio (TTS)
     // ------------------------------------------------------------------
     const handleGenerate = useCallback(async () => {
+        const isGoogle = ttsProvider === 'google';
+        const totalChunks = chunks.filter(c => sections.includes(c.sectionId)).length;
+
         setError(null);
         setView('generating');
-        setGenProgress({ current: 0, total: chunks.length, percent: 0 });
+        setGenProgress({ current: 0, total: totalChunks, percent: 0 });
         const controller = new AbortController();
         setAbortController(controller);
 
+        const baseBody: Record<string, unknown> = {
+            provider: ttsProvider,
+            voice: isGoogle ? googleVoice : voice,
+            quality,
+            model: isGoogle ? googleModel : undefined,
+            sections,
+            userId: user?.uid,
+        };
+
         try {
-            const response = await fetch(`/api/sermons/${sermonId}/audio/generate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    provider: ttsProvider,
-                    voice: ttsProvider === 'google' ? googleVoice : voice,
-                    quality,
-                    model: ttsProvider === 'google' ? googleModel : undefined,
-                    sections,
-                    userId: user?.uid,
-                }),
-                signal: controller.signal,
-            });
-            if (!response.ok || !response.body) {
-                const data = await response.json();
-                throw new Error(data.error || 'Generation failed');
+            const parts: Uint8Array[] = [];
+            let filename: string | undefined;
+            let mimeType: string | undefined;
+
+            if (isGoogle) {
+                // Google regroups by major section server-side, so it stays one request.
+                const res = await fetchBatchBytes(baseBody, controller.signal, (current, total) =>
+                    setGenProgress({ current, total, percent: Math.round((current / (total || 1)) * 100) }),
+                );
+                parts.push(res.bytes);
+                filename = res.filename;
+                mimeType = res.mimeType;
+            } else {
+                // OpenAI: drive batches of GENERATION_BATCH_SIZE chunks, each its own
+                // sub-60s request, then byte-concatenate the returned MP3 streams.
+                const numBatches = Math.max(1, Math.ceil(totalChunks / GENERATION_BATCH_SIZE));
+                let completedBefore = 0;
+                for (let b = 0; b < numBatches; b++) {
+                    const offset = b * GENERATION_BATCH_SIZE;
+                    const sizeThisBatch = Math.min(GENERATION_BATCH_SIZE, totalChunks - offset);
+                    const res = await fetchBatchBytes(
+                        { ...baseBody, offset, limit: GENERATION_BATCH_SIZE },
+                        controller.signal,
+                        (current) => {
+                            const overall = Math.min(totalChunks, completedBefore + current);
+                            setGenProgress({ current: overall, total: totalChunks, percent: Math.round((overall / totalChunks) * 100) });
+                        },
+                    );
+                    parts.push(res.bytes);
+                    filename = res.filename ?? filename;
+                    mimeType = res.mimeType ?? mimeType;
+                    completedBefore += sizeThisBatch;
+                    setGenProgress({ current: completedBefore, total: totalChunks, percent: Math.round((completedBefore / totalChunks) * 100) });
+                }
             }
-            await processStream(
-                response.body.getReader(),
-                (data) => setGenProgress(prev => ({
-                    current: data.current ?? prev.current,
-                    total: data.total ?? chunks.length,
-                    percent: data.percent,
-                    status: data.status,
-                })),
-                (data) => {
-                    if (data.audioUrl) {
-                        const link = document.createElement('a');
-                        link.href = data.audioUrl;
-                        link.download = data.filename || 'sermon_audio.mp3';
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                        setGeneratedFile({ url: data.audioUrl, filename: data.filename || 'sermon_audio.mp3' });
-                        setView('success');
-                    }
-                },
-                (message) => { throw new Error(message); },
-            );
+
+            const finalMime = mimeType || (isGoogle ? 'audio/wav' : 'audio/mpeg');
+            const finalName = filename || (isGoogle ? 'sermon_audio.wav' : 'sermon_audio.mp3');
+            const url = URL.createObjectURL(new Blob(parts, { type: finalMime }));
+
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = finalName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            setGeneratedFile({ url, filename: finalName });
+            setGenProgress(prev => ({ ...prev, percent: 100 }));
+            setView('success');
         } catch (err) {
             if (err instanceof Error && err.name === 'AbortError') {
                 setError(t('audioExport.generationCancelled', { defaultValue: 'Generation cancelled' }));
@@ -474,7 +546,7 @@ export default function StepByStepWizard({
         } finally {
             setAbortController(null);
         }
-    }, [sermonId, ttsProvider, googleVoice, voice, quality, googleModel, sections, chunks.length, user?.uid, processStream, t]);
+    }, [ttsProvider, googleVoice, voice, quality, googleModel, sections, chunks, user?.uid, fetchBatchBytes, t]);
 
     const handleCancelGeneration = useCallback(() => abortController?.abort(), [abortController]);
 
