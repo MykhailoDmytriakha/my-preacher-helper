@@ -828,16 +828,29 @@ function getStyleInstructions(style: PlanStyle): string {
 }
 
 /**
- * Deterministically assemble the structured cue card (v11) into the markdown the UI
+ * Canonicalize every arrow spelling to a single " → ". The model emits inconsistent
+ * separators ("->", "-->", "—>", "=>", "→"), which renders as an ugly mix next to the
+ * assembler's own "→" prefix. We normalize deterministically rather than trust the model
+ * to pick one glyph. A leading arrow is dropped so the assembler's "→ " prefix never doubles.
+ */
+function normalizeArrows(text: string): string {
+  return text
+    .replace(/\s*(?:-{1,2}>|—>|=>|→)\s*/g, " → ")
+    .replace(/^\s*→\s*/, "")
+    .trim();
+}
+
+/**
+ * Deterministically assemble the structured cue card (v12) into the markdown the UI
  * renders. The FORM lives here (always the same shape) — not in the model's free text —
  * which is what kills the old form-drift and essay-mode rephrasing.
  *
- * Layout (v11), so the preacher reads top-down and grasps the route instantly:
+ * Layout (v12), so the preacher reads top-down and grasps the route instantly:
  *   ### anchor                 — card title (deepest heading is ###; no #### at all)
- *   **→ turn**                 — the route arrow, RIGHT under the anchor
+ *   **→ turn**                 — the route arrow, RIGHT under the anchor (arrows canonicalized to →)
  *   **sub-point heading**      — sub-points are BOLD labels, not #### headings
  *   - cue                      — recall triggers
- *   *ref*                      — that group's verses, inline right under its cues
+ *   *ref*                      — that group's verses, inline under its cues, ONE per line
  * Capping heading depth at ### keeps the Word export intact (its parser only knows
  * #..###); sub-points and refs ride as bold/italic paragraphs it already handles.
  */
@@ -846,13 +859,13 @@ function assemblePlanPointMarkdown(data: PlanPointContentResponse): string {
   const anchor = (data.anchor ?? "").trim();
   if (anchor) lines.push(`### ${anchor}`);
 
-  // Route arrow at the TOP: glance once, see the whole point's path.
-  const turn = (data.turn ?? "").trim();
+  // Route arrow at the TOP: glance once, see the whole point's path. All arrows → "→".
+  const turn = normalizeArrows((data.turn ?? "").trim());
   if (turn) lines.push("", `**→ ${turn}**`);
 
   for (const group of data.groups ?? []) {
     const heading = (group.heading ?? "").trim();
-    const cues = (group.cues ?? []).map((c) => c.trim()).filter(Boolean);
+    const cues = (group.cues ?? []).map((c) => normalizeArrows(c.trim())).filter(Boolean);
     // refs carry recognizable verse text; each renders on its own italic line.
     const refs = (group.refs ?? []).map((r) => r.trim()).filter(Boolean);
     if (!heading && cues.length === 0 && refs.length === 0) continue;
@@ -860,10 +873,11 @@ function assemblePlanPointMarkdown(data: PlanPointContentResponse): string {
     lines.push(""); // blank line detaches this group from whatever came before
     if (heading) lines.push(`**${heading}**`);
     cues.forEach((c) => lines.push(`- ${c}`));
-    if (refs.length) {
-      lines.push(""); // blank line so refs are separate paragraphs, not swallowed into the last bullet
-      refs.forEach((r) => lines.push(`*${r}*`));
-    }
+    // Each verse on its OWN line: a blank line before every ref makes it a separate
+    // paragraph. Without it, "*a*\n*b*\n*c*" is one paragraph (soft breaks collapse to
+    // spaces) and the verses render run-together. Works for both the UI markdown render
+    // and the line-based Word export.
+    refs.forEach((r) => lines.push("", `*${r}*`));
   }
 
   return lines.join("\n").trim();
@@ -1059,7 +1073,7 @@ export async function generatePlanPointContent(
     };
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "plan_point_content",
-      promptVersion: "v11",
+      promptVersion: "v12",
       expectedLanguage: languageInfo.telemetryLanguage,
       systemPrompt,
       userMessage,

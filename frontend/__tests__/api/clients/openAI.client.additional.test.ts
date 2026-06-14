@@ -602,7 +602,7 @@ describe('openAI.client additional coverage', () => {
       expect.objectContaining({
         promptBlueprint: expect.objectContaining({
           promptName: 'plan_point_content',
-          promptVersion: 'v11',
+          promptVersion: 'v12',
         }),
       })
     );
@@ -625,9 +625,11 @@ describe('openAI.client additional coverage', () => {
     expect(result.content).toContain('### Велосипед');
     expect(result.content).toContain('- возомнил мастером');
     expect(result.content).toContain('- не едет');
-    expect(result.content).toContain('**→ мастером -> лишняя деталь -> не едет**');
-    expect(result.content).toContain('*Ис. 66:2*');
-    expect(result.content).toContain('*Флп. 2:9*');
+    // every arrow canonicalized to "→" (no stray "->")
+    expect(result.content).toContain('**→ мастером → лишняя деталь → не едет**');
+    expect(result.content).not.toContain('->');
+    // each verse on its own line: blank line between consecutive refs
+    expect(result.content).toContain('*Ис. 66:2*\n\n*Флп. 2:9*');
     // ❶ route arrow sits ABOVE the cues; ❷ refs sit BELOW the cues (read top-down)
     const md = result.content;
     expect(md.indexOf('**→')).toBeLessThan(md.indexOf('- возомнил'));
