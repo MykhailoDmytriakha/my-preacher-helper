@@ -428,57 +428,6 @@ describe('ThoughtCard Component', () => {
     expect((anyTag as HTMLElement).className).not.toMatch(/active:scale|hover:scale/);
   });
 
-  it('renders translated saved sync badge for success state', () => {
-    render(
-      <ThoughtCard
-        {...defaultProps}
-        syncState={{ status: 'success', operation: 'update' }}
-      />
-    );
-
-    expect(screen.getByText('Saved')).toBeInTheDocument();
-    expect(screen.queryByText('buttons.saved')).not.toBeInTheDocument();
-  });
-
-  it('renders pending and deleting sync banners with matching card styles', () => {
-    const { rerender } = render(
-      <ThoughtCard
-        {...defaultProps}
-        syncState={{ status: 'pending', operation: 'update' }}
-      />
-    );
-
-    expect(screen.getByText('Saving...')).toBeInTheDocument();
-    expect(screen.getByRole('article')).toHaveClass('border-amber-300');
-
-    rerender(
-      <ThoughtCard
-        {...defaultProps}
-        syncState={{ status: 'pending', operation: 'delete' }}
-      />
-    );
-
-    expect(screen.getByText('Deleting...')).toBeInTheDocument();
-    expect(screen.getByRole('article')).toHaveClass('opacity-70');
-  });
-
-  it('renders sync errors and retries through the thought id callback', () => {
-    const onRetrySync = jest.fn();
-
-    render(
-      <ThoughtCard
-        {...defaultProps}
-        syncState={{ status: 'error', operation: 'update', lastError: 'Save failed' }}
-        onRetrySync={onRetrySync}
-      />
-    );
-
-    expect(screen.getByText('Save failed')).toBeInTheDocument();
-    expect(screen.getByRole('article')).toHaveClass('border-red-300');
-    fireEvent.click(screen.getByRole('button', { name: 'buttons.retry' }));
-    expect(onRetrySync).toHaveBeenCalledWith('thought-1');
-  });
-
   it('propagates outline point changes when editing is enabled', async () => {
     const sermonOutline = {
       id: 'outline-1',

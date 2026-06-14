@@ -1,6 +1,5 @@
 "use client";
 
-import { ArrowPathIcon, CheckCircleIcon } from "@heroicons/react/24/outline";
 import { AnimatePresence, motion } from "framer-motion";
 import React, { memo, useCallback, useMemo } from "react";
 import { useTranslation } from 'react-i18next';
@@ -18,7 +17,6 @@ import ConfirmModal from './ui/ConfirmModal';
 
 // Type imports
 import type { SermonOutline, Thought } from "@/models/models";
-import type { OptimisticEntitySyncState } from "@/models/optimisticEntities";
 import type { CanonicalStructureId, StructureSectionId } from "@utils/tagUtils";
 
 // Types
@@ -39,8 +37,6 @@ interface ThoughtCardProps {
   onEditStart: (thought: Thought, index: number) => void;
   onThoughtUpdate?: (updatedThought: Thought) => void;
   onThoughtOutlinePointChange?: (thought: Thought, outlinePointId?: string | null, subPointId?: string | null) => Promise<void> | void;
-  syncState?: OptimisticEntitySyncState;
-  onRetrySync?: (thoughtId: string) => void;
   isReadOnly?: boolean;
 }
 
@@ -63,64 +59,6 @@ const toSectionKey = (canonical: CanonicalStructureId | null): 'introduction' | 
   return undefined;
 };
 
-function ThoughtSyncBanner({
-  syncState,
-  onRetrySync,
-}: {
-  syncState?: OptimisticEntitySyncState;
-  onRetrySync?: () => void;
-}) {
-  const { t } = useTranslation();
-
-  if (!syncState) return null;
-
-  const isPending = syncState.status === "pending";
-  const isError = syncState.status === "error";
-  const isSuccess = syncState.status === "success";
-  const isDeleting = syncState.operation === "delete";
-
-  if (isPending) {
-    return (
-      <div className={`mb-3 inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${
-        isDeleting
-          ? "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200"
-          : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"
-      }`}>
-        {!isDeleting && <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />}
-        <span>{isDeleting ? t("buttons.deleting") : t("buttons.saving")}</span>
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="mb-3 flex items-center gap-2 text-xs font-medium text-red-700 dark:text-red-300">
-        <span>{syncState.lastError || t("errors.savingError")}</span>
-        {onRetrySync && (
-          <button
-            type="button"
-            onClick={onRetrySync}
-            className="rounded-full border border-red-200 px-2 py-0.5 text-red-700 transition-colors hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-900/30"
-          >
-            {t("buttons.retry")}
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  if (isSuccess && !isDeleting) {
-    return (
-      <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-200">
-        <CheckCircleIcon className="h-3.5 w-3.5" />
-        <span>{t("buttons.saved")}</span>
-      </div>
-    );
-  }
-
-  return null;
-}
-
 const ThoughtCard = ({
   thought,
   index,
@@ -131,16 +69,10 @@ const ThoughtCard = ({
   onEditStart,
   onThoughtUpdate,
   onThoughtOutlinePointChange,
-  syncState,
-  onRetrySync,
   isReadOnly = false
 }: ThoughtCardProps) => {
   const { t } = useTranslation();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = React.useState(false);
-  const isPending = syncState?.status === "pending";
-  const isError = syncState?.status === "error";
-  const isSuccess = syncState?.status === "success";
-  const isDeleting = syncState?.operation === "delete";
 
   // Shared translation helper
   const getSectionName = useCallback((sectionKey?: string) => {
@@ -204,28 +136,12 @@ const ThoughtCard = ({
   const cardStyle = useMemo(() => {
     const baseStyle = 'relative p-4 rounded-lg transition-all duration-200 hover:shadow-md';
 
-    if (isDeleting && isPending) {
-      return `${baseStyle} bg-gray-100 dark:bg-gray-800/60 border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 opacity-70`;
-    }
-
-    if (isError) {
-      return `${baseStyle} bg-white dark:bg-gray-800 border border-red-300 dark:border-red-700 ring-1 ring-red-200/70 dark:ring-red-900/40`;
-    }
-
-    if (isPending) {
-      return `${baseStyle} bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-600 ring-1 ring-amber-200/70 dark:ring-amber-900/40`;
-    }
-
-    if (isSuccess) {
-      return `${baseStyle} bg-white dark:bg-gray-800 border border-green-300 dark:border-green-700`;
-    }
-
     if (hasInconsistentSection || hasMultipleStructureTags) {
       return `${baseStyle} border border-red-500 bg-red-50/50 dark:bg-red-900/50 dark:border-red-500 hover:bg-red-50 dark:hover:bg-red-900`;
     }
 
     return `${baseStyle} bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600`;
-  }, [hasInconsistentSection, hasMultipleStructureTags, isDeleting, isError, isPending, isSuccess]);
+  }, [hasInconsistentSection, hasMultipleStructureTags]);
 
   const handleSermonPointChange = useCallback(async (outlinePointId: string | null | undefined, subPointId?: string | null) => {
     if (isReadOnly) return;
@@ -303,14 +219,9 @@ const ThoughtCard = ({
             thoughtText={thought.text}
             onEdit={() => onEditStart(thought, index)}
             onDelete={() => setDeleteConfirmOpen(true)}
-            isReadOnly={isReadOnly || (isDeleting && isPending)}
+            isReadOnly={isReadOnly}
           />
         }
-      />
-
-      <ThoughtSyncBanner
-        syncState={syncState}
-        onRetrySync={onRetrySync ? () => onRetrySync(thought.id) : undefined}
       />
 
       <AnimatePresence>
@@ -346,7 +257,7 @@ const ThoughtCard = ({
           thought={thought}
           sermonOutline={sermonOutline}
           onSermonPointChange={handleSermonPointChange}
-          disabled={isReadOnly || !sermonId || !onThoughtUpdate || !onThoughtOutlinePointChange || (isDeleting && isPending)}
+          disabled={isReadOnly || !sermonId || !onThoughtUpdate || !onThoughtOutlinePointChange}
         />
       </motion.div>
     </motion.div>

@@ -6,10 +6,10 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { toast } from "sonner";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
-import { useOptimisticEntitySync } from "@/hooks/useOptimisticEntitySync";
 import { useRouteId } from "@/hooks/useRouteId";
 import useSermon from "@/hooks/useSermon";
 import { SermonPoint, Sermon, Thought, Plan } from "@/models/models";
@@ -17,7 +17,6 @@ import { updateThought } from "@/services/thought.service";
 import { TimerPhase } from "@/types/TimerState";
 import { debugLog } from "@/utils/debugMode";
 import { getExportContent as buildThoughtExportContent } from "@/utils/exportContent";
-import { projectOptimisticEntities } from "@/utils/optimisticEntityProjection";
 import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrder";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { normalizeStructureTag, getTranslationKeyForTag } from "@utils/tagUtils";
@@ -44,8 +43,6 @@ import type {
   SermonSectionKey,
 } from "./types";
 
-const THOUGHT_SYNC_SUCCESS_MS = 3500;
-const PLAN_THOUGHT_SYNC_LOCAL_ID_PREFIX = "plan-thought-sync-";
 type ExportContentOptions = { includeTags?: boolean; type?: "thoughts" | "plan" };
 
 const Button = ({
@@ -140,15 +137,9 @@ export default function PlanPage() {
 
   const isOnline = useOnlineStatus();
   const { sermon, setSermon, loading: isLoadingRaw, error: sermonError } = useSermon(sermonId);
-  const thoughtSync = useOptimisticEntitySync<Thought>({
-    entityType: "thought",
-    scopeId: sermon?.id ?? null,
-    localIdPrefix: PLAN_THOUGHT_SYNC_LOCAL_ID_PREFIX,
-  });
   const sermonRef = useRef<Sermon | null>(sermon);
   const thoughtSaveVersionRef = useRef<Record<string, number>>({});
   const latestThoughtDraftsRef = useRef<Record<string, Thought>>({});
-  const thoughtSyncCleanupTimersRef = useRef<Record<string, number>>({});
   const isRestoring = useIsRestoring();
   const isLoading = isLoadingRaw || isRestoring;
   const [error, setError] = useState<string | null>(null);
@@ -204,18 +195,6 @@ export default function PlanPage() {
     () => buildPlanOutlineLookup(sermon),
     [sermon]
   );
-  const displayThoughts = useMemo(
-    () =>
-      projectOptimisticEntities<Thought>(sermon?.thoughts ?? [], thoughtSync.records, {
-        createPlacement: "start",
-      }),
-    [sermon?.thoughts, thoughtSync.records]
-  );
-  const displaySermon = useMemo(
-    () => (sermon ? { ...sermon, thoughts: displayThoughts } : null),
-    [displayThoughts, sermon]
-  );
-
   const getSectionByPointId = useCallback((outlinePointId: string): SermonSectionKey | null => {
     return getPointSectionFromLookup(outlineLookup, outlinePointId);
   }, [outlineLookup]);
@@ -228,31 +207,6 @@ export default function PlanPage() {
     thoughtSaveVersionRef.current = {};
     latestThoughtDraftsRef.current = {};
   }, [sermonId]);
-
-  useEffect(() => {
-    return () => {
-      Object.values(thoughtSyncCleanupTimersRef.current).forEach((timerId) => {
-        window.clearTimeout(timerId);
-      });
-      thoughtSyncCleanupTimersRef.current = {};
-    };
-  }, []);
-
-  const clearThoughtSyncCleanup = useCallback((localId: string) => {
-    const existingTimer = thoughtSyncCleanupTimersRef.current[localId];
-    if (existingTimer) {
-      window.clearTimeout(existingTimer);
-      delete thoughtSyncCleanupTimersRef.current[localId];
-    }
-  }, []);
-
-  const scheduleThoughtSyncCleanup = useCallback((localId: string, delayMs: number = THOUGHT_SYNC_SUCCESS_MS) => {
-    clearThoughtSyncCleanup(localId);
-    thoughtSyncCleanupTimersRef.current[localId] = window.setTimeout(() => {
-      thoughtSync.removeRecord(localId);
-      delete thoughtSyncCleanupTimersRef.current[localId];
-    }, delayMs);
-  }, [clearThoughtSyncCleanup, thoughtSync]);
 
   const {
     registerPairRef,
@@ -462,9 +416,9 @@ export default function PlanPage() {
 
   // Get thoughts for a specific outline point
   const getThoughtsForSermonPoint = useCallback((outlinePointId: string): Thought[] => {
-    if (!displaySermon) return [];
-    return getVisualOrderedThoughtsForOutlinePoint(displaySermon, outlinePointId);
-  }, [displaySermon]);
+    if (!sermon) return [];
+    return getVisualOrderedThoughtsForOutlinePoint(sermon, outlinePointId);
+  }, [sermon]);
 
   // Update section outline deterministically from ordered points + point-content map.
   const updateCombinedPlan = useCallback((
@@ -563,34 +517,26 @@ export default function PlanPage() {
     }
 
     const thoughtId = updatedThought.id;
-    const existingRecord = thoughtSync.getLatestRecordByEntityId(thoughtId);
-    const snapshot = existingRecord?.snapshot
-      ?? currentSermon.thoughts.find((thought) => thought.id === thoughtId);
-    const record = existingRecord?.operation === "update"
-      ? existingRecord
-      : thoughtSync.createRecord({
-        entityId: thoughtId,
-        operation: "update",
-        entity: updatedThought,
-        snapshot,
-      });
+    const previousThought = currentSermon.thoughts.find((thought) => thought.id === thoughtId);
 
-    if (!record) {
-      return updatedThought;
-    }
-
+    // Version guard: rapid successive edits to the same thought must not let an
+    // older in-flight save clobber a newer draft (kept from the old mechanism).
     const saveVersion = (thoughtSaveVersionRef.current[thoughtId] ?? 0) + 1;
     thoughtSaveVersionRef.current[thoughtId] = saveVersion;
     latestThoughtDraftsRef.current[thoughtId] = updatedThought;
-    clearThoughtSyncCleanup(record.localId);
 
-    if (existingRecord?.operation === "update") {
-      thoughtSync.replaceRecordEntity(record.localId, updatedThought, {
-        entityId: thoughtId,
-        snapshot,
-      });
-    }
-    thoughtSync.markRecordStatus(record.localId, "pending", { resetExpiry: true });
+    // Optimistic (React Query cache via setSermon): show the edit immediately;
+    // the client-SDK write lands in the native Firestore offline queue.
+    setSermon((prevSermon) =>
+      prevSermon
+        ? {
+            ...prevSermon,
+            thoughts: prevSermon.thoughts.map((thought) =>
+              thought.id === thoughtId ? updatedThought : thought
+            ),
+          }
+        : prevSermon
+    );
 
     const executeSave = async (requestVersion: number) => {
       const latestThought = latestThoughtDraftsRef.current[thoughtId];
@@ -599,20 +545,11 @@ export default function PlanPage() {
         return updatedThought;
       }
 
-      thoughtSync.markRecordStatus(record.localId, "sending", { resetExpiry: true });
-
       try {
         const savedThought = await updateThought(latestSermon.id, latestThought);
         if (thoughtSaveVersionRef.current[thoughtId] !== requestVersion) {
           return savedThought;
         }
-
-        const successAt = new Date().toISOString();
-        thoughtSync.replaceRecordEntity(record.localId, savedThought, {
-          entityId: thoughtId,
-          snapshot,
-        });
-        thoughtSync.markRecordStatus(record.localId, "success", { successAt });
 
         setSermon((prevSermon) => {
           if (!prevSermon) return prevSermon;
@@ -626,22 +563,32 @@ export default function PlanPage() {
 
         delete latestThoughtDraftsRef.current[thoughtId];
         delete thoughtSaveVersionRef.current[thoughtId];
-        scheduleThoughtSyncCleanup(record.localId);
         return savedThought;
       } catch (error) {
         if (thoughtSaveVersionRef.current[thoughtId] !== requestVersion) {
           throw error;
         }
-
-        thoughtSync.markRecordStatus(record.localId, "error", {
-          error: t("errors.failedToSaveThought"),
-        });
+        // Roll the cache back to the pre-edit thought and surface the failure
+        // (replaces the old inline sync-error badge).
+        if (previousThought) {
+          setSermon((prevSermon) =>
+            prevSermon
+              ? {
+                  ...prevSermon,
+                  thoughts: prevSermon.thoughts.map((thought) =>
+                    thought.id === thoughtId ? previousThought : thought
+                  ),
+                }
+              : prevSermon
+          );
+        }
+        toast.error(t("errors.failedToSaveThought"));
         throw error;
       }
     };
 
     return executeSave(saveVersion);
-  }, [clearThoughtSyncCleanup, scheduleThoughtSyncCleanup, setSermon, t, thoughtSync]);
+  }, [setSermon, t]);
 
   // Find outline point by id
   const findSermonPointById = useCallback((outlinePointId: string): SermonPoint | undefined => {
@@ -751,7 +698,7 @@ export default function PlanPage() {
     const exportType = options.type ?? 'plan';
 
     if (exportType === 'thoughts') {
-      return buildThoughtExportContent(displaySermon ?? sermon, undefined, {
+      return buildThoughtExportContent(sermon, undefined, {
         format,
         includeTags: Boolean(options.includeTags),
         type: 'thoughts',
@@ -910,8 +857,8 @@ export default function PlanPage() {
   }
 
   // Check if all thoughts are assigned to outline points
-  if (!areAllThoughtsAssigned(displaySermon ?? sermon)) {
-    const unassignedThoughts = (displaySermon ?? sermon).thoughts.filter(
+  if (!areAllThoughtsAssigned(sermon)) {
+    const unassignedThoughts = (sermon).thoughts.filter(
       (thought) => !thought.outlinePointId
     );
     const VISIBLE_CARD_LIMIT = 6;
@@ -1064,7 +1011,7 @@ export default function PlanPage() {
         onClosePlanView={handleClosePlanView}
       />
       <PlanMainLayout
-        sermon={displaySermon ?? sermon}
+        sermon={sermon}
         params={{ id: sermonId as string }}
         sermonId={sermonId}
         t={t}

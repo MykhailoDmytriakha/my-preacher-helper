@@ -27,7 +27,6 @@ import SermonOutline from "@/components/sermon/SermonOutline";
 import StructurePreview from "@/components/sermon/StructurePreview";
 import StructureStats from "@/components/sermon/StructureStats";
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
-import { useOptimisticEntitySync } from "@/hooks/useOptimisticEntitySync";
 import { useRouteId } from "@/hooks/useRouteId";
 import { useSeries } from "@/hooks/useSeries";
 import useSermon from "@/hooks/useSermon";
@@ -37,7 +36,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useConnection } from "@/providers/ConnectionProvider";
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
 import { updateStructure } from "@/services/structure.service";
-import { projectOptimisticEntities } from "@/utils/optimisticEntityProjection";
+import { newClientId } from "@/utils/clientId";
 import CreateThoughtModal from "@components/CreateThoughtModal";
 import EditThoughtModal from "@components/EditThoughtModal";
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
@@ -60,8 +59,12 @@ import type { ReactNode } from "react";
 
 export const dynamic = "force-dynamic";
 
-const THOUGHT_SYNC_SUCCESS_MS = 3500;
+// Defensive structure-hygiene backstop: thought ids are now minted real up front
+// (newClientId), so no "local-" placeholder ever reaches the structure. We still
+// strip any such id before persisting structure, to keep the structure-overwrite
+// bug class (#13) impossible even if a legacy/stray local id slips through.
 const THOUGHT_LOCAL_ID_PREFIX = "local-thought-";
+const STRUCTURE_SAVE_ERROR_KEY = "errors.failedToSaveStructure";
 
 const sanitizeThoughtStructure = (structure: Sermon["structure"] | undefined) => {
   if (!structure) return structure;
@@ -234,31 +237,11 @@ export default function SermonPage() {
     sermon.thoughts = [];
   }
 
-  const thoughtSync = useOptimisticEntitySync<Thought>({
-    entityType: "thought",
-    scopeId: sermon?.id ?? null,
-    localIdPrefix: THOUGHT_LOCAL_ID_PREFIX,
-  });
   const sermonRef = useRef<Sermon | null>(sermon);
-  const retryThoughtActionsRef = useRef<Record<string, () => Promise<void>>>({});
-  const thoughtSyncCleanupTimersRef = useRef<Record<string, number>>({});
   const [savingPrep, setSavingPrep] = useState(false);
   const [prepDraft, setPrepDraft] = useState<Preparation>({});
   const [classicPortal, setClassicPortal] = useState<HTMLDivElement | null>(null);
   const [prepPortal, setPrepPortal] = useState<HTMLDivElement | null>(null);
-
-  const displayThoughts = useMemo(
-    () =>
-      projectOptimisticEntities<Thought>(sermon?.thoughts ?? [], thoughtSync.records, {
-        createPlacement: "start",
-      }),
-    [sermon?.thoughts, thoughtSync.records]
-  );
-
-  const displaySermon = useMemo(
-    () => (sermon ? { ...sermon, thoughts: displayThoughts } : null),
-    [displayThoughts, sermon]
-  );
 
   useEffect(() => {
     sermonRef.current = sermon;
@@ -273,15 +256,6 @@ export default function SermonPage() {
     }
   }, [modeParam, id]);
 
-  useEffect(() => {
-    return () => {
-      Object.values(thoughtSyncCleanupTimersRef.current).forEach((timerId) => {
-        window.clearTimeout(timerId);
-      });
-      thoughtSyncCleanupTimersRef.current = {};
-      retryThoughtActionsRef.current = {};
-    };
-  }, []);
 useEffect(() => {
   if (sermon?.preparation) {
     let mergedPrep = { ...sermon.preparation };
@@ -329,18 +303,6 @@ useEffect(() => {
     [allTags]
   );
 
-  const scheduleThoughtSyncCleanup = useCallback((localId: string, delayMs: number = THOUGHT_SYNC_SUCCESS_MS) => {
-    const existingTimer = thoughtSyncCleanupTimersRef.current[localId];
-    if (existingTimer) {
-      window.clearTimeout(existingTimer);
-    }
-
-    thoughtSyncCleanupTimersRef.current[localId] = window.setTimeout(() => {
-      thoughtSync.removeRecord(localId);
-      delete thoughtSyncCleanupTimersRef.current[localId];
-    }, delayMs);
-  }, [thoughtSync]);
-
   const persistStructureForThoughts = useCallback(async (nextStructure: Sermon["structure"]) => {
     const currentSermon = sermonRef.current;
     const sanitizedStructure = sanitizeThoughtStructure(nextStructure);
@@ -362,7 +324,7 @@ useEffect(() => {
     const { baseSermon, thought, targetSection } = params;
     const projectedThoughts = [
       thought,
-      ...(displaySermon?.thoughts ?? baseSermon.thoughts).filter((item) => item.id !== thought.id),
+      ...(sermon?.thoughts ?? baseSermon.thoughts).filter((item) => item.id !== thought.id),
     ];
     const thoughtsById = new Map(projectedThoughts.map((item) => [item.id, item]));
 
@@ -375,7 +337,7 @@ useEffect(() => {
       thoughts: projectedThoughts,
       outline: baseSermon.outline,
     });
-  }, [displaySermon?.thoughts]);
+  }, [sermon?.thoughts]);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -408,9 +370,9 @@ useEffect(() => {
     setSortOrder,
     hasStructureTags
   } = useThoughtFiltering({
-    initialThoughts: displaySermon?.thoughts ?? [],
-    sermonStructure: displaySermon?.structure,
-    sermonOutline: displaySermon?.outline
+    initialThoughts: sermon?.thoughts ?? [],
+    sermonStructure: sermon?.structure,
+    sermonOutline: sermon?.outline
   });
 
   const filterButtonRef = useRef<HTMLButtonElement>(null);
@@ -450,68 +412,20 @@ useEffect(() => {
     }
   }, [sermon, setSermon]);
 
-  const handleRetryThoughtSync = useCallback(async (thoughtId: string) => {
-    // If it's still in the closure map (same session), use that for speed/context
-    const retryAction = retryThoughtActionsRef.current[thoughtId];
-    if (retryAction) {
-      await retryAction();
-      return;
-    }
-
-    // Otherwise, we are likely recovering from a hard reload and must rebuild the action
-    if (!sermonRef.current) return;
-    
-    // Find the record by localId or entityId
-    let record = thoughtSync.getRecordByLocalId(thoughtId);
-    if (!record) {
-      record = thoughtSync.records.find(r => r.entityId === thoughtId) || undefined;
-    }
-
-    if (!record || !record.entity) {
-      console.warn('Cannot retry sync: record or entity not found in IndexedDB queue');
-      return;
-    }
-
-    const sermonId = sermonRef.current.id;
-    thoughtSync.markRecordStatus(record.localId, "sending", { resetExpiry: true });
-
-    try {
-      if (record.operation === 'create') {
-        const savedThought = await createManualThought(sermonId, record.entity);
-        thoughtSync.replaceRecordEntity(record.localId, savedThought, { entityId: savedThought.id });
-        thoughtSync.markRecordStatus(record.localId, "success", { successAt: new Date().toISOString() });
-        scheduleThoughtSyncCleanup(record.localId);
-      } else if (record.operation === 'update') {
-        const savedThought = await updateThought(sermonId, record.entity);
-        thoughtSync.replaceRecordEntity(record.localId, savedThought);
-        thoughtSync.markRecordStatus(record.localId, "success", { successAt: new Date().toISOString() });
-        scheduleThoughtSyncCleanup(record.localId);
-      } else if (record.operation === 'delete') {
-        await deleteThought(sermonId, record.snapshot || record.entity);
-        thoughtSync.removeRecord(record.localId);
-      }
-    } catch (err) {
-      console.error(`Failed to retry ${record.operation} for thought:`, err);
-      thoughtSync.markRecordStatus(record.localId, "error", { error: t('errors.syncFailed', { defaultValue: 'Sync failed' }) });
-    }
-  }, [thoughtSync, scheduleThoughtSyncCleanup, t]);
-
   const handleSaveThoughtPatch = useCallback(async (
     thoughtToUpdate: Thought,
     patch: Pick<Thought, "text" | "tags" | "outlinePointId" | "subPointId">
   ) => {
     if (!sermon) return;
 
-    const pendingCreateRecord = thoughtSync.records.find(
-      (record) => record.operation === "create" && record.entityId === thoughtToUpdate.id
-    );
+    const previousStructure = sermon.structure;
     const optimisticThought: Thought = {
       ...thoughtToUpdate,
       ...patch,
     };
     const currentSection = findThoughtSectionInStructure(sermon.structure, thoughtToUpdate.id);
     const nextSection = resolveSectionForNewThought({
-      sermon: displaySermon ?? sermon,
+      sermon: sermon,
       outlinePointId: optimisticThought.outlinePointId ?? null,
       tags: optimisticThought.tags,
     });
@@ -524,182 +438,157 @@ useEffect(() => {
         })
       : sermon.structure;
 
-    if (pendingCreateRecord) {
-      thoughtSync.replaceRecordEntity(pendingCreateRecord.localId, optimisticThought);
-      thoughtSync.markRecordStatus(pendingCreateRecord.localId, "pending", {
-        resetExpiry: true,
-      });
+    // Optimistic (React Query cache via setSermon): patch the thought + structure
+    // so the edit shows instantly. The client-SDK write (updateThought) lands in
+    // the native Firestore offline queue; on a real failure we roll the cache back
+    // and surface a toast (replaces the old per-card sync badge + retry button).
+    setSermon((prevSermon) =>
+      prevSermon
+        ? {
+            ...prevSermon,
+            thoughts: prevSermon.thoughts.map((thought) =>
+              thought.id === optimisticThought.id ? optimisticThought : thought
+            ),
+            structure: optimisticStructure ?? prevSermon.structure,
+            thoughtsBySection: optimisticStructure ?? prevSermon.thoughtsBySection,
+          }
+        : prevSermon
+    );
 
-      if (optimisticStructure) {
+    // Fire-and-forget the persistence so the caller (edit modal / outline select)
+    // never blocks on the network. Offline the write parks in the native queue.
+    void (async () => {
+      try {
+        const savedThought = await updateThought(sermon.id, optimisticThought);
         setSermon((prevSermon) =>
           prevSermon
             ? {
                 ...prevSermon,
-                structure: optimisticStructure,
-                thoughtsBySection: optimisticStructure,
+                thoughts: prevSermon.thoughts.map((thought) =>
+                  thought.id === savedThought.id ? savedThought : thought
+                ),
               }
             : prevSermon
         );
-      }
 
-      const retryPendingCreate = retryThoughtActionsRef.current[thoughtToUpdate.id];
-      if (retryPendingCreate) {
-        void retryPendingCreate();
-      }
-      return;
-    }
-
-    const record = thoughtSync.createRecord({
-      entityId: thoughtToUpdate.id,
-      operation: "update",
-      entity: optimisticThought,
-      snapshot: thoughtToUpdate,
-    });
-
-    if (!record) return;
-
-    if (optimisticStructure) {
-      setSermon((prevSermon) =>
-        prevSermon
-          ? {
-              ...prevSermon,
-              structure: optimisticStructure,
-              thoughtsBySection: optimisticStructure,
-            }
-          : prevSermon
-      );
-    }
-
-    const executeUpdate = async () => {
-      thoughtSync.markRecordStatus(record.localId, "sending", { resetExpiry: true });
-
-      try {
-        const savedThought = await updateThought(sermon.id, optimisticThought);
-        const successAt = new Date().toISOString();
-
-        thoughtSync.replaceRecordEntity(record.localId, savedThought);
-        thoughtSync.markRecordStatus(record.localId, "success", { successAt });
-
-        setSermon((prevSermon) => {
-          if (!prevSermon) return prevSermon;
-          return {
-            ...prevSermon,
-            thoughts: prevSermon.thoughts.map((thought) =>
-              thought.id === savedThought.id ? savedThought : thought
-            ),
-            structure: prevSermon.structure,
-            thoughtsBySection: prevSermon.thoughtsBySection,
-          };
-        });
-
-        if (structureWillChange && sermonRef.current?.structure) {
-          await persistStructureForThoughts(sermonRef.current.structure);
+        // Structure persist is best-effort: a failure here must NOT roll back the
+        // thought edit, which already succeeded server-side.
+        if (structureWillChange && optimisticStructure) {
+          try {
+            await persistStructureForThoughts(optimisticStructure);
+          } catch (structureError) {
+            console.error("Failed to persist structure after thought update", structureError);
+            toast.error(t(STRUCTURE_SAVE_ERROR_KEY));
+          }
         }
-
-        delete retryThoughtActionsRef.current[thoughtToUpdate.id];
-        scheduleThoughtSyncCleanup(record.localId);
       } catch (updateError) {
         console.error("Failed to update thought", updateError);
-        thoughtSync.markRecordStatus(record.localId, "error", {
-          error: t("errors.thoughtUpdateError"),
-        });
+        // Surgical rollback: restore only THIS thought (+ its structure move), so a
+        // concurrent batch (outline-point delete patching N thoughts) is not
+        // clobbered by restoring a whole stale sermon snapshot.
+        setSermon((prevSermon) =>
+          prevSermon
+            ? {
+                ...prevSermon,
+                thoughts: prevSermon.thoughts.map((thought) =>
+                  thought.id === thoughtToUpdate.id ? thoughtToUpdate : thought
+                ),
+                ...(structureWillChange
+                  ? { structure: previousStructure, thoughtsBySection: previousStructure }
+                  : {}),
+              }
+            : prevSermon
+        );
+        toast.error(t("errors.thoughtUpdateError"));
       }
-    };
-
-    retryThoughtActionsRef.current[thoughtToUpdate.id] = executeUpdate;
-    void executeUpdate();
-  }, [buildStructureWithThought, displaySermon, persistStructureForThoughts, scheduleThoughtSyncCleanup, sermon, setSermon, t, thoughtSync]);
+    })();
+  }, [buildStructureWithThought, sermon, persistStructureForThoughts, setSermon, t]);
 
   const handleCreateManualThought = useCallback(async (draftThought: Omit<Thought, "id">) => {
     if (!sermon) return;
 
-    const tempThoughtId = thoughtSync.buildLocalId();
-    const optimisticThought: Thought = {
+    const previousSermon = sermonRef.current;
+    // Mint the real id up front (no "local-" placeholder): the optimistic row, the
+    // client-SDK write and the stored doc all share one stable id, so a buffered
+    // write that ever replays is idempotent and the structure never needs a
+    // temp->real id swap. Mirrors the useGroups/usePrayerRequests create idiom.
+    const newThought: Thought = {
       ...draftThought,
-      id: tempThoughtId,
+      id: newClientId(),
     };
     const targetSection = resolveSectionForNewThought({
-      sermon: displaySermon ?? sermon,
-      outlinePointId: optimisticThought.outlinePointId ?? null,
-      tags: optimisticThought.tags,
+      sermon: sermon,
+      outlinePointId: newThought.outlinePointId ?? null,
+      tags: newThought.tags,
     });
     const optimisticStructure = buildStructureWithThought({
       baseSermon: sermon,
-      thought: optimisticThought,
+      thought: newThought,
       targetSection,
     });
-
-    const record = thoughtSync.createRecord({
-      entityId: tempThoughtId,
-      operation: "create",
-      entity: optimisticThought,
-    });
-
-    if (!record) return;
 
     setSermon((prevSermon) =>
       prevSermon
         ? {
             ...prevSermon,
-            structure: optimisticStructure,
-            thoughtsBySection: optimisticStructure,
+            thoughts: [newThought, ...prevSermon.thoughts.filter((thought) => thought.id !== newThought.id)],
+            structure: optimisticStructure ?? prevSermon.structure,
+            thoughtsBySection: optimisticStructure ?? prevSermon.thoughtsBySection,
           }
         : prevSermon
     );
 
-    const executeCreate = async () => {
-      thoughtSync.markRecordStatus(record.localId, "sending", { resetExpiry: true });
-
+    // Fire-and-forget so the create modal closes immediately; offline the write
+    // parks in the native Firestore queue and replays on reconnect.
+    void (async () => {
       try {
-        const latestRecord = thoughtSync.getRecordByLocalId(record.localId);
-        const latestThought = latestRecord?.entity ?? optimisticThought;
-        const savedThought = await createManualThought(sermon.id, {
-          ...latestThought,
-          id: tempThoughtId,
-        });
-        const successAt = new Date().toISOString();
-        const latestStructure = replaceThoughtIdInStructure({
-          structure: sermonRef.current?.structure ?? optimisticStructure,
-          fromThoughtId: tempThoughtId,
-          toThoughtId: savedThought.id,
-        });
-
-        thoughtSync.replaceRecordEntity(record.localId, savedThought, {
-          entityId: savedThought.id,
-        });
-        thoughtSync.markRecordStatus(record.localId, "success", { successAt });
+        const savedThought = await createManualThought(sermon.id, newThought);
+        const idChanged = savedThought.id !== newThought.id;
+        // Client SDK echoes the same id (idChanged=false, no-op). A server fallback
+        // that mints its own id is reconciled here: swap temp->real everywhere.
+        const reconciledStructure = idChanged
+          ? replaceThoughtIdInStructure({
+              structure: optimisticStructure,
+              fromThoughtId: newThought.id,
+              toThoughtId: savedThought.id,
+            })
+          : optimisticStructure;
 
         setSermon((prevSermon) => {
           if (!prevSermon) return prevSermon;
-          const nextStructure = replaceThoughtIdInStructure({
-            structure: prevSermon.structure,
-            fromThoughtId: tempThoughtId,
-            toThoughtId: savedThought.id,
-          });
-
+          const nextStructure = idChanged
+            ? replaceThoughtIdInStructure({
+                structure: prevSermon.structure,
+                fromThoughtId: newThought.id,
+                toThoughtId: savedThought.id,
+              })
+            : prevSermon.structure;
           return {
             ...prevSermon,
-            thoughts: [savedThought, ...prevSermon.thoughts.filter((thought) => thought.id !== savedThought.id)],
+            thoughts: prevSermon.thoughts.map((thought) =>
+              thought.id === newThought.id ? savedThought : thought
+            ),
             structure: nextStructure,
             thoughtsBySection: nextStructure,
           };
         });
 
-        await persistStructureForThoughts(latestStructure);
-
-        delete retryThoughtActionsRef.current[tempThoughtId];
-        scheduleThoughtSyncCleanup(record.localId);
+        // Structure persist is best-effort: a failure must not undo the created thought.
+        if (reconciledStructure) {
+          try {
+            await persistStructureForThoughts(reconciledStructure);
+          } catch (structureError) {
+            console.error("Failed to persist structure after thought create", structureError);
+            toast.error(t(STRUCTURE_SAVE_ERROR_KEY));
+          }
+        }
       } catch (createError) {
         console.error("Failed to create thought", createError);
-        thoughtSync.markRecordStatus(record.localId, "error", {
-          error: t("errors.addThoughtError"),
-        });
+        setSermon(() => previousSermon);
+        toast.error(t("errors.addThoughtError"));
       }
-    };
-
-    retryThoughtActionsRef.current[tempThoughtId] = executeCreate;
-    void executeCreate();
-  }, [buildStructureWithThought, displaySermon, persistStructureForThoughts, scheduleThoughtSyncCleanup, sermon, setSermon, t, thoughtSync]);
+    })();
+  }, [buildStructureWithThought, sermon, persistStructureForThoughts, setSermon, t]);
 
   const handleThoughtUpdate = useCallback((updatedThought: Thought) => {
     setSermon((prevSermon) => {
@@ -726,79 +615,52 @@ useEffect(() => {
   const handleDeleteThought = useCallback(async (thoughtId: string) => {
     if (!sermon) return;
 
-    const pendingCreateRecord = thoughtSync.records.find(
-      (record) => record.operation === "create" && record.entityId === thoughtId
-    );
-    if (pendingCreateRecord) {
-      thoughtSync.removeRecord(pendingCreateRecord.localId);
-      delete retryThoughtActionsRef.current[thoughtId];
-      setSermon((prevSermon) => {
-        if (!prevSermon) return prevSermon;
-        const nextStructure = removeThoughtIdFromStructure(prevSermon.structure, thoughtId);
-        return {
-          ...prevSermon,
-          structure: nextStructure,
-          thoughtsBySection: nextStructure,
-        };
-      });
-      return;
-    }
-
-    const thoughtToDelete = (displaySermon ?? sermon).thoughts.find((thought) => thought.id === thoughtId);
+    const thoughtToDelete = sermon.thoughts.find((thought) => thought.id === thoughtId);
     if (!thoughtToDelete) {
       console.error("Could not find thought with ID:", thoughtId);
       return;
     }
 
-    const record = thoughtSync.createRecord({
-      entityId: thoughtId,
-      operation: "delete",
-      entity: thoughtToDelete,
-      snapshot: thoughtToDelete,
+    const previousSermon = sermonRef.current;
+    const nextStructure = removeThoughtIdFromStructure(
+      sermonRef.current?.structure ?? sermon.structure,
+      thoughtId
+    );
+
+    // Optimistic delete: drop the thought + its structure id from the cache now.
+    setSermon((prevSermon) => {
+      if (!prevSermon) return prevSermon;
+      const localStructure = removeThoughtIdFromStructure(prevSermon.structure, thoughtId);
+      return {
+        ...prevSermon,
+        thoughts: prevSermon.thoughts.filter((thought) => thought.id !== thoughtId),
+        structure: localStructure,
+        thoughtsBySection: localStructure,
+      };
     });
 
-    if (!record) return;
-
-    const executeDelete = async () => {
-      thoughtSync.markRecordStatus(record.localId, "sending", { resetExpiry: true });
-
+    // Fire-and-forget: the card disappears immediately; offline the delete parks
+    // in the native Firestore queue.
+    void (async () => {
       try {
         await deleteThought(sermon.id, thoughtToDelete);
-        const nextStructure = removeThoughtIdFromStructure(
-          sermonRef.current?.structure ?? sermon.structure,
-          thoughtId
-        );
-
-        setSermon((prevSermon) => {
-          if (!prevSermon) return prevSermon;
-          const localStructure = removeThoughtIdFromStructure(prevSermon.structure, thoughtId);
-          return {
-            ...prevSermon,
-            thoughts: prevSermon.thoughts.filter((thought) => thought.id !== thoughtId),
-            structure: localStructure,
-            thoughtsBySection: localStructure,
-          };
-        });
-
-        await persistStructureForThoughts(nextStructure);
-
-        thoughtSync.removeRecord(record.localId);
-        delete retryThoughtActionsRef.current[thoughtId];
+        try {
+          await persistStructureForThoughts(nextStructure);
+        } catch (structureError) {
+          console.error("Failed to persist structure after thought delete", structureError);
+          toast.error(t("errors.failedToSaveStructure"));
+        }
       } catch (deleteError) {
         console.error("Failed to delete thought", deleteError);
-        thoughtSync.markRecordStatus(record.localId, "error", {
-          error: t("errors.deletingError"),
-        });
+        setSermon(() => previousSermon);
+        toast.error(t("errors.deletingError"));
       }
-    };
-
-    retryThoughtActionsRef.current[thoughtId] = executeDelete;
-    void executeDelete();
-  }, [displaySermon, persistStructureForThoughts, sermon, setSermon, t, thoughtSync]);
+    })();
+  }, [sermon, persistStructureForThoughts, setSermon, t]);
 
   const handleSaveEditedThought = async (updatedText: string, updatedTags: string[], outlinePointId?: string | null, subPointId?: string | null) => {
     if (!editingModalData) return;
-    const currentSermon = displaySermon ?? sermon;
+    const currentSermon = sermon;
     if (!currentSermon) {
       setEditingModalData(null);
       return;
@@ -870,7 +732,7 @@ useEffect(() => {
   };
 
   const handleOutlinePointDeleted = useCallback((outlinePointId: string) => {
-    const currentSermon = displaySermon ?? sermon;
+    const currentSermon = sermon;
     if (!currentSermon) return;
 
     currentSermon.thoughts
@@ -883,10 +745,10 @@ useEffect(() => {
           subPointId: null,
         });
       });
-  }, [displaySermon, handleSaveThoughtPatch, sermon]);
+  }, [handleSaveThoughtPatch, sermon]);
 
   const handleSubPointDeleted = useCallback((outlinePointId: string, subPointId: string) => {
-    const currentSermon = displaySermon ?? sermon;
+    const currentSermon = sermon;
     if (!currentSermon) return;
 
     currentSermon.thoughts
@@ -899,7 +761,7 @@ useEffect(() => {
           subPointId: null,
         });
       });
-  }, [displaySermon, handleSaveThoughtPatch, sermon]);
+  }, [handleSaveThoughtPatch, sermon]);
 
   const handleSermonUpdate = useCallback((updatedSermon: Sermon) => {
     setSermon(updatedSermon);
@@ -962,7 +824,7 @@ useEffect(() => {
       portalRef={options?.portalRef}
       isClassicMode={uiMode === 'classic'}
       activeCount={activeCount}
-      totalThoughts={displaySermon?.thoughts?.length ?? 0}
+      totalThoughts={sermon?.thoughts?.length ?? 0}
       isFilterOpen={isFilterOpen}
       setIsFilterOpen={setIsFilterOpen}
       viewFilter={viewFilter}
@@ -983,13 +845,11 @@ useEffect(() => {
       brainstormSuggestion={brainstormSuggestion}
       setBrainstormSuggestion={setBrainstormSuggestion}
       filteredThoughts={filteredThoughts}
-      sermonOutline={displaySermon?.outline}
+      sermonOutline={sermon?.outline}
       onDelete={handleDeleteThought}
       onEditStart={handleEditThoughtStart}
       onThoughtUpdate={handleThoughtUpdate}
       onThoughtOutlinePointChange={handleThoughtOutlinePointChange}
-      syncStatesById={thoughtSync.syncStateById}
-      onRetrySync={handleRetryThoughtSync}
       isReadOnly={isReadOnly}
     />
   );
@@ -1277,23 +1137,23 @@ useEffect(() => {
     );
   }
 
-  const thoughtsPerSermonPoint = calculateThoughtsPerSermonPoint(displaySermon);
-  const canonicalStructure = displaySermon ? canonicalizeStructure(displaySermon) : { introduction: [], main: [], conclusion: [], ambiguous: [] };
+  const thoughtsPerSermonPoint = calculateThoughtsPerSermonPoint(sermon);
+  const canonicalStructure = sermon ? canonicalizeStructure(sermon) : { introduction: [], main: [], conclusion: [], ambiguous: [] };
   const tagCounts = {
     [STRUCTURE_TAGS.INTRODUCTION]: canonicalStructure.introduction.length,
     [STRUCTURE_TAGS.MAIN_BODY]: canonicalStructure.main.length,
     [STRUCTURE_TAGS.CONCLUSION]: canonicalStructure.conclusion.length,
   };
-  const hasInconsistentThoughts = checkForInconsistentThoughtsHelper(displaySermon);
+  const hasInconsistentThoughts = checkForInconsistentThoughtsHelper(sermon);
 
   return (
     <div className="space-y-4 sm:space-y-6 py-4 sm:py-8">
       <SermonHeader sermon={sermon} series={series} onUpdate={handleSermonUpdate} />
       <div className="lg:hidden">
         <StructureStats
-          sermon={displaySermon!}
+          sermon={sermon!}
           tagCounts={tagCounts}
-          totalThoughts={displaySermon?.thoughts?.length ?? 0}
+          totalThoughts={sermon?.thoughts?.length ?? 0}
           hasInconsistentThoughts={hasInconsistentThoughts}
         />
       </div>
@@ -1341,14 +1201,14 @@ useEffect(() => {
               <div className="order-1 lg:order-2 space-y-6">
                 <div className="hidden lg:block">
                   <StructureStats
-                    sermon={displaySermon!}
+                    sermon={sermon!}
                     tagCounts={tagCounts}
-                    totalThoughts={displaySermon?.thoughts?.length ?? 0}
+                    totalThoughts={sermon?.thoughts?.length ?? 0}
                     hasInconsistentThoughts={hasInconsistentThoughts}
                   />
                 </div>
                 <SermonOutline
-                  sermon={displaySermon!}
+                  sermon={sermon!}
                   thoughtsPerSermonPoint={thoughtsPerSermonPoint}
                   onOutlineUpdate={handleOutlineUpdate}
                   onOutlinePointDeleted={handleOutlinePointDeleted}
@@ -1356,7 +1216,7 @@ useEffect(() => {
                   isReadOnly={isReadOnly}
                 />
                 <KnowledgeSection sermon={sermon} updateSermon={handleSermonUpdate} />
-                {displaySermon?.structure && userSettings?.enableStructurePreview && <StructurePreview sermon={displaySermon} />}
+                {sermon?.structure && userSettings?.enableStructurePreview && <StructurePreview sermon={sermon} />}
               </div>
             </div>
           </div>
@@ -1369,7 +1229,7 @@ useEffect(() => {
           initialSermonPointId={editingModalData.thought.outlinePointId || undefined}
           initialSubPointId={editingModalData.thought.subPointId ?? undefined}
           allowedTags={allowedTags}
-          sermonOutline={displaySermon?.outline}
+          sermonOutline={sermon?.outline}
           onSave={handleSaveEditedThought}
           onClose={() => setEditingModalData(null)}
           allowOffline={true}
@@ -1380,7 +1240,7 @@ useEffect(() => {
         onClose={() => setIsCreateModalOpen(false)}
         onCreateThought={handleCreateManualThought}
         allowedTags={allowedTags}
-        sermonOutline={displaySermon?.outline}
+        sermonOutline={sermon?.outline}
         disabled={isReadOnly}
       />
     </div>

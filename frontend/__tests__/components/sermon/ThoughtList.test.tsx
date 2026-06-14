@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import React from 'react';
 
 import ThoughtList from '@/components/sermon/ThoughtList';
@@ -9,12 +9,8 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-const mockThoughtCard = jest.fn(({ thought, onRetrySync }: any) => (
-  <div data-testid={`thought-card-${thought.id}`}>
-    <button type="button" onClick={() => onRetrySync?.(thought.id)}>
-      Retry {thought.id}
-    </button>
-  </div>
+const mockThoughtCard = jest.fn(({ thought }: any) => (
+  <div data-testid={`thought-card-${thought.id}`}>{thought.text}</div>
 ));
 
 jest.mock('@/components/ThoughtCard', () => ({
@@ -25,15 +21,14 @@ jest.mock('@/components/ThoughtCard', () => ({
 describe('ThoughtList', () => {
   const thoughts = [
     { id: 'thought-1', text: 'First', tags: [], date: '2024-01-01' },
+    { id: 'thought-2', text: 'Second', tags: [], date: '2024-01-02' },
   ];
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('passes sync state and retry callbacks through to ThoughtCard', () => {
-    const onRetrySync = jest.fn();
-
+  it('renders one ThoughtCard per filtered thought', () => {
     render(
       <ThoughtList
         filteredThoughts={thoughts as any}
@@ -43,24 +38,12 @@ describe('ThoughtList', () => {
         sermonId="sermon-1"
         onDelete={jest.fn()}
         onEditStart={jest.fn()}
-        onRetrySync={onRetrySync}
-        syncStatesById={{
-          'thought-1': { status: 'error', operation: 'update', lastError: 'Failed' },
-        }}
         resetFilters={jest.fn()}
       />
     );
 
-    expect(mockThoughtCard).toHaveBeenCalled();
-    expect(mockThoughtCard.mock.calls[0][0]).toEqual(
-      expect.objectContaining({
-        thought: expect.objectContaining({ id: 'thought-1' }),
-        syncState: { status: 'error', operation: 'update', lastError: 'Failed' },
-        onRetrySync,
-      })
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: 'Retry thought-1' }));
-    expect(onRetrySync).toHaveBeenCalledWith('thought-1');
+    expect(mockThoughtCard).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId('thought-card-thought-1')).toBeInTheDocument();
+    expect(screen.getByTestId('thought-card-thought-2')).toBeInTheDocument();
   });
 });
