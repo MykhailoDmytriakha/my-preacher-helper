@@ -7,7 +7,6 @@ import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { newClientId } from '@/utils/clientId';
-import { buildId } from '@/utils/groupFlow';
 import { PRAYER_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import { normalizeError } from '@/utils/normalizeError';
 import {
@@ -26,6 +25,21 @@ const detailKey = (id: string) => ['prayerRequest', id];
 type CreatePrayerPayload = Pick<PrayerRequest, 'userId' | 'title'> &
   Partial<Pick<PrayerRequest, 'description' | 'categoryId' | 'tags'>>;
 
+type AddUpdateMutationVars = {
+  id: string;
+  updateId: string;
+  text: string;
+  createdAt: string;
+};
+
+type StatusMutationVars = {
+  id: string;
+  status: PrayerStatus;
+  updatedAt: string;
+  answeredAt?: string;
+  answerText?: string;
+};
+
 export function usePrayerRequests(userId?: string | null) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
@@ -38,12 +52,20 @@ export function usePrayerRequests(userId?: string | null) {
     toast.error(t('common.saveError', { defaultValue: 'Failed to save. Please try again.' }));
   };
 
+  const listKey = PRAYER_QUERY_KEY(effectiveUserId);
+  const replacePrayerInCaches = (prayer: PrayerRequest) => {
+    queryClient.setQueryData<PrayerRequest[]>(listKey, (old) =>
+      old ? old.map((item) => (item.id === prayer.id ? prayer : item)) : old
+    );
+    queryClient.setQueryData<PrayerRequest | undefined>(detailKey(prayer.id), prayer);
+  };
+
   const {
     data: prayerRequests = [],
     isLoading,
     error,
   } = useServerFirstQuery<PrayerRequest[]>({
-    queryKey: PRAYER_QUERY_KEY(effectiveUserId),
+    queryKey: listKey,
     queryFn: () => (effectiveUserId ? getAllPrayerRequests(effectiveUserId) : Promise.resolve([])),
     enabled: !!effectiveUserId,
   });
@@ -52,36 +74,46 @@ export function usePrayerRequests(userId?: string | null) {
   // default in mutationDefaults.ts (survives reload + replays on reconnect);
   // onMutate gives instant UI; onError rolls back + surfaces genuine failures.
   // Create uses a client-generated id (see clientId.ts): the optimistic row, the
-  // POST body and the server doc all share one id, so there is no temp→real swap
-  // and a replayed offline create is idempotent (no duplicate).
+  // POST body and the stored doc all share one stable id. onSuccess still swaps
+  // the optimistic row for the persisted shape so server/client defaults are exact.
   const createMutation = useMutation({
     mutationKey: PRAYER_MUTATION_KEYS.create,
     mutationFn: (payload: CreatePrayerPayload & { id: string }) => createPrayerRequest(payload),
     onMutate: async (payload) => {
-      await queryClient.cancelQueries({ queryKey: PRAYER_QUERY_KEY(effectiveUserId) });
-      const previous = queryClient.getQueryData<PrayerRequest[]>(PRAYER_QUERY_KEY(effectiveUserId));
+      await queryClient.cancelQueries({ queryKey: listKey });
+      const previous = queryClient.getQueryData<PrayerRequest[]>(listKey);
       const now = new Date().toISOString();
+      const tempId = payload.id ?? newClientId();
       const optimistic = {
         status: 'active',
         updates: [],
         createdAt: now,
         updatedAt: now,
         ...payload,
+        id: tempId,
       } as PrayerRequest;
-      queryClient.setQueryData<PrayerRequest[]>(PRAYER_QUERY_KEY(effectiveUserId), (old = []) => [
+      queryClient.setQueryData<PrayerRequest[]>(listKey, (old = []) => [
         optimistic,
         ...old,
       ]);
       setMutationError(null);
-      return { previous };
+      return { previous: previous ?? [], tempId };
     },
     onError: (e: unknown, _payload, ctx) => {
-      if (ctx?.previous) queryClient.setQueryData(PRAYER_QUERY_KEY(effectiveUserId), ctx.previous);
+      queryClient.setQueryData(listKey, ctx?.previous ?? []);
       reportError(e);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: PRAYER_PREFIX });
+    onSuccess: (created, _payload, ctx) => {
+      if (created?.id && ctx?.tempId) {
+        queryClient.setQueryData<PrayerRequest[]>(listKey, (old = []) =>
+          old.map((prayer) => (prayer.id === ctx.tempId ? created : prayer))
+        );
+        queryClient.setQueryData<PrayerRequest | undefined>(detailKey(created.id), created);
+      }
       setMutationError(null);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: PRAYER_PREFIX });
     },
   });
 
@@ -90,27 +122,29 @@ export function usePrayerRequests(userId?: string | null) {
     mutationFn: ({ id, updates }: { id: string; updates: Partial<PrayerRequest> }) =>
       updatePrayerRequest(id, updates),
     onMutate: async ({ id, updates }) => {
-      await queryClient.cancelQueries({ queryKey: PRAYER_QUERY_KEY(effectiveUserId) });
-      const previous = queryClient.getQueryData<PrayerRequest[]>(PRAYER_QUERY_KEY(effectiveUserId));
+      await queryClient.cancelQueries({ queryKey: listKey });
+      const previous = queryClient.getQueryData<PrayerRequest[]>(listKey);
       const previousDetail = queryClient.getQueryData<PrayerRequest>(detailKey(id));
-      queryClient.setQueryData<PrayerRequest[]>(PRAYER_QUERY_KEY(effectiveUserId), (old = []) =>
+      queryClient.setQueryData<PrayerRequest[]>(listKey, (old = []) =>
         old.map((p) => (p.id === id ? ({ ...p, ...updates } as PrayerRequest) : p))
       );
       queryClient.setQueryData<PrayerRequest | undefined>(detailKey(id), (prev) =>
         prev ? ({ ...prev, ...updates } as PrayerRequest) : prev
       );
       setMutationError(null);
-      return { previous, previousDetail, id };
+      return { previous: previous ?? [], previousDetail, id };
     },
     onError: (e: unknown, _vars, ctx) => {
-      if (ctx?.previous) queryClient.setQueryData(PRAYER_QUERY_KEY(effectiveUserId), ctx.previous);
+      queryClient.setQueryData(listKey, ctx?.previous ?? []);
       if (ctx?.id) queryClient.setQueryData(detailKey(ctx.id), ctx.previousDetail);
       reportError(e);
     },
     onSuccess: (updated) => {
-      if (updated?.id) queryClient.setQueryData<PrayerRequest>(detailKey(updated.id), updated);
-      queryClient.invalidateQueries({ queryKey: PRAYER_PREFIX });
+      if (updated?.id) replacePrayerInCaches(updated);
       setMutationError(null);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: PRAYER_PREFIX });
     },
   });
 
@@ -118,82 +152,98 @@ export function usePrayerRequests(userId?: string | null) {
     mutationKey: PRAYER_MUTATION_KEYS.delete,
     mutationFn: (id: string) => deletePrayerRequest(id),
     onMutate: async (id) => {
-      await queryClient.cancelQueries({ queryKey: PRAYER_QUERY_KEY(effectiveUserId) });
-      const previous = queryClient.getQueryData<PrayerRequest[]>(PRAYER_QUERY_KEY(effectiveUserId));
-      queryClient.setQueryData<PrayerRequest[]>(PRAYER_QUERY_KEY(effectiveUserId), (old = []) =>
+      await queryClient.cancelQueries({ queryKey: listKey });
+      const previous = queryClient.getQueryData<PrayerRequest[]>(listKey);
+      queryClient.setQueryData<PrayerRequest[]>(listKey, (old = []) =>
         old.filter((p) => p.id !== id)
       );
-      return { previous };
+      return { previous: previous ?? [] };
     },
     onError: (e: unknown, _id, ctx) => {
-      if (ctx?.previous) queryClient.setQueryData(PRAYER_QUERY_KEY(effectiveUserId), ctx.previous);
+      queryClient.setQueryData(listKey, ctx?.previous ?? []);
       reportError(e);
     },
     onSuccess: (_r, id) => {
       queryClient.removeQueries({ queryKey: detailKey(id) });
-      queryClient.invalidateQueries({ queryKey: PRAYER_PREFIX });
       setMutationError(null);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: PRAYER_PREFIX });
     },
   });
 
   const addUpdateMutation = useMutation({
     mutationKey: PRAYER_MUTATION_KEYS.addUpdate,
-    mutationFn: ({ id, text }: { id: string; text: string }) => addPrayerUpdate(id, text),
-    onMutate: async ({ id, text }) => {
-      await queryClient.cancelQueries({ queryKey: PRAYER_QUERY_KEY(effectiveUserId) });
-      const previous = queryClient.getQueryData<PrayerRequest[]>(PRAYER_QUERY_KEY(effectiveUserId));
+    mutationFn: ({ id, updateId, text, createdAt }: AddUpdateMutationVars) =>
+      addPrayerUpdate(id, { updateId, text, createdAt }),
+    onMutate: async ({ id, updateId, text, createdAt }) => {
+      await queryClient.cancelQueries({ queryKey: listKey });
+      const previous = queryClient.getQueryData<PrayerRequest[]>(listKey);
       const previousDetail = queryClient.getQueryData<PrayerRequest>(detailKey(id));
-      const optimisticUpdate = { id: buildId('temp'), text, createdAt: new Date().toISOString() };
+      const optimisticUpdate = { id: updateId, text, createdAt };
       const applyUpdate = (p: PrayerRequest): PrayerRequest =>
-        p.id === id ? { ...p, updates: [...(p.updates ?? []), optimisticUpdate] } : p;
-      queryClient.setQueryData<PrayerRequest[]>(PRAYER_QUERY_KEY(effectiveUserId), (old = []) =>
+        p.id === id
+          ? { ...p, updates: [...(p.updates ?? []), optimisticUpdate], updatedAt: createdAt }
+          : p;
+      queryClient.setQueryData<PrayerRequest[]>(listKey, (old = []) =>
         old.map(applyUpdate)
       );
       queryClient.setQueryData<PrayerRequest | undefined>(detailKey(id), (prev) =>
         prev ? applyUpdate(prev) : prev
       );
       setMutationError(null);
-      return { previous, previousDetail, id };
+      return { previous: previous ?? [], previousDetail, id };
     },
     onError: (e: unknown, _vars, ctx) => {
-      if (ctx?.previous) queryClient.setQueryData(PRAYER_QUERY_KEY(effectiveUserId), ctx.previous);
+      queryClient.setQueryData(listKey, ctx?.previous ?? []);
       if (ctx?.id) queryClient.setQueryData(detailKey(ctx.id), ctx.previousDetail);
       reportError(e);
     },
     onSuccess: (updated) => {
-      if (updated?.id) queryClient.setQueryData<PrayerRequest>(detailKey(updated.id), updated);
-      queryClient.invalidateQueries({ queryKey: PRAYER_PREFIX });
+      if (updated?.id) replacePrayerInCaches(updated);
       setMutationError(null);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: PRAYER_PREFIX });
     },
   });
 
   const statusMutation = useMutation({
     mutationKey: PRAYER_MUTATION_KEYS.status,
-    mutationFn: ({ id, status, answerText }: { id: string; status: PrayerStatus; answerText?: string }) =>
-      setPrayerStatus(id, status, answerText),
-    onMutate: async ({ id, status }) => {
-      await queryClient.cancelQueries({ queryKey: PRAYER_QUERY_KEY(effectiveUserId) });
-      const previous = queryClient.getQueryData<PrayerRequest[]>(PRAYER_QUERY_KEY(effectiveUserId));
+    mutationFn: ({ id, status, answerText, updatedAt, answeredAt }: StatusMutationVars) =>
+      setPrayerStatus(id, { status, answerText, updatedAt, answeredAt }),
+    onMutate: async ({ id, status, answerText, updatedAt, answeredAt }) => {
+      await queryClient.cancelQueries({ queryKey: listKey });
+      const previous = queryClient.getQueryData<PrayerRequest[]>(listKey);
       const previousDetail = queryClient.getQueryData<PrayerRequest>(detailKey(id));
-      const applyStatus = (p: PrayerRequest): PrayerRequest => (p.id === id ? { ...p, status } : p);
-      queryClient.setQueryData<PrayerRequest[]>(PRAYER_QUERY_KEY(effectiveUserId), (old = []) =>
+      const optimisticStatus = {
+        status,
+        updatedAt,
+        ...(answeredAt !== undefined ? { answeredAt } : {}),
+        ...(answerText !== undefined ? { answerText } : {}),
+      };
+      const applyStatus = (p: PrayerRequest): PrayerRequest =>
+        p.id === id ? ({ ...p, ...optimisticStatus } as PrayerRequest) : p;
+      queryClient.setQueryData<PrayerRequest[]>(listKey, (old = []) =>
         old.map(applyStatus)
       );
       queryClient.setQueryData<PrayerRequest | undefined>(detailKey(id), (prev) =>
         prev ? applyStatus(prev) : prev
       );
       setMutationError(null);
-      return { previous, previousDetail, id };
+      return { previous: previous ?? [], previousDetail, id };
     },
     onError: (e: unknown, _vars, ctx) => {
-      if (ctx?.previous) queryClient.setQueryData(PRAYER_QUERY_KEY(effectiveUserId), ctx.previous);
+      queryClient.setQueryData(listKey, ctx?.previous ?? []);
       if (ctx?.id) queryClient.setQueryData(detailKey(ctx.id), ctx.previousDetail);
       reportError(e);
     },
     onSuccess: (updated) => {
-      if (updated?.id) queryClient.setQueryData<PrayerRequest>(detailKey(updated.id), updated);
-      queryClient.invalidateQueries({ queryKey: PRAYER_PREFIX });
+      if (updated?.id) replacePrayerInCaches(updated);
       setMutationError(null);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: PRAYER_PREFIX });
     },
   });
 
@@ -217,10 +267,22 @@ export function usePrayerRequests(userId?: string | null) {
       deleteMutation.mutate(id);
     },
     addUpdate: async (id: string, text: string) => {
-      addUpdateMutation.mutate({ id, text });
+      addUpdateMutation.mutate({
+        id,
+        updateId: newClientId(),
+        text,
+        createdAt: new Date().toISOString(),
+      });
     },
     setStatus: async (id: string, status: PrayerStatus, answerText?: string) => {
-      statusMutation.mutate({ id, status, answerText });
+      const updatedAt = new Date().toISOString();
+      statusMutation.mutate({
+        id,
+        status,
+        answerText,
+        updatedAt,
+        ...(status === 'answered' ? { answeredAt: updatedAt } : {}),
+      });
     },
   };
 }

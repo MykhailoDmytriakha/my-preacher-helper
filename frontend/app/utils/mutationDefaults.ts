@@ -65,6 +65,21 @@ export const PRAYER_MUTATION_KEYS = {
   status: ['prayerRequests', 'status'] as const,
 };
 
+interface PrayerAddUpdateVars {
+  id: string;
+  updateId?: string;
+  text: string;
+  createdAt?: string;
+}
+
+interface PrayerStatusVars {
+  id: string;
+  status: PrayerStatus;
+  updatedAt?: string;
+  answeredAt?: string;
+  answerText?: string;
+}
+
 export const TAG_MUTATION_KEYS = {
   add: ['tags', 'add'] as const,
   remove: ['tags', 'remove'] as const,
@@ -289,12 +304,13 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
     onSuccess: invalidate(['prayerRequests']),
   });
   queryClient.setMutationDefaults(PRAYER_MUTATION_KEYS.addUpdate, {
-    mutationFn: ({ id, text }: { id: string; text: string }) => addPrayerUpdate(id, text),
+    mutationFn: ({ id, updateId, text, createdAt }: PrayerAddUpdateVars) =>
+      addPrayerUpdate(id, { updateId, text, createdAt }),
     onSuccess: invalidate(['prayerRequests']),
   });
   queryClient.setMutationDefaults(PRAYER_MUTATION_KEYS.status, {
-    mutationFn: ({ id, status, answerText }: { id: string; status: PrayerStatus; answerText?: string }) =>
-      setPrayerStatus(id, status, answerText),
+    mutationFn: ({ id, status, answerText, updatedAt, answeredAt }: PrayerStatusVars) =>
+      setPrayerStatus(id, { status, answerText, updatedAt, answeredAt }),
     onSuccess: invalidate(['prayerRequests']),
   });
 

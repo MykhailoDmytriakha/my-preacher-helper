@@ -120,13 +120,88 @@ describe('usePrayerRequests', () => {
       expect.objectContaining({ userId: 'user-1', title: 'New prayer', id: expect.any(String) })
     );
     expect(mockUpdatePrayerRequest).toHaveBeenCalledWith('p1', { title: 'Updated prayer' });
-    expect(mockAddPrayerUpdate).toHaveBeenCalledWith('p1', 'Fresh update');
-    expect(mockSetPrayerStatus).toHaveBeenCalledWith('p1', 'answered', 'God answered');
+    expect(mockAddPrayerUpdate).toHaveBeenCalledWith('p1', {
+      updateId: expect.any(String),
+      text: 'Fresh update',
+      createdAt: expect.any(String),
+    });
+    expect(mockSetPrayerStatus).toHaveBeenCalledWith('p1', {
+      status: 'answered',
+      answerText: 'God answered',
+      updatedAt: expect.any(String),
+      answeredAt: expect.any(String),
+    });
+    const statusPayload = mockSetPrayerStatus.mock.calls[0][1] as { updatedAt: string; answeredAt?: string };
+    expect(statusPayload.answeredAt).toBe(statusPayload.updatedAt);
     expect(mockDeletePrayerRequest).toHaveBeenCalledWith('p1');
 
     const cachedList = queryClient.getQueryData<any[]>(['prayerRequests', 'user-1']) ?? [];
     expect(cachedList.some((prayer) => prayer.id === 'p1')).toBe(false);
     expect(queryClient.getQueryData(['prayerRequest', 'p1'])).toBeUndefined();
+  });
+
+  it('replaces the optimistic create row with the persisted prayer', async () => {
+    mockCreatePrayerRequest.mockImplementation(async (payload) => ({
+      ...initialPrayer,
+      ...payload,
+      title: 'Persisted prayer',
+      createdAt: '2026-03-05T00:00:00.000Z',
+      updatedAt: '2026-03-05T00:00:00.000Z',
+      status: 'active',
+      updates: [],
+    } as any));
+    const { queryClient, wrapper } = createWrapper();
+    queryClient.setQueryData(['prayerRequests', 'user-1'], []);
+    const { result } = renderHook(() => usePrayerRequests(), { wrapper });
+
+    let createdId = '';
+    await act(async () => {
+      createdId = await result.current.createPrayer({ userId: 'user-1', title: 'New prayer' } as any);
+    });
+
+    await waitFor(() => {
+      const cachedList = queryClient.getQueryData<any[]>(['prayerRequests', 'user-1']) ?? [];
+      expect(cachedList).toEqual([
+        expect.objectContaining({
+          id: createdId,
+          title: 'Persisted prayer',
+          updatedAt: '2026-03-05T00:00:00.000Z',
+        }),
+      ]);
+    });
+  });
+
+  it('reconciles embedded update and status mutations with the persisted prayer', async () => {
+    const { queryClient, wrapper } = createWrapper();
+    queryClient.setQueryData(['prayerRequests', 'user-1'], [initialPrayer]);
+    queryClient.setQueryData(['prayerRequest', 'p1'], initialPrayer);
+    const { result } = renderHook(() => usePrayerRequests(), { wrapper });
+
+    await act(async () => {
+      await result.current.addUpdate('p1', 'Fresh update');
+    });
+
+    await waitFor(() => {
+      const cachedList = queryClient.getQueryData<any[]>(['prayerRequests', 'user-1']) ?? [];
+      expect(cachedList[0].updates).toEqual([
+        { id: 'u1', text: 'Fresh update', createdAt: '2026-03-03T00:00:00.000Z' },
+      ]);
+    });
+
+    await act(async () => {
+      await result.current.setStatus('p1', 'answered', 'God answered');
+    });
+
+    await waitFor(() => {
+      const cachedDetail = queryClient.getQueryData<any>(['prayerRequest', 'p1']);
+      expect(cachedDetail).toEqual(
+        expect.objectContaining({
+          status: 'answered',
+          answerText: 'God answered',
+          answeredAt: '2026-03-04T00:00:00.000Z',
+        })
+      );
+    });
   });
 
   it('does not throw on writes when offline — buffers them (Stage 2)', async () => {
