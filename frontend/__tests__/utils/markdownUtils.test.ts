@@ -1,4 +1,4 @@
-import { sanitizeMarkdown, isValidMarkdownContent, normalizePlanPointHeadings } from '../../app/utils/markdownUtils';
+import { sanitizeMarkdown, isValidMarkdownContent, normalizePlanPointHeadings, decodeBasicHtmlEntities, normalizePlanArrows } from '../../app/utils/markdownUtils';
 
 describe('markdownUtils', () => {
   describe('sanitizeMarkdown', () => {
@@ -151,6 +151,53 @@ describe('markdownUtils', () => {
       ].join('\n');
       const result = normalizePlanPointHeadings(input);
       expect(result).toBe(input);
+    });
+  });
+
+  describe('decodeBasicHtmlEntities', () => {
+    it('handles null/undefined/empty', () => {
+      expect(decodeBasicHtmlEntities(null as any)).toBe('');
+      expect(decodeBasicHtmlEntities(undefined as any)).toBe('');
+      expect(decodeBasicHtmlEntities('')).toBe('');
+    });
+
+    it('decodes the common entities', () => {
+      expect(decodeBasicHtmlEntities('a -&gt; b')).toBe('a -> b');
+      expect(decodeBasicHtmlEntities('&lt;tag&gt;')).toBe('<tag>');
+      expect(decodeBasicHtmlEntities('she said &quot;hi&quot;')).toBe('she said "hi"');
+      expect(decodeBasicHtmlEntities('it&#39;s')).toBe("it's");
+    });
+
+    it('decodes &amp; LAST so a real &amp;gt; collapses to &gt;, not >', () => {
+      expect(decodeBasicHtmlEntities('Tom &amp; Jerry')).toBe('Tom & Jerry');
+      expect(decodeBasicHtmlEntities('&amp;gt;')).toBe('&gt;');
+    });
+  });
+
+  describe('normalizePlanArrows', () => {
+    it('handles null/undefined/empty', () => {
+      expect(normalizePlanArrows(null as any)).toBe('');
+      expect(normalizePlanArrows(undefined as any)).toBe('');
+      expect(normalizePlanArrows('')).toBe('');
+    });
+
+    it('canonicalizes every arrow spelling to a single →', () => {
+      expect(normalizePlanArrows('a -> b -> c')).toBe('a → b → c');
+      expect(normalizePlanArrows('a -&gt; b')).toBe('a → b');
+      expect(normalizePlanArrows('a => b')).toBe('a → b');
+      expect(normalizePlanArrows('a —> b')).toBe('a → b');
+      expect(normalizePlanArrows('a-->b')).toBe('a → b');
+      expect(normalizePlanArrows('a->b')).toBe('a → b');
+    });
+
+    it('leaves a bare → untouched (idempotent)', () => {
+      const already = 'a → b → c';
+      expect(normalizePlanArrows(already)).toBe(already);
+      expect(normalizePlanArrows(normalizePlanArrows('a -> b'))).toBe('a → b');
+    });
+
+    it('does not touch a lone > (e.g. a blockquote marker)', () => {
+      expect(normalizePlanArrows('> a quote')).toBe('> a quote');
     });
   });
 });

@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-import { normalizePlanPointHeadings, sanitizeMarkdown } from "@/utils/markdownUtils";
+import { normalizePlanArrows, normalizePlanPointHeadings, sanitizeMarkdown } from "@/utils/markdownUtils";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 
 import { getPlanMarkdownStyles } from './markdownStyles';
@@ -36,7 +36,7 @@ const MarkdownRenderer = ({ markdown, section }: MarkdownRendererProps) => {
   const sectionDivClass = section ? `${section}-section` : '';
   
   // Sanitize the markdown content
-  const sanitizedMarkdown = normalizePlanPointHeadings(sanitizeMarkdown(markdown));
+  const sanitizedMarkdown = normalizePlanArrows(normalizePlanPointHeadings(sanitizeMarkdown(markdown)));
 
   return (
     <div className={`prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content ${sectionClass} ${sectionDivClass}`}>

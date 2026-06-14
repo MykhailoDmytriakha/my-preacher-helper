@@ -17,6 +17,7 @@ import { updateThought } from "@/services/thought.service";
 import { TimerPhase } from "@/types/TimerState";
 import { debugLog } from "@/utils/debugMode";
 import { getExportContent as buildThoughtExportContent } from "@/utils/exportContent";
+import { normalizePlanArrows } from "@/utils/markdownUtils";
 import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrder";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { normalizeStructureTag, getTranslationKeyForTag } from "@utils/tagUtils";
@@ -714,8 +715,9 @@ export default function PlanPage() {
     const mainSection = `## ${t(TRANSLATION_SECTIONS_MAIN)}\n\n${combinedPlan.main || noContentText}\n\n`;
     const conclusionSection = `## ${t(TRANSLATION_SECTIONS_CONCLUSION)}\n\n${combinedPlan.conclusion || noContentText}\n\n`;
 
-    // Combine all sections
-    const markdown = `${titleSection}${verseSection}${introSection}${mainSection}${conclusionSection}`;
+    // Combine all sections. Normalize arrows / decode HTML entities so copy + TXT export
+    // match the plan UI and the Word export (no stray "->", "-&gt;").
+    const markdown = normalizePlanArrows(`${titleSection}${verseSection}${introSection}${mainSection}${conclusionSection}`);
 
     // For plain text, we need to strip markdown formatting
     if (format === 'plain') {
@@ -759,7 +761,7 @@ export default function PlanPage() {
           <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]}`}>
             <div className="prose max-w-none">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {combinedPlan.introduction || noContentText}
+                {normalizePlanArrows(combinedPlan.introduction || noContentText)}
               </ReactMarkdown>
             </div>
           </div>
@@ -772,7 +774,7 @@ export default function PlanPage() {
           <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]}`}>
             <div className="prose max-w-none">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {combinedPlan.main || noContentText}
+                {normalizePlanArrows(combinedPlan.main || noContentText)}
               </ReactMarkdown>
             </div>
           </div>
@@ -785,7 +787,7 @@ export default function PlanPage() {
           <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]}`}>
             <div className="prose max-w-none">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {combinedPlan.conclusion || noContentText}
+                {normalizePlanArrows(combinedPlan.conclusion || noContentText)}
               </ReactMarkdown>
             </div>
           </div>

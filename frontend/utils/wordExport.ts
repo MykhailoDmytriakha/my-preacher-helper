@@ -2,6 +2,7 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Bord
 import { saveAs } from 'file-saver';
 
 import { PlanData } from '@/models/models';
+import { normalizePlanArrows } from '@/utils/markdownUtils';
 import { getSectionBaseColor } from '@lib/sections';
 import i18n from '@locales/i18n';
 
@@ -222,7 +223,9 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
     ];
   }
 
-  const lines = content.split('\n').filter(line => line.trim() !== '');
+  // Match the plan UI: decode HTML entities the model may have emitted ("&gt;") and
+  // canonicalize arrows to "→". Otherwise "-&gt;" renders as a literal "-&gt;" in Word.
+  const lines = normalizePlanArrows(content).split('\n').filter(line => line.trim() !== '');
   const elements: (Paragraph | Table)[] = [];
   let i = 0;
 

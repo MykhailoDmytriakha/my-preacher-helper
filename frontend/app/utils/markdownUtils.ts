@@ -116,3 +116,39 @@ export const isValidMarkdownContent = (content: string): boolean => {
   
   return !problematicPatterns.some(pattern => pattern.test(content));
 };
+
+/**
+ * Decodes the handful of HTML entities that the markdown renderer (ReactMarkdown)
+ * decodes automatically, so non-markdown consumers (the Word export) match the UI.
+ * Without this, a model-emitted "&gt;" shows as "->" in the plan UI but as a literal
+ * "&gt;" in Word (docx re-escapes the "&" to "&amp;gt;"). `&amp;` is decoded LAST so a
+ * genuine "&amp;gt;" collapses to "&gt;" rather than all the way to ">".
+ */
+export const decodeBasicHtmlEntities = (content: string): string => {
+  if (!content || typeof content !== 'string') {
+    return '';
+  }
+  return content
+    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*39;/g, "'")
+    .replace(/&#0*62;/g, '>')
+    .replace(/&#0*60;/g, '<')
+    .replace(/&amp;/g, '&');
+};
+
+/**
+ * Canonicalizes every route-arrow spelling to a single " → " (decoding HTML entities
+ * first, so "-&gt;" -> "->" -> "→"). A bare "→" is left untouched, so this is idempotent
+ * and safe on already-assembled plan markdown. Applied at the render layer (plan UI +
+ * Word export) so existing stored plans — which may carry "->", "-&gt;", "=>", "—>" —
+ * display consistently without regeneration. Lone ">" (e.g. a blockquote marker) is not
+ * touched because the pattern requires a "-", "—" or "=" before the ">".
+ */
+export const normalizePlanArrows = (content: string): string => {
+  if (!content || typeof content !== 'string') {
+    return '';
+  }
+  return decodeBasicHtmlEntities(content).replace(/\s*(?:-{1,2}>|—>|=>)\s*/g, ' → ');
+};

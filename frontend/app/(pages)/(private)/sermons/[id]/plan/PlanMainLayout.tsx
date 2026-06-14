@@ -13,7 +13,7 @@ import PlanStyleSelector from "@/components/plan/PlanStyleSelector";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
 import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
 import { Plan, Sermon, SermonPoint, Thought } from "@/models/models";
-import { normalizePlanPointHeadings, sanitizeMarkdown } from "@/utils/markdownUtils";
+import { normalizePlanArrows, normalizePlanPointHeadings, sanitizeMarkdown } from "@/utils/markdownUtils";
 import { hasPlan } from "@/utils/sermonPlanAccess";
 import { buildSubPointRenderableEntries } from "@/utils/subPoints";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
@@ -161,7 +161,7 @@ const SectionHeader = ({ section, onSwitchPage }: { section: SermonSectionKey; o
 
 const MarkdownRenderer = ({ markdown, section }: { markdown: string; section?: SermonSectionKey }) => {
   const sectionVariantClass = section ? MARKDOWN_SECTION_VARIANT_CLASSES[section] : "";
-  const sanitizedMarkdown = normalizePlanPointHeadings(sanitizeMarkdown(markdown));
+  const sanitizedMarkdown = normalizePlanArrows(normalizePlanPointHeadings(sanitizeMarkdown(markdown)));
 
   return (
     <div className={`prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content prose-scaled ${sectionVariantClass}`}>
