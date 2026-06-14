@@ -2,9 +2,21 @@
 
 import React, { memo, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import remarkGfm from 'remark-gfm';
 
 import HighlightedText from '@components/HighlightedText';
+
+// Allow safe inline formatting tags that authors may embed as raw HTML in thought
+// text (e.g. <u>underline</u>). We start from rehype-sanitize's defaultSchema —
+// which already permits b/i/em/strong/sub/sup/br/links — and extend it with the
+// few inline tags it omits (<u>, <mark>). Everything else (script/iframe/event
+// handlers/javascript: URLs) stays blocked by the default schema.
+export const markdownSanitizeSchema = {
+    ...defaultSchema,
+    tagNames: [...(defaultSchema.tagNames ?? []), 'u', 'mark'],
+};
 
 interface MarkdownDisplayProps {
     content: string;
@@ -43,6 +55,10 @@ const MarkdownDisplay = ({ content, className = '', compact = false, searchQuery
         <div className={`prose dark:prose-invert max-w-none break-words ${compact ? 'prose-sm' : ''} ${className}`}>
             <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
+                // rehype-raw parses embedded raw HTML (e.g. <u>) into the tree;
+                // rehype-sanitize then strips anything outside the safe schema.
+                // Order matters: raw must run before sanitize.
+                rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSanitizeSchema]]}
                 components={{
                     // Override link behavior to open in new tab
                     a: ({ ...props }) => (

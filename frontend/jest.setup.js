@@ -462,6 +462,33 @@ jest.mock('remark-gfm', () => ({
   default: {}
 }));
 
+// Mock rehype-raw / rehype-sanitize (ESM-only, same reason as react-markdown).
+// rehype-sanitize also re-exports defaultSchema, which MarkdownDisplay imports
+// at module load to build its allow-list schema, so the named export must exist.
+jest.mock('rehype-raw', () => ({
+  __esModule: true,
+  default: {}
+}));
+
+jest.mock('rehype-sanitize', () => ({
+  __esModule: true,
+  default: {},
+  // Mirror the real hast-util-sanitize defaultSchema tag allow-list so consumers
+  // (e.g. MarkdownDisplay) that extend it can be tested against a faithful base.
+  // Note: the real default list intentionally OMITS `u` and `mark` (and, of
+  // course, `script`/`iframe`/etc.), which is why MarkdownDisplay adds `u`/`mark`.
+  defaultSchema: {
+    tagNames: [
+      'a', 'b', 'blockquote', 'br', 'code', 'dd', 'del', 'details', 'div',
+      'dl', 'dt', 'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'img',
+      'input', 'ins', 'kbd', 'li', 'ol', 'p', 'picture', 'pre', 'q', 'rp', 'rt',
+      'ruby', 's', 'samp', 'section', 'source', 'span', 'strike', 'strong',
+      'sub', 'summary', 'sup', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead',
+      'tr', 'tt', 'ul', 'var'
+    ]
+  }
+}));
+
 // Mock Next.js Image component to avoid hostname configuration issues in tests
 jest.mock('next/image', () => ({
   __esModule: true,
