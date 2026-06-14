@@ -828,33 +828,42 @@ function getStyleInstructions(style: PlanStyle): string {
 }
 
 /**
- * Deterministically assemble the v9 structured cue card into the markdown the UI
- * already renders. The FORM lives here (always the same shape) — not in the model's
- * free text — which is what kills the old form-drift and essay-mode rephrasing.
+ * Deterministically assemble the structured cue card (v11) into the markdown the UI
+ * renders. The FORM lives here (always the same shape) — not in the model's free text —
+ * which is what kills the old form-drift and essay-mode rephrasing.
+ *
+ * Layout (v11), so the preacher reads top-down and grasps the route instantly:
+ *   ### anchor                 — card title (deepest heading is ###; no #### at all)
+ *   **→ turn**                 — the route arrow, RIGHT under the anchor
+ *   **sub-point heading**      — sub-points are BOLD labels, not #### headings
+ *   - cue                      — recall triggers
+ *   *ref*                      — that group's verses, inline right under its cues
+ * Capping heading depth at ### keeps the Word export intact (its parser only knows
+ * #..###); sub-points and refs ride as bold/italic paragraphs it already handles.
  */
 function assemblePlanPointMarkdown(data: PlanPointContentResponse): string {
   const lines: string[] = [];
   const anchor = (data.anchor ?? "").trim();
   if (anchor) lines.push(`### ${anchor}`);
 
-  for (const group of data.groups ?? []) {
-    const heading = (group.heading ?? "").trim();
-    if (heading) lines.push("", `#### ${heading}`);
-    for (const cue of group.cues ?? []) {
-      const c = cue.trim();
-      if (c) lines.push(`- ${c}`);
-    }
-  }
-
+  // Route arrow at the TOP: glance once, see the whole point's path.
   const turn = (data.turn ?? "").trim();
   if (turn) lines.push("", `**→ ${turn}**`);
 
-  // refs now carry recognizable verse text (not bare references), so render each on
-  // its own line instead of joining with " · " — a long joined string is unreadable.
-  const refs = (data.refs ?? []).map((r) => r.trim()).filter(Boolean);
-  if (refs.length) {
-    lines.push("");
-    refs.forEach((r) => lines.push(`*${r}*`));
+  for (const group of data.groups ?? []) {
+    const heading = (group.heading ?? "").trim();
+    const cues = (group.cues ?? []).map((c) => c.trim()).filter(Boolean);
+    // refs carry recognizable verse text; each renders on its own italic line.
+    const refs = (group.refs ?? []).map((r) => r.trim()).filter(Boolean);
+    if (!heading && cues.length === 0 && refs.length === 0) continue;
+
+    lines.push(""); // blank line detaches this group from whatever came before
+    if (heading) lines.push(`**${heading}**`);
+    cues.forEach((c) => lines.push(`- ${c}`));
+    if (refs.length) {
+      lines.push(""); // blank line so refs are separate paragraphs, not swallowed into the last bullet
+      refs.forEach((r) => lines.push(`*${r}*`));
+    }
   }
 
   return lines.join("\n").trim();
@@ -1050,7 +1059,7 @@ export async function generatePlanPointContent(
     };
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "plan_point_content",
-      promptVersion: "v10",
+      promptVersion: "v11",
       expectedLanguage: languageInfo.telemetryLanguage,
       systemPrompt,
       userMessage,

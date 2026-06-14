@@ -101,10 +101,11 @@ export function createPlanPointContentUserMessage(
 ${thoughtsList}${fragmentsList}${subPointsSection}${semanticStructureSignals}
 
 --------------------------------
-Extract the cue card fields (anchor, groups[].cues, turn, refs) from the thoughts above.
+Extract the cue card fields (anchor, turn, groups[].cues, groups[].refs) from the thoughts above.
 Use the AUTHOR'S OWN words as cues — do not rephrase them into abstractions.
+Put each Bible reference INSIDE the group whose cues it supports (groups[].refs) — never gather them into one block.
 ${sortedSubPoints.length > 0
-        ? 'Produce one group per sub-point (heading = that sub-point text).'
+        ? 'Produce one group per sub-point (heading = that sub-point text), each carrying its own cues and refs.'
         : 'Produce exactly one group with heading = null.'}
 `;
 }

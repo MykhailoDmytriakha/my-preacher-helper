@@ -567,9 +567,8 @@ describe('openAI.client additional coverage', () => {
       success: true,
       data: {
         anchor: 'Main Concept',
-        groups: [{ heading: null, cues: ['Supporting detail'] }],
+        groups: [{ heading: null, cues: ['Supporting detail'], refs: [] }],
         turn: null,
-        refs: [],
       },
       refusal: null,
       error: null,
@@ -603,20 +602,19 @@ describe('openAI.client additional coverage', () => {
       expect.objectContaining({
         promptBlueprint: expect.objectContaining({
           promptName: 'plan_point_content',
-          promptVersion: 'v10',
+          promptVersion: 'v11',
         }),
       })
     );
   });
 
-  it('assembles structured cue card into markdown (anchor/groups/turn/refs)', async () => {
+  it('assembles structured cue card: turn on top, per-group refs inline (v11 layout)', async () => {
     mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
       success: true,
       data: {
         anchor: 'Велосипед',
-        groups: [{ heading: null, cues: ['возомнил мастером', 'не едет'] }],
+        groups: [{ heading: null, cues: ['возомнил мастером', 'не едет'], refs: ['Ис. 66:2', 'Флп. 2:9'] }],
         turn: 'мастером -> лишняя деталь -> не едет',
-        refs: ['Ис. 66:2', 'Флп. 2:9'],
       },
       refusal: null,
       error: null,
@@ -630,19 +628,22 @@ describe('openAI.client additional coverage', () => {
     expect(result.content).toContain('**→ мастером -> лишняя деталь -> не едет**');
     expect(result.content).toContain('*Ис. 66:2*');
     expect(result.content).toContain('*Флп. 2:9*');
+    // ❶ route arrow sits ABOVE the cues; ❷ refs sit BELOW the cues (read top-down)
+    const md = result.content;
+    expect(md.indexOf('**→')).toBeLessThan(md.indexOf('- возомнил'));
+    expect(md.indexOf('- не едет')).toBeLessThan(md.indexOf('*Ис. 66:2*'));
   });
 
-  it('renders sub-point groups as #### headings', async () => {
+  it('renders sub-point groups as bold labels (no #### ) with their own refs inline', async () => {
     mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
       success: true,
       data: {
         anchor: 'Тема',
         groups: [
-          { heading: 'Церковь', cues: ['укрепляет крылья'] },
-          { heading: 'Молитва', cues: ['друг позвонил'] },
+          { heading: 'Церковь', cues: ['укрепляет крылья'], refs: ['Пс. 41:12: что унываешь, душа моя'] },
+          { heading: 'Молитва', cues: ['друг позвонил'], refs: [] },
         ],
         turn: null,
-        refs: [],
       },
       refusal: null,
       error: null,
@@ -650,9 +651,12 @@ describe('openAI.client additional coverage', () => {
 
     const result = await generatePlanPointContent('S', 'V', 'P', ['t'], 'main');
     expect(result.content).toContain('### Тема');
-    expect(result.content).toContain('#### Церковь');
+    expect(result.content).toContain('**Церковь**');
     expect(result.content).toContain('- укрепляет крылья');
-    expect(result.content).toContain('#### Молитва');
+    expect(result.content).toContain('**Молитва**');
+    expect(result.content).toContain('*Пс. 41:12: что унываешь, душа моя*');
+    // ❸ no 4th-level heading anywhere → Word export stays intact
+    expect(result.content).not.toContain('#### ');
     expect(result.content).not.toContain('**→');
   });
 

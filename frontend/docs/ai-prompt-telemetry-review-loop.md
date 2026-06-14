@@ -101,7 +101,7 @@ Use this table as the prompt-review watermark. A future review should start from
 | --- | --- | --- | --- | --- |
 | `thought` | `v6` | 2026-05-31 | Created after `thought@v5` telemetry for sermon `tbStMzcL9xcKjMJuLVfk` showed deprecated structural tag `Основная часть` added even though the available tag list contained only auxiliary tags. Removed structural-tag prompt guidance and added deterministic tag sanitization. | Review new `thought@v6` records after 2026-05-31 usage. Treat `v3/v4/v5` as history/regression examples. |
 | `polishTranscription` | `v3` | 2026-04-25 | Created after dictated Scripture reference formatting review; old retained records were `v2`. | Review new `polishTranscription@v3` records after 2026-04-25 usage. Treat `v2` as history. |
-| `plan_point_content` | `v8` | 2026-05-19 | Created after paired `short` vs `detailed` telemetry showed `Detailed` reached the model but did not add enough references, source text fragments, transitions, or detail for source-rich sermon points. | Review new `plan_point_content@v8` records after 2026-05-19 usage. Treat `v4/v5/v6/v7` as history/regression examples. |
+| `plan_point_content` | `v11` | 2026-06-14 | Layout reshaped to match approved reference plan: `turn` (route arrow) moved to the TOP under the anchor; `refs` moved from a top-level trailing block INTO each cue group (renders inline under the group's cues); sub-point headings emitted as bold labels instead of `#### ` so heading depth caps at `###` and the Word export stays intact by construction. Schema/prompt/assembler all bumped. | Review new `plan_point_content@v11` records after 2026-06-14 usage. Treat `v4`–`v10` as history/regression examples (v9 = structured cue-card, v10 = refs carry verse text). |
 | `studyNoteAnalysis` | `v2` | 2026-04-25 | Created after `v1` review found tag-count/schema mismatch and redundant reference ranges. | Review new `studyNoteAnalysis@v2` records after 2026-04-25 usage. |
 | `sermon_verses` | `v2` | 2026-04-25 | Created after prompt/schema key mismatch review. | Review new `sermon_verses@v2` records after 2026-04-25 usage. |
 | `sermon_directions` | `v2` | 2026-04-25 | Created after prompt/schema key mismatch review. | Review new `sermon_directions@v2` records after 2026-04-25 usage. |
@@ -121,7 +121,7 @@ Structured telemetry prompts:
 | `thought` | `v6` | Turn dictated sermon thought into polished prose + auxiliary tags only, without adding sermon-context material or deprecated structural section tags. |
 | `polishTranscription` | `v3` | Clean raw voice transcription for notes/thought text. |
 | `studyNoteAnalysis` | `v2` | Extract study-note title, Scripture refs, and tags. |
-| `plan_point_content` | `v8` | Generate a preacher cue sheet for one outline point or its sub-points, with detailed mode preserving more source-supported references, text fragments, examples, and transitions. |
+| `plan_point_content` | `v11` | Generate a preacher cue sheet for one outline point or its sub-points: route arrow on top, sub-points as bold labels, per-group Scripture refs rendered inline; detailed mode preserves more source-supported references, fragments, examples, and transitions. |
 | `sermon_verses` | `v2` | Suggest related Bible verses. |
 | `sermon_directions` | `v2` | Suggest research/development directions. |
 | `sermon_insights` | `v1` | Generate topics, verses, and directions together. |
