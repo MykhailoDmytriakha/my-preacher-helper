@@ -17,6 +17,7 @@ import { CheckIcon, DocumentIcon, LightBulbIcon, MicrophoneIcon } from '@compone
 // Public Web OAuth client ID for this Firebase project (not a secret). When set,
 // the landing renders Google's inline FedCM account dropdown instead of the popup.
 const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '';
+const DASHBOARD_ROUTE = '/dashboard';
 
 export default function Home() {
   const router = useRouter();
@@ -29,7 +30,7 @@ export default function Home() {
     try {
       setLoadingProvider('google');
       await signInWithGoogle();
-      router.push('/dashboard');
+      router.push(DASHBOARD_ROUTE);
     } catch (error) {
       console.error('Login error', error);
     } finally {
@@ -44,7 +45,7 @@ export default function Home() {
     try {
       setLoadingProvider('google');
       await signInWithCredential(auth, GoogleAuthProvider.credential(credential));
-      router.push('/dashboard');
+      router.push(DASHBOARD_ROUTE);
     } catch (error) {
       console.error('Google credential login failed:', error);
       setLoadingProvider(null);
@@ -56,7 +57,7 @@ export default function Home() {
     try {
       setLoadingProvider('test');
       await signInWithEmailAndPassword(auth, 'testuser@example.com', 'TestPassword123');
-      router.push('/dashboard');
+      router.push(DASHBOARD_ROUTE);
     } catch (error) {
       console.error('Test login failed:', error);
     } finally {
