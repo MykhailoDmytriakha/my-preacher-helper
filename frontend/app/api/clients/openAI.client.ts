@@ -841,27 +841,26 @@ function normalizeArrows(text: string): string {
 }
 
 /**
- * Deterministically assemble the structured cue card (v12) into the markdown the UI
- * renders. The FORM lives here (always the same shape) — not in the model's free text —
- * which is what kills the old form-drift and essay-mode rephrasing.
+ * Deterministically assemble the structured cue card (v13) into markdown. The model
+ * returns ONLY the filling (turn + per-group cues/refs); the outline-point and sub-point
+ * HEADINGS belong to the sermon structure, not to this content.
  *
- * Layout (v12), so the preacher reads top-down and grasps the route instantly:
- *   ### anchor                 — card title (deepest heading is ###; no #### at all)
- *   **→ turn**                 — the route arrow, RIGHT under the anchor (arrows canonicalized to →)
- *   **sub-point heading**      — sub-points are BOLD labels, not #### headings
- *   - cue                      — recall triggers
- *   *ref*                      — that group's verses, inline under its cues, ONE per line
- * Capping heading depth at ### keeps the Word export intact (its parser only knows
- * #..###); sub-points and refs ride as bold/italic paragraphs it already handles.
+ * Layout (v13):
+ *   **→ turn**            — route arrow, RIGHT under the outline-point heading (arrows → →)
+ *   ### {sub-point}       — sub-point heading as a real h3 (only when sub-points exist)
+ *   - cue                 — recall triggers
+ *   *ref*                 — that group's verses, one per line under its cues
+ * No anchor/title is emitted: the outline point already provides the heading, and emitting
+ * one produced a heading nested inside the outline-point heading. Sub-point headings are h3
+ * (matching the structure skeleton in buildSectionOutlineMarkdown) so the UI gives them a
+ * marker + indent and the Word export (#..###) nests them under the point.
  */
 function assemblePlanPointMarkdown(data: PlanPointContentResponse): string {
   const lines: string[] = [];
-  const anchor = (data.anchor ?? "").trim();
-  if (anchor) lines.push(`### ${anchor}`);
 
-  // Route arrow at the TOP: glance once, see the whole point's path. All arrows → "→".
+  // Route arrow at the TOP, right under the outline-point heading. All arrows → "→".
   const turn = normalizeArrows((data.turn ?? "").trim());
-  if (turn) lines.push("", `**→ ${turn}**`);
+  if (turn) lines.push(`**→ ${turn}**`);
 
   for (const group of data.groups ?? []) {
     const heading = (group.heading ?? "").trim();
@@ -871,7 +870,8 @@ function assemblePlanPointMarkdown(data: PlanPointContentResponse): string {
     if (!heading && cues.length === 0 && refs.length === 0) continue;
 
     lines.push(""); // blank line detaches this group from whatever came before
-    if (heading) lines.push(`**${heading}**`);
+    // Sub-point heading as a real h3 level (no heading when there are no sub-points).
+    if (heading) lines.push(`### ${heading}`);
     cues.forEach((c) => lines.push(`- ${c}`));
     // Each verse on its OWN line: a blank line before every ref makes it a separate
     // paragraph. Without it, "*a*\n*b*\n*c*" is one paragraph (soft breaks collapse to
@@ -1073,7 +1073,7 @@ export async function generatePlanPointContent(
     };
     const promptBlueprint = buildSimplePromptBlueprint({
       promptName: "plan_point_content",
-      promptVersion: "v12",
+      promptVersion: "v13",
       expectedLanguage: languageInfo.telemetryLanguage,
       systemPrompt,
       userMessage,

@@ -566,7 +566,6 @@ describe('openAI.client additional coverage', () => {
     mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
       success: true,
       data: {
-        anchor: 'Main Concept',
         groups: [{ heading: null, cues: ['Supporting detail'], refs: [] }],
         turn: null,
       },
@@ -586,8 +585,9 @@ describe('openAI.client additional coverage', () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain('### Main Concept');
     expect(result.content).toContain('- Supporting detail');
+    // v13: structure owns the headings — the model emits no title/anchor of its own
+    expect(result.content).not.toContain('###');
 
     const callArgs = mockStructuredOutput.callWithStructuredOutput.mock.calls[0];
     expect(callArgs[0]).toContain('PLAN LENGTH: SHORT');
@@ -595,24 +595,23 @@ describe('openAI.client additional coverage', () => {
     expect(callArgs[0]).toContain('CUE CARD');
     expect(callArgs[0]).toContain('ADJACENT OUTLINE CONTEXT');
     expect(callArgs[0]).toContain('Previous point: Prev point');
-    expect(callArgs[1]).toContain('Extract the cue card fields');
+    expect(callArgs[1]).toContain('Extract ONLY the filling');
     expect(callArgs[1]).toContain("Use the AUTHOR'S OWN words as cues");
     expect(callArgs[1]).not.toContain('Create exactly 2 main points');
     expect(callArgs[3]).toEqual(
       expect.objectContaining({
         promptBlueprint: expect.objectContaining({
           promptName: 'plan_point_content',
-          promptVersion: 'v12',
+          promptVersion: 'v13',
         }),
       })
     );
   });
 
-  it('assembles structured cue card: turn on top, per-group refs inline (v11 layout)', async () => {
+  it('assembles filling only: turn on top, no anchor heading, per-group refs inline (v13)', async () => {
     mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
       success: true,
       data: {
-        anchor: 'Велосипед',
         groups: [{ heading: null, cues: ['возомнил мастером', 'не едет'], refs: ['Ис. 66:2', 'Флп. 2:9'] }],
         turn: 'мастером -> лишняя деталь -> не едет',
       },
@@ -622,25 +621,26 @@ describe('openAI.client additional coverage', () => {
 
     const result = await generatePlanPointContent('S', 'V', 'P', ['t'], 'main');
     expect(result.success).toBe(true);
-    expect(result.content).toContain('### Велосипед');
     expect(result.content).toContain('- возомнил мастером');
     expect(result.content).toContain('- не едет');
+    // v13: no anchor/title heading — the route arrow is the very first line
+    expect(result.content.startsWith('**→ ')).toBe(true);
+    expect(result.content).not.toContain('###');
     // every arrow canonicalized to "→" (no stray "->")
     expect(result.content).toContain('**→ мастером → лишняя деталь → не едет**');
     expect(result.content).not.toContain('->');
     // each verse on its own line: blank line between consecutive refs
     expect(result.content).toContain('*Ис. 66:2*\n\n*Флп. 2:9*');
-    // ❶ route arrow sits ABOVE the cues; ❷ refs sit BELOW the cues (read top-down)
+    // ❶ route arrow ABOVE the cues; ❷ refs BELOW the cues (read top-down)
     const md = result.content;
     expect(md.indexOf('**→')).toBeLessThan(md.indexOf('- возомнил'));
     expect(md.indexOf('- не едет')).toBeLessThan(md.indexOf('*Ис. 66:2*'));
   });
 
-  it('renders sub-point groups as bold labels (no #### ) with their own refs inline', async () => {
+  it('renders sub-point groups as real ### sub-headings (no anchor, no #### ) with their own refs inline', async () => {
     mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
       success: true,
       data: {
-        anchor: 'Тема',
         groups: [
           { heading: 'Церковь', cues: ['укрепляет крылья'], refs: ['Пс. 41:12: что унываешь, душа моя'] },
           { heading: 'Молитва', cues: ['друг позвонил'], refs: [] },
@@ -652,12 +652,12 @@ describe('openAI.client additional coverage', () => {
     });
 
     const result = await generatePlanPointContent('S', 'V', 'P', ['t'], 'main');
-    expect(result.content).toContain('### Тема');
-    expect(result.content).toContain('**Церковь**');
+    expect(result.content).toContain('### Церковь');
     expect(result.content).toContain('- укрепляет крылья');
-    expect(result.content).toContain('**Молитва**');
+    expect(result.content).toContain('### Молитва');
     expect(result.content).toContain('*Пс. 41:12: что унываешь, душа моя*');
-    // ❸ no 4th-level heading anywhere → Word export stays intact
+    // sub-points are real ### headings, not bold labels; depth caps at ### (no #### )
+    expect(result.content).not.toContain('**Церковь**');
     expect(result.content).not.toContain('#### ');
     expect(result.content).not.toContain('**→');
   });
@@ -725,7 +725,7 @@ describe('openAI.client additional coverage', () => {
     expect(userMessage).toContain('1. First required move.');
     expect(userMessage).toContain('2. Second required move.');
     expect(userMessage).toContain('3. Third required move.');
-    expect(userMessage).toContain('Extract the cue card fields');
+    expect(userMessage).toContain('Extract ONLY the filling');
     expect(userMessage).not.toContain('Create exactly 1 main points');
   });
 
@@ -792,10 +792,8 @@ describe('openAI.client additional coverage', () => {
     mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
       success: true,
       data: {
-        anchor: 'Заголовок',
-        groups: [{ heading: null, cues: ['Деталь'] }],
+        groups: [{ heading: null, cues: ['Деталь'], refs: [] }],
         turn: null,
-        refs: [],
       },
       refusal: null,
       error: null,
@@ -810,7 +808,7 @@ describe('openAI.client additional coverage', () => {
     );
 
     expect(result.success).toBe(true);
-    expect(result.content).toContain('Заголовок');
+    expect(result.content).toContain('- Деталь');
     expect(mockStructuredOutput.callWithStructuredOutput).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(String),

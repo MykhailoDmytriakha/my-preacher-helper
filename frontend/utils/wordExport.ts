@@ -179,14 +179,18 @@ const parseHorizontalRule = (): Paragraph => {
 const parseRegularParagraph = (trimmedLine: string): Paragraph => {
   const children = parseInlineMarkdown(trimmedLine);
 
-  // Check if this looks like a Bible verse reference (starts with book name and chapter:verse)
-  const isBibleVerse = /^[А-Яа-я\w\s]+\s+\d+:\d+:/.test(trimmedLine);
+  // Check if this looks like a Bible-verse ref line so it can be indented to align with
+  // the cues it sits under. Refs render as "*Руф. 1:21: ...*", so strip leading emphasis
+  // markers first; the old regex required no markers AND no "." in the book name, so it
+  // never matched abbreviated, italic-wrapped refs.
+  const refStart = trimmedLine.replace(/^[*_]+\s*/, "");
+  const isBibleVerse = /^[А-Яа-яЁёA-Za-z0-9.\s]+\d+:\d+/.test(refStart);
 
   return new Paragraph({
     children,
     spacing: { after: 0 },
     alignment: AlignmentType.JUSTIFIED,
-    // Add same left indent for Bible verses to align with list items
+    // Indent verse refs to align with the bulleted cues of their sub-point.
     indent: isBibleVerse ? { left: 720 } : undefined,
   });
 };

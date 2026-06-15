@@ -35,13 +35,14 @@ export const PlanCueGroupSchema = z.object({
 /**
  * Schema for AI-generated plan point content.
  * Returns a preacher cue card as discrete fields; assembled into markdown downstream.
+ *
+ * The outline point title and the sub-point titles are ALREADY part of the sermon
+ * structure (and the app renders them as headings). The model therefore produces ONLY
+ * the filling — the route arrow (turn) and, per group, the cues + refs — never a heading
+ * of its own. (An `anchor` field existed through v12 and produced a redundant heading
+ * nested inside the outline-point heading; removed in v13.)
  */
 export const PlanPointContentResponseSchema = z.object({
-  anchor: z
-    .string()
-    .describe(
-      "Образ-якорь = заголовок всей точки: самое конкретное яркое существительное или сцена из мысли автора (велосипед, два барана, краеугольный камень). Если явного образа/истории нет — сильнейшее конкретное слово или связка автора. НИКОГДА не выдумывай метафору, которой нет в тексте."
-    ),
   groups: z
     .array(PlanCueGroupSchema)
     .describe(
