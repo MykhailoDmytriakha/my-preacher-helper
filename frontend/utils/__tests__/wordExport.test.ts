@@ -434,7 +434,9 @@ describe('wordExport', () => {
             const unclosed = parseInlineMarkdown('**Unclosed bold and *unclosed italic')
             const empty = parseInlineMarkdown('')
             const onlyMarkers = parseInlineMarkdown('**')
-            expect(unclosed).toHaveLength(2)
+            // The recursive parser drops the spurious empty run the old flat parser
+            // emitted for the stray "**", leaving one plain run.
+            expect(unclosed).toHaveLength(1)
             expect(empty).toHaveLength(1)
             expect(onlyMarkers).toHaveLength(1)
           },

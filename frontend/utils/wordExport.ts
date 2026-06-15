@@ -34,6 +34,8 @@ type TextRunFormat = Partial<{
   superScript: boolean;
   subScript: boolean;
   size: number;
+  underline: object;
+  highlight: string;
 }>;
 
 // Helper function to create heading paragraphs
@@ -227,9 +229,13 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
     ];
   }
 
-  // Match the plan UI: decode HTML entities the model may have emitted ("&gt;") and
-  // canonicalize arrows to "→". Otherwise "-&gt;" renders as a literal "-&gt;" in Word.
-  const lines = normalizePlanArrows(content).split('\n').filter(line => line.trim() !== '');
+  // Match the plan UI: decode HTML entities the model may have emitted ("&gt;"),
+  // canonicalize arrows to "→", and turn inline "<br>" into a real line break.
+  // Otherwise "-&gt;" renders as a literal "-&gt;" and "<br>" leaks as literal text.
+  const lines = normalizePlanArrows(content)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .split('\n')
+    .filter(line => line.trim() !== '');
   const elements: (Paragraph | Table)[] = [];
   let i = 0;
 
@@ -324,92 +330,75 @@ export const parseTable = (tableLines: string[]): Table | null => {
   });
 };
 
+// Inline formatting patterns. HTML tags come first so the Word export honors the SAME
+// inline formatting the plan UI renders (MarkdownDisplay uses rehype-raw + a sanitize
+// schema allowing b/i/em/strong/sub/sup/u/mark/del/code). Without this, "<u>...</u>" and
+// friends leak into the document as literal text.
+const INLINE_PATTERNS: Array<{ regex: RegExp; format: TextRunFormat }> = [
+  { regex: /<(?:b|strong)>([\s\S]*?)<\/(?:b|strong)>/gi, format: { bold: true } },
+  { regex: /<(?:i|em)>([\s\S]*?)<\/(?:i|em)>/gi, format: { italics: true } },
+  { regex: /<u>([\s\S]*?)<\/u>/gi, format: { underline: {} } },
+  { regex: /<(?:s|del|strike)>([\s\S]*?)<\/(?:s|del|strike)>/gi, format: { strike: true } },
+  { regex: /<sup>([\s\S]*?)<\/sup>/gi, format: { superScript: true, size: 16 } },
+  { regex: /<sub>([\s\S]*?)<\/sub>/gi, format: { subScript: true, size: 16 } },
+  { regex: /<mark>([\s\S]*?)<\/mark>/gi, format: { highlight: 'yellow' } },
+  { regex: /<code>([\s\S]*?)<\/code>/gi, format: { font: 'Courier New' } },
+  // Markdown emphasis, most specific first.
+  { regex: /\*\*\*(.*?)\*\*\*/g, format: { bold: true, italics: true } },
+  { regex: /\*\*(.*?)\*\*/g, format: { bold: true } },
+  { regex: /__(.*?)__/g, format: { bold: true } },
+  { regex: /~~(.*?)~~/g, format: { strike: true } },
+  { regex: /`(.*?)`/g, format: { font: 'Courier New' } },
+  { regex: /\^(.*?)\^/g, format: { superScript: true, size: 16 } },
+  { regex: /~(.*?)~/g, format: { subScript: true, size: 16 } },
+  { regex: /\*(.*?)\*/g, format: { italics: true } },
+  { regex: /_(.*?)_/g, format: { italics: true } },
+];
+
+// Remove any inline HTML tag we don't explicitly format (e.g. <a>, <span>) so it never
+// leaks as literal text. Requires a letter after "<" so "5 < 10" / "a > b" are untouched.
+const stripStrayTags = (s: string): string => s.replace(/<\/?[a-zA-Z][^>]*>/g, '');
+
+// Recursive so nested formatting works: "**<u>X</u>**" -> bold + underline. Each matched
+// span inherits the outer format and re-parses its inner content; plain text gets the
+// inherited format with stray tags removed.
+const parseInlineInherited = (text: string, inherited: TextRunFormat): TextRun[] => {
+  const candidates: Array<{ start: number; end: number; content: string; format: TextRunFormat }> = [];
+  for (const { regex, format } of INLINE_PATTERNS) {
+    regex.lastIndex = 0;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      candidates.push({ start: match.index, end: match.index + match[0].length, content: match[1], format });
+      if (match.index === regex.lastIndex) regex.lastIndex++; // guard zero-length matches
+    }
+  }
+  // Prefer the outermost/leftmost span: earliest start, then longest.
+  candidates.sort((a, b) => a.start - b.start || (b.end - b.start) - (a.end - a.start));
+
+  const runs: TextRun[] = [];
+  const pushPlain = (raw: string) => {
+    const clean = stripStrayTags(raw);
+    if (clean) runs.push(new TextRun({ text: clean, ...inherited }));
+  };
+
+  let cursor = 0;
+  for (const c of candidates) {
+    if (c.start < cursor) continue; // overlaps an already-chosen span
+    if (c.start > cursor) pushPlain(text.slice(cursor, c.start));
+    runs.push(...parseInlineInherited(c.content, { ...inherited, ...c.format }));
+    cursor = c.end;
+  }
+  if (cursor < text.length) pushPlain(text.slice(cursor));
+
+  return runs;
+};
+
 export const parseInlineMarkdown = (text: string): TextRun[] => {
   if (!text || text.trim() === '') {
     return [new TextRun('')];
   }
-
-  const runs: TextRun[] = [];
-  let currentIndex = 0;
-
-  // Define patterns in order of priority (most specific first to avoid conflicts)
-  const patterns: Array<{ regex: RegExp; format: TextRunFormat }> = [
-    { regex: /\*\*\*(.*?)\*\*\*/g, format: { bold: true, italics: true } },
-    { regex: /\*\*(.*?)\*\*/g, format: { bold: true } },
-    { regex: /__(.*?)__/g, format: { bold: true } },
-    { regex: /~~(.*?)~~/g, format: { strike: true } },
-    { regex: /`(.*?)`/g, format: { font: 'Courier New' } },
-    { regex: /\^(.*?)\^/g, format: { superScript: true, size: 16 } },
-    { regex: /~(.*?)~/g, format: { subScript: true, size: 16 } },
-    { regex: /\*(.*?)\*/g, format: { italics: true } },
-    { regex: /_(.*?)_/g, format: { italics: true } },
-  ];
-
-  // Find all matches across all patterns
-  const allMatches: Array<{
-    start: number;
-    end: number;
-    content: string;
-    format: TextRunFormat;
-  }> = [];
-
-  for (const { regex, format } of patterns) {
-    let match;
-    // Reset regex lastIndex to ensure we start from the beginning
-    regex.lastIndex = 0;
-
-    while ((match = regex.exec(text)) !== null) {
-      const start = match.index;
-      const end = match.index + match[0].length;
-
-      // Check if this match overlaps with any existing matches
-      const hasOverlap = allMatches.some(existing =>
-        (start < existing.end && end > existing.start)
-      );
-
-      // Only add if no overlap (first pattern wins)
-      if (!hasOverlap) {
-        allMatches.push({
-          start,
-          end,
-          content: match[1],
-          format
-        });
-      }
-    }
-  }
-
-  // Sort matches by start position
-  allMatches.sort((a, b) => a.start - b.start);
-
-  // Build TextRuns
-  for (const match of allMatches) {
-    // Add unformatted text before this match
-    if (match.start > currentIndex) {
-      const beforeText = text.slice(currentIndex, match.start);
-      if (beforeText) {
-        runs.push(new TextRun(beforeText));
-      }
-    }
-
-    // Add formatted text
-    runs.push(new TextRun({
-      text: match.content,
-      ...match.format,
-    }));
-
-    currentIndex = match.end;
-  }
-
-  // Add any remaining unformatted text
-  if (currentIndex < text.length) {
-    const remainingText = text.slice(currentIndex);
-    if (remainingText) {
-      runs.push(new TextRun(remainingText));
-    }
-  }
-
-  return runs;
+  const runs = parseInlineInherited(text, {});
+  return runs.length > 0 ? runs : [new TextRun('')];
 };
 
 export const exportToWord = async (options: WordExportOptions): Promise<void> => {
