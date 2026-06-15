@@ -1,4 +1,4 @@
-import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, ShadingType, TableRow, Table, TableCell, WidthType, PageBreak, ColumnBreak } from 'docx';
+import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, BorderStyle, ShadingType, TableRow, Table, TableCell, WidthType, PageBreak, ColumnBreak, type IRunOptions } from 'docx';
 import { saveAs } from 'file-saver';
 
 import { PlanData } from '@/models/models';
@@ -26,17 +26,11 @@ const t = (key: string, defaultValue: string, options?: Record<string, unknown>)
   return interpolate(resolved, options);
 };
 
-type TextRunFormat = Partial<{
-  bold: boolean;
-  italics: boolean;
-  strike: boolean;
-  font: string;
-  superScript: boolean;
-  subScript: boolean;
-  size: number;
-  underline: object;
-  highlight: string;
-}>;
+// Pick straight from docx's run options so the formats we collect are guaranteed to be
+// assignable to TextRun (e.g. `highlight` is a fixed colour union, not an arbitrary string).
+type TextRunFormat = Partial<
+  Pick<IRunOptions, 'bold' | 'italics' | 'strike' | 'font' | 'superScript' | 'subScript' | 'size' | 'underline' | 'highlight'>
+>;
 
 // Helper function to create heading paragraphs
 const createHeadingParagraph = (text: string, level: number, sectionColor?: string): Paragraph => {
