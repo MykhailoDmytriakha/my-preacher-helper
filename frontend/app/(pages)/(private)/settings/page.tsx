@@ -138,7 +138,7 @@ export default function SettingsPage() {
               <SettingsNav
                 activeSection={activeSection}
                 onNavigate={(sectionId) => {
-                  if (sectionId === 'user' || sectionId === 'tags') {
+                  if (sectionId === 'user' || sectionId === 'tags' || sectionId === 'planTemplates') {
                     handleSectionChange(sectionId);
                   }
                 }}
