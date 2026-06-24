@@ -528,6 +528,7 @@
     "conclusion": "Conclusion"
   },
   "settings": {
+    "planTemplates": "Plan Templates",
     "backToDashboard": "Back",
     "title": "Settings",
     "userSettings": "User Settings",
@@ -1028,6 +1029,45 @@
     "imageLimitReached": "Maximum 3 images allowed",
     "removeImage": "Remove image",
     "imagesNote": "Up to 3 images, max 4 MB each"
+  },
+  "planEditor": {
+    "title": "Plan editor",
+    "openButton": "Plan editor",
+    "templates": "Templates",
+    "applyTemplate": "Apply template",
+    "saveAsTemplate": "Save current plan as template…",
+    "manageTemplates": "Manage templates…",
+    "noTemplates": "No templates yet",
+    "hint": "Drag points between sections and within. Plan structure only — no thoughts.",
+    "autoSaved": "Changes are saved automatically",
+    "thoughtsUnassignedWarning": "{{count}} thought(s) will be unassigned, not deleted",
+    "templateApplied": "Template applied",
+    "templateSaved": "Template saved",
+    "templateSaveError": "Couldn't save the template",
+    "apply": {
+      "title": "Apply template?",
+      "message": "The plan already has points. Replace them with the template, or add to them?",
+      "replace": "Replace",
+      "append": "Add"
+    },
+    "saveAs": {
+      "title": "New template",
+      "namePlaceholder": "Template name",
+      "save": "Save"
+    }
+  },
+  "planTemplates": {
+    "description": "Reusable plan skeletons (sections, points and sub-points) you can apply to any sermon's plan.",
+    "create": "Create",
+    "createPlaceholder": "New template name",
+    "created": "Template created",
+    "createError": "Couldn't create the template",
+    "renameError": "Couldn't rename the template",
+    "deleteConfirm": "Delete template \"{{name}}\"?",
+    "deleteError": "Couldn't delete the template",
+    "saveStructureError": "Couldn't save changes",
+    "empty": "No templates yet. Create one above, or save a plan as a template from the plan editor.",
+    "pointsLabel": "points"
   },
   "plan": {
     "pageTitle": "Sermon Plan",

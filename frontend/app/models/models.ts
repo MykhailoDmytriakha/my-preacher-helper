@@ -42,6 +42,21 @@ export interface SermonOutline {
   conclusion: OutlinePoint[];
 }
 
+/**
+ * A reusable, named sermon plan skeleton: the outline structure (points +
+ * sub-points across the three sections) WITHOUT any thoughts. Stored per user in
+ * the `planTemplates` collection; applied to a sermon's outline from the plan
+ * editor, or managed under Settings.
+ */
+export interface PlanTemplate {
+  id: string;
+  userId: string;
+  name: string;
+  structure: SermonOutline;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ThoughtsBySection {
   introduction: string[];
   main: string[];

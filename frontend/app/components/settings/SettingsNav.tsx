@@ -3,10 +3,12 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 
+type SettingsSection = 'user' | 'tags' | 'planTemplates';
+
 interface SettingsNavProps {
-  activeSection: 'user' | 'tags';
+  activeSection: SettingsSection;
   onNavigate?: (section: string) => void;
-  onSectionChange?: React.Dispatch<React.SetStateAction<'user' | 'tags'>>;
+  onSectionChange?: React.Dispatch<React.SetStateAction<SettingsSection>>;
 }
 
 const SettingsNav: React.FC<SettingsNavProps> = ({ 
@@ -18,11 +20,12 @@ const SettingsNav: React.FC<SettingsNavProps> = ({
   
   const sections = [
     { id: 'user', label: t('settings.userSettings') },
-    { id: 'tags', label: t('settings.manageTags') }
+    { id: 'tags', label: t('settings.manageTags') },
+    { id: 'planTemplates', label: t('settings.planTemplates') }
   ];
 
   const handleSectionClick = (sectionId: string) => {
-    if (onSectionChange && (sectionId === 'user' || sectionId === 'tags')) {
+    if (onSectionChange && (sectionId === 'user' || sectionId === 'tags' || sectionId === 'planTemplates')) {
       onSectionChange(sectionId);
     } else if (onNavigate) {
       onNavigate(sectionId);

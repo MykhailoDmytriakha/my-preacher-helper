@@ -1,5 +1,12 @@
 import { createGroup, deleteGroup, updateGroup } from '@/services/groups.service';
 import {
+  createPlanTemplate,
+  deletePlanTemplate,
+  updatePlanTemplate,
+  type CreatePlanTemplatePayload,
+  type UpdatePlanTemplatePayload,
+} from '@/services/planTemplate.service';
+import {
   addPrayerUpdate,
   createPrayerRequest,
   deletePrayerRequest,
@@ -84,6 +91,12 @@ export const TAG_MUTATION_KEYS = {
   add: ['tags', 'add'] as const,
   remove: ['tags', 'remove'] as const,
   update: ['tags', 'update'] as const,
+};
+
+export const PLAN_TEMPLATE_MUTATION_KEYS = {
+  create: ['planTemplates', 'create'] as const,
+  update: ['planTemplates', 'update'] as const,
+  delete: ['planTemplates', 'delete'] as const,
 };
 
 export const SETTINGS_MUTATION_KEYS = {
@@ -326,6 +339,21 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
   queryClient.setMutationDefaults(TAG_MUTATION_KEYS.update, {
     mutationFn: (tag: Tag) => updateTag(tag),
     onSuccess: invalidate(['tags']),
+  });
+
+  // ---- plan templates ----
+  queryClient.setMutationDefaults(PLAN_TEMPLATE_MUTATION_KEYS.create, {
+    mutationFn: (payload: CreatePlanTemplatePayload) => createPlanTemplate(payload),
+    onSuccess: invalidate(['planTemplates']),
+  });
+  queryClient.setMutationDefaults(PLAN_TEMPLATE_MUTATION_KEYS.update, {
+    mutationFn: ({ id, updates }: { id: string; updates: UpdatePlanTemplatePayload }) =>
+      updatePlanTemplate(id, updates),
+    onSuccess: invalidate(['planTemplates']),
+  });
+  queryClient.setMutationDefaults(PLAN_TEMPLATE_MUTATION_KEYS.delete, {
+    mutationFn: (id: string) => deletePlanTemplate(id),
+    onSuccess: invalidate(['planTemplates']),
   });
 
   // ---- user settings ----

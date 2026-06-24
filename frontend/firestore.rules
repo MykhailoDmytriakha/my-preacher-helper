@@ -67,6 +67,11 @@ service cloud.firestore {
       allow create:       if ownsIncoming('userId');
       allow update:       if ownsExisting('userId') && ownsIncoming('userId');
     }
+    match /planTemplates/{id} {
+      allow read, delete: if ownsExisting('userId');
+      allow create:       if ownsIncoming('userId');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+    }
     match /feedback/{id} {
       allow read, delete: if ownsExisting('userId');
       allow create:       if ownsIncoming('userId');

@@ -8,6 +8,7 @@ import LanguageInitializer from "@/components/navigation/LanguageInitializer";
 import AudioGenerationToggle from "@/components/settings/AudioGenerationToggle";
 import DebugModeToggle from "@/components/settings/DebugModeToggle";
 import GroupsFeatureToggle from "@/components/settings/GroupsFeatureToggle";
+import PlanTemplatesSection from "@/components/settings/PlanTemplatesSection";
 import PrepModeToggle from "@/components/settings/PrepModeToggle";
 import SettingsLayout from "@/components/settings/SettingsLayout";
 import ShowVersionToggle from "@/components/settings/ShowVersionToggle";
@@ -19,7 +20,7 @@ import { auth } from "@services/firebaseAuth.service";
 import "@locales/i18n";
 
 export default function SettingsPage() {
-  const [activeSection, setActiveSection] = useState<'user' | 'tags'>('user');
+  const [activeSection, setActiveSection] = useState<'user' | 'tags' | 'planTemplates'>('user');
   const { t } = useTranslation();
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,6 +30,16 @@ export default function SettingsPage() {
     // Set title on client-side to avoid hydration issues
     setPageTitle(t('settings.title'));
   }, [t]);
+
+  // Deep-link: open a specific section via ?section= (e.g. the plan editor's
+  // "Manage templates" link points to /settings?section=planTemplates).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const section = new URLSearchParams(window.location.search).get('section');
+    if (section === 'user' || section === 'tags' || section === 'planTemplates') {
+      setActiveSection(section);
+    }
+  }, []);
 
   // Если пользователь не авторизован, перенаправляем на страницу входа
   useEffect(() => {
@@ -58,6 +69,8 @@ export default function SettingsPage() {
         );
       case 'tags':
         return <TagsSection user={user} />;
+      case 'planTemplates':
+        return <PlanTemplatesSection user={user} />;
       default:
         return (
           <div className="space-y-6">
@@ -72,7 +85,7 @@ export default function SettingsPage() {
   };
 
   // Custom handler for section change
-  const handleSectionChange = (sectionId: 'user' | 'tags') => {
+  const handleSectionChange = (sectionId: 'user' | 'tags' | 'planTemplates') => {
     setActiveSection(sectionId);
   };
 
@@ -109,7 +122,7 @@ export default function SettingsPage() {
             <SettingsNav
               activeSection={activeSection}
               onNavigate={(sectionId) => {
-                if (sectionId === 'user' || sectionId === 'tags') {
+                if (sectionId === 'user' || sectionId === 'tags' || sectionId === 'planTemplates') {
                   handleSectionChange(sectionId);
                 }
               }}

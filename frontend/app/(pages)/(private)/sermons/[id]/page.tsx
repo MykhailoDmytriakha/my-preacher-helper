@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from 'sonner';
 import "@locales/i18n";
 
+import PlanEditorModal from "@/components/plan-editor/PlanEditorModal";
 import AudioRecorderPortalBridge from '@/components/sermon/AudioRecorderPortalBridge';
 import ClassicThoughtsPanel from '@/components/sermon/ClassicThoughtsPanel';
 import KnowledgeSection from "@/components/sermon/KnowledgeSection";
@@ -66,6 +67,12 @@ export const dynamic = "force-dynamic";
 const THOUGHT_LOCAL_ID_PREFIX = "local-thought-";
 const STRUCTURE_SAVE_ERROR_KEY = "errors.failedToSaveStructure";
 
+type ThoughtPatch = Pick<Thought, "text" | "tags" | "outlinePointId" | "subPointId">;
+
+interface ThoughtPatchOptions {
+  outlineOverride?: SermonOutlineType;
+}
+
 const sanitizeThoughtStructure = (structure: Sermon["structure"] | undefined) => {
   if (!structure) return structure;
 
@@ -76,6 +83,11 @@ const sanitizeThoughtStructure = (structure: Sermon["structure"] | undefined) =>
     ambiguous: (structure.ambiguous ?? []).filter((id) => !id.startsWith(THOUGHT_LOCAL_ID_PREFIX)),
   };
 };
+
+const withStructureTagForSection = (tags: string[], section: StructureSectionId): string[] => [
+  ...tags.filter((tag) => !normalizeStructureTag(tag)),
+  getCanonicalTagForSection(section),
+];
 
 const AudioRecorder = dynamicImport(
   () => import("@components/AudioRecorder").then((mod) => mod.AudioRecorder),
@@ -238,6 +250,7 @@ export default function SermonPage() {
   }
 
   const sermonRef = useRef<Sermon | null>(sermon);
+  const structurePersistVersionRef = useRef(0);
   const [savingPrep, setSavingPrep] = useState(false);
   const [prepDraft, setPrepDraft] = useState<Preparation>({});
   const [classicPortal, setClassicPortal] = useState<HTMLDivElement | null>(null);
@@ -324,7 +337,7 @@ useEffect(() => {
     const { baseSermon, thought, targetSection } = params;
     const projectedThoughts = [
       thought,
-      ...(sermon?.thoughts ?? baseSermon.thoughts).filter((item) => item.id !== thought.id),
+      ...baseSermon.thoughts.filter((item) => item.id !== thought.id),
     ];
     const thoughtsById = new Map(projectedThoughts.map((item) => [item.id, item]));
 
@@ -337,7 +350,7 @@ useEffect(() => {
       thoughts: projectedThoughts,
       outline: baseSermon.outline,
     });
-  }, [sermon?.thoughts]);
+  }, []);
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
@@ -355,6 +368,10 @@ useEffect(() => {
   const [isBrainstormOpen, setIsBrainstormOpen] = useState(false);
   const [brainstormSuggestion, setBrainstormSuggestion] = useState<BrainstormSuggestion | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isPlanEditorOpen, setIsPlanEditorOpen] = useState(false);
+  // Bumped when the plan editor changes the outline, to force SermonOutline to
+  // re-read the freshly saved outline (its fetch effect keys on sermon.id only).
+  const [outlineRefreshKey, setOutlineRefreshKey] = useState(0);
 
   const {
     filteredThoughts,
@@ -414,29 +431,47 @@ useEffect(() => {
 
   const handleSaveThoughtPatch = useCallback(async (
     thoughtToUpdate: Thought,
-    patch: Pick<Thought, "text" | "tags" | "outlinePointId" | "subPointId">
+    patch: ThoughtPatch,
+    options: ThoughtPatchOptions = {}
   ) => {
-    if (!sermon) return;
+    const currentSermon = sermonRef.current ?? sermon;
+    if (!currentSermon) return;
 
-    const previousStructure = sermon.structure;
+    const baseSermon: Sermon = options.outlineOverride
+      ? { ...currentSermon, outline: options.outlineOverride }
+      : currentSermon;
+    const previousStructure = baseSermon.structure;
     const optimisticThought: Thought = {
       ...thoughtToUpdate,
       ...patch,
     };
-    const currentSection = findThoughtSectionInStructure(sermon.structure, thoughtToUpdate.id);
+    const currentSection = findThoughtSectionInStructure(baseSermon.structure, thoughtToUpdate.id);
     const nextSection = resolveSectionForNewThought({
-      sermon: sermon,
+      sermon: baseSermon,
       outlinePointId: optimisticThought.outlinePointId ?? null,
       tags: optimisticThought.tags,
     });
-    const structureWillChange = nextSection !== currentSection;
+    const outlinePointWillChange = (thoughtToUpdate.outlinePointId ?? null) !== (optimisticThought.outlinePointId ?? null);
+    const structureWillChange = nextSection !== currentSection || outlinePointWillChange;
     const optimisticStructure = structureWillChange
       ? buildStructureWithThought({
-          baseSermon: sermon,
+          baseSermon,
           thought: optimisticThought,
           targetSection: nextSection,
         })
-      : sermon.structure;
+      : baseSermon.structure;
+    const optimisticThoughts = baseSermon.thoughts.map((thought) =>
+      thought.id === optimisticThought.id ? optimisticThought : thought
+    );
+    const optimisticSermon: Sermon = {
+      ...baseSermon,
+      thoughts: optimisticThoughts,
+      structure: optimisticStructure ?? baseSermon.structure,
+      thoughtsBySection: optimisticStructure ?? baseSermon.thoughtsBySection,
+    };
+    const structurePersistVersion = structureWillChange ? ++structurePersistVersionRef.current : null;
+
+    sermonRef.current = optimisticSermon;
 
     // Optimistic (React Query cache via setSermon): patch the thought + structure
     // so the edit shows instantly. The client-SDK write (updateThought) lands in
@@ -446,11 +481,10 @@ useEffect(() => {
       prevSermon
         ? {
             ...prevSermon,
-            thoughts: prevSermon.thoughts.map((thought) =>
-              thought.id === optimisticThought.id ? optimisticThought : thought
-            ),
-            structure: optimisticStructure ?? prevSermon.structure,
-            thoughtsBySection: optimisticStructure ?? prevSermon.thoughtsBySection,
+            outline: optimisticSermon.outline,
+            thoughts: optimisticSermon.thoughts,
+            structure: optimisticSermon.structure,
+            thoughtsBySection: optimisticSermon.thoughtsBySection,
           }
         : prevSermon
     );
@@ -459,13 +493,25 @@ useEffect(() => {
     // never blocks on the network. Offline the write parks in the native queue.
     void (async () => {
       try {
-        const savedThought = await updateThought(sermon.id, optimisticThought);
+        const savedThought = await updateThought(baseSermon.id, optimisticThought);
+        // Reconcile with the server's returned thought; fall back to the optimistic
+        // one if the service resolves empty (offline path / void return) so we never
+        // dereference undefined and never skip the structure persist below.
+        const reconciledThought = savedThought ?? optimisticThought;
+        sermonRef.current = sermonRef.current
+          ? {
+              ...sermonRef.current,
+              thoughts: sermonRef.current.thoughts.map((thought) =>
+                thought.id === reconciledThought.id ? reconciledThought : thought
+              ),
+            }
+          : sermonRef.current;
         setSermon((prevSermon) =>
           prevSermon
             ? {
                 ...prevSermon,
                 thoughts: prevSermon.thoughts.map((thought) =>
-                  thought.id === savedThought.id ? savedThought : thought
+                  thought.id === reconciledThought.id ? reconciledThought : thought
                 ),
               }
             : prevSermon
@@ -473,7 +519,11 @@ useEffect(() => {
 
         // Structure persist is best-effort: a failure here must NOT roll back the
         // thought edit, which already succeeded server-side.
-        if (structureWillChange && optimisticStructure) {
+        if (
+          structureWillChange &&
+          optimisticStructure &&
+          structurePersistVersion === structurePersistVersionRef.current
+        ) {
           try {
             await persistStructureForThoughts(optimisticStructure);
           } catch (structureError) {
@@ -483,6 +533,19 @@ useEffect(() => {
         }
       } catch (updateError) {
         console.error("Failed to update thought", updateError);
+        const shouldRollbackStructure =
+          structureWillChange && structurePersistVersion === structurePersistVersionRef.current;
+        sermonRef.current = sermonRef.current
+          ? {
+              ...sermonRef.current,
+              thoughts: sermonRef.current.thoughts.map((thought) =>
+                thought.id === thoughtToUpdate.id ? thoughtToUpdate : thought
+              ),
+              ...(shouldRollbackStructure
+                ? { structure: previousStructure, thoughtsBySection: previousStructure }
+                : {}),
+            }
+          : sermonRef.current;
         // Surgical rollback: restore only THIS thought (+ its structure move), so a
         // concurrent batch (outline-point delete patching N thoughts) is not
         // clobbered by restoring a whole stale sermon snapshot.
@@ -493,7 +556,7 @@ useEffect(() => {
                 thoughts: prevSermon.thoughts.map((thought) =>
                   thought.id === thoughtToUpdate.id ? thoughtToUpdate : thought
                 ),
-                ...(structureWillChange
+                ...(shouldRollbackStructure
                   ? { structure: previousStructure, thoughtsBySection: previousStructure }
                   : {}),
               }
@@ -722,6 +785,12 @@ useEffect(() => {
   }, [prepStepParam, activeStepId]);
 
   const handleOutlineUpdate = (updatedOutline: SermonOutlineType) => {
+    sermonRef.current = sermonRef.current
+      ? {
+          ...sermonRef.current,
+          outline: updatedOutline,
+        }
+      : sermonRef.current;
     setSermon(prevSermon => {
       if (!prevSermon) return null;
       return {
@@ -746,6 +815,64 @@ useEffect(() => {
         });
       });
   }, [handleSaveThoughtPatch, sermon]);
+
+  const handleOutlinePointMoved = useCallback((
+    outlinePointId: string,
+    destinationSection: StructureSectionId,
+    updatedOutline: SermonOutlineType
+  ) => {
+    const currentSermon = sermonRef.current ?? sermon;
+    if (!currentSermon) return;
+
+    sermonRef.current = {
+      ...currentSermon,
+      outline: updatedOutline,
+    };
+    setSermon((prevSermon) =>
+      prevSermon ? { ...prevSermon, outline: updatedOutline } : prevSermon
+    );
+
+    currentSermon.thoughts
+      .filter((thought) => thought.outlinePointId === outlinePointId)
+      .forEach((thought) => {
+        void handleSaveThoughtPatch(thought, {
+          text: thought.text,
+          tags: withStructureTagForSection(thought.tags, destinationSection),
+          outlinePointId: thought.outlinePointId ?? null,
+          subPointId: thought.subPointId ?? null,
+        }, { outlineOverride: updatedOutline });
+      });
+  }, [handleSaveThoughtPatch, sermon, setSermon]);
+
+  const handleSubPointMoved = useCallback((
+    subPointId: string,
+    _sourcePointId: string,
+    destinationPointId: string,
+    destinationSection: StructureSectionId,
+    updatedOutline: SermonOutlineType
+  ) => {
+    const currentSermon = sermonRef.current ?? sermon;
+    if (!currentSermon) return;
+
+    sermonRef.current = {
+      ...currentSermon,
+      outline: updatedOutline,
+    };
+    setSermon((prevSermon) =>
+      prevSermon ? { ...prevSermon, outline: updatedOutline } : prevSermon
+    );
+
+    currentSermon.thoughts
+      .filter((thought) => thought.subPointId === subPointId)
+      .forEach((thought) => {
+        void handleSaveThoughtPatch(thought, {
+          text: thought.text,
+          tags: withStructureTagForSection(thought.tags, destinationSection),
+          outlinePointId: destinationPointId,
+          subPointId: thought.subPointId ?? subPointId,
+        }, { outlineOverride: updatedOutline });
+      });
+  }, [handleSaveThoughtPatch, sermon, setSermon]);
 
   const handleSubPointDeleted = useCallback((outlinePointId: string, subPointId: string) => {
     const currentSermon = sermon;
@@ -1155,6 +1282,7 @@ useEffect(() => {
           tagCounts={tagCounts}
           totalThoughts={sermon?.thoughts?.length ?? 0}
           hasInconsistentThoughts={hasInconsistentThoughts}
+          onOpenPlanEditor={!isReadOnly ? () => setIsPlanEditorOpen(true) : undefined}
         />
       </div>
 
@@ -1205,9 +1333,11 @@ useEffect(() => {
                     tagCounts={tagCounts}
                     totalThoughts={sermon?.thoughts?.length ?? 0}
                     hasInconsistentThoughts={hasInconsistentThoughts}
+                    onOpenPlanEditor={!isReadOnly ? () => setIsPlanEditorOpen(true) : undefined}
                   />
                 </div>
                 <SermonOutline
+                  key={outlineRefreshKey}
                   sermon={sermon!}
                   thoughtsPerSermonPoint={thoughtsPerSermonPoint}
                   onOutlineUpdate={handleOutlineUpdate}
@@ -1243,6 +1373,22 @@ useEffect(() => {
         sermonOutline={sermon?.outline}
         disabled={isReadOnly}
       />
+      {sermon && (
+        <PlanEditorModal
+          isOpen={isPlanEditorOpen}
+          onClose={() => {
+            setIsPlanEditorOpen(false);
+            setOutlineRefreshKey((k) => k + 1);
+          }}
+          sermon={sermon}
+          onOutlineUpdate={handleOutlineUpdate}
+          onOutlinePointDeleted={handleOutlinePointDeleted}
+          onSubPointDeleted={handleSubPointDeleted}
+          onOutlinePointMoved={handleOutlinePointMoved}
+          onSubPointMoved={handleSubPointMoved}
+          isReadOnly={isReadOnly}
+        />
+      )}
     </div>
   );
 }

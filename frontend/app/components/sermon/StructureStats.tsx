@@ -1,5 +1,6 @@
 "use client";
 
+import { LayoutGrid } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import React from "react";
@@ -19,6 +20,8 @@ interface StructureStatsProps {
   };
   totalThoughts: number;
   hasInconsistentThoughts?: boolean;
+  /** Opens the wide plan-skeleton editor. When omitted, the entry is hidden. */
+  onOpenPlanEditor?: () => void;
 }
 
 const StructureStats: React.FC<StructureStatsProps> = ({
@@ -26,6 +29,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
   tagCounts,
   totalThoughts,
   hasInconsistentThoughts = false,
+  onOpenPlanEditor,
 }) => {
   const { t } = useTranslation();
 
@@ -55,7 +59,6 @@ const StructureStats: React.FC<StructureStatsProps> = ({
 
   return (
     <div className="p-4 sm:p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700">
-      <h2 className="text-lg sm:text-xl font-semibold mb-3 sm:mb-4">{t('structure.title')}</h2>
       <div className="space-y-3 sm:space-y-4">
         <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden relative">
           <div className="absolute inset-0 flex">
@@ -136,12 +139,22 @@ const StructureStats: React.FC<StructureStatsProps> = ({
           </div>
         </div>
       </div>
-      <div className="mt-4 sm:mt-6">
+      <div className="mt-4 sm:mt-6 space-y-2">
         <StructurePlanToggle
           sermonId={sermon.id}
           hasInconsistentThoughts={hasInconsistentThoughts}
           t={t}
         />
+        {onOpenPlanEditor && (
+          <button
+            type="button"
+            onClick={onOpenPlanEditor}
+            className="w-full inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 dark:from-violet-500 dark:to-fuchsia-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:shadow-lg hover:scale-[1.01] active:scale-95 transition-all duration-200"
+          >
+            <LayoutGrid className="w-4 h-4 text-white/90" />
+            {t('planEditor.openButton')}
+          </button>
+        )}
       </div>
     </div>
   );

@@ -118,7 +118,7 @@ describe('StructureStats Component', () => {
 
   it('renders structure overview with percentages and focus buttons', () => {
     renderStats()
-    expect(screen.getByText('Sermon ThoughtsBySection')).toBeInTheDocument()
+    // Card heading ("Композиция проповеди") was intentionally removed — no longer asserted.
     expect(screen.getAllByText('33%')).toHaveLength(3)
     expect(screen.getAllByText(/Recommended: 20%/)).toHaveLength(2)
     expect(screen.getAllByText(/Recommended: 60%/)).toHaveLength(1)
