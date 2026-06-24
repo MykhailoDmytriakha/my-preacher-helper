@@ -12,9 +12,9 @@ import {
 import { getClientDb } from '@/config/firebaseClientDb';
 import { PlanTemplate, SermonOutline } from '@/models/models';
 
-// Client-SDK CRUD for plan templates (offline replica in IndexedDB + Security Rules),
-// mirrors the server route. Behind NEXT_PUBLIC_USE_CLIENT_PLAN_TEMPLATES — see
-// planTemplate.service.ts. Docs are keyed by a client-minted id so writes are
+// Client-SDK CRUD for plan templates (offline replica in IndexedDB + Security Rules).
+// The server route was removed in the Phase 5 cleanup, so planTemplate.service.ts
+// calls these unconditionally. Docs are keyed by a client-minted id so writes are
 // idempotent on replay.
 const COLLECTION = 'planTemplates';
 
