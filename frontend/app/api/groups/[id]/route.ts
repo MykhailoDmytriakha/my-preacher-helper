@@ -7,23 +7,6 @@ const ERROR_MESSAGES = {
   GROUP_NOT_FOUND: 'Group not found',
 } as const;
 
-// GET /api/groups/:id
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-
-  try {
-    const group = await groupsRepository.fetchGroupById(id);
-    if (!group) {
-      return NextResponse.json({ error: ERROR_MESSAGES.GROUP_NOT_FOUND }, { status: 404 });
-    }
-
-    return NextResponse.json(group);
-  } catch (error: unknown) {
-    console.error(`Error fetching group ${id}:`, error);
-    return NextResponse.json({ error: 'Failed to fetch group' }, { status: 500 });
-  }
-}
-
 // PUT /api/groups/:id
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -36,17 +19,10 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: ERROR_MESSAGES.GROUP_NOT_FOUND }, { status: 404 });
     }
 
-    const next = await groupsRepository.updateGroup(id, {
-      title: payload.title !== undefined ? String(payload.title).trim() : undefined,
-      description:
-        payload.description !== undefined ? String(payload.description).trim() || undefined : undefined,
-      status: payload.status,
-      templates: payload.templates,
-      flow: payload.flow,
-      meetingDates: payload.meetingDates,
-      seriesId: payload.seriesId,
-      seriesPosition: payload.seriesPosition,
-    });
+    const hasSeriesUpdate = 'seriesId' in payload || 'seriesPosition' in payload;
+    if (!hasSeriesUpdate) {
+      return NextResponse.json({ error: 'No series fields provided for update' }, { status: 400 });
+    }
 
     // Handle series sync if seriesId changed
     if (payload.seriesId !== undefined && payload.seriesId !== group.seriesId) {
@@ -68,7 +44,15 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
       }
     }
 
-    return NextResponse.json(next);
+    const nextSeriesId =
+      payload.seriesId !== undefined ? payload.seriesId || null : group.seriesId ?? null;
+    const nextSeriesPosition =
+      payload.seriesPosition !== undefined ? payload.seriesPosition ?? null : group.seriesPosition ?? null;
+
+    await groupsRepository.updateGroupSeriesInfo(id, nextSeriesId, nextSeriesPosition);
+    const updated = await groupsRepository.fetchGroupById(id);
+
+    return NextResponse.json(updated);
   } catch (error: unknown) {
     console.error(`Error updating group ${id}:`, error);
     return NextResponse.json({ error: 'Failed to update group' }, { status: 500 });

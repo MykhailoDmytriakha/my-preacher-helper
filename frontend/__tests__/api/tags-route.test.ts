@@ -19,10 +19,7 @@ jest.mock('next/server', () => ({
 }));
 
 jest.mock('@/api/clients/firestore.client', () => ({
-  getCustomTags: jest.fn(),
-  saveTag: jest.fn(),
   deleteTag: jest.fn(),
-  updateTagInDb: jest.fn(),
 }));
 
 const mockClients = clients as jest.Mocked<typeof clients>;
@@ -30,40 +27,6 @@ const mockClients = clients as jest.Mocked<typeof clients>;
 describe('Tags API Route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-  });
-
-  it('GET returns empty requiredTags for compatibility and custom tags', async () => {
-    mockClients.getCustomTags.mockResolvedValue([
-      { id: 'c1', name: 'Custom', color: '#222', required: false, userId: 'u1' },
-    ]);
-
-    const req = { url: 'https://example.com/api/tags?userId=u1' } as unknown as Request;
-    const res = await route.GET(req);
-    const data = await res.json();
-
-    expect(data.requiredTags).toHaveLength(0);
-    expect(data.customTags).toHaveLength(1);
-    expect(mockClients.getCustomTags).toHaveBeenCalledWith('u1');
-  });
-
-  it('POST rejects reserved names with 400', async () => {
-    mockClients.saveTag.mockRejectedValueOnce(new Error('RESERVED_NAME'));
-    const body = { name: 'Introduction', userId: 'u1', color: '#fff', required: false };
-    // Mock Next.js Request with minimal shape used in handler
-    const req = { json: async () => body } as any;
-    const res = await route.POST(req);
-    expect(res.status).toBe(400);
-    const data = await res.json();
-    expect(data.message).toMatch(/Reserved/);
-  });
-
-  it('PUT rejects required tag update with 400', async () => {
-    const body = { name: 'Intro', userId: 'u1', color: '#fff', required: true };
-    const req = { json: async () => body } as unknown as Request;
-    const res = await route.PUT(req);
-    expect(res.status).toBe(400);
-    const data = await res.json();
-    expect(data.message).toMatch(/Required tags cannot be updated/);
   });
 
   it('DELETE performs cascade and returns affectedThoughts', async () => {

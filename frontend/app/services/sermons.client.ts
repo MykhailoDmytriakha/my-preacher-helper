@@ -24,14 +24,14 @@ import { toDateOnlyKey } from '@/utils/dateOnly';
 import { compareById, timeOrZero } from '@/utils/sortHelpers';
 import { stripStructureTags } from '@/utils/thoughtTagSanitizer';
 
-// Strangler-fig flag: when ON, sermon READS + own-doc WRITES (update fields,
-// structure, outline, thoughts[], preachDates[], idempotent client-id create)
-// go through the client Firestore SDK (offline replica + deployed Security
-// Rules) instead of the /api/* routes. Operations that need secrets (AI:
+// Sermon READS + own-doc WRITES (update fields, structure, outline, thoughts[],
+// preachDates[]) go through the client Firestore SDK unconditionally (offline
+// replica + deployed Security Rules). Operations that need secrets (AI:
 // transcription/insights/plan/brainstorm/TTS) or cascade into OTHER collections
-// (delete -> series back-refs; create WITH seriesId -> addSermonToSeries) stay
-// on the server. Default OFF — identical to before unless the flag is set.
-export const USE_CLIENT_SERMONS = process.env.NEXT_PUBLIC_USE_CLIENT_SERMONS === 'true';
+// (delete -> series back-refs; create — can carry seriesId -> addSermonToSeries)
+// stay on the server. The Phase 5 cleanup removed the last consumer of the old
+// NEXT_PUBLIC_USE_CLIENT_SERMONS strangler-fig flag, so the client path is no
+// longer gated.
 
 const SERMONS_COLLECTION = 'sermons';
 const SERMON_NOT_FOUND = 'Sermon not found';

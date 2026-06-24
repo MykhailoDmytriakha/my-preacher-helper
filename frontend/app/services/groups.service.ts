@@ -5,13 +5,10 @@ import { Group, GroupFlowItem, GroupMeetingDate } from '@/models/models';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
-// Strangler-fig flag: when ON, group READS + simple WRITES (create, content-only
-// update) go through the client Firestore SDK (offline replica + deployed Security
-// Rules) instead of the /api/groups server routes. Operations that cross into the
-// `series` collection stay on the server: DELETE (removeGroupFromAllSeries) and any
-// update that changes seriesId/seriesPosition (cascade into series.items). Meeting
-// dates also stay on the server for now. Default OFF — identical to before.
-const USE_CLIENT_GROUPS = process.env.NEXT_PUBLIC_USE_CLIENT_GROUPS === 'true';
+// Groups use the client Firestore SDK for reads and own-doc writes. Operations
+// that cross into `series` stay on the server: DELETE (removeGroupFromAllSeries)
+// and updates that change seriesId/seriesPosition. Meeting dates also stay on
+// the server for now.
 const GROUPS_COLLECTION = 'groups';
 
 // --- helpers mirroring groups.repository.ts (kept byte-identical so client and
@@ -49,7 +46,7 @@ function hydrateGroup(group: Group): Group {
   };
 }
 
-// --- client-SDK read/write paths (behind the flag) ---
+// --- client-SDK read/write paths ---
 
 async function getAllGroupsViaClient(userId: string): Promise<Group[]> {
   const db = getClientDb();
@@ -131,50 +128,15 @@ async function fetchCalendarGroupsViaClient(
 // Throwing early here would short-circuit that buffer and lose the write.
 // (Client-SDK writes queue natively in Firestore's offline buffer instead.)
 export const getAllGroups = async (userId: string): Promise<Group[]> => {
-  if (USE_CLIENT_GROUPS && typeof window !== 'undefined') {
-    return getAllGroupsViaClient(userId);
-  }
-  const response = await fetch(`${API_BASE}/api/groups?userId=${userId}`, {
-    cache: 'no-store',
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch groups');
-  }
-
-  return response.json();
+  return getAllGroupsViaClient(userId);
 };
 
 export const getGroupById = async (groupId: string): Promise<Group | undefined> => {
-  if (USE_CLIENT_GROUPS && typeof window !== 'undefined') {
-    return getGroupByIdViaClient(groupId);
-  }
-  const response = await fetch(`${API_BASE}/api/groups/${groupId}`, {
-    cache: 'no-store',
-  });
-  if (!response.ok) {
-    throw new Error('Failed to fetch group');
-  }
-
-  return response.json();
+  return getGroupByIdViaClient(groupId);
 };
 
 export const createGroup = async (group: Omit<Group, 'id'> & { id?: string }): Promise<Group> => {
-  if (USE_CLIENT_GROUPS && typeof window !== 'undefined') {
-    return createGroupViaClient(group);
-  }
-  const response = await fetch(`${API_BASE}/api/groups`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(group),
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to create group');
-  }
-
-  const data = await response.json();
-  return data.group;
+  return createGroupViaClient(group);
 };
 
 export const updateGroup = async (groupId: string, updates: Partial<Group>): Promise<Group> => {
@@ -182,7 +144,7 @@ export const updateGroup = async (groupId: string, updates: Partial<Group>): Pro
   // collection write) → those MUST stay on the server. Content-only updates
   // (title/description/status/templates/flow) go via the client SDK.
   const touchesSeries = 'seriesId' in updates || 'seriesPosition' in updates;
-  if (USE_CLIENT_GROUPS && typeof window !== 'undefined' && !touchesSeries) {
+  if (!touchesSeries) {
     return updateGroupViaClient(groupId, updates);
   }
   const response = await fetch(`${API_BASE}/api/groups/${groupId}`, {
@@ -269,19 +231,5 @@ export const fetchCalendarGroups = async (
   startDate?: string,
   endDate?: string
 ): Promise<Group[]> => {
-  if (USE_CLIENT_GROUPS && typeof window !== 'undefined') {
-    return fetchCalendarGroupsViaClient(userId, startDate, endDate);
-  }
-  const params = new URLSearchParams({ userId });
-  if (startDate) params.append('startDate', startDate);
-  if (endDate) params.append('endDate', endDate);
-
-  const response = await fetch(`${API_BASE}/api/calendar/groups?${params.toString()}`);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to fetch calendar groups');
-  }
-
-  const data = await response.json();
-  return data.groups;
+  return fetchCalendarGroupsViaClient(userId, startDate, endDate);
 };

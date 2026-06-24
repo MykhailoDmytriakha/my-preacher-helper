@@ -1,4 +1,12 @@
 import { PrayerRequest, PrayerStatus } from '@/models/models';
+import {
+  addPrayerUpdateViaClient,
+  deletePrayerRequestViaClient,
+  getAllPrayerRequestsViaClient,
+  getPrayerRequestByIdViaClient,
+  setPrayerStatusViaClient,
+  updatePrayerRequestViaClient,
+} from '@/services/prayerRequests.client';
 import { newClientId } from '@/utils/clientId';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
@@ -15,9 +23,6 @@ export interface SetPrayerStatusPayload {
   answeredAt?: string;
   answerText?: string;
 }
-
-const clientActive = () =>
-  process.env.NEXT_PUBLIC_USE_CLIENT_PRAYER === 'true' && typeof window !== 'undefined';
 
 const normalizeAddUpdatePayload = (input: string | AddPrayerUpdatePayload): AddPrayerUpdatePayload =>
   typeof input === 'string' ? { text: input } : input;
@@ -46,27 +51,12 @@ const withStableStatusReplayFields = (payload: SetPrayerStatusPayload) => {
   };
 };
 
-// NOTE: writes intentionally do NOT pre-check connectivity — see groups.service
-// for the rationale. Offline, the fetch rejects and React Query buffers + replays.
-
 export const getAllPrayerRequests = async (userId: string): Promise<PrayerRequest[]> => {
-  if (clientActive()) {
-    const { getAllPrayerRequestsViaClient } = await import('./prayerRequests.client');
-    return getAllPrayerRequestsViaClient(userId);
-  }
-  const res = await fetch(`${API_BASE}/api/prayer?userId=${userId}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error('Failed to fetch prayer requests');
-  return res.json();
+  return getAllPrayerRequestsViaClient(userId);
 };
 
 export const getPrayerRequestById = async (id: string): Promise<PrayerRequest | undefined> => {
-  if (clientActive()) {
-    const { getPrayerRequestByIdViaClient } = await import('./prayerRequests.client');
-    return getPrayerRequestByIdViaClient(id);
-  }
-  const res = await fetch(`${API_BASE}/api/prayer/${id}`, { cache: 'no-store' });
-  if (!res.ok) throw new Error('Failed to fetch prayer request');
-  return res.json();
+  return getPrayerRequestByIdViaClient(id);
 };
 
 export const createPrayerRequest = async (
@@ -87,26 +77,11 @@ export const createPrayerRequest = async (
 };
 
 export const updatePrayerRequest = async (id: string, updates: Partial<PrayerRequest>): Promise<PrayerRequest> => {
-  if (clientActive()) {
-    const { updatePrayerRequestViaClient } = await import('./prayerRequests.client');
-    return updatePrayerRequestViaClient(id, updates);
-  }
-  const res = await fetch(`${API_BASE}/api/prayer/${id}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
-  if (!res.ok) throw new Error('Failed to update prayer request');
-  return res.json();
+  return updatePrayerRequestViaClient(id, updates);
 };
 
 export const deletePrayerRequest = async (id: string): Promise<void> => {
-  if (clientActive()) {
-    const { deletePrayerRequestViaClient } = await import('./prayerRequests.client');
-    return deletePrayerRequestViaClient(id);
-  }
-  const res = await fetch(`${API_BASE}/api/prayer/${id}`, { method: 'DELETE' });
-  if (!res.ok) throw new Error('Failed to delete prayer request');
+  return deletePrayerRequestViaClient(id);
 };
 
 export const addPrayerUpdate = async (
@@ -114,17 +89,7 @@ export const addPrayerUpdate = async (
   input: string | AddPrayerUpdatePayload
 ): Promise<PrayerRequest> => {
   const payload = normalizeAddUpdatePayload(input);
-  if (clientActive()) {
-    const { addPrayerUpdateViaClient } = await import('./prayerRequests.client');
-    return addPrayerUpdateViaClient(id, withStableUpdateReplayFields(payload));
-  }
-  const res = await fetch(`${API_BASE}/api/prayer/${id}/updates`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text: payload.text }),
-  });
-  if (!res.ok) throw new Error('Failed to add prayer update');
-  return res.json();
+  return addPrayerUpdateViaClient(id, withStableUpdateReplayFields(payload));
 };
 
 export const setPrayerStatus = async (
@@ -133,18 +98,5 @@ export const setPrayerStatus = async (
   answerText?: string
 ): Promise<PrayerRequest> => {
   const payload = normalizeStatusPayload(statusOrPayload, answerText);
-  if (clientActive()) {
-    const { setPrayerStatusViaClient } = await import('./prayerRequests.client');
-    return setPrayerStatusViaClient(id, withStableStatusReplayFields(payload));
-  }
-  const res = await fetch(`${API_BASE}/api/prayer/${id}/status`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      status: payload.status,
-      ...(payload.answerText !== undefined && { answerText: payload.answerText }),
-    }),
-  });
-  if (!res.ok) throw new Error('Failed to update prayer status');
-  return res.json();
+  return setPrayerStatusViaClient(id, withStableStatusReplayFields(payload));
 };

@@ -7,13 +7,9 @@ import { timeOrZero, compareById } from '@/utils/sortHelpers';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
-// Strangler-fig flag: when ON, series READS + simple WRITES (create, metadata-only
-// update) go through the client Firestore SDK (offline replica + deployed Security
-// Rules) instead of the /api/series server routes. Operations that cross into the
-// `sermons`/`groups` collections stay on the server: DELETE (clears seriesId on all
-// referenced sermons/groups) and every membership op (add/remove/reorder sermon &
-// group items — they sync sermon.seriesId / group.seriesId). Default OFF.
-const USE_CLIENT_SERIES = process.env.NEXT_PUBLIC_USE_CLIENT_SERIES === 'true';
+// Series use the client Firestore SDK for reads, create, and metadata-only
+// updates. Operations that cross into `sermons`/`groups` stay on the server:
+// DELETE and every membership op.
 const SERIES_COLLECTION = 'series';
 
 // Fields the server PUT /api/series/[id] route allows — metadata only, never items
@@ -60,7 +56,7 @@ function sortSeries(list: Series[]): Series[] {
   });
 }
 
-// --- client-SDK read/write paths (behind the flag) ---
+// --- client-SDK read/write paths ---
 
 async function getAllSeriesViaClient(userId: string): Promise<Series[]> {
   const db = getClientDb();
@@ -122,115 +118,22 @@ async function updateSeriesViaClient(seriesId: string, updates: Partial<Series>)
 // in Firestore's offline buffer instead.)
 
 export const getAllSeries = async (userId: string): Promise<Series[]> => {
-  if (USE_CLIENT_SERIES && typeof window !== 'undefined') {
-    return getAllSeriesViaClient(userId);
-  }
-  try {
-    const response = await fetch(`${API_BASE}/api/series?userId=${userId}`, {
-      cache: "no-store"
-    });
-
-    if (!response.ok) {
-      console.error(`getAllSeries: Response not ok, status: ${response.status}`);
-      throw new Error('Failed to fetch series');
-    }
-
-    const data = await response.json();
-    return (data as Series[]).sort((a, b) => {
-      // Sort by start date (desc), then by title, then by id.
-      const byDate = timeOrZero(b.startDate) - timeOrZero(a.startDate);
-      if (byDate !== 0) {
-        return byDate;
-      }
-
-      const byTitle = (a.title || '').localeCompare(b.title || '');
-      if (byTitle !== 0) {
-        return byTitle;
-      }
-
-      // Deterministic final tiebreaker: stable array order across fetches so
-      // React Query structural sharing holds (prevents the reorder flash).
-      return compareById(a, b);
-    });
-  } catch (error) {
-    console.error('getAllSeries: Error fetching series:', error);
-    throw error;
-  }
+  return getAllSeriesViaClient(userId);
 };
 
 export const getSeriesById = async (seriesId: string): Promise<Series | undefined> => {
-  if (USE_CLIENT_SERIES && typeof window !== 'undefined') {
-    return getSeriesByIdViaClient(seriesId);
-  }
-  try {
-    const response = await fetch(`${API_BASE}/api/series/${seriesId}`, {
-      cache: "no-store",
-    });
-
-    if (!response.ok) {
-      console.error(`getSeriesById: Response not ok for id ${seriesId}, status: ${response.status}`);
-      throw new Error('Failed to fetch series');
-    }
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`getSeriesById: Error fetching series ${seriesId}:`, error);
-    throw error;
-  }
+  return getSeriesByIdViaClient(seriesId);
 };
 
 export const createSeries = async (series: Omit<Series, 'id'> & { id?: string }): Promise<Series> => {
-  if (USE_CLIENT_SERIES && typeof window !== 'undefined') {
-    return createSeriesViaClient(series);
-  }
-  try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const response = await fetch(`${API_BASE}/api/series`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(series),
-    });
-
-    if (!response.ok) {
-      console.error("createSeries: Response not ok, status:", response.status);
-      throw new Error('Failed to create series');
-    }
-
-    const data = await response.json();
-    return data.series;
-  } catch (error) {
-    console.error('createSeries: Error creating series:', error);
-    throw error;
-  }
+  return createSeriesViaClient(series);
 };
 
 export const updateSeries = async (seriesId: string, updates: Partial<Series>): Promise<Series> => {
   // Items/sermonIds membership flows through the dedicated cascade endpoints, never
   // updateSeries; the client path whitelists metadata only (same as the server route),
   // so it stays a pure own-doc write with no cross-collection effect.
-  if (USE_CLIENT_SERIES && typeof window !== 'undefined') {
-    return updateSeriesViaClient(seriesId, updates);
-  }
-  try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    const response = await fetch(`${API_BASE}/api/series/${seriesId}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(updates),
-    });
-
-    if (!response.ok) {
-      console.error(`updateSeries: Response not ok for id ${seriesId}, status:`, response.status);
-      throw new Error('Failed to update series');
-    }
-
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`updateSeries: Error updating series ${seriesId}:`, error);
-    throw error;
-  }
+  return updateSeriesViaClient(seriesId, updates);
 };
 
 export const deleteSeries = async (seriesId: string): Promise<void> => {

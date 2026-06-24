@@ -118,25 +118,4 @@ describe('planTemplate.service client Firestore flag', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it('falls back to the /api/plan-templates server route when the flag is off', async () => {
-    jest.resetModules();
-    delete process.env.NEXT_PUBLIC_USE_CLIENT_PLAN_TEMPLATES;
-    process.env.NEXT_PUBLIC_API_BASE = '';
-    jest.doMock('@/services/planTemplates.client', () => {
-      throw new Error('client module should stay lazy when flag is off');
-    });
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => [{ id: 't1', name: 'Server template' }],
-    });
-
-    const service = await import('@/services/planTemplate.service');
-    await expect(service.getPlanTemplates('user-1')).resolves.toEqual([
-      { id: 't1', name: 'Server template' },
-    ]);
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/api/plan-templates?userId=user-1'),
-      { cache: 'no-store' }
-    );
-  });
 });

@@ -29,9 +29,8 @@ function docSnap(id: string, data: Record<string, unknown>, exists = true) {
   };
 }
 
-async function importServiceWithClientFlag() {
+async function importServiceWithClientMocks() {
   jest.resetModules();
-  process.env.NEXT_PUBLIC_USE_CLIENT_PRAYER = 'true';
   process.env.NEXT_PUBLIC_API_BASE = '';
 
   jest.doMock('@/config/firebaseClientDb', () => ({
@@ -53,7 +52,7 @@ async function importServiceWithClientFlag() {
   return import('@/services/prayerRequests.service');
 }
 
-describe('prayerRequests.service client Firestore flag', () => {
+describe('prayerRequests.service client Firestore path', () => {
   const mockFetch = jest.fn();
 
   beforeEach(() => {
@@ -62,7 +61,6 @@ describe('prayerRequests.service client Firestore flag', () => {
   });
 
   afterEach(() => {
-    delete process.env.NEXT_PUBLIC_USE_CLIENT_PRAYER;
     delete process.env.NEXT_PUBLIC_API_BASE;
     jest.dontMock('@/services/prayerRequests.client');
     jest.dontMock('@/config/firebaseClientDb');
@@ -92,7 +90,7 @@ describe('prayerRequests.service client Firestore flag', () => {
       }),
     });
 
-    const service = await importServiceWithClientFlag();
+    const service = await importServiceWithClientMocks();
 
     const all = await service.getAllPrayerRequests('user-1');
     const detail = await service.getPrayerRequestById('p1');
@@ -206,26 +204,5 @@ describe('prayerRequests.service client Firestore flag', () => {
     );
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not import the Firestore client module when the client flag is off', async () => {
-    jest.resetModules();
-    delete process.env.NEXT_PUBLIC_USE_CLIENT_PRAYER;
-    process.env.NEXT_PUBLIC_API_BASE = '';
-    jest.doMock('@/services/prayerRequests.client', () => {
-      throw new Error('client module should stay lazy when flag is off');
-    });
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => [{ id: 'p1', title: 'Prayer 1' }],
-    });
-
-    const service = await import('@/services/prayerRequests.service');
-    await expect(service.getAllPrayerRequests('user-1')).resolves.toEqual([{ id: 'p1', title: 'Prayer 1' }]);
-
-    expect(mockFetch).toHaveBeenCalledWith(
-      expect.stringContaining('/api/prayer?userId=user-1'),
-      { cache: 'no-store' }
-    );
   });
 });

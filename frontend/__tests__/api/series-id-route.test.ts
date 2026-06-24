@@ -2,7 +2,7 @@ import { adminDb } from '@/config/firebaseAdminConfig';
 import { groupsRepository } from '@repositories/groups.repository';
 import { seriesRepository } from '@repositories/series.repository';
 
-import { DELETE, GET, PUT } from 'app/api/series/[id]/route';
+import { DELETE } from 'app/api/series/[id]/route';
 
 const mockBatchUpdate = jest.fn();
 const mockBatchCommit = jest.fn();
@@ -23,7 +23,6 @@ jest.mock('@repositories/groups.repository', () => ({
 jest.mock('@repositories/series.repository', () => ({
   seriesRepository: {
     fetchSeriesById: jest.fn(),
-    updateSeries: jest.fn(),
     deleteSeries: jest.fn(),
   },
 }));
@@ -46,62 +45,6 @@ describe('/api/series/[id] route', () => {
     });
     (adminDb.collection as jest.Mock).mockReturnValue({
       doc: jest.fn((id: string) => ({ id })),
-    });
-  });
-
-  describe('GET', () => {
-    it('returns 404 when series is missing', async () => {
-      (seriesRepository.fetchSeriesById as jest.Mock).mockResolvedValueOnce(null);
-      const response = await GET({} as Request, { params: Promise.resolve({ id: 'missing' }) });
-      const data = await response.json();
-      expect(response.status).toBe(404);
-      expect(data.error).toBe('Series not found');
-    });
-
-    it('returns series', async () => {
-      (seriesRepository.fetchSeriesById as jest.Mock).mockResolvedValueOnce({ id: 's1' });
-      const response = await GET({} as Request, { params: Promise.resolve({ id: 's1' }) });
-      const data = await response.json();
-      expect(response.status).toBe(200);
-      expect(data.id).toBe('s1');
-    });
-  });
-
-  describe('PUT', () => {
-    it('validates status and update payload', async () => {
-      (seriesRepository.fetchSeriesById as jest.Mock).mockResolvedValue({ id: 's1' });
-
-      const badStatus = await PUT(
-        { json: jest.fn().mockResolvedValue({ status: 'bad' }) } as unknown as Request,
-        { params: Promise.resolve({ id: 's1' }) }
-      );
-      const noFields = await PUT(
-        { json: jest.fn().mockResolvedValue({ unknown: 'x' }) } as unknown as Request,
-        { params: Promise.resolve({ id: 's1' }) }
-      );
-
-      expect(badStatus.status).toBe(400);
-      expect(noFields.status).toBe(400);
-    });
-
-    it('updates series and returns refreshed payload', async () => {
-      (seriesRepository.fetchSeriesById as jest.Mock)
-        .mockResolvedValueOnce({ id: 's1', title: 'Old' })
-        .mockResolvedValueOnce({ id: 's1', title: 'New' });
-      (seriesRepository.updateSeries as jest.Mock).mockResolvedValueOnce(undefined);
-
-      const response = await PUT(
-        { json: jest.fn().mockResolvedValue({ title: 'New', color: '#fff' }) } as unknown as Request,
-        { params: Promise.resolve({ id: 's1' }) }
-      );
-      const data = await response.json();
-
-      expect(seriesRepository.updateSeries).toHaveBeenCalledWith(
-        's1',
-        expect.objectContaining({ title: 'New', color: '#fff' })
-      );
-      expect(response.status).toBe(200);
-      expect(data.title).toBe('New');
     });
   });
 

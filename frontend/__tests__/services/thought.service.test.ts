@@ -1,3 +1,13 @@
+const mockDeleteThoughtViaClient = jest.fn();
+const mockUpdateThoughtViaClient = jest.fn();
+const mockCreateManualThoughtViaClient = jest.fn();
+
+jest.mock('@/services/sermons.client', () => ({
+  deleteThoughtViaClient: (...args: unknown[]) => mockDeleteThoughtViaClient(...args),
+  updateThoughtViaClient: (...args: unknown[]) => mockUpdateThoughtViaClient(...args),
+  createManualThoughtViaClient: (...args: unknown[]) => mockCreateManualThoughtViaClient(...args),
+}));
+
 import { createAudioThought, retryAudioTranscription, deleteThought, updateThought, createManualThought } from '@/services/thought.service';
 
 // Mock fetch globally
@@ -208,107 +218,59 @@ describe('Thought Service', () => {
 
   describe('deleteThought', () => {
     it('should successfully delete thought', async () => {
-      const mockResponse = {
-        ok: true,
-      };
-      mockFetch.mockResolvedValue(mockResponse);
+      mockDeleteThoughtViaClient.mockResolvedValueOnce(undefined);
 
       await deleteThought(mockSermonId, mockThought);
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/thoughts'),
-        expect.objectContaining({
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ sermonId: mockSermonId, thought: mockThought }),
-        })
-      );
+      expect(mockDeleteThoughtViaClient).toHaveBeenCalledWith(mockSermonId, mockThought);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('should throw error on delete failure', async () => {
-      const mockErrorResponse = {
-        ok: false,
-        status: 500,
-      };
-      mockFetch.mockResolvedValue(mockErrorResponse);
+      mockDeleteThoughtViaClient.mockRejectedValueOnce(new Error('client delete failed'));
 
       await expect(deleteThought(mockSermonId, mockThought)).rejects.toThrow(
-        'Failed to delete thought with status 500'
+        'client delete failed'
       );
     });
   });
 
   describe('updateThought', () => {
     it('should successfully update thought', async () => {
-      const mockResponse = {
-        ok: true,
-        json: jest.fn().mockResolvedValue(mockThought),
-      };
-      mockFetch.mockResolvedValue(mockResponse);
+      mockUpdateThoughtViaClient.mockResolvedValueOnce(mockThought);
 
       const result = await updateThought(mockSermonId, mockThought);
 
       expect(result).toEqual(mockThought);
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/thoughts'),
-        expect.objectContaining({
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ sermonId: mockSermonId, thought: mockThought }),
-        })
-      );
+      expect(mockUpdateThoughtViaClient).toHaveBeenCalledWith(mockSermonId, mockThought);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it('should handle server error response', async () => {
-      const mockErrorResponse = {
-        ok: false,
-        status: 500,
-        text: jest.fn().mockResolvedValue('Server error message'),
-      };
-      mockFetch.mockResolvedValue(mockErrorResponse);
+    it('should surface client update errors', async () => {
+      mockUpdateThoughtViaClient.mockRejectedValueOnce(new Error('client update failed'));
 
       await expect(updateThought(mockSermonId, mockThought)).rejects.toThrow(
-        'Failed to update thought with status 500: Server error message'
+        'client update failed'
       );
     });
   });
 
   describe('createManualThought', () => {
     it('should successfully create manual thought', async () => {
-      const mockResponse = {
-        ok: true,
-        json: jest.fn().mockResolvedValue(mockThought),
-      };
-      mockFetch.mockResolvedValue(mockResponse);
+      mockCreateManualThoughtViaClient.mockResolvedValueOnce(mockThought);
 
       const result = await createManualThought(mockSermonId, mockThought);
 
       expect(result).toEqual(mockThought);
-      expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/api/thoughts?manual=true'),
-        expect.objectContaining({
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ sermonId: mockSermonId, thought: mockThought }),
-        })
-      );
+      expect(mockCreateManualThoughtViaClient).toHaveBeenCalledWith(mockSermonId, mockThought);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('should throw error on manual thought creation failure', async () => {
-      const mockErrorResponse = {
-        ok: false,
-        status: 400,
-      };
-      mockFetch.mockResolvedValue(mockErrorResponse);
+      mockCreateManualThoughtViaClient.mockRejectedValueOnce(new Error('client create failed'));
 
       await expect(createManualThought(mockSermonId, mockThought)).rejects.toThrow(
-        'Failed to create manual thought with status 400'
+        'client create failed'
       );
     });
   });

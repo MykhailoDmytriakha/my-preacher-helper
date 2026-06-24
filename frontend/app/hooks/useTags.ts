@@ -24,11 +24,11 @@ export function useTags(userId: string | null | undefined) {
 
   const tagsQuery = useServerFirstQuery<TagPayload>({
     queryKey: buildQueryKey(userId),
-    queryFn: () => (userId ? getTags(userId) : Promise.resolve({
+    queryFn: () => (userId ? getTags(userId) : Promise.resolve<TagPayload>({
       requiredTags: [
-        { id: '1', name: 'intro', color: '#3B82F6', translationKey: 'tags.introduction' },
-        { id: '2', name: 'main', color: '#10B981', translationKey: 'tags.mainPart' },
-        { id: '3', name: 'conclusion', color: '#F59E0B', translationKey: 'tags.conclusion' },
+        { id: '1', userId: '', name: 'intro', color: '#3B82F6', required: true, translationKey: 'tags.introduction' },
+        { id: '2', userId: '', name: 'main', color: '#10B981', required: true, translationKey: 'tags.mainPart' },
+        { id: '3', userId: '', name: 'conclusion', color: '#F59E0B', required: true, translationKey: 'tags.conclusion' },
       ],
       customTags: [],
     })),

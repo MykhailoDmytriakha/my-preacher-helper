@@ -1,3 +1,23 @@
+const mockGetAllPrayerRequestsViaClient = jest.fn();
+const mockGetPrayerRequestByIdViaClient = jest.fn();
+const mockUpdatePrayerRequestViaClient = jest.fn();
+const mockDeletePrayerRequestViaClient = jest.fn();
+const mockAddPrayerUpdateViaClient = jest.fn();
+const mockSetPrayerStatusViaClient = jest.fn();
+
+jest.mock('@/utils/clientId', () => ({
+  newClientId: jest.fn(() => 'stable-client-id'),
+}));
+
+jest.mock('@/services/prayerRequests.client', () => ({
+  getAllPrayerRequestsViaClient: (...args: unknown[]) => mockGetAllPrayerRequestsViaClient(...args),
+  getPrayerRequestByIdViaClient: (...args: unknown[]) => mockGetPrayerRequestByIdViaClient(...args),
+  updatePrayerRequestViaClient: (...args: unknown[]) => mockUpdatePrayerRequestViaClient(...args),
+  deletePrayerRequestViaClient: (...args: unknown[]) => mockDeletePrayerRequestViaClient(...args),
+  addPrayerUpdateViaClient: (...args: unknown[]) => mockAddPrayerUpdateViaClient(...args),
+  setPrayerStatusViaClient: (...args: unknown[]) => mockSetPrayerStatusViaClient(...args),
+}));
+
 import {
   addPrayerUpdate,
   createPrayerRequest,
@@ -15,137 +35,68 @@ describe('prayerRequests.service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     process.env.NEXT_PUBLIC_API_BASE = '';
-    Object.defineProperty(global.navigator, 'onLine', { configurable: true, value: true });
   });
 
   afterEach(() => {
     delete process.env.NEXT_PUBLIC_API_BASE;
   });
 
-  it('fetches prayer collections and prayer detail', async () => {
-    mockFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => [{ id: 'p1', title: 'Prayer 1' }],
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ id: 'p1', title: 'Prayer 1' }),
-      });
+  it('routes dead operations through the client SDK', async () => {
+    mockGetAllPrayerRequestsViaClient.mockResolvedValueOnce([{ id: 'p1', title: 'Prayer 1' }]);
+    mockGetPrayerRequestByIdViaClient.mockResolvedValueOnce({ id: 'p1', title: 'Prayer 1' });
+    mockUpdatePrayerRequestViaClient.mockResolvedValueOnce({ id: 'p1', title: 'Updated' });
+    mockDeletePrayerRequestViaClient.mockResolvedValueOnce(undefined);
+    mockAddPrayerUpdateViaClient.mockResolvedValueOnce({ id: 'p1', updates: [{ id: 'stable-client-id' }] });
+    mockSetPrayerStatusViaClient.mockResolvedValueOnce({ id: 'p1', status: 'answered' });
 
-    const all = await getAllPrayerRequests('user-1');
-    const one = await getPrayerRequestById('p1');
+    await expect(getAllPrayerRequests('user-1')).resolves.toHaveLength(1);
+    await expect(getPrayerRequestById('p1')).resolves.toEqual({ id: 'p1', title: 'Prayer 1' });
+    await expect(updatePrayerRequest('p1', { title: 'Updated' })).resolves.toEqual({ id: 'p1', title: 'Updated' });
+    await expect(deletePrayerRequest('p1')).resolves.toBeUndefined();
+    await expect(addPrayerUpdate('p1', 'Fresh update')).resolves.toEqual({
+      id: 'p1',
+      updates: [{ id: 'stable-client-id' }],
+    });
+    await expect(setPrayerStatus('p1', 'answered', 'Yes')).resolves.toEqual({ id: 'p1', status: 'answered' });
 
-    expect(all).toHaveLength(1);
-    expect(one?.id).toBe('p1');
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      1,
-      expect.stringContaining('/api/prayer?userId=user-1'),
-      { cache: 'no-store' }
-    );
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      2,
-      expect.stringContaining('/api/prayer/p1'),
-      { cache: 'no-store' }
-    );
+    expect(mockGetAllPrayerRequestsViaClient).toHaveBeenCalledWith('user-1');
+    expect(mockGetPrayerRequestByIdViaClient).toHaveBeenCalledWith('p1');
+    expect(mockUpdatePrayerRequestViaClient).toHaveBeenCalledWith('p1', { title: 'Updated' });
+    expect(mockDeletePrayerRequestViaClient).toHaveBeenCalledWith('p1');
+    expect(mockAddPrayerUpdateViaClient).toHaveBeenCalledWith('p1', {
+      updateId: 'stable-client-id',
+      text: 'Fresh update',
+      createdAt: expect.any(String),
+    });
+    expect(mockSetPrayerStatusViaClient).toHaveBeenCalledWith('p1', {
+      status: 'answered',
+      answerText: 'Yes',
+      updatedAt: expect.any(String),
+      answeredAt: expect.any(String),
+    });
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it('creates, updates, deletes, appends updates, and changes status', async () => {
-    mockFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ id: 'p1', title: 'Created prayer' }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ id: 'p1', title: 'Updated prayer' }),
-      })
-      .mockResolvedValueOnce({ ok: true })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ id: 'p1', updates: [{ id: 'u1', text: 'Fresh update' }] }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ id: 'p1', status: 'answered', answerText: 'Yes' }),
-      });
+  it('keeps createPrayerRequest on the server route', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ id: 'p1', title: 'Created prayer' }),
+    });
 
     const created = await createPrayerRequest({ userId: 'user-1', title: 'Created prayer', tags: ['faith'] } as any);
-    const updated = await updatePrayerRequest('p1', { title: 'Updated prayer' });
-    await deletePrayerRequest('p1');
-    const appended = await addPrayerUpdate('p1', 'Fresh update');
-    const answered = await setPrayerStatus('p1', 'answered', 'Yes');
 
     expect(created.id).toBe('p1');
-    expect(updated.title).toBe('Updated prayer');
-    expect(appended.updates).toHaveLength(1);
-    expect(answered.answerText).toBe('Yes');
-
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      1,
+    expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining('/api/prayer'),
       expect.objectContaining({ method: 'POST' })
     );
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      2,
-      expect.stringContaining('/api/prayer/p1'),
-      expect.objectContaining({ method: 'PUT' })
-    );
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      3,
-      expect.stringContaining('/api/prayer/p1'),
-      expect.objectContaining({ method: 'DELETE' })
-    );
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      4,
-      expect.stringContaining('/api/prayer/p1/updates'),
-      expect.objectContaining({ method: 'POST' })
-    );
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      5,
-      expect.stringContaining('/api/prayer/p1/status'),
-      expect.objectContaining({ method: 'PUT' })
-    );
-
-    const [, createOptions] = mockFetch.mock.calls[0];
-    expect((createOptions as RequestInit).body).toContain('"title":"Created prayer"');
-
-    const [, statusOptions] = mockFetch.mock.calls[4];
-    expect((statusOptions as RequestInit).body).toContain('"answerText":"Yes"');
   });
 
-  it('throws api errors for failed network responses', async () => {
-    mockFetch
-      .mockResolvedValueOnce({ ok: false })
-      .mockResolvedValueOnce({ ok: false })
-      .mockResolvedValueOnce({ ok: false })
-      .mockResolvedValueOnce({ ok: false })
-      .mockResolvedValueOnce({ ok: false })
-      .mockResolvedValueOnce({ ok: false })
-      .mockResolvedValueOnce({ ok: false });
+  it('throws when server create fails', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: false });
 
-    await expect(getAllPrayerRequests('user-1')).rejects.toThrow('Failed to fetch prayer requests');
-    await expect(getPrayerRequestById('p1')).rejects.toThrow('Failed to fetch prayer request');
     await expect(createPrayerRequest({ userId: 'user-1', title: 'x' } as any)).rejects.toThrow(
       'Failed to create prayer request'
     );
-    await expect(updatePrayerRequest('p1', { title: 'x' })).rejects.toThrow('Failed to update prayer request');
-    await expect(deletePrayerRequest('p1')).rejects.toThrow('Failed to delete prayer request');
-    await expect(addPrayerUpdate('p1', 'x')).rejects.toThrow('Failed to add prayer update');
-    await expect(setPrayerStatus('p1', 'active')).rejects.toThrow('Failed to update prayer status');
-  });
-
-  it('still issues the request when offline so React Query can buffer the write', async () => {
-    // Stage 2: writes no longer short-circuit offline — the service attempts the
-    // fetch; the browser rejects it; React Query (offlineFirst) pauses + persists
-    // the mutation and replays it on reconnect. A pre-throw would lose the write.
-    Object.defineProperty(global.navigator, 'onLine', { configurable: true, value: false });
-    mockFetch.mockRejectedValue(new TypeError('Failed to fetch'));
-
-    await expect(createPrayerRequest({ userId: 'user-1', title: 'x' } as any)).rejects.toThrow('Failed to fetch');
-    await expect(updatePrayerRequest('p1', { title: 'x' })).rejects.toThrow('Failed to fetch');
-    await expect(deletePrayerRequest('p1')).rejects.toThrow('Failed to fetch');
-
-    expect(mockFetch).toHaveBeenCalled();
   });
 });

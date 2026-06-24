@@ -1,8 +1,7 @@
 import { toast } from 'sonner';
 
-import { Thought } from "@/models/models";
+import { Thought } from '@/models/models';
 import {
-  USE_CLIENT_SERMONS,
   createManualThoughtViaClient,
   deleteThoughtViaClient,
   updateThoughtViaClient,
@@ -10,7 +9,6 @@ import {
 import { apiClient } from '@/utils/apiClient';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
-const clientActive = () => USE_CLIENT_SERMONS && typeof window !== 'undefined';
 const AUDIO_RETRY_DELAY_MS = process.env.NODE_ENV === 'test' ? 0 : 1200;
 
 type AudioThoughtErrorResponse = {
@@ -198,90 +196,19 @@ export const deleteThought = async (
   sermonId: string,
   thought: Thought
 ): Promise<void> => {
-  if (clientActive()) {
-    return deleteThoughtViaClient(sermonId, thought);
-  }
-  try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    const response = await apiClient(`${API_BASE}/api/thoughts`, {
-      method: "DELETE",
-      headers,
-      body: JSON.stringify({ sermonId, thought }),
-      category: 'crud'
-    });
-    if (!response.ok) {
-      throw new Error(
-        `Failed to delete thought with status ${response.status}`
-      );
-    }
-  } catch (error) {
-    console.error("deleteThought: Error deleting thought:", error);
-    throw error;
-  }
+  return deleteThoughtViaClient(sermonId, thought);
 };
 
 export const updateThought = async (
   sermonId: string,
   thought: Thought
 ): Promise<Thought> => {
-  if (clientActive()) {
-    return updateThoughtViaClient(sermonId, thought);
-  }
-  try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-
-    const requestBody = JSON.stringify({ sermonId, thought });
-    const response = await apiClient(`${API_BASE}/api/thoughts`, {
-      method: "PUT",
-      headers,
-      body: requestBody,
-      category: 'crud'
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("thought.service: Server error response:", errorText);
-      throw new Error(
-        `Failed to update thought with status ${response.status}: ${errorText}`
-      );
-    }
-    
-    const updatedThought = await response.json();
-    return updatedThought;
-  } catch (error) {
-    console.error("updateThought: Error updating thought", error);
-    throw error;
-  }
+  return updateThoughtViaClient(sermonId, thought);
 };
 
 export const createManualThought = async (
   sermonId: string,
   thought: Thought
 ): Promise<Thought> => {
-  if (clientActive()) {
-    return createManualThoughtViaClient(sermonId, thought);
-  }
-  try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    const response = await apiClient(`${API_BASE}/api/thoughts?manual=true`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ sermonId, thought }),
-      category: 'crud'
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to create manual thought with status ${response.status}`);
-    }
-    const savedThought = await response.json();
-    return savedThought;
-  } catch (error) {
-    console.error("createManualThought: Error creating thought manually", error);
-    throw error;
-  }
+  return createManualThoughtViaClient(sermonId, thought);
 };

@@ -1,24 +1,6 @@
 import { ThoughtsBySection } from '@/models/models';
-import { USE_CLIENT_SERMONS, updateStructureViaClient } from '@/services/sermons.client';
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
+import { updateStructureViaClient } from '@/services/sermons.client';
 
 export const updateStructure = async (sermonId: string, structure: unknown): Promise<unknown> => {
-  if (USE_CLIENT_SERMONS && typeof window !== 'undefined') {
-    return updateStructureViaClient(sermonId, structure as ThoughtsBySection);
-  }
-  try {
-    const response = await fetch(`${API_BASE}/api/structure?sermonId=${sermonId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ structure })
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to update structure: ${response.status}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error("Error updating structure:", error);
-    throw error;
-  }
+  return updateStructureViaClient(sermonId, structure as ThoughtsBySection);
 }; 

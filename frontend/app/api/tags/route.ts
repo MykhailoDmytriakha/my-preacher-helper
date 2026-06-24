@@ -1,54 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { Tag } from '@/models/models';
-import { saveTag, getCustomTags, deleteTag, updateTagInDb } from '@clients/firestore.client'
-
-// GET api/tags?userId=123
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const userId = searchParams.get('userId');
-  let customTags: Tag[] = [];
-  if (userId) {
-    customTags = await getCustomTags(userId) as Tag[];
-  }
-  const tags = {
-    requiredTags: [],
-    customTags: customTags || [],
-  };
-  return NextResponse.json(tags);
-} 
-
-export async function POST(request: Request) {
-  try {
-    const tag = await request.json();
-    console.log('Received tag:', tag);
-    tag.required = false;
-    await saveTag(tag);
-    return NextResponse.json({ message: 'Tag created' }, { status: 201 });
-  } catch (error: unknown) {
-    if ((error as Error)?.message === 'RESERVED_NAME') {
-      return NextResponse.json({ message: 'Reserved tag name' }, { status: 400 });
-    }
-    console.error('POST: Error creating tag', error);
-    return NextResponse.json({ message: 'Error creating tag' }, { status: 500 });
-  }
-}
-
-export async function PUT(request: Request) {
-  try {
-    const tag = await request.json();
-    // Update tag using Firestore client update function
-    console.log('Received tag for update:', tag);
-    if (tag.required) {
-      return NextResponse.json({ message: 'Required tags cannot be updated' }, { status: 400 });
-    }
-    const updatedTag = await updateTagInDb(tag);
-    return NextResponse.json({ message: 'Tag updated', tag: updatedTag }, { status: 200 });
-  } catch (error: unknown) {
-    console.error('PUT: Error updating tag', error);
-    return NextResponse.json({ message: 'Error updating tag', error: (error as Error).message }, { status: 500 });
-  }
-}
+import { deleteTag } from '@clients/firestore.client';
 
 export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);

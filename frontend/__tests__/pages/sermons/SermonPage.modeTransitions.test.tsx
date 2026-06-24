@@ -45,6 +45,12 @@ jest.mock('@/hooks/useSermon', () => () => ({
 jest.mock('@/hooks/useTags', () => ({
   useTags: () => ({ allTags: [] }),
 }));
+// useSeries now reads via the client Firestore SDK (Phase 5: series.service is
+// client-only). getClientDb() can't initialize in jsdom, so mock the hook the same
+// way useSermon/useTags are mocked — the page only needs an (empty) series list.
+jest.mock('@/hooks/useSeries', () => ({
+  useSeries: () => ({ series: [] }),
+}));
 jest.mock('@/components/sermon/SermonHeader', () => ({ __esModule: true, default: ({}) => <div data-testid="sermon-header" /> }));
 jest.mock('@/components/sermon/BrainstormModule', () => ({ __esModule: true, default: ({}) => <div data-testid="brainstorm" /> }));
 jest.mock('@/components/sermon/ThoughtList', () => ({ __esModule: true, default: ({}) => <div data-testid="thought-list" /> }));

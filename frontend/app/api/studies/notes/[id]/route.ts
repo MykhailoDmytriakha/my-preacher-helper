@@ -11,6 +11,8 @@ function getUserId(request: Request): string | null {
   return new URL(request.url).searchParams.get('userId');
 }
 
+// GET is intentionally left in place because the Phase 5 inventory did not
+// classify it. Service fallback paths no longer call it.
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const userId = getUserId(request);
@@ -24,29 +26,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   } catch (error) {
     console.error(`GET /api/studies/notes/${id} error`, error);
     return NextResponse.json({ error: 'Failed to load study note' }, { status: 500 });
-  }
-}
-
-export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const userId = getUserId(request);
-  if (!userId) return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
-  try {
-    const updates = await request.json();
-    const existing = await studiesRepository.getNote(id);
-    if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    if (existing.userId !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-
-    // Never allow switching ownership
-    if (updates.userId && updates.userId !== userId) {
-      return NextResponse.json({ error: 'Cannot change userId' }, { status: 400 });
-    }
-
-    const updated = await studiesRepository.updateNote(id, { ...updates, userId });
-    return NextResponse.json(updated);
-  } catch (error) {
-    console.error(`PUT /api/studies/notes/${id} error`, error);
-    return NextResponse.json({ error: 'Failed to update study note' }, { status: 500 });
   }
 }
 

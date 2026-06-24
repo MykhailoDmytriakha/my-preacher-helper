@@ -1,553 +1,164 @@
-import { Series } from '@/models/models';
+export {}; // isolate module scope (mock* names are reused across service test files)
 
-// Mock fetch globally
+const mockDb = { app: 'client-db' };
+const mockCollection = jest.fn((_db: unknown, path: string) => ({ path }));
+const mockDoc = jest.fn((_db: unknown, path: string, id: string) => ({ path, id }));
+const mockWhere = jest.fn((field: string, op: string, value: unknown) => ({ field, op, value }));
+const mockQuery = jest.fn((ref: unknown, ...constraints: unknown[]) => ({ ref, constraints }));
+const mockGetDocs = jest.fn();
+const mockGetDoc = jest.fn();
+const mockSetDoc = jest.fn();
+const mockAddDoc = jest.fn();
+const mockUpdateDoc = jest.fn();
+const mockGetClientDb = jest.fn(() => mockDb);
 const mockFetch = jest.fn();
-global.fetch = mockFetch;
 
-// Import service functions inside the describe block to ensure fresh module load
-let getAllSeries: any;
-let getSeriesById: any;
-let createSeries: any;
-let updateSeries: any;
-let deleteSeries: any;
-let addSermonToSeries: any;
-let removeSermonFromSeries: any;
-let reorderSermons: any;
-let addGroupToSeries: any;
-let removeSeriesItem: any;
-let reorderSeriesItems: any;
+async function importServiceWithClientMocks() {
+  jest.resetModules();
+  process.env.NEXT_PUBLIC_API_BASE = '';
 
-describe('Series Service', () => {
-  beforeEach(async () => {
+  jest.doMock('@/config/firebaseClientDb', () => ({
+    getClientDb: mockGetClientDb,
+  }));
+  jest.doMock('firebase/firestore', () => ({
+    addDoc: mockAddDoc,
+    collection: mockCollection,
+    doc: mockDoc,
+    getDoc: mockGetDoc,
+    getDocs: mockGetDocs,
+    query: mockQuery,
+    setDoc: mockSetDoc,
+    updateDoc: mockUpdateDoc,
+    where: mockWhere,
+  }));
+
+  return import('@/services/series.service');
+}
+
+const baseSeries = {
+  userId: 'user-1',
+  title: 'Series A',
+  theme: 'Theme A',
+  description: 'Description A',
+  bookOrTopic: 'Book A',
+  sermonIds: [],
+  items: [],
+  status: 'active' as const,
+  color: '#FF0000',
+  createdAt: '2024-01-01T00:00:00Z',
+  updatedAt: '2024-01-01T00:00:00Z',
+};
+
+const docSnap = (id: string, data: Record<string, unknown>, exists = true) => ({
+  id,
+  exists: () => exists,
+  data: () => data,
+});
+
+describe('series.service', () => {
+  beforeEach(() => {
     jest.clearAllMocks();
-    mockFetch.mockClear();
-    // Set the environment variable before importing the service
-    process.env.NEXT_PUBLIC_API_BASE = '';
-    // Re-import the service functions for each test to get fresh API_BASE value
-    const seriesService = await import('@/services/series.service');
-    getAllSeries = seriesService.getAllSeries;
-    getSeriesById = seriesService.getSeriesById;
-    createSeries = seriesService.createSeries;
-    updateSeries = seriesService.updateSeries;
-    deleteSeries = seriesService.deleteSeries;
-    addSermonToSeries = seriesService.addSermonToSeries;
-    removeSermonFromSeries = seriesService.removeSermonFromSeries;
-    reorderSermons = seriesService.reorderSermons;
-    addGroupToSeries = seriesService.addGroupToSeries;
-    removeSeriesItem = seriesService.removeSeriesItem;
-    reorderSeriesItems = seriesService.reorderSeriesItems;
+    global.fetch = mockFetch as unknown as typeof fetch;
   });
 
   afterEach(() => {
-    // Clean up environment variable after each test
     delete process.env.NEXT_PUBLIC_API_BASE;
+    jest.dontMock('@/config/firebaseClientDb');
+    jest.dontMock('firebase/firestore');
   });
 
-  describe('getAllSeries', () => {
-    const mockSeries: Series[] = [
-      {
-        id: 'series-1',
-        userId: 'user-1',
-        title: 'Series A',
-        theme: 'Theme A',
-        description: 'Description A',
-        bookOrTopic: 'Book A',
-        sermonIds: [],
-        status: 'active',
-        color: '#FF0000',
-        createdAt: '2024-01-02T00:00:00Z',
-        updatedAt: '2024-01-02T00:00:00Z',
-      },
-      {
-        id: 'series-2',
-        userId: 'user-1',
-        title: 'Series B',
-        theme: 'Theme B',
-        description: 'Description B',
-        bookOrTopic: 'Book B',
-        sermonIds: [],
-        status: 'draft',
-        color: '#00FF00',
-        createdAt: '2024-01-01T00:00:00Z',
-        updatedAt: '2024-01-01T00:00:00Z',
-        startDate: '2024-01-15T00:00:00Z',
-      },
-    ];
-
-    it('should fetch and sort series by startDate desc, then title', async () => {
-      const mockResponse = {
-        ok: true,
-        json: jest.fn().mockResolvedValue(mockSeries),
-      };
-      mockFetch.mockResolvedValue(mockResponse);
-
-      const result = await getAllSeries('user-1');
-
-      expect(mockFetch).toHaveBeenCalledWith(`/api/series?userId=user-1`, {
-        cache: 'no-store',
-      });
-      expect(mockResponse.json).toHaveBeenCalled();
-
-      // Should be sorted: series-2 (has startDate) before series-1 (no startDate)
-      expect(result[0].title).toBe('Series B'); // has startDate, comes first
-      expect(result[1].title).toBe('Series A'); // no startDate, comes second
+  it('reads, creates, and metadata-updates series through the client SDK', async () => {
+    mockGetDocs.mockResolvedValueOnce({
+      docs: [
+        docSnap('series-a', { ...baseSeries, title: 'A' }),
+        docSnap('series-b', { ...baseSeries, title: 'B', startDate: '2024-02-01T00:00:00Z' }),
+      ],
     });
+    mockGetDoc
+      .mockResolvedValueOnce(docSnap('series-b', { ...baseSeries, title: 'B' }))
+      .mockResolvedValueOnce(docSnap('series-b', { ...baseSeries, title: 'B' }));
+    mockSetDoc.mockResolvedValueOnce(undefined);
+    mockUpdateDoc.mockResolvedValueOnce(undefined);
 
-    it('should throw on API error', async () => {
-      const mockResponse = {
-        ok: false,
-        status: 500,
-      };
-      mockFetch.mockResolvedValue(mockResponse);
+    const service = await importServiceWithClientMocks();
+    const all = await service.getAllSeries('user-1');
+    const detail = await service.getSeriesById('series-b');
+    const created = await service.createSeries({ ...baseSeries, id: 'client-series-id' });
+    const updated = await service.updateSeries('series-b', { title: 'Updated', sermonIds: ['ignored'] } as any);
 
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await expect(getAllSeries('user-1')).rejects.toThrow('Failed to fetch series');
-      expect(consoleSpy).toHaveBeenCalledWith('getAllSeries: Response not ok, status: 500');
-
-      consoleSpy.mockRestore();
-    });
-
-    it('should throw on fetch error', async () => {
-      const error = new Error('Network error');
-      mockFetch.mockRejectedValue(error);
-
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await expect(getAllSeries('user-1')).rejects.toThrow('Network error');
-      expect(consoleSpy).toHaveBeenCalledWith('getAllSeries: Error fetching series:', error);
-
-      consoleSpy.mockRestore();
-    });
+    expect(all.map((series) => series.id)).toEqual(['series-b', 'series-a']);
+    expect(detail?.id).toBe('series-b');
+    expect(created.id).toBe('client-series-id');
+    expect(updated.title).toBe('Updated');
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'series', id: 'client-series-id' }),
+      expect.objectContaining({ title: 'Series A' })
+    );
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'series', id: 'series-b' }),
+      expect.not.objectContaining({ sermonIds: ['ignored'] })
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  describe('getSeriesById', () => {
-    const mockSeries: Series = {
-      id: 'series-1',
-      userId: 'user-1',
-      title: 'Test Series',
-      theme: 'Test Theme',
-      description: 'Test Description',
-      bookOrTopic: 'Test Book',
-      sermonIds: [],
-      status: 'active',
-      color: '#FF0000',
-      createdAt: '2024-01-01T00:00:00Z',
-      updatedAt: '2024-01-01T00:00:00Z',
-    };
+  it('keeps delete and sermon membership operations on server routes', async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: true });
 
-    it('should fetch series by id successfully', async () => {
-      const mockResponse = {
-        ok: true,
-        json: jest.fn().mockResolvedValue(mockSeries),
-      };
-      mockFetch.mockResolvedValue(mockResponse);
+    const service = await importServiceWithClientMocks();
+    await service.deleteSeries('series-1');
+    await service.addSermonToSeries('series-1', 'sermon-1', 2);
+    await service.removeSermonFromSeries('series-1', 'sermon-1');
+    await service.reorderSermons('series-1', ['sermon-2', 'sermon-1']);
 
-      const result = await getSeriesById('series-1');
-
-      expect(mockFetch).toHaveBeenCalledWith(`/api/series/series-1`, { cache: 'no-store' });
-      expect(result).toEqual(mockSeries);
+    expect(mockFetch).toHaveBeenNthCalledWith(1, expect.stringContaining('/api/series/series-1'), {
+      method: 'DELETE',
     });
-
-    it('should throw on API error', async () => {
-      const mockResponse = {
-        ok: false,
-        status: 404,
-      };
-      mockFetch.mockResolvedValue(mockResponse);
-
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await expect(getSeriesById('series-1')).rejects.toThrow('Failed to fetch series');
-      expect(consoleSpy).toHaveBeenCalledWith('getSeriesById: Response not ok for id series-1, status: 404');
-
-      consoleSpy.mockRestore();
-    });
-
-    it('should throw on fetch error', async () => {
-      const error = new Error('Network error');
-      mockFetch.mockRejectedValue(error);
-
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await expect(getSeriesById('series-1')).rejects.toThrow('Network error');
-      expect(consoleSpy).toHaveBeenCalledWith('getSeriesById: Error fetching series series-1:', error);
-
-      consoleSpy.mockRestore();
-    });
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('/api/series/series-1/sermons'),
+      expect.objectContaining({ method: 'POST' })
+    );
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining('/api/series/series-1/sermons?sermonId=sermon-1'),
+      { method: 'DELETE' }
+    );
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining('/api/series/series-1/sermons'),
+      expect.objectContaining({ method: 'PUT' })
+    );
   });
 
-  describe('createSeries', () => {
-    const newSeriesData = {
-      userId: 'user-1',
-      title: 'New Series',
-      theme: 'New Theme',
-      description: 'New Description',
-      bookOrTopic: 'New Book',
-      sermonIds: [],
-      status: 'draft' as const,
-      color: '#0000FF',
-      createdAt: '2024-01-01T00:00:00Z',
-      updatedAt: '2024-01-01T00:00:00Z',
-    };
-
-    const createdSeries = { ...newSeriesData, id: 'new-series-id' };
-
-    it('should create series successfully', async () => {
-      const mockResponse = {
-        ok: true,
-        json: jest.fn().mockResolvedValue({ series: createdSeries }),
-      };
-      mockFetch.mockResolvedValue(mockResponse);
-
-      const result = await createSeries(newSeriesData);
-
-      expect(mockFetch).toHaveBeenCalledWith(`/api/series`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSeriesData),
-      });
-      expect(result).toEqual(createdSeries);
-    });
-
-    it('should throw error on API error', async () => {
-      const mockResponse = {
-        ok: false,
-        status: 400,
-      };
-      mockFetch.mockResolvedValue(mockResponse);
-
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await expect(createSeries(newSeriesData)).rejects.toThrow('Failed to create series');
-
-      expect(consoleSpy).toHaveBeenCalledWith('createSeries: Response not ok, status:', 400);
-
-      consoleSpy.mockRestore();
-    });
-
-    it('should throw error on fetch error', async () => {
-      const error = new Error('Network error');
-      mockFetch.mockRejectedValue(error);
-
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await expect(createSeries(newSeriesData)).rejects.toThrow(error);
-
-      expect(consoleSpy).toHaveBeenCalledWith('createSeries: Error creating series:', error);
-
-      consoleSpy.mockRestore();
-    });
-  });
-
-  describe('updateSeries', () => {
-    const updates = { title: 'Updated Title', theme: 'Updated Theme' };
-    const updatedSeries: Series = {
-      id: 'series-1',
-      userId: 'user-1',
-      title: 'Updated Title',
-      theme: 'Updated Theme',
-      description: 'Original Description',
-      bookOrTopic: 'Original Book',
-      sermonIds: [],
-      status: 'active',
-      color: '#FF0000',
-      createdAt: '2024-01-01T00:00:00Z',
-      updatedAt: '2024-01-02T00:00:00Z',
-    };
-
-    it('should update series successfully', async () => {
-      const mockResponse = {
-        ok: true,
-        json: jest.fn().mockResolvedValue(updatedSeries),
-      };
-      mockFetch.mockResolvedValue(mockResponse);
-
-      const result = await updateSeries('series-1', updates);
-
-      expect(mockFetch).toHaveBeenCalledWith(`/api/series/series-1`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
-      });
-      expect(result).toEqual(updatedSeries);
-    });
-
-    it('should throw error on API error', async () => {
-      const mockResponse = {
-        ok: false,
-        status: 404,
-      };
-      mockFetch.mockResolvedValue(mockResponse);
-
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await expect(updateSeries('series-1', updates)).rejects.toThrow('Failed to update series');
-
-      expect(consoleSpy).toHaveBeenCalledWith('updateSeries: Response not ok for id series-1, status:', 404);
-
-      consoleSpy.mockRestore();
-    });
-
-    it('should throw error on fetch error', async () => {
-      const error = new Error('Network error');
-      mockFetch.mockRejectedValue(error);
-
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await expect(updateSeries('series-1', updates)).rejects.toThrow(error);
-
-      expect(consoleSpy).toHaveBeenCalledWith('updateSeries: Error updating series series-1:', error);
-
-      consoleSpy.mockRestore();
-    });
-  });
-
-  describe('deleteSeries', () => {
-    it('should delete series successfully', async () => {
-      const mockResponse = {
-        ok: true,
-      };
-      mockFetch.mockResolvedValue(mockResponse);
-
-      await expect(deleteSeries('series-1')).resolves.toBeUndefined();
-
-      expect(mockFetch).toHaveBeenCalledWith(`/api/series/series-1`, {
-        method: 'DELETE',
-      });
-    });
-
-    it('should throw error on API error', async () => {
-      const mockResponse = {
-        ok: false,
-        status: 404,
-      };
-      mockFetch.mockResolvedValue(mockResponse);
-
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await expect(deleteSeries('series-1')).rejects.toThrow('Failed to delete series');
-
-      expect(consoleSpy).toHaveBeenCalledWith('deleteSeries: Response not ok for id series-1, status:', 404);
-
-      consoleSpy.mockRestore();
-    });
-
-    it('should throw error on fetch error', async () => {
-      const error = new Error('Network error');
-      mockFetch.mockRejectedValue(error);
-
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await expect(deleteSeries('series-1')).rejects.toThrow(error);
-
-      expect(consoleSpy).toHaveBeenCalledWith('deleteSeries: Error deleting series series-1:', error);
-
-      consoleSpy.mockRestore();
-    });
-  });
-
-  describe('addSermonToSeries', () => {
-    it('should add sermon to series successfully', async () => {
-      const mockResponse = {
-        ok: true,
-      };
-      mockFetch.mockResolvedValue(mockResponse);
-
-      await expect(addSermonToSeries('series-1', 'sermon-1', 2)).resolves.toBeUndefined();
-
-      expect(mockFetch).toHaveBeenCalledWith(`/api/series/series-1/sermons`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sermonId: 'sermon-1', position: 2 }),
-      });
-    });
-
-    it('should add sermon without position', async () => {
-      const mockResponse = {
-        ok: true,
-      };
-      mockFetch.mockResolvedValue(mockResponse);
-
-      await expect(addSermonToSeries('series-1', 'sermon-1')).resolves.toBeUndefined();
-
-      expect(mockFetch).toHaveBeenCalledWith(`/api/series/series-1/sermons`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sermonId: 'sermon-1', position: undefined }),
-      });
-    });
-
-    it('should throw error on API error', async () => {
-      const mockResponse = {
-        ok: false,
-        status: 400,
-      };
-      mockFetch.mockResolvedValue(mockResponse);
-
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await expect(addSermonToSeries('series-1', 'sermon-1')).rejects.toThrow('Failed to add sermon to series');
-
-      expect(consoleSpy).toHaveBeenCalledWith('addSermonToSeries: Response not ok for series series-1, sermon sermon-1, status:', 400);
-
-      consoleSpy.mockRestore();
-    });
-
-    it('should throw error on fetch error', async () => {
-      const error = new Error('Network error');
-      mockFetch.mockRejectedValue(error);
-
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await expect(addSermonToSeries('series-1', 'sermon-1')).rejects.toThrow(error);
-
-      expect(consoleSpy).toHaveBeenCalledWith('addSermonToSeries: Error adding sermon sermon-1 to series series-1:', error);
-
-      consoleSpy.mockRestore();
-    });
-  });
-
-  describe('removeSermonFromSeries', () => {
-    it('should remove sermon from series successfully', async () => {
-      const mockResponse = {
-        ok: true,
-      };
-      mockFetch.mockResolvedValue(mockResponse);
-
-      await expect(removeSermonFromSeries('series-1', 'sermon-1')).resolves.toBeUndefined();
-
-      expect(mockFetch).toHaveBeenCalledWith(`/api/series/series-1/sermons?sermonId=sermon-1`, {
-        method: 'DELETE',
-      });
-    });
-
-    it('should throw error on API error', async () => {
-      const mockResponse = {
-        ok: false,
-        status: 404,
-      };
-      mockFetch.mockResolvedValue(mockResponse);
-
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await expect(removeSermonFromSeries('series-1', 'sermon-1')).rejects.toThrow('Failed to remove sermon from series');
-
-      expect(consoleSpy).toHaveBeenCalledWith('removeSermonFromSeries: Response not ok for series series-1, sermon sermon-1, status:', 404);
-
-      consoleSpy.mockRestore();
-    });
-
-    it('should throw error on fetch error', async () => {
-      const error = new Error('Network error');
-      mockFetch.mockRejectedValue(error);
-
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await expect(removeSermonFromSeries('series-1', 'sermon-1')).rejects.toThrow(error);
-
-      expect(consoleSpy).toHaveBeenCalledWith('removeSermonFromSeries: Error removing sermon sermon-1 from series series-1:', error);
-
-      consoleSpy.mockRestore();
-    });
-  });
-
-  describe('reorderSermons', () => {
-    it('should reorder sermons successfully', async () => {
-      const sermonIds = ['sermon-2', 'sermon-1', 'sermon-3'];
-      const mockResponse = {
-        ok: true,
-      };
-      mockFetch.mockResolvedValue(mockResponse);
-
-      await expect(reorderSermons('series-1', sermonIds)).resolves.toBeUndefined();
-
-      expect(mockFetch).toHaveBeenCalledWith(`/api/series/series-1/sermons`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sermonIds }),
-      });
-    });
-
-    it('should throw error on API error', async () => {
-      const sermonIds = ['sermon-1', 'sermon-2'];
-      const mockResponse = {
-        ok: false,
-        status: 400,
-      };
-      mockFetch.mockResolvedValue(mockResponse);
-
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await expect(reorderSermons('series-1', sermonIds)).rejects.toThrow('Failed to reorder sermons');
-
-      expect(consoleSpy).toHaveBeenCalledWith('reorderSermons: Response not ok for series series-1, status:', 400);
-
-      consoleSpy.mockRestore();
-    });
-
-    it('should throw error on fetch error', async () => {
-      const error = new Error('Network error');
-      mockFetch.mockRejectedValue(error);
-
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-
-      await expect(reorderSermons('series-1', ['sermon-1'])).rejects.toThrow(error);
-
-      expect(consoleSpy).toHaveBeenCalledWith('reorderSermons: Error reordering sermons in series series-1:', error);
-
-      consoleSpy.mockRestore();
-    });
-  });
-
-  describe('mixed-item endpoints', () => {
-    it('adds group to series successfully', async () => {
-      mockFetch.mockResolvedValue({ ok: true });
-
-      await expect(addGroupToSeries('series-1', 'group-1', 3)).resolves.toBeUndefined();
-
-      expect(mockFetch).toHaveBeenCalledWith('/api/series/series-1/items', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'group', refId: 'group-1', position: 3 }),
-      });
-    });
-
-    it('removes mixed item from series', async () => {
-      mockFetch.mockResolvedValue({ ok: true });
-
-      await expect(removeSeriesItem('series-1', 'group', 'group-1')).resolves.toBeUndefined();
-
-      expect(mockFetch).toHaveBeenCalledWith('/api/series/series-1/items?type=group&refId=group-1', {
-        method: 'DELETE',
-      });
-    });
-
-    it('reorders mixed items', async () => {
-      mockFetch.mockResolvedValue({ ok: true });
-
-      await expect(reorderSeriesItems('series-1', ['item-2', 'item-1'])).resolves.toBeUndefined();
-
-      expect(mockFetch).toHaveBeenCalledWith('/api/series/series-1/items', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemIds: ['item-2', 'item-1'] }),
-      });
-    });
-
-    it('throws on mixed endpoint API errors', async () => {
-      mockFetch.mockResolvedValue({ ok: false, status: 400 });
-      await expect(addGroupToSeries('series-1', 'group-1')).rejects.toThrow('Failed to add group to series');
-
-      mockFetch.mockResolvedValue({ ok: false, status: 400 });
-      await expect(removeSeriesItem('series-1', 'sermon', 'sermon-1')).rejects.toThrow(
-        'Failed to remove item from series'
-      );
-
-      mockFetch.mockResolvedValue({ ok: false, status: 400 });
-      await expect(reorderSeriesItems('series-1', ['item-1'])).rejects.toThrow(
-        'Failed to reorder series items'
-      );
-    });
+  it('keeps mixed item membership operations on server routes', async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: true });
+
+    const service = await importServiceWithClientMocks();
+    await service.addGroupToSeries('series-1', 'group-1', 3);
+    await service.removeSeriesItem('series-1', 'group', 'group-1');
+    await service.reorderSeriesItems('series-1', ['item-2', 'item-1']);
+
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining('/api/series/series-1/items'),
+      expect.objectContaining({ method: 'POST' })
+    );
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining('/api/series/series-1/items?type=group&refId=group-1'),
+      { method: 'DELETE' }
+    );
+    expect(mockFetch).toHaveBeenNthCalledWith(
+      3,
+      expect.stringContaining('/api/series/series-1/items'),
+      expect.objectContaining({ method: 'PUT' })
+    );
   });
 });

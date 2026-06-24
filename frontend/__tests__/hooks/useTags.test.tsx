@@ -133,7 +133,7 @@ describe('useTags', () => {
     const newTag = { id: 'new', name: 'new', color: '#123' } as Tag;
     mockAddCustomTag.mockResolvedValue(newTag);
     mockRemoveCustomTag.mockResolvedValue(undefined);
-    mockUpdateTag.mockResolvedValue(newTag);
+    mockUpdateTag.mockResolvedValue({ message: 'updated', tag: newTag });
 
     const { result } = renderHook(() => useTags('user-1'), { wrapper: createWrapper() });
 

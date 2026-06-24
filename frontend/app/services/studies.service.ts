@@ -5,13 +5,9 @@ import { StudyMaterial, StudyNote } from '@/models/models';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
-// Strangler-fig flag: when ON, study-note READS + simple WRITES (create incl.
-// idempotent client-id, content-update) go through the client Firestore SDK
-// (offline replica + deployed Security Rules) instead of /api/studies/notes.
-// DELETE stays on the server (it cascades into studyMaterials), and study
-// materials + share links stay on the server (cross-collection / public sharing).
-// Default OFF — identical to before unless the flag is set.
-const USE_CLIENT_STUDY_NOTES = process.env.NEXT_PUBLIC_USE_CLIENT_STUDY_NOTES === 'true';
+// Study-note reads, create, and content updates use the client Firestore SDK.
+// DELETE stays on the server because it cascades into studyMaterials, and study
+// materials + share links stay on the server.
 const NOTES_COLLECTION = 'studyNotes';
 
 // Fields a client UPDATE may touch — the user-editable note content only. Never
@@ -103,7 +99,7 @@ function filterNotesClient(notes: StudyNote[], filters: NoteFilters): StudyNote[
   return result.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
 }
 
-// --- client-SDK read/write paths (behind the flag) ---
+// --- client-SDK read/write paths ---
 
 async function getStudyNotesViaClient(userId: string, filters: NoteFilters): Promise<StudyNote[]> {
   const db = getClientDb();
@@ -170,50 +166,17 @@ async function updateStudyNoteViaClient(id: string, updates: Partial<StudyNote>)
 }
 
 export async function getStudyNotes(userId: string, filters: NoteFilters = {}): Promise<StudyNote[]> {
-  if (USE_CLIENT_STUDY_NOTES && typeof window !== 'undefined') {
-    return getStudyNotesViaClient(userId, filters);
-  }
-  const query = buildQuery({ userId, ...filters });
-  const res = await fetch(`${API_BASE}/api/studies/notes?${query}`, { cache: 'no-store' });
-  if (!res.ok) {
-    console.error('getStudyNotes: failed', res.status);
-    throw new Error('Failed to fetch study notes');
-  }
-  return res.json();
+  return getStudyNotesViaClient(userId, filters);
 }
 
 export async function createStudyNote(
   note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'> & { id?: string }
 ): Promise<StudyNote> {
-  if (USE_CLIENT_STUDY_NOTES && typeof window !== 'undefined') {
-    return createStudyNoteViaClient(note);
-  }
-  const res = await fetch(`${API_BASE}/api/studies/notes`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(note),
-  });
-  if (!res.ok) {
-    console.error('createStudyNote: failed', res.status);
-    throw new Error('Failed to create study note');
-  }
-  return res.json();
+  return createStudyNoteViaClient(note);
 }
 
 export async function updateStudyNote(id: string, updates: Partial<StudyNote> & { userId: string }): Promise<StudyNote> {
-  if (USE_CLIENT_STUDY_NOTES && typeof window !== 'undefined') {
-    return updateStudyNoteViaClient(id, updates);
-  }
-  const res = await fetch(`${API_BASE}/api/studies/notes/${id}?userId=${updates.userId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
-  if (!res.ok) {
-    console.error('updateStudyNote: failed', res.status);
-    throw new Error('Failed to update study note');
-  }
-  return res.json();
+  return updateStudyNoteViaClient(id, updates);
 }
 
 export async function deleteStudyNote(id: string, userId: string): Promise<void> {

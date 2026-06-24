@@ -4,38 +4,6 @@ import { seriesRepository } from '@/api/repositories/series.repository';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { Sermon } from '@/models/models';
 
-// GET /api/sermons?userId=<uid>
-export async function GET(request: Request) {
-  console.log("GET: Request received for retrieving sermons");
-  try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get("userId");
-    if (!userId) {
-      return NextResponse.json({ error: "User not authenticated" }, { status: 401 });
-    }
-
-    console.log(`GET: Fetching sermons for userId: ${userId} from Firestore...`);
-    const sermonsRef = adminDb.collection('sermons');
-    const q = sermonsRef.where("userId", "==", userId);
-    const snapshot = await q.get();
-    console.log(`GET: Retrieved ${snapshot.docs.length} sermon(s) from Firestore for userId: ${userId}`);
-
-    const sermons: Sermon[] = snapshot.docs.map(doc => {
-      console.log(`GET: Processing Firestore document with id: ${doc.id}`);
-      return {
-        id: doc.id,
-        ...doc.data()
-      } as Sermon;
-    });
-
-    console.log(`GET: Total sermons retrieved: ${sermons.length}`);
-    return NextResponse.json(sermons);
-  } catch (error) {
-    console.error('GET: Error fetching sermons:', error);
-    return NextResponse.json({ error: 'Failed to fetch sermons' }, { status: 500 });
-  }
-}
-
 // POST /api/sermons
 export async function POST(request: Request) {
   console.log("POST request received for creating a sermon");

@@ -425,6 +425,7 @@
 - **Optimistic Thought Sync:** Project optimistic thought entities over server thoughts, but sanitize local `local-thought-*` ids out of structure payloads before persisting. Server ack must reconcile against the latest local structure, not the stale mutation-start snapshot.
 - **Debounced Thought Saves:** If a thought save is delayed/debounced (drag/drop, AI-sort, outline reassignment), emit `pending/error/success` sync state when scheduling the save and keep a retryable latest payload. Otherwise those flows silently bypass the optimistic mutation model.
 - **Legacy Offline Migration:** When unifying old local-persistence flows into a generic optimistic store, preserve a migration read path for legacy persisted records. Dropping old unsynced data during a refactor breaks the offline contract.
+- **Firestore Client-SDK Cleanup:** When removing migrated server fallbacks, classify by operation, not by file. Delete only inventory-DEAD handlers/routes; preserve cascade, AI, public-share, embedded-array, and replay/idempotency server paths, then scan services/tests for stale URLs and flag branches.
 
 ### 🤖 AI Integration
 - **Structured Output:** Only `zodResponseFormat` + `beta.chat.completions.parse()`. No regex/JSON parsing from text.

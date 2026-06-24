@@ -2,21 +2,6 @@ import { NextResponse } from 'next/server';
 
 import { prayerRequestsRepository } from '@repositories/prayerRequests.repository';
 
-// GET /api/prayer?userId=<uid>
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const userId = searchParams.get('userId');
-  if (!userId) return NextResponse.json({ error: 'Missing userId' }, { status: 400 });
-
-  try {
-    const requests = await prayerRequestsRepository.fetchByUserId(userId);
-    return NextResponse.json(requests);
-  } catch (error) {
-    console.error('Error fetching prayer requests:', error);
-    return NextResponse.json({ error: 'Failed to fetch prayer requests' }, { status: 500 });
-  }
-}
-
 // POST /api/prayer
 export async function POST(request: Request) {
   try {

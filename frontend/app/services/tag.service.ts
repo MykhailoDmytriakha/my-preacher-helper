@@ -6,11 +6,8 @@ import { isStructureTag } from '@/utils/structureTags';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
-// Strangler-fig flag: when ON, tag READS come from the client Firestore SDK (offline
-// replica + deployed Security Rules) instead of the /api/tags server route. Writes
-// still go through the server for now (delete cascades tag removal into sermons).
-// Default OFF — behaviour is identical to before unless explicitly enabled.
-const USE_CLIENT_TAGS = process.env.NEXT_PUBLIC_USE_CLIENT_TAGS === 'true';
+// Tags live on the client Firestore SDK for reads and own-doc writes. DELETE
+// stays on the server because it cascades tag removal into sermon thoughts.
 
 type TagPayload = { requiredTags: Tag[]; customTags: Tag[] };
 
@@ -30,28 +27,12 @@ async function getTagsViaClient(userId: string): Promise<TagPayload> {
   return { requiredTags: [], customTags };
 }
 
-// NOTE: writes intentionally do NOT pre-check connectivity — see groups.service.
-// Reads also attempt the fetch (and fall back to React Query's persisted cache
-// on failure) rather than returning empty, which would clobber the cache.
 export async function getTags(userId: string) {
-  if (USE_CLIENT_TAGS && typeof window !== 'undefined') {
-    return getTagsViaClient(userId);
-  }
-  try {
-    const res = await fetch(`${API_BASE}/api/tags?userId=${userId}`, { cache: 'no-store' });
-    if (!res.ok) {
-      throw new Error('Failed to fetch tags');
-    }
-    const data = await res.json();
-    return data;
-  } catch (error) {
-    console.error('getTags: Error fetching tags', error);
-    throw error;
-  }
+  return getTagsViaClient(userId);
 }
 
-// Client-SDK write paths (behind the same flag). Mirror the server logic; DELETE stays
-// on the server because it cascades tag removal into every sermon's thoughts.
+// Client-SDK write paths mirror the old server logic; DELETE stays on the
+// server because it cascades tag removal into every sermon's thoughts.
 async function addCustomTagViaClient(tag: Tag): Promise<Tag> {
   if (isStructureTag(tag.name)) throw new Error('Reserved tag name');
   const db = getClientDb();
@@ -79,28 +60,7 @@ async function updateTagViaClient(tag: Tag): Promise<{ message: string; tag: Tag
 }
 
 export async function addCustomTag(tag: Tag) {
-  if (USE_CLIENT_TAGS && typeof window !== 'undefined') return addCustomTagViaClient(tag);
-  try {
-    const res = await fetch(`${API_BASE}/api/tags`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(tag)
-    });
-    if (!res.ok) {
-      try {
-        const data = await res.json();
-        throw new Error(data?.message || 'Failed to add custom tag');
-      } catch {
-        throw new Error('Failed to add custom tag');
-      }
-    }
-    return tag;
-  } catch (error) {
-    console.error('addCustomTag: Error adding custom tag', error);
-    throw error;
-  }
+  return addCustomTagViaClient(tag);
 }
 
 export async function removeCustomTag(userId: string, tagName: string) {
@@ -120,22 +80,5 @@ export async function removeCustomTag(userId: string, tagName: string) {
 }
 
 export async function updateTag(tag: Tag) {
-  if (USE_CLIENT_TAGS && typeof window !== 'undefined') return updateTagViaClient(tag);
-  try {
-    const res = await fetch(`${API_BASE}/api/tags`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(tag)
-    });
-    if (!res.ok) {
-      throw new Error('Failed to update tag');
-    }
-    const data = await res.json();
-    return data;
-  } catch (error) {
-    console.error('updateTag: Error updating tag', error);
-    throw error;
-  }
+  return updateTagViaClient(tag);
 }

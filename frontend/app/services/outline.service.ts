@@ -1,13 +1,11 @@
 import { SermonOutline, SermonPoint } from '@/models/models';
 import {
-  USE_CLIENT_SERMONS,
   getSermonOutlineViaClient,
   updateSermonOutlineViaClient,
 } from '@/services/sermons.client';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
-const clientActive = () => USE_CLIENT_SERMONS && typeof window !== 'undefined';
 
 /**
  * Fetches the outline for a specific sermon
@@ -15,34 +13,7 @@ const clientActive = () => USE_CLIENT_SERMONS && typeof window !== 'undefined';
  * @returns The sermon outline or undefined if not found
  */
 export const getSermonOutline = async (sermonId: string): Promise<SermonOutline | undefined> => {
-  if (clientActive()) {
-    return getSermonOutlineViaClient(sermonId);
-  }
-  try {
-    if (isBrowserOffline()) {
-      return undefined;
-    }
-    const response = await fetch(`${API_BASE}/api/sermons/outline?sermonId=${sermonId}`, {
-      cache: "no-store",
-      headers: {
-        'Accept': 'application/json',
-      }
-    });
-    
-    if (response.status === 404) {
-      return undefined;
-    }
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch sermon outline: ${response.statusText}`);
-    }
-    
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`Error fetching outline for sermon ${sermonId}:`, error);
-    throw error;
-  }
+  return getSermonOutlineViaClient(sermonId);
 };
 
 /**
@@ -57,34 +28,7 @@ export const updateSermonOutline = async (sermonId: string, outline: SermonOutli
     outline.main = [];
   }
 
-  if (clientActive()) {
-    return updateSermonOutlineViaClient(sermonId, outline);
-  }
-
-  try {
-    if (isBrowserOffline()) {
-      return null;
-    }
-    const response = await fetch(`${API_BASE}/api/sermons/outline?sermonId=${sermonId}`, {
-      method: "PUT",
-      headers: { 
-        "Content-Type": "application/json",
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ outline })
-    });
-    
-    if (!response.ok) {
-      console.error(`Error updating outline for sermon ${sermonId}, status: ${response.status}`);
-      return null;
-    }
-    
-    const data = await response.json();
-    return data;
-  } catch (error) {
-    console.error(`Error updating outline for sermon ${sermonId}:`, error);
-    return null;
-  }
+  return updateSermonOutlineViaClient(sermonId, outline);
 };
 
 /**

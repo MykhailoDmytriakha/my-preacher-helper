@@ -1,5 +1,15 @@
-import * as preachDatesService from '@/services/preachDates.service';
+const mockFetchCalendarSermonsViaClient = jest.fn();
+
+jest.mock('@/services/sermons.client', () => ({
+    addPreachDateViaClient: jest.fn(),
+    updatePreachDateViaClient: jest.fn(),
+    deletePreachDateViaClient: jest.fn(),
+    fetchPreachDatesViaClient: jest.fn(),
+    fetchCalendarSermonsViaClient: (...args: unknown[]) => mockFetchCalendarSermonsViaClient(...args),
+}));
+
 import { PreachDate } from '@/models/models';
+import * as preachDatesService from '@/services/preachDates.service';
 
 describe('preachDates.service', () => {
     const originalFetch = global.fetch;
@@ -116,22 +126,18 @@ describe('preachDates.service', () => {
     });
 
     describe('fetchCalendarSermons', () => {
-        it('successfully fetches calendar sermons with params', async () => {
+        it('fetches calendar sermons through the client SDK', async () => {
             const userId = 'user-1';
             const startDate = '2023-01-01';
             const endDate = '2023-12-31';
             const mockSermons = [{ id: 's1' }];
 
-            (global.fetch as jest.Mock).mockResolvedValueOnce({
-                ok: true,
-                json: async () => ({ sermons: mockSermons }),
-            });
+            mockFetchCalendarSermonsViaClient.mockResolvedValueOnce(mockSermons);
 
             const result = await preachDatesService.fetchCalendarSermons(userId, startDate, endDate);
 
-            expect(global.fetch).toHaveBeenCalledWith(
-                expect.stringMatching(/\/api\/calendar\/sermons\?userId=user-1&startDate=2023-01-01&endDate=2023-12-31/)
-            );
+            expect(mockFetchCalendarSermonsViaClient).toHaveBeenCalledWith(userId, startDate, endDate);
+            expect(global.fetch).not.toHaveBeenCalled();
             expect(result).toEqual(mockSermons);
         });
     });

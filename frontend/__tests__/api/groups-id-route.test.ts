@@ -1,18 +1,20 @@
 import { groupsRepository } from '@repositories/groups.repository';
 import { seriesRepository } from '@repositories/series.repository';
 
-import { DELETE, GET, PUT } from 'app/api/groups/[id]/route';
+import { DELETE, PUT } from 'app/api/groups/[id]/route';
 
 jest.mock('@repositories/groups.repository', () => ({
   groupsRepository: {
     fetchGroupById: jest.fn(),
-    updateGroup: jest.fn(),
+    updateGroupSeriesInfo: jest.fn(),
     deleteGroup: jest.fn(),
   },
 }));
 
 jest.mock('@repositories/series.repository', () => ({
   seriesRepository: {
+    addGroupToSeries: jest.fn(),
+    removeGroupFromSeries: jest.fn(),
     removeGroupFromAllSeries: jest.fn(),
   },
 }));
@@ -31,34 +33,12 @@ describe('/api/groups/[id] route', () => {
     jest.clearAllMocks();
   });
 
-  describe('GET', () => {
-    it('returns 404 when group does not exist', async () => {
-      (groupsRepository.fetchGroupById as jest.Mock).mockResolvedValueOnce(null);
-
-      const response = await GET({} as Request, { params: Promise.resolve({ id: 'missing' }) });
-      const data = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(data.error).toBe('Group not found');
-    });
-
-    it('returns group details', async () => {
-      (groupsRepository.fetchGroupById as jest.Mock).mockResolvedValueOnce({ id: 'g1' });
-
-      const response = await GET({} as Request, { params: Promise.resolve({ id: 'g1' }) });
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data).toEqual({ id: 'g1' });
-    });
-  });
-
   describe('PUT', () => {
     it('returns 404 when updating missing group', async () => {
       (groupsRepository.fetchGroupById as jest.Mock).mockResolvedValueOnce(null);
 
       const response = await PUT(
-        { json: jest.fn().mockResolvedValue({ title: 'x' }) } as unknown as Request,
+        { json: jest.fn().mockResolvedValue({ seriesId: 's1' }) } as unknown as Request,
         { params: Promise.resolve({ id: 'missing' }) }
       );
       const data = await response.json();
@@ -67,33 +47,39 @@ describe('/api/groups/[id] route', () => {
       expect(data.error).toBe('Group not found');
     });
 
-    it('updates group and trims payload values', async () => {
+    it('rejects content-only updates', async () => {
       (groupsRepository.fetchGroupById as jest.Mock).mockResolvedValueOnce({ id: 'g1' });
-      (groupsRepository.updateGroup as jest.Mock).mockResolvedValueOnce({ id: 'g1', title: 'Updated' });
 
       const response = await PUT(
-        {
-          json: jest.fn().mockResolvedValue({
-            title: '  Updated  ',
-            description: '  ',
-            status: 'active',
-            flow: [{ id: 'f1', templateId: 't1', order: 1 }],
-          }),
-        } as unknown as Request,
+        { json: jest.fn().mockResolvedValue({ title: 'Updated' }) } as unknown as Request,
         { params: Promise.resolve({ id: 'g1' }) }
       );
       const data = await response.json();
 
-      expect(groupsRepository.updateGroup).toHaveBeenCalledWith(
-        'g1',
-        expect.objectContaining({
-          title: 'Updated',
-          description: undefined,
-          status: 'active',
-        })
+      expect(response.status).toBe(400);
+      expect(data.error).toBe('No series fields provided for update');
+      expect(groupsRepository.updateGroupSeriesInfo).not.toHaveBeenCalled();
+    });
+
+    it('updates series metadata and syncs series membership when series changes', async () => {
+      (groupsRepository.fetchGroupById as jest.Mock)
+        .mockResolvedValueOnce({ id: 'g1', seriesId: 'old-series', seriesPosition: 1 })
+        .mockResolvedValueOnce({ id: 'g1', seriesId: 'new-series', seriesPosition: 2 });
+      (seriesRepository.removeGroupFromSeries as jest.Mock).mockResolvedValueOnce(undefined);
+      (seriesRepository.addGroupToSeries as jest.Mock).mockResolvedValueOnce(undefined);
+      (groupsRepository.updateGroupSeriesInfo as jest.Mock).mockResolvedValueOnce(undefined);
+
+      const response = await PUT(
+        { json: jest.fn().mockResolvedValue({ seriesId: 'new-series', seriesPosition: 2 }) } as unknown as Request,
+        { params: Promise.resolve({ id: 'g1' }) }
       );
+      const data = await response.json();
+
+      expect(seriesRepository.removeGroupFromSeries).toHaveBeenCalledWith('old-series', 'g1');
+      expect(seriesRepository.addGroupToSeries).toHaveBeenCalledWith('new-series', 'g1', 2);
+      expect(groupsRepository.updateGroupSeriesInfo).toHaveBeenCalledWith('g1', 'new-series', 2);
       expect(response.status).toBe(200);
-      expect(data.id).toBe('g1');
+      expect(data.seriesId).toBe('new-series');
     });
   });
 

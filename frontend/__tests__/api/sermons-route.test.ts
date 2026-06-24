@@ -43,41 +43,14 @@ import * as sermonsRouteModule from 'app/api/sermons/route';
 describe('Sermons API Route', () => {
   let mockRequest: MockRequest;
   let mockCollection: jest.Mock;
-  let mockWhere: jest.Mock;
-  let mockGet: jest.Mock;
   let mockAdd: jest.Mock;
   let mockDoc: jest.Mock;
   let mockDelete: jest.Mock;
-  let mockDocs: any[];
   let mockDocRef: any;
 
   beforeEach(() => {
     // Reset all mocks
     jest.clearAllMocks();
-
-    // Set up mock docs for GET tests
-    mockDocs = [
-      {
-        id: 'sermon1',
-        data: () => ({
-          userId: 'user123',
-          title: 'Test Sermon 1',
-          verse: 'John 3:16',
-          date: '2023-01-01',
-          thoughts: []
-        })
-      },
-      {
-        id: 'sermon2',
-        data: () => ({
-          userId: 'user123',
-          title: 'Test Sermon 2',
-          verse: 'Romans 8:28',
-          date: '2023-01-02',
-          thoughts: [{ id: 'thought1', text: 'Test thought', tags: [], date: '2023-01-02' }]
-        })
-      }
-    ];
 
     // Set up mock docRef for POST tests
     mockDelete = jest.fn().mockResolvedValue(undefined);
@@ -87,8 +60,6 @@ describe('Sermons API Route', () => {
     };
 
     // Create mock Firestore chain
-    mockGet = jest.fn().mockResolvedValue({ docs: mockDocs });
-    mockWhere = jest.fn().mockReturnValue({ get: mockGet });
     mockAdd = jest.fn().mockResolvedValue(mockDocRef);
     // doc(id) — for the client-supplied-id (idempotent) create path. By default
     // the doc does not exist, so the route writes via .set() and keeps the id.
@@ -99,7 +70,6 @@ describe('Sermons API Route', () => {
       delete: mockDelete,
     }));
     mockCollection = jest.fn().mockReturnValue({
-      where: mockWhere,
       add: mockAdd,
       doc: mockDoc,
     });
@@ -112,57 +82,6 @@ describe('Sermons API Route', () => {
     mockRequest = {
       json: jest.fn(),
     };
-  });
-
-  describe('GET handler', () => {
-    test('should return sermons for a valid userId', async () => {
-      // Arrange
-      mockRequest.url = 'https://example.com/api/sermons?userId=user123';
-
-      // Act
-      const response = await sermonsRouteModule.GET(mockRequest as unknown as Request);
-      const responseData = await response.json();
-
-      // Assert
-      expect(mockCollection).toHaveBeenCalledWith('sermons');
-      expect(mockWhere).toHaveBeenCalledWith('userId', '==', 'user123');
-      expect(mockGet).toHaveBeenCalled();
-      expect(responseData).toHaveLength(2);
-      expect(responseData[0].id).toBe('sermon1');
-      expect(responseData[0].title).toBe('Test Sermon 1');
-      expect(responseData[1].id).toBe('sermon2');
-      expect(responseData[1].thoughts).toHaveLength(1);
-    });
-
-    test('should return 401 when userId is missing', async () => {
-      // Arrange
-      mockRequest.url = 'https://example.com/api/sermons';
-
-      // Act
-      const response = await sermonsRouteModule.GET(mockRequest as unknown as Request);
-      const responseData = await response.json();
-
-      // Assert
-      expect(response.status).toBe(401);
-      expect(responseData).toHaveProperty('error');
-      expect(responseData.error).toBe('User not authenticated');
-      expect(mockCollection).not.toHaveBeenCalled();
-    });
-
-    test('should handle Firestore errors', async () => {
-      // Arrange
-      mockRequest.url = 'https://example.com/api/sermons?userId=user123';
-      mockGet.mockRejectedValueOnce(new Error('Firestore error'));
-
-      // Act
-      const response = await sermonsRouteModule.GET(mockRequest as unknown as Request);
-      const responseData = await response.json();
-
-      // Assert
-      expect(response.status).toBe(500);
-      expect(responseData).toHaveProperty('error');
-      expect(responseData.error).toBe('Failed to fetch sermons');
-    });
   });
 
   describe('POST handler', () => {

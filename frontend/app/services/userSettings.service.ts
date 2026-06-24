@@ -7,15 +7,9 @@ import { debugLog } from '@/utils/debugMode';
 
 import type { FirstDayOfWeek } from '@/utils/weekStart';
 
-// Constants for repeated strings
-const USER_SETTINGS_API_URL = '/api/user/settings';
-
-// Strangler-fig flag: when ON, settings READS + writes go through the client
-// Firestore SDK (the `users` doc, keyed by doc-id == uid) instead of
-// /api/user/settings. The doc-id ownership rule (request.auth.uid == uid) makes
-// reads of a not-yet-existing own doc safe (it doesn't touch resource.data).
-// Default OFF — identical to before unless the flag is set.
-const USE_CLIENT_SETTINGS = process.env.NEXT_PUBLIC_USE_CLIENT_SETTINGS === 'true';
+// Settings reads and writes go through the client Firestore SDK (the `users`
+// doc, keyed by doc-id == uid). The doc-id ownership rule
+// (request.auth.uid == uid) makes reads of a not-yet-existing own doc safe.
 const USERS_COLLECTION = 'users';
 
 // UX / preference fields the client may write to its own settings doc. NEVER
@@ -25,8 +19,6 @@ const SETTINGS_WRITABLE_FIELDS = [
   'language', 'email', 'displayName', 'firstDayOfWeek',
   'enablePrepMode', 'enableAudioGeneration', 'enableStructurePreview', 'enableGroups', 'showAppVersion',
 ];
-
-const clientSettingsActive = () => USE_CLIENT_SETTINGS && typeof window !== 'undefined';
 
 async function getUserSettingsViaClient(userId: string): Promise<UserSettings | null> {
   const db = getClientDb();
@@ -48,9 +40,7 @@ async function updateUserSettingsViaClient(userId: string, updates: Record<strin
   await setDoc(doc(db, USERS_COLLECTION, userId), allowed, { merge: true });
 }
 
-// Setting-write functions no longer pre-throw when offline — see groups.service.
-// The fetch attempts, fails, and React Query buffers + replays the toggle on
-// reconnect. Read/language helpers below keep their graceful cookie fallback.
+// Read/language helpers below keep their graceful cookie fallback.
 const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
 
 /**
@@ -74,17 +64,12 @@ export async function getUserLanguage(userId: string): Promise<string> {
     // 1. First check cookie for instant response
     const cookieLang = getCookieLanguage();
 
-    // 2. Then fetch from DB (source of truth)
-    const response = await fetch(`/api/user/settings?userId=${encodeURIComponent(userId)}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch user settings: ${response.statusText}`);
-    }
-
-    const data = await response.json();
+    // 2. Then read from DB (source of truth)
+    const settings = await getUserSettingsViaClient(userId);
 
     // 3. If DB has a value, use it (and update cookie if different)
-    if (data.settings?.language) {
-      const dbLang = data.settings.language;
+    if (settings?.language) {
+      const dbLang = settings.language;
 
       // Sync cookie with DB if they differ
       if (dbLang !== cookieLang) {
@@ -126,23 +111,8 @@ export async function updateUserLanguage(userId: string, language: string): Prom
       return;
     }
 
-    if (clientSettingsActive()) {
-      await updateUserSettingsViaClient(userId, { language });
-      return;
-    }
-
     // For authenticated users, also update DB (source of truth)
-    const response = await fetch(USER_SETTINGS_API_URL, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ userId, language }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to update user language: ${response.statusText}`);
-    }
+    await updateUserSettingsViaClient(userId, { language });
   } catch (error) {
     console.error('Error updating user language:', error);
     // Cookie is already updated, so user experience isn't affected
@@ -175,23 +145,8 @@ export async function updateUserProfile(
     // Don't make the API call if there's nothing to update
     if (Object.keys(updates).length === 0) return;
 
-    if (clientSettingsActive()) {
-      await updateUserSettingsViaClient(userId, updates);
-      return;
-    }
-
-    // Update settings through API without specifying language
-    const response = await fetch(USER_SETTINGS_API_URL, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ userId, ...updates }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to update user profile: ${response.statusText}`);
-    }
+    // Update settings without specifying language
+    await updateUserSettingsViaClient(userId, updates);
   } catch (error) {
     console.error('Error updating user profile:', error);
   }
@@ -208,21 +163,7 @@ export async function updateFirstDayOfWeek(
 ): Promise<void> {
   try {
     if (!userId) return;
-    if (clientSettingsActive()) {
-      await updateUserSettingsViaClient(userId, { firstDayOfWeek });
-      return;
-    }
-    const response = await fetch(USER_SETTINGS_API_URL, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ userId, firstDayOfWeek }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to update first day of week: ${response.statusText}`);
-    }
+    await updateUserSettingsViaClient(userId, { firstDayOfWeek });
   } catch (error) {
     console.error('Error updating first day of week:', error);
     throw error;
@@ -258,27 +199,10 @@ export async function initializeUserSettings(
     if (email !== undefined) payload.email = email;
     if (displayName !== undefined) payload.displayName = displayName;
 
-    if (clientSettingsActive()) {
-      // setDoc(merge) only writes the provided fields; we deliberately do NOT
-      // force a default language here (unlike the server create), so a re-init
-      // can't clobber an existing preference.
-      await updateUserSettingsViaClient(userId, { language, email, displayName });
-      if (language) setLanguageCookie(language);
-      return;
-    }
-
-    // Create settings through API
-    const response = await fetch(USER_SETTINGS_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to initialize user settings: ${response.statusText}`);
-    }
+    // setDoc(merge) only writes the provided fields; we deliberately do NOT
+    // force a default language here, so a re-init can't clobber an existing
+    // preference.
+    await updateUserSettingsViaClient(userId, payload);
 
     // Only set language cookie if language was provided
     if (language) {
@@ -322,16 +246,7 @@ export async function getUserSettings(userId: string): Promise<UserSettings | nu
     if (!userId) {
       return null;
     }
-    if (clientSettingsActive()) {
-      return getUserSettingsViaClient(userId);
-    }
-    const response = await fetch(`/api/user/settings?userId=${encodeURIComponent(userId)}`);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch user settings: ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    return data.settings ?? null;
+    return getUserSettingsViaClient(userId);
   } catch (error) {
     console.error('Error getting user settings:', error);
     throw error;
@@ -346,21 +261,7 @@ export async function getUserSettings(userId: string): Promise<UserSettings | nu
 export async function updatePrepModeAccess(userId: string, enabled: boolean): Promise<void> {
   try {
     if (!userId) return;
-    if (clientSettingsActive()) {
-      await updateUserSettingsViaClient(userId, { enablePrepMode: enabled });
-      return;
-    }
-    const response = await fetch(USER_SETTINGS_API_URL, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ userId, enablePrepMode: enabled }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to update prep mode access: ${response.statusText}`);
-    }
+    await updateUserSettingsViaClient(userId, { enablePrepMode: enabled });
   } catch (error) {
     console.error('Error updating prep mode access:', error);
     throw error;
@@ -406,21 +307,7 @@ export async function hasPrepModeAccess(userId: string): Promise<boolean> {
 export async function updateAudioGenerationAccess(userId: string, enabled: boolean): Promise<void> {
   try {
     if (!userId) return;
-    if (clientSettingsActive()) {
-      await updateUserSettingsViaClient(userId, { enableAudioGeneration: enabled });
-      return;
-    }
-    const response = await fetch(USER_SETTINGS_API_URL, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ userId, enableAudioGeneration: enabled }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to update audio generation access: ${response.statusText}`);
-    }
+    await updateUserSettingsViaClient(userId, { enableAudioGeneration: enabled });
   } catch (error) {
     console.error('Error updating audio generation access:', error);
     throw error;
@@ -435,21 +322,7 @@ export async function updateAudioGenerationAccess(userId: string, enabled: boole
 export async function updateShowAppVersion(userId: string, enabled: boolean): Promise<void> {
   try {
     if (!userId) return;
-    if (clientSettingsActive()) {
-      await updateUserSettingsViaClient(userId, { showAppVersion: enabled });
-      return;
-    }
-    const response = await fetch(USER_SETTINGS_API_URL, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ userId, showAppVersion: enabled }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to update show app version: ${response.statusText}`);
-    }
+    await updateUserSettingsViaClient(userId, { showAppVersion: enabled });
   } catch (error) {
     console.error('Error updating show app version:', error);
     throw error;
@@ -464,21 +337,7 @@ export async function updateShowAppVersion(userId: string, enabled: boolean): Pr
 export async function updateGroupsAccess(userId: string, enabled: boolean): Promise<void> {
   try {
     if (!userId) return;
-    if (clientSettingsActive()) {
-      await updateUserSettingsViaClient(userId, { enableGroups: enabled });
-      return;
-    }
-    const response = await fetch(USER_SETTINGS_API_URL, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ userId, enableGroups: enabled }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to update groups access: ${response.statusText}`);
-    }
+    await updateUserSettingsViaClient(userId, { enableGroups: enabled });
   } catch (error) {
     console.error('Error updating groups access:', error);
     throw error;
@@ -516,21 +375,7 @@ export async function hasGroupsAccess(userId: string): Promise<boolean> {
 export async function updateStructurePreviewAccess(userId: string, enabled: boolean): Promise<void> {
   try {
     if (!userId) return;
-    if (clientSettingsActive()) {
-      await updateUserSettingsViaClient(userId, { enableStructurePreview: enabled });
-      return;
-    }
-    const response = await fetch(USER_SETTINGS_API_URL, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ userId, enableStructurePreview: enabled }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to update structure preview access: ${response.statusText}`);
-    }
+    await updateUserSettingsViaClient(userId, { enableStructurePreview: enabled });
   } catch (error) {
     console.error('Error updating structure preview access:', error);
     throw error;
