@@ -48,9 +48,7 @@ const snapshotFromDocs = (docs: any[]) => ({
 
 describe('StudiesRepository', () => {
   let repository: StudiesRepository;
-  let noteWhereGet: jest.Mock;
   let materialWhereGet: jest.Mock;
-  let noteAdd: jest.Mock;
   let materialAdd: jest.Mock;
   let noteDocRefs: Map<string, MockDocRef>;
   let materialDocRefs: Map<string, MockDocRef>;
@@ -80,9 +78,7 @@ describe('StudiesRepository', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     repository = new StudiesRepository();
-    noteWhereGet = jest.fn();
     materialWhereGet = jest.fn();
-    noteAdd = jest.fn();
     materialAdd = jest.fn();
     noteDocRefs = new Map();
     materialDocRefs = new Map();
@@ -103,9 +99,7 @@ describe('StudiesRepository', () => {
     adminDb.collection.mockImplementation((name: string) => {
       if (name === 'studyNotes') {
         return {
-          where: jest.fn().mockImplementation(() => ({ get: noteWhereGet })),
           doc: jest.fn().mockImplementation((id: string) => getNoteRef(id)),
-          add: noteAdd,
         };
       }
 
@@ -119,53 +113,6 @@ describe('StudiesRepository', () => {
 
       throw new Error(`Unexpected collection: ${name}`);
     });
-  });
-
-  it('lists notes and normalizes missing arrays and draft state', async () => {
-    noteWhereGet.mockResolvedValue(
-      snapshotFromDocs([
-        {
-          id: 'note-1',
-          data: () => ({
-            userId: 'user-1',
-            content: 'Draft note',
-            createdAt: '2024-01-01T00:00:00.000Z',
-            updatedAt: '2024-01-01T00:00:00.000Z',
-          }),
-        },
-        {
-          id: 'note-2',
-          data: () => ({
-            userId: 'user-1',
-            content: 'Ready note',
-            scriptureRefs: [{ book: 'John', chapter: 3, verse: 16 }],
-            tags: ['faith'],
-            materialIds: ['mat-1'],
-            createdAt: '2024-01-02T00:00:00.000Z',
-            updatedAt: '2024-01-02T00:00:00.000Z',
-          }),
-        },
-      ])
-    );
-
-    const result = await repository.listNotes('user-1');
-
-    expect(result).toEqual([
-      expect.objectContaining({
-        id: 'note-1',
-        scriptureRefs: [],
-        tags: [],
-        materialIds: [],
-        isDraft: true,
-      }),
-      expect.objectContaining({
-        id: 'note-2',
-        scriptureRefs: [{ book: 'John', chapter: 3, verse: 16 }],
-        tags: ['faith'],
-        materialIds: ['mat-1'],
-        isDraft: false,
-      }),
-    ]);
   });
 
   it('returns null when note does not exist', async () => {
@@ -195,132 +142,6 @@ describe('StudiesRepository', () => {
         isDraft: false,
       })
     );
-  });
-
-  it('creates a note without persisting derived fields', async () => {
-    const dateSpy = jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2024-02-01T12:00:00.000Z');
-    noteAdd.mockResolvedValue({ id: 'note-new' });
-
-    const result = await repository.createNote({
-      userId: 'user-1',
-      content: 'New note',
-      scriptureRefs: [],
-      tags: ['draft-tag'],
-      materialIds: ['mat-1'],
-      relatedSermonIds: ['sermon-1'],
-      type: 'note',
-      title: 'New',
-    });
-
-    expect(noteAdd).toHaveBeenCalledWith({
-      userId: 'user-1',
-      content: 'New note',
-      scriptureRefs: [],
-      tags: ['draft-tag'],
-      type: 'note',
-      title: 'New',
-      createdAt: '2024-02-01T12:00:00.000Z',
-      updatedAt: '2024-02-01T12:00:00.000Z',
-    });
-    expect(result).toEqual({
-      userId: 'user-1',
-      content: 'New note',
-      scriptureRefs: [],
-      tags: ['draft-tag'],
-      materialIds: ['mat-1'],
-      relatedSermonIds: ['sermon-1'],
-      type: 'note',
-      title: 'New',
-      createdAt: '2024-02-01T12:00:00.000Z',
-      updatedAt: '2024-02-01T12:00:00.000Z',
-      id: 'note-new',
-      isDraft: true,
-    });
-
-    dateSpy.mockRestore();
-  });
-
-  it('creates a note with a client-supplied id via doc().set() (idempotent path)', async () => {
-    getNoteRef('client-note-1').get.mockResolvedValue({ exists: false });
-
-    const result = await repository.createNote(
-      { userId: 'user-1', content: 'C', scriptureRefs: [], tags: [], materialIds: [], relatedSermonIds: [], type: 'note', title: 'Client note' },
-      'client-note-1'
-    );
-
-    expect(getNoteRef('client-note-1').set).toHaveBeenCalledTimes(1);
-    expect(noteAdd).not.toHaveBeenCalled();
-    expect(result.id).toBe('client-note-1');
-  });
-
-  it('is idempotent: replaying a create for an existing same-user note returns it without re-writing', async () => {
-    getNoteRef('client-note-1').get.mockResolvedValue({
-      exists: true,
-      data: () => ({ userId: 'user-1', content: 'Existing', scriptureRefs: [], tags: [], type: 'note', title: 'Existing', createdAt: 'x', updatedAt: 'x' }),
-    });
-
-    const result = await repository.createNote(
-      { userId: 'user-1', content: 'Replay', scriptureRefs: [], tags: [], materialIds: [], relatedSermonIds: [], type: 'note', title: 'Replay' },
-      'client-note-1'
-    );
-
-    expect(result.id).toBe('client-note-1');
-    expect(result.title).toBe('Existing'); // existing doc, not re-written
-    expect(getNoteRef('client-note-1').set).not.toHaveBeenCalled();
-  });
-
-  it('rejects a client id that belongs to another user (ownership guard)', async () => {
-    getNoteRef('client-note-1').get.mockResolvedValue({
-      exists: true,
-      data: () => ({ userId: 'other-user', content: 'Theirs', scriptureRefs: [], tags: [], type: 'note', title: 'Theirs', createdAt: 'x', updatedAt: 'x' }),
-    });
-
-    await expect(
-      repository.createNote(
-        { userId: 'user-1', content: 'Hijack', scriptureRefs: [], tags: [], materialIds: [], relatedSermonIds: [], type: 'note', title: 'Hijack' },
-        'client-note-1'
-      )
-    ).rejects.toThrow('Forbidden');
-    expect(getNoteRef('client-note-1').set).not.toHaveBeenCalled();
-  });
-
-  it('updates a note, recomputes draft status, and persists merged data', async () => {
-    const dateSpy = jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2024-02-02T12:00:00.000Z');
-    getNoteRef('note-1').get.mockResolvedValue({
-      exists: true,
-      id: 'note-1',
-      data: () => ({
-        userId: 'user-1',
-        content: 'Existing',
-        scriptureRefs: [{ book: 'John', chapter: 1, verse: 1 }],
-        tags: ['old'],
-        materialIds: ['mat-1'],
-        createdAt: '2024-01-01T00:00:00.000Z',
-        updatedAt: '2024-01-01T00:00:00.000Z',
-      }),
-    });
-
-    const result = await repository.updateNote('note-1', { tags: [] });
-
-    expect(getNoteRef('note-1').set).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: 'note-1',
-        tags: [],
-        scriptureRefs: [{ book: 'John', chapter: 1, verse: 1 }],
-        updatedAt: '2024-02-02T12:00:00.000Z',
-        isDraft: true,
-      }),
-      { merge: true }
-    );
-    expect(result.isDraft).toBe(true);
-
-    dateSpy.mockRestore();
-  });
-
-  it('throws when updating a missing note', async () => {
-    getNoteRef('missing').get.mockResolvedValue({ exists: false });
-
-    await expect(repository.updateNote('missing', { content: 'Updated' })).rejects.toThrow('Study note not found');
   });
 
   it('removes note references from materials before deleting the note', async () => {

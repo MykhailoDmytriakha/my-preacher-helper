@@ -12,22 +12,6 @@ function computeDraft(note: Pick<StudyNote, 'tags' | 'scriptureRefs'>): boolean 
 }
 
 export class StudiesRepository {
-  async listNotes(userId: string): Promise<StudyNote[]> {
-    const snapshot = await adminDb.collection(NOTES_COLLECTION).where('userId', '==', userId).get();
-    return snapshot.docs.map((doc) => {
-      const data = doc.data() as StudyNote;
-      const normalized: StudyNote = {
-        ...data,
-        id: doc.id,
-        scriptureRefs: data.scriptureRefs || [],
-        tags: data.tags || [],
-        materialIds: data.materialIds || [],
-        isDraft: computeDraft(data),
-      };
-      return normalized;
-    });
-  }
-
   async getNote(id: string): Promise<StudyNote | null> {
     const doc = await adminDb.collection(NOTES_COLLECTION).doc(id).get();
     if (!doc.exists) return null;
@@ -41,67 +25,6 @@ export class StudiesRepository {
         isDraft: computeDraft(data)
     };
     return normalized;
-  }
-
-  async createNote(
-    payload: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>,
-    clientId?: string
-  ): Promise<StudyNote> {
-    const now = new Date().toISOString();
-    const note: Omit<StudyNote, 'id' | 'isDraft'> = {
-      ...payload,
-      createdAt: now,
-      updatedAt: now,
-    };
-    // Do not persist derived/extraneous fields
-    const { materialIds, relatedSermonIds, ...persistable } = note;
-
-    const hydrate = (id: string, base: Omit<StudyNote, 'id' | 'isDraft'>): StudyNote => ({
-      ...base,
-      id,
-      isDraft: computeDraft(base),
-      materialIds: materialIds || [],
-      relatedSermonIds: relatedSermonIds || [],
-    });
-
-    // Idempotent create when the client supplies the id (offline autosave): a
-    // replayed create reuses the same doc instead of duplicating. Ownership
-    // mismatch (incl. a missing userId) is rejected so a client id can never
-    // reach another user's note.
-    if (clientId) {
-      const ref = adminDb.collection(NOTES_COLLECTION).doc(clientId);
-      const existing = await ref.get();
-      if (existing.exists) {
-        const existingData = existing.data() as Omit<StudyNote, 'id' | 'isDraft'>;
-        if (existingData.userId !== payload.userId) {
-          throw new Error('Forbidden: study note id belongs to another user');
-        }
-        return hydrate(clientId, existingData);
-      }
-      await ref.set(persistable);
-      return hydrate(clientId, note);
-    }
-
-    const docRef = await adminDb.collection(NOTES_COLLECTION).add(persistable);
-    return hydrate(docRef.id, note);
-  }
-
-  async updateNote(id: string, updates: Partial<StudyNote>): Promise<StudyNote> {
-    const existing = await this.getNote(id);
-    if (!existing) throw new Error('Study note not found');
-
-    const merged: StudyNote = {
-      ...existing,
-      ...updates,
-      updatedAt: new Date().toISOString(),
-    };
-    merged.isDraft = computeDraft(merged);
-
-    // Never persist derived fields
-    const { ...persistable } = merged;
-
-    await adminDb.collection(NOTES_COLLECTION).doc(id).set(persistable, { merge: true });
-    return merged;
   }
 
   async deleteNote(id: string): Promise<void> {

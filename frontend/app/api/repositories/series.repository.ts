@@ -13,14 +13,6 @@ import {
  * Repository for series database operations
  */
 export class SeriesRepository {
-  /**
-   * Filters out undefined values from an object as Firestore doesn't accept them
-   */
-  private filterUndefinedValues<T extends Record<string, unknown>>(obj: T): T {
-    return Object.fromEntries(
-      Object.entries(obj).filter(([, value]) => value !== undefined)
-    ) as T;
-  }
   private readonly collection = "series";
 
   private hydrateSeries(series: Series): Series {
@@ -49,75 +41,6 @@ export class SeriesRepository {
     return { items, sermonIds, seriesKind };
   }
 
-  async createSeries(series: Omit<Series, 'id' | 'createdAt' | 'updatedAt'>): Promise<Series> {
-    console.log(`Firestore: creating series for user ${series.userId}`);
-
-    try {
-      const now = new Date().toISOString();
-
-      const normalizedItems = normalizeSeriesItems(series.items, series.sermonIds || []);
-      const seriesKind = series.seriesKind || inferSeriesKind(normalizedItems);
-      const sermonIds = deriveSermonIdsFromItems(normalizedItems);
-
-      // Filter out undefined values as Firestore doesn't accept them
-      const cleanSeries = this.filterUndefinedValues({
-        ...series,
-        items: normalizedItems,
-        sermonIds,
-        seriesKind,
-      });
-
-      const docRef = await adminDb.collection(this.collection).add({
-        ...cleanSeries,
-        createdAt: now,
-        updatedAt: now
-      });
-
-      const newSeries = this.hydrateSeries({
-        ...series,
-        id: docRef.id,
-        createdAt: now,
-        updatedAt: now,
-        items: normalizedItems,
-        sermonIds,
-        seriesKind,
-      } as Series);
-      console.log(`Series created with id: ${newSeries.id}`);
-      return newSeries;
-    } catch (error) {
-      console.error('Error creating series:', error);
-      throw error;
-    }
-  }
-
-  async fetchSeriesByUserId(userId: string): Promise<Series[]> {
-    console.log(`Firestore: fetching series for user ${userId}`);
-
-    try {
-      const snapshot = await adminDb.collection(this.collection)
-        .where('userId', '==', userId)
-        .get();
-
-      const series: Series[] = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Series)).map((entry) => this.hydrateSeries(entry));
-
-      // Sort client-side by startDate (desc) to avoid composite index requirement
-      series.sort((a, b) => {
-        const aDate = a.startDate ? new Date(a.startDate).getTime() : 0;
-        const bDate = b.startDate ? new Date(b.startDate).getTime() : 0;
-        return bDate - aDate;
-      });
-
-      console.log(`Retrieved ${series.length} series for user ${userId}`);
-      return series;
-    } catch (error) {
-      console.error(`Error fetching series for user ${userId}:`, error);
-      throw error;
-    }
-  }
-
   async fetchSeriesById(seriesId: string): Promise<Series | null> {
     console.log(`Firestore: fetching series ${seriesId}`);
 
@@ -134,43 +57,6 @@ export class SeriesRepository {
       return series;
     } catch (error) {
       console.error(`Error fetching series with id ${seriesId}:`, error);
-      throw error;
-    }
-  }
-
-  async updateSeries(seriesId: string, updates: Partial<Series>): Promise<void> {
-    console.log(`Firestore: updating series ${seriesId}`);
-
-    try {
-      const existing = await this.fetchSeriesById(seriesId);
-      if (!existing) {
-        throw new Error(`Series ${seriesId} not found`);
-      }
-
-      const hasItemLevelUpdate = updates.items !== undefined || updates.sermonIds !== undefined;
-      const normalizedItems = hasItemLevelUpdate
-        ? normalizeSeriesItems(updates.items, updates.sermonIds || existing.sermonIds || [])
-        : existing.items || normalizeSeriesItems(undefined, existing.sermonIds || []);
-
-      const cleanUpdates = this.filterUndefinedValues({
-        ...updates,
-        ...(hasItemLevelUpdate
-          ? {
-              items: normalizedItems,
-              sermonIds: deriveSermonIdsFromItems(normalizedItems),
-              seriesKind: updates.seriesKind || inferSeriesKind(normalizedItems),
-            }
-          : {}),
-      });
-
-      await adminDb.collection(this.collection).doc(seriesId).update({
-        ...cleanUpdates,
-        updatedAt: new Date().toISOString()
-      });
-
-      console.log(`Series ${seriesId} updated successfully`);
-    } catch (error) {
-      console.error(`Error updating series ${seriesId}:`, error);
       throw error;
     }
   }

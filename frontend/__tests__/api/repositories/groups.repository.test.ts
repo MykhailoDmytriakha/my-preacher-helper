@@ -1,7 +1,5 @@
 import { GroupsRepository } from '@/api/repositories/groups.repository';
 
-const mockAdd = jest.fn();
-const mockWhere = jest.fn();
 const mockGet = jest.fn();
 const mockDoc = jest.fn();
 const mockUpdate = jest.fn();
@@ -38,8 +36,6 @@ const baseGroup = {
 
 const setupFirestoreMocks = () => {
   mockCollection.mockReturnValue({
-    add: mockAdd.mockResolvedValue({ id: 'new-group-id' }),
-    where: mockWhere.mockReturnValue({ get: mockGet }),
     doc: mockDoc.mockReturnValue({
       get: mockGet,
       update: mockUpdate.mockResolvedValue(undefined),
@@ -66,50 +62,6 @@ describe('GroupsRepository', () => {
     });
 
     expect(filtered).toEqual({ a: 1, c: null, d: '' });
-  });
-
-  it('creates group with normalized flow and timestamps', async () => {
-    const nowSpy = jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2026-02-11T00:00:00.000Z');
-
-    const result = await repository.createGroup({
-      userId: 'user-1',
-      title: 'Group',
-      status: 'draft',
-      templates: [],
-      flow: [
-        { id: 'flow-2', templateId: 't', order: 2, durationMin: null },
-        { id: 'flow-1', templateId: 't', order: 1, durationMin: null },
-      ],
-      meetingDates: [],
-      seriesId: null,
-      seriesPosition: null,
-    });
-
-    expect(mockCollection).toHaveBeenCalledWith('groups');
-    expect(mockAdd).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'Group',
-        createdAt: '2026-02-11T00:00:00.000Z',
-        updatedAt: '2026-02-11T00:00:00.000Z',
-      })
-    );
-    expect(result.id).toBe('new-group-id');
-    expect(result.flow.map((item: any) => item.order)).toEqual([1, 2]);
-    nowSpy.mockRestore();
-  });
-
-  it('fetches groups by user and sorts by updatedAt desc', async () => {
-    mockGet.mockResolvedValueOnce({
-      docs: [
-        { id: 'g1', data: () => ({ ...baseGroup, updatedAt: '2026-02-01T00:00:00Z' }) },
-        { id: 'g2', data: () => ({ ...baseGroup, updatedAt: '2026-02-03T00:00:00Z' }) },
-      ],
-    });
-
-    const result = await repository.fetchGroupsByUserId('user-1');
-    expect(mockWhere).toHaveBeenCalledWith('userId', '==', 'user-1');
-    expect(result.map((group) => group.id)).toEqual(['g2', 'g1']);
-    expect(result[0].flow[0].order).toBe(1);
   });
 
   it('fetches one group or returns null when missing', async () => {
@@ -196,31 +148,5 @@ describe('GroupsRepository', () => {
     await expect(repository.updateMeetingDate('g1', 'missing', { notes: 'x' })).rejects.toThrow(
       'Meeting date not found'
     );
-  });
-
-  it('filters groups by meeting dates range', async () => {
-    jest.spyOn(repository, 'fetchGroupsByUserId').mockResolvedValue([
-      {
-        id: 'g1',
-        ...baseGroup,
-        meetingDates: [{ id: 'd1', date: '2026-02-10', createdAt: 'x' }],
-      } as any,
-      {
-        id: 'g2',
-        ...baseGroup,
-        meetingDates: [{ id: 'd2', date: '2026-03-10', createdAt: 'x' }],
-      } as any,
-      {
-        id: 'g3',
-        ...baseGroup,
-        meetingDates: [],
-      } as any,
-    ]);
-
-    const withAnyMeetings = await repository.fetchGroupsWithMeetingDates('user-1');
-    expect(withAnyMeetings.map((group) => group.id)).toEqual(['g1', 'g2']);
-
-    const ranged = await repository.fetchGroupsWithMeetingDates('user-1', '2026-02-01', '2026-02-28');
-    expect(ranged.map((group) => group.id)).toEqual(['g1']);
   });
 });

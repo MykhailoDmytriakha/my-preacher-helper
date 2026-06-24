@@ -46,40 +46,6 @@ export class GroupsRepository {
     };
   }
 
-  async createGroup(payload: Omit<Group, 'id' | 'createdAt' | 'updatedAt'>): Promise<Group> {
-    const now = new Date().toISOString();
-    const cleanPayload = this.filterUndefinedValues({
-      ...payload,
-      templates: payload.templates || [],
-      flow: this.normalizeFlow(payload.flow || []),
-      meetingDates: payload.meetingDates || [],
-      status: payload.status || 'draft',
-    });
-
-    const docRef = await adminDb.collection(GROUPS_COLLECTION).add({
-      ...cleanPayload,
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    return this.hydrateGroup({
-      ...cleanPayload,
-      id: docRef.id,
-      createdAt: now,
-      updatedAt: now,
-    } as Group);
-  }
-
-  async fetchGroupsByUserId(userId: string): Promise<Group[]> {
-    const snapshot = await adminDb.collection(GROUPS_COLLECTION).where('userId', '==', userId).get();
-    return snapshot.docs
-      .map((doc) => {
-        const data = doc.data() as Omit<Group, 'id'>;
-        return this.hydrateGroup({ ...data, id: doc.id } as Group);
-      })
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-  }
-
   async fetchGroupById(groupId: string): Promise<Group | null> {
     const docSnap = await adminDb.collection(GROUPS_COLLECTION).doc(groupId).get();
     if (!docSnap.exists) {
@@ -197,26 +163,6 @@ export class GroupsRepository {
     await this.updateGroup(groupId, {
       meetingDates: (group.meetingDates || []).filter((entry) => entry.id !== dateId),
     });
-  }
-
-  async fetchGroupsWithMeetingDates(
-    userId: string,
-    startDate?: string,
-    endDate?: string
-  ): Promise<Group[]> {
-    const groups = await this.fetchGroupsByUserId(userId);
-
-    if (!startDate && !endDate) {
-      return groups.filter((group) => (group.meetingDates || []).length > 0);
-    }
-
-    return groups.filter((group) =>
-      (group.meetingDates || []).some((meeting) => {
-        if (startDate && meeting.date < startDate) return false;
-        if (endDate && meeting.date > endDate) return false;
-        return true;
-      })
-    );
   }
 }
 
