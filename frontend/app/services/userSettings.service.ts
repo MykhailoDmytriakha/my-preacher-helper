@@ -12,6 +12,16 @@ import type { FirstDayOfWeek } from '@/utils/weekStart';
 // (request.auth.uid == uid) makes reads of a not-yet-existing own doc safe.
 const USERS_COLLECTION = 'users';
 
+// Cold-start race: right after `initializeFirestore` the client can issue its
+// first request before the Firebase auth token is attached to its credentials
+// provider, yielding a transient `permission-denied` / `unauthenticated`. The
+// list hooks ride React Query's built-in retry and self-heal; these imperative
+// settings reads have no such retry, so a feature-flag check would log an error
+// and fall back to `false` for a frame. A genuine denial can't occur here (an
+// owner reading their own `users/{uid}`), so retrying a couple of times is safe.
+const TRANSIENT_AUTH_ERROR_CODES = new Set(['permission-denied', 'unauthenticated']);
+const SETTINGS_READ_RETRY_DELAYS_MS = [150, 400];
+
 // UX / preference fields the client may write to its own settings doc. NEVER
 // id/userId (identity): those are server-managed; the client whitelist keeps the
 // app from ever writing them via the client SDK.
@@ -21,10 +31,22 @@ const SETTINGS_WRITABLE_FIELDS = [
 ];
 
 async function getUserSettingsViaClient(userId: string): Promise<UserSettings | null> {
-  const db = getClientDb();
-  const snap = await getDoc(doc(db, USERS_COLLECTION, userId));
-  if (!snap.exists()) return null;
-  return { id: snap.id, ...(snap.data() as Omit<UserSettings, 'id'>) } as UserSettings;
+  const ref = doc(getClientDb(), USERS_COLLECTION, userId);
+
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const snap = await getDoc(ref);
+      if (!snap.exists()) return null;
+      return { id: snap.id, ...(snap.data() as Omit<UserSettings, 'id'>) } as UserSettings;
+    } catch (error) {
+      const code = (error as { code?: string })?.code;
+      if (code && TRANSIENT_AUTH_ERROR_CODES.has(code) && attempt < SETTINGS_READ_RETRY_DELAYS_MS.length) {
+        await new Promise((resolve) => setTimeout(resolve, SETTINGS_READ_RETRY_DELAYS_MS[attempt]));
+        continue;
+      }
+      throw error;
+    }
+  }
 }
 
 // setDoc(merge) = create-or-update, mirroring the server's createOrUpdate: a new

@@ -236,6 +236,45 @@ describe('userSettings.service', () => {
     await expect(service.hasStructurePreviewAccess('user1')).resolves.toBe(false);
   });
 
+  it('retries a transient cold-start permission-denied on the settings read', async () => {
+    const denied = Object.assign(new Error('Missing or insufficient permissions.'), {
+      code: 'permission-denied',
+    });
+    mockGetDoc
+      .mockRejectedValueOnce(denied)
+      .mockResolvedValueOnce(docSnap('user1', { enablePrepMode: true }));
+
+    const service = await importServiceWithClientMocks();
+
+    await expect(service.getUserSettings('user1')).resolves.toEqual({
+      id: 'user1',
+      enablePrepMode: true,
+    });
+    expect(mockGetDoc).toHaveBeenCalledTimes(2);
+  });
+
+  it('hasPrepModeAccess recovers (returns the real value) after a transient permission-denied', async () => {
+    const denied = Object.assign(new Error('denied'), { code: 'permission-denied' });
+    mockGetDoc
+      .mockRejectedValueOnce(denied)
+      .mockResolvedValueOnce(docSnap('user1', { enablePrepMode: true }));
+
+    const service = await importServiceWithClientMocks();
+
+    await expect(service.hasPrepModeAccess('user1')).resolves.toBe(true);
+  });
+
+  it('does not retry a non-transient settings read error', async () => {
+    const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    mockGetDoc.mockRejectedValue(Object.assign(new Error('boom'), { code: 'unavailable' }));
+
+    const service = await importServiceWithClientMocks();
+    await expect(service.getUserSettings('user1')).rejects.toThrow('boom');
+    expect(mockGetDoc).toHaveBeenCalledTimes(1);
+
+    consoleSpy.mockRestore();
+  });
+
   it('falls back to the default language when no cookie is present', async () => {
     const service = await importServiceWithClientMocks();
     expect(service.getCookieLanguage()).toBe(DEFAULT_LANGUAGE);
