@@ -119,13 +119,8 @@ describe('AuthProvider', () => {
     });
   });
 
-  it('should check localStorage for guest user', async () => {
-    const guestUser = {
-      uid: 'guest-uid',
-      isAnonymous: true,
-    };
-
-    mockLocalStorage.getItem.mockReturnValue(JSON.stringify(guestUser));
+  it('treats an anonymous (guest) Firebase user as authenticated', async () => {
+    const guestUser = { uid: 'guest-uid', isAnonymous: true } as User;
 
     render(
       <AuthProvider>
@@ -134,13 +129,42 @@ describe('AuthProvider', () => {
     );
 
     await act(async () => {
-      if (authStateCallback) {
-        authStateCallback(null);
-      }
+      authStateCallback?.(guestUser);
     });
 
     await waitFor(() => {
+      expect(screen.getByTestId('user')).toHaveTextContent('user-present');
       expect(screen.getByTestId('authenticated')).toHaveTextContent('authenticated');
+    });
+  });
+
+  it('signs out cleanly even if a stale guestUser cache lingers (no phantom resurrection)', async () => {
+    // handleLogout removes `guestUser` only AFTER logOut() resolves, so Firebase
+    // fires onAuthStateChanged(null) while the cache is still present. The
+    // provider must NOT re-authenticate the just-logged-out user from that cache.
+    mockLocalStorage.getItem.mockReturnValue(JSON.stringify({ uid: 'stale-uid' }));
+    const realUser = { uid: 'real-uid' } as User;
+
+    render(
+      <AuthProvider>
+        <TestComponent />
+      </AuthProvider>
+    );
+
+    await act(async () => {
+      authStateCallback?.(realUser);
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('user')).toHaveTextContent('user-present');
+    });
+
+    await act(async () => {
+      authStateCallback?.(null);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('user')).toHaveTextContent('no-user');
+      expect(screen.getByTestId('authenticated')).toHaveTextContent('not-authenticated');
     });
   });
 
@@ -168,4 +192,53 @@ describe('AuthProvider', () => {
     expect(screen.getByTestId('user')).toBeInTheDocument();
     expect(screen.getByTestId('authenticated')).toBeInTheDocument();
   });
-}); 
+
+  it('does not clear a valid session when another tab fires a storage event', async () => {
+    const mockUser = { uid: 'test-uid', email: 'test@example.com' } as User;
+
+    render(
+      <AuthProvider>
+        <TestComponent />
+      </AuthProvider>
+    );
+
+    await act(async () => {
+      authStateCallback?.(mockUser);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('user')).toHaveTextContent('user-present');
+    });
+
+    // Another tab removes the legacy custom mirror key. The provider must ignore
+    // cross-tab storage events — Firebase's own onAuthStateChanged is the sole
+    // authority for sign-out — so the valid session here stays intact.
+    await act(async () => {
+      window.dispatchEvent(
+        new StorageEvent('storage', { key: 'firebase:authUser', oldValue: '{}', newValue: null })
+      );
+    });
+
+    expect(screen.getByTestId('user')).toHaveTextContent('user-present');
+    expect(screen.getByTestId('authenticated')).toHaveTextContent('authenticated');
+  });
+
+  it('does not write a custom auth mirror to localStorage on sign-in', async () => {
+    const mockUser = { uid: 'test-uid' } as User;
+
+    render(
+      <AuthProvider>
+        <TestComponent />
+      </AuthProvider>
+    );
+
+    await act(async () => {
+      authStateCallback?.(mockUser);
+    });
+
+    expect(mockLocalStorage.setItem).not.toHaveBeenCalledWith(
+      'firebase:authUser',
+      expect.anything()
+    );
+  });
+});

@@ -33,10 +33,16 @@ export default function ProtectedRoute({
     
     if (!loading && !user) {
       const guestData = localStorage.getItem('guestUser');
-      const firebaseAuthData = localStorage.getItem('firebase:authUser');
-      
+      // Check Firebase's OWN persistence key (browserLocalPersistence stores it
+      // as `firebase:authUser:<apiKey>:<name>`) rather than a custom mirror, so a
+      // genuinely persisted session is never mistaken for a logout during a brief
+      // pre-onAuthStateChanged window.
+      const hasFirebaseSession = Object.keys(localStorage).some((key) =>
+        key.startsWith('firebase:authUser:')
+      );
+
       // Only if there are no authentication data at all
-      if (!guestData && !firebaseAuthData) {
+      if (!guestData && !hasFirebaseSession) {
         console.log('No auth data found, redirecting to:', redirectTo);
         router.replace(redirectTo);
       } else {
