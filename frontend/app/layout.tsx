@@ -4,6 +4,7 @@ import { Inter, Roboto_Mono } from "next/font/google";
 
 import { OfflineBanner } from "./components/OfflineBanner";
 import { SwUpdateToast } from "./components/SwUpdateToast";
+import { ThemeWatcher } from "./components/ThemeWatcher";
 import LanguageInitializer from "./components/navigation/LanguageInitializer";
 import { AuthProvider } from "./providers/AuthProvider";
 import { ConnectionProvider } from "./providers/ConnectionProvider";
@@ -69,6 +70,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         >
           Skip to main content
         </a>
+        <ThemeWatcher />
         <TextScaleProvider>
           <AuthProvider>
             <ConnectionProvider>
