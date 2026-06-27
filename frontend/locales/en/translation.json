@@ -1046,9 +1046,17 @@
     "templateSaveError": "Couldn't save the template",
     "apply": {
       "title": "Apply template?",
-      "message": "The plan already has points. Replace them with the template, or add to them?",
-      "replace": "Replace",
-      "append": "Add"
+      "message": "The plan already has {{count}} point(s). 'Replace whole plan' removes them (including your own points); 'Add to plan' appends the template to them.",
+      "replace": "Replace whole plan",
+      "append": "Add to plan"
+    },
+    "undo": "Undo",
+    "redo": "Redo",
+    "clear": "Clear plan",
+    "clearConfirm": {
+      "title": "Clear the whole plan?",
+      "message": "All {{count}} point(s) will be removed. You can undo this.",
+      "confirm": "Clear"
     },
     "saveAs": {
       "title": "New template",

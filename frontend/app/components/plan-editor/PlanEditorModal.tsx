@@ -1,7 +1,7 @@
 'use client';
 
 import { ChevronDownIcon } from '@heroicons/react/20/solid';
-import { Squares2X2Icon, XMarkIcon } from '@heroicons/react/24/outline';
+import { ArrowUturnLeftIcon, ArrowUturnRightIcon, Squares2X2Icon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import Link from 'next/link';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -18,6 +18,16 @@ import type { OutlinePoint, Sermon, SermonOutline, SubPoint } from '@/models/mod
 
 const emptyOutline = (): SermonOutline => ({ introduction: [], main: [], conclusion: [] });
 type OutlineSectionKey = keyof SermonOutline;
+
+const CANCEL_KEY = 'common.cancel';
+
+// Bounded undo/redo history ("a few steps", no unbounded growth). One entry per
+// completed action (add/delete/edit/move point, apply template, clear).
+const MAX_HISTORY = 30;
+const capPush = (stack: SermonOutline[], item: SermonOutline): SermonOutline[] => {
+  const next = [...stack, item];
+  return next.length > MAX_HISTORY ? next.slice(next.length - MAX_HISTORY) : next;
+};
 
 const fromSermon = (outline?: SermonOutline | null): SermonOutline => ({
   introduction: outline?.introduction ?? [],
@@ -82,8 +92,11 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   useScrollLock(isOpen);
 
   const [outline, setOutline] = useState<SermonOutline>(emptyOutline);
+  const [undoStack, setUndoStack] = useState<SermonOutline[]>([]);
+  const [redoStack, setRedoStack] = useState<SermonOutline[]>([]);
   const [templatesMenuOpen, setTemplatesMenuOpen] = useState(false);
   const [pendingApply, setPendingApply] = useState<SermonOutline | null>(null);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
   const [saveAsName, setSaveAsName] = useState('');
 
@@ -93,8 +106,11 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setOutline(fromSermon(sermon.outline));
+      setUndoStack([]);
+      setRedoStack([]);
       setTemplatesMenuOpen(false);
       setPendingApply(null);
+      setClearConfirmOpen(false);
       setSaveAsOpen(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -103,11 +119,11 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !pendingApply && !saveAsOpen) onClose();
+      if (e.key === 'Escape' && !pendingApply && !saveAsOpen && !clearConfirmOpen) onClose();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose, pendingApply, saveAsOpen]);
+  }, [isOpen, onClose, pendingApply, saveAsOpen, clearConfirmOpen]);
 
   useEffect(() => {
     if (!templatesMenuOpen) return;
@@ -135,13 +151,62 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     [isReadOnly, sermon.id, onOutlineUpdate, t]
   );
 
+  // Every committed change snapshots the current outline onto the undo stack and
+  // drops the redo branch (a new action invalidates any "redo" path). Closure
+  // values (not functional updaters) so no side-effects run inside a setState
+  // updater — safe under StrictMode's double-invoke.
   const handleChange = useCallback(
     (next: SermonOutline) => {
+      setUndoStack((s) => capPush(s, outline));
+      setRedoStack([]);
       setOutline(next);
       persist(next);
     },
-    [persist]
+    [outline, persist]
   );
+
+  const undo = useCallback(() => {
+    if (undoStack.length === 0) return;
+    const previous = undoStack[undoStack.length - 1];
+    setUndoStack(undoStack.slice(0, -1));
+    setRedoStack((r) => capPush(r, outline));
+    setOutline(previous);
+    persist(previous);
+  }, [undoStack, outline, persist]);
+
+  const redo = useCallback(() => {
+    if (redoStack.length === 0) return;
+    const nextOutline = redoStack[redoStack.length - 1];
+    setRedoStack(redoStack.slice(0, -1));
+    setUndoStack((s) => capPush(s, outline));
+    setOutline(nextOutline);
+    persist(nextOutline);
+  }, [redoStack, outline, persist]);
+
+  const clearPlan = () => {
+    setClearConfirmOpen(false);
+    handleChange(emptyOutline());
+  };
+
+  // ⌘Z / ⌘⇧Z (⌘Y) — but leave a focused text field's own undo alone.
+  useEffect(() => {
+    if (!isOpen || isReadOnly) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      const key = e.key.toLowerCase();
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+        e.preventDefault();
+        redo();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, isReadOnly, undo, redo]);
 
   const totalPoints = useMemo(() => countPoints(outline), [outline]);
 
@@ -225,6 +290,29 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                 <p className="text-xs text-slate-400 dark:text-gray-500 leading-tight truncate">{sermon.title}</p>
               )}
             </div>
+
+            {!isReadOnly && (
+              <div className="flex items-center rounded-lg border border-slate-300 dark:border-gray-600 overflow-hidden flex-shrink-0">
+                <button
+                  onClick={undo}
+                  disabled={undoStack.length === 0}
+                  aria-label={t('planEditor.undo')}
+                  title={t('planEditor.undo')}
+                  className="px-2 py-1.5 text-slate-600 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-700 disabled:text-slate-300 dark:disabled:text-gray-600 disabled:hover:bg-transparent border-r border-slate-300 dark:border-gray-600"
+                >
+                  <ArrowUturnLeftIcon className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={redo}
+                  disabled={redoStack.length === 0}
+                  aria-label={t('planEditor.redo')}
+                  title={t('planEditor.redo')}
+                  className="px-2 py-1.5 text-slate-600 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-700 disabled:text-slate-300 dark:disabled:text-gray-600 disabled:hover:bg-transparent"
+                >
+                  <ArrowUturnRightIcon className="w-4 h-4" />
+                </button>
+              </div>
+            )}
           </div>
 
           <p className="hidden lg:block flex-1 px-6 text-center text-xs text-slate-400 dark:text-gray-500 truncate">
@@ -285,6 +373,17 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
               </div>
             )}
 
+            {!isReadOnly && (
+              <button
+                onClick={() => setClearConfirmOpen(true)}
+                disabled={totalPoints === 0}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-rose-200 dark:border-rose-900/50 bg-white dark:bg-gray-800 hover:bg-rose-50 dark:hover:bg-rose-900/20 px-3 py-1.5 text-sm font-medium text-rose-600 dark:text-rose-400 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <TrashIcon className="w-4 h-4" />
+                {t('planEditor.clear')}
+              </button>
+            )}
+
             <button
               onClick={onClose}
               aria-label={t('common.close')}
@@ -323,7 +422,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
           <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-900/40 p-4">
             <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-5">
               <h3 className="text-base font-semibold text-slate-800 dark:text-gray-100">{t('planEditor.apply.title')}</h3>
-              <p className="mt-2 text-sm text-slate-500 dark:text-gray-400">{t('planEditor.apply.message')}</p>
+              <p className="mt-2 text-sm text-slate-500 dark:text-gray-400">{t('planEditor.apply.message', { count: totalPoints })}</p>
               <div className="mt-4 flex flex-col gap-2">
                 <button
                   onClick={() => applyTemplate(pendingApply, 'replace')}
@@ -341,7 +440,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                   onClick={() => setPendingApply(null)}
                   className="w-full rounded-lg border border-slate-300 dark:border-gray-600 text-slate-600 dark:text-gray-300 text-sm font-medium px-4 py-2 hover:bg-slate-50 dark:hover:bg-gray-700"
                 >
-                  {t('common.cancel')}
+                  {t(CANCEL_KEY)}
                 </button>
               </div>
             </div>
@@ -369,7 +468,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                   onClick={() => setSaveAsOpen(false)}
                   className="rounded-lg border border-slate-300 dark:border-gray-600 text-slate-600 dark:text-gray-300 text-sm font-medium px-4 py-2 hover:bg-slate-50 dark:hover:bg-gray-700"
                 >
-                  {t('common.cancel')}
+                  {t(CANCEL_KEY)}
                 </button>
                 <button
                   onClick={saveAsTemplate}
@@ -377,6 +476,33 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                   className="rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {t('planEditor.saveAs.save')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {clearConfirmOpen && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-900/40 p-4">
+            <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-5">
+              <h3 className="text-base font-semibold text-slate-800 dark:text-gray-100">
+                {t('planEditor.clearConfirm.title')}
+              </h3>
+              <p className="mt-2 text-sm text-slate-500 dark:text-gray-400">
+                {t('planEditor.clearConfirm.message', { count: totalPoints })}
+              </p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  onClick={() => setClearConfirmOpen(false)}
+                  className="rounded-lg border border-slate-300 dark:border-gray-600 text-slate-600 dark:text-gray-300 text-sm font-medium px-4 py-2 hover:bg-slate-50 dark:hover:bg-gray-700"
+                >
+                  {t(CANCEL_KEY)}
+                </button>
+                <button
+                  onClick={clearPlan}
+                  className="rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium px-4 py-2"
+                >
+                  {t('planEditor.clearConfirm.confirm')}
                 </button>
               </div>
             </div>
