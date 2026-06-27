@@ -112,4 +112,22 @@ describe('PlanTemplatesSection', () => {
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith('t1', { name: 'Alpha renamed' }));
   });
+
+  it('shows a newly added point immediately, before any refetch', () => {
+    // The hook mock never feeds back the saved structure, so if the board read
+    // straight from the cache the point would never render. The local draft
+    // buffer must show it on Enter — regression guard for the ~1s "it vanished".
+    mockTemplates = [tpl('t1', 'Alpha', 0)];
+    render(<PlanTemplatesSection user={user} />);
+
+    fireEvent.click(screen.getByLabelText('common.expand'));
+    fireEvent.click(screen.getAllByText('structure.addPointButton')[0]); // Introduction column
+
+    const pointInput = screen.getByPlaceholderText('structure.addPointPlaceholder');
+    fireEvent.change(pointInput, { target: { value: 'New point' } });
+    fireEvent.keyDown(pointInput, { key: 'Enter' });
+
+    // Visible right away — no waitFor, no updateTemplate round-trip needed.
+    expect(screen.getByText('New point')).toBeInTheDocument();
+  });
 });

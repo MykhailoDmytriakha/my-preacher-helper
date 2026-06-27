@@ -30,8 +30,25 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameText, setRenameText] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Local optimistic copy of the expanded template's structure. The OutlineBoard
+  // is a controlled editor (renders straight from `value`); feeding it the React
+  // Query cache directly meant a freshly added point only appeared after the
+  // debounced save + refetch round-trip (~1s of "it vanished"). Buffering the
+  // edit locally makes the point show on Enter; the save catches up in the
+  // background. Mirrors how PlanEditorModal owns its own `outline` state.
+  const [draftStructure, setDraftStructure] = useState<SermonOutline | null>(null);
   const [pendingDeleteTpl, setPendingDeleteTpl] = useState<PlanTemplate | null>(null);
   const saveTimers = useRef<Record<string, NodeJS.Timeout>>({});
+
+  const toggleExpand = (tpl: PlanTemplate) => {
+    if (expandedId === tpl.id) {
+      setExpandedId(null);
+      setDraftStructure(null);
+    } else {
+      setExpandedId(tpl.id);
+      setDraftStructure(tpl.structure ?? emptyOutline());
+    }
+  };
 
   const handleCreate = async () => {
     const name = newName.trim();
@@ -64,7 +81,10 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
     setPendingDeleteTpl(null);
     try {
       await deleteTemplate(tpl.id);
-      if (expandedId === tpl.id) setExpandedId(null);
+      if (expandedId === tpl.id) {
+        setExpandedId(null);
+        setDraftStructure(null);
+      }
     } catch (err) {
       console.error('Error deleting plan template:', err);
       toast.error(t('planTemplates.deleteError'));
@@ -73,6 +93,8 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
 
   // Debounced structure save while editing a template's outline inline.
   const handleStructureChange = (tpl: PlanTemplate, structure: SermonOutline) => {
+    // Reflect the edit instantly (the board reads `value`), then persist on a debounce.
+    setDraftStructure(structure);
     if (saveTimers.current[tpl.id]) clearTimeout(saveTimers.current[tpl.id]);
     saveTimers.current[tpl.id] = setTimeout(() => {
       void updateTemplate(tpl.id, { structure }).catch((err) => {
@@ -123,7 +145,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
               <li key={tpl.id} className="rounded-lg border border-gray-200 dark:border-gray-700">
                 <div className="flex items-center gap-2 p-3">
                   <button
-                    onClick={() => setExpandedId(isExpanded ? null : tpl.id)}
+                    onClick={() => toggleExpand(tpl)}
                     className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400"
                     aria-label={isExpanded ? t('common.collapse') : t('common.expand')}
                   >
@@ -180,7 +202,7 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
                 {isExpanded && (
                   <div className="border-t border-gray-200 dark:border-gray-700 p-3">
                     <OutlineBoard
-                      value={tpl.structure ?? emptyOutline()}
+                      value={draftStructure ?? tpl.structure ?? emptyOutline()}
                       onChange={(structure) => handleStructureChange(tpl, structure)}
                       className="grid grid-cols-1 md:grid-cols-3 gap-3"
                     />

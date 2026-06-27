@@ -147,4 +147,31 @@ describe('useTags', () => {
     expect(mockRemoveCustomTag).toHaveBeenCalledWith('user-1', 'new');
     expect(mockUpdateTag).toHaveBeenCalledWith(newTag);
   });
+
+  it('optimistically writes an added custom tag to the cache before the write resolves', async () => {
+    // Regression for the "added tag vanished, then reappeared" lag: onMutate must
+    // put the tag in the cache immediately, without waiting for the (here hung)
+    // network write. Fails before the optimistic onMutate was added.
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    queryClient.setQueryData(['tags', 'user-1'], { requiredTags: [], customTags: [] });
+    mockUseServerFirstQuery.mockReturnValue(
+      buildServerFirstResult({ requiredTags: [], customTags: [] })
+    );
+    mockAddCustomTag.mockReturnValue(new Promise<Tag>(() => {})); // never resolves — stays pending
+
+    const { result } = renderHook(() => useTags('user-1'), { wrapper });
+
+    await act(async () => {
+      void result.current.addCustomTag({ id: '', name: 'newtag', color: '#000' } as Tag);
+      await new Promise((r) => setTimeout(r, 0)); // let onMutate's cancelQueries flush
+    });
+
+    const cached = queryClient.getQueryData(['tags', 'user-1']) as { customTags: Tag[] };
+    expect(cached.customTags.map((tg) => tg.name)).toContain('newtag');
+  });
 });

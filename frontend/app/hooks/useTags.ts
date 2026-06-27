@@ -4,6 +4,7 @@ import { useEffect, useMemo } from 'react';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { addCustomTag, getTags, removeCustomTag, updateTag } from '@/services/tag.service';
+import { newClientId } from '@/utils/clientId';
 import { debugLog } from '@/utils/debugMode';
 import { TAG_MUTATION_KEYS } from '@/utils/mutationDefaults';
 
@@ -57,29 +58,68 @@ export function useTags(userId: string | null | undefined) {
   // to its resumable default in mutationDefaults.ts). mutateAsync is kept so
   // callers still receive the server result (e.g. removeCustomTag's affected
   // count); offline the promise settles once the write replays on reconnect.
+  //
+  // Optimistic onMutate: without it a freshly added/edited/removed custom tag only
+  // showed after the write + refetch (~1s online; not until reconnect offline) —
+  // the same "I added it and it vanished, then came back" lag fixed in the other
+  // list hooks. We only touch customTags (required tags are fixed) and roll back
+  // on error; onSuccess refetches to reconcile with the authoritative list.
+  const invalidateTags = () =>
+    queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
+
+  const rollbackTags = (context: { previous?: TagPayload } | undefined) => {
+    if (context?.previous) queryClient.setQueryData(buildQueryKey(userId), context.previous);
+  };
+
+  const snapshotTags = async () => {
+    const queryKey = buildQueryKey(userId);
+    await queryClient.cancelQueries({ queryKey });
+    return { previous: queryClient.getQueryData<TagPayload>(queryKey) };
+  };
+
+  const writeCustomTags = (fn: (custom: Tag[]) => Tag[]) => {
+    queryClient.setQueryData<TagPayload>(buildQueryKey(userId), (old = EMPTY_TAGS) => ({
+      requiredTags: old?.requiredTags ?? [],
+      customTags: fn(old?.customTags ?? []),
+    }));
+  };
+
   const addTagMutation = useMutation({
     mutationKey: TAG_MUTATION_KEYS.add,
     mutationFn: (tag: Tag) => addCustomTag(tag),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
+    onMutate: async (tag: Tag) => {
+      const context = await snapshotTags();
+      const optimistic: Tag = { ...tag, id: tag.id || newClientId() };
+      writeCustomTags((custom) => [...custom.filter((c) => c.name !== optimistic.name), optimistic]);
+      return context;
     },
+    onError: (_err, _tag, context) => rollbackTags(context),
+    onSuccess: invalidateTags,
   });
 
   const removeTagMutation = useMutation({
     mutationKey: TAG_MUTATION_KEYS.remove,
     mutationFn: ({ userId: uid, tagName }: { userId: string; tagName: string }) =>
       removeCustomTag(uid, tagName),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
+    onMutate: async ({ tagName }: { userId: string; tagName: string }) => {
+      const context = await snapshotTags();
+      writeCustomTags((custom) => custom.filter((c) => c.name !== tagName));
+      return context;
     },
+    onError: (_err, _vars, context) => rollbackTags(context),
+    onSuccess: invalidateTags,
   });
 
   const updateTagMutation = useMutation({
     mutationKey: TAG_MUTATION_KEYS.update,
     mutationFn: (tag: Tag) => updateTag(tag),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: buildQueryKey(userId) });
+    onMutate: async (tag: Tag) => {
+      const context = await snapshotTags();
+      writeCustomTags((custom) => custom.map((c) => (c.id === tag.id ? { ...c, ...tag } : c)));
+      return context;
     },
+    onError: (_err, _tag, context) => rollbackTags(context),
+    onSuccess: invalidateTags,
   });
 
   return {
