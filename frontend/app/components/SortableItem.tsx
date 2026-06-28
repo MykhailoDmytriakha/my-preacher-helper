@@ -425,7 +425,11 @@ function SortableItemCard({
   const style = {
     transform: isActiveItem ? "none" : CSS.Transform.toString(transform ?? null),
     transition: isActiveItem ? "none" : (transition || "transform 250ms ease-in-out"),
-    opacity: isActiveItem ? 0.4 : (isDragging || effectiveDeleting ? 0.5 : 1),
+    // The dragged card is represented by the DragOverlay clone, so hide its source in the
+    // list entirely. Showing it at 0.4 left a ghost layer that teleported between slots on
+    // every live-preview reorder (no transition) — that was the "shimmer / two layers
+    // overlapping" during a drag.
+    opacity: isActiveItem ? 0 : (isDragging || effectiveDeleting ? 0.5 : 1),
     pointerEvents: (isActiveItem || isOverlay ? "none" : "auto") as React.CSSProperties["pointerEvents"],
     ...highlightStyles,
   } as React.CSSProperties;

@@ -24,6 +24,27 @@ import {
   buildStructureFromContainers
 } from "../utils/structure";
 
+// Debug probe (gated on window.__DND_DEBUG) — emit the drag lifecycle so behaviour is
+// observable from the console (immune to DragOverlay/scroll artifacts in DOM queries).
+const dlog = (...a: unknown[]): void => {
+  if (typeof window !== 'undefined' && (window as unknown as { __DND_DEBUG?: boolean }).__DND_DEBUG) {
+    // eslint-disable-next-line no-console
+    console.log('[DND]', ...a);
+  }
+};
+
+// Find an item by id across all containers → its container, index, and the item itself.
+const locateItem = (
+  containers: Record<string, Item[]>,
+  id: string,
+): { container: string; index: number; item: Item } | null => {
+  for (const key of Object.keys(containers)) {
+    const idx = containers[key].findIndex((it) => it.id === id);
+    if (idx !== -1) return { container: key, index: idx, item: containers[key][idx] };
+  }
+  return null;
+};
+
 // Constants for drag target prefixes
 const OUTLINE_POINT_PREFIX = 'outline-point-';
 const UNASSIGNED_PREFIX = 'unassigned-';
@@ -624,6 +645,7 @@ export const useStructureDnd = ({
 
     setIsDragEnding(false);
     setActiveId(id);
+    dlog('start: active =', id);
 
     // Capture the original container at the start of the drag
     const original = Object.keys(containers).find((key) =>
@@ -753,6 +775,7 @@ export const useStructureDnd = ({
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event;
+    dlog('dragEnd: over =', over ? String(over.id) : null, '| active =', String(active?.id));
 
     // Set drag ending flag immediately to prevent interference
     setIsDragEnding(true);
@@ -762,6 +785,7 @@ export const useStructureDnd = ({
 
     // Helper to restore original state and clean up drag
     const resetDragState = () => {
+      dlog('end: REVERT (no change / invalid drop) → restored original');
       if (previewRafRef.current !== null) {
         cancelAnimationFrame(previewRafRef.current);
         previewRafRef.current = null;
@@ -796,12 +820,14 @@ export const useStructureDnd = ({
       targetItemIndex,
       targetItemSermonPointId,
     } = dropTarget;
+    dlog('  dropTarget:', { overContainer, droppedOnItem, targetItemIndex, outlinePointId, activeContainer });
 
     if (
       !activeContainer ||
       !overContainer ||
       !["introduction", "main", "conclusion", "ambiguous"].includes(overContainer)
     ) {
+      dlog('  reason: invalid container (active/over not a section)');
       resetDragState();
       return;
     }
@@ -874,6 +900,53 @@ export const useStructureDnd = ({
     updatedContainers = removeIdFromOtherSections(updatedContainers, overContainer, String(active.id));
 
     if (!hasMeaningfulDropChange(previousContainers, updatedContainers, String(active.id))) {
+      // The snapshot-based recompute is a no-op. But the LIVE PREVIEW may already hold a real
+      // reorder: in a 2-card point the preview swaps the cards, they separate, so `over`
+      // collapses onto the dragged card itself and the recompute sees nothing. Commit the
+      // preview instead of discarding it. (Root proven via live [DND] logs.)
+      const preview = containersRef.current;
+      const before = locateItem(previousContainers, String(active.id));
+      const now = locateItem(preview, String(active.id));
+      // Recovery is ONLY for a same-container reorder whose snapshot recompute came out a
+      // no-op. Cross-section / assignment / zone drops keep going through the normal apply
+      // path (which runs the full finalization); committing their raw preview metadata here
+      // could persist a stale outlinePointId. (Codex P1.)
+      const reordered = !!before && !!now && before.container === now.container && before.index !== now.index;
+
+      if (reordered && now) {
+        dlog('  recovered: same-container preview reorder, snapshot no-op → committing preview');
+        setContainers(preview);
+        containersRef.current = preview;
+        setActiveId(null);
+        setOriginalContainer(null);
+        setIsDragEnding(false);
+        dragStartContainersRef.current = null;
+
+        try {
+          await handleStructureUpdate(sermon, buildStructureFromContainers(preview), setSermon);
+          // Persist the moved thought's position ONLY after structure persistence succeeds,
+          // so a failed structure save can't leave a half-applied move. (Codex P2.)
+          const movedThought = sermon.thoughts.find((th: Thought) => th.id === String(active.id));
+          if (movedThought) {
+            debouncedSaveThought(sermon.id, {
+              ...movedThought,
+              position: typeof now.item.position === 'number' ? now.item.position : movedThought.position,
+              outlinePointId: now.item.outlinePointId,
+              subPointId: now.item.subPointId ?? null,
+            });
+          }
+        } catch (error) {
+          console.error('Error committing preview drag:', error);
+          setContainers(previousContainers);
+          containersRef.current = previousContainers;
+          setSermon(previousSermon);
+          toast.error(t('errors.dragDropUpdateFailed', { defaultValue: 'Failed to update. Changes have been reverted.' }));
+        }
+        dlog('end: APPLIED (from preview) →', now.container, (preview[now.container] || []).map((i) => i.id));
+        return;
+      }
+
+      dlog('  reason: hasMeaningfulDropChange=false (order/assignment identical)');
       resetDragState();
       return;
     }
@@ -887,6 +960,7 @@ export const useStructureDnd = ({
     // Apply state updates immediately
     setContainers(updatedContainers);
     containersRef.current = updatedContainers;
+    dlog('end: APPLIED →', overContainer, (updatedContainers[overContainer] || []).map((i) => i.id));
 
     // Clear drag state immediately
     setActiveId(null);

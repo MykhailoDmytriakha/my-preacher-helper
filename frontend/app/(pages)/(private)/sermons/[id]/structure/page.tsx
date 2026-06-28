@@ -1,6 +1,6 @@
 "use client";
 
-import { DndContext, DragOverlay, pointerWithin, type DragEndEvent } from "@dnd-kit/core";
+import { DndContext, DragOverlay, type DragEndEvent } from "@dnd-kit/core";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import React, { useState, useEffect, Suspense, useRef, useCallback, useMemo } from "react";
@@ -30,6 +30,7 @@ import { useOutlineStats } from "./hooks/useOutlineStats";
 import { usePersistence } from "./hooks/usePersistence";
 import { useSermonActions } from "./hooks/useSermonActions";
 import { useStructureDnd } from "./hooks/useStructureDnd";
+import { createStructureCollisionDetection } from "./utils/collision";
 import { boardLayoutClass, showLayoutToggle } from "./utils/sectionLayout";
 import { isLocalThoughtId, findOutlinePoint } from "./utils/structure";
 
@@ -119,6 +120,8 @@ function StructurePageContent() {
 
   // Ref to hold the latest containers state
   const containersRef = useRef(containers);
+  // Stateful instance (holds the sticky-target hysteresis across a drag).
+  const { detect: collisionDetector, reset: resetCollision } = useMemo(() => createStructureCollisionDetection(), []);
   useEffect(() => {
     containersRef.current = containers;
   }, [containers]);
@@ -735,8 +738,8 @@ function StructurePageContent() {
         <DndContext
           data-testid="dnd-context"
           sensors={dndSensors}
-          collisionDetection={pointerWithin}
-          onDragStart={onDragStartHook}
+          collisionDetection={collisionDetector}
+          onDragStart={(event) => { resetCollision(); onDragStartHook(event); }}
           onDragOver={onDragOverHook}
           onDragEnd={onDragEndWrapper}
           onDragCancel={onDragCancelHook}

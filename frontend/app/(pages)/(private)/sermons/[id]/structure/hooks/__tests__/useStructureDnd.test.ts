@@ -1257,6 +1257,69 @@ describe('useStructureDnd', () => {
       });
     });
 
+    it('commits the live preview when over collapses onto the dragged card (2-card swap recovery)', async () => {
+      // The 2-card bug: handleDragOver already swapped the live preview, but at drop the
+      // cards have separated so `over` resolves to the dragged card itself → snapshot
+      // recompute is a no-op → it used to REVERT, discarding the visible swap. The recovery
+      // commits the live preview instead. (Root proven via live [DND] logs.)
+      const containers = buildContainers({
+        introduction: [
+          buildItem(THOUGHT_ONE, { outlinePointId: OUTLINE_INTRO, position: 1000 }),
+          buildItem(THOUGHT_TWO, { outlinePointId: OUTLINE_INTRO, position: 2000 }),
+        ],
+        main: [],
+      });
+      const sermon = buildSermon({
+        thoughts: [
+          buildThought(THOUGHT_ONE, { outlinePointId: OUTLINE_INTRO, position: 1000 }),
+          buildThought(THOUGHT_TWO, { outlinePointId: OUTLINE_INTRO, position: 2000 }),
+        ],
+        structure: { introduction: [THOUGHT_ONE, THOUGHT_TWO], main: [], conclusion: [], ambiguous: [] },
+      });
+      const containersRef = { current: containers };
+      const mockDebouncedSaveThought = jest.fn();
+      const { result } = renderHook(() => useStructureDnd({
+        ...defaultProps,
+        containers,
+        containersRef,
+        sermon,
+        debouncedSaveThought: mockDebouncedSaveThought,
+      }));
+
+      act(() => {
+        result.current.handleDragStart({ active: { id: THOUGHT_TWO } } as any);
+      });
+
+      // Simulate what handleDragOver already did: the live preview holds the swapped order.
+      containersRef.current = {
+        ...containers,
+        introduction: [
+          buildItem(THOUGHT_TWO, { outlinePointId: OUTLINE_INTRO, position: 500 }),
+          buildItem(THOUGHT_ONE, { outlinePointId: OUTLINE_INTRO, position: 1000 }),
+        ],
+      };
+
+      // Drop resolves to the dragged card itself — the bug trigger.
+      const over = {
+        id: THOUGHT_TWO,
+        data: { current: { container: 'introduction', outlinePointId: OUTLINE_INTRO, subPointId: undefined } },
+      };
+
+      await act(async () => {
+        await result.current.handleDragEnd({ active: { id: THOUGHT_TWO }, over } as any);
+      });
+
+      expect(containersRef.current.introduction.map((i) => i.id)).toEqual([THOUGHT_TWO, THOUGHT_ONE]);
+      expect(mockDebouncedSaveThought).toHaveBeenCalledWith(
+        sermon.id,
+        expect.objectContaining({ id: THOUGHT_TWO }),
+      );
+      expect(mockUpdateStructure).toHaveBeenCalledWith(
+        sermon.id,
+        expect.objectContaining({ introduction: [THOUGHT_TWO, THOUGHT_ONE] }),
+      );
+    });
+
     it('persists outline point without structure changes when dropping on outline placeholder', async () => {
       const containers = buildContainers({
         introduction: [
