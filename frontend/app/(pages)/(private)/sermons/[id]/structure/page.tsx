@@ -681,47 +681,55 @@ function StructurePageContent() {
   return (
     <div className="p-4">
       <div className={`w-full`}>
-        <div className="mb-4">
-          <h1 className="text-2xl md:text-4xl font-extrabold text-center mb-2 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
-            {t('structure.title')} {sermon.title}
-          </h1>
-          <div className="flex flex-col items-center gap-2">
+        {/* One calm toolbar: back + quiet title (left), section toggles + layout (right).
+            The big gradient title was dropped — breadcrumbs already carry the sermon path. */}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <div className="flex min-w-0 items-center gap-3">
             <Link
               href={`/sermons/${sermon.id}`}
-              className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+              className="whitespace-nowrap text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             >
               {t('structure.backToSermon')}
             </Link>
-            <SectionVisibilityPills visibleSections={visibleSections} onToggle={toggleSection} />
+            <span className="hidden h-4 w-px bg-gray-200 dark:bg-gray-700 sm:block" aria-hidden="true" />
+            <h1 className="min-w-0 truncate text-base font-semibold text-gray-800 dark:text-gray-100 md:text-lg">
+              <span className="font-normal text-gray-400 dark:text-gray-500">{t('structure.title')} </span>
+              {sermon.title}
+            </h1>
           </div>
-          {/* Layout toggle (vertical/horizontal) — for 2+ columns (a pair can stack too); hidden on mobile */}
-          {showLayoutToggle(visibleSections.length) && (
-            <div className="hidden md:flex justify-end mt-2">
-              <button
-                onClick={handleToggleLayout}
-                title={isVerticalLayout ? t('structure.switchToHorizontalLayout', { defaultValue: 'Switch to horizontal layout' }) : t('structure.switchToVerticalLayout', { defaultValue: 'Switch to vertical layout' })}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600"
-                data-testid="layout-toggle-button"
-              >
-                {isVerticalLayout ? (
-                  // Horizontal layout icon (3 columns)
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="5" height="18" rx="1" />
-                    <rect x="10" y="3" width="5" height="18" rx="1" />
-                    <rect x="17" y="3" width="5" height="18" rx="1" />
-                  </svg>
-                ) : (
-                  // Vertical layout icon (stacked rows)
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="3" y="3" width="18" height="5" rx="1" />
-                    <rect x="3" y="10" width="18" height="5" rx="1" />
-                    <rect x="3" y="17" width="18" height="5" rx="1" />
-                  </svg>
-                )}
-                <span>{isVerticalLayout ? t('structure.horizontalLayout', { defaultValue: 'Horizontal' }) : t('structure.verticalLayout', { defaultValue: 'Vertical' })}</span>
-              </button>
-            </div>
-          )}
+
+          <div className="flex items-center gap-2">
+            <SectionVisibilityPills visibleSections={visibleSections} onToggle={toggleSection} />
+            {/* Layout toggle (vertical/horizontal) — for 2+ columns (a pair can stack too); hidden on mobile */}
+            {showLayoutToggle(visibleSections.length) && (
+              <>
+                <span className="mx-1 hidden h-5 w-px bg-gray-200 dark:bg-gray-700 md:block" aria-hidden="true" />
+                <button
+                  onClick={handleToggleLayout}
+                  title={isVerticalLayout ? t('structure.switchToHorizontalLayout', { defaultValue: 'Switch to horizontal layout' }) : t('structure.switchToVerticalLayout', { defaultValue: 'Switch to vertical layout' })}
+                  className="hidden items-center gap-1.5 rounded-full border border-gray-200 px-3 py-1 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800/40 dark:hover:text-gray-200 md:inline-flex"
+                  data-testid="layout-toggle-button"
+                >
+                  {isVerticalLayout ? (
+                    // Horizontal layout icon (3 columns)
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="5" height="18" rx="1" />
+                      <rect x="10" y="3" width="5" height="18" rx="1" />
+                      <rect x="17" y="3" width="5" height="18" rx="1" />
+                    </svg>
+                  ) : (
+                    // Vertical layout icon (stacked rows)
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="3" width="18" height="5" rx="1" />
+                      <rect x="3" y="10" width="18" height="5" rx="1" />
+                      <rect x="3" y="17" width="18" height="5" rx="1" />
+                    </svg>
+                  )}
+                  <span>{isVerticalLayout ? t('structure.horizontalLayout', { defaultValue: 'Horizontal' }) : t('structure.verticalLayout', { defaultValue: 'Vertical' })}</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         <DndContext
