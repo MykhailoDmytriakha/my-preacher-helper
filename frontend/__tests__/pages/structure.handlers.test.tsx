@@ -93,11 +93,21 @@ jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useAiSortingDiff', (
 }));
 
 jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useFocusMode', () => ({
-  useFocusMode: () => ({
-    focusedColumn: focusModeState.focusedColumn,
-    handleToggleFocusMode: jest.fn(),
-    navigateToSection: jest.fn(),
-  }),
+  useFocusMode: () => {
+    const fc = focusModeState.focusedColumn;
+    const visible = fc ? [fc] : ['introduction', 'main', 'conclusion'];
+    return {
+      focusedColumn: fc,
+      isFocusMode: visible.length === 1,
+      visibleSections: visible,
+      isSectionVisible: (id: string) => visible.includes(id),
+      toggleSection: jest.fn(),
+      soloSection: jest.fn(),
+      showAll: jest.fn(),
+      handleToggleFocusMode: jest.fn(),
+      navigateToSection: jest.fn(),
+    };
+  },
 }));
 
 jest.mock('@/(pages)/(private)/sermons/[id]/structure/hooks/useOutlineStats', () => ({

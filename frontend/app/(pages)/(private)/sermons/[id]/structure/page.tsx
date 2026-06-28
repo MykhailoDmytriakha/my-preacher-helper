@@ -1,6 +1,7 @@
 "use client";
 
 import { DndContext, DragOverlay, pointerWithin, type DragEndEvent } from "@dnd-kit/core";
+import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import React, { useState, useEffect, Suspense, useRef, useCallback, useMemo } from "react";
 import { useTranslation } from 'react-i18next';
@@ -22,13 +23,14 @@ import { getSermonPlanData } from "@utils/sermonPlanAccess";
 import { insertThoughtIdInStructure, resolveSectionFromOutline } from "@utils/thoughtOrdering";
 
 import { AmbiguousSection } from "./components/AmbiguousSection";
-import { FocusNav } from "./components/FocusNav";
+import { SectionVisibilityPills } from "./components/SectionVisibilityPills";
 import { useAiSortingDiff } from "./hooks/useAiSortingDiff";
 import { useFocusMode } from "./hooks/useFocusMode";
 import { useOutlineStats } from "./hooks/useOutlineStats";
 import { usePersistence } from "./hooks/usePersistence";
 import { useSermonActions } from "./hooks/useSermonActions";
 import { useStructureDnd } from "./hooks/useStructureDnd";
+import { boardLayoutClass, showLayoutToggle } from "./utils/sectionLayout";
 import { isLocalThoughtId, findOutlinePoint } from "./utils/structure";
 
 // Translation key constants
@@ -161,9 +163,13 @@ function StructurePageContent() {
     },
   });
 
-  // Focus mode hook
+  // Section visibility (subsumes focus mode: 1 visible = focus, 2 = pair, 3 = all)
   const {
     focusedColumn,
+    isFocusMode,
+    visibleSections,
+    isSectionVisible,
+    toggleSection,
     handleToggleFocusMode,
     navigateToSection,
   } = useFocusMode({ searchParams, sermonId });
@@ -679,15 +685,17 @@ function StructurePageContent() {
           <h1 className="text-2xl md:text-4xl font-extrabold text-center mb-2 bg-gradient-to-r from-blue-500 to-purple-500 bg-clip-text text-transparent">
             {t('structure.title')} {sermon.title}
           </h1>
-          <FocusNav
-            sermon={sermon}
-            sermonId={sermonId}
-            focusedColumn={focusedColumn}
-            onToggleFocusMode={handleToggleFocusMode}
-            onNavigateToSection={navigateToSection}
-          />
-          {/* Layout toggle button — only shown when not in focus mode, hidden on mobile */}
-          {!focusedColumn && (
+          <div className="flex flex-col items-center gap-2">
+            <Link
+              href={`/sermons/${sermon.id}`}
+              className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+            >
+              {t('structure.backToSermon')}
+            </Link>
+            <SectionVisibilityPills visibleSections={visibleSections} onToggle={toggleSection} />
+          </div>
+          {/* Layout toggle (vertical/horizontal) — for 2+ columns (a pair can stack too); hidden on mobile */}
+          {showLayoutToggle(visibleSections.length) && (
             <div className="hidden md:flex justify-end mt-2">
               <button
                 onClick={handleToggleLayout}
@@ -737,9 +745,9 @@ function StructurePageContent() {
             columnTitle={columnTitles["ambiguous"]}
           />
 
-          <div className={`${!focusedColumn ? (isVerticalLayout ? 'flex flex-col gap-6' : 'grid grid-cols-1 md:grid-cols-3 gap-6') : 'flex flex-col'} w-full mt-8`}>
-            {/* Introduction column - only show if not in focus mode or if it's the focused column */}
-            {(!focusedColumn || focusedColumn === "introduction") && (
+          <div className={`${boardLayoutClass(visibleSections.length, isVerticalLayout)} w-full mt-8`}>
+            {/* Introduction column — shown if its section is visible */}
+            {isSectionVisible("introduction") && (
               <Column
                 key="introduction"
                 id="introduction"
@@ -749,7 +757,7 @@ function StructurePageContent() {
                 onEdit={handleEdit}
                 outlinePoints={outlinePoints.introduction}
                 showFocusButton={true}
-                isFocusMode={focusedColumn === "introduction"}
+                isFocusMode={isFocusMode}
                 onToggleFocusMode={handleToggleFocusMode}
                 onAiSortPoint={(outlinePointId) => requestAiSortForOutlinePoint("introduction", outlinePointId)}
                 isLoading={isSorting}
@@ -779,8 +787,8 @@ function StructurePageContent() {
               />
             )}
 
-            {/* Main column - only show if not in focus mode or if it's the focused column */}
-            {(!focusedColumn || focusedColumn === "main") && (
+            {/* Main column — shown if its section is visible */}
+            {isSectionVisible("main") && (
               <Column
                 key="main"
                 id="main"
@@ -790,7 +798,7 @@ function StructurePageContent() {
                 onEdit={handleEdit}
                 outlinePoints={outlinePoints.main}
                 showFocusButton={true}
-                isFocusMode={focusedColumn === "main"}
+                isFocusMode={isFocusMode}
                 onToggleFocusMode={handleToggleFocusMode}
                 onAiSortPoint={(outlinePointId) => requestAiSortForOutlinePoint("main", outlinePointId)}
                 isLoading={isSorting}
@@ -819,7 +827,7 @@ function StructurePageContent() {
                 onAddOutlinePoint={handleAddOutlinePoint}
               />
             )}
-            {(!focusedColumn || focusedColumn === "conclusion") && (
+            {isSectionVisible("conclusion") && (
               <Column
                 key="conclusion"
                 id="conclusion"
@@ -829,7 +837,7 @@ function StructurePageContent() {
                 onEdit={handleEdit}
                 outlinePoints={outlinePoints.conclusion}
                 showFocusButton={true}
-                isFocusMode={focusedColumn === "conclusion"}
+                isFocusMode={isFocusMode}
                 onToggleFocusMode={handleToggleFocusMode}
                 onAiSortPoint={(outlinePointId) => requestAiSortForOutlinePoint("conclusion", outlinePointId)}
                 isLoading={isSorting}

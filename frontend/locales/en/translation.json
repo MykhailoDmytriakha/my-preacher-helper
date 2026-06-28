@@ -799,6 +799,8 @@
     "preview": "Structure preview",
     "focusMode": "Focus Mode",
     "normalMode": "Normal Mode",
+    "showSections": "Show sections",
+    "lastSectionHint": "At least one section stays open",
     "outlinePoints": "Outline Points",
     "content": "Content",
     "tags": "Tags",

@@ -1,249 +1,106 @@
 import { renderHook, act } from '@testing-library/react';
 import { useRouter, usePathname } from 'next/navigation';
 
-import { runScenarios } from '@test-utils/scenarioRunner';
-
 import { useFocusMode } from '../useFocusMode';
 
-// Mock Next.js navigation
 jest.mock('next/navigation', () => ({
   useRouter: jest.fn(),
-  usePathname: jest.fn()
+  usePathname: jest.fn(),
 }));
 
 const mockUseRouter = useRouter as jest.MockedFunction<typeof useRouter>;
 const mockUsePathname = usePathname as jest.MockedFunction<typeof usePathname>;
-const buildStructurePath = (sermonId: string = 'sermon-1') => `/sermons/${sermonId}/structure`;
-const buildFocusUrl = (section: string, sermonId: string = 'sermon-1') =>
-  `${buildStructurePath(sermonId)}?mode=focus&section=${section}`;
 
-describe('useFocusMode', () => {
-  const mockRouter = {
-    push: jest.fn(),
-    replace: jest.fn(),
-    back: jest.fn(),
-    forward: jest.fn(),
-    refresh: jest.fn(),
-    prefetch: jest.fn()
-  };
+const PATH = '/sermons/sermon-1/structure';
+const sp = (q = '') => new URLSearchParams(q);
 
-  const mockPathname = buildStructurePath();
+describe('useFocusMode (section visibility)', () => {
+  const router = { push: jest.fn(), replace: jest.fn(), back: jest.fn(), forward: jest.fn(), refresh: jest.fn(), prefetch: jest.fn() };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseRouter.mockReturnValue(mockRouter);
-    mockUsePathname.mockReturnValue(mockPathname);
+    mockUseRouter.mockReturnValue(router as unknown as ReturnType<typeof useRouter>);
+    mockUsePathname.mockReturnValue(PATH);
   });
+
+  const setup = (q = '') => renderHook(() => useFocusMode({ searchParams: sp(q), sermonId: 'sermon-1' }));
 
   describe('initialization', () => {
-    it('covers default and URL-driven initialization once', async () => {
-      await runScenarios([
-        {
-          name: 'defaults',
-          run: () => {
-            const { result } = renderHook(() => useFocusMode({ searchParams: new URLSearchParams(), sermonId: 'sermon-1' }));
-            expect(result.current.focusedColumn).toBeNull();
-            expect(typeof result.current.handleToggleFocusMode).toBe('function');
-          },
-        },
-        {
-          name: 'focus params enable focus mode',
-          run: () => {
-            const { result } = renderHook(() =>
-              useFocusMode({ searchParams: new URLSearchParams('?mode=focus&section=introduction&sermonId=sermon-1'), sermonId: 'sermon-1' }),
-            );
-            expect(result.current.focusedColumn).toBe('introduction');
-          },
-        },
-        {
-          name: 'ignored when mode not focus or invalid section',
-          run: () => {
-            const { result: normalMode } = renderHook(() =>
-              useFocusMode({ searchParams: new URLSearchParams('?mode=normal&section=introduction'), sermonId: 'sermon-1' }),
-            );
-            expect(normalMode.current.focusedColumn).toBeNull();
-
-            const { result: invalidSection } = renderHook(() =>
-              useFocusMode({ searchParams: new URLSearchParams('?mode=focus&section=invalid'), sermonId: 'sermon-1' }),
-            );
-            expect(invalidSection.current.focusedColumn).toBeNull();
-          },
-        },
-      ]);
-    });
-  });
-
-  describe('URL parameter handling', () => {
-    it('maps section params to focus state in one sweep', async () => {
-      await runScenarios([
-        {
-          name: 'each focusable section',
-          run: () => {
-            ['introduction', 'main', 'conclusion'].forEach((section) => {
-              const { result } = renderHook(() =>
-                useFocusMode({ searchParams: new URLSearchParams(`?mode=focus&section=${section}&sermonId=sermon-1`), sermonId: 'sermon-1' }),
-              );
-              expect(result.current.focusedColumn).toBe(section);
-            });
-          },
-        },
-        {
-          name: 'missing sermonId and empty params',
-          run: () => {
-            const { result: missingId } = renderHook(() =>
-              useFocusMode({ searchParams: new URLSearchParams('?mode=focus&section=introduction'), sermonId: 'sermon-1' }),
-            );
-            expect(missingId.current.focusedColumn).toBe('introduction');
-
-            const { result: emptyParams } = renderHook(() => useFocusMode({ searchParams: new URLSearchParams(), sermonId: 'sermon-1' }));
-            expect(emptyParams.current.focusedColumn).toBeNull();
-          },
-        },
-      ]);
-    });
-  });
-
-  describe('handleToggleFocusMode', () => {
-    it('toggles focus mode on/off across sections inside one test', async () => {
-      await runScenarios([
-        {
-          name: 'enable focus mode for each section',
-          run: () => {
-            const { result } = renderHook(() => useFocusMode({ searchParams: new URLSearchParams(), sermonId: 'sermon-1' }));
-            ['introduction', 'main', 'conclusion'].forEach((section) => {
-              act(() => result.current.handleToggleFocusMode(section as any));
-              expect(mockRouter.push).toHaveBeenCalledWith(buildFocusUrl(section));
-              mockRouter.push.mockClear();
-            });
-          },
-        },
-        {
-          name: 'toggle off when already focused',
-          run: () => {
-            const { result } = renderHook(() =>
-              useFocusMode({ searchParams: new URLSearchParams('?mode=focus&section=introduction&sermonId=sermon-1'), sermonId: 'sermon-1' }),
-            );
-            act(() => result.current.handleToggleFocusMode('introduction'));
-            expect(mockRouter.push).toHaveBeenCalledWith(buildStructurePath());
-            mockRouter.push.mockClear();
-          },
-        },
-        {
-          name: 'switch sections and missing sermonId',
-          run: () => {
-            const focusedHook = renderHook(() =>
-              useFocusMode({ searchParams: new URLSearchParams('?mode=focus&section=introduction&sermonId=sermon-1'), sermonId: 'sermon-1' }),
-            );
-            act(() => focusedHook.result.current.handleToggleFocusMode('main'));
-            expect(mockRouter.push).toHaveBeenCalledWith(buildFocusUrl('main'));
-            mockRouter.push.mockClear();
-
-            const missingIdHook = renderHook(() => useFocusMode({ searchParams: new URLSearchParams(), sermonId: null as any }));
-            act(() => missingIdHook.result.current.handleToggleFocusMode('introduction'));
-            expect(mockRouter.push).toHaveBeenCalledWith(buildFocusUrl('introduction'));
-          },
-        },
-      ]);
-    });
-  });
-
-  describe('navigateToSection', () => {
-    it('navigates to focus URLs for each section in a single test', () => {
-      const { result } = renderHook(() => useFocusMode({ searchParams: new URLSearchParams(), sermonId: 'sermon-1' }));
-      ['introduction', 'main', 'conclusion'].forEach((section) => {
-        act(() => result.current.navigateToSection(section as any));
-        expect(mockRouter.push).toHaveBeenCalledWith(buildFocusUrl(section));
-        mockRouter.push.mockClear();
-      });
-
-      const { result: missingId } = renderHook(() => useFocusMode({ searchParams: new URLSearchParams(), sermonId: null as any }));
-      act(() => missingId.current.navigateToSection('introduction'));
-      expect(mockRouter.push).toHaveBeenCalledWith(buildFocusUrl('introduction'));
-    });
-  });
-
-  describe('URL parameter updates', () => {
-    it('reacts to search param changes without multiple Jest tests', () => {
-      const { result, rerender } = renderHook(
-        ({ searchParams, sermonId }) => useFocusMode({ searchParams, sermonId }),
-        { initialProps: { searchParams: new URLSearchParams(), sermonId: 'sermon-1' } },
-      );
+    it('defaults to all three sections visible (no focus)', () => {
+      const { result } = setup();
+      expect(result.current.visibleSections).toEqual(['introduction', 'main', 'conclusion']);
+      expect(result.current.isFocusMode).toBe(false);
       expect(result.current.focusedColumn).toBeNull();
+    });
 
-      rerender({ searchParams: new URLSearchParams('?mode=focus&section=main&sermonId=sermon-1'), sermonId: 'sermon-1' });
-      expect(result.current.focusedColumn).toBe('main');
-
-      rerender({ searchParams: new URLSearchParams('?sermonId=sermon-1'), sermonId: 'sermon-1' });
-      expect(result.current.focusedColumn).toBeNull();
-
-      rerender({ searchParams: new URLSearchParams('?mode=focus&section=introduction&sermonId=sermon-1'), sermonId: 'sermon-1' });
+    it('reads legacy ?mode=focus&section=X as a single visible section (focus)', () => {
+      const { result } = setup('?mode=focus&section=introduction');
+      expect(result.current.visibleSections).toEqual(['introduction']);
+      expect(result.current.isFocusMode).toBe(true);
       expect(result.current.focusedColumn).toBe('introduction');
-      rerender({ searchParams: new URLSearchParams('?mode=focus&section=main&sermonId=sermon-1'), sermonId: 'sermon-1' });
-      expect(result.current.focusedColumn).toBe('main');
+    });
+
+    it('reads ?sections=a,b as a pair, normalized to canonical order', () => {
+      const { result } = setup('?sections=conclusion,introduction');
+      expect(result.current.visibleSections).toEqual(['introduction', 'conclusion']);
+      expect(result.current.isFocusMode).toBe(false);
+      expect(result.current.focusedColumn).toBeNull();
+    });
+
+    it('falls back to all three on invalid params', () => {
+      expect(setup('?mode=focus&section=invalid').result.current.visibleSections)
+        .toEqual(['introduction', 'main', 'conclusion']);
+      expect(setup('?sections=bogus').result.current.visibleSections)
+        .toEqual(['introduction', 'main', 'conclusion']);
     });
   });
 
-  describe('edge cases and error handling', () => {
-    it('guards against invalid params and unusual sermonIds', () => {
-      const invalidParams = [
-        new URLSearchParams('?mode=focus&section=invalid'),
-        new URLSearchParams('?mode=focus&sermonId=sermon-1'),
-        new URLSearchParams('?mode=focus&section=&sermonId=sermon-1'),
-      ];
-      invalidParams.forEach((params) => {
-        const { result } = renderHook(() => useFocusMode({ searchParams: params, sermonId: 'sermon-1' }));
-        expect(result.current.focusedColumn).toBeNull();
-      });
-
-      mockUsePathname.mockReturnValue(buildStructurePath('sermon-123_abc'));
-      const { result } = renderHook(() => useFocusMode({ searchParams: new URLSearchParams(), sermonId: 'sermon-123_abc' }));
-      act(() => result.current.handleToggleFocusMode('introduction'));
-      expect(mockRouter.push).toHaveBeenCalledWith(buildFocusUrl('introduction', 'sermon-123_abc'));
+  describe('mutations', () => {
+    it('toggleSection hides a section and writes ?sections=', () => {
+      const { result } = setup();
+      act(() => result.current.toggleSection('main'));
+      expect(result.current.visibleSections).toEqual(['introduction', 'conclusion']);
+      expect(router.push).toHaveBeenCalledWith(`${PATH}?sections=introduction%2Cconclusion`);
     });
-  });
 
-  describe('integration scenarios', () => {
-    it('walks through focus workflows and ensures state stability', () => {
-      const { result } = renderHook(() => useFocusMode({ searchParams: new URLSearchParams(), sermonId: 'sermon-1' }));
-      act(() => result.current.handleToggleFocusMode('introduction'));
-      expect(mockRouter.push).toHaveBeenCalledWith(buildFocusUrl('introduction'));
-      mockRouter.push.mockClear();
+    it('toggleSection keeps at least one section (last toggle is a no-op)', () => {
+      const { result } = setup('?sections=introduction');
+      act(() => result.current.toggleSection('introduction'));
+      expect(result.current.visibleSections).toEqual(['introduction']);
+      expect(router.push).not.toHaveBeenCalled();
+    });
 
-      act(() => result.current.navigateToSection('main'));
-      expect(mockRouter.push).toHaveBeenCalledWith(buildFocusUrl('main'));
-      mockRouter.push.mockClear();
+    it('navigateToSection shows only that section (= focus)', () => {
+      const { result } = setup();
+      act(() => result.current.navigateToSection('conclusion'));
+      expect(result.current.visibleSections).toEqual(['conclusion']);
+      expect(router.push).toHaveBeenCalledWith(`${PATH}?sections=conclusion`);
+    });
 
+    it('handleToggleFocusMode solos a section, then exits to the whole plan', () => {
+      const { result } = setup();
       act(() => result.current.handleToggleFocusMode('main'));
-      expect(mockRouter.push).toHaveBeenCalledWith(buildStructurePath());
+      expect(result.current.visibleSections).toEqual(['main']);
+      expect(router.push).toHaveBeenCalledWith(`${PATH}?sections=main`);
 
-      const { result: rerenderHook, rerender } = renderHook(
-        ({ searchParams, sermonId }) => useFocusMode({ searchParams, sermonId }),
-        { initialProps: { searchParams: new URLSearchParams('?mode=focus&section=conclusion&sermonId=sermon-1'), sermonId: 'sermon-1' } },
-      );
-      expect(rerenderHook.current.focusedColumn).toBe('conclusion');
-      rerender({ searchParams: new URLSearchParams('?mode=focus&section=conclusion&sermonId=sermon-1'), sermonId: 'sermon-1' });
-      expect(rerenderHook.current.focusedColumn).toBe('conclusion');
+      router.push.mockClear();
+      act(() => result.current.handleToggleFocusMode('main'));
+      expect(result.current.visibleSections).toEqual(['introduction', 'main', 'conclusion']);
+      expect(router.push).toHaveBeenCalledWith(PATH);
     });
   });
 
-  describe('performance considerations', () => {
-    it('should not cause unnecessary re-renders', () => {
-      const searchParams = new URLSearchParams('?mode=focus&section=introduction&sermonId=sermon-1');
-      const { result, rerender } = renderHook(() => useFocusMode({
-        searchParams,
-        sermonId: 'sermon-1'
-      }));
-
-      const initialResult = result.current;
-
-      // Re-render with same props
-      rerender({
-        searchParams: new URLSearchParams('?mode=focus&section=introduction&sermonId=sermon-1'),
-        sermonId: 'sermon-1'
-      });
-
-      // Should maintain same reference for stable values
-      expect(result.current.focusedColumn).toBe(initialResult.focusedColumn);
+  describe('URL re-sync', () => {
+    it('reacts to external search-param changes', () => {
+      const { result, rerender } = renderHook(
+        ({ q }) => useFocusMode({ searchParams: sp(q), sermonId: 'sermon-1' }),
+        { initialProps: { q: '' } }
+      );
+      expect(result.current.visibleSections).toEqual(['introduction', 'main', 'conclusion']);
+      rerender({ q: '?sections=main,conclusion' });
+      expect(result.current.visibleSections).toEqual(['main', 'conclusion']);
+      rerender({ q: '?mode=focus&section=introduction' });
+      expect(result.current.visibleSections).toEqual(['introduction']);
     });
   });
 });

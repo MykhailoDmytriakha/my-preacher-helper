@@ -1,102 +1,120 @@
 import { useRouter, usePathname } from "next/navigation";
 import { useState, useEffect, useCallback } from "react";
 
+// Section visibility model. The three structure sections can each be shown or
+// hidden, and that single axis subsumes the old "focus mode":
+//   1 visible  -> focus mode (rich single-section layout, with the side panel)
+//   2 visible  -> a pair side by side
+//   3 visible  -> the whole plan
+// "Focus mode" is no longer a separate concept — it's just "one section left".
+const CANON = ['introduction', 'main', 'conclusion'] as const;
+export type SectionId = typeof CANON[number];
+
+const isSectionId = (v: string): v is SectionId => (CANON as readonly string[]).includes(v);
+
+// Visible set from URL. New scheme: ?sections=a,b. Legacy (still honoured so old
+// deep-links / bookmarks from SermonOutline & StructureStats keep working):
+// ?mode=focus&section=X -> [X].
+const parseVisible = (
+  sections: string | null,
+  mode: string | null,
+  section: string | null
+): SectionId[] => {
+  if (sections) {
+    const set = sections.split(',').map((s) => s.trim()).filter(isSectionId);
+    const ordered = CANON.filter((c) => set.includes(c));
+    if (ordered.length > 0) return ordered;
+  }
+  if (mode === 'focus' && section && isSectionId(section)) return [section];
+  return [...CANON];
+};
+
 interface UseFocusModeProps {
   searchParams: URLSearchParams | null;
   sermonId: string | null;
 }
 
-export const useFocusMode = ({ searchParams, sermonId }: UseFocusModeProps) => {
+export const useFocusMode = ({ searchParams }: UseFocusModeProps) => {
   const router = useRouter();
   const pathname = usePathname();
-  const [focusedColumn, setFocusedColumn] = useState<string | null>(null);
-  const buildUrlWithParams = useCallback((params: URLSearchParams) => {
-    const query = params.toString();
-    return query ? `${pathname}?${query}` : pathname;
-  }, [pathname]);
 
-  const focusMode = searchParams?.get("mode");
-  const focusSection = searchParams?.get("section");
+  const sectionsParam = searchParams?.get('sections') ?? null;
+  const modeParam = searchParams?.get('mode') ?? null;
+  const sectionParam = searchParams?.get('section') ?? null;
 
-  // Initialize Focus mode from URL parameters
+  const [visibleSections, setVisibleSections] = useState<SectionId[]>(() =>
+    parseVisible(sectionsParam, modeParam, sectionParam)
+  );
+
+  // Re-sync when the URL changes (browser back/forward, external deep-link).
   useEffect(() => {
-    if (focusMode === 'focus' && focusSection && ['introduction', 'main', 'conclusion'].includes(focusSection)) {
-      setFocusedColumn(focusSection);
-    } else if (focusMode !== 'focus') {
-      setFocusedColumn(null);
-    }
-  }, [focusMode, focusSection]);
+    setVisibleSections(parseVisible(sectionsParam, modeParam, sectionParam));
+  }, [sectionsParam, modeParam, sectionParam]);
 
-  // Update URL when sermonId changes to preserve Focus mode
-  useEffect(() => {
-    if (sermonId && focusedColumn && focusMode === 'focus') {
-      const newSearchParams = new URLSearchParams();
-      newSearchParams.set('mode', 'focus');
-      newSearchParams.set('section', focusedColumn);
-      
-      const currentUrl = buildUrlWithParams(newSearchParams);
-      if (typeof window !== 'undefined' && window.location.href !== currentUrl) {
-        router.replace(currentUrl);
-      }
-    }
-  }, [sermonId, focusedColumn, focusMode, buildUrlWithParams, router]);
-
-  const handleToggleFocusMode = useCallback((columnId: string) => {
-    if (focusedColumn === columnId) {
-      // If the same column is clicked, exit focus mode
-      setFocusedColumn(null);
-      
-      // Update URL to remove focus mode
-      const newSearchParams = new URLSearchParams(searchParams?.toString() || '');
-      newSearchParams.delete('mode');
-      newSearchParams.delete('section');
-      newSearchParams.delete('sermonId');
-      
-      router.push(buildUrlWithParams(newSearchParams));
+  const buildUrl = useCallback((next: SectionId[]) => {
+    const params = new URLSearchParams(searchParams?.toString() || '');
+    params.delete('mode');
+    params.delete('section');
+    params.delete('sermonId');
+    if (next.length === CANON.length) {
+      params.delete('sections'); // all visible == default == clean URL
     } else {
-      // Otherwise, enter focus mode for the clicked column
-      setFocusedColumn(columnId);
-      
-      // Update URL to include focus mode and section
-      const newSearchParams = new URLSearchParams(searchParams?.toString() || '');
-      newSearchParams.set('mode', 'focus');
-      newSearchParams.set('section', columnId);
-      newSearchParams.delete('sermonId');
-      
-      router.push(buildUrlWithParams(newSearchParams));
+      params.set('sections', next.join(','));
     }
-  }, [focusedColumn, searchParams, buildUrlWithParams, router]);
+    const q = params.toString();
+    return q ? `${pathname}?${q}` : pathname;
+  }, [searchParams, pathname]);
 
-  // Function to get navigation sections for focus mode
-  const getNavigationSections = useCallback((currentSection: string) => {
-    const sections = ['introduction', 'main', 'conclusion'];
-    const currentIndex = sections.indexOf(currentSection);
-    
-    if (currentIndex === -1) return { previous: null, next: null };
-    
-    return {
-      previous: currentIndex > 0 ? sections[currentIndex - 1] : null,
-      next: currentIndex < sections.length - 1 ? sections[currentIndex + 1] : null
-    };
-  }, []);
+  // Closure-based (not a functional updater) so router.push never runs inside a
+  // setState updater — safe under StrictMode's double-invoke.
+  const apply = useCallback((next: SectionId[]) => {
+    const ordered = CANON.filter((c) => next.includes(c));
+    const safe = ordered.length > 0 ? ordered : [...CANON];
+    setVisibleSections(safe);
+    router.push(buildUrl(safe));
+  }, [buildUrl, router]);
 
-  // Function to navigate to a specific section in focus mode
-  const navigateToSection = useCallback((sectionId: string) => {
-    setFocusedColumn(sectionId);
-    
-    // Update URL to include focus mode and section
-    const newSearchParams = new URLSearchParams();
-    newSearchParams.set('mode', 'focus');
-    newSearchParams.set('section', sectionId);
-    
-    router.push(buildUrlWithParams(newSearchParams));
-  }, [buildUrlWithParams, router]);
+  const toggleSection = useCallback((id: string) => {
+    if (!isSectionId(id)) return;
+    const has = visibleSections.includes(id);
+    if (has && visibleSections.length === 1) return; // keep at least one visible
+    const next = has
+      ? visibleSections.filter((c) => c !== id)
+      : CANON.filter((c) => visibleSections.includes(c) || c === id);
+    apply(next);
+  }, [visibleSections, apply]);
+
+  // Show only this section (= enter focus on it). Used by the per-column ⛶ button.
+  const soloSection = useCallback((id: string) => {
+    if (isSectionId(id)) apply([id]);
+  }, [apply]);
+
+  const showAll = useCallback(() => apply([...CANON]), [apply]);
+
+  // ⛶ toggle: if already focused on this one, exit to the whole plan; else solo it.
+  const handleToggleFocusMode = useCallback((id: string) => {
+    if (!isSectionId(id)) return;
+    if (visibleSections.length === 1 && visibleSections[0] === id) showAll();
+    else soloSection(id);
+  }, [visibleSections, showAll, soloSection]);
+
+  // FocusNav-style "go to this section" — solos it.
+  const navigateToSection = useCallback((id: string) => soloSection(id), [soloSection]);
+
+  const isSectionVisible = useCallback((id: string) => visibleSections.includes(id as SectionId), [visibleSections]);
+
+  const isFocusMode = visibleSections.length === 1;
+  const focusedColumn = isFocusMode ? visibleSections[0] : null;
 
   return {
+    visibleSections,
+    isFocusMode,
     focusedColumn,
-    setFocusedColumn,
+    isSectionVisible,
+    toggleSection,
+    soloSection,
+    showAll,
     handleToggleFocusMode,
-    getNavigationSections,
     navigateToSection,
   };
 };
