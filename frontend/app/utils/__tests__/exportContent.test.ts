@@ -185,7 +185,7 @@ describe('exportContent', () => {
           name: 'outline permutations',
           run: async () => {
             const baseResult = await getExportContent(mockSermon);
-            expect(baseResult).toContain('Introduction Point 1:');
+            expect(baseResult).toContain('1. Introduction Point 1');
             expect(baseResult).toContain('First thought');
             const noOutline: Sermon = {
               ...mockSermon,
@@ -199,7 +199,7 @@ describe('exportContent', () => {
               outline: { introduction: [{ id: 'point1', text: 'Intro Point' }], main: [], conclusion: [] },
             };
             const mixedResult = await getExportContent(mixedOutline);
-            expect(mixedResult).toContain('Intro Point:');
+            expect(mixedResult).toContain('1. Intro Point');
           },
         },
         {
@@ -418,6 +418,87 @@ describe('exportContent', () => {
           },
         },
       ]);
+    });
+
+    it('numbers outline points continuously, renders sub-points as N.M, and restarts in focus mode', async () => {
+      const numberedSermon: Sermon = {
+        id: 'numbered',
+        title: 'Numbered Sermon',
+        verse: 'Ref 1:1',
+        date: '2024-01-01',
+        userId: 'user1',
+        outline: {
+          introduction: [{ id: 'i1', text: 'Intro point A' }],
+          main: [
+            {
+              id: 'm1',
+              text: 'Main point one',
+              subPoints: [
+                { id: 'sp1', text: 'Sub A', position: 0 },
+                { id: 'sp2', text: 'Sub B', position: 1 },
+              ],
+            },
+            { id: 'm2', text: 'Main point two' },
+          ],
+          conclusion: [{ id: 'c1', text: 'Conclusion point' }],
+        },
+        thoughts: [
+          { id: 't-i1', text: 'Intro thought', tags: ['intro'], date: '2024-01-01', outlinePointId: 'i1' },
+          { id: 't-m1a', text: 'Thought under Sub A', tags: ['main'], date: '2024-01-02', outlinePointId: 'm1', subPointId: 'sp1', position: 0 },
+          { id: 't-m1b', text: 'Thought under Sub B', tags: ['main'], date: '2024-01-03', outlinePointId: 'm1', subPointId: 'sp2', position: 1 },
+          { id: 't-m2', text: 'Direct thought on main two', tags: ['main'], date: '2024-01-04', outlinePointId: 'm2' },
+          { id: 't-c1', text: 'Conclusion thought', tags: ['conclusion'], date: '2024-01-05', outlinePointId: 'c1' },
+        ],
+        structure: {
+          introduction: ['t-i1'],
+          main: ['t-m1a', 't-m1b', 't-m2'],
+          conclusion: ['t-c1'],
+          ambiguous: [],
+        },
+      };
+
+      const result = await getExportContent(numberedSermon);
+
+      // Continuous numbering across all sections: intro=1, main=2 & 3, conclusion=4.
+      expect(result).toContain('1. Intro point A');
+      expect(result).toContain('2. Main point one');
+      expect(result).toContain('3. Main point two');
+      expect(result).toContain('4. Conclusion point');
+
+      // Sub-points are visible and numbered N.M under their parent point.
+      expect(result).toContain('2.1 Sub A');
+      expect(result).toContain('2.2 Sub B');
+
+      // Thoughts are bulleted under their sub-point / point (not flattened away).
+      expect(result).toContain('- Thought under Sub A');
+      expect(result).toContain('- Thought under Sub B');
+      expect(result).toContain('- Direct thought on main two');
+
+      // Order: point -> its sub-points (in order) -> next point.
+      expect(result.indexOf('2. Main point one')).toBeLessThan(result.indexOf('2.1 Sub A'));
+      expect(result.indexOf('2.1 Sub A')).toBeLessThan(result.indexOf('2.2 Sub B'));
+      expect(result.indexOf('2.2 Sub B')).toBeLessThan(result.indexOf('3. Main point two'));
+
+      // Focus mode on a single section restarts numbering at 1 (only that section present).
+      const focusedMain = await getExportContent(numberedSermon, 'main');
+      expect(focusedMain).toContain('1. Main point one');
+      expect(focusedMain).toContain('1.1 Sub A');
+      expect(focusedMain).toContain('2. Main point two');
+      expect(focusedMain).not.toContain('Intro point A');
+      expect(focusedMain).not.toContain('Conclusion point');
+
+      // Markdown keeps the same hierarchy via real headings (### point, #### sub-point)
+      // so a markdown parser cannot collapse sub-points into the parent list item.
+      const md = await getExportContent(numberedSermon, undefined, { format: 'markdown' });
+      expect(md).toContain('### 2. Main point one');
+      expect(md).toContain('#### 2.1 Sub A');
+      expect(md).toContain('#### 2.2 Sub B');
+      expect(md).toContain('- Thought under Sub A');
+      expect(md).toContain('### 3. Main point two');
+      // The point/sub-point numbers are literal heading text, never indented list markers.
+      expect(md).not.toContain('   2.1 Sub A');
+      expect(md.indexOf('### 2. Main point one')).toBeLessThan(md.indexOf('#### 2.1 Sub A'));
+      expect(md.indexOf('#### 2.1 Sub A')).toBeLessThan(md.indexOf('### 3. Main point two'));
     });
   });
 });

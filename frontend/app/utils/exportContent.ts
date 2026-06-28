@@ -5,10 +5,11 @@ import {
   VISUAL_SECTION_ORDER,
   type VisualSectionKey,
 } from "@/utils/sermonVisualOrder";
+import { buildSubPointRenderableEntries } from "@/utils/subPoints";
 import { normalizeStructureTag, isStructureTag } from "@/utils/tagUtils";
 import { i18n } from '@locales/i18n';
 
-import type { Sermon, ThoughtsBySection, Thought, SermonPoint } from "@/models/models";
+import type { Sermon, ThoughtsBySection, Thought, SermonPoint, SubPoint } from "@/models/models";
 
 // Debug flag
 const DEBUG_EXPORT = false;
@@ -21,6 +22,7 @@ interface OrganizedBlock {
   title: string;
   thoughts: Thought[];
   outlineId?: string;
+  subPoints?: SubPoint[];
 }
 
 interface ProcessedSection {
@@ -253,6 +255,109 @@ function formatPlanMarkdown(
 // --- Formatting Functions (Priority 2) ---
 
 /**
+ * Render the numbered body: sections -> numbered outline points -> sub-points -> thoughts.
+ *
+ * Numbering rules (shared by plain text & markdown, so both stay in sync):
+ *  - Outline points get a CONTINUOUS top-level number across all sections (1, 2, 3 ...).
+ *    A focused / single-section export naturally restarts at 1 because only one section
+ *    is present in the data.
+ *  - Sub-points under a point are numbered N.M (1.1, 1.2 ...); their thoughts are bullets.
+ *  - Thoughts attached directly to a point (no sub-point) are bullets under the point.
+ *  - Loose thoughts not tied to any outline point (unassigned / multi-tag / a section that
+ *    has no outline points) are themselves numbered as top-level items, so the whole export
+ *    reads as one ordered skeleton instead of a flat dump.
+ *
+ * Plain text builds the hierarchy with indentation + a hanging indent for multi-line
+ * thoughts. Markdown can't express the hierarchy with leading spaces (they collapse / get
+ * swallowed by the parent list item), so it uses real headings instead: `###` for a point,
+ * `####` for a sub-point, and flush `-` bullets for thoughts (2-space continuation keeps a
+ * multi-line thought inside its list item). The N / N.M numbers are literal text in the
+ * heading, so the parser can't renumber them.
+ */
+function renderNumberedSections(
+  data: ExportData,
+  includeTags: boolean,
+  fmt: 'plain' | 'markdown',
+): string {
+  const isMd = fmt === 'markdown';
+  let content = '';
+  let pointNumber = 0;
+
+  const tagLine = (thought: Thought, indent: string): string => {
+    if (!includeTags || !thought.tags || thought.tags.length === 0) return '';
+    return isMd
+      ? `${indent}*${TRANSLATIONS.tagsLabel}${thought.tags.join(', ')}*\n`
+      : `${indent}${TRANSLATIONS.tagsLabel}${thought.tags.join(', ')}\n`;
+  };
+
+  // Render a thought's text after its bullet/number prefix. Continuation lines of a
+  // multi-line thought are indented (hanging indent) so they stay attached to their bullet
+  // instead of reading as separate top-level items; blank lines are preserved as breaks.
+  const renderThought = (text: string, bulletPrefix: string, contIndent: string): string => {
+    return String(text ?? '')
+      .split('\n')
+      .map((line, i) => (i === 0 ? `${bulletPrefix}${line}` : (line.trim() === '' ? '' : `${contIndent}${line}`)))
+      .join('\n') + '\n';
+  };
+
+  data.processedSections.forEach((section) => {
+    content += isMd ? `## ${section.sectionTitle}\n\n` : `${section.sectionTitle}:\n\n`;
+
+    section.organizedBlocks.forEach((block) => {
+      if (block.type === 'outline') {
+        // Outline point = numbered top-level item; sub-points = N.M; thoughts = bullets.
+        pointNumber += 1;
+        content += isMd ? `### ${pointNumber}. ${block.title}\n\n` : `${pointNumber}. ${block.title}\n`;
+
+        let subNumber = 0;
+        const entries = buildSubPointRenderableEntries(block.thoughts, block.subPoints ?? []);
+        entries.forEach((entry) => {
+          if (entry.type === 'subPoint') {
+            subNumber += 1;
+            content += isMd
+              ? `#### ${pointNumber}.${subNumber} ${entry.subPoint.text}\n\n`
+              : `   ${pointNumber}.${subNumber} ${entry.subPoint.text}\n`;
+            entry.items.forEach((thought) => {
+              content += isMd
+                ? renderThought(thought.text, '- ', '  ')
+                : renderThought(thought.text, '       - ', '         ');
+              content += tagLine(thought, isMd ? '  ' : '         ');
+            });
+            if (isMd) content += '\n';
+          } else {
+            content += isMd
+              ? renderThought(entry.item.text, '- ', '  ')
+              : renderThought(entry.item.text, '   - ', '     ');
+            content += tagLine(entry.item, isMd ? '  ' : '     ');
+          }
+        });
+        content += '\n';
+      } else {
+        // Loose thoughts with no outline point. Keep the block label (e.g. "Unassigned")
+        // as a context header, then number each thought as a top-level item.
+        if (block.title && block.title !== section.sectionTitle) {
+          content += isMd ? `### ${block.title}\n\n` : `${block.title}:\n`;
+        }
+        if (block.thoughts.length === 0) {
+          content += isMd ? `_${TRANSLATIONS.noEntries}_\n` : `${TRANSLATIONS.noEntries}\n`;
+        } else {
+          block.thoughts.forEach((thought) => {
+            pointNumber += 1;
+            const prefix = `${pointNumber}. `;
+            const contIndent = isMd ? '   ' : ' '.repeat(prefix.length);
+            content += renderThought(thought.text, prefix, contIndent);
+            content += tagLine(thought, contIndent);
+          });
+        }
+        content += '\n';
+      }
+    });
+  });
+
+  return content;
+}
+
+/**
  * Formats the organized data into a plain text string.
  */
 function formatPlainText(
@@ -273,35 +378,7 @@ function formatPlainText(
     content += header;
   }
 
-  // Add sections
-  data.processedSections.forEach((section) => {
-    // Add section title
-    content += `${section.sectionTitle}:\n\n`;
-
-    // Add blocks within section
-    section.organizedBlocks.forEach(block => {
-      // Add block title if different from section title
-      if (block.title !== section.sectionTitle) {
-        content += `${block.title}:\n\n`;
-      }
-
-      // Add thoughts
-      if (block.thoughts.length === 0) {
-        content += `${TRANSLATIONS.noEntries}\n\n`;
-      } else {
-        block.thoughts.forEach((thought) => {
-          content += `- ${thought.text}\n`;
-          if (includeTags && thought.tags && thought.tags.length > 0) {
-            content += `   ${TRANSLATIONS.tagsLabel}${thought.tags.join(', ')}\n`;
-          }
-          content += '\n';
-        });
-      }
-      // Separator between blocks
-      content += '---------------------\n\n';
-    });
-  });
-
+  content += renderNumberedSections(data, includeTags, 'plain');
   return content;
 }
 
@@ -330,42 +407,7 @@ function formatMarkdown(
     content += header;
   }
 
-  // Add sections
-  data.processedSections.forEach((section) => {
-    // Add section title (H2)
-    content += `## ${section.sectionTitle}\n`;
-    // Underline removed for cleaner Markdown
-    // content += `${'='.repeat(section.sectionTitle.length + 4)}\n\n`;
-    content += `\n`;
-
-    // Add blocks within section
-    section.organizedBlocks.forEach(block => {
-      // Add block title (H3) if different from section title
-      if (block.title !== section.sectionTitle) {
-        content += `### ${block.title}\n`;
-        // Underline removed
-        // content += `${'—'.repeat(block.title.length + 4)}\n\n`;
-        content += `\n`;
-      }
-
-      // Add thoughts (numbered list)
-      if (block.thoughts.length === 0) {
-        content += `_${TRANSLATIONS.noEntries}_\n\n`; // Italicize no entries
-      } else {
-        block.thoughts.forEach((thought, thoughtIndex) => {
-          content += `${thoughtIndex + 1}. ${thought.text}\n`;
-          if (includeTags && thought.tags && thought.tags.length > 0) {
-            // Indent tags slightly and italicize
-            content += `   *${TRANSLATIONS.tagsLabel}${thought.tags.join(', ')}*\n`;
-          }
-          content += '\n'; // Add space after each thought item
-        });
-      }
-      // Separator between blocks (Markdown horizontal rule)
-      content += '---\n\n';
-    });
-  });
-
+  content += renderNumberedSections(data, includeTags, 'markdown');
   return content;
 }
 
@@ -439,6 +481,7 @@ function processThoughtsByOutline(
       type: 'outline' as const,
       title: point.text, // Use outline point text as block title
       outlineId: point.id,
+      subPoints: point.subPoints ?? [],
       thoughts: sortedThoughts
     };
   }).filter(block => block.thoughts.length > 0); // Filter out blocks with no thoughts

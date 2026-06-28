@@ -89,7 +89,6 @@ describe('exportContent tag normalization', () => {
     expect(result).toContain('## tags.introduction'); // Section header
     expect(result).toContain('1. Intro Thought');
     expect(result).toContain('*export.tagsLabelIntroduction*');
-    expect(result).toContain('---');
   });
 
   test('filtering by focused section', async () => {
@@ -132,7 +131,7 @@ describe('exportContent tag normalization', () => {
     };
 
     const result = await getExportContent(sermon);
-    expect(result).toContain('Point A:'); // Block title
+    expect(result).toContain('1. Point A'); // Numbered outline point
     expect(result).toContain('Assigned Thought');
   });
 
