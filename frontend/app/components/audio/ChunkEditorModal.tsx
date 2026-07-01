@@ -17,6 +17,7 @@ interface ChunkEditorModalProps {
     chunk: {
         index: number;
         text: string;
+        kind?: 'body' | 'transition';
     };
     onSave: (index: number, newText: string) => Promise<void>;
     onClose: () => void;
@@ -60,8 +61,13 @@ export default function ChunkEditorModal({
             >
                 {/* Header */}
                 <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                    <h3 className="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-white">
                         {t('audioExport.editChunk', { defaultValue: 'Edit Chunk' })} #{chunk.index + 1}
+                        {chunk.kind === 'transition' && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+                                ✨ {t('audioExport.transitionBadge', { defaultValue: 'Переход' })}
+                            </span>
+                        )}
                     </h3>
                     <button
                         onClick={onClose}

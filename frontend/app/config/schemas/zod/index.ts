@@ -20,6 +20,10 @@ export {
   SpeechOptimizationResponseSchema,
   type SpeechOptimizationResponse
 } from './speechOptimization.zod';
+export {
+  SermonTransitionsResponseSchema,
+  type SermonTransitionsResponse
+} from './sermonTransitions.zod';
 
 // LOW complexity migration schemas
 export {

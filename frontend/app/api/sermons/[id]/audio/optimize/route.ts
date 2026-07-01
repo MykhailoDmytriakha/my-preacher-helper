@@ -14,37 +14,36 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+import { generateSermonTransitions } from '@/api/clients/sermonTransitions.client';
 import { optimizeTextForSpeech } from '@/api/clients/speechOptimization.client';
 import { createAudioChunks, splitTextEvenly } from '@/api/clients/tts.client';
+import { buildGenerationSegments, type GenerationSegment } from '@/api/services/sermonAudioSegments';
 import {
     SectionKey,
     SECTION_CONFIG,
-    getSectionOutlinePoints,
     getSectionThoughtsInVisualOrder,
     resolveSections,
 } from '@/api/services/sermonTextService';
+import {
+    weaveTransitionChunks,
+    type SegmentBody,
+    type TransitionSegment,
+} from '@/api/services/sermonTransitions';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { SERMON_SECTIONS } from '@/types/audioGeneration.types';
 import { normalizeScriptureReferencesForTts } from '@/utils/scriptureReferenceNormalizer';
 import { GOOGLE_TTS_MAX_CHUNK_SIZE, splitGoogleTextForRequestLimit } from '@/utils/server/googleTtsChunking';
 
-import type { Sermon, Thought } from '@/models/models';
+import type { Sermon } from '@/models/models';
 import type { AudioChunk, SectionSelection } from '@/types/audioGeneration.types';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-interface GenerationSegment {
-    id: string;
-    section: SectionKey;
-    title: string;
-    thoughts: Thought[];
-    contextType: 'start' | 'transition';
-}
-
-interface GenerationResult {
-    chunks: AudioChunk[];
+interface SegmentBuildResult {
+    /** Per-segment body chunks in narration order; transitions are woven in by the caller. */
+    segmentBodies: (SegmentBody & { title: string; level: 'point' | 'subpoint' | 'continuation' })[];
     originalLength: number;
     optimizedLength: number;
 }
@@ -104,13 +103,34 @@ export async function POST(
 
         console.log(`[OptimizeAPI] Starting generation for ${segments.length} segments.`);
 
-        const generated = (useRawText && provider === 'google')
-            ? buildGoogleRawChunks(sermon, sectionsToProcess)
-            : await buildSegmentChunks(segments, sermon, provider, useRawText);
+        // Build the sermon body chunks grouped per segment, so spoken transitions can
+        // be woven BETWEEN the parts (intro → part → bridge → part → … → outro).
+        const built = (useRawText && provider === 'google')
+            ? buildGoogleRawSegmentBodies(sermon, sectionsToProcess)
+            : await buildSegmentBodies(segments, sermon, provider, useRawText);
 
-        allChunks.push(...generated.chunks);
-        const totalOriginalLength = generated.originalLength;
-        const totalOptimizedLength = generated.optimizedLength;
+        // Generate spoken connective tissue so the narration's structure is audible.
+        // Additive layer: never throws — returns empty transitions on any failure, so
+        // the core audio export still works even if the LLM is unavailable.
+        const now = new Date().toISOString();
+        // Continuation runs (a point resuming after a sub-point) carry body but get NO
+        // spoken lead-in, so they're excluded from the parts we ask the model to bridge.
+        const transitionSegments: TransitionSegment[] = built.segmentBodies
+            .filter(s => s.bodyChunks.length > 0 && s.level !== 'continuation')
+            .map(({ id, section, title, level }) => ({ id, section, title, level: level as 'point' | 'subpoint' }));
+        const transitions = await generateSermonTransitions(sermon, transitionSegments);
+        console.log(`[OptimizeAPI] Transitions: intro=${transitions.intro ? 'yes' : 'no'}, bridges=${Object.keys(transitions.bridges).length}, outro=${transitions.outro ? 'yes' : 'no'}`);
+
+        // Only emit the global opening/closing when their home sections are in scope
+        // (a partial re-optimize of just the main part shouldn't inject a fresh intro).
+        const woven = weaveTransitionChunks(built.segmentBodies, transitions, now, {
+            includeIntro: sectionsToProcess.includes('introduction'),
+            includeOutro: sectionsToProcess.includes('conclusion'),
+        });
+
+        allChunks.push(...woven);
+        const totalOriginalLength = built.originalLength;
+        const totalOptimizedLength = built.optimizedLength;
 
         // 4. Global Re-indexing
         // Sort by section order first, then by existing sequence
@@ -145,6 +165,8 @@ export async function POST(
                 index: i,
                 sectionId: c.sectionId,
                 text: c.text,
+                kind: c.kind ?? 'body',
+                role: c.role,
                 preview: c.text.slice(0, 150) + '...',
             })),
             totalChunks: allChunks.length,
@@ -166,81 +188,14 @@ export async function POST(
 // ============================================================================
 
 /**
- * Turns the hierarchical sermon structure into a flat list of generation tasks.
- */
-function buildGenerationSegments(
-    sermon: Sermon,
-    sectionsToProcess: SectionKey[]
-): GenerationSegment[] {
-    const segments: GenerationSegment[] = [];
-
-    for (const sectionKey of sectionsToProcess) {
-        const config = SECTION_CONFIG[sectionKey];
-        const outlinePoints = getSectionOutlinePoints(sermon, sectionKey);
-        const allThoughts = getSectionThoughtsInVisualOrder(sermon, sectionKey);
-
-        // 1. If we have Outline Points, prioritize them
-        if (outlinePoints.length > 0) {
-            const thoughtsByPoint = new Map<string, Thought[]>();
-
-            // Bucket thoughts by outline point
-            for (const t of allThoughts) {
-                if (t.outlinePointId) {
-                    const existing = thoughtsByPoint.get(t.outlinePointId) || [];
-                    existing.push(t);
-                    thoughtsByPoint.set(t.outlinePointId, existing);
-                }
-            }
-
-            // Create segment for each point
-            for (const point of outlinePoints) {
-                const pointsThoughts = thoughtsByPoint.get(point.id) || [];
-                segments.push({
-                    id: point.id,
-                    section: sectionKey,
-                    title: point.text,
-                    thoughts: pointsThoughts,
-                    contextType: 'transition'
-                });
-            }
-
-            // Handle "orphaned" thoughts in this section (not assigned to points)
-            const orphanedThoughts = allThoughts.filter(t => !t.outlinePointId);
-            if (orphanedThoughts.length > 0) {
-                segments.push({
-                    id: `${sectionKey}-orphans`,
-                    section: sectionKey,
-                    title: `${config.title} (Additional)`,
-                    thoughts: orphanedThoughts,
-                    contextType: 'transition'
-                });
-            }
-
-        } else {
-            // 2. If NO Outline Points, treat the whole section as one big segment
-            if (allThoughts.length > 0) {
-                segments.push({
-                    id: sectionKey,
-                    section: sectionKey,
-                    title: config.title,
-                    thoughts: allThoughts,
-                    contextType: 'transition'
-                });
-            }
-        }
-    }
-
-    return segments;
-}
-
-/**
  * Google "use as-is" path: voice the exact section text, split only for request limits.
+ * One segment per major section (Google raw has no per-point outline granularity).
  */
-function buildGoogleRawChunks(
+function buildGoogleRawSegmentBodies(
     sermon: Sermon,
     sectionsToProcess: SectionKey[]
-): GenerationResult {
-    const chunks: AudioChunk[] = [];
+): SegmentBuildResult {
+    const segmentBodies: (SegmentBody & { title: string; level: 'point' | 'subpoint' | 'continuation' })[] = [];
     let originalLength = 0;
     let optimizedLength = 0;
 
@@ -254,29 +209,38 @@ function buildGoogleRawChunks(
         }
         originalLength += originalRawText.length;
         optimizedLength += rawText.length;
-        chunks.push(...createAudioChunks(splitGoogleTextForRequestLimit(rawText), section));
+        segmentBodies.push({
+            id: section,
+            section,
+            title: SECTION_CONFIG[section].title,
+            level: 'point',
+            bodyChunks: createAudioChunks(splitGoogleTextForRequestLimit(rawText), section),
+        });
     }
 
-    return { chunks, originalLength, optimizedLength };
+    return { segmentBodies, originalLength, optimizedLength };
 }
 
 /**
  * Per-segment generation. In raw mode the thoughts are voiced verbatim; otherwise each
  * segment is GPT-optimized with the previous segment's tail carried over as context.
+ * Returns body chunks grouped per segment so the caller can weave transitions between them.
  */
-async function buildSegmentChunks(
+async function buildSegmentBodies(
     segments: GenerationSegment[],
     sermon: Sermon,
     provider: 'google' | 'openai',
     useRawText: boolean
-): Promise<GenerationResult> {
-    const chunks: AudioChunk[] = [];
+): Promise<SegmentBuildResult> {
+    const segmentBodies: (SegmentBody & { title: string; level: 'point' | 'subpoint' | 'continuation' })[] = [];
     let originalLength = 0;
     let optimizedLength = 0;
     let accumulatedContext = '';
 
     for (const segment of segments) {
         console.log(`[OptimizeAPI] Processing: ${segment.section} - ${segment.title}`);
+
+        let bodyChunks: AudioChunk[] = [];
 
         if (useRawText) {
             // Thoughts are already in visual order; build the full segment first,
@@ -289,44 +253,52 @@ async function buildSegmentChunks(
             }
             originalLength += originalRawText.length;
             optimizedLength += rawText.length;
-            chunks.push(...createAudioChunks(splitTextEvenly(rawText), segment.section));
-            continue;
-        }
-
-        const segmentText = formatSegmentText(segment);
-        if (!segmentText) {
-            console.log(`[OptimizeAPI] Skipping empty segment: ${segment.title}`);
-            continue;
-        }
-        originalLength += segmentText.length;
-
-        // Generate with context from previous loop
-        const result = await optimizeTextForSpeech(
-            segmentText,
-            sermon,
-            {
-                sermonTitle: sermon.title,
-                scriptureVerse: sermon.verse,
-                sections: segment.section,
-                previousContext: accumulatedContext || undefined
+            bodyChunks = createAudioChunks(splitTextEvenly(rawText), segment.section);
+        } else {
+            const segmentText = formatSegmentText(segment);
+            if (!segmentText) {
+                console.log(`[OptimizeAPI] Skipping empty segment: ${segment.title}`);
+                continue;
             }
-        );
+            originalLength += segmentText.length;
 
-        const optimizedTextForTts = normalizeScriptureReferencesForTts(result.optimizedText);
-        // OpenAI is the quality path: re-chunk GPT output to even ~1500-2000 clips
-        // (the model returns arbitrary-sized chunks). Google keeps its own chunks.
-        const chunksForTts = provider === 'openai'
-            ? splitTextEvenly(optimizedTextForTts)
-            : result.chunks.map(normalizeScriptureReferencesForTts);
-        optimizedLength += optimizedTextForTts.length;
+            // Generate with context from previous loop
+            const result = await optimizeTextForSpeech(
+                segmentText,
+                sermon,
+                {
+                    sermonTitle: sermon.title,
+                    scriptureVerse: sermon.verse,
+                    sections: segment.section,
+                    previousContext: accumulatedContext || undefined
+                }
+            );
 
-        // Carry the last 1000 chars into the next iteration as context.
-        accumulatedContext = optimizedTextForTts.slice(-1000);
+            const optimizedTextForTts = normalizeScriptureReferencesForTts(result.optimizedText);
+            // OpenAI is the quality path: re-chunk GPT output to even ~1500-2000 clips
+            // (the model returns arbitrary-sized chunks). Google keeps its own chunks.
+            const chunksForTts = provider === 'openai'
+                ? splitTextEvenly(optimizedTextForTts)
+                : result.chunks.map(normalizeScriptureReferencesForTts);
+            optimizedLength += optimizedTextForTts.length;
 
-        chunks.push(...createAudioChunks(chunksForTts, segment.section));
+            // Carry the last 1000 chars into the next iteration as context.
+            accumulatedContext = optimizedTextForTts.slice(-1000);
+
+            bodyChunks = createAudioChunks(chunksForTts, segment.section);
+        }
+
+        if (bodyChunks.length === 0) continue;
+        segmentBodies.push({
+            id: segment.id,
+            section: segment.section,
+            title: segment.title,
+            level: segment.level,
+            bodyChunks,
+        });
     }
 
-    return { chunks, originalLength, optimizedLength };
+    return { segmentBodies, originalLength, optimizedLength };
 }
 
 function formatSegmentText(segment: GenerationSegment): string {

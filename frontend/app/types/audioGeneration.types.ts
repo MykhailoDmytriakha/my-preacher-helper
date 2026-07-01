@@ -105,7 +105,18 @@ export const SERMON_SECTIONS: SermonSection[] = ['introduction', 'mainPart', 'co
 // Audio Chunk (Persisted to Firestore)
 // ============================================================================
 
-/** 
+/** Whether a chunk carries sermon body text or a generated orientation transition. */
+export type AudioChunkKind = 'body' | 'transition';
+
+/**
+ * Structural role of a transition chunk:
+ * - `intro`  — opens the narration, announces the sermon title & scripture
+ * - `bridge` — a short spoken lead-in that announces the next part/point
+ * - `outro`  — closes the narration
+ */
+export type AudioTransitionRole = 'intro' | 'bridge' | 'outro';
+
+/**
  * Represents a single chunk of optimized speech text.
  * Saved to sermon.audioChunks[] for caching and future editing.
  */
@@ -118,6 +129,13 @@ export interface AudioChunk {
     createdAt: string;
     /** Order within the section (0-indexed) */
     index: number;
+    /**
+     * Body sermon text vs a machine-generated orientation transition.
+     * Absent = 'body' (back-compat with chunks persisted before transitions existed).
+     */
+    kind?: AudioChunkKind;
+    /** For transition chunks only: which structural role this transition plays. */
+    role?: AudioTransitionRole;
 }
 
 /**
