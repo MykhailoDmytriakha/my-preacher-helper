@@ -1,20 +1,17 @@
 // This is the SermonHeader component created to refactor the header UI from the sermon page
 'use client';
 
-import { Menu, Transition } from '@headlessui/react';
-import { EllipsisVerticalIcon, PlusIcon, ArrowPathIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { ScrollText } from 'lucide-react';
 import Link from 'next/link';
-import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 
 import ActionButton, { ACTION_BUTTON_SLOT_CLASS } from '@/components/common/ActionButton';
+import OptionMenu from '@/components/dashboard/OptionMenu';
 import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
-import SeriesSelector from '@/components/series/SeriesSelector';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserSettings } from '@/hooks/useUserSettings';
-import { addSermonToSeries, removeSermonFromSeries } from '@/services/series.service';
 import { updateSermon } from '@/services/sermon.service'; // Import updateSermon service
 import EditableTitle from '@components/common/EditableTitle'; // Import the new component
 import EditableVerse from '@components/common/EditableVerse'; // Import the new verse component
@@ -38,92 +35,17 @@ export interface SermonHeaderProps {
 
 const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpdate }) => {
   const { t } = useTranslation();
+  const router = useRouter();
   const { user } = useAuth();
   const { settings } = useUserSettings(user?.uid);
   const formattedDate = formatDate(sermon.date);
-  const [showSeriesSelector, setShowSeriesSelector] = useState(false);
-  const [seriesSelectorMode, setSeriesSelectorMode] = useState<'add' | 'change'>('add');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [pendingSeriesId, setPendingSeriesId] = useState<string | null>(null);
   const isReadOnly = false; // Always allow local edits
 
   const enableAudio = settings?.enableAudioGeneration || false;
 
-  // Use direct translation calls to avoid duplicate string warnings
-  const removeFromSeriesTranslationKey = 'workspaces.series.actions.removeFromSeries';
-  const processingButtonClasses = 'opacity-50 cursor-not-allowed';
-
   const handleStartPreaching = () => {
     window.location.href = `/sermons/${sermon.id}/plan?planView=preaching`;
   };
-
-  const handleAddToSeries = () => {
-    if (isReadOnly || isProcessing) return;
-    setSeriesSelectorMode('add');
-    setShowSeriesSelector(true);
-  };
-
-  const handleChangeSeries = () => {
-    if (isReadOnly || isProcessing) return;
-    setSeriesSelectorMode('change');
-    setShowSeriesSelector(true);
-  };
-
-  const handleRemoveFromSeries = async () => {
-    if (isReadOnly || isProcessing) return;
-    if (window.confirm(t(removeFromSeriesTranslationKey) + '?')) {
-      setIsProcessing(true);
-      try {
-        if (sermon.seriesId) {
-          await removeSermonFromSeries(sermon.seriesId, sermon.id);
-
-          // Update sermon locally to reflect the change
-          const updatedSermon = { ...sermon, seriesId: undefined, seriesPosition: undefined };
-          if (onUpdate) {
-            onUpdate(updatedSermon);
-          }
-        }
-      } catch (error) {
-        console.error('Error removing sermon from series:', error);
-        toast.error(t('workspaces.series.errors.removeSermonFailed'));
-      } finally {
-        setIsProcessing(false);
-      }
-    }
-  };
-
-  const handleSeriesSelected = async (seriesId: string) => {
-    if (isReadOnly || isProcessing) return;
-    setPendingSeriesId(seriesId);
-    setIsProcessing(true);
-    try {
-      if (seriesSelectorMode === 'change' && sermon.seriesId) {
-        // For change mode: first remove from old series, then add to new
-        await removeSermonFromSeries(sermon.seriesId, sermon.id);
-      }
-
-      // Add sermon to the selected series
-      await addSermonToSeries(seriesId, sermon.id);
-
-      // Update sermon locally to reflect the change
-      const updatedSermon = { ...sermon, seriesId };
-      if (onUpdate) {
-        onUpdate(updatedSermon);
-      }
-
-      setShowSeriesSelector(false);
-    } catch (error) {
-      console.error('Error updating sermon series:', error);
-      toast.error(seriesSelectorMode === 'add'
-        ? t('workspaces.series.errors.addSermonFailed')
-        : t('workspaces.series.errors.addSermonFailed')
-      );
-    } finally {
-      setIsProcessing(false);
-      setPendingSeriesId(null);
-    }
-  };
-
 
   // Removed legacy mode switch (framework/content)
 
@@ -239,75 +161,6 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
               </Link>
             </div>
           )}
-
-          {/* Series options menu - always available (Add to series when standalone, Move/Remove when in series) */}
-          <Menu as="div" className="relative">
-            <Menu.Button
-              className={`flex items-center justify-center w-6 h-6 rounded-md transition-colors ml-1 ${isReadOnly || isProcessing ? processingButtonClasses : 'hover:bg-gray-100 dark:hover:bg-gray-700'
-                }`}
-              disabled={isReadOnly || isProcessing}
-            >
-              <EllipsisVerticalIcon className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-            </Menu.Button>
-            <Transition
-              enter="transition ease-out duration-100"
-              enterFrom="transform opacity-0 scale-95"
-              enterTo="transform opacity-100 scale-100"
-              leave="transition ease-in duration-75"
-              leaveFrom="transform opacity-100 scale-100"
-              leaveTo="transform opacity-0 scale-95"
-            >
-              <Menu.Items className="absolute left-0 z-10 mt-1 w-56 origin-top-left rounded-md bg-white py-1 shadow-lg ring-1 ring-black ring-opacity-5 dark:bg-gray-800 dark:ring-gray-700">
-                {sermon.seriesId ? (
-                  <>
-                    <Menu.Item>
-                      {({ active }) => (
-                        <button
-                          onClick={handleChangeSeries}
-                          disabled={isProcessing || isReadOnly}
-                          title={t('workspaces.series.actions.moveToDifferentSeries')}
-                          className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm ${active ? 'bg-gray-100 dark:bg-gray-700' : ''
-                            } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
-                        >
-                          <ArrowPathIcon className="h-4 w-4" />
-                          {t('workspaces.series.actions.moveToDifferentSeries')}
-                        </button>
-                      )}
-                    </Menu.Item>
-                    <Menu.Item>
-                      {({ active }) => (
-                        <button
-                          onClick={handleRemoveFromSeries}
-                          disabled={isProcessing || isReadOnly}
-                          title={t(removeFromSeriesTranslationKey)}
-                          className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm text-red-600 dark:text-red-400 ${active ? 'bg-red-50 dark:bg-red-950' : ''
-                            } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
-                        >
-                          <XMarkIcon className="h-4 w-4" />
-                          {t(removeFromSeriesTranslationKey)}
-                        </button>
-                      )}
-                    </Menu.Item>
-                  </>
-                ) : (
-                  <Menu.Item>
-                    {({ active }) => (
-                      <button
-                        onClick={handleAddToSeries}
-                        disabled={isProcessing || isReadOnly}
-                        title={t('workspaces.series.actions.addToSeries')}
-                        className={`flex w-full items-center gap-3 px-4 py-2.5 text-sm ${active ? 'bg-gray-100 dark:bg-gray-700' : ''
-                          } ${isProcessing || isReadOnly ? processingButtonClasses : ''}`}
-                      >
-                        <PlusIcon className="h-4 w-4" />
-                        {t('workspaces.series.actions.addToSeries')}
-                      </button>
-                    )}
-                  </Menu.Item>
-                )}
-              </Menu.Items>
-            </Transition>
-          </Menu>
         </div>
         <div className="mt-2 text-base md:text-lg">
           <EditableVerse
@@ -344,23 +197,17 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
             </div>
           }
         />
+        {/* Sermon-level actions (mark preached / edit date & church / delete) — reuses the
+            dashboard OptionMenu so the lifecycle logic lives in ONE place. Delete navigates
+            away (we're ON the sermon being deleted), rather than refreshing a dead page. */}
+        <OptionMenu
+          sermon={sermon}
+          series={series}
+          onUpdate={onUpdate}
+          onDelete={() => router.push('/sermons')}
+        />
         {/* Mode toggle moved to global DashboardNav */}
       </div>
-
-      {/* Series Selector Modal */}
-      {showSeriesSelector && (
-        <SeriesSelector
-          onClose={() => {
-            if (isProcessing) return;
-            setShowSeriesSelector(false);
-          }}
-          onSelect={handleSeriesSelected}
-          currentSeriesId={sermon.seriesId}
-          mode={seriesSelectorMode}
-          isProcessing={isProcessing}
-          pendingSeriesId={pendingSeriesId}
-        />
-      )}
     </div>
   );
 };

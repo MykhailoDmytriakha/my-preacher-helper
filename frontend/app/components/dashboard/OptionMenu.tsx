@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { DashboardOptimisticActions, DashboardSermonSyncState } from "@/models/dashboardOptimistic";
-import { Sermon, PreachDate } from "@/models/models";
+import { Sermon, PreachDate, Series } from "@/models/models";
 import {
   getEffectiveIsPreached,
   getPreachDatesByStatus,
@@ -15,7 +15,9 @@ import {
 import PreachDateModal from "@components/calendar/PreachDateModal";
 import EditSermonModal from "@components/EditSermonModal";
 import { DotsVerticalIcon } from "@components/Icons";
+import SeriesSelector from "@components/series/SeriesSelector";
 import * as preachDatesService from "@services/preachDates.service";
+import { addSermonToSeries, removeSermonFromSeries } from "@services/series.service";
 import { deleteSermon, updateSermon } from "@services/sermon.service";
 
 import "@locales/i18n";
@@ -27,6 +29,8 @@ interface OptionMenuProps {
   onUpdate?: (updatedSermon: Sermon) => void;
   optimisticActions?: DashboardOptimisticActions;
   syncState?: DashboardSermonSyncState;
+  /** When provided, the menu also offers series actions (add / move / remove). */
+  series?: Series[];
 }
 
 const UNSPECIFIED_CHURCH_ID = 'church-unspecified';
@@ -36,7 +40,8 @@ export default function OptionMenu({
   onDelete,
   onUpdate,
   optimisticActions,
-  syncState
+  syncState,
+  series
 }: OptionMenuProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -44,6 +49,10 @@ export default function OptionMenu({
   const [showPreachModal, setShowPreachModal] = useState(false);
   const [preachModalInitialData, setPreachModalInitialData] = useState<PreachDate | undefined>(undefined);
   const [preachDateToMark, setPreachDateToMark] = useState<PreachDate | null>(null);
+  const [showSeriesSelector, setShowSeriesSelector] = useState(false);
+  const [seriesSelectorMode, setSeriesSelectorMode] = useState<'add' | 'change'>('add');
+  const [isSeriesProcessing, setIsSeriesProcessing] = useState(false);
+  const [pendingSeriesId, setPendingSeriesId] = useState<string | null>(null);
   const effectiveIsPreached = getEffectiveIsPreached(sermon);
   const isSyncPending = syncState?.status === 'pending';
   const menuRef = useRef<HTMLDivElement>(null);
@@ -275,6 +284,59 @@ export default function OptionMenu({
     }
   };
 
+  // Series actions — only surfaced when a `series` list is passed (e.g. the sermon page).
+  const handleAddToSeries = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSeriesSelectorMode('add');
+    setShowSeriesSelector(true);
+    closeMenu();
+  };
+
+  const handleChangeSeries = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSeriesSelectorMode('change');
+    setShowSeriesSelector(true);
+    closeMenu();
+  };
+
+  const handleRemoveFromSeries = async (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!sermon.seriesId || isSeriesProcessing) return;
+    if (!window.confirm(t('workspaces.series.actions.removeFromSeries') + '?')) return;
+    setIsSeriesProcessing(true);
+    try {
+      await removeSermonFromSeries(sermon.seriesId, sermon.id);
+      applySermonUpdateResult({ ...sermon, seriesId: undefined, seriesPosition: undefined });
+    } catch (error) {
+      console.error('Error removing sermon from series:', error);
+    } finally {
+      setIsSeriesProcessing(false);
+      closeMenu();
+    }
+  };
+
+  const handleSeriesSelected = async (seriesId: string) => {
+    if (isSeriesProcessing) return;
+    setPendingSeriesId(seriesId);
+    setIsSeriesProcessing(true);
+    try {
+      if (seriesSelectorMode === 'change' && sermon.seriesId) {
+        await removeSermonFromSeries(sermon.seriesId, sermon.id);
+      }
+      await addSermonToSeries(seriesId, sermon.id);
+      applySermonUpdateResult({ ...sermon, seriesId });
+      setShowSeriesSelector(false);
+    } catch (error) {
+      console.error('Error updating sermon series:', error);
+    } finally {
+      setIsSeriesProcessing(false);
+      setPendingSeriesId(null);
+    }
+  };
+
   return (
     <div ref={menuRef} className="relative">
       <button
@@ -309,6 +371,37 @@ export default function OptionMenu({
                   : t('optionMenu.markAsPreached')}
               </span>
             </button>
+            {series && (
+              sermon.seriesId ? (
+                <>
+                  <button
+                    onClick={handleChangeSeries}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
+                    role="menuitem"
+                    disabled={isSyncPending || isSeriesProcessing}
+                  >
+                    <span>{t('workspaces.series.actions.moveToDifferentSeries')}</span>
+                  </button>
+                  <button
+                    onClick={handleRemoveFromSeries}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
+                    role="menuitem"
+                    disabled={isSyncPending || isSeriesProcessing}
+                  >
+                    <span>{t('workspaces.series.actions.removeFromSeries')}</span>
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={handleAddToSeries}
+                  className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
+                  role="menuitem"
+                  disabled={isSyncPending || isSeriesProcessing}
+                >
+                  <span>{t('workspaces.series.actions.addToSeries')}</span>
+                </button>
+              )
+            )}
             <button
               onClick={handleDelete}
               className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
@@ -341,6 +434,20 @@ export default function OptionMenu({
         initialData={preachModalInitialData}
         defaultStatus="preached"
       />
+
+      {showSeriesSelector && (
+        <SeriesSelector
+          onClose={() => {
+            if (isSeriesProcessing) return;
+            setShowSeriesSelector(false);
+          }}
+          onSelect={handleSeriesSelected}
+          currentSeriesId={sermon.seriesId}
+          mode={seriesSelectorMode}
+          isProcessing={isSeriesProcessing}
+          pendingSeriesId={pendingSeriesId}
+        />
+      )}
     </div>
   );
 }

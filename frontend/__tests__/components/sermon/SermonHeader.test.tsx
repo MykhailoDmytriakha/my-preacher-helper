@@ -62,6 +62,14 @@ jest.mock('@/components/series/SeriesSelector', () => {
   };
 });
 
+// OptionMenu (reused from the dashboard for sermon-level actions) pulls in React Query /
+// router; stub it here so SermonHeader stays a focused unit test. OptionMenu has its own tests.
+jest.mock('@/components/dashboard/OptionMenu', () => {
+  return function MockOptionMenu() {
+    return <div data-testid="option-menu">Option Menu</div>;
+  };
+});
+
 jest.mock('@/components/ExportButtons', () => ({
   __esModule: true,
   default: (props: any) => {
@@ -450,19 +458,19 @@ describe('SermonHeader Component', () => {
       expect(screen.queryByText('Part of Series')).not.toBeInTheDocument();
     });
 
-    it('renders series management menu when sermon belongs to series', () => {
+    it('renders the sermon actions menu (which now hosts series actions) when in a series', () => {
       const sermonWithSeries = { ...mockSermon, seriesId: 'series-1' };
       render(<SermonHeader sermon={sermonWithSeries} series={mockSeries} onUpdate={mockOnUpdate} />);
 
-      // The menu component should be rendered (it has data-testid="menu" from the mock)
-      expect(screen.getByTestId('menu')).toBeInTheDocument();
+      // Series actions were unified into the shared OptionMenu (mocked as "option-menu").
+      expect(screen.getByTestId('option-menu')).toBeInTheDocument();
     });
 
-    it('renders series management menu when sermon has no series (standalone)', () => {
+    it('renders the sermon actions menu for standalone sermons too', () => {
       render(<SermonHeader sermon={mockSermon} series={mockSeries} onUpdate={mockOnUpdate} />);
 
-      // Menu should be available even for standalone sermons (Add to series option)
-      expect(screen.getByTestId('menu')).toBeInTheDocument();
+      // Add-to-series lives in the shared OptionMenu now, not a separate header menu.
+      expect(screen.getByTestId('option-menu')).toBeInTheDocument();
     });
 
     it('shows series management dropdown when sermon belongs to series', () => {
