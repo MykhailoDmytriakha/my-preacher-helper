@@ -3,7 +3,7 @@
 import { Popover, PopoverButton, PopoverPanel, Transition } from '@headlessui/react';
 import { AdjustmentsHorizontalIcon, MagnifyingGlassIcon, XMarkIcon, ArrowsUpDownIcon } from '@heroicons/react/24/outline';
 import { useRouter, useSearchParams } from "next/navigation";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import DashboardContent from "@/components/dashboard/DashboardContent";
@@ -16,6 +16,7 @@ import { useSeries } from "@/hooks/useSeries";
 import { Sermon } from "@/models/models";
 import { useAuth } from "@/providers/AuthProvider";
 import { getEffectiveIsPreached } from "@/utils/preachDateStatus";
+import { buildInSeriesRefIds } from "@/utils/seriesMembership";
 import AddSermonModal from "@components/AddSermonModal";
 
 // localStorage keys for user preferences
@@ -138,6 +139,10 @@ export default function SermonsPage() {
     updateSermonCache(updatedSermon);
   };
 
+  // Series membership derived from the loaded series list (series.items truth),
+  // injected into the filter instead of reading the deprecated sermon.seriesId.
+  const inSeriesRefIds = useMemo(() => buildInSeriesRefIds(allSeries), [allSeries]);
+
   // Filtering & Sorting
   const { processedSermons, searchSnippetsById } = useFilteredSermons(
     sermons,
@@ -148,6 +153,7 @@ export default function SermonsPage() {
       sortOption,
       seriesFilter,
       activeTab,
+      inSeriesRefIds,
     },
     t
   );

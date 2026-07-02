@@ -451,6 +451,9 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
   queryClient.setMutationDefaults(DASHBOARD_SERMON_MUTATION_KEYS.create, {
     mutationFn: async (vars: DashboardSermonCreateVars): Promise<Sermon> => {
       const { sermonId, uid, now, plannedDateId, input } = vars;
+      // Playlist model: the create no longer carries seriesId — membership is
+      // written by the client sweep (useDashboardOptimisticSermons.createSermon
+      // calls addToSeries after minting the id).
       const created = await createSermonRequest({
         id: sermonId,
         title: input.title,
@@ -458,7 +461,6 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
         date: now,
         thoughts: [],
         userId: uid,
-        seriesId: input.seriesId || undefined,
       });
 
       if (!input.plannedDate) {
@@ -484,7 +486,6 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
         date: now,
         thoughts: [],
         userId: uid,
-        seriesId: input.seriesId || undefined,
         preachDates: input.plannedDate
           ? [
               {

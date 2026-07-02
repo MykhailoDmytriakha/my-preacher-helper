@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 
 import GroupDetailPage from '@/(pages)/(private)/groups/[id]/page';
 import { useGroupDetail } from '@/hooks/useGroupDetail';
+import { useSeries } from '@/hooks/useSeries';
 import { hasGroupsAccess } from '@/services/userSettings.service';
 
 const mockPush = jest.fn();
@@ -79,6 +80,21 @@ jest.mock('@/hooks/useSeries', () => ({
   useSeries: jest.fn(() => ({ series: [{ id: 'mock-series-1', title: 'Mock Series', color: '#000000' }] })),
 }));
 
+// Series binding now flows through the client playlist sweep. Stable factory-scoped
+// spies so tests can assert the sweep was invoked (and so the hook's useMutation/
+// useQueryClient internals never run in this provider-less test).
+jest.mock('@/hooks/useSeriesMembership', () => {
+  const addToSeries = jest.fn();
+  const removeFromAllSeries = jest.fn();
+  const value = { addToSeries, addRefsToSeries: jest.fn(), removeFromAllSeries, reorderSeries: jest.fn() };
+  return {
+    __esModule: true,
+    useSeriesMembership: () => value,
+    // Test-only handle to the stable spies (not part of the real module surface).
+    __membershipSpies: { addToSeries, removeFromAllSeries },
+  };
+});
+
 jest.mock('@/providers/AuthProvider', () => ({
   useAuth: () => ({ user: { uid: 'user-1' } }),
 }));
@@ -131,9 +147,28 @@ jest.mock('@/components/series/SeriesSelector', () => ({
 }));
 
 const mockUseGroupDetail = useGroupDetail as jest.MockedFunction<typeof useGroupDetail>;
+const mockUseSeries = useSeries as jest.MockedFunction<typeof useSeries>;
 const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGroupsAccess>;
 const mockToastError = toast.error as jest.MockedFunction<typeof toast.error>;
 const mockToastSuccess = toast.success as jest.MockedFunction<typeof toast.success>;
+
+// The membership sweep exposes stable spies (see the jest.mock factory above).
+const { addToSeries: mockAddToSeries, removeFromAllSeries: mockRemoveFromAllSeries } = (
+  jest.requireMock('@/hooks/useSeriesMembership') as {
+    __membershipSpies: { addToSeries: jest.Mock; removeFromAllSeries: jest.Mock };
+  }
+).__membershipSpies;
+
+const DEFAULT_SERIES = [{ id: 'mock-series-1', title: 'Mock Series', color: '#000000' }];
+// A series whose items list this group — so the derive shows the linked chip.
+const SERIES_WITH_GROUP = [
+  {
+    id: 'mock-series-1',
+    title: 'Mock Series',
+    color: '#000000',
+    items: [{ id: 'group-group-1', type: 'group', refId: 'group-1', position: 1 }],
+  },
+];
 
 const createMockGroup = (overrides: Partial<any> = {}) =>
   ({
@@ -194,6 +229,7 @@ describe('GroupDetailPage', () => {
     (window as any).confirm = jest.fn(() => true);
     mockHasGroupsAccess.mockResolvedValue(true);
     mockUseParams.mockReturnValue({ id: 'group-1' });
+    mockUseSeries.mockReturnValue({ series: DEFAULT_SERIES } as any);
     updateGroupDetail.mockResolvedValue(undefined);
     addMeetingDate.mockResolvedValue(undefined);
     updateMeetingDate.mockResolvedValue(undefined);
@@ -522,22 +558,23 @@ describe('GroupDetailPage', () => {
       expect(screen.getByTestId('series-selector-mock')).toBeInTheDocument();
     });
 
-    // Select a series from the mock
+    // Select a series from the mock — binding goes through the client sweep now.
     fireEvent.click(screen.getByText('Select Mock Series'));
 
     await waitFor(() => {
-      // The old test checked for 'Part of a series' as the link name, but now we expect the matched series title
-      // We mocked useSeries with { series: [{ id: 'mock-series-1', ... }] } above, so if the group has seriesId: 'mock-series-1', it shows the title 'Mock Series'.
-      // In the current test group, seriesId is 'mock-series-1' assigned above.
-      expect(updateGroupDetail).toHaveBeenCalledWith(
-        expect.objectContaining({ seriesId: 'mock-series-1' })
-      );
+      expect(mockAddToSeries).toHaveBeenCalledWith('mock-series-1', {
+        type: 'group',
+        refId: 'group-1',
+      });
       expect(mockToastSuccess).toHaveBeenCalledWith('Assigned to series');
       expect(screen.queryByTestId('series-selector-mock')).not.toBeInTheDocument(); // modal closes
     });
   });
 
   it('handles editing and unlinking an existing series assignment', async () => {
+    // The group's membership is DERIVED from series.items now, so the fixture
+    // must list this group in the series to render the linked chip.
+    mockUseSeries.mockReturnValue({ series: SERIES_WITH_GROUP } as any);
     mockUseGroupDetail.mockReturnValue({
       group: createMockGroup({ seriesId: 'mock-series-1' }),
       loading: false,
@@ -563,55 +600,11 @@ describe('GroupDetailPage', () => {
     fireEvent.click(screen.getByText('Close Selector'));
     await waitFor(() => expect(screen.queryByTestId('series-selector-mock')).not.toBeInTheDocument());
 
-    // Unlink flow
+    // Unlink flow — sweep-all removal of this group from every series.
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
     await waitFor(() => {
-      expect(updateGroupDetail).toHaveBeenCalledWith(
-        expect.objectContaining({ seriesId: null })
-      );
+      expect(mockRemoveFromAllSeries).toHaveBeenCalledWith({ type: 'group', refId: 'group-1' });
       expect(mockToastSuccess).toHaveBeenCalledWith('Unlinked from series');
-    });
-  });
-
-  it('shows error toast when assigning series fails', async () => {
-    updateGroupDetail.mockRejectedValueOnce(new Error('Assign series failed'));
-
-    render(<GroupDetailPage />);
-
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Assign to series' })).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole('button', { name: 'Assign to series' }));
-    await waitFor(() => expect(screen.getByTestId('series-selector-mock')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByText('Select Mock Series'));
-
-    await waitFor(() => {
-      expect(mockToastError).toHaveBeenCalledWith('Failed to assign series');
-    });
-  });
-
-  it('shows error toast when unlinking series fails', async () => {
-    mockUseGroupDetail.mockReturnValue({
-      group: createMockGroup({ seriesId: 'mock-series-1' }),
-      loading: false,
-      error: null,
-      updateGroupDetail,
-      addMeetingDate,
-      updateMeetingDate,
-      removeMeetingDate,
-      deleteGroupDetail,
-    } as any);
-
-    updateGroupDetail.mockRejectedValueOnce(new Error('Unlink series failed'));
-
-    render(<GroupDetailPage />);
-
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Remove' })).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
-
-    await waitFor(() => {
-      expect(mockToastError).toHaveBeenCalledWith('Failed to unlink series');
     });
   });
 

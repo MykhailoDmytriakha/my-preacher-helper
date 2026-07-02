@@ -100,9 +100,6 @@ describe('SeriesSelector Component', () => {
     createNewSeries: jest.fn(),
     updateExistingSeries: jest.fn(),
     deleteExistingSeries: jest.fn(),
-    addSermon: jest.fn(),
-    removeSermon: jest.fn(),
-    reorderSeriesSermons: jest.fn(),
   };
 
   beforeEach(() => {
@@ -133,9 +130,6 @@ describe('SeriesSelector Component', () => {
         createNewSeries: jest.fn(),
         updateExistingSeries: jest.fn(),
         deleteExistingSeries: jest.fn(),
-        addSermon: jest.fn(),
-        removeSermon: jest.fn(),
-        reorderSeriesSermons: jest.fn(),
       });
 
       render(
@@ -157,9 +151,6 @@ describe('SeriesSelector Component', () => {
         createNewSeries: jest.fn(),
         updateExistingSeries: jest.fn(),
         deleteExistingSeries: jest.fn(),
-        addSermon: jest.fn(),
-        removeSermon: jest.fn(),
-        reorderSeriesSermons: jest.fn(),
       });
 
       render(

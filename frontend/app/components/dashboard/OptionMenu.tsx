@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useSeriesMembership } from "@/hooks/useSeriesMembership";
 import { DashboardOptimisticActions, DashboardSermonSyncState } from "@/models/dashboardOptimistic";
 import { Sermon, PreachDate, Series } from "@/models/models";
 import {
@@ -12,12 +13,12 @@ import {
   getPreachDatesByStatus,
   getPreferredDateToMarkAsPreached
 } from "@/utils/preachDateStatus";
+import { getSeriesForRef } from "@/utils/seriesMembership";
 import PreachDateModal from "@components/calendar/PreachDateModal";
 import EditSermonModal from "@components/EditSermonModal";
 import { DotsVerticalIcon } from "@components/Icons";
 import SeriesSelector from "@components/series/SeriesSelector";
 import * as preachDatesService from "@services/preachDates.service";
-import { addSermonToSeries, removeSermonFromSeries } from "@services/series.service";
 import { deleteSermon, updateSermon } from "@services/sermon.service";
 
 import "@locales/i18n";
@@ -51,13 +52,16 @@ export default function OptionMenu({
   const [preachDateToMark, setPreachDateToMark] = useState<PreachDate | null>(null);
   const [showSeriesSelector, setShowSeriesSelector] = useState(false);
   const [seriesSelectorMode, setSeriesSelectorMode] = useState<'add' | 'change'>('add');
-  const [isSeriesProcessing, setIsSeriesProcessing] = useState(false);
-  const [pendingSeriesId, setPendingSeriesId] = useState<string | null>(null);
   const effectiveIsPreached = getEffectiveIsPreached(sermon);
   const isSyncPending = syncState?.status === 'pending';
   const menuRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { addToSeries, removeFromAllSeries } = useSeriesMembership();
+
+  // Which series this sermon is in — DERIVED from the loaded list (series.items
+  // is the sole truth). Only meaningful when a `series` list is passed in.
+  const currentSeries = getSeriesForRef(sermon.id, series);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -301,40 +305,25 @@ export default function OptionMenu({
     closeMenu();
   };
 
-  const handleRemoveFromSeries = async (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+  const handleRemoveFromSeries = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!sermon.seriesId || isSeriesProcessing) return;
+    if (!currentSeries) return;
     if (!window.confirm(t('workspaces.series.actions.removeFromSeries') + '?')) return;
-    setIsSeriesProcessing(true);
-    try {
-      await removeSermonFromSeries(sermon.seriesId, sermon.id);
-      applySermonUpdateResult({ ...sermon, seriesId: undefined, seriesPosition: undefined });
-    } catch (error) {
-      console.error('Error removing sermon from series:', error);
-    } finally {
-      setIsSeriesProcessing(false);
-      closeMenu();
-    }
+    // Sweep-all: drop this sermon from every series it sits in. Fire-and-forget +
+    // optimistic (the badge derives from the series list cache the sweep updates).
+    removeFromAllSeries({ type: 'sermon', refId: sermon.id });
+    invalidateCalendarCache();
+    closeMenu();
   };
 
-  const handleSeriesSelected = async (seriesId: string) => {
-    if (isSeriesProcessing) return;
-    setPendingSeriesId(seriesId);
-    setIsSeriesProcessing(true);
-    try {
-      if (seriesSelectorMode === 'change' && sermon.seriesId) {
-        await removeSermonFromSeries(sermon.seriesId, sermon.id);
-      }
-      await addSermonToSeries(seriesId, sermon.id);
-      applySermonUpdateResult({ ...sermon, seriesId });
-      setShowSeriesSelector(false);
-    } catch (error) {
-      console.error('Error updating sermon series:', error);
-    } finally {
-      setIsSeriesProcessing(false);
-      setPendingSeriesId(null);
-    }
+  const handleSeriesSelected = (seriesId: string) => {
+    // ADD/MOVE via the playlist sweep: one-to-one is enforced by construction —
+    // the sermon is removed from any other series in the same atomic batch, so
+    // "change series" needs no separate remove step.
+    addToSeries(seriesId, { type: 'sermon', refId: sermon.id });
+    invalidateCalendarCache();
+    setShowSeriesSelector(false);
   };
 
   return (
@@ -372,13 +361,13 @@ export default function OptionMenu({
               </span>
             </button>
             {series && (
-              sermon.seriesId ? (
+              currentSeries ? (
                 <>
                   <button
                     onClick={handleChangeSeries}
                     className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
                     role="menuitem"
-                    disabled={isSyncPending || isSeriesProcessing}
+                    disabled={isSyncPending}
                   >
                     <span>{t('workspaces.series.actions.moveToDifferentSeries')}</span>
                   </button>
@@ -386,7 +375,7 @@ export default function OptionMenu({
                     onClick={handleRemoveFromSeries}
                     className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
                     role="menuitem"
-                    disabled={isSyncPending || isSeriesProcessing}
+                    disabled={isSyncPending}
                   >
                     <span>{t('workspaces.series.actions.removeFromSeries')}</span>
                   </button>
@@ -396,7 +385,7 @@ export default function OptionMenu({
                   onClick={handleAddToSeries}
                   className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
                   role="menuitem"
-                  disabled={isSyncPending || isSeriesProcessing}
+                  disabled={isSyncPending}
                 >
                   <span>{t('workspaces.series.actions.addToSeries')}</span>
                 </button>
@@ -437,15 +426,10 @@ export default function OptionMenu({
 
       {showSeriesSelector && (
         <SeriesSelector
-          onClose={() => {
-            if (isSeriesProcessing) return;
-            setShowSeriesSelector(false);
-          }}
+          onClose={() => setShowSeriesSelector(false)}
           onSelect={handleSeriesSelected}
-          currentSeriesId={sermon.seriesId}
+          currentSeriesId={currentSeries?.id}
           mode={seriesSelectorMode}
-          isProcessing={isSeriesProcessing}
-          pendingSeriesId={pendingSeriesId}
         />
       )}
     </div>

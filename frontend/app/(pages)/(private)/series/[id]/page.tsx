@@ -75,7 +75,7 @@ export default function SeriesDetailPage() {
     loading,
     error,
     addSermons,
-    addGroup,
+    addGroups,
     removeItem,
     reorderMixedItems,
     updateSeriesDetail,
@@ -93,12 +93,23 @@ export default function SeriesDetailPage() {
   const [modalState, setModalState] = useState<ModalState>(null);
   const [pendingRemoval, setPendingRemoval] = useState<PendingRemoval>(null);
 
-  // Sync optimistic items with server items when server items change
-  // but only when not fetching (to avoid interrupting DND state)
+  // Sync optimistic items with server items when server items change, but only
+  // when not fetching (to avoid interrupting DND state). Content-equality guard:
+  // return the PREVIOUS array when the id-order is unchanged so React bails on an
+  // identical reference — otherwise a churning `items` reference (query without
+  // stable data, e.g. loading/offline/refetch) would re-fire this effect every
+  // render and drive a "Maximum update depth" setState loop.
   useEffect(() => {
-    if (!isRefetching) {
-      setOptimisticItems(items);
-    }
+    if (isRefetching) return;
+    setOptimisticItems((prev) => {
+      if (
+        prev.length === items.length &&
+        prev.every((entry, index) => entry.item.id === items[index]?.item.id)
+      ) {
+        return prev;
+      }
+      return items;
+    });
   }, [items, isRefetching]);
 
   const showAddSermonModal = modalState === MODAL_STATES.ADD_SERMON;
@@ -178,25 +189,14 @@ export default function SeriesDetailPage() {
 
   const handleAddGroups = async (groupIds: string[]) => {
     if (!series) return;
-    try {
-      await Promise.all(
-        groupIds.map((groupId, index) => addGroup(groupId, (series.items?.length || 0) + index))
-      );
-      toast.success(
-        t('workspaces.series.groupsAdded', {
-          count: groupIds.length,
-          defaultValue: `${groupIds.length} groups added`,
-        })
-      );
-    } catch (errorValue) {
-      console.error('Error adding groups to series:', errorValue);
-      toast.error(
-        t('workspaces.series.errors.addGroupFailed', {
-          defaultValue: 'Failed to add groups to series',
-        })
-      );
-      throw errorValue;
-    }
+    // ONE union-sweep batch (fire-and-forget + optimistic), never N parallel adds.
+    addGroups(groupIds);
+    toast.success(
+      t('workspaces.series.groupsAdded', {
+        count: groupIds.length,
+        defaultValue: `${groupIds.length} groups added`,
+      })
+    );
   };
 
   const handleConfirmRemove = async () => {

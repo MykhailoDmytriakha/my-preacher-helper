@@ -121,26 +121,36 @@ describe('groups.service', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it('keeps series-cascade group updates and delete on server routes', async () => {
-    mockFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ id: 'g1', ...baseGroup, seriesId: 'series-1' }),
-      })
-      .mockResolvedValueOnce({ ok: true });
+  it('strips deprecated series fields from updateGroup (client own-doc); delete stays on server', async () => {
+    // Playlist migration: a group's series membership lives in series.items and is
+    // written by the client sweep — updateGroup no longer PUTs to the server and
+    // never writes seriesId/seriesPosition. deleteGroup still hits the server
+    // (Admin-SDK delete-cleanup via removeGroupFromAllSeries).
+    mockGetDoc.mockResolvedValueOnce(docSnap('g1', { ...baseGroup }));
+    mockUpdateDoc.mockResolvedValueOnce(undefined);
+    mockFetch.mockResolvedValueOnce({ ok: true });
 
     const service = await importServiceWithClientMocks();
-    const updated = await service.updateGroup('g1', { seriesId: 'series-1', seriesPosition: 2 });
+    await service.updateGroup('g1', {
+      seriesId: 'series-1',
+      seriesPosition: 2,
+      title: 'Renamed',
+    } as Parameters<typeof service.updateGroup>[1]);
     await service.deleteGroup('g1');
 
-    expect(updated.seriesId).toBe('series-1');
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      1,
-      expect.stringContaining('/api/groups/g1'),
-      expect.objectContaining({ method: 'PUT' })
+    // updateGroup wrote via the client SDK (updateDoc), NOT fetch, and the
+    // deprecated series fields were stripped from the written payload.
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'groups', id: 'g1' }),
+      expect.objectContaining({ title: 'Renamed' })
     );
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      2,
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.not.objectContaining({ seriesId: 'series-1' })
+    );
+    // Only deleteGroup used fetch.
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining('/api/groups/g1'),
       expect.objectContaining({ method: 'DELETE' })
     );

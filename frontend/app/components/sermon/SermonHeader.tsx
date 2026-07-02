@@ -18,6 +18,7 @@ import EditableVerse from '@components/common/EditableVerse'; // Import the new 
 import { getContrastColor } from '@utils/color';
 import { formatDate } from '@utils/dateFormatter';
 import { getExportContent } from '@utils/exportContent';
+import { getSeriesForRef } from '@utils/seriesMembership';
 import { getSermonPlanData } from '@utils/sermonPlanAccess';
 
 import type { Sermon, Series } from '@/models/models';
@@ -101,16 +102,9 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
     }
   };
 
-  // Find series for this sermon
-  const sermonSeries = (() => {
-    // Only check if sermon has seriesId (no fallback to avoid stale data)
-    if (sermon.seriesId && sermon.seriesId.trim()) {
-      const found = series.find(s => s.id === sermon.seriesId);
-      if (found) return found;
-    }
-
-    return undefined;
-  })();
+  // Which series is this sermon in — DERIVED from the loaded series list
+  // (series.items is the sole truth; the deprecated sermon.seriesId is ignored).
+  const sermonSeries = getSeriesForRef(sermon.id, series);
 
   const sermonSeriesBadgeColor = sermonSeries?.color;
   const sermonSeriesTextColor = sermonSeriesBadgeColor ? getContrastColor(sermonSeriesBadgeColor) : undefined;

@@ -476,13 +476,14 @@ describe('DateEventList', () => {
         expect(screen.getByText('30 people')).toBeInTheDocument();
     });
 
-    it('resolves group series by seriesId', () => {
+    it('resolves group series membership from series.items', () => {
         const mockSeries = {
             id: 'series-1',
             title: 'Foundations',
             color: '#3B82F6',
             userId: 'user-1',
-            items: [],
+            // Membership is DERIVED from series.items now (sole truth).
+            items: [{ id: 'group-group-1', type: 'group', refId: 'group-1', position: 1 }],
         };
 
         const mockGroup = {
@@ -610,13 +611,14 @@ describe('DateEventList', () => {
         expect(screen.getByText('Planned')).toBeInTheDocument();
     });
 
-    it('resolves sermon series by seriesId', () => {
+    it('resolves sermon series membership from series.items', () => {
         const mockSeries = {
             id: 'series-s1',
             title: 'Romans Study',
             color: '#6366f1',
             userId: 'user-1',
-            items: [],
+            // Membership is DERIVED from series.items now (sole truth).
+            items: [{ id: 'sermon-sermon-s1', type: 'sermon', refId: 'sermon-s1', position: 1 }],
         };
 
         const sermonWithSeries: Sermon = {

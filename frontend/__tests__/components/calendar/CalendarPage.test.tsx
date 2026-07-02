@@ -192,9 +192,6 @@ describe('CalendarPage', () => {
       createNewSeries: jest.fn(),
       updateExistingSeries: jest.fn(),
       deleteExistingSeries: jest.fn(),
-      addSermon: jest.fn(),
-      removeSermon: jest.fn(),
-      reorderSeriesSermons: jest.fn(),
     });
 
     render(<CalendarPage />);
@@ -237,9 +234,6 @@ describe('CalendarPage', () => {
       createNewSeries: jest.fn(),
       updateExistingSeries: jest.fn(),
       deleteExistingSeries: jest.fn(),
-      addSermon: jest.fn(),
-      removeSermon: jest.fn(),
-      reorderSeriesSermons: jest.fn(),
     });
 
     render(<CalendarPage />);
@@ -288,9 +282,6 @@ describe('CalendarPage', () => {
       createNewSeries: jest.fn(),
       updateExistingSeries: jest.fn(),
       deleteExistingSeries: jest.fn(),
-      addSermon: jest.fn(),
-      removeSermon: jest.fn(),
-      reorderSeriesSermons: jest.fn(),
     });
 
     render(<CalendarPage />);
@@ -322,9 +313,6 @@ describe('CalendarPage', () => {
       createNewSeries: jest.fn(),
       updateExistingSeries: jest.fn(),
       deleteExistingSeries: jest.fn(),
-      addSermon: jest.fn(),
-      removeSermon: jest.fn(),
-      reorderSeriesSermons: jest.fn(),
     });
 
     render(<CalendarPage />);
@@ -358,9 +346,6 @@ describe('CalendarPage', () => {
       createNewSeries: jest.fn(),
       updateExistingSeries: jest.fn(),
       deleteExistingSeries: jest.fn(),
-      addSermon: jest.fn(),
-      removeSermon: jest.fn(),
-      reorderSeriesSermons: jest.fn(),
     });
 
     render(<CalendarPage />);
@@ -392,9 +377,6 @@ describe('CalendarPage', () => {
       createNewSeries: jest.fn(),
       updateExistingSeries: jest.fn(),
       deleteExistingSeries: jest.fn(),
-      addSermon: jest.fn(),
-      removeSermon: jest.fn(),
-      reorderSeriesSermons: jest.fn(),
     });
 
     mockUseCalendarSermons.mockReturnValue({
@@ -439,9 +421,6 @@ describe('CalendarPage', () => {
       createNewSeries: jest.fn(),
       updateExistingSeries: jest.fn(),
       deleteExistingSeries: jest.fn(),
-      addSermon: jest.fn(),
-      removeSermon: jest.fn(),
-      reorderSeriesSermons: jest.fn(),
     });
 
     mockUseCalendarSermons.mockReturnValue({
@@ -480,9 +459,6 @@ describe('CalendarPage', () => {
       createNewSeries: jest.fn(),
       updateExistingSeries: jest.fn(),
       deleteExistingSeries: jest.fn(),
-      addSermon: jest.fn(),
-      removeSermon: jest.fn(),
-      reorderSeriesSermons: jest.fn(),
     });
 
     mockUseCalendarSermons.mockReturnValue({
@@ -509,9 +485,6 @@ describe('CalendarPage', () => {
       createNewSeries: jest.fn(),
       updateExistingSeries: jest.fn(),
       deleteExistingSeries: jest.fn(),
-      addSermon: jest.fn(),
-      removeSermon: jest.fn(),
-      reorderSeriesSermons: jest.fn(),
     });
 
     mockUseCalendarSermons.mockReturnValue({
@@ -540,9 +513,6 @@ describe('CalendarPage', () => {
       createNewSeries: jest.fn(),
       updateExistingSeries: jest.fn(),
       deleteExistingSeries: jest.fn(),
-      addSermon: jest.fn(),
-      removeSermon: jest.fn(),
-      reorderSeriesSermons: jest.fn(),
     });
 
     mockUseCalendarSermons.mockReturnValue({

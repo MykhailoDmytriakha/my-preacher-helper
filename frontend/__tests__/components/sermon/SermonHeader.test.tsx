@@ -427,7 +427,9 @@ describe('SermonHeader Component', () => {
         bookOrTopic: 'Test Book',
         color: '#FF6B6B',
         userId: 'test-user-id',
-        sermonIds: ['sermon-1'],
+        // Membership is DERIVED from series.items/sermonIds now (the sole truth),
+        // not the deprecated sermon.seriesId — so the fixture lists this sermon.
+        sermonIds: ['test-sermon-id'],
         status: 'active',
         createdAt: '2024-01-01T00:00:00Z',
         updatedAt: '2024-01-02T00:00:00Z'
@@ -451,8 +453,10 @@ describe('SermonHeader Component', () => {
       expect(seriesBadge.closest('a')).toHaveAttribute('title', 'Part of Series: Test Series');
     });
 
-    it('does not show series badge when sermon has no seriesId', () => {
-      render(<SermonHeader sermon={mockSermon} series={mockSeries} onUpdate={mockOnUpdate} />);
+    it('does not show series badge when sermon is not a member of any series', () => {
+      // Not in series.items/sermonIds -> derive returns nothing -> no badge.
+      const standaloneSermon = { ...mockSermon, id: 'standalone-sermon-id' };
+      render(<SermonHeader sermon={standaloneSermon} series={mockSeries} onUpdate={mockOnUpdate} />);
 
       expect(screen.queryByText('Test Series')).not.toBeInTheDocument();
       expect(screen.queryByText('Part of Series')).not.toBeInTheDocument();

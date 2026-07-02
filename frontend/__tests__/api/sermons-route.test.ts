@@ -251,8 +251,11 @@ describe('Sermons API Route', () => {
       expect(responseData.sermon.id).toBe('client-id-xyz');
     });
 
-    test('should call addSermonToSeries when seriesId is provided', async () => {
-      // Arrange
+    // Playlist migration: the create route NEVER links a sermon into a series.
+    // Membership lives in series.items and is written exclusively by the client
+    // sweep — so addSermonToSeries is never called from POST /api/sermons, even
+    // when a (now-ignored) seriesId is present in the request body.
+    test('does NOT link the sermon into a series even when seriesId is provided', async () => {
       const sermonData = {
         userId: 'user123',
         title: 'New Sermon In A Series',
@@ -262,20 +265,16 @@ describe('Sermons API Route', () => {
         seriesId: 'series-abc',
       };
       mockRequest.json = jest.fn().mockResolvedValueOnce(sermonData);
-      mockAddSermonToSeries.mockResolvedValueOnce(undefined);
 
-      // Act
       const response = await sermonsRouteModule.POST(mockRequest as unknown as Request);
       const responseData = await response.json();
 
-      // Assert
       expect(response.status).toBe(200);
       expect(responseData.sermon.id).toBe('newSermonId123');
-      expect(mockAddSermonToSeries).toHaveBeenCalledWith('series-abc', 'newSermonId123', undefined);
+      expect(mockAddSermonToSeries).not.toHaveBeenCalled();
     });
 
-    test('should NOT call addSermonToSeries when no seriesId is provided', async () => {
-      // Arrange
+    test('does NOT call addSermonToSeries when no seriesId is provided', async () => {
       const sermonData = {
         userId: 'user123',
         title: 'Standalone Sermon',
@@ -285,60 +284,9 @@ describe('Sermons API Route', () => {
       };
       mockRequest.json = jest.fn().mockResolvedValueOnce(sermonData);
 
-      // Act
       await sermonsRouteModule.POST(mockRequest as unknown as Request);
 
-      // Assert
       expect(mockAddSermonToSeries).not.toHaveBeenCalled();
-    });
-
-    test('should roll back sermon creation if addSermonToSeries fails', async () => {
-      // Arrange
-      const sermonData = {
-        userId: 'user123',
-        title: 'Series Sync Failure Sermon',
-        verse: 'Acts 2:1',
-        date: '2023-02-01',
-        thoughts: [],
-        seriesId: 'broken-series-id',
-      };
-      mockRequest.json = jest.fn().mockResolvedValueOnce(sermonData);
-      mockAddSermonToSeries.mockRejectedValueOnce(new Error('Series not found'));
-
-      // Act
-      const response = await sermonsRouteModule.POST(mockRequest as unknown as Request);
-      const responseData = await response.json();
-
-      // Assert — do not leave sermon.seriesId without the series reverse index
-      expect(response.status).toBe(500);
-      expect(responseData.error).toBe('Failed to create sermon');
-      expect(responseData.details).toBe('Failed to link sermon to series');
-      expect(mockDelete).toHaveBeenCalledTimes(1);
-    });
-
-    test('should still return 500 when rollback after series sync failure also fails', async () => {
-      // Arrange
-      const sermonData = {
-        userId: 'user123',
-        title: 'Series Sync And Rollback Failure Sermon',
-        verse: 'Acts 2:1',
-        date: '2023-02-01',
-        thoughts: [],
-        seriesId: 'broken-series-id',
-      };
-      mockRequest.json = jest.fn().mockResolvedValueOnce(sermonData);
-      mockAddSermonToSeries.mockRejectedValueOnce(new Error('Series not found'));
-      mockDelete.mockRejectedValueOnce(new Error('Cleanup failed'));
-
-      // Act
-      const response = await sermonsRouteModule.POST(mockRequest as unknown as Request);
-      const responseData = await response.json();
-
-      // Assert
-      expect(response.status).toBe(500);
-      expect(responseData.error).toBe('Failed to create sermon');
-      expect(responseData.details).toBe('Failed to link sermon to series');
-      expect(mockDelete).toHaveBeenCalledTimes(1);
     });
   });
 });

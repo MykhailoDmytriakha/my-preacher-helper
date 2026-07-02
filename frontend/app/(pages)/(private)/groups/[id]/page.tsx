@@ -43,6 +43,7 @@ import { useAutoSave } from '@/hooks/useAutoSave';
 import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { useRouteId } from '@/hooks/useRouteId';
 import { useSeries } from '@/hooks/useSeries';
+import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { GroupBlockStatus, GroupBlockTemplate, GroupBlockTemplateType, GroupFlowItem } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { hasGroupsAccess } from '@/services/userSettings.service';
@@ -54,6 +55,7 @@ import {
   normalizeFlow,
   removeFlowItem,
 } from '@/utils/groupFlow';
+import { getSeriesForRef } from '@/utils/seriesMembership';
 
 const STATUS_CYCLE: GroupBlockStatus[] = ['empty', 'draft', 'filled'];
 
@@ -71,6 +73,10 @@ export default function GroupDetailPage() {
 
   const groupsUserId = user?.uid && groupsEnabled ? user.uid : null;
   const { series } = useSeries(groupsUserId);
+  const { addToSeries, removeFromAllSeries } = useSeriesMembership();
+
+  // Which series this group belongs to — DERIVED from series.items (sole truth).
+  const groupSeries = group ? getSeriesForRef(group.id, series) : undefined;
 
   const [isSeriesSelectorOpen, setIsSeriesSelectorOpen] = useState(false);
   const [title, setTitle] = useState('');
@@ -345,25 +351,21 @@ export default function GroupDetailPage() {
     }
   };
 
-  const handleSeriesSelect = async (seriesId: string) => {
-    try {
-      await updateGroupDetailRef.current({ seriesId });
-      toast.success(t('workspaces.groups.messages.seriesAssigned', { defaultValue: 'Assigned to series' }));
-      setIsSeriesSelectorOpen(false);
-    } catch (error) {
-      console.error('Failed to assign series:', error);
-      toast.error(t('workspaces.groups.errors.seriesAssignFailed', { defaultValue: 'Failed to assign series' }));
-    }
+  // Series binding now flows through the client playlist sweep (series.items is
+  // the sole truth) — one-to-one is enforced by construction (add removes the
+  // group from any other series in the same atomic batch). Fire-and-forget +
+  // optimistic, so it works offline like every other membership op.
+  const handleSeriesSelect = (seriesId: string) => {
+    if (!group) return;
+    addToSeries(seriesId, { type: 'group', refId: group.id });
+    toast.success(t('workspaces.groups.messages.seriesAssigned', { defaultValue: 'Assigned to series' }));
+    setIsSeriesSelectorOpen(false);
   };
 
-  const handleUnlinkSeries = async () => {
-    try {
-      await updateGroupDetailRef.current({ seriesId: null });
-      toast.success(t('workspaces.groups.messages.seriesUnlinked', { defaultValue: 'Unlinked from series' }));
-    } catch (error) {
-      console.error('Failed to unlink series:', error);
-      toast.error(t('workspaces.groups.errors.seriesUnlinkFailed', { defaultValue: 'Failed to unlink series' }));
-    }
+  const handleUnlinkSeries = () => {
+    if (!group) return;
+    removeFromAllSeries({ type: 'group', refId: group.id });
+    toast.success(t('workspaces.groups.messages.seriesUnlinked', { defaultValue: 'Unlinked from series' }));
   };
 
   if (accessLoading || (groupsEnabled && loading)) {
@@ -486,14 +488,13 @@ export default function GroupDetailPage() {
                 <option value="active">{t('workspaces.series.form.statuses.active')}</option>
                 <option value="completed">{t('workspaces.series.form.statuses.completed')}</option>
               </select>
-              {group.seriesId ? (
+              {groupSeries ? (
                 <div className="flex items-center gap-[1px]">
                   {(() => {
-                    const matchedSeries = series.find((s) => s.id === group.seriesId);
-                    const seriesName = matchedSeries ? matchedSeries.title : t('workspaces.groups.inSeries', { defaultValue: 'Part of a series' });
+                    const seriesName = groupSeries.title || t('workspaces.groups.inSeries', { defaultValue: 'Part of a series' });
                     return (
                       <Link
-                        href={`/series/${group.seriesId}`}
+                        href={`/series/${groupSeries.id}`}
                         className="inline-flex max-w-[200px] items-center gap-2 rounded-l-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-200/50 hover:bg-blue-50 dark:bg-blue-900/30 dark:text-blue-200 dark:ring-blue-800/40 dark:hover:bg-blue-900/50 transition-colors"
                         title={seriesName}
                       >
@@ -679,7 +680,7 @@ export default function GroupDetailPage() {
       {isSeriesSelectorOpen && (
         <SeriesSelector
           mode="change"
-          currentSeriesId={group.seriesId}
+          currentSeriesId={groupSeries?.id}
           onSelect={handleSeriesSelect}
           onClose={() => setIsSeriesSelectorOpen(false)}
         />

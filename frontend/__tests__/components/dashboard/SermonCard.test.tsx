@@ -63,6 +63,18 @@ jest.mock('@tanstack/react-query', () => ({
   }),
 }));
 
+// OptionMenu (rendered inside the card) uses the playlist membership sweep hook,
+// which internally calls useMutation — stub it so the partial react-query mock
+// above doesn't need the mutation surface.
+jest.mock('@/hooks/useSeriesMembership', () => ({
+  useSeriesMembership: () => ({
+    addToSeries: jest.fn(),
+    addRefsToSeries: jest.fn(),
+    removeFromAllSeries: jest.fn(),
+    reorderSeries: jest.fn(),
+  }),
+}));
+
 describe('SermonCard Component', () => {
   const mockOnDelete = jest.fn();
   const mockOnUpdate = jest.fn();

@@ -1,17 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 
+import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { normalizeSeriesItems } from '@/utils/seriesItems';
 import { getGroupById } from '@services/groups.service';
-import {
-  addGroupToSeries,
-  addSermonToSeries,
-  getSeriesById,
-  removeSeriesItem,
-  reorderSeriesItems,
-  updateSeries,
-} from '@services/series.service';
+import { getSeriesById, updateSeries } from '@services/series.service';
 import { getSermonById } from '@services/sermon.service';
 
 import type { Group, Series, SeriesItem, Sermon } from '@/models/models';
@@ -32,6 +26,17 @@ type SeriesDetailPayload = {
 const QUERY_KEYS = {
   SERIES_DETAIL: 'series-detail',
 } as const;
+
+// Stable empty fallbacks. `data?.x ?? []` would mint a NEW array every render
+// when the query has no data (loading / error / offline-disabled query). That
+// fresh `items` ref feeds the detail page's `useEffect([items, isRefetching])`
+// (setOptimisticItems) and, once the query settles without data (e.g. a transient
+// permission error, or offline where the query is disabled), drives an INFINITE
+// setState render loop that turns a recoverable error into a dead page. Referential
+// stability across renders removes the loop entirely.
+const EMPTY_ITEMS: ResolvedSeriesItem[] = [];
+const EMPTY_SERMONS: Sermon[] = [];
+const EMPTY_GROUPS: Group[] = [];
 
 const buildPayload = async (seriesData: Series): Promise<SeriesDetailPayload> => {
   const normalizedItems = normalizeSeriesItems(seriesData.items, seriesData.sermonIds || []);
@@ -72,6 +77,7 @@ const buildPayload = async (seriesData: Series): Promise<SeriesDetailPayload> =>
 export function useSeriesDetail(seriesId: string) {
   const queryClient = useQueryClient();
   const [mutationError, setMutationError] = useState<Error | null>(null);
+  const { addToSeries, addRefsToSeries, removeFromAllSeries, reorderSeries } = useSeriesMembership();
 
   const { data, isLoading, isFetching, error, refetch } = useServerFirstQuery<SeriesDetailPayload | null>({
     queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId],
@@ -88,9 +94,9 @@ export function useSeriesDetail(seriesId: string) {
   });
 
   const series = data?.series ?? null;
-  const items = data?.items ?? [];
-  const sermons = data?.sermons ?? [];
-  const groups = data?.groups ?? [];
+  const items = data?.items ?? EMPTY_ITEMS;
+  const sermons = data?.sermons ?? EMPTY_SERMONS;
+  const groups = data?.groups ?? EMPTY_GROUPS;
 
   const refreshSeriesDetail = useCallback(async () => {
     await refetch();
@@ -108,73 +114,65 @@ export function useSeriesDetail(seriesId: string) {
     }
   }, [refetch]);
 
+  // Membership writes go through the client playlist sweep (the SOLE writer of
+  // series.items). Each is fire-and-forget + optimistic (the sweep updates the
+  // ['series'] list and every affected ['series-detail'] cache), so they work
+  // offline and never hang awaiting the network.
   const addSermon = useCallback(
-    async (sermonId: string, position?: number) => {
+    (sermonId: string, position?: number) => {
       if (!series) return;
-      await withMutationGuard(async () => {
-        await addSermonToSeries(series.id, sermonId, position);
-        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, series.id] });
-        await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
-        await queryClient.invalidateQueries({ queryKey: ['sermons', series.userId] });
-      });
+      addToSeries(series.id, { type: 'sermon', refId: sermonId }, position);
     },
-    [series, withMutationGuard, queryClient]
+    [series, addToSeries]
   );
 
   const addSermons = useCallback(
-    async (sermonIds: string[]) => {
+    (sermonIds: string[]) => {
       if (!series) return;
-      await withMutationGuard(async () => {
-        await Promise.all(
-          sermonIds.map((sermonId, index) =>
-            addSermonToSeries(series.id, sermonId, (series.items?.length || 0) + index)
-          )
-        );
-        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, series.id] });
-        await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
-        await queryClient.invalidateQueries({ queryKey: ['sermons', series.userId] });
-      });
+      // ONE union-sweep batch (never N parallel sweeps that would clobber the target).
+      addRefsToSeries(
+        series.id,
+        sermonIds.map((sermonId) => ({ type: 'sermon' as const, refId: sermonId }))
+      );
     },
-    [series, withMutationGuard, queryClient]
+    [series, addRefsToSeries]
   );
 
   const addGroup = useCallback(
-    async (groupId: string, position?: number) => {
+    (groupId: string, position?: number) => {
       if (!series) return;
-      await withMutationGuard(async () => {
-        await addGroupToSeries(series.id, groupId, position);
-        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, series.id] });
-        await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
-        await queryClient.invalidateQueries({ queryKey: ['groups', series.userId] });
-      });
+      addToSeries(series.id, { type: 'group', refId: groupId }, position);
     },
-    [series, withMutationGuard, queryClient]
+    [series, addToSeries]
+  );
+
+  const addGroups = useCallback(
+    (groupIds: string[]) => {
+      if (!series) return;
+      // ONE union-sweep batch — never N parallel sweeps (which clobber the target doc).
+      addRefsToSeries(
+        series.id,
+        groupIds.map((groupId) => ({ type: 'group' as const, refId: groupId }))
+      );
+    },
+    [series, addRefsToSeries]
   );
 
   const removeItem = useCallback(
-    async (type: 'sermon' | 'group', refId: string) => {
+    (type: 'sermon' | 'group', refId: string) => {
       if (!series) return;
-      await withMutationGuard(async () => {
-        await removeSeriesItem(series.id, type, refId);
-        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, series.id] });
-        await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
-        if (type === 'group') {
-          await queryClient.invalidateQueries({ queryKey: ['groups', series.userId] });
-        } else if (type === 'sermon') {
-          await queryClient.invalidateQueries({ queryKey: ['sermons', series.userId] });
-        }
-      });
+      removeFromAllSeries({ type, refId });
     },
-    [series, withMutationGuard, queryClient]
+    [series, removeFromAllSeries]
   );
 
   const removeSermon = useCallback(
-    async (sermonId: string) => removeItem('sermon', sermonId),
+    (sermonId: string) => removeItem('sermon', sermonId),
     [removeItem]
   );
 
   const reorderSeriesSermons = useCallback(
-    async (sermonIds: string[]) => {
+    (sermonIds: string[]) => {
       if (!series) return;
       const currentItems = normalizeSeriesItems(series.items, series.sermonIds || []);
       const orderedSermonItems = sermonIds
@@ -187,33 +185,24 @@ export function useSeriesDetail(seriesId: string) {
       const finalSermonItems = [...orderedSermonItems, ...missingSermons];
 
       let cursor = 0;
-      const nextItemIds = currentItems
-        .map((item) => {
-          if (item.type !== 'sermon') return item.id;
-          const next = finalSermonItems[cursor];
-          cursor += 1;
-          return next?.id || item.id;
-        });
-
-      await withMutationGuard(async () => {
-        await reorderSeriesItems(series.id, nextItemIds);
-        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, series.id] });
-        await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
+      const nextItemIds = currentItems.map((item) => {
+        if (item.type !== 'sermon') return item.id;
+        const next = finalSermonItems[cursor];
+        cursor += 1;
+        return next?.id || item.id;
       });
+
+      reorderSeries(series.id, nextItemIds);
     },
-    [series, withMutationGuard, queryClient]
+    [series, reorderSeries]
   );
 
   const reorderMixedItems = useCallback(
-    async (itemIds: string[]) => {
+    (itemIds: string[]) => {
       if (!series) return;
-      await withMutationGuard(async () => {
-        await reorderSeriesItems(series.id, itemIds);
-        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, series.id] });
-        await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
-      });
+      reorderSeries(series.id, itemIds);
     },
-    [series, withMutationGuard, queryClient]
+    [series, reorderSeries]
   );
 
   const updateSeriesDetail = useCallback(
@@ -240,6 +229,7 @@ export function useSeriesDetail(seriesId: string) {
     addSermon,
     addSermons,
     addGroup,
+    addGroups,
     removeItem,
     removeSermon,
     reorderSeriesSermons,

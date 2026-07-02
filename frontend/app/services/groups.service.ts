@@ -140,24 +140,12 @@ export const createGroup = async (group: Omit<Group, 'id'> & { id?: string }): P
 };
 
 export const updateGroup = async (groupId: string, updates: Partial<Group>): Promise<Group> => {
-  // seriesId/seriesPosition changes cascade into the `series` collection (cross-
-  // collection write) → those MUST stay on the server. Content-only updates
-  // (title/description/status/templates/flow) go via the client SDK.
-  const touchesSeries = 'seriesId' in updates || 'seriesPosition' in updates;
-  if (!touchesSeries) {
-    return updateGroupViaClient(groupId, updates);
-  }
-  const response = await fetch(`${API_BASE}/api/groups/${groupId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
-
-  if (!response.ok) {
-    throw new Error('Failed to update group');
-  }
-
-  return response.json();
+  // Playlist model: a group's series membership lives in series.items and is
+  // written ONLY by the client sweep (useSeriesMembership) — never as a group
+  // back-ref. Strip the deprecated seriesId/seriesPosition so a stray caller
+  // can't write them, and keep updateGroup a pure own-doc client write.
+  const { seriesId: _seriesId, seriesPosition: _seriesPosition, ...contentUpdates } = updates;
+  return updateGroupViaClient(groupId, contentUpdates);
 };
 
 // DELETE stays on the server: it cascades via seriesRepository.removeGroupFromAllSeries

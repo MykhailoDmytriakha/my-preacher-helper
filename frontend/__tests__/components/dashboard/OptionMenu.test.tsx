@@ -38,6 +38,17 @@ jest.mock('@tanstack/react-query', () => ({
   }),
 }));
 
+// The playlist membership sweep hook (used for series add/move/remove) internally
+// calls useMutation — stub it so this test's partial react-query mock is enough.
+jest.mock('@/hooks/useSeriesMembership', () => ({
+  useSeriesMembership: () => ({
+    addToSeries: jest.fn(),
+    addRefsToSeries: jest.fn(),
+    removeFromAllSeries: jest.fn(),
+    reorderSeries: jest.fn(),
+  }),
+}));
+
 // Mock the Icons component
 jest.mock('@components/Icons', () => ({
   DotsVerticalIcon: () => <div data-testid="dots-vertical-icon" />,

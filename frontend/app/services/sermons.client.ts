@@ -28,10 +28,11 @@ import { stripStructureTags } from '@/utils/thoughtTagSanitizer';
 // preachDates[]) go through the client Firestore SDK unconditionally (offline
 // replica + deployed Security Rules). Operations that need secrets (AI:
 // transcription/insights/plan/brainstorm/TTS) or cascade into OTHER collections
-// (delete -> series back-refs; create — can carry seriesId -> addSermonToSeries)
-// stay on the server. The Phase 5 cleanup removed the last consumer of the old
-// NEXT_PUBLIC_USE_CLIENT_SERMONS strangler-fig flag, so the client path is no
-// longer gated.
+// (delete -> series delete-cleanup) stay on the server. Series MEMBERSHIP is not
+// a cascade anymore: it lives in series.items and is written by the client
+// playlist sweep (useSeriesMembership). The Phase 5 cleanup removed the last
+// consumer of the old NEXT_PUBLIC_USE_CLIENT_SERMONS strangler-fig flag, so the
+// client path is no longer gated.
 
 const SERMONS_COLLECTION = 'sermons';
 const SERMON_NOT_FOUND = 'Sermon not found';

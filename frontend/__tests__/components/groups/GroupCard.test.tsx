@@ -184,8 +184,14 @@ describe('GroupCard', () => {
       seriesPosition: null,
     };
 
+    // Membership is DERIVED from series.items now (sole truth), not group.seriesId.
     // @ts-ignore
-    const series = [{ id: 's1', title: 'Test Series Badge', color: '#ff0000' }];
+    const series = [{
+      id: 's1',
+      title: 'Test Series Badge',
+      color: '#ff0000',
+      items: [{ id: 'group-g1', type: 'group', refId: 'g1', position: 1 }],
+    }];
 
     render(<GroupCard group={group as any} series={series as any} />);
 

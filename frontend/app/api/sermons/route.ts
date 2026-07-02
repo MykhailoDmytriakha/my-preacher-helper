@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 
-import { seriesRepository } from '@/api/repositories/series.repository';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { Sermon } from '@/models/models';
 
@@ -15,19 +14,14 @@ export async function POST(request: Request) {
     const title = sermon.title;
     const verse = sermon.verse;
     const date = sermon.date;
-    const seriesId = sermon.seriesId;
-    const seriesPosition = sermon.seriesPosition;
     if (!userId || !title || !verse || !date) {
       return NextResponse.json({ error: "User not authenticated or sermon data is missing" }, { status: 400 });
     }
 
+    // Playlist model: series membership is written EXCLUSIVELY by the client
+    // sweep into series.items — the create no longer writes the deprecated
+    // seriesId/seriesPosition back-ref nor links the sermon into a series.
     const sermonData: Partial<Sermon> = { userId, title, verse, date, thoughts: sermon.thoughts || [] };
-    if (seriesId) {
-      sermonData.seriesId = seriesId;
-    }
-    if (seriesPosition) {
-      sermonData.seriesPosition = seriesPosition;
-    }
 
     // Idempotent create when the client supplies the id (offline buffer): a
     // replayed create reuses the same doc instead of duplicating. Ownership
@@ -51,26 +45,6 @@ export async function POST(request: Request) {
       docRef = await adminDb.collection('sermons').add(sermonData);
     }
     console.log("Sermon written with ID:", docRef.id);
-
-    // Sync sermon into the series.items array so it appears in the series list.
-    if (seriesId) {
-      try {
-        await seriesRepository.addSermonToSeries(seriesId, docRef.id, seriesPosition);
-        console.log(`Sermon ${docRef.id} linked to series ${seriesId}`);
-      } catch (seriesError) {
-        console.error(`Failed to link sermon ${docRef.id} to series ${seriesId}:`, seriesError);
-        try {
-          await docRef.delete();
-          console.log(`Rolled back sermon ${docRef.id} after series link failure`);
-        } catch (cleanupError) {
-          console.error(`Failed to roll back sermon ${docRef.id} after series link failure:`, cleanupError);
-        }
-        return NextResponse.json(
-          { error: 'Failed to create sermon', details: 'Failed to link sermon to series' },
-          { status: 500 }
-        );
-      }
-    }
 
     const newSermon = { ...sermon, id: docRef.id };
     console.log("New sermon object after attaching ID:", newSermon);

@@ -17,6 +17,7 @@ import { Group, GroupMeetingDate, Sermon, Series } from '@/models/models';
 import { getContrastColor } from '@/utils/color';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { getEffectivePreachDateStatus } from '@/utils/preachDateStatus';
+import { getSeriesForRef } from '@/utils/seriesMembership';
 
 interface AgendaViewProps {
   sermons: Sermon[];
@@ -54,21 +55,9 @@ export default function AgendaView({ sermons, groups = [], series = [] }: Agenda
     }
   };
 
-  const getSermonSeries = (sermon: Sermon) => {
-    if (sermon.seriesId && sermon.seriesId.trim()) {
-      return series.find((entry) => entry.id === sermon.seriesId);
-    }
-    return series.find((entry) => (entry.sermonIds || []).includes(sermon.id));
-  };
-
-  const getGroupSeries = (group: Group) => {
-    if (group.seriesId && group.seriesId.trim()) {
-      return series.find((entry) => entry.id === group.seriesId);
-    }
-    return series.find((entry) =>
-      (entry.items || []).some((item) => item.type === 'group' && item.refId === group.id)
-    );
-  };
+  // DERIVED from series.items (sole truth); the deprecated back-refs are ignored.
+  const getSermonSeries = (sermon: Sermon) => getSeriesForRef(sermon.id, series);
+  const getGroupSeries = (group: Group) => getSeriesForRef(group.id, series);
 
   const sermonEvents: SermonEvent[] = sermons.flatMap((sermon) =>
     (sermon.preachDates || []).flatMap((preachDate) => {

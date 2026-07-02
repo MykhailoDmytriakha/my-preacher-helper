@@ -18,16 +18,15 @@ export const getSermonById = async (id: string): Promise<Sermon | undefined> => 
 };
 
 export const createSermon = async (sermon: Omit<Sermon, 'id'> & { id?: string }): Promise<Sermon> => {
-  // createSermon stays on the server even when the flag is ON — as a principled
-  // boundary, not a workaround. A create can cascade into a series
-  // (addSermonToSeries), so it follows the same "cross-collection cascade -> server"
-  // rule every other collection uses (groups series-link, series membership, tag
-  // delete). The server's get-then-set is already idempotent by client id, and
-  // addPreachDate is now idempotent by id too (see preachDates), so there is no
-  // replay-dup landmine. Moving create to a client setDoc would only add a
-  // replay-clobber risk (a late online-flush resetting thoughts[]) for no real gain.
-  // All sermon READS and own-doc EDITS (structure/outline/thoughts/preachDates/update)
-  // are on the client.
+  // createSermon stays on the server as a principled boundary. The server's
+  // get-then-set is idempotent by client id, and addPreachDate is idempotent by
+  // id too (see preachDates), so there is no replay-dup landmine. Moving create
+  // to a client setDoc would only add a replay-clobber risk (a late online-flush
+  // resetting thoughts[]) for no real gain. Series membership is NO LONGER a
+  // create concern: the playlist model writes it exclusively through the client
+  // sweep (useSeriesMembership) into series.items — the create route ignores any
+  // seriesId in the body. All sermon READS and own-doc EDITS
+  // (structure/outline/thoughts/preachDates/update) are on the client.
   try {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     const response = await apiClient(`${API_BASE}/api/sermons`, {

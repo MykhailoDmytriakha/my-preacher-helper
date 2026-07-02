@@ -12,6 +12,12 @@ type FilterOptions = {
     sortOption: "newest" | "oldest" | "alphabetical" | "recentlyUpdated";
     seriesFilter: "all" | "inSeries" | "standalone";
     activeTab: "active" | "preached" | "all";
+    /**
+     * Set of sermon ids that are members of ANY series — DERIVED by the caller
+     * from the loaded series list (series.items is the sole truth). The filter
+     * consults this set instead of the deprecated sermon.seriesId back-ref.
+     */
+    inSeriesRefIds?: Set<string>;
 };
 
 const getLatestPreachTimestamp = (sermon: Sermon) => {
@@ -42,7 +48,7 @@ export function useFilteredSermons(
     options: FilterOptions,
     t: TFunction
 ) {
-    const { searchQuery, searchInThoughts, searchInTags, sortOption, seriesFilter, activeTab } = options;
+    const { searchQuery, searchInThoughts, searchInTags, sortOption, seriesFilter, activeTab, inSeriesRefIds } = options;
 
     const searchTokens = useMemo(() => tokenizeQuery(searchQuery), [searchQuery]);
 
@@ -58,11 +64,12 @@ export function useFilteredSermons(
     return useMemo(() => {
         let filtered = [...sermons];
 
-        // Series filter
+        // Series filter — derived from series.items membership (via the injected
+        // set), not the deprecated sermon.seriesId back-ref.
         if (seriesFilter === "inSeries") {
-            filtered = filtered.filter((sermon) => sermon.seriesId);
+            filtered = filtered.filter((sermon) => inSeriesRefIds?.has(sermon.id));
         } else if (seriesFilter === "standalone") {
-            filtered = filtered.filter((sermon) => !sermon.seriesId);
+            filtered = filtered.filter((sermon) => !inSeriesRefIds?.has(sermon.id));
         }
 
         // Tab filter (Active vs Preached vs All)
@@ -108,5 +115,5 @@ export function useFilteredSermons(
         }
 
         return { processedSermons: sorted, searchSnippetsById: snippets, activeFilterCount: 0 }; // Added dummy activeFilterCount for now or calculate here?
-    }, [sermons, searchTokens, searchOptions, sortOption, seriesFilter, activeTab, searchQuery, t]);
+    }, [sermons, searchTokens, searchOptions, sortOption, seriesFilter, activeTab, searchQuery, inSeriesRefIds, t]);
 }

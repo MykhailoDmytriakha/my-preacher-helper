@@ -1,6 +1,7 @@
 import { useMutation, useMutationState, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
+import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { newClientId } from '@/utils/clientId';
 import {
   DASHBOARD_SERMON_KEY_PREFIX,
@@ -105,6 +106,7 @@ const operationOf = (mutation: MutationLike): DashboardSyncOperation | undefined
 
 export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsResult {
   const queryClient = useQueryClient();
+  const { addToSeries } = useSeriesMembership();
 
   // The badge map, derived live from the mutation cache: latest pending/error
   // mutation per sermon wins. Successful (and dismissed/removed) mutations
@@ -191,9 +193,15 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
         plannedDateId: newClientId(),
         input,
       });
+      // Create-in-series: membership is written through the SAME client playlist
+      // sweep as every other membership op (ONE writer of series.items). The
+      // server create no longer touches series, so this is what links the sermon.
+      if (input.seriesId) {
+        addToSeries(input.seriesId, { type: 'sermon', refId: sermonId });
+      }
       return sermonId;
     },
-    [createMutation]
+    [createMutation, addToSeries]
   );
 
   const saveEditedSermon = useCallback(

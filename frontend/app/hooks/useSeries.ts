@@ -11,12 +11,9 @@ import { debugLog } from "@/utils/debugMode";
 import { SERIES_MUTATION_KEYS } from "@/utils/mutationDefaults";
 import { normalizeError } from "@/utils/normalizeError";
 import {
-  addSermonToSeries,
   createSeries,
   deleteSeries,
   getAllSeries,
-  removeSermonFromSeries,
-  reorderSermons,
   updateSeries,
 } from "@services/series.service";
 
@@ -171,22 +168,6 @@ export function useSeries(userId?: string | null) {
     },
   });
 
-  // Used by the series<->sermon link ops below. No longer pre-throws when
-  // offline (that short-circuited the buffer); just normalizes + records errors.
-  const mutationGuard = useCallback(
-    async <TResult>(action: () => Promise<TResult>) => {
-      setMutationError(null);
-      try {
-        return await action();
-      } catch (e: unknown) {
-        const errorObj = normalizeError(e);
-        setMutationError(errorObj);
-        throw errorObj;
-      }
-    },
-    []
-  );
-
   // Fire-and-forget + optimistic: resolve immediately so the UI does not hang
   // awaiting the network; offline the mutation pauses + persists and replays.
   const createNewSeries = useCallback(
@@ -226,36 +207,6 @@ export function useSeries(userId?: string | null) {
     }
   }, [queryClient, isOnline, effectiveUserId]);
 
-  const addSermon = useCallback(
-    async (seriesId: string, sermonId: string, position?: number) =>
-      mutationGuard(async () => {
-        await addSermonToSeries(seriesId, sermonId, position);
-        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
-        await queryClient.invalidateQueries({ queryKey: buildQueryKey(effectiveUserId) });
-      }),
-    [mutationGuard, queryClient, effectiveUserId]
-  );
-
-  const removeSermon = useCallback(
-    async (seriesId: string, sermonId: string) =>
-      mutationGuard(async () => {
-        await removeSermonFromSeries(seriesId, sermonId);
-        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
-        await queryClient.invalidateQueries({ queryKey: buildQueryKey(effectiveUserId) });
-      }),
-    [mutationGuard, queryClient, effectiveUserId]
-  );
-
-  const reorderSeriesSermons = useCallback(
-    async (seriesId: string, sermonIds: string[]) =>
-      mutationGuard(async () => {
-        await reorderSermons(seriesId, sermonIds);
-        await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
-        await queryClient.invalidateQueries({ queryKey: buildQueryKey(effectiveUserId) });
-      }),
-    [mutationGuard, queryClient, effectiveUserId]
-  );
-
   return {
     series,
     loading: isLoading,
@@ -264,8 +215,5 @@ export function useSeries(userId?: string | null) {
     createNewSeries,
     updateExistingSeries,
     deleteExistingSeries,
-    addSermon,
-    removeSermon,
-    reorderSeriesSermons,
   };
 }

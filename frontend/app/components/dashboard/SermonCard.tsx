@@ -14,6 +14,7 @@ import {
   getLatestPreachedDate,
   getNextPlannedDate
 } from "@/utils/preachDateStatus";
+import { getSeriesForRef } from "@/utils/seriesMembership";
 import { ThoughtSnippet } from "@/utils/sermonSearch";
 import { getTagStyle, getStructureIcon } from "@/utils/tagUtils";
 import ExportButtons from "@components/ExportButtons";
@@ -390,13 +391,9 @@ export default function SermonCard({
     sermon.outline?.main?.length ||
     sermon.outline?.conclusion?.length;
 
-  // Find series for this sermon
-  const sermonSeries = (() => {
-    if (sermon.seriesId && sermon.seriesId.trim()) {
-      return series.find(s => s.id === sermon.seriesId);
-    }
-    return series.find(s => s.sermonIds?.includes(sermon.id));
-  })();
+  // Which series is this sermon in — DERIVED from the loaded series list
+  // (series.items is the sole truth; the deprecated sermon.seriesId is ignored).
+  const sermonSeries = getSeriesForRef(sermon.id, series);
 
   // Card base styles - clean white/dark theme without heavy backgrounds
   const syncVisualClasses = syncState?.status === 'pending'

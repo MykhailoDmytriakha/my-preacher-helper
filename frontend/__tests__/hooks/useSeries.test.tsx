@@ -10,22 +10,17 @@ import {
   createSeries,
   updateSeries,
   deleteSeries,
-  addSermonToSeries,
-  removeSermonFromSeries,
-  reorderSermons
 } from '@/services/series.service';
 
 import type { ReactNode } from 'react';
 
-// Mock the services
+// Mock the services. Membership ops (add/remove/reorder) moved off series.service
+// to the client playlist sweep, so they are no longer part of this hook's surface.
 jest.mock('@/services/series.service', () => ({
   getAllSeries: jest.fn(),
   createSeries: jest.fn(),
   updateSeries: jest.fn(),
   deleteSeries: jest.fn(),
-  addSermonToSeries: jest.fn(),
-  removeSermonFromSeries: jest.fn(),
-  reorderSermons: jest.fn(),
 }));
 
 jest.mock('@/hooks/useResolvedUid', () => ({
@@ -40,9 +35,6 @@ const mockGetAllSeries = getAllSeries as jest.MockedFunction<typeof getAllSeries
 const mockCreateSeries = createSeries as jest.MockedFunction<typeof createSeries>;
 const mockUpdateSeries = updateSeries as jest.MockedFunction<typeof updateSeries>;
 const mockDeleteSeries = deleteSeries as jest.MockedFunction<typeof deleteSeries>;
-const mockAddSermonToSeries = addSermonToSeries as jest.MockedFunction<typeof addSermonToSeries>;
-const mockRemoveSermonFromSeries = removeSermonFromSeries as jest.MockedFunction<typeof removeSermonFromSeries>;
-const mockReorderSermons = reorderSermons as jest.MockedFunction<typeof reorderSermons>;
 const mockUseResolvedUid = useResolvedUid as jest.MockedFunction<typeof useResolvedUid>;
 const mockUseOnlineStatus = useOnlineStatus as jest.MockedFunction<typeof useOnlineStatus>;
 
@@ -333,123 +325,6 @@ describe('useSeries', () => {
         await result.current.deleteExistingSeries('series-1');
       });
 
-      await waitFor(() => {
-        expect(result.current.error).toEqual(error);
-      });
-    });
-  });
-
-  describe('addSermon', () => {
-    it('should add sermon to series and refresh data', async () => {
-      mockAddSermonToSeries.mockResolvedValue(undefined);
-      // Mock refresh call
-      mockGetAllSeries.mockResolvedValue(mockSeries);
-
-      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await act(async () => {
-        await result.current.addSermon('series-1', 'new-sermon-id', 1);
-      });
-
-      expect(mockAddSermonToSeries).toHaveBeenCalledWith('series-1', 'new-sermon-id', 1);
-      expect(mockGetAllSeries).toHaveBeenCalledTimes(2); // initial + refresh
-      expect(result.current.error).toBeNull();
-    });
-
-    it('should handle add sermon error and set error state', async () => {
-      const error = new Error('Add sermon failed');
-      mockAddSermonToSeries.mockRejectedValue(error);
-
-      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await expect(result.current.addSermon('series-1', 'new-sermon-id')).rejects.toThrow('Add sermon failed');
-
-      // Wait for error state to be set
-      await waitFor(() => {
-        expect(result.current.error).toEqual(error);
-      });
-    });
-  });
-
-  describe('removeSermon', () => {
-    it('should remove sermon from series and refresh data', async () => {
-      mockRemoveSermonFromSeries.mockResolvedValue(undefined);
-
-      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await act(async () => {
-        await result.current.removeSermon('series-1', 'sermon-1');
-      });
-
-      expect(mockRemoveSermonFromSeries).toHaveBeenCalledWith('series-1', 'sermon-1');
-      expect(mockGetAllSeries).toHaveBeenCalledTimes(2); // initial + refresh
-      expect(result.current.error).toBeNull();
-    });
-
-    it('should handle remove sermon error and set error state', async () => {
-      const error = new Error('Remove sermon failed');
-      mockRemoveSermonFromSeries.mockRejectedValue(error);
-
-      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await expect(result.current.removeSermon('series-1', 'sermon-1')).rejects.toThrow('Remove sermon failed');
-
-      // Wait for error state to be set
-      await waitFor(() => {
-        expect(result.current.error).toEqual(error);
-      });
-    });
-  });
-
-  describe('reorderSeriesSermons', () => {
-    it('should reorder sermons in series and refresh data', async () => {
-      const newOrder = ['sermon-2', 'sermon-1'];
-      mockReorderSermons.mockResolvedValue(undefined);
-
-      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await act(async () => {
-        await result.current.reorderSeriesSermons('series-1', newOrder);
-      });
-
-      expect(mockReorderSermons).toHaveBeenCalledWith('series-1', newOrder);
-      expect(mockGetAllSeries).toHaveBeenCalledTimes(2); // initial + refresh
-      expect(result.current.error).toBeNull();
-    });
-
-    it('should handle reorder error and set error state', async () => {
-      const error = new Error('Reorder failed');
-      mockReorderSermons.mockRejectedValue(error);
-
-      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
-
-      await waitFor(() => {
-        expect(result.current.loading).toBe(false);
-      });
-
-      await expect(result.current.reorderSeriesSermons('series-1', ['sermon-1'])).rejects.toThrow('Reorder failed');
-
-      // Wait for error state to be set
       await waitFor(() => {
         expect(result.current.error).toEqual(error);
       });

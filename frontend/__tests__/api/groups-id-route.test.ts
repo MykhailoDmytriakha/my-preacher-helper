@@ -1,20 +1,17 @@
 import { groupsRepository } from '@repositories/groups.repository';
 import { seriesRepository } from '@repositories/series.repository';
 
-import { DELETE, PUT } from 'app/api/groups/[id]/route';
+import { DELETE } from 'app/api/groups/[id]/route';
 
 jest.mock('@repositories/groups.repository', () => ({
   groupsRepository: {
     fetchGroupById: jest.fn(),
-    updateGroupSeriesInfo: jest.fn(),
     deleteGroup: jest.fn(),
   },
 }));
 
 jest.mock('@repositories/series.repository', () => ({
   seriesRepository: {
-    addGroupToSeries: jest.fn(),
-    removeGroupFromSeries: jest.fn(),
     removeGroupFromAllSeries: jest.fn(),
   },
 }));
@@ -28,59 +25,12 @@ jest.mock('next/server', () => ({
   },
 }));
 
+// The PUT /api/groups/[id] handler (server series-binding cascade) was removed in
+// the playlist migration — a group's series membership now lives in series.items
+// and is written by the client sweep. Only DELETE (delete-cleanup) remains.
 describe('/api/groups/[id] route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-  });
-
-  describe('PUT', () => {
-    it('returns 404 when updating missing group', async () => {
-      (groupsRepository.fetchGroupById as jest.Mock).mockResolvedValueOnce(null);
-
-      const response = await PUT(
-        { json: jest.fn().mockResolvedValue({ seriesId: 's1' }) } as unknown as Request,
-        { params: Promise.resolve({ id: 'missing' }) }
-      );
-      const data = await response.json();
-
-      expect(response.status).toBe(404);
-      expect(data.error).toBe('Group not found');
-    });
-
-    it('rejects content-only updates', async () => {
-      (groupsRepository.fetchGroupById as jest.Mock).mockResolvedValueOnce({ id: 'g1' });
-
-      const response = await PUT(
-        { json: jest.fn().mockResolvedValue({ title: 'Updated' }) } as unknown as Request,
-        { params: Promise.resolve({ id: 'g1' }) }
-      );
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error).toBe('No series fields provided for update');
-      expect(groupsRepository.updateGroupSeriesInfo).not.toHaveBeenCalled();
-    });
-
-    it('updates series metadata and syncs series membership when series changes', async () => {
-      (groupsRepository.fetchGroupById as jest.Mock)
-        .mockResolvedValueOnce({ id: 'g1', seriesId: 'old-series', seriesPosition: 1 })
-        .mockResolvedValueOnce({ id: 'g1', seriesId: 'new-series', seriesPosition: 2 });
-      (seriesRepository.removeGroupFromSeries as jest.Mock).mockResolvedValueOnce(undefined);
-      (seriesRepository.addGroupToSeries as jest.Mock).mockResolvedValueOnce(undefined);
-      (groupsRepository.updateGroupSeriesInfo as jest.Mock).mockResolvedValueOnce(undefined);
-
-      const response = await PUT(
-        { json: jest.fn().mockResolvedValue({ seriesId: 'new-series', seriesPosition: 2 }) } as unknown as Request,
-        { params: Promise.resolve({ id: 'g1' }) }
-      );
-      const data = await response.json();
-
-      expect(seriesRepository.removeGroupFromSeries).toHaveBeenCalledWith('old-series', 'g1');
-      expect(seriesRepository.addGroupToSeries).toHaveBeenCalledWith('new-series', 'g1', 2);
-      expect(groupsRepository.updateGroupSeriesInfo).toHaveBeenCalledWith('g1', 'new-series', 2);
-      expect(response.status).toBe(200);
-      expect(data.seriesId).toBe('new-series');
-    });
   });
 
   describe('DELETE', () => {

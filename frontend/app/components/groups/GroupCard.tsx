@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Group, Series } from '@/models/models';
 import { getContrastColor } from '@/utils/color';
+import { getSeriesForRef } from '@/utils/seriesMembership';
 
 interface GroupCardProps {
   group: Group;
@@ -109,12 +110,9 @@ export default function GroupCard({ group, series = [], onDelete, deleting = fal
       t('workspaces.groups.itemsLabel.noDate', { defaultValue: 'No date' }))
     : t('workspaces.groups.itemsLabel.noDate', { defaultValue: 'No date' });
 
-  const groupSeries = (() => {
-    if (group.seriesId && group.seriesId.trim()) {
-      return series?.find(s => s.id === group.seriesId);
-    }
-    return undefined;
-  })();
+  // DERIVED from the loaded series list (series.items is the sole truth; the
+  // deprecated group.seriesId back-ref is ignored).
+  const groupSeries = getSeriesForRef(group.id, series);
 
   const closeMenu = useCallback(() => setMenuOpen(false), []);
 
