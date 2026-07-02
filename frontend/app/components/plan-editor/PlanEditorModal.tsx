@@ -56,6 +56,25 @@ const cloneSectionWithFreshIds = (points: OutlinePoint[]): OutlinePoint[] =>
       : {}),
   }));
 
+// Reminder notes are personal to this sermon — they must never leak into a reusable
+// template. Rebuild each point/sub-point WITHOUT `note` (mirrors cloneSectionWithFreshIds).
+const stripNotesFromOutline = (outline: SermonOutline): SermonOutline => {
+  const strip = (points: OutlinePoint[]): OutlinePoint[] =>
+    points.map((p) => {
+      const cleaned: OutlinePoint = { id: p.id, text: p.text };
+      if (p.isReviewed !== undefined) cleaned.isReviewed = p.isReviewed;
+      if (p.subPoints && p.subPoints.length > 0) {
+        cleaned.subPoints = p.subPoints.map((sp) => ({ id: sp.id, text: sp.text, position: sp.position }));
+      }
+      return cleaned;
+    });
+  return {
+    introduction: strip(outline.introduction),
+    main: strip(outline.main),
+    conclusion: strip(outline.conclusion),
+  };
+};
+
 interface PlanEditorModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -242,7 +261,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     const name = saveAsName.trim();
     if (!name) return;
     try {
-      await createTemplate({ id: newClientId(), userId: sermon.userId, name, structure: outline });
+      await createTemplate({ id: newClientId(), userId: sermon.userId, name, structure: stripNotesFromOutline(outline) });
       toast.success(t('planEditor.templateSaved'));
       setSaveAsOpen(false);
       setSaveAsName('');
@@ -399,6 +418,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
             value={outline}
             onChange={handleChange}
             isReadOnly={isReadOnly}
+            showNotes
             getSubPointThoughtCount={getSubPointThoughtCount}
             getPointThoughtCount={getPointThoughtCount}
             onPointDeleted={onOutlinePointDeleted}

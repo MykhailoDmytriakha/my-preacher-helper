@@ -795,6 +795,7 @@ function StructurePageContent() {
                 onOutlinePointDeleted={handleOutlinePointDeleted}
                 onSubPointDeleted={handleSubPointDeleted}
                 onAddOutlinePoint={handleAddOutlinePoint}
+                showNotes
               />
             )}
 
@@ -836,6 +837,7 @@ function StructurePageContent() {
                 onOutlinePointDeleted={handleOutlinePointDeleted}
                 onSubPointDeleted={handleSubPointDeleted}
                 onAddOutlinePoint={handleAddOutlinePoint}
+                showNotes
               />
             )}
             {isSectionVisible("conclusion") && (
@@ -875,6 +877,7 @@ function StructurePageContent() {
                 onOutlinePointDeleted={handleOutlinePointDeleted}
                 onSubPointDeleted={handleSubPointDeleted}
                 onAddOutlinePoint={handleAddOutlinePoint}
+                showNotes
               />
             )}
           </div>

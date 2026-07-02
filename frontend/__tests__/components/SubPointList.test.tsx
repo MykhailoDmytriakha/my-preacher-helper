@@ -109,6 +109,51 @@ describe('SubPointList', () => {
     expect(handleEdit).toHaveBeenCalledWith('point-1', 'sub-1', 'Paul');
   });
 
+  it('renders and edits sub-point reminder notes when enabled', () => {
+    const handleEditNote = jest.fn();
+
+    render(
+      <SubPointList
+        subPoints={[{ id: 'sub-1', text: 'Saul', note: 'Mention the road', position: 1000 }]}
+        outlinePointId="point-1"
+        isPointLocked={false}
+        onAdd={jest.fn()}
+        onEdit={jest.fn()}
+        onDelete={jest.fn()}
+        onEditNote={handleEditNote}
+        showNotes
+        t={t}
+      />
+    );
+
+    fireEvent.click(screen.getByText('Mention the road'));
+
+    const textarea = screen.getByDisplayValue('Mention the road');
+    fireEvent.change(textarea, { target: { value: 'Mention Damascus first' } });
+    fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter' });
+
+    expect(handleEditNote).toHaveBeenCalledWith('point-1', 'sub-1', 'Mention Damascus first');
+  });
+
+  it('does not render reminder notes in the compact sidebar variant', () => {
+    render(
+      <SubPointList
+        subPoints={[{ id: 'sub-1', text: 'Saul', note: 'Sidebar should stay clean', position: 1000 }]}
+        outlinePointId="point-1"
+        isPointLocked={false}
+        onAdd={jest.fn()}
+        onEdit={jest.fn()}
+        onDelete={jest.fn()}
+        showNotes
+        t={t}
+        isSidebar
+      />
+    );
+
+    expect(screen.getByText('Saul')).toBeInTheDocument();
+    expect(screen.queryByText('Sidebar should stay clean')).not.toBeInTheDocument();
+  });
+
   it('capitalizes the first letter while adding a sub-point', () => {
     const handleAdd = jest.fn();
 

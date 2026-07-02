@@ -12,6 +12,7 @@ import {
 import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars2Icon } from "@heroicons/react/24/outline";
 import React, { useEffect, useRef, useState } from "react";
 
+import PointNote from "@/components/PointNote";
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from "@/utils/textNormalization";
 
 import type { SubPoint } from "@/models/models";
@@ -24,7 +25,9 @@ interface SubPointListProps {
   onEdit: (outlinePointId: string, subPointId: string, newText: string) => void;
   onDelete: (outlinePointId: string, subPointId: string) => void;
   onReorder?: (outlinePointId: string, sourceIndex: number, destinationIndex: number) => void;
+  onEditNote?: (outlinePointId: string, subPointId: string, note?: string) => void;
   getAffectedThoughtCount?: (subPointId: string) => number;
+  showNotes?: boolean;
   t: (key: string, options?: Record<string, unknown>) => string;
   isSidebar?: boolean;
 }
@@ -51,8 +54,8 @@ const getSubPointStyles = (isSidebar: boolean) => ({
     ? "p-0.5 text-blue-200/60 hover:text-red-300 dark:text-blue-200/60 dark:hover:text-red-300"
     : "p-0.5 text-slate-400 hover:text-red-500 dark:text-blue-100/45 dark:hover:text-red-200",
   itemClass: isSidebar
-    ? "group/sp flex min-w-0 items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[13px] font-medium leading-5 text-blue-50/90 dark:text-blue-50/90 transition-colors hover:bg-white/10"
-    : "group/sp flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-100/80 dark:hover:bg-white/10",
+    ? "group/sp flex min-w-0 flex-col rounded-md px-1.5 py-0.5 text-[13px] font-medium leading-5 text-blue-50/90 dark:text-blue-50/90 transition-colors hover:bg-white/10"
+    : "group/sp flex min-w-0 flex-col rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-100/80 dark:hover:bg-white/10",
   inputClass: isSidebar
     ? "flex-1 px-1.5 py-0.5 text-[13px] bg-blue-950/60 border border-blue-400/30 text-white placeholder-blue-200/50 rounded focus:outline-none focus:ring-1 focus:ring-blue-300 min-w-0"
     : "flex-1 px-2 py-0.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded border border-gray-300 dark:border-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0",
@@ -84,7 +87,9 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   onEdit,
   onDelete,
   onReorder,
+  onEditNote,
   getAffectedThoughtCount,
+  showNotes = false,
   t,
   isSidebar = false,
 }) => {
@@ -167,6 +172,9 @@ export const SubPointList: React.FC<SubPointListProps> = ({
   const canReorder = !isPointLocked && onReorder && sorted.length > 1;
 
   const styles = getSubPointStyles(isSidebar);
+  const rowClass = isSidebar
+    ? "flex min-w-0 w-full items-center gap-1.5"
+    : "flex min-w-0 w-full items-center gap-2";
 
   const renderSubPointContent = (sp: SubPoint, dragHandleProps?: React.HTMLAttributes<HTMLElement> | null) => (
     <>
@@ -207,37 +215,49 @@ export const SubPointList: React.FC<SubPointListProps> = ({
 
   const renderSubPointItem = (sp: SubPoint, dragHandleProps?: React.HTMLAttributes<HTMLElement> | null) => {
     const ItemTag = isSidebar ? "li" : "div";
+    const isEditingThisSubPoint = editingId === sp.id;
     return (
       <ItemTag className={styles.itemClass}>
-        {editingId === sp.id ? (
-          <>
-            {canReorder && dragHandleProps && (
-              <div {...(dragHandleProps as React.HTMLAttributes<HTMLDivElement>)} className="cursor-grab flex-shrink-0 w-4 flex items-center justify-center touch-manipulation">
-                <Bars2Icon className={styles.dragHandleClass} />
+        <div className={rowClass}>
+          {isEditingThisSubPoint ? (
+            <>
+              {canReorder && dragHandleProps && (
+                <div {...(dragHandleProps as React.HTMLAttributes<HTMLDivElement>)} className="cursor-grab flex-shrink-0 w-4 flex items-center justify-center touch-manipulation">
+                  <Bars2Icon className={styles.dragHandleClass} />
+                </div>
+              )}
+              <div className="flex-1 flex items-center gap-1">
+                <input
+                  ref={editingId === sp.id ? editInputRef : undefined}
+                  type="text"
+                  value={editText}
+                  onChange={(e) => setEditText(capitalizeFirstLetter(e.target.value))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleEditSave();
+                    if (e.key === "Escape") { setEditingId(null); setEditText(""); }
+                  }}
+                  className={styles.inputClass}
+                />
+                <button onClick={handleEditSave} className={styles.saveBtnClass} aria-label={t(COMMON_SAVE_KEY)}>
+                  <CheckIcon className={SMALL_ACTION_ICON_CLASS} />
+                </button>
+                <button onClick={() => { setEditingId(null); setEditText(""); }} className={styles.cancelBtnClass} aria-label={t(COMMON_CANCEL_KEY)}>
+                  <XMarkIcon className={SMALL_ACTION_ICON_CLASS} />
+                </button>
               </div>
-            )}
-            <div className="flex-1 flex items-center gap-1">
-              <input
-                ref={editingId === sp.id ? editInputRef : undefined}
-                type="text"
-                value={editText}
-                onChange={(e) => setEditText(capitalizeFirstLetter(e.target.value))}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleEditSave();
-                  if (e.key === "Escape") { setEditingId(null); setEditText(""); }
-                }}
-                className={styles.inputClass}
-              />
-              <button onClick={handleEditSave} className={styles.saveBtnClass} aria-label={t(COMMON_SAVE_KEY)}>
-                <CheckIcon className={SMALL_ACTION_ICON_CLASS} />
-              </button>
-              <button onClick={() => { setEditingId(null); setEditText(""); }} className={styles.cancelBtnClass} aria-label={t(COMMON_CANCEL_KEY)}>
-                <XMarkIcon className={SMALL_ACTION_ICON_CLASS} />
-              </button>
-            </div>
-          </>
-        ) : (
-          renderSubPointContent(sp, dragHandleProps)
+            </>
+          ) : (
+            renderSubPointContent(sp, dragHandleProps)
+          )}
+        </div>
+        {showNotes && !isSidebar && !isEditingThisSubPoint && (
+          <PointNote
+            note={sp.note}
+            onChange={(note) => onEditNote?.(outlinePointId, sp.id, note)}
+            isReadOnly={isPointLocked}
+            indentClass="ml-5"
+            addRevealClass="opacity-100 lg:opacity-0 lg:group-hover/sp:opacity-100"
+          />
         )}
       </ItemTag>
     );

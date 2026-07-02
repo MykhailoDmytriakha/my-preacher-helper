@@ -14,6 +14,7 @@ import { Bars2Icon, Bars3Icon, CheckIcon, PencilIcon, TrashIcon, XMarkIcon } fro
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import PointNote from '@/components/PointNote';
 import { newClientId } from '@/utils/clientId';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 import { getSectionStyling } from '@/utils/themeColors';
@@ -103,6 +104,11 @@ interface OutlineBoardProps {
   ) => void;
   /** Tailwind classes for the columns grid container. */
   className?: string;
+  /**
+   * Enable the per-point / per-sub-point reminder note ("what I want to say here").
+   * Off by default so contexts like the template editor stay note-free.
+   */
+  showNotes?: boolean;
 }
 
 /**
@@ -122,6 +128,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   onOutlinePointMoved,
   onSubPointMoved,
   className = 'grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 h-full',
+  showNotes = false,
 }) => {
   const { t } = useTranslation();
   const points = withSection(value);
@@ -491,22 +498,38 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                       style={subProvided.draggableProps.style}
                     >
                       <div
-                        className={`group/subpoint flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-100/80 dark:hover:bg-white/10 ${
+                        className={`group/subpoint rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-100/80 dark:hover:bg-white/10 ${
                           subSnapshot.isDragging ? 'bg-white dark:bg-slate-800 shadow-lg ring-1 ring-blue-400/50' : ''
                         }`}
                       >
-                        {!isReadOnly && subProvided.dragHandleProps ? (
-                          <div
-                            {...subProvided.dragHandleProps}
-                            className="cursor-grab flex-shrink-0 w-4 flex items-center justify-center touch-manipulation"
-                            aria-label={t('common.dragToReorder')}
-                          >
-                            <Bars2Icon className="h-3 w-3 text-slate-400 dark:text-blue-100/70" />
-                          </div>
-                        ) : (
-                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-blue-100/75 flex-shrink-0 shadow-sm dark:shadow-blue-950/20" />
+                        <div className="flex min-w-0 items-center gap-2">
+                          {!isReadOnly && subProvided.dragHandleProps ? (
+                            <div
+                              {...subProvided.dragHandleProps}
+                              className="cursor-grab flex-shrink-0 w-4 flex items-center justify-center touch-manipulation"
+                              aria-label={t('common.dragToReorder')}
+                            >
+                              <Bars2Icon className="h-3 w-3 text-slate-400 dark:text-blue-100/70" />
+                            </div>
+                          ) : (
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-blue-100/75 flex-shrink-0 shadow-sm dark:shadow-blue-950/20" />
+                          )}
+                          {renderSubPointControls(point, sp)}
+                        </div>
+                        {showNotes && (
+                          <PointNote
+                            note={sp.note}
+                            onChange={(n) =>
+                              mutatePoint(point.id, (p) => ({
+                                ...p,
+                                subPoints: (p.subPoints ?? []).map((s) => (s.id === sp.id ? { ...s, note: n } : s)),
+                              }))
+                            }
+                            isReadOnly={isReadOnly}
+                            indentClass="ml-5"
+                            addRevealClass="opacity-100 lg:opacity-0 lg:group-hover/subpoint:opacity-100"
+                          />
                         )}
-                        {renderSubPointControls(point, sp)}
                       </div>
                     </div>
                   )}
@@ -691,6 +714,15 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                               </span>
                             </div>
 
+                            {showNotes && (
+                              <PointNote
+                                note={point.note}
+                                onChange={(n) => mutatePoint(point.id, (p) => ({ ...p, note: n }))}
+                                isReadOnly={isReadOnly}
+                                indentClass="ml-6"
+                                addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+                              />
+                            )}
                             {!collapsedPoints[point.id] && renderSubPoints(point)}
                           </div>
                         )}

@@ -101,6 +101,64 @@ describe("useColumnOutlineState", () => {
     (toast.success as jest.Mock).mockClear();
   });
 
+  it("sets and clears freeform point and sub-point notes without normalizing text", async () => {
+    const { result } = renderState();
+
+    act(() => {
+      result.current.handleSetPointNote("point-1", "remember lowercase phrasing");
+    });
+    await act(async () => {
+      await flushScheduledTasks();
+    });
+
+    expect(result.current.localSermonPoints[0]).toEqual(
+      expect.objectContaining({ note: "remember lowercase phrasing" })
+    );
+    expect(updateSermonOutline).toHaveBeenLastCalledWith(
+      "sermon-1",
+      expect.objectContaining({
+        main: expect.arrayContaining([
+          expect.objectContaining({ id: "point-1", note: "remember lowercase phrasing" }),
+        ]),
+      })
+    );
+
+    act(() => {
+      result.current.handleSetSubPointNote("point-1", "sub-1", "sub note, keep as typed");
+    });
+    await act(async () => {
+      await flushScheduledTasks();
+    });
+
+    expect(result.current.localSermonPoints[0].subPoints).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "sub-1", note: "sub note, keep as typed" }),
+      ])
+    );
+
+    act(() => {
+      result.current.handleSetSubPointNote("point-1", "sub-1", undefined);
+    });
+    await act(async () => {
+      await flushScheduledTasks();
+    });
+
+    expect(result.current.localSermonPoints[0].subPoints?.[0]).toHaveProperty("note", undefined);
+    expect(updateSermonOutline).toHaveBeenLastCalledWith(
+      "sermon-1",
+      expect.objectContaining({
+        main: expect.arrayContaining([
+          expect.objectContaining({
+            id: "point-1",
+            subPoints: expect.arrayContaining([
+              expect.objectContaining({ id: "sub-1", note: undefined }),
+            ]),
+          }),
+        ]),
+      })
+    );
+  });
+
   it("capitalizes the first letter after punctuation across point and sub-point handlers", async () => {
     const { result } = renderState();
 

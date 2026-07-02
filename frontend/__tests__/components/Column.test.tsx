@@ -12,6 +12,7 @@ jest.mock('@heroicons/react/24/outline', () => {
     ArrowUturnLeftIcon: mockIcon('arrow-uturn'),
     SparklesIcon: mockIcon('sparkles'),
     InformationCircleIcon: mockIcon('info'),
+    LightBulbIcon: mockIcon('light-bulb'),
     ChevronLeftIcon: mockIcon('chevron-left'),
     ChevronRightIcon: mockIcon('chevron-right'),
     ChevronDownIcon: mockIcon('chevron-down')
@@ -1129,6 +1130,72 @@ describe('Column Component', () => {
       });
 
       expect(screen.queryByPlaceholderText('Sub-point name...')).not.toBeInTheDocument();
+    });
+
+    it('renders and persists point and sub-point reminder notes from normal outline cards', async () => {
+      (updateSermonOutline as jest.Mock).mockClear();
+
+      render(
+        <Column
+          id="introduction"
+          title="Introduction"
+          sermonId="sermon-1"
+          items={[
+            { id: '1', content: 'Item 1', customTagNames: [], outlinePointId: 'point1' }
+          ]}
+          outlinePoints={[
+            {
+              id: 'point1',
+              text: 'Introduction Point 1',
+              note: 'Point reminder',
+              subPoints: [{ id: 'sub-1', text: 'Sub-point A', note: 'Sub reminder', position: 1000 }]
+            }
+          ]}
+          thoughtsPerSermonPoint={{ point1: 1 }}
+          onOutlineUpdate={jest.fn()}
+          showNotes
+        />
+      );
+
+      expect(screen.getByText('Point reminder')).toBeInTheDocument();
+      expect(screen.getByText('Sub reminder')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText('Point reminder'));
+      let textarea = screen.getByDisplayValue('Point reminder');
+      fireEvent.change(textarea, { target: { value: 'Point reminder updated' } });
+      fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter' });
+
+      await waitFor(() => {
+        expect(updateSermonOutline).toHaveBeenCalledWith(
+          'sermon-1',
+          expect.objectContaining({
+            introduction: expect.arrayContaining([
+              expect.objectContaining({ id: 'point1', note: 'Point reminder updated' }),
+            ]),
+          })
+        );
+      });
+
+      fireEvent.click(screen.getByText('Sub reminder'));
+      textarea = screen.getByDisplayValue('Sub reminder');
+      fireEvent.change(textarea, { target: { value: 'Sub reminder updated' } });
+      fireEvent.keyDown(textarea, { key: 'Enter', code: 'Enter' });
+
+      await waitFor(() => {
+        expect(updateSermonOutline).toHaveBeenLastCalledWith(
+          'sermon-1',
+          expect.objectContaining({
+            introduction: expect.arrayContaining([
+              expect.objectContaining({
+                id: 'point1',
+                subPoints: expect.arrayContaining([
+                  expect.objectContaining({ id: 'sub-1', note: 'Sub reminder updated' }),
+                ]),
+              }),
+            ]),
+          })
+        );
+      });
     });
 
     it('marks only nested thoughts with a compact subpoint chip', () => {

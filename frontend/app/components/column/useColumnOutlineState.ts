@@ -208,6 +208,15 @@ export function useColumnOutlineState({
     triggerSaveOutline(updatedPoints);
   };
 
+  const handleSetPointNote = (pointId: string, note?: string) => {
+    const updatedPoints = localSermonPoints.map((point) =>
+      point.id === pointId ? { ...point, note } : point
+    );
+
+    setLocalSermonPoints(updatedPoints);
+    triggerSaveOutline(updatedPoints);
+  };
+
   const handleDeletePoint = (pointId: string) => {
     const updatedPoints = localSermonPoints.filter((point) => point.id !== pointId);
     setLocalSermonPoints(updatedPoints);
@@ -363,6 +372,21 @@ export function useColumnOutlineState({
     triggerSaveOutline(updatedPoints);
   };
 
+  const handleSetSubPointNote = (outlinePointId: string, subPointId: string, note?: string) => {
+    const updatedPoints = localSermonPoints.map((point) => {
+      if (point.id !== outlinePointId || !point.subPoints) return point;
+      return {
+        ...point,
+        subPoints: point.subPoints.map((sp) =>
+          sp.id === subPointId ? { ...sp, note } : sp
+        ),
+      };
+    });
+
+    setLocalSermonPoints(updatedPoints);
+    triggerSaveOutline(updatedPoints);
+  };
+
   const handleDeleteSubPoint = (outlinePointId: string, subPointId: string) => {
     const updatedPoints = localSermonPoints.map((point) => {
       if (point.id !== outlinePointId || !point.subPoints) return point;
@@ -422,6 +446,7 @@ export function useColumnOutlineState({
     handleCancelEdit,
     handleSaveEdit,
     handleSaveEditDirect,
+    handleSetPointNote,
     confirmDeletePoint,
     openInsertPointForm,
     closeInsertPointForm,
@@ -431,6 +456,7 @@ export function useColumnOutlineState({
     // Sub-point operations
     handleAddSubPoint,
     handleEditSubPoint,
+    handleSetSubPointNote,
     handleDeleteSubPoint,
     handleReorderSubPoints,
   };

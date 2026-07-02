@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import "@locales/i18n";
 
 import { MicrophoneIcon, SwitchViewIcon } from "@/components/Icons";
+import PointNote from "@/components/PointNote";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { getSectionLabel } from "@/lib/sections";
 import { Item, SermonPoint, SubPoint } from "@/models/models";
@@ -59,6 +60,10 @@ import SortableItem from "./SortableItem";
 import type { ColumnProps, OnAudioThoughtCreated, Translate } from "./column/types";
 
 type SubPointRenderableEntry = ReturnType<typeof buildSubPointRenderableEntries<Item>>[number];
+
+type ColumnComponentProps = ColumnProps & {
+  showNotes?: boolean;
+};
 
 const getRenderableEntryPosition = (entry: SubPointRenderableEntry | null | undefined): number | undefined => {
   if (!entry) return undefined;
@@ -160,7 +165,10 @@ const SubPointDropTarget: React.FC<{
   activeId?: string | null;
   t: Translate;
   renderRecorder?: (subPoint: SubPoint) => React.ReactNode;
-}> = ({ subPoint, items, containerId, outlinePointId, renderItem, activeId, t, renderRecorder }) => {
+  showNotes?: boolean;
+  isReadOnly?: boolean;
+  onEditNote?: (note?: string) => void;
+}> = ({ subPoint, items, containerId, outlinePointId, renderItem, activeId, t, renderRecorder, showNotes = false, isReadOnly = false, onEditNote }) => {
   const { setNodeRef, isOver } = useDroppable({
     id: `sub-point-${subPoint.id}`,
     data: {
@@ -212,6 +220,16 @@ const SubPointDropTarget: React.FC<{
           </div>
         ) : null}
       </div>
+      {showNotes && (
+        <div className="mt-1 pl-4 pr-1">
+          <PointNote
+            note={subPoint.note}
+            onChange={(note) => onEditNote?.(note)}
+            isReadOnly={isReadOnly}
+            addRevealClass="opacity-100"
+          />
+        </div>
+      )}
       <div
         data-testid={`sub-point-lane-${subPoint.id}`}
         className="relative mt-3 space-y-4 pl-4 pr-1"
@@ -248,11 +266,14 @@ const SubPointAwareDropZone: React.FC<{
   onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
   onToggleThoughtLock?: (thoughtId: string, isLocked: boolean) => Promise<void> | void;
   renderSubPointRecorder?: (subPoint: SubPoint) => React.ReactNode;
+  showNotes?: boolean;
+  isPointLocked?: boolean;
+  onSetSubPointNote?: (outlinePointId: string, subPointId: string, note?: string) => void;
   t: Translate;
 }> = ({
   setNodeRef, isOver, pointItems, subPoints, containerId, outlinePointId, hasItems,
   onEdit, isHighlighted, getHighlightType, onKeepItem, onRevertItem, activeId, onMoveToAmbiguous,
-  onToggleThoughtLock, renderSubPointRecorder, t
+  onToggleThoughtLock, renderSubPointRecorder, showNotes = false, isPointLocked = false, onSetSubPointNote, t
 }) => {
   const hasSubPoints = subPoints.length > 0;
 
@@ -328,6 +349,9 @@ const SubPointAwareDropZone: React.FC<{
                     activeId={activeId}
                     t={t}
                     renderRecorder={renderSubPointRecorder}
+                    showNotes={showNotes}
+                    isReadOnly={isPointLocked}
+                    onEditNote={(note) => onSetSubPointNote?.(outlinePointId, sp.id, note)}
                   />
                   {gapSlot}
                 </React.Fragment>
@@ -381,8 +405,11 @@ const SermonPointPlaceholder: React.FC<{
   // Sub-point operations
   onAddSubPoint?: (outlinePointId: string, text: string) => void;
   onEditSubPoint?: (outlinePointId: string, subPointId: string, newText: string) => void;
+  onSetPointNote?: (pointId: string, note?: string) => void;
+  onSetSubPointNote?: (pointId: string, subPointId: string, note?: string) => void;
   onDeleteSubPoint?: (outlinePointId: string, subPointId: string) => void;
   onReorderSubPoints?: (outlinePointId: string, sourceIndex: number, destinationIndex: number) => void;
+  showNotes?: boolean;
 }> = ({
   point,
   items,
@@ -418,8 +445,11 @@ const SermonPointPlaceholder: React.FC<{
   onSaveEdit,
   onAddSubPoint,
   onEditSubPoint,
+  onSetPointNote,
+  onSetSubPointNote,
   onDeleteSubPoint,
   onReorderSubPoints,
+  showNotes = false,
   // eslint-disable-next-line sonarjs/cognitive-complexity -- dense UI component with multiple conditional controls
 }) => {
     const { setNodeRef, isOver } = useDroppable({
@@ -759,6 +789,18 @@ const SermonPointPlaceholder: React.FC<{
             </div>
           </div>
 
+          {showNotes && !isEditingLocally && (
+            <div className="px-4">
+              <PointNote
+                note={point.note}
+                onChange={(note) => onSetPointNote?.(point.id, note)}
+                isReadOnly={isPointLocked}
+                indentClass="ml-6"
+                addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+              />
+            </div>
+          )}
+
           {!isFocusMode && !isEditingLocally && !isCollapsed && ((point.subPoints?.length ?? 0) > 0 || Boolean(onAddSubPoint && onEditSubPoint && onDeleteSubPoint)) && (
             <SubPointList
               subPoints={point.subPoints ?? []}
@@ -768,6 +810,8 @@ const SermonPointPlaceholder: React.FC<{
               onEdit={onEditSubPoint ?? (() => undefined)}
               onDelete={onDeleteSubPoint ?? (() => undefined)}
               onReorder={onReorderSubPoints}
+              onEditNote={onSetSubPointNote}
+              showNotes={showNotes}
               getAffectedThoughtCount={(spId) => pointItems.filter((it) => it.subPointId === spId).length}
               t={t}
             />
@@ -791,6 +835,9 @@ const SermonPointPlaceholder: React.FC<{
             onMoveToAmbiguous={onMoveToAmbiguous}
             onToggleThoughtLock={onToggleThoughtLock}
             renderSubPointRecorder={renderSubPointRecorder}
+            showNotes={showNotes && isFocusMode}
+            isPointLocked={isPointLocked}
+            onSetSubPointNote={onSetSubPointNote}
             t={t}
           />
         </div>
@@ -908,8 +955,9 @@ export default function Column({
   planData,
   onOutlinePointDeleted,
   onSubPointDeleted,
-  onAddOutlinePoint
-}: ColumnProps) {
+  onAddOutlinePoint,
+  showNotes = false
+}: ColumnComponentProps) {
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
   const isOnline = useOnlineStatus();
@@ -950,6 +998,7 @@ export default function Column({
     handleCancelEdit,
     handleSaveEdit,
     handleSaveEditDirect,
+    handleSetPointNote,
     confirmDeletePoint,
     openInsertPointForm,
     closeInsertPointForm,
@@ -959,6 +1008,7 @@ export default function Column({
     // Sub-point operations
     handleAddSubPoint,
     handleEditSubPoint,
+    handleSetSubPointNote,
     handleDeleteSubPoint,
     handleReorderSubPoints,
   } = useColumnOutlineState({
@@ -1449,8 +1499,11 @@ export default function Column({
                     sortingOutlinePointId={sortingOutlinePointId}
                     onAddSubPoint={handleAddSubPoint}
                     onEditSubPoint={handleEditSubPoint}
+                    onSetPointNote={handleSetPointNote}
+                    onSetSubPointNote={handleSetSubPointNote}
                     onDeleteSubPoint={handleDeleteSubPoint}
                     onReorderSubPoints={handleReorderSubPoints}
+                    showNotes={showNotes}
                   />
                 </div>
               ))}
@@ -1845,7 +1898,10 @@ export default function Column({
                                 onSaveEdit={handleSaveEditDirect}
                                 onAddSubPoint={handleAddSubPoint}
                                 onEditSubPoint={handleEditSubPoint}
+                                onSetPointNote={handleSetPointNote}
+                                onSetSubPointNote={handleSetSubPointNote}
                                 onDeleteSubPoint={handleDeleteSubPoint}
+                                showNotes={showNotes}
                               />
                             </div>
                           )}

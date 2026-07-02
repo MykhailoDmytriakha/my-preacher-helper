@@ -20,6 +20,12 @@ export interface SubPoint {
   id: string;
   text: string;
   position: number; // fractional position among siblings in the parent outline point
+  /**
+   * Short reminder — "what I want to say here" — jotted on the sub-point itself,
+   * BEFORE it gets filled with full thoughts. A skeleton hint, kept separate from
+   * the thoughts. Optional; personal to this sermon (not carried into plan templates).
+   */
+  note?: string;
 }
 
 /**
@@ -31,6 +37,12 @@ export interface OutlinePoint {
   text: string;
   isReviewed?: boolean;
   subPoints?: SubPoint[];
+  /**
+   * Short reminder — "what I want to say here" — jotted on the point itself,
+   * BEFORE it gets filled with full thoughts. A skeleton hint, kept separate from
+   * the thoughts. Optional; personal to this sermon (not carried into plan templates).
+   */
+  note?: string;
 }
 
 /** @deprecated Use OutlinePoint instead. Kept for backward compatibility. */

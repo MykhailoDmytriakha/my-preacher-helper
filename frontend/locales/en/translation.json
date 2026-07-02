@@ -1043,6 +1043,12 @@
     "noTemplates": "No templates yet",
     "hint": "Drag points between sections and within. Plan structure only — no thoughts.",
     "autoSaved": "Changes are saved automatically",
+    "note": {
+      "add": "note",
+      "placeholder": "What I want to say here…",
+      "label": "Reminder note",
+      "delete": "Delete note"
+    },
     "thoughtsUnassignedWarning": "{{count}} thought(s) will be unassigned, not deleted",
     "templateApplied": "Template applied",
     "templateSaved": "Template saved",
