@@ -773,6 +773,10 @@ export const useStructureDnd = ({
     });
   }, [isDragEnding, containersRef, setContainers]);
 
+  // handleDragEnd is an intentionally branchy drag-and-drop reducer: it juggles container
+  // state, live previews, and the same-container swap recovery. Splitting it risks the
+  // drag-state-reversion class of bugs, so its complexity is accepted here on purpose.
+  // eslint-disable-next-line sonarjs/cognitive-complexity
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     const { active, over } = event;
     dlog('dragEnd: over =', over ? String(over.id) : null, '| active =', String(active?.id));

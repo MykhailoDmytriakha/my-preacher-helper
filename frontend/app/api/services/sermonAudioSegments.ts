@@ -17,7 +17,7 @@ import {
     getSectionThoughtsInVisualOrder,
 } from '@/api/services/sermonTextService';
 
-import type { Sermon, Thought } from '@/models/models';
+import type { OutlinePoint, Sermon, SubPoint, Thought } from '@/models/models';
 
 /**
  * A narratable unit of the sermon.
@@ -55,66 +55,95 @@ export function buildGenerationSegments(
     const segments: GenerationSegment[] = [];
 
     for (const sectionKey of sectionsToProcess) {
-        const config = SECTION_CONFIG[sectionKey];
         const outlinePoints = getSectionOutlinePoints(sermon, sectionKey);
         const allThoughts = getSectionThoughtsInVisualOrder(sermon, sectionKey);
 
         if (outlinePoints.length === 0) {
             // No outline points: the whole section is one segment.
             if (allThoughts.length > 0) {
-                segments.push({ id: sectionKey, section: sectionKey, title: config.title, thoughts: allThoughts, level: 'point' });
+                segments.push({ id: sectionKey, section: sectionKey, title: SECTION_CONFIG[sectionKey].title, thoughts: allThoughts, level: 'point' });
             }
             continue;
         }
 
-        const pointById = new Map(outlinePoints.map(p => [p.id, p]));
-        const subPointById = new Map<string, { id: string; text: string }>();
-        const validSubIdsByPoint = new Map<string, Set<string>>();
-        for (const p of outlinePoints) {
-            const ids = new Set<string>();
-            for (const sp of p.subPoints ?? []) { subPointById.set(sp.id, sp); ids.add(sp.id); }
-            validSubIdsByPoint.set(p.id, ids);
-        }
-
-        // Walk the visual-order thoughts that belong to a point, cutting a new segment on
-        // every (point, sub-point) change. This preserves visual order by construction.
-        const seenPoint = new Set<string>();
-        let contCounter = 0;
-        let currentKey: string | null = null;
-        let current: GenerationSegment | null = null;
-        const flush = () => { if (current) { segments.push(current); current = null; } };
-
-        for (const t of allThoughts) {
-            const pid = t.outlinePointId;
-            if (!pid || !pointById.has(pid)) continue; // orphans handled below
-
-            const validSubs = validSubIdsByPoint.get(pid);
-            const sub = t.subPointId && validSubs?.has(t.subPointId) ? t.subPointId : null;
-            const key = `${pid}|${sub ?? ''}`;
-
-            if (key !== currentKey) {
-                flush();
-                currentKey = key;
-                if (sub) {
-                    current = { id: sub, section: sectionKey, title: subPointById.get(sub)?.text ?? '', thoughts: [], level: 'subpoint' };
-                } else if (!seenPoint.has(pid)) {
-                    current = { id: pid, section: sectionKey, title: pointById.get(pid)?.text ?? '', thoughts: [], level: 'point' };
-                } else {
-                    // Direct thoughts resuming after a sub-point: continue the point, don't re-announce.
-                    current = { id: `${pid}#cont${contCounter++}`, section: sectionKey, title: pointById.get(pid)?.text ?? '', thoughts: [], level: 'continuation' };
-                }
-                seenPoint.add(pid);
-            }
-            current!.thoughts.push(t);
-        }
-        flush();
-
-        // Thoughts in this section not assigned to any (known) point.
-        const orphaned = allThoughts.filter(t => !t.outlinePointId || !pointById.has(t.outlinePointId));
-        if (orphaned.length > 0) {
-            segments.push({ id: `${sectionKey}-orphans`, section: sectionKey, title: `${config.title} (Additional)`, thoughts: orphaned, level: 'point' });
-        }
+        segments.push(...buildOutlineSectionSegments(sectionKey, outlinePoints, allThoughts));
     }
 
     return segments;
+}
+
+/**
+ * Segments one section that HAS outline points: walks its visual-order thoughts and cuts a
+ * new run on every (point, sub-point) change (see buildGenerationSegments).
+ */
+function buildOutlineSectionSegments(
+    sectionKey: SectionKey,
+    outlinePoints: OutlinePoint[],
+    allThoughts: Thought[]
+): GenerationSegment[] {
+    const pointById = new Map<string, OutlinePoint>(outlinePoints.map(p => [p.id, p]));
+    const subPointById = new Map<string, SubPoint>();
+    const validSubIdsByPoint = new Map<string, Set<string>>();
+    for (const p of outlinePoints) {
+        const ids = new Set<string>();
+        for (const sp of p.subPoints ?? []) { subPointById.set(sp.id, sp); ids.add(sp.id); }
+        validSubIdsByPoint.set(p.id, ids);
+    }
+
+    const segments: GenerationSegment[] = [];
+    const seenPoint = new Set<string>();
+    let contCounter = 0;
+    let currentKey: string | null = null;
+    let current: GenerationSegment | null = null;
+    const flush = () => { if (current) { segments.push(current); current = null; } };
+
+    for (const t of allThoughts) {
+        const pid = t.outlinePointId;
+        if (!pid || !pointById.has(pid)) continue; // orphans handled below
+
+        const validSubs = validSubIdsByPoint.get(pid);
+        const sub = t.subPointId && validSubs?.has(t.subPointId) ? t.subPointId : null;
+        const key = `${pid}|${sub ?? ''}`;
+
+        if (key !== currentKey) {
+            flush();
+            currentKey = key;
+            current = makeRunSegment(sectionKey, pid, sub, pointById, subPointById, seenPoint.has(pid), contCounter);
+            if (current.level === 'continuation') contCounter++;
+            seenPoint.add(pid);
+        }
+        current!.thoughts.push(t);
+    }
+    flush();
+
+    // Thoughts in this section not assigned to any (known) point.
+    const orphaned = allThoughts.filter(t => !t.outlinePointId || !pointById.has(t.outlinePointId));
+    if (orphaned.length > 0) {
+        segments.push({ id: `${sectionKey}-orphans`, section: sectionKey, title: `${SECTION_CONFIG[sectionKey].title} (Additional)`, thoughts: orphaned, level: 'point' });
+    }
+
+    return segments;
+}
+
+/**
+ * Builds the segment for one contiguous run: a sub-point run, the first (announced) run of a
+ * point, or a `continuation` run (the point resuming after a sub-point — not re-announced).
+ */
+function makeRunSegment(
+    sectionKey: SectionKey,
+    pid: string,
+    sub: string | null,
+    pointById: Map<string, OutlinePoint>,
+    subPointById: Map<string, SubPoint>,
+    pointSeen: boolean,
+    contIndex: number
+): GenerationSegment {
+    if (sub) {
+        return { id: sub, section: sectionKey, title: subPointById.get(sub)?.text ?? '', thoughts: [], level: 'subpoint' };
+    }
+    if (!pointSeen) {
+        return { id: pid, section: sectionKey, title: pointById.get(pid)?.text ?? '', thoughts: [], level: 'point' };
+    }
+    // Direct thoughts resuming after a sub-point: continue the point, don't re-announce.
+    return { id: `${pid}#cont${contIndex}`, section: sectionKey, title: pointById.get(pid)?.text ?? '', thoughts: [], level: 'continuation' };
 }
