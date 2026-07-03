@@ -23,7 +23,6 @@ import {
   TrashIcon,
 } from '@heroicons/react/24/outline';
 import { ArrowPathIcon, ClockIcon, SparklesIcon } from '@heroicons/react/24/solid';
-import { useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -63,7 +62,6 @@ type PendingRemoval = {
 export default function SeriesDetailPage() {
   const id = useRouteId();
   const router = useRouter();
-  const queryClient = useQueryClient();
   const { t } = useTranslation();
   const seriesId = typeof id === 'string' ? id : '';
 
@@ -579,10 +577,10 @@ export default function SeriesDetailPage() {
           onNewSermonCreated={async (newSermon) => {
             debugLog('New sermon created, starting to add to series:', newSermon.id);
             try {
+              // The membership sweep reconciles the touched series-detail itself
+              // (onSuccess, bound to the real commit ack) — no timer-guessed
+              // invalidate needed here.
               await handleAddSermons([newSermon.id]);
-              setTimeout(() => {
-                queryClient.invalidateQueries({ queryKey: ['series-detail', seriesId] });
-              }, 100);
             } catch (errorValue) {
               console.error('Error adding new sermon to series:', errorValue);
             }

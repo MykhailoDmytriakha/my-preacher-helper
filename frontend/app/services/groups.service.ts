@@ -2,14 +2,17 @@ import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, whe
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { Group, GroupFlowItem, GroupMeetingDate } from '@/models/models';
+import { newClientId } from '@/utils/clientId';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
-// Groups use the client Firestore SDK for reads and own-doc writes. Operations
-// that cross into `series` stay on the server: DELETE (removeGroupFromAllSeries)
-// and updates that change seriesId/seriesPosition. Meeting dates also stay on
-// the server for now.
+// Groups use the client Firestore SDK for reads and own-doc writes, including
+// meeting dates (embedded read-modify-write of the group's meetingDates[] array
+// — same `groups` doc, so the native offline queue owns durability). Only
+// operations that cross into `series` stay on the server: DELETE
+// (removeGroupFromAllSeries) and updates that change seriesId/seriesPosition.
 const GROUPS_COLLECTION = 'groups';
+const GROUP_NOT_FOUND = 'Group not found';
 
 // --- helpers mirroring groups.repository.ts (kept byte-identical so client and
 // server produce the same shape) ---
@@ -93,7 +96,7 @@ async function updateGroupViaClient(groupId: string, updates: Partial<Group>): P
   const db = getClientDb();
   const ref = doc(db, GROUPS_COLLECTION, groupId);
   const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error('Group not found');
+  if (!snap.exists()) throw new Error(GROUP_NOT_FOUND);
   const current = hydrateGroup({ ...(snap.data() as Omit<Group, 'id'>), id: snap.id } as Group);
   const cleanUpdates = deepCleanUndefined({
     ...updates,
@@ -120,6 +123,72 @@ async function fetchCalendarGroupsViaClient(
       return true;
     })
   );
+}
+
+// --- meeting-dates: embedded own-doc RMW (mirror addPreachDateViaClient) ---
+// These write ONLY { meetingDates, updatedAt } — never content fields. That
+// field-disjointness is what lets a content update and a meeting-date update to
+// the same group doc in one autosave compose without lost-updates.
+
+async function addGroupMeetingDateViaClient(
+  groupId: string,
+  data: Omit<GroupMeetingDate, 'id' | 'createdAt'> & { id?: string }
+): Promise<GroupMeetingDate> {
+  const db = getClientDb();
+  const ref = doc(db, GROUPS_COLLECTION, groupId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error(GROUP_NOT_FOUND);
+  const meetingDates = (snap.data() as Group).meetingDates || [];
+
+  if (data.id) {
+    const existing = meetingDates.find((entry) => entry.id === data.id);
+    if (existing) return existing; // replay no-op (caller-minted id)
+  }
+
+  const newMeetingDate: GroupMeetingDate = {
+    ...data,
+    id: data.id ?? newClientId(),
+    createdAt: new Date().toISOString(),
+  };
+  await updateDoc(ref, {
+    meetingDates: [...meetingDates, deepCleanUndefined(newMeetingDate)],
+    updatedAt: new Date().toISOString(),
+  });
+  return newMeetingDate;
+}
+
+async function updateGroupMeetingDateViaClient(
+  groupId: string,
+  dateId: string,
+  updates: Partial<GroupMeetingDate>
+): Promise<GroupMeetingDate> {
+  const db = getClientDb();
+  const ref = doc(db, GROUPS_COLLECTION, groupId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error(GROUP_NOT_FOUND);
+  const meetingDates = (snap.data() as Group).meetingDates || [];
+  const index = meetingDates.findIndex((entry) => entry.id === dateId);
+  if (index === -1) throw new Error('Meeting date not found');
+
+  const updatedMeetingDate: GroupMeetingDate = {
+    ...meetingDates[index],
+    ...updates,
+    id: meetingDates[index].id,
+    createdAt: meetingDates[index].createdAt,
+  };
+  const updatedArray = [...meetingDates];
+  updatedArray[index] = deepCleanUndefined(updatedMeetingDate);
+  await updateDoc(ref, { meetingDates: updatedArray, updatedAt: new Date().toISOString() });
+  return updatedMeetingDate;
+}
+
+async function deleteGroupMeetingDateViaClient(groupId: string, dateId: string): Promise<void> {
+  const db = getClientDb();
+  const ref = doc(db, GROUPS_COLLECTION, groupId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error(GROUP_NOT_FOUND);
+  const meetingDates = ((snap.data() as Group).meetingDates || []).filter((entry) => entry.id !== dateId);
+  await updateDoc(ref, { meetingDates, updatedAt: new Date().toISOString() });
 }
 
 // NOTE: write paths intentionally do NOT pre-check connectivity. When offline,
@@ -161,26 +230,14 @@ export const deleteGroup = async (groupId: string): Promise<void> => {
   }
 };
 
-// Meeting-date operations stay on the server for now (embedded read-modify-write of
-// the group's meetingDates array; they write into the same `groups` doc so the
-// client cache stays in sync via Firestore). Candidate for a later slice.
+// Meeting-date operations run through the client Firestore SDK (own-doc embedded
+// RMW on the group's meetingDates[] array). addGroupMeetingDate accepts an
+// optional caller-minted id so a replayed/offline-buffered add is idempotent.
 export const addGroupMeetingDate = async (
   groupId: string,
-  payload: Omit<GroupMeetingDate, 'id' | 'createdAt'>
+  payload: Omit<GroupMeetingDate, 'id' | 'createdAt'> & { id?: string }
 ): Promise<GroupMeetingDate> => {
-  const response = await fetch(`${API_BASE}/api/groups/${groupId}/meeting-dates`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to add group meeting date');
-  }
-
-  const data = await response.json();
-  return data.meetingDate;
+  return addGroupMeetingDateViaClient(groupId, payload);
 };
 
 export const updateGroupMeetingDate = async (
@@ -188,30 +245,11 @@ export const updateGroupMeetingDate = async (
   dateId: string,
   updates: Partial<GroupMeetingDate>
 ): Promise<GroupMeetingDate> => {
-  const response = await fetch(`${API_BASE}/api/groups/${groupId}/meeting-dates/${dateId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to update group meeting date');
-  }
-
-  const data = await response.json();
-  return data.meetingDate;
+  return updateGroupMeetingDateViaClient(groupId, dateId, updates);
 };
 
 export const deleteGroupMeetingDate = async (groupId: string, dateId: string): Promise<void> => {
-  const response = await fetch(`${API_BASE}/api/groups/${groupId}/meeting-dates/${dateId}`, {
-    method: 'DELETE',
-  });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to delete group meeting date');
-  }
+  return deleteGroupMeetingDateViaClient(groupId, dateId);
 };
 
 export const fetchCalendarGroups = async (

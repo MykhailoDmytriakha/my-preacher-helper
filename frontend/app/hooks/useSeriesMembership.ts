@@ -1,7 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 
 import { useResolvedUid } from '@/hooks/useResolvedUid';
+import { getAllSeries } from '@/services/series.service';
 import {
   applySeriesTransform,
   commitSeriesBatch,
@@ -171,14 +174,28 @@ function writeOptimisticCaches(
 export function useSeriesMembership() {
   const queryClient = useQueryClient();
   const { uid } = useResolvedUid();
+  const { t } = useTranslation();
 
   const sweep = useMutation<void, Error, SeriesTransform[]>({
     mutationKey: SERIES_MEMBERSHIP_MUTATION_KEY,
     mutationFn: (transforms) => commitSeriesBatch(transforms),
-    onError: () => {
-      // Online failure -> reconcile from the server. Offline this is a no-op
-      // (useServerFirstQuery disables the query) and the write stays queued.
+    onSuccess: (_data, transforms) => {
+      // Reconcile is bound to the real commit ack (not a guessed setTimeout): pull
+      // the authoritative detail for every touched series, so a create-in-series
+      // shows the real object instead of the optimistic stub. Offline this is a
+      // no-op; the optimistic caches already hold the truth until reconnect.
+      transforms.forEach((transform) =>
+        queryClient.invalidateQueries({ queryKey: seriesDetailKey(transform.seriesId) })
+      );
+    },
+    onError: (_error, transforms) => {
+      // Online failure -> reconcile from the server (list + every touched detail).
+      // Offline this is a no-op (useServerFirstQuery disables the query) and the
+      // write stays queued.
       queryClient.invalidateQueries({ queryKey: seriesListKey(uid) });
+      transforms.forEach((transform) =>
+        queryClient.invalidateQueries({ queryKey: seriesDetailKey(transform.seriesId) })
+      );
     },
   });
 
@@ -187,13 +204,42 @@ export function useSeriesMembership() {
     [queryClient, uid]
   );
 
-  // Series (other than the target) that the loaded list says contain a given ref.
-  const sourceSeriesIdsFor = useCallback(
-    (refId: string, targetSeriesId: string | undefined): string[] =>
-      loadedSeries()
-        .filter((series) => series.id !== targetSeriesId && seriesContainsRef(series, refId))
-        .map((series) => series.id),
-    [loadedSeries]
+  // Run `build` with the user's series list — the source of membership discovery.
+  // WARM path: the RQ list cache, synchronously (unchanged behaviour). COLD path
+  // (the ['series',uid] query hasn't resolved yet — a fast click before useSeries
+  // loads, or an offline session that never populated it): fall back to a FRESH
+  // client-SDK read. getAllSeries is a getDocs QUERY, so offline it resolves from
+  // persistentLocalCache (cached docs or []) and NEVER rejects — unlike getDoc on
+  // a missing doc. Seeding ['series',uid] with the result warms the cache so the
+  // optimistic writes in runSweep render. Without this, cold-cache add-paths
+  // generate NO source-removals and break the one-to-one invariant (a ref stays
+  // in its old series AND the target). The atomic batch re-reads each doc fresh,
+  // so integrity holds regardless; this fixes the DISCOVERY of what to remove.
+  const withSeries = useCallback(
+    (build: (series: Series[]) => void) => {
+      const warm = loadedSeries();
+      if (warm.length > 0 || !uid) {
+        build(warm);
+        return;
+      }
+      void getAllSeries(uid)
+        .then((fresh) => {
+          if (fresh.length > 0) queryClient.setQueryData(seriesListKey(uid), fresh);
+          build(fresh);
+        })
+        .catch((error) => {
+          // getDocs never rejects OFFLINE (it resolves from persistentLocalCache);
+          // this fires only on an ONLINE discovery failure (e.g. a permission-denied
+          // cold-start race). We do NOT fall back to an add-only sweep — that would
+          // re-break one-to-one — so the op is dropped, but surface it (not silent)
+          // so the user can retry once the list has warmed.
+          console.warn('useSeriesMembership: fresh series discovery failed', error);
+          toast.error(
+            t('workspaces.series.errors.updateFailed', { defaultValue: 'Failed to update series' })
+          );
+        });
+    },
+    [loadedSeries, uid, queryClient, t]
   );
 
   const runSweep = useCallback(
@@ -212,15 +258,17 @@ export function useSeriesMembership() {
    */
   const addToSeries = useCallback(
     (targetSeriesId: string, ref: SeriesMembershipRef, position?: number) => {
-      const transforms: SeriesTransform[] = [
-        { seriesId: targetSeriesId, op: 'add', refs: [ref], position },
-        ...sourceSeriesIdsFor(ref.refId, targetSeriesId).map(
-          (seriesId): SeriesTransform => ({ seriesId, op: 'remove', refs: [ref] })
-        ),
-      ];
-      runSweep(transforms);
+      withSeries((series) => {
+        const sourceRemovals = series
+          .filter((s) => s.id !== targetSeriesId && seriesContainsRef(s, ref.refId))
+          .map((s): SeriesTransform => ({ seriesId: s.id, op: 'remove', refs: [ref] }));
+        runSweep([
+          { seriesId: targetSeriesId, op: 'add', refs: [ref], position },
+          ...sourceRemovals,
+        ]);
+      });
     },
-    [runSweep, sourceSeriesIdsFor]
+    [withSeries, runSweep]
   );
 
   /**
@@ -231,39 +279,46 @@ export function useSeriesMembership() {
   const addRefsToSeries = useCallback(
     (targetSeriesId: string, refs: SeriesMembershipRef[]) => {
       if (refs.length === 0) return;
-      const sourceRemovals = new Map<string, SeriesMembershipRef[]>();
-      loadedSeries().forEach((series) => {
-        if (series.id === targetSeriesId) return;
-        const held = refs.filter((ref) => seriesContainsRef(series, ref.refId));
-        if (held.length > 0) {
-          sourceRemovals.set(series.id, held);
-        }
-      });
+      withSeries((series) => {
+        const sourceRemovals = new Map<string, SeriesMembershipRef[]>();
+        series.forEach((s) => {
+          if (s.id === targetSeriesId) return;
+          const held = refs.filter((ref) => seriesContainsRef(s, ref.refId));
+          if (held.length > 0) {
+            sourceRemovals.set(s.id, held);
+          }
+        });
 
-      const transforms: SeriesTransform[] = [
-        { seriesId: targetSeriesId, op: 'add', refs },
-        ...Array.from(sourceRemovals.entries()).map(
-          ([seriesId, removeRefs]): SeriesTransform => ({
-            seriesId,
-            op: 'remove',
-            refs: removeRefs,
-          })
-        ),
-      ];
-      runSweep(transforms);
+        runSweep([
+          { seriesId: targetSeriesId, op: 'add', refs },
+          ...Array.from(sourceRemovals.entries()).map(
+            ([seriesId, removeRefs]): SeriesTransform => ({
+              seriesId,
+              op: 'remove',
+              refs: removeRefs,
+            })
+          ),
+        ]);
+      });
     },
-    [loadedSeries, runSweep]
+    [withSeries, runSweep]
   );
 
   /** Remove a ref from EVERY series that contains it (sweep-all). */
   const removeFromAllSeries = useCallback(
     (ref: SeriesMembershipRef) => {
-      const transforms: SeriesTransform[] = loadedSeries()
-        .filter((series) => seriesContainsRef(series, ref.refId))
-        .map((series): SeriesTransform => ({ seriesId: series.id, op: 'remove', refs: [ref] }));
-      runSweep(transforms);
+      // withSeries falls back to a fresh SDK read when the list cache is cold, so a
+      // remove-from-all issued before the list loads discovers memberships instead
+      // of silently no-op'ing (the D3 warn is no longer needed — an empty fresh
+      // read genuinely means the ref is in no series).
+      withSeries((series) => {
+        const transforms: SeriesTransform[] = series
+          .filter((entry) => seriesContainsRef(entry, ref.refId))
+          .map((entry): SeriesTransform => ({ seriesId: entry.id, op: 'remove', refs: [ref] }));
+        runSweep(transforms);
+      });
     },
-    [loadedSeries, runSweep]
+    [withSeries, runSweep]
   );
 
   /** Reorder items within a single series (own-doc). */

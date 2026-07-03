@@ -377,7 +377,7 @@ describe('SeriesDetailPage', () => {
     });
   });
 
-  it('creates sermon, closes modals, and invalidates cache', async () => {
+  it('creates sermon in series and closes modals', async () => {
     jest.useFakeTimers();
 
     render(
@@ -411,7 +411,9 @@ describe('SeriesDetailPage', () => {
     });
 
     expect(mockAddSermons).toHaveBeenCalledWith(['new-sermon-id']);
-    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ['series-detail', 'test-series-id'] });
+    // D1 fix: the page no longer fires a racy setTimeout(invalidate, 100); reconcile now
+    // lives in the sweep's onSuccess (useSeriesMembership), tied to the real commit-ack.
+    // With addSermons mocked here that path is bypassed, so there is no page-level invalidate to assert.
 
     jest.useRealTimers();
   });

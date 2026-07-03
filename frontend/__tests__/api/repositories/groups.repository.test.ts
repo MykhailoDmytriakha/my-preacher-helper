@@ -114,39 +114,4 @@ describe('GroupsRepository', () => {
     await repository.updateGroupSeriesInfo('g1', 'series-1', 4);
     expect(mockUpdate).toHaveBeenCalledWith({ seriesId: 'series-1', seriesPosition: 4 });
   });
-
-  it('adds, updates and deletes meeting dates', async () => {
-    jest.spyOn(repository, 'fetchGroupById').mockResolvedValue({
-      id: 'g1',
-      ...baseGroup,
-    } as any);
-    const updateSpy = jest.spyOn(repository, 'updateGroup').mockResolvedValue({ id: 'g1' } as any);
-
-    const created = await repository.addMeetingDate('g1', { date: '2026-02-11' });
-    expect(created.id).toBeTruthy();
-    expect(updateSpy).toHaveBeenCalledWith(
-      'g1',
-      expect.objectContaining({ meetingDates: expect.any(Array) })
-    );
-
-    jest.spyOn(repository, 'fetchGroupById').mockResolvedValue({
-      id: 'g1',
-      ...baseGroup,
-      meetingDates: [
-        { id: 'd1', date: '2026-02-10', createdAt: 'x' },
-        { id: 'd2', date: '2026-02-12', createdAt: 'y' },
-      ],
-    } as any);
-
-    const updated = await repository.updateMeetingDate('g1', 'd2', { notes: 'updated' });
-    expect(updated.id).toBe('d2');
-    expect(updated.notes).toBe('updated');
-
-    await repository.deleteMeetingDate('g1', 'd1');
-    expect(updateSpy).toHaveBeenCalled();
-
-    await expect(repository.updateMeetingDate('g1', 'missing', { notes: 'x' })).rejects.toThrow(
-      'Meeting date not found'
-    );
-  });
 });

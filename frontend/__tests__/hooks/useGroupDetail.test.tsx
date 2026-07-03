@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { toast } from 'sonner';
 
 import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
@@ -17,6 +18,24 @@ jest.mock('@/hooks/useServerFirstQuery', () => ({
   useServerFirstQuery: jest.fn(),
 }));
 
+jest.mock('@/hooks/useResolvedUid', () => ({
+  useResolvedUid: () => ({ uid: 'user-1', isAuthLoading: false }),
+}));
+
+jest.mock('@/hooks/useOnlineStatus', () => ({
+  useOnlineStatus: jest.fn(() => true),
+}));
+
+jest.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue || key,
+  }),
+}));
+
+jest.mock('sonner', () => ({
+  toast: { error: jest.fn(), success: jest.fn() },
+}));
+
 jest.mock('@/services/groups.service', () => ({
   addGroupMeetingDate: jest.fn(),
   deleteGroup: jest.fn(),
@@ -32,6 +51,7 @@ const mockAddGroupMeetingDate = addGroupMeetingDate as jest.MockedFunction<typeo
 const mockUpdateGroupMeetingDate = updateGroupMeetingDate as jest.MockedFunction<typeof updateGroupMeetingDate>;
 const mockDeleteGroupMeetingDate = deleteGroupMeetingDate as jest.MockedFunction<typeof deleteGroupMeetingDate>;
 const mockDeleteGroup = deleteGroup as jest.MockedFunction<typeof deleteGroup>;
+const mockToastError = toast.error as jest.MockedFunction<typeof toast.error>;
 
 const createWrapper = () => {
   const queryClient = new QueryClient({
@@ -69,7 +89,7 @@ describe('useGroupDetail', () => {
     mockDeleteGroup.mockResolvedValue(undefined);
   });
 
-  it('updates group and meeting dates through service calls', async () => {
+  it('fires content + meeting-date writes through the service (add mints an id)', async () => {
     const { result } = renderHook(() => useGroupDetail('g1'), { wrapper: createWrapper() });
     expect(result.current.group?.id).toBe('g1');
 
@@ -81,12 +101,16 @@ describe('useGroupDetail', () => {
     });
 
     expect(mockUpdateGroup).toHaveBeenCalledWith('g1', { title: 'Updated' });
-    expect(mockAddGroupMeetingDate).toHaveBeenCalledWith('g1', { date: '2026-02-11' });
+    // addMeetingDate mints a stable client id in the wrapper (idempotent add).
+    expect(mockAddGroupMeetingDate).toHaveBeenCalledWith(
+      'g1',
+      expect.objectContaining({ date: '2026-02-11', id: expect.any(String) })
+    );
     expect(mockUpdateGroupMeetingDate).toHaveBeenCalledWith('g1', 'd1', { date: '2026-02-12' });
     expect(mockDeleteGroupMeetingDate).toHaveBeenCalledWith('g1', 'd1');
   });
 
-  it('deletes group detail and refreshes via refetch callback', async () => {
+  it('deletes the group via the keyed mutation and refreshes via refetch', async () => {
     const refetch = jest.fn().mockResolvedValue(undefined);
     mockUseServerFirstQuery.mockReturnValue({
       data: {
@@ -107,11 +131,11 @@ describe('useGroupDetail', () => {
     const { result } = renderHook(() => useGroupDetail('g1'), { wrapper: createWrapper() });
     await act(async () => {
       await result.current.refreshGroupDetail();
-      await result.current.deleteGroupDetail();
+      result.current.deleteGroupDetail();
     });
 
     expect(refetch).toHaveBeenCalled();
-    expect(mockDeleteGroup).toHaveBeenCalledWith('g1');
+    await waitFor(() => expect(mockDeleteGroup).toHaveBeenCalledWith('g1'));
   });
 
   it('returns early and skips mutations when group is not available', async () => {
@@ -129,7 +153,7 @@ describe('useGroupDetail', () => {
       await result.current.addMeetingDate({ date: '2026-02-11' });
       await result.current.updateMeetingDate('d1', { date: '2026-02-12' });
       await result.current.removeMeetingDate('d1');
-      await result.current.deleteGroupDetail();
+      result.current.deleteGroupDetail();
     });
 
     expect(mockUpdateGroup).not.toHaveBeenCalled();
@@ -139,10 +163,27 @@ describe('useGroupDetail', () => {
     expect(mockDeleteGroup).not.toHaveBeenCalled();
   });
 
-  it('exposes normalized mutation error when service rejects', async () => {
+  it('surfaces a normalized error and toasts when an ONLINE write rejects (fire-and-forget, no throw)', async () => {
     mockUpdateGroup.mockRejectedValue('not-an-error');
     const { result } = renderHook(() => useGroupDetail('g1'), { wrapper: createWrapper() });
 
-    await expect(result.current.updateGroupDetail({ title: 'X' })).rejects.toThrow('not-an-error');
+    // Fire-and-forget: the call resolves even though the underlying write rejects.
+    await act(async () => {
+      await result.current.updateGroupDetail({ title: 'X' });
+    });
+
+    await waitFor(() => expect(result.current.error?.message).toBe('not-an-error'));
+    expect(mockToastError).toHaveBeenCalledWith('Failed to update group');
+  });
+
+  it('toasts a delete failure via the mutation onError', async () => {
+    mockDeleteGroup.mockRejectedValueOnce(new Error('delete boom'));
+    const { result } = renderHook(() => useGroupDetail('g1'), { wrapper: createWrapper() });
+
+    await act(async () => {
+      result.current.deleteGroupDetail();
+    });
+
+    await waitFor(() => expect(mockToastError).toHaveBeenCalledWith('Failed to delete group'));
   });
 });

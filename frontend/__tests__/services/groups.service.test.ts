@@ -156,39 +156,55 @@ describe('groups.service', () => {
     );
   });
 
-  it('keeps meeting date operations on server routes', async () => {
-    mockFetch
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ meetingDate: { id: 'd1', date: '2026-02-11', createdAt: 'x' } }),
-      })
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ meetingDate: { id: 'd1', date: '2026-02-12', createdAt: 'x' } }),
-      })
-      .mockResolvedValueOnce({ ok: true });
+  it('performs meeting-date operations through the client SDK (own-doc RMW)', async () => {
+    // add reads the group (empty meetingDates), update reads it holding d1,
+    // delete reads it holding d1 — each op then writes only { meetingDates, updatedAt }.
+    mockGetDoc
+      .mockResolvedValueOnce(docSnap('g1', { ...baseGroup, meetingDates: [] }))
+      .mockResolvedValueOnce(
+        docSnap('g1', { ...baseGroup, meetingDates: [{ id: 'd1', date: '2026-02-11', createdAt: 'x' }] })
+      )
+      .mockResolvedValueOnce(
+        docSnap('g1', { ...baseGroup, meetingDates: [{ id: 'd1', date: '2026-02-12', createdAt: 'x' }] })
+      );
+    mockUpdateDoc.mockResolvedValue(undefined);
 
     const service = await importServiceWithClientMocks();
-    const added = await service.addGroupMeetingDate('g1', { date: '2026-02-11' });
+    // Caller-minted id -> the add is idempotent (upsert-by-id).
+    const added = await service.addGroupMeetingDate('g1', { date: '2026-02-11', id: 'd1' });
     const updated = await service.updateGroupMeetingDate('g1', 'd1', { date: '2026-02-12' });
     await service.deleteGroupMeetingDate('g1', 'd1');
 
     expect(added.id).toBe('d1');
+    expect(added.date).toBe('2026-02-11');
     expect(updated.date).toBe('2026-02-12');
-    expect(mockFetch).toHaveBeenNthCalledWith(
+
+    expect(mockUpdateDoc).toHaveBeenNthCalledWith(
       1,
-      expect.stringContaining('/api/groups/g1/meeting-dates'),
-      expect.objectContaining({ method: 'POST' })
+      expect.objectContaining({ path: 'groups', id: 'g1' }),
+      expect.objectContaining({
+        meetingDates: [expect.objectContaining({ id: 'd1', date: '2026-02-11' })],
+        updatedAt: expect.any(String),
+      })
     );
-    expect(mockFetch).toHaveBeenNthCalledWith(
+    expect(mockUpdateDoc).toHaveBeenNthCalledWith(
       2,
-      expect.stringContaining('/api/groups/g1/meeting-dates/d1'),
-      expect.objectContaining({ method: 'PUT' })
+      expect.objectContaining({ path: 'groups', id: 'g1' }),
+      expect.objectContaining({
+        meetingDates: [expect.objectContaining({ id: 'd1', date: '2026-02-12' })],
+        updatedAt: expect.any(String),
+      })
     );
-    expect(mockFetch).toHaveBeenNthCalledWith(
+    expect(mockUpdateDoc).toHaveBeenNthCalledWith(
       3,
-      expect.stringContaining('/api/groups/g1/meeting-dates/d1'),
-      expect.objectContaining({ method: 'DELETE' })
+      expect.objectContaining({ path: 'groups', id: 'g1' }),
+      expect.objectContaining({ meetingDates: [], updatedAt: expect.any(String) })
     );
+    // Meeting dates never touch content fields (field-disjoint invariant).
+    expect(mockUpdateDoc).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ title: expect.anything() })
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });

@@ -98,50 +98,16 @@ describe('studies.service', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it('keeps note delete and study materials on server routes', async () => {
-    mockFetch
-      .mockResolvedValueOnce({ ok: true })
-      .mockResolvedValueOnce({ ok: true, json: async () => [{ id: 'm1', title: 'Material' }] })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'm1', title: 'Material' }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'm1', title: 'Updated' }) })
-      .mockResolvedValueOnce({ ok: true });
+  it('keeps note delete on the server route', async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true });
 
     const service = await importServiceWithClientMocks();
     await service.deleteStudyNote('note-1', 'user-1');
-    await expect(service.getStudyMaterials('user-1')).resolves.toHaveLength(1);
-    await expect(service.createStudyMaterial({ userId: 'user-1', title: 'Material' } as any)).resolves.toEqual({
-      id: 'm1',
-      title: 'Material',
-    });
-    await expect(service.updateStudyMaterial('m1', { userId: 'user-1', title: 'Updated' } as any)).resolves.toEqual({
-      id: 'm1',
-      title: 'Updated',
-    });
-    await service.deleteStudyMaterial('m1', 'user-1');
 
+    expect(mockFetch).toHaveBeenCalledTimes(1);
     expect(mockFetch).toHaveBeenNthCalledWith(
       1,
       expect.stringContaining('/api/studies/notes/note-1?userId=user-1'),
-      { method: 'DELETE' }
-    );
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      2,
-      expect.stringContaining('/api/studies/materials?userId=user-1'),
-      { cache: 'no-store' }
-    );
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      3,
-      expect.stringContaining('/api/studies/materials'),
-      expect.objectContaining({ method: 'POST' })
-    );
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      4,
-      expect.stringContaining('/api/studies/materials/m1?userId=user-1'),
-      expect.objectContaining({ method: 'PUT' })
-    );
-    expect(mockFetch).toHaveBeenNthCalledWith(
-      5,
-      expect.stringContaining('/api/studies/materials/m1?userId=user-1'),
       { method: 'DELETE' }
     );
   });

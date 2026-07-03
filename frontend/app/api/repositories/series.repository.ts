@@ -5,8 +5,6 @@ import {
   inferSeriesKind,
   normalizeSeriesItems,
   removeSeriesItemByRef,
-  reorderSeriesItemsById,
-  upsertSeriesItem,
 } from '@/utils/seriesItems';
 
 /**
@@ -24,21 +22,6 @@ export class SeriesRepository {
       sermonIds,
       seriesKind: series.seriesKind || inferSeriesKind(items),
     };
-  }
-
-  private async persistSeriesItems(seriesId: string, itemsInput: Series['items']) {
-    const items = normalizeSeriesItems(itemsInput);
-    const sermonIds = deriveSermonIdsFromItems(items);
-    const seriesKind = inferSeriesKind(items);
-
-    await adminDb.collection(this.collection).doc(seriesId).update({
-      items,
-      sermonIds,
-      seriesKind,
-      updatedAt: new Date().toISOString(),
-    });
-
-    return { items, sermonIds, seriesKind };
   }
 
   async fetchSeriesById(seriesId: string): Promise<Series | null> {
@@ -69,165 +52,6 @@ export class SeriesRepository {
       console.log(`Series ${seriesId} deleted successfully`);
     } catch (error) {
       console.error(`Error deleting series ${seriesId}:`, error);
-      throw error;
-    }
-  }
-
-  async addSermonToSeries(seriesId: string, sermonId: string, position?: number): Promise<void> {
-    console.log(`Firestore: adding sermon ${sermonId} to series ${seriesId}`);
-
-    try {
-      const seriesDoc = await adminDb.collection(this.collection).doc(seriesId).get();
-
-      if (!seriesDoc.exists) {
-        throw new Error(`Series ${seriesId} not found`);
-      }
-
-      const series = this.hydrateSeries({ id: seriesDoc.id, ...seriesDoc.data() } as Series);
-      const items = upsertSeriesItem(series.items || [], {
-        type: 'sermon',
-        refId: sermonId,
-        position,
-      });
-
-      await this.persistSeriesItems(seriesId, items);
-      console.log(`Sermon ${sermonId} added to series ${seriesId}`);
-    } catch (error) {
-      console.error(`Error adding sermon ${sermonId} to series ${seriesId}:`, error);
-      throw error;
-    }
-  }
-
-  async addGroupToSeries(seriesId: string, groupId: string, position?: number): Promise<void> {
-    console.log(`Firestore: adding group ${groupId} to series ${seriesId}`);
-
-    try {
-      const seriesDoc = await adminDb.collection(this.collection).doc(seriesId).get();
-
-      if (!seriesDoc.exists) {
-        throw new Error(`Series ${seriesId} not found`);
-      }
-
-      const series = this.hydrateSeries({ id: seriesDoc.id, ...seriesDoc.data() } as Series);
-      const items = upsertSeriesItem(series.items || [], {
-        type: 'group',
-        refId: groupId,
-        position,
-      });
-
-      await this.persistSeriesItems(seriesId, items);
-      console.log(`Group ${groupId} added to series ${seriesId}`);
-    } catch (error) {
-      console.error(`Error adding group ${groupId} to series ${seriesId}:`, error);
-      throw error;
-    }
-  }
-
-  async removeSermonFromSeries(seriesId: string, sermonId: string): Promise<void> {
-    console.log(`Firestore: removing sermon ${sermonId} from series ${seriesId}`);
-
-    try {
-      const seriesDoc = await adminDb.collection(this.collection).doc(seriesId).get();
-
-      if (!seriesDoc.exists) {
-        throw new Error(`Series ${seriesId} not found`);
-      }
-
-      const series = this.hydrateSeries({ id: seriesDoc.id, ...seriesDoc.data() } as Series);
-      const items = removeSeriesItemByRef(series.items || [], { type: 'sermon', refId: sermonId });
-
-      await this.persistSeriesItems(seriesId, items);
-      console.log(`Sermon ${sermonId} removed from series ${seriesId}`);
-    } catch (error) {
-      console.error(`Error removing sermon ${sermonId} from series ${seriesId}:`, error);
-      throw error;
-    }
-  }
-
-  async removeGroupFromSeries(seriesId: string, groupId: string): Promise<void> {
-    console.log(`Firestore: removing group ${groupId} from series ${seriesId}`);
-
-    try {
-      const seriesDoc = await adminDb.collection(this.collection).doc(seriesId).get();
-
-      if (!seriesDoc.exists) {
-        throw new Error(`Series ${seriesId} not found`);
-      }
-
-      const series = this.hydrateSeries({ id: seriesDoc.id, ...seriesDoc.data() } as Series);
-      const items = removeSeriesItemByRef(series.items || [], { type: 'group', refId: groupId });
-
-      await this.persistSeriesItems(seriesId, items);
-      console.log(`Group ${groupId} removed from series ${seriesId}`);
-    } catch (error) {
-      console.error(`Error removing group ${groupId} from series ${seriesId}:`, error);
-      throw error;
-    }
-  }
-
-  async reorderSermonsInSeries(seriesId: string, sermonIds: string[]): Promise<void> {
-    console.log(`Firestore: reordering sermons in series ${seriesId}`);
-
-    try {
-      // Validate that all sermonIds are strings
-      if (!Array.isArray(sermonIds) || !sermonIds.every(id => typeof id === 'string')) {
-        throw new Error('Invalid sermonIds array');
-      }
-
-      const series = await this.fetchSeriesById(seriesId);
-      if (!series) {
-        throw new Error(`Series ${seriesId} not found`);
-      }
-
-      const normalizedItems = normalizeSeriesItems(series.items, series.sermonIds || []);
-      const sermonItems = normalizedItems.filter((item) => item.type === 'sermon');
-      const sermonItemMap = new Map(sermonItems.map((item) => [item.refId, item]));
-
-      const orderedSermonItems = sermonIds
-        .map((sermonId) => sermonItemMap.get(sermonId))
-        .filter((item): item is NonNullable<typeof item> => Boolean(item));
-
-      for (const item of sermonItems) {
-        if (!orderedSermonItems.find((candidate) => candidate.id === item.id)) {
-          orderedSermonItems.push(item);
-        }
-      }
-
-      let sermonCursor = 0;
-      const merged = normalizedItems.map((item) => {
-        if (item.type !== 'sermon') return item;
-        const next = orderedSermonItems[sermonCursor];
-        sermonCursor += 1;
-        return next ?? item;
-      });
-
-      const reorderedWithFreshPositions = merged.map((item, index) => ({
-        ...item,
-        position: index + 1,
-      }));
-
-      await this.persistSeriesItems(seriesId, reorderedWithFreshPositions);
-      console.log(`Sermons reordered in series ${seriesId}`);
-    } catch (error) {
-      console.error(`Error reordering sermons in series ${seriesId}:`, error);
-      throw error;
-    }
-  }
-
-  async reorderSeriesItems(seriesId: string, itemIds: string[]): Promise<void> {
-    console.log(`Firestore: reordering mixed items in series ${seriesId}`);
-
-    try {
-      const series = await this.fetchSeriesById(seriesId);
-      if (!series) {
-        throw new Error(`Series ${seriesId} not found`);
-      }
-
-      const reordered = reorderSeriesItemsById(series.items || [], itemIds);
-      await this.persistSeriesItems(seriesId, reordered);
-      console.log(`Mixed items reordered in series ${seriesId}`);
-    } catch (error) {
-      console.error(`Error reordering mixed items in series ${seriesId}:`, error);
       throw error;
     }
   }

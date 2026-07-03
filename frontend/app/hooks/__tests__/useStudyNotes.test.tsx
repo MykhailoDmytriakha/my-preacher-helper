@@ -25,10 +25,6 @@ jest.mock('@services/studies.service', () => ({
   createStudyNote: jest.fn(),
   updateStudyNote: jest.fn(),
   deleteStudyNote: jest.fn(),
-  getStudyMaterials: jest.fn(),
-  createStudyMaterial: jest.fn(),
-  updateStudyMaterial: jest.fn(),
-  deleteStudyMaterial: jest.fn(),
 }));
 
 const mockUseAuth = useAuth as jest.MockedFunction<typeof useAuth>;

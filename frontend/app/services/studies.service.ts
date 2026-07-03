@@ -1,7 +1,7 @@
 import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
-import { StudyMaterial, StudyNote } from '@/models/models';
+import { StudyNote } from '@/models/models';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -24,15 +24,6 @@ type NoteFilters = Partial<{
   chapter: number;
   draftOnly: boolean;
 }>;
-
-function buildQuery(params: Record<string, string | number | boolean | undefined>) {
-  const search = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value === undefined || value === null) return;
-    search.set(key, String(value));
-  });
-  return search.toString();
-}
 
 // --- helpers mirroring studies.repository.ts + the GET route's filterNotes ---
 
@@ -184,49 +175,5 @@ export async function deleteStudyNote(id: string, userId: string): Promise<void>
   if (!res.ok) {
     console.error('deleteStudyNote: failed', res.status);
     throw new Error('Failed to delete study note');
-  }
-}
-
-export async function getStudyMaterials(userId: string): Promise<StudyMaterial[]> {
-  const query = buildQuery({ userId });
-  const res = await fetch(`${API_BASE}/api/studies/materials?${query}`, { cache: 'no-store' });
-  if (!res.ok) {
-    console.error('getStudyMaterials: failed', res.status);
-    throw new Error('Failed to fetch study materials');
-  }
-  return res.json();
-}
-
-export async function createStudyMaterial(material: Omit<StudyMaterial, 'id' | 'createdAt' | 'updatedAt'>): Promise<StudyMaterial> {
-  const res = await fetch(`${API_BASE}/api/studies/materials`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(material),
-  });
-  if (!res.ok) {
-    console.error('createStudyMaterial: failed', res.status);
-    throw new Error('Failed to create study material');
-  }
-  return res.json();
-}
-
-export async function updateStudyMaterial(id: string, updates: Partial<StudyMaterial> & { userId: string }): Promise<StudyMaterial> {
-  const res = await fetch(`${API_BASE}/api/studies/materials/${id}?userId=${updates.userId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(updates),
-  });
-  if (!res.ok) {
-    console.error('updateStudyMaterial: failed', res.status);
-    throw new Error('Failed to update study material');
-  }
-  return res.json();
-}
-
-export async function deleteStudyMaterial(id: string, userId: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/studies/materials/${id}?userId=${userId}`, { method: 'DELETE' });
-  if (!res.ok) {
-    console.error('deleteStudyMaterial: failed', res.status);
-    throw new Error('Failed to delete study material');
   }
 }

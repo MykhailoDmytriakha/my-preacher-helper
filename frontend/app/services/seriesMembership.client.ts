@@ -1,4 +1,4 @@
-import { doc, getDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, writeBatch } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { Series, SeriesItem, SeriesItemType } from '@/models/models';
@@ -91,19 +91,6 @@ export function applySeriesTransform(currentItems: SeriesItem[], transform: Seri
     default:
       return currentItems;
   }
-}
-
-/**
- * Own-doc write of a series' items (+ recomputed sermonIds/seriesKind). Idempotent
- * — a replay overwrites the whole `items` array. Used by the single-series ops
- * (reorder) where no other doc is touched.
- */
-export async function updateSeriesItemsViaClient(
-  seriesId: string,
-  items: SeriesItem[]
-): Promise<void> {
-  const db = getClientDb();
-  await updateDoc(doc(db, SERIES_COLLECTION, seriesId), recomputeDocFields(items));
 }
 
 /**

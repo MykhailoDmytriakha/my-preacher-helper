@@ -314,28 +314,10 @@ describe('GroupDetailPage', () => {
     expect(deleteGroupDetail).toHaveBeenCalledTimes(1);
   });
 
-  it('shows error toast when deleting group fails', async () => {
-    deleteGroupDetail.mockRejectedValueOnce(new Error('Delete failed'));
-
-    render(<GroupDetailPage />);
-
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Delete group' })).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Delete group' }));
-
-    await waitFor(() => {
-      expect(screen.getByText('Delete this group permanently?')).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-
-    await waitFor(() => {
-      expect(deleteGroupDetail).toHaveBeenCalledTimes(1);
-      expect(mockToastError).toHaveBeenCalledWith('Failed to delete group');
-    });
-  });
+  // NOTE: delete is now fire-and-forget (deleteGroupDetail -> deleteMutation.mutate);
+  // it resolves immediately even on failure, and a failed delete surfaces its toast
+  // from the hook's deleteMutation.onError (covered in useGroupDetail.test.tsx),
+  // not from this page. So there is no page-level delete-failure path to assert.
 
   it('shows disabled message when groups feature is off', async () => {
     mockHasGroupsAccess.mockResolvedValueOnce(false);
