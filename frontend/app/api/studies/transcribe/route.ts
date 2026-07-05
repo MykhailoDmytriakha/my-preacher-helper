@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     const errorResponse = (
         errorMessage: string,
         status: number,
-        extra?: Pick<TranscriptionErrorResponse, 'retryable' | 'phase'>
+        extra?: Pick<TranscriptionErrorResponse, 'retryable' | 'phase' | 'kind'>
     ) => {
         tracker.emit({
             status: "error",
@@ -127,6 +127,7 @@ export async function POST(request: Request) {
                 return errorResponse(mappedError.error, mappedError.status, {
                     retryable: mappedError.retryable,
                     phase: mappedError.phase,
+                    kind: mappedError.kind,
                 });
             }
 

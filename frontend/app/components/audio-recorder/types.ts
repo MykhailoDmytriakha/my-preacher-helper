@@ -67,6 +67,8 @@ export interface AudioRecoveryPanelProps {
   onRetry: () => void;
   onRecordAgain: () => void;
   onDiscard: () => void;
+  /** Save the recording to disk — the last line of defense against losing a thought. */
+  onDownload?: () => void;
   t: TranslationFn;
   className?: string;
 }
@@ -140,5 +142,6 @@ export interface UseAudioRecorderLifecycleResult {
   retryTranscription: () => void;
   recordAgain: () => void;
   discardStoredAudio: () => void;
+  downloadStoredAudio: () => void;
   closeError: () => void;
 }

@@ -8,8 +8,8 @@ import { toast } from 'sonner';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { SermonPoint, SermonOutline } from '@/models/models';
 import { useConnection } from '@/providers/ConnectionProvider';
+import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
 import { FocusRecorderButton } from "@components/FocusRecorderButton";
-import { transcribeThoughtAudio } from "@services/thought.service";
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
 
 import { RichMarkdownEditor } from './ui/RichMarkdownEditor';
@@ -338,6 +338,11 @@ export default function EditThoughtModal({
   useScrollLock(true);
 
   const [isDictating, setIsDictating] = useState(false);
+  // Voice recovery: keep the recording alive so a failed transcription never loses the thought.
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceRetryCount, setVoiceRetryCount] = useState(0);
+  const storedVoiceBlobRef = useRef<Blob | null>(null);
+  const VOICE_MAX_RETRIES = 3;
   const modalRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const metaRef = useRef<HTMLDivElement>(null);
@@ -373,11 +378,12 @@ export default function EditThoughtModal({
     }
   };
 
-  const handleDictationComplete = async (audioBlob: Blob) => {
+  const runVoiceTranscription = async (audioBlob: Blob) => {
+    setIsDictating(true);
+    setVoiceError(null);
     try {
-      setIsDictating(true);
-      const result = await transcribeThoughtAudio(audioBlob);
-      const appendedText = result.polishedText.trim();
+      const result = await transcribeAudioWithRetry(audioBlob, { endpoint: '/api/thoughts/transcribe' });
+      const appendedText = (result.polishedText || result.originalText || '').trim();
       if (!appendedText) {
         toast.error(t('errors.audioProcessing'));
         return;
@@ -387,12 +393,39 @@ export default function EditThoughtModal({
         const separator = prev ? "\n\n" : "";
         return `${prev}${separator}${appendedText}`;
       });
+      // Success — the thought is now saved as text; drop the in-memory safety copy.
+      storedVoiceBlobRef.current = null;
+      setVoiceError(null);
+      setVoiceRetryCount(0);
     } catch (error) {
-      const message = error instanceof Error ? error.message : t('errors.audioProcessing');
+      // Never lose the thought: keep the recording for the in-session recovery panel.
+      storedVoiceBlobRef.current = audioBlob;
+      const message = error instanceof TranscriptionClientError
+        ? buildTranscriptionErrorMessage(error, t)
+        : (error instanceof Error ? error.message : t('errors.audioProcessing'));
+      setVoiceError(message);
       toast.error(message);
     } finally {
       setIsDictating(false);
     }
+  };
+
+  const handleDictationComplete = (audioBlob: Blob) => {
+    setVoiceRetryCount(0);
+    void runVoiceTranscription(audioBlob);
+  };
+
+  const handleRetryVoice = () => {
+    const blob = storedVoiceBlobRef.current;
+    if (!blob) return;
+    setVoiceRetryCount((count) => count + 1);
+    void runVoiceTranscription(blob);
+  };
+
+  const handleClearVoiceError = () => {
+    storedVoiceBlobRef.current = null;
+    setVoiceError(null);
+    setVoiceRetryCount(0);
   };
 
   const filteredSermonPoints = getFilteredSermonPoints(sermonOutline, containerSection);
@@ -474,6 +507,11 @@ export default function EditThoughtModal({
                       onRecordingComplete={handleDictationComplete}
                       isProcessing={isDictating}
                       disabled={isSubmitting || isDictationDisabled}
+                      transcriptionError={voiceError}
+                      onRetry={handleRetryVoice}
+                      retryCount={voiceRetryCount}
+                      maxRetries={VOICE_MAX_RETRIES}
+                      onClearError={handleClearVoiceError}
                       onError={(errorMessage: string) => {
                         toast.error(errorMessage);
                         setIsDictating(false);

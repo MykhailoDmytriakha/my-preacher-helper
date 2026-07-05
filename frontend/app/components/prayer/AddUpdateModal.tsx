@@ -1,13 +1,13 @@
 'use client';
 
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
+import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
 import { FocusRecorderButton } from '@components/FocusRecorderButton';
-import { transcribeThoughtAudio } from '@services/thought.service';
 
 interface Props {
   onClose: () => void;
@@ -20,12 +20,18 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
   const [saving, setSaving] = useState(false);
   const [dictating, setDictating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Voice recovery: keep the recording alive so a failed transcription never loses the thought.
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceRetryCount, setVoiceRetryCount] = useState(0);
+  const storedVoiceBlobRef = useRef<Blob | null>(null);
+  const VOICE_MAX_RETRIES = 3;
 
-  const handleDictationComplete = async (audioBlob: Blob) => {
+  const runVoiceTranscription = async (audioBlob: Blob) => {
     setError(null);
+    setVoiceError(null);
     setDictating(true);
     try {
-      const result = await transcribeThoughtAudio(audioBlob);
+      const result = await transcribeAudioWithRetry(audioBlob, { endpoint: '/api/thoughts/transcribe' });
       const dictatedText = (result.polishedText || result.originalText || '').trim();
       if (!dictatedText) {
         setError(t('prayer.update.dictationEmpty'));
@@ -37,11 +43,38 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
         const separator = trimmedPreviousText ? '\n\n' : '';
         return `${trimmedPreviousText}${separator}${dictatedText}`;
       });
+      // Success — the thought is now saved as text; drop the in-memory safety copy.
+      storedVoiceBlobRef.current = null;
+      setVoiceError(null);
+      setVoiceRetryCount(0);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t('prayer.update.dictationError'));
+      // Never lose the thought: keep the recording for the in-session recovery panel.
+      storedVoiceBlobRef.current = audioBlob;
+      const message = err instanceof TranscriptionClientError
+        ? buildTranscriptionErrorMessage(err, t)
+        : (err instanceof Error ? err.message : t('prayer.update.dictationError'));
+      setVoiceError(message);
     } finally {
       setDictating(false);
     }
+  };
+
+  const handleDictationComplete = (audioBlob: Blob) => {
+    setVoiceRetryCount(0);
+    void runVoiceTranscription(audioBlob);
+  };
+
+  const handleRetryVoice = () => {
+    const blob = storedVoiceBlobRef.current;
+    if (!blob) return;
+    setVoiceRetryCount((count) => count + 1);
+    void runVoiceTranscription(blob);
+  };
+
+  const handleClearVoiceError = () => {
+    storedVoiceBlobRef.current = null;
+    setVoiceError(null);
+    setVoiceRetryCount(0);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -78,6 +111,11 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
                   onRecordingComplete={handleDictationComplete}
                   isProcessing={dictating}
                   disabled={saving}
+                  transcriptionError={voiceError}
+                  onRetry={handleRetryVoice}
+                  retryCount={voiceRetryCount}
+                  maxRetries={VOICE_MAX_RETRIES}
+                  onClearError={handleClearVoiceError}
                   onError={(message) => {
                     setError(message);
                     setDictating(false);

@@ -155,6 +155,8 @@ describe('Thoughts transcribe route', () => {
     expect(data.error).toBe(RETRYABLE_ERROR_MESSAGE);
     expect(data.retryable).toBe(true);
     expect(data.phase).toBe('transcribe_audio');
-    expect(createTranscription).toHaveBeenCalledTimes(2);
+    expect(data.kind).toBe('network');
+    // One attempt per invocation now — the CLIENT retries with fresh requests.
+    expect(createTranscription).toHaveBeenCalledTimes(1);
   });
 });

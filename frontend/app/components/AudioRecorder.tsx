@@ -63,6 +63,7 @@ export const AudioRecorder = ({
     retryTranscription,
     recordAgain,
     discardStoredAudio,
+    downloadStoredAudio,
     closeError,
   } = useAudioRecorderLifecycle({
     onRecordingComplete,
@@ -160,6 +161,7 @@ export const AudioRecorder = ({
         onRetry={retryTranscription}
         onRecordAgain={recordAgain}
         onDiscard={discardStoredAudio}
+        onDownload={downloadStoredAudio}
         t={t}
       />
 

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import AddUpdateModal from '@/components/prayer/AddUpdateModal';
-import { transcribeThoughtAudio } from '@services/thought.service';
+import { transcribeAudioWithRetry } from '@/utils/transcriptionRetryClient';
 import '@testing-library/jest-dom';
 
 jest.mock('@components/FocusRecorderButton', () => ({
@@ -18,8 +18,17 @@ jest.mock('@components/FocusRecorderButton', () => ({
   ),
 }));
 
-jest.mock('@services/thought.service', () => ({
-  transcribeThoughtAudio: jest.fn(),
+jest.mock('@/utils/transcriptionRetryClient', () => {
+  const actual = jest.requireActual('@/utils/transcriptionRetryClient');
+  return {
+    ...actual,
+    transcribeAudioWithRetry: jest.fn(),
+  };
+});
+
+jest.mock('@/utils/recordingDraftStore', () => ({
+  saveRecordingDraft: jest.fn().mockResolvedValue('draft-1'),
+  deleteRecordingDraft: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('react-i18next', () => ({
@@ -42,7 +51,7 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-const mockTranscribeThoughtAudio = transcribeThoughtAudio as jest.MockedFunction<typeof transcribeThoughtAudio>;
+const mockTranscribeAudioWithRetry = transcribeAudioWithRetry as jest.MockedFunction<typeof transcribeAudioWithRetry>;
 
 describe('AddUpdateModal', () => {
   beforeEach(() => {
@@ -92,7 +101,7 @@ describe('AddUpdateModal', () => {
   });
 
   it('appends dictated text before submitting an update', async () => {
-    mockTranscribeThoughtAudio.mockResolvedValue({
+    mockTranscribeAudioWithRetry.mockResolvedValue({
       polishedText: 'Voice update from prayer meeting',
       originalText: 'voice update from prayer meeting',
     });
@@ -107,7 +116,9 @@ describe('AddUpdateModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Record voice' }));
 
     await waitFor(() => {
-      expect(mockTranscribeThoughtAudio).toHaveBeenCalledWith(expect.any(Blob));
+      expect(mockTranscribeAudioWithRetry).toHaveBeenCalledWith(expect.any(Blob), {
+        endpoint: '/api/thoughts/transcribe',
+      });
       expect(screen.getByPlaceholderText('Share an update')).toHaveValue(
         'Manual note\n\nVoice update from prayer meeting'
       );

@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 import { toast } from 'sonner';
 
+import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { useClipboard } from '@/hooks/useClipboard';
@@ -15,7 +16,9 @@ import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { ScriptureReference, StudyNote } from '@/models/models';
 import { deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
+import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
+import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
 import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
@@ -224,8 +227,9 @@ function useNoteAutoSave({
 }
 
 function useNoteAIAssistant({
-    content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t
+    noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t
 }: {
+    noteId: string;
     content: string; availableTags: string[];
     setTitle: (t: string) => void; setContent: (c: string | ((prev: string) => string)) => void;
     setScriptureRefs: (refs: ScriptureReference[] | ((prev: ScriptureReference[]) => ScriptureReference[])) => void; setTags: (tags: string[] | ((prev: string[]) => string[])) => void;
@@ -233,6 +237,12 @@ function useNoteAIAssistant({
 }) {
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
+    // Voice recovery: keep the recording alive so a failed transcription never loses the thought.
+    const [voiceError, setVoiceError] = useState<string | null>(null);
+    const [voiceRetryCount, setVoiceRetryCount] = useState(0);
+    const storedVoiceBlobRef = useRef<Blob | null>(null);
+    const voiceDraftIdRef = useRef<string | null>(null);
+    const VOICE_MAX_RETRIES = 3;
 
     const [pendingAnalysisResult, setPendingAnalysisResult] = useState<AnalysisResultData | null>(null);
 
@@ -294,28 +304,93 @@ function useNoteAIAssistant({
         }
     };
 
-    const handleVoiceRecordingComplete = async (audioBlob: Blob) => {
+    const runVoiceTranscription = useCallback(async (
+        audioBlob: Blob,
+        opts?: { persistOnFailure?: boolean }
+    ): Promise<boolean> => {
         setIsVoiceProcessing(true);
-        const formData = new FormData();
-        formData.append('audio', audioBlob);
-
+        setVoiceError(null);
         try {
-            const response = await fetch('/api/studies/transcribe', { method: 'POST', body: formData });
-            const result = await response.json();
-
-            if (!result.success) throw new Error(result.error);
-
+            const result = await transcribeAudioWithRetry(audioBlob, { endpoint: '/api/studies/transcribe' });
             const newText = result.polishedText || result.originalText;
             if (newText) setContent((prev: string) => (prev ? `${prev}\n\n${newText}` : newText));
-        } catch {
-            toast.error(t('errors.audioProcessing') || 'Voice transcription failed');
+            // Success — the thought is now saved as text; drop the safety copy + persisted draft.
+            storedVoiceBlobRef.current = null;
+            setVoiceError(null);
+            setVoiceRetryCount(0);
+            if (voiceDraftIdRef.current) {
+                void deleteRecordingDraft(voiceDraftIdRef.current);
+                voiceDraftIdRef.current = null;
+            }
+            return true;
+        } catch (err) {
+            // Never lose the thought: keep the recording (in-session recovery panel)
+            // AND persist it to IndexedDB so it survives a reload / tab close.
+            storedVoiceBlobRef.current = audioBlob;
+            const message = err instanceof TranscriptionClientError
+                ? buildTranscriptionErrorMessage(err, t)
+                : (t('errors.audioProcessing') || 'Voice transcription failed');
+            setVoiceError(message);
+            // A resend of an already-persisted draft passes persistOnFailure:false to avoid duplicates.
+            // Skip persistence for a brand-new note ('new'): its contextId would collide across every
+            // unsaved note, and the draft becomes unreachable once the real id is assigned.
+            if (opts?.persistOnFailure !== false && noteId !== 'new') {
+                try {
+                    voiceDraftIdRef.current = await saveRecordingDraft({
+                        blob: audioBlob,
+                        mimeType: audioBlob.type || 'audio/webm',
+                        context: 'study',
+                        contextId: noteId,
+                        ...(voiceDraftIdRef.current ? { id: voiceDraftIdRef.current } : {}),
+                    });
+                } catch {
+                    // IndexedDB unavailable — the in-session recovery panel still protects the thought.
+                }
+            }
+            return false;
         } finally {
             setIsVoiceProcessing(false);
         }
-    };
+    }, [setContent, t, noteId]);
+
+    const handleVoiceRecordingComplete = useCallback((audioBlob: Blob) => {
+        setVoiceRetryCount(0);
+        void runVoiceTranscription(audioBlob);
+    }, [runVoiceTranscription]);
+
+    // Resend a persisted draft (from a previous session). Returns success so the
+    // banner can drop the draft once the thought is finally transcribed. On failure the
+    // FocusRecorderButton panel isn't mounted (no in-session blob), so surface a toast —
+    // never let a failed resend look silent while the draft quietly stays put. (Popper Minor 8.)
+    const resendVoiceBlob = useCallback(async (blob: Blob) => {
+        const ok = await runVoiceTranscription(blob, { persistOnFailure: false });
+        if (!ok) {
+            toast.error(t('audio.transcribeError.unknown', { defaultValue: 'Transcription failed. Please try again.' }));
+        }
+        return ok;
+    }, [runVoiceTranscription, t]);
+
+    const handleRetryVoice = useCallback(() => {
+        const blob = storedVoiceBlobRef.current;
+        if (!blob) return;
+        setVoiceRetryCount((count) => count + 1);
+        void runVoiceTranscription(blob);
+    }, [runVoiceTranscription]);
+
+    const handleClearVoiceError = useCallback(() => {
+        storedVoiceBlobRef.current = null;
+        setVoiceError(null);
+        setVoiceRetryCount(0);
+        if (voiceDraftIdRef.current) {
+            void deleteRecordingDraft(voiceDraftIdRef.current);
+            voiceDraftIdRef.current = null;
+        }
+    }, []);
 
     return {
         isAnalyzing, isVoiceProcessing, handleAIAnalyze, handleVoiceRecordingComplete,
+        voiceError, voiceRetryCount, voiceMaxRetries: VOICE_MAX_RETRIES, handleRetryVoice, handleClearVoiceError,
+        resendVoiceBlob,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
     };
 }
@@ -579,9 +654,11 @@ export default function StudyNoteEditorPage() {
     // AI assistant hook
     const {
         isAnalyzing, isVoiceProcessing, handleAIAnalyze, handleVoiceRecordingComplete,
+        voiceError, voiceRetryCount, voiceMaxRetries, handleRetryVoice, handleClearVoiceError,
+        resendVoiceBlob,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
     } = useNoteAIAssistant({
-        content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t
+        noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t
     });
 
     useNoteInitialization({
@@ -650,6 +727,16 @@ export default function StudyNoteEditorPage() {
 
             {/* EDITOR CONTENT */}
             <div className="flex-1 w-full max-w-full mx-auto px-4 py-8 md:px-12 md:py-16 space-y-8 pb-48 md:pb-32 transition-all duration-300">
+                {/* A returning user's unfinished recording waits here — survives reload / tab close. */}
+                {isEditing && (
+                    <RecordingDraftBanner
+                        context="study"
+                        contextId={noteId}
+                        onResend={resendVoiceBlob}
+                        isProcessing={isVoiceProcessing}
+                        className="mb-2"
+                    />
+                )}
                 {/* Title Area */}
                 <div className="relative group/title">
                     {isEditing ? (
@@ -660,15 +747,66 @@ export default function StudyNoteEditorPage() {
                                 placeholder={t('studiesWorkspace.titlePlaceholder') || 'Note Title...'}
                                 className="flex-1 text-4xl md:text-5xl font-extrabold tracking-tight bg-transparent border-none outline-none resize-none placeholder:text-gray-200 dark:placeholder:text-gray-800 text-gray-900 dark:text-gray-50 transition-colors"
                             />
-                            <button
-                                type="button"
-                                onClick={() => handleAIAnalyze('title')}
-                                disabled={isAnalyzing || !content.trim()}
-                                title={t('studiesWorkspace.aiAnalyze.generateTitle', { defaultValue: 'Generate Title' })}
-                                className="hidden group-hover/title:flex items-center justify-center p-2 rounded-lg text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50 shrink-0 mt-1"
-                            >
-                                <SparklesIcon className="h-6 w-6" />
-                            </button>
+                            {/* AI action lives at the TITLE level — it acts on the whole note. */}
+                            <div className="relative shrink-0 mt-1">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAIPopoverOpen(!isAIPopoverOpen)}
+                                    disabled={isAnalyzing || !content.trim()}
+                                    title={t('studiesWorkspace.aiAnalyze.button')}
+                                    className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg hover:from-purple-600 hover:to-indigo-600 hover:scale-105 disabled:opacity-50 transition-all border border-purple-400 dark:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-2 dark:focus:ring-offset-gray-900 relative z-20"
+                                >
+                                    <SparklesIcon className={`h-6 w-6 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                                </button>
+
+                                {/* Popover opens DOWNWARD (button now sits at the top). */}
+                                {isAIPopoverOpen && (
+                                    <div className="absolute top-full right-0 mt-3 w-56 rounded-xl bg-white shadow-xl border border-gray-100 dark:bg-gray-800 dark:border-gray-700 py-2 z-30 origin-top-right animate-in slide-in-from-top-2 fade-in duration-200">
+                                        <div className="px-4 py-2 border-b border-gray-50 dark:border-gray-700/50 mb-1">
+                                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                                                {t('studiesWorkspace.aiAnalyze.popoverTitle', { defaultValue: 'AI Actions' })}
+                                            </p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            className="w-full text-left px-4 py-2.5 text-sm font-medium text-purple-700 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/30 transition-colors flex items-center justify-between group"
+                                            onClick={() => { handleAIAnalyze('all'); setIsAIPopoverOpen(false); }}
+                                        >
+                                            {t('studiesWorkspace.aiAnalyze.full', { defaultValue: 'Full Analysis' })}
+                                            <SparklesIcon className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
+                                            onClick={() => { handleAIAnalyze('title'); setIsAIPopoverOpen(false); }}
+                                        >
+                                            {t('studiesWorkspace.aiAnalyze.generateTitle', { defaultValue: 'Generate Title' })}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
+                                            onClick={() => { handleAIAnalyze('scriptureRefs'); setIsAIPopoverOpen(false); }}
+                                        >
+                                            {t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
+                                            onClick={() => { handleAIAnalyze('tags'); setIsAIPopoverOpen(false); }}
+                                        >
+                                            {t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {isAIPopoverOpen && (
+                                    <div
+                                        className="fixed inset-0 z-0"
+                                        onClick={() => setIsAIPopoverOpen(false)}
+                                        aria-hidden="true"
+                                    />
+                                )}
+                            </div>
                         </div>
                     ) : (
                         <h1 className="w-full text-4xl md:text-5xl font-extrabold tracking-tight text-gray-900 dark:text-gray-50 leading-tight min-h-[1em]">
@@ -697,80 +835,29 @@ export default function StudyNoteEditorPage() {
                         </div>
                     )}
 
+                    {/* Recording lives WITH the text it fills — bottom-right of the editor. */}
+                    {isEditing && (
+                        <div className="absolute bottom-3 right-3 z-20">
+                            <div className="shadow-lg rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                                <FocusRecorderButton
+                                    onRecordingComplete={handleVoiceRecordingComplete}
+                                    isProcessing={isVoiceProcessing}
+                                    onError={(err: unknown) => toast.error(String(err) || 'Error')}
+                                    transcriptionError={voiceError}
+                                    onRetry={handleRetryVoice}
+                                    retryCount={voiceRetryCount}
+                                    maxRetries={voiceMaxRetries}
+                                    onClearError={handleClearVoiceError}
+                                    size="small"
+                                />
+                            </div>
+                        </div>
+                    )}
+
                 </div>
 
-                {isEditing && (
-                    <div className="fixed bottom-6 right-4 md:bottom-8 md:right-8 z-50 flex flex-col gap-3">
-                        <div className="relative">
-                            {/* Inner wrapper to handle outside clicks or state toggling */}
-                            <button
-                                type="button"
-                                onClick={() => setIsAIPopoverOpen(!isAIPopoverOpen)}
-                                disabled={isAnalyzing || !content.trim()}
-                                title={t('studiesWorkspace.aiAnalyze.button')}
-                                className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg hover:from-purple-600 hover:to-indigo-600 hover:scale-105 disabled:opacity-50 transition-all border border-purple-400 dark:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-2 dark:focus:ring-offset-gray-900 relative z-20"
-                            >
-                                <SparklesIcon className={`h-6 w-6 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                            </button>
-
-                            {/* Popover Menu */}
-                            {isAIPopoverOpen && (
-                                <div className="absolute bottom-full right-0 mb-3 w-56 rounded-xl bg-white shadow-xl border border-gray-100 dark:bg-gray-800 dark:border-gray-700 py-2 z-10 origin-bottom-right animate-in slide-in-from-bottom-2 fade-in duration-200">
-                                    <div className="px-4 py-2 border-b border-gray-50 dark:border-gray-700/50 mb-1">
-                                        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                            {t('studiesWorkspace.aiAnalyze.popoverTitle', { defaultValue: 'AI Actions' })}
-                                        </p>
-                                    </div>
-                                    <button
-                                        type="button"
-                                        className="w-full text-left px-4 py-2.5 text-sm font-medium text-purple-700 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/30 transition-colors flex items-center justify-between group"
-                                        onClick={() => { handleAIAnalyze('all'); setIsAIPopoverOpen(false); }}
-                                    >
-                                        {t('studiesWorkspace.aiAnalyze.full', { defaultValue: 'Full Analysis' })}
-                                        <SparklesIcon className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
-                                        onClick={() => { handleAIAnalyze('title'); setIsAIPopoverOpen(false); }}
-                                    >
-                                        {t('studiesWorkspace.aiAnalyze.generateTitle', { defaultValue: 'Generate Title' })}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
-                                        onClick={() => { handleAIAnalyze('scriptureRefs'); setIsAIPopoverOpen(false); }}
-                                    >
-                                        {t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
-                                        onClick={() => { handleAIAnalyze('tags'); setIsAIPopoverOpen(false); }}
-                                    >
-                                        {t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
-                                    </button>
-                                </div>
-                            )}
-
-                            {/* Invisible overlay to close popover when clicking outside */}
-                            {isAIPopoverOpen && (
-                                <div
-                                    className="fixed inset-0 z-0"
-                                    onClick={() => setIsAIPopoverOpen(false)}
-                                    aria-hidden="true"
-                                />
-                            )}
-                        </div>
-                        <div className="shadow-lg rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 relative z-20">
-                            <FocusRecorderButton
-                                onRecordingComplete={handleVoiceRecordingComplete}
-                                isProcessing={isVoiceProcessing}
-                                onError={(err: unknown) => toast.error(String(err) || 'Error')}
-                            />
-                        </div>
-                    </div>
-                )}
+                {/* AI ✨ moved to the title header (acts on the whole note); mic moved to the
+                    editor's bottom-right corner (lives with the text it fills). */}
 
                 {/* Metadata Tray (Tags & Refs) */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t border-gray-100 dark:border-gray-800">

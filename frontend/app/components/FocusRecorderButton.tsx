@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import "@locales/i18n";
 import { MicrophoneIcon } from "@/components/Icons";
-import { getBestSupportedFormat, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
+import { buildRecordingFilename, downloadBlobToDevice, getBestSupportedFormat, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 import { getAudioGracePeriod, getAudioRecordingDuration } from "@/utils/audioRecorderConfig";
 
 import { AudioRecoveryPanel } from "./audio-recorder/AudioRecorderControls";
@@ -593,15 +593,17 @@ export const FocusRecorderButton = ({
       return;
     }
 
-    onClearError?.();
-
+    // Do NOT call onClearError here: consumers bind it to a DESTRUCTIVE handler
+    // that nulls the stored blob + deletes the persisted draft. Calling it before
+    // the retry would delete exactly what the retry needs (Popper Critical 2).
+    // The error display clears when the re-transcription runs.
     if (onRetry) {
       onRetry();
       return;
     }
 
     onRecordingComplete(storedAudioBlob);
-  }, [isProcessing, onClearError, onRecordingComplete, onRetry, storedAudioBlob]);
+  }, [isProcessing, onRecordingComplete, onRetry, storedAudioBlob]);
 
   const recordAgain = useCallback(() => {
     if (disabled || isProcessing || isInitializing || isRecording) {
@@ -763,6 +765,7 @@ export const FocusRecorderButton = ({
         onRetry={retrySavedRecording}
         onRecordAgain={recordAgain}
         onDiscard={clearStoredAudio}
+        onDownload={storedAudioBlob ? () => downloadBlobToDevice(storedAudioBlob, buildRecordingFilename(storedAudioBlob.type)) : undefined}
         t={t}
         className={recoveryPanelClassName}
       />

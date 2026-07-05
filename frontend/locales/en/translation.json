@@ -660,6 +660,26 @@
     "playRecording": "Play recording",
     "recordAgain": "Record Again",
     "discardRecording": "Discard Recording",
+    "downloadRecording": "Download to device",
+    "transcribeError": {
+      "billing": "Your OpenAI account is out of credit or over its quota. Top up the balance and try again.",
+      "network": "Connection problem reaching the transcription service. Please try again.",
+      "rate_limit": "Too many requests right now. Please try again in a moment.",
+      "auth": "Transcription service authentication failed. Please contact support.",
+      "invalid_audio": "The recording seems invalid or too short. Please record again.",
+      "bad_request": "This audio couldn't be processed. Please record again.",
+      "server": "The transcription service had an error. Please try again.",
+      "unknown": "Transcription failed. Please try again.",
+      "billingHint": "Repeated connection drops can also mean your OpenAI balance ran out — check your billing."
+    },
+    "draft": {
+      "title": "Unfinished recording",
+      "hint": "Transcription didn't finish. Your recording is saved here — resend it, download it, or discard it.",
+      "resend": "Send again",
+      "download": "Download",
+      "discard": "Discard",
+      "listen": "Listen"
+    },
     "closeError": "Close",
     "thoughtGenerationFailed": "Failed to generate a valid thought from the audio. Meaning might have been altered.",
     "audioLevel": "Audio Level",

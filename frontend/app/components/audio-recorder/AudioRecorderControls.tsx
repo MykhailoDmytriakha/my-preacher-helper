@@ -297,6 +297,7 @@ export const AudioRecoveryPanel = ({
   onRetry,
   onRecordAgain,
   onDiscard,
+  onDownload,
   t,
   className = "",
 }: AudioRecoveryPanelProps) => {
@@ -346,6 +347,15 @@ export const AudioRecoveryPanel = ({
         >
           {t("audio.recordAgain")}
         </button>
+        {onDownload && (
+          <button
+            type="button"
+            onClick={onDownload}
+            className={`${buttonBase} border border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100 focus:ring-indigo-500 dark:border-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200 dark:hover:bg-indigo-900/50`}
+          >
+            {t("audio.downloadRecording")}
+          </button>
+        )}
         <button
           type="button"
           onClick={onDiscard}

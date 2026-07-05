@@ -44,6 +44,13 @@ const gptModel = process.env.OPENAI_GPT_MODEL as string; // This should be 'o1-m
 const geminiModel = process.env.GEMINI_MODEL as string;
 const isDebugMode = process.env.DEBUG_MODE === 'true';
 
+// Transcription per-request timeout — sits UNDER Vercel's 60s function wall AND
+// leaves headroom for the post-transcription polish() GPT call, so a slow OpenAI
+// call is aborted by us (→ typed retryable error) rather than killing the whole
+// invocation (transcribe + polish) with no JSON body. Retries are the client's
+// job (fresh 60s each). (Popper Minor 7.)
+const TRANSCRIPTION_TIMEOUT_MS = 45_000;
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
   // Allow browser environment during tests
@@ -193,10 +200,20 @@ export async function createTranscription(file: File | Blob): Promise<string> {
 
   try {
     const result = await withOpenAILogging<OpenAI.Audio.Transcription>(
-      () => openai.audio.transcriptions.create({
-        file: fileToSend,
-        model: audioModel,
-      }),
+      // Per-request timeout + no SDK retries, scoped to transcription ONLY (the
+      // shared `openai` client also serves GPT calls we must not constrain). The
+      // 50s cap sits UNDER Vercel's 60s wall so the route can catch a slow call
+      // and return a typed error instead of being killed with no JSON body.
+      () => openai.audio.transcriptions.create(
+        {
+          file: fileToSend,
+          model: audioModel,
+        },
+        {
+          timeout: TRANSCRIPTION_TIMEOUT_MS,
+          maxRetries: 0,
+        }
+      ),
       'Transcription',
       requestData,
       inputInfo
@@ -219,9 +236,15 @@ export async function createTranscription(file: File | Blob): Promise<string> {
         hasKnownIssues: hasKnownIssues(fileToSend.type)
       });
 
-      // Add context to error message
+      // Add context to error message. Preserve the ORIGINAL error as `cause` so the
+      // downstream classifier still sees the OpenAI SDK code/type/status
+      // (e.g. insufficient_quota). webm/opus is the DEFAULT recording format, so
+      // re-wrapping without the cause would silently defeat billing detection.
+      // (Popper convergence — Critical 1 at a deeper layer.)
       if (hasKnownIssues(fileToSend.type)) {
-        throw new Error(`${error.message} (Note: ${fileToSend.type} format may have compatibility issues)`);
+        const wrapped = new Error(`${error.message} (Note: ${fileToSend.type} format may have compatibility issues)`);
+        (wrapped as Error & { cause?: unknown }).cause = error;
+        throw wrapped;
       }
     }
 

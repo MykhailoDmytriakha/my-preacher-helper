@@ -424,6 +424,49 @@ describe('FocusRecorderButton', () => {
       expect(onRecordingComplete).toHaveBeenLastCalledWith(expect.any(Blob));
     });
 
+    it('delegates Retry to onRetry WITHOUT calling the destructive onClearError (Popper Critical 2)', async () => {
+      const onRecordingComplete = jest.fn();
+      const onRetry = jest.fn();
+      const onClearError = jest.fn();
+      const { rerender } = render(
+        <FocusRecorderButton
+          onRecordingComplete={onRecordingComplete}
+          onRetry={onRetry}
+          onClearError={onClearError}
+        />
+      );
+
+      const button = screen.getByRole('button', { name: 'audio.newRecording' });
+      fireEvent.click(button);
+      await waitFor(() => {
+        expect(button).toHaveClass('bg-red-500');
+      });
+      fireEvent.click(button);
+      await waitFor(() => {
+        expect(onRecordingComplete).toHaveBeenCalledTimes(1);
+      });
+
+      rerender(
+        <FocusRecorderButton
+          onRecordingComplete={onRecordingComplete}
+          onRetry={onRetry}
+          transcriptionError="transcription failed"
+          onClearError={onClearError}
+        />
+      );
+
+      await screen.findByText('audio.savedRecording');
+      // Retry must NOT call onClearError — consumers bind it to a handler that
+      // deletes the stored blob + persisted draft, which the retry needs.
+      onClearError.mockClear();
+      fireEvent.click(screen.getByRole('button', { name: 'audio.retryTranscription' }));
+
+      expect(onRetry).toHaveBeenCalledTimes(1);
+      expect(onClearError).not.toHaveBeenCalled();
+      // The onRetry path returns before the onRecordingComplete fallback.
+      expect(onRecordingComplete).toHaveBeenCalledTimes(1);
+    });
+
     it('should automatically stop recording after maxDuration plus grace period', async () => {
       jest.useFakeTimers();
       const onRecordingComplete = jest.fn();

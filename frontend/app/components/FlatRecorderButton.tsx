@@ -209,6 +209,7 @@ export function FlatRecorderButton({
     retryTranscription,
     recordAgain,
     discardStoredAudio,
+    downloadStoredAudio,
     closeError,
   } = useAudioRecorderLifecycle({
     onRecordingComplete,
@@ -293,6 +294,7 @@ export function FlatRecorderButton({
         onRetry={retryTranscription}
         onRecordAgain={recordAgain}
         onDiscard={discardStoredAudio}
+        onDownload={downloadStoredAudio}
         t={t}
         className="absolute right-0 top-full z-50 mt-2 w-[320px] max-w-[calc(100vw-2rem)]"
       />

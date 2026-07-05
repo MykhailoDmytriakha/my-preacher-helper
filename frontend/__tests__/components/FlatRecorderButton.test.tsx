@@ -34,6 +34,7 @@ const makeLifecycle = (overrides = {}) => ({
   retryTranscription: jest.fn(),
   recordAgain: jest.fn(),
   discardStoredAudio: jest.fn(),
+  downloadStoredAudio: jest.fn(),
   closeError: jest.fn(),
   ...overrides,
 });

@@ -329,7 +329,7 @@ describe('Thoughts API route additional coverage', () => {
       expect(data).toEqual({ error: expected });
     });
 
-    it('retries transient transcription connection errors before creating the thought', async () => {
+    it('does NOT retry server-side; a transient error yields a retryable 503 after ONE attempt (client re-posts as a fresh request)', async () => {
       createTranscriptionMock
         .mockRejectedValueOnce(new Error('Connection error. read ECONNRESET'))
         .mockResolvedValueOnce('transcribed after retry');
@@ -342,9 +342,12 @@ describe('Thoughts API route additional coverage', () => {
       const response = await POST(request);
       const data = await response.json();
 
-      expect(response.status).toBe(200);
-      expect(data.text).toBe('formatted');
-      expect(createTranscriptionMock).toHaveBeenCalledTimes(2);
+      // Retry moved to the client: each retry is a fresh HTTP request with its own
+      // 60s Vercel budget, so the server no longer loops inside one invocation.
+      // The second mocked value is intentionally never reached.
+      expect(response.status).toBe(503);
+      expect(data.retryable).toBe(true);
+      expect(createTranscriptionMock).toHaveBeenCalledTimes(1);
     });
 
     it('returns a retryable 503 when transient transcription errors persist', async () => {

@@ -274,6 +274,32 @@ export async function logAudioInfo(blob: Blob, context: string = 'Audio'): Promi
 }
 
 /**
+ * Build a sensible download filename for a recorded blob
+ * e.g. recording-1720099200000.webm
+ */
+export function buildRecordingFilename(mimeType: string): string {
+  const extension = getExtensionFromMimeType(mimeType || DEFAULT_AUDIO_FORMAT);
+  return `recording-${Date.now()}.${extension}`;
+}
+
+/**
+ * Trigger a browser download of a Blob to the user's device.
+ * The last line of defense against losing a recorded thought.
+ */
+export function downloadBlobToDevice(blob: Blob, filename: string): void {
+  if (typeof document === 'undefined') return;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Revoke on next tick so the click's navigation isn't cancelled.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
  * Creates and configures a MediaRecorder with proper event handlers
  *
  * This function encapsulates the complex MediaRecorder setup logic to reduce

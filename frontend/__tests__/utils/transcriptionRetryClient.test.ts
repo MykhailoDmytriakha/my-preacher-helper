@@ -1,0 +1,150 @@
+import {
+  transcribeAudioWithRetry,
+  TranscriptionClientError,
+} from '@/utils/transcriptionRetryClient';
+
+function jsonResponse(status: number, body: unknown): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    statusText: `HTTP ${status}`,
+    json: async () => body,
+  } as unknown as Response;
+}
+
+// A raw 5xx (e.g. Vercel FUNCTION_INVOCATION_TIMEOUT) returns HTML/empty — json() throws.
+function bodylessResponse(status: number): Response {
+  return {
+    ok: false,
+    status,
+    statusText: `HTTP ${status}`,
+    json: async () => { throw new Error('Unexpected token < in JSON'); },
+  } as unknown as Response;
+}
+
+const blob = new Blob(['audio'], { type: 'audio/webm' });
+
+describe('transcribeAudioWithRetry', () => {
+  it('returns transcription on first success', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(
+      jsonResponse(200, { success: true, polishedText: 'clean', originalText: 'raw' })
+    );
+
+    const result = await transcribeAudioWithRetry(blob, { endpoint: '/api/studies/transcribe', fetchImpl });
+
+    expect(result).toEqual({ polishedText: 'clean', originalText: 'raw', warning: undefined });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a retryable (network) failure with a fresh request, then succeeds', async () => {
+    const fetchImpl = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(503, { success: false, error: 'conn', kind: 'network', retryable: true, phase: 'transcribe_audio' }))
+      .mockResolvedValueOnce(jsonResponse(200, { success: true, polishedText: 'clean', originalText: 'raw' }));
+
+    const result = await transcribeAudioWithRetry(blob, { endpoint: '/api/studies/transcribe', fetchImpl, baseDelayMs: 0 });
+
+    expect(result.polishedText).toBe('clean');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('does NOT retry a billing failure and surfaces the billing kind', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(
+      jsonResponse(429, { success: false, error: 'out of credit', kind: 'billing', retryable: false })
+    );
+
+    await expect(
+      transcribeAudioWithRetry(blob, { endpoint: '/api/studies/transcribe', fetchImpl, maxRetries: 3 })
+    ).rejects.toMatchObject({ kinds: ['billing'] });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('collects every attempt error and flags possible billing on repeated network resets', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(
+      jsonResponse(503, { success: false, error: 'ECONNRESET', kind: 'network', retryable: true, phase: 'transcribe_audio' })
+    );
+
+    let thrown: TranscriptionClientError | null = null;
+    try {
+      await transcribeAudioWithRetry(blob, { endpoint: '/api/studies/transcribe', fetchImpl, maxRetries: 2, baseDelayMs: 0 });
+    } catch (e) {
+      thrown = e as TranscriptionClientError;
+    }
+
+    expect(thrown).toBeInstanceOf(TranscriptionClientError);
+    expect(fetchImpl).toHaveBeenCalledTimes(3); // 1 + 2 retries
+    expect(thrown!.attempts).toHaveLength(3);
+    expect(thrown!.kinds).toEqual(['network']);
+    expect(thrown!.suggestsBilling).toBe(true);
+  });
+
+  it('orders distinct kinds by severity and preserves recognized text', async () => {
+    const fetchImpl = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(503, { success: false, error: 'net', kind: 'network', retryable: true }))
+      .mockResolvedValueOnce(jsonResponse(429, { success: false, error: 'no credit', kind: 'billing', retryable: false, originalText: 'my thought' }));
+
+    let thrown: TranscriptionClientError | null = null;
+    try {
+      await transcribeAudioWithRetry(blob, { endpoint: '/api/studies/transcribe', fetchImpl, maxRetries: 3, baseDelayMs: 0 });
+    } catch (e) {
+      thrown = e as TranscriptionClientError;
+    }
+
+    // billing outranks network in severity ordering; stops retrying at billing.
+    expect(thrown!.kinds).toEqual(['billing', 'network']);
+    expect(thrown!.originalText).toBe('my thought');
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats a thrown transport error (apiClient reject) as a network attempt', async () => {
+    const fetchImpl = jest.fn().mockRejectedValue(new Error('Failed to fetch'));
+
+    await expect(
+      transcribeAudioWithRetry(blob, { endpoint: '/api/studies/transcribe', fetchImpl, maxRetries: 1, baseDelayMs: 0 })
+    ).rejects.toMatchObject({ kinds: ['network'] });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries a bodyless 504 (Vercel timeout) by falling back to HTTP status', async () => {
+    const fetchImpl = jest.fn()
+      .mockResolvedValueOnce(bodylessResponse(504))
+      .mockResolvedValueOnce(jsonResponse(200, { success: true, polishedText: 'clean', originalText: 'raw' }));
+
+    const result = await transcribeAudioWithRetry(blob, { endpoint: '/api/studies/transcribe', fetchImpl, baseDelayMs: 0 });
+
+    expect(result.polishedText).toBe('clean');
+    expect(fetchImpl).toHaveBeenCalledTimes(2); // 504 was retried, not dropped as unknown
+  });
+
+  it('does NOT retry a bodyless 400 (client error) via status fallback', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(bodylessResponse(400));
+
+    await expect(
+      transcribeAudioWithRetry(blob, { endpoint: '/api/studies/transcribe', fetchImpl, maxRetries: 3, baseDelayMs: 0 })
+    ).rejects.toMatchObject({ kinds: ['bad_request'] });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('treats an empty (silence) 200-success as invalid_audio so the recording is kept', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(
+      jsonResponse(200, { success: true, polishedText: '', originalText: '' })
+    );
+
+    await expect(
+      transcribeAudioWithRetry(blob, { endpoint: '/api/studies/transcribe', fetchImpl, maxRetries: 3, baseDelayMs: 0 })
+    ).rejects.toMatchObject({ kinds: ['invalid_audio'] });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1); // empty = silence, not retried
+  });
+
+  it('still returns a whitespace-trimmed non-empty success normally', async () => {
+    const fetchImpl = jest.fn().mockResolvedValue(
+      jsonResponse(200, { success: true, polishedText: 'real text', originalText: 'raw' })
+    );
+
+    const result = await transcribeAudioWithRetry(blob, { endpoint: '/api/studies/transcribe', fetchImpl });
+    expect(result.polishedText).toBe('real text');
+  });
+});

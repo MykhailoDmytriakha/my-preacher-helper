@@ -73,7 +73,10 @@ describe('Studies transcribe route', () => {
       error: RETRYABLE_ERROR_MESSAGE,
       retryable: true,
       phase: 'transcribe_audio',
+      kind: 'network',
     });
-    expect(createTranscription).toHaveBeenCalledTimes(2);
+    // One attempt per invocation now — the CLIENT retries with fresh requests
+    // (each with its own 60s Vercel budget), so the server no longer loops.
+    expect(createTranscription).toHaveBeenCalledTimes(1);
   });
 });

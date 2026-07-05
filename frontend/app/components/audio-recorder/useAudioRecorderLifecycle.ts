@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  buildRecordingFilename,
   createConfiguredMediaRecorder,
+  downloadBlobToDevice,
   getAllSupportedFormats,
   getBestSupportedFormat,
   hasKnownIssues,
@@ -418,6 +420,14 @@ export function useAudioRecorderLifecycle({
     onClearError?.();
   }, [onClearError]);
 
+  const downloadStoredAudio = useCallback(() => {
+    if (!storedAudioBlob) {
+      return;
+    }
+
+    downloadBlobToDevice(storedAudioBlob, buildRecordingFilename(storedAudioBlob.type));
+  }, [storedAudioBlob]);
+
   const recordAgain = useCallback(() => {
     discardStoredAudio();
     void startRecording();
@@ -602,6 +612,7 @@ export function useAudioRecorderLifecycle({
     retryTranscription,
     recordAgain,
     discardStoredAudio,
+    downloadStoredAudio,
     closeError,
   };
 }
