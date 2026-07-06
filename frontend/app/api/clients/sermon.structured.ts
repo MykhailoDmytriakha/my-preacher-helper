@@ -22,11 +22,25 @@ import {
     InsightsResponseSchema,
     TopicsResponseSchema,
     VersesResponseSchema,
-    SectionHintsResponseSchema,
-    SermonPointsResponseSchema,
-    BrainstormSuggestionSchema,
+	SectionHintsResponseSchema,
+	SermonPointsResponseSchema,
+	ComposePlanResponseSchema,
+	BrainstormSuggestionSchema,
+	type ComposedPlanOutline,
+	type ComposePlanPoint,
 } from "@/config/schemas/zod";
-import { Sermon, Insights, VerseWithRelevance, SermonPoint, BrainstormSuggestion, SectionHints } from "@/models/models";
+import {
+    Sermon,
+    Insights,
+    VerseWithRelevance,
+    SermonPoint,
+    BrainstormSuggestion,
+    SectionHints,
+    ScratchNote,
+    SermonOutline,
+    OutlinePoint,
+    SubPoint,
+} from "@/models/models";
 
 import { extractSectionContent, extractSermonContent } from "./openAIHelpers";
 import { buildPromptBlueprint, buildSimplePromptBlueprint } from "./promptBuilder";
@@ -35,6 +49,9 @@ import { callWithStructuredOutput } from "./structuredOutput";
 import type { PlanContext, PlanStyle } from "./planTypes";
 
 const isDebugMode = process.env.DEBUG_MODE === 'true';
+type ComposeSectionKey = 'introduction' | 'main' | 'conclusion';
+
+const COMPOSE_SECTION_KEYS: ComposeSectionKey[] = ['introduction', 'main', 'conclusion'];
 
 // ===== Structured Output Functions =====
 
@@ -324,6 +341,337 @@ Keep the outline points in the ${hasNonLatinChars ? 'same non-English' : 'Englis
     }));
 
     return { outlinePoints, success: true };
+}
+
+function scratchSectionLabel(section: ScratchNote['section']) {
+    if (section === 'introduction') return 'introduction';
+    if (section === 'main') return 'main';
+    if (section === 'conclusion') return 'conclusion';
+    return 'unplaced';
+}
+
+function scratchPromptLine(note: ScratchNote, index: number) {
+    return `${index + 1}. id=${note.id}; section=${scratchSectionLabel(note.section)}; text="${note.text.replace(/"/g, '\\"')}"`;
+}
+
+const LEADING_CONCLUSION_CUE_PATTERN = /^\s*(?:в\s+конце|в\s+заключение|заключение|призыв|завершение)(?=$|[\s—–:,.!?;])/iu;
+const LEADING_INTRODUCTION_CUE_PATTERN = /^\s*(?:в\s+начале|сначала|вступление)(?=$|[\s—–:,.!?;])/iu;
+
+function inferExplicitCueSection(text: string): ComposeSectionKey | null {
+    const normalized = text.toLowerCase();
+
+    if (LEADING_CONCLUSION_CUE_PATTERN.test(normalized)) {
+        return 'conclusion';
+    }
+
+    if (LEADING_INTRODUCTION_CUE_PATTERN.test(normalized)) {
+        return 'introduction';
+    }
+
+    return null;
+}
+
+function inferSectionFromCue(text: string): ComposeSectionKey {
+    const explicitSection = inferExplicitCueSection(text);
+    if (explicitSection) return explicitSection;
+    return 'main';
+}
+
+function compactScratchText(text: string) {
+    const compacted = text
+        .replace(/^\s*(в начале|на початку|at the beginning)\s*[—:-]\s*/i, '')
+        .replace(/^\s*(в конце|в кінці|at the end)\s*[—:-]\s*/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    return compacted || text.trim();
+}
+
+function composePointId() {
+    return `op-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+}
+
+function composeSubPointId() {
+    return `sp-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+}
+
+function collectComposePoints(outline: Record<ComposeSectionKey, ComposePlanPoint[]>) {
+    return COMPOSE_SECTION_KEYS.flatMap((section) => outline[section].map((point) => ({ section, point })));
+}
+
+function cloneSubPoint(subPoint: SubPoint) {
+    return { ...subPoint };
+}
+
+function cloneOutlinePoint(point: OutlinePoint) {
+    return {
+        ...point,
+        subPoints: point.subPoints?.map(cloneSubPoint),
+    };
+}
+
+function normalizeExistingOutline(existingOutline?: SermonOutline): ComposedPlanOutline {
+    return {
+        introduction: (existingOutline?.introduction ?? []).map(cloneOutlinePoint),
+        main: (existingOutline?.main ?? []).map(cloneOutlinePoint),
+        conclusion: (existingOutline?.conclusion ?? []).map(cloneOutlinePoint),
+    };
+}
+
+function outlinePromptLine(section: ComposeSectionKey, point: OutlinePoint, index: number) {
+    const subPoints = (point.subPoints ?? [])
+        .map((subPoint) => `${subPoint.id}:${subPoint.text}`)
+        .join(' | ');
+    const note = point.note ? `; note="${point.note.replace(/"/g, '\\"')}"` : '';
+    const children = subPoints ? `; subPoints=${subPoints}` : '';
+
+    return `${index + 1}. id=${point.id}; section=${section}; text="${point.text.replace(/"/g, '\\"')}"${note}${children}`;
+}
+
+function existingOutlinePrompt(existingOutline?: SermonOutline) {
+    const lines = COMPOSE_SECTION_KEYS.flatMap((section) =>
+        (existingOutline?.[section] ?? []).map((point, index) => outlinePromptLine(section, point, index))
+    );
+
+    return lines.length > 0 ? lines.join('\n') : '(none)';
+}
+
+function findPointLocation(outline: ComposedPlanOutline, pointId: string) {
+    for (const section of COMPOSE_SECTION_KEYS) {
+        const point = outline[section].find((candidate) => candidate.id === pointId);
+        if (point) return { section, point };
+    }
+
+    return null;
+}
+
+function nextSubPointPosition(subPoints: SubPoint[] | undefined) {
+    if (!subPoints || subPoints.length === 0) return 1000;
+    return Math.max(...subPoints.map((subPoint) => subPoint.position)) + 1000;
+}
+
+function scratchSource(scratchNote: ScratchNote) {
+    return scratchNote.section ? 'manual' : 'ai';
+}
+
+function addScratchAsSubPoint(
+    outline: ComposedPlanOutline,
+    targetPointId: string,
+    scratchNote: ScratchNote,
+    point: ComposePlanPoint
+) {
+    for (const section of COMPOSE_SECTION_KEYS) {
+        outline[section] = outline[section].map((candidate) => {
+            if (candidate.id !== targetPointId) return candidate;
+            const existingSubPoints = candidate.subPoints ?? [];
+            return {
+                ...candidate,
+                subPoints: [
+                    ...existingSubPoints,
+                    {
+                        id: composeSubPointId(),
+                        scratchNoteId: scratchNote.id,
+                        text: compactScratchText(point.text || scratchNote.text),
+                        note: point.note?.trim() || scratchNote.text,
+                        source: scratchSource(scratchNote),
+                        position: nextSubPointPosition(existingSubPoints),
+                    },
+                ],
+            };
+        });
+    }
+}
+
+function addScratchAsNewPoint(
+    outline: ComposedPlanOutline,
+    section: ComposeSectionKey,
+    scratchNote: ScratchNote,
+    point?: ComposePlanPoint
+) {
+    outline[section].push({
+        id: composePointId(),
+        scratchNoteId: scratchNote.id,
+        text: compactScratchText(point?.text || scratchNote.text),
+        note: point?.note?.trim() || scratchNote.text,
+        source: scratchSource(scratchNote),
+    });
+}
+
+function normalizeComposePlan(
+    aiPlan: Record<ComposeSectionKey, ComposePlanPoint[]>,
+    scratch: ScratchNote[],
+    existingOutline?: SermonOutline
+): ComposedPlanOutline {
+    const scratchById = new Map(scratch.map((note) => [note.id, note]));
+    const consumedScratchIds = new Set<string>();
+    const normalized = normalizeExistingOutline(existingOutline);
+
+    collectComposePoints(aiPlan).forEach(({ section, point }) => {
+        const scratchNote = scratchById.get(point.scratchNoteId);
+        if (!scratchNote || consumedScratchIds.has(scratchNote.id)) return;
+
+        const forcedSection = scratchNote.section ?? inferExplicitCueSection(scratchNote.text);
+        const targetLocation = point.outlinePointId ? findPointLocation(normalized, point.outlinePointId) : null;
+
+        if (targetLocation && (!forcedSection || forcedSection === targetLocation.section)) {
+            addScratchAsSubPoint(normalized, targetLocation.point.id, scratchNote, point);
+        } else {
+            addScratchAsNewPoint(normalized, forcedSection ?? targetLocation?.section ?? section, scratchNote, point);
+        }
+        consumedScratchIds.add(scratchNote.id);
+    });
+
+    scratch.forEach((scratchNote) => {
+        if (consumedScratchIds.has(scratchNote.id)) return;
+
+        const targetSection = scratchNote.section ?? inferSectionFromCue(scratchNote.text);
+        addScratchAsNewPoint(normalized, targetSection, scratchNote);
+    });
+
+    return normalized;
+}
+
+function findUnknownScratchIds(
+    aiPlan: Record<ComposeSectionKey, ComposePlanPoint[]>,
+    scratch: ScratchNote[]
+): string[] {
+    const knownIds = new Set(scratch.map((note) => note.id));
+    const unknownIds = new Set<string>();
+
+    collectComposePoints(aiPlan).forEach(({ point }) => {
+        if (!knownIds.has(point.scratchNoteId)) {
+            unknownIds.add(point.scratchNoteId);
+        }
+    });
+
+    return [...unknownIds];
+}
+
+/**
+ * Compose an ephemeral sermon outline from scratch notes.
+ * Manual scratch sections are pinned server-side after the AI response, so a
+ * model drift cannot move preacher-placed notes to a different section.
+ */
+export async function composePlanFromScratchStructured(
+    sermon: Sermon,
+    existingOutline?: SermonOutline
+): Promise<{ outline: ComposedPlanOutline; success: boolean }> {
+    const scratch = sermon.scratch ?? [];
+    const outlineToAugment = existingOutline ?? sermon.outline;
+    const baseOutline = normalizeExistingOutline(outlineToAugment);
+
+    if (scratch.length === 0) {
+        return { outline: baseOutline, success: true };
+    }
+
+    const manualCount = scratch.filter((note) => note.section).length;
+    const unplacedCount = scratch.length - manualCount;
+    const scratchList = scratch.map(scratchPromptLine).join('\n');
+    const outlineList = existingOutlinePrompt(outlineToAugment);
+    const existingPointCount = COMPOSE_SECTION_KEYS.reduce(
+        (count, section) => count + (outlineToAugment?.[section]?.length ?? 0),
+        0
+    );
+    const hasNonLatinChars = /[^\u0000-\u007F]/.test(
+        [
+            sermon.title,
+            sermon.verse,
+            ...scratch.map((note) => note.text),
+            ...COMPOSE_SECTION_KEYS.flatMap((section) => (outlineToAugment?.[section] ?? []).map((point) => point.text)),
+        ].join(' ')
+    );
+    const expectedLanguage = hasNonLatinChars ? 'non-english' : 'en';
+
+    const systemPrompt = `You are a sermon preparation assistant augmenting an existing sermon outline with scratch notes.
+
+Return scratch-note placements grouped by introduction, main, and conclusion.
+
+Rules:
+1. Every scratch note must appear exactly once using its exact scratchNoteId.
+2. Prefer attaching a scratch note to the best-matching EXISTING OUTLINE POINT as a sub-point by returning outlinePointId.
+3. Create a new outline point only when no existing point fits; in that case omit outlinePointId.
+4. Never invent outline point ids. Use only ids from EXISTING OUTLINE when outlinePointId is present.
+5. Notes that already have section=introduction/main/conclusion must stay in that section.
+6. Respect leading note cues only: "в начале", "сначала", "вступление" at the start -> introduction; "в конце", "в заключение", "заключение", "призыв" at the start -> conclusion.
+7. Keep text concise, sermon-outline style, in the same language as the notes.
+8. Put the original wording in note. Use note to preserve the preacher's raw phrase.
+9. Order new points naturally inside each section.`;
+
+    const userMessage = `SERMON TITLE: ${sermon.title || '(untitled)'}
+SCRIPTURE: ${sermon.verse || '(not provided)'}
+MANUAL_PLACED_NOTES: ${manualCount}
+UNPLACED_NOTES: ${unplacedCount}
+EXISTING_OUTLINE_POINTS: ${existingPointCount}
+
+EXISTING OUTLINE:
+${outlineList}
+
+SCRATCH NOTES:
+${scratchList}
+
+Place each scratch note into the existing outline when it fits, or create a new point placement when it does not.`;
+
+    const promptBlueprint = buildPromptBlueprint({
+        promptName: "compose_plan_from_scratch",
+        promptVersion: "v2",
+        expectedLanguage,
+        context: {
+            sermonId: sermon.id,
+            sermonTitle: sermon.title,
+            scratchCount: scratch.length,
+            manualCount,
+            unplacedCount,
+            existingPointCount,
+        },
+        systemBlocks: [
+            {
+                blockId: "compose_plan_from_scratch.role_rules",
+                category: "task",
+                content: systemPrompt,
+            },
+        ],
+        userBlocks: [
+            {
+                blockId: "compose_plan_from_scratch.notes",
+                category: "context",
+                content: userMessage,
+            },
+        ],
+    });
+
+    const result = await callWithStructuredOutput(
+        promptBlueprint.systemPrompt,
+        promptBlueprint.userMessage,
+        ComposePlanResponseSchema,
+        {
+            formatName: "compose_plan_from_scratch",
+            promptBlueprint,
+            logContext: {
+                sermonId: sermon.id,
+                sermonTitle: sermon.title,
+                scratchCount: scratch.length,
+                manualCount,
+                unplacedCount,
+                existingPointCount,
+            },
+        }
+    );
+
+    if (!result.success || !result.data) {
+        console.error("ERROR: Failed to compose plan from scratch:", result.error || result.refusal);
+        return { outline: baseOutline, success: false };
+    }
+
+    const unknownScratchIds = findUnknownScratchIds(result.data, scratch);
+    if (unknownScratchIds.length > 0) {
+        console.error("ERROR: Compose plan returned unknown scratch ids:", unknownScratchIds);
+        return { outline: baseOutline, success: false };
+    }
+
+    return {
+        outline: normalizeComposePlan(result.data, scratch, outlineToAugment),
+        success: true,
+    };
 }
 
 /**

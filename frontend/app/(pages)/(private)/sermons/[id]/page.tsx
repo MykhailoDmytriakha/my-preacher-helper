@@ -21,6 +21,7 @@ import { getActiveStepId } from '@/components/sermon/prep/logic';
 import MainIdeaStepContent from '@/components/sermon/prep/MainIdeaStepContent';
 import PrepStepCard from '@/components/sermon/prep/PrepStepCard';
 import SpiritualStepContent from '@/components/sermon/prep/SpiritualStepContent';
+import ScratchPanel from "@/components/sermon/ScratchPanel";
 import TextContextStepContent from '@/components/sermon/prep/TextContextStepContent';
 import ThesisStepContent from '@/components/sermon/prep/ThesisStepContent';
 import SermonHeader from "@/components/sermon/SermonHeader";
@@ -35,6 +36,7 @@ import { useTags } from "@/hooks/useTags";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { useAuth } from "@/providers/AuthProvider";
 import { useConnection } from "@/providers/ConnectionProvider";
+import { updateSermonOutline } from "@/services/outline.service";
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
 import { updateStructure } from "@/services/structure.service";
 import { newClientId } from "@/utils/clientId";
@@ -54,6 +56,8 @@ import {
   resolveSectionForNewThought,
 } from "@utils/thoughtOrdering";
 
+import { useScratchNotes } from "./hooks/useScratchNotes";
+
 import type { Sermon, Thought, SermonOutline as SermonOutlineType, Preparation, BrainstormSuggestion } from "@/models/models";
 import type { StructureSectionId } from '@utils/tagUtils';
 import type { ReactNode } from "react";
@@ -68,6 +72,7 @@ const THOUGHT_LOCAL_ID_PREFIX = "local-thought-";
 const STRUCTURE_SAVE_ERROR_KEY = "errors.failedToSaveStructure";
 
 type ThoughtPatch = Pick<Thought, "text" | "tags" | "outlinePointId" | "subPointId">;
+type SermonUiMode = 'classic' | 'prep' | 'raw';
 
 interface ThoughtPatchOptions {
   outlineOverride?: SermonOutlineType;
@@ -104,15 +109,31 @@ const formatSuperscriptVerses = (text: string): string => {
   return result;
 };
 
-const getInitialUiMode = (modeParam: string | null, id: string): 'classic' | 'prep' => {
-  if (modeParam === 'prep') return 'prep';
+const parseUiMode = (value: string | null | undefined): SermonUiMode | null => {
+  if (value === 'classic' || value === 'prep' || value === 'raw') return value;
+  return null;
+};
+
+const getSavedUiMode = (id: string): SermonUiMode | null => {
   if (typeof window !== 'undefined') {
     const savedMode = localStorage.getItem(`sermon-${id}-mode`);
-    if (savedMode === 'prep' || savedMode === 'classic') {
-      return savedMode as 'classic' | 'prep';
-    }
+    return parseUiMode(savedMode);
   }
+  return null;
+};
+
+const getInitialUiMode = (modeParam: string | null, id: string): SermonUiMode => {
+  const parsedMode = parseUiMode(modeParam);
+  if (parsedMode) return parsedMode;
+  const savedMode = getSavedUiMode(id);
+  if (savedMode) return savedMode;
   return 'classic';
+};
+
+const PANE_TRANSLATE_X_BY_MODE: Record<SermonUiMode, string> = {
+  prep: '0%',
+  classic: '-33.333333%',
+  raw: '-66.666667%',
 };
 
 type PrepStepId =
@@ -239,7 +260,7 @@ export default function SermonPage() {
 
   const searchParams = useSearchParams();
   const modeParam = searchParams?.get('mode');
-  const [uiMode, setUiMode] = useState<'classic' | 'prep'>(() => getInitialUiMode(modeParam, id as string));
+  const [uiMode, setUiMode] = useState<SermonUiMode>(() => getInitialUiMode(modeParam, id as string));
 
   const { t } = useTranslation();
   const { sermon, setSermon, loading, error } = useSermon(id);
@@ -251,17 +272,27 @@ export default function SermonPage() {
 
   const sermonRef = useRef<Sermon | null>(sermon);
   const structurePersistVersionRef = useRef(0);
+  const scratchOutlinePersistVersionRef = useRef(0);
   const [savingPrep, setSavingPrep] = useState(false);
   const [prepDraft, setPrepDraft] = useState<Preparation>({});
   const [classicPortal, setClassicPortal] = useState<HTMLDivElement | null>(null);
   const [prepPortal, setPrepPortal] = useState<HTMLDivElement | null>(null);
+  const invalidateScratchOutlinePersistence = useCallback(() => {
+    scratchOutlinePersistVersionRef.current += 1;
+  }, []);
+  const scratchNotes = useScratchNotes({
+    sermon,
+    sermonRef,
+    setSermon,
+    onOutlineWriteQueued: invalidateScratchOutlinePersistence,
+  });
 
   useEffect(() => {
     sermonRef.current = sermon;
   }, [sermon]);
 
   useEffect(() => {
-    const mode = (modeParam === 'prep') ? 'prep' : 'classic';
+    const mode = parseUiMode(modeParam) ?? getSavedUiMode(id as string) ?? 'classic';
     setUiMode(mode);
 
     if (typeof window !== 'undefined') {
@@ -784,7 +815,7 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prepStepParam, activeStepId]);
 
-  const handleOutlineUpdate = (updatedOutline: SermonOutlineType) => {
+  const handleOutlineUpdate = useCallback((updatedOutline: SermonOutlineType) => {
     sermonRef.current = sermonRef.current
       ? {
           ...sermonRef.current,
@@ -798,7 +829,44 @@ useEffect(() => {
         outline: updatedOutline,
       };
     });
-  };
+  }, [setSermon]);
+
+  const handleScratchOutlineChange = useCallback(
+    async (outline: SermonOutlineType) => {
+      const currentSermon = sermonRef.current ?? sermon;
+      if (!currentSermon) return;
+
+      const persistVersion = scratchOutlinePersistVersionRef.current + 1;
+      scratchOutlinePersistVersionRef.current = persistVersion;
+      handleOutlineUpdate(outline);
+      setOutlineRefreshKey((key) => key + 1);
+
+      try {
+        const savedOutline = await updateSermonOutline(currentSermon.id, outline);
+        if (persistVersion !== scratchOutlinePersistVersionRef.current) return;
+        if (!savedOutline) {
+          throw new Error(t('scratch.board.applyError'));
+        }
+
+        handleOutlineUpdate(savedOutline);
+        setOutlineRefreshKey((key) => key + 1);
+      } catch (error) {
+        if (persistVersion === scratchOutlinePersistVersionRef.current) {
+          throw error;
+        }
+      }
+    },
+    [handleOutlineUpdate, sermon, t]
+  );
+
+  const handleApplyScratchOutline = useCallback(
+    (outline: SermonOutlineType, consumedNoteIds: string[]) => {
+      const applyResult = scratchNotes.applyOutlineAndConsume(outline, consumedNoteIds);
+      setOutlineRefreshKey((key) => key + 1);
+      return applyResult;
+    },
+    [scratchNotes.applyOutlineAndConsume]
+  );
 
   const handleOutlinePointDeleted = useCallback((outlinePointId: string) => {
     const currentSermon = sermon;
@@ -977,6 +1045,24 @@ useEffect(() => {
       onEditStart={handleEditThoughtStart}
       onThoughtUpdate={handleThoughtUpdate}
       onThoughtOutlinePointChange={handleThoughtOutlinePointChange}
+      isReadOnly={isReadOnly}
+    />
+  );
+
+  const renderRawContent = () => (
+    <ScratchPanel
+      sermonId={sermon!.id}
+      notes={scratchNotes.notes}
+      outline={sermon?.outline}
+      addScratchNote={scratchNotes.addScratchNote}
+      restoreScratchNote={scratchNotes.restoreScratchNote}
+      updateScratchNote={scratchNotes.updateScratchNote}
+      deleteScratchNote={scratchNotes.deleteScratchNote}
+      setScratchNoteSection={scratchNotes.setScratchNoteSection}
+      isScratchWritePending={scratchNotes.isWritePending}
+      scratchRevision={scratchNotes.scratchRevision}
+      onApplyOutline={handleApplyScratchOutline}
+      onOutlineChange={handleScratchOutlineChange}
       isReadOnly={isReadOnly}
     />
   );
@@ -1286,31 +1372,34 @@ useEffect(() => {
         />
       </div>
 
-      <AudioRecorderPortalBridge
-        RecorderComponent={AudioRecorder}
-        portalTarget={uiMode === 'prep' ? prepPortal : classicPortal}
-        onRecordingComplete={handleNewRecording}
-        isProcessing={isProcessing}
-        onRetry={handleRetryTranscription}
-        retryCount={retryCount}
-        maxRetries={3}
-        transcriptionError={transcriptionError}
-        onClearError={handleClearError}
-        hideKeyboardShortcuts={uiMode === 'prep'}
-        isReadOnly={!isMagicAvailable}
-        onOpenCreateModal={() => setIsCreateModalOpen(true)}
-        manualThoughtTitle={t('manualThought.addManual')}
-      />
+      {uiMode !== 'raw' && (
+        <AudioRecorderPortalBridge
+          RecorderComponent={AudioRecorder}
+          portalTarget={uiMode === 'prep' ? prepPortal : classicPortal}
+          onRecordingComplete={handleNewRecording}
+          isProcessing={isProcessing}
+          onRetry={handleRetryTranscription}
+          retryCount={retryCount}
+          maxRetries={3}
+          transcriptionError={transcriptionError}
+          onClearError={handleClearError}
+          hideKeyboardShortcuts={uiMode === 'prep'}
+          isReadOnly={!isMagicAvailable}
+          onOpenCreateModal={() => setIsCreateModalOpen(true)}
+          manualThoughtTitle={t('manualThought.addManual')}
+        />
+      )}
 
-      <div className="relative overflow-hidden">
-        <motion.div
-          className="flex"
-          initial={false}
-          animate={{ x: uiMode === 'prep' ? '0%' : 'calc(-50% - 1px)' }}
-          transition={{ type: 'spring', stiffness: 220, damping: 26, mass: 0.9 }}
-          style={{ width: '200%', willChange: 'transform' }}
-        >
-          <div className="basis-1/2 shrink-0">
+      <div className="relative -mx-2 px-2 py-1 sm:-mx-3 sm:px-3">
+        <div className="overflow-hidden">
+          <motion.div
+            className="flex"
+            initial={false}
+            animate={{ x: PANE_TRANSLATE_X_BY_MODE[uiMode] }}
+            transition={{ type: 'spring', stiffness: 220, damping: 26, mass: 0.9 }}
+            style={{ width: '300%', willChange: 'transform' }}
+          >
+          <div className="basis-1/3 shrink-0">
             <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8`}>
               <div className="order-2 lg:order-1 lg:col-span-2">
                 {renderPrepContent()}
@@ -1321,8 +1410,8 @@ useEffect(() => {
             </div>
           </div>
 
-          <div className="basis-1/2 shrink-0">
-            <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8 pl-px`}>
+          <div className="basis-1/3 shrink-0">
+            <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8`}>
               <div className="order-2 lg:order-1 lg:col-span-2">
                 {renderClassicContent({ portalRef: setClassicPortal })}
               </div>
@@ -1350,7 +1439,12 @@ useEffect(() => {
               </div>
             </div>
           </div>
-        </motion.div>
+
+          <div className="basis-1/3 shrink-0">
+            {renderRawContent()}
+          </div>
+          </motion.div>
+        </div>
       </div>
       {editingModalData && (
         <EditThoughtModal

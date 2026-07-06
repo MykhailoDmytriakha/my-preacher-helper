@@ -787,10 +787,8 @@ const SermonPointPlaceholder: React.FC<{
                 )}
               </div>
             </div>
-          </div>
 
-          {showNotes && !isEditingLocally && (
-            <div className="px-4">
+            {showNotes && !isEditingLocally && (
               <PointNote
                 note={point.note}
                 onChange={(note) => onSetPointNote?.(point.id, note)}
@@ -798,8 +796,8 @@ const SermonPointPlaceholder: React.FC<{
                 indentClass="ml-6"
                 addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
               />
-            </div>
-          )}
+            )}
+          </div>
 
           {!isFocusMode && !isEditingLocally && !isCollapsed && ((point.subPoints?.length ?? 0) > 0 || Boolean(onAddSubPoint && onEditSubPoint && onDeleteSubPoint)) && (
             <SubPointList

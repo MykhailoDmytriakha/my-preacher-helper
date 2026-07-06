@@ -51,6 +51,26 @@ export {
   type SermonPoint
 } from './sermonPoints.zod';
 export {
+  ComposePlanApiResponseSchema,
+  ComposePlanApiRequestSchema,
+  ComposedPlanSubPointSchema,
+  ComposedPlanOutlineSchema,
+  ComposedPlanPointSchema,
+  ComposePlanSubPointSchema,
+  ComposePlanPointSchema,
+  ComposePlanResponseSchema,
+  ComposePlanSourceSchema,
+  type ComposePlanApiRequest,
+  type ComposePlanApiResponse,
+  type ComposedPlanSubPoint,
+  type ComposedPlanOutline,
+  type ComposedPlanPoint,
+  type ComposePlanSubPoint,
+  type ComposePlanPoint,
+  type ComposePlanResponse,
+  type ComposePlanSource
+} from './composePlan.zod';
+export {
   BrainstormSuggestionSchema,
   type BrainstormSuggestion
 } from './brainstorm.zod';

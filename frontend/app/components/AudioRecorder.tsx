@@ -37,6 +37,7 @@ export const AudioRecorder = ({
   hideKeyboardShortcuts = false,
   onRecordingStateChange,
   splitLeft,
+  splitRight,
   enableAudioLevelMonitoring = true,
 }: AudioRecorderProps) => {
   const { t } = useTranslation();
@@ -98,9 +99,10 @@ export const AudioRecorder = ({
 
   return (
     <div className={`space-y-4 ${className} ${appliedVariant === "mini" ? "space-y-3" : ""}`}>
-      {splitLeft && isIdle ? (
+      {(splitLeft || splitRight) && isIdle ? (
         <SplitRecordButton
           splitLeft={splitLeft}
+          splitRight={splitRight}
           isButtonDisabled={isButtonDisabled}
           onStart={startRecording}
           t={t}

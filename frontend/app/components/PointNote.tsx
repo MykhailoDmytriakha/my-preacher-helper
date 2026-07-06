@@ -17,6 +17,8 @@ interface PointNoteProps {
    * so it decides how the affordance reveals (e.g. `lg:group-hover/subpoint:opacity-100`).
    */
   addRevealClass?: string;
+  /** Hide the inline × clear button (e.g. when the parent already provides its own delete). */
+  hideClearButton?: boolean;
 }
 
 /**
@@ -32,6 +34,7 @@ const PointNote: React.FC<PointNoteProps> = ({
   isReadOnly = false,
   indentClass = '',
   addRevealClass = 'opacity-100',
+  hideClearButton = false,
 }) => {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
@@ -103,7 +106,7 @@ const PointNote: React.FC<PointNoteProps> = ({
       >
         <LightBulbIcon className="mt-px h-3 w-3 flex-shrink-0 not-italic text-amber-500/80 dark:text-amber-400/70" />
         <span className="min-w-0 flex-1 break-words whitespace-pre-wrap">{note}</span>
-        {!isReadOnly && (
+        {!isReadOnly && !hideClearButton && (
           <button
             onClick={(e) => {
               e.stopPropagation();

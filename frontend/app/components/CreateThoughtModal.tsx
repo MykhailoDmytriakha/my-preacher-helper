@@ -23,6 +23,13 @@ interface CreateThoughtModalProps {
   allowedTags?: { name: string; color: string; translationKey?: string }[];
   sermonOutline?: SermonOutline;
   disabled?: boolean;
+  titleKey?: string;
+  textLabelKey?: string;
+  placeholderKey?: string;
+  successMessageKey?: string;
+  showDictation?: boolean;
+  showTags?: boolean;
+  showOutlineSelector?: boolean;
 }
 
 export default function CreateThoughtModal({
@@ -32,6 +39,13 @@ export default function CreateThoughtModal({
   allowedTags = [],
   sermonOutline,
   disabled = false,
+  titleKey = 'createThought.title',
+  textLabelKey = 'editThought.textLabel',
+  placeholderKey = 'manualThought.placeholder',
+  successMessageKey = 'manualThought.addedSuccess',
+  showDictation = true,
+  showTags = true,
+  showOutlineSelector = true,
 }: CreateThoughtModalProps) {
   const [text, setText] = useState('');
   const [tags, setTags] = useState<string[]>([]);
@@ -127,7 +141,7 @@ export default function CreateThoughtModal({
     try {
       setIsSubmitting(true);
       await onCreateThought(newThought);
-      toast.success(t('manualThought.addedSuccess'));
+      toast.success(t(successMessageKey));
       resetAndClose();
     } catch (error) {
       console.error('Error creating thought:', error);
@@ -196,37 +210,39 @@ export default function CreateThoughtModal({
         >
           {/* Header */}
           <div className="space-y-3 mb-3">
-            <h2 className="text-xl sm:text-2xl font-bold">{t('createThought.title')}</h2>
+            <h2 className="text-xl sm:text-2xl font-bold">{t(titleKey)}</h2>
             <div className="flex flex-wrap items-center justify-between gap-3 min-h-[48px]">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                {t('editThought.textLabel')}
+                {t(textLabelKey)}
               </label>
-              <div 
-                className={`flex items-center gap-2 transition-opacity duration-300 ${!isMagicAvailable ? 'opacity-40 grayscale' : ''}`}
-                aria-disabled={!isMagicAvailable}
-                title={!isMagicAvailable ? t('errors.magicUnavailable') || 'Unavailable offline' : ''}
-              >
-                <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                  {t('editThought.appendDictation')}
-                </span>
-                <div className="relative flex items-center justify-center w-12 h-12 flex-shrink-0">
-                  <FocusRecorderButton
-                    size="small"
-                    onRecordingComplete={handleDictationComplete}
-                    isProcessing={isDictating}
-                    disabled={isSubmitting || !isMagicAvailable}
-                    transcriptionError={voiceError}
-                    onRetry={handleRetryVoice}
-                    retryCount={voiceRetryCount}
-                    maxRetries={VOICE_MAX_RETRIES}
-                    onClearError={handleClearVoiceError}
-                    onError={(msg) => {
-                      toast.error(msg);
-                      setIsDictating(false);
-                    }}
-                  />
+              {showDictation && (
+                <div 
+                  className={`flex items-center gap-2 transition-opacity duration-300 ${!isMagicAvailable ? 'opacity-40 grayscale' : ''}`}
+                  aria-disabled={!isMagicAvailable}
+                  title={!isMagicAvailable ? t('errors.magicUnavailable') || 'Unavailable offline' : ''}
+                >
+                  <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                    {t('editThought.appendDictation')}
+                  </span>
+                  <div className="relative flex items-center justify-center w-12 h-12 flex-shrink-0">
+                    <FocusRecorderButton
+                      size="small"
+                      onRecordingComplete={handleDictationComplete}
+                      isProcessing={isDictating}
+                      disabled={isSubmitting || !isMagicAvailable}
+                      transcriptionError={voiceError}
+                      onRetry={handleRetryVoice}
+                      retryCount={voiceRetryCount}
+                      maxRetries={VOICE_MAX_RETRIES}
+                      onClearError={handleClearVoiceError}
+                      onError={(msg) => {
+                        toast.error(msg);
+                        setIsDictating(false);
+                      }}
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -247,10 +263,10 @@ export default function CreateThoughtModal({
               <RichMarkdownEditor
                 value={text}
                 onChange={setText}
-                placeholder={t('manualThought.placeholder')}
+                placeholder={t(placeholderKey)}
               />
 
-              {sermonOutline && (
+              {showOutlineSelector && sermonOutline && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     {t('editThought.outlinePointLabel')}
@@ -283,58 +299,60 @@ export default function CreateThoughtModal({
                 </div>
               )}
 
-              <div>
-                <p className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">
-                  {t('thought.tagsLabel')}
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {tags.map((tag, idx) => {
-                    const tagInfo = allowedTags.find((t) => t.name === tag);
-                    const displayName = getTagDisplayName(tag, tagInfo?.translationKey);
-                    const { className: base, style } = getTagStyle(tag, tagInfo?.color);
-                    const iconInfo = isStructureTag(tag) ? getStructureIcon(tag) : null;
-                    return (
-                      <div
-                        key={tag + idx}
-                        onClick={() => handleRemoveTag(idx)}
-                        className={`cursor-pointer ${base}`}
-                        style={style}
-                        role="button"
-                        aria-label={`Remove tag ${displayName}`}
-                      >
-                        {iconInfo && (
-                          <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
-                        )}
-                        <span>{displayName}</span>
-                        <span className="ml-1">×</span>
-                      </div>
-                    );
-                  })}
+              {showTags && (
+                <div>
+                  <p className="font-medium text-sm text-gray-700 dark:text-gray-300 mb-2">
+                    {t('thought.tagsLabel')}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {tags.map((tag, idx) => {
+                      const tagInfo = allowedTags.find((t) => t.name === tag);
+                      const displayName = getTagDisplayName(tag, tagInfo?.translationKey);
+                      const { className: base, style } = getTagStyle(tag, tagInfo?.color);
+                      const iconInfo = isStructureTag(tag) ? getStructureIcon(tag) : null;
+                      return (
+                        <div
+                          key={tag + idx}
+                          onClick={() => handleRemoveTag(idx)}
+                          className={`cursor-pointer ${base}`}
+                          style={style}
+                          role="button"
+                          aria-label={`Remove tag ${displayName}`}
+                        >
+                          {iconInfo && (
+                            <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
+                          )}
+                          <span>{displayName}</span>
+                          <span className="ml-1">×</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-2 mb-1">{t('editThought.availableTags')}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {availableTags.map((tag) => {
+                      const displayName = getTagDisplayName(tag.name, tag.translationKey);
+                      const { className: base, style } = getTagStyle(tag.name, tag.color);
+                      const iconInfo = isStructureTag(tag.name) ? getStructureIcon(tag.name) : null;
+                      return (
+                        <div
+                          key={tag.name}
+                          onClick={() => handleAddTag(tag.name)}
+                          className={`cursor-pointer ${base}`}
+                          style={style}
+                          role="button"
+                          aria-label={`Add tag ${displayName}`}
+                        >
+                          {iconInfo && (
+                            <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
+                          )}
+                          <span>{displayName}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-2 mb-1">{t('editThought.availableTags')}</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {availableTags.map((tag) => {
-                    const displayName = getTagDisplayName(tag.name, tag.translationKey);
-                    const { className: base, style } = getTagStyle(tag.name, tag.color);
-                    const iconInfo = isStructureTag(tag.name) ? getStructureIcon(tag.name) : null;
-                    return (
-                      <div
-                        key={tag.name}
-                        onClick={() => handleAddTag(tag.name)}
-                        className={`cursor-pointer ${base}`}
-                        style={style}
-                        role="button"
-                        aria-label={`Add tag ${displayName}`}
-                      >
-                        {iconInfo && (
-                          <span className={iconInfo.className} dangerouslySetInnerHTML={{ __html: iconInfo.svg }} />
-                        )}
-                        <span>{displayName}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-3 mt-4 pb-6 sm:pb-0 flex-shrink-0">

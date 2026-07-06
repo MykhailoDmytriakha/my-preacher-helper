@@ -17,6 +17,7 @@ const replaceMock = jest.fn();
 const pushMock = jest.fn();
 let pathnameMock = '/sermons/abc';
 let paramsMap: Record<string, string | undefined> = {};
+let mockPrepModeAccessState = { hasAccess: true, loading: false };
 
 const OLD_ENV = process.env;
 const resetScenario = () => {
@@ -26,6 +27,7 @@ const resetScenario = () => {
   pushMock.mockReset();
   pathnameMock = '/sermons/abc';
   paramsMap = {};
+  mockPrepModeAccessState = { hasAccess: true, loading: false };
   mockHasGroupsAccess.mockResolvedValue(true);
 };
 
@@ -72,16 +74,17 @@ const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGro
 
 // Mock usePrepModeAccess hook
 jest.mock('@/hooks/usePrepModeAccess', () => ({
-  usePrepModeAccess: () => ({ hasAccess: true, loading: false })
+  usePrepModeAccess: () => ({ ...mockPrepModeAccessState })
 }));
 
 // Mock segmented toggle to a minimal testable version with stable testids
 jest.mock('@/components/navigation/ModeToggle', () => ({
   __esModule: true,
-  default: ({ currentMode, onSetMode, tSwitchToClassic, tPrepLabel }: any) => (
+  default: ({ currentMode, onSetMode, tSwitchToClassic, tPrepLabel, tRawLabel, canUsePrep = true }: any) => (
     <div>
       <button data-testid="toggle-classic" aria-pressed={currentMode === 'classic'} onClick={() => onSetMode('classic')}>{tSwitchToClassic}</button>
-      <button data-testid="toggle-prep" aria-pressed={currentMode === 'prep'} onClick={() => onSetMode('prep')}>{tPrepLabel}</button>
+      <button data-testid="toggle-prep" aria-pressed={currentMode === 'prep'} disabled={!canUsePrep} onClick={() => onSetMode('prep')}>{tPrepLabel}</button>
+      <button data-testid="toggle-raw" aria-pressed={currentMode === 'raw'} onClick={() => onSetMode('raw')}>{tRawLabel}</button>
       <span>beta</span>
     </div>
   )
@@ -95,6 +98,10 @@ jest.mock('react-i18next', () => ({
       'wizard.switchToClassic': 'Classic Mode',
       'wizard.switchToPrepBeta': 'Preparation Mode (Beta)',
       'wizard.previewButton': 'Preparation Mode',
+      'wizard.modePrep': 'Preparation',
+      'wizard.modeClassic': 'Classic',
+      'wizard.modeRaw': 'Scratch',
+      'wizard.switchToRaw': 'Scratch Notes',
       'feedback.button': 'Feedback',
     } as Record<string, string>)[k] || k,
   })
@@ -129,9 +136,11 @@ describe('DashboardNav mode toggle', () => {
                 tSwitchToClassic="Classic Mode"
                 tSwitchToPrep="Preparation Mode (Beta)"
                 tPrepLabel="Preparation Mode"
+                tRawLabel="Scratch"
               />
             );
             expect(screen.getByTestId('toggle-prep')).toBeInTheDocument();
+            expect(screen.getByTestId('toggle-raw')).toBeInTheDocument();
             expect(screen.getByText(/beta/i)).toBeInTheDocument();
           }
         },
@@ -146,6 +155,7 @@ describe('DashboardNav mode toggle', () => {
                 tSwitchToClassic="Classic Mode"
                 tSwitchToPrep="Preparation Mode (Beta)"
                 tPrepLabel="Preparation Mode"
+                tRawLabel="Scratch"
               />
             );
             fireEvent.click(screen.getByTestId('toggle-prep'));
@@ -163,6 +173,7 @@ describe('DashboardNav mode toggle', () => {
                 tSwitchToClassic="Classic Mode"
                 tSwitchToPrep="Preparation Mode (Beta)"
                 tPrepLabel="Preparation Mode"
+                tRawLabel="Scratch"
               />
             );
             fireEvent.click(screen.getByTestId('toggle-classic'));
@@ -190,6 +201,18 @@ describe('DashboardNav mode toggle', () => {
           }
         },
         {
+          name: 'reads raw mode from query',
+          run: () => {
+            paramsMap = { mode: 'raw' };
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
+            expect(screen.getByTestId('toggle-raw')).toHaveAttribute('aria-pressed', 'true');
+          }
+        },
+        {
           name: 'defaults to classic when no mode',
           run: () => {
             render(
@@ -213,6 +236,18 @@ describe('DashboardNav mode toggle', () => {
           }
         },
         {
+          name: 'switches from classic to raw',
+          run: () => {
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
+            fireEvent.click(screen.getByTestId('toggle-raw'));
+            expect(pushMock).toHaveBeenCalledWith('/sermons/abc?mode=raw', { scroll: false });
+          }
+        },
+        {
           name: 'switches from prep to classic',
           run: () => {
             paramsMap = { mode: 'prep' };
@@ -222,7 +257,7 @@ describe('DashboardNav mode toggle', () => {
               </TestProviders>
             );
             fireEvent.click(screen.getByTestId('toggle-classic'));
-            expect(pushMock).toHaveBeenCalledWith('/sermons/abc', { scroll: false });
+            expect(pushMock).toHaveBeenCalledWith('/sermons/abc?mode=classic', { scroll: false });
           }
         },
         {
@@ -235,7 +270,7 @@ describe('DashboardNav mode toggle', () => {
               </TestProviders>
             );
             fireEvent.click(screen.getByTestId('toggle-classic'));
-            expect(pushMock).toHaveBeenCalledWith('/sermons/abc?otherParam=value', { scroll: false });
+            expect(pushMock).toHaveBeenCalledWith('/sermons/abc?mode=classic&otherParam=value', { scroll: false });
           }
         },
         {
@@ -248,7 +283,23 @@ describe('DashboardNav mode toggle', () => {
               </TestProviders>
             );
             fireEvent.click(screen.getByTestId('toggle-classic'));
-            expect(pushMock).toHaveBeenCalledWith('/sermons/abc?param1=value1&param2=value2', { scroll: false });
+            expect(pushMock).toHaveBeenCalledWith('/sermons/abc?mode=classic&param1=value1&param2=value2', { scroll: false });
+          }
+        },
+        {
+          name: 'keeps classic and raw reachable when prep access is denied',
+          run: () => {
+            mockPrepModeAccessState = { hasAccess: false, loading: false };
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
+            expect(screen.getByTestId('toggle-classic')).toBeInTheDocument();
+            expect(screen.getByTestId('toggle-raw')).toBeInTheDocument();
+            expect(screen.getByTestId('toggle-prep')).toBeDisabled();
+            fireEvent.click(screen.getByTestId('toggle-raw'));
+            expect(pushMock).toHaveBeenCalledWith('/sermons/abc?mode=raw', { scroll: false });
           }
         },
         {

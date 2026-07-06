@@ -111,12 +111,12 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
       );
     });
 
-    it('hides mode toggle when user lacks prep mode access', async () => {
+    it('keeps mode toggle visible when user lacks prep mode access', async () => {
 
       await runScenarios(
         [
           {
-            name: 'hides mode toggle when access denied',
+            name: 'shows mode toggle when prep access is denied',
             run: () => {
               prepModeAccessState = { hasAccess: false, loading: false };
               pathnameMock = '/sermons/test-sermon-id';
@@ -126,31 +126,39 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
               </TestProviders>
             );
 
-              expect(screen.queryByTestId('mode-toggle')).not.toBeInTheDocument();
-              expect(screen.queryByText('Mode Toggle')).not.toBeInTheDocument();
+              expect(screen.getByTestId('mode-toggle')).toBeInTheDocument();
+              expect(screen.getByText('Mode Toggle')).toBeInTheDocument();
             }
           },
           {
-            name: 'remains hidden on all sermon-related pages when access denied',
+            name: 'shows only on sermon root when access denied',
             run: () => {
               prepModeAccessState = { hasAccess: false, loading: false };
-              const sermonPaths = [
-                '/sermons/test-id',
-                '/sermons/test-id/plan',
-                '/structure'
-              ];
+              pathnameMock = '/sermons/test-id';
+              render(
+                <TestProviders>
+                  <DashboardNav />
+                </TestProviders>
+              );
+              expect(screen.getByTestId('mode-toggle')).toBeInTheDocument();
+              cleanup();
 
-              sermonPaths.forEach(path => {
-                pathnameMock = path;
-                render(
-              <TestProviders>
-                <DashboardNav />
-              </TestProviders>
-            );
+              pathnameMock = '/sermons/test-id/plan';
+              render(
+                <TestProviders>
+                  <DashboardNav />
+                </TestProviders>
+              );
+              expect(screen.queryByTestId('mode-toggle')).not.toBeInTheDocument();
+              cleanup();
 
-                expect(screen.queryByTestId('mode-toggle')).not.toBeInTheDocument();
-                cleanup();
-              });
+              pathnameMock = '/structure';
+              render(
+                <TestProviders>
+                  <DashboardNav />
+                </TestProviders>
+              );
+              expect(screen.queryByTestId('mode-toggle')).not.toBeInTheDocument();
             }
           }
         ],

@@ -24,7 +24,11 @@ export function RichMarkdownEditor({
     const editor = useEditor({
         extensions: [
             StarterKit,
-            Markdown,
+            // transformPastedText: parse pasted plain-text markdown (e.g. **bold**, # heading)
+            // into real formatting instead of inserting literal characters. Only affects
+            // text/plain pastes — rich HTML pastes and "paste as plain text" (Ctrl+Shift+V)
+            // are left untouched by tiptap-markdown's clipboardTextParser guard.
+            Markdown.configure({ transformPastedText: true }),
             Placeholder.configure({
                 placeholder,
             }),

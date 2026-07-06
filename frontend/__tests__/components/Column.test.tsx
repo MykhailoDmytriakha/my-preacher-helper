@@ -1160,6 +1160,13 @@ describe('Column Component', () => {
       expect(screen.getByText('Point reminder')).toBeInTheDocument();
       expect(screen.getByText('Sub reminder')).toBeInTheDocument();
 
+      const pointNoteHeader = screen.getByText('Point reminder').closest('.rounded-t-lg');
+      expect(pointNoteHeader).toBeInTheDocument();
+      expect(within(pointNoteHeader as HTMLElement).getByText('Introduction Point 1')).toBeInTheDocument();
+      expect(within(pointNoteHeader as HTMLElement).getByText('Point reminder')).toBeInTheDocument();
+      expect(within(pointNoteHeader as HTMLElement).queryByText('Sub-point A')).not.toBeInTheDocument();
+      expect(within(pointNoteHeader as HTMLElement).queryByText('Sub reminder')).not.toBeInTheDocument();
+
       fireEvent.click(screen.getByText('Point reminder'));
       let textarea = screen.getByDisplayValue('Point reminder');
       fireEvent.change(textarea, { target: { value: 'Point reminder updated' } });

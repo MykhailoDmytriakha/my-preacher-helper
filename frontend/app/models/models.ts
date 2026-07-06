@@ -10,6 +10,13 @@ export interface Thought {
   keyFragments?: string[]; // Store important text fragments for AI generation
 }
 
+export interface ScratchNote {
+  id: string;
+  text: string;
+  createdAt: string;
+  section?: 'introduction' | 'main' | 'conclusion';
+}
+
 /**
  * Represents a sub-point within an outline point.
  * Sub-points are optional inner headings that let the preacher
@@ -136,6 +143,7 @@ export interface Sermon {
   verse: string;
   date: string;
   thoughts: Thought[];
+  scratch?: ScratchNote[];
   outline?: SermonOutline;
   thoughtsBySection?: ThoughtsBySection;
   /** Legacy alias kept for backward compatibility with stored documents */

@@ -21,8 +21,19 @@ import { hasGroupsAccess } from "@/services/userSettings.service";
 import { debugLog } from "@/utils/debugMode";
 import { getNavItemTheme } from "@/utils/themeColors";
 
-import ModeToggle from "./ModeToggle";
+import ModeToggle, { type SermonMode } from "./ModeToggle";
 import { OfflineIndicator } from "./OfflineIndicator";
+
+const parseSermonMode = (value: string | null | undefined): SermonMode | null => {
+  if (value === 'prep' || value === 'classic' || value === 'raw') return value;
+  return null;
+};
+
+const getSermonIdFromPathname = (pathname: string | null | undefined) => {
+  const match = pathname?.match(/^\/sermons\/([^/]+)$/);
+  return match?.[1] ?? null;
+};
+
 export default function DashboardNav() {
   const { t } = useTranslation();
   const { user, handleLogout } = useAuth();
@@ -98,37 +109,52 @@ export default function DashboardNav() {
 
   // Mode toggle visibility and handlers (sermon detail only)
   const isSermonRoot = /^\/sermons\/[^/]+$/.test(pathname || "");
+  const sermonIdForMode = getSermonIdFromPathname(pathname);
   // Check if we're on any sermon-related page
   const isSermonRelated = /^\/sermons\//.test(pathname || "") || pathname === '/structure';
+  const [savedMode, setSavedMode] = useState<SermonMode>('classic');
 
   // Get current mode directly from URL params for immediate response
-  const currentMode = (searchParams?.get('mode') === 'prep') ? 'prep' : 'classic';
+  const modeFromUrl = parseSermonMode(searchParams?.get('mode'));
+  const currentMode = modeFromUrl ?? savedMode;
 
-  const setMode = (mode: 'classic' | 'prep') => {
+  useEffect(() => {
+    if (!isSermonRoot || !sermonIdForMode || typeof window === 'undefined') {
+      setSavedMode('classic');
+      return;
+    }
+
+    const storedMode = parseSermonMode(localStorage.getItem(`sermon-${sermonIdForMode}-mode`));
+    setSavedMode(storedMode ?? 'classic');
+  }, [isSermonRoot, sermonIdForMode]);
+
+  const setMode = (mode: SermonMode) => {
     try {
+      if (mode === 'prep' && !showWizardButton) return;
+
       // Check if we're trying to switch to the same mode
       if (mode === currentMode) {
-        console.log('Already in', mode, 'mode');
+        debugLog('Already in mode', mode);
         return;
       }
 
-      console.log('Switching from', currentMode, 'to', mode, 'mode');
+      debugLog('Switching sermon mode', { from: currentMode, to: mode });
 
       const params = new URLSearchParams(searchParams?.toString() || '');
-      if (mode === 'classic') {
-        params.delete('mode');
-      } else {
-        params.set('mode', 'prep');
+      params.set('mode', mode);
+      if (sermonIdForMode && typeof window !== 'undefined') {
+        localStorage.setItem(`sermon-${sermonIdForMode}-mode`, mode);
       }
+      setSavedMode(mode);
       const query = params.toString();
 
       // Use push for better navigation
       const newUrl = `${pathname}${query ? `?${query}` : ''}`;
-      console.log('Navigating to:', newUrl);
+      debugLog('Navigating to sermon mode URL', newUrl);
 
       router.push(newUrl, { scroll: false });
 
-      console.log('Successfully switched to', mode, 'mode');
+      debugLog('Successfully switched sermon mode', mode);
     } catch (error) {
       console.error('Error switching mode:', error);
     }
@@ -138,6 +164,20 @@ export default function DashboardNav() {
   const submitFeedbackWithUser = async (text: string, type: string, images: string[]) => {
     return handleSubmitFeedback(text, type, images, user?.uid || 'anonymous', user?.email || '');
   };
+
+  const modeToggle = isSermonRoot && !prepModeLoading ? (
+    <ModeToggle
+      currentMode={currentMode}
+      onSetMode={setMode}
+      canUsePrep={showWizardButton}
+      tSwitchToClassic={t('wizard.switchToClassic') as string}
+      tSwitchToPrep={t('wizard.switchToPrepBeta') as string}
+      tSwitchToRaw={t('wizard.switchToRaw') as string}
+      tPrepLabel={t('wizard.modePrep') as string}
+      tClassicLabel={t('wizard.modeClassic') as string}
+      tRawLabel={t('wizard.modeRaw') as string}
+    />
+  ) : null;
 
   // Handle clicks outside of nav dropdown
   useEffect(() => {
@@ -158,7 +198,7 @@ export default function DashboardNav() {
 
   return (
     <nav className="sticky top-0 z-40 border-b border-gray-200/80 bg-white/95 shadow-sm backdrop-blur dark:border-gray-700/70 dark:bg-gray-950/95">
-      <div className="w-full px-4 sm:px-6 lg:px-8">
+      <div className="relative w-full px-4 sm:px-6 lg:px-8">
         {/* Desktop Layout */}
         <div className="hidden lg:flex h-16 items-center gap-4 relative">
           {/* Left: Logo */}
@@ -266,13 +306,6 @@ export default function DashboardNav() {
           {/* Spacer to push controls right */}
           <div className="flex-1" />
 
-          {/* Center: Mode toggle (desktop) */}
-          {showWizardButton && isSermonRoot && !prepModeLoading && (
-            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-              <ModeToggle currentMode={currentMode} onSetMode={setMode} tSwitchToClassic={t('wizard.switchToClassic') as string} tSwitchToPrep={t('wizard.switchToPrepBeta') as string} tPrepLabel={t('wizard.previewButton') as string} />
-            </div>
-          )}
-
           {/* Right: Desktop controls */}
           <div className="flex shrink-0 items-center gap-2 rounded-full border border-gray-200/70 bg-gray-50/85 px-2 py-1 shadow-sm dark:border-gray-700/60 dark:bg-gray-900/70">
             <OfflineIndicator />
@@ -364,6 +397,11 @@ export default function DashboardNav() {
             </div>
           </div>
         </div>
+        {modeToggle && (
+          <div className="mt-3 flex justify-center pb-3 lg:absolute lg:left-1/2 lg:top-1/2 lg:mt-0 lg:block lg:-translate-x-1/2 lg:-translate-y-1/2 lg:p-0">
+            {modeToggle}
+          </div>
+        )}
       </div>
 
       {/* Mobile menu */}

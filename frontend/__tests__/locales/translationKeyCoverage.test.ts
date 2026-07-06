@@ -69,3 +69,19 @@ const collectLeafPaths = (value: unknown, prefix = ''): string[] => {
       expect(translation.dashboardHome.sections.groups.status.completed).toBeTruthy();
     });
   });
+
+  it('should have scratch note translations in all supported languages', () => {
+    const expectedScratchKeys = collectLeafPaths(enTranslation.scratch);
+
+    expect(collectLeafPaths(ruTranslation.scratch)).toEqual(expectedScratchKeys);
+    expect(collectLeafPaths(ukTranslation.scratch)).toEqual(expectedScratchKeys);
+
+    Object.values(translationsByLang).forEach((translation) => {
+      expect(translation.scratch.capture.placeholder).toBeTruthy();
+      expect(translation.scratch.capture.manualAdd).toBeTruthy();
+      expect(translation.scratch.capture.toBoard).toBeTruthy();
+      expect(translation.scratch.capture.back).toBeTruthy();
+      expect(translation.scratch.board.composeTimeout).toBeTruthy();
+      expect(translation.scratch.board.composeStale).toBeTruthy();
+    });
+  });

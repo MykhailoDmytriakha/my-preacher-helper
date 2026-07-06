@@ -1,6 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { Pencil } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -17,6 +18,7 @@ interface RecorderLikeProps {
   onClearError?: () => void;
   hideKeyboardShortcuts?: boolean;
   splitLeft?: ReactNode;
+  splitRight?: ReactNode;
   enableAudioLevelMonitoring?: boolean;
 }
 
@@ -32,8 +34,12 @@ interface AudioRecorderPortalBridgeProps {
   onClearError: () => void;
   hideKeyboardShortcuts: boolean;
   isReadOnly: boolean;
+  isRecorderDisabled?: boolean;
+  isManualDisabled?: boolean;
   onOpenCreateModal: () => void;
   manualThoughtTitle: string;
+  manualButtonPlacement?: "left" | "right";
+  manualControl?: ReactNode;
 }
 
 function AutoHeight({
@@ -53,6 +59,10 @@ function AutoHeight({
   useEffect(() => {
     if (!containerRef.current || typeof window === "undefined") return;
     const ResizeObserverCtor = window.ResizeObserver;
+    if (!ResizeObserverCtor) {
+      setHeight(containerRef.current.getBoundingClientRect().height);
+      return;
+    }
     const observer = new ResizeObserverCtor((entries) => {
       const cr = entries[0]?.contentRect;
       if (cr && typeof cr.height === "number") setHeight(cr.height);
@@ -86,19 +96,25 @@ export default function AudioRecorderPortalBridge({
   onClearError,
   hideKeyboardShortcuts,
   isReadOnly,
+  isRecorderDisabled,
+  isManualDisabled,
   onOpenCreateModal,
   manualThoughtTitle,
+  manualButtonPlacement = "left",
+  manualControl,
 }: AudioRecorderPortalBridgeProps) {
-  const splitLeft = (
+  const recorderDisabled = isRecorderDisabled ?? isReadOnly;
+  const manualDisabled = isManualDisabled ?? isReadOnly;
+  const splitLeft = manualControl ?? (
     <button
+      type="button"
       onClick={onOpenCreateModal}
       className="bg-amber-500 hover:bg-amber-600 px-4 self-stretch flex items-center justify-center shrink-0 transition-colors disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:bg-amber-500"
-      disabled={isReadOnly}
+      disabled={manualDisabled}
       title={manualThoughtTitle}
+      aria-label={manualThoughtTitle}
     >
-      <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-      </svg>
+      <Pencil className="h-5 w-5 text-white" aria-hidden="true" />
     </button>
   );
 
@@ -106,14 +122,15 @@ export default function AudioRecorderPortalBridge({
     <RecorderComponent
       onRecordingComplete={onRecordingComplete}
       isProcessing={isProcessing}
-      disabled={isReadOnly}
+      disabled={recorderDisabled}
       onRetry={onRetry}
       retryCount={retryCount}
       maxRetries={maxRetries}
       transcriptionError={transcriptionError}
       onClearError={onClearError}
       hideKeyboardShortcuts={hideKeyboardShortcuts}
-      splitLeft={splitLeft}
+      splitLeft={manualButtonPlacement === "left" ? splitLeft : undefined}
+      splitRight={manualButtonPlacement === "right" ? splitLeft : undefined}
       enableAudioLevelMonitoring={false}
     />
   );

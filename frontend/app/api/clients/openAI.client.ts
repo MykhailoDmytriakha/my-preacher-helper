@@ -15,7 +15,7 @@ import {
   PlanSectionResponseSchema,
   SortingResponseSchema,
 } from "@/config/schemas/zod";
-import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, DirectionSuggestion, SermonContent, BrainstormSuggestion, SectionHints, SubPoint } from "@/models/models";
+import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, DirectionSuggestion, SermonContent, BrainstormSuggestion, SectionHints, SubPoint, SermonOutline } from "@/models/models";
 import { validateAudioBlob, createAudioFile, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 import { normalizeSubPointId } from "@/utils/subPoints";
 
@@ -27,6 +27,7 @@ import {
   generateSectionHintsStructured,
   generateSermonVersesStructured,
   generateSermonPointsStructured,
+  composePlanFromScratchStructured,
   generateBrainstormSuggestionStructured
 } from "./sermon.structured";
 import { callWithStructuredOutput } from "./structuredOutput";
@@ -1136,6 +1137,10 @@ export async function generatePlanPointContent(
  */
 export async function generateSermonPoints(sermon: Sermon, section: string): Promise<{ outlinePoints: SermonPoint[]; success: boolean }> {
   return generateSermonPointsStructured(sermon, section);
+}
+
+export async function composePlanFromScratch(sermon: Sermon, existingOutline?: SermonOutline) {
+  return composePlanFromScratchStructured(sermon, existingOutline);
 }
 
 /**

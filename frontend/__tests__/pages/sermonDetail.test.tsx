@@ -1,11 +1,15 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
 import { TestProviders } from '@test-utils/test-providers';
 import { createAudioThought } from '@services/thought.service';
+import { applyScratchToOutlineViaClient } from '@/services/sermons.client';
+import { updateSermonOutline } from '@/services/outline.service';
 import '@testing-library/jest-dom';
+
+import type { ScratchNote, SermonOutline } from '@/models/models';
 
 // Render portals inline so AudioRecorder stays in the React tree without DOM moves
 jest.mock('react-dom', () => ({
@@ -28,8 +32,8 @@ jest.mock('next/navigation', () => ({
 // Mock child components with simpler implementations
 
 jest.mock('@components/AudioRecorder', () => ({
-  AudioRecorder: ({ onRecordingComplete, onRetry, onClearError }: any) => (
-    <div data-testid="audio-recorder">
+  AudioRecorder: ({ onRecordingComplete, onRetry, onClearError, splitLeft }: any) => (
+    <div data-testid={splitLeft ? "classic-audio-recorder" : "scratch-audio-recorder"}>
       <button onClick={() => onRecordingComplete?.(new Blob(['test']))}>Mock Record</button>
       <button onClick={() => onRetry?.()}>Mock Retry</button>
       <button onClick={() => onClearError?.()}>Mock Clear</button>
@@ -86,6 +90,24 @@ jest.mock('@/components/sermon/prep/PrepStepCard', () => ({ children, title }: a
     {children}
   </div>
 ));
+
+let mockScratchPanelProps: {
+  onApplyOutline?: (outline: SermonOutline, consumedNoteIds: string[]) => void | Promise<void>;
+  onOutlineChange?: (outline: SermonOutline) => void | Promise<void>;
+  updateScratchNote?: (noteId: string, patch: { text?: string; section?: ScratchNote['section'] | null }) => void;
+} = {};
+
+jest.mock('@/components/sermon/ScratchPanel', () => ({
+  __esModule: true,
+  default: (props: {
+    onApplyOutline?: (outline: SermonOutline, consumedNoteIds: string[]) => void | Promise<void>;
+    onOutlineChange?: (outline: SermonOutline) => void | Promise<void>;
+    updateScratchNote?: (noteId: string, patch: { text?: string; section?: ScratchNote['section'] | null }) => void;
+  }) => {
+    mockScratchPanelProps = props;
+    return <div data-testid="scratch-panel">Scratch Panel</div>;
+  },
+}));
 
 jest.mock('@/hooks/useSermon', () => ({
   __esModule: true,
@@ -213,6 +235,17 @@ jest.mock('@/services/structure.service', () => ({
   updateStructure: jest.fn().mockResolvedValue(undefined),
 }));
 
+jest.mock('@/services/outline.service', () => ({
+  updateSermonOutline: jest.fn(),
+}));
+
+jest.mock('@/services/sermons.client', () => ({
+  applyScratchToOutlineViaClient: jest.fn(),
+  addScratchNoteViaClient: jest.fn(),
+  updateScratchNoteViaClient: jest.fn(),
+  deleteScratchNoteViaClient: jest.fn(),
+}));
+
 // Mock i18n
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -264,7 +297,13 @@ describe('Sermon Detail Page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLocalStorage.getItem.mockReturnValue(null);
+    mockScratchPanelProps = {};
     require('@/hooks/useSermon').default.mockReturnValue(defaultUseSermonReturn);
+    const sermonsClient = require('@/services/sermons.client');
+    sermonsClient.addScratchNoteViaClient.mockResolvedValue([]);
+    sermonsClient.updateScratchNoteViaClient.mockResolvedValue([]);
+    sermonsClient.deleteScratchNoteViaClient.mockResolvedValue([]);
+    (updateSermonOutline as jest.Mock).mockResolvedValue({ introduction: [], main: [], conclusion: [] });
     mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? null : null) });
   });
 
@@ -555,21 +594,21 @@ describe('Sermon Detail Page', () => {
         </TestProviders>
       );
 
-      // AudioRecorder is now teleported via portal; wait for the portal ref callback
-      // re-render to settle, then use fireEvent which works reliably with portals
-      await waitFor(() => expect(screen.getByText('Mock Record')).toBeInTheDocument());
-      fireEvent.click(screen.getByText('Mock Record'));
+      // The raw scratch pane stays mounted in the 3-pane track, so scope to the
+      // classic recorder bridge rather than the scratch voice recorder.
+      const classicRecorder = await screen.findByTestId('classic-audio-recorder');
+      fireEvent.click(within(classicRecorder).getByText('Mock Record'));
       await waitFor(() => {
         expect(createAudioThoughtMock).toHaveBeenCalledTimes(1);
       });
 
-      fireEvent.click(screen.getByText('Mock Retry'));
+      fireEvent.click(within(classicRecorder).getByText('Mock Retry'));
       await waitFor(() => {
         expect(createAudioThoughtMock).toHaveBeenCalledTimes(2);
         expect(defaultUseSermonReturn.setSermon).toHaveBeenCalled();
       });
 
-      fireEvent.click(screen.getByText('Mock Clear'));
+      fireEvent.click(within(classicRecorder).getByText('Mock Clear'));
     });
   });
 
@@ -717,6 +756,274 @@ describe('Sermon Detail Page', () => {
         expect(updateThought).toHaveBeenCalled();
         expect(updateStructure).toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('Scratch Apply', () => {
+    it('accepts a manual outline save ack when no Apply outline write happens in between', async () => {
+      const manualDraftOutline: SermonOutline = {
+        introduction: [],
+        main: [{ id: 'manual-main-draft', text: 'Manual draft point' }],
+        conclusion: [],
+      };
+      const manualSavedOutline: SermonOutline = {
+        introduction: [],
+        main: [{ id: 'manual-main-saved', text: 'Manual saved point' }],
+        conclusion: [],
+      };
+      let resolveManualSave: (outline: SermonOutline) => void = () => undefined;
+      (updateSermonOutline as jest.Mock).mockReturnValueOnce(
+        new Promise<SermonOutline>((resolve) => {
+          resolveManualSave = resolve;
+        })
+      );
+      let currentSermon: any = {
+        ...defaultUseSermonReturn.sermon,
+        outline: { introduction: [], main: [], conclusion: [] },
+        scratch: [],
+      };
+      const snapshots: any[] = [];
+      const setSermon = jest.fn((updater: any) => {
+        currentSermon = typeof updater === 'function' ? updater(currentSermon) : updater;
+        snapshots.push(currentSermon);
+      });
+      const useSermonMock = require('@/hooks/useSermon').default;
+      useSermonMock.mockReturnValue({
+        ...defaultUseSermonReturn,
+        sermon: currentSermon,
+        setSermon,
+      });
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      await waitFor(() => expect(mockScratchPanelProps.onOutlineChange).toBeDefined());
+      const manualSavePromise = mockScratchPanelProps.onOutlineChange!(manualDraftOutline) as Promise<void>;
+
+      await waitFor(() =>
+        expect(updateSermonOutline).toHaveBeenCalledWith('sermon-123', manualDraftOutline)
+      );
+      expect(snapshots.at(-1).outline).toEqual(manualDraftOutline);
+
+      await act(async () => {
+        resolveManualSave(manualSavedOutline);
+        await manualSavePromise;
+      });
+
+      expect(snapshots.at(-1).outline).toEqual(manualSavedOutline);
+    });
+
+    it('ignores a stale manual outline save ack that resolves after Apply writes an outline', async () => {
+      const previousOutline: SermonOutline = {
+        introduction: [],
+        main: [{ id: 'previous-main', text: 'Previous main point' }],
+        conclusion: [],
+      };
+      const manualDraftOutline: SermonOutline = {
+        introduction: [],
+        main: [{ id: 'manual-main-draft', text: 'Manual draft before apply' }],
+        conclusion: [],
+      };
+      const staleManualAckOutline: SermonOutline = {
+        introduction: [],
+        main: [{ id: 'manual-main-stale', text: 'Stale manual ack' }],
+        conclusion: [],
+      };
+      const appliedOutline: SermonOutline = {
+        introduction: [],
+        main: [{ id: 'applied-main', text: 'Applied main point', note: 'Scratch note' }],
+        conclusion: [],
+      };
+      const previousScratch: ScratchNote[] = [
+        { id: 'scratch-1', text: 'Scratch note', createdAt: '2026-07-05T00:00:00.000Z' },
+      ];
+      let resolveManualSave: (outline: SermonOutline) => void = () => undefined;
+      (updateSermonOutline as jest.Mock).mockReturnValueOnce(
+        new Promise<SermonOutline>((resolve) => {
+          resolveManualSave = resolve;
+        })
+      );
+      (applyScratchToOutlineViaClient as jest.Mock).mockResolvedValueOnce({
+        outline: appliedOutline,
+        scratch: [],
+      });
+      let currentSermon: any = {
+        ...defaultUseSermonReturn.sermon,
+        outline: previousOutline,
+        scratch: previousScratch,
+      };
+      const snapshots: any[] = [];
+      const setSermon = jest.fn((updater: any) => {
+        currentSermon = typeof updater === 'function' ? updater(currentSermon) : updater;
+        snapshots.push(currentSermon);
+      });
+      const useSermonMock = require('@/hooks/useSermon').default;
+      useSermonMock.mockReturnValue({
+        ...defaultUseSermonReturn,
+        sermon: currentSermon,
+        setSermon,
+      });
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      await waitFor(() => expect(mockScratchPanelProps.onOutlineChange).toBeDefined());
+      const manualSavePromise = mockScratchPanelProps.onOutlineChange!(manualDraftOutline) as Promise<void>;
+      await waitFor(() =>
+        expect(updateSermonOutline).toHaveBeenCalledWith('sermon-123', manualDraftOutline)
+      );
+      expect(snapshots.at(-1).outline).toEqual(manualDraftOutline);
+
+      const applyPromise = mockScratchPanelProps.onApplyOutline!(appliedOutline, ['scratch-1']) as Promise<void>;
+      await waitFor(() =>
+        expect(applyScratchToOutlineViaClient).toHaveBeenCalledWith('sermon-123', appliedOutline, [])
+      );
+      await waitFor(() => expect(snapshots.at(-1).outline).toEqual(appliedOutline));
+      await expect(applyPromise).resolves.toBeUndefined();
+
+      await act(async () => {
+        resolveManualSave(staleManualAckOutline);
+        await manualSavePromise;
+      });
+
+      expect(snapshots.at(-1).outline).toEqual(appliedOutline);
+      expect(snapshots.map((snapshot) => snapshot.outline)).not.toContainEqual(staleManualAckOutline);
+    });
+
+    it('rolls back optimistic outline and scratch state after an online apply write failure', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      Object.defineProperty(navigator, 'onLine', {
+        configurable: true,
+        value: true,
+      });
+      const previousOutline: SermonOutline = {
+        introduction: [],
+        main: [{ id: 'previous-main', text: 'Previous main point' }],
+        conclusion: [],
+      };
+      const previousScratch: ScratchNote[] = [
+        { id: 'scratch-1', text: 'Scratch note', createdAt: '2026-07-05T00:00:00.000Z' },
+      ];
+      const appliedOutline: SermonOutline = {
+        introduction: [],
+        main: [{ id: 'applied-main', text: 'Applied main point', note: 'Scratch note' }],
+        conclusion: [],
+      };
+      let currentSermon: any = {
+        ...defaultUseSermonReturn.sermon,
+        outline: previousOutline,
+        scratch: previousScratch,
+      };
+      const snapshots: any[] = [];
+      const setSermon = jest.fn((updater: any) => {
+        currentSermon = typeof updater === 'function' ? updater(currentSermon) : updater;
+        snapshots.push(currentSermon);
+      });
+      const useSermonMock = require('@/hooks/useSermon').default;
+      useSermonMock.mockReturnValue({
+        ...defaultUseSermonReturn,
+        sermon: currentSermon,
+        setSermon,
+      });
+      (applyScratchToOutlineViaClient as jest.Mock).mockRejectedValueOnce(new Error('permission denied'));
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      await waitFor(() => expect(mockScratchPanelProps.onApplyOutline).toBeDefined());
+      mockScratchPanelProps.onApplyOutline!(appliedOutline, ['scratch-1']);
+
+      await waitFor(() =>
+        expect(applyScratchToOutlineViaClient).toHaveBeenCalledWith('sermon-123', appliedOutline, [])
+      );
+      await waitFor(() => expect(snapshots[0].outline).toEqual(appliedOutline));
+      expect(snapshots[0].scratch).toEqual([]);
+      await waitFor(() => expect(snapshots.at(-1).outline).toEqual(previousOutline));
+      expect(snapshots.at(-1).scratch).toEqual(previousScratch);
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('preserves a newer scratch edit made during the online apply failure gap', async () => {
+      const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      Object.defineProperty(navigator, 'onLine', {
+        configurable: true,
+        value: true,
+      });
+      const previousOutline: SermonOutline = {
+        introduction: [],
+        main: [{ id: 'previous-main', text: 'Previous main point' }],
+        conclusion: [],
+      };
+      const previousScratch: ScratchNote[] = [
+        { id: 'scratch-1', text: 'Consumed scratch note', createdAt: '2026-07-05T00:00:00.000Z' },
+        { id: 'scratch-2', text: 'Remaining scratch note', createdAt: '2026-07-05T00:01:00.000Z' },
+      ];
+      const remainingScratch: ScratchNote[] = [previousScratch[1]];
+      const editedRemainingScratch: ScratchNote[] = [
+        { ...previousScratch[1], text: 'Edited during apply gap' },
+      ];
+      const appliedOutline: SermonOutline = {
+        introduction: [],
+        main: [{ id: 'applied-main', text: 'Applied main point', note: 'Consumed scratch note' }],
+        conclusion: [],
+      };
+      let currentSermon: any = {
+        ...defaultUseSermonReturn.sermon,
+        outline: previousOutline,
+        scratch: previousScratch,
+      };
+      const snapshots: any[] = [];
+      const setSermon = jest.fn((updater: any) => {
+        currentSermon = typeof updater === 'function' ? updater(currentSermon) : updater;
+        snapshots.push(currentSermon);
+      });
+      const useSermonMock = require('@/hooks/useSermon').default;
+      useSermonMock.mockReturnValue({
+        ...defaultUseSermonReturn,
+        sermon: currentSermon,
+        setSermon,
+      });
+      let rejectApply: (error: Error) => void = () => undefined;
+      (applyScratchToOutlineViaClient as jest.Mock).mockReturnValueOnce(
+        new Promise((_resolve, reject) => {
+          rejectApply = reject;
+        })
+      );
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      await waitFor(() => expect(mockScratchPanelProps.onApplyOutline).toBeDefined());
+      mockScratchPanelProps.onApplyOutline!(appliedOutline, ['scratch-1']);
+
+      await waitFor(() => expect(snapshots[0].scratch).toEqual(remainingScratch));
+      await act(async () => {
+        mockScratchPanelProps.updateScratchNote?.('scratch-2', { text: 'Edited during apply gap' });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(snapshots.at(-1).scratch).toEqual(editedRemainingScratch));
+
+      await act(async () => {
+        rejectApply(new Error('permission denied'));
+      });
+
+      await waitFor(() => expect(snapshots.at(-1).outline).toEqual(previousOutline));
+      expect(snapshots.at(-1).scratch).toEqual([editedRemainingScratch[0], previousScratch[0]]);
+      expect(snapshots.at(-1).scratch).not.toEqual(previousScratch);
+      consoleErrorSpy.mockRestore();
     });
   });
 });

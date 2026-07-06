@@ -68,19 +68,17 @@ describe('DashboardNav layout', () => {
       </TestProviders>
     );
 
-    // Desktop wrapper must be relative
+    // Desktop wrapper remains relative for the rest of the desktop chrome.
     const desktopWrapper = screen.getByRole('navigation').querySelector('.lg\\:flex.h-16');
     expect(desktopWrapper).toHaveClass('relative');
 
-    // The ModeToggle should be wrapped in an absolute container
-    // Let's find the button or visual element that has "Feedback" or something else to locate
-    // Actually, mode toggle has some strings based on translations... "wizard.switchToClassic" or similar
-    // We can just find the absolute container directly
-    const modeToggleContainer = desktopWrapper?.querySelector('.absolute.left-1\\/2');
+    // The single responsive ModeToggle instance is centered absolutely on desktop
+    // and participates in normal flow on mobile.
+    const classicToggle = screen.getByTestId('toggle-classic');
+    const modeToggleContainer = classicToggle.closest('.mt-3');
     expect(modeToggleContainer).toBeInTheDocument();
-    expect(modeToggleContainer).toHaveClass('-translate-x-1/2');
-    expect(modeToggleContainer).toHaveClass('-translate-y-1/2');
+    expect(modeToggleContainer).toHaveClass('lg:-translate-x-1/2');
+    expect(modeToggleContainer).toHaveClass('lg:-translate-y-1/2');
+    expect(modeToggleContainer).toHaveClass('mt-3');
   });
 });
-
-

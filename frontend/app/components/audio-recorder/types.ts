@@ -21,6 +21,7 @@ export interface AudioRecorderProps {
   hideKeyboardShortcuts?: boolean;
   onRecordingStateChange?: (isActive: boolean) => void;
   splitLeft?: ReactNode;
+  splitRight?: ReactNode;
   enableAudioLevelMonitoring?: boolean;
 }
 
@@ -100,7 +101,8 @@ export interface AudioLevelIndicatorProps {
 }
 
 export interface SplitRecordButtonProps {
-  splitLeft: ReactNode;
+  splitLeft?: ReactNode;
+  splitRight?: ReactNode;
   isButtonDisabled: boolean;
   onStart: () => void;
   t: TranslationFn;

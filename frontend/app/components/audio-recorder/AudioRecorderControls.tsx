@@ -513,14 +513,19 @@ export const AudioLevelIndicator = ({
 
 export const SplitRecordButton = ({
   splitLeft,
+  splitRight,
   isButtonDisabled,
   onStart,
   t,
 }: SplitRecordButtonProps) => {
   return (
     <div className="flex w-full overflow-hidden rounded-xl shadow-lg">
-      {splitLeft}
-      <div className="w-px self-stretch bg-white/20" />
+      {splitLeft ? (
+        <>
+          {splitLeft}
+          <div className="w-px self-stretch bg-white/20" />
+        </>
+      ) : null}
       <button
         type="button"
         onClick={onStart}
@@ -534,6 +539,12 @@ export const SplitRecordButton = ({
           {t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)}
         </div>
       </button>
+      {splitRight ? (
+        <>
+          <div className="w-px self-stretch bg-white/20" />
+          {splitRight}
+        </>
+      ) : null}
     </div>
   );
 };

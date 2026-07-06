@@ -242,7 +242,7 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
               const classicButton = screen.getByTestId('switch-to-classic');
               fireEvent.click(classicButton);
 
-              expect(mockPush).toHaveBeenCalledWith('/sermons/test-sermon-id', { scroll: false });
+              expect(mockPush).toHaveBeenCalledWith('/sermons/test-sermon-id?mode=classic', { scroll: false });
             }
           },
           {
@@ -279,13 +279,13 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
             }
           },
           {
-            name: 'navigation hides mode toggle after disabling',
+            name: 'navigation keeps mode toggle after disabling prep',
             run: async () => {
               prepModeAccessState = { hasAccess: false, loading: false };
 
               renderWithProviders(<DashboardNav />);
 
-              expect(screen.queryByTestId('mode-toggle')).not.toBeInTheDocument();
+              expect(screen.getByTestId('mode-toggle')).toBeInTheDocument();
             }
           }
         ],
@@ -330,13 +330,13 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
             }
           },
           {
-            name: 'navigation remains hidden when settings fail',
+            name: 'navigation remains available when prep access is denied',
             run: async () => {
               prepModeAccessState = { hasAccess: false, loading: false };
 
               renderWithProviders(<DashboardNav />);
 
-              expect(screen.queryByTestId('mode-toggle')).not.toBeInTheDocument();
+              expect(screen.getByTestId('mode-toggle')).toBeInTheDocument();
             }
           }
         ],

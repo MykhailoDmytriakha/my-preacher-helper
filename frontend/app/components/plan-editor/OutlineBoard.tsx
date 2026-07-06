@@ -5,6 +5,7 @@ import {
   Draggable,
   Droppable,
   type DraggableProvided,
+  type DraggableProvidedDragHandleProps,
   type DraggableStateSnapshot,
   type DropResult,
   type DroppableProvided,
@@ -12,6 +13,7 @@ import {
 import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
 import { Bars2Icon, Bars3Icon, CheckIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
 import PointNote from '@/components/PointNote';
@@ -20,7 +22,7 @@ import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNo
 import { getSectionStyling } from '@/utils/themeColors';
 import { getSectionLabel } from '@lib/sections';
 
-import type { OutlinePoint, SermonOutline, SubPoint } from '@/models/models';
+import type { OutlinePoint, ScratchNote, SermonOutline, SubPoint } from '@/models/models';
 
 type SectionKey = 'introduction' | 'main' | 'conclusion';
 
@@ -35,7 +37,18 @@ const SAVE_KEY = 'common.save';
 const DELETE_KEY = 'common.delete';
 const DND_TYPE_POINT = 'POINT';
 const DND_TYPE_SUBPOINT = 'SUBPOINT';
+const DND_TYPE_SCRATCH = 'scratch-note';
 const SUBPOINT_DROPPABLE_PREFIX = 'subpoints:';
+const SCRATCH_NOTE_POOL_DROPPABLE_ID = 'scratch-note-pool';
+const SCRATCH_POINT_DROPPABLE_PREFIX = 'scratch-point:';
+const SCRATCH_SUBPOINT_DROPPABLE_PREFIX = 'scratch-subpoint:';
+const SCRATCH_DROP_OVER_CLASS = 'ring-1 ring-indigo-300 bg-indigo-50/60 dark:bg-indigo-900/20';
+
+const renderInBodyPortal = (
+  node: React.ReactElement<HTMLElement>,
+  enabled: boolean
+): React.ReactElement<HTMLElement> =>
+  (enabled && typeof document !== 'undefined' ? createPortal(node, document.body) : node) as React.ReactElement<HTMLElement>;
 
 const withSection = (outline: SermonOutline): Record<SectionKey, OutlinePoint[]> => ({
   introduction: outline.introduction ?? [],
@@ -63,6 +76,20 @@ const getSubPointDraggableId = (subPointId: string) => `subpoint:${subPointId}`;
 
 const getPointDraggableId = (outlinePointId: string) => `point:${outlinePointId}`;
 
+const getScratchPointDroppableId = (pointId: string) => `${SCRATCH_POINT_DROPPABLE_PREFIX}${pointId}`;
+
+const getScratchSubPointDroppableId = (subPointId: string) => `${SCRATCH_SUBPOINT_DROPPABLE_PREFIX}${subPointId}`;
+
+const getScratchPointIdFromDroppable = (droppableId: string): string | null =>
+  droppableId.startsWith(SCRATCH_POINT_DROPPABLE_PREFIX)
+    ? droppableId.slice(SCRATCH_POINT_DROPPABLE_PREFIX.length)
+    : null;
+
+const getScratchSubPointIdFromDroppable = (droppableId: string): string | null =>
+  droppableId.startsWith(SCRATCH_SUBPOINT_DROPPABLE_PREFIX)
+    ? droppableId.slice(SCRATCH_SUBPOINT_DROPPABLE_PREFIX.length)
+    : null;
+
 const sortSubPoints = (subPoints: SubPoint[]): SubPoint[] =>
   [...subPoints].sort((a, b) => a.position - b.position);
 
@@ -78,6 +105,32 @@ const findPointLocation = (
     if (point) return { section: section.key, point };
   }
   return null;
+};
+
+const findParentPointIdForSubPoint = (
+  outline: Record<SectionKey, OutlinePoint[]>,
+  subPointId: string
+): string | null => {
+  for (const section of SECTIONS) {
+    const point = outline[section.key].find((item) =>
+      (item.subPoints ?? []).some((sp) => sp.id === subPointId)
+    );
+    if (point) return point.id;
+  }
+  return null;
+};
+
+type ScratchLayerProps = {
+  pool: ScratchNote[];
+  notesById: Map<string, ScratchNote>;
+  placements: Record<string, { pointId: string; subPointId?: string }>;
+  onPlace: (noteId: string, target: { pointId: string; subPointId?: string } | null) => void;
+  renderNote: (
+    note: ScratchNote,
+    dragHandleProps: DraggableProvidedDragHandleProps | null | undefined
+  ) => React.ReactNode;
+  poolHeader?: React.ReactNode;
+  poolEmptyLabel?: string;
 };
 
 interface OutlineBoardProps {
@@ -109,6 +162,7 @@ interface OutlineBoardProps {
    * Off by default so contexts like the template editor stay note-free.
    */
   showNotes?: boolean;
+  scratch?: ScratchLayerProps;
 }
 
 /**
@@ -129,6 +183,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   onSubPointMoved,
   className = 'grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 h-full',
   showNotes = false,
+  scratch,
 }) => {
   const { t } = useTranslation();
   const points = withSection(value);
@@ -346,8 +401,30 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
 
   const onDragEnd = (result: DropResult) => {
     if (isReadOnly) return;
-    const { source, destination, type } = result;
+    const { draggableId, source, destination, type } = result;
     if (!destination) return;
+
+    if (type === DND_TYPE_SCRATCH) {
+      if (!scratch) return;
+
+      if (destination.droppableId === SCRATCH_NOTE_POOL_DROPPABLE_ID) {
+        scratch.onPlace(draggableId, null);
+        return;
+      }
+
+      const pointId = getScratchPointIdFromDroppable(destination.droppableId);
+      if (pointId) {
+        scratch.onPlace(draggableId, { pointId });
+        return;
+      }
+
+      const subPointId = getScratchSubPointIdFromDroppable(destination.droppableId);
+      if (!subPointId) return;
+      const parentPointId = findParentPointIdForSubPoint(points, subPointId);
+      if (!parentPointId) return;
+      scratch.onPlace(draggableId, { pointId: parentPointId, subPointId });
+      return;
+    }
 
     if (type === DND_TYPE_SUBPOINT) {
       const sourcePointId = getOutlinePointIdFromSubPointDroppable(source.droppableId);
@@ -387,6 +464,129 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     if (from !== to && moved) {
       onOutlinePointMoved?.(moved.id, to, updatedOutline);
     }
+  };
+
+  const renderScratchNote = (note: ScratchNote, index: number, testId?: string) => {
+    if (!scratch) return null;
+
+    return (
+      <Draggable
+        key={note.id}
+        draggableId={note.id}
+        index={index}
+        isDragDisabled={isReadOnly}
+      >
+        {(provided, snapshot) => {
+          const node = (
+            <div
+              ref={provided.innerRef}
+              {...provided.draggableProps}
+              style={provided.draggableProps.style}
+              data-testid={testId}
+            >
+              {scratch.renderNote(note, provided.dragHandleProps)}
+            </div>
+          );
+
+          return renderInBodyPortal(node, snapshot.isDragging);
+        }}
+      </Draggable>
+    );
+  };
+
+  const renderScratchDropStrip = ({
+    droppableId,
+    notes,
+    emptyLabel,
+    testId,
+  }: {
+    droppableId: string;
+    notes: ScratchNote[];
+    emptyLabel: string;
+    testId: string;
+  }) => {
+    if (!scratch) return null;
+
+    return (
+      <Droppable droppableId={droppableId} type={DND_TYPE_SCRATCH} isDropDisabled={isReadOnly}>
+        {(provided, snapshot) => (
+          <div
+            ref={provided.innerRef}
+            {...provided.droppableProps}
+            data-testid={testId}
+            className={`mt-2 min-h-[44px] rounded-lg border border-dashed border-slate-200 px-2 py-2 transition-all duration-150 dark:border-gray-700 ${
+              snapshot.isDraggingOver ? SCRATCH_DROP_OVER_CLASS : ''
+            }`}
+          >
+            {notes.length === 0 ? (
+              <div className="flex min-h-[26px] items-center justify-center text-center text-xs italic text-slate-400 dark:text-gray-500">
+                {emptyLabel}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {notes.map((note, index) => renderScratchNote(note, index, `scratch-placed-note-${note.id}`))}
+              </div>
+            )}
+            {provided.placeholder}
+          </div>
+        )}
+      </Droppable>
+    );
+  };
+
+  const getScratchPoolNotes = () => (scratch ? scratch.pool : []);
+
+  const getScratchPointNotes = (pointId: string) =>
+    scratch
+      ? Array.from(scratch.notesById.values()).filter((note) => {
+          const placement = scratch.placements[note.id];
+          return placement?.pointId === pointId && !placement.subPointId;
+        })
+      : [];
+
+  const getScratchSubPointNotes = (subPointId: string) =>
+    scratch
+      ? Array.from(scratch.notesById.values()).filter(
+          (note) => scratch.placements[note.id]?.subPointId === subPointId
+        )
+      : [];
+
+  const renderScratchPool = () => {
+    if (!scratch) return null;
+    const poolNotes = getScratchPoolNotes();
+
+    return (
+      <section
+        data-testid="scratch-note-pool-band"
+        className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm shadow-gray-900/5 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/20"
+      >
+        {scratch.poolHeader && <div className="mb-3">{scratch.poolHeader}</div>}
+        <Droppable
+          droppableId={SCRATCH_NOTE_POOL_DROPPABLE_ID}
+          type={DND_TYPE_SCRATCH}
+          isDropDisabled={isReadOnly}
+        >
+          {(provided, snapshot) => (
+            <div
+              ref={provided.innerRef}
+              {...provided.droppableProps}
+              className={`min-h-[88px] rounded-lg transition-all duration-150 ${
+                poolNotes.length > 0 ? 'grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3' : ''
+              } ${snapshot.isDraggingOver ? SCRATCH_DROP_OVER_CLASS : ''}`}
+            >
+              {poolNotes.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-gray-300 px-3 py-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                  {scratch.poolEmptyLabel}
+                </div>
+              ) : (
+                poolNotes.map((note, index) => renderScratchNote(note, index))
+              )}
+              {provided.placeholder}
+            </div>
+          )}
+        </Droppable>
+      </section>
+    );
   };
 
   const renderSubPointControls = (point: OutlinePoint, sp: SubPoint) => {
@@ -491,48 +691,59 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                   index={index}
                   isDragDisabled={isReadOnly}
                 >
-                  {(subProvided, subSnapshot) => (
-                    <div
-                      ref={subProvided.innerRef}
-                      {...subProvided.draggableProps}
-                      style={subProvided.draggableProps.style}
-                    >
+                  {(subProvided, subSnapshot) => {
+                    const node = (
                       <div
-                        className={`group/subpoint rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-100/80 dark:hover:bg-white/10 ${
-                          subSnapshot.isDragging ? 'bg-white dark:bg-slate-800 shadow-lg ring-1 ring-blue-400/50' : ''
-                        }`}
+                        ref={subProvided.innerRef}
+                        {...subProvided.draggableProps}
+                        style={subProvided.draggableProps.style}
                       >
-                        <div className="flex min-w-0 items-center gap-2">
-                          {!isReadOnly && subProvided.dragHandleProps ? (
-                            <div
-                              {...subProvided.dragHandleProps}
-                              className="cursor-grab flex-shrink-0 w-4 flex items-center justify-center touch-manipulation"
-                              aria-label={t('common.dragToReorder')}
-                            >
-                              <Bars2Icon className="h-3 w-3 text-slate-400 dark:text-blue-100/70" />
-                            </div>
-                          ) : (
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-blue-100/75 flex-shrink-0 shadow-sm dark:shadow-blue-950/20" />
+                        <div
+                          className={`group/subpoint rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-100/80 dark:hover:bg-white/10 ${
+                            subSnapshot.isDragging ? 'bg-white dark:bg-slate-800 shadow-lg ring-1 ring-blue-400/50' : ''
+                          }`}
+                        >
+                          <div className="flex min-w-0 items-center gap-2">
+                            {!isReadOnly && subProvided.dragHandleProps ? (
+                              <div
+                                {...subProvided.dragHandleProps}
+                                className="cursor-grab flex-shrink-0 w-4 flex items-center justify-center touch-manipulation"
+                                aria-label={t('common.dragToReorder')}
+                              >
+                                <Bars2Icon className="h-3 w-3 text-slate-400 dark:text-blue-100/70" />
+                              </div>
+                            ) : (
+                              <span className="w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-blue-100/75 flex-shrink-0 shadow-sm dark:shadow-blue-950/20" />
+                            )}
+                            {renderSubPointControls(point, sp)}
+                          </div>
+                          {showNotes && (
+                            <PointNote
+                              note={sp.note}
+                              onChange={(n) =>
+                                mutatePoint(point.id, (p) => ({
+                                  ...p,
+                                  subPoints: (p.subPoints ?? []).map((s) => (s.id === sp.id ? { ...s, note: n } : s)),
+                                }))
+                              }
+                              isReadOnly={isReadOnly}
+                              indentClass="ml-5"
+                              addRevealClass="opacity-100 lg:opacity-0 lg:group-hover/subpoint:opacity-100"
+                            />
                           )}
-                          {renderSubPointControls(point, sp)}
+                          {scratch &&
+                            renderScratchDropStrip({
+                              droppableId: getScratchSubPointDroppableId(sp.id),
+                              testId: `scratch-subpoint-drop-zone-${sp.id}`,
+                              notes: getScratchSubPointNotes(sp.id),
+                              emptyLabel: t('scratch.board.dropHereSubPoint'),
+                            })}
                         </div>
-                        {showNotes && (
-                          <PointNote
-                            note={sp.note}
-                            onChange={(n) =>
-                              mutatePoint(point.id, (p) => ({
-                                ...p,
-                                subPoints: (p.subPoints ?? []).map((s) => (s.id === sp.id ? { ...s, note: n } : s)),
-                              }))
-                            }
-                            isReadOnly={isReadOnly}
-                            indentClass="ml-5"
-                            addRevealClass="opacity-100 lg:opacity-0 lg:group-hover/subpoint:opacity-100"
-                          />
-                        )}
                       </div>
-                    </div>
-                  )}
+                    );
+
+                    return renderInBodyPortal(node, subSnapshot.isDragging);
+                  }}
                 </Draggable>
               ))}
               {provided.placeholder}
@@ -642,112 +853,123 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
             >
               {colPoints.map((point, index) => (
                 <Draggable key={point.id} draggableId={getPointDraggableId(point.id)} index={index} isDragDisabled={isReadOnly}>
-                  {(dp: DraggableProvided, snapshot: DraggableStateSnapshot) => (
-                    <li
-                      ref={dp.innerRef}
-                      {...dp.draggableProps}
-                      className={`group rounded-lg border border-slate-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm ${snapshot.isDragging ? 'ring-1 ring-indigo-300 shadow-lg' : ''}`}
-                      style={dp.draggableProps.style}
-                    >
-                      <div className="flex items-start gap-1.5 p-2">
-                        <div
-                          {...dp.dragHandleProps}
-                          className={`mt-0.5 text-gray-400 dark:text-gray-500 ${isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-grab hover:text-gray-600 dark:hover:text-gray-300'}`}
-                          aria-label={t('common.dragToReorder')}
-                        >
-                          <Bars3Icon className="h-5 w-5" />
-                        </div>
+                  {(dp: DraggableProvided, snapshot: DraggableStateSnapshot) => {
+                    const node = (
+                      <li
+                        ref={dp.innerRef}
+                        {...dp.draggableProps}
+                        className={`group rounded-lg border border-slate-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm ${snapshot.isDragging ? 'ring-1 ring-indigo-300 shadow-lg' : ''}`}
+                        style={dp.draggableProps.style}
+                      >
+                        <div className="flex items-start gap-1.5 p-2">
+                          <div
+                            {...dp.dragHandleProps}
+                            className={`mt-0.5 text-gray-400 dark:text-gray-500 ${isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-grab hover:text-gray-600 dark:hover:text-gray-300'}`}
+                            aria-label={t('common.dragToReorder')}
+                          >
+                            <Bars3Icon className="h-5 w-5" />
+                          </div>
 
-                        {editingPointId === point.id ? (
-                          <div className="flex-1 flex items-center gap-1">
-                            <input
-                              type="text"
-                              value={editingText}
-                              onChange={(e) => setEditingText(capitalizeFirstLetter(e.target.value))}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') saveEdit();
-                                if (e.key === 'Escape') {
+                          {editingPointId === point.id ? (
+                            <div className="flex-1 flex items-center gap-1">
+                              <input
+                                type="text"
+                                value={editingText}
+                                onChange={(e) => setEditingText(capitalizeFirstLetter(e.target.value))}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveEdit();
+                                  if (e.key === 'Escape') {
+                                    setEditingPointId(null);
+                                    setEditingText('');
+                                  }
+                                }}
+                                className="flex-1 p-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                                placeholder={t('structure.editPointPlaceholder')}
+                                autoFocus
+                              />
+                              <button aria-label={t(SAVE_KEY)} onClick={saveEdit} className="p-1 text-green-600 hover:text-green-800 dark:text-green-400">
+                                <CheckIcon className="h-5 w-5" />
+                              </button>
+                              <button
+                                aria-label={t(CANCEL_KEY)}
+                                onClick={() => {
                                   setEditingPointId(null);
                                   setEditingText('');
-                                }
-                              }}
-                              className="flex-1 p-1 text-sm bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded border border-gray-300 dark:border-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-                              placeholder={t('structure.editPointPlaceholder')}
-                              autoFocus
-                            />
-                            <button aria-label={t(SAVE_KEY)} onClick={saveEdit} className="p-1 text-green-600 hover:text-green-800 dark:text-green-400">
-                              <CheckIcon className="h-5 w-5" />
-                            </button>
-                            <button
-                              aria-label={t(CANCEL_KEY)}
-                              onClick={() => {
-                                setEditingPointId(null);
-                                setEditingText('');
-                              }}
-                              className="p-1 text-red-600 hover:text-red-800 dark:text-red-400"
-                            >
-                              <XMarkIcon className="h-5 w-5" />
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start gap-1.5">
-                              {(point.subPoints?.length ?? 0) > 0 && (
-                                <button
-                                  onClick={() => setCollapsedPoints((prev) => ({ ...prev, [point.id]: !prev[point.id] }))}
-                                  className="mt-0.5 p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 flex-shrink-0"
-                                  aria-label={collapsedPoints[point.id] ? t('common.expand') : t('common.collapse')}
+                                }}
+                                className="p-1 text-red-600 hover:text-red-800 dark:text-red-400"
+                              >
+                                <XMarkIcon className="h-5 w-5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start gap-1.5">
+                                {(point.subPoints?.length ?? 0) > 0 && (
+                                  <button
+                                    onClick={() => setCollapsedPoints((prev) => ({ ...prev, [point.id]: !prev[point.id] }))}
+                                    className="mt-0.5 p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 flex-shrink-0"
+                                    aria-label={collapsedPoints[point.id] ? t('common.expand') : t('common.collapse')}
+                                  >
+                                    <ChevronDownIcon className={`h-4 w-4 transition-transform ${collapsedPoints[point.id] ? '-rotate-90' : ''}`} />
+                                  </button>
+                                )}
+                                <span
+                                  className={`text-sm text-gray-800 dark:text-gray-200 break-words ${isReadOnly ? '' : 'cursor-text'}`}
+                                  onDoubleClick={() => {
+                                    if (isReadOnly) return;
+                                    setEditingPointId(point.id);
+                                    setEditingText(capitalizeFirstLetter(point.text));
+                                    setAddingToSection(null);
+                                  }}
                                 >
-                                  <ChevronDownIcon className={`h-4 w-4 transition-transform ${collapsedPoints[point.id] ? '-rotate-90' : ''}`} />
-                                </button>
+                                  {point.text}
+                                </span>
+                              </div>
+
+                              {showNotes && (
+                                <PointNote
+                                  note={point.note}
+                                  onChange={(n) => mutatePoint(point.id, (p) => ({ ...p, note: n }))}
+                                  isReadOnly={isReadOnly}
+                                  indentClass="ml-6"
+                                  addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+                                />
                               )}
-                              <span
-                                className={`text-sm text-gray-800 dark:text-gray-200 break-words ${isReadOnly ? '' : 'cursor-text'}`}
-                                onDoubleClick={() => {
-                                  if (isReadOnly) return;
+                              {scratch &&
+                                renderScratchDropStrip({
+                                  droppableId: getScratchPointDroppableId(point.id),
+                                  testId: `scratch-point-drop-zone-${point.id}`,
+                                  notes: getScratchPointNotes(point.id),
+                                  emptyLabel: t('scratch.board.dropHerePoint'),
+                                })}
+                              {!collapsedPoints[point.id] && renderSubPoints(point)}
+                            </div>
+                          )}
+
+                          {editingPointId !== point.id && !isReadOnly && (
+                            <div className="flex items-center gap-0.5 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                              <button
+                                aria-label={t('common.edit')}
+                                onClick={() => {
                                   setEditingPointId(point.id);
                                   setEditingText(capitalizeFirstLetter(point.text));
                                   setAddingToSection(null);
                                 }}
+                                className="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
                               >
-                                {point.text}
-                              </span>
+                                <PencilIcon className="h-4 w-4" />
+                              </button>
+                              <button aria-label={t(DELETE_KEY)} onClick={() => deletePoint(point)} className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400">
+                                <TrashIcon className="h-4 w-4" />
+                              </button>
                             </div>
+                          )}
+                        </div>
+                      </li>
+                    );
 
-                            {showNotes && (
-                              <PointNote
-                                note={point.note}
-                                onChange={(n) => mutatePoint(point.id, (p) => ({ ...p, note: n }))}
-                                isReadOnly={isReadOnly}
-                                indentClass="ml-6"
-                                addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
-                              />
-                            )}
-                            {!collapsedPoints[point.id] && renderSubPoints(point)}
-                          </div>
-                        )}
-
-                        {editingPointId !== point.id && !isReadOnly && (
-                          <div className="flex items-center gap-0.5 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                            <button
-                              aria-label={t('common.edit')}
-                              onClick={() => {
-                                setEditingPointId(point.id);
-                                setEditingText(capitalizeFirstLetter(point.text));
-                                setAddingToSection(null);
-                              }}
-                              className="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
-                            >
-                              <PencilIcon className="h-4 w-4" />
-                            </button>
-                            <button aria-label={t(DELETE_KEY)} onClick={() => deletePoint(point)} className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400">
-                              <TrashIcon className="h-4 w-4" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </li>
-                  )}
+                    return renderInBodyPortal(node, snapshot.isDragging);
+                  }}
                 </Draggable>
               ))}
               {provided.placeholder}
@@ -806,46 +1028,56 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     );
   };
 
+  const boardColumns = <div className={className}>{SECTIONS.map((s) => renderColumn(s.key, s.styleKey))}</div>;
+  const pendingDeleteOverlay = pendingDelete ? (
+    <div className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-900/40 p-4">
+      <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-5">
+        <h3 className="text-base font-semibold text-slate-800 dark:text-gray-100">
+          {t('structure.deletePointConfirmTitle')}
+        </h3>
+        <p className="mt-2 text-sm text-slate-500 dark:text-gray-400">
+          {t('structure.deletePointConfirm', { text: pendingDelete.text })}
+        </p>
+        {(getPointThoughtCount?.(pendingDelete.id) ?? 0) > 0 && (
+          <p className="mt-2 text-sm font-medium text-amber-700 dark:text-amber-400">
+            {t('planEditor.thoughtsUnassignedWarning', {
+              defaultValue: '{{count}} thought(s) will be unassigned, not deleted',
+              count: getPointThoughtCount?.(pendingDelete.id) ?? 0,
+            })}
+          </p>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <button
+            onClick={() => setPendingDelete(null)}
+            className="rounded-lg border border-slate-300 dark:border-gray-600 text-slate-600 dark:text-gray-300 text-sm font-medium px-4 py-2 hover:bg-slate-50 dark:hover:bg-gray-700"
+          >
+            {t(CANCEL_KEY)}
+          </button>
+          <button
+            onClick={confirmDeletePoint}
+            className="rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium px-4 py-2"
+          >
+            {t(DELETE_KEY)}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
   return (
     <>
       <DragDropContext onDragEnd={onDragEnd}>
-        <div className={className}>{SECTIONS.map((s) => renderColumn(s.key, s.styleKey))}</div>
+        {scratch ? (
+          <div className="space-y-4">
+            {renderScratchPool()}
+            {boardColumns}
+          </div>
+        ) : (
+          boardColumns
+        )}
       </DragDropContext>
 
-      {pendingDelete && (
-        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-xl shadow-2xl p-5">
-            <h3 className="text-base font-semibold text-slate-800 dark:text-gray-100">
-              {t('structure.deletePointConfirmTitle')}
-            </h3>
-            <p className="mt-2 text-sm text-slate-500 dark:text-gray-400">
-              {t('structure.deletePointConfirm', { text: pendingDelete.text })}
-            </p>
-            {(getPointThoughtCount?.(pendingDelete.id) ?? 0) > 0 && (
-              <p className="mt-2 text-sm font-medium text-amber-700 dark:text-amber-400">
-                {t('planEditor.thoughtsUnassignedWarning', {
-                  defaultValue: '{{count}} thought(s) will be unassigned, not deleted',
-                  count: getPointThoughtCount?.(pendingDelete.id) ?? 0,
-                })}
-              </p>
-            )}
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                onClick={() => setPendingDelete(null)}
-                className="rounded-lg border border-slate-300 dark:border-gray-600 text-slate-600 dark:text-gray-300 text-sm font-medium px-4 py-2 hover:bg-slate-50 dark:hover:bg-gray-700"
-              >
-                {t(CANCEL_KEY)}
-              </button>
-              <button
-                onClick={confirmDeletePoint}
-                className="rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-medium px-4 py-2"
-              >
-                {t(DELETE_KEY)}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {pendingDeleteOverlay && renderInBodyPortal(pendingDeleteOverlay, true)}
     </>
   );
 };

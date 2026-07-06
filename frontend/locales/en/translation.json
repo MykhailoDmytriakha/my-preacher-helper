@@ -1410,12 +1410,99 @@
       "cancel": "Cancel"
     }
   },
+  "scratch": {
+    "title": "Scratch Notes",
+    "subtitle": "Capture unfinished thoughts before they become sermon structure.",
+    "badge": "Scratch",
+    "phase2Placeholder": "Capture will appear in phase 2",
+    "capture": {
+      "placeholder": "Write a note",
+      "add": "Add",
+      "manualAdd": "Write a note",
+      "manualTitle": "New note",
+      "manualLabel": "Write a note",
+      "saveManual": "Add note",
+      "manualSuccess": "Note added to scratch notes.",
+      "manualError": "Could not add the note.",
+      "empty": "No scratch notes yet. Drop the first one by text or voice.",
+      "toBoard": "Plan editor",
+      "back": "Scratch notes",
+      "countReady_one": "{{count}} scratch note",
+      "countReady_few": "{{count}} scratch notes",
+      "countReady_many": "{{count}} scratch notes",
+      "countReady_other": "{{count}} scratch notes"
+    },
+    "voice": {
+      "title": "Voice capture",
+      "success": "Voice note added to scratch notes.",
+      "error": "Could not transcribe this scratch note.",
+      "applyInProgress": "Your recording is saved. Finish applying the plan, then retry transcription."
+    },
+    "card": {
+      "edit": "Edit note",
+      "delete": "Delete note",
+      "deleteSuccess": "Note deleted",
+      "undoDelete": "Undo",
+      "save": "Save",
+      "cancel": "Cancel",
+      "placedIn": "In {{section}}"
+    },
+    "sections": {
+      "introduction": "Introduction",
+      "main": "Main part",
+      "conclusion": "Conclusion"
+    },
+    "board": {
+      "title": "Sermon Plan From Scratch",
+      "subtitle": "Review the current plan, place notes manually, compose with AI, then apply the additions.",
+      "pool": "Note pool",
+      "poolEmpty": "No scratch notes yet.",
+      "dropHerePoint": "Drop a note on this point",
+      "dropHereSubPoint": "Drop a note on this sub-point",
+      "compose": "Compose plan",
+      "composing": "Composing...",
+      "composePendingWrites": "Wait until scratch notes finish saving.",
+      "composeOffline": "Compose is available online only.",
+      "composeEmpty": "Add at least one scratch note first.",
+      "composeError": "Could not compose a plan from scratch notes.",
+      "composeTimeout": "Composing the plan is taking too long. Try again.",
+      "composeStale": "Scratch notes changed while the plan was composing. Run compose again.",
+      "composeSuccessAllAi": "Done: AI placed every note, respected beginning/end cues, and added point notes.",
+      "composeSuccessHybrid": "Done: your manual placements stayed put; AI placed the rest and marked them.",
+      "composeSuccessAllManual": "Done: every manual placement stayed in its section; AI only ordered and shaped the points.",
+      "apply": "Apply to sermon plan",
+      "applyNeedsProposal": "Compose a proposed plan or place a note on a point.",
+      "applyVoiceProcessing": "Wait until the voice note finishes transcribing.",
+      "applyPendingWrites": "Wait until scratch notes finish saving.",
+      "applyReadOnly": "Editing is disabled for this sermon.",
+      "applySuccess": "Scratch outline applied to the sermon plan.",
+      "applyError": "Could not apply the scratch outline.",
+      "applyPlacementError": "One placed note could not be matched to its target. Move it back to the pool or place it again.",
+      "aiBadge": "✨ AI",
+      "manualBadge": "Manual",
+      "unplace": "↩ to pool",
+      "selectedHint": "Drag the selected note onto a point or sub-point.",
+      "emptyColumn": "No points yet",
+      "clickColumn": "Click here to place the selected note"
+    },
+    "applyGuard": {
+      "title": "Replace existing sermon plan?",
+      "description": "Replacing the outline can unlink thoughts that are attached to old outline points. You can replace everything or fill only empty sections.",
+      "replace": "Replace outline",
+      "fillEmpty": "Fill empty sections only",
+      "noEmptySections": "There are no empty outline sections to fill."
+    }
+  },
   "wizard": {
     "previewButton": "Preparation Mode",
     "previewButtonTitle": "Preview preparation steps",
     "previewTitle": "Preparation Mode Preview",
+    "modePrep": "Preparation",
+    "modeClassic": "Classic",
+    "modeRaw": "Scratch",
     "switchToPrepBeta": "Preparation Mode (Beta)",
     "switchToClassic": "Classic Mode",
+    "switchToRaw": "Scratch Notes",
     "previewCTA": {
       "label": "Open Preparation Mode (coming soon)",
       "title": "Prototype preview"

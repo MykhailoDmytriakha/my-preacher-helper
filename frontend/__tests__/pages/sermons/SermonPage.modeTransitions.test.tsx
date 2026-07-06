@@ -59,6 +59,7 @@ jest.mock('@/components/sermon/StructurePreview', () => ({ __esModule: true, def
 jest.mock('@/components/sermon/SermonOutline', () => ({ __esModule: true, default: ({}) => <div data-testid="outline" /> }));
 jest.mock('@/components/sermon/KnowledgeSection', () => ({ __esModule: true, default: ({}) => <div data-testid="knowledge" /> }));
 jest.mock('@/components/sermon/StructureStats', () => ({ __esModule: true, default: ({}) => <div data-testid="stats" /> }));
+jest.mock('@/components/sermon/ScratchPanel', () => ({ __esModule: true, default: () => <div data-testid="scratch-panel">Наброски</div> }));
 
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k }) }));
 
@@ -110,6 +111,19 @@ describe('SermonPage mode transitions', () => {
     expect(screen.queryByTestId('brainstorm')).not.toBeInTheDocument();
   });
 
+  test('raw mode shows scratch placeholder without recorder or brainstorm', async () => {
+    searchParamsMock.set('mode', 'raw');
+    render(
+      <TestProviders>
+        <SermonPage />
+      </TestProviders>
+    );
+
+    expect(await screen.findByTestId('scratch-panel')).toBeInTheDocument();
+    expect(screen.queryByTestId('audio-recorder')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('brainstorm.title')).not.toBeInTheDocument();
+  });
+
   test('initializes mode from URL param when present', async () => {
     searchParamsMock.set('mode', 'prep');
     render(
@@ -123,6 +137,19 @@ describe('SermonPage mode transitions', () => {
     });
   });
 
+  test('initializes raw mode from URL param when present', async () => {
+    searchParamsMock.set('mode', 'raw');
+    render(
+      <TestProviders>
+        <SermonPage />
+      </TestProviders>
+    );
+
+    await waitFor(() => {
+      expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sermon-abc-mode', 'raw');
+    });
+  });
+
   test('initializes mode from localStorage when URL param is not present', async () => {
     mockLocalStorage.getItem.mockReturnValue('prep');
     render(
@@ -132,7 +159,20 @@ describe('SermonPage mode transitions', () => {
     );
 
     await waitFor(() => {
-      expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sermon-abc-mode', 'classic');
+      expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sermon-abc-mode', 'prep');
+    });
+  });
+
+  test('initializes raw mode from localStorage when URL param is not present', async () => {
+    mockLocalStorage.getItem.mockReturnValue('raw');
+    render(
+      <TestProviders>
+        <SermonPage />
+      </TestProviders>
+    );
+
+    await waitFor(() => {
+      expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sermon-abc-mode', 'raw');
     });
   });
 
@@ -242,4 +282,3 @@ describe('SermonPage mode transitions', () => {
     });
   });
 });
-

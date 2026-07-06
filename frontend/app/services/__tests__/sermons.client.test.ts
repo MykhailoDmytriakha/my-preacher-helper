@@ -12,9 +12,25 @@
  * stateful `store` makes getDoc reflect a prior updateDoc, mirroring Firestore's
  * read-modify-write across the two sends.
  */
-import { createManualThoughtViaClient } from '@/services/sermons.client';
+import {
+  addScratchNoteViaClient,
+  applyScratchToOutlineViaClient,
+  createManualThoughtViaClient,
+  deleteScratchNoteViaClient,
+  updateScratchNoteViaClient,
+} from '@/services/sermons.client';
 
-type StoredSermon = { userId: string; thoughts: { id: string }[]; updatedAt?: string };
+type StoredSermon = {
+  userId: string;
+  thoughts: { id: string }[];
+  scratch?: { id: string; text: string; createdAt: string; section?: string }[];
+  outline?: {
+    introduction: { id: string; text: string }[];
+    main: { id: string; text: string }[];
+    conclusion: { id: string; text: string }[];
+  };
+  updatedAt?: string;
+};
 const store: Record<string, StoredSermon> = {};
 
 jest.mock('@/config/firebaseClientDb', () => ({ getClientDb: () => ({}) }));
@@ -71,5 +87,57 @@ describe('createManualThoughtViaClient — idempotent by client id', () => {
     await createManualThoughtViaClient('s1', { id: 'local-b', text: 't', tags: ['mytag'], date: 'd' } as never);
 
     expect(store.s1.thoughts).toHaveLength(2);
+  });
+});
+
+describe('scratch note client writes', () => {
+  beforeEach(() => {
+    for (const key of Object.keys(store)) delete store[key];
+    store.s1 = { userId: 'u1', thoughts: [{ id: 'thought-1' }] };
+  });
+
+  it('writes only the computed scratch array plus updatedAt and removes undefined fields', async () => {
+    await addScratchNoteViaClient('s1', [
+      { id: 'n1', text: 'first', createdAt: '2026-07-04T00:00:00.000Z', section: undefined },
+    ] as never);
+
+    expect(store.s1.thoughts).toEqual([{ id: 'thought-1' }]);
+    expect(store.s1.scratch).toEqual([
+      { id: 'n1', text: 'first', createdAt: '2026-07-04T00:00:00.000Z' },
+    ]);
+    expect(store.s1.updatedAt).toEqual(expect.any(String));
+
+    await updateScratchNoteViaClient('s1', [
+      { id: 'n1', text: 'first edited', createdAt: '2026-07-04T00:00:00.000Z', section: 'main' },
+    ] as never);
+    expect(store.s1.scratch).toEqual([
+      { id: 'n1', text: 'first edited', createdAt: '2026-07-04T00:00:00.000Z', section: 'main' },
+    ]);
+
+    await deleteScratchNoteViaClient('s1', []);
+    expect(store.s1.scratch).toEqual([]);
+  });
+
+  it('applies scratch to outline with one sermon-doc update containing outline and remaining scratch', async () => {
+    await applyScratchToOutlineViaClient(
+      's1',
+      {
+        introduction: [],
+        main: [{ id: 'p1', text: 'Applied point' }],
+        conclusion: [],
+      },
+      [{ id: 'n2', text: 'leftover', createdAt: '2026-07-04T00:01:00.000Z', section: undefined }] as never
+    );
+
+    expect(store.s1.thoughts).toEqual([{ id: 'thought-1' }]);
+    expect(store.s1.outline).toEqual({
+      introduction: [],
+      main: [{ id: 'p1', text: 'Applied point' }],
+      conclusion: [],
+    });
+    expect(store.s1.scratch).toEqual([
+      { id: 'n2', text: 'leftover', createdAt: '2026-07-04T00:01:00.000Z' },
+    ]);
+    expect(store.s1.updatedAt).toEqual(expect.any(String));
   });
 });

@@ -21,7 +21,7 @@ jest.mock('@tiptap/react', () => {
 });
 
 jest.mock('@tiptap/starter-kit', () => ({ __esModule: true, default: {} }));
-jest.mock('tiptap-markdown', () => ({ Markdown: {} }));
+jest.mock('tiptap-markdown', () => ({ Markdown: { configure: jest.fn(() => ({ name: 'markdown' })) } }));
 jest.mock('@tiptap/extension-placeholder', () => ({
     __esModule: true,
     default: { configure: jest.fn(() => ({ name: 'placeholder' })) },

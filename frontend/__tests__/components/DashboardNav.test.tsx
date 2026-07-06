@@ -546,8 +546,8 @@ describe('DashboardNav Component', () => {
     );
 
     // Should show mode toggle (since showWizardButton mock is true)
-    // ModeToggle renders buttons for Classic and Prep
-    const prepButton = screen.getByText('wizard.previewButton'); // default label or key
+    // ModeToggle renders buttons for Classic, Prep, and Scratch
+    const prepButton = screen.getByText('wizard.modePrep'); // default label or key
     fireEvent.click(prepButton);
 
     expect(push).toHaveBeenCalled();

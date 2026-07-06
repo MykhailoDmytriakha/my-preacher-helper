@@ -14,6 +14,7 @@ import { getClientDb } from '@/config/firebaseClientDb';
 import {
   PreachDate,
   Preparation,
+  ScratchNote,
   Sermon,
   SermonOutline,
   Thought,
@@ -212,6 +213,73 @@ export async function updateSermonOutlineViaClient(
   if (!outline.main) outline.main = [];
   await updateDoc(sermonRef(sermonId), deepCleanUndefined({ outline, updatedAt: now() }));
   return outline;
+}
+
+export async function applyScratchToOutlineViaClient(
+  sermonId: string,
+  outline: SermonOutline,
+  scratch: ScratchNote[]
+): Promise<{ outline: SermonOutline; scratch: ScratchNote[] }> {
+  const cleanOutline: SermonOutline = {
+    introduction: outline.introduction ?? [],
+    main: outline.main ?? [],
+    conclusion: outline.conclusion ?? [],
+  };
+  const cleanScratch = sanitizeScratchNotes(scratch);
+
+  await updateDoc(
+    sermonRef(sermonId),
+    deepCleanUndefined({ outline: cleanOutline, scratch: cleanScratch, updatedAt: now() })
+  );
+
+  return { outline: cleanOutline, scratch: cleanScratch };
+}
+
+// --- scratch[] ---
+
+function sanitizeScratchNotes(scratch: ScratchNote[]): ScratchNote[] {
+  return scratch.map((note) => {
+    const cleanNote: ScratchNote = {
+      id: note.id,
+      text: note.text,
+      createdAt: note.createdAt,
+    };
+    if (note.section) cleanNote.section = note.section;
+    return deepCleanUndefined(cleanNote);
+  });
+}
+
+async function writeScratchNotesViaClient(
+  sermonId: string,
+  scratch: ScratchNote[]
+): Promise<ScratchNote[]> {
+  const cleanScratch = sanitizeScratchNotes(scratch);
+  await updateDoc(
+    sermonRef(sermonId),
+    deepCleanUndefined({ scratch: cleanScratch, updatedAt: now() })
+  );
+  return cleanScratch;
+}
+
+export async function addScratchNoteViaClient(
+  sermonId: string,
+  scratch: ScratchNote[]
+): Promise<ScratchNote[]> {
+  return writeScratchNotesViaClient(sermonId, scratch);
+}
+
+export async function updateScratchNoteViaClient(
+  sermonId: string,
+  scratch: ScratchNote[]
+): Promise<ScratchNote[]> {
+  return writeScratchNotesViaClient(sermonId, scratch);
+}
+
+export async function deleteScratchNoteViaClient(
+  sermonId: string,
+  scratch: ScratchNote[]
+): Promise<ScratchNote[]> {
+  return writeScratchNotesViaClient(sermonId, scratch);
 }
 
 // --- thoughts[] ---

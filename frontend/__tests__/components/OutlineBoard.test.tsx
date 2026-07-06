@@ -4,7 +4,7 @@ import React from 'react';
 import '@testing-library/jest-dom';
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 
-import type { SermonOutline } from '@/models/models';
+import type { ScratchNote, SermonOutline } from '@/models/models';
 
 const empty = (): SermonOutline => ({ introduction: [], main: [], conclusion: [] });
 
@@ -16,6 +16,7 @@ describe('OutlineBoard', () => {
     expect(screen.getByTestId('outline-board-column-introduction')).toBeInTheDocument();
     expect(screen.getByTestId('outline-board-column-main')).toBeInTheDocument();
     expect(screen.getByTestId('outline-board-column-conclusion')).toBeInTheDocument();
+    expect(screen.queryByTestId('scratch-note-pool-band')).not.toBeInTheDocument();
   });
 
   it('adds a point to a section and emits the new outline (with a fresh id)', () => {
@@ -107,6 +108,110 @@ describe('OutlineBoard', () => {
   it('does not render add controls when read-only', () => {
     render(<OutlineBoard value={empty()} onChange={jest.fn()} isReadOnly />);
     expect(screen.queryByText('structure.addPointButton')).not.toBeInTheDocument();
+  });
+
+  it('renders the optional scratch pool and point/sub-point strips only when scratch is provided', () => {
+    const value: SermonOutline = {
+      introduction: [],
+      main: [
+        {
+          id: 'p1',
+          text: 'Point',
+          subPoints: [{ id: 's1', text: 'Sub', position: 1000 }],
+        },
+      ],
+      conclusion: [],
+    };
+
+    const scratchNotes: ScratchNote[] = [
+      { id: 'n1', text: 'Pool note', createdAt: '2026-07-05T00:00:00.000Z' },
+      { id: 'n2', text: 'Point note', createdAt: '2026-07-05T00:01:00.000Z' },
+      { id: 'n3', text: 'Sub note', createdAt: '2026-07-05T00:02:00.000Z' },
+    ];
+    const scratchProps = {
+      notesById: new Map(scratchNotes.map((note) => [note.id, note])),
+      onPlace: jest.fn(),
+      renderNote: (note: ScratchNote) => <div>{note.text}</div>,
+      poolHeader: <div>Scratch pool header</div>,
+      poolEmptyLabel: 'Pool empty',
+    };
+
+    const { rerender } = render(
+      <OutlineBoard
+        value={value}
+        onChange={jest.fn()}
+        scratch={{
+          ...scratchProps,
+          pool: scratchNotes,
+          placements: {},
+        }}
+      />
+    );
+
+    rerender(
+      <OutlineBoard
+        value={value}
+        onChange={jest.fn()}
+        scratch={{
+          ...scratchProps,
+          pool: [scratchNotes[0]],
+          placements: {
+            n2: { pointId: 'p1' },
+            n3: { pointId: 'p1', subPointId: 's1' },
+          },
+        }}
+      />
+    );
+
+    expect(screen.getByTestId('scratch-note-pool-band')).toHaveTextContent('Scratch pool header');
+    expect(screen.getByTestId('scratch-note-pool-band')).toHaveTextContent('Pool note');
+    expect(screen.getByTestId('scratch-note-pool-band')).not.toHaveTextContent('Point note');
+    expect(screen.getByTestId('scratch-point-drop-zone-p1')).toHaveTextContent('Point note');
+    expect(screen.getByTestId('scratch-subpoint-drop-zone-s1')).toHaveTextContent('Sub note');
+    expect(screen.getByTestId('outline-board-column-main')).toHaveTextContent('structure.addSubPoint');
+  });
+
+  it('renders placed scratch notes from notesById on a fresh mount when the pool excludes them', () => {
+    const value: SermonOutline = {
+      introduction: [],
+      main: [
+        {
+          id: 'p1',
+          text: 'Point',
+          subPoints: [{ id: 's1', text: 'Sub', position: 1000 }],
+        },
+      ],
+      conclusion: [],
+    };
+    const scratchNotes: ScratchNote[] = [
+      { id: 'n1', text: 'Pool note', createdAt: '2026-07-05T00:00:00.000Z' },
+      { id: 'n2', text: 'Point note survives remount', createdAt: '2026-07-05T00:01:00.000Z' },
+      { id: 'n3', text: 'Sub note survives remount', createdAt: '2026-07-05T00:02:00.000Z' },
+    ];
+
+    render(
+      <OutlineBoard
+        value={value}
+        onChange={jest.fn()}
+        scratch={{
+          pool: [scratchNotes[0]],
+          notesById: new Map(scratchNotes.map((note) => [note.id, note])),
+          placements: {
+            n2: { pointId: 'p1' },
+            n3: { pointId: 'p1', subPointId: 's1' },
+          },
+          onPlace: jest.fn(),
+          renderNote: (note: ScratchNote) => <div>{note.text}</div>,
+          poolHeader: <div>Scratch pool header</div>,
+          poolEmptyLabel: 'Pool empty',
+        }}
+      />
+    );
+
+    expect(screen.getByTestId('scratch-note-pool-band')).toHaveTextContent('Pool note');
+    expect(screen.getByTestId('scratch-note-pool-band')).not.toHaveTextContent('Point note survives remount');
+    expect(screen.getByTestId('scratch-point-drop-zone-p1')).toHaveTextContent('Point note survives remount');
+    expect(screen.getByTestId('scratch-subpoint-drop-zone-s1')).toHaveTextContent('Sub note survives remount');
   });
 });
 
