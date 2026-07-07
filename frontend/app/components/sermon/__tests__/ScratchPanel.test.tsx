@@ -19,7 +19,7 @@ jest.mock("react-i18next", () => ({
         "scratch.capture.manualSuccess": "Note added to scratch notes.",
         "scratch.capture.manualError": "Could not add the note.",
         "scratch.capture.empty": "No scratch notes yet.",
-        "scratch.capture.toBoard": "Plan editor",
+        "scratch.capture.toBoard": "Work on the plan",
         "scratch.capture.back": "Scratch notes",
         "scratch.voice.success": "Voice note added to scratch notes.",
         "scratch.voice.error": "Could not transcribe this scratch note.",

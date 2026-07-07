@@ -26,7 +26,7 @@ jest.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, values?: { section?: string; count?: number }) => {
       const translations: Record<string, string> = {
-        'scratch.capture.toBoard': 'Редактор плана',
+        'scratch.capture.toBoard': 'Работать над планом',
         'scratch.capture.back': 'Наброски',
         'common.dragToReorder': 'Drag to reorder',
         'planEditor.note.label': 'Reminder note',
@@ -300,7 +300,7 @@ function renderScratchPanel(overrides: Partial<React.ComponentProps<typeof Scrat
 }
 
 async function openBoard(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: 'Редактор плана' }));
+  await user.click(screen.getByRole('button', { name: 'Работать над планом' }));
 }
 
 function expectPlanEditorNoteVisual(container: HTMLElement, text: string) {
@@ -311,7 +311,7 @@ function expectPlanEditorNoteVisual(container: HTMLElement, text: string) {
   const icons = Array.from(noteRoot.querySelectorAll('svg'));
   expect(
     icons.some((icon) =>
-      icon.getAttribute('class')?.includes('text-amber-500/80')
+      icon.getAttribute('class')?.includes('text-gray-400')
     )
   ).toBe(true);
 }
@@ -432,7 +432,7 @@ describe('ScratchPanel', () => {
       conclusion: [],
     };
     const { user } = renderScratchPanel({ outline: existingOutline });
-    const planEditorButton = screen.getByRole('button', { name: 'Редактор плана' });
+    const planEditorButton = screen.getByRole('button', { name: 'Работать над планом' });
 
     expect(planEditorButton).toHaveClass('bg-gradient-to-r', 'from-violet-600', 'to-fuchsia-600');
     expect(planEditorButton).not.toHaveClass('bg-amber-600');
@@ -458,7 +458,7 @@ describe('ScratchPanel', () => {
     expect(screen.getByTestId('drag-handle-n1')).toHaveAttribute('aria-label', 'Drag to reorder');
     expect(screen.getAllByText('structure.addPointButton')).toHaveLength(3);
     expect(screen.getAllByText('structure.addSubPoint')).toHaveLength(2);
-    expect(screen.getByRole('button', { name: 'Наброски' })).toHaveClass('border-amber-300');
+    expect(screen.getByRole('button', { name: 'Наброски' })).toHaveClass('border-gray-300');
   });
 
   it('persists manual outline edits through the silent outline-change handler', async () => {
@@ -1131,7 +1131,7 @@ describe('ScratchPanel', () => {
     composePlanFromScratchMock().mockReturnValueOnce(new Promise(() => undefined));
     renderScratchPanel();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Редактор плана' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Работать над планом' }));
     fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
     expect(screen.getByRole('button', { name: 'scratch.board.composing' })).toBeDisabled();
 
@@ -1153,7 +1153,7 @@ describe('ScratchPanel', () => {
     );
     renderScratchPanel();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Редактор плана' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Работать над планом' }));
     fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
 
     act(() => {

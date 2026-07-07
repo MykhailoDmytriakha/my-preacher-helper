@@ -19,6 +19,12 @@ interface PointNoteProps {
   addRevealClass?: string;
   /** Hide the inline × clear button (e.g. when the parent already provides its own delete). */
   hideClearButton?: boolean;
+  /**
+   * Accent family for the note affordance. `'note'` (default) = the amber "idea/lightbulb"
+   * styling used in the plan editor & structure columns. `'neutral'` = gray + violet-focus,
+   * used where amber would collide (e.g. the scratch capture screen).
+   */
+  tone?: 'note' | 'neutral';
 }
 
 /**
@@ -35,12 +41,24 @@ const PointNote: React.FC<PointNoteProps> = ({
   indentClass = '',
   addRevealClass = 'opacity-100',
   hideClearButton = false,
+  tone = 'note',
 }) => {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
   // Distinguishes a real blur-save from an Escape-cancel (Escape also blurs the field).
   const blurSaveRef = useRef(true);
+
+  const neutral = tone === 'neutral';
+  const editFieldClass = neutral
+    ? 'bg-gray-50 dark:bg-gray-800/60 text-gray-700 dark:text-gray-100 border-gray-300 dark:border-gray-600 focus:ring-violet-400 placeholder:text-gray-500/50 dark:placeholder:text-gray-400/40'
+    : 'bg-amber-50 dark:bg-amber-900/15 text-slate-700 dark:text-amber-50/90 border-amber-300 dark:border-amber-700/50 focus:ring-amber-400 placeholder:text-amber-700/40 dark:placeholder:text-amber-200/30';
+  const bulbClass = neutral
+    ? 'text-gray-400 dark:text-gray-500'
+    : 'text-amber-500/80 dark:text-amber-400/70';
+  const addHoverClass = neutral
+    ? 'hover:text-violet-600 dark:hover:text-violet-400 focus-visible:ring-violet-400/50'
+    : 'hover:text-amber-600 dark:hover:text-amber-400 focus-visible:ring-amber-400/50';
 
   const startEdit = () => {
     if (isReadOnly) return;
@@ -88,7 +106,7 @@ const PointNote: React.FC<PointNoteProps> = ({
           }}
           placeholder={t('planEditor.note.placeholder')}
           rows={2}
-          className="w-full resize-none px-2 py-1 text-xs bg-amber-50 dark:bg-amber-900/15 text-slate-700 dark:text-amber-50/90 rounded border border-amber-300 dark:border-amber-700/50 focus:outline-none focus:ring-1 focus:ring-amber-400 placeholder:text-amber-700/40 dark:placeholder:text-amber-200/30"
+          className={`w-full resize-none px-2 py-1 text-xs rounded border focus:outline-none focus:ring-1 ${editFieldClass}`}
           autoFocus
         />
       </div>
@@ -104,7 +122,7 @@ const PointNote: React.FC<PointNoteProps> = ({
         onClick={isReadOnly ? undefined : startEdit}
         title={isReadOnly ? undefined : t('planEditor.note.label')}
       >
-        <LightBulbIcon className="mt-px h-3 w-3 flex-shrink-0 not-italic text-amber-500/80 dark:text-amber-400/70" />
+        <LightBulbIcon className={`mt-px h-3 w-3 flex-shrink-0 not-italic ${bulbClass}`} />
         <span className="min-w-0 flex-1 break-words whitespace-pre-wrap">{note}</span>
         {!isReadOnly && !hideClearButton && (
           <button
@@ -127,7 +145,7 @@ const PointNote: React.FC<PointNoteProps> = ({
   return (
     <button
       onClick={startEdit}
-      className={`${indentClass} mt-1 inline-flex items-center gap-1 rounded text-xs text-slate-400 dark:text-gray-500 transition-colors hover:text-amber-600 dark:hover:text-amber-400 focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-400/50 ${addRevealClass}`}
+      className={`${indentClass} mt-1 inline-flex items-center gap-1 rounded text-xs text-slate-400 dark:text-gray-500 transition-colors focus:outline-none focus-visible:ring-1 ${addHoverClass} ${addRevealClass}`}
       aria-label={t('planEditor.note.label')}
     >
       <LightBulbIcon className="h-3 w-3" />

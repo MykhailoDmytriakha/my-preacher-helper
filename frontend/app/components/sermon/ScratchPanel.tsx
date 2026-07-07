@@ -11,7 +11,6 @@ import {
   LayoutGrid,
   Pencil,
   Sparkles,
-  StickyNote,
   Trash2,
   X,
 } from "lucide-react";
@@ -19,10 +18,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { AudioRecorder } from "@/components/AudioRecorder";
 import { AudioRecoveryPanel } from "@/components/audio-recorder/AudioRecorderControls";
-import PointNote from "@/components/PointNote";
+import { AudioRecorder } from "@/components/AudioRecorder";
 import OutlineBoard from "@/components/plan-editor/OutlineBoard";
+import PointNote from "@/components/PointNote";
 import AudioRecorderPortalBridge from "@/components/sermon/AudioRecorderPortalBridge";
 import { useConnection } from "@/providers/ConnectionProvider";
 import { composePlanFromScratch } from "@/services/scratch.service";
@@ -86,9 +85,9 @@ const EMPTY_OUTLINE: SermonOutline = {
 };
 
 const NOTE_CARD_CLASS =
-  "group rounded-lg border border-slate-200 bg-white p-3 shadow-sm transition-all duration-150 dark:border-gray-700 dark:bg-gray-800";
+  "group rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-all duration-150 dark:border-gray-700 dark:bg-gray-800";
 const PLAN_EDITOR_BUTTON_CLASS =
-  "w-full inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 dark:from-violet-500 dark:to-fuchsia-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:shadow-lg hover:scale-[1.01] active:scale-95 transition-all duration-200";
+  "w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 dark:from-violet-500 dark:to-fuchsia-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:shadow-lg hover:scale-[1.01] active:scale-95 transition-all duration-200";
 const COMPOSE_TIMEOUT_MS = 55_000;
 const APPLY_SETTLE_TIMEOUT_MS = 8_000;
 const SCRATCH_TOAST_OPTIONS = { position: "bottom-right" as const };
@@ -318,7 +317,7 @@ function ScratchNoteCard({
             event.stopPropagation();
             onUnplace(note.id);
           }}
-          className="rounded-md px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/40"
+          className="rounded-md px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
         >
           {t("scratch.board.unplace")}
         </button>
@@ -366,7 +365,7 @@ function ScratchNoteCard({
         )}
         <div className="min-w-0 flex-1">
           {sectionLabel && (
-            <span className="mb-1.5 inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500 dark:bg-gray-700 dark:text-gray-300">
+            <span className="mb-1.5 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-300">
               {t("scratch.card.placedIn", { section: sectionLabel })}
             </span>
           )}
@@ -382,6 +381,7 @@ function ScratchNoteCard({
               isReadOnly={isReadOnly}
               addRevealClass="opacity-100"
               hideClearButton
+              tone="neutral"
             />
           </div>
         </div>
@@ -944,15 +944,15 @@ export default function ScratchPanel({
           manualInputRef.current?.focus();
         }}
         className={[
-          "flex min-w-0 flex-1 items-center justify-center gap-2 self-stretch bg-amber-600 px-4 py-3 font-medium text-white transition-all duration-200 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:bg-amber-600",
-          isManualCaptureOpen ? "bg-amber-700" : "",
+          "flex min-w-0 flex-1 items-center justify-center gap-2 self-stretch rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 px-4 py-3 font-medium text-gray-700 dark:text-gray-200 shadow-sm transition-all duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70",
+          isManualCaptureOpen ? "bg-gray-200 dark:bg-gray-700" : "",
         ].join(" ")}
         disabled={isCaptureLocked}
         title={t("scratch.capture.manualAdd")}
         aria-label={t("scratch.capture.manualAdd")}
         aria-expanded={isManualCaptureOpen}
       >
-        <Pencil className="h-5 w-5 shrink-0 text-white" aria-hidden="true" />
+        <Pencil className="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />
         <span className="min-w-0 text-center leading-tight">{t("scratch.capture.manualAdd")}</span>
       </button>
     );
@@ -963,7 +963,7 @@ export default function ScratchPanel({
 
     return (
       <form
-        className="mb-4 rounded-xl border border-amber-200 bg-amber-50/80 p-3 shadow-sm dark:border-amber-800 dark:bg-amber-950/30 sm:p-4"
+        className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800/60 sm:p-4"
         onSubmit={(event) => {
           event.preventDefault();
           handleManualSubmit();
@@ -972,14 +972,14 @@ export default function ScratchPanel({
         <div className="flex items-center justify-between gap-3">
           <label
             htmlFor="scratch-manual-note-input"
-            className="text-sm font-semibold text-amber-900 dark:text-amber-100"
+            className="text-sm font-semibold text-gray-800 dark:text-gray-100"
           >
             {t("scratch.capture.manualLabel")}
           </label>
           <button
             type="button"
             onClick={collapseManualCapture}
-            className="rounded-md p-1.5 text-amber-700 transition hover:bg-amber-100 hover:text-amber-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 dark:text-amber-200 dark:hover:bg-amber-900/40 dark:hover:text-amber-50"
+            className="rounded-md p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
             aria-label={t("common.close")}
           >
             <X className="h-4 w-4" aria-hidden="true" />
@@ -1002,13 +1002,13 @@ export default function ScratchPanel({
             }}
             placeholder={t("scratch.capture.manualLabel")}
             aria-label={t("scratch.capture.manualLabel")}
-            className="min-w-0 flex-1 rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-200 dark:border-amber-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:ring-amber-900/40"
+            className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:ring-violet-900/40"
             disabled={isCaptureLocked}
           />
           <button
             type="submit"
             disabled={!manualDraft.trim() || isCaptureLocked}
-            className="inline-flex items-center justify-center rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-amber-600"
+            className="inline-flex items-center justify-center rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-violet-600 dark:bg-violet-500 dark:hover:bg-violet-400"
           >
             {t("scratch.capture.add")}
           </button>
@@ -1037,15 +1037,9 @@ export default function ScratchPanel({
 
   const renderCapture = () => (
     <div className="grid grid-cols-1 gap-4">
-      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm shadow-gray-900/5 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/20 sm:p-5">
+      <section className="rounded-xl border border-gray-200 border-l-4 border-l-violet-400 bg-white p-4 shadow-sm shadow-gray-900/5 dark:border-gray-700 dark:border-l-violet-600 dark:bg-gray-900 dark:shadow-black/20 sm:p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-full border border-dashed border-amber-300 bg-gradient-to-br from-amber-50 to-yellow-50 px-2.5 py-1 text-xs font-medium text-amber-700 dark:border-amber-700 dark:from-amber-950/30 dark:to-yellow-950/20 dark:text-amber-200">
-                <StickyNote className="h-3.5 w-3.5" aria-hidden="true" />
-                {t("scratch.badge")}
-              </span>
-            </div>
             <h2 className="text-xl font-semibold text-gray-950 dark:text-gray-100">
               {t("scratch.title")}
             </h2>
@@ -1087,6 +1081,7 @@ export default function ScratchPanel({
           manualControl={renderManualCaptureControl()}
           manualThoughtTitle={t("scratch.capture.manualAdd")}
           manualButtonPlacement="right"
+          manualButtonSeparate
         />
         {renderVoiceRecoveryPanel()}
         {renderManualCaptureForm()}
@@ -1096,7 +1091,7 @@ export default function ScratchPanel({
             {t("scratch.capture.empty")}
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-3">
             {notes.map((note) => (
               <ScratchNoteCard
                 key={note.id}
@@ -1145,7 +1140,7 @@ export default function ScratchPanel({
             onClick={handleCompose}
             disabled={!canCompose}
             title={composeDisabledTitle}
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[1.01] hover:bg-amber-700 hover:shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-amber-600 dark:bg-amber-500 dark:hover:bg-amber-400 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-full border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-semibold text-violet-800 shadow-sm transition-all duration-200 hover:bg-violet-100 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-violet-50 dark:border-violet-700 dark:bg-violet-900/20 dark:text-violet-200 dark:hover:bg-violet-900/40 sm:w-auto"
           >
             <Sparkles className={["h-4 w-4", isComposing ? "animate-spin" : ""].join(" ")} aria-hidden="true" />
             {isComposing ? t("scratch.board.composing") : t("scratch.board.compose")}
@@ -1177,7 +1172,7 @@ export default function ScratchPanel({
               if (!isApplying) setView("capture");
             }}
             disabled={isApplying}
-            className="mb-3 inline-flex items-center justify-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3.5 py-2 text-sm font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100 hover:shadow-md disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50 disabled:hover:bg-amber-50 disabled:hover:shadow-sm dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100 dark:hover:bg-amber-900/40 dark:disabled:hover:bg-amber-950/30"
+            className="mb-3 inline-flex items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-transparent px-3.5 py-2 text-sm font-medium text-gray-600 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50 disabled:hover:bg-transparent dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 dark:disabled:hover:bg-transparent"
           >
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
             {t("scratch.capture.back")}
@@ -1200,7 +1195,7 @@ export default function ScratchPanel({
               isReadOnly ||
               isScratchWritePending
             }
-            className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-amber-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[1.01] hover:bg-amber-700 hover:shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50 disabled:hover:scale-100 disabled:hover:bg-amber-600 dark:bg-amber-500 dark:hover:bg-amber-400 sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-1.5 rounded-full bg-violet-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:scale-[1.01] hover:bg-violet-700 hover:shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50 disabled:hover:scale-100 disabled:hover:bg-violet-600 dark:bg-violet-500 dark:hover:bg-violet-400 sm:w-auto"
           >
             <Check className="h-4 w-4" aria-hidden="true" />
             {isApplying ? t("common.saving") : t("scratch.board.apply")}

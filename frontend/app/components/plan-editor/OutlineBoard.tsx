@@ -729,6 +729,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                               isReadOnly={isReadOnly}
                               indentClass="ml-5"
                               addRevealClass="opacity-100 lg:opacity-0 lg:group-hover/subpoint:opacity-100"
+                              tone={scratch ? 'neutral' : 'note'}
                             />
                           )}
                           {scratch &&
@@ -933,6 +934,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                                   isReadOnly={isReadOnly}
                                   indentClass="ml-6"
                                   addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+                                  tone={scratch ? 'neutral' : 'note'}
                                 />
                               )}
                               {scratch &&

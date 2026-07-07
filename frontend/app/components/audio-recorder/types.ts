@@ -22,6 +22,8 @@ export interface AudioRecorderProps {
   onRecordingStateChange?: (isActive: boolean) => void;
   splitLeft?: ReactNode;
   splitRight?: ReactNode;
+  /** Render the split controls as two separate buttons (gap) instead of one welded pill. */
+  splitSeparate?: boolean;
   enableAudioLevelMonitoring?: boolean;
 }
 
@@ -106,6 +108,8 @@ export interface SplitRecordButtonProps {
   isButtonDisabled: boolean;
   onStart: () => void;
   t: TranslationFn;
+  /** When true, render splitLeft/mic/splitRight as separate rounded buttons with a gap. */
+  separate?: boolean;
 }
 
 export interface UseAudioRecorderLifecycleArgs {

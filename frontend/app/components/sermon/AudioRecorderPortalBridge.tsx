@@ -19,6 +19,7 @@ interface RecorderLikeProps {
   hideKeyboardShortcuts?: boolean;
   splitLeft?: ReactNode;
   splitRight?: ReactNode;
+  splitSeparate?: boolean;
   enableAudioLevelMonitoring?: boolean;
 }
 
@@ -40,6 +41,8 @@ interface AudioRecorderPortalBridgeProps {
   manualThoughtTitle: string;
   manualButtonPlacement?: "left" | "right";
   manualControl?: ReactNode;
+  /** Render the manual button as a separate button (gap) instead of welded into the record pill. */
+  manualButtonSeparate?: boolean;
 }
 
 function AutoHeight({
@@ -102,6 +105,7 @@ export default function AudioRecorderPortalBridge({
   manualThoughtTitle,
   manualButtonPlacement = "left",
   manualControl,
+  manualButtonSeparate,
 }: AudioRecorderPortalBridgeProps) {
   const recorderDisabled = isRecorderDisabled ?? isReadOnly;
   const manualDisabled = isManualDisabled ?? isReadOnly;
@@ -131,6 +135,7 @@ export default function AudioRecorderPortalBridge({
       hideKeyboardShortcuts={hideKeyboardShortcuts}
       splitLeft={manualButtonPlacement === "left" ? splitLeft : undefined}
       splitRight={manualButtonPlacement === "right" ? splitLeft : undefined}
+      splitSeparate={manualButtonSeparate}
       enableAudioLevelMonitoring={false}
     />
   );

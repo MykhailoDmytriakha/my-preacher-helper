@@ -1425,7 +1425,7 @@
       "manualSuccess": "Note added to scratch notes.",
       "manualError": "Could not add the note.",
       "empty": "No scratch notes yet. Drop the first one by text or voice.",
-      "toBoard": "Plan editor",
+      "toBoard": "Work on the plan",
       "back": "Scratch notes",
       "countReady_one": "{{count}} scratch note",
       "countReady_few": "{{count}} scratch notes",
