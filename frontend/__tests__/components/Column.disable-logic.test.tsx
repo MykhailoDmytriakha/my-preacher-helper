@@ -54,14 +54,14 @@ jest.mock('@hello-pangea/dnd', () => ({
 }));
 
 jest.mock('../../app/components/AudioRecorder', () => ({
-    AudioRecorder: ({ disabled }: any) => (
-        <div data-testid="audio-recorder" data-disabled={disabled}>AudioRecorder</div>
+    AudioRecorder: ({ disabled, title }: any) => (
+        <button data-testid="audio-recorder" disabled={disabled} title={title}>AudioRecorder</button>
     ),
 }));
 
 jest.mock('../../app/components/FocusRecorderButton', () => ({
-    FocusRecorderButton: ({ disabled }: any) => (
-        <button data-testid="focus-recorder-button" disabled={disabled}>FocusRecorderButton</button>
+    FocusRecorderButton: ({ disabled, title }: any) => (
+        <button data-testid="focus-recorder-button" disabled={disabled} title={title}>FocusRecorderButton</button>
     ),
 }));
 
@@ -88,6 +88,8 @@ jest.mock('sonner', () => ({
 }));
 
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => true }));
+const mockUseAiUsage = jest.fn();
+jest.mock('@/hooks/useAiUsage', () => ({ useAiUsage: () => mockUseAiUsage() }));
 jest.mock('@/utils/debugMode', () => ({ debugLog: jest.fn() }));
 jest.mock('@/services/outline.service', () => ({
     updateSermonOutline: jest.fn(),
@@ -101,6 +103,70 @@ describe('Column Disabling Logic', () => {
     const mockUnreviewedPoint = { id: 'p2', text: 'Point 2', isReviewed: false };
     const lockedPointItems = [{ id: 'thought-1', content: 'Locked thought', outlinePointId: 'p1', isLocked: true }];
     const unlockedPointItems = [{ id: 'thought-2', content: 'Unlocked thought', outlinePointId: 'p2', isLocked: false }];
+
+    beforeEach(() => {
+        mockUseAiUsage.mockReturnValue({
+            aiRemaining: 10,
+            aiBlocked: false,
+            transcriptionRemaining: 60,
+            transcriptionBlocked: false,
+            loading: false,
+            refresh: jest.fn(),
+        });
+    });
+
+    it('disables Column mic recorders with the transcription quota tooltip and re-enables them when available', () => {
+        mockUseAiUsage.mockReturnValue({
+            aiRemaining: 10,
+            aiBlocked: false,
+            transcriptionRemaining: 0,
+            transcriptionBlocked: true,
+            loading: false,
+            refresh: jest.fn(),
+        });
+
+        const { unmount } = render(
+            <Column
+                id="main"
+                title="Main"
+                items={unlockedPointItems as any}
+                outlinePoints={[mockUnreviewedPoint]}
+                isFocusMode={true}
+                onAudioThoughtCreated={jest.fn()}
+                sermonId={mockSermonId}
+            />
+        );
+
+        for (const recorder of [screen.getByTestId('focus-recorder-button'), screen.getByTestId('audio-recorder')]) {
+            expect(recorder).toBeDisabled();
+            expect(recorder).toHaveAttribute('title', 'settings.usage.transcriptionUsageExhausted');
+        }
+
+        unmount();
+        mockUseAiUsage.mockReturnValue({
+            aiRemaining: 10,
+            aiBlocked: false,
+            transcriptionRemaining: 60,
+            transcriptionBlocked: false,
+            loading: false,
+            refresh: jest.fn(),
+        });
+
+        render(
+            <Column
+                id="main"
+                title="Main"
+                items={unlockedPointItems as any}
+                outlinePoints={[mockUnreviewedPoint]}
+                isFocusMode={true}
+                onAudioThoughtCreated={jest.fn()}
+                sermonId={mockSermonId}
+            />
+        );
+
+        expect(screen.getByTestId('focus-recorder-button')).toBeEnabled();
+        expect(screen.getByTestId('audio-recorder')).toBeEnabled();
+    });
 
     describe('SermonPointPlaceholder disabling', () => {
         it('disables Add Thought and FocusRecorderButton when all point thoughts are locked', () => {
@@ -185,7 +251,7 @@ describe('Column Disabling Logic', () => {
             );
 
             const audioRecorder = screen.getByTestId('audio-recorder');
-            expect(audioRecorder).toHaveAttribute('data-disabled', 'true');
+            expect(audioRecorder).toBeDisabled();
         });
 
         it('does not disable header buttons if there are no points', () => {

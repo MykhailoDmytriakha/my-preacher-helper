@@ -23,6 +23,7 @@ import { AudioRecorder } from "@/components/AudioRecorder";
 import OutlineBoard from "@/components/plan-editor/OutlineBoard";
 import PointNote from "@/components/PointNote";
 import AudioRecorderPortalBridge from "@/components/sermon/AudioRecorderPortalBridge";
+import { useAiUsage } from "@/hooks/useAiUsage";
 import { useConnection } from "@/providers/ConnectionProvider";
 import { composePlanFromScratch } from "@/services/scratch.service";
 import { transcribeThoughtAudio } from "@/services/thought.service";
@@ -407,6 +408,10 @@ export default function ScratchPanel({
 }: ScratchPanelProps) {
   const { t } = useTranslation();
   const { isMagicAvailable } = useConnection();
+  const { aiBlocked, transcriptionBlocked, refresh: refreshAiUsage } = useAiUsage();
+  const transcriptionUnavailableLabel = transcriptionBlocked
+    ? t("settings.usage.transcriptionUsageExhausted")
+    : undefined;
   const [view, setView] = useState<ScratchView>("capture");
   const [capturePortal, setCapturePortal] = useState<HTMLDivElement | null>(null);
   const [isManualCaptureOpen, setIsManualCaptureOpen] = useState(false);
@@ -500,6 +505,7 @@ export default function ScratchPanel({
   const canCompose =
     pooledNotes.length > 0 &&
     isMagicAvailable &&
+    !aiBlocked &&
     !isScratchWritePending &&
     !isComposing &&
     !isApplying &&
@@ -592,6 +598,7 @@ export default function ScratchPanel({
 
   const runVoiceTranscription = useCallback(
     async (audioBlob: Blob) => {
+      if (transcriptionBlocked) return;
       if (isApplyingRef.current) {
         surfaceVoiceApplyRecovery();
         return;
@@ -634,7 +641,7 @@ export default function ScratchPanel({
         setIsVoiceProcessing(false);
       }
     },
-    [addScratchNote, clearComposition, markScratchChanged, replaceStoredVoiceBlob, surfaceVoiceApplyRecovery, t]
+    [addScratchNote, clearComposition, markScratchChanged, replaceStoredVoiceBlob, surfaceVoiceApplyRecovery, t, transcriptionBlocked]
   );
 
   const handleVoiceComplete = useCallback(
@@ -811,6 +818,7 @@ export default function ScratchPanel({
       setComposedOutline(outlineFromScratch);
       setComposeNoticeKey(getComposeNoticeKey(outlineFromScratch));
       setComposeError(null);
+      await refreshAiUsage();
     } catch (error) {
       if (!isLatestRequest()) return;
       const isTimeout =
@@ -919,6 +927,8 @@ export default function ScratchPanel({
     ? t("scratch.board.composePendingWrites")
     : !isMagicAvailable
       ? t("scratch.board.composeOffline")
+      : aiBlocked
+        ? t("settings.usage.aiUsageExhausted")
       : pooledNotes.length === 0
         ? t("scratch.board.composeEmpty")
         : undefined;
@@ -1073,7 +1083,8 @@ export default function ScratchPanel({
           onClearError={handleClearVoiceError}
           hideKeyboardShortcuts
           isReadOnly={isCaptureLocked}
-          isRecorderDisabled={!isMagicAvailable || isCaptureLocked}
+          isRecorderDisabled={!isMagicAvailable || isCaptureLocked || transcriptionBlocked}
+          recorderTitle={transcriptionUnavailableLabel}
           isManualDisabled={isCaptureLocked}
           onOpenCreateModal={() => {
             if (!isCaptureLocked) setIsManualCaptureOpen(true);

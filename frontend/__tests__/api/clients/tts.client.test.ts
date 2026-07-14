@@ -5,7 +5,6 @@ import OpenAI from 'openai';
 import {
   createAudioChunks,
   estimateDuration,
-  generateAllChunksAudio,
   generateChunkAudio,
   getTTSModel,
   splitTextIntoChunks,
@@ -169,61 +168,6 @@ describe('tts client', () => {
         format: 'wav',
       })
     ).rejects.toThrow('Google TTS failed (429): quota exceeded');
-  });
-
-  it('generates all chunk audio in order and emits progress updates', async () => {
-    mockSpeechCreate
-      .mockResolvedValueOnce(createSpeechResponse('chunk-1'))
-      .mockResolvedValueOnce(createSpeechResponse('chunk-2'));
-
-    const onProgress = jest.fn();
-    const blobs = await generateAllChunksAudio(
-      [
-        { text: 'first chunk', sectionId: 'mainPart', createdAt: '2026-02-27T00:00:00.000Z', index: 0 },
-        { text: 'second chunk', sectionId: 'mainPart', createdAt: '2026-02-27T00:00:00.000Z', index: 1 },
-      ],
-      {
-        voice: 'onyx',
-        model: 'gpt-4o-mini-tts',
-      },
-      onProgress
-    );
-
-    expect(blobs).toHaveLength(2);
-    expect(onProgress).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        step: 'generating',
-        percent: 55,
-        currentChunk: 1,
-        totalChunks: 2,
-      })
-    );
-    expect(onProgress).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        step: 'generating',
-        percent: 80,
-        currentChunk: 2,
-        totalChunks: 2,
-      })
-    );
-  });
-
-  it('supports generation without a progress callback', async () => {
-    mockSpeechCreate.mockResolvedValueOnce(createSpeechResponse('single-chunk'));
-
-    const blobs = await generateAllChunksAudio(
-      [
-        { text: 'single chunk', sectionId: 'mainPart', createdAt: '2026-02-27T00:00:00.000Z', index: 0 },
-      ],
-      {
-        voice: 'onyx',
-        model: 'gpt-4o-mini-tts',
-      }
-    );
-
-    expect(blobs).toHaveLength(1);
   });
 
   it('returns a single chunk when text is already within the max size', () => {

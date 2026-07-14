@@ -12,12 +12,26 @@ import type { FirstDayOfWeek } from '@/utils/weekStart';
 // (request.auth.uid == uid) makes reads of a not-yet-existing own doc safe.
 const USERS_COLLECTION = 'users';
 
-// UX / preference fields the client may write to its own settings doc. NEVER
-// id/userId (identity): those are server-managed; the client whitelist keeps the
-// app from ever writing them via the client SDK.
+export interface ModelPreference {
+  preferredProviderId: NonNullable<UserSettings['preferredProviderId']>;
+  preferredModelId: string;
+}
+
+export type FunctionModelPreference = Pick<
+  UserSettings,
+  'preferredTranscription' | 'preferredText' | 'preferredTts'
+>;
+
+// UX / preference fields the client may write to its own settings doc. NEVER add
+// identity fields (`id`, `userId`) or server-managed fields (`paidTier`,
+// `promotion`, `usage`, `role`, `referredBy`): Firestore rules enforce the same boundary.
+// Model fields are preferences only; server resolution validates them against
+// the effective tier allowlist, so writing them never grants model privilege.
 const SETTINGS_WRITABLE_FIELDS = [
   'language', 'email', 'displayName', 'firstDayOfWeek',
   'enablePrepMode', 'enableAudioGeneration', 'enableStructurePreview', 'enableGroups', 'showAppVersion',
+  'preferredProviderId', 'preferredModelId',
+  'preferredTranscription', 'preferredText', 'preferredTts',
 ];
 
 async function getUserSettingsViaClient(userId: string): Promise<UserSettings | null> {
@@ -166,6 +180,34 @@ export async function updateFirstDayOfWeek(
     await updateUserSettingsViaClient(userId, { firstDayOfWeek });
   } catch (error) {
     console.error('Error updating first day of week:', error);
+    throw error;
+  }
+}
+
+/** Persist a text-model preference; entitlement remains server-controlled. */
+export async function updateModelPreference(
+  userId: string,
+  preference: ModelPreference
+): Promise<void> {
+  try {
+    if (!userId) return;
+    await updateUserSettingsViaClient(userId, { ...preference });
+  } catch (error) {
+    console.error('Error updating model preference:', error);
+    throw error;
+  }
+}
+
+/** Persist one or more per-function model preferences; entitlement is still server-controlled. */
+export async function updateFunctionModelPreference(
+  userId: string,
+  preference: FunctionModelPreference
+): Promise<void> {
+  try {
+    if (!userId) return;
+    await updateUserSettingsViaClient(userId, preference);
+  } catch (error) {
+    console.error('Error updating function model preference:', error);
     throw error;
   }
 }

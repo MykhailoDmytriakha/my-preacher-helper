@@ -2,6 +2,7 @@ import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, whe
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { Series } from '@/models/models';
+import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 import { timeOrZero, compareById } from '@/utils/sortHelpers';
 
@@ -138,8 +139,10 @@ export const updateSeries = async (seriesId: string, updates: Partial<Series>): 
 
 export const deleteSeries = async (seriesId: string): Promise<void> => {
   try {
+    const authHeaders = await getAuthenticatedRequestHeaders();
     const response = await fetch(`${API_BASE}/api/series/${seriesId}`, {
       method: 'DELETE',
+      headers: authHeaders,
     });
 
     if (!response.ok) {

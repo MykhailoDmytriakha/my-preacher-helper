@@ -2,6 +2,7 @@ import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, whe
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { Group, GroupFlowItem, GroupMeetingDate } from '@/models/models';
+import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { newClientId } from '@/utils/clientId';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
@@ -221,8 +222,10 @@ export const updateGroup = async (groupId: string, updates: Partial<Group>): Pro
 // (writes into the `series` collection — a cross-collection effect Security Rules
 // can't express on the client).
 export const deleteGroup = async (groupId: string): Promise<void> => {
+  const authHeaders = await getAuthenticatedRequestHeaders();
   const response = await fetch(`${API_BASE}/api/groups/${groupId}`, {
     method: 'DELETE',
+    headers: authHeaders,
   });
 
   if (!response.ok) {

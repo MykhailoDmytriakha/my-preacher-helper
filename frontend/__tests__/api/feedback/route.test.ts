@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import nodemailer from 'nodemailer';
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
 
 // Polyfill Response.json if it doesn't exist in the environment
@@ -21,6 +22,10 @@ jest.mock('@/config/firebaseAdminConfig', () => ({
         }),
     },
 }));
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+    getRequiredAuthenticatedUid: jest.fn(),
+}));
+const mockGetUid = getRequiredAuthenticatedUid as jest.Mock;
 
 describe('api/feedback/route', () => {
     let POST: any;
@@ -40,6 +45,7 @@ describe('api/feedback/route', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        mockGetUid.mockResolvedValue('auth-user-1');
 
         // Setup nodemailer mock
         mockSendMail = jest.fn().mockResolvedValue({ messageId: 'msg-id', response: '250 OK' });
@@ -79,7 +85,7 @@ describe('api/feedback/route', () => {
 
         expect(storedDoc.text).toBe('Test feedback message');
         expect(storedDoc.type).toBe('bug');
-        expect(storedDoc.userId).toBe('user-123');
+        expect(storedDoc.userId).toBe('auth-user-1'); // verified caller, not the body-supplied userId
         expect(storedDoc.imageCount).toBe(2);
         expect(storedDoc.images).toBeUndefined(); // Base64 should NOT be in Firestore
         expect(storedDoc.userAgent).toBe('test-agent');
@@ -115,8 +121,20 @@ describe('api/feedback/route', () => {
         const storedDoc = (mockAdd).mock.calls[0][0];
         expect(storedDoc.text).toBe('Simple feedback');
         expect(storedDoc.type).toBe('other');
-        expect(storedDoc.userId).toBe('anonymous');
+        expect(storedDoc.userId).toBe('auth-user-1'); // identity from token, never body/anonymous
         expect(storedDoc.imageCount).toBeUndefined();
+    });
+
+    test('POST returns 401 when the caller is not authenticated', async () => {
+        mockGetUid.mockResolvedValueOnce(null);
+        const request = new NextRequest('http://localhost/api/feedback', {
+            method: 'POST',
+            body: JSON.stringify({ feedbackText: 'x' }),
+        });
+
+        const response = await POST(request);
+        expect(response.status).toBe(401);
+        expect(mockAdd).not.toHaveBeenCalled();
     });
 
     test('POST returns 400 if feedback text is missing', async () => {

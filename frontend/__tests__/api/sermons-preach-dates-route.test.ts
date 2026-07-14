@@ -18,9 +18,14 @@ jest.mock('next/server', () => ({
   },
 }));
 
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn().mockResolvedValue('user-1'),
+}));
+
 describe('/api/sermons/[id]/preach-dates route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue({ id: 's1', userId: 'user-1' });
   });
 
   describe('POST', () => {
@@ -141,6 +146,7 @@ describe('/api/sermons/[id]/preach-dates route', () => {
     it('returns preach dates list', async () => {
       (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValueOnce({
         id: 's1',
+        userId: 'user-1',
         preachDates: [{ id: 'pd1', date: '2026-02-15' }],
       });
 
@@ -152,7 +158,7 @@ describe('/api/sermons/[id]/preach-dates route', () => {
     });
 
     it('returns empty list when sermon has no preach dates', async () => {
-      (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValueOnce({ id: 's1' });
+      (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValueOnce({ id: 's1', userId: 'user-1' });
 
       const response = await GET({} as any, { params: Promise.resolve({ id: 's1' }) });
       const data = await response.json();

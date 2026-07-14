@@ -208,3 +208,6 @@ describe('groups.service', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 });
+jest.mock('@/utils/authenticatedRequest', () => ({
+  getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
+}));

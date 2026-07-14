@@ -4,6 +4,11 @@ import { createTranscription } from '@clients/openAI.client';
 import { polishTranscription } from '@clients/polishTranscription.structured';
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
 
+const mockVerifyIdToken = jest.fn();
+const mockGetUserEntitlementServerSide = jest.fn();
+const mockAssertTranscriptionUsageAvailable = jest.fn();
+const mockConsumeTranscriptionSeconds = jest.fn();
+
 const RETRYABLE_ERROR_MESSAGE = 'Temporary transcription connection issue. The recording looked valid, but the transcription service connection failed. Please try again.';
 
 jest.mock('@clients/openAI.client', () => ({
@@ -18,6 +23,19 @@ jest.mock('@/utils/server/audioServerUtils', () => ({
   validateAudioDuration: jest.fn(),
 }));
 
+jest.mock('@/config/firebaseAdminConfig', () => ({
+  adminAuth: { verifyIdToken: mockVerifyIdToken },
+}));
+
+jest.mock('@/services/userEntitlement.server', () => ({
+  getUserEntitlementServerSide: mockGetUserEntitlementServerSide,
+}));
+
+jest.mock('@/services/usageLimits.server', () => ({
+  assertTranscriptionUsageAvailable: mockAssertTranscriptionUsageAvailable,
+  consumeTranscriptionSeconds: mockConsumeTranscriptionSeconds,
+}));
+
 jest.mock('next/server', () => ({
   NextResponse: {
     json: jest.fn().mockImplementation((data, options = {}) => ({
@@ -28,10 +46,14 @@ jest.mock('next/server', () => ({
 }));
 
 describe('Studies transcribe route', () => {
-  const buildRequest = (audio: unknown): Request => ({
+  const buildRequest = (
+    audio: unknown,
+    authorization: string | null = 'Bearer valid-token'
+  ): Request => ({
     formData: async () => ({
       get: (key: string) => (key === 'audio' ? audio : null),
     }),
+    headers: new Headers(authorization ? { authorization } : undefined),
   } as unknown as Request);
 
   beforeEach(() => {
@@ -41,6 +63,20 @@ describe('Studies transcribe route', () => {
       duration: 2,
       maxAllowed: 97,
     });
+    mockVerifyIdToken.mockResolvedValue({ uid: 'study-user-1' });
+    mockGetUserEntitlementServerSide.mockResolvedValue({ paidTier: 'free' });
+    mockConsumeTranscriptionSeconds.mockResolvedValue(undefined);
+  });
+
+  it('returns 401 without a bearer token and never reaches a provider', async () => {
+    const response = await studiesTranscribeRoute.POST(
+      buildRequest(new Blob(['audio'], { type: 'audio/webm' }), null)
+    );
+
+    expect(response.status).toBe(401);
+    expect(createTranscription).not.toHaveBeenCalled();
+    expect(polishTranscription).not.toHaveBeenCalled();
+    expect(mockAssertTranscriptionUsageAvailable).not.toHaveBeenCalled();
   });
 
   it('returns polished study transcription when transcription and polish succeed', async () => {
@@ -59,6 +95,18 @@ describe('Studies transcribe route', () => {
     expect(data.success).toBe(true);
     expect(data.polishedText).toBe('Polished study note');
     expect(data.originalText).toBe('Raw study note');
+    expect(createTranscription).toHaveBeenCalledWith(expect.any(Blob), 'study-user-1');
+    expect(mockAssertTranscriptionUsageAvailable).toHaveBeenCalledWith(
+      { paidTier: 'free' },
+      2,
+      expect.any(Date)
+    );
+    expect(mockConsumeTranscriptionSeconds).toHaveBeenCalledWith(
+      'study-user-1',
+      2,
+      expect.any(Date)
+    );
+    expect(polishTranscription).toHaveBeenCalledWith('Raw study note', 'study-user-1');
   });
 
   it('returns retryable 503 when transient transcription errors persist', async () => {

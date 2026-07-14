@@ -23,12 +23,14 @@ const mockSeriesData = {
 jest.mock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
     collection: jest.fn(),
+    batch: jest.fn(),
   },
 }));
 
 const { adminDb } = jest.requireMock('@/config/firebaseAdminConfig') as {
   adminDb: {
     collection: jest.Mock<unknown, unknown[]>;
+    batch: jest.Mock<unknown, unknown[]>;
   };
 };
 
@@ -77,6 +79,49 @@ describe('SeriesRepository', () => {
     repository = new SeriesRepository();
   });
 
+  describe('deleteSermonAndDetachFromAllSeries', () => {
+    it('atomically detaches owned series and deletes the sermon in ONE batch, skipping foreign series', async () => {
+      const logSpy = jest.spyOn(console, 'log').mockImplementation();
+      const batchUpdate = jest.fn();
+      const batchDelete = jest.fn();
+      const batchCommit = jest.fn().mockResolvedValue(undefined);
+      (adminDb.batch as jest.Mock).mockReturnValue({ update: batchUpdate, delete: batchDelete, commit: batchCommit });
+
+      const ownedRef = { id: 'series-owned' };
+      const foreignRef = { id: 'series-foreign' };
+      const sermonRef = { id: 'sermon-1' };
+
+      (mockCollection as jest.Mock).mockImplementation((name: string) => {
+        if (name === 'sermons') {
+          return { doc: jest.fn().mockReturnValue(sermonRef) };
+        }
+        return {
+          where: jest.fn().mockReturnValue({
+            get: jest.fn().mockResolvedValue({
+              docs: [
+                { id: 'series-owned', ref: ownedRef, data: () => ({ ...mockSeriesData, userId: 'user-1', sermonIds: ['sermon-1'], items: [{ type: 'sermon', refId: 'sermon-1' }] }) },
+                { id: 'series-foreign', ref: foreignRef, data: () => ({ ...mockSeriesData, userId: 'attacker', sermonIds: ['sermon-1'], items: [{ type: 'sermon', refId: 'sermon-1' }] }) },
+              ],
+            }),
+          }),
+        };
+      });
+
+      await repository.deleteSermonAndDetachFromAllSeries('sermon-1', 'user-1');
+
+      // Only the owner's series is detached; the foreign-owned series is never touched.
+      expect(batchUpdate).toHaveBeenCalledTimes(1);
+      expect(batchUpdate).toHaveBeenCalledWith(
+        ownedRef,
+        expect.objectContaining({ sermonIds: expect.not.arrayContaining(['sermon-1']) })
+      );
+      // The sermon is deleted in the SAME batch — one atomic commit, all-or-nothing.
+      expect(batchDelete).toHaveBeenCalledWith(sermonRef);
+      expect(batchCommit).toHaveBeenCalledTimes(1);
+      logSpy.mockRestore();
+    });
+  });
+
   describe('removeSermonFromAllSeries', () => {
     it('should return early when no series contain the sermon', async () => {
       const logSpy = jest.spyOn(console, 'log').mockImplementation();
@@ -84,7 +129,7 @@ describe('SeriesRepository', () => {
         get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
       });
 
-      await repository.removeSermonFromAllSeries('sermon-1');
+      await repository.removeSermonFromAllSeries('sermon-1', 'user-1');
 
       expect(mockWhere).toHaveBeenCalledWith('sermonIds', 'array-contains', 'sermon-1');
       expect(mockUpdate).not.toHaveBeenCalled();
@@ -102,7 +147,7 @@ describe('SeriesRepository', () => {
         },
         {
           id: 'series-2',
-          data: () => ({ ...mockSeriesData, sermonIds: ['sermon-1'] }),
+          data: () => ({ ...mockSeriesData, userId: 'other-user', sermonIds: ['sermon-1'] }),
           ref: { update: docUpdate },
         },
       ];
@@ -111,18 +156,14 @@ describe('SeriesRepository', () => {
         get: jest.fn().mockResolvedValue({ empty: false, docs }),
       });
 
-      await repository.removeSermonFromAllSeries('sermon-1');
+      await repository.removeSermonFromAllSeries('sermon-1', 'user-1');
 
       expect(docUpdate).toHaveBeenNthCalledWith(1, expect.objectContaining({
         sermonIds: ['sermon-2'],
         updatedAt: '2024-01-01T12:00:00.000Z',
         seriesKind: 'sermon',
       }));
-      expect(docUpdate).toHaveBeenNthCalledWith(2, expect.objectContaining({
-        sermonIds: [],
-        updatedAt: '2024-01-01T12:00:00.000Z',
-        seriesKind: 'sermon',
-      }));
+      expect(docUpdate).toHaveBeenCalledTimes(1);
       logSpy.mockRestore();
     });
 
@@ -132,7 +173,7 @@ describe('SeriesRepository', () => {
         get: jest.fn().mockRejectedValue(error),
       });
 
-      await expect(repository.removeSermonFromAllSeries('sermon-1')).rejects.toThrow('Firestore error');
+      await expect(repository.removeSermonFromAllSeries('sermon-1', 'user-1')).rejects.toThrow('Firestore error');
     });
   });
 
@@ -199,7 +240,7 @@ describe('SeriesRepository', () => {
         ],
       });
 
-      await repository.removeGroupFromAllSeries('group-1');
+      await repository.removeGroupFromAllSeries('group-1', 'user-1');
       // no candidate update should run
       expect(mockUpdate).not.toHaveBeenCalled();
     });
@@ -221,10 +262,19 @@ describe('SeriesRepository', () => {
             }),
             ref: { update: refUpdate },
           },
+          {
+            id: 'foreign-series',
+            data: () => ({
+              ...mockSeriesData,
+              userId: 'other-user',
+              items: [{ id: 'foreign-item', type: 'group', refId: 'group-1', position: 1 }],
+            }),
+            ref: { update: refUpdate },
+          },
         ],
       });
 
-      await repository.removeGroupFromAllSeries('group-1');
+      await repository.removeGroupFromAllSeries('group-1', 'user-1');
 
       expect(refUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -234,6 +284,7 @@ describe('SeriesRepository', () => {
           updatedAt: '2024-01-01T12:00:00.000Z',
         })
       );
+      expect(refUpdate).toHaveBeenCalledTimes(1);
     });
   });
 });

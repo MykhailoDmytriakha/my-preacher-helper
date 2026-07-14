@@ -26,6 +26,7 @@ export const AudioRecorder = ({
   maxDuration = getAudioRecordingDuration(),
   onError,
   disabled = false,
+  title,
   className = "",
   onRetry,
   retryCount = 0,
@@ -107,6 +108,7 @@ export const AudioRecorder = ({
           isButtonDisabled={isButtonDisabled}
           onStart={startRecording}
           t={t}
+          title={title}
           separate={splitSeparate}
         />
       ) : (
@@ -127,6 +129,7 @@ export const AudioRecorder = ({
             onStart={startRecording}
             onStop={stopRecording}
             t={t}
+            title={title}
           />
 
           <RecordingActionButtons

@@ -1,3 +1,5 @@
+import type { ProviderId } from '@/api/clients/ai/providerId';
+
 export interface Thought {
   id: string;
   text: string;
@@ -381,24 +383,42 @@ export interface UserSettings {
   showAppVersion?: boolean; // Show deployed build version in Settings
   email?: string;
   displayName?: string;
+  /** Preference only; the server validates it against the effective tier allowlist. Not a privilege grant. */
+  preferredProviderId?: ProviderId;
+  preferredModelId?: string;
+  /** Per-function preferences are client-writable; server policy remains authoritative. */
+  preferredTranscription?: { providerId: ProviderId; modelId: string };
+  preferredText?: { providerId: ProviderId; modelId: string };
+  preferredTts?: { providerId: ProviderId; modelId: string };
 }
 
-export interface User {
-  id: string;               // ID пользователя из Firebase Auth
-  email?: string;           // Электронная почта пользователя
-  displayName?: string;     // Отображаемое имя пользователя
-  createdAt: string;        // Дата создания аккаунта
-  lastLogin: string;        // Дата последнего входа
-  isAnonymous: boolean;     // Является ли пользователь гостем
-  isPremium: boolean;       // Имеет ли пользователь премиум-подписку
-  premiumExpiration?: string; // Дата окончания премиум-подписки
-  usageStats: {             // Статистика использования
-    sermonsCreated: number;  // Количество созданных проповедей
-    thoughtsCreated: number; // Количество созданных мыслей
-    lastActivity: string;    // Дата последней активности
-    aiRequestsMade: number;  // Количество использованных AI запросов
-    tagsCreated: number;     // Количество созданных тегов
-  }
+/**
+ * Server-managed monetization levels stored as `paidTier` on `users/{uid}`.
+ * Append new paid tiers in ascending entitlement order.
+ */
+export const TIER_VALUES = ['free', 'tier1', 'tier2', 'tier3', 'tier4'] as const;
+export type Tier = typeof TIER_VALUES[number];
+
+/**
+ * Entitlement and admin-info fields stored at the top level of `users/{uid}`.
+ * Monetization and referral fields are server-managed; `lastSeenAt` is not.
+ */
+export interface UserEntitlement {
+  paidTier: Tier;
+  /** Server-managed referral attribution. Clients must never write this field. */
+  referredBy?: string;
+  /** Client-supplied ISO-8601 activity hint for low-stakes admin display only. */
+  lastSeenAt?: string;
+  promotion?: {
+    tier: Tier;
+    expiresAt: string;
+  };
+  usage?: {
+    aiUsed: number;
+    transcriptionSecondsUsed: number;
+    /** ISO-8601 UTC anchor for the calendar month containing this usage. */
+    periodStart: string;
+  };
 }
 
 /**

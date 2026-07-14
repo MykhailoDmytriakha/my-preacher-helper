@@ -109,6 +109,7 @@ describe('series.service', () => {
 
     expect(mockFetch).toHaveBeenCalledWith(expect.stringContaining('/api/series/series-1'), {
       method: 'DELETE',
+      headers: { Authorization: 'Bearer test-token' },
     });
   });
 
@@ -124,3 +125,6 @@ describe('series.service', () => {
     expect((service as Record<string, unknown>).reorderSeriesItems).toBeUndefined();
   });
 });
+jest.mock('@/utils/authenticatedRequest', () => ({
+  getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
+}));

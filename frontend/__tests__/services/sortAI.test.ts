@@ -14,6 +14,10 @@ jest.mock('sonner', () => ({
   },
 }));
 
+jest.mock('@/utils/authenticatedRequest', () => ({
+  getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
+}));
+
 describe('sortItemsWithAI', () => {
   beforeEach(() => {
     fetchMock.resetMocks();
@@ -140,4 +144,4 @@ describe('sortItemsWithAI', () => {
     // Assert
     expect(result).toEqual([]);
   });
-}); 
+});

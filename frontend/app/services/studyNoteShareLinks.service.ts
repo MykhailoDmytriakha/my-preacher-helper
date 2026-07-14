@@ -1,9 +1,14 @@
 import { StudyNoteShareLink } from '@/models/models';
+import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
 export async function getStudyNoteShareLinks(userId: string): Promise<StudyNoteShareLink[]> {
-  const res = await fetch(`${API_BASE}/api/studies/share-links?userId=${userId}`, { cache: 'no-store' });
+  const authHeaders = await getAuthenticatedRequestHeaders();
+  const res = await fetch(`${API_BASE}/api/studies/share-links?userId=${userId}`, {
+    cache: 'no-store',
+    headers: authHeaders,
+  });
   if (!res.ok) {
     console.error('getStudyNoteShareLinks: failed', res.status);
     throw new Error('Failed to fetch share links');
@@ -12,9 +17,10 @@ export async function getStudyNoteShareLinks(userId: string): Promise<StudyNoteS
 }
 
 export async function createStudyNoteShareLink(userId: string, noteId: string): Promise<StudyNoteShareLink> {
+  const authHeaders = await getAuthenticatedRequestHeaders();
   const res = await fetch(`${API_BASE}/api/studies/share-links`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
     body: JSON.stringify({ userId, noteId }),
   });
   if (!res.ok) {
@@ -25,8 +31,10 @@ export async function createStudyNoteShareLink(userId: string, noteId: string): 
 }
 
 export async function deleteStudyNoteShareLink(userId: string, linkId: string): Promise<void> {
+  const authHeaders = await getAuthenticatedRequestHeaders();
   const res = await fetch(`${API_BASE}/api/studies/share-links/${linkId}?userId=${userId}`, {
     method: 'DELETE',
+    headers: authHeaders,
   });
   if (!res.ok) {
     console.error('deleteStudyNoteShareLink: failed', res.status);

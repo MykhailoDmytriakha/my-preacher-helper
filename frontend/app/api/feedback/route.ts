@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
 
 // Define types for better code safety
@@ -194,9 +195,17 @@ export async function POST(request: NextRequest) {
   console.log('Received new feedback submission request');
 
   try {
+    // Auth: the feedback button lives only in the authenticated nav, so the endpoint must
+    // require a token too — a hidden button never protects an open endpoint. Identity comes
+    // from the verified token, not a spoofable body field.
+    const uid = await getRequiredAuthenticatedUid(request);
+    if (!uid) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     // Parse the request body
     const body = await request.json();
-    const { feedbackText, feedbackType, images, userId = 'anonymous', userEmail = '' } = body;
+    const { feedbackText, feedbackType, images, userEmail = '' } = body;
 
     // Validate images: must be an array of strings, max 3 items
     const validatedImages: string[] = Array.isArray(images)
@@ -205,7 +214,7 @@ export async function POST(request: NextRequest) {
 
     console.log('Parsed feedback request:', {
       type: feedbackType,
-      userId,
+      userId: uid,
       userEmail,
       textLength: feedbackText?.length || 0,
       imagesCount: validatedImages.length
@@ -224,7 +233,7 @@ export async function POST(request: NextRequest) {
     const feedbackData: FeedbackData = {
       text: feedbackText,
       type: feedbackType || 'other',
-      userId,
+      userId: uid,
       userEmail,
       createdAt: new Date().toISOString(),
       status: 'new', // Can be used for tracking feedback status: new, reviewed, addressed, etc.

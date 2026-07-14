@@ -2,6 +2,7 @@ import 'openai/shims/node';
 
 import { NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { Sermon, Insights } from '@/models/models';
 import { generateSermonDirections } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
@@ -11,6 +12,11 @@ export async function POST(request: Request) {
   console.log("Directions route: Received POST request for generating possible directions");
 
   try {
+    const uid = await getRequiredAuthenticatedUid(request);
+    if (!uid) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const sermonId = searchParams.get("sermonId");
 
@@ -25,12 +31,15 @@ export async function POST(request: Request) {
       console.error(`Directions route: Sermon with id ${sermonId} not found`);
       return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
     }
+    if (sermon.userId !== uid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     // Get current insights to preserve other sections
     const currentInsights = sermon.insights || { topics: [], relatedVerses: [], possibleDirections: [] };
 
     // Generate possible directions using OpenAI
-    const possibleDirections = await generateSermonDirections(sermon);
+    const possibleDirections = await generateSermonDirections(sermon, uid);
     if (!possibleDirections || possibleDirections.length === 0) {
       console.error("Directions route: Failed to generate possible directions");
       return NextResponse.json({ error: "Failed to generate possible directions" }, { status: 500 });
@@ -52,4 +61,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to generate possible directions' }, { status: 500 });
   }
 }
-

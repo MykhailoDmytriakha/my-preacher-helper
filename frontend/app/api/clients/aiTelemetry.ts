@@ -4,6 +4,7 @@ import { logger } from "./openAIHelpers";
 import { detectDominantLanguage, PromptBlueprint } from "./promptBuilder";
 
 export type StructuredTelemetryStatus = "success" | "refusal" | "error" | "invalid_response";
+export type TelemetryProvider = string;
 export type TelemetryQuality = "unreviewed" | "good" | "bad" | "needs_review";
 export type TelemetryResolutionStatus = "open" | "fixed" | "wont_fix";
 
@@ -37,7 +38,7 @@ export interface StructuredTelemetryEvent {
   correlationId: string;
   timestamp: string;
   joinPoint: "callWithStructuredOutput";
-  provider: "OPENAI" | "GEMINI";
+  provider: TelemetryProvider;
   model: string;
   formatName: string;
   promptName: string;
@@ -68,7 +69,7 @@ export interface StructuredTelemetryEvent {
 }
 
 export interface StructuredTelemetryEventInput {
-  provider: "OPENAI" | "GEMINI";
+  provider: TelemetryProvider;
   model: string;
   formatName: string;
   promptBlueprint: PromptBlueprint;

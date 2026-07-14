@@ -4,6 +4,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { Sermon, Thought } from '@/models/models';
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
@@ -22,6 +23,10 @@ import { sermonsRepository } from '@repositories/sermons.repository';
 const ERROR_MESSAGES = {
   SERMON_ID_AND_THOUGHT_REQUIRED: 'sermonId and thought are required',
 } as const;
+
+const isUsageExhaustedError = (error: unknown): error is Error =>
+  error instanceof Error
+  && (error as Error & { code?: string }).code === 'USAGE_EXHAUSTED';
 
 function isCompleteThought(thought: Thought): boolean {
   return Boolean(thought.id && thought.text && thought.tags && thought.date);
@@ -71,13 +76,20 @@ function normalizeGenerationResult(params: {
   };
 }
 
-async function handleManualPost(request: Request) {
+async function handleManualPost(request: Request, uid: string) {
   try {
     console.log("Thoughts route: Processing manual thought creation.");
     const body = await request.json();
     const { sermonId, thought } = body as { sermonId?: string; thought?: Record<string, unknown> };
     if (!sermonId || !thought) {
       return NextResponse.json({ error: ERROR_MESSAGES.SERMON_ID_AND_THOUGHT_REQUIRED }, { status: 400 });
+    }
+    const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon | null;
+    if (!sermon) {
+      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+    }
+    if (sermon.userId !== uid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     console.log("Thoughts route: Manual thought:", thought);
     console.log("Will not apply AI to manual thought");
@@ -97,7 +109,7 @@ async function handleManualPost(request: Request) {
   }
 }
 
-async function handleAutoPost(request: Request) {
+async function handleAutoPost(request: Request, uid: string) {
   const tracker = createApiPerformanceTracker({
     route: "/api/thoughts",
     method: "POST",
@@ -142,6 +154,19 @@ async function handleAutoPost(request: Request) {
       return errorResponse('Invalid audio format', 400);
     }
 
+    const sermon = await tracker.timePhase(
+      "fetch_sermon",
+      () => sermonsRepository.fetchSermonById(sermonId) as Promise<Sermon | null>,
+      { sermonId }
+    );
+    if (!sermon) {
+      console.error("Thoughts route: Sermon not found.");
+      return errorResponse('Sermon not found', 404);
+    }
+    if (sermon.userId !== uid) {
+      return errorResponse('Forbidden', 403);
+    }
+
     tracker.addContext({
       audioSizeBytes: audioFile.size,
       audioType: audioFile.type || null,
@@ -164,24 +189,32 @@ async function handleAutoPost(request: Request) {
       return errorResponse(durationValidation.error || 'Audio file is too long', 400);
     }
 
-    const sermonPromise = tracker.timePhase(
-      "fetch_sermon",
-      () => sermonsRepository.fetchSermonById(sermonId) as Promise<Sermon | null>,
-      { sermonId }
+    const usageSeconds = Math.ceil(
+      durationValidation.duration ?? durationValidation.maxAllowed ?? 0
     );
-    const customTagsPromise = sermonPromise.then(async (sermon) => (
-      tracker.timePhase(
-        "fetch_custom_tags",
-        () => (sermon ? getCustomTags(sermon.userId) : Promise.resolve([])),
-        { sermonFound: Boolean(sermon) }
-      )
-    ));
+    const [
+      { getUserEntitlementServerSide },
+      { assertTranscriptionUsageAvailable, consumeTranscriptionSeconds },
+    ] = await Promise.all([
+      import('@/services/userEntitlement.server'),
+      import('@/services/usageLimits.server'),
+    ]);
+    const usageNow = new Date();
+    const entitlement = await getUserEntitlementServerSide(uid);
+    assertTranscriptionUsageAvailable(entitlement, usageSeconds, usageNow);
+
+    const customTagsPromise = tracker.timePhase(
+      "fetch_custom_tags",
+      () => getCustomTags(uid),
+      { sermonFound: true }
+    );
 
     let transcriptionText: string;
     try {
       transcriptionText = await tracker.timePhase(
         "transcribe_audio",
         () => createTranscriptionWithRetry(audioFile as Blob, {
+          userId: uid,
           onRetry: ({ attempt, maxAttempts }) => {
             tracker.addContext({
               transcriptionRetryAttempt: attempt,
@@ -197,8 +230,12 @@ async function handleAutoPost(request: Request) {
       tracker.addContext({
         transcriptionLength: transcriptionText.length,
       });
+      await consumeTranscriptionSeconds(uid, usageSeconds, usageNow);
     } catch (transcriptionError) {
       console.error("Thoughts route: Transcription failed:", transcriptionError);
+      if (isUsageExhaustedError(transcriptionError)) {
+        return errorResponse(transcriptionError.message, 429);
+      }
       const mappedError = mapTranscriptionError(transcriptionError);
       if (mappedError) {
         return errorResponse(mappedError.error, mappedError.status, {
@@ -209,11 +246,6 @@ async function handleAutoPost(request: Request) {
       return errorResponse('Failed to transcribe audio. Please try again.', 500);
     }
 
-    const sermon = await sermonPromise;
-    if (!sermon) {
-      console.error("Thoughts route: Sermon not found.");
-      return errorResponse('Sermon not found', 404);
-    }
     const customTags = await customTagsPromise;
     const availableTags = sanitizeAvailableThoughtTags(customTags.map(t => t.name));
     tracker.addContext({
@@ -223,7 +255,7 @@ async function handleAutoPost(request: Request) {
 
     const generationResult = await tracker.timePhase(
       "generate_thought",
-      () => generateThoughtStructured(transcriptionText, sermon, availableTags),
+      () => generateThoughtStructured(transcriptionText, sermon, availableTags, { userId: uid }),
       {
         availableTagsCount: availableTags.length,
       }
@@ -280,6 +312,9 @@ async function handleAutoPost(request: Request) {
     return NextResponse.json(thought);
   } catch (error) {
     console.error('Thoughts route: Transcription error:', error);
+    if (isUsageExhaustedError(error)) {
+      return errorResponse(error.message, 429);
+    }
     tracker.emit({
       status: "error",
       httpStatus: 500,
@@ -299,21 +334,38 @@ export async function POST(request: Request) {
   // TODO: check length to limit time, no more that defined in constant
   console.log("Thoughts route: Received POST request.");
 
+  const uid = await getRequiredAuthenticatedUid(request);
+  if (!uid) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const url = new URL(request.url);
   if (url.searchParams.get('manual') === 'true') {
-    return handleManualPost(request);
+    return handleManualPost(request, uid);
   }
-  return handleAutoPost(request);
+  return handleAutoPost(request, uid);
 }
 
 // Added DELETE method to remove a thought from a sermon
 export async function DELETE(request: Request) {
   console.log("Thoughts route: Received DELETE request.");
   try {
+    const uid = await getRequiredAuthenticatedUid(request);
+    if (!uid) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { sermonId, thought } = body;
     if (!sermonId || !thought) {
       return NextResponse.json({ error: ERROR_MESSAGES.SERMON_ID_AND_THOUGHT_REQUIRED }, { status: 400 });
+    }
+    const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon | null;
+    if (!sermon) {
+      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+    }
+    if (sermon.userId !== uid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     console.log("Thoughts route: Deleting thought:", thought);
 
@@ -332,6 +384,11 @@ export async function DELETE(request: Request) {
 export async function PUT(request: Request) {
   console.log("Thoughts route: Received PUT request for updating a thought.");
   try {
+    const uid = await getRequiredAuthenticatedUid(request);
+    if (!uid) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
 
     const { sermonId, thought: updatedThoughtNew } = body;
@@ -349,6 +406,9 @@ export async function PUT(request: Request) {
     if (!sermon) {
       console.error("Thoughts route: Sermon not found");
       return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
+    }
+    if (sermon.userId !== uid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     const oldThought = sermon.thoughts.find((th) => th.id === updatedThoughtNew.id);
@@ -415,6 +475,9 @@ export async function PUT(request: Request) {
         if (!sermonData) {
           throw new Error("Sermon data is empty");
         }
+        if (sermonData.userId !== uid) {
+          throw new Error('Forbidden');
+        }
 
         // Get current thoughts array and replace the matching thought in-place
         const currentThoughts = sermonData.thoughts || [];
@@ -433,6 +496,9 @@ export async function PUT(request: Request) {
       return NextResponse.json(sanitizedMergedThought);
     } catch (error) {
       console.error("Thoughts route: Error updating thought in transaction:", error);
+      if (error instanceof Error && error.message === 'Forbidden') {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
       return NextResponse.json({ error: "Failed to update thought." }, { status: 500 });
     }
   } catch (error) {

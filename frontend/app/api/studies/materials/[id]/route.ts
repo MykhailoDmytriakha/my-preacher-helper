@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { studiesRepository } from '@repositories/studies.repository';
 
 // Error messages
@@ -7,18 +8,14 @@ const ERROR_MESSAGES = {
   USER_NOT_AUTHENTICATED: 'User not authenticated',
 } as const;
 
-function getUserId(request: Request): string | null {
-  return new URL(request.url).searchParams.get('userId');
-}
-
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const uid = await getRequiredAuthenticatedUid(request);
+  if (!uid) return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
   const { id } = await params;
-  const userId = getUserId(request);
-  if (!userId) return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
   try {
     const material = await studiesRepository.getMaterial(id);
     if (!material) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    if (material.userId !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (material.userId !== uid) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     return NextResponse.json(material);
   } catch (error) {
     console.error(`GET /api/studies/materials/${id} error`, error);
@@ -27,18 +24,18 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 }
 
 export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const uid = await getRequiredAuthenticatedUid(request);
+  if (!uid) return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
   const { id } = await params;
-  const userId = getUserId(request);
-  if (!userId) return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
   try {
-    const updates = await request.json();
     const existing = await studiesRepository.getMaterial(id);
     if (!existing) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    if (existing.userId !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    if (updates.userId && updates.userId !== userId) {
+    if (existing.userId !== uid) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const updates = await request.json();
+    if (updates.userId && updates.userId !== uid) {
       return NextResponse.json({ error: 'Cannot change userId' }, { status: 400 });
     }
-    const updated = await studiesRepository.updateMaterial(id, { ...updates, userId });
+    const updated = await studiesRepository.updateMaterial(id, { ...updates, userId: uid });
     return NextResponse.json(updated);
   } catch (error) {
     console.error(`PUT /api/studies/materials/${id} error`, error);
@@ -47,13 +44,13 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const uid = await getRequiredAuthenticatedUid(request);
+  if (!uid) return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
   const { id } = await params;
-  const userId = getUserId(request);
-  if (!userId) return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
   try {
     const existing = await studiesRepository.getMaterial(id);
     if (!existing) return NextResponse.json({ success: true });
-    if (existing.userId !== userId) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (existing.userId !== uid) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
     await studiesRepository.deleteMaterial(id);
     return NextResponse.json({ success: true });

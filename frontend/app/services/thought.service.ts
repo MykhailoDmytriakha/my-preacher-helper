@@ -7,6 +7,7 @@ import {
   updateThoughtViaClient,
 } from '@/services/sermons.client';
 import { apiClient } from '@/utils/apiClient';
+import { getTranscriptionAuthorizationHeaders } from '@/utils/transcriptionRetryClient';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const AUDIO_RETRY_DELAY_MS = process.env.NODE_ENV === 'test' ? 0 : 1200;
@@ -68,10 +69,13 @@ export const createAudioThought = async (
       `transcribeAudio: Sending audio blob and sermon id ${sermonId} to ${API_BASE}/api/thoughts.`
     );
 
+    const headers = await getTranscriptionAuthorizationHeaders();
+
     const response = await apiClient(`${API_BASE}/api/thoughts`, {
       method: "POST",
       body: formData,
-      category: 'audio'
+      category: 'audio',
+      headers,
     });
 
     console.log("transcribeAudio: Received response:", response);
@@ -162,11 +166,13 @@ export const transcribeThoughtAudio = async (audioBlob: Blob): Promise<ThoughtTr
   try {
     const formData = new FormData();
     formData.append("audio", audioBlob, "recording.webm");
+    const headers = await getTranscriptionAuthorizationHeaders();
 
     const response = await apiClient(`${API_BASE}/api/thoughts/transcribe`, {
       method: "POST",
       body: formData,
-      category: 'audio'
+      category: 'audio',
+      headers,
     });
 
     let data: { success?: boolean; polishedText?: string; originalText?: string; warning?: string; error?: string } | null = null;

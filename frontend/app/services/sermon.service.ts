@@ -6,6 +6,7 @@ import {
   updateSermonViaClient,
 } from '@/services/sermons.client';
 import { apiClient } from '@/utils/apiClient';
+import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -28,7 +29,8 @@ export const createSermon = async (sermon: Omit<Sermon, 'id'> & { id?: string })
   // seriesId in the body. All sermon READS and own-doc EDITS
   // (structure/outline/thoughts/preachDates/update) are on the client.
   try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const authHeaders = await getAuthenticatedRequestHeaders();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...authHeaders };
     const response = await apiClient(`${API_BASE}/api/sermons`, {
       method: 'POST',
       headers,
@@ -48,8 +50,10 @@ export const createSermon = async (sermon: Omit<Sermon, 'id'> & { id?: string })
 };
 
 export async function deleteSermon(sermonId: string): Promise<void> {
+  const authHeaders = await getAuthenticatedRequestHeaders();
   const response = await apiClient(`${API_BASE}/api/sermons/${sermonId}`, {
     method: 'DELETE',
+    headers: authHeaders,
     category: 'crud'
   });
   if (!response.ok) {

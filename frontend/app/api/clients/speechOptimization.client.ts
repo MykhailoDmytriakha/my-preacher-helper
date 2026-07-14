@@ -9,7 +9,7 @@
 import { SpeechOptimizationResponseSchema } from "@/config/schemas/zod";
 
 import { buildSimplePromptBlueprint } from "./promptBuilder";
-import { callWithStructuredOutput, getCurrentAIProvider } from "./structuredOutput";
+import { callWithStructuredOutput } from "./structuredOutput";
 
 import type { Sermon } from '@/models/models';
 import type {
@@ -17,8 +17,6 @@ import type {
     SpeechOptimizationResult,
     SermonSection
 } from '@/types/audioGeneration.types';
-
-const OPTIMIZATION_MODEL = process.env.OPENAI_OPTIMIZATION_MODEL || 'gpt-4o-mini';
 
 // ============================================================================
 // System Prompt
@@ -51,15 +49,10 @@ Requirements:
 export async function optimizeTextForSpeech(
     rawText: string,
     sermon: Sermon,
-    options: SpeechOptimizationOptions
+    options: SpeechOptimizationOptions,
+    userId: string = sermon.userId
 ): Promise<SpeechOptimizationResult> {
     const userPrompt = buildOptimizationPrompt(rawText, options);
-
-    // OPENAI_OPTIMIZATION_MODEL is an OpenAI model id. When AI_MODEL_TO_USE selects a
-    // non-OpenAI provider (e.g. Gemini), the structured-output client is that provider's
-    // client, and handing it an OpenAI model name fails with a 404 ("model not found").
-    // Only force the override on OpenAI; otherwise fall through to the provider's model.
-    const optimizationModel = getCurrentAIProvider() === 'OPENAI' ? OPTIMIZATION_MODEL : undefined;
 
     const promptBlueprint = buildSimplePromptBlueprint({
         promptName: "speech_optimization",
@@ -82,7 +75,6 @@ export async function optimizeTextForSpeech(
     if (options.previousContext) {
         console.log('PREVIOUS CONTEXT (Snippet):', options.previousContext.slice(-200));
     }
-    console.log('Model:', optimizationModel ?? '(provider default)');
     console.log('USER PROMPT:', userPrompt);
     console.log('-------------------------------------\n');
 
@@ -92,7 +84,8 @@ export async function optimizeTextForSpeech(
         SpeechOptimizationResponseSchema,
         {
             formatName: "speech_optimization",
-            model: optimizationModel,
+            userId,
+            workload: 'structured.speechOptimization',
             promptBlueprint,
             logContext: {
                 sermonTitle: options.sermonTitle,

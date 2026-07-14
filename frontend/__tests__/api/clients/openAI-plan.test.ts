@@ -47,6 +47,12 @@ describe('generatePlanForSection', () => {
     expect(result.plan.introduction.outline).toBe('Introduction content');
     expect(result.plan.main.outline).toBe('Main content');
     expect(result.plan.conclusion.outline).toBe('Conclusion content');
+    expect(getStructuredOutputMock().callWithStructuredOutput).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(String),
+      expect.anything(),
+      expect.objectContaining({ userId: mockSermon.userId })
+    );
   });
 
   it('returns empty plan when structured output fails', async () => {

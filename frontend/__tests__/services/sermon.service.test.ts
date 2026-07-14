@@ -64,7 +64,7 @@ describe('sermon.service', () => {
 
     expect(mockApiClient).toHaveBeenCalledWith(`${API_BASE}/api/sermons`, expect.objectContaining({
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-token' },
       body: JSON.stringify(sermon),
       category: 'crud',
     }));
@@ -82,3 +82,6 @@ describe('sermon.service', () => {
     }));
   });
 });
+jest.mock('@/utils/authenticatedRequest', () => ({
+  getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
+}));

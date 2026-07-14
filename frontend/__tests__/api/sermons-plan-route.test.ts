@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 
 import { generatePlanForSection, generatePlanPointContent } from '@/api/clients/openAI.client';
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { GET, PUT } from '@/api/sermons/[id]/plan/route';
 import { sermonsRepository } from '@/api/repositories/sermons.repository';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
@@ -8,6 +9,9 @@ import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrd
 // Mock dependencies
 jest.mock('@/api/repositories/sermons.repository');
 jest.mock('@/api/clients/openAI.client');
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn(),
+}));
 jest.mock('@/utils/sermonVisualOrder');
 jest.mock('next/server', () => ({
   NextResponse: {
@@ -49,6 +53,7 @@ describe('Sermon Plan Route', () => {
   beforeEach(() => {
     // Reset all mocks
     jest.clearAllMocks();
+    (getRequiredAuthenticatedUid as jest.Mock).mockResolvedValue('user-123');
     
     // Suppress console output during tests
     console.log = jest.fn();
@@ -112,6 +117,15 @@ describe('Sermon Plan Route', () => {
   });
 
   describe('GET /api/sermons/:id/plan (without section)', () => {
+    it('returns 401 before loading the sermon when the token is missing', async () => {
+      (getRequiredAuthenticatedUid as jest.Mock).mockResolvedValueOnce(null);
+
+      const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
+
+      expect(response.status).toBe(401);
+      expect(sermonsRepository.fetchSermonById).not.toHaveBeenCalled();
+    });
+
     it('should return 400 when section parameter is missing', async () => {
       const response = await GET(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       const responseData = await response.json();
@@ -123,6 +137,21 @@ describe('Sermon Plan Route', () => {
   });
 
   describe('GET /api/sermons/:id/plan?section=<section>', () => {
+    it('returns 403 without invoking AI for a non-owner', async () => {
+      (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValueOnce({
+        ...mockSermon,
+        userId: 'other-user',
+      });
+      const request = {
+        nextUrl: { searchParams: { get: jest.fn((key: string) => key === 'section' ? 'introduction' : null) } },
+      } as unknown as NextRequest;
+
+      const response = await GET(request, { params: Promise.resolve({ id: 'test-sermon-123' }) });
+
+      expect(response.status).toBe(403);
+      expect(generatePlanForSection).not.toHaveBeenCalled();
+    });
+
     it('should generate plan for specific section', async () => {
       // Reset the mock for this specific test
       (generatePlanForSection as jest.Mock).mockClear();
@@ -152,7 +181,7 @@ describe('Sermon Plan Route', () => {
 
       // Verify only one section was generated
       expect(generatePlanForSection).toHaveBeenCalledTimes(1);
-      expect(generatePlanForSection).toHaveBeenCalledWith(mockSermon, 'introduction');
+      expect(generatePlanForSection).toHaveBeenCalledWith(mockSermon, 'introduction', 'memory', 'user-123');
 
       // Verify response structure
       expect(responseData).toHaveProperty('introduction');
@@ -309,7 +338,8 @@ describe('Sermon Plan Route', () => {
           section: 'introduction',
         },
         'memory',
-        undefined
+        undefined,
+        mockSermon.userId
       );
       expect(responseData).toEqual({ content: 'Outline content' });
     });
@@ -350,7 +380,8 @@ describe('Sermon Plan Route', () => {
           section: 'introduction',
         },
         'memory',
-        undefined
+        undefined,
+        mockSermon.userId
       );
       expect(responseData).toEqual({ content: 'Outline content' });
     });
@@ -447,7 +478,8 @@ describe('Sermon Plan Route', () => {
           section: 'introduction',
         },
         'memory',
-        [{ id: 'sp-1', text: 'Inner point', position: 2500 }]
+        [{ id: 'sp-1', text: 'Inner point', position: 2500 }],
+        sermonWithSubPoints.userId
       );
     });
 

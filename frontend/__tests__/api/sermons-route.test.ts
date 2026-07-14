@@ -36,6 +36,10 @@ jest.mock('@/api/repositories/series.repository', () => ({
   },
 }));
 
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn().mockResolvedValue('user123'),
+}));
+
 // Import the handlers module directly to mock
 import * as sermonsRouteModule from 'app/api/sermons/route';
 
@@ -119,7 +123,6 @@ describe('Sermons API Route', () => {
     test('should return 400 when required fields are missing', async () => {
       // Test scenarios for each required field
       const testCases = [
-        { ...{ title: 'Test', verse: 'John 3:16', date: '2023-01-01' }, missing: 'userId' },
         { ...{ userId: 'user123', verse: 'John 3:16', date: '2023-01-01' }, missing: 'title' },
         { ...{ userId: 'user123', title: 'Test', date: '2023-01-01' }, missing: 'verse' },
         { ...{ userId: 'user123', title: 'Test', verse: 'John 3:16' }, missing: 'date' }

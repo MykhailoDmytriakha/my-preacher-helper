@@ -15,6 +15,21 @@ jest.mock('@clients/firestore.client', () => ({
   getCustomTags: jest.fn(),
 }));
 
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn((request: Request) => Promise.resolve(
+    request.headers?.get('authorization') ? 'user-1' : null
+  )),
+}));
+
+jest.mock('@/services/userEntitlement.server', () => ({
+  getUserEntitlementServerSide: jest.fn().mockResolvedValue({ paidTier: 'free' }),
+}));
+
+jest.mock('@/services/usageLimits.server', () => ({
+  assertTranscriptionUsageAvailable: jest.fn(),
+  consumeTranscriptionSeconds: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('@repositories/sermons.repository', () => ({
   sermonsRepository: {
     fetchSermonById: jest.fn(),
@@ -65,10 +80,11 @@ jest.mock('uuid', () => ({
 }));
 
 // Helper to create a mock request
-function createMockRequest(formData: FormData) {
+function createMockRequest(formData: FormData, authenticated = true) {
   return {
     formData: () => Promise.resolve(formData),
     url: 'http://localhost/api/thoughts',
+    headers: new Headers(authenticated ? { authorization: 'Bearer valid-token' } : undefined),
     json: () => Promise.resolve({}), // Default mock
   } as unknown as Request;
 }
@@ -104,6 +120,36 @@ describe('Thoughts API POST', () => {
     (firestoreClient.getCustomTags as jest.Mock).mockResolvedValue([]);
     (sermonsRepo.sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue({ userId: 'user-1', thoughts: [] });
     (openAIClient.createTranscription as jest.Mock).mockResolvedValue(mockTranscription);
+  });
+
+  it('returns 401 without a bearer token and never reaches transcription', async () => {
+    const formData = new FormData();
+    formData.append('audio', mockAudioBlob);
+    formData.append('sermonId', mockSermonId);
+    const openAIClient = await import('@clients/openAI.client');
+
+    const response = await POST(createMockRequest(formData, false));
+
+    expect(response.status).toBe(401);
+    expect(openAIClient.createTranscription).not.toHaveBeenCalled();
+    expect(generateThoughtStructuredMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 before transcription when the sermon belongs to another user', async () => {
+    const formData = new FormData();
+    formData.append('audio', mockAudioBlob);
+    formData.append('sermonId', mockSermonId);
+    const openAIClient = await import('@clients/openAI.client');
+    sermonsRepoMock.sermonsRepository.fetchSermonById.mockResolvedValueOnce({
+      userId: 'victim-user',
+      thoughts: [],
+    });
+
+    const response = await POST(createMockRequest(formData));
+
+    expect(response.status).toBe(403);
+    expect(openAIClient.createTranscription).not.toHaveBeenCalled();
+    expect(generateThoughtStructuredMock).not.toHaveBeenCalled();
   });
 
   it('should fall back to raw transcription when valid structure generation fails', async () => {

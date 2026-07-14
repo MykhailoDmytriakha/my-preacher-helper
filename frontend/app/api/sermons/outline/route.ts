@@ -1,16 +1,29 @@
 import { NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 
 // GET /api/sermons/outline?sermonId=<id>
 export async function GET(request: Request) {
   try {
+    const uid = await getRequiredAuthenticatedUid(request);
+    if (!uid) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const sermonId = searchParams.get("sermonId");
     
     if (!sermonId) {
       return NextResponse.json({ error: "sermonId is required" }, { status: 400 });
+    }
+    const sermon = await sermonsRepository.fetchSermonById(sermonId);
+    if (!sermon) {
+      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+    }
+    if (sermon.userId !== uid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     
     const outline = await sermonsRepository.fetchSermonOutlineBySermonId(sermonId);
@@ -26,11 +39,23 @@ export async function GET(request: Request) {
 // PUT /api/sermons/outline?sermonId=<id>
 export async function PUT(request: Request) {
   try {
+    const uid = await getRequiredAuthenticatedUid(request);
+    if (!uid) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const sermonId = searchParams.get("sermonId");
     
     if (!sermonId) {
       return NextResponse.json({ error: "sermonId is required" }, { status: 400 });
+    }
+    const sermon = await sermonsRepository.fetchSermonById(sermonId);
+    if (!sermon) {
+      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+    }
+    if (sermon.userId !== uid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     
     const { outline } = await request.json();
@@ -52,4 +77,4 @@ export async function PUT(request: Request) {
     console.error("Error updating sermon outline:", error);
     return NextResponse.json({ error: 'Failed to update sermon outline' }, { status: 500 });
   }
-} 
+}

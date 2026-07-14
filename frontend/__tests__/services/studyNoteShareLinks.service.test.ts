@@ -41,7 +41,10 @@ describe('studyNoteShareLinks.service', () => {
 
     const result = await getStudyNoteShareLinks('user-1');
 
-    expect(mockFetch).toHaveBeenCalledWith('/api/studies/share-links?userId=user-1', { cache: 'no-store' });
+    expect(mockFetch).toHaveBeenCalledWith('/api/studies/share-links?userId=user-1', {
+      cache: 'no-store',
+      headers: { Authorization: 'Bearer test-token' },
+    });
     expect(result).toEqual(links);
   });
 
@@ -74,7 +77,7 @@ describe('studyNoteShareLinks.service', () => {
 
     expect(mockFetch).toHaveBeenCalledWith('/api/studies/share-links', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-token' },
       body: JSON.stringify({ userId: 'user-1', noteId: 'note-1' }),
     });
     expect(result).toEqual(link);
@@ -97,6 +100,7 @@ describe('studyNoteShareLinks.service', () => {
 
     expect(mockFetch).toHaveBeenCalledWith('/api/studies/share-links/link-1?userId=user-1', {
       method: 'DELETE',
+      headers: { Authorization: 'Bearer test-token' },
     });
   });
 
@@ -110,3 +114,6 @@ describe('studyNoteShareLinks.service', () => {
     consoleSpy.mockRestore();
   });
 });
+jest.mock('@/utils/authenticatedRequest', () => ({
+  getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
+}));

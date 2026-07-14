@@ -2,6 +2,7 @@ import { addDoc, collection, getDocs, query, updateDoc, where } from 'firebase/f
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { Tag } from '@/models/models';
+import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { isStructureTag } from '@/utils/structureTags';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
@@ -65,8 +66,10 @@ export async function addCustomTag(tag: Tag) {
 
 export async function removeCustomTag(userId: string, tagName: string) {
   try {
+    const authHeaders = await getAuthenticatedRequestHeaders();
     const res = await fetch(`${API_BASE}/api/tags?userId=${userId}&tagName=${encodeURIComponent(tagName)}`, {
       method: 'DELETE',
+      headers: authHeaders,
     });
     if (!res.ok) {
       throw new Error('Failed to remove custom tag');

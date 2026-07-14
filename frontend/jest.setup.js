@@ -5,6 +5,20 @@ import 'jest-environment-jsdom';
 import fetchMock from 'jest-fetch-mock';
 import React from 'react';
 
+// UI tests that are not about entitlements should remain focused on their own
+// interaction. The production hook is covered through the authenticated
+// entitlement fetch test; individual quota UI tests override this default.
+jest.mock('@/hooks/useAiUsage', () => ({
+  useAiUsage: () => ({
+    aiRemaining: 1,
+    aiBlocked: false,
+    transcriptionRemaining: 1,
+    transcriptionBlocked: false,
+    loading: false,
+    refresh: jest.fn(),
+  }),
+}));
+
 // Set dummy API keys for OpenAI client initialization during tests
 process.env.OPENAI_API_KEY = 'test_key_openai';
 process.env.GEMINI_API_KEY = 'test_key_gemini';
@@ -366,7 +380,8 @@ const createMockUser = (isAnonymous = false) => ({
   metadata: {
     creationTime: new Date().toISOString()
   },
-  isAnonymous
+  isAnonymous,
+  getIdToken: jest.fn().mockResolvedValue('test-id-token')
 });
 
 const mockUser = createMockUser();

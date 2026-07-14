@@ -25,6 +25,8 @@ interface UseColumnOutlineStateOptions {
   onOutlinePointDeleted?: (pointId: string, columnId: string) => void;
   onSubPointDeleted?: (outlinePointId: string, subPointId: string, columnId: string) => void;
   onAddOutlinePoint?: (sectionId: string, index: number, text: string) => Promise<void>;
+  onAiSuccess?: () => Promise<void> | void;
+  aiBlocked?: boolean;
   scheduleTask?: (callback: () => void | Promise<void>, delayMs: number) => ReturnType<typeof setTimeout>;
   clearScheduledTask?: (taskId: ReturnType<typeof setTimeout>) => void;
   t: Translate;
@@ -39,6 +41,8 @@ export function useColumnOutlineState({
   onOutlinePointDeleted,
   onSubPointDeleted,
   onAddOutlinePoint,
+  onAiSuccess,
+  aiBlocked = false,
   scheduleTask = setTimeout,
   clearScheduledTask = clearTimeout,
   t,
@@ -287,7 +291,7 @@ export function useColumnOutlineState({
   };
 
   const handleGenerateSermonPoints = async () => {
-    if (!sermonId) return;
+    if (aiBlocked || !sermonId) return;
 
     const sectionName = id === "main" ? "main" : id;
 
@@ -311,6 +315,7 @@ export function useColumnOutlineState({
       const updatedPoints = [...localSermonPoints, ...newPoints];
       setLocalSermonPoints(updatedPoints);
       triggerSaveOutline(updatedPoints);
+      await onAiSuccess?.();
 
       toast.success(
         t("structure.outlinePointsGenerated", {

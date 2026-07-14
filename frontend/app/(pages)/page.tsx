@@ -2,7 +2,7 @@
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import { GoogleAuthProvider, signInWithCredential, signInWithEmailAndPassword } from 'firebase/auth';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import FeatureCards from '@/components/landing/FeatureCards';
@@ -12,6 +12,7 @@ import LoginOptions from '@/components/landing/LoginOptions';
 import PublicRoute from '@/components/PublicRoute';
 import '@locales/i18n';
 import { auth, signInWithGoogle } from '@/services/firebaseAuth.service';
+import { capturePendingReferral } from '@/services/referral.client';
 import { CheckIcon, DocumentIcon, LightBulbIcon, MicrophoneIcon } from '@components/Icons';
 
 // Public Web OAuth client ID for this Firebase project (not a secret). When set,
@@ -23,6 +24,10 @@ export default function Home() {
   const router = useRouter();
   const { t } = useTranslation();
   const [loadingProvider, setLoadingProvider] = useState<'google' | 'test' | null>(null);
+
+  useEffect(() => {
+    capturePendingReferral(window.location.search, auth.currentUser?.uid);
+  }, []);
 
   // Legacy popup flow — kept as the fallback when no client ID is configured.
   const handleLogin = async () => {

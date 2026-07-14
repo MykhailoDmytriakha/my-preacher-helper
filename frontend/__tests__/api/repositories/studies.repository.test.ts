@@ -144,21 +144,21 @@ describe('StudiesRepository', () => {
     );
   });
 
-  it('removes note references from materials before deleting the note', async () => {
+  it("removes note references from the owner's materials before deleting the note", async () => {
     materialWhereGet.mockResolvedValue(
       snapshotFromDocs([
         {
           ref: { id: 'mat-1' },
-          data: () => ({ noteIds: ['note-1', 'note-2'] }),
+          data: () => ({ userId: 'user-1', noteIds: ['note-1', 'note-2'] }),
         },
         {
           ref: { id: 'mat-2' },
-          data: () => ({ noteIds: ['note-2'] }),
+          data: () => ({ userId: 'user-1', noteIds: ['note-2'] }),
         },
       ])
     );
 
-    await repository.deleteNote('note-2');
+    await repository.deleteNote('note-2', 'user-1');
 
     expect(createdBatches).toHaveLength(1);
     expect(createdBatches[0].update).toHaveBeenNthCalledWith(1, { id: 'mat-1' }, { noteIds: ['note-1'] });
@@ -167,10 +167,26 @@ describe('StudiesRepository', () => {
     expect(getNoteRef('note-2').delete).toHaveBeenCalledTimes(1);
   });
 
+  it('never mutates a foreign-owned material when the owner deletes a note', async () => {
+    materialWhereGet.mockResolvedValue(
+      snapshotFromDocs([
+        { ref: { id: 'mine' }, data: () => ({ userId: 'user-1', noteIds: ['note-2'] }) },
+        { ref: { id: 'foreign' }, data: () => ({ userId: 'attacker', noteIds: ['note-2'] }) },
+      ])
+    );
+
+    await repository.deleteNote('note-2', 'user-1');
+
+    // Only the owner's material is cleaned; a foreign-owned material is left untouched.
+    expect(createdBatches[0].update).toHaveBeenCalledTimes(1);
+    expect(createdBatches[0].update).toHaveBeenCalledWith({ id: 'mine' }, { noteIds: [] });
+    expect(getNoteRef('note-2').delete).toHaveBeenCalledTimes(1);
+  });
+
   it('deletes the note directly when no materials reference it', async () => {
     materialWhereGet.mockResolvedValue(snapshotFromDocs([]));
 
-    await repository.deleteNote('note-3');
+    await repository.deleteNote('note-3', 'user-1');
 
     expect(createdBatches).toHaveLength(0);
     expect(getNoteRef('note-3').delete).toHaveBeenCalledTimes(1);
@@ -207,6 +223,8 @@ describe('StudiesRepository', () => {
   it('creates a material with deduped note ids and syncs note references', async () => {
     const dateSpy = jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2024-02-03T12:00:00.000Z');
     materialAdd.mockResolvedValue({ id: 'mat-new' });
+    getNoteRef('note-1').get.mockResolvedValue({ exists: true, id: 'note-1', data: () => ({ userId: 'user-1' }) });
+    getNoteRef('note-2').get.mockResolvedValue({ exists: true, id: 'note-2', data: () => ({ userId: 'user-1' }) });
 
     const result = await repository.createMaterial({
       userId: 'user-1',
@@ -243,6 +261,31 @@ describe('StudiesRepository', () => {
     dateSpy.mockRestore();
   });
 
+  it('drops note ids the owner does not own (prevents cross-user note poisoning)', async () => {
+    const dateSpy = jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2024-02-03T13:00:00.000Z');
+    materialAdd.mockResolvedValue({ id: 'mat-x' });
+    getNoteRef('own-note').get.mockResolvedValue({ exists: true, id: 'own-note', data: () => ({ userId: 'user-1' }) });
+    getNoteRef('victim-note').get.mockResolvedValue({ exists: true, id: 'victim-note', data: () => ({ userId: 'victim' }) });
+
+    const result = await repository.createMaterial({
+      userId: 'user-1',
+      title: 'Attack',
+      type: 'study',
+      noteIds: ['own-note', 'victim-note'],
+    });
+
+    // The victim's note is filtered out: the material never references it, and only the
+    // owner's own note is written to.
+    expect(result.noteIds).toEqual(['own-note']);
+    expect(createdBatches[0].update).toHaveBeenCalledTimes(1);
+    expect(createdBatches[0].update).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'own-note' }),
+      { materialIds: { __op: 'arrayUnion', value: 'mat-x' } }
+    );
+
+    dateSpy.mockRestore();
+  });
+
   it('creates a material with empty note ids without starting a batch', async () => {
     const dateSpy = jest.spyOn(Date.prototype, 'toISOString').mockReturnValue('2024-02-04T12:00:00.000Z');
     materialAdd.mockResolvedValue({ id: 'mat-empty' });
@@ -274,6 +317,10 @@ describe('StudiesRepository', () => {
         updatedAt: '2024-01-01T00:00:00.000Z',
       }),
     });
+
+    getNoteRef('note-1').get.mockResolvedValue({ exists: true, id: 'note-1', data: () => ({ userId: 'user-1' }) });
+    getNoteRef('note-2').get.mockResolvedValue({ exists: true, id: 'note-2', data: () => ({ userId: 'user-1' }) });
+    getNoteRef('note-3').get.mockResolvedValue({ exists: true, id: 'note-3', data: () => ({ userId: 'user-1' }) });
 
     const result = await repository.updateMaterial('mat-1', {
       title: 'Updated material',
@@ -352,6 +399,9 @@ describe('StudiesRepository', () => {
       }),
     });
 
+    getNoteRef('note-1').get.mockResolvedValue({ exists: true, id: 'note-1', data: () => ({ userId: 'user-1' }) });
+    getNoteRef('note-2').get.mockResolvedValue({ exists: true, id: 'note-2', data: () => ({ userId: 'user-1' }) });
+
     await repository.deleteMaterial('mat-1');
 
     expect(getMaterialRef('mat-1').delete).toHaveBeenCalledTimes(1);
@@ -365,6 +415,32 @@ describe('StudiesRepository', () => {
       2,
       expect.objectContaining({ id: 'note-2' }),
       { materialIds: { __op: 'arrayRemove', value: 'mat-1' } }
+    );
+  });
+
+  it('never writes to a foreign note when deleting a legacy material that lists one', async () => {
+    getMaterialRef('mat-legacy').get.mockResolvedValue({
+      exists: true,
+      id: 'mat-legacy',
+      data: () => ({
+        userId: 'user-1',
+        title: 'Legacy',
+        type: 'study',
+        noteIds: ['note-1', 'victim-note'],
+        createdAt: '2024-01-01T00:00:00.000Z',
+        updatedAt: '2024-01-01T00:00:00.000Z',
+      }),
+    });
+    getNoteRef('note-1').get.mockResolvedValue({ exists: true, id: 'note-1', data: () => ({ userId: 'user-1' }) });
+    getNoteRef('victim-note').get.mockResolvedValue({ exists: true, id: 'victim-note', data: () => ({ userId: 'victim' }) });
+
+    await repository.deleteMaterial('mat-legacy');
+
+    // Only the owner's own note ref is cleaned; the victim's note is never written to.
+    expect(createdBatches[0].update).toHaveBeenCalledTimes(1);
+    expect(createdBatches[0].update).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'note-1' }),
+      { materialIds: { __op: 'arrayRemove', value: 'mat-legacy' } }
     );
   });
 

@@ -23,7 +23,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const note = await studiesRepository.getNote(shareLink.noteId);
-    if (!note) {
+    // Re-validate cross-document ownership: the note must belong to the share link's owner.
+    // A forged/legacy link whose noteId points at another user's note must never expose it.
+    if (!note || note.userId !== shareLink.ownerId) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 

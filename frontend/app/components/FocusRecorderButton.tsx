@@ -21,6 +21,7 @@ interface FocusRecorderButtonProps {
   maxDuration?: number; // in seconds, default 90
   onError?: (error: string) => void;
   disabled?: boolean;
+  title?: string;
   size?: 'normal' | 'small'; // Size variant for different contexts
   onRetry?: () => void;
   retryCount?: number;
@@ -307,6 +308,7 @@ export const FocusRecorderButton = ({
   maxDuration = getAudioRecordingDuration(),
   onError,
   disabled = false,
+  title,
   size = 'normal',
   onRetry,
   retryCount = 0,
@@ -719,7 +721,7 @@ export const FocusRecorderButton = ({
         className={`relative ${sizeConfig.buttonSize} rounded-full transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed ${MAIN_BUTTON_STATE_STYLES[buttonState]
           }`}
         aria-label={mainButtonLabel}
-        title={mainButtonLabel}
+        title={title ?? mainButtonLabel}
       >
         {/* Circular progress indicator */}
         <ProgressIndicator buttonState={buttonState} progressPercentage={progressPercentage} />

@@ -3,6 +3,8 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import React from 'react';
 
 import { AuthProvider, useAuth } from '@/providers/AuthProvider';
+import { recordLastSeen } from '@/services/lastSeen.client';
+import { claimPendingReferral } from '@/services/referral.client';
 
 
 // Mock Firebase auth
@@ -12,6 +14,12 @@ jest.mock('firebase/auth', () => ({
 
 jest.mock('@/services/firebaseAuth.service', () => ({
   auth: {},
+}));
+jest.mock('@/services/referral.client', () => ({
+  claimPendingReferral: jest.fn(() => Promise.resolve()),
+}));
+jest.mock('@/services/lastSeen.client', () => ({
+  recordLastSeen: jest.fn(),
 }));
 
 // Mock localStorage
@@ -38,6 +46,8 @@ function TestComponent() {
 }
 
 const mockOnAuthStateChanged = onAuthStateChanged as jest.MockedFunction<typeof onAuthStateChanged>;
+const mockClaimPendingReferral = claimPendingReferral as jest.MockedFunction<typeof claimPendingReferral>;
+const mockRecordLastSeen = recordLastSeen as jest.MockedFunction<typeof recordLastSeen>;
 
 describe('AuthProvider', () => {
   let authStateCallback: ((user: User | null) => void) | null = null;
@@ -97,6 +107,8 @@ describe('AuthProvider', () => {
       expect(screen.getByTestId('user')).toHaveTextContent('user-present');
       expect(screen.getByTestId('authenticated')).toHaveTextContent('authenticated');
     });
+    expect(mockClaimPendingReferral).toHaveBeenCalledWith(mockUser);
+    expect(mockRecordLastSeen).toHaveBeenCalledWith('test-uid');
   });
 
   it('should handle user logout', async () => {
@@ -117,6 +129,8 @@ describe('AuthProvider', () => {
       expect(screen.getByTestId('loading')).toHaveTextContent('not-loading');
       expect(screen.getByTestId('user')).toHaveTextContent('no-user');
     });
+    expect(mockClaimPendingReferral).not.toHaveBeenCalled();
+    expect(mockRecordLastSeen).not.toHaveBeenCalled();
   });
 
   it('treats an anonymous (guest) Firebase user as authenticated', async () => {

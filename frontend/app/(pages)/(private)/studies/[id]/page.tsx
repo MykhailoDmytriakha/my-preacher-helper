@@ -10,11 +10,13 @@ import { toast } from 'sonner';
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
+import { useAiUsage } from '@/hooks/useAiUsage';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useRouteId } from '@/hooks/useRouteId';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { ScriptureReference, StudyNote } from '@/models/models';
+import { auth } from '@/services/firebaseAuth.service';
 import { deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
@@ -135,7 +137,10 @@ function useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router }: any) {
                     console.error('Error deleting note', e);
                 }
                 try {
-                    const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || ''}/api/studies/share-links?userId=${uid}`);
+                    const token = await auth.currentUser?.getIdToken();
+                    const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || ''}/api/studies/share-links?userId=${uid}`, {
+                        headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    });
                     if (res.ok) {
                         const links = await res.json();
                         await deleteStudyNoteShareLinkByNoteId(uid, noteId, links);
@@ -235,6 +240,7 @@ function useNoteAIAssistant({
     setScriptureRefs: (refs: ScriptureReference[] | ((prev: ScriptureReference[]) => ScriptureReference[])) => void; setTags: (tags: string[] | ((prev: string[]) => string[])) => void;
     t: ReturnType<typeof useTranslation>['t'];
 }) {
+    const { aiBlocked, transcriptionBlocked, refresh: refreshAiUsage } = useAiUsage();
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
     // Voice recovery: keep the recording alive so a failed transcription never loses the thought.
@@ -247,6 +253,7 @@ function useNoteAIAssistant({
     const [pendingAnalysisResult, setPendingAnalysisResult] = useState<AnalysisResultData | null>(null);
 
     const handleAIAnalyze = async (analysisType: 'all' | 'title' | 'tags' | 'scriptureRefs' = 'all') => {
+        if (aiBlocked) return;
         if (!content.trim()) {
             toast.error(t('studiesWorkspace.aiAnalyze.emptyContent') || 'Please enter note content');
             return;
@@ -254,10 +261,19 @@ function useNoteAIAssistant({
 
         setIsAnalyzing(true);
         try {
+            const token = await auth.currentUser?.getIdToken();
             const response = await fetch('/api/studies/analyze', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content, existingTags: availableTags, analysisType }),
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                },
+                body: JSON.stringify({
+                    content,
+                    existingTags: availableTags,
+                    analysisType,
+                    studyId: noteId,
+                }),
             });
             const result = await response.json();
 
@@ -279,6 +295,7 @@ function useNoteAIAssistant({
             } else {
                 toast.info(t('studiesWorkspace.aiAnalyze.noResults') || 'No useful suggestions found for this content.');
             }
+            await refreshAiUsage();
 
         } catch {
             toast.error(t('studiesWorkspace.aiAnalyze.error') || 'Failed to analyze');
@@ -314,6 +331,7 @@ function useNoteAIAssistant({
             const result = await transcribeAudioWithRetry(audioBlob, { endpoint: '/api/studies/transcribe' });
             const newText = result.polishedText || result.originalText;
             if (newText) setContent((prev: string) => (prev ? `${prev}\n\n${newText}` : newText));
+            await refreshAiUsage();
             // Success — the thought is now saved as text; drop the safety copy + persisted draft.
             storedVoiceBlobRef.current = null;
             setVoiceError(null);
@@ -351,7 +369,7 @@ function useNoteAIAssistant({
         } finally {
             setIsVoiceProcessing(false);
         }
-    }, [setContent, t, noteId]);
+    }, [refreshAiUsage, setContent, t, noteId]);
 
     const handleVoiceRecordingComplete = useCallback((audioBlob: Blob) => {
         setVoiceRetryCount(0);
@@ -388,7 +406,7 @@ function useNoteAIAssistant({
     }, []);
 
     return {
-        isAnalyzing, isVoiceProcessing, handleAIAnalyze, handleVoiceRecordingComplete,
+        isAnalyzing, isVoiceProcessing, aiBlocked, transcriptionBlocked, handleAIAnalyze, handleVoiceRecordingComplete,
         voiceError, voiceRetryCount, voiceMaxRetries: VOICE_MAX_RETRIES, handleRetryVoice, handleClearVoiceError,
         resendVoiceBlob,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
@@ -653,7 +671,7 @@ export default function StudyNoteEditorPage() {
 
     // AI assistant hook
     const {
-        isAnalyzing, isVoiceProcessing, handleAIAnalyze, handleVoiceRecordingComplete,
+        isAnalyzing, isVoiceProcessing, aiBlocked, transcriptionBlocked, handleAIAnalyze, handleVoiceRecordingComplete,
         voiceError, voiceRetryCount, voiceMaxRetries, handleRetryVoice, handleClearVoiceError,
         resendVoiceBlob,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
@@ -752,8 +770,8 @@ export default function StudyNoteEditorPage() {
                                 <button
                                     type="button"
                                     onClick={() => setIsAIPopoverOpen(!isAIPopoverOpen)}
-                                    disabled={isAnalyzing || !content.trim()}
-                                    title={t('studiesWorkspace.aiAnalyze.button')}
+                                    disabled={isAnalyzing || !content.trim() || aiBlocked}
+                                    title={aiBlocked ? t('settings.usage.aiUsageExhausted') : t('studiesWorkspace.aiAnalyze.button')}
                                     className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg hover:from-purple-600 hover:to-indigo-600 hover:scale-105 disabled:opacity-50 transition-all border border-purple-400 dark:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-2 dark:focus:ring-offset-gray-900 relative z-20"
                                 >
                                     <SparklesIcon className={`h-6 w-6 ${isAnalyzing ? 'animate-spin' : ''}`} />
@@ -842,6 +860,8 @@ export default function StudyNoteEditorPage() {
                                 <FocusRecorderButton
                                     onRecordingComplete={handleVoiceRecordingComplete}
                                     isProcessing={isVoiceProcessing}
+                                    disabled={transcriptionBlocked}
+                                    title={transcriptionBlocked ? t('settings.usage.transcriptionUsageExhausted') : undefined}
                                     onError={(err: unknown) => toast.error(String(err) || 'Error')}
                                     transcriptionError={voiceError}
                                     onRetry={handleRetryVoice}
@@ -872,8 +892,8 @@ export default function StudyNoteEditorPage() {
                                 <button
                                     type="button"
                                     onClick={() => handleAIAnalyze('scriptureRefs')}
-                                    disabled={isAnalyzing || !content.trim()}
-                                    title={t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
+                                    disabled={isAnalyzing || !content.trim() || aiBlocked}
+                                    title={aiBlocked ? t('settings.usage.aiUsageExhausted') : t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
                                     className="hidden group-hover/refs:flex items-center justify-center p-1.5 rounded-lg text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
                                 >
                                     <SparklesIcon className="h-5 w-5" />
@@ -957,8 +977,8 @@ export default function StudyNoteEditorPage() {
                                 <button
                                     type="button"
                                     onClick={() => handleAIAnalyze('tags')}
-                                    disabled={isAnalyzing || !content.trim()}
-                                    title={t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
+                                    disabled={isAnalyzing || !content.trim() || aiBlocked}
+                                    title={aiBlocked ? t('settings.usage.aiUsageExhausted') : t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
                                     className="hidden group-hover/tags:flex items-center justify-center p-1.5 rounded-lg text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
                                 >
                                     <SparklesIcon className="h-5 w-5" />

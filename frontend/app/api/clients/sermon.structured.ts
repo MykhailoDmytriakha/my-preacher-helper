@@ -60,7 +60,10 @@ const COMPOSE_SECTION_KEYS: ComposeSectionKey[] = ['introduction', 'main', 'conc
  * @param sermon The sermon to analyze
  * @returns Insights object or null on error
  */
-export async function generateSermonInsightsStructured(sermon: Sermon): Promise<Insights | null> {
+export async function generateSermonInsightsStructured(
+    sermon: Sermon,
+    userId: string = sermon.userId
+): Promise<Insights | null> {
     const sermonContent = extractSermonContent(sermon);
     const userMessage = createInsightsUserMessage(sermon, sermonContent);
     const promptBlueprint = buildSimplePromptBlueprint({
@@ -85,6 +88,7 @@ export async function generateSermonInsightsStructured(sermon: Sermon): Promise<
         InsightsResponseSchema,
         {
             formatName: "sermon_insights",
+            userId,
             promptBlueprint,
             logContext: {
                 sermonId: sermon.id,
@@ -107,7 +111,10 @@ export async function generateSermonInsightsStructured(sermon: Sermon): Promise<
  * @param sermon The sermon to analyze
  * @returns Array of topic strings
  */
-export async function generateSermonTopicsStructured(sermon: Sermon): Promise<string[]> {
+export async function generateSermonTopicsStructured(
+    sermon: Sermon,
+    userId: string = sermon.userId
+): Promise<string[]> {
     const sermonContent = extractSermonContent(sermon);
     const userMessage = createTopicsUserMessage(sermon, sermonContent);
     const promptBlueprint = buildSimplePromptBlueprint({
@@ -132,6 +139,7 @@ export async function generateSermonTopicsStructured(sermon: Sermon): Promise<st
         TopicsResponseSchema,
         {
             formatName: "sermon_topics",
+            userId,
             promptBlueprint,
             logContext: {
                 sermonId: sermon.id,
@@ -154,7 +162,10 @@ export async function generateSermonTopicsStructured(sermon: Sermon): Promise<st
  * @param sermon The sermon to analyze
  * @returns Array of verse objects with reference and relevance
  */
-export async function generateSermonVersesStructured(sermon: Sermon): Promise<VerseWithRelevance[]> {
+export async function generateSermonVersesStructured(
+    sermon: Sermon,
+    userId: string = sermon.userId
+): Promise<VerseWithRelevance[]> {
     const sermonContent = extractSermonContent(sermon);
     const userMessage = createVersesUserMessage(sermon, sermonContent);
     const promptBlueprint = buildSimplePromptBlueprint({
@@ -179,6 +190,7 @@ export async function generateSermonVersesStructured(sermon: Sermon): Promise<Ve
         VersesResponseSchema,
         {
             formatName: "sermon_verses",
+            userId,
             promptBlueprint,
             logContext: {
                 sermonId: sermon.id,
@@ -201,7 +213,10 @@ export async function generateSermonVersesStructured(sermon: Sermon): Promise<Ve
  * @param sermon The sermon to analyze
  * @returns SectionHints object or null on error
  */
-export async function generateSectionHintsStructured(sermon: Sermon): Promise<SectionHints | null> {
+export async function generateSectionHintsStructured(
+    sermon: Sermon,
+    userId: string = sermon.userId
+): Promise<SectionHints | null> {
     const sermonContent = extractSermonContent(sermon);
     const userMessage = createSectionHintsUserMessage(sermon, sermonContent);
     const promptBlueprint = buildSimplePromptBlueprint({
@@ -226,6 +241,7 @@ export async function generateSectionHintsStructured(sermon: Sermon): Promise<Se
         SectionHintsResponseSchema,
         {
             formatName: "section_hints",
+            userId,
             promptBlueprint,
             logContext: {
                 sermonId: sermon.id,
@@ -251,7 +267,8 @@ export async function generateSectionHintsStructured(sermon: Sermon): Promise<Se
  */
 export async function generateSermonPointsStructured(
     sermon: Sermon,
-    section: string
+    section: string,
+    userId: string = sermon.userId
 ): Promise<{ outlinePoints: SermonPoint[]; success: boolean }> {
     const sectionContent = extractSectionContent(sermon, section);
     const hasNonLatinChars = /[^\u0000-\u007F]/.test(sermon.title + sermon.verse);
@@ -319,6 +336,7 @@ Keep the outline points in the ${hasNonLatinChars ? 'same non-English' : 'Englis
         SermonPointsResponseSchema,
         {
             formatName: "sermon_points",
+            userId,
             promptBlueprint,
             logContext: {
                 sermonId: sermon.id,
@@ -554,7 +572,8 @@ function findUnknownScratchIds(
  */
 export async function composePlanFromScratchStructured(
     sermon: Sermon,
-    existingOutline?: SermonOutline
+    existingOutline?: SermonOutline,
+    userId: string = sermon.userId
 ): Promise<{ outline: ComposedPlanOutline; success: boolean }> {
     const scratch = sermon.scratch ?? [];
     const outlineToAugment = existingOutline ?? sermon.outline;
@@ -645,6 +664,7 @@ Place each scratch note into the existing outline when it fits, or create a new 
         ComposePlanResponseSchema,
         {
             formatName: "compose_plan_from_scratch",
+            userId,
             promptBlueprint,
             logContext: {
                 sermonId: sermon.id,
@@ -679,7 +699,10 @@ Place each scratch note into the existing outline when it fits, or create a new 
  * @param sermon The sermon to generate brainstorm suggestion for
  * @returns A single brainstorm suggestion or null on error
  */
-export async function generateBrainstormSuggestionStructured(sermon: Sermon): Promise<BrainstormSuggestion | null> {
+export async function generateBrainstormSuggestionStructured(
+    sermon: Sermon,
+    userId: string = sermon.userId
+): Promise<BrainstormSuggestion | null> {
     const sermonContent = extractSermonContent(sermon);
     const userMessage = createBrainstormUserMessage(sermon, sermonContent);
     const promptBlueprint = buildSimplePromptBlueprint({
@@ -704,6 +727,7 @@ export async function generateBrainstormSuggestionStructured(sermon: Sermon): Pr
         BrainstormSuggestionSchema,
         {
             formatName: "brainstorm_suggestion",
+            userId,
             promptBlueprint,
             logContext: {
                 sermonId: sermon.id,

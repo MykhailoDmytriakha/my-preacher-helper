@@ -57,11 +57,11 @@ export class SeriesRepository {
   }
 
   /**
-   * Removes a sermon ID from all series that contain it
+   * Removes a sermon ID from the owner's series that contain it.
    * This is called when a sermon is deleted to maintain referential integrity
    */
-  async removeSermonFromAllSeries(sermonId: string): Promise<void> {
-    console.log(`Firestore: removing sermon ${sermonId} from all series`);
+  async removeSermonFromAllSeries(sermonId: string, ownerUid: string): Promise<void> {
+    console.log(`Firestore: removing sermon ${sermonId} from owner ${ownerUid}'s series`);
 
     try {
       // Find all series that contain this sermon
@@ -77,6 +77,9 @@ export class SeriesRepository {
       // Update each series to remove the sermon ID
       const updatePromises = seriesSnapshot.docs.map(async (doc) => {
         const series = this.hydrateSeries({ id: doc.id, ...doc.data() } as Series);
+        if (series.userId !== ownerUid) {
+          return;
+        }
         const nextItems = removeSeriesItemByRef(series.items || [], { type: 'sermon', refId: sermonId });
         const nextSermonIds = deriveSermonIdsFromItems(nextItems);
 
@@ -99,13 +102,48 @@ export class SeriesRepository {
     }
   }
 
-  async removeGroupFromAllSeries(groupId: string): Promise<void> {
-    console.log(`Firestore: removing group ${groupId} from all series`);
+  /**
+   * Atomically deletes a sermon AND detaches it from every one of the owner's series in a
+   * SINGLE write batch — all-or-nothing. Either everything commits or nothing does, so a
+   * delete can never leave a series pointing at a non-existent sermon (the previous flow
+   * deleted the sermon first and swallowed a failed cleanup, returning 200 with dangling
+   * refs). Foreign-owned series are never touched.
+   */
+  async deleteSermonAndDetachFromAllSeries(sermonId: string, ownerUid: string): Promise<void> {
+    const seriesSnapshot = await adminDb.collection(this.collection)
+      .where('sermonIds', 'array-contains', sermonId)
+      .get();
+
+    const batch = adminDb.batch();
+
+    seriesSnapshot.docs.forEach((doc) => {
+      const series = this.hydrateSeries({ id: doc.id, ...doc.data() } as Series);
+      if (series.userId !== ownerUid) {
+        return; // never mutate a foreign-owned series
+      }
+      const nextItems = removeSeriesItemByRef(series.items || [], { type: 'sermon', refId: sermonId });
+      batch.update(doc.ref, {
+        items: nextItems,
+        sermonIds: deriveSermonIdsFromItems(nextItems),
+        seriesKind: inferSeriesKind(nextItems),
+        updatedAt: new Date().toISOString(),
+      });
+    });
+
+    batch.delete(adminDb.collection('sermons').doc(sermonId));
+
+    // One commit: series detach + sermon delete land together, or not at all.
+    await batch.commit();
+  }
+
+  async removeGroupFromAllSeries(groupId: string, ownerUid: string): Promise<void> {
+    console.log(`Firestore: removing group ${groupId} from owner ${ownerUid}'s series`);
 
     try {
       const snapshot = await adminDb.collection(this.collection).get();
       const candidates = snapshot.docs
         .map((doc) => ({ id: doc.id, data: this.hydrateSeries({ id: doc.id, ...doc.data() } as Series), ref: doc.ref }))
+        .filter((entry) => entry.data.userId === ownerUid)
         .filter((entry) => (entry.data.items || []).some((item) => item.type === 'group' && item.refId === groupId));
 
       if (candidates.length === 0) {

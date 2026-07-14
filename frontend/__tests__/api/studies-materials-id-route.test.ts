@@ -20,6 +20,12 @@ jest.mock('@repositories/studies.repository', () => ({
   },
 }));
 
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn((request: Request) =>
+    Promise.resolve(new URL(request.url).searchParams.get('userId'))
+  ),
+}));
+
 const mockRepo = studiesRepository as jest.Mocked<typeof studiesRepository>;
 
 const makeRequest = (userId?: string, method = 'GET', body?: unknown) =>

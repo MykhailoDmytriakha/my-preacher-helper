@@ -4,7 +4,7 @@
  * Generates the spoken connective tissue (opening, per-part lead-ins, closing)
  * that makes the audio export's structure audible. Uses the same structured-output
  * pipeline as thought/sermon processing (`callWithStructuredOutput`), so it runs on
- * whichever provider `AI_MODEL_TO_USE` selects — Gemini in the current setup.
+ * whichever provider the default structured workload resolves.
  *
  * Transitions are ADDITIVE: if generation fails (network, refusal, bad JSON) we
  * return empty transitions and log a warning, so the core audio export still works.
@@ -56,7 +56,8 @@ function buildPrompt(sermon: Sermon, segments: TransitionSegment[]): string {
  */
 export async function generateSermonTransitions(
     sermon: Sermon,
-    segments: TransitionSegment[]
+    segments: TransitionSegment[],
+    userId: string = sermon.userId
 ): Promise<SermonTransitions> {
     if (segments.length === 0) return EMPTY_TRANSITIONS;
 
@@ -67,6 +68,7 @@ export async function generateSermonTransitions(
             SermonTransitionsResponseSchema,
             {
                 formatName: "sermon_transitions",
+                userId,
                 promptName: "sermon_transitions",
                 promptVersion: "v1",
                 logContext: {

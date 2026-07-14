@@ -75,8 +75,8 @@ describe("aiTelemetry", () => {
     });
 
     const event = buildStructuredTelemetryEvent({
-      provider: "GEMINI",
-      model: "gemini-2.5-flash-lite",
+      provider: "OPENROUTER",
+      model: "openrouter-test-model",
       formatName: "plan_point_content",
       promptBlueprint,
       latencyMs: 120,
@@ -85,6 +85,7 @@ describe("aiTelemetry", () => {
     });
 
     expect(event.language.expected).toBe("ru");
+    expect(event.provider).toBe("OPENROUTER");
     expect(event.language.detectedOutput).toBeNull();
   });
 });

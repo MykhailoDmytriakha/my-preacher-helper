@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
+import { useAiUsage } from '@/hooks/useAiUsage';
 import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
 import { FocusRecorderButton } from '@components/FocusRecorderButton';
 
@@ -16,6 +17,8 @@ interface Props {
 
 export default function AddUpdateModal({ onClose, onSubmit }: Props) {
   const { t } = useTranslation();
+  const { transcriptionBlocked, refresh: refreshAiUsage } = useAiUsage();
+  const transcriptionUnavailableLabel = transcriptionBlocked ? t('settings.usage.transcriptionUsageExhausted') : undefined;
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
   const [dictating, setDictating] = useState(false);
@@ -43,6 +46,7 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
         const separator = trimmedPreviousText ? '\n\n' : '';
         return `${trimmedPreviousText}${separator}${dictatedText}`;
       });
+      await refreshAiUsage();
       // Success — the thought is now saved as text; drop the in-memory safety copy.
       storedVoiceBlobRef.current = null;
       setVoiceError(null);
@@ -105,12 +109,13 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
               <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                 {t('prayer.update.dictate')}
               </span>
-              <div className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center">
+              <div className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center" title={transcriptionUnavailableLabel}>
                 <FocusRecorderButton
                   size="small"
                   onRecordingComplete={handleDictationComplete}
                   isProcessing={dictating}
-                  disabled={saving}
+                  disabled={saving || transcriptionBlocked}
+                  title={transcriptionUnavailableLabel}
                   transcriptionError={voiceError}
                   onRetry={handleRetryVoice}
                   retryCount={voiceRetryCount}

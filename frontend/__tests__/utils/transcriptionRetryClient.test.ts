@@ -1,7 +1,21 @@
 import {
+  getTranscriptionAuthorizationHeaders,
   transcribeAudioWithRetry,
   TranscriptionClientError,
 } from '@/utils/transcriptionRetryClient';
+
+jest.mock('@/utils/apiClient', () => ({ apiClient: jest.fn() }));
+jest.mock('@/services/firebaseAuth.service', () => ({
+  auth: { currentUser: null },
+}));
+
+const { apiClient: mockApiClient } = jest.requireMock('@/utils/apiClient') as {
+  apiClient: jest.Mock;
+};
+const { auth: mockAuth } = jest.requireMock('@/services/firebaseAuth.service') as {
+  auth: { currentUser: { getIdToken: jest.Mock } | null };
+};
+const mockGetIdToken = jest.fn();
 
 function jsonResponse(status: number, body: unknown): Response {
   return {
@@ -25,6 +39,37 @@ function bodylessResponse(status: number): Response {
 const blob = new Blob(['audio'], { type: 'audio/webm' });
 
 describe('transcribeAudioWithRetry', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAuth.currentUser = null;
+  });
+
+  it('attaches the current Firebase token on the production transport path', async () => {
+    mockAuth.currentUser = { getIdToken: mockGetIdToken };
+    mockGetIdToken.mockResolvedValue('firebase-token');
+    mockApiClient.mockResolvedValue(
+      jsonResponse(200, { success: true, polishedText: 'clean', originalText: 'raw' })
+    );
+
+    await transcribeAudioWithRetry(blob, { endpoint: '/api/thoughts/transcribe' });
+
+    expect(mockApiClient).toHaveBeenCalledWith('/api/thoughts/transcribe', expect.objectContaining({
+      headers: { Authorization: 'Bearer firebase-token' },
+    }));
+  });
+
+  it('fails closed before transport when signed out or token retrieval fails', async () => {
+    await expect(getTranscriptionAuthorizationHeaders())
+      .rejects.toThrow('Authentication required for transcription');
+    expect(mockApiClient).not.toHaveBeenCalled();
+
+    mockAuth.currentUser = { getIdToken: mockGetIdToken };
+    mockGetIdToken.mockRejectedValue(new Error('token unavailable'));
+    await expect(transcribeAudioWithRetry(blob, { endpoint: '/api/thoughts/transcribe' }))
+      .rejects.toThrow('token unavailable');
+    expect(mockApiClient).not.toHaveBeenCalled();
+  });
+
   it('returns transcription on first success', async () => {
     const fetchImpl = jest.fn().mockResolvedValue(
       jsonResponse(200, { success: true, polishedText: 'clean', originalText: 'raw' })

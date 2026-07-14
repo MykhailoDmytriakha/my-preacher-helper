@@ -94,6 +94,19 @@ jest.mock('@/services/brainstorm.service', () => ({
   generateBrainstormSuggestion: jest.fn(),
 }));
 
+const mockUseAiUsage = jest.fn(() => ({
+  aiRemaining: 10,
+  aiBlocked: false,
+  transcriptionRemaining: 60,
+  transcriptionBlocked: false,
+  loading: false,
+  refresh: jest.fn(),
+}));
+
+jest.mock('@/hooks/useAiUsage', () => ({
+  useAiUsage: () => mockUseAiUsage(),
+}));
+
 
 // Import the actual component after mocking dependencies
 
@@ -122,6 +135,14 @@ describe('BrainstormModule', () => {
     jest.clearAllMocks();
     // Set up default environment variable for API base
     process.env.NEXT_PUBLIC_API_BASE = 'http://localhost:3000';
+    mockUseAiUsage.mockReturnValue({
+      aiRemaining: 10,
+      aiBlocked: false,
+      transcriptionRemaining: 60,
+      transcriptionBlocked: false,
+      loading: false,
+      refresh: jest.fn(),
+    });
   });
 
   afterEach(() => {
@@ -179,6 +200,34 @@ describe('BrainstormModule', () => {
         { beforeEachScenario: resetScenarioState, afterEachScenario: cleanup }
       );
     });
+  });
+
+  it('disables the AI trigger with a quota tooltip only when server usage is exhausted', () => {
+    mockUseAiUsage.mockReturnValue({
+      aiRemaining: 0,
+      aiBlocked: true,
+      transcriptionRemaining: 60,
+      transcriptionBlocked: false,
+      loading: false,
+      refresh: jest.fn(),
+    });
+    const { rerender } = render(<BrainstormModule sermonId={mockSermonId} />);
+
+    const blockedButton = screen.getByRole('button', { name: /generate/i });
+    expect(blockedButton).toBeDisabled();
+    expect(blockedButton).toHaveAttribute('title', 'settings.usage.aiUsageExhausted');
+
+    mockUseAiUsage.mockReturnValue({
+      aiRemaining: 1,
+      aiBlocked: false,
+      transcriptionRemaining: 60,
+      transcriptionBlocked: false,
+      loading: false,
+      refresh: jest.fn(),
+    });
+    rerender(<BrainstormModule sermonId={mockSermonId} />);
+
+    expect(screen.getByRole('button', { name: /generate/i })).toBeEnabled();
   });
 
   describe('API Integration', () => {

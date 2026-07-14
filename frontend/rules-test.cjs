@@ -18,6 +18,17 @@ const USER_COLS = [
   'sermons', 'studyNotes', 'studyNoteBranchStates', 'series', 'groups',
   'prayerRequests', 'prayerCategories', 'tags', 'feedback',
 ];
+const SERVER_MANAGED_USER_FIELDS = {
+  paidTier: 'tier4',
+  promotion: { tier: 'tier4', expiresAt: '2026-08-01T00:00:00.000Z' },
+  usage: {
+    aiUsed: 999,
+    transcriptionSecondsUsed: 999,
+    periodStart: '2026-07-01T00:00:00.000Z',
+  },
+  role: 'admin',
+  referredBy: 'someUid',
+};
 
 (async () => {
   const testEnv = await initializeTestEnvironment({
@@ -30,9 +41,24 @@ const USER_COLS = [
     const db = ctx.firestore();
     for (const c of USER_COLS) await setDoc(doc(db, c, 'd1'), { userId: 'userA', v: 1 });
     await setDoc(doc(db, 'studyNoteShareLinks', 'd1'), { ownerId: 'userA', noteId: 'n1', token: 't' });
-    await setDoc(doc(db, 'users', 'userA'), { email: 'a@a', language: 'en' });
+    await setDoc(doc(db, 'users', 'userA'), {
+      email: 'a@a',
+      language: 'en',
+      paidTier: 'tier2',
+      promotion: { tier: 'tier3', expiresAt: '2026-07-31T00:00:00.000Z' },
+      usage: {
+        aiUsed: 1,
+        transcriptionSecondsUsed: 2,
+        periodStart: '2026-07-01T00:00:00.000Z',
+      },
+      role: 'user',
+    });
     await setDoc(doc(db, 'ai_prompt_telemetry', 'd1'), { v: 1 });
     await setDoc(doc(db, 'api_performance_telemetry', 'd1'), { v: 1 });
+    await setDoc(doc(db, 'referralEvents', 'userA'), {
+      inviterUid: 'userB',
+      inviteeUid: 'userA',
+    });
   });
 
   const a = testEnv.authenticatedContext('userA').firestore();
@@ -59,12 +85,57 @@ const USER_COLS = [
   await check('users: owner reads own doc (allow)',       assertSucceeds(getDoc(doc(a, 'users', 'userA'))));
   await check('users: OTHER reads owner doc (deny)',      assertFails(getDoc(doc(b, 'users', 'userA'))));
   await check('users: UNAUTH reads (deny)',               assertFails(getDoc(doc(anon, 'users', 'userA'))));
-  await check('users: owner writes own doc (allow)',      assertSucceeds(setDoc(doc(a, 'users', 'userA'), { email: 'a@a' })));
-  await check('users: OTHER writes owner doc (deny)',     assertFails(setDoc(doc(b, 'users', 'userA'), { email: 'hax' })));
+  await check('users: owner updates allowed UX field (allow)', assertSucceeds(updateDoc(doc(a, 'users', 'userA'), { language: 'ru' })));
+  await check('users: owner writes lastSeenAt heartbeat (allow)', assertSucceeds(setDoc(
+    doc(a, 'users', 'userA'),
+    { lastSeenAt: '2026-07-13T12:00:00.000Z' },
+    { merge: true }
+  )));
+  const uxUid = 'userUx';
+  const ux = testEnv.authenticatedContext(uxUid).firestore();
+  await check('users: owner creates allowed UX fields (allow)', assertSucceeds(setDoc(doc(ux, 'users', uxUid), {
+    language: 'en',
+    email: 'ux@example.com',
+    displayName: 'UX User',
+    firstDayOfWeek: 'monday',
+    enablePrepMode: true,
+    enableAudioGeneration: true,
+    enableStructurePreview: true,
+    enableGroups: true,
+    showAppVersion: true,
+    preferredProviderId: 'gemini',
+    preferredModelId: 'gemini-2.5-flash-lite',
+  })));
+  await check('users: OTHER updates allowed UX field (deny)', assertFails(updateDoc(doc(b, 'users', 'userA'), { language: 'hax' })));
+  for (const [field, value] of Object.entries(SERVER_MANAGED_USER_FIELDS)) {
+    const createUid = `create-${field}`;
+    const creator = testEnv.authenticatedContext(createUid).firestore();
+    await check(
+      `users: owner cannot create ${field} (deny)`,
+      assertFails(setDoc(doc(creator, 'users', createUid), { language: 'en', [field]: value }))
+    );
+    await check(
+      `users: owner cannot update ${field} (deny)`,
+      assertFails(updateDoc(doc(a, 'users', 'userA'), { [field]: value }))
+    );
+  }
 
   console.log('\n=== server-only telemetry (deny all client access) ===');
   await check('ai_prompt_telemetry: read (deny)',         assertFails(getDoc(doc(a, 'ai_prompt_telemetry', 'd1'))));
   await check('api_performance_telemetry: write (deny)',  assertFails(setDoc(doc(a, 'api_performance_telemetry', 'x'), { v: 1 })));
+
+  console.log('\n=== referralEvents (server-only; deny all client access) ===');
+  await check('referralEvents: signed-in client read (deny)', assertFails(getDoc(doc(a, 'referralEvents', 'userA'))));
+  await check('referralEvents: signed-in client write (deny)', assertFails(setDoc(doc(a, 'referralEvents', 'attacker'), {
+    inviterUid: 'userA',
+    inviteeUid: 'attacker',
+  })));
+
+  console.log('\n=== server-only config (deny all client writes) ===');
+  await check('config/aiModelDefaults: client write (deny)', assertFails(setDoc(
+    doc(a, 'config', 'aiModelDefaults'),
+    { text: { providerId: 'openrouter', modelId: 'attacker/model' } }
+  )));
 
   console.log('\n=== unknown collection (default-deny) ===');
   await check('random collection: read (deny)',           assertFails(getDoc(doc(a, 'totally_unknown', 'd1'))));

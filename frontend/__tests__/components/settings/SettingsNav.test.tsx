@@ -34,6 +34,7 @@ describe('SettingsNav', () => {
   it('renders section buttons correctly', () => {
     renderNav({});
     expect(screen.getByRole('button', { name: /settings.userSettings/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /settings.nav.aiModels/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /settings.manageTags/i })).toBeInTheDocument();
   });
 
@@ -81,6 +82,14 @@ describe('SettingsNav', () => {
     expect(mockOnSectionChange).not.toHaveBeenCalled();
   });
 
+  it('navigates to the AI models and limits section', async () => {
+    renderNav({ onSectionChange: undefined, onNavigate: mockOnNavigate });
+
+    await userEvent.click(screen.getByRole('button', { name: /settings.nav.aiModels/i }));
+
+    expect(mockOnNavigate).toHaveBeenCalledWith('aiModels');
+  });
+
   it('does nothing if neither callback is provided', async () => {
     renderNav({ onSectionChange: undefined, onNavigate: undefined });
     const tagsButton = screen.getByRole('button', { name: /settings.manageTags/i });
@@ -90,4 +99,4 @@ describe('SettingsNav', () => {
     expect(mockOnNavigate).not.toHaveBeenCalled();
     expect(mockOnSectionChange).not.toHaveBeenCalled();
   });
-}); 
+});

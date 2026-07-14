@@ -1,3 +1,8 @@
+jest.mock('@clients/openAI.client', () => ({
+  createTranscription: jest.fn(),
+}));
+
+import { createTranscription } from '@clients/openAI.client';
 import {
   BILLING_TRANSCRIPTION_ERROR,
   classifyTranscriptionError,
@@ -8,6 +13,20 @@ import {
 } from '@clients/transcriptionRetry';
 
 describe('transcriptionRetry client helpers', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('forwards a server-trusted user id to the default transcription client', async () => {
+    (createTranscription as jest.Mock).mockResolvedValue('recognized text');
+    const file = new Blob(['audio']);
+
+    await expect(createTranscriptionWithRetry(file, { userId: 'verified-user' }))
+      .resolves.toBe('recognized text');
+
+    expect(createTranscription).toHaveBeenCalledWith(file, 'verified-user');
+  });
+
   it('retries transient transcription errors and returns the successful result', async () => {
     const transcribe = jest.fn()
       .mockRejectedValueOnce(new Error('Connection error. read ECONNRESET'))

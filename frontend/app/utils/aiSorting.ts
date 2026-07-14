@@ -4,6 +4,7 @@ export const MAX_AI_SORT_ITEMS = 25;
 
 export type AiSortDisabledReason =
   | "offline"
+  | "quotaExhausted"
   | "sorting"
   | "review"
   | "tooMany"
@@ -19,12 +20,14 @@ export const getOutlinePointAiSortState = ({
   items,
   outlinePointId,
   isOnline,
+  aiBlocked = false,
   isSorting,
   isDiffModeActive,
 }: {
   items: Item[];
   outlinePointId: string;
   isOnline: boolean;
+  aiBlocked?: boolean;
   isSorting: boolean;
   isDiffModeActive: boolean;
 }): OutlinePointAiSortState => {
@@ -38,6 +41,8 @@ export const getOutlinePointAiSortState = ({
 
   if (!isOnline) {
     disabledReason = "offline";
+  } else if (aiBlocked) {
+    disabledReason = "quotaExhausted";
   } else if (isSorting) {
     disabledReason = "sorting";
   } else if (isDiffModeActive) {

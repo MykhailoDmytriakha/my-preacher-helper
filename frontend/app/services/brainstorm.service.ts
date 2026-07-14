@@ -1,5 +1,6 @@
 import { BrainstormSuggestion } from "@/models/models";
 import { apiClient } from '@/utils/apiClient';
+import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -8,11 +9,13 @@ export const generateBrainstormSuggestion = async (
 ): Promise<BrainstormSuggestion> => {
   try {
     console.log("generateBrainstormSuggestion: Starting brainstorm generation for sermon:", sermonId);
+    const authHeaders = await getAuthenticatedRequestHeaders();
 
     const response = await apiClient(`${API_BASE}/api/sermons/${sermonId}/brainstorm`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        ...authHeaders,
       },
       category: 'ai'
     });

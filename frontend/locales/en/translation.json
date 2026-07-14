@@ -409,6 +409,10 @@
     "providerOpenai": "OpenAI",
     "providerGoogle": "Google",
     "modelLabel": "Model",
+    "modelsLoading": "Loading available voice models...",
+    "modelsLoadError": "Could not load the voice models available for your plan.",
+    "freeModelLocked": "Your plan uses the configured default voice model.",
+    "openaiModelDesc": "Natural, steerable speech",
     "googleModelGemini31": "Gemini 3.1 TTS",
     "googleModelGemini31Desc": "Expressive",
     "googleModelGemini25": "Gemini 2.5 TTS",
@@ -416,6 +420,7 @@
     "voiceLabel": "Voice",
     "voiceOnyx": "Onyx (Deep)",
     "voiceEcho": "Echo (Natural)",
+    "voiceAsh": "Ash (Warm)",
     "qualityLabel": "Quality",
     "qualityStandard": "Standard",
     "qualityHd": "High Definition",
@@ -479,6 +484,7 @@
     "generatingChunk": "Generating chunk {{current}}/{{total}}...",
     "voiceDeep": "Deep",
     "voiceNatural": "Natural",
+    "voiceWarm": "Warm",
     "sourceLabel": "Audio source",
     "sourceAi": "AI-optimized",
     "sourceRaw": "Original as-is",
@@ -528,11 +534,75 @@
     "mainPart": "Main Part",
     "conclusion": "Conclusion"
   },
+  "usage": {
+    "bar": {
+      "remainingOfLimit": "{{remaining}} of {{limit}} left",
+      "percent": "{{pct}}%",
+      "aria": "{{remaining}} of {{limit}} left, {{pct}} percent remaining"
+    }
+  },
   "settings": {
+    "nav": {
+      "aiModels": "AI & limits"
+    },
     "planTemplates": "Plan Templates",
     "backToDashboard": "Back",
     "title": "Settings",
-    "userSettings": "User Settings",
+  "userSettings": "User Settings",
+  "usage": {
+    "title": "Plan usage",
+    "tier": {
+      "free": "Free",
+      "paid": "Paid tier {{tier}}",
+      "admin": "Admin"
+    },
+    "aiRemaining": "AI usage remaining",
+    "aiInfoLabel": "What consumes AI usage?",
+    "aiInfo": "AI usage is consumed when you generate or improve sermon content with AI.",
+    "transcriptionRemaining": "Transcription remaining",
+    "transcriptionSeconds": "{{count}} seconds",
+    "aiUsageExhausted": "Not enough AI usage remaining.",
+    "transcriptionUsageExhausted": "Not enough transcription usage remaining."
+  },
+  "modelSelector": {
+    "title": "AI models by function",
+    "description": "Each task has its own model. See what it does at a glance.",
+    "current": "current",
+    "quality": "Quality",
+    "cost": "Cost",
+    "paidLocked": "🔒 paid",
+    "freeHint": "The free plan uses the default model. The other models unlock on a paid plan.",
+    "providers": {
+      "openai": "OpenAI",
+      "openrouter": "OpenRouter",
+      "gemini": "Google"
+    },
+    "functions": {
+      "transcription": {
+        "title": "Speech transcription",
+        "description": "Turns what you say aloud into text."
+      },
+      "text": {
+        "title": "Text work",
+        "description": "Polishing, plan creation, and suggestions."
+      },
+      "tts": {
+        "title": "Voice output",
+        "description": "Exports a sermon as audio."
+      }
+    },
+    "loadError": "Could not load your available AI models. Please try again.",
+    "saveError": "Could not save your model preference. Please try again."
+  },
+  "referral": {
+    "title": "Invite a friend",
+    "description": "Your friend signs up via your link → you get a month of paid",
+    "linkLabel": "Referral link",
+    "reward": "Your friend signs up via the link → you get one month of Paid",
+    "invitedCount": "Invited {{count}}",
+    "copy": "Copy",
+    "copied": "Copied"
+  },
     "firstDayOfWeek": {
       "title": "First day of week",
       "description": "Choose how calendars are arranged across the app.",
@@ -598,7 +668,163 @@
     "selectColor": "Select color",
     "newTag": "New Tag",
     "loadingUserData": "Loading user data...",
-    "noEmail": "No email set"
+    "noEmail": "No email set",
+    "admin": {
+      "goToAdmin": "Go to admin"
+    }
+  },
+  "admin": {
+    "title": "Admin",
+    "loading": "Checking administrator access...",
+    "notAuthorizedTitle": "Not authorized",
+    "notAuthorizedDescription": "You do not have permission to access admin tools.",
+    "backHome": "Back to home",
+    "backToSettings": "Back to settings",
+    "writeOnlyNotice": "Current entitlement loading is not available yet. Updates are write-only.",
+    "targetUid": "Target user UID",
+    "targetUidRequired": "Enter a target user UID.",
+    "paidTier": "Paid tier",
+    "role": "Role",
+    "promotion": "Promotion",
+    "promotionAction": "Change",
+    "setPromotion": "Set promotion",
+    "clearPromotion": "Clear promotion",
+    "promotionTier": "Promotion tier",
+    "promotionExpiresAt": "Promotion expires at",
+    "usage": "Usage",
+    "aiUsage": "AI usage",
+    "transcriptionSeconds": "Transcription seconds",
+    "noChange": "No change",
+    "invalidPromotion": "Enter a valid promotion expiry date.",
+    "invalidUsage": "Usage values must be non-negative numbers.",
+    "noChanges": "Select at least one value to update.",
+    "unauthenticated": "Your session has ended. Please sign in again.",
+    "requestFailed": "Could not update the entitlement.",
+    "submit": "Update entitlement",
+    "submitting": "Updating entitlement...",
+    "success": "Entitlement updated",
+    "modelDefaults": {
+      "title": "Default models",
+      "description": "Choose the baseline model for each AI function.",
+      "nav": {
+        "users": "Users",
+        "modelDefaults": "Default models"
+      },
+      "provider": "Provider",
+      "model": "Model",
+      "price": "Price",
+      "functions": {
+        "text": "Text generation",
+        "transcription": "Transcription",
+        "tts": "Text to speech"
+      },
+      "loading": "Loading model defaults...",
+      "loadFailed": "Could not load model defaults.",
+      "save": "Save defaults",
+      "saving": "Saving...",
+      "success": "Default models saved.",
+      "saveFailed": "Could not save model defaults."
+    },
+    "users": {
+      "pageTitle": "User management",
+      "pageDescription": "Users, their activity, and access levels. Select a row to review details and make changes.",
+      "kpisLabel": "Loaded user metrics",
+      "loadedUsers": "loaded users",
+      "kpi": {
+        "total": "Total users",
+        "paid": "Paid",
+        "active7d": "Active in 7 days",
+        "promoActive": "Promo active"
+      },
+      "filterLabel": "User filters",
+      "filters": {
+        "all": "All",
+        "paid": "Paid",
+        "unverified": "Unverified"
+      },
+      "liveCount": "{{count}} of {{loaded}} users",
+      "loadingSkeleton": "Loading user rows",
+      "emptyFiltered": "No users match this search or filter.",
+      "emptyFilteredHint": "Try a different email, UID, or filter.",
+      "openUser": "Open {{email}}",
+      "drawerLabel": "User details and access editor",
+      "closeDrawer": "Close user details",
+      "profile": "Profile",
+      "editSection": "Edit access",
+      "manualEdit": "Edit by UID",
+      "cancel": "Cancel",
+      "save": "Save changes",
+      "toastSaved": "Changes saved",
+      "promo": {
+        "unchanged": "Keep",
+        "set": "Set",
+        "clear": "Clear"
+      },
+      "promoHint": "A promotion only raises a tier and expires automatically.",
+      "status": {
+        "active": "Active",
+        "unverified": "Unverified",
+        "disabled": "Disabled"
+      },
+      "tiers": {
+        "free": "free",
+        "tier1": "tier1",
+        "tier2": "tier2",
+        "tier3": "tier3",
+        "tier4": "tier4"
+      },
+      "roles": {
+        "user": "User",
+        "admin": "Admin",
+        "superuser": "Superuser"
+      },
+      "selectUser": "Select a user",
+      "selectUserHint": "Select a user from the list to view their details and prefill the entitlement form.",
+      "listDescription": "Search by email or UID, then select a user to review and edit their entitlement.",
+      "searchLabel": "Search users",
+      "searchPlaceholder": "Search by email or UID",
+      "loading": "Loading users...",
+      "loadFailed": "Could not load the user list.",
+      "loadMore": "Load more",
+      "loadingMore": "Loading more...",
+      "emptyList": "No users found.",
+      "neverLoggedIn": "Never logged in",
+      "neverSeen": "No activity yet",
+      "verified": "Verified",
+      "unverified": "Unverified",
+      "enabled": "Enabled",
+      "disabled": "Disabled",
+      "noEmail": "No email",
+      "detailsTitle": "User details",
+      "editUser": "Edit entitlement",
+      "manualUidHint": "Selecting a user prefills this field; you can still enter a UID manually.",
+      "columns": {
+        "user": "User",
+        "email": "Email",
+        "lastLogin": "Last login",
+        "lastSeen": "Last seen",
+        "tier": "Tier",
+        "verified": "Verified",
+        "status": "Status",
+        "usage": "Usage"
+      },
+      "fields": {
+        "uid": "UID",
+        "email": "Email",
+        "verified": "Verified",
+        "disabled": "Account status",
+        "lastLogin": "Last login",
+        "lastSeen": "Last seen",
+        "creation": "Created",
+        "paidTier": "Paid tier",
+        "effectiveTier": "Effective tier",
+        "promotion": "Promotion",
+        "usage": "Usage",
+        "role": "Role",
+        "referredBy": "Referred by",
+        "invitedCount": "Users invited"
+      }
+    }
   },
   "sermon": {
     "notFound": "Sermon not found",
@@ -830,6 +1056,7 @@
     "sortInfo": "Sorting reorders the full column, up to 25 thoughts at a time.",
     "aiSortPoint": "Sort this outline point with AI. Locked thoughts stay fixed.",
     "aiSortPointDisabledOffline": "AI sorting is unavailable offline.",
+    "aiSortPointDisabledQuotaExhausted": "Not enough AI usage remaining.",
     "aiSortPointDisabledSorting": "AI sorting is already running.",
     "aiSortPointDisabledReview": "Review or revert current AI suggestions first.",
     "aiSortPointDisabledPending": "Finish syncing local thoughts in this outline point first.",

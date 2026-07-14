@@ -2,7 +2,7 @@ import 'openai/shims/node';
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { adminAuth } from '@/config/firebaseAdminConfig';
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { ComposePlanApiRequestSchema, ComposedPlanOutlineSchema } from '@/config/schemas/zod';
 import { composePlanFromScratch } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
@@ -31,25 +31,6 @@ async function readComposeRequest(request: NextRequest) {
   }
 }
 
-function getBearerToken(request: NextRequest): string | null {
-  const authorization = request.headers.get('authorization');
-  if (!authorization?.startsWith('Bearer ')) return null;
-  return authorization.slice('Bearer '.length).trim() || null;
-}
-
-async function getAuthenticatedUid(request: NextRequest): Promise<string | null> {
-  const token = getBearerToken(request);
-  if (!token) return null;
-
-  try {
-    const decoded = await adminAuth.verifyIdToken(token);
-    return decoded.uid || null;
-  } catch (error) {
-    console.error('compose-plan-from-scratch: invalid auth token', error);
-    return null;
-  }
-}
-
 function collectScratchNoteIds(outline: unknown): string[] {
   const parsed = ComposedPlanOutlineSchema.safeParse(outline);
   if (!parsed.success) return [];
@@ -66,15 +47,15 @@ function collectScratchNoteIds(outline: unknown): string[] {
 
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const uid = await getRequiredAuthenticatedUid(request);
+    if (!uid) {
+      return jsonNoStore({ error: 'User not authenticated' }, { status: 401 });
+    }
+
     const { id: sermonId } = await params;
 
     if (!sermonId) {
       return jsonNoStore({ error: 'Sermon ID is required' }, { status: 400 });
-    }
-
-    const uid = await getAuthenticatedUid(request);
-    if (!uid) {
-      return jsonNoStore({ error: 'User not authenticated' }, { status: 401 });
     }
 
     const sermon = await sermonsRepository.fetchSermonById(sermonId);
@@ -99,7 +80,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ? { ...sermon, scratch: scratchForCompose }
       : sermon;
     const knownScratchIds = new Set(scratchForCompose.map((note) => note.id));
-    const { outline, success } = await composePlanFromScratch(sermonForCompose, existingOutline);
+    const { outline, success } = await composePlanFromScratch(sermonForCompose, existingOutline, uid);
 
     if (!success) {
       return jsonNoStore(

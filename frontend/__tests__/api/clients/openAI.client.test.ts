@@ -44,6 +44,12 @@ describe('openAI.client', () => {
         { area: 'Theology', suggestion: 'Explore deeper.', examples: ['Trace context'] },
         { area: 'History', suggestion: 'Check sources.' },
       ]);
+      expect(getStructuredOutputMock().callWithStructuredOutput).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.anything(),
+        expect.objectContaining({ userId: mockSermon.userId })
+      );
     });
 
     it('returns empty array when structured call fails', async () => {

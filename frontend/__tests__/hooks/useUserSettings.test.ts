@@ -10,6 +10,8 @@ import {
   updateAudioGenerationAccess,
   updateStructurePreviewAccess,
   updateFirstDayOfWeek,
+  updateFunctionModelPreference,
+  updateModelPreference,
 } from '@/services/userSettings.service';
 
 jest.mock('@/hooks/useOnlineStatus', () => ({
@@ -26,6 +28,8 @@ jest.mock('@/services/userSettings.service', () => ({
   updateAudioGenerationAccess: jest.fn().mockResolvedValue(undefined),
   updateStructurePreviewAccess: jest.fn().mockResolvedValue(undefined),
   updateFirstDayOfWeek: jest.fn().mockResolvedValue(undefined),
+  updateFunctionModelPreference: jest.fn().mockResolvedValue(undefined),
+  updateModelPreference: jest.fn().mockResolvedValue(undefined),
 }));
 
 const mockUseOnlineStatus = useOnlineStatus as jest.MockedFunction<typeof useOnlineStatus>;
@@ -34,6 +38,8 @@ const mockUpdatePrepModeAccess = updatePrepModeAccess as jest.MockedFunction<typ
 const mockUpdateAudioGenerationAccess = updateAudioGenerationAccess as jest.MockedFunction<typeof updateAudioGenerationAccess>;
 const mockUpdateStructurePreviewAccess = updateStructurePreviewAccess as jest.MockedFunction<typeof updateStructurePreviewAccess>;
 const mockUpdateFirstDayOfWeek = updateFirstDayOfWeek as jest.MockedFunction<typeof updateFirstDayOfWeek>;
+const mockUpdateFunctionModelPreference = updateFunctionModelPreference as jest.MockedFunction<typeof updateFunctionModelPreference>;
+const mockUpdateModelPreference = updateModelPreference as jest.MockedFunction<typeof updateModelPreference>;
 
 const fakeSettings = {
   enablePrepMode: false,
@@ -69,6 +75,7 @@ describe('useUserSettings', () => {
     expect(typeof result.current.updateAudioGenerationAccess).toBe('function');
     expect(typeof result.current.updateStructurePreviewAccess).toBe('function');
     expect(typeof result.current.updateFirstDayOfWeek).toBe('function');
+    expect(typeof result.current.updateModelPreference).toBe('function');
   });
 
   it('updateStructurePreviewAccess calls service with userId and value', async () => {
@@ -119,6 +126,37 @@ describe('useUserSettings', () => {
     });
 
     expect(mockUpdateFirstDayOfWeek).toHaveBeenCalledWith('user1', 'monday');
+  });
+
+  it('updateModelPreference calls service with userId and selected target', async () => {
+    const { result } = renderHook(() => useUserSettings('user1'), { wrapper: makeWrapper() });
+    const preference = { preferredProviderId: 'gemini' as const, preferredModelId: 'gemini-2.5-flash-lite' };
+
+    await act(async () => {
+      await result.current.updateModelPreference(preference);
+    });
+
+    expect(mockUpdateModelPreference).toHaveBeenCalledWith('user1', preference);
+  });
+
+  it('refreshes entitlement after saving a per-function model preference', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: queryClient }, children);
+    const { result } = renderHook(() => useUserSettings('user1'), { wrapper });
+    const preference = {
+      preferredTts: { providerId: 'openai' as const, modelId: 'gpt-4o-mini-tts' },
+    };
+
+    await act(async () => {
+      await result.current.updateFunctionModelPreference(preference);
+    });
+
+    expect(mockUpdateFunctionModelPreference).toHaveBeenCalledWith('user1', preference);
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['me', 'entitlement'] });
   });
 
   it('does not throw on a toggle when offline — buffers it (Stage 2)', async () => {

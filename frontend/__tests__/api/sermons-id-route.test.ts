@@ -4,13 +4,12 @@ import { seriesRepository } from '@repositories/series.repository';
 jest.mock('@repositories/sermons.repository', () => ({
   sermonsRepository: {
     fetchSermonById: jest.fn(),
-    deleteSermonById: jest.fn(),
   },
 }));
 
 jest.mock('@repositories/series.repository', () => ({
   seriesRepository: {
-    removeSermonFromAllSeries: jest.fn(),
+    deleteSermonAndDetachFromAllSeries: jest.fn(),
   },
 }));
 
@@ -21,6 +20,10 @@ jest.mock('next/server', () => ({
       json: async () => data,
     })),
   },
+}));
+
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn().mockResolvedValue('user-1'),
 }));
 
 import { DELETE } from 'app/api/sermons/[id]/route';
@@ -39,33 +42,30 @@ describe('Sermons [id] API Route', () => {
 
       expect(response.status).toBe(200);
       expect(data.message).toBe('Проповедь уже отсутствует');
-      expect(sermonsRepository.deleteSermonById).not.toHaveBeenCalled();
+      expect(seriesRepository.deleteSermonAndDetachFromAllSeries).not.toHaveBeenCalled();
     });
 
-    it('deletes sermon and cleans up series references', async () => {
-      (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValueOnce({ id: 'sermon-1' });
-      (sermonsRepository.deleteSermonById as jest.Mock).mockResolvedValueOnce(undefined);
-      (seriesRepository.removeSermonFromAllSeries as jest.Mock).mockResolvedValueOnce(undefined);
+    it('atomically deletes the sermon and detaches it from series in one call', async () => {
+      (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValueOnce({ id: 'sermon-1', userId: 'user-1' });
+      (seriesRepository.deleteSermonAndDetachFromAllSeries as jest.Mock).mockResolvedValueOnce(undefined);
 
       const response = await DELETE({} as Request, { params: Promise.resolve({ id: 'sermon-1' }) });
       const data = await response.json();
 
-      expect(sermonsRepository.deleteSermonById).toHaveBeenCalledWith('sermon-1');
-      expect(seriesRepository.removeSermonFromAllSeries).toHaveBeenCalledWith('sermon-1');
+      expect(seriesRepository.deleteSermonAndDetachFromAllSeries).toHaveBeenCalledWith('sermon-1', 'user-1');
       expect(response.status).toBe(200);
       expect(data.message).toBe('Проповедь успешно удалена');
     });
 
-    it('still succeeds when cleanup fails', async () => {
-      (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValueOnce({ id: 'sermon-1' });
-      (sermonsRepository.deleteSermonById as jest.Mock).mockResolvedValueOnce(undefined);
-      (seriesRepository.removeSermonFromAllSeries as jest.Mock).mockRejectedValueOnce(new Error('cleanup failed'));
+    it('returns 500 (nothing committed) when the atomic delete fails — no silent success', async () => {
+      (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValueOnce({ id: 'sermon-1', userId: 'user-1' });
+      (seriesRepository.deleteSermonAndDetachFromAllSeries as jest.Mock).mockRejectedValueOnce(new Error('batch failed'));
 
       const response = await DELETE({} as Request, { params: Promise.resolve({ id: 'sermon-1' }) });
       const data = await response.json();
 
-      expect(response.status).toBe(200);
-      expect(data.message).toBe('Проповедь успешно удалена');
+      expect(response.status).toBe(500);
+      expect(data.message).toBe('Не удалось удалить проповедь');
     });
 
     it('returns 500 on delete error', async () => {

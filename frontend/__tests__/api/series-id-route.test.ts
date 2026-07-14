@@ -16,6 +16,7 @@ jest.mock('@/config/firebaseAdminConfig', () => ({
 
 jest.mock('@repositories/groups.repository', () => ({
   groupsRepository: {
+    fetchGroupById: jest.fn(),
     updateGroupSeriesInfo: jest.fn(),
   },
 }));
@@ -36,6 +37,10 @@ jest.mock('next/server', () => ({
   },
 }));
 
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn().mockResolvedValue('user-1'),
+}));
+
 describe('/api/series/[id] route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -44,8 +49,15 @@ describe('/api/series/[id] route', () => {
       commit: mockBatchCommit.mockResolvedValue(undefined),
     });
     (adminDb.collection as jest.Mock).mockReturnValue({
-      doc: jest.fn((id: string) => ({ id })),
+      doc: jest.fn((id: string) => ({
+        id,
+        get: jest.fn().mockResolvedValue({
+          exists: true,
+          data: () => ({ userId: 'user-1' }),
+        }),
+      })),
     });
+    (groupsRepository.fetchGroupById as jest.Mock).mockResolvedValue({ id: 'group-1', userId: 'user-1' });
   });
 
   describe('DELETE', () => {
@@ -60,6 +72,7 @@ describe('/api/series/[id] route', () => {
     it('clears sermon/group references and deletes series', async () => {
       (seriesRepository.fetchSeriesById as jest.Mock).mockResolvedValueOnce({
         id: 's1',
+        userId: 'user-1',
         sermonIds: [],
         items: [
           { id: 'i1', type: 'sermon', refId: 'sermon-1', position: 1 },
@@ -84,6 +97,7 @@ describe('/api/series/[id] route', () => {
     it('uses legacy sermonIds fallback when items are empty', async () => {
       (seriesRepository.fetchSeriesById as jest.Mock).mockResolvedValueOnce({
         id: 's1',
+        userId: 'user-1',
         sermonIds: ['legacy-sermon'],
         items: [],
       });

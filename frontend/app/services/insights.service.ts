@@ -1,5 +1,6 @@
 import { Insights } from '@/models/models';
 import { apiClient } from '@/utils/apiClient';
+import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -10,9 +11,10 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
  */
 export const generateInsights = async (sermonId: string): Promise<Insights | null> => {
   try {
+    const authHeaders = await getAuthenticatedRequestHeaders();
     const response = await apiClient(`${API_BASE}/api/insights?sermonId=${sermonId}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       category: 'ai'
     });
     
@@ -36,9 +38,10 @@ export const generateInsights = async (sermonId: string): Promise<Insights | nul
  */
 export const generateTopics = async (sermonId: string): Promise<Insights | null> => {
   try {
+    const authHeaders = await getAuthenticatedRequestHeaders();
     const response = await apiClient(`${API_BASE}/api/insights/topics?sermonId=${sermonId}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       category: 'ai'
     });
     
@@ -62,9 +65,10 @@ export const generateTopics = async (sermonId: string): Promise<Insights | null>
  */
 export const generateRelatedVerses = async (sermonId: string): Promise<Insights | null> => {
   try {
+    const authHeaders = await getAuthenticatedRequestHeaders();
     const response = await apiClient(`${API_BASE}/api/insights/verses?sermonId=${sermonId}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       category: 'ai'
     });
     
@@ -88,9 +92,10 @@ export const generateRelatedVerses = async (sermonId: string): Promise<Insights 
  */
 export const generatePossibleDirections = async (sermonId: string): Promise<Insights | null> => {
   try {
+    const authHeaders = await getAuthenticatedRequestHeaders();
     const response = await apiClient(`${API_BASE}/api/insights/directions?sermonId=${sermonId}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       category: 'ai'
     });
     
@@ -114,9 +119,10 @@ export const generatePossibleDirections = async (sermonId: string): Promise<Insi
  */
 export const generateThoughtsBasedPlan = async (sermonId: string): Promise<Insights | null> => {
   try {
+    const authHeaders = await getAuthenticatedRequestHeaders();
     const response = await apiClient(`${API_BASE}/api/insights/plan?sermonId=${sermonId}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...authHeaders },
       category: 'ai'
     });
     

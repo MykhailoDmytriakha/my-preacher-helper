@@ -15,6 +15,10 @@ jest.mock('@repositories/prayerRequests.repository', () => ({
   },
 }));
 
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn().mockResolvedValue('user-1'),
+}));
+
 import * as prayerRouteModule from 'app/api/prayer/route';
 
 describe('prayer route', () => {
@@ -29,7 +33,7 @@ describe('prayer route', () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({
-      error: 'Missing required fields: userId, title',
+      error: 'Missing required field: title',
     });
   });
 

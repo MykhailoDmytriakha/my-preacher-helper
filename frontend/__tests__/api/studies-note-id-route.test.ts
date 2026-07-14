@@ -19,6 +19,12 @@ jest.mock('@repositories/studies.repository', () => ({
   },
 }));
 
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn((request: Request) =>
+    Promise.resolve(new URL(request.url).searchParams.get('userId'))
+  ),
+}));
+
 const mockRepo = studiesRepository as jest.Mocked<typeof studiesRepository>;
 
 const makeRequest = (userId?: string, method = 'GET') =>
@@ -124,7 +130,7 @@ describe('studies notes [id] route', () => {
       const response = await route.DELETE(makeRequest('user-1', 'DELETE'), params);
       const data = await response.json();
 
-      expect(mockRepo.deleteNote).toHaveBeenCalledWith('note-1');
+      expect(mockRepo.deleteNote).toHaveBeenCalledWith('note-1', 'user-1');
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
     });

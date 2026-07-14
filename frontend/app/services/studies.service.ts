@@ -2,6 +2,7 @@ import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, whe
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { StudyNote } from '@/models/models';
+import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -171,7 +172,11 @@ export async function updateStudyNote(id: string, updates: Partial<StudyNote> & 
 }
 
 export async function deleteStudyNote(id: string, userId: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/studies/notes/${id}?userId=${userId}`, { method: 'DELETE' });
+  const authHeaders = await getAuthenticatedRequestHeaders();
+  const res = await fetch(`${API_BASE}/api/studies/notes/${id}?userId=${userId}`, {
+    method: 'DELETE',
+    headers: authHeaders,
+  });
   if (!res.ok) {
     console.error('deleteStudyNote: failed', res.status);
     throw new Error('Failed to delete study note');

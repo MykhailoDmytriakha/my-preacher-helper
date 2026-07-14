@@ -10,6 +10,7 @@ export interface AudioRecorderProps {
   maxDuration?: number;
   onError?: (error: string) => void;
   disabled?: boolean;
+  title?: string;
   className?: string;
   onRetry?: () => void;
   retryCount?: number;
@@ -37,6 +38,7 @@ export interface MainRecordButtonProps {
   onStart: () => void;
   onStop: () => void;
   t: TranslationFn;
+  title?: string;
 }
 
 export interface RecordingActionButtonsProps {
@@ -108,6 +110,7 @@ export interface SplitRecordButtonProps {
   isButtonDisabled: boolean;
   onStart: () => void;
   t: TranslationFn;
+  title?: string;
   /** When true, render splitLeft/mic/splitRight as separate rounded buttons with a gap. */
   separate?: boolean;
 }

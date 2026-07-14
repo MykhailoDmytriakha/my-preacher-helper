@@ -11,35 +11,20 @@
  * - Works with both OpenAI and Gemini models
  */
 import 'openai/shims/node';
-import OpenAI from "openai";
+
 import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 
+import { providerAdapters } from "./ai/providerAdapters";
+import { resolveStructuredTargets, type ModelTarget, type Workload } from "./ai/routing";
 import { emitStructuredTelemetryEvent, TokenUsage } from "./aiTelemetry";
 import { logger, formatDuration } from "./openAIHelpers";
 import { buildSimplePromptBlueprint, PromptBlueprint } from "./promptBuilder";
 
-// Environment configuration
-const gptModel = process.env.OPENAI_GPT_MODEL as string;
-const geminiModel = process.env.GEMINI_MODEL as string;
+import type OpenAI from "openai";
+
 const isDebugMode = process.env.DEBUG_MODE === 'true';
-
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true,
-});
-
-// Initialize Gemini client (OpenAI-compatible)
-const gemini = new OpenAI({
-  apiKey: process.env.GEMINI_API_KEY,
-  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-  dangerouslyAllowBrowser: true,
-});
-
-// Select model and client based on configuration
-const aiModel = process.env.AI_MODEL_TO_USE === 'GEMINI' ? geminiModel : gptModel;
-const aiAPI = process.env.AI_MODEL_TO_USE === 'GEMINI' ? gemini : openai;
+const DEFAULT_STRUCTURED_WORKLOAD: Workload = 'structured.default';
 
 /**
  * Result type for structured output calls.
@@ -62,6 +47,8 @@ export interface StructuredOutputOptions {
   logContext?: Record<string, unknown>;
   /** Optional model override */
   model?: string;
+  /** Structured workload used to resolve the provider and default model */
+  workload?: Workload;
   /** Optional explicit prompt name for analytics tracking */
   promptName?: string;
   /** Optional prompt version (default: v1) */
@@ -70,6 +57,54 @@ export interface StructuredOutputOptions {
   expectedLanguage?: string | null;
   /** Optional prebuilt prompt blueprint (modular prompt metadata) */
   promptBlueprint?: PromptBlueprint;
+  /** Server-trusted owner used to resolve entitlement and TEXT model preferences */
+  userId?: string;
+}
+
+async function executeStructuredTarget<T extends z.ZodType>(
+  target: ModelTarget,
+  {
+    systemPrompt,
+    userMessage,
+    schema,
+    formatName,
+  }: {
+    systemPrompt: string;
+    userMessage: string;
+    schema: T;
+    formatName: string;
+  }
+) {
+  const client = providerAdapters[target.providerId].client;
+  const messages: OpenAI.ChatCompletionMessageParam[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userMessage },
+  ];
+
+  return client.beta.chat.completions.parse({
+    model: target.modelId,
+    messages,
+    response_format: zodResponseFormat(schema, formatName),
+  });
+}
+
+async function runWithFallback<TResult>(
+  targets: readonly [ModelTarget, ...ModelTarget[]],
+  execute: (target: ModelTarget) => Promise<TResult>,
+  onAttempt: (target: ModelTarget) => void,
+  index = 0
+): Promise<TResult> {
+  const target = targets[index] as ModelTarget;
+  onAttempt(target);
+
+  try {
+    return await execute(target);
+  } catch (error) {
+    const disposition = providerAdapters[target.providerId].classifyError(error);
+    const canTryNext = disposition !== 'terminal' && index < targets.length - 1;
+    if (!canTryNext) throw error;
+    return runWithFallback(targets, execute, onAttempt, index + 1);
+  }
 }
 
 /**
@@ -90,7 +125,7 @@ export interface StructuredOutputOptions {
  *   "Process the transcription...",
  *   userContent,
  *   ThoughtResponseSchema,
- *   { formatName: "thought" }
+ *   { formatName: "thought", userId: trustedOwnerUid }
  * );
  * 
  * if (result.success && result.data) {
@@ -106,7 +141,13 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
 ): Promise<StructuredOutputResult<z.infer<T>>> {
   const { formatName, logContext = {} } = options;
   const operationName = `StructuredOutput:${formatName}`;
-  const model = options.model || aiModel;
+  const workload = options.workload ?? DEFAULT_STRUCTURED_WORKLOAD;
+  const base = resolveStructuredTargets({ workload })[0];
+  const legacyTarget: ModelTarget = {
+    providerId: base.providerId,
+    modelId: options.model || base.modelId,
+  };
+  const executionState: { target: ModelTarget | null } = { target: null };
   const promptBlueprint = options.promptBlueprint || buildSimplePromptBlueprint({
     promptName: options.promptName || formatName,
     promptVersion: options.promptVersion,
@@ -115,10 +156,6 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
     systemPrompt,
     userMessage,
   });
-  const provider = getCurrentAIProvider();
-
-  logger.info(operationName, `Starting structured output call using model: ${model}`);
-
   if (isDebugMode) {
     logger.debug(operationName, "Input context", logContext);
   }
@@ -126,17 +163,48 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
   const startTime = performance.now();
 
   try {
-    const messages: OpenAI.ChatCompletionMessageParam[] = [
-      { role: "system", content: promptBlueprint.systemPrompt },
-      { role: "user", content: promptBlueprint.userMessage },
-    ];
+    let targets: [ModelTarget, ...ModelTarget[]] = [legacyTarget];
+    let consumeSuccessfulAiCall: (() => Promise<void>) | undefined;
+    if (options.userId) {
+      const [
+        { getUserEntitlementServerSide },
+        { resolveUserTextTargets },
+        { assertAiUsageAvailable, consumeAiUsage },
+      ] = await Promise.all([
+        import('@/services/userEntitlement.server'),
+        import('./ai/tierPolicy'),
+        import('@/services/usageLimits.server'),
+      ]);
+      const now = new Date();
+      const entitlement = await getUserEntitlementServerSide(options.userId, {
+        includeTextPreference: true,
+      });
+      assertAiUsageAvailable(entitlement, now);
+      targets = await resolveUserTextTargets(entitlement, {
+        // Legacy fields remain a fallback for existing user documents.
+        providerId: entitlement.preferredText?.providerId ?? entitlement.preferredProviderId,
+        modelId: entitlement.preferredText?.modelId ?? entitlement.preferredModelId,
+      }, now);
+      consumeSuccessfulAiCall = () => consumeAiUsage(options.userId as string, now);
+    }
 
-    // Make API call with structured output
-    const completion = await aiAPI.beta.chat.completions.parse({
-      model,
-      messages,
-      response_format: zodResponseFormat(schema, formatName),
-    });
+    const completion = await runWithFallback(
+      targets,
+      (target) => executeStructuredTarget(target, {
+        systemPrompt: promptBlueprint.systemPrompt,
+        userMessage: promptBlueprint.userMessage,
+        schema,
+        formatName,
+      }),
+      (target) => {
+        executionState.target = target;
+        logger.info(operationName, `Starting structured output call using model: ${target.modelId}`);
+      }
+    );
+    const target = executionState.target;
+    if (!target) throw new Error('Structured-output target was not executed');
+    const model = target.modelId;
+    const provider = target.providerId.toUpperCase();
 
     const endTime = performance.now();
     const durationMs = endTime - startTime;
@@ -209,6 +277,8 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
       };
     }
 
+    await consumeSuccessfulAiCall?.();
+
     logger.success(operationName, `Completed in ${formattedDuration}`);
 
     if (isDebugMode) {
@@ -240,16 +310,18 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
     const formattedDuration = formatDuration(durationMs);
 
     logger.error(operationName, `Failed after ${formattedDuration}`, error);
-    emitStructuredTelemetryEvent({
-      provider,
-      model,
-      formatName,
-      promptBlueprint,
-      logContext,
-      latencyMs: durationMs,
-      status: "error",
-      errorMessage: error instanceof Error ? error.message : String(error),
-    });
+    if (executionState.target) {
+      emitStructuredTelemetryEvent({
+        provider: executionState.target.providerId.toUpperCase(),
+        model: executionState.target.modelId,
+        formatName,
+        promptBlueprint,
+        logContext,
+        latencyMs: durationMs,
+        status: "error",
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
+    }
 
     return {
       success: false,
@@ -265,12 +337,12 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
  * Useful for logging and debugging.
  */
 export function getCurrentAIModel(): string {
-  return aiModel;
+  return resolveStructuredTargets({ workload: DEFAULT_STRUCTURED_WORKLOAD })[0].modelId;
 }
 
 /**
  * Get the current AI provider.
  */
-export function getCurrentAIProvider(): 'GEMINI' | 'OPENAI' {
-  return process.env.AI_MODEL_TO_USE === 'GEMINI' ? 'GEMINI' : 'OPENAI';
+export function getCurrentAIProvider(): string {
+  return resolveStructuredTargets({ workload: DEFAULT_STRUCTURED_WORKLOAD })[0].providerId.toUpperCase();
 }

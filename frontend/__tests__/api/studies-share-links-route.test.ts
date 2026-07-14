@@ -27,6 +27,12 @@ jest.mock('@repositories/studyNoteShareLinks.repository', () => ({
   },
 }));
 
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn((request: Request) =>
+    Promise.resolve(new URL(request.url).searchParams.get('userId'))
+  ),
+}));
+
 const mockStudiesRepo = studiesRepository as jest.Mocked<typeof studiesRepository>;
 const mockShareLinksRepo = studyNoteShareLinksRepository as jest.Mocked<typeof studyNoteShareLinksRepository>;
 
@@ -73,7 +79,9 @@ describe('studies share-links route', () => {
 
   describe('POST', () => {
     const makeRequest = (body: Record<string, unknown>) => ({
-      url: 'https://example.com/api/studies/share-links',
+      url: body.userId
+        ? `https://example.com/api/studies/share-links?userId=${String(body.userId)}`
+        : 'https://example.com/api/studies/share-links',
       json: jest.fn().mockResolvedValue(body),
     }) as unknown as Request;
 

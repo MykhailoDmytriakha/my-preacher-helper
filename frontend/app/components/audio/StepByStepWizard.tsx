@@ -29,11 +29,12 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { useAiUsage } from '@/hooks/useAiUsage';
 import { useAuth } from '@/hooks/useAuth';
 import useSermon from '@/hooks/useSermon';
+import { useUserEntitlement } from '@/hooks/useUserEntitlement';
 import {
     AVAILABLE_VOICES,
-    GOOGLE_TTS_MODELS,
     SERMON_SECTIONS,
     AudioChunk,
     AudioQuality,
@@ -44,6 +45,7 @@ import {
     TTSVoice,
     SermonSection,
 } from '@/types/audioGeneration.types';
+import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { getSortedThoughts } from '@/utils/sermonSorting';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 
@@ -86,8 +88,9 @@ export interface StepByStepWizardProps {
 // Constants
 // ============================================================================
 
-const GOOGLE_MODEL_GEMINI_31: GoogleTTSModel = 'gemini-3.1-flash-tts-preview';
-const GOOGLE_MODEL_GEMINI_25: GoogleTTSModel = 'gemini-2.5-flash-preview-tts';
+const GOOGLE_MODEL_GEMINI_31: GoogleTTSModel = 'gemini-3.1-flash-tts';
+const GOOGLE_MODEL_GEMINI_25: GoogleTTSModel = 'gemini-2.5-flash-tts';
+const OPENAI_TTS_MODEL = 'gpt-4o-mini-tts';
 
 /** Curated male voices for Google TTS, ordered youngest → oldest sounding. */
 const GOOGLE_VOICE_OPTIONS: { id: GoogleTTSVoice; descKey: string; descDefault: string }[] = [
@@ -181,7 +184,7 @@ export default function StepByStepWizard({
     const [ttsProvider, setTtsProvider] = useState<TTSProvider>('openai');
     const [voice, setVoice] = useState<TTSVoice>('onyx');
     const [quality, setQuality] = useState<AudioQuality>('standard');
-    const [googleModel, setGoogleModel] = useState<GoogleTTSModel>(GOOGLE_MODEL_GEMINI_25);
+    const [googleModel, setGoogleModel] = useState<GoogleTTSModel>(GOOGLE_MODEL_GEMINI_31);
     const [googleVoice, setGoogleVoice] = useState<GoogleTTSVoice>('Puck');
     const [sections, setSections] = useState<SermonSection[]>([...SERMON_SECTIONS]);
 
@@ -209,6 +212,29 @@ export default function StepByStepWizard({
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
     const { sermon } = useSermon(sermonId);
+    const { aiBlocked, refresh: refreshAiUsage } = useAiUsage();
+    const {
+        data: userEntitlement,
+        isLoading: entitlementLoading,
+        isError: entitlementError,
+    } = useUserEntitlement(user);
+
+    const availableTtsTargets = userEntitlement?.functions?.tts.available ?? [];
+    const entitlementSeeded = useRef(false);
+    useEffect(() => {
+        if (entitlementSeeded.current || !userEntitlement?.functions?.tts) return;
+        const current = userEntitlement.functions.tts.current;
+        if (current.providerId === 'gemini') {
+            setTtsProvider('google');
+            setGoogleModel(current.modelId === GOOGLE_MODEL_GEMINI_25
+                ? GOOGLE_MODEL_GEMINI_25
+                : GOOGLE_MODEL_GEMINI_31);
+            setMode('raw');
+        } else {
+            setTtsProvider('openai');
+        }
+        entitlementSeeded.current = true;
+    }, [userEntitlement]);
 
     // Report "busy" so the modal can guard its close button
     useEffect(() => {
@@ -238,14 +264,12 @@ export default function StepByStepWizard({
     useEffect(() => {
         if (seeded.current || !sermon) return;
         const savedProvider: TTSProvider = sermon.audioMetadata?.provider === 'google' ? 'google' : 'openai';
-        setTtsProvider(savedProvider);
         if (savedProvider === 'google') {
-            if (sermon.audioMetadata?.model === GOOGLE_MODEL_GEMINI_25 || sermon.audioMetadata?.model === GOOGLE_MODEL_GEMINI_31) {
-                setGoogleModel(sermon.audioMetadata.model);
+            if (GOOGLE_VOICE_OPTIONS.some(option => option.id === sermon.audioMetadata?.voice)) {
+                setGoogleVoice(sermon.audioMetadata?.voice as GoogleTTSVoice);
             }
-            if (sermon.audioMetadata?.voice) setGoogleVoice(sermon.audioMetadata.voice as GoogleTTSVoice);
-        } else if (sermon.audioMetadata?.voice) {
-            setVoice(sermon.audioMetadata.voice as TTSVoice);
+        } else if (AVAILABLE_VOICES.some(option => option.id === sermon.audioMetadata?.voice)) {
+            setVoice(sermon.audioMetadata?.voice as TTSVoice);
         }
 
         const existing = (sermon.audioChunks || []) as AudioChunk[];
@@ -258,7 +282,7 @@ export default function StepByStepWizard({
             // The true source label of the persisted chunks.
             const trueMode: AudioSourceMode = sermon.audioMetadata?.mode === 'raw' ? 'raw' : 'ai';
             chunksByMode.current[trueMode] = loaded;
-            if (savedProvider === 'google') {
+            if (ttsProvider === 'google') {
                 // Google only supports raw. If the persisted chunks are AI-optimized,
                 // do NOT present them as raw — leave raw empty so the user re-prepares.
                 setMode('raw');
@@ -267,11 +291,11 @@ export default function StepByStepWizard({
                 setMode(trueMode);
                 setChunks(loaded);
             }
-        } else if (savedProvider === 'google') {
+        } else if (ttsProvider === 'google') {
             setMode('raw');
         }
         seeded.current = true;
-    }, [sermon]);
+    }, [sermon, ttsProvider]);
 
     // ------------------------------------------------------------------
     // Voice preview (samples in /public/samples)
@@ -321,9 +345,10 @@ export default function StepByStepWizard({
         signal: AbortSignal,
         onChunkProgress: (current: number, total: number) => void,
     ): Promise<{ bytes: Uint8Array; filename?: string; mimeType?: string }> => {
+        const authHeaders = await getAuthenticatedRequestHeaders();
         const response = await fetch(`/api/sermons/${sermonId}/audio/generate`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
             body: JSON.stringify(body),
             signal,
         });
@@ -366,34 +391,36 @@ export default function StepByStepWizard({
     const syncChunksToDb = useCallback(async (cached: ChunkPreview[], targetMode: AudioSourceMode) => {
         setIsLoading(true);
         try {
+            const authHeaders = await getAuthenticatedRequestHeaders();
             await fetch(`/api/sermons/${sermonId}/audio/chunks`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chunks: cached, userId: user?.uid, mode: targetMode }),
+                headers: { 'Content-Type': 'application/json', ...authHeaders },
+                body: JSON.stringify({ chunks: cached, mode: targetMode }),
             });
         } catch (err) {
             console.error('Mode sync failed:', err);
         } finally {
             setIsLoading(false);
         }
-    }, [sermonId, user?.uid]);
+    }, [sermonId]);
 
     // ------------------------------------------------------------------
     // Prepare text for a given source (AI optimize OR raw split)
     // ------------------------------------------------------------------
     const prepareSource = useCallback(async (targetMode: AudioSourceMode) => {
+        if (aiBlocked) return;
         setIsLoading(true);
         setError(null);
         setMode(targetMode); // switch the layout to the target source now so loading shows in place
         try {
+            const authHeaders = await getAuthenticatedRequestHeaders();
             const response = await fetch(`/api/sermons/${sermonId}/audio/optimize`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...authHeaders },
                 body: JSON.stringify({
                     sections,
                     provider: ttsProvider,
                     saveToDb: true,
-                    userId: user?.uid,
                     useRawText: targetMode === 'raw',
                 }),
             });
@@ -407,13 +434,16 @@ export default function StepByStepWizard({
             chunksByMode.current[targetMode] = newChunks;
             setMode(targetMode);
             setChunks(newChunks);
+            if (targetMode === 'ai') {
+                await refreshAiUsage();
+            }
         } catch (err: unknown) {
             console.error('Prepare error:', err);
             setError(err instanceof Error ? err.message : 'Optimization failed');
         } finally {
             setIsLoading(false);
         }
-    }, [sermonId, user, sections, ttsProvider]);
+    }, [aiBlocked, refreshAiUsage, sermonId, sections, ttsProvider]);
 
     // ------------------------------------------------------------------
     // Switch source tab. Raw is mechanical (auto-prepared); AI is explicit
@@ -444,10 +474,11 @@ export default function StepByStepWizard({
     // Edit a single chunk
     // ------------------------------------------------------------------
     const handleSaveChunk = useCallback(async (index: number, newText: string) => {
+        const authHeaders = await getAuthenticatedRequestHeaders();
         const response = await fetch(`/api/sermons/${sermonId}/audio/chunks/${index}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: newText, userId: user?.uid }),
+            headers: { 'Content-Type': 'application/json', ...authHeaders },
+            body: JSON.stringify({ text: newText }),
         });
         if (!response.ok) {
             const data = await response.json();
@@ -461,12 +492,13 @@ export default function StepByStepWizard({
             return next;
         });
         setEditingChunk(null);
-    }, [sermonId, user?.uid, mode]);
+    }, [sermonId, mode]);
 
     // ------------------------------------------------------------------
     // Generate audio (TTS)
     // ------------------------------------------------------------------
     const handleGenerate = useCallback(async () => {
+        if (aiBlocked) return;
         const isGoogle = ttsProvider === 'google';
         const totalChunks = chunks.filter(c => sections.includes(c.sectionId)).length;
 
@@ -480,9 +512,8 @@ export default function StepByStepWizard({
             provider: ttsProvider,
             voice: isGoogle ? googleVoice : voice,
             quality,
-            model: isGoogle ? googleModel : undefined,
+            model: isGoogle ? googleModel : OPENAI_TTS_MODEL,
             sections,
-            userId: user?.uid,
         };
 
         try {
@@ -536,6 +567,7 @@ export default function StepByStepWizard({
             setGeneratedFile({ url, filename: finalName });
             setGenProgress(prev => ({ ...prev, percent: 100 }));
             setView('success');
+            await refreshAiUsage();
         } catch (err) {
             if (err instanceof Error && err.name === 'AbortError') {
                 setError(t('audioExport.generationCancelled', { defaultValue: 'Generation cancelled' }));
@@ -546,7 +578,7 @@ export default function StepByStepWizard({
         } finally {
             setAbortController(null);
         }
-    }, [ttsProvider, googleVoice, voice, quality, googleModel, sections, chunks, user?.uid, fetchBatchBytes, t]);
+    }, [aiBlocked, ttsProvider, googleVoice, voice, quality, googleModel, sections, chunks, fetchBatchBytes, refreshAiUsage, t]);
 
     const handleCancelGeneration = useCallback(() => abortController?.abort(), [abortController]);
 
@@ -562,13 +594,19 @@ export default function StepByStepWizard({
     }, [mode, prepareSource]);
 
     const setProvider = useCallback((p: TTSProvider) => {
+        const providerId = p === 'google' ? 'gemini' : 'openai';
+        const firstAllowed = availableTtsTargets.find(target => target.providerId === providerId);
+        if (!firstAllowed) return;
         setTtsProvider(p);
         if (p === 'google') {
             // Google has no AI optimization — force the raw source.
             setMode('raw');
+            setGoogleModel(firstAllowed.modelId === GOOGLE_MODEL_GEMINI_25
+                ? GOOGLE_MODEL_GEMINI_25
+                : GOOGLE_MODEL_GEMINI_31);
             setGoogleVoice(prev => prev || 'Puck');
         }
-    }, []);
+    }, [availableTtsTargets]);
 
     // ============================================================================
     // Section config / derived
@@ -607,10 +645,30 @@ export default function StepByStepWizard({
     // Render: STEP 1 — settings
     // ============================================================================
     const renderStep1 = () => {
-        const providerOptions: { id: TTSProvider; label: string; sub: string }[] = [
+        if (entitlementError) {
+            return (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300" role="alert">
+                    {t('audioExport.modelsLoadError', { defaultValue: 'Could not load the voice models available for your plan.' })}
+                </div>
+            );
+        }
+        if (entitlementLoading || !userEntitlement?.functions?.tts) {
+            return (
+                <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400" data-testid="tts-models-loading">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {t('audioExport.modelsLoading', { defaultValue: 'Loading available voice models...' })}
+                </div>
+            );
+        }
+
+        const allProviderOptions: { id: TTSProvider; label: string; sub: string }[] = [
             { id: 'openai', label: t('audioExport.providerOpenai', { defaultValue: 'OpenAI' }), sub: t('audioExport.providerOpenaiSub', { defaultValue: 'Onyx · Echo' }) },
             { id: 'google', label: t('audioExport.providerGoogle', { defaultValue: 'Google' }), sub: t('audioExport.providerGoogleSub', { defaultValue: 'Gemini · 4 голоса' }) },
         ];
+        const providerOptions = allProviderOptions.filter(option => availableTtsTargets.some(target =>
+            target.providerId === (option.id === 'google' ? 'gemini' : 'openai')));
+        const selectedProviderId = ttsProvider === 'google' ? 'gemini' : 'openai';
+        const modelOptions = availableTtsTargets.filter(target => target.providerId === selectedProviderId);
 
         return (
             <div className="space-y-6">
@@ -644,45 +702,61 @@ export default function StepByStepWizard({
                     <div className="flex min-w-0 flex-1 flex-col gap-5">
                         <div className="flex flex-col items-start gap-2">
                             {labelRow(t('audioExport.modelLabel', { defaultValue: 'Model' }))}
-                            {ttsProvider === 'openai' ? (
-                                <div className="flex flex-wrap gap-2">
-                                    {(['standard', 'hd'] as AudioQuality[]).map(q => {
-                                        const sel = quality === q;
-                                        return (
-                                            <button
-                                                key={q}
-                                                onClick={() => setQuality(q)}
-                                                className={`rounded-lg border px-3 py-2 text-left transition-colors ${sel ? ACTIVE_PILL : INACTIVE_PILL}`}
-                                            >
-                                                <span className="block text-sm font-semibold leading-tight">
-                                                    {q === 'standard' ? t('audioExport.qualityStandard', { defaultValue: 'Standard' }) : t('audioExport.qualityHd', { defaultValue: 'HD' })}
-                                                </span>
-                                                <span className={`block text-[11px] ${mutedDescClass(sel)}`}>
-                                                    {q === 'standard' ? t('audioExport.qualityStandardDesc', { defaultValue: 'быстрее, дешевле' }) : t('audioExport.qualityHdDesc', { defaultValue: 'чище звук' })}
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            ) : (
-                                <div className="flex flex-wrap gap-2">
-                                    {GOOGLE_TTS_MODELS.map(m => {
-                                        const sel = googleModel === m.id;
-                                        const defLabel = m.id === GOOGLE_MODEL_GEMINI_31 ? 'Gemini 3.1 TTS' : 'Gemini 2.5 TTS';
-                                        const defDesc = m.id === GOOGLE_MODEL_GEMINI_31 ? 'выразительный' : 'надёжный';
-                                        return (
-                                            <button
-                                                key={m.id}
-                                                onClick={() => setGoogleModel(m.id)}
-                                                className={`rounded-lg border px-3 py-2 text-left transition-colors ${sel ? ACTIVE_PILL : INACTIVE_PILL}`}
-                                            >
-                                                <span className="block text-sm font-semibold leading-tight">{t(m.labelKey, { defaultValue: defLabel })}</span>
-                                                <span className={`block text-[11px] ${mutedDescClass(sel)}`}>{t(m.descKey, { defaultValue: defDesc })}</span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            )}
+                            <div className="flex flex-wrap gap-2">
+                                {modelOptions.map(model => {
+                                    const isGoogleModel = model.providerId === 'gemini';
+                                    const selected = isGoogleModel
+                                        ? googleModel === model.modelId
+                                        : ttsProvider === 'openai';
+                                    const defaultLabel = model.modelId === GOOGLE_MODEL_GEMINI_31
+                                        ? 'Gemini 3.1 TTS'
+                                        : model.modelId === GOOGLE_MODEL_GEMINI_25
+                                            ? 'Gemini 2.5 TTS'
+                                            : model.modelId;
+                                    const description = model.modelId === GOOGLE_MODEL_GEMINI_31
+                                        ? t('audioExport.googleModelGemini31Desc', { defaultValue: 'Expressive' })
+                                        : model.modelId === GOOGLE_MODEL_GEMINI_25
+                                            ? t('audioExport.googleModelGemini25Desc', { defaultValue: 'Reliable' })
+                                            : t('audioExport.openaiModelDesc', { defaultValue: 'Natural, steerable speech' });
+                                    return (
+                                        <button
+                                            key={`${model.providerId}:${model.modelId}`}
+                                            type="button"
+                                            onClick={() => {
+                                                if (isGoogleModel) setGoogleModel(model.modelId as GoogleTTSModel);
+                                            }}
+                                            className={`rounded-lg border px-3 py-2 text-left transition-colors ${selected ? ACTIVE_PILL : INACTIVE_PILL}`}
+                                        >
+                                            <span className="block text-sm font-semibold leading-tight">{defaultLabel}</span>
+                                            <span className={`block text-[11px] ${mutedDescClass(selected)}`}>{description}</span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col items-start gap-2">
+                            {labelRow(t('audioExport.qualityLabel', { defaultValue: 'Quality' }))}
+                            <div className="flex flex-wrap gap-2">
+                                {(['standard', 'hd'] as AudioQuality[]).map(q => {
+                                    const selected = quality === q;
+                                    return (
+                                        <button
+                                            key={q}
+                                            type="button"
+                                            onClick={() => setQuality(q)}
+                                            className={`rounded-lg border px-3 py-2 text-left transition-colors ${selected ? ACTIVE_PILL : INACTIVE_PILL}`}
+                                        >
+                                            <span className="block text-sm font-semibold leading-tight">
+                                                {q === 'standard' ? t('audioExport.qualityStandard', { defaultValue: 'Standard' }) : t('audioExport.qualityHd', { defaultValue: 'HD' })}
+                                            </span>
+                                            <span className={`block text-[11px] ${mutedDescClass(selected)}`}>
+                                                {q === 'standard' ? t('audioExport.qualityStandardDesc', { defaultValue: 'faster, cheaper' }) : t('audioExport.qualityHdDesc', { defaultValue: 'clearer sound' })}
+                                            </span>
+                                        </button>
+                                    );
+                                })}
+                            </div>
                         </div>
 
                         <div className="flex w-full flex-col items-start gap-2">
@@ -702,6 +776,12 @@ export default function StepByStepWizard({
                         </div>
                     </div>
                 </div>
+
+                {userEntitlement.effectiveTier === 'free' && (
+                    <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:border-gray-800 dark:bg-gray-900/50 dark:text-gray-400">
+                        {t('audioExport.freeModelLocked', { defaultValue: 'Your plan uses the configured default voice model.' })}
+                    </p>
+                )}
 
                 {ttsProvider === 'google' && (
                     <div className="flex items-start gap-2.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12px] leading-snug text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
@@ -905,7 +985,8 @@ export default function StepByStepWizard({
                                     </p>
                                     <button
                                         onClick={() => prepareSource('ai')}
-                                        disabled={isLoading}
+                                        disabled={isLoading || aiBlocked}
+                                        title={aiBlocked ? t('settings.usage.aiUsageExhausted') : undefined}
                                         className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-orange-700 disabled:opacity-50"
                                     >
                                         <Sparkles className="h-4 w-4" />
@@ -1071,7 +1152,7 @@ export default function StepByStepWizard({
                     <span className="text-xs text-gray-400">{t('audioExport.stepCount', { defaultValue: 'Шаг {{n}} из 3', n: 1 })}</span>
                     <button
                         onClick={goToStep2}
-                        disabled={sections.length === 0}
+                        disabled={sections.length === 0 || entitlementLoading || entitlementError || !userEntitlement?.functions?.tts}
                         className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-orange-700 disabled:opacity-50"
                     >
                         {t('audioExport.nextSource', { defaultValue: 'Далее: источник текста' })}<ArrowRight className="h-4 w-4" />
@@ -1103,7 +1184,8 @@ export default function StepByStepWizard({
                 </button>
                 <button
                     onClick={handleGenerate}
-                    disabled={isLoading || chunks.length === 0}
+                    disabled={isLoading || chunks.length === 0 || aiBlocked}
+                    title={aiBlocked ? t('settings.usage.aiUsageExhausted') : undefined}
                     className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-orange-700 disabled:opacity-50"
                 >
                     <AudioLines className="h-4 w-4" />{t('audioExport.generateAudioButton', { defaultValue: 'Generate Audio' })}

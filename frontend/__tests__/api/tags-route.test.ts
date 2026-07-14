@@ -22,6 +22,10 @@ jest.mock('@/api/clients/firestore.client', () => ({
   deleteTag: jest.fn(),
 }));
 
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn().mockResolvedValue('u1'),
+}));
+
 const mockClients = clients as jest.Mocked<typeof clients>;
 
 describe('Tags API Route', () => {

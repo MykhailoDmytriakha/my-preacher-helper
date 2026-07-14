@@ -10,6 +10,7 @@ import "@locales/i18n";
 
 import { MicrophoneIcon, SwitchViewIcon } from "@/components/Icons";
 import PointNote from "@/components/PointNote";
+import { useAiUsage } from "@/hooks/useAiUsage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { getSectionLabel } from "@/lib/sections";
 import { Item, SermonPoint, SubPoint } from "@/models/models";
@@ -393,6 +394,9 @@ const SermonPointPlaceholder: React.FC<{
   onClearAudioError: () => void;
   onAiSortPoint?: (outlinePointId: string) => void;
   isOnline: boolean;
+  aiBlocked?: boolean;
+  transcriptionBlocked?: boolean;
+  transcriptionUnavailableLabel?: string;
   isSorting?: boolean;
   isSortReviewPending?: boolean;
   sortingOutlinePointId?: string | null;
@@ -436,6 +440,9 @@ const SermonPointPlaceholder: React.FC<{
   onClearAudioError,
   onAiSortPoint,
   isOnline,
+  aiBlocked = false,
+  transcriptionBlocked = false,
+  transcriptionUnavailableLabel,
   isSorting = false,
   isSortReviewPending = false,
   sortingOutlinePointId,
@@ -464,6 +471,7 @@ const SermonPointPlaceholder: React.FC<{
       items,
       outlinePointId: point.id,
       isOnline,
+      aiBlocked,
       isSorting,
       isDiffModeActive: isSortReviewPending,
     });
@@ -533,10 +541,12 @@ const SermonPointPlaceholder: React.FC<{
     const renderSubPointRecorder = canUseInlineRecorder
       ? (subPoint: SubPoint) => (
         <FlatRecorderButton
-          disabled={isPointLocked}
+          disabled={isPointLocked || transcriptionBlocked}
+          title={transcriptionBlocked ? transcriptionUnavailableLabel : undefined}
           transcriptionError={subPointAudioErrors[subPoint.id] ?? null}
           onClearError={() => setSubPointAudioError(subPoint.id, null)}
           onRecordingComplete={(audioBlob) => {
+            if (transcriptionBlocked) return;
             if (!sermonId) return;
             void recordAudioThought({
               audioBlob,
@@ -567,6 +577,10 @@ const SermonPointPlaceholder: React.FC<{
         case "offline":
           return t("structure.aiSortPointDisabledOffline", {
             defaultValue: "AI sorting is unavailable offline.",
+          });
+        case "quotaExhausted":
+          return t("structure.aiSortPointDisabledQuotaExhausted", {
+            defaultValue: "Not enough AI usage remaining.",
           });
         case "sorting":
           return t("structure.aiSortPointDisabledSorting", {
@@ -760,10 +774,12 @@ const SermonPointPlaceholder: React.FC<{
                   <>
                     <FocusRecorderButton
                       size="small"
-                      disabled={isPointLocked}
+                      disabled={isPointLocked || transcriptionBlocked}
+                      title={transcriptionBlocked ? transcriptionUnavailableLabel : undefined}
                       transcriptionError={audioError ?? null}
                       onClearError={onClearAudioError}
                       onRecordingComplete={(audioBlob) => {
+                        if (transcriptionBlocked) return;
                         if (!sermonId) return;
                         void recordAudioThought({
                           audioBlob,
@@ -959,6 +975,10 @@ export default function Column({
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
   const isOnline = useOnlineStatus();
+  const { aiBlocked, transcriptionBlocked, refresh: refreshAiUsage } = useAiUsage();
+  const transcriptionUnavailableLabel = transcriptionBlocked
+    ? t("settings.usage.transcriptionUsageExhausted")
+    : undefined;
   const [showTooltip, setShowTooltip] = useState<boolean>(false);
 
   // State for responsive sidebar visibility on small screens
@@ -1018,6 +1038,8 @@ export default function Column({
     onOutlinePointDeleted,
     onSubPointDeleted,
     onAddOutlinePoint,
+    onAiSuccess: refreshAiUsage,
+    aiBlocked,
     t,
   });
 
@@ -1187,10 +1209,12 @@ export default function Column({
           <AudioRecorder
             variant="mini"
             hideKeyboardShortcuts={true}
-            disabled={allPointsBlocked}
+            disabled={allPointsBlocked || transcriptionBlocked}
+            title={transcriptionBlocked ? transcriptionUnavailableLabel : undefined}
             transcriptionError={sectionAudioError}
             onClearError={() => setSectionAudioError(null)}
             onRecordingComplete={(audioBlob) => {
+              if (transcriptionBlocked) return;
               const sectionLabel = isPointAudioSection(id) ? getSectionLabel(t, id) : undefined;
               void recordAudioThought({
                 audioBlob,
@@ -1271,10 +1295,12 @@ export default function Column({
         {sermonId && (
           <button
             onClick={handleGenerateSermonPoints}
-            disabled={isGeneratingSermonPoints || localSermonPoints.length > 0}
+            disabled={isGeneratingSermonPoints || localSermonPoints.length > 0 || aiBlocked}
             className={`flex items-center text-xs font-medium px-2 py-1 bg-white dark:bg-gray-200 bg-opacity-20 dark:bg-opacity-20 rounded transition-colors ${localSermonPoints.length > 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-opacity-30 dark:hover:bg-opacity-30'} text-white dark:text-gray-800`}
             title={localSermonPoints.length > 0
               ? t('structure.outlinePointsExist', { defaultValue: 'SermonOutline points already exist' })
+              : aiBlocked
+                ? t('settings.usage.aiUsageExhausted')
               : t('structure.generateSermonPoints', { defaultValue: 'Generate outline points' })}
           >
             {isGeneratingSermonPoints ? (
@@ -1485,6 +1511,9 @@ export default function Column({
                     sermonId={sermonId}
                     onAudioThoughtCreated={onAudioThoughtCreated}
                     isFocusMode={isFocusMode}
+                    aiBlocked={aiBlocked}
+                    transcriptionBlocked={transcriptionBlocked}
+                    transcriptionUnavailableLabel={transcriptionUnavailableLabel}
                     onAddThought={onAddThought}
                     sectionTitle={title}
                     audioError={pointAudioErrors[point.id] ?? null}
@@ -1587,13 +1616,14 @@ export default function Column({
 	            <div className="relative" ref={normalModePopoverRef}>
               <button
                 onClick={() => {
+                  if (transcriptionBlocked) return;
                   debugLog('Column: mic button clicked', { sectionId: id });
                   setShowAudioPopover((v) => !v);
                 }}
-                disabled={allPointsBlocked}
-                className={`p-1 rounded-full transition-colors ${allPointsBlocked ? 'bg-white bg-opacity-10 cursor-not-allowed opacity-50' : 'bg-white bg-opacity-20 hover:bg-opacity-30'}`}
-                title={allPointsBlocked ? t(TRANSLATION_STRUCTURE_ALL_POINTS_BLOCKED, { defaultValue: DEFAULT_ALL_POINTS_BLOCKED_TEXT }) : t(TRANSLATION_STRUCTURE_RECORD_AUDIO, { defaultValue: DEFAULT_RECORD_AUDIO_TEXT })}
-                aria-label={allPointsBlocked ? t(TRANSLATION_STRUCTURE_ALL_POINTS_BLOCKED, { defaultValue: DEFAULT_ALL_POINTS_BLOCKED_TEXT }) : t(TRANSLATION_STRUCTURE_RECORD_AUDIO, { defaultValue: DEFAULT_RECORD_AUDIO_TEXT })}
+                disabled={allPointsBlocked || transcriptionBlocked}
+                className={`p-1 rounded-full transition-colors ${(allPointsBlocked || transcriptionBlocked) ? 'bg-white bg-opacity-10 cursor-not-allowed opacity-50' : 'bg-white bg-opacity-20 hover:bg-opacity-30'}`}
+                title={transcriptionBlocked ? transcriptionUnavailableLabel : allPointsBlocked ? t(TRANSLATION_STRUCTURE_ALL_POINTS_BLOCKED, { defaultValue: DEFAULT_ALL_POINTS_BLOCKED_TEXT }) : t(TRANSLATION_STRUCTURE_RECORD_AUDIO, { defaultValue: DEFAULT_RECORD_AUDIO_TEXT })}
+                aria-label={transcriptionBlocked ? transcriptionUnavailableLabel : allPointsBlocked ? t(TRANSLATION_STRUCTURE_ALL_POINTS_BLOCKED, { defaultValue: DEFAULT_ALL_POINTS_BLOCKED_TEXT }) : t(TRANSLATION_STRUCTURE_RECORD_AUDIO, { defaultValue: DEFAULT_RECORD_AUDIO_TEXT })}
               >
                 <MicrophoneIcon className="h-4 w-4 text-white" />
               </button>
@@ -1604,9 +1634,12 @@ export default function Column({
 	                      variant="mini"
 	                      hideKeyboardShortcuts={true}
 	                      autoStart={true}
+                        disabled={allPointsBlocked || transcriptionBlocked}
+                        title={transcriptionBlocked ? transcriptionUnavailableLabel : undefined}
                         transcriptionError={normalAudioError}
                         onClearError={() => setNormalAudioErrorSafely(null)}
 	                      onRecordingComplete={(audioBlob) => {
+                          if (transcriptionBlocked) return;
 	                        void recordAudioThought({
 	                          audioBlob,
 	                          sectionId: id,
@@ -1880,6 +1913,9 @@ export default function Column({
                                 sermonId={sermonId}
                                 onAudioThoughtCreated={onAudioThoughtCreated}
                                 isFocusMode={false}
+                                aiBlocked={aiBlocked}
+                                transcriptionBlocked={transcriptionBlocked}
+                                transcriptionUnavailableLabel={transcriptionUnavailableLabel}
                                 onAddThought={onAddThought}
                                 sectionTitle={title}
                                 audioError={pointAudioErrors[point.id] ?? null}

@@ -22,7 +22,7 @@ describe('feedback.service', () => {
 
         expect(global.fetch).toHaveBeenCalledWith('/api/feedback', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-id-token' },
             body: JSON.stringify({
                 feedbackText: text,
                 feedbackType: type,
@@ -41,7 +41,7 @@ describe('feedback.service', () => {
 
         expect(global.fetch).toHaveBeenCalledWith('/api/feedback', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-id-token' },
             body: JSON.stringify({
                 feedbackText: text,
                 feedbackType: type,

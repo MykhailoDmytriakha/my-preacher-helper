@@ -8,7 +8,23 @@ jest.mock('@/services/sermons.client', () => ({
   createManualThoughtViaClient: (...args: unknown[]) => mockCreateManualThoughtViaClient(...args),
 }));
 
-import { createAudioThought, retryAudioTranscription, deleteThought, updateThought, createManualThought } from '@/services/thought.service';
+jest.mock('@/utils/transcriptionRetryClient', () => ({
+  getTranscriptionAuthorizationHeaders: jest.fn(),
+}));
+
+const { getTranscriptionAuthorizationHeaders: mockGetTranscriptionAuthorizationHeaders } =
+  jest.requireMock('@/utils/transcriptionRetryClient') as {
+    getTranscriptionAuthorizationHeaders: jest.Mock;
+  };
+
+import {
+  createAudioThought,
+  retryAudioTranscription,
+  deleteThought,
+  updateThought,
+  createManualThought,
+  transcribeThoughtAudio,
+} from '@/services/thought.service';
 
 // Mock fetch globally
 const mockFetch = jest.fn();
@@ -43,6 +59,33 @@ describe('Thought Service', () => {
     mockFetch.mockImplementation(() => {
       throw new Error('fetch not mocked');
     });
+    mockGetTranscriptionAuthorizationHeaders.mockResolvedValue({
+      Authorization: 'Bearer firebase-token',
+    });
+  });
+
+  describe('transcribeThoughtAudio', () => {
+    it('attaches Firebase authorization to the transcription request', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: jest.fn().mockResolvedValue({
+          success: true,
+          polishedText: 'Polished',
+          originalText: 'Raw',
+        }),
+      });
+
+      await expect(transcribeThoughtAudio(mockBlob)).resolves.toEqual({
+        polishedText: 'Polished',
+        originalText: 'Raw',
+      });
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/thoughts/transcribe'),
+        expect.objectContaining({
+          headers: { Authorization: 'Bearer firebase-token' },
+        })
+      );
+    });
   });
 
   afterEach(() => {
@@ -65,6 +108,7 @@ describe('Thought Service', () => {
         expect.objectContaining({
           method: 'POST',
           body: expect.any(FormData),
+          headers: { Authorization: 'Bearer firebase-token' },
         })
       );
     });

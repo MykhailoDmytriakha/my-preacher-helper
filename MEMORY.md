@@ -13,6 +13,7 @@
 *   **AI Stack:** OpenAI (`gpt-4o`, `gpt-4o-mini`, `tts-1`) | Zod Schema Validation (Strict) | Client-side Streaming.
 
 ### 📐 Coding Conventions
+*   **AI Metering Completeness:** Treat every provider path as the chain `server-trusted uid → assert before provider → provider success → consume`. Required-auth audio routes must reject missing/invalid Firebase bearer tokens before parsing/processing, and every structured-output call must pass an explicit trusted `userId`; a shared AI client with an optional unmetered branch is not sufficient by itself.
 *   **Headless UI Mocking:** Always mock `@headlessui/react` in JSDOM unit tests to prevent focus-management and ref errors. Ensure mocks match the exact import style (named vs default) of the version being used.
 *   **Destructive Action Flow:** When replacing immediate actions with confirmation modals, update all related unit tests to simulate the full modal lifecycle: click trigger → verify modal open → click confirm → verify callback.
 *   **Zod Boundaries:** Use `zod` for ALL external data (API, AI, Forms). Types must match Zod schemas.
@@ -59,6 +60,65 @@
 
 > One-line principles. History in git blame. Newest first.
 
+### 2026-07-14 Admin Cascades Need Downstream Ownership Closure
+**Problem:** Authenticating and owner-checking a root resource is not enough when an Admin-SDK cascade follows user-controlled reference IDs; forged references can turn deletion of an owned parent into writes against another user's documents.
+**Solution:** Authenticate before input/DB work, owner-check the root, and restrict every downstream query/batch/update to documents whose stored owner equals the verified token uid; thread that same uid explicitly into AI metering and model resolution.
+**Principle:** Authorization closure must cover the full write graph, not only the route's primary resource.
+
+### 2026-07-13 Cross-Provider TTS Prices Need Explicit Normalization
+**Problem:** Text, transcription, and speech providers bill in incompatible units; presenting a token/audio rate as a character rate can make a precise-looking admin comparison materially misleading.
+**Solution:** Keep exact provider rates in their native units, normalize TTS to the product's chosen comparison unit only when needed, mark every normalized value as an estimate, and document the source and assumption beside the canonical catalog.
+**Principle:** A cross-provider price label must distinguish quoted rates from derived normalization; precision in formatting is not precision in evidence.
+
+### 2026-07-13 Client Heartbeats Need A User-Scoped Local Reservation
+**Problem:** An auth-ready callback may run again in the same browser, and a device may sign in as more than one user; a global or post-write throttle can suppress the wrong user or race into duplicate writes.
+**Solution:** Scope the localStorage key by uid, store the epoch synchronously before launching the best-effort merge write, and treat storage/write failures as non-blocking because the timestamp is low-stakes metadata.
+**Principle:** For client-supplied activity heartbeats, reserve a user-scoped device window before the async write and never make authorization depend on the signal.
+
+### 2026-07-13 Config Editors Must Not Save From Unverified Fallback State
+**Problem:** A settings form can initialize with safe catalog fallbacks while its GET is pending; if the GET fails and Save becomes available, an administrator may mistake fallback values for stored state and overwrite valid configuration.
+**Solution:** Keep fallback values render-safe, but gate editing and saving on a successful server read; validate each stored value against the canonical catalog and use fallbacks only for effective runtime resolution.
+**Principle:** Safe runtime fallback is not verified administrative state—never enable a config write until the current server state has loaded successfully.
+
+### 2026-07-13 Multilingual STT Locks Need Per-Language Evidence And Current Product-Version Checks
+**Problem:** Aggregate multilingual WER and a provider's generic language list can hide a weak lower-resource language, while a locked model name or cached hourly price can become stale after a new model release or pricing split.
+**Solution:** For each production language, triangulate a public per-language benchmark with provider support documentation, keep dataset-specific WERs separate, price the actual batch/streaming mode, and check whether a current successor changes the decision.
+**Principle:** A multilingual STT choice is validated per language, dataset, endpoint mode, and exact model version—not by one aggregate WER or family-level support claim.
+
+### 2026-07-13 Multilingual TTS Support Is Not Native-Language Quality
+**Problem:** Provider marketing, auto-detection, and global English-only leaderboards can make an unsupported or weak Ukrainian path look production-ready; Azure's Ukrainian Neural voices can also be mistakenly attributed to MAI-Voice-2.
+**Solution:** Verify the exact model's locale/voice list and current price in first-party docs, keep provider-level voices separate from model-level support, and require a blind native-speaker sermon test when no language-specific MOS panel exists.
+**Principle:** Select TTS per language from exact-model evidence; never infer native quality from multilingual generation, a provider-wide locale, or an English leaderboard.
+
+### 2026-07-13 Privilege Forms Must Bind Prefilled State To One Identity
+**Problem:** An admin could select a privileged user, replace only the target UID, and submit the first user's prefilled tier, role, promotion, and usage to the second user; prefilled promotion timestamps could also be rewritten at lower `datetime-local` precision without an intentional promotion edit.
+**Solution:** When a manual identity diverges from the selected identity, clear every prefilled entitlement field; track promotion edits with an explicit dirty flag so unchanged prefilled values never enter the patch.
+**Principle:** In privilege-mutating forms, identity and prefilled state are one atomic context, and prefilled values are not dirty values.
+
+### 2026-07-12 Referral Rewards Need One Transactional Idempotency Anchor
+**Problem:** Referral attribution is user-supplied, but its reward mutates a promotion and concurrent/replayed claims can otherwise pay more than once.
+**Solution:** Establish eligibility only from revoked-token-checked Firebase identity and Admin Auth metadata, deny client writes to both attribution and promotion, then transactionally read the invitee's `referredBy` marker and inviter promotion before atomically writing both.
+**Principle:** Couple every privilege-granting reward to a server-trusted eligibility proof and a transactionally enforced, single-use idempotency marker.
+
+### 2026-07-13 Reward Ledgers Must Be Atomic Projections Of The Grant
+**Problem:** A referral audit/statistics record written after the reward transaction can be missing, duplicated, or disagree with the promotion that was actually granted.
+**Solution:** Write `referralEvents/{inviteeUid}` inside the same transaction and only after the existing `referredBy` gate passes, copy tier/end directly from the computed promotion, and deny all client access to the ledger.
+**Principle:** A security-relevant reward ledger is an atomic, server-only projection of the grant—not an independent side effect or a second source of promotion logic.
+
+### 2026-07-12 User-Aware Model Routing Must Close Every Override Channel
+**Problem:** A tier allowlist can still be bypassed if a legacy explicit-model override remains active on the user-aware path, and an eager server entitlement import can leak Firebase Admin loading into legacy/TTS/transcription imports.
+**Solution:** Resolve user-aware TEXT targets exclusively from `effectiveTier × allowed preference`, ignore legacy model overrides whenever a trusted `userId` is present, and dynamically load/read entitlement only inside that branch.
+**Principle:** A model preference is never a privilege grant; close alternate override channels and keep server entitlement dependencies absent from no-user paths.
+
+### 2026-07-12 Zod Offset Shape Is Not Offset Validity
+**Problem:** `z.string().datetime({ offset: true })` accepted an impossible timezone offset such as `+99:99`, allowing an invalid promotion expiry to reach Firestore.
+**Attempts:** The initial schema relied on Zod's datetime validator alone; an adversarial matrix and independent review tested malformed-but-shaped offsets.
+**Solution:** Keep Zod's ISO datetime/offset format check and add a refinement requiring `Date.parse(value)` not to be `NaN`, with a direct API regression test for `+99:99`.
+**Why it worked:** Zod validates the textual datetime shape while the native parser rejects an offset that cannot represent a real instant; the two checks close different gaps.
+**Principle:** For security-relevant ISO timestamps, validate both structured format/required offset and that the value resolves to a real instant.
+
+- **2026-07-12 Firestore Client Whitelists Are Not Authorization:** A client-service field whitelist only constrains that service; protect server-managed fields at `firestore.rules` with create keys and update affected-key checks, then prove both allowed UX writes and denied privilege fields against the emulator.
+- **2026-07-12 Multi-Adapter Tests Need Instance-Distinct Spies:** When multiple provider adapters expose the same client method shape, a shared mock can let hardcoded adapter selection pass. Give each constructed client its own spy and assert both the selected adapter call and the non-selected adapter non-call.
 - **2026-07-05 Outline Apply Must Invalidate Manual Save Acks And Surface Settlement:** If manual outline saves and Apply both write `sermon.outline`, Apply must bump the same revision guard as manual saves before scheduling its write, and its online persistence promise must reject back to the UI so failures show an error instead of a false success toast.
 - **2026-07-05 Scratch Full-Array Writers Must Share One Queue:** When `sermon.scratch` is persisted as a full array, every writer that can change it must serialize through the same current-state mutation queue. Apply/fold actions should pass consumed ids, not a click-time remaining-array snapshot, and rollback should restore only the mutation's consumed ids when newer scratch mutations exist.
 - **2026-07-05 Scratch Voice Recovery Must Gate Apply At Receipt And Commit:** For scratch voice capture, store the blob before any lock decision, keep a parent-owned recovery URL because the recorder can unmount in board view, check Apply both before transcription and immediately before `addScratchNote`, and if Apply is active surface recovery retry instead of adding into the full-scratch Apply write.
@@ -202,6 +262,7 @@
 - **2026-03-15 Interleaved Grid Layout over JS Duplication:** To create alternating interleaved layouts (e.g. Card A, Editor A, Card B, Editor B) on mobile while keeping them side-by-side on desktop, use a flat list of adjacent children (`<React.Fragment><Card/><Editor/></React.Fragment>`) inside a single CSS Grid (`grid-cols-1 lg:grid-cols-2`) instead of wrapping them in separate column `div`s. CSS Grid naturally interleaves them vertically on small screens and horizontally on large screens. This eliminates hydration bugs caused by `window.innerWidth` JS checks, removes the need for JS-based height synchronization (since Grid `<div className="h-full">` stretches pairs automatically), and simplifies the React tree.
 
 - **2026-03-15 Modals Without createPortal Are Invisible Z-Index Bombs:** Any modal that renders inside-tree (not via `createPortal`) is subject to its ancestor's stacking context — even with `z-50`. On mobile viewports, parent stacking contexts (nav, card containers, floating buttons) will render on top. Fix: always use `createPortal(content, document.body)` with a `mounted` state guard for SSR safety, consistent with the project standard (14 of 16 modals already use this pattern). In tests, mock `react-dom` with `createPortal: (node) => node`.
+- **2026-07-13 Clickable Tooltips Need an Explicit Override State:** A click-to-toggle tooltip cannot derive visibility only from hover/focus, because the trigger retains focus after the second click. Keep a distinct `none/open/closed` override state; hover/focus behave normally only in `none`, while Escape/click-away/click-close set `closed` until the next deliberate interaction.
 
 - **2026-03-13 Cross-Note Review Lanes Need Their Own Scope And Unit Language:** When a workspace shows both note-level review cards and branch-level review lanes, do not derive lanes from the already metadata-filtered note list, and do not reuse the same labels for both surfaces. Notes and branches are different units; the UI must preserve that distinction in both scope and wording.
 - **2026-03-13 Collapsed Review Surfaces Must Expose A Recovery Path:** If a semantic review lane shows only the first N items, the hidden remainder needs an explicit “show all” path in the same surface. A badge with a larger total but no local expansion path is a broken workflow promise.
@@ -521,3 +582,13 @@
 - Coverage New-File Protocol: every new runtime file in scope needs a direct suite tied to that file or its exact public seam. Incidental coverage through a parent component is not enough, even if the file already sits above `80%`.
 - Outline Point Unassignment (JSON.stringify Null vs Undefined): When unassigning or clearing fields in optimistic entities or payloads sent over the wire, **always explicitly pass `null`** instead of `undefined`. `JSON.stringify` drops `undefined` properties completely, which means the backend won't receive the "clear" instruction and will skip the field update resulting in the bug where unassignment does nothing.
 - **2026-03-19 Test Coverage Stability:** The guard fixed the bug and tests were correctly expanded.
+- **2026-07-11 Structured AI Provider Seam:** Preserve legacy behavior by resolving `AI_MODEL_TO_USE` per request (`GEMINI` only selects Gemini; unset/other selects OpenAI) and returning one atomic `{ providerId, modelId }`. Keep adapter selection, routing policy, and catalog metadata separate; an OpenAI-only speech-optimization override must never reach Gemini.
+- **2026-07-12 Acceptance Regex Coverage Gap:** A broad Jest path regex may still omit a changed boundary test in a parallel `__tests__` tree. After running the exact acceptance command, verify its reported suites against every changed test file and run any omitted boundary suite explicitly.
+- **2026-07-12 Admin UI Boundary:** Admin UI visibility is only a convenience layer. Fetch `/api/admin/me` with `auth.currentUser.getIdToken()` for client gating, but keep every admin mutation behind `requireAdminEmail`; the client must receive only `{ admin: true }`, never the configured admin email.
+- **2026-07-12 Entitlement Settings Boundary:** Fetch a caller's entitlement through an authenticated own-UID endpoint, then derive `availableModels` from server-side `resolveEffectiveTier` + `TIER_MODEL_POLICY`. A persisted provider/model value is only an optimistic UX preference; it must never determine entitlement or bypass the allowlist.
+- **2026-07-12 Optional-Auth Quota Gates Need Transport Wiring:** A server route that skips enforcement when no trusted UID is present remains fully bypassable if its production callers never attach a Firebase bearer token. When adding optional-auth usage enforcement, audit every live transport path, attach the current token for signed-in users, fail closed on token retrieval errors, and retain headerless behavior only for genuinely signed-out/legacy callers.
+- **2026-07-13 Admin Drawer Promotion Guard:** When a selected user already has a promotion, render the editor's segmented control as "Keep" and retain the values only as latent form state. Keep `promotionDirty` false until an explicit Set or Clear interaction, so an unrelated entitlement save cannot rewrite the promotion. Drawer autofocus must run only when opened, or controlled-input edits lose focus after every re-render.
+- **2026-07-13 Usage Gauge Semantics:** For quota gauges, compute both width and health tone from `remaining / limit` (not `used / limit`): a fresh account is `100%` blue, `1–20%` remaining is amber, and `0%` is rose. Reuse one component across user and admin surfaces so the two views cannot drift into opposite semantics.
+- **2026-07-13 Wide Admin Table Contract:** A fixed percentage `colgroup` prevents wide tables from sprawling unevenly, but it must be paired with a readable minimum table width and an overflow wrapper; the percentages govern desktop rhythm while the minimum width preserves dates, badges, and gauges on narrower screens.
+- **2026-07-13 Per-Function Model Preferences Need a Single Server Catalog:** Store a preference per workload, but resolve it only against the effective tier's allowed entries from one typed catalog. The UI may show locked catalog rows, while `/api/me/entitlement` exposes only allowed rows; `current` must be chosen from that allowed set so a persisted paid choice never becomes a privilege grant after downgrade or promotion expiry. Keep legacy preference fields as a one-way fallback during migration rather than changing free-user execution behavior.
+- **2026-07-13 Audio Model Authorization Must Precede Runtime Aliasing:** Authorize the exact catalog `{providerId, modelId}` against the effective tier before translating a public model id to a provider runtime id. Transcription may retry its same-function catalog default, but TTS must surface provider/model failure without substitution; a UI quality choice must never silently select a different model. After persisting any per-function preference, invalidate entitlement as well as settings so execution and selectors share the new server-resolved `current`.

@@ -2,6 +2,7 @@ import 'openai/shims/node';
 
 import { NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { Item, Sermon } from '@/models/models';
 import { sortItemsWithAI } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
@@ -16,6 +17,11 @@ export async function POST(request: Request) {
   console.log("Sort route: Received POST request for AI sorting");
 
   try {
+    const uid = await getRequiredAuthenticatedUid(request);
+    if (!uid) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     // Start execution time measurement
     const startTime = performance.now();
 
@@ -32,24 +38,27 @@ export async function POST(request: Request) {
 
     console.log(`Sort route: Sorting ${itemsToSort.length} items in column ${columnId} for sermon ${sermonId}`);
 
-    // Check if there are any items to sort
-    if (itemsToSort.length === 0) {
-      console.log("Sort route: No items to sort");
-      return NextResponse.json({ sortedItems: items }, { status: 200 });
-    }
-
     // Fetch the sermon data for context
     const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon;
     if (!sermon) {
       console.error(`Sort route: Sermon with id ${sermonId} not found`);
       return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
     }
+    if (sermon.userId !== uid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    // Check if there are any items to sort
+    if (itemsToSort.length === 0) {
+      console.log("Sort route: No items to sort");
+      return NextResponse.json({ sortedItems: items }, { status: 200 });
+    }
 
     // Log item IDs for easier tracking
     console.log("Sort route: Items to sort (IDs):", itemsToSort.map((item: Item) => item.id.slice(0, 4)).join(', '));
 
     // Perform the AI sorting
-    const sortedItems = await sortItemsWithAI(columnId, itemsToSort, sermon, outlinePoints);
+    const sortedItems = await sortItemsWithAI(columnId, itemsToSort, sermon, outlinePoints, uid);
 
     // Calculate execution time
     const executionTime = performance.now() - startTime;
@@ -63,4 +72,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to sort items' }, { status: 500 });
   }
 }
-

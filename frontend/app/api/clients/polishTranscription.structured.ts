@@ -96,7 +96,8 @@ Return the transformed text in polishedText and set meaningPreserved to true if 
  * ```
  */
 export async function polishTranscription(
-    transcription: string
+    transcription: string,
+    userId?: string
 ): Promise<PolishTranscriptionResult> {
     const trimmed = transcription.trim();
 
@@ -135,6 +136,7 @@ export async function polishTranscription(
             PolishTranscriptionSchema,
             {
                 formatName: "polishTranscription",
+                userId,
                 promptBlueprint,
                 logContext: {
                     transcriptionLength: trimmed.length,

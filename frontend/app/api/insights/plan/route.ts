@@ -2,6 +2,7 @@ import 'openai/shims/node';
 
 import { NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { Sermon, Insights } from '@/models/models';
 import { generateSectionHints } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
@@ -11,6 +12,11 @@ export async function POST(request: Request) {
   console.log("Plan route: Received POST request for generating thoughts plan");
 
   try {
+    const uid = await getRequiredAuthenticatedUid(request);
+    if (!uid) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const sermonId = searchParams.get("sermonId");
 
@@ -25,12 +31,15 @@ export async function POST(request: Request) {
       console.error(`Plan route: Sermon with id ${sermonId} not found`);
       return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
     }
+    if (sermon.userId !== uid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     // Get current insights to preserve other sections
     const currentInsights = sermon.insights || { topics: [], relatedVerses: [], possibleDirections: [] };
 
     // Generate thoughts plan using OpenAI
-    const sectionHints = await generateSectionHints(sermon);
+    const sectionHints = await generateSectionHints(sermon, uid);
     if (!sectionHints) {
       console.error("Plan route: Failed to generate thoughts plan");
       return NextResponse.json({ error: "Failed to generate thoughts plan" }, { status: 500 });
@@ -51,4 +60,4 @@ export async function POST(request: Request) {
     console.error('Plan route: Error generating thoughts plan:', error);
     return NextResponse.json({ error: 'Failed to generate thoughts plan' }, { status: 500 });
   }
-} 
+}

@@ -11,7 +11,6 @@
 const mockCall = jest.fn();
 jest.mock('@/api/clients/structuredOutput', () => ({
     callWithStructuredOutput: (...args: unknown[]) => mockCall(...args),
-    getCurrentAIProvider: () => 'GEMINI',
 }));
 
 import { generateSermonTransitions } from '@/api/clients/sermonTransitions.client';

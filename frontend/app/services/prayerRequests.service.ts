@@ -7,6 +7,7 @@ import {
   setPrayerStatusViaClient,
   updatePrayerRequestViaClient,
 } from '@/services/prayerRequests.client';
+import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { newClientId } from '@/utils/clientId';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
@@ -67,9 +68,10 @@ export const createPrayerRequest = async (
   // cascade, but replaying client setDoc could full-overwrite mutable fields like
   // updates/status; the server create path returns existing client-id docs
   // without clobbering them.
+  const authHeaders = await getAuthenticatedRequestHeaders();
   const res = await fetch(`${API_BASE}/api/prayer`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders },
     body: JSON.stringify(payload),
   });
   if (!res.ok) throw new Error('Failed to create prayer request');

@@ -20,6 +20,7 @@ interface FlatRecorderButtonProps {
   maxDuration?: number;
   onError?: (error: string) => void;
   disabled?: boolean;
+  title?: string;
   className?: string;
   onRetry?: () => void;
   retryCount?: number;
@@ -138,6 +139,7 @@ const IdleRecorderControl = ({
   isInitializing,
   isProcessing,
   mainLabel,
+  title,
   isButtonDisabled,
   onMainClick,
   t,
@@ -146,6 +148,7 @@ const IdleRecorderControl = ({
   isInitializing: boolean;
   isProcessing: boolean;
   mainLabel: string;
+  title?: string;
   isButtonDisabled: boolean;
   onMainClick: () => void;
   t: TranslationFn;
@@ -162,7 +165,7 @@ const IdleRecorderControl = ({
       disabled={isButtonDisabled}
       className="col-span-4 flex h-full min-w-0 items-center justify-center gap-1.5 rounded-[5px] px-2.5 text-xs font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-green-300 disabled:cursor-not-allowed"
       aria-label={mainLabel}
-      title={mainLabel}
+      title={title ?? mainLabel}
     >
       {isProcessingState ? (
         <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -182,6 +185,7 @@ export function FlatRecorderButton({
   maxDuration = getAudioRecordingDuration(),
   onError,
   disabled = false,
+  title,
   className = "",
   onRetry,
   retryCount = 0,
@@ -276,6 +280,7 @@ export function FlatRecorderButton({
             isInitializing={isInitializing}
             isProcessing={isProcessing}
             mainLabel={mainLabel}
+            title={title}
             isButtonDisabled={isButtonDisabled}
             onMainClick={handleMainClick}
             t={t}

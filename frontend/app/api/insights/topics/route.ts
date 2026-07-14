@@ -2,6 +2,7 @@ import 'openai/shims/node';
 
 import { NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { Sermon, Insights } from '@/models/models';
 import { generateSermonTopics } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
@@ -11,6 +12,11 @@ export async function POST(request: Request) {
   console.log("Topics route: Received POST request for generating sermon topics");
 
   try {
+    const uid = await getRequiredAuthenticatedUid(request);
+    if (!uid) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const sermonId = searchParams.get("sermonId");
 
@@ -25,12 +31,15 @@ export async function POST(request: Request) {
       console.error(`Topics route: Sermon with id ${sermonId} not found`);
       return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
     }
+    if (sermon.userId !== uid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     // Get current insights to preserve other sections
     const currentInsights = sermon.insights || { topics: [], relatedVerses: [], possibleDirections: [] };
 
     // Generate topics using OpenAI
-    const topics = await generateSermonTopics(sermon);
+    const topics = await generateSermonTopics(sermon, uid);
     if (!topics || topics.length === 0) {
       console.error("Topics route: Failed to generate topics");
       return NextResponse.json({ error: "Failed to generate topics" }, { status: 500 });
@@ -52,4 +61,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to generate topics' }, { status: 500 });
   }
 }
-

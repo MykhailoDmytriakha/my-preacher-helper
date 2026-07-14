@@ -40,6 +40,8 @@ export interface GenerateThoughtResult {
 interface GenerateThoughtOptions {
   /** Maximum retry attempts for meaning preservation */
   maxRetries?: number;
+  /** Server-trusted identity charged for this thought generation. */
+  userId?: string;
 }
 
 /**
@@ -73,7 +75,7 @@ export async function generateThoughtStructured(
   availableTags: string[] = [],
   options: GenerateThoughtOptions = {}
 ): Promise<GenerateThoughtResult> {
-  const { maxRetries = 3 } = options;
+  const { maxRetries = 3, userId = sermon.userId } = options;
   const auxiliaryTags = sanitizeAvailableThoughtTags(availableTags);
 
   // Create user message with sermon context
@@ -100,6 +102,7 @@ export async function generateThoughtStructured(
       userMessage,
       availableTags: auxiliaryTags,
       attempt,
+      userId,
     });
 
     if (attemptResult.type === "success" || attemptResult.type === "fail") {
@@ -128,8 +131,9 @@ async function runThoughtAttempt(params: {
   userMessage: string;
   availableTags: string[];
   attempt: number;
+  userId: string;
 }): Promise<AttemptOutcome> {
-  const { content, sermon, userMessage, availableTags, attempt } = params;
+  const { content, sermon, userMessage, availableTags, attempt, userId } = params;
 
   try {
     const promptBlueprint = buildSimplePromptBlueprint({
@@ -150,6 +154,7 @@ async function runThoughtAttempt(params: {
       ThoughtResponseSchema,
       {
         formatName: "thought",
+        userId,
         promptBlueprint,
         logContext: {
           sermonTitle: sermon.title,

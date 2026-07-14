@@ -1,5 +1,29 @@
 import { apiClient } from '@/utils/apiClient';
 
+/** Returns a server-verifiable Firebase identity or fails before any AI request is sent. */
+export async function getTranscriptionAuthorizationHeaders(): Promise<HeadersInit> {
+  const { auth } = await import('@/services/firebaseAuth.service');
+  if (!auth.currentUser) throw new Error('Authentication required for transcription');
+
+  const token = await auth.currentUser.getIdToken();
+  return { Authorization: `Bearer ${token}` };
+}
+
+async function getDefaultTransportHeaders(
+  fetchImpl: TranscribeWithRetryOptions['fetchImpl']
+): Promise<HeadersInit | undefined> {
+  if (fetchImpl) return undefined;
+  return getTranscriptionAuthorizationHeaders();
+}
+
+function buildTranscriptionRequest(
+  formData: FormData,
+  headers: HeadersInit | undefined
+) {
+  const request = { method: 'POST', body: formData, category: 'audio' as const };
+  return headers ? { ...request, headers } : request;
+}
+
 /**
  * Client-side transcription with retry. Each retry is a SEPARATE HTTP request,
  * so it gets a fresh 60s Vercel budget instead of sharing (and blowing) one
@@ -150,6 +174,9 @@ export async function transcribeAudioWithRetry(
   const baseDelayMs = Math.max(0, options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS);
   const call = options.fetchImpl ?? apiClient;
   const waitFn = options.wait ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  // Custom fetch seams remain fully caller-controlled. Production calls attach
+  // Firebase identity; token failures reject instead of silently bypassing quota.
+  const headers = await getDefaultTransportHeaders(options.fetchImpl);
 
   const attempts: TranscriptionAttemptError[] = [];
   let originalText: string | undefined;
@@ -165,7 +192,7 @@ export async function transcribeAudioWithRetry(
 
     let response: Response;
     try {
-      response = await call(options.endpoint, { method: 'POST', body: formData, category: 'audio' });
+      response = await call(options.endpoint, buildTranscriptionRequest(formData, headers));
     } catch (transportError) {
       // apiClient threw before any HTTP response — a genuine transport failure.
       const message = transportError instanceof Error ? transportError.message : 'Network error';

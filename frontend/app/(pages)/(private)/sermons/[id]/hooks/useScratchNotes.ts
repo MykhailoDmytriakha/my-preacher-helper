@@ -8,8 +8,8 @@ import {
 import { applyScratchToOutlineViaClient } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
 
-import type { MutableRefObject } from 'react';
 import type { ScratchNote, Sermon, SermonOutline } from '@/models/models';
+import type { MutableRefObject } from 'react';
 
 type SetSermon = (
   updater: Sermon | null | ((previous: Sermon | null) => Sermon | null)

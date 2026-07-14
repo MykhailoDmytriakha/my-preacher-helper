@@ -65,6 +65,13 @@ jest.mock('@clients/structuredOutput', () => ({
 jest.mock('@clients/thought.structured', () => ({
   generateThoughtStructured: jest.fn(),
 }));
+jest.mock('@/services/userEntitlement.server', () => ({
+  getUserEntitlementServerSide: jest.fn(),
+  resolveEffectiveTier: jest.fn((entitlement: { paidTier?: string } | null | undefined) => entitlement?.paidTier ?? 'free'),
+}));
+jest.mock('@/services/aiModelDefaults.server', () => ({
+  getAiModelDefaults: jest.fn(),
+}));
 
 const getMockCreateTranscription = () => (OpenAI as unknown as { mockCreateTranscription: jest.Mock }).mockCreateTranscription;
 const getStructuredMocks = () => jest.requireMock('@clients/sermon.structured') as {
@@ -128,6 +135,14 @@ describe('openAI.client additional coverage', () => {
     mockStructuredOutput.callWithStructuredOutput.mockReset();
     mockThoughtStructured = getThoughtStructuredMock();
     mockThoughtStructured.generateThoughtStructured.mockReset();
+    jest.requireMock('@/services/userEntitlement.server').getUserEntitlementServerSide.mockResolvedValue({
+      paidTier: 'free',
+    });
+    jest.requireMock('@/services/aiModelDefaults.server').getAiModelDefaults.mockResolvedValue({
+      text: { providerId: 'gemini', modelId: 'gemini-3.1-flash-lite-preview' },
+      transcription: { providerId: 'openai', modelId: 'gpt-4o-transcribe' },
+      tts: { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' },
+    });
   });
 
   describe('createTranscription', () => {
@@ -138,6 +153,10 @@ describe('openAI.client additional coverage', () => {
 
       expect(result).toBe('hello world');
       expect(mockCreateTranscription).toHaveBeenCalledTimes(1);
+      expect(mockCreateTranscription).toHaveBeenCalledWith(
+        expect.objectContaining({ model: process.env.OPENAI_AUDIO_MODEL }),
+        expect.objectContaining({ timeout: 45_000, maxRetries: 0 })
+      );
     });
 
     it('uses File input directly when provided', async () => {
@@ -175,6 +194,67 @@ describe('openAI.client additional coverage', () => {
         'Invalid audio file'
       );
     });
+
+    it('for a PAID user falls back within its tier allowance', async () => {
+      jest.requireMock('@/services/userEntitlement.server').getUserEntitlementServerSide.mockResolvedValue({
+        paidTier: 'tier1',
+      });
+      jest.requireMock('@/services/aiModelDefaults.server').getAiModelDefaults.mockResolvedValue({
+        text: { providerId: 'gemini', modelId: 'gemini-3.1-flash-lite-preview' },
+        transcription: { providerId: 'openai', modelId: 'gpt-4o-mini-transcribe' },
+        tts: { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' },
+      });
+      mockCreateTranscription
+        .mockRejectedValueOnce(new Error('primary unavailable'))
+        .mockResolvedValueOnce({ text: 'fallback transcription' });
+
+      await expect(createTranscription(
+        new Blob(['audio'], { type: 'audio/webm' }),
+        'trusted-user'
+      )).resolves.toBe('fallback transcription');
+
+      expect(jest.requireMock('@/services/userEntitlement.server').getUserEntitlementServerSide)
+        .toHaveBeenCalledWith('trusted-user', { includeModelPreferences: true });
+      // Paid allowance is the full transcription catalog, so the fallback stays in-tier.
+      expect(mockCreateTranscription.mock.calls.map(([payload]) => payload.model)).toEqual([
+        'gpt-4o-mini-transcribe',
+        'gpt-4o-transcribe',
+      ]);
+    });
+
+    it('gives a FREE user NO cross-tier fallback (allowance is exactly its default)', async () => {
+      jest.requireMock('@/services/userEntitlement.server').getUserEntitlementServerSide.mockResolvedValue({
+        paidTier: 'free',
+      });
+      jest.requireMock('@/services/aiModelDefaults.server').getAiModelDefaults.mockResolvedValue({
+        text: { providerId: 'gemini', modelId: 'gemini-3.1-flash-lite-preview' },
+        transcription: { providerId: 'openai', modelId: 'gpt-4o-mini-transcribe' },
+        tts: { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' },
+      });
+      mockCreateTranscription.mockRejectedValue(new Error('primary unavailable'));
+
+      // Free is locked to its single allowed model — it must NOT fall back to the
+      // pricier catalog default (out of tier); it rejects instead.
+      await expect(createTranscription(
+        new Blob(['audio'], { type: 'audio/webm' }),
+        'trusted-user'
+      )).rejects.toThrow('primary unavailable');
+      expect(mockCreateTranscription.mock.calls.map(([payload]) => payload.model)).toEqual([
+        'gpt-4o-mini-transcribe',
+      ]);
+    });
+
+    it('does not make a duplicate fallback call when the resolved model is the catalog default', async () => {
+      mockCreateTranscription.mockRejectedValue(new Error('catalog default unavailable'));
+
+      await expect(createTranscription(
+        new Blob(['audio'], { type: 'audio/webm' }),
+        'trusted-user'
+      )).rejects.toThrow('catalog default unavailable');
+
+      expect(mockCreateTranscription).toHaveBeenCalledTimes(1);
+      expect(mockCreateTranscription.mock.calls[0][0].model).toBe('gpt-4o-transcribe');
+    });
   });
 
   describe('generateThought', () => {
@@ -191,7 +271,8 @@ describe('openAI.client additional coverage', () => {
       expect(mockThoughtStructured.generateThoughtStructured).toHaveBeenCalledWith(
         'Original idea',
         baseSermon,
-        ['TagA']
+        ['TagA'],
+        { userId: 'user-1' }
       );
       expect(result).toEqual({
         originalText: 'Original idea',
@@ -214,7 +295,8 @@ describe('openAI.client additional coverage', () => {
       expect(mockThoughtStructured.generateThoughtStructured).toHaveBeenCalledWith(
         'Original idea',
         baseSermon,
-        ['TagA']
+        ['TagA'],
+        { userId: 'user-1' }
       );
       expect(result).toEqual({
         originalText: 'Original idea',
@@ -235,7 +317,7 @@ describe('openAI.client additional coverage', () => {
     const result = await generateSermonInsights(baseSermon);
 
     expect(result?.topics).toEqual(['Hope']);
-    expect(mockStructured.generateSermonInsightsStructured).toHaveBeenCalledWith(baseSermon);
+    expect(mockStructured.generateSermonInsightsStructured).toHaveBeenCalledWith(baseSermon, 'user-1');
   });
 
   it('returns directions from structured output path', async () => {
@@ -267,7 +349,7 @@ describe('openAI.client additional coverage', () => {
     const result = await generateSermonTopics(baseSermon);
 
     expect(result).toEqual(['Grace', 'Faith']);
-    expect(mockStructured.generateSermonTopicsStructured).toHaveBeenCalledWith(baseSermon);
+    expect(mockStructured.generateSermonTopicsStructured).toHaveBeenCalledWith(baseSermon, 'user-1');
   });
 
   it('returns topics from structured client fallback payload', async () => {
@@ -308,7 +390,7 @@ describe('openAI.client additional coverage', () => {
       main: 'Main hint',
       conclusion: 'Conclusion hint',
     });
-    expect(mockStructured.generateSectionHintsStructured).toHaveBeenCalledWith(baseSermon);
+    expect(mockStructured.generateSectionHintsStructured).toHaveBeenCalledWith(baseSermon, 'user-1');
   });
 
   it('returns null when section hints generation fails', async () => {
@@ -325,7 +407,7 @@ describe('openAI.client additional coverage', () => {
     const result = await generateSermonVerses(baseSermon);
 
     expect(result).toEqual([{ reference: 'John 3:16', relevance: 'Love' }]);
-    expect(mockStructured.generateSermonVersesStructured).toHaveBeenCalledWith(baseSermon);
+    expect(mockStructured.generateSermonVersesStructured).toHaveBeenCalledWith(baseSermon, 'user-1');
   });
 
   it('returns empty verses on error', async () => {
@@ -367,6 +449,8 @@ describe('openAI.client additional coverage', () => {
       expect(result[0].outlinePointId).toBe('op-1');
       expect(result[0].outlinePoint?.text).toBe('Main Point');
       expect(result[1].outlinePointId).toBe('op-existing');
+      expect(mockStructuredOutput.callWithStructuredOutput.mock.calls[0][3])
+        .toEqual(expect.objectContaining({ userId: baseSermon.userId }));
     });
 
     it('matches outline points by substring when exact match fails', async () => {
@@ -581,7 +665,9 @@ describe('openAI.client additional coverage', () => {
       'main',
       ['Key fragment'],
       { previousPoint: { text: 'Prev point' }, nextPoint: { text: 'Next point' } },
-      'memory'
+      'memory',
+      undefined,
+      baseSermon.userId
     );
 
     expect(result.success).toBe(true);
@@ -590,6 +676,7 @@ describe('openAI.client additional coverage', () => {
     expect(result.content).not.toContain('###');
 
     const callArgs = mockStructuredOutput.callWithStructuredOutput.mock.calls[0];
+    expect(callArgs[3]).toEqual(expect.objectContaining({ userId: baseSermon.userId }));
     expect(callArgs[0]).toContain('PLAN LENGTH: SHORT');
     expect(callArgs[0]).toContain("PRESERVE THE AUTHOR'S LIVING WORDS");
     expect(callArgs[0]).toContain('CUE CARD');
@@ -773,14 +860,15 @@ describe('openAI.client additional coverage', () => {
       [],
       undefined,
       'memory',
-      [{ id: 'sp-1', text: 'Sub-point title', position: 1000 }]
+      [{ id: 'sp-1', text: 'Sub-point title', position: 1000 }],
+      baseSermon.userId
     );
 
     expect(mockStructuredOutput.callWithStructuredOutput).toHaveBeenCalledWith(
       expect.any(String),
       expect.stringContaining('Produce one group per sub-point'),
       expect.anything(),
-      expect.anything()
+      expect.objectContaining({ userId: baseSermon.userId })
     );
 
     const userMessage = mockStructuredOutput.callWithStructuredOutput.mock.calls[0][1];
@@ -870,7 +958,7 @@ describe('openAI.client additional coverage', () => {
 
     expect(result.success).toBe(false);
     expect(result.outlinePoints).toEqual([]);
-    expect(mockStructured.generateSermonPointsStructured).toHaveBeenCalledWith(baseSermon, 'main');
+    expect(mockStructured.generateSermonPointsStructured).toHaveBeenCalledWith(baseSermon, 'main', 'user-1');
   });
 
   it('returns failure when outline point generation throws', async () => {

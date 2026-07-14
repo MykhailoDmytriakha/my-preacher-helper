@@ -369,7 +369,8 @@ ${existingTags.join(', ')}`;
 export async function analyzeStudyNote(
   noteContent: string,
   existingTags?: string[],
-  analysisType: AnalysisType = 'all'
+  analysisType: AnalysisType = 'all',
+  userId?: string
 ): Promise<AnalyzeStudyNoteResult> {
   if (!noteContent.trim()) {
     return {
@@ -416,6 +417,7 @@ export async function analyzeStudyNote(
       StudyNoteAnalysisSchema,
       {
         formatName: "studyNoteAnalysis",
+        userId,
         promptBlueprint,
         logContext: {
           contentLength: noteContent.length,

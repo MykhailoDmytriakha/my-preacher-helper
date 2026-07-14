@@ -114,7 +114,10 @@ describe('tag.service', () => {
     expect(result.affectedThoughts).toBe(5);
     expect(mockFetch).toHaveBeenCalledWith(
       expect.stringContaining('/api/tags?userId=u1&tagName=Custom'),
-      { method: 'DELETE' }
+      { method: 'DELETE', headers: { Authorization: 'Bearer test-token' } }
     );
   });
 });
+jest.mock('@/utils/authenticatedRequest', () => ({
+  getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
+}));

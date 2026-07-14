@@ -14,6 +14,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { generateSermonTransitions } from '@/api/clients/sermonTransitions.client';
 import { optimizeTextForSpeech } from '@/api/clients/speechOptimization.client';
 import { createAudioChunks, splitTextEvenly } from '@/api/clients/tts.client';
@@ -57,21 +58,12 @@ export async function POST(
     { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
     try {
-        const { id: sermonId } = await params;
-        const body = await request.json();
-        const requestedSections: SectionSelection | string[] = body.sections ?? 'all';
-        const userId = body.userId;
-        const provider = body.provider === 'google' ? 'google' : 'openai';
-        // "Use as-is" mode: skip GPT rewrite, voice the exact sermon text and only
-        // split it mechanically into TTS-sized chunks.
-        const useRawText = body.useRawText === true;
-
-        // Default to true for backward compatibility
-        const saveToDb = body.saveToDb !== false;
-
-        if (!userId) {
+        const uid = await getRequiredAuthenticatedUid(request);
+        if (!uid) {
             return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
         }
+
+        const { id: sermonId } = await params;
 
         // 1. Load sermon
         const sermonDoc = await adminDb.collection('sermons').doc(sermonId).get();
@@ -80,9 +72,19 @@ export async function POST(
         }
         const sermon = { id: sermonDoc.id, ...sermonDoc.data() } as Sermon;
 
-        if (sermon.userId !== userId) {
+        if (sermon.userId !== uid) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
         }
+
+        const body = await request.json();
+        const requestedSections: SectionSelection | string[] = body.sections ?? 'all';
+        const provider = body.provider === 'google' ? 'google' : 'openai';
+        // "Use as-is" mode: skip GPT rewrite, voice the exact sermon text and only
+        // split it mechanically into TTS-sized chunks.
+        const useRawText = body.useRawText === true;
+
+        // Default to true for backward compatibility
+        const saveToDb = body.saveToDb !== false;
 
         // 2. Prepare Segments based on Outline & Thoughts
         // `sections` may be 'all', a single section key, or an array of keys (checkboxes).
@@ -107,7 +109,7 @@ export async function POST(
         // be woven BETWEEN the parts (intro → part → bridge → part → … → outro).
         const built = (useRawText && provider === 'google')
             ? buildGoogleRawSegmentBodies(sermon, sectionsToProcess)
-            : await buildSegmentBodies(segments, sermon, provider, useRawText);
+            : await buildSegmentBodies(segments, sermon, provider, useRawText, uid);
 
         // Generate spoken connective tissue so the narration's structure is audible.
         // Additive layer: never throws — returns empty transitions on any failure, so
@@ -118,7 +120,7 @@ export async function POST(
         const transitionSegments: TransitionSegment[] = built.segmentBodies
             .filter(s => s.bodyChunks.length > 0 && s.level !== 'continuation')
             .map(({ id, section, title, level }) => ({ id, section, title, level: level as 'point' | 'subpoint' }));
-        const transitions = await generateSermonTransitions(sermon, transitionSegments);
+        const transitions = await generateSermonTransitions(sermon, transitionSegments, uid);
         console.log(`[OptimizeAPI] Transitions: intro=${transitions.intro ? 'yes' : 'no'}, bridges=${Object.keys(transitions.bridges).length}, outro=${transitions.outro ? 'yes' : 'no'}`);
 
         // Only emit the global opening/closing when their home sections are in scope
@@ -230,7 +232,8 @@ async function buildSegmentBodies(
     segments: GenerationSegment[],
     sermon: Sermon,
     provider: 'google' | 'openai',
-    useRawText: boolean
+    useRawText: boolean,
+    userId: string
 ): Promise<SegmentBuildResult> {
     const segmentBodies: (SegmentBody & { title: string; level: 'point' | 'subpoint' | 'continuation' })[] = [];
     let originalLength = 0;
@@ -271,7 +274,8 @@ async function buildSegmentBodies(
                     scriptureVerse: sermon.verse,
                     sections: segment.section,
                     previousContext: accumulatedContext || undefined
-                }
+                },
+                userId
             );
 
             const optimizedTextForTts = normalizeScriptureReferencesForTts(result.optimizedText);

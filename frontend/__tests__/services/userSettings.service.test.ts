@@ -167,6 +167,14 @@ describe('userSettings.service', () => {
     await service.updateGroupsAccess('user1', true);
     await service.updateStructurePreviewAccess('user1', true);
     await service.updateFirstDayOfWeek('user1', 'monday');
+    await service.updateModelPreference('user1', {
+      preferredProviderId: 'gemini',
+      preferredModelId: 'gemini-2.5-flash-lite',
+    });
+    await service.updateFunctionModelPreference('user1', {
+      preferredText: { providerId: 'openrouter', modelId: 'qwen/qwen3.7-plus' },
+      preferredTts: { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' },
+    });
 
     expect(mockSetDoc).toHaveBeenNthCalledWith(
       1,
@@ -202,6 +210,21 @@ describe('userSettings.service', () => {
       6,
       expect.objectContaining({ path: 'users', id: 'user1' }),
       { firstDayOfWeek: 'monday' },
+      { merge: true }
+    );
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      7,
+      expect.objectContaining({ path: 'users', id: 'user1' }),
+      { preferredProviderId: 'gemini', preferredModelId: 'gemini-2.5-flash-lite' },
+      { merge: true }
+    );
+    expect(mockSetDoc).toHaveBeenNthCalledWith(
+      8,
+      expect.objectContaining({ path: 'users', id: 'user1' }),
+      {
+        preferredText: { providerId: 'openrouter', modelId: 'qwen/qwen3.7-plus' },
+        preferredTts: { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' },
+      },
       { merge: true }
     );
     expect(mockFetch).not.toHaveBeenCalled();

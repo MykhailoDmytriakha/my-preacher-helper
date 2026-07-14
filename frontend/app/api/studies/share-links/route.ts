@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 
 import { NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { studiesRepository } from '@repositories/studies.repository';
 import { studyNoteShareLinksRepository } from '@repositories/studyNoteShareLinks.repository';
 
@@ -12,18 +13,14 @@ const ERROR_MESSAGES = {
   FORBIDDEN: 'Forbidden',
 } as const;
 
-function getUserId(request: Request): string | null {
-  return new URL(request.url).searchParams.get('userId');
-}
-
 export async function GET(request: Request) {
-  const userId = getUserId(request);
-  if (!userId) {
+  const uid = await getRequiredAuthenticatedUid(request);
+  if (!uid) {
     return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
   }
 
   try {
-    const links = await studyNoteShareLinksRepository.listByOwner(userId);
+    const links = await studyNoteShareLinksRepository.listByOwner(uid);
     return NextResponse.json(links);
   } catch (error) {
     console.error('GET /api/studies/share-links error', error);
@@ -33,11 +30,18 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const uid = await getRequiredAuthenticatedUid(request);
+    if (!uid) {
+      return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
+    }
+
     const payload = await request.json();
     const { noteId, userId } = payload as { noteId?: string; userId?: string };
 
-    if (!userId) {
-      return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
+    // userId is a redundant echo of the authenticated caller; only reject an explicit
+    // mismatch — never 401 an authenticated caller for omitting it.
+    if (userId && userId !== uid) {
+      return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 });
     }
 
     if (!noteId) {
@@ -49,17 +53,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: ERROR_MESSAGES.NOTE_NOT_FOUND }, { status: 404 });
     }
 
-    if (note.userId !== userId) {
+    if (note.userId !== uid) {
       return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 });
     }
 
-    const existing = await studyNoteShareLinksRepository.findByOwnerAndNoteId(userId, noteId);
+    const existing = await studyNoteShareLinksRepository.findByOwnerAndNoteId(uid, noteId);
     if (existing) {
       return NextResponse.json(existing, { status: 200 });
     }
 
     const token = randomUUID();
-    const created = await studyNoteShareLinksRepository.createLink({ ownerId: userId, noteId, token });
+    const created = await studyNoteShareLinksRepository.createLink({ ownerId: uid, noteId, token });
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
     console.error('POST /api/studies/share-links error', error);

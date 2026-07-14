@@ -2,6 +2,7 @@ import 'openai/shims/node';
 
 import { NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
 import { createApiPerformanceTracker } from '@clients/apiPerformanceTelemetry';
 import { polishTranscription } from '@clients/polishTranscription.structured';
@@ -10,6 +11,10 @@ import {
     mapTranscriptionError,
     type TranscriptionErrorResponse,
 } from '@clients/transcriptionRetry';
+
+const isUsageExhaustedError = (error: unknown): error is Error =>
+    error instanceof Error
+    && (error as Error & { code?: string }).code === 'USAGE_EXHAUSTED';
 
 /**
  * POST /api/studies/transcribe
@@ -51,6 +56,9 @@ export async function POST(request: Request) {
     };
 
     try {
+        const uid = await getRequiredAuthenticatedUid(request);
+        if (!uid) return errorResponse('Unauthorized', 401);
+
         const formData = await tracker.timePhase("parse_form_data", () => request.formData());
         const audioFile = formData.get('audio');
         tracker.addContext({
@@ -92,6 +100,20 @@ export async function POST(request: Request) {
             return errorResponse(durationValidation.error || 'Audio file is too long', 400);
         }
 
+        const usageSeconds = Math.ceil(
+            durationValidation.duration ?? durationValidation.maxAllowed ?? 0
+        );
+        const [
+            { getUserEntitlementServerSide },
+            { assertTranscriptionUsageAvailable, consumeTranscriptionSeconds },
+        ] = await Promise.all([
+            import('@/services/userEntitlement.server'),
+            import('@/services/usageLimits.server'),
+        ]);
+        const now = new Date();
+        const entitlement = await getUserEntitlementServerSide(uid);
+        assertTranscriptionUsageAvailable(entitlement, usageSeconds, now);
+
         console.log("Studies transcribe route: Starting transcription", {
             fileSize: audioFile.size,
             fileType: audioFile.type,
@@ -104,6 +126,7 @@ export async function POST(request: Request) {
             transcriptionText = await tracker.timePhase(
                 "transcribe_audio",
                 () => createTranscriptionWithRetry(audioFile as Blob, {
+                    userId: uid,
                     onRetry: ({ attempt, maxAttempts }) => {
                         tracker.addContext({
                             transcriptionRetryAttempt: attempt,
@@ -119,8 +142,13 @@ export async function POST(request: Request) {
             tracker.addContext({
                 transcriptionLength: transcriptionText.length,
             });
+            await consumeTranscriptionSeconds(uid, usageSeconds, now);
         } catch (transcriptionError) {
             console.error("Studies transcribe route: Transcription failed:", transcriptionError);
+
+            if (isUsageExhaustedError(transcriptionError)) {
+                return errorResponse(transcriptionError.message, 429);
+            }
 
             const mappedError = mapTranscriptionError(transcriptionError);
             if (mappedError) {
@@ -142,7 +170,7 @@ export async function POST(request: Request) {
         // Step 2: Polish the transcription (remove filler words, fix grammar)
         const polishResult = await tracker.timePhase(
             "polish_transcription",
-            () => polishTranscription(transcriptionText),
+            () => polishTranscription(transcriptionText, uid),
             {
                 transcriptionLength: transcriptionText.length,
             }
@@ -191,6 +219,9 @@ export async function POST(request: Request) {
 
     } catch (error) {
         console.error('Studies transcribe route: Error', error);
+        if (isUsageExhaustedError(error)) {
+            return errorResponse(error.message, 429);
+        }
         tracker.emit({
             status: "error",
             httpStatus: 500,

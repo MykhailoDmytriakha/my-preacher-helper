@@ -1,6 +1,10 @@
 import { generatePlanPointContent, saveSermonPlan } from "@/(pages)/(private)/sermons/[id]/plan/planApi";
 import type { Plan } from "@/models/models";
 
+jest.mock('@/utils/authenticatedRequest', () => ({
+  getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
+}));
+
 describe("planApi", () => {
   const originalFetch = global.fetch;
 
@@ -27,7 +31,10 @@ describe("planApi", () => {
 
     expect(response).toEqual({ content: "Generated text" });
     const [url, options] = (global.fetch as jest.Mock).mock.calls[0];
-    expect(options).toEqual({ cache: "no-store" });
+    expect(options).toEqual({
+      cache: "no-store",
+      headers: { Authorization: 'Bearer test-token' },
+    });
     expect(url).toEqual(expect.stringContaining("/api/sermons/sermon-1/plan?"));
     const parsedUrl = new URL(url, "http://localhost");
     expect(parsedUrl.pathname).toBe("/api/sermons/sermon-1/plan");
@@ -86,6 +93,7 @@ describe("planApi", () => {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
+        Authorization: 'Bearer test-token',
       },
       body: JSON.stringify(plan),
     });

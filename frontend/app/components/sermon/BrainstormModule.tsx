@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import "@locales/i18n";
 
+import { useAiUsage } from '@/hooks/useAiUsage';
 import { BrainstormSuggestion } from '@/models/models';
 import { generateBrainstormSuggestion } from '@/services/brainstorm.service';
 import { LightBulbIcon } from '@components/Icons';
@@ -28,18 +29,21 @@ export default function BrainstormModule({
   const [isLoading, setIsLoading] = useState(false);
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
+  const { aiBlocked, refresh: refreshAiUsage } = useAiUsage();
+  const quotaUnavailableLabel = aiBlocked ? t('settings.usage.aiUsageExhausted') : undefined;
 
   // Use external state if provided, otherwise use internal state
   const currentSuggestion = externalSuggestion !== undefined ? externalSuggestion : internalSuggestion;
   const setCurrentSuggestion = onSuggestionChange || setInternalSuggestion;
 
   const handleGenerateSuggestion = async () => {
-    if (isLoading) return;
+    if (isLoading || aiBlocked) return;
 
     setIsLoading(true);
     try {
       const suggestion = await generateBrainstormSuggestion(sermonId);
       setCurrentSuggestion(suggestion);
+      await refreshAiUsage();
     } catch (error) {
       console.error("Error generating brainstorm suggestion:", error);
       toast.error(t('errors.brainstormGenerationError') || 'Failed to generate suggestion. Please try again.');
@@ -71,8 +75,9 @@ export default function BrainstormModule({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95 }}
             onClick={handleGenerateSuggestion}
-            disabled={isLoading}
+            disabled={isLoading || aiBlocked}
             aria-label={t('brainstorm.generateButton')}
+            title={quotaUnavailableLabel}
             className="w-full group relative overflow-hidden bg-gradient-to-br from-amber-50 to-yellow-50 dark:from-gray-800 dark:to-gray-800 border-2 border-dashed border-amber-300 dark:border-amber-700 rounded-xl p-5 hover:border-amber-400 dark:hover:border-amber-600 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <div className="flex items-center gap-4">
@@ -94,7 +99,7 @@ export default function BrainstormModule({
               {!isLoading && (
                 <div className="flex-shrink-0">
                   <div className="px-4 py-2 bg-amber-400 dark:bg-amber-600 text-white rounded-lg font-medium text-sm shadow group-hover:bg-amber-500 dark:group-hover:bg-amber-700 transition-colors">
-                    {t('brainstorm.generateButton')}
+                    {quotaUnavailableLabel || t('brainstorm.generateButton')}
                   </div>
                 </div>
               )}
@@ -149,8 +154,9 @@ export default function BrainstormModule({
                     {t('actions.close')}
                   </button>
                   <button
-                    onClick={handleGenerateSuggestion}
-                    disabled={isLoading}
+                  onClick={handleGenerateSuggestion}
+                  disabled={isLoading || aiBlocked}
+                  title={quotaUnavailableLabel}
                     className="inline-flex items-center gap-2 px-4 py-1.5 text-sm font-medium bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-white rounded-lg shadow-sm hover:shadow transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isLoading ? (

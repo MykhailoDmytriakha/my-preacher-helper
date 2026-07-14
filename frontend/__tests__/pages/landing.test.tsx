@@ -5,6 +5,7 @@ import React from 'react';
 import LandingPage from '@/(pages)/page';
 import '@testing-library/jest-dom';
 import { signInWithGoogle } from '@/services/firebaseAuth.service';
+import { capturePendingReferral } from '@/services/referral.client';
 
 const mockPush = jest.fn();
 const mockReplace = jest.fn();
@@ -76,6 +77,9 @@ jest.mock('@/services/firebaseAuth.service', () => ({
   signInAsGuest: jest.fn(),
   auth: {},
 }));
+jest.mock('@/services/referral.client', () => ({
+  capturePendingReferral: jest.fn(),
+}));
 
 // Mock Firebase auth
 jest.mock('firebase/auth', () => ({
@@ -85,6 +89,7 @@ jest.mock('firebase/auth', () => ({
 describe('Landing Page UI Smoke Test', () => {
   const mockSignInWithGoogle = signInWithGoogle as jest.MockedFunction<typeof signInWithGoogle>;
   const mockSignInWithEmailAndPassword = signInWithEmailAndPassword as jest.MockedFunction<typeof signInWithEmailAndPassword>;
+  const mockCapturePendingReferral = capturePendingReferral as jest.MockedFunction<typeof capturePendingReferral>;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -104,6 +109,10 @@ describe('Landing Page UI Smoke Test', () => {
       const headings = screen.getAllByRole('heading', { level: 1 });
       expect(headings.some((h) => h.textContent?.includes('landing.title'))).toBe(true);
     });
+  });
+
+  it('captures the referral query on the pre-auth landing page', () => {
+    expect(mockCapturePendingReferral).toHaveBeenCalledWith(window.location.search, undefined);
   });
 
   it('renders the welcome text', async () => {

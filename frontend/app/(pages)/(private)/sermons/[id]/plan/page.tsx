@@ -9,6 +9,7 @@ import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
+import { useAiUsage } from "@/hooks/useAiUsage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useRouteId } from "@/hooks/useRouteId";
 import useSermon from "@/hooks/useSermon";
@@ -137,6 +138,7 @@ export default function PlanPage() {
   }, [sermonId, router]);
 
   const isOnline = useOnlineStatus();
+  const { aiBlocked, refresh: refreshAiUsage } = useAiUsage();
   const { sermon, setSermon, loading: isLoadingRaw, error: sermonError } = useSermon(sermonId);
   const sermonRef = useRef<Sermon | null>(sermon);
   const thoughtSaveVersionRef = useRef<Record<string, number>>({});
@@ -498,6 +500,8 @@ export default function PlanPage() {
     setGeneratingIds,
     onGenerated: handlePlanPointGenerated,
     onSaved: handlePlanPointSaved,
+    onAiSuccess: refreshAiUsage,
+    aiBlocked,
   });
 
   // Toggle edit mode for an outline point
@@ -1023,6 +1027,7 @@ export default function PlanPage() {
         setPlanStyle={setPlanStyle}
         isLoading={isLoading}
         generatingIds={generatingIds}
+        aiBlocked={aiBlocked}
         sectionMenuRef={sectionMenuRef}
         showSectionMenu={showSectionMenu}
         setShowSectionMenu={setShowSectionMenu}

@@ -19,6 +19,12 @@ jest.mock('@repositories/studyNoteShareLinks.repository', () => ({
   },
 }));
 
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn((request: Request) =>
+    Promise.resolve(new URL(request.url).searchParams.get('userId'))
+  ),
+}));
+
 const mockRepo = studyNoteShareLinksRepository as jest.Mocked<typeof studyNoteShareLinksRepository>;
 
 describe('studies share-links [id] route', () => {

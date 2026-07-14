@@ -25,6 +25,10 @@ jest.mock('next/server', () => ({
   },
 }));
 
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn().mockResolvedValue('user-1'),
+}));
+
 // The PUT /api/groups/[id] handler (server series-binding cascade) was removed in
 // the playlist migration — a group's series membership now lives in series.items
 // and is written by the client sweep. Only DELETE (delete-cleanup) remains.
@@ -45,14 +49,14 @@ describe('/api/groups/[id] route', () => {
     });
 
     it('deletes group and removes links from series', async () => {
-      (groupsRepository.fetchGroupById as jest.Mock).mockResolvedValueOnce({ id: 'g1' });
+      (groupsRepository.fetchGroupById as jest.Mock).mockResolvedValueOnce({ id: 'g1', userId: 'user-1' });
       (seriesRepository.removeGroupFromAllSeries as jest.Mock).mockResolvedValueOnce(undefined);
       (groupsRepository.deleteGroup as jest.Mock).mockResolvedValueOnce(undefined);
 
       const response = await DELETE({} as Request, { params: Promise.resolve({ id: 'g1' }) });
       const data = await response.json();
 
-      expect(seriesRepository.removeGroupFromAllSeries).toHaveBeenCalledWith('g1');
+      expect(seriesRepository.removeGroupFromAllSeries).toHaveBeenCalledWith('g1', 'user-1');
       expect(groupsRepository.deleteGroup).toHaveBeenCalledWith('g1');
       expect(response.status).toBe(200);
       expect(data.message).toBe('Group deleted successfully');

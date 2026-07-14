@@ -119,7 +119,8 @@ describe('preachDates.service', () => {
             const result = await preachDatesService.fetchPreachDates(sermonId);
 
             expect(global.fetch).toHaveBeenCalledWith(
-                expect.stringContaining(`/api/sermons/${sermonId}/preach-dates`)
+                expect.stringContaining(`/api/sermons/${sermonId}/preach-dates`),
+                { headers: { Authorization: 'Bearer test-token' } }
             );
             expect(result).toEqual(mockDates);
         });
@@ -142,3 +143,6 @@ describe('preachDates.service', () => {
         });
     });
 });
+jest.mock('@/utils/authenticatedRequest', () => ({
+  getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
+}));

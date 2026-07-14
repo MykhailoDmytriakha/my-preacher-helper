@@ -2,7 +2,9 @@ import 'openai/shims/node';
 
 import { NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { analyzeStudyNote } from '@clients/studyNote.structured';
+import { studiesRepository } from '@repositories/studies.repository';
 
 /**
  * POST /api/studies/analyze
@@ -34,8 +36,16 @@ export async function POST(request: Request) {
   console.log("Studies analyze route: Received POST request.");
 
   try {
+    // Auth first: this route runs an AI model and meters usage, so the caller must
+    // be authenticated and must own the study note (else an attacker could bill a
+    // victim's tier/quota by passing someone else's studyId + arbitrary content).
+    const uid = await getRequiredAuthenticatedUid(request);
+    if (!uid) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
+    }
+
     const body = await request.json();
-    const { content, existingTags, analysisType } = body;
+    const { content, existingTags, analysisType, studyId } = body;
 
     // Validate required fields
     if (!content || typeof content !== 'string') {
@@ -50,6 +60,22 @@ export async function POST(request: Request) {
         { success: false, error: 'Content cannot be empty' },
         { status: 400 }
       );
+    }
+
+    // studyId is optional. Analysis runs on the request-body `content` (the draft in
+    // the editor) and is metered against the authenticated caller's uid — so there is
+    // no victim to protect: the caller analyzes their own text and pays their own quota.
+    // An unsaved draft ('new', missing, or not-yet-persisted because create is
+    // fire-and-forget) is therefore allowed. When a study DOES exist and belongs to
+    // someone else, we still refuse (defense-in-depth: don't act on a foreign resource).
+    if (studyId && typeof studyId === 'string' && studyId !== 'new') {
+      const study = await studiesRepository.getNote(studyId);
+      if (study && study.userId !== uid) {
+        return NextResponse.json(
+          { success: false, error: 'Forbidden: you do not own this study note' },
+          { status: 403 }
+        );
+      }
     }
 
     // Validate existingTags if provided
@@ -67,7 +93,12 @@ export async function POST(request: Request) {
     });
 
     // Call the AI analysis function
-    const result = await analyzeStudyNote(content, existingTags, analysisType as 'all' | 'title' | 'tags' | 'scriptureRefs');
+    const result = await analyzeStudyNote(
+      content,
+      existingTags,
+      analysisType as 'all' | 'title' | 'tags' | 'scriptureRefs',
+      uid
+    );
 
     if (!result.success) {
       console.error("Studies analyze route: Analysis failed", result.error);
@@ -96,4 +127,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

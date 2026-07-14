@@ -5,6 +5,10 @@ import { BrainstormSuggestion } from '@/models/models';
 // Mock the fetch API
 fetchMock.enableMocks();
 
+jest.mock('@/utils/authenticatedRequest', () => ({
+  getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
+}));
+
 // Hard code the API URL for testing instead of using environment variable
 const API_URL = 'http://localhost:3000';
 
@@ -65,6 +69,7 @@ describe('brainstorm.service', () => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            Authorization: 'Bearer test-token',
           },
         })
       );
@@ -233,6 +238,7 @@ describe('brainstorm.service', () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Authorization: 'Bearer test-token',
         },
         signal: expect.any(AbortSignal),
       });

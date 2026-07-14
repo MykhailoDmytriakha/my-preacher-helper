@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -10,8 +11,21 @@ export async function PUT(
     request: Request,
     { params }: { params: Promise<{ id: string; dateId: string }> }
 ) {
-    const { id, dateId } = await params;
     try {
+        const uid = await getRequiredAuthenticatedUid(request);
+        if (!uid) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const { id, dateId } = await params;
+        const sermon = await sermonsRepository.fetchSermonById(id);
+        if (!sermon) {
+            return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+        }
+        if (sermon.userId !== uid) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
         const updates = await request.json() as Partial<PreachDate>;
 
         // Basic validation to prevent updating id or createdAt
@@ -35,6 +49,7 @@ export async function PUT(
         const preachDate = await sermonsRepository.updatePreachDate(id, dateId, safeUpdates);
         return NextResponse.json({ preachDate });
     } catch (error: unknown) {
+        const { id, dateId } = await params;
         console.error(`Error updating preach date ${dateId} in sermon ${id}:`, error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         if (errorMessage === "Sermon not found" || errorMessage === "Preach date not found") {
@@ -46,14 +61,28 @@ export async function PUT(
 
 // DELETE /api/sermons/[id]/preach-dates/[dateId]
 export async function DELETE(
-    _request: Request,
+    request: Request,
     { params }: { params: Promise<{ id: string; dateId: string }> }
 ) {
-    const { id, dateId } = await params;
     try {
+        const uid = await getRequiredAuthenticatedUid(request);
+        if (!uid) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const { id, dateId } = await params;
+        const sermon = await sermonsRepository.fetchSermonById(id);
+        if (!sermon) {
+            return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+        }
+        if (sermon.userId !== uid) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
         await sermonsRepository.deletePreachDate(id, dateId);
         return NextResponse.json({ message: 'Preach date deleted' });
     } catch (error: unknown) {
+        const { id, dateId } = await params;
         console.error(`Error deleting preach date ${dateId} from sermon ${id}:`, error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         if (errorMessage === "Sermon not found") {

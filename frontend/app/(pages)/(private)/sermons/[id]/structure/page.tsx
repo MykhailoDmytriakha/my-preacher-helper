@@ -11,6 +11,7 @@ import Column from "@/components/Column";
 import EditThoughtModal from "@/components/EditThoughtModal";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
 import { SortableItemPreview } from "@/components/SortableItem";
+import { useAiUsage } from "@/hooks/useAiUsage";
 import { useRouteId } from "@/hooks/useRouteId";
 import { useSermonStructureData } from "@/hooks/useSermonStructureData";
 import { Item, Sermon, SermonPoint, Thought, SermonOutline } from "@/models/models";
@@ -72,6 +73,7 @@ function StructurePageContent() {
   const sermonIdFromQuery = searchParams?.get("sermonId");
   const sermonId = sermonIdFromPath || sermonIdFromQuery || null;
   const { t } = useTranslation();
+  const { refresh: refreshAiUsage } = useAiUsage();
   const [isClient, setIsClient] = useState(false);
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -204,9 +206,10 @@ function StructurePageContent() {
     debouncedSaveStructure,
   });
 
-  const requestAiSortForOutlinePoint = useCallback((columnId: "introduction" | "main" | "conclusion", outlinePointId: string) => {
-    void handleAiSort({ columnId, outlinePointId });
-  }, [handleAiSort]);
+  const requestAiSortForOutlinePoint = useCallback(async (columnId: "introduction" | "main" | "conclusion", outlinePointId: string) => {
+    await handleAiSort({ columnId, outlinePointId });
+    await refreshAiUsage();
+  }, [handleAiSort, refreshAiUsage]);
 
   // No changes needed here, just removing the old columnTitles definition later
 

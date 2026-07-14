@@ -104,7 +104,7 @@ describe('compose-plan-from-scratch route', () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(composePlanFromScratch).toHaveBeenCalledWith(sermon, sermon.outline);
+    expect(composePlanFromScratch).toHaveBeenCalledWith(sermon, sermon.outline, 'user-1');
     expect(body).toEqual({ outline });
   });
 
@@ -150,7 +150,8 @@ describe('compose-plan-from-scratch route', () => {
         id: 'sermon-1',
         scratch: [sermon.scratch[1]],
       }),
-      sermon.outline
+      sermon.outline,
+      'user-1'
     );
     expect(body).toEqual({ outline });
   });

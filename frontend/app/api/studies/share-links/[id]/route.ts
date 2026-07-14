@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { studyNoteShareLinksRepository } from '@repositories/studyNoteShareLinks.repository';
 
 const ERROR_MESSAGES = {
@@ -7,16 +8,12 @@ const ERROR_MESSAGES = {
   FORBIDDEN: 'Forbidden',
 } as const;
 
-function getUserId(request: Request): string | null {
-  return new URL(request.url).searchParams.get('userId');
-}
-
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const userId = getUserId(request);
-  if (!userId) {
+  const uid = await getRequiredAuthenticatedUid(request);
+  if (!uid) {
     return NextResponse.json({ error: ERROR_MESSAGES.USER_NOT_AUTHENTICATED }, { status: 401 });
   }
+  const { id } = await params;
 
   try {
     const existing = await studyNoteShareLinksRepository.getById(id);
@@ -24,7 +21,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
       return NextResponse.json({ success: true });
     }
 
-    if (existing.ownerId !== userId) {
+    if (existing.ownerId !== uid) {
       return NextResponse.json({ error: ERROR_MESSAGES.FORBIDDEN }, { status: 403 });
     }
 

@@ -40,9 +40,8 @@ export type { PlanContext, PlanStyle } from "./planTypes";
 
 // const isTestEnvironment = process.env.NODE_ENV === 'test';
 
+// Legacy callers without a server-trusted UID keep using this exact env model.
 const audioModel = process.env.OPENAI_AUDIO_MODEL as string;
-const gptModel = process.env.OPENAI_GPT_MODEL as string; // This should be 'o1-mini'
-const geminiModel = process.env.GEMINI_MODEL as string;
 const isDebugMode = process.env.DEBUG_MODE === 'true';
 
 // Transcription per-request timeout — sits UNDER Vercel's 60s function wall AND
@@ -57,8 +56,6 @@ const openai = new OpenAI({
   // Allow browser environment during tests
   dangerouslyAllowBrowser: true,
 });
-
-const aiModel = process.env.AI_MODEL_TO_USE === 'GEMINI' ? geminiModel : gptModel;
 
 function logPayload(
   operationName: string,
@@ -157,7 +154,32 @@ async function withOpenAILogging<T>(
 
 // ===== API Functions =====
 
-export async function createTranscription(file: File | Blob): Promise<string> {
+async function resolveTranscriptionModels(userId?: string): Promise<string[]> {
+  if (!userId) return [audioModel];
+
+  const [
+    { resolveUserTranscriptionTarget, getAllowedFunctionTargets },
+    { getUserEntitlementServerSide },
+  ] = await Promise.all([
+    import('./ai/tierPolicy'),
+    import('@/services/userEntitlement.server'),
+  ]);
+  const now = new Date();
+  const entitlement = await getUserEntitlementServerSide(userId, { includeModelPreferences: true });
+  const primary = await resolveUserTranscriptionTarget(entitlement, entitlement.preferredTranscription, now);
+  // Fallbacks must stay WITHIN the user's tier allowance — no cross-tier model on
+  // the failure path. Free's allowance is exactly its default → no extra fallback.
+  const allowed = await getAllowedFunctionTargets('transcription', entitlement, now);
+  const models = [primary.modelId];
+  for (const target of allowed) {
+    if (target.providerId === 'openai' && !models.includes(target.modelId)) {
+      models.push(target.modelId);
+    }
+  }
+  return models;
+}
+
+export async function createTranscription(file: File | Blob, userId?: string): Promise<string> {
   // Validate audio blob using utility
   const validation = validateAudioBlob(file);
   if (!validation.valid) {
@@ -194,35 +216,50 @@ export async function createTranscription(file: File | Blob): Promise<string> {
     hasKnownIssues: hasKnownIssues(fileToSend.type)
   };
 
-  const requestData = {
-    model: audioModel,
-    file: 'Audio file content (binary data not shown in logs)'
-  };
+  const models = await resolveTranscriptionModels(userId);
+  // Two sequential 45s attempts would exceed the routes' 60s wall clock before
+  // they can return JSON. Split the existing budget only for the user-aware
+  // primary+fallback path; the legacy one-model path remains exactly 45s.
+  const requestTimeoutMs = models.length > 1
+    ? Math.floor(TRANSCRIPTION_TIMEOUT_MS / models.length)
+    : TRANSCRIPTION_TIMEOUT_MS;
 
   try {
-    const result = await withOpenAILogging<OpenAI.Audio.Transcription>(
-      // Per-request timeout + no SDK retries, scoped to transcription ONLY (the
-      // shared `openai` client also serves GPT calls we must not constrain). The
-      // 50s cap sits UNDER Vercel's 60s wall so the route can catch a slow call
-      // and return a typed error instead of being killed with no JSON body.
-      () => openai.audio.transcriptions.create(
-        {
-          file: fileToSend,
-          model: audioModel,
-        },
-        {
-          timeout: TRANSCRIPTION_TIMEOUT_MS,
-          maxRetries: 0,
+    let lastError: unknown;
+    for (let index = 0; index < models.length; index += 1) {
+      const model = models[index];
+      try {
+        const result = await withOpenAILogging<OpenAI.Audio.Transcription>(
+          // Per-request timeout + no SDK retries, scoped to transcription ONLY.
+          () => openai.audio.transcriptions.create(
+            {
+              file: fileToSend,
+              model,
+            },
+            {
+              timeout: requestTimeoutMs,
+              maxRetries: 0,
+            }
+          ),
+          'Transcription',
+          {
+            model,
+            file: 'Audio file content (binary data not shown in logs)'
+          },
+          inputInfo
+        );
+
+        console.log(`✅ Transcription successful: ${result.text.substring(0, 100)}${result.text.length > 100 ? '...' : ''}`);
+        return result.text;
+      } catch (error) {
+        lastError = error;
+        const fallbackModel = models[index + 1];
+        if (fallbackModel) {
+          console.warn(`[Transcription] Model ${model} failed; retrying with catalog default ${fallbackModel}`, error);
         }
-      ),
-      'Transcription',
-      requestData,
-      inputInfo
-    );
-
-    console.log(`✅ Transcription successful: ${result.text.substring(0, 100)}${result.text.length > 100 ? '...' : ''}`);
-
-    return result.text;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error('Transcription failed');
   } catch (error) {
     console.error("❌ Error transcribing file:", error);
 
@@ -260,9 +297,10 @@ export async function createTranscription(file: File | Blob): Promise<string> {
 export async function generateThought(
   content: string,
   sermon: Sermon,
-  availableTags: string[] = []
+  availableTags: string[] = [],
+  userId: string = sermon.userId
 ): Promise<GenerateThoughtResult> {
-  return generateThoughtStructured(content, sermon, availableTags);
+  return generateThoughtStructured(content, sermon, availableTags, { userId });
 }
 
 /**
@@ -270,8 +308,11 @@ export async function generateThought(
  * @param sermon The sermon to analyze
  * @returns Insights object with mainIdea, keyPoints, suggestedOutline, audienceTakeaways
  */
-export async function generateSermonInsights(sermon: Sermon): Promise<Insights | null> {
-  return generateSermonInsightsStructured(sermon);
+export async function generateSermonInsights(
+  sermon: Sermon,
+  userId: string = sermon.userId
+): Promise<Insights | null> {
+  return generateSermonInsightsStructured(sermon, userId);
 }
 
 /**
@@ -279,8 +320,8 @@ export async function generateSermonInsights(sermon: Sermon): Promise<Insights |
  * @param sermon The sermon to analyze
  * @returns Array of topic strings
  */
-export async function generateSermonTopics(sermon: Sermon): Promise<string[]> {
-  return generateSermonTopicsStructured(sermon);
+export async function generateSermonTopics(sermon: Sermon, userId: string = sermon.userId): Promise<string[]> {
+  return generateSermonTopicsStructured(sermon, userId);
 }
 
 /**
@@ -288,8 +329,11 @@ export async function generateSermonTopics(sermon: Sermon): Promise<string[]> {
  * @param sermon The sermon to analyze
  * @returns SectionHints object with structured plan
  */
-export async function generateSectionHints(sermon: Sermon): Promise<SectionHints | null> {
-  return generateSectionHintsStructured(sermon);
+export async function generateSectionHints(
+  sermon: Sermon,
+  userId: string = sermon.userId
+): Promise<SectionHints | null> {
+  return generateSectionHintsStructured(sermon, userId);
 }
 
 /**
@@ -297,8 +341,11 @@ export async function generateSectionHints(sermon: Sermon): Promise<SectionHints
  * @param sermon The sermon to analyze
  * @returns Array of verse objects with reference and relevance
  */
-export async function generateSermonVerses(sermon: Sermon): Promise<VerseWithRelevance[]> {
-  return generateSermonVersesStructured(sermon);
+export async function generateSermonVerses(
+  sermon: Sermon,
+  userId: string = sermon.userId
+): Promise<VerseWithRelevance[]> {
+  return generateSermonVersesStructured(sermon, userId);
 }
 
 type SortedItemResponse = { key: string; outlinePoint?: string; subPoint?: string; content?: string };
@@ -535,7 +582,13 @@ function appendMissingSortedItems(
  * @param outlinePoints - Optional outline points to guide the sorting.
  * @returns A promise that resolves to the sorted list of items.
  */
-export async function sortItemsWithAI(columnId: string, items: ThoughtInStructure[], sermon: Sermon, outlinePoints: SermonPoint[] = []): Promise<ThoughtInStructure[]> {
+export async function sortItemsWithAI(
+  columnId: string,
+  items: ThoughtInStructure[],
+  sermon: Sermon,
+  outlinePoints: SermonPoint[] = [],
+  userId: string = sermon.userId
+): Promise<ThoughtInStructure[]> {
   try {
     // Create a map for quick lookup by ID
     const itemsMapByKey = buildItemsMap(items);
@@ -568,7 +621,7 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
       SortingResponseSchema,
       {
         formatName: 'sort_items',
-        model: aiModel,
+        userId,
         promptBlueprint,
         logContext: inputInfo,
       }
@@ -612,7 +665,12 @@ export async function sortItemsWithAI(columnId: string, items: ThoughtInStructur
  * @param style Optional style for the plan generation (default: 'memory')
  * @returns SermonContent object with introduction, main, and conclusion, plus success flag
  */
-export async function generatePlanForSection(sermon: Sermon, section: string, style: PlanStyle = 'memory'): Promise<{ plan: SermonContent, success: boolean }> {
+export async function generatePlanForSection(
+  sermon: Sermon,
+  section: string,
+  style: PlanStyle = 'memory',
+  userId: string = sermon.userId
+): Promise<{ plan: SermonContent, success: boolean }> {
   // Extract only the content for the requested section
   const sectionContent = extractSectionContent(sermon, section);
 
@@ -675,7 +733,7 @@ export async function generatePlanForSection(sermon: Sermon, section: string, st
       PlanSectionResponseSchema,
       {
         formatName: "plan_for_section",
-        model: aiModel,
+        userId,
         promptBlueprint,
         logContext: inputInfo,
       }
@@ -764,7 +822,10 @@ function normalizeDirectionSuggestions(directions: unknown[]): DirectionSuggesti
  * @param sermon The sermon to analyze
  * @returns Array of direction suggestion objects
  */
-export async function generateSermonDirections(sermon: Sermon): Promise<DirectionSuggestion[] | null> {
+export async function generateSermonDirections(
+  sermon: Sermon,
+  userId: string = sermon.userId
+): Promise<DirectionSuggestion[] | null> {
   // Extract sermon content using our helper function
   const sermonContent = extractSermonContent(sermon);
   const userMessage = createDirectionsUserMessage(sermon, sermonContent);
@@ -793,7 +854,7 @@ export async function generateSermonDirections(sermon: Sermon): Promise<Directio
       DirectionsResponseSchema,
       {
         formatName: "sermon_directions",
-        model: aiModel,
+        userId,
         promptBlueprint,
         logContext: inputInfo,
       }
@@ -1047,7 +1108,8 @@ export async function generatePlanPointContent(
   keyFragments: string[] = [],
   context?: PlanContext,
   style: PlanStyle = 'memory',
-  subPoints?: SubPoint[]
+  subPoints?: SubPoint[],
+  userId?: string
 ): Promise<{ content: string; success: boolean }> {
   // Detect language — base primarily on THOUGHTS text to avoid
   // generating a different language than the thoughts themselves
@@ -1110,7 +1172,7 @@ export async function generatePlanPointContent(
       PlanPointContentResponseSchema,
       {
         formatName: "plan_point_content",
-        model: aiModel,
+        userId,
         promptBlueprint,
         logContext: inputInfo,
       }
@@ -1135,12 +1197,20 @@ export async function generatePlanPointContent(
  * @param section The section to generate outline points for (introduction, main, conclusion)
  * @returns Array of generated outline points and success status
  */
-export async function generateSermonPoints(sermon: Sermon, section: string): Promise<{ outlinePoints: SermonPoint[]; success: boolean }> {
-  return generateSermonPointsStructured(sermon, section);
+export async function generateSermonPoints(
+  sermon: Sermon,
+  section: string,
+  userId: string = sermon.userId
+): Promise<{ outlinePoints: SermonPoint[]; success: boolean }> {
+  return generateSermonPointsStructured(sermon, section, userId);
 }
 
-export async function composePlanFromScratch(sermon: Sermon, existingOutline?: SermonOutline) {
-  return composePlanFromScratchStructured(sermon, existingOutline);
+export async function composePlanFromScratch(
+  sermon: Sermon,
+  existingOutline?: SermonOutline,
+  userId: string = sermon.userId
+) {
+  return composePlanFromScratchStructured(sermon, existingOutline, userId);
 }
 
 /**
@@ -1148,6 +1218,9 @@ export async function composePlanFromScratch(sermon: Sermon, existingOutline?: S
  * @param sermon The sermon to generate brainstorm suggestion for
  * @returns A single brainstorm suggestion
  */
-export async function generateBrainstormSuggestion(sermon: Sermon): Promise<BrainstormSuggestion | null> {
-  return generateBrainstormSuggestionStructured(sermon);
-} 
+export async function generateBrainstormSuggestion(
+  sermon: Sermon,
+  userId: string = sermon.userId
+): Promise<BrainstormSuggestion | null> {
+  return generateBrainstormSuggestionStructured(sermon, userId);
+}

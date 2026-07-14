@@ -30,6 +30,8 @@ jest.mock('@/components/settings/TagsSection', () => ({ user }: { user: any }) =
     <p>User: {user?.email || 'No user'}</p>
   </div>
 ));
+jest.mock('@/components/settings/UsageWidget', () => () => <div data-testid="usage-widget">Usage</div>);
+jest.mock('@/components/settings/ModelSelector', () => () => <div data-testid="model-selector">Models</div>);
 jest.mock('@/components/settings/SettingsLayout', () => ({ children, title }: { children: React.ReactNode, title: string }) => (
   <div data-testid="settings-layout">
     <h1 role="heading" aria-level={1}>{title}</h1>
@@ -52,6 +54,13 @@ jest.mock('@/components/settings/SettingsNav', () => ({ activeSection, onNavigat
     >
       Tags Management
     </button>
+    <button
+      onClick={() => onNavigate('aiModels')}
+      className={activeSection === 'aiModels' ? 'active' : ''}
+      data-testid="nav-ai-models"
+    >
+      AI &amp; limits
+    </button>
   </nav>
 ));
 jest.mock('@/components/navigation/LanguageInitializer', () => () => (
@@ -67,6 +76,7 @@ jest.mock('react-i18next', () => ({
         'settings.loading': 'Loading settings...',
         'settings.userSettings': 'User Settings',
         'settings.manageTags': 'Tags Management',
+        'settings.nav.aiModels': 'AI & limits',
       };
       return translations[key] || key;
     },
@@ -306,6 +316,18 @@ describe('Settings Page', () => {
         const tagsSections = screen.getAllByTestId('tags-section');
         expect(tagsSections.length).toBeGreaterThan(0);
         expect(tagsSections[0]).toHaveTextContent('User: test@example.com');
+      });
+    });
+
+    it('shows usage and model selection after navigating to AI & limits', async () => {
+      renderWithProviders();
+
+      fireEvent.click((await screen.findAllByTestId('nav-ai-models'))[0]);
+
+      await waitFor(() => {
+        expect(screen.getAllByTestId('usage-widget')).toHaveLength(2);
+        expect(screen.getAllByTestId('model-selector')).toHaveLength(2);
+        expect(screen.queryByTestId('user-settings-section')).not.toBeInTheDocument();
       });
     });
   });

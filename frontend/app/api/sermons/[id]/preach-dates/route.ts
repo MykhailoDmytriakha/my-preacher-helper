@@ -1,12 +1,26 @@
 import { NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 // POST /api/sermons/[id]/preach-dates
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-    const { id } = await params;
     try {
+        const uid = await getRequiredAuthenticatedUid(request);
+        if (!uid) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const { id } = await params;
+        const sermon = await sermonsRepository.fetchSermonById(id);
+        if (!sermon) {
+            return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+        }
+        if (sermon.userId !== uid) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
+
         const data = await request.json();
 
         // Validation
@@ -28,6 +42,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         const preachDate = await sermonsRepository.addPreachDate(id, data);
         return NextResponse.json({ preachDate });
     } catch (error: unknown) {
+        const { id } = await params;
         console.error(`Error adding preach date to sermon ${id}:`, error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         if (errorMessage === "Sermon not found") {
@@ -38,12 +53,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 }
 
 // GET /api/sermons/[id]/preach-dates
-export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-    const { id } = await params;
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
+        const uid = await getRequiredAuthenticatedUid(request);
+        if (!uid) {
+            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+
+        const { id } = await params;
         const sermon = await sermonsRepository.fetchSermonById(id);
+        if (!sermon) {
+            return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+        }
+        if (sermon.userId !== uid) {
+            return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+        }
         return NextResponse.json({ preachDates: sermon.preachDates || [] });
     } catch (error: unknown) {
+        const { id } = await params;
         console.error(`Error fetching preach dates for sermon ${id}:`, error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         if (errorMessage === "Sermon not found") {

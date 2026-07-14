@@ -178,6 +178,7 @@ interface PlanMainLayoutContextValue {
   setPlanStyle: React.Dispatch<React.SetStateAction<PlanStyle>>;
   isLoading: boolean;
   generatingIds: Record<string, boolean>;
+  aiBlocked: boolean;
   registerPairRef: RegisterPairedCardRef;
   generatedContent: Record<string, string>;
   sermonId: string;
@@ -220,6 +221,7 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
     onGenerate,
     generatedContent,
     generatingIds,
+    aiBlocked,
     onOpenFragmentsModal,
   } = usePlanMainLayoutContext();
 
@@ -260,8 +262,8 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
             variant="section"
             sectionColor={sectionColors}
             className="text-sm px-2 py-1 h-8"
-            disabled={isGenerating}
-            title={isGenerating ? t("plan.generating") : currentGeneratedContent ? t("plan.regenerate") : t("plan.generate")}
+            disabled={isGenerating || aiBlocked}
+            title={aiBlocked ? t("settings.usage.aiUsageExhausted") : isGenerating ? t("plan.generating") : currentGeneratedContent ? t("plan.regenerate") : t("plan.generate")}
           >
             {isGenerating ? <LoadingSpinner size="small" /> : <Sparkles className="h-4 w-4" />}
           </Button>
@@ -585,6 +587,7 @@ export interface PlanMainLayoutProps {
   setPlanStyle: React.Dispatch<React.SetStateAction<PlanStyle>>;
   isLoading: boolean;
   generatingIds: Record<string, boolean>;
+  aiBlocked: boolean;
   sectionMenuRef: React.RefObject<HTMLDivElement | null>;
   showSectionMenu: boolean;
   setShowSectionMenu: React.Dispatch<React.SetStateAction<boolean>>;
@@ -630,6 +633,7 @@ export default function PlanMainLayout({
   setPlanStyle,
   isLoading,
   generatingIds,
+  aiBlocked,
   sectionMenuRef,
   showSectionMenu,
   setShowSectionMenu,
@@ -670,6 +674,7 @@ export default function PlanMainLayout({
     setPlanStyle,
     isLoading,
     generatingIds,
+    aiBlocked,
     registerPairRef,
     generatedContent,
     sermonId,

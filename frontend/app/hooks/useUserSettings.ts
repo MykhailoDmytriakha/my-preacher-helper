@@ -8,10 +8,14 @@ import {
   updateStructurePreviewAccess,
   updateShowAppVersion,
   updateFirstDayOfWeek,
+  updateFunctionModelPreference as persistFunctionModelPreference,
+  updateModelPreference as persistModelPreference,
 } from '@/services/userSettings.service';
 import { SETTINGS_MUTATION_KEYS } from '@/utils/mutationDefaults';
 
 import type { UserSettings } from '@/models/models';
+import type { ModelPreference } from '@/services/userSettings.service';
+import type { FunctionModelPreference } from '@/services/userSettings.service';
 import type { FirstDayOfWeek } from '@/utils/weekStart';
 
 const SETTINGS_PREFIX = ['user-settings'];
@@ -110,6 +114,39 @@ export function useUserSettings(userId: string | null | undefined) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: SETTINGS_PREFIX }),
   });
 
+  const updateModelPreferenceMutation = useMutation({
+    mutationKey: SETTINGS_MUTATION_KEYS.modelPreference,
+    mutationFn: ({ userId: uid, preference }: { userId: string; preference: ModelPreference }) =>
+      persistModelPreference(uid, preference),
+    onMutate: async ({ preference }) => {
+      await queryClient.cancelQueries({ queryKey: buildQueryKey(userId) });
+      const previous = queryClient.getQueryData<UserSettings | null>(buildQueryKey(userId));
+      patchSettings(preference);
+      return { previous };
+    },
+    onError: (_e, _v, ctx) => revert(ctx?.previous),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: SETTINGS_PREFIX }),
+  });
+
+  const updateFunctionModelPreferenceMutation = useMutation({
+    mutationKey: SETTINGS_MUTATION_KEYS.functionModelPreference,
+    mutationFn: ({ userId: uid, preference }: { userId: string; preference: FunctionModelPreference }) =>
+      persistFunctionModelPreference(uid, preference),
+    onMutate: async ({ preference }) => {
+      await queryClient.cancelQueries({ queryKey: buildQueryKey(userId) });
+      const previous = queryClient.getQueryData<UserSettings | null>(buildQueryKey(userId));
+      patchSettings(preference);
+      return { previous };
+    },
+    onError: (_e, _v, ctx) => revert(ctx?.previous),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: SETTINGS_PREFIX }),
+        queryClient.invalidateQueries({ queryKey: ['me', 'entitlement'] }),
+      ]);
+    },
+  });
+
   // A toggle without a user id is an invalid call (settings require auth), not an
   // offline case — reject it rather than buffering a write the server can't key.
   const guarded = <T,>(run: (uid: string) => Promise<T>): Promise<T> =>
@@ -135,5 +172,11 @@ export function useUserSettings(userId: string | null | undefined) {
     updateShowAppVersion: (enabled: boolean) =>
       guarded((uid) => updateShowAppVersionMutation.mutateAsync({ userId: uid, value: enabled })),
     updatingShowAppVersion: updateShowAppVersionMutation.isPending,
+    updateModelPreference: (preference: ModelPreference) =>
+      guarded((uid) => updateModelPreferenceMutation.mutateAsync({ userId: uid, preference })),
+    updatingModelPreference: updateModelPreferenceMutation.isPending,
+    updateFunctionModelPreference: (preference: FunctionModelPreference) =>
+      guarded((uid) => updateFunctionModelPreferenceMutation.mutateAsync({ userId: uid, preference })),
+    updatingFunctionModelPreference: updateFunctionModelPreferenceMutation.isPending,
   };
 }

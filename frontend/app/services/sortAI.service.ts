@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 
 import { Item, SermonPoint } from "@/models/models";
+import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -20,10 +21,11 @@ export const sortItemsWithAI = async (
 ): Promise<Item[]> => {
   try {
     console.log(`sortItemsWithAI: Starting AI sort for column ${columnId} with ${items.length} items`);
+    const authHeaders = await getAuthenticatedRequestHeaders();
 
     const response = await fetch(`${API_BASE}/api/sort`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...authHeaders },
       body: JSON.stringify({ columnId, items, sermonId, outlinePoints }),
     });
 
@@ -45,4 +47,4 @@ export const sortItemsWithAI = async (
     toast.error("Error sorting items with AI. Please try again.");
     throw error;
   }
-}; 
+};

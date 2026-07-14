@@ -44,6 +44,8 @@ export interface CreateTranscriptionWithRetryOptions {
   maxAttempts?: number;
   baseDelayMs?: number;
   transcribe?: (file: File | Blob) => Promise<string>;
+  /** Server-trusted caller UID. Omit to preserve the legacy env-model path. */
+  userId?: string;
   onRetry?: (event: TranscriptionRetryEvent) => void;
 }
 
@@ -226,7 +228,9 @@ export async function createTranscriptionWithRetry(
 ): Promise<string> {
   const maxAttempts = Math.max(1, options.maxAttempts ?? DEFAULT_MAX_ATTEMPTS);
   const baseDelayMs = Math.max(0, options.baseDelayMs ?? DEFAULT_BASE_DELAY_MS);
-  const transcribe = options.transcribe ?? createTranscription;
+  const transcribe = options.transcribe ?? (options.userId
+    ? (audio: File | Blob) => createTranscription(audio, options.userId)
+    : createTranscription);
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {

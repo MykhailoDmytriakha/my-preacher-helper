@@ -7,9 +7,14 @@ import {
 
 jest.mock('@repositories/sermons.repository', () => ({
   sermonsRepository: {
+    fetchSermonById: jest.fn(),
     updatePreachDate: jest.fn(),
     deletePreachDate: jest.fn(),
   },
+}));
+
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn().mockResolvedValue('user-1'),
 }));
 
 jest.mock('next/server', () => ({
@@ -24,6 +29,7 @@ jest.mock('next/server', () => ({
 describe('/api/sermons/[id]/preach-dates/[dateId] route', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue({ id: 's1', userId: 'user-1' });
   });
 
   describe('PUT', () => {

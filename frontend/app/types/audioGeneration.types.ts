@@ -15,8 +15,8 @@ export type TTSVoice = 'onyx' | 'echo' | 'ash';
 /** Available TTS providers */
 export type TTSProvider = 'openai' | 'google';
 
-/** Hardcoded Google/Gemini TTS models for the audio export experiment */
-export type GoogleTTSModel = 'gemini-3.1-flash-tts-preview' | 'gemini-2.5-flash-preview-tts';
+/** Catalog-facing Google/Gemini TTS model IDs (the route maps them to API preview IDs). */
+export type GoogleTTSModel = 'gemini-3.1-flash-tts' | 'gemini-2.5-flash-tts';
 
 /** Hardcoded Gemini TTS prebuilt voice names */
 export type GoogleTTSVoice =
@@ -295,7 +295,7 @@ export const INITIAL_AUDIO_EXPORT_STATE: AudioExportModalState = {
     isOpen: false,
     voice: 'onyx',
     quality: 'standard',
-    googleModel: 'gemini-2.5-flash-preview-tts',
+    googleModel: 'gemini-3.1-flash-tts',
     googleVoice: 'Kore',
     sections: 'all',
     forceRegenerate: false,
@@ -314,18 +314,19 @@ export const MAX_CHUNK_SIZE = 4000;
 export const AVAILABLE_VOICES: VoiceOption[] = [
     { id: 'onyx', nameKey: 'audioExport.voiceOnyx', descKey: 'audioExport.voiceDeep' },
     { id: 'echo', nameKey: 'audioExport.voiceEcho', descKey: 'audioExport.voiceNatural' },
+    { id: 'ash', nameKey: 'audioExport.voiceAsh', descKey: 'audioExport.voiceWarm' },
 ];
 
 export const GOOGLE_TTS_MODELS: GoogleTTSModelOption[] = [
     {
-        id: 'gemini-2.5-flash-preview-tts',
-        labelKey: 'audioExport.googleModelGemini25',
-        descKey: 'audioExport.googleModelGemini25Desc',
-    },
-    {
-        id: 'gemini-3.1-flash-tts-preview',
+        id: 'gemini-3.1-flash-tts',
         labelKey: 'audioExport.googleModelGemini31',
         descKey: 'audioExport.googleModelGemini31Desc',
+    },
+    {
+        id: 'gemini-2.5-flash-tts',
+        labelKey: 'audioExport.googleModelGemini25',
+        descKey: 'audioExport.googleModelGemini25Desc',
     },
 ];
 

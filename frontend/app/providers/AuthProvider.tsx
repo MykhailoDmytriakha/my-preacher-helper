@@ -1,9 +1,11 @@
 'use client';
 
 import { User, onAuthStateChanged } from 'firebase/auth';
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 
 import { auth } from '@/services/firebaseAuth.service';
+import { recordLastSeen } from '@/services/lastSeen.client';
+import { claimPendingReferral } from '@/services/referral.client';
 import { debugLog } from '@/utils/debugMode';
 
 interface AuthContextType {
@@ -29,6 +31,7 @@ export const useAuth = () => {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const referralClaimInFlight = useRef(false);
 
   useEffect(() => {
     // Firebase's onAuthStateChanged + browserLocalPersistence is the SINGLE
@@ -52,6 +55,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(firebaseUser);
       setLoading(false);
       debugLog('Firebase auth state changed:', firebaseUser ? `User: ${firebaseUser.uid}` : 'No user');
+
+      if (firebaseUser) {
+        recordLastSeen(firebaseUser.uid);
+        if (!referralClaimInFlight.current) {
+          referralClaimInFlight.current = true;
+          void claimPendingReferral(firebaseUser).finally(() => {
+            referralClaimInFlight.current = false;
+          });
+        }
+      }
     });
 
     return unsubscribe;

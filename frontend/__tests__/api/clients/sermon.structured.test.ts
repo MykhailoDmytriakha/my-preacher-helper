@@ -192,6 +192,32 @@ describe('sermon.structured', () => {
     expect(result).toBeNull();
   });
 
+  it('passes the sermon owner to every TEXT structured-output caller', async () => {
+    mockStructuredCall.mockResolvedValue({
+      success: false,
+      data: null,
+      refusal: null,
+      error: new Error('stop after routing'),
+    });
+    const sermonWithScratch: Sermon = {
+      ...baseSermon,
+      scratch: [{ id: 'scratch-1', text: 'Scratch', createdAt: '2026-07-12T00:00:00.000Z' }],
+    };
+
+    await generateSermonInsightsStructured(baseSermon);
+    await generateSermonTopicsStructured(baseSermon);
+    await generateSermonVersesStructured(baseSermon);
+    await generateSectionHintsStructured(baseSermon);
+    await generateSermonPointsStructured(baseSermon, 'main');
+    await composePlanFromScratchStructured(sermonWithScratch);
+    await generateBrainstormSuggestionStructured(baseSermon);
+
+    expect(mockStructuredCall).toHaveBeenCalledTimes(7);
+    for (const call of mockStructuredCall.mock.calls) {
+      expect(call[3]).toEqual(expect.objectContaining({ userId: baseSermon.userId }));
+    }
+  });
+
   it('keeps plan point structured function as explicit fallback stub', async () => {
     const result = await generatePlanPointContentStructured(
       'Title',

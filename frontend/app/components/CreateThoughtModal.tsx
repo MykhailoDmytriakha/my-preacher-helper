@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { useAiUsage } from '@/hooks/useAiUsage';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { Thought, SermonOutline } from '@/models/models';
 import { useConnection } from '@/providers/ConnectionProvider';
@@ -59,6 +60,8 @@ export default function CreateThoughtModal({
   const VOICE_MAX_RETRIES = 3;
   const { t } = useTranslation();
   const { isOnline, isMagicAvailable } = useConnection();
+  const { transcriptionBlocked, refresh: refreshAiUsage } = useAiUsage();
+  const transcriptionUnavailableLabel = transcriptionBlocked ? t('settings.usage.transcriptionUsageExhausted') : undefined;
 
   useScrollLock(isOpen);
 
@@ -90,6 +93,7 @@ export default function CreateThoughtModal({
         const separator = prev ? '\n\n' : '';
         return `${prev}${separator}${appended}`;
       });
+      await refreshAiUsage();
       // Success — the thought is now saved as text; drop the in-memory safety copy.
       storedVoiceBlobRef.current = null;
       setVoiceError(null);
@@ -217,9 +221,9 @@ export default function CreateThoughtModal({
               </label>
               {showDictation && (
                 <div 
-                  className={`flex items-center gap-2 transition-opacity duration-300 ${!isMagicAvailable ? 'opacity-40 grayscale' : ''}`}
-                  aria-disabled={!isMagicAvailable}
-                  title={!isMagicAvailable ? t('errors.magicUnavailable') || 'Unavailable offline' : ''}
+                  className={`flex items-center gap-2 transition-opacity duration-300 ${!isMagicAvailable || transcriptionBlocked ? 'opacity-40 grayscale' : ''}`}
+                  aria-disabled={!isMagicAvailable || transcriptionBlocked}
+                  title={!isMagicAvailable ? t('errors.magicUnavailable') || 'Unavailable offline' : transcriptionUnavailableLabel}
                 >
                   <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                     {t('editThought.appendDictation')}
@@ -229,7 +233,8 @@ export default function CreateThoughtModal({
                       size="small"
                       onRecordingComplete={handleDictationComplete}
                       isProcessing={isDictating}
-                      disabled={isSubmitting || !isMagicAvailable}
+                      disabled={isSubmitting || !isMagicAvailable || transcriptionBlocked}
+                      title={transcriptionUnavailableLabel}
                       transcriptionError={voiceError}
                       onRetry={handleRetryVoice}
                       retryCount={voiceRetryCount}

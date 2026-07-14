@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { Sermon } from '@/models/models';
 
@@ -7,14 +8,22 @@ import { Sermon } from '@/models/models';
 export async function POST(request: Request) {
   console.log("POST request received for creating a sermon");
   try {
+    const uid = await getRequiredAuthenticatedUid(request);
+    if (!uid) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const sermon = await request.json();
     console.log("Parsed sermon data:", sermon);
 
-    const userId = sermon.userId;
+    const userId = uid;
     const title = sermon.title;
     const verse = sermon.verse;
     const date = sermon.date;
-    if (!userId || !title || !verse || !date) {
+    if (sermon.userId && sermon.userId !== uid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (!title || !verse || !date) {
       return NextResponse.json({ error: "User not authenticated or sermon data is missing" }, { status: 400 });
     }
 
@@ -46,7 +55,7 @@ export async function POST(request: Request) {
     }
     console.log("Sermon written with ID:", docRef.id);
 
-    const newSermon = { ...sermon, id: docRef.id };
+    const newSermon = { ...sermon, userId, id: docRef.id };
     console.log("New sermon object after attaching ID:", newSermon);
 
     console.log("Returning success response for created sermon");

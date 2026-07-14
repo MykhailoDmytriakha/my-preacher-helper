@@ -2,6 +2,7 @@ import 'openai/shims/node';
 
 import { NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { Sermon } from '@/models/models';
 import { generateSermonInsights } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
@@ -11,6 +12,11 @@ export async function POST(request: Request) {
   console.log("Insights route: Received POST request for generating insights");
 
   try {
+    const uid = await getRequiredAuthenticatedUid(request);
+    if (!uid) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const sermonId = searchParams.get("sermonId");
 
@@ -25,9 +31,12 @@ export async function POST(request: Request) {
       console.error(`Insights route: Sermon with id ${sermonId} not found`);
       return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
     }
+    if (sermon.userId !== uid) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     // Generate insights using OpenAI
-    const insights = await generateSermonInsights(sermon);
+    const insights = await generateSermonInsights(sermon, uid);
     if (!insights) {
       console.error("Insights route: Failed to generate insights");
       return NextResponse.json({ error: "Failed to generate insights" }, { status: 500 });
@@ -43,4 +52,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to generate insights' }, { status: 500 });
   }
 }
-

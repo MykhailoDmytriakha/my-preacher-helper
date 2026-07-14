@@ -87,7 +87,22 @@ service cloud.firestore {
 
     // ---- User settings: owned by DOC ID == uid ----
     match /users/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid
+        && !request.resource.data.keys().hasAny(['paidTier', 'promotion', 'usage', 'role', 'referredBy']);
+      allow update: if request.auth != null && request.auth.uid == uid
+        && !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['paidTier', 'promotion', 'usage', 'role', 'referredBy']);
+    }
+
+    // ---- Server-managed AI model defaults (Admin SDK only) ----
+    match /config/aiModelDefaults {
+      allow read, write: if false;
+    }
+
+    // ---- Server-managed referral reward records (Admin SDK only) ----
+    match /referralEvents/{id} {
+      allow read, write: if false;
     }
 
     // ---- Server-only telemetry (no user owner): ai_prompt_telemetry, api_performance_telemetry ----

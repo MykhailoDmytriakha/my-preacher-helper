@@ -15,7 +15,6 @@ import type {
     TTSGenerationOptions,
     TTSChunkResult,
     AudioChunk,
-    AudioGenerationProgress,
     SermonSection,
 } from '@/types/audioGeneration.types';
 
@@ -185,53 +184,6 @@ function writeAscii(view: DataView, offset: number, value: string): void {
     for (let i = 0; i < value.length; i++) {
         view.setUint8(offset + i, value.charCodeAt(i));
     }
-}
-
-/**
- * Generates audio for all chunks with progress callback.
- * 
- * @param chunks - Array of audio chunks to process
- * @param options - TTS options
- * @param onProgress - Progress callback for UI updates
- * @returns Array of audio blobs in order
- * 
- * @example
- * ```typescript
- * const blobs = await generateAllChunksAudio(
- *   chunks,
- *   { voice: 'onyx', model: 'gpt-4o-mini-tts' },
- *   (progress) => setProgress(progress)
- * );
- * ```
- */
-export async function generateAllChunksAudio(
-    chunks: AudioChunk[],
-    options: TTSGenerationOptions,
-    onProgress?: (progress: AudioGenerationProgress) => void
-): Promise<Blob[]> {
-    const blobs: Blob[] = [];
-    const totalChunks = chunks.length;
-
-    for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i];
-
-        // Report progress
-        if (onProgress) {
-            const percent = 30 + Math.round(((i + 1) / totalChunks) * 50);
-            onProgress({
-                step: 'generating',
-                percent,
-                currentChunk: i + 1,
-                totalChunks,
-                message: `Генерация аудио (чанк ${i + 1} из ${totalChunks})...`,
-            });
-        }
-
-        const result = await generateChunkAudio(chunk.text, options);
-        blobs.push(result.audioBlob);
-    }
-
-    return blobs;
 }
 
 // ============================================================================

@@ -4,8 +4,12 @@
 import { ReadableStream } from 'node:stream/web';
 import { TextDecoder, TextEncoder } from 'util';
 
-import { generateChunkAudio, getTTSModel, splitTextIntoChunks } from '@/api/clients/tts.client';
+import { resolveUserTtsTarget } from '@/api/clients/ai/tierPolicy';
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { generateChunkAudio, splitTextIntoChunks } from '@/api/clients/tts.client';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { assertAiUsageAvailable, consumeAiUsage } from '@/services/usageLimits.server';
+import { getUserEntitlementServerSide } from '@/services/userEntitlement.server';
 import { concatenateAudioBlobs, createSilenceBlob } from '@/utils/audioConcat';
 
 globalThis.ReadableStream = globalThis.ReadableStream || ReadableStream;
@@ -77,13 +81,30 @@ jest.mock('@/config/firebaseAdminConfig', () => ({
 
 jest.mock('@/api/clients/tts.client', () => ({
   generateChunkAudio: jest.fn(),
-  getTTSModel: jest.fn(),
   splitTextIntoChunks: jest.fn((text: string) => [text]),
+}));
+
+jest.mock('@/api/clients/ai/tierPolicy', () => ({
+  resolveUserTtsTarget: jest.fn(),
 }));
 
 jest.mock('@/utils/audioConcat', () => ({
   concatenateAudioBlobs: jest.fn(),
   createSilenceBlob: jest.fn(),
+}));
+
+jest.mock('@/services/userEntitlement.server', () => ({
+  getUserEntitlementServerSide: jest.fn(),
+  resolveEffectiveTier: jest.fn((entitlement: { paidTier?: string } | null | undefined) => entitlement?.paidTier ?? 'free'),
+}));
+
+jest.mock('@/services/usageLimits.server', () => ({
+  assertAiUsageAvailable: jest.fn(),
+  consumeAiUsage: jest.fn(),
+}));
+
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn(),
 }));
 
 const { NextRequest } = require('next/server') as {
@@ -105,7 +126,11 @@ const createRequest = (
   signal: { aborted: boolean } = { aborted: false }
 ) =>
   new NextRequest('http://localhost/api/sermons/sermon-1/audio/generate', {
-    body: JSON.stringify(body),
+    body: JSON.stringify(body.userId ? {
+      provider: 'openai',
+      model: 'gpt-4o-mini-tts',
+      ...body,
+    } : body),
     signal,
   });
 
@@ -136,6 +161,14 @@ async function readStreamEvents(stream: ReadableStream<Uint8Array>): Promise<Rec
 describe('POST /api/sermons/[id]/audio/generate', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (getRequiredAuthenticatedUid as jest.Mock).mockResolvedValue('user-1');
+
+    (getUserEntitlementServerSide as jest.Mock).mockResolvedValue({ paidTier: 'tier2' });
+    (resolveUserTtsTarget as jest.Mock).mockResolvedValue({
+      providerId: 'gemini',
+      modelId: 'gemini-3.1-flash-tts',
+    });
+    (consumeAiUsage as jest.Mock).mockResolvedValue(undefined);
 
     (adminDb.collection as jest.Mock).mockReturnValue({
       doc: mockDoc,
@@ -146,7 +179,6 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
       update: mockUpdate,
     });
 
-    (getTTSModel as jest.Mock).mockReturnValue('gpt-audio-test');
     (createSilenceBlob as jest.Mock).mockReturnValue(new Blob([new Uint8Array(8)], { type: 'audio/wav' }));
     (concatenateAudioBlobs as jest.Mock).mockResolvedValue(createFinalAudioBlob(400_000));
 
@@ -175,7 +207,8 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     });
   });
 
-  it('returns 401 when userId is missing', async () => {
+  it('returns 401 when the authentication token is missing', async () => {
+    (getRequiredAuthenticatedUid as jest.Mock).mockResolvedValueOnce(null);
     const response = await POST(createRequest({ voice: 'onyx' }) as never, {
       params: Promise.resolve({ id: 'sermon-1' }),
     });
@@ -216,6 +249,58 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     await expect(response.json()).resolves.toEqual({
       error: 'Forbidden: You do not own this sermon',
     });
+  });
+
+  it('returns 400 when a free user requests a TTS target other than the resolved default', async () => {
+    (getUserEntitlementServerSide as jest.Mock).mockResolvedValueOnce({ paidTier: 'free' });
+    (resolveUserTtsTarget as jest.Mock).mockResolvedValueOnce({
+      providerId: 'gemini',
+      modelId: 'gemini-3.1-flash-tts',
+    });
+
+    const response = await POST(
+      createRequest({
+        userId: 'user-1',
+        provider: 'openai',
+        model: 'gpt-4o-mini-tts',
+        voice: 'onyx',
+      }) as never,
+      { params: Promise.resolve({ id: 'sermon-1' }) }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: 'Requested TTS provider/model is not allowed for this plan',
+    });
+    expect(generateChunkAudio).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 for a provider/model mismatch and for a voice outside that provider', async () => {
+    const mismatchedTarget = await POST(
+      createRequest({
+        userId: 'user-1',
+        provider: 'google',
+        model: 'gpt-4o-mini-tts',
+        voice: 'Puck',
+      }) as never,
+      { params: Promise.resolve({ id: 'sermon-1' }) }
+    );
+    expect(mismatchedTarget.status).toBe(400);
+
+    const invalidVoice = await POST(
+      createRequest({
+        userId: 'user-1',
+        provider: 'openai',
+        model: 'gpt-4o-mini-tts',
+        voice: 'Puck',
+      }) as never,
+      { params: Promise.resolve({ id: 'sermon-1' }) }
+    );
+    expect(invalidVoice.status).toBe(400);
+    await expect(invalidVoice.json()).resolves.toEqual({
+      error: 'Voice Puck is not available for openai/gpt-4o-mini-tts',
+    });
+    expect(generateChunkAudio).not.toHaveBeenCalled();
   });
 
   it('returns 400 when optimized chunks have not been saved yet', async () => {
@@ -291,7 +376,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
       {
         provider: 'openai',
         voice: 'ash',
-        model: 'gpt-audio-test',
+        model: 'gpt-4o-mini-tts',
         format: 'mp3',
       }
     );
@@ -301,7 +386,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
       {
         provider: 'openai',
         voice: 'ash',
-        model: 'gpt-audio-test',
+        model: 'gpt-4o-mini-tts',
         format: 'mp3',
       }
     );
@@ -336,10 +421,23 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     expect(audioChunkEvents.length).toBeGreaterThan(10);
     expect(events.some(event => String(event.status || '').includes('Downloading audio...'))).toBe(true);
 
+    expect(getUserEntitlementServerSide).toHaveBeenCalledWith('user-1', { includeModelPreferences: true });
+    expect(resolveUserTtsTarget).toHaveBeenCalledWith(
+      { paidTier: 'tier2' },
+      undefined,
+      expect.any(Date)
+    );
+    expect(assertAiUsageAvailable).toHaveBeenCalledWith(
+      { paidTier: 'tier2' },
+      expect.any(Date)
+    );
+    expect(consumeAiUsage).toHaveBeenCalledWith('user-1', expect.any(Date));
+    expect(consumeAiUsage).toHaveBeenCalledTimes(1);
+
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
         'audioMetadata.voice': 'ash',
-        'audioMetadata.model': 'gpt-audio-test',
+        'audioMetadata.model': 'gpt-4o-mini-tts',
         'audioMetadata.lastGenerated': expect.any(String),
       })
     );
@@ -386,7 +484,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
       {
         provider: 'openai',
         voice: 'ash',
-        model: 'gpt-audio-test',
+        model: 'gpt-4o-mini-tts',
         format: 'mp3',
       }
     );
@@ -455,7 +553,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
         userId: 'user-1',
         provider: 'google',
         voice: 'Sulafat',
-        model: 'gemini-2.5-flash-preview-tts',
+        model: 'gemini-2.5-flash-tts',
         quality: 'standard',
         sections: 'all',
       }) as never,
@@ -511,7 +609,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
       expect.objectContaining({
         'audioMetadata.provider': 'google',
         'audioMetadata.voice': 'Sulafat',
-        'audioMetadata.model': 'gemini-2.5-flash-preview-tts',
+        'audioMetadata.model': 'gemini-2.5-flash-tts',
       })
     );
   });
@@ -570,7 +668,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
         userId: 'user-1',
         provider: 'google',
         voice: 'Sulafat',
-        model: 'gemini-2.5-flash-preview-tts',
+        model: 'gemini-2.5-flash-tts',
         quality: 'standard',
         sections: 'all',
       }) as never,
@@ -616,6 +714,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
           userId: 'user-1',
           provider: 'google',
           voice: 'Charon',
+          model: 'gemini-2.5-flash-tts',
           quality: 'standard',
           sections: 'introduction',
         }) as never,
@@ -658,7 +757,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
           userId: 'user-1',
           provider: 'google',
           voice: 'Charon',
-          model: 'gemini-3.1-flash-tts-preview',
+          model: 'gemini-3.1-flash-tts',
           quality: 'standard',
           sections: 'introduction',
         }) as never,
@@ -740,10 +839,30 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     expect(events).toEqual([
       {
         type: 'error',
-        message: 'TTS failed',
+        message: 'TTS generation failed with openai/gpt-4o-mini-tts: TTS failed',
       },
     ]);
+    expect((generateChunkAudio as jest.Mock).mock.calls.every(([, options]) =>
+      options.provider === 'openai' && options.model === 'gpt-4o-mini-tts'))
+      .toBe(true);
     expect(mockUpdate).not.toHaveBeenCalled();
+    expect(consumeAiUsage).not.toHaveBeenCalled();
+  });
+
+  it('returns 429 before TTS and does not count when AI usage is exhausted', async () => {
+    (assertAiUsageAvailable as jest.Mock).mockImplementationOnce(() => {
+      throw Object.assign(new Error('AI usage limit exhausted'), { code: 'USAGE_EXHAUSTED' });
+    });
+
+    const response = await POST(
+      createRequest({ userId: 'user-1', voice: 'onyx', quality: 'standard' }) as never,
+      { params: Promise.resolve({ id: 'sermon-1' }) }
+    );
+
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toEqual({ error: 'AI usage limit exhausted' });
+    expect(generateChunkAudio).not.toHaveBeenCalled();
+    expect(consumeAiUsage).not.toHaveBeenCalled();
   });
 
   it('returns 500 when the route setup fails before the stream starts', async () => {

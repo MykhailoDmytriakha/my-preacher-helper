@@ -1,8 +1,10 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import '@testing-library/jest-dom';
+import { getFunctionCatalog } from '@/api/clients/ai/functionCatalog';
 import StepByStepWizard from '@/components/audio/StepByStepWizard';
 import useSermon from '@/hooks/useSermon';
+import { useUserEntitlement } from '@/hooks/useUserEntitlement';
 
 // Polyfills for JSDOM
 if (typeof TextEncoder === 'undefined') {
@@ -32,6 +34,10 @@ jest.mock('react-i18next', () => ({
 jest.mock('sonner', () => ({ toast: { error: jest.fn() } }));
 jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'user-123' } }) }));
 jest.mock('@/hooks/useSermon', () => ({ __esModule: true, default: jest.fn() }));
+jest.mock('@/hooks/useUserEntitlement', () => ({ useUserEntitlement: jest.fn() }));
+jest.mock('@/utils/authenticatedRequest', () => ({
+    getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
+}));
 
 jest.mock('framer-motion', () => ({
     motion: {
@@ -64,6 +70,31 @@ jest.mock('@/components/audio/ChunkEditorModal', () => (props: any) => (
 window.HTMLAnchorElement.prototype.click = jest.fn();
 
 const mockUseSermon = useSermon as jest.MockedFunction<typeof useSermon>;
+const mockUseUserEntitlement = useUserEntitlement as jest.MockedFunction<typeof useUserEntitlement>;
+const ttsCatalog = getFunctionCatalog('tts');
+const setTtsEntitlement = (
+    effectiveTier: 'free' | 'tier2' = 'tier2',
+    current: { providerId: 'gemini' | 'openai'; modelId: string } = {
+        providerId: 'openai',
+        modelId: 'gpt-4o-mini-tts',
+    },
+) => {
+    mockUseUserEntitlement.mockReturnValue({
+        data: {
+            effectiveTier,
+            functions: {
+                tts: {
+                    available: effectiveTier === 'free'
+                        ? ttsCatalog.filter(entry => entry.providerId === current.providerId && entry.modelId === current.modelId)
+                        : ttsCatalog,
+                    current,
+                },
+            },
+        },
+        isLoading: false,
+        isError: false,
+    } as unknown as ReturnType<typeof useUserEntitlement>);
+};
 
 const sermonWithChunks = (chunks: any[], extra: Record<string, any> = {}) => ({
     sermon: { title: 'Test Sermon', thoughts: [], audioChunks: chunks, ...extra },
@@ -80,6 +111,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         mockLanguage = 'en';
+        setTtsEntitlement();
         mockUseSermon.mockReturnValue({ sermon: { title: 'Test Sermon', thoughts: [] }, loading: false } as any);
         global.fetch = jest.fn();
         global.URL.createObjectURL = jest.fn().mockReturnValue('blob:url');
@@ -101,10 +133,25 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
 
         expect(screen.getByText(/Gemini 3\.1 TTS/)).toBeInTheDocument();
         expect(screen.getByText(/Gemini 2\.5 TTS/)).toBeInTheDocument();
-        expect(screen.getByText(/Gemini 2\.5 TTS/).compareDocumentPosition(screen.getByText(/Gemini 3\.1 TTS/))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+        expect(screen.getByText(/Gemini 3\.1 TTS/).compareDocumentPosition(screen.getByText(/Gemini 2\.5 TTS/))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
         expect(screen.getByText('Puck')).toBeInTheDocument();
         expect(screen.getByText('Charon')).toBeInTheDocument();
         expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    });
+
+    it('offers only the resolved default to free users and preselects a paid preference', async () => {
+        setTtsEntitlement('free', { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' });
+        const { rerender } = render(<StepByStepWizard {...defaultProps} />);
+
+        await waitFor(() => expect(screen.getByText('Google')).toBeInTheDocument());
+        expect(screen.queryByText('OpenAI')).not.toBeInTheDocument();
+        expect(screen.getByText(/Gemini 3\.1 TTS/)).toBeInTheDocument();
+        expect(screen.queryByText(/Gemini 2\.5 TTS/)).not.toBeInTheDocument();
+        expect(screen.getByText('Your plan uses the configured default voice model.')).toBeInTheDocument();
+
+        setTtsEntitlement('tier2', { providerId: 'openai', modelId: 'gpt-4o-mini-tts' });
+        rerender(<StepByStepWizard {...defaultProps} />);
+        expect(screen.getByText('OpenAI')).toBeInTheDocument();
     });
 
     it('generates AI-optimized text on step 2 and reveals editable chunks', async () => {
@@ -124,9 +171,9 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         expect(JSON.parse(optimizeCalls[0][1].body)).toMatchObject({
             sections: ['introduction', 'mainPart', 'conclusion'],
             saveToDb: true,
-            userId: 'user-123',
             useRawText: false,
         });
+        expect(optimizeCalls[0][1].headers).toMatchObject({ Authorization: 'Bearer test-token' });
     });
 
     it('the "Original as-is" tab prepares with raw text', async () => {
@@ -145,6 +192,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
     });
 
     it('re-prepares Google raw chunks on step 2 instead of reusing old persisted chunk splits', async () => {
+        setTtsEntitlement('tier2', { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' });
         mockUseSermon.mockReturnValue(sermonWithChunks(
             [
                 { index: 0, text: 'Old raw intro part one', sectionId: 'introduction' },
@@ -239,6 +287,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
 
         render(<StepByStepWizard {...defaultProps} />);
         fireEvent.click(screen.getByText('Google'));
+        fireEvent.click(screen.getByText(/Gemini 2\.5 TTS/));
         fireEvent.click(screen.getAllByTitle('Preview voice')[0]); // Puck
 
         expect((global as any).Audio).toHaveBeenCalledWith('/samples/Puck-2.5-en.wav');
@@ -325,6 +374,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
     });
 
     it('sends Google provider, Gemini model, and Google voice when generating', async () => {
+        setTtsEntitlement('tier2', { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' });
         mockUseSermon.mockReturnValue(sermonWithChunks(
             [{ index: 0, text: 'Saved intro', sectionId: 'introduction' }],
             { audioMetadata: { provider: 'google', mode: 'raw', voice: 'Puck', model: 'gemini-3.1-flash-tts-preview' } },
@@ -366,11 +416,11 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         expect(JSON.parse(generateCall[1].body)).toMatchObject({
             provider: 'google',
             voice: 'Charon',
-            model: 'gemini-2.5-flash-preview-tts',
+            model: 'gemini-2.5-flash-tts',
             quality: 'standard',
             sections: ['introduction'], // seed restores selection from the only chunk's section
-            userId: 'user-123',
         });
+        expect(generateCall[1].headers).toMatchObject({ Authorization: 'Bearer test-token' });
     });
 
     it('stitches a streamed batch into a downloadable blob on download_complete', async () => {
@@ -428,8 +478,20 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
 
         const generateCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).includes('/audio/generate'));
         expect(generateCalls).toHaveLength(2);
-        expect(JSON.parse(generateCalls[0][1].body)).toMatchObject({ provider: 'openai', sections: ['introduction'], offset: 0, limit: 3 });
-        expect(JSON.parse(generateCalls[1][1].body)).toMatchObject({ provider: 'openai', sections: ['introduction'], offset: 3, limit: 3 });
+        expect(JSON.parse(generateCalls[0][1].body)).toMatchObject({
+            provider: 'openai',
+            model: 'gpt-4o-mini-tts',
+            sections: ['introduction'],
+            offset: 0,
+            limit: 3,
+        });
+        expect(JSON.parse(generateCalls[1][1].body)).toMatchObject({
+            provider: 'openai',
+            model: 'gpt-4o-mini-tts',
+            sections: ['introduction'],
+            offset: 3,
+            limit: 3,
+        });
 
         // Both batches' bytes land in one blob (3 + 3 = 6), concatenated in order.
         const blob = (global.URL.createObjectURL as jest.Mock).mock.calls.at(-1)?.[0] as Blob;

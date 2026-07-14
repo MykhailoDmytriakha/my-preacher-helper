@@ -15,7 +15,6 @@ jest.mock('@/api/clients/promptBuilder', () => ({
 
 jest.mock('@/api/clients/structuredOutput', () => ({
   callWithStructuredOutput: jest.fn(),
-  getCurrentAIProvider: jest.fn(() => 'OPENAI'),
 }));
 
 const sermon: Sermon = {
@@ -84,7 +83,7 @@ describe('speechOptimization client', () => {
       SpeechOptimizationResponseSchema,
       expect.objectContaining({
         formatName: 'speech_optimization',
-        model: 'gpt-4o-mini',
+        workload: 'structured.speechOptimization',
         promptBlueprint: expect.objectContaining({
           promptName: 'speech_optimization',
         }),

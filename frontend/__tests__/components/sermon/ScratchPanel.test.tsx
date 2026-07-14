@@ -134,6 +134,9 @@ jest.mock('@/providers/ConnectionProvider', () => ({
   useConnection: () => ({ isMagicAvailable: true, isOnline: true }),
 }));
 
+const mockUseAiUsage = jest.fn();
+jest.mock('@/hooks/useAiUsage', () => ({ useAiUsage: () => mockUseAiUsage() }));
+
 jest.mock('@/components/AudioRecorder', () => ({
   AudioRecorder: () => <div data-testid="scratch-voice-recorder" />,
 }));
@@ -150,6 +153,7 @@ jest.mock('@/components/sermon/AudioRecorderPortalBridge', () => ({
     manualButtonPlacement,
     isReadOnly,
     isRecorderDisabled,
+    recorderTitle,
   }: {
     onRecordingComplete: (audioBlob: Blob) => void;
     onRetry: () => void;
@@ -160,6 +164,7 @@ jest.mock('@/components/sermon/AudioRecorderPortalBridge', () => ({
     manualButtonPlacement?: string;
     isReadOnly?: boolean;
     isRecorderDisabled?: boolean;
+    recorderTitle?: string;
   }) => {
     scratchRecordingComplete = onRecordingComplete;
     scratchRetryVoice = onRetry;
@@ -170,6 +175,7 @@ jest.mock('@/components/sermon/AudioRecorderPortalBridge', () => ({
         <button
           type="button"
           disabled={isReadOnly || isRecorderDisabled}
+          title={recorderTitle}
           onClick={() => onRecordingComplete(new Blob(['voice']))}
         >
           audio.newRecording
@@ -319,6 +325,14 @@ function expectPlanEditorNoteVisual(container: HTMLElement, text: string) {
 describe('ScratchPanel', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseAiUsage.mockReturnValue({
+      aiRemaining: 10,
+      aiBlocked: false,
+      transcriptionRemaining: 60,
+      transcriptionBlocked: false,
+      loading: false,
+      refresh: jest.fn(),
+    });
     jest.useRealTimers();
     Object.defineProperty(navigator, 'onLine', {
       configurable: true,
@@ -337,6 +351,35 @@ describe('ScratchPanel', () => {
     scratchRetryVoice = undefined;
     let idCounter = 0;
     newClientIdMock().mockImplementation(() => `fresh-id-${++idCounter}`);
+  });
+
+  it('disables the scratch voice recorder with the transcription quota tooltip and re-enables it when available', () => {
+    mockUseAiUsage.mockReturnValue({
+      aiRemaining: 10,
+      aiBlocked: false,
+      transcriptionRemaining: 0,
+      transcriptionBlocked: true,
+      loading: false,
+      refresh: jest.fn(),
+    });
+
+    const { unmount } = renderScratchPanel({ notes: [] });
+    const blockedRecorder = screen.getByRole('button', { name: 'audio.newRecording' });
+    expect(blockedRecorder).toBeDisabled();
+    expect(blockedRecorder).toHaveAttribute('title', 'settings.usage.transcriptionUsageExhausted');
+
+    unmount();
+    mockUseAiUsage.mockReturnValue({
+      aiRemaining: 10,
+      aiBlocked: false,
+      transcriptionRemaining: 60,
+      transcriptionBlocked: false,
+      loading: false,
+      refresh: jest.fn(),
+    });
+
+    renderScratchPanel({ notes: [] });
+    expect(screen.getByRole('button', { name: 'audio.newRecording' })).toBeEnabled();
   });
 
   it('opens a labeled manual capture form, keeps it open after Enter, and leaves voice capture available', async () => {

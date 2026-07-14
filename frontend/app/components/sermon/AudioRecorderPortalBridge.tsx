@@ -11,6 +11,7 @@ interface RecorderLikeProps {
   onRecordingComplete: (audioBlob: Blob) => void;
   isProcessing?: boolean;
   disabled?: boolean;
+  title?: string;
   onRetry?: () => void;
   retryCount?: number;
   maxRetries?: number;
@@ -36,6 +37,7 @@ interface AudioRecorderPortalBridgeProps {
   hideKeyboardShortcuts: boolean;
   isReadOnly: boolean;
   isRecorderDisabled?: boolean;
+  recorderTitle?: string;
   isManualDisabled?: boolean;
   onOpenCreateModal: () => void;
   manualThoughtTitle: string;
@@ -100,6 +102,7 @@ export default function AudioRecorderPortalBridge({
   hideKeyboardShortcuts,
   isReadOnly,
   isRecorderDisabled,
+  recorderTitle,
   isManualDisabled,
   onOpenCreateModal,
   manualThoughtTitle,
@@ -127,6 +130,7 @@ export default function AudioRecorderPortalBridge({
       onRecordingComplete={onRecordingComplete}
       isProcessing={isProcessing}
       disabled={recorderDisabled}
+      title={recorderTitle}
       onRetry={onRetry}
       retryCount={retryCount}
       maxRetries={maxRetries}

@@ -75,3 +75,7 @@ output/
 .claude/codex-logs
 .logs/
 .demo/
+
+# Deploy-session temp trackers (removed at S7 post-deploy, not shipped)
+/DEPLOY-PROGRESS.md
+/DEPLOY-CHECKLIST-monetization.md

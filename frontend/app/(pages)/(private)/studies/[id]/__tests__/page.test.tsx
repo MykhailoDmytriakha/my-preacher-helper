@@ -25,6 +25,14 @@ jest.mock('@/hooks/useStudyNotes');
 jest.mock('@/hooks/useTags');
 jest.mock('@/hooks/useStudyNoteShareLinks');
 
+jest.mock('@/services/firebaseAuth.service', () => ({
+    auth: {
+        currentUser: {
+            getIdToken: jest.fn().mockResolvedValue('firebase-token'),
+        },
+    },
+}));
+
 // Mock components to avoid deep rendering issues in this test
 jest.mock('@components/MarkdownDisplay', () => ({
     __esModule: true,

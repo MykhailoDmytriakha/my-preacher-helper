@@ -108,7 +108,10 @@ describe('studies.service', () => {
     expect(mockFetch).toHaveBeenNthCalledWith(
       1,
       expect.stringContaining('/api/studies/notes/note-1?userId=user-1'),
-      { method: 'DELETE' }
+      { method: 'DELETE', headers: { Authorization: 'Bearer test-token' } }
     );
   });
 });
+jest.mock('@/utils/authenticatedRequest', () => ({
+  getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
+}));

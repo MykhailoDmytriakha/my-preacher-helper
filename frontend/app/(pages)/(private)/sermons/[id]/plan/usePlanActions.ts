@@ -30,6 +30,8 @@ interface UsePlanActionsParams {
     combinedText: string;
     updatedPlan: Plan;
   }) => Promise<void> | void;
+  onAiSuccess?: () => Promise<void> | void;
+  aiBlocked?: boolean;
 }
 
 export default function usePlanActions({
@@ -41,9 +43,11 @@ export default function usePlanActions({
   setGeneratingIds,
   onGenerated,
   onSaved,
+  onAiSuccess,
+  aiBlocked = false,
 }: UsePlanActionsParams) {
   const generateSermonPointContent = useCallback(async (outlinePointId: string) => {
-    if (!sermon) return;
+    if (aiBlocked || !sermon) return;
 
     setGeneratingIds((prev) => ({
       ...prev,
@@ -70,6 +74,7 @@ export default function usePlanActions({
         content,
         section,
       });
+      await onAiSuccess?.();
 
       toast.success(t("plan.contentGenerated"));
     } catch (error) {
@@ -81,7 +86,7 @@ export default function usePlanActions({
         return next;
       });
     }
-  }, [onGenerated, outlineLookup, planStyle, sermon, setGeneratingIds, t]);
+  }, [aiBlocked, onAiSuccess, onGenerated, outlineLookup, planStyle, sermon, setGeneratingIds, t]);
 
   const saveSermonPoint = useCallback(async (
     outlinePointId: string,

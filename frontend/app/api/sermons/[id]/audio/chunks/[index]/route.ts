@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
 
 import type { Sermon } from '@/models/models';
@@ -22,22 +23,16 @@ export async function PUT(
     { params }: { params: Promise<{ id: string; index: string }> }
 ): Promise<NextResponse> {
     try {
-        const { id: sermonId, index: indexStr } = await params;
-        const chunkIndex = parseInt(indexStr, 10);
-        const body = await request.json();
-        const newText: string = body.text;
-        const userId = body.userId;
-
-        if (!userId) {
+        const uid = await getRequiredAuthenticatedUid(request);
+        if (!uid) {
             return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
         }
 
+        const { id: sermonId, index: indexStr } = await params;
+        const chunkIndex = parseInt(indexStr, 10);
+
         if (isNaN(chunkIndex) || chunkIndex < 0) {
             return NextResponse.json({ error: 'Invalid chunk index' }, { status: 400 });
-        }
-
-        if (!newText || typeof newText !== 'string') {
-            return NextResponse.json({ error: 'Text is required' }, { status: 400 });
         }
 
         // 1. Load sermon
@@ -48,8 +43,14 @@ export async function PUT(
         const sermon = { id: sermonDoc.id, ...sermonDoc.data() } as Sermon;
 
         // Verify ownership
-        if (sermon.userId !== userId) {
+        if (sermon.userId !== uid) {
             return NextResponse.json({ error: 'Forbidden: You do not own this sermon' }, { status: 403 });
+        }
+
+        const body = await request.json();
+        const newText: string = body.text;
+        if (!newText || typeof newText !== 'string') {
+            return NextResponse.json({ error: 'Text is required' }, { status: 400 });
         }
 
         // 2. Get chunks

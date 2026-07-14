@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { useAiUsage } from '@/hooks/useAiUsage';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { SermonPoint, SermonOutline } from '@/models/models';
 import { useConnection } from '@/providers/ConnectionProvider';
@@ -326,13 +327,15 @@ export default function EditThoughtModal({
   allowOffline = false,
 }: EditThoughtModalProps) {
   const { isOnline, isMagicAvailable } = useConnection();
+  const { t } = useTranslation();
+  const { transcriptionBlocked, refresh: refreshAiUsage } = useAiUsage();
   const isReadOnly = !isOnline && !allowOffline;
-  const isDictationDisabled = !isMagicAvailable || isReadOnly;
+  const isDictationDisabled = !isMagicAvailable || isReadOnly || transcriptionBlocked;
+  const transcriptionUnavailableLabel = transcriptionBlocked ? t('settings.usage.transcriptionUsageExhausted') : undefined;
   const [text, setText] = useState(initialText);
   const [tags, setTags] = useState<string[]>(initialTags);
   const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | null | undefined>(initialSermonPointId);
   const [selectedSubPointId, setSelectedSubPointId] = useState<string | null | undefined>(initialSubPointId);
-  const { t } = useTranslation();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useScrollLock(true);
@@ -393,6 +396,7 @@ export default function EditThoughtModal({
         const separator = prev ? "\n\n" : "";
         return `${prev}${separator}${appendedText}`;
       });
+      await refreshAiUsage();
       // Success — the thought is now saved as text; drop the in-memory safety copy.
       storedVoiceBlobRef.current = null;
       setVoiceError(null);
@@ -497,7 +501,7 @@ export default function EditThoughtModal({
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-3 min-h-[48px]">
                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('editThought.textLabel')}</label>
-                <div className={`flex items-center gap-2 transition-opacity duration-300 ${isDictationDisabled ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
+                <div className={`flex items-center gap-2 transition-opacity duration-300 ${isDictationDisabled ? 'opacity-40 grayscale' : ''}`} title={!isMagicAvailable ? t('errors.magicUnavailable') : transcriptionUnavailableLabel}>
                   <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                     {t('editThought.appendDictation')}
                   </span>
@@ -507,6 +511,7 @@ export default function EditThoughtModal({
                       onRecordingComplete={handleDictationComplete}
                       isProcessing={isDictating}
                       disabled={isSubmitting || isDictationDisabled}
+                      title={transcriptionUnavailableLabel}
                       transcriptionError={voiceError}
                       onRetry={handleRetryVoice}
                       retryCount={voiceRetryCount}

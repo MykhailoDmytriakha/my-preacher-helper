@@ -2,6 +2,7 @@ import 'openai/shims/node';
 
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { SermonContent, ThoughtInStructure } from '@/models/models';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 import { buildSubPointRenderableEntries, flattenSubPointRenderableEntries, normalizeSubPointId } from '@/utils/subPoints';
@@ -38,6 +39,11 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const uid = await getRequiredAuthenticatedUid(request);
+  if (!uid) {
+    return jsonNoStore({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { id } = await params;
   const section = request.nextUrl.searchParams.get('section');
   const outlinePointId = request.nextUrl.searchParams.get('outlinePointId');
@@ -47,7 +53,7 @@ export async function GET(
 
   // If outlinePointId is provided, generate content for the specific outline point
   if (outlinePointId) {
-    return generateSermonPointContent(id, outlinePointId, style || undefined);
+    return generateSermonPointContent(id, outlinePointId, uid, style || undefined);
   }
 
   // Validate section parameter - must be provided and valid
@@ -75,12 +81,15 @@ export async function GET(
     if (!sermon) {
       return jsonNoStore({ error: ERROR_MESSAGES.SERMON_NOT_FOUND }, { status: 404 });
     }
+    if (sermon.userId !== uid) {
+      return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
+    }
 
     // Generate the plan for the specified section (only pass style when provided)
     const sectionName = section.toLowerCase();
     const result = style
-      ? await generatePlanForSection(sermon, sectionName, style)
-      : await generatePlanForSection(sermon, sectionName);
+      ? await generatePlanForSection(sermon, sectionName, style, uid)
+      : await generatePlanForSection(sermon, sectionName, 'memory', uid);
 
     // If generation failed, return error status
     if (!result.success) {
@@ -155,12 +164,20 @@ export async function GET(
 }
 
 // Helper function to generate content for a specific outline point
-async function generateSermonPointContent(sermonId: string, outlinePointId: string, style?: PlanStyle) {
+async function generateSermonPointContent(
+  sermonId: string,
+  outlinePointId: string,
+  uid: string,
+  style?: PlanStyle
+) {
   try {
     // Fetch the sermon
     const sermon = await sermonsRepository.fetchSermonById(sermonId);
     if (!sermon) {
       return jsonNoStore({ error: ERROR_MESSAGES.SERMON_NOT_FOUND }, { status: 404 });
+    }
+    if (sermon.userId !== uid) {
+      return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Find the outline point in the sermon structure
@@ -226,7 +243,8 @@ async function generateSermonPointContent(sermonId: string, outlinePointId: stri
       keyFragments, // Pass combined key fragments
       adjacentContext || undefined, // Pass context if available
       style || 'memory', // Pass style
-      outlinePoint.subPoints // Pass sub-points for structured generation
+      outlinePoint.subPoints, // Pass sub-points for structured generation
+      uid
     );
 
     if (!success) {
@@ -251,13 +269,20 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
-
   try {
+    const uid = await getRequiredAuthenticatedUid(request);
+    if (!uid) {
+      return jsonNoStore({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { id } = await params;
     // Get the sermon to confirm it exists
     const sermon = await sermonsRepository.fetchSermonById(id);
     if (!sermon) {
       return jsonNoStore({ error: ERROR_MESSAGES.SERMON_NOT_FOUND }, { status: 404 });
+    }
+    if (sermon.userId !== uid) {
+      return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
     }
 
     // Parse the request body to get the plan
@@ -306,6 +331,7 @@ export async function PUT(
 
     return jsonNoStore({ success: true, plan: content });
   } catch (error: unknown) {
+    const { id } = await params;
     console.error(`Error saving plan for sermon ${id}:`, error);
     return jsonNoStore(
       { error: 'Failed to save plan', details: (error as Error).message },

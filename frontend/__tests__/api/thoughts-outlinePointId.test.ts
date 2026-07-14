@@ -30,6 +30,19 @@ jest.mock('@clients/firestore.client', () => ({
   getCustomTags: jest.fn().mockResolvedValue([]),
 }));
 
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn().mockResolvedValue('u-1'),
+}));
+
+jest.mock('@/services/userEntitlement.server', () => ({
+  getUserEntitlementServerSide: jest.fn().mockResolvedValue({ paidTier: 'free' }),
+}));
+
+jest.mock('@/services/usageLimits.server', () => ({
+  assertTranscriptionUsageAvailable: jest.fn(),
+  consumeTranscriptionSeconds: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('@clients/openAI.client', () => ({
   createTranscription: jest.fn().mockResolvedValue('audio text'),
   generateThought: jest.fn().mockResolvedValue({
@@ -86,7 +99,11 @@ describe('api/thoughts POST attaches outline metadata', () => {
     fd.append('outlinePointId', 'op-1');
     fd.append('subPointId', 'sp-1');
 
-    const req: any = { url: 'http://localhost/api/thoughts', formData: async () => fd };
+    const req: any = {
+      url: 'http://localhost/api/thoughts',
+      headers: new Headers({ authorization: 'Bearer valid-token' }),
+      formData: async () => fd,
+    };
     const { POST } = await import('@/api/thoughts/route');
     const res = await POST(req as unknown as Request);
     const json = await (res as Response).json();

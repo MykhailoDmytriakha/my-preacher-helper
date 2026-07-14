@@ -47,6 +47,10 @@ describe('GroupsFeatureToggle', () => {
       updatingFirstDayOfWeek: false,
       updateShowAppVersion: jest.fn(),
       updatingShowAppVersion: false,
+      updateModelPreference: jest.fn(),
+      updatingModelPreference: false,
+      updateFunctionModelPreference: jest.fn(),
+      updatingFunctionModelPreference: false,
     });
   });
 

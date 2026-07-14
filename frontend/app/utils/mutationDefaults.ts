@@ -26,6 +26,8 @@ import { addCustomTag, removeCustomTag, updateTag } from '@/services/tag.service
 import {
   updateAudioGenerationAccess,
   updateFirstDayOfWeek,
+  updateFunctionModelPreference,
+  updateModelPreference,
   updatePrepModeAccess,
   updateShowAppVersion,
   updateStructurePreviewAccess,
@@ -38,6 +40,8 @@ import type {
   PreachDateDraft,
 } from '@/models/dashboardOptimistic';
 import type { Church, Group, PreachDate, PrayerRequest, PrayerStatus, Series, Sermon, StudyNote, Tag } from '@/models/models';
+import type { ModelPreference } from '@/services/userSettings.service';
+import type { FunctionModelPreference } from '@/services/userSettings.service';
 import type { FirstDayOfWeek } from '@/utils/weekStart';
 import type { QueryClient } from '@tanstack/react-query';
 
@@ -105,6 +109,8 @@ export const SETTINGS_MUTATION_KEYS = {
   structurePreview: [USER_SETTINGS_KEY, 'structurePreview'] as const,
   firstDayOfWeek: [USER_SETTINGS_KEY, 'firstDayOfWeek'] as const,
   showAppVersion: [USER_SETTINGS_KEY, 'showAppVersion'] as const,
+  modelPreference: [USER_SETTINGS_KEY, 'modelPreference'] as const,
+  functionModelPreference: [USER_SETTINGS_KEY, 'functionModelPreference'] as const,
 };
 
 export const PREACH_DATE_MUTATION_KEYS = {
@@ -375,6 +381,16 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
   });
   queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.showAppVersion, {
     mutationFn: ({ userId, value }: SettingVars) => updateShowAppVersion(userId, value),
+    onSuccess: invalidate([USER_SETTINGS_KEY]),
+  });
+  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.modelPreference, {
+    mutationFn: ({ userId, preference }: { userId: string; preference: ModelPreference }) =>
+      updateModelPreference(userId, preference),
+    onSuccess: invalidate([USER_SETTINGS_KEY]),
+  });
+  queryClient.setMutationDefaults(SETTINGS_MUTATION_KEYS.functionModelPreference, {
+    mutationFn: ({ userId, preference }: { userId: string; preference: FunctionModelPreference }) =>
+      updateFunctionModelPreference(userId, preference),
     onSuccess: invalidate([USER_SETTINGS_KEY]),
   });
 

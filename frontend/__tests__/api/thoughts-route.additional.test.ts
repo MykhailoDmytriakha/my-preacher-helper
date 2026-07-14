@@ -34,6 +34,21 @@ jest.mock('@clients/firestore.client', () => ({
   getCustomTags: jest.fn(),
 }));
 
+jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
+  getRequiredAuthenticatedUid: jest.fn((request: Request) => Promise.resolve(
+    request.headers?.get('authorization') ? 'user-1' : null
+  )),
+}));
+
+jest.mock('@/services/userEntitlement.server', () => ({
+  getUserEntitlementServerSide: jest.fn().mockResolvedValue({ paidTier: 'free' }),
+}));
+
+jest.mock('@/services/usageLimits.server', () => ({
+  assertTranscriptionUsageAvailable: jest.fn(),
+  consumeTranscriptionSeconds: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('@repositories/sermons.repository', () => ({
   sermonsRepository: {
     fetchSermonById: jest.fn(),
@@ -62,6 +77,7 @@ function createFormRequest(formData: FormData, url = 'http://localhost/api/thoug
   return {
     formData: async () => formData,
     url,
+    headers: new Headers({ authorization: 'Bearer valid-token' }),
   } as unknown as Request;
 }
 
@@ -69,6 +85,7 @@ function createJsonRequest(body: unknown, url = 'http://localhost/api/thoughts')
   return {
     json: async () => body,
     url,
+    headers: new Headers({ authorization: 'Bearer valid-token' }),
   } as unknown as Request;
 }
 
@@ -288,12 +305,26 @@ describe('Thoughts API route additional coverage', () => {
       const request = createFormRequest(formData);
 
       const response = await POST(request);
+      const usageLimits = await import('@/services/usageLimits.server');
+      const entitlementService = await import('@/services/userEntitlement.server');
 
       expect(response.status).toBe(200);
       expect(generateThoughtStructuredMock).toHaveBeenCalledWith(
         'transcribed',
         expect.any(Object),
-        ['Стих', 'Примеры']
+        ['Стих', 'Примеры'],
+        { userId: 'user-1' }
+      );
+      expect(entitlementService.getUserEntitlementServerSide).toHaveBeenCalledWith('user-1');
+      expect(usageLimits.assertTranscriptionUsageAvailable).toHaveBeenCalledWith(
+        { paidTier: 'free' },
+        2,
+        expect.any(Date)
+      );
+      expect(usageLimits.consumeTranscriptionSeconds).toHaveBeenCalledWith(
+        'user-1',
+        2,
+        expect.any(Date)
       );
     });
 
@@ -512,7 +543,7 @@ describe('Thoughts API route additional coverage', () => {
         const transaction = {
           get: jest.fn().mockResolvedValue({
             exists: true,
-            data: () => ({ thoughts: [oldThought] }),
+            data: () => ({ thoughts: [oldThought], userId: 'user-1' }),
           }),
           update: transactionUpdateMock,
         };
@@ -573,7 +604,7 @@ describe('Thoughts API route additional coverage', () => {
         const transaction = {
           get: jest.fn().mockResolvedValue({
             exists: true,
-            data: () => ({ thoughts: [oldThought] }),
+            data: () => ({ thoughts: [oldThought], userId: 'user-1' }),
           }),
           update: transactionUpdateMock,
         };
@@ -620,6 +651,37 @@ describe('Thoughts API route additional coverage', () => {
 
       expect(response.status).toBe(500);
       expect(data).toEqual({ error: 'Failed to update thought.' });
+    });
+  });
+
+  describe('ownership enforcement across mutation methods', () => {
+    beforeEach(() => {
+      fetchSermonByIdMock.mockResolvedValue({
+        id: 'sermon-1',
+        userId: 'victim-user',
+        thoughts: [{ id: 'thought-1', text: 'old', date: '2024-01-01', tags: [] }],
+      });
+    });
+
+    it.each([
+      ['manual POST', () => POST(createJsonRequest({
+        sermonId: 'sermon-1',
+        thought: { id: 'thought-1', text: 'new', date: '2024-01-01', tags: [] },
+      }, 'http://localhost/api/thoughts?manual=true'))],
+      ['DELETE', () => DELETE(createJsonRequest({
+        sermonId: 'sermon-1',
+        thought: { id: 'thought-1', text: 'old' },
+      }))],
+      ['PUT', () => PUT(createJsonRequest({
+        sermonId: 'sermon-1',
+        thought: { id: 'thought-1', text: 'new' },
+      }))],
+    ])('returns 403 for a non-owner on %s', async (_label, invoke) => {
+      const response = await invoke();
+
+      expect(response.status).toBe(403);
+      expect(sermonsRepoMock.sermonsRepository.updateSermonData).not.toHaveBeenCalled();
+      expect(runTransactionMock).not.toHaveBeenCalled();
     });
   });
 });

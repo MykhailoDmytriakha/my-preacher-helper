@@ -9,9 +9,14 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-import { generateChunkAudio, getTTSModel } from '@/api/clients/tts.client';
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { isFunctionCatalogTarget } from '@/api/clients/ai/functionCatalog';
+import { resolveUserTtsTarget } from '@/api/clients/ai/tierPolicy';
+import { generateChunkAudio } from '@/api/clients/tts.client';
 import { resolveSections } from '@/api/services/sermonTextService';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { assertAiUsageAvailable, consumeAiUsage } from '@/services/usageLimits.server';
+import { getUserEntitlementServerSide, resolveEffectiveTier } from '@/services/userEntitlement.server';
 import { SERMON_SECTIONS, GOOGLE_TTS_VOICES } from '@/types/audioGeneration.types';
 import { concatenateAudioBlobs, createSilenceBlob } from '@/utils/audioConcat';
 import { normalizeScriptureReferencesForTts } from '@/utils/scriptureReferenceNormalizer';
@@ -63,6 +68,10 @@ type ErrorEvent = {
 
 type StreamEvent = ProgressEvent | CompleteEvent | ErrorEvent | AudioChunkEvent | DownloadCompleteEvent;
 
+const isUsageExhaustedError = (error: unknown): error is Error =>
+    error instanceof Error
+    && (error as Error & { code?: string }).code === 'USAGE_EXHAUSTED';
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -88,6 +97,9 @@ const GOOGLE_TTS_CHANNELS = 1;
 const GOOGLE_SECTION_PAUSE_MS = 700;
 const GOOGLE_TTS_MODEL_25_KEY = 'gemini-2.5-flash-preview-tts';
 const GOOGLE_TTS_MODEL_31_KEY = 'gemini-3.1-flash-tts-preview';
+const GOOGLE_TTS_MODEL_25_CATALOG = 'gemini-2.5-flash-tts';
+const GOOGLE_TTS_MODEL_31_CATALOG = 'gemini-3.1-flash-tts';
+const OPENAI_TTS_VOICES: readonly TTSVoice[] = ['onyx', 'echo', 'ash'];
 
 function groupChunksByMajorSection(chunks: AudioChunk[]): AudioChunk[] {
     const now = new Date().toISOString();
@@ -111,18 +123,30 @@ function getConfiguredGoogleModel31(): string {
     return process.env.GEMINI_AUDIO_3_1_TTS || GOOGLE_TTS_MODEL_31_KEY;
 }
 
-function getGoogleModel(model: unknown): string {
+function getGoogleModel(model: string): string {
     const model25 = getConfiguredGoogleModel25();
     const model31 = getConfiguredGoogleModel31();
-    return model === GOOGLE_TTS_MODEL_31_KEY || model === model31
-        ? model31
-        : model25;
+    if (model === GOOGLE_TTS_MODEL_31_CATALOG) return model31;
+    if (model === GOOGLE_TTS_MODEL_25_CATALOG) return model25;
+    throw new Error(`Unsupported Google TTS model: ${model}`);
 }
 
-function getGoogleVoice(voice: unknown): GoogleTTSVoice {
-    return typeof voice === 'string' && GOOGLE_TTS_VOICES.some(v => v.id === voice)
-        ? voice as GoogleTTSVoice
-        : 'Puck';
+function getValidatedVoice(
+    provider: TTSProvider,
+    voice: unknown
+): TTSVoice | GoogleTTSVoice | null {
+    if (voice === undefined || voice === null || voice === '') {
+        return provider === 'google' ? 'Puck' : 'onyx';
+    }
+    if (typeof voice !== 'string') return null;
+    if (provider === 'google') {
+        return GOOGLE_TTS_VOICES.some(option => option.id === voice)
+            ? voice as GoogleTTSVoice
+            : null;
+    }
+    return OPENAI_TTS_VOICES.includes(voice as TTSVoice)
+        ? voice as TTSVoice
+        : null;
 }
 
 function insertGoogleSectionPauses(blobs: Blob[], chunks: AudioChunk[]): Blob[] {
@@ -171,23 +195,12 @@ export async function POST(
     { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
     try {
-        const { id: sermonId } = await params;
-        const body = await request.json();
-        const provider: TTSProvider = body.provider === 'google' ? 'google' : 'openai';
-        const voice: TTSVoice | GoogleTTSVoice = provider === 'google'
-            ? getGoogleVoice(body.voice)
-            : body.voice || 'onyx';
-        const quality: AudioQuality = body.quality || 'standard';
-        const selectedModel = provider === 'google' ? getGoogleModel(body.model) : getTTSModel(quality);
-        const sections: string | string[] = body.sections ?? 'all'; // 'all' | section key | array of keys
-        const userId = body.userId;
-
-        if (!userId) {
+        const uid = await getRequiredAuthenticatedUid(request);
+        if (!uid) {
             return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
         }
 
-        console.log(`[TTS] Starting audio generation for sermon ${sermonId}`);
-        console.log(`[TTS] Settings: provider=${provider}, voice=${voice}, model=${selectedModel}, quality=${quality}, sections=${sections}`);
+        const { id: sermonId } = await params;
 
         // 1. Load sermon with chunks
         const sermonDoc = await adminDb.collection('sermons').doc(sermonId).get();
@@ -197,9 +210,58 @@ export async function POST(
         const sermon = { id: sermonDoc.id, ...sermonDoc.data() } as Sermon;
 
         // Verify ownership
-        if (sermon.userId !== userId) {
+        if (sermon.userId !== uid) {
             return NextResponse.json({ error: 'Forbidden: You do not own this sermon' }, { status: 403 });
         }
+
+        const body = await request.json();
+        const sections: string | string[] = body.sections ?? 'all'; // 'all' | section key | array of keys
+
+        const usageNow = new Date();
+        const entitlement = await getUserEntitlementServerSide(uid, { includeModelPreferences: true });
+        const resolvedTarget = await resolveUserTtsTarget(
+            entitlement,
+            entitlement.preferredTts,
+            usageNow
+        );
+        const provider: TTSProvider | null = body.provider === 'google'
+            ? 'google'
+            : body.provider === 'openai'
+                ? 'openai'
+                : null;
+        const requestedTarget = provider && typeof body.model === 'string'
+            ? {
+                providerId: provider === 'google' ? 'gemini' as const : 'openai' as const,
+                modelId: body.model,
+            }
+            : null;
+        const targetAllowed = requestedTarget && (
+            resolveEffectiveTier(entitlement, usageNow) === 'free'
+                ? requestedTarget.providerId === resolvedTarget.providerId
+                    && requestedTarget.modelId === resolvedTarget.modelId
+                : isFunctionCatalogTarget('tts', requestedTarget)
+        );
+        if (!provider || !requestedTarget || !targetAllowed) {
+            return NextResponse.json(
+                { error: 'Requested TTS provider/model is not allowed for this plan' },
+                { status: 400 }
+            );
+        }
+
+        const voice = getValidatedVoice(provider, body.voice);
+        if (!voice) {
+            return NextResponse.json(
+                { error: `Voice ${String(body.voice)} is not available for ${provider}/${requestedTarget.modelId}` },
+                { status: 400 }
+            );
+        }
+        const quality: AudioQuality = body.quality === 'hd' ? 'hd' : 'standard';
+        const selectedModel = provider === 'google'
+            ? getGoogleModel(requestedTarget.modelId)
+            : requestedTarget.modelId;
+
+        console.log(`[TTS] Starting audio generation for sermon ${sermonId}`);
+        console.log(`[TTS] Settings: provider=${provider}, voice=${voice}, catalogModel=${requestedTarget.modelId}, runtimeModel=${selectedModel}, quality=${quality}, sections=${sections}`);
 
         // 2. Check for saved chunks
         let chunks = (sermon.audioChunks || []) as AudioChunk[];
@@ -254,6 +316,8 @@ export async function POST(
                 { status: 400 }
             );
         }
+
+        assertAiUsageAvailable(entitlement, usageNow);
 
         if (provider === 'google') {
             console.log(`[TTS] Google grouping: ${chunks.length} prepared chunks → ${chunksForGeneration.length} request chunks (max ${GOOGLE_TTS_MAX_CHUNK_SIZE} chars/request)`);
@@ -313,6 +377,7 @@ export async function POST(
                     await Promise.all(
                         Array.from({ length: Math.min(TTS_CONCURRENCY, chunksForGeneration.length) }, worker)
                     );
+                    await consumeAiUsage(uid, usageNow);
 
                     // Phase 2: Concatenate MP3 chunks (80-90%)
                     // MP3 frames are self-contained, so a plain byte-level concat plays
@@ -401,7 +466,7 @@ export async function POST(
                         await adminDb.collection('sermons').doc(sermonId).update({
                             'audioMetadata.provider': provider,
                             'audioMetadata.voice': voice,
-                            'audioMetadata.model': selectedModel,
+                            'audioMetadata.model': requestedTarget.modelId,
                             'audioMetadata.lastGenerated': new Date().toISOString(),
                         });
                     }
@@ -421,7 +486,7 @@ export async function POST(
                     console.error('[TTS] Generation error:', error);
                     sendEvent(controller, {
                         type: 'error',
-                        message: error instanceof Error ? error.message : 'Generation failed',
+                        message: `TTS generation failed with ${provider}/${requestedTarget.modelId}: ${error instanceof Error ? error.message : 'Generation failed'}`,
                     });
                     controller.close();
                 }
@@ -437,6 +502,12 @@ export async function POST(
         });
     } catch (error) {
         console.error('[TTS] Route error:', error);
+        if (isUsageExhaustedError(error)) {
+            return NextResponse.json(
+                { error: error.message },
+                { status: 429 }
+            );
+        }
         return NextResponse.json(
             { error: error instanceof Error ? error.message : 'Generation failed' },
             { status: 500 }

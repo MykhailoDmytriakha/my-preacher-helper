@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
+import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
 
 import type { AudioChunk } from '@/types/audioGeneration.types';
@@ -18,15 +19,25 @@ export async function PUT(
     { params }: { params: Promise<{ id: string }> }
 ): Promise<NextResponse> {
     try {
-        const { id: sermonId } = await params;
-        const body = await request.json();
-        const userId = body.userId;
-
-        if (!userId) {
+        const uid = await getRequiredAuthenticatedUid(request);
+        if (!uid) {
             return NextResponse.json({ error: 'User not authenticated' }, { status: 401 });
         }
 
-        // Validate input
+        const { id: sermonId } = await params;
+
+        // Load sermon to verify ownership
+        const sermonDoc = await adminDb.collection('sermons').doc(sermonId).get();
+        if (!sermonDoc.exists) {
+            return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+        }
+
+        const sermonData = sermonDoc.data();
+        if (sermonData?.userId !== uid) {
+            return NextResponse.json({ error: 'Forbidden: You do not own this sermon' }, { status: 403 });
+        }
+
+        const body = await request.json();
         if (!body.chunks || !Array.isArray(body.chunks)) {
             return NextResponse.json(
                 { error: 'Invalid body: chunks array required' },
@@ -38,17 +49,6 @@ export async function PUT(
         // Optional source mode ('ai' | 'raw') so the modal can persist which source
         // produced these chunks when switching between modes from cache (no re-optimize).
         const mode: string | undefined = body.mode === 'ai' || body.mode === 'raw' ? body.mode : undefined;
-
-        // Load sermon to verify ownership
-        const sermonDoc = await adminDb.collection('sermons').doc(sermonId).get();
-        if (!sermonDoc.exists) {
-            return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
-        }
-
-        const sermonData = sermonDoc.data();
-        if (sermonData?.userId !== userId) {
-            return NextResponse.json({ error: 'Forbidden: You do not own this sermon' }, { status: 403 });
-        }
 
         // Update firestore
         const updates: Record<string, unknown> = {

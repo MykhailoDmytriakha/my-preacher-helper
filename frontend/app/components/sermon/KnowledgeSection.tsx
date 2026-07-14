@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 
 import "@locales/i18n";
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
+import { useAiUsage } from '@/hooks/useAiUsage';
 import { Sermon, Insights, SermonContent, SectionHints } from '@/models/models';
 import { useConnection } from '@/providers/ConnectionProvider';
 import {
@@ -543,7 +544,13 @@ const PlanSection = ({
 const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermon }) => {
   const { t } = useTranslation();
   const { isMagicAvailable } = useConnection();
-  const disableNetworkActions = !isMagicAvailable;
+  const { aiBlocked, refresh: refreshAiUsage } = useAiUsage();
+  const magicUnavailableLabel = !isMagicAvailable
+    ? (t('errors.magicUnavailable') || 'AI features unavailable offline')
+    : aiBlocked
+      ? t('settings.usage.aiUsageExhausted')
+      : undefined;
+  const disableNetworkActions = !isMagicAvailable || aiBlocked;
 
   // UI state
   const [expanded, setExpanded] = useState(false);
@@ -571,8 +578,8 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
     applyInsightsUpdate({ sermon, updateSermon, setLocalInsights, insights });
 
   // Generate all insights at once
-  const handleGenerateAllInsights = () =>
-    generateAllInsightsForSermon({
+  const handleGenerateAllInsights = async () => {
+    await generateAllInsightsForSermon({
       sermonId: sermon?.id,
       setIsGeneratingAll,
       setSuccessNotification,
@@ -588,20 +595,24 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
         generateThoughtsBasedPlan
       }
     });
+    await refreshAiUsage();
+  };
 
   // Generate plan for sermon
-  const handleGeneratePlan = () =>
-    generateSectionHintsForSermon({
+  const handleGeneratePlan = async () => {
+    await generateSectionHintsForSermon({
       sermonId: sermon?.id,
       setIsGeneratingPlan,
       setSuccessNotification,
       onInsightsUpdated: updateInsights,
       generateThoughtsBasedPlan
     });
+    await refreshAiUsage();
+  };
 
   // Regenerate individual sections using the generic function
-  const handleRegenerateTopics = () =>
-    regenerateInsightSection({
+  const handleRegenerateTopics = async () => {
+    await regenerateInsightSection({
       sermonId: sermon?.id,
       sectionType: 'topics',
       regenerationFunction: generateTopics,
@@ -610,9 +621,11 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
       setSuccessNotification,
       onInsightsUpdated: updateInsights
     });
+    await refreshAiUsage();
+  };
 
-  const handleRegenerateVerses = () =>
-    regenerateInsightSection({
+  const handleRegenerateVerses = async () => {
+    await regenerateInsightSection({
       sermonId: sermon?.id,
       sectionType: 'verses',
       regenerationFunction: generateRelatedVerses,
@@ -621,9 +634,11 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
       setSuccessNotification,
       onInsightsUpdated: updateInsights
     });
+    await refreshAiUsage();
+  };
 
-  const handleRegenerateDirections = () =>
-    regenerateInsightSection({
+  const handleRegenerateDirections = async () => {
+    await regenerateInsightSection({
       sermonId: sermon?.id,
       sectionType: 'directions',
       regenerationFunction: generatePossibleDirections,
@@ -632,6 +647,8 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
       setSuccessNotification,
       onInsightsUpdated: updateInsights
     });
+    await refreshAiUsage();
+  };
 
   // Toggle visibility functions
   const toggleTopicsVisibility = () => setShowAllTopics(!showAllTopics);
@@ -706,7 +723,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
               onRefresh={handleRegenerateTopics}
               isRefreshing={isGeneratingTopics}
               disableRefresh={disableRefresh}
-              refreshLabel={t(TRANSLATION_KNOWLEDGE_REFRESH)}
+              refreshLabel={magicUnavailableLabel || t(TRANSLATION_KNOWLEDGE_REFRESH)}
               showAllLabel={t(TRANSLATION_KNOWLEDGE_SHOW_ALL)}
               hideAllLabel={t(TRANSLATION_KNOWLEDGE_HIDE_ALL)}
               listClassName="space-y-2 text-gray-600 dark:text-gray-300 mt-2"
@@ -725,7 +742,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
               onRefresh={handleRegenerateVerses}
               isRefreshing={isGeneratingVerses}
               disableRefresh={disableRefresh}
-              refreshLabel={t(TRANSLATION_KNOWLEDGE_REFRESH)}
+              refreshLabel={magicUnavailableLabel || t(TRANSLATION_KNOWLEDGE_REFRESH)}
               showAllLabel={t(TRANSLATION_KNOWLEDGE_SHOW_ALL)}
               hideAllLabel={t(TRANSLATION_KNOWLEDGE_HIDE_ALL)}
               listClassName="space-y-2 text-gray-600 dark:text-gray-300 mt-2"
@@ -745,7 +762,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
               onRefresh={handleRegenerateDirections}
               isRefreshing={isGeneratingDirections}
               disableRefresh={disableRefresh}
-              refreshLabel={t(TRANSLATION_KNOWLEDGE_REFRESH)}
+              refreshLabel={magicUnavailableLabel || t(TRANSLATION_KNOWLEDGE_REFRESH)}
               showAllLabel={t(TRANSLATION_KNOWLEDGE_SHOW_ALL)}
               hideAllLabel={t(TRANSLATION_KNOWLEDGE_HIDE_ALL)}
               listClassName="space-y-2 mt-2"
@@ -760,7 +777,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
             <PlanSection
               title={t('knowledge.suggestedPlan')}
               sectionHints={sectionHints}
-              refreshLabel={t(TRANSLATION_KNOWLEDGE_REFRESH)}
+              refreshLabel={magicUnavailableLabel || t(TRANSLATION_KNOWLEDGE_REFRESH)}
               onRefresh={handleGeneratePlan}
               isRefreshing={isGeneratingPlan}
               disableRefresh={disableRefresh}
@@ -779,7 +796,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
             isGeneratingAll={isGeneratingAll}
             anyGenerating={disableRefresh}
             onGenerate={handleGenerateAllInsights}
-            magicUnavailableLabel={!isMagicAvailable ? (t('errors.magicUnavailable') || "AI features unavailable offline") : undefined}
+            magicUnavailableLabel={magicUnavailableLabel}
           />
         )
       ) : null}

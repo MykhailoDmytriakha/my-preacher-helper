@@ -27,6 +27,7 @@ export const MainRecordButton = ({
   onStart,
   onStop,
   t,
+  title,
 }: MainRecordButtonProps) => {
   if (!show) return null;
 
@@ -106,7 +107,7 @@ export const MainRecordButton = ({
       disabled={isButtonDisabled}
       className={`${appliedVariant === "mini" ? "min-w-full px-4 py-3 text-sm font-medium" : "min-w-[200px] px-6 py-3"} rounded-xl font-medium ${getButtonStyles()}`}
       aria-label={isRecording ? t(AUDIO_TRANSLATION_KEYS.STOP_RECORDING) : t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)}
-      title={`${isRecording ? t(AUDIO_TRANSLATION_KEYS.STOP_RECORDING) : t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)} (Ctrl+Space)`}
+      title={title ?? `${isRecording ? t(AUDIO_TRANSLATION_KEYS.STOP_RECORDING) : t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)} (Ctrl+Space)`}
     >
       {getButtonContent()}
     </button>
@@ -517,6 +518,7 @@ export const SplitRecordButton = ({
   isButtonDisabled,
   onStart,
   t,
+  title,
   separate = false,
 }: SplitRecordButtonProps) => {
   return (
@@ -533,7 +535,7 @@ export const SplitRecordButton = ({
         disabled={isButtonDisabled}
         className={`flex-1 bg-green-600 px-6 py-3 font-medium text-white transition-all duration-200 active:scale-[0.98] hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:bg-green-600 disabled:active:scale-100 ${separate ? "rounded-xl shadow-lg" : ""}`}
         aria-label={t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)}
-        title={`${t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)} (Ctrl+Space)`}
+        title={title ?? `${t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)} (Ctrl+Space)`}
       >
         <div className="flex items-center justify-center">
           <MicFilledIcon className="mr-2 h-5 w-5" />
