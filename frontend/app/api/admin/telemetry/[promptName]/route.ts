@@ -33,8 +33,8 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ promptName: string }> }
 ) {
-  const authError = checkTelemetryAdminAuth(request);
-  if (authError) return authError;
+  const admin = await checkTelemetryAdminAuth(request);
+  if (!admin.ok) return admin.response;
 
   const { promptName } = await params;
   const decoded = decodeURIComponent(promptName);
@@ -96,8 +96,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ promptName: string }> }
 ) {
-  const authError = checkTelemetryAdminAuth(request);
-  if (authError) return authError;
+  const admin = await checkTelemetryAdminAuth(request);
+  if (!admin.ok) return admin.response;
 
   const { promptName } = await params;
   const decoded = decodeURIComponent(promptName);
@@ -143,8 +143,8 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ promptName: string }> }
 ) {
-  const authError = checkTelemetryAdminAuth(request);
-  if (authError) return authError;
+  const admin = await checkTelemetryAdminAuth(request);
+  if (!admin.ok) return admin.response;
 
   const { promptName } = await params;
   const decoded = decodeURIComponent(promptName);

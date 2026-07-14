@@ -2,10 +2,20 @@
 
 import { useState, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import "@locales/i18n";
 
-const MAX_IMAGES = 3;
-const MAX_IMAGE_SIZE_BYTES = 4 * 1024 * 1024; // 4 MB
+import "@locales/i18n";
+import {
+  getFeedbackPayloadByteLength,
+  getUtf8ByteLength,
+  MAX_FEEDBACK_ATTACHMENT_PAYLOAD_BYTES,
+  MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES,
+  MAX_FEEDBACK_IMAGE_BYTES,
+  MAX_FEEDBACK_IMAGES,
+  MAX_FEEDBACK_TEXT_BYTES,
+} from '@/utils/feedbackPayload';
+
+const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+const FEEDBACK_TYPE_PAYLOAD_PLACEHOLDER = 'suggestion';
 
 interface FeedbackFormProps {
   onSubmit: (text: string, type: string, images: string[]) => Promise<boolean | void>;
@@ -19,6 +29,9 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [images, setImages] = useState<string[]>([]);
   const [imageError, setImageError] = useState('');
+  const [payloadError, setPayloadError] = useState('');
+  const feedbackTextRef = useRef('');
+  const imagesRef = useRef<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -26,7 +39,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
-    const remaining = MAX_IMAGES - images.length;
+    const remaining = MAX_FEEDBACK_IMAGES - images.length;
     if (remaining <= 0) {
       setImageError(t('feedback.imageLimitReached') || 'Maximum 3 images allowed');
       // Reset input so same file can be re-selected if image is removed
@@ -36,18 +49,45 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
 
     const toProcess = files.slice(0, remaining);
     toProcess.forEach(file => {
-      if (file.size > MAX_IMAGE_SIZE_BYTES) {
-        setImageError(`"${file.name}" is too large (max 4 MB)`);
+      if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+        setImageError(
+          t('feedback.invalidImage') || 'Only PNG, JPEG, and WebP images are supported'
+        );
+        return;
+      }
+      if (file.size > MAX_FEEDBACK_IMAGE_BYTES) {
+        setImageError(t('feedback.imageTooLarge') || 'Image is too large (max 3 MB)');
         return;
       }
       const reader = new FileReader();
       reader.onload = (event) => {
         const result = event.target?.result as string;
         if (result) {
-          setImages(prev => {
-            if (prev.length >= MAX_IMAGES) return prev;
-            return [...prev, result];
+          const nextImages = [...imagesRef.current, result];
+          if (nextImages.length > MAX_FEEDBACK_IMAGES) return;
+
+          const serializedAttachmentBytes = getFeedbackPayloadByteLength({
+            feedbackText: '',
+            feedbackType: FEEDBACK_TYPE_PAYLOAD_PLACEHOLDER,
+            images: nextImages,
+            userId: '',
           });
+          const serializedPayloadBytes = getFeedbackPayloadByteLength({
+            feedbackText: feedbackTextRef.current,
+            feedbackType: FEEDBACK_TYPE_PAYLOAD_PLACEHOLDER,
+            images: nextImages,
+            userId: '',
+          });
+          if (
+            serializedAttachmentBytes > MAX_FEEDBACK_ATTACHMENT_PAYLOAD_BYTES ||
+            serializedPayloadBytes > MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES
+          ) {
+            setImageError(t('feedback.payloadTooLarge'));
+            return;
+          }
+
+          imagesRef.current = nextImages;
+          setImages(nextImages);
         }
       };
       reader.readAsDataURL(file);
@@ -58,13 +98,47 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
   };
 
   const handleRemoveImage = (index: number) => {
-    setImages(prev => prev.filter((_, i) => i !== index));
+    const nextImages = imagesRef.current.filter((_, i) => i !== index);
+    imagesRef.current = nextImages;
+    setImages(nextImages);
     setImageError('');
+    setPayloadError('');
+  };
+
+  const handleFeedbackTextChange = (value: string) => {
+    const serializedPayloadBytes = getFeedbackPayloadByteLength({
+      feedbackText: value,
+      feedbackType: FEEDBACK_TYPE_PAYLOAD_PLACEHOLDER,
+      images: imagesRef.current,
+      userId: '',
+    });
+    if (
+      getUtf8ByteLength(value) > MAX_FEEDBACK_TEXT_BYTES ||
+      serializedPayloadBytes > MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES
+    ) {
+      setPayloadError(t('feedback.payloadTooLarge'));
+      return;
+    }
+
+    feedbackTextRef.current = value;
+    setFeedbackText(value);
+    setPayloadError('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (feedbackText.trim()) {
+      const serializedPayloadBytes = getFeedbackPayloadByteLength({
+        feedbackText,
+        feedbackType: FEEDBACK_TYPE_PAYLOAD_PLACEHOLDER,
+        images,
+        userId: '',
+      });
+      if (serializedPayloadBytes > MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES) {
+        setPayloadError(t('feedback.payloadTooLarge'));
+        return;
+      }
+
       try {
         setIsSubmitting(true);
         await onSubmit(feedbackText, feedbackType, images);
@@ -76,7 +150,26 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
     }
   };
 
-  const canAddMore = images.length < MAX_IMAGES;
+  const canAddMore = images.length < MAX_FEEDBACK_IMAGES;
+  const serializedAttachmentBytes = getFeedbackPayloadByteLength({
+    feedbackText: '',
+    feedbackType: FEEDBACK_TYPE_PAYLOAD_PLACEHOLDER,
+    images,
+    userId: '',
+  });
+  const serializedPayloadBytes = getFeedbackPayloadByteLength({
+    feedbackText,
+    feedbackType: FEEDBACK_TYPE_PAYLOAD_PLACEHOLDER,
+    images,
+    userId: '',
+  });
+  const remainingAttachmentBytes = Math.max(
+    0,
+    Math.min(
+      MAX_FEEDBACK_ATTACHMENT_PAYLOAD_BYTES - serializedAttachmentBytes,
+      MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES - serializedPayloadBytes
+    )
+  );
 
   return (
     <form onSubmit={handleSubmit}>
@@ -104,7 +197,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
         </label>
         <textarea
           value={feedbackText}
-          onChange={(e) => setFeedbackText(e.target.value)}
+          onChange={(e) => handleFeedbackTextChange(e.target.value)}
           rows={4}
           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
           placeholder={t('feedback.messagePlaceholder') || 'Please tell us what you think...'}
@@ -152,7 +245,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept="image/png,image/jpeg,image/webp"
             multiple
             onChange={handleFileChange}
             disabled={isSubmitting || !canAddMore}
@@ -176,13 +269,27 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
             {t('feedback.attachImages') || 'Attach images (optional)'}
           </label>
           <span className="text-xs text-gray-400 dark:text-gray-500" suppressHydrationWarning={true}>
-            {t('feedback.imagesNote') || 'Up to 3 images, max 4 MB each'}
+            {t('feedback.imagesNote') || 'Up to 3 images, max 3 MB each and 4.4 MB total'}
           </span>
         </div>
+
+        <p
+          className="mt-1 text-xs text-gray-400 dark:text-gray-500"
+          data-testid="attachment-budget"
+        >
+          {t('feedback.attachmentBudgetRemaining', {
+            amount: (remainingAttachmentBytes / 1_000_000).toFixed(1),
+          })}
+        </p>
 
         {imageError && (
           <p className="mt-1 text-xs text-red-500" role="alert" data-testid="image-error">
             {imageError}
+          </p>
+        )}
+        {payloadError && (
+          <p className="mt-1 text-xs text-red-500" role="alert" data-testid="payload-error">
+            {payloadError}
           </p>
         )}
       </div>

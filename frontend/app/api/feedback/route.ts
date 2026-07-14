@@ -1,15 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 
-import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { getAuthenticatedIdentity } from '@/api/auth/getAuthenticatedIdentity.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import {
+  consumeSlidingWindowRateLimit,
+  FEEDBACK_RATE_LIMIT_MAX_SUBMISSIONS,
+  FEEDBACK_RATE_LIMIT_WINDOW_MS,
+} from '@/services/rateLimit.server';
+import {
+  getFeedbackImageDecodedSize,
+  getUtf8ByteLength,
+  MAX_FEEDBACK_IMAGE_BYTES,
+  MAX_FEEDBACK_IMAGES,
+  MAX_FEEDBACK_PAYLOAD_BYTES,
+  MAX_FEEDBACK_TEXT_BYTES,
+} from '@/utils/feedbackPayload';
 
 // Define types for better code safety
 interface FeedbackData {
   text: string;
   type: string;
   userId: string;
-  userEmail?: string;
+  userEmail: string;
   createdAt: string;
   status: string;
   userAgent: string;
@@ -40,6 +53,73 @@ const EMAIL_CONFIG: EmailConfig = {
 
 // The owner's email to receive feedback notifications
 const OWNER_EMAIL = process.env.OWNER_EMAIL || 'my@gmail.com';
+const NOT_PROVIDED = 'Not provided';
+const MAX_FEEDBACK_TYPE_LENGTH = 32;
+const ALLOWED_FEEDBACK_TYPES = new Set([
+  'suggestion',
+  'bug',
+  'question',
+  'other',
+]);
+
+function resolveFeedbackType(value: unknown): string {
+  if (
+    typeof value === 'string' &&
+    value.length <= MAX_FEEDBACK_TYPE_LENGTH &&
+    ALLOWED_FEEDBACK_TYPES.has(value)
+  ) {
+    return value;
+  }
+  return 'other';
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    };
+    return entities[character];
+  });
+}
+
+type ImageValidationResult =
+  | { ok: true; images: string[] }
+  | { ok: false; error: string; status: number };
+
+function validateImages(images: unknown): ImageValidationResult {
+  if (images === undefined) return { ok: true, images: [] };
+  if (!Array.isArray(images) || images.length > MAX_FEEDBACK_IMAGES) {
+    return {
+      ok: false,
+      error: `Images must be an array with at most ${MAX_FEEDBACK_IMAGES} items`,
+      status: 400,
+    };
+  }
+
+  for (const image of images) {
+    if (typeof image !== 'string') {
+      return { ok: false, error: 'Each image must be a valid data URL', status: 400 };
+    }
+
+    const decodedSize = getFeedbackImageDecodedSize(image);
+    if (decodedSize === null) {
+      return {
+        ok: false,
+        error: 'Images must be PNG, JPEG, or WebP base64 data URLs',
+        status: 400,
+      };
+    }
+    if (decodedSize > MAX_FEEDBACK_IMAGE_BYTES) {
+      return { ok: false, error: 'Image is too large', status: 413 };
+    }
+  }
+
+  return { ok: true, images };
+}
 
 /**
  * Creates an email transporter with the configured settings
@@ -85,7 +165,10 @@ function buildAttachments(images: string[]) {
 /**
  * Helper function to send email notification
  */
-async function sendEmailNotification(feedbackData: FeedbackData) {
+async function sendEmailNotification(
+  feedbackData: FeedbackData,
+  userEmailVerified: boolean
+) {
   console.log(`Starting email notification process for feedback type: ${feedbackData.type}`);
 
   try {
@@ -97,6 +180,11 @@ async function sendEmailNotification(feedbackData: FeedbackData) {
 
     console.log(`Preparing to send email to: ${OWNER_EMAIL}`);
     const { text, type, userId, userEmail, createdAt, images = [] } = feedbackData;
+    const escapedText = escapeHtml(text).replace(/\r\n|\r|\n/g, '<br>');
+    const displayedUserEmail =
+      userEmail !== NOT_PROVIDED && !userEmailVerified
+        ? `${userEmail} (unverified)`
+        : userEmail;
 
     // Create a transporter for this specific email
     const transporter = createTransporter();
@@ -105,18 +193,18 @@ async function sendEmailNotification(feedbackData: FeedbackData) {
     const emailContent = {
       from: `"Preacher Helper" <${EMAIL_CONFIG.auth.user}>`,
       to: OWNER_EMAIL,
-      ...(userEmail && { replyTo: userEmail }),
+      ...(userEmail !== NOT_PROVIDED && { replyTo: userEmail }),
       subject: `New Feedback (${type}) from Preacher Helper`,
       attachments: buildAttachments(images),
       html: `
         <h2>New Feedback Submitted</h2>
-        <p><strong>Type:</strong> ${type}</p>
-        <p><strong>User ID:</strong> ${userId}</p>
-        <p><strong>User Email:</strong> ${userEmail || 'Not provided'}</p>
+        <p><strong>Type:</strong> ${escapeHtml(type)}</p>
+        <p><strong>User ID:</strong> ${escapeHtml(userId)}</p>
+        <p><strong>User Email:</strong> ${escapeHtml(displayedUserEmail)}</p>
         <p><strong>Time:</strong> ${new Date(createdAt).toLocaleString()}</p>
         <p><strong>Message:</strong></p>
         <blockquote style="border-left: 4px solid #ccc; padding-left: 16px;">
-          ${text.replace(/\n/g, '<br>')}
+          ${escapedText}
         </blockquote>
         ${buildImageHtml(images)}
         <p>You can view all feedback in your Firestore database.</p>
@@ -125,7 +213,7 @@ async function sendEmailNotification(feedbackData: FeedbackData) {
 New Feedback Submitted
 Type: ${type}
 User ID: ${userId}
-User Email: ${userEmail || 'Not provided'}
+User Email: ${userEmail}
 Time: ${new Date(createdAt).toLocaleString()}
 Message:
 ${text}
@@ -198,47 +286,89 @@ export async function POST(request: NextRequest) {
     // Auth: the feedback button lives only in the authenticated nav, so the endpoint must
     // require a token too — a hidden button never protects an open endpoint. Identity comes
     // from the verified token, not a spoofable body field.
-    const uid = await getRequiredAuthenticatedUid(request);
-    if (!uid) {
+    const identity = await getAuthenticatedIdentity(request);
+    if (!identity) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Parse the request body
-    const body = await request.json();
-    const { feedbackText, feedbackType, images, userEmail = '' } = body;
+    const rawBody = await request.text();
+    if (getUtf8ByteLength(rawBody) > MAX_FEEDBACK_PAYLOAD_BYTES) {
+      return NextResponse.json({ error: 'Feedback payload is too large' }, { status: 413 });
+    }
 
-    // Validate images: must be an array of strings, max 3 items
-    const validatedImages: string[] = Array.isArray(images)
-      ? images.filter((img): img is string => typeof img === 'string').slice(0, 3)
-      : [];
+    let body: unknown;
+    try {
+      body = JSON.parse(rawBody) as unknown;
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
 
-    console.log('Parsed feedback request:', {
-      type: feedbackType,
-      userId: uid,
-      userEmail,
-      textLength: feedbackText?.length || 0,
-      imagesCount: validatedImages.length
-    });
+    if (body === null || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    }
 
-    // Validate required fields
-    if (!feedbackText) {
+    const { feedbackText, feedbackType, images } = body as Record<string, unknown>;
+
+    if (typeof feedbackText !== 'string' || !feedbackText) {
       console.log('Validation failed: Feedback text is missing');
       return NextResponse.json(
         { error: 'Feedback text is required' },
         { status: 400 }
       );
     }
+    if (getUtf8ByteLength(feedbackText) > MAX_FEEDBACK_TEXT_BYTES) {
+      return NextResponse.json({ error: 'Feedback text is too large' }, { status: 413 });
+    }
+
+    const imageValidation = validateImages(images);
+    if (!imageValidation.ok) {
+      return NextResponse.json(
+        { error: imageValidation.error },
+        { status: imageValidation.status }
+      );
+    }
+
+    const rateLimit = await consumeSlidingWindowRateLimit({
+      scope: 'feedback',
+      key: identity.uid,
+      limit: FEEDBACK_RATE_LIMIT_MAX_SUBMISSIONS,
+      windowMs: FEEDBACK_RATE_LIMIT_WINDOW_MS,
+    });
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: 'Too many feedback submissions. Please try again later.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': Math.ceil(rateLimit.retryAfterMs / 1000).toString(),
+          },
+        }
+      );
+    }
+
+    const trimmedTokenEmail =
+      typeof identity.email === 'string' ? identity.email.trim() : '';
+    const tokenEmail = trimmedTokenEmail || NOT_PROVIDED;
+    const resolvedType = resolveFeedbackType(feedbackType);
+
+    console.log('Parsed feedback request:', {
+      type: resolvedType,
+      userId: identity.uid,
+      userEmail: tokenEmail,
+      textLength: typeof feedbackText === 'string' ? feedbackText.length : 0,
+      imagesCount: imageValidation.images.length
+    });
 
     // Create a new feedback document
     const feedbackData: FeedbackData = {
       text: feedbackText,
-      type: feedbackType || 'other',
-      userId: uid,
-      userEmail,
+      type: resolvedType,
+      userId: identity.uid,
+      userEmail: tokenEmail,
       createdAt: new Date().toISOString(),
       status: 'new', // Can be used for tracking feedback status: new, reviewed, addressed, etc.
       userAgent: request.headers.get('user-agent') || 'unknown',
-      ...(validatedImages.length > 0 && { images: validatedImages }),
+      ...(imageValidation.images.length > 0 && { images: imageValidation.images }),
     };
 
     // Add the feedback to Firestore
@@ -247,7 +377,7 @@ export async function POST(request: NextRequest) {
     // Send email notification - ensure it completes before the function returns
     console.log('Triggering email notification');
     try {
-      await sendEmailNotification(feedbackData);
+      await sendEmailNotification(feedbackData, identity.emailVerified);
     } catch (emailError) {
       console.error('Email sending failed:', emailError);
       // Still proceed with success response as the feedback was stored

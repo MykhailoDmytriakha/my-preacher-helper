@@ -7,7 +7,7 @@ import FeedbackForm from '@/components/navigation/FeedbackForm';
 // Mock dependencies
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => {
+    t: (key: string, options?: { amount?: string }) => {
       const translations: { [key: string]: string } = {
         'feedback.typeLabel': 'Feedback Type',
         'feedback.typeSuggestion': 'Suggestion',
@@ -21,11 +21,15 @@ jest.mock('react-i18next', () => ({
         'feedback.sendingButton': 'Sending...',
         'feedback.imagesLabel': 'Attachments',
         'feedback.attachImages': 'Attach images (optional)',
-        'feedback.imagesNote': 'Up to 3 images, max 4 MB each',
+        'feedback.imagesNote': 'Up to 3 images, max 3 MB each and 4.4 MB total',
         'feedback.removeImage': 'Remove image',
         'feedback.imageLimitReached': 'Maximum 3 images allowed',
+        'feedback.invalidImage': 'Only PNG, JPEG, and WebP images are supported',
+        'feedback.imageTooLarge': 'Image is too large (max 3 MB)',
+        'feedback.payloadTooLarge': 'Feedback is too large for one request. Shorten the message or remove an attachment.',
+        'feedback.attachmentBudgetRemaining': '{{amount}} MB attachment budget remaining',
       };
-      return translations[key] || key;
+      return (translations[key] || key).replace('{{amount}}', options?.amount || '');
     }
   })
 }));
@@ -87,7 +91,10 @@ describe('FeedbackForm Component', () => {
     // Check attachment UI
     expect(screen.getByText('Attachments')).toBeInTheDocument();
     expect(screen.getByText('Attach images (optional)')).toBeInTheDocument();
-    expect(screen.getByText('Up to 3 images, max 4 MB each')).toBeInTheDocument();
+    expect(screen.getByText('Up to 3 images, max 3 MB each and 4.4 MB total')).toBeInTheDocument();
+    expect(screen.getByTestId('attachment-budget')).toHaveTextContent(
+      /MB attachment budget remaining/i
+    );
   });
 
   test('calls onCancel when cancel button is clicked', () => {
@@ -314,12 +321,12 @@ describe('FeedbackForm Component', () => {
     });
   });
 
-  test('shows error when a file exceeds the 4 MB size limit', async () => {
+  test('shows error when a file exceeds the 3 MB size limit', async () => {
     render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
 
     const fileInput = screen.getByTestId('image-file-input');
-    // 5 MB > 4 MB limit
-    const largeFile = createMockFile('large.png', 5 * 1024 * 1024);
+    // 4 MB > 3 MB limit
+    const largeFile = createMockFile('large.png', 4 * 1024 * 1024);
     await act(async () => {
       fireEvent.change(fileInput, { target: { files: [largeFile] } });
     });
@@ -331,6 +338,84 @@ describe('FeedbackForm Component', () => {
 
     // No image should have been added
     expect(screen.queryByTestId('image-previews')).not.toBeInTheDocument();
+  });
+
+  test('rejects an image MIME type outside PNG, JPEG, and WebP', async () => {
+    render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
+
+    const fileInput = screen.getByTestId('image-file-input');
+    await act(async () => {
+      fireEvent.change(fileInput, {
+        target: { files: [createMockFile('vector.svg', 1000, 'image/svg+xml')] },
+      });
+    });
+
+    expect(screen.getByTestId('image-error')).toHaveTextContent(
+      'Only PNG, JPEG, and WebP images are supported'
+    );
+    expect(screen.queryByTestId('image-previews')).not.toBeInTheDocument();
+  });
+
+  test('rejects an image when cumulative serialized attachments would exceed the payload budget', async () => {
+    const dataUrl = `data:image/png;base64,${'A'.repeat(1_800_000)}`;
+    const restore = mockFileReader(dataUrl);
+
+    render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
+
+    const fileInput = screen.getByTestId('image-file-input');
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [createMockFile('first.png')] } });
+      await Promise.resolve();
+    });
+    const remainingAfterFirst = screen.getByTestId('attachment-budget').textContent;
+
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [createMockFile('second.png')] } });
+      await Promise.resolve();
+    });
+
+    expect(screen.getAllByAltText(/^attachment-/)).toHaveLength(1);
+    expect(screen.getByTestId('image-error')).toHaveTextContent(
+      'Feedback is too large for one request. Shorten the message or remove an attachment.'
+    );
+    expect(screen.getByTestId('attachment-budget').textContent).toBe(remainingAfterFirst);
+
+    restore();
+  });
+
+  test('prevents serialized text expansion from invalidating accepted attachments at submit', async () => {
+    const dataUrl = `data:image/png;base64,${'A'.repeat(3_300_000)}`;
+    const restore = mockFileReader(dataUrl);
+
+    render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
+
+    const fileInput = screen.getByTestId('image-file-input');
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [createMockFile('near-budget.png')] } });
+      await Promise.resolve();
+    });
+    expect(screen.getAllByAltText(/^attachment-/)).toHaveLength(1);
+
+    const textarea = screen.getByPlaceholderText('Please tell us what you think...');
+    fireEvent.change(textarea, { target: { value: '\\'.repeat(700_000) } });
+
+    expect(textarea).toHaveValue('');
+    expect(screen.getByTestId('payload-error')).toHaveTextContent(
+      'Feedback is too large for one request. Shorten the message or remove an attachment.'
+    );
+
+    fireEvent.change(textarea, { target: { value: 'Fits with the accepted attachment' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        'Fits with the accepted attachment',
+        'suggestion',
+        [dataUrl]
+      );
+    });
+
+    restore();
   });
 
   test('prevents default form submission behavior', () => {

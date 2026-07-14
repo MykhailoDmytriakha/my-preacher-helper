@@ -28,8 +28,8 @@ type VersionAccumulator = {
 // GET /api/admin/telemetry
 // Returns summary grouped by promptName → promptVersion with computed metrics.
 export async function GET(request: Request) {
-  const authError = checkTelemetryAdminAuth(request);
-  if (authError) return authError;
+  const admin = await checkTelemetryAdminAuth(request);
+  if (!admin.ok) return admin.response;
 
   try {
     const { adminDb } = await import("@/config/firebaseAdminConfig");
@@ -144,8 +144,8 @@ export async function GET(request: Request) {
 // DELETE /api/admin/telemetry
 // Deletes ALL telemetry records. Returns count of deleted documents.
 export async function DELETE(request: Request) {
-  const authError = checkTelemetryAdminAuth(request);
-  if (authError) return authError;
+  const admin = await checkTelemetryAdminAuth(request);
+  if (!admin.ok) return admin.response;
 
   try {
     const { adminDb } = await import("@/config/firebaseAdminConfig");

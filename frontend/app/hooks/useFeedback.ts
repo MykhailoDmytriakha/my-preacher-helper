@@ -23,12 +23,11 @@ export function useFeedback() {
     feedbackText: string,
     feedbackType: string,
     images: string[] = [],
-    userId: string = 'anonymous',
-    userEmail: string = ''
+    userId: string = 'anonymous'
   ) => {
     try {
       // Use the feedback service to submit feedback
-      await submitFeedback(feedbackText, feedbackType, images, userId, userEmail);
+      await submitFeedback(feedbackText, feedbackType, images, userId);
 
       // Add a slight delay to ensure the loading state is visible before closing the modal
       await new Promise(resolve => setTimeout(resolve, 500));

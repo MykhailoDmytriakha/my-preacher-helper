@@ -37,30 +37,30 @@ const docMock = jest.fn().mockReturnValue({
     update: docUpdateMock,
 });
 
-const collectionMock = jest.fn().mockReturnValue({
-    where: whereMock,
-    orderBy: orderByMock,
-    limit: limitMock,
-    doc: docMock,
-    get: getMock,
-});
-
 const batchCommitMock = jest.fn().mockResolvedValue(undefined);
 const deleteMock = jest.fn();
-const batchMock = jest.fn().mockReturnValue({
-    delete: deleteMock,
-    commit: batchCommitMock,
-});
 
 jest.mock('@/config/firebaseAdminConfig', () => ({
+    adminAuth: {
+        verifyIdToken: jest.fn(),
+    },
     adminDb: {
-        collection: collectionMock,
-        batch: batchMock,
+        collection: jest.fn(),
+        batch: jest.fn(),
     },
     FieldValue: {
         serverTimestamp: jest.fn(() => 'mocked-server-timestamp'),
     },
 }));
+
+const { adminAuth, adminDb } = jest.requireMock('@/config/firebaseAdminConfig') as {
+    adminAuth: { verifyIdToken: jest.Mock };
+    adminDb: { collection: jest.Mock; batch: jest.Mock };
+};
+const mockVerifyIdToken = adminAuth.verifyIdToken;
+const collectionMock = adminDb.collection;
+const batchMock = adminDb.batch;
+const adminHeaders = { authorization: 'Bearer admin-token' };
 
 jest.mock('next/server', () => ({
     NextResponse: {
@@ -76,17 +76,92 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        process.env = { ...originalEnv, NODE_ENV: 'development', ADMIN_SECRET: 'test-secret' };
+        process.env = { ...originalEnv, NODE_ENV: 'development', ADMIN_EMAIL: 'owner@example.com' };
+        mockVerifyIdToken.mockResolvedValue({
+            uid: 'admin-uid',
+            email: 'owner@example.com',
+            email_verified: true,
+        });
+        collectionMock.mockReturnValue({
+            where: whereMock,
+            orderBy: orderByMock,
+            limit: limitMock,
+            doc: docMock,
+            get: getMock,
+        });
+        batchMock.mockReturnValue({
+            delete: deleteMock,
+            commit: batchCommitMock,
+        });
     });
 
     afterAll(() => {
         process.env = originalEnv;
     });
 
+    describe('Auth Checks', () => {
+        const params = Promise.resolve({ promptName: 'test-prompt' });
+
+        it('returns 401 if the bearer token is missing', async () => {
+            const response = await GET(
+                new Request('http://localhost/api/admin/telemetry/test-prompt'),
+                { params }
+            );
+
+            expect(response.status).toBe(401);
+            expect(mockVerifyIdToken).not.toHaveBeenCalled();
+            expect(collectionMock).not.toHaveBeenCalled();
+        });
+
+        it('returns 401 if the bearer token is invalid', async () => {
+            mockVerifyIdToken.mockRejectedValueOnce(new Error('invalid token'));
+            const response = await GET(
+                new Request('http://localhost/api/admin/telemetry/test-prompt', {
+                    headers: { authorization: 'Bearer invalid-token' },
+                }),
+                { params }
+            );
+
+            expect(response.status).toBe(401);
+            expect(mockVerifyIdToken).toHaveBeenCalledWith('invalid-token', true);
+            expect(collectionMock).not.toHaveBeenCalled();
+        });
+
+        it('returns 403 for an authenticated non-admin email', async () => {
+            mockVerifyIdToken.mockResolvedValueOnce({
+                uid: 'user-uid',
+                email: 'user@example.com',
+                email_verified: true,
+            });
+            const response = await GET(
+                new Request('http://localhost/api/admin/telemetry/test-prompt', {
+                    headers: { authorization: 'Bearer user-token' },
+                }),
+                { params }
+            );
+
+            expect(response.status).toBe(403);
+            expect(collectionMock).not.toHaveBeenCalled();
+        });
+
+        it('rejects the legacy x-admin-secret header by itself', async () => {
+            const response = await GET(
+                new Request('http://localhost/api/admin/telemetry/test-prompt', {
+                    headers: { 'x-admin-secret': 'test-secret' },
+                }),
+                { params }
+            );
+
+            expect(response.status).toBe(401);
+            expect(mockVerifyIdToken).not.toHaveBeenCalled();
+            expect(collectionMock).not.toHaveBeenCalled();
+        });
+    });
+
     describe('GET specific prompt records', () => {
         it('returns filtered records for specific prompt', async () => {
             const request = new Request('http://localhost/api/admin/telemetry/test-prompt', {
-                headers: { 'x-admin-secret': 'test-secret' }
+                headers: adminHeaders
             });
             const params = Promise.resolve({ promptName: 'test-prompt' });
             const response = await GET(request, { params });
@@ -101,7 +176,7 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
 
         it('applies version filter from query', async () => {
             const request = new Request('http://localhost/api/admin/telemetry/test-prompt?limit=10&version=v1', {
-                headers: { 'x-admin-secret': 'test-secret' }
+                headers: adminHeaders
             });
             const params = Promise.resolve({ promptName: 'test-prompt' });
             await GET(request, { params });
@@ -111,7 +186,7 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
 
         it('handles decoding of promptName', async () => {
             const request = new Request('http://localhost/api/admin/telemetry/encoded%20name', {
-                headers: { 'x-admin-secret': 'test-secret' }
+                headers: adminHeaders
             });
             const params = Promise.resolve({ promptName: 'encoded%20name' });
             await GET(request, { params });
@@ -121,7 +196,7 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
 
         it('filters reviewed examples by quality', async () => {
             const request = new Request('http://localhost/api/admin/telemetry/test-prompt?quality=good&examples=true', {
-                headers: { 'x-admin-secret': 'test-secret' }
+                headers: adminHeaders
             });
             const params = Promise.resolve({ promptName: 'test-prompt' });
             const response = await GET(request, { params });
@@ -136,7 +211,7 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
 
         it('rejects invalid quality filters', async () => {
             const request = new Request('http://localhost/api/admin/telemetry/test-prompt?quality=excellent', {
-                headers: { 'x-admin-secret': 'test-secret' }
+                headers: adminHeaders
             });
             const params = Promise.resolve({ promptName: 'test-prompt' });
             const response = await GET(request, { params });
@@ -147,7 +222,7 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
         it('returns 500 on error', async () => {
             getMock.mockRejectedValueOnce(new Error('fail'));
             const request = new Request('http://localhost/api/admin/telemetry/test', {
-                headers: { 'x-admin-secret': 'test-secret' }
+                headers: adminHeaders
             });
             const params = Promise.resolve({ promptName: 'test' });
             const response = await GET(request, { params });
@@ -157,7 +232,7 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
         it('returns 403 in production mode', async () => {
             (process.env as any).NODE_ENV = 'production';
             const request = new Request('http://localhost/api/admin/telemetry/test', {
-                headers: { 'x-admin-secret': 'test-secret' }
+                headers: adminHeaders
             });
             const params = Promise.resolve({ promptName: 'test' });
             const response = await GET(request, { params });
@@ -166,16 +241,16 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
             expect(data.error).toBe('Not available in production');
         });
 
-        it('returns 503 if ADMIN_SECRET is not configured', async () => {
-            delete process.env.ADMIN_SECRET;
+        it('returns 503 if ADMIN_EMAIL is not configured', async () => {
+            delete process.env.ADMIN_EMAIL;
             const request = new Request('http://localhost/api/admin/telemetry/test', {
-                headers: { 'x-admin-secret': 'test-secret' }
+                headers: adminHeaders
             });
             const params = Promise.resolve({ promptName: 'test' });
             const response = await GET(request, { params });
             expect(response.status).toBe(503);
             const data: any = await response.json();
-            expect(data.error).toBe('ADMIN_SECRET is not configured');
+            expect(data.error).toBe('Admin access is not configured');
         });
     });
 
@@ -183,7 +258,7 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
         it('marks a telemetry record as a bad example for prompt iteration', async () => {
             const request = new Request('http://localhost/api/admin/telemetry/test-prompt', {
                 method: 'PATCH',
-                headers: { 'x-admin-secret': 'test-secret' },
+                headers: adminHeaders,
                 body: JSON.stringify({
                     eventId: 'event-1',
                     quality: 'bad',
@@ -220,7 +295,7 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
         it('returns 400 for invalid review payloads', async () => {
             const request = new Request('http://localhost/api/admin/telemetry/test-prompt', {
                 method: 'PATCH',
-                headers: { 'x-admin-secret': 'test-secret' },
+                headers: adminHeaders,
                 body: JSON.stringify({
                     eventId: 'event-1',
                     quality: 'excellent',
@@ -242,7 +317,7 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
             });
             const request = new Request('http://localhost/api/admin/telemetry/test-prompt', {
                 method: 'PATCH',
-                headers: { 'x-admin-secret': 'test-secret' },
+                headers: adminHeaders,
                 body: JSON.stringify({
                     eventId: 'event-1',
                     quality: 'good',
@@ -260,7 +335,7 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
         it('deletes records for specific prompt', async () => {
             const request = new Request('http://localhost/api/admin/telemetry/test-prompt', {
                 method: 'DELETE',
-                headers: { 'x-admin-secret': 'test-secret' }
+                headers: adminHeaders
             });
             const params = Promise.resolve({ promptName: 'test-prompt' });
             const response = await DELETE(request, { params });
@@ -271,10 +346,11 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
             expect(deleteMock).toHaveBeenCalledTimes(2);
         });
 
-        it('returns 401 if unauthorized in DELETE', async () => {
+        it('returns 401 for an invalid bearer token in DELETE', async () => {
+            mockVerifyIdToken.mockRejectedValueOnce(new Error('invalid token'));
             const request = new Request('http://localhost/api/admin/telemetry/test', {
                 method: 'DELETE',
-                headers: { 'x-admin-secret': 'wrong' }
+                headers: { authorization: 'Bearer invalid-token' }
             });
             const params = Promise.resolve({ promptName: 'test' });
             const response = await DELETE(request, { params });
@@ -285,7 +361,7 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
             getMock.mockRejectedValueOnce(new Error('delete fail'));
             const request = new Request('http://localhost/api/admin/telemetry/test', {
                 method: 'DELETE',
-                headers: { 'x-admin-secret': 'test-secret' }
+                headers: adminHeaders
             });
             const params = Promise.resolve({ promptName: 'test' });
             const response = await DELETE(request, { params });
@@ -295,7 +371,7 @@ describe('/api/admin/telemetry/[promptName] Route', () => {
         it('applies version filter in DELETE from query', async () => {
             const request = new Request('http://localhost/api/admin/telemetry/test-prompt?version=v2', {
                 method: 'DELETE',
-                headers: { 'x-admin-secret': 'test-secret' }
+                headers: adminHeaders
             });
             const params = Promise.resolve({ promptName: 'test-prompt' });
             await DELETE(request, { params });

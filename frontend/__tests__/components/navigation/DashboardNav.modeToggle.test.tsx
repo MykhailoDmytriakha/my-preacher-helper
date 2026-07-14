@@ -518,7 +518,7 @@ describe('Feedback integration', () => {
   beforeEach(resetScenario);
   afterAll(() => { process.env = OLD_ENV; });
 
-  it('calls handleSubmitFeedback with user email when feedback is submitted', () => {
+  it('calls handleSubmitFeedback without a client-supplied email', () => {
     pathnameMock = '/dashboard';
     render(
       <TestProviders>
@@ -535,13 +535,12 @@ describe('Feedback integration', () => {
     const submitBtn = screen.getByTestId('mock-feedback-submit');
     fireEvent.click(submitBtn);
 
-    // Assert that handleSubmitFeedback was called correctly with u1 and test@user.com
+    // Identity is derived from the bearer token by the endpoint.
     expect(mockHandleSubmitFeedback).toHaveBeenCalledWith(
       'Test feedback',
       'suggestion',
       ['img1'],
-      'u1',
-      'test@user.com'
+      'u1'
     );
   });
 });

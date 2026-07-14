@@ -1277,8 +1277,12 @@
     "attachImages": "Attach images (optional)",
     "imagesLabel": "Attachments",
     "imageLimitReached": "Maximum 3 images allowed",
+    "invalidImage": "Only PNG, JPEG, and WebP images are supported",
+    "imageTooLarge": "Image is too large (max 3 MB)",
+    "payloadTooLarge": "Feedback is too large for one request. Shorten the message or remove an attachment.",
+    "attachmentBudgetRemaining": "{{amount}} MB attachment budget remaining",
     "removeImage": "Remove image",
-    "imagesNote": "Up to 3 images, max 4 MB each"
+    "imagesNote": "Up to 3 images, max 3 MB each and 4.4 MB total"
   },
   "planEditor": {
     "title": "Plan editor",

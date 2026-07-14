@@ -1,4 +1,8 @@
 import { submitFeedback } from '@/services/feedback.service';
+import {
+    MAX_FEEDBACK_PAYLOAD_BYTES,
+    MAX_FEEDBACK_TEXT_BYTES,
+} from '@/utils/feedbackPayload';
 
 // Mock global fetch
 global.fetch = jest.fn();
@@ -27,8 +31,7 @@ describe('feedback.service', () => {
                 feedbackText: text,
                 feedbackType: type,
                 images,
-                userId,
-                userEmail: ''
+                userId
             })
         });
     });
@@ -46,8 +49,7 @@ describe('feedback.service', () => {
                 feedbackText: text,
                 feedbackType: type,
                 images: [],
-                userId: 'anonymous',
-                userEmail: ''
+                userId: 'anonymous'
             })
         });
     });
@@ -68,5 +70,24 @@ describe('feedback.service', () => {
         });
 
         await expect(submitFeedback('test', 'bug')).rejects.toThrow('Error submitting feedback');
+    });
+
+    test('submitFeedback rejects an oversized serialized payload before fetch', async () => {
+        const twoMiBImage = `data:image/png;base64,${Buffer.alloc(2 * 1024 * 1024).toString('base64')}`;
+
+        await expect(submitFeedback('Two accepted-size images', 'bug', [twoMiBImage, twoMiBImage])).rejects.toThrow(
+            'Feedback payload is too large'
+        );
+        expect(global.fetch).not.toHaveBeenCalled();
+    });
+
+    test('submitFeedback rejects text too large for Firestore before fetch', async () => {
+        const oversizedText = 'x'.repeat(MAX_FEEDBACK_TEXT_BYTES + 1);
+
+        await expect(submitFeedback(oversizedText, 'bug')).rejects.toThrow(
+            'Feedback text is too large'
+        );
+        expect(global.fetch).not.toHaveBeenCalled();
+        expect(MAX_FEEDBACK_TEXT_BYTES).toBeLessThan(MAX_FEEDBACK_PAYLOAD_BYTES);
     });
 });

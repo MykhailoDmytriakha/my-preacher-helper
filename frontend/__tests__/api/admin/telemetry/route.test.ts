@@ -67,20 +67,27 @@ const mockDocs = [
 ];
 
 const getMock = jest.fn().mockResolvedValue({ docs: mockDocs, size: mockDocs.length });
-const collectionMock = jest.fn().mockReturnValue({ get: getMock });
 const batchCommitMock = jest.fn().mockResolvedValue(undefined);
 const deleteMock = jest.fn();
-const batchMock = jest.fn().mockReturnValue({
-    delete: deleteMock,
-    commit: batchCommitMock,
-});
 
 jest.mock('@/config/firebaseAdminConfig', () => ({
+    adminAuth: {
+        verifyIdToken: jest.fn(),
+    },
     adminDb: {
-        collection: collectionMock,
-        batch: batchMock,
+        collection: jest.fn(),
+        batch: jest.fn(),
     },
 }));
+
+const { adminAuth, adminDb } = jest.requireMock('@/config/firebaseAdminConfig') as {
+    adminAuth: { verifyIdToken: jest.Mock };
+    adminDb: { collection: jest.Mock; batch: jest.Mock };
+};
+const mockVerifyIdToken = adminAuth.verifyIdToken;
+const collectionMock = adminDb.collection;
+const batchMock = adminDb.batch;
+const adminHeaders = { authorization: 'Bearer admin-token' };
 
 jest.mock('next/server', () => ({
     NextResponse: {
@@ -97,7 +104,17 @@ describe('/api/admin/telemetry Main Route', () => {
     beforeEach(() => {
         jest.clearAllMocks();
         // Use spread to copy env but allow manual assignment in dev
-        process.env = { ...originalEnv, NODE_ENV: 'development', ADMIN_SECRET: 'test-secret' };
+        process.env = { ...originalEnv, NODE_ENV: 'development', ADMIN_EMAIL: 'owner@example.com' };
+        mockVerifyIdToken.mockResolvedValue({
+            uid: 'admin-uid',
+            email: 'owner@example.com',
+            email_verified: true,
+        });
+        collectionMock.mockReturnValue({ get: getMock });
+        batchMock.mockReturnValue({
+            delete: deleteMock,
+            commit: batchCommitMock,
+        });
     });
 
     afterAll(() => {
@@ -107,26 +124,54 @@ describe('/api/admin/telemetry Main Route', () => {
     describe('Auth Checks', () => {
         // Skipping production check for now as it causes read-only env issues in some environments
 
-        it('returns 503 if ADMIN_SECRET is missing', async () => {
-            delete process.env.ADMIN_SECRET;
+        it('returns 401 if the bearer token is missing', async () => {
             const request = new Request('http://localhost/api/admin/telemetry');
             const response = await GET(request);
-            expect(response.status).toBe(503);
+            expect(response.status).toBe(401);
+            expect(mockVerifyIdToken).not.toHaveBeenCalled();
+            expect(collectionMock).not.toHaveBeenCalled();
         });
 
-        it('returns 401 if unauthorized (wrong secret)', async () => {
+        it('returns 401 if the bearer token is invalid', async () => {
+            mockVerifyIdToken.mockRejectedValueOnce(new Error('invalid token'));
             const request = new Request('http://localhost/api/admin/telemetry', {
-                headers: { 'x-admin-secret': 'wrong' }
+                headers: { authorization: 'Bearer invalid-token' }
             });
             const response = await GET(request);
             expect(response.status).toBe(401);
+            expect(mockVerifyIdToken).toHaveBeenCalledWith('invalid-token', true);
+            expect(collectionMock).not.toHaveBeenCalled();
+        });
+
+        it('returns 403 for an authenticated non-admin email', async () => {
+            mockVerifyIdToken.mockResolvedValueOnce({
+                uid: 'user-uid',
+                email: 'user@example.com',
+                email_verified: true,
+            });
+            const request = new Request('http://localhost/api/admin/telemetry', {
+                headers: { authorization: 'Bearer user-token' }
+            });
+            const response = await GET(request);
+            expect(response.status).toBe(403);
+            expect(collectionMock).not.toHaveBeenCalled();
+        });
+
+        it('rejects the legacy x-admin-secret header by itself', async () => {
+            const request = new Request('http://localhost/api/admin/telemetry', {
+                headers: { 'x-admin-secret': 'test-secret' }
+            });
+            const response = await GET(request);
+            expect(response.status).toBe(401);
+            expect(mockVerifyIdToken).not.toHaveBeenCalled();
+            expect(collectionMock).not.toHaveBeenCalled();
         });
     });
 
     describe('GET summary', () => {
         it('returns grouped summary with metrics', async () => {
             const request = new Request('http://localhost/api/admin/telemetry', {
-                headers: { 'x-admin-secret': 'test-secret' }
+                headers: adminHeaders
             });
             const response = await GET(request);
             const data: any = await response.json();
@@ -148,7 +193,7 @@ describe('/api/admin/telemetry Main Route', () => {
         it('returns 500 on db error', async () => {
             getMock.mockRejectedValueOnce(new Error('db error'));
             const request = new Request('http://localhost/api/admin/telemetry', {
-                headers: { 'x-admin-secret': 'test-secret' }
+                headers: adminHeaders
             });
             const response = await GET(request);
             expect(response.status).toBe(500);
@@ -159,7 +204,7 @@ describe('/api/admin/telemetry Main Route', () => {
         it('deletes all records in batches', async () => {
             const request = new Request('http://localhost/api/admin/telemetry', {
                 method: 'DELETE',
-                headers: { 'x-admin-secret': 'test-secret' }
+                headers: adminHeaders
             });
             const response = await DELETE(request);
             const data: any = await response.json();
@@ -173,7 +218,7 @@ describe('/api/admin/telemetry Main Route', () => {
             getMock.mockRejectedValueOnce(new Error('delete fail'));
             const request = new Request('http://localhost/api/admin/telemetry', {
                 method: 'DELETE',
-                headers: { 'x-admin-secret': 'test-secret' }
+                headers: adminHeaders
             });
             const response = await DELETE(request);
             expect(response.status).toBe(500);
