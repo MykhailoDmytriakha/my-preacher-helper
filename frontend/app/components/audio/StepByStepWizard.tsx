@@ -46,6 +46,7 @@ import {
     TTSVoice,
     SermonSection,
 } from '@/types/audioGeneration.types';
+import { apiClient } from '@/utils/apiClient';
 import { concatenateAudioBlobs } from '@/utils/audioConcat';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { getSortedThoughts } from '@/utils/sermonSorting';
@@ -351,11 +352,12 @@ export default function StepByStepWizard({
         onChunkProgress: (current: number, total: number) => void,
     ): Promise<{ bytes: Uint8Array; filename?: string; mimeType?: string; totalChunks?: number }> => {
         const authHeaders = await getAuthenticatedRequestHeaders();
-        const response = await fetch(`/api/sermons/${sermonId}/audio/generate`, {
+        const response = await apiClient(`/api/sermons/${sermonId}/audio/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...authHeaders },
             body: JSON.stringify(body),
             signal,
+            category: 'audio',
         });
         if (!response.ok || !response.body) {
             const data = await response.json().catch(() => ({}));
@@ -424,7 +426,7 @@ export default function StepByStepWizard({
         setMode(targetMode); // switch the layout to the target source now so loading shows in place
         try {
             const authHeaders = await getAuthenticatedRequestHeaders();
-            const response = await fetch(`/api/sermons/${sermonId}/audio/optimize`, {
+            const response = await apiClient(`/api/sermons/${sermonId}/audio/optimize`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', ...authHeaders },
                 body: JSON.stringify({
@@ -433,6 +435,7 @@ export default function StepByStepWizard({
                     saveToDb: true,
                     useRawText: targetMode === 'raw',
                 }),
+                category: 'ai',
             });
             if (!response.ok) {
                 const data = await response.json();

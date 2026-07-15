@@ -3,7 +3,9 @@ import 'openai/shims/node';
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { Sermon, Insights } from '@/models/models';
+import { isUsageCapReachedError } from '@/services/usageLimits';
 import { generateSermonDirections } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -57,6 +59,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ insights: updatedInsights });
   } catch (error) {
+    if (isUsageCapReachedError(error)) return usageCapResponse(error);
     console.error('Directions route: Error generating possible directions:', error);
     return NextResponse.json({ error: 'Failed to generate possible directions' }, { status: 500 });
   }

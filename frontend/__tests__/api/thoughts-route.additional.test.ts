@@ -1,4 +1,5 @@
 // Additional tests for /api/thoughts route to improve coverage
+import { UsageCapReachedError } from '@/services/usageLimits';
 
 const updateMock = jest.fn();
 const docMock = jest.fn(() => ({ update: updateMock }));
@@ -45,7 +46,10 @@ jest.mock('@/services/userEntitlement.server', () => ({
 }));
 
 jest.mock('@/services/usageLimits.server', () => ({
-  assertTranscriptionUsageAvailable: jest.fn(),
+  createUsageAdmission: jest.fn().mockReturnValue({
+    userId: 'user-1',
+    resources: ['transcription', 'ai'],
+  }),
   consumeTranscriptionSeconds: jest.fn().mockResolvedValue(undefined),
 }));
 
@@ -313,12 +317,16 @@ describe('Thoughts API route additional coverage', () => {
         'transcribed',
         expect.any(Object),
         ['Стих', 'Примеры'],
-        { userId: 'user-1' }
+        {
+          userId: 'user-1',
+          usageAdmission: expect.objectContaining({ userId: 'user-1' }),
+        }
       );
       expect(entitlementService.getUserEntitlementServerSide).toHaveBeenCalledWith('user-1');
-      expect(usageLimits.assertTranscriptionUsageAvailable).toHaveBeenCalledWith(
+      expect(usageLimits.createUsageAdmission).toHaveBeenCalledWith(
+        'user-1',
         { paidTier: 'free' },
-        2,
+        ['transcription', 'ai'],
         expect.any(Date)
       );
       expect(usageLimits.consumeTranscriptionSeconds).toHaveBeenCalledWith(
@@ -326,6 +334,33 @@ describe('Thoughts API route additional coverage', () => {
         2,
         expect.any(Date)
       );
+    });
+
+    it('returns a typed cap envelope and does not persist a thought fallback', async () => {
+      const capError = new UsageCapReachedError(
+        'ai',
+        110,
+        100,
+        110,
+        '2026-08-01T00:00:00.000Z'
+      );
+      generateThoughtStructuredMock.mockRejectedValueOnce(capError);
+
+      const formData = new FormData();
+      formData.append('audio', new Blob(['audio'], { type: 'audio/webm' }));
+      formData.append('sermonId', 'sermon-1');
+      const response = await POST(createFormRequest(formData));
+
+      expect(response.status).toBe(429);
+      await expect(response.json()).resolves.toEqual({
+        code: 'USAGE_CAP_REACHED',
+        resource: 'ai',
+        used: 110,
+        baseLimit: 100,
+        hardCap: 110,
+        resetsAt: '2026-08-01T00:00:00.000Z',
+      });
+      expect(sermonsRepoMock.sermonsRepository.updateSermonData).not.toHaveBeenCalled();
     });
 
     it.each([

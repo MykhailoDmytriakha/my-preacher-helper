@@ -3,6 +3,7 @@ import {
   transcribeAudioWithRetry,
   TranscriptionClientError,
 } from '@/utils/transcriptionRetryClient';
+import { UsageCapReachedError } from '@/services/usageLimits';
 
 jest.mock('@/utils/apiClient', () => ({ apiClient: jest.fn() }));
 jest.mock('@/services/firebaseAuth.service', () => ({
@@ -149,6 +150,25 @@ describe('transcribeAudioWithRetry', () => {
     ).rejects.toMatchObject({ kinds: ['network'] });
 
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('rethrows a typed usage cap without retrying or degrading it to a network error', async () => {
+    const capError = new UsageCapReachedError(
+      'transcription',
+      3960,
+      3600,
+      3960,
+      '2026-08-01T00:00:00.000Z'
+    );
+    const fetchImpl = jest.fn().mockRejectedValue(capError);
+
+    await expect(transcribeAudioWithRetry(blob, {
+      endpoint: '/api/studies/transcribe',
+      fetchImpl,
+      maxRetries: 3,
+      baseDelayMs: 0,
+    })).rejects.toBe(capError);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('retries a bodyless 504 (Vercel timeout) by falling back to HTTP status', async () => {

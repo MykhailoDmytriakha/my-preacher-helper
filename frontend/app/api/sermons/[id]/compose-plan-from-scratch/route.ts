@@ -3,7 +3,9 @@ import 'openai/shims/node';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { ComposePlanApiRequestSchema, ComposedPlanOutlineSchema } from '@/config/schemas/zod';
+import { isUsageCapReachedError } from '@/services/usageLimits';
 import { composePlanFromScratch } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -106,6 +108,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return jsonNoStore({ outline: parsedOutline.data });
   } catch (error: unknown) {
+    if (isUsageCapReachedError(error)) return usageCapResponse(error);
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
     if (message === 'Sermon not found') {
       return jsonNoStore({ error: 'Sermon not found' }, { status: 404 });

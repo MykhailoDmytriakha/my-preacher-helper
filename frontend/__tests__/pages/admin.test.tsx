@@ -93,8 +93,33 @@ describe('Admin Page', () => {
     expect(screen.queryByRole('heading', { name: 'admin.modelDefaults.title' })).not.toBeInTheDocument();
     const fills = screen.getAllByTestId('usage-bar-fill');
     expect(fills).toHaveLength(2);
-    expect(fills[1]).toHaveStyle({ width: '100%' });
+    expect(fills[1]).toHaveStyle({ width: '0%' });
     expect(fills[1]).toHaveClass('bg-blue-600', 'dark:bg-blue-400');
+  });
+
+  it('renders admin AI overage in the grace zone instead of collapsing the bar', async () => {
+    const overageUser = {
+      ...users[0],
+      usage: { ...users[0].usage, aiUsed: 2_600 },
+    };
+    fetchMock.mockResponses(
+      [JSON.stringify({ admin: true }), { status: 200 }],
+      [JSON.stringify({ users: [overageUser] }), { status: 200 }],
+      [JSON.stringify(modelDefaults), { status: 200 }]
+    );
+
+    render(<AdminPage />);
+
+    expect(await screen.findByText('alpha@example.com')).toBeInTheDocument();
+    const fill = screen.getByTestId('usage-bar-fill');
+    expect(fill).toHaveStyle({ width: '94.54545454545455%' });
+    expect(fill).toHaveClass(
+      'bg-gradient-to-r',
+      'from-violet-600',
+      'to-fuchsia-600',
+      'dark:from-violet-500',
+      'dark:to-fuchsia-500'
+    );
   });
 
   it('opens a drawer and prefills the edit form after clicking a row', async () => {

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import Tooltip from '@/components/ui/Tooltip';
 import UsageBar from '@/components/usage/UsageBar';
+import { UsageHardCapNotice } from '@/components/usage/UsageGraceIndicator';
 import { useUserEntitlement } from '@/hooks/useUserEntitlement';
 
 import type { User } from 'firebase/auth';
@@ -12,6 +13,12 @@ import type { User } from 'firebase/auth';
 interface UsageWidgetProps {
   user: User | null;
 }
+
+const formatMinutes = (seconds: number): string => {
+  const safeSeconds = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+  const roundedMinutes = Math.round(safeSeconds / 60);
+  return safeSeconds > 0 && roundedMinutes === 0 ? '<1' : String(roundedMinutes);
+};
 
 export default function UsageWidget({ user }: UsageWidgetProps) {
   const { t } = useTranslation();
@@ -35,6 +42,19 @@ export default function UsageWidget({ user }: UsageWidgetProps) {
   const tierLabel = entitlement.effectiveTier === 'free'
     ? t('settings.usage.tier.free')
     : t('settings.usage.tier.paid', { tier: entitlement.effectiveTier.replace('tier', '') });
+  const aiUsage = entitlement.usage.ai;
+  const transcriptionUsage = entitlement.usage.transcription;
+  const audioUsage = entitlement.usage.audio;
+  const blockedUsage = [aiUsage, transcriptionUsage, audioUsage]
+    .find((usage) => usage.state === 'blocked');
+  const transcriptionValue = t('settings.usage.minutesOfLimit', {
+    used: formatMinutes(transcriptionUsage.used),
+    limit: Math.round(transcriptionUsage.baseLimit / 60),
+  });
+  const audioValue = t('settings.usage.minutesOfLimit', {
+    used: formatMinutes(audioUsage.used),
+    limit: Math.round(audioUsage.baseLimit / 60),
+  });
 
   return (
     <section className="rounded-[14px] bg-white p-4 shadow-sm dark:bg-slate-800 md:p-6" aria-labelledby="usage-widget-title">
@@ -49,7 +69,7 @@ export default function UsageWidget({ user }: UsageWidgetProps) {
       <dl className="mt-4 space-y-4">
         <div>
           <dt className="flex items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-400">
-            {t('settings.usage.aiRemaining')}
+            {t('settings.usage.aiUsage')}
             <Tooltip content={t('settings.usage.aiInfo')}>
               <button
                 type="button"
@@ -60,27 +80,44 @@ export default function UsageWidget({ user }: UsageWidgetProps) {
               </button>
             </Tooltip>
           </dt>
-          <dd className="sr-only">{entitlement.usage.aiRemaining}</dd>
-          <UsageBar
-            limit={entitlement.usage.aiLimit}
-            remaining={entitlement.usage.aiRemaining}
-            size="full"
-          />
+          <dd>
+            <UsageBar
+              baseLimit={aiUsage.baseLimit}
+              hardCap={aiUsage.hardCap}
+              size="full"
+              state={aiUsage.state}
+              used={aiUsage.used}
+            />
+          </dd>
         </div>
         <div>
-          <dt className="text-sm text-slate-600 dark:text-slate-400">{t('settings.usage.transcriptionRemaining')}</dt>
-          <dd className="sr-only">{t('settings.usage.transcriptionSeconds', { count: entitlement.usage.transcriptionSecondsRemaining })}</dd>
-          <UsageBar
-            limit={entitlement.usage.transcriptionSecondsLimit}
-            remaining={entitlement.usage.transcriptionSecondsRemaining}
-            size="full"
-          />
+          <dt className="text-sm text-slate-600 dark:text-slate-400">{t('settings.usage.speechRecognition')}</dt>
+          <dd>
+            <UsageBar
+              baseLimit={transcriptionUsage.baseLimit}
+              hardCap={transcriptionUsage.hardCap}
+              size="full"
+              state={transcriptionUsage.state}
+              used={transcriptionUsage.used}
+              valueLabel={transcriptionValue}
+            />
+          </dd>
         </div>
-        <div className="flex items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-400">
-          <dt>{t('settings.usage.audioGenerated')}</dt>
-          <dd>{t('settings.usage.audioSeconds', { count: entitlement.usage.audioSecondsUsed })}</dd>
+        <div>
+          <dt className="text-sm text-slate-600 dark:text-slate-400">{t('settings.usage.audio')}</dt>
+          <dd>
+            <UsageBar
+              baseLimit={audioUsage.baseLimit}
+              hardCap={audioUsage.hardCap}
+              size="full"
+              state={audioUsage.state}
+              used={audioUsage.used}
+              valueLabel={audioValue}
+            />
+          </dd>
         </div>
       </dl>
+      {blockedUsage && <UsageHardCapNotice resetsAt={blockedUsage.resetsAt} />}
     </section>
   );
 }

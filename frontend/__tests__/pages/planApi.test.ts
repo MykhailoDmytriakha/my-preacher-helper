@@ -1,27 +1,28 @@
 import { generatePlanPointContent, saveSermonPlan } from "@/(pages)/(private)/sermons/[id]/plan/planApi";
+import { apiClient } from '@/utils/apiClient';
 import type { Plan } from "@/models/models";
 
+jest.mock('@/utils/apiClient', () => ({ apiClient: jest.fn() }));
 jest.mock('@/utils/authenticatedRequest', () => ({
   getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
 }));
 
 describe("planApi", () => {
-  const originalFetch = global.fetch;
+  const mockedApiClient = apiClient as jest.MockedFunction<typeof apiClient>;
 
   beforeEach(() => {
-    global.fetch = jest.fn();
+    jest.clearAllMocks();
   });
 
   afterEach(() => {
-    global.fetch = originalFetch;
     jest.clearAllMocks();
   });
 
   it("maps generate response payload to content string", async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    mockedApiClient.mockResolvedValue({
       ok: true,
       json: async () => ({ content: "Generated text" }),
-    });
+    } as Response);
 
     const response = await generatePlanPointContent({
       sermonId: "sermon-1",
@@ -30,10 +31,11 @@ describe("planApi", () => {
     });
 
     expect(response).toEqual({ content: "Generated text" });
-    const [url, options] = (global.fetch as jest.Mock).mock.calls[0];
+    const [url, options] = mockedApiClient.mock.calls[0];
     expect(options).toEqual({
       cache: "no-store",
       headers: { Authorization: 'Bearer test-token' },
+      category: 'ai',
     });
     expect(url).toEqual(expect.stringContaining("/api/sermons/sermon-1/plan?"));
     const parsedUrl = new URL(url, "http://localhost");
@@ -44,10 +46,10 @@ describe("planApi", () => {
   });
 
   it("throws when generate request returns non-ok status", async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    mockedApiClient.mockResolvedValue({
       ok: false,
       status: 500,
-    });
+    } as Response);
 
     await expect(
       generatePlanPointContent({
@@ -59,10 +61,10 @@ describe("planApi", () => {
   });
 
   it("throws when generate response payload has no content field", async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    mockedApiClient.mockResolvedValue({
       ok: true,
       json: async () => ({ wrong: "shape" }),
-    });
+    } as Response);
 
     await expect(
       generatePlanPointContent({
@@ -74,9 +76,9 @@ describe("planApi", () => {
   });
 
   it("sends PUT request with serialized plan payload", async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    mockedApiClient.mockResolvedValue({
       ok: true,
-    });
+    } as Response);
 
     const plan: Plan = {
       introduction: { outline: "Intro", outlinePoints: { p1: "A" } },
@@ -89,7 +91,7 @@ describe("planApi", () => {
       plan,
     });
 
-    expect(global.fetch).toHaveBeenCalledWith("/api/sermons/sermon-1/plan", {
+    expect(mockedApiClient).toHaveBeenCalledWith("/api/sermons/sermon-1/plan", {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -100,10 +102,10 @@ describe("planApi", () => {
   });
 
   it("throws when save request returns non-ok status", async () => {
-    (global.fetch as jest.Mock).mockResolvedValue({
+    mockedApiClient.mockResolvedValue({
       ok: false,
       status: 400,
-    });
+    } as Response);
 
     await expect(
       saveSermonPlan({

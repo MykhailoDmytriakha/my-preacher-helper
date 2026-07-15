@@ -6,6 +6,7 @@
  */
 import { polishTranscription } from '@clients/polishTranscription.structured';
 import * as structuredOutput from '@clients/structuredOutput';
+import { UsageCapReachedError } from '@/services/usageLimits';
 
 // Mock the structuredOutput module
 jest.mock('@clients/structuredOutput', () => ({
@@ -182,6 +183,19 @@ describe('polishTranscription', () => {
         expect(result.success).toBe(false);
         expect(result.polishedText).toBeNull();
         expect(result.error).toBe('Network error');
+    });
+
+    it('does not turn a usage cap into an unpolished success fallback', async () => {
+        const capError = new UsageCapReachedError(
+            'ai',
+            110,
+            100,
+            110,
+            '2026-08-01T00:00:00.000Z'
+        );
+        (structuredOutput.callWithStructuredOutput as jest.Mock).mockRejectedValue(capError);
+
+        await expect(polishTranscription('Some transcription')).rejects.toBe(capError);
     });
 
     it('should handle no data in response', async () => {

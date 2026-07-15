@@ -2,6 +2,8 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import CreateThoughtModal from '@/components/CreateThoughtModal';
+import { UsageCapReachedError } from '@/services/usageLimits';
+import { transcribeAudioWithRetry } from '@/utils/transcriptionRetryClient';
 
 // Mock RichMarkdownEditor with a textarea shim (TipTap doesn't work in JSDOM)
 jest.mock('@components/ui/RichMarkdownEditor', () => ({
@@ -39,9 +41,15 @@ jest.mock('@services/thought.service', () => ({
 }));
 
 jest.mock('@components/FocusRecorderButton', () => ({
-    FocusRecorderButton: ({ disabled, onError }: any) => (
+    FocusRecorderButton: ({ disabled, onError, onRecordingComplete, onRetry, transcriptionError }: any) => (
         <div>
-            <button data-testid="focus-recorder" disabled={disabled}>Record</button>
+            <button
+                data-testid="focus-recorder"
+                disabled={disabled}
+                onClick={() => onRecordingComplete?.(new Blob(['audio'], { type: 'audio/webm' }))}
+            >
+                Record
+            </button>
             <button
                 data-testid="focus-recorder-error"
                 disabled={disabled}
@@ -49,9 +57,19 @@ jest.mock('@components/FocusRecorderButton', () => ({
             >
                 Recorder Error
             </button>
+            <button data-testid="focus-recorder-retry" onClick={() => onRetry?.()}>Retry</button>
+            {transcriptionError ? <span>{transcriptionError}</span> : null}
         </div>
     ),
 }));
+
+jest.mock('@/utils/transcriptionRetryClient', () => {
+    const actual = jest.requireActual('@/utils/transcriptionRetryClient');
+    return {
+        ...actual,
+        transcribeAudioWithRetry: jest.fn(),
+    };
+});
 
 jest.mock('@utils/tagUtils', () => ({
     isStructureTag: jest.fn(() => false),
@@ -61,6 +79,8 @@ jest.mock('@utils/tagUtils', () => ({
 }));
 
 import { toast } from 'sonner';
+
+const mockTranscribeAudioWithRetry = transcribeAudioWithRetry as jest.MockedFunction<typeof transcribeAudioWithRetry>;
 
 const defaultProps = {
     isOpen: true,
@@ -195,6 +215,27 @@ describe('CreateThoughtModal', () => {
         render(<CreateThoughtModal {...defaultProps} />);
         fireEvent.click(screen.getByTestId('focus-recorder-error'));
         expect(toast.error).toHaveBeenCalledWith('Recorder failed');
+    });
+
+    it('lets the global handler own usage-cap errors without raw UI or a recovery blob', async () => {
+        const capError = new UsageCapReachedError(
+            'transcription',
+            3960,
+            3600,
+            3960,
+            '2026-08-01T00:00:00.000Z'
+        );
+        mockTranscribeAudioWithRetry.mockRejectedValueOnce(capError);
+
+        render(<CreateThoughtModal {...defaultProps} />);
+        fireEvent.click(screen.getByTestId('focus-recorder'));
+
+        await waitFor(() => expect(mockTranscribeAudioWithRetry).toHaveBeenCalledTimes(1));
+        expect(toast.error).not.toHaveBeenCalledWith(capError.message);
+        expect(screen.queryByText(capError.message)).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByTestId('focus-recorder-retry'));
+        expect(mockTranscribeAudioWithRetry).toHaveBeenCalledTimes(1);
     });
 
     it('renders grouped outline point options for non-empty sections', () => {

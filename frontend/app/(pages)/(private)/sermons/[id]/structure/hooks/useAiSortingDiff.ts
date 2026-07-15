@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { Item, SermonPoint, Thought, Sermon, ThoughtsBySection } from "@/models/models";
 import { sortItemsWithAI } from "@/services/sortAI.service";
+import { isUsageCapReachedError } from "@/services/usageLimits";
 import {
   MAX_AI_SORT_ITEMS,
   AiSortDisabledReason,
@@ -392,6 +393,10 @@ export const useAiSortingDiff = ({
         t,
       });
     } catch (error) {
+      if (isUsageCapReachedError(error)) {
+        setPreSortState(null);
+        return;
+      }
       notifyAiSortError(error, t);
       setPreSortState(null);
     } finally {

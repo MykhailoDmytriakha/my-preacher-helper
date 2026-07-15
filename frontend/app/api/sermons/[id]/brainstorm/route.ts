@@ -3,7 +3,9 @@ import 'openai/shims/node';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { Sermon } from '@/models/models';
+import { isUsageCapReachedError } from '@/services/usageLimits';
 import { generateBrainstormSuggestion } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -45,6 +47,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return NextResponse.json({ suggestion });
   } catch (error: unknown) {
+    if (isUsageCapReachedError(error)) return usageCapResponse(error);
     console.error("Brainstorm route: Error generating brainstorm suggestion:", error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return NextResponse.json(

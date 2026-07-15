@@ -3,6 +3,8 @@ import 'openai/shims/node';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { usageCapResponse } from '@/api/errors/usageCapResponse';
+import { isUsageCapReachedError } from '@/services/usageLimits';
 import { generateSermonPoints } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -45,6 +47,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return NextResponse.json({ outlinePoints });
   } catch (error: unknown) {
+    if (isUsageCapReachedError(error)) return usageCapResponse(error);
     console.error("Error generating outline points:", error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     return NextResponse.json(

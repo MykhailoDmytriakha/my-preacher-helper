@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
 import { Sermon, Plan } from "@/models/models";
+import { isUsageCapReachedError } from "@/services/usageLimits";
 import { debugLog } from "@/utils/debugMode";
 
 import { buildSectionOutlineMarkdown } from "./buildSectionOutlineMarkdown";
@@ -79,6 +80,7 @@ export default function usePlanActions({
       toast.success(t("plan.contentGenerated"));
     } catch (error) {
       debugLog("Plan generate failed", { sermonId: sermon.id, outlinePointId, error });
+      if (isUsageCapReachedError(error)) return;
       toast.error(t("errors.failedToGenerateContent"));
     } finally {
       setGeneratingIds((prev) => {

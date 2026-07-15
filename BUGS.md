@@ -63,6 +63,7 @@
 ---
 
 ## ✅ Недавно исправлено (кратко; детали — git-история + память)
+- **F7 STAGE C usage-cap UX review (2026-07-15, P2/P3, НЕ закоммичено):** 7 local UI catch больше не показывают generic/raw сообщение поверх глобального тёплого hard-cap toast; voice recovery blob/draft не создаётся на cap; `UsageGraceController` сохраняет предыдущее состояние через transient пустой entitlement snapshot и сбрасывает его только при смене uid/sign-out. Якоря: `CreateThoughtModal.tsx:102`, `studies/[id]/page.tsx:304,349`, `UsageGraceIndicator.tsx:73`; 7 suites / 84 tests, tsc 0, ESLint 0 errors.
 - **Track A эпика fix-all-bugs (2026-07-14, НЕ закоммичено):** B1 escape всех user-полей в письме · B2 email из верифиц. токена · B3 image/payload client+server guard · B4 feedback rate-limit (sliding-window) · B5 admin/telemetry `requireAdminEmail`. tsc 0 · lint 0 err · test:fast 3709.
 - **Deploy S2 app-wide auth hardening (2026-07-14):** bearer→uid(401)+ownership(403)+метринг по uid на ~47 AI/mutation-роутах; studies/analyze; feedback POST auth; materials↔notes cross-write; sermon DELETE series-cleanup атомарность (residual read-isolation → см. RMW-класс выше). Сводка → [[project_appwide_auth_hardening]].
 - **UI/i18n серия (ранее):** БАГ-1..15 — переводы статов/счётчиков, русская плюрализация, локализация дат, line-clamp сниппетов, порядок плана в мобильном, цветовой тинт карточек серий, предзаполнение форм. Все закрыты, детали в git.

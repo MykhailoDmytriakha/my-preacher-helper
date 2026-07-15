@@ -1,3 +1,7 @@
+import {
+  notifyUsageRequestSettled,
+  throwIfUsageCapReached,
+} from '@/services/usageCapClient';
 import { debugLog } from '@/utils/debugMode';
 import { fetchWithTimeout, FetchTimeoutError } from '@/utils/fetchWithTimeout';
 
@@ -86,6 +90,7 @@ export async function apiClient(
 
     // Any successful response (even 4xx/5xx) means the server is reachable
     setOnlineStatus(true);
+    await throwIfUsageCapReached(response);
     return response;
   } catch (error: unknown) {
     const err = error as Error & { name?: string };
@@ -105,6 +110,10 @@ export async function apiClient(
     }
 
     throw error;
+  } finally {
+    if (category === 'ai' || category === 'audio') {
+      notifyUsageRequestSettled();
+    }
   }
 }
 

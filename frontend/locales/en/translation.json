@@ -537,9 +537,26 @@
   "usage": {
     "bar": {
       "remainingOfLimit": "{{remaining}} of {{limit}} left",
+      "usedOfLimit": "{{used}} / {{limit}}",
       "percent": "{{pct}}%",
-      "aria": "{{remaining}} of {{limit}} left, {{pct}} percent remaining"
+      "aria": "{{remaining}} of {{limit}} left, {{pct}} percent remaining",
+      "ariaUsed": "{{used}} of {{limit}} used, {{pct}} percent"
     }
+  },
+  "usageGrace": {
+    "indicatorLabel": "View plan usage",
+    "tooltipTitle": "Plan usage",
+    "metrics": {
+      "ai": "AI usage",
+      "transcription": "Speech recognition",
+      "audio": "Audio"
+    },
+    "remainingCount": "{{count}} left",
+    "remainingMinutes": "{{value}} min left",
+    "resetsAt": "renews {{date}}",
+    "graceToast": "You have crossed the monthly boundary — but we are merciful to you. Grace remains with you for a little while longer. If you truly need it, may the Lord bless you.",
+    "hardCap": "This time we have done even more than we could. But it is important to remember others too, so there is enough grace for everyone. Everything will open again {{date}}.",
+    "softExpansion": "If you need more right now, you can expand your plan."
   },
   "settings": {
     "nav": {
@@ -557,12 +574,16 @@
       "admin": "Admin"
     },
     "aiRemaining": "AI usage remaining",
+    "aiUsage": "AI usage",
     "aiInfoLabel": "What consumes AI usage?",
     "aiInfo": "AI usage is consumed when you generate or improve sermon content with AI.",
     "transcriptionRemaining": "Transcription remaining",
+    "speechRecognition": "Speech recognition",
     "transcriptionSeconds": "{{count}} seconds",
     "audioGenerated": "Audio generated",
+    "audio": "Audio",
     "audioSeconds": "{{count}} seconds",
+    "minutesOfLimit": "{{used}} / {{limit}} min",
     "aiUsageExhausted": "Not enough AI usage remaining.",
     "transcriptionUsageExhausted": "Not enough transcription usage remaining."
   },

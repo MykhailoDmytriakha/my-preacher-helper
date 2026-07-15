@@ -6,7 +6,7 @@ import { validateAudioDuration } from '@/utils/server/audioServerUtils';
 
 const mockVerifyIdToken = jest.fn();
 const mockGetUserEntitlementServerSide = jest.fn();
-const mockAssertTranscriptionUsageAvailable = jest.fn();
+const mockCreateUsageAdmission = jest.fn();
 const mockConsumeTranscriptionSeconds = jest.fn();
 
 const RETRYABLE_ERROR_MESSAGE = 'Temporary transcription connection issue. The recording looked valid, but the transcription service connection failed. Please try again.';
@@ -32,7 +32,7 @@ jest.mock('@/services/userEntitlement.server', () => ({
 }));
 
 jest.mock('@/services/usageLimits.server', () => ({
-  assertTranscriptionUsageAvailable: mockAssertTranscriptionUsageAvailable,
+  createUsageAdmission: mockCreateUsageAdmission,
   consumeTranscriptionSeconds: mockConsumeTranscriptionSeconds,
 }));
 
@@ -65,6 +65,10 @@ describe('Studies transcribe route', () => {
     });
     mockVerifyIdToken.mockResolvedValue({ uid: 'study-user-1' });
     mockGetUserEntitlementServerSide.mockResolvedValue({ paidTier: 'free' });
+    mockCreateUsageAdmission.mockReturnValue({
+      userId: 'study-user-1',
+      resources: ['transcription', 'ai'],
+    });
     mockConsumeTranscriptionSeconds.mockResolvedValue(undefined);
   });
 
@@ -76,7 +80,7 @@ describe('Studies transcribe route', () => {
     expect(response.status).toBe(401);
     expect(createTranscription).not.toHaveBeenCalled();
     expect(polishTranscription).not.toHaveBeenCalled();
-    expect(mockAssertTranscriptionUsageAvailable).not.toHaveBeenCalled();
+    expect(mockCreateUsageAdmission).not.toHaveBeenCalled();
   });
 
   it('returns polished study transcription when transcription and polish succeed', async () => {
@@ -96,9 +100,10 @@ describe('Studies transcribe route', () => {
     expect(data.polishedText).toBe('Polished study note');
     expect(data.originalText).toBe('Raw study note');
     expect(createTranscription).toHaveBeenCalledWith(expect.any(Blob), 'study-user-1');
-    expect(mockAssertTranscriptionUsageAvailable).toHaveBeenCalledWith(
+    expect(mockCreateUsageAdmission).toHaveBeenCalledWith(
+      'study-user-1',
       { paidTier: 'free' },
-      2,
+      ['transcription', 'ai'],
       expect.any(Date)
     );
     expect(mockConsumeTranscriptionSeconds).toHaveBeenCalledWith(
@@ -106,7 +111,11 @@ describe('Studies transcribe route', () => {
       2,
       expect.any(Date)
     );
-    expect(polishTranscription).toHaveBeenCalledWith('Raw study note', 'study-user-1');
+    expect(polishTranscription).toHaveBeenCalledWith(
+      'Raw study note',
+      'study-user-1',
+      expect.objectContaining({ userId: 'study-user-1' })
+    );
   });
 
   it('returns retryable 503 when transient transcription errors persist', async () => {

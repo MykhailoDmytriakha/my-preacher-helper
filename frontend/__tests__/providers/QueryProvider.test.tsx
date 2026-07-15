@@ -4,6 +4,7 @@ import React, { useEffect } from 'react';
 import { toast } from 'sonner';
 
 import { QueryProvider, shouldDehydrateMutation } from '@/providers/QueryProvider';
+import { UsageCapReachedError } from '@/services/usageLimits';
 import { createIDBPersister } from '@/utils/queryPersister';
 
 jest.mock('@/utils/queryPersister', () => ({
@@ -11,7 +12,7 @@ jest.mock('@/utils/queryPersister', () => ({
 }));
 
 jest.mock('sonner', () => ({
-  toast: { error: jest.fn() }
+  toast: Object.assign(jest.fn(), { error: jest.fn() })
 }));
 
 const mockCreateIDBPersister = createIDBPersister as jest.MockedFunction<typeof createIDBPersister>;
@@ -93,6 +94,39 @@ describe('QueryProvider', () => {
       expect.stringContaining('session has expired'),
       expect.objectContaining({ id: 'auth-expired-error' })
     );
+  });
+
+  it('shows the hard-cap message globally for a typed mutation error', async () => {
+    mockCreateIDBPersister.mockReturnValue({
+      persistClient: jest.fn(),
+      restoreClient: jest.fn(),
+      removeClient: jest.fn(),
+    });
+    const onReady = jest.fn();
+
+    render(
+      <QueryProvider>
+        <ClientProbe onReady={onReady} />
+      </QueryProvider>
+    );
+
+    await waitFor(() => expect(onReady).toHaveBeenCalled());
+    const client = onReady.mock.calls[0][0];
+    const onError = (client.getMutationCache().config as any).onError;
+    onError(new UsageCapReachedError(
+      'ai',
+      110,
+      100,
+      110,
+      '2026-08-01T00:00:00.000Z'
+    ));
+
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        id: 'usage-hard-cap:ai:2026-08-01T00:00:00.000Z',
+      })
+    ));
   });
 
   describe('shouldDehydrateMutation', () => {

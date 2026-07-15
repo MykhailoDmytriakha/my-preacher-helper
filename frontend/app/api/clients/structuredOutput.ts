@@ -15,12 +15,15 @@ import 'openai/shims/node';
 import { zodResponseFormat } from "openai/helpers/zod";
 import { z } from "zod";
 
+import { isUsageCapReachedError } from "@/services/usageLimits";
+
 import { providerAdapters } from "./ai/providerAdapters";
 import { resolveStructuredTargets, type ModelTarget, type Workload } from "./ai/routing";
 import { emitStructuredTelemetryEvent, TokenUsage } from "./aiTelemetry";
 import { logger, formatDuration } from "./openAIHelpers";
 import { buildSimplePromptBlueprint, PromptBlueprint } from "./promptBuilder";
 
+import type { UsageAdmission } from '@/services/usageLimits.server';
 import type OpenAI from "openai";
 
 const isDebugMode = process.env.DEBUG_MODE === 'true';
@@ -59,6 +62,8 @@ export interface StructuredOutputOptions {
   promptBlueprint?: PromptBlueprint;
   /** Server-trusted owner used to resolve entitlement and TEXT model preferences */
   userId?: string;
+  /** Request-scoped admission created by the owning route for a composite action. */
+  usageAdmission?: UsageAdmission;
 }
 
 async function executeStructuredTarget<T extends z.ZodType>(
@@ -169,7 +174,7 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
       const [
         { getUserEntitlementServerSide },
         { resolveUserTextTargets },
-        { assertAiUsageAvailable, consumeAiUsage },
+        { assertAiUsageAvailable, consumeAiUsage, isUsageAdmitted },
       ] = await Promise.all([
         import('@/services/userEntitlement.server'),
         import('./ai/tierPolicy'),
@@ -179,7 +184,9 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
       const entitlement = await getUserEntitlementServerSide(options.userId, {
         includeTextPreference: true,
       });
-      assertAiUsageAvailable(entitlement, now);
+      if (!isUsageAdmitted(options.usageAdmission, options.userId, 'ai')) {
+        assertAiUsageAvailable(entitlement, now);
+      }
       targets = await resolveUserTextTargets(entitlement, {
         // Legacy fields remain a fallback for existing user documents.
         providerId: entitlement.preferredText?.providerId ?? entitlement.preferredProviderId,
@@ -305,6 +312,8 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
     };
 
   } catch (error) {
+    if (isUsageCapReachedError(error)) throw error;
+
     const endTime = performance.now();
     const durationMs = endTime - startTime;
     const formattedDuration = formatDuration(durationMs);

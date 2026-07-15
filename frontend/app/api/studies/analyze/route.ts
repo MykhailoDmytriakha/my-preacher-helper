@@ -3,6 +3,8 @@ import 'openai/shims/node';
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { usageCapResponse } from '@/api/errors/usageCapResponse';
+import { isUsageCapReachedError } from '@/services/usageLimits';
 import { analyzeStudyNote } from '@clients/studyNote.structured';
 import { studiesRepository } from '@repositories/studies.repository';
 
@@ -120,6 +122,7 @@ export async function POST(request: Request) {
     });
 
   } catch (error) {
+    if (isUsageCapReachedError(error)) return usageCapResponse(error);
     console.error('Studies analyze route: Error', error);
     return NextResponse.json(
       { success: false, error: 'Failed to analyze study note' },

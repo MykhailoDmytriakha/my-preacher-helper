@@ -3,6 +3,8 @@ import 'openai/shims/node';
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { usageCapResponse } from '@/api/errors/usageCapResponse';
+import { isUsageCapReachedError } from '@/services/usageLimits';
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
 import { createApiPerformanceTracker } from '@clients/apiPerformanceTelemetry';
 import { polishTranscription } from '@clients/polishTranscription.structured';
@@ -11,10 +13,6 @@ import {
   mapTranscriptionError,
   type TranscriptionErrorResponse,
 } from '@clients/transcriptionRetry';
-
-const isUsageExhaustedError = (error: unknown): error is Error =>
-  error instanceof Error
-  && (error as Error & { code?: string }).code === 'USAGE_EXHAUSTED';
 
 /**
  * POST /api/thoughts/transcribe
@@ -105,14 +103,19 @@ export async function POST(request: Request) {
     );
     const [
       { getUserEntitlementServerSide },
-      { assertTranscriptionUsageAvailable, consumeTranscriptionSeconds },
+      { createUsageAdmission, consumeTranscriptionSeconds },
     ] = await Promise.all([
       import('@/services/userEntitlement.server'),
       import('@/services/usageLimits.server'),
     ]);
     const now = new Date();
     const entitlement = await getUserEntitlementServerSide(uid);
-    assertTranscriptionUsageAvailable(entitlement, usageSeconds, now);
+    const usageAdmission = createUsageAdmission(
+      uid,
+      entitlement,
+      ['transcription', 'ai'],
+      now
+    );
 
     console.log("Thoughts transcribe route: Starting transcription", {
       fileSize: audioFile.size,
@@ -145,8 +148,8 @@ export async function POST(request: Request) {
     } catch (transcriptionError) {
       console.error("Thoughts transcribe route: Transcription failed:", transcriptionError);
 
-      if (isUsageExhaustedError(transcriptionError)) {
-        return errorResponse(transcriptionError.message, 429);
+      if (isUsageCapReachedError(transcriptionError)) {
+        return usageCapResponse(transcriptionError);
       }
 
       const mappedError = mapTranscriptionError(transcriptionError);
@@ -169,7 +172,7 @@ export async function POST(request: Request) {
     // Step 2: Polish the transcription (remove filler words, fix grammar)
     const polishResult = await tracker.timePhase(
       "polish_transcription",
-      () => polishTranscription(transcriptionText, uid),
+      () => polishTranscription(transcriptionText, uid, usageAdmission),
       {
         transcriptionLength: transcriptionText.length,
       }
@@ -215,8 +218,8 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error('Thoughts transcribe route: Error', error);
-    if (isUsageExhaustedError(error)) {
-      return errorResponse(error.message, 429);
+    if (isUsageCapReachedError(error)) {
+      return usageCapResponse(error);
     }
     tracker.emit({
       status: "error",

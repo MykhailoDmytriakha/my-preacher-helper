@@ -13,10 +13,12 @@ import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.
 import { isFunctionCatalogTarget } from '@/api/clients/ai/functionCatalog';
 import { resolveUserTtsTarget } from '@/api/clients/ai/tierPolicy';
 import { generateChunkAudio } from '@/api/clients/tts.client';
+import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { resolveSections } from '@/api/services/sermonTextService';
 import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { assertAiUsageAvailable, consumeAiUsage, consumeAudioSeconds } from '@/services/usageLimits.server';
+import { isUsageCapReachedError } from '@/services/usageLimits';
+import { createUsageAdmission, consumeAiUsage, consumeAudioSeconds } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide, resolveEffectiveTier } from '@/services/userEntitlement.server';
 import { SERMON_SECTIONS, GOOGLE_TTS_VOICES } from '@/types/audioGeneration.types';
 import { concatenateAudioBlobs, createSilenceBlob } from '@/utils/audioConcat';
@@ -70,10 +72,6 @@ type ErrorEvent = {
 };
 
 type StreamEvent = ProgressEvent | CompleteEvent | ErrorEvent | AudioChunkEvent | DownloadCompleteEvent;
-
-const isUsageExhaustedError = (error: unknown): error is Error =>
-    error instanceof Error
-    && (error as Error & { code?: string }).code === 'USAGE_EXHAUSTED';
 
 // ============================================================================
 // Helper Functions
@@ -354,7 +352,13 @@ export async function POST(
             );
         }
 
-        assertAiUsageAvailable(entitlement, usageNow);
+        if (batchOffset === 0) {
+            createUsageAdmission(uid, entitlement, ['ai', 'audio'], usageNow);
+        } else {
+            // Accepted residual risk: offset is client supplied. We deliberately let
+            // an already-started multi-batch export finish without signed operation
+            // tokens/replay protection; crafted offset>0 can bypass start admission.
+        }
 
         if (provider === 'google') {
             const chunkingMode = GOOGLE_SMALL_CHUNKING ? 'even quality chunks' : `legacy max ${GOOGLE_TTS_MAX_CHUNK_SIZE} chars/request`;
@@ -578,11 +582,8 @@ export async function POST(
         });
     } catch (error) {
         console.error('[TTS] Route error:', error);
-        if (isUsageExhaustedError(error)) {
-            return NextResponse.json(
-                { error: error.message },
-                { status: 429 }
-            );
+        if (isUsageCapReachedError(error)) {
+            return usageCapResponse(error);
         }
         return NextResponse.json(
             { error: error instanceof Error ? error.message : 'Generation failed' },

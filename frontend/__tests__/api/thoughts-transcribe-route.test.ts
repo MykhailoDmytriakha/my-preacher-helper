@@ -3,11 +3,12 @@ import * as thoughtsTranscribeRoute from 'app/api/thoughts/transcribe/route';
 
 import { createTranscription } from '@clients/openAI.client';
 import { polishTranscription } from '@clients/polishTranscription.structured';
+import { UsageCapReachedError } from '@/services/usageLimits';
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
 
 const mockVerifyIdToken = jest.fn();
 const mockGetUserEntitlementServerSide = jest.fn();
-const mockAssertTranscriptionUsageAvailable = jest.fn();
+const mockCreateUsageAdmission = jest.fn();
 const mockConsumeTranscriptionSeconds = jest.fn();
 
 const RETRYABLE_ERROR_MESSAGE = 'Temporary transcription connection issue. The recording looked valid, but the transcription service connection failed. Please try again.';
@@ -33,7 +34,7 @@ jest.mock('@/services/userEntitlement.server', () => ({
 }));
 
 jest.mock('@/services/usageLimits.server', () => ({
-  assertTranscriptionUsageAvailable: mockAssertTranscriptionUsageAvailable,
+  createUsageAdmission: mockCreateUsageAdmission,
   consumeTranscriptionSeconds: mockConsumeTranscriptionSeconds,
 }));
 
@@ -94,6 +95,10 @@ describe('Thoughts transcribe route', () => {
     });
     mockVerifyIdToken.mockResolvedValue({ uid: 'user-1' });
     mockGetUserEntitlementServerSide.mockResolvedValue({ paidTier: 'free' });
+    mockCreateUsageAdmission.mockReturnValue({
+      userId: 'user-1',
+      resources: ['transcription', 'ai'],
+    });
     mockConsumeTranscriptionSeconds.mockResolvedValue(undefined);
   });
 
@@ -114,7 +119,7 @@ describe('Thoughts transcribe route', () => {
     expect(response.status).toBe(401);
     expect(createTranscription).not.toHaveBeenCalled();
     expect(polishTranscription).not.toHaveBeenCalled();
-    expect(mockAssertTranscriptionUsageAvailable).not.toHaveBeenCalled();
+    expect(mockCreateUsageAdmission).not.toHaveBeenCalled();
   });
 
   it('returns 400 when audio is not a Blob', async () => {
@@ -153,7 +158,11 @@ describe('Thoughts transcribe route', () => {
     expect(data.polishedText).toBe('Polished transcription');
     expect(data.originalText).toBe('Raw transcription');
     expect(createTranscription).toHaveBeenCalledWith(expect.any(FakeBlob), 'user-1');
-    expect(polishTranscription).toHaveBeenCalledWith('Raw transcription', 'user-1');
+    expect(polishTranscription).toHaveBeenCalledWith(
+      'Raw transcription',
+      'user-1',
+      expect.objectContaining({ userId: 'user-1' })
+    );
     expect(mockGetUserEntitlementServerSide).toHaveBeenCalledWith('user-1');
     expect(mockConsumeTranscriptionSeconds).toHaveBeenCalledWith(
       'user-1',
@@ -180,9 +189,10 @@ describe('Thoughts transcribe route', () => {
     expect(response.status).toBe(200);
     expect(mockVerifyIdToken).toHaveBeenCalledWith('valid-token');
     expect(mockGetUserEntitlementServerSide).toHaveBeenCalledWith('user-1');
-    expect(mockAssertTranscriptionUsageAvailable).toHaveBeenCalledWith(
+    expect(mockCreateUsageAdmission).toHaveBeenCalledWith(
+      'user-1',
       { paidTier: 'free' },
-      11,
+      ['transcription', 'ai'],
       expect.any(Date)
     );
     expect(mockConsumeTranscriptionSeconds).toHaveBeenCalledWith(
@@ -193,11 +203,14 @@ describe('Thoughts transcribe route', () => {
   });
 
   it('returns 429 before transcription when the verified caller is exhausted', async () => {
-    const exhausted = Object.assign(new Error('Transcription usage limit exhausted'), {
-      code: 'USAGE_EXHAUSTED',
-    });
-    mockAssertTranscriptionUsageAvailable.mockImplementationOnce(() => {
-      throw exhausted;
+    mockCreateUsageAdmission.mockImplementationOnce(() => {
+      throw new UsageCapReachedError(
+        'transcription',
+        3_960,
+        3_600,
+        3_960,
+        '2026-08-01T00:00:00.000Z'
+      );
     });
 
     const request = buildRequest(
@@ -208,7 +221,14 @@ describe('Thoughts transcribe route', () => {
     const data = await response.json();
 
     expect(response.status).toBe(429);
-    expect(data.error).toBe('Transcription usage limit exhausted');
+    expect(data).toEqual({
+      code: 'USAGE_CAP_REACHED',
+      resource: 'transcription',
+      used: 3_960,
+      baseLimit: 3_600,
+      hardCap: 3_960,
+      resetsAt: '2026-08-01T00:00:00.000Z',
+    });
     expect(createTranscription).not.toHaveBeenCalled();
     expect(mockConsumeTranscriptionSeconds).not.toHaveBeenCalled();
   });
@@ -244,6 +264,31 @@ describe('Thoughts transcribe route', () => {
     expect(data.polishedText).toBe('Raw transcription');
     expect(data.originalText).toBe('Raw transcription');
     expect(data.warning).toBe('Could not polish transcription, returning original');
+  });
+
+  it('returns the typed cap envelope instead of raw transcription when polish is capped', async () => {
+    const capError = new UsageCapReachedError(
+      'ai',
+      110,
+      100,
+      110,
+      '2026-08-01T00:00:00.000Z'
+    );
+    (createTranscription as jest.Mock).mockResolvedValue('Raw transcription');
+    (polishTranscription as jest.Mock).mockRejectedValue(capError);
+
+    const request = buildRequest(new FakeBlob([new Uint8Array(1024)]));
+    const response = await thoughtsTranscribeRoute.POST(request as unknown as Request);
+
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toEqual({
+      code: 'USAGE_CAP_REACHED',
+      resource: 'ai',
+      used: 110,
+      baseLimit: 100,
+      hardCap: 110,
+      resetsAt: '2026-08-01T00:00:00.000Z',
+    });
   });
 
   it('returns 400 when transcription is too short', async () => {

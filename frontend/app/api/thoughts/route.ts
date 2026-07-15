@@ -5,8 +5,10 @@ import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { Sermon, Thought } from '@/models/models';
+import { isUsageCapReachedError } from '@/services/usageLimits';
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
 import { sanitizeAvailableThoughtTags, stripStructureTags } from '@/utils/thoughtTagSanitizer';
 import { createApiPerformanceTracker } from '@clients/apiPerformanceTelemetry';
@@ -23,10 +25,6 @@ import { sermonsRepository } from '@repositories/sermons.repository';
 const ERROR_MESSAGES = {
   SERMON_ID_AND_THOUGHT_REQUIRED: 'sermonId and thought are required',
 } as const;
-
-const isUsageExhaustedError = (error: unknown): error is Error =>
-  error instanceof Error
-  && (error as Error & { code?: string }).code === 'USAGE_EXHAUSTED';
 
 function isCompleteThought(thought: Thought): boolean {
   return Boolean(thought.id && thought.text && thought.tags && thought.date);
@@ -194,14 +192,19 @@ async function handleAutoPost(request: Request, uid: string) {
     );
     const [
       { getUserEntitlementServerSide },
-      { assertTranscriptionUsageAvailable, consumeTranscriptionSeconds },
+      { createUsageAdmission, consumeTranscriptionSeconds },
     ] = await Promise.all([
       import('@/services/userEntitlement.server'),
       import('@/services/usageLimits.server'),
     ]);
     const usageNow = new Date();
     const entitlement = await getUserEntitlementServerSide(uid);
-    assertTranscriptionUsageAvailable(entitlement, usageSeconds, usageNow);
+    const usageAdmission = createUsageAdmission(
+      uid,
+      entitlement,
+      ['transcription', 'ai'],
+      usageNow
+    );
 
     const customTagsPromise = tracker.timePhase(
       "fetch_custom_tags",
@@ -233,8 +236,8 @@ async function handleAutoPost(request: Request, uid: string) {
       await consumeTranscriptionSeconds(uid, usageSeconds, usageNow);
     } catch (transcriptionError) {
       console.error("Thoughts route: Transcription failed:", transcriptionError);
-      if (isUsageExhaustedError(transcriptionError)) {
-        return errorResponse(transcriptionError.message, 429);
+      if (isUsageCapReachedError(transcriptionError)) {
+        return usageCapResponse(transcriptionError);
       }
       const mappedError = mapTranscriptionError(transcriptionError);
       if (mappedError) {
@@ -255,7 +258,10 @@ async function handleAutoPost(request: Request, uid: string) {
 
     const generationResult = await tracker.timePhase(
       "generate_thought",
-      () => generateThoughtStructured(transcriptionText, sermon, availableTags, { userId: uid }),
+      () => generateThoughtStructured(transcriptionText, sermon, availableTags, {
+        userId: uid,
+        usageAdmission,
+      }),
       {
         availableTagsCount: availableTags.length,
       }
@@ -312,8 +318,8 @@ async function handleAutoPost(request: Request, uid: string) {
     return NextResponse.json(thought);
   } catch (error) {
     console.error('Thoughts route: Transcription error:', error);
-    if (isUsageExhaustedError(error)) {
-      return errorResponse(error.message, 429);
+    if (isUsageCapReachedError(error)) {
+      return usageCapResponse(error);
     }
     tracker.emit({
       status: "error",

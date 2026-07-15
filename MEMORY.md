@@ -60,6 +60,16 @@
 
 > One-line principles. History in git blame. Newest first.
 
+### 2026-07-15 Global Error Ownership Requires Local Catch Suppression
+**Problem:** A global typed-error handler can show the correct user-facing message while legacy per-call catches still render raw/generic errors, duplicate toasts, or save retry drafts that can only fail again.
+**Solution:** In every UI catch, detect the typed globally-owned error before generic formatting, toast notification, and recovery persistence; keep cleanup in the guard/finally path and regression-test the error through a real component catch.
+**Principle:** Centralizing an error message is incomplete until every downstream catch treats that typed error as already owned.
+
+### 2026-07-15 Composite Quota Actions Need Admission And Non-Degradable Cap Errors
+**Problem:** Per-call quota checks can block retries or later steps of an action that began legitimately, while generic graceful-degradation catches can turn a hard-cap error into a false success.
+**Solution:** Check every required resource once at the trusted route boundary, propagate a request-scoped admission through nested calls, meter every successful call, and rethrow one typed cap error through all fallback wrappers into a message-free machine envelope.
+**Principle:** Quota admission belongs to the user action, but metering belongs to each successful resource use; enforcement errors must never share the ordinary degradation path.
+
 ### 2026-07-14 Transient Attachments And Persisted Text Need Separate Size Budgets
 **Problem:** A request can fit below the hosting gateway limit while its unbounded text still exceeds the database document limit; conversely, individually valid Base64 images can exceed the transport limit in combination.
 **Solution:** Enforce an actual serialized-payload byte cap before the browser fetch and again on the server, keep a decoded per-image cap, add a separate persisted-text byte cap below the database limit, and disclose both per-image and total attachment limits in the UI.

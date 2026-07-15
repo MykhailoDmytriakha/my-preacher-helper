@@ -18,6 +18,7 @@ import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.
 import { generateSermonTransitions } from '@/api/clients/sermonTransitions.client';
 import { optimizeTextForSpeech } from '@/api/clients/speechOptimization.client';
 import { createAudioChunks, EVEN_SPLIT_IDEAL_SIZE, splitTextEvenly } from '@/api/clients/tts.client';
+import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { buildGenerationSegments, type GenerationSegment } from '@/api/services/sermonAudioSegments';
 import {
     SectionKey,
@@ -32,11 +33,15 @@ import {
 } from '@/api/services/sermonTransitions';
 import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { isUsageCapReachedError } from '@/services/usageLimits';
+import { createUsageAdmission } from '@/services/usageLimits.server';
+import { getUserEntitlementServerSide } from '@/services/userEntitlement.server';
 import { SERMON_SECTIONS } from '@/types/audioGeneration.types';
 import { normalizeScriptureReferencesForTts } from '@/utils/scriptureReferenceNormalizer';
 import { GOOGLE_TTS_MAX_CHUNK_SIZE, splitGoogleTextForGeneration } from '@/utils/server/googleTtsChunking';
 
 import type { Sermon } from '@/models/models';
+import type { UsageAdmission } from '@/services/usageLimits.server';
 import type { AudioChunk, SectionSelection } from '@/types/audioGeneration.types';
 
 // ============================================================================
@@ -94,6 +99,9 @@ export async function POST(
         const isAllSections = sectionsToProcess.length === SERMON_SECTIONS.length;
 
         const segments: GenerationSegment[] = buildGenerationSegments(sermon, sectionsToProcess);
+        const usageNow = new Date();
+        const entitlement = await getUserEntitlementServerSide(uid);
+        const usageAdmission = createUsageAdmission(uid, entitlement, ['ai'], usageNow);
 
         // 3. Sequential Generation Loop with Context
         // If filtering, preserve chunks from sections we are NOT re-processing this run.
@@ -110,18 +118,23 @@ export async function POST(
         // be woven BETWEEN the parts (intro → part → bridge → part → … → outro).
         const built = (useRawText && provider === 'google')
             ? buildGoogleRawSegmentBodies(sermon, sectionsToProcess)
-            : await buildSegmentBodies(segments, sermon, provider, useRawText, uid);
+            : await buildSegmentBodies(segments, sermon, provider, useRawText, uid, usageAdmission);
 
         // Generate spoken connective tissue so the narration's structure is audible.
-        // Additive layer: never throws — returns empty transitions on any failure, so
-        // the core audio export still works even if the LLM is unavailable.
+        // Additive layer: ordinary provider failures return empty transitions, while a
+        // usage-cap error must propagate so quota enforcement cannot disappear.
         const now = new Date().toISOString();
         // Continuation runs (a point resuming after a sub-point) carry body but get NO
         // spoken lead-in, so they're excluded from the parts we ask the model to bridge.
         const transitionSegments: TransitionSegment[] = built.segmentBodies
             .filter(s => s.bodyChunks.length > 0 && s.level !== 'continuation')
             .map(({ id, section, title, level }) => ({ id, section, title, level: level as 'point' | 'subpoint' }));
-        const transitions = await generateSermonTransitions(sermon, transitionSegments, uid);
+        const transitions = await generateSermonTransitions(
+            sermon,
+            transitionSegments,
+            uid,
+            usageAdmission
+        );
         console.log(`[OptimizeAPI] Transitions: intro=${transitions.intro ? 'yes' : 'no'}, bridges=${Object.keys(transitions.bridges).length}, outro=${transitions.outro ? 'yes' : 'no'}`);
 
         // Only emit the global opening/closing when their home sections are in scope
@@ -179,6 +192,7 @@ export async function POST(
 
     } catch (error) {
         console.error('Optimize error:', error);
+        if (isUsageCapReachedError(error)) return usageCapResponse(error);
         return NextResponse.json(
             { error: error instanceof Error ? error.message : 'Optimization failed' },
             { status: 500 }
@@ -238,7 +252,8 @@ async function buildSegmentBodies(
     sermon: Sermon,
     provider: 'google' | 'openai',
     useRawText: boolean,
-    userId: string
+    userId: string,
+    usageAdmission: UsageAdmission
 ): Promise<SegmentBuildResult> {
     const segmentBodies: (SegmentBody & { title: string; level: 'point' | 'subpoint' | 'continuation' })[] = [];
     let originalLength = 0;
@@ -280,7 +295,8 @@ async function buildSegmentBodies(
                     sections: segment.section,
                     previousContext: accumulatedContext || undefined
                 },
-                userId
+                userId,
+                usageAdmission
             );
 
             const optimizedTextForTts = normalizeScriptureReferencesForTts(result.optimizedText);

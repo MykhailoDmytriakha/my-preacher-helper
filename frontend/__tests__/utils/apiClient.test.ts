@@ -1,5 +1,7 @@
 import { apiClient, onConnectivityChange, probeConnectivity } from '@/utils/apiClient';
 import { fetchWithTimeout, FetchTimeoutError } from '@/utils/fetchWithTimeout';
+import { subscribeToUsageClientEvents } from '@/services/usageCapClient';
+import { UsageCapReachedError } from '@/services/usageLimits';
 
 // Mock fetchWithTimeout
 jest.mock('@/utils/fetchWithTimeout', () => ({
@@ -107,6 +109,28 @@ describe('apiClient', () => {
 
     const result = await apiClient('http://test.com');
     expect(result.status).toBe(401);
+  });
+
+  it('publishes settlement and throws a typed global hard-cap error for AI responses', async () => {
+    const listener = jest.fn();
+    const unsubscribe = subscribeToUsageClientEvents(listener);
+    (fetchWithTimeout as jest.Mock).mockResolvedValue(new Response(JSON.stringify({
+      code: 'USAGE_CAP_REACHED',
+      resource: 'transcription',
+      used: 3960,
+      baseLimit: 3600,
+      hardCap: 3960,
+      resetsAt: '2026-08-01T00:00:00.000Z',
+    }), { status: 429, headers: { 'Content-Type': 'application/json' } }));
+
+    await expect(apiClient('http://test.com/api/thoughts', { category: 'ai' }))
+      .rejects.toBeInstanceOf(UsageCapReachedError);
+
+    expect(listener.mock.calls.map(([event]) => event.type)).toEqual([
+      'cap-reached',
+      'request-settled',
+    ]);
+    unsubscribe();
   });
 
   describe('probeConnectivity', () => {

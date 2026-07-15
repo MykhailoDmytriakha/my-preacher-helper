@@ -16,6 +16,7 @@ import {
   SortingResponseSchema,
 } from "@/config/schemas/zod";
 import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, DirectionSuggestion, SermonContent, BrainstormSuggestion, SectionHints, SubPoint, SermonOutline } from "@/models/models";
+import { isUsageCapReachedError } from '@/services/usageLimits';
 import { validateAudioBlob, createAudioFile, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 import { normalizeSubPointId } from "@/utils/subPoints";
 
@@ -774,6 +775,7 @@ export async function generatePlanForSection(
     return { plan, success: true };
   } catch (error) {
     console.error(`ERROR: Failed to generate plan for ${section} section:`, error);
+    if (isUsageCapReachedError(error)) throw error;
     // Return empty plan structure on error, but indicate failure
     const emptyPlan: SermonContent = {
       introduction: { outline: '' },
@@ -870,6 +872,7 @@ export async function generateSermonDirections(
     return normalizedDirections;
   } catch (error) {
     console.error("ERROR: Failed to generate sermon direction suggestions:", error);
+    if (isUsageCapReachedError(error)) throw error;
     // Return an empty array on error for consistent handling
     return [];
   }
@@ -1187,6 +1190,7 @@ export async function generatePlanPointContent(
     return { content, success: content.length > 0 };
   } catch (error) {
     console.error(`ERROR: Failed to generate plan for outline point "${outlinePointText}":`, error);
+    if (isUsageCapReachedError(error)) throw error;
     return { content: "", success: false };
   }
 }

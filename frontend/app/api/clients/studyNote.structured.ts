@@ -9,6 +9,7 @@
  * All outputs respect the language of the input note.
  */
 import { StudyNoteAnalysisSchema, StudyNoteAnalysis } from "@/config/schemas/zod";
+import { isUsageCapReachedError } from '@/services/usageLimits';
 
 import { logger } from "./openAIHelpers";
 import { buildSimplePromptBlueprint, detectDominantLanguage } from "./promptBuilder";
@@ -556,6 +557,7 @@ export async function analyzeStudyNote(
     };
 
   } catch (error) {
+    if (isUsageCapReachedError(error)) throw error;
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error('AnalyzeStudyNote', `Failed: ${errorMessage}`);
     return {

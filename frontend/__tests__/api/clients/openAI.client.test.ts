@@ -1,5 +1,6 @@
 import { generateSermonDirections } from '@clients/openAI.client';
 import { Sermon } from '@/models/models';
+import { UsageCapReachedError } from '@/services/usageLimits';
 
 jest.mock('@clients/structuredOutput', () => ({
   callWithStructuredOutput: jest.fn(),
@@ -74,6 +75,19 @@ describe('openAI.client', () => {
 
       const result = await generateSermonDirections(mockSermon);
       expect(result).toEqual([]);
+    });
+
+    it('does not turn a usage cap into an empty directions fallback', async () => {
+      const capError = new UsageCapReachedError(
+        'ai',
+        110,
+        100,
+        110,
+        '2026-08-01T00:00:00.000Z'
+      );
+      getStructuredOutputMock().callWithStructuredOutput.mockRejectedValue(capError);
+
+      await expect(generateSermonDirections(mockSermon)).rejects.toBe(capError);
     });
   });
 });

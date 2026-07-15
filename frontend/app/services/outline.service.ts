@@ -3,6 +3,7 @@ import {
   getSermonOutlineViaClient,
   updateSermonOutlineViaClient,
 } from '@/services/sermons.client';
+import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
@@ -47,14 +48,15 @@ export const generateSermonPointsForSection = async (
       return [];
     }
     const authHeaders = await getAuthenticatedRequestHeaders();
-    const response = await fetch(`${API_BASE}/api/sermons/${sermonId}/generate-outline-points`, {
+    const response = await apiClient(`${API_BASE}/api/sermons/${sermonId}/generate-outline-points`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
         ...authHeaders,
       },
-      body: JSON.stringify({ section })
+      body: JSON.stringify({ section }),
+      category: 'ai',
     });
 
     if (!response.ok) {

@@ -1,7 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import React from 'react';
 
 import UsageBar from '@/components/usage/UsageBar';
+
+import type { UsageState } from '@/services/usageLimits';
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -11,24 +13,57 @@ jest.mock('react-i18next', () => ({
 
 describe('UsageBar', () => {
   it.each([
-    ['full and healthy', 100, 100, '100%', 'bg-blue-600'],
-    ['low', 20, 100, '20%', 'bg-amber-500'],
-    ['empty', 0, 100, '0%', 'bg-rose-500'],
-  ])('renders a %s remaining fill with the matching tone', (_label, remaining, limit, width, tone) => {
-    render(<UsageBar limit={limit} remaining={remaining} />);
+    ['normal', 40, 100, 110, 'normal', '36.36363636363637%', 'bg-blue-600'],
+    ['warning', 80, 100, 110, 'warning', '72.72727272727273%', 'bg-amber-500'],
+    ['grace', 105, 100, 110, 'grace', '95.45454545454545%', 'from-violet-600'],
+    ['blocked overage', 115, 100, 110, 'blocked', '100%', 'to-fuchsia-600'],
+  ])('renders the %s snapshot with the matching tone', (
+    _label,
+    used,
+    baseLimit,
+    hardCap,
+    state,
+    width,
+    tone
+  ) => {
+    render(
+      <UsageBar
+        baseLimit={baseLimit}
+        hardCap={hardCap}
+        state={state as UsageState}
+        used={used}
+      />
+    );
 
-    const bar = screen.getByRole('progressbar');
     const fill = screen.getByTestId('usage-bar-fill');
-    expect(bar).toHaveAttribute('aria-valuenow', width.slice(0, -1));
     expect(fill).toHaveStyle({ width });
     expect(fill).toHaveClass(tone);
+    expect(screen.getByTestId('usage-bar-base-limit')).toHaveStyle({ left: '90.9090909090909%' });
   });
 
-  it('keeps an over-limit admin counter visually and verbally empty', () => {
-    render(<UsageBar limit={100} remaining={-5} size="compact" />);
+  it('places the used value on the left and the base percentage on the right', () => {
+    render(<UsageBar baseLimit={100} hardCap={110} state="grace" used={105} />);
 
-    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
-    expect(screen.getByTestId('usage-bar-fill')).toHaveStyle({ width: '0%' });
-    expect(screen.getByText('usage.bar.remainingOfLimit:{"remaining":0,"limit":100}')).toBeInTheDocument();
+    const labels = within(screen.getByRole('progressbar')).getByTestId('usage-bar-labels');
+    const [value, percentage] = Array.from(labels.children);
+
+    expect(value).toHaveTextContent('usage.bar.usedOfLimit:{"used":105,"limit":100}');
+    expect(percentage).toHaveTextContent('usage.bar.percent:{"pct":105}');
+    expect(value.compareDocumentPosition(percentage) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('supports a formatted value without changing the raw percentage', () => {
+    render(
+      <UsageBar
+        baseLimit={1200}
+        hardCap={1320}
+        state="normal"
+        used={20}
+        valueLabel="&lt;1 / 20 min"
+      />
+    );
+
+    expect(screen.getByText('<1 / 20 min')).toBeInTheDocument();
+    expect(screen.getByText('usage.bar.percent:{"pct":2}')).toBeInTheDocument();
   });
 });

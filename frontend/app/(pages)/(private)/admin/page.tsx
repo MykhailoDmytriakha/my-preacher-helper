@@ -14,12 +14,14 @@ import LanguageInitializer from '@/components/navigation/LanguageInitializer';
 import UsageBar from '@/components/usage/UsageBar';
 import { TIER_VALUES, Tier, UserEntitlement } from '@/models/models';
 import { auth } from '@/services/firebaseAuth.service';
+import { hardCap } from '@/services/usageLimits';
 import '@locales/i18n';
 
 import type {
   AiFunctionId,
   FunctionModelTarget,
 } from '@/api/clients/ai/functionCatalog';
+import type { UsageState } from '@/services/usageLimits';
 
 type AdminAccessState = 'checking' | 'authorized' | 'unauthorized';
 type AdminSection = 'users' | 'modelDefaults';
@@ -323,10 +325,25 @@ function StatusBadge({ user }: { user: AdminUser }) {
 }
 
 function UsageMiniBar({ user }: { user: AdminUser }) {
-  const limit = AI_USAGE_LIMIT[user.effectiveTier];
+  const baseLimit = AI_USAGE_LIMIT[user.effectiveTier];
+  const cap = hardCap(baseLimit, 'discrete');
+  const used = user.usage.aiUsed;
+  const state: UsageState = used >= cap
+    ? 'blocked'
+    : used >= baseLimit
+      ? 'grace'
+      : used >= baseLimit * 0.8
+        ? 'warning'
+        : 'normal';
 
   return (
-    <UsageBar limit={limit} remaining={limit - user.usage.aiUsed} size="compact" />
+    <UsageBar
+      baseLimit={baseLimit}
+      hardCap={cap}
+      size="compact"
+      state={state}
+      used={used}
+    />
   );
 }
 

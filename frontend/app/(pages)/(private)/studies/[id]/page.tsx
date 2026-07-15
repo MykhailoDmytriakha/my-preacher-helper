@@ -19,6 +19,8 @@ import { useTags } from '@/hooks/useTags';
 import { ScriptureReference, StudyNote } from '@/models/models';
 import { auth } from '@/services/firebaseAuth.service';
 import { deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
+import { isUsageCapReachedError } from '@/services/usageLimits';
+import { apiClient } from '@/utils/apiClient';
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
@@ -263,7 +265,7 @@ function useNoteAIAssistant({
         setIsAnalyzing(true);
         try {
             const token = await auth.currentUser?.getIdToken();
-            const response = await fetch('/api/studies/analyze', {
+            const response = await apiClient('/api/studies/analyze', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -275,6 +277,7 @@ function useNoteAIAssistant({
                     analysisType,
                     studyId: noteId,
                 }),
+                category: 'ai',
             });
             const result = await response.json();
 
@@ -298,7 +301,8 @@ function useNoteAIAssistant({
             }
             await refreshAiUsage();
 
-        } catch {
+        } catch (error) {
+            if (isUsageCapReachedError(error)) return;
             toast.error(t('studiesWorkspace.aiAnalyze.error') || 'Failed to analyze');
         } finally {
             setIsAnalyzing(false);
@@ -343,6 +347,11 @@ function useNoteAIAssistant({
             }
             return true;
         } catch (err) {
+            if (isUsageCapReachedError(err)) {
+                setIsVoiceProcessing(false);
+                return false;
+            }
+
             // Never lose the thought: keep the recording (in-session recovery panel)
             // AND persist it to IndexedDB so it survives a reload / tab close.
             storedVoiceBlobRef.current = audioBlob;

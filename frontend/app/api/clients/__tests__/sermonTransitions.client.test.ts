@@ -15,6 +15,7 @@ jest.mock('@/api/clients/structuredOutput', () => ({
 
 import { generateSermonTransitions } from '@/api/clients/sermonTransitions.client';
 import { EMPTY_TRANSITIONS, type TransitionSegment } from '@/api/services/sermonTransitions';
+import { UsageCapReachedError } from '@/services/usageLimits';
 
 import type { Sermon } from '@/models/models';
 
@@ -67,6 +68,19 @@ describe('generateSermonTransitions', () => {
     it('returns EMPTY transitions when the call throws (LLM unavailable)', async () => {
         mockCall.mockRejectedValue(new Error('network down'));
         await expect(generateSermonTransitions(sermon, segments)).resolves.toEqual(EMPTY_TRANSITIONS);
+    });
+
+    it('does not erase transitions when generation is blocked by the usage cap', async () => {
+        const capError = new UsageCapReachedError(
+            'ai',
+            110,
+            100,
+            110,
+            '2026-08-01T00:00:00.000Z'
+        );
+        mockCall.mockRejectedValue(capError);
+
+        await expect(generateSermonTransitions(sermon, segments)).rejects.toBe(capError);
     });
 
     it('does not call the model when there are no parts', async () => {

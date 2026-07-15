@@ -5,6 +5,7 @@
  * for generating thoughts from transcriptions.
  */
 import { Sermon } from '@/models/models';
+import { UsageCapReachedError } from '@/services/usageLimits';
 import * as structuredOutput from '@clients/structuredOutput';
 import { generateThoughtStructured } from '@clients/thought.structured';
 
@@ -286,15 +287,38 @@ describe('generateThoughtStructured', () => {
         error: null,
       });
 
+    const usageAdmission = {
+      userId: 'user-123',
+      resources: ['ai'] as const,
+    };
     const result = await generateThoughtStructured(
       dictatedText,
       sermonWithMainVerse,
-      availableTags
+      availableTags,
+      { usageAdmission }
     );
 
     expect(structuredOutput.callWithStructuredOutput).toHaveBeenCalledTimes(2);
+    for (const call of (structuredOutput.callWithStructuredOutput as jest.Mock).mock.calls) {
+      expect(call[3]).toEqual(expect.objectContaining({ usageAdmission }));
+    }
     expect(result.meaningSuccessfullyPreserved).toBe(true);
     expect(result.formattedText).toBe('Поиск работы занял чуть больше месяца, и это было большим чудом.');
+  });
+
+  it('does not turn a usage cap into a thought fallback', async () => {
+    const capError = new UsageCapReachedError(
+      'ai',
+      110,
+      100,
+      110,
+      '2026-08-01T00:00:00.000Z'
+    );
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockRejectedValue(capError);
+
+    await expect(
+      generateThoughtStructured('Test transcription', mockSermon, availableTags)
+    ).rejects.toBe(capError);
   });
 
   it('should allow the main sermon reference when the user dictated it', async () => {

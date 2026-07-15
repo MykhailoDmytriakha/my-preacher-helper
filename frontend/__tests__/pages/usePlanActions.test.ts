@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import usePlanActions from "@/(pages)/(private)/sermons/[id]/plan/usePlanActions";
 import { generatePlanPointContent, saveSermonPlan } from "@/(pages)/(private)/sermons/[id]/plan/planApi";
+import { UsageCapReachedError } from "@/services/usageLimits";
 
 jest.mock("sonner", () => ({
   toast: {
@@ -219,6 +220,37 @@ describe("usePlanActions", () => {
 
     expect(mockToast.error).toHaveBeenCalledWith("errors.failedToGenerateContent");
     expect(onGenerated).not.toHaveBeenCalled();
+  });
+
+  it("lets the global handler own usage-cap errors", async () => {
+    mockGeneratePlanPointContent.mockRejectedValue(new UsageCapReachedError(
+      "ai",
+      110,
+      100,
+      110,
+      "2026-08-01T00:00:00.000Z"
+    ));
+
+    const { setGeneratingIds, getState } = createGeneratingIdsHarness();
+    const { result } = renderHook(() =>
+      usePlanActions({
+        sermon,
+        planStyle: "memory",
+        outlineLookup,
+        generatedContent: {},
+        t,
+        setGeneratingIds,
+        onGenerated: jest.fn(),
+        onSaved: jest.fn(),
+      })
+    );
+
+    await act(async () => {
+      await result.current.generateSermonPointContent("p1");
+    });
+
+    expect(mockToast.error).not.toHaveBeenCalledWith("errors.failedToGenerateContent");
+    expect(getState()).toEqual({});
   });
 
   it("shows not-found toast when outline point cannot be resolved", async () => {

@@ -1,4 +1,5 @@
 import { PlanStyle } from "@/api/clients/openAI.client";
+import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 
 import type { Plan } from "@/models/models";
@@ -33,9 +34,10 @@ export async function generatePlanPointContent({
     requestId: createPlanGenerationRequestId(),
   });
   const authHeaders = await getAuthenticatedRequestHeaders();
-  const response = await fetch(`/api/sermons/${sermonId}/plan?${queryParams.toString()}`, {
+  const response = await apiClient(`/api/sermons/${sermonId}/plan?${queryParams.toString()}`, {
     cache: "no-store",
     headers: authHeaders,
+    category: 'ai',
   });
 
   if (!response.ok) {
@@ -55,7 +57,7 @@ export async function saveSermonPlan({
   plan,
 }: SaveSermonPlanParams): Promise<void> {
   const authHeaders = await getAuthenticatedRequestHeaders();
-  const response = await fetch(`/api/sermons/${sermonId}/plan`, {
+  const response = await apiClient(`/api/sermons/${sermonId}/plan`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",

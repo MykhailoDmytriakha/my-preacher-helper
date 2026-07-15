@@ -39,7 +39,10 @@ jest.mock('@/services/userEntitlement.server', () => ({
 }));
 
 jest.mock('@/services/usageLimits.server', () => ({
-  assertTranscriptionUsageAvailable: jest.fn(),
+  createUsageAdmission: jest.fn().mockReturnValue({
+    userId: 'u-1',
+    resources: ['transcription', 'ai'],
+  }),
   consumeTranscriptionSeconds: jest.fn().mockResolvedValue(undefined),
 }));
 

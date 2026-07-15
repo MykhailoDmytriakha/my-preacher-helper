@@ -6,30 +6,42 @@ import {
   resolveEffectiveTier,
 } from '@/services/userEntitlement.server';
 
+import {
+  hardCap,
+  UsageCapReachedError,
+} from './usageLimits';
+
+import type {
+  UsageMetricSnapshot,
+  UsageResource,
+} from './usageLimits';
 import type { UserEntitlement } from '@/models/models';
 
-export type UsageResource = 'ai' | 'transcription';
-
-export class UsageExhaustedError extends Error {
-  readonly code = 'USAGE_EXHAUSTED';
-
-  constructor(readonly resource: UsageResource) {
-    super(`${resource === 'ai' ? 'AI' : 'Transcription'} usage limit exhausted`);
-    this.name = 'UsageExhaustedError';
-  }
-}
+export { UsageCapReachedError } from './usageLimits';
 
 export interface UsageRemaining {
+  ai: UsageMetricSnapshot;
+  transcription: UsageMetricSnapshot;
+  audio: UsageMetricSnapshot;
+  periodResets: boolean;
+  // Compatibility aliases remain until STAGE B migrates every existing UI consumer.
   aiLimit: number;
   aiUsed: number;
   aiRemaining: number;
   transcriptionSecondsLimit: number;
   transcriptionSecondsUsed: number;
   transcriptionSecondsRemaining: number;
+  audioSecondsLimit: number;
   audioSecondsUsed: number;
+  audioSecondsRemaining: number;
   aiBlocked: boolean;
   transcriptionBlocked: boolean;
-  periodResets: boolean;
+  audioBlocked: boolean;
+}
+
+export interface UsageAdmission {
+  readonly userId: string;
+  readonly resources: readonly UsageResource[];
 }
 
 const isPriorCalendarMonth = (periodStart: string, now: Date): boolean => {
@@ -41,6 +53,37 @@ const isPriorCalendarMonth = (periodStart: string, now: Date): boolean => {
   return startMonth < currentMonth;
 };
 
+const getResetsAt = (effectivePeriodStart: string): string => {
+  const start = new Date(effectivePeriodStart);
+  return new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1)).toISOString();
+};
+
+const createMetricSnapshot = (
+  used: number,
+  baseLimit: number,
+  kind: 'discrete' | 'continuous',
+  resetsAt: string
+): UsageMetricSnapshot => {
+  const cap = hardCap(baseLimit, kind);
+  const state = used >= cap
+    ? 'blocked'
+    : used >= baseLimit
+      ? 'grace'
+      : used >= baseLimit * 0.8
+        ? 'warning'
+        : 'normal';
+
+  return {
+    used,
+    baseLimit,
+    hardCap: cap,
+    baseRemaining: Math.max(0, baseLimit - used),
+    graceRemaining: Math.max(0, cap - Math.max(baseLimit, used)),
+    state,
+    resetsAt,
+  };
+};
+
 export function resolveUsageRemaining(
   entitlement: UserEntitlement | null | undefined,
   now: Date
@@ -48,53 +91,95 @@ export function resolveUsageRemaining(
   const limits = TIER_LIMITS[resolveEffectiveTier(entitlement, now)];
   const usage = normalizeEntitlementUsage(entitlement?.usage, now);
   const periodResets = isPriorCalendarMonth(usage.periodStart, now);
+  const effectivePeriodStart = periodResets ? getUsagePeriodStart(now) : usage.periodStart;
+  const resetsAt = getResetsAt(effectivePeriodStart);
   const aiUsed = periodResets ? 0 : usage.aiUsed;
   const transcriptionSecondsUsed = periodResets ? 0 : usage.transcriptionSecondsUsed;
   const audioSecondsUsed = periodResets ? 0 : usage.audioSecondsUsed;
-  const aiRemaining = Math.max(0, limits.aiCallsPerPeriod - aiUsed);
-  const transcriptionSecondsRemaining = Math.max(
-    0,
-    limits.transcriptionSecondsPerPeriod - transcriptionSecondsUsed
+  const ai = createMetricSnapshot(aiUsed, limits.aiCallsPerPeriod, 'discrete', resetsAt);
+  const transcription = createMetricSnapshot(
+    transcriptionSecondsUsed,
+    limits.transcriptionSecondsPerPeriod,
+    'continuous',
+    resetsAt
+  );
+  const audio = createMetricSnapshot(
+    audioSecondsUsed,
+    limits.audioSecondsPerPeriod,
+    'continuous',
+    resetsAt
   );
 
   return {
-    aiLimit: limits.aiCallsPerPeriod,
-    aiUsed,
-    aiRemaining,
-    transcriptionSecondsLimit: limits.transcriptionSecondsPerPeriod,
-    transcriptionSecondsUsed,
-    transcriptionSecondsRemaining,
-    audioSecondsUsed,
-    aiBlocked: aiRemaining <= 0,
-    transcriptionBlocked: transcriptionSecondsRemaining <= 0,
+    ai,
+    transcription,
+    audio,
     periodResets,
+    aiLimit: ai.baseLimit,
+    aiUsed: ai.used,
+    aiRemaining: ai.baseRemaining,
+    transcriptionSecondsLimit: transcription.baseLimit,
+    transcriptionSecondsUsed: transcription.used,
+    transcriptionSecondsRemaining: transcription.baseRemaining,
+    audioSecondsLimit: audio.baseLimit,
+    audioSecondsUsed: audio.used,
+    audioSecondsRemaining: audio.baseRemaining,
+    aiBlocked: ai.state === 'blocked',
+    transcriptionBlocked: transcription.state === 'blocked',
+    audioBlocked: audio.state === 'blocked',
   };
 }
+
+const throwIfBlocked = (resource: UsageResource, metric: UsageMetricSnapshot): void => {
+  if (metric.state === 'blocked') {
+    throw new UsageCapReachedError(
+      resource,
+      metric.used,
+      metric.baseLimit,
+      metric.hardCap,
+      metric.resetsAt
+    );
+  }
+};
 
 export function assertAiUsageAvailable(
   entitlement: UserEntitlement | null | undefined,
   now: Date
 ): void {
-  if (resolveUsageRemaining(entitlement, now).aiBlocked) {
-    throw new UsageExhaustedError('ai');
-  }
+  throwIfBlocked('ai', resolveUsageRemaining(entitlement, now).ai);
 }
 
 export function assertTranscriptionUsageAvailable(
   entitlement: UserEntitlement | null | undefined,
-  seconds: number,
   now: Date
 ): void {
-  const remaining = resolveUsageRemaining(entitlement, now);
-  if (
-    remaining.transcriptionBlocked
-    || !Number.isFinite(seconds)
-    || seconds <= 0
-    || seconds > remaining.transcriptionSecondsRemaining
-  ) {
-    throw new UsageExhaustedError('transcription');
-  }
+  throwIfBlocked('transcription', resolveUsageRemaining(entitlement, now).transcription);
 }
+
+export function assertAudioAvailable(
+  entitlement: UserEntitlement | null | undefined,
+  now: Date
+): void {
+  throwIfBlocked('audio', resolveUsageRemaining(entitlement, now).audio);
+}
+
+/** Checks every resource once at the route boundary and returns an in-memory request admission. */
+export function createUsageAdmission(
+  userId: string,
+  entitlement: UserEntitlement | null | undefined,
+  resources: readonly UsageResource[],
+  now: Date
+): UsageAdmission {
+  const usage = resolveUsageRemaining(entitlement, now);
+  resources.forEach((resource) => throwIfBlocked(resource, usage[resource]));
+  return Object.freeze({ userId, resources: Object.freeze([...new Set(resources)]) });
+}
+
+export const isUsageAdmitted = (
+  admission: UsageAdmission | undefined,
+  userId: string,
+  resource: UsageResource
+): boolean => admission?.userId === userId && admission.resources.includes(resource);
 
 type UsageCounter = 'aiUsed' | 'transcriptionSecondsUsed' | 'audioSecondsUsed';
 

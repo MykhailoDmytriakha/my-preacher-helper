@@ -12,11 +12,13 @@
 
 import { EMPTY_TRANSITIONS } from '@/api/services/sermonTransitions';
 import { SermonTransitionsResponseSchema } from "@/config/schemas/zod";
+import { isUsageCapReachedError } from '@/services/usageLimits';
 
 import { callWithStructuredOutput } from "./structuredOutput";
 
 import type { SermonTransitions, TransitionSegment } from '@/api/services/sermonTransitions';
 import type { Sermon } from '@/models/models';
+import type { UsageAdmission } from '@/services/usageLimits.server';
 
 const SYSTEM_PROMPT = `You are the preacher himself, speaking aloud. You are recording the audio version of your own sermon and you voice the short living words that connect its parts — so a listener who cannot see the outline still feels where they are.
 
@@ -57,7 +59,8 @@ function buildPrompt(sermon: Sermon, segments: TransitionSegment[]): string {
 export async function generateSermonTransitions(
     sermon: Sermon,
     segments: TransitionSegment[],
-    userId: string = sermon.userId
+    userId: string = sermon.userId,
+    usageAdmission?: UsageAdmission
 ): Promise<SermonTransitions> {
     if (segments.length === 0) return EMPTY_TRANSITIONS;
 
@@ -69,6 +72,7 @@ export async function generateSermonTransitions(
             {
                 formatName: "sermon_transitions",
                 userId,
+                usageAdmission,
                 promptName: "sermon_transitions",
                 promptVersion: "v1",
                 logContext: {
@@ -101,6 +105,7 @@ export async function generateSermonTransitions(
             bridges: bridgeMap,
         };
     } catch (error) {
+        if (isUsageCapReachedError(error)) throw error;
         console.warn('[Transitions] generation failed; continuing without transitions', error);
         return EMPTY_TRANSITIONS;
     }

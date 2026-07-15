@@ -2,9 +2,12 @@ import { createInstance } from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
 import { DEFAULT_LANGUAGE } from './constants';
+import enGraceVerses from './en/graceVerses.json';
 import enTranslation from './en/translation.json';
 import { getInitialLanguage } from './getInitialLang';
+import ruGraceVerses from './ru/graceVerses.json';
 import ruTranslation from './ru/translation.json';
+import ukGraceVerses from './uk/graceVerses.json';
 import ukTranslation from './uk/translation.json';
 
 // Get initial language before configuring i18n
@@ -13,9 +16,9 @@ const initialLanguage = typeof window !== 'undefined' ? getInitialLanguage() : D
 // Create a reusable configuration
 const i18nConfig = {
   resources: {
-    en: { translation: enTranslation },
-    ru: { translation: ruTranslation },
-    uk: { translation: ukTranslation }
+    en: { translation: enTranslation, graceVerses: enGraceVerses },
+    ru: { translation: ruTranslation, graceVerses: ruGraceVerses },
+    uk: { translation: ukTranslation, graceVerses: ukGraceVerses }
   },
   lng: initialLanguage, // Use initial language from cookie
   fallbackLng: DEFAULT_LANGUAGE,
@@ -45,4 +48,4 @@ if (typeof window !== 'undefined' && initialLanguage !== i18n.language) {
   }, 0);
 }
 
-export default i18n; 
+export default i18n;

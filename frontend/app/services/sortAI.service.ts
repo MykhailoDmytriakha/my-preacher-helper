@@ -1,6 +1,8 @@
 import { toast } from 'sonner';
 
 import { Item, SermonPoint } from "@/models/models";
+import { isUsageCapReachedError } from '@/services/usageLimits';
+import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
@@ -23,10 +25,11 @@ export const sortItemsWithAI = async (
     console.log(`sortItemsWithAI: Starting AI sort for column ${columnId} with ${items.length} items`);
     const authHeaders = await getAuthenticatedRequestHeaders();
 
-    const response = await fetch(`${API_BASE}/api/sort`, {
+    const response = await apiClient(`${API_BASE}/api/sort`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders },
       body: JSON.stringify({ columnId, items, sermonId, outlinePoints }),
+      category: 'ai',
     });
 
     console.log(`sortItemsWithAI: Received response with status ${response.status}`);
@@ -42,6 +45,7 @@ export const sortItemsWithAI = async (
     return sortedItems;
   } catch (error) {
     console.error("sortItemsWithAI: Error sorting items", error);
+    if (isUsageCapReachedError(error)) throw error;
     // We can't use the useTranslation hook here since this is not a component
     // The error message will be handled by the caller using the translation key
     toast.error("Error sorting items with AI. Please try again.");

@@ -73,6 +73,7 @@ export async function getTierModelPolicy(): Promise<TierModelPolicy> {
 export interface TierLimits {
   aiCallsPerPeriod: number;
   transcriptionSecondsPerPeriod: number;
+  audioSecondsPerPeriod: number;
 }
 
 /**
@@ -80,11 +81,11 @@ export interface TierLimits {
  * users, whose normalized usage starts at zero, are never disabled by default.
  */
 export const TIER_LIMITS: Record<Tier, TierLimits> = {
-  free: { aiCallsPerPeriod: 100, transcriptionSecondsPerPeriod: 3_600 },
-  tier1: { aiCallsPerPeriod: 500, transcriptionSecondsPerPeriod: 18_000 },
-  tier2: { aiCallsPerPeriod: 1_000, transcriptionSecondsPerPeriod: 36_000 },
-  tier3: { aiCallsPerPeriod: 2_500, transcriptionSecondsPerPeriod: 90_000 },
-  tier4: { aiCallsPerPeriod: 5_000, transcriptionSecondsPerPeriod: 180_000 },
+  free: { aiCallsPerPeriod: 100, transcriptionSecondsPerPeriod: 3_600, audioSecondsPerPeriod: 1_200 },
+  tier1: { aiCallsPerPeriod: 500, transcriptionSecondsPerPeriod: 18_000, audioSecondsPerPeriod: 6_000 },
+  tier2: { aiCallsPerPeriod: 1_000, transcriptionSecondsPerPeriod: 36_000, audioSecondsPerPeriod: 12_000 },
+  tier3: { aiCallsPerPeriod: 2_500, transcriptionSecondsPerPeriod: 90_000, audioSecondsPerPeriod: 30_000 },
+  tier4: { aiCallsPerPeriod: 5_000, transcriptionSecondsPerPeriod: 180_000, audioSecondsPerPeriod: 60_000 },
 };
 
 const isSameTarget = (left: ModelTarget, right: ModelTarget): boolean =>

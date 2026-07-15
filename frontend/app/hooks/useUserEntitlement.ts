@@ -1,8 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 
 import type { AiFunctionId, FunctionCatalogEntry } from '@/api/clients/ai/functionCatalog';
+import type { TierLimits } from '@/api/clients/ai/tierPolicy';
 import type { Tier, UserEntitlement } from '@/models/models';
+import type { UsageRemaining } from '@/services/usageLimits.server';
 import type { User } from 'firebase/auth';
+
+export const USER_ENTITLEMENT_QUERY_KEY = ['me', 'entitlement', 'v2'] as const;
 
 export interface UserEntitlementResponse {
   effectiveTier: Tier;
@@ -10,22 +14,8 @@ export interface UserEntitlementResponse {
     available: FunctionCatalogEntry[];
     current: { providerId: FunctionCatalogEntry['providerId']; modelId: string };
   }>;
-  usage: {
-    aiLimit: number;
-    aiUsed: number;
-    aiRemaining: number;
-    transcriptionSecondsLimit: number;
-    transcriptionSecondsUsed: number;
-    transcriptionSecondsRemaining: number;
-    audioSecondsUsed: number;
-    aiBlocked: boolean;
-    transcriptionBlocked: boolean;
-    periodResets: boolean;
-  };
-  limits: {
-    aiCallsPerPeriod: number;
-    transcriptionSecondsPerPeriod: number;
-  };
+  usage: UsageRemaining;
+  limits: TierLimits;
   paidTier: Tier;
   promotion?: UserEntitlement['promotion'];
 }
@@ -45,7 +35,7 @@ export async function fetchUserEntitlement(user: Pick<User, 'getIdToken'>): Prom
 
 export function useUserEntitlement(user: User | null) {
   return useQuery({
-    queryKey: ['me', 'entitlement', user?.uid ?? null],
+    queryKey: [...USER_ENTITLEMENT_QUERY_KEY, user?.uid ?? null],
     queryFn: () => fetchUserEntitlement(user as User),
     enabled: Boolean(user),
   });

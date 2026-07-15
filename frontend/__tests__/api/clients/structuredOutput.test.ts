@@ -17,10 +17,11 @@ const zodResponseFormat = jest.fn(() => ({ mocked: true }));
 const mockGetUserEntitlementServerSide = jest.fn();
 const mockAssertAiUsageAvailable = jest.fn();
 const mockConsumeAiUsage = jest.fn();
+const mockIsUsageAdmitted = jest.fn();
 const mockGetAiModelDefaults = jest.fn();
 
-class MockUsageExhaustedError extends Error {
-  readonly code = 'USAGE_EXHAUSTED';
+class MockUsageCapReachedError extends Error {
+  readonly code = 'USAGE_CAP_REACHED';
 }
 
 jest.mock('openai', () => ({
@@ -65,7 +66,8 @@ jest.mock('@/services/userEntitlement.server', () => ({
 jest.mock('@/services/usageLimits.server', () => ({
   assertAiUsageAvailable: mockAssertAiUsageAvailable,
   consumeAiUsage: mockConsumeAiUsage,
-  UsageExhaustedError: MockUsageExhaustedError,
+  isUsageAdmitted: mockIsUsageAdmitted,
+  UsageCapReachedError: MockUsageCapReachedError,
 }));
 
 jest.mock('@/services/aiModelDefaults.server', () => ({
@@ -99,6 +101,7 @@ describe('structuredOutput client', () => {
     });
     mockGetUserEntitlementServerSide.mockResolvedValue({ paidTier: 'free' });
     mockConsumeAiUsage.mockResolvedValue(undefined);
+    mockIsUsageAdmitted.mockReturnValue(false);
     mockGetAiModelDefaults.mockResolvedValue({
       transcription: { providerId: 'openai', modelId: 'gpt-4o-transcribe' },
       text: { providerId: 'gemini', modelId: 'gemini-3.1-flash-lite-preview' },
@@ -293,24 +296,45 @@ describe('structuredOutput client', () => {
     expect(mockConsumeAiUsage).toHaveBeenCalledWith('free-user', expect.any(Date));
   });
 
-  it('rejects an at-limit user before the provider call and does not count further', async () => {
+  it('rethrows a cap error before the provider call and does not count further', async () => {
     mockGetUserEntitlementServerSide.mockResolvedValueOnce({ paidTier: 'free' });
     mockAssertAiUsageAvailable.mockImplementationOnce(() => {
-      throw new MockUsageExhaustedError('AI usage limit exhausted');
+      throw new MockUsageCapReachedError('AI usage cap reached');
     });
 
     const mod = await import('@/api/clients/structuredOutput');
-    const result = await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+    await expect(mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
       formatName: 'test-format',
       userId: 'at-limit-user',
-    });
-
-    expect(result.success).toBe(false);
-    expect(result.error).toBeInstanceOf(MockUsageExhaustedError);
+    })).rejects.toBeInstanceOf(MockUsageCapReachedError);
     expect(openaiParseMock).not.toHaveBeenCalled();
     expect(geminiParseMock).not.toHaveBeenCalled();
     expect(mockConsumeAiUsage).not.toHaveBeenCalled();
     expect(mockGetUserEntitlementServerSide).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses one request admission across retries while charging each success', async () => {
+    const admission = { userId: 'paid-user', resources: ['ai'] as const };
+    mockIsUsageAdmitted.mockReturnValue(true);
+    geminiParseMock
+      .mockResolvedValueOnce({ choices: [{ message: { parsed: { answer: 'first' } } }] })
+      .mockResolvedValueOnce({ choices: [{ message: { parsed: { answer: 'second' } } }] });
+
+    const mod = await import('@/api/clients/structuredOutput');
+    await mod.callWithStructuredOutput('System prompt', 'First', schema, {
+      formatName: 'test-format',
+      userId: 'paid-user',
+      usageAdmission: admission,
+    });
+    await mod.callWithStructuredOutput('System prompt', 'Second', schema, {
+      formatName: 'test-format',
+      userId: 'paid-user',
+      usageAdmission: admission,
+    });
+
+    expect(mockIsUsageAdmitted).toHaveBeenCalledTimes(2);
+    expect(mockAssertAiUsageAvailable).not.toHaveBeenCalled();
+    expect(mockConsumeAiUsage).toHaveBeenCalledTimes(2);
   });
 
   it('crosses providers after a try-next-target failure', async () => {

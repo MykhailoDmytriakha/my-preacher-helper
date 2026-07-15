@@ -537,9 +537,26 @@
   "usage": {
     "bar": {
       "remainingOfLimit": "Залишилося {{remaining}} з {{limit}}",
+      "usedOfLimit": "{{used}} / {{limit}}",
       "percent": "{{pct}}%",
-      "aria": "Залишилося {{remaining}} з {{limit}}, {{pct}}%"
+      "aria": "Залишилося {{remaining}} з {{limit}}, {{pct}}%",
+      "ariaUsed": "Використано {{used}} з {{limit}}, {{pct}}%"
     }
+  },
+  "usageGrace": {
+    "indicatorLabel": "Переглянути використання плану",
+    "tooltipTitle": "Використання плану",
+    "metrics": {
+      "ai": "Використання AI",
+      "transcription": "Розшифрування мовлення",
+      "audio": "Озвучення"
+    },
+    "remainingCount": "залишилося {{count}}",
+    "remainingMinutes": "залишилося {{value}} хв",
+    "resetsAt": "оновиться {{date}}",
+    "graceToast": "Ви перейшли місячну межу — але ми до вас милостиві. Ще деякий час благодать із вами. Якщо вам це справді потрібно — нехай Господь вас благословить.",
+    "hardCap": "Цього разу ми зробили навіть більше, ніж могли. Але важливо пам'ятати й про інших — щоб благодаті вистачило всім. Усе знову відкриється {{date}}.",
+    "softExpansion": "Якщо потрібно більше вже зараз — можна розширити план."
   },
   "settings": {
     "nav": {
@@ -557,12 +574,16 @@
       "admin": "Адміністратор"
     },
     "aiRemaining": "Залишок AI-використання",
+    "aiUsage": "Використання AI",
     "aiInfoLabel": "Що витрачає AI-використання?",
     "aiInfo": "AI-використання витрачається під час створення або покращення змісту проповіді за допомогою AI.",
     "transcriptionRemaining": "Залишок транскрибування",
+    "speechRecognition": "Розпізнавання мовлення",
     "transcriptionSeconds": "{{count}} секунд",
     "audioGenerated": "Створено аудіо",
+    "audio": "Озвучення",
     "audioSeconds": "{{count}} секунд",
+    "minutesOfLimit": "{{used}} / {{limit}} хв",
     "aiUsageExhausted": "Недостатньо доступного AI-використання.",
     "transcriptionUsageExhausted": "Недостатньо доступного ліміту транскрибування."
   },

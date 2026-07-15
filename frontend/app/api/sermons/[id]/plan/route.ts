@@ -3,7 +3,9 @@ import 'openai/shims/node';
 import { NextRequest, NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { SermonContent, ThoughtInStructure } from '@/models/models';
+import { isUsageCapReachedError } from '@/services/usageLimits';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 import { buildSubPointRenderableEntries, flattenSubPointRenderableEntries, normalizeSubPointId } from '@/utils/subPoints';
 import { generatePlanForSection, generatePlanPointContent, PlanStyle } from '@clients/openAI.client';
@@ -154,6 +156,7 @@ export async function GET(
 
     return jsonNoStore(normalizedPlan);
   } catch (error: unknown) {
+    if (isUsageCapReachedError(error)) return usageCapResponse(error);
     const errorMessage = error instanceof Error ? error.message : ERROR_MESSAGES.UNKNOWN_ERROR;
     console.error(`Error generating plan for section ${section}:`, error);
     return jsonNoStore(
@@ -256,6 +259,7 @@ async function generateSermonPointContent(
 
     return jsonNoStore({ content });
   } catch (error: unknown) {
+    if (isUsageCapReachedError(error)) return usageCapResponse(error);
     console.error(`Error generating content for outline point ${outlinePointId}:`, error);
     return jsonNoStore(
       { error: 'Failed to generate content', details: (error as Error).message },
@@ -331,6 +335,7 @@ export async function PUT(
 
     return jsonNoStore({ success: true, plan: content });
   } catch (error: unknown) {
+    if (isUsageCapReachedError(error)) return usageCapResponse(error);
     const { id } = await params;
     console.error(`Error saving plan for sermon ${id}:`, error);
     return jsonNoStore(

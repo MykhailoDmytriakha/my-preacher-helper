@@ -3,9 +3,9 @@ import { useCallback } from 'react';
 import { useAuth } from '@/providers/AuthProvider';
 
 import { useServerFirstQuery } from './useServerFirstQuery';
-import { fetchUserEntitlement } from './useUserEntitlement';
+import { fetchUserEntitlement, USER_ENTITLEMENT_QUERY_KEY } from './useUserEntitlement';
 
-export const AI_USAGE_QUERY_KEY = ['me', 'entitlement'] as const;
+export const AI_USAGE_QUERY_KEY = USER_ENTITLEMENT_QUERY_KEY;
 
 /**
  * UI-only view of the server-enforced AI allowance.

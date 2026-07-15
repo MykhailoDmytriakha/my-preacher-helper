@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 
 import { Item, SermonPoint, Sermon } from '@/models/models';
 import { sortItemsWithAI } from '@/services/sortAI.service';
+import { UsageCapReachedError } from '@/services/usageLimits';
 import * as aiSortingUtils from '@/utils/aiSorting';
 import { runScenarios } from '@test-utils/scenarioRunner';
 
@@ -231,6 +232,25 @@ describe('useAiSortingDiff', () => {
           expect(mockToast.warning).not.toHaveBeenCalled();
         }
       }
+    });
+
+    it('lets the global handler own usage-cap errors and clears pending sort state', async () => {
+      mockSortItemsWithAI.mockRejectedValueOnce(new UsageCapReachedError(
+        'ai',
+        110,
+        100,
+        110,
+        '2026-08-01T00:00:00.000Z',
+      ));
+      const { result } = renderHook(() => useAiSortingDiff(defaultProps));
+
+      await act(async () => {
+        await result.current.handleAiSort('introduction');
+      });
+
+      expect(mockToast.error).not.toHaveBeenCalled();
+      expect(result.current.preSortState).toBeNull();
+      expect(result.current.isSorting).toBe(false);
     });
   });
 

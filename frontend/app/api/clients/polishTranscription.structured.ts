@@ -9,11 +9,14 @@
  * Used for voice input in Study Notes.
  */
 import { PolishTranscriptionSchema, PolishTranscription } from "@/config/schemas/zod";
+import { isUsageCapReachedError } from '@/services/usageLimits';
 import { normalizeSpokenScriptureReferences } from "@/utils/scriptureReferenceNormalizer";
 
 import { logger } from "./openAIHelpers";
 import { buildSimplePromptBlueprint } from "./promptBuilder";
 import { callWithStructuredOutput, StructuredOutputResult } from "./structuredOutput";
+
+import type { UsageAdmission } from '@/services/usageLimits.server';
 
 const isDebugMode = process.env.DEBUG_MODE === 'true';
 
@@ -97,7 +100,8 @@ Return the transformed text in polishedText and set meaningPreserved to true if 
  */
 export async function polishTranscription(
     transcription: string,
-    userId?: string
+    userId?: string,
+    usageAdmission?: UsageAdmission
 ): Promise<PolishTranscriptionResult> {
     const trimmed = transcription.trim();
 
@@ -137,6 +141,7 @@ export async function polishTranscription(
             {
                 formatName: "polishTranscription",
                 userId,
+                usageAdmission,
                 promptBlueprint,
                 logContext: {
                     transcriptionLength: trimmed.length,
@@ -191,6 +196,7 @@ export async function polishTranscription(
         };
 
     } catch (error) {
+        if (isUsageCapReachedError(error)) throw error;
         const errorMessage = error instanceof Error ? error.message : String(error);
         logger.error('PolishTranscription', `Failed: ${errorMessage}`);
         return {

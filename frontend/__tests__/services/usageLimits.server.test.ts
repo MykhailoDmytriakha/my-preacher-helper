@@ -7,13 +7,14 @@ jest.mock('@/config/firebaseAdminConfig', () => ({
 
 import { TIER_LIMITS } from '@/api/clients/ai/tierPolicy';
 import {
+  assertAudioAvailable,
   assertAiUsageAvailable,
   assertTranscriptionUsageAvailable,
   consumeAiUsage,
   consumeAudioSeconds,
   consumeTranscriptionSeconds,
   resolveUsageRemaining,
-  UsageExhaustedError,
+  UsageCapReachedError,
 } from '@/services/usageLimits.server';
 
 const { adminDb } = jest.requireMock('@/config/firebaseAdminConfig') as {
@@ -72,25 +73,47 @@ describe('usage limits', () => {
     });
   });
 
-  it('blocks exactly at and above the AI limit', () => {
-    const atLimit = {
-      paidTier: 'free' as const,
-      usage: {
-        aiUsed: TIER_LIMITS.free.aiCallsPerPeriod,
-        transcriptionSecondsUsed: 0,
-        audioSecondsUsed: 0,
-        periodStart: currentPeriod,
-      },
-    };
-    const overLimit = {
-      ...atLimit,
-      usage: { ...atLimit.usage, aiUsed: TIER_LIMITS.free.aiCallsPerPeriod + 1 },
-    };
+  it.each([
+    ['ai', 'aiUsed', 100, 110, assertAiUsageAvailable],
+    ['transcription', 'transcriptionSecondsUsed', 3_600, 3_960, assertTranscriptionUsageAvailable],
+    ['audio', 'audioSecondsUsed', 1_200, 1_320, assertAudioAvailable],
+  ] as const)(
+    'applies the grace boundary matrix to %s usage',
+    (resource, counter, baseLimit, cap, assertAvailable) => {
+      const values = [baseLimit - 1, baseLimit, cap - 1, cap, cap + 1];
+      const expectedStates = ['warning', 'grace', 'grace', 'blocked', 'blocked'];
 
-    expect(resolveUsageRemaining(atLimit, now).aiBlocked).toBe(true);
-    expect(resolveUsageRemaining(overLimit, now).aiBlocked).toBe(true);
-    expect(() => assertAiUsageAvailable(atLimit, now)).toThrow(UsageExhaustedError);
-  });
+      values.forEach((used, index) => {
+        const entitlement = {
+          paidTier: 'free' as const,
+          usage: {
+            aiUsed: 0,
+            transcriptionSecondsUsed: 0,
+            audioSecondsUsed: 0,
+            periodStart: currentPeriod,
+            [counter]: used,
+          },
+        };
+        const snapshot = resolveUsageRemaining(entitlement, now)[resource];
+
+        expect(snapshot).toMatchObject({
+          used,
+          baseLimit,
+          hardCap: cap,
+          state: expectedStates[index],
+          resetsAt: '2026-08-01T00:00:00.000Z',
+        });
+        expect(snapshot.baseRemaining).toBe(Math.max(0, baseLimit - used));
+        expect(snapshot.graceRemaining).toBe(Math.max(0, cap - Math.max(baseLimit, used)));
+
+        if (used >= cap) {
+          expect(() => assertAvailable(entitlement, now)).toThrow(UsageCapReachedError);
+        } else {
+          expect(() => assertAvailable(entitlement, now)).not.toThrow();
+        }
+      });
+    }
+  );
 
   it('restores the full period when the stored anchor is in a prior calendar month', () => {
     const remaining = resolveUsageRemaining({
@@ -103,34 +126,26 @@ describe('usage limits', () => {
       },
     }, now);
 
-    expect(remaining).toEqual({
-      aiLimit: TIER_LIMITS.free.aiCallsPerPeriod,
-      aiUsed: 0,
-      aiRemaining: TIER_LIMITS.free.aiCallsPerPeriod,
-      transcriptionSecondsLimit: TIER_LIMITS.free.transcriptionSecondsPerPeriod,
-      transcriptionSecondsUsed: 0,
-      transcriptionSecondsRemaining: TIER_LIMITS.free.transcriptionSecondsPerPeriod,
-      audioSecondsUsed: 0,
-      aiBlocked: false,
-      transcriptionBlocked: false,
+    expect(remaining).toMatchObject({
+      ai: { used: 0, state: 'normal', resetsAt: '2026-08-01T00:00:00.000Z' },
+      transcription: { used: 0, state: 'normal', resetsAt: '2026-08-01T00:00:00.000Z' },
+      audio: { used: 0, state: 'normal', resetsAt: '2026-08-01T00:00:00.000Z' },
       periodResets: true,
     });
   });
 
-  it('rejects a transcription that is larger than the remaining seconds', () => {
+  it('admits a transcription started below hard cap even when it will cross the cap', () => {
     const entitlement = {
       paidTier: 'free' as const,
       usage: {
         aiUsed: 0,
-        transcriptionSecondsUsed: TIER_LIMITS.free.transcriptionSecondsPerPeriod - 2,
+        transcriptionSecondsUsed: 3_959,
         audioSecondsUsed: 0,
         periodStart: currentPeriod,
       },
     };
 
-    expect(() => assertTranscriptionUsageAvailable(entitlement, 3, now))
-      .toThrow(UsageExhaustedError);
-    expect(() => assertTranscriptionUsageAvailable(entitlement, 2, now)).not.toThrow();
+    expect(() => assertTranscriptionUsageAvailable(entitlement, now)).not.toThrow();
   });
 
   it('increments AI usage through an Admin SDK transaction and merge', async () => {

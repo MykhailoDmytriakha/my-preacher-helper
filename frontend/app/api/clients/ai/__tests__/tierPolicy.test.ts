@@ -66,6 +66,18 @@ describe('resolveUserTextTargets', () => {
     }
   });
 
+  it('defines the audio allowance for every tier', () => {
+    expect(Object.fromEntries(
+      Object.entries(TIER_LIMITS).map(([tier, limits]) => [tier, limits.audioSecondsPerPeriod])
+    )).toEqual({
+      free: 1_200,
+      tier1: 6_000,
+      tier2: 12_000,
+      tier3: 30_000,
+      tier4: 60_000,
+    });
+  });
+
   it('does not escalate a free user who stores a paid-model preference', async () => {
     const defaultTarget = getFunctionDefault('text');
     await expect(resolveUserTextTargets(

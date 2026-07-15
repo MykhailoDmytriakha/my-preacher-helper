@@ -17,8 +17,8 @@ jest.mock('@/services/aiModelDefaults.server', () => ({
 
 jest.mock('@/api/clients/ai/tierPolicy', () => ({
   TIER_LIMITS: {
-    free: { aiCallsPerPeriod: 100, transcriptionSecondsPerPeriod: 3600 },
-    tier2: { aiCallsPerPeriod: 1000, transcriptionSecondsPerPeriod: 36000 },
+    free: { aiCallsPerPeriod: 100, transcriptionSecondsPerPeriod: 3600, audioSecondsPerPeriod: 1200 },
+    tier2: { aiCallsPerPeriod: 1000, transcriptionSecondsPerPeriod: 36000, audioSecondsPerPeriod: 12000 },
   },
 }));
 
@@ -50,6 +50,18 @@ const defaultsService = jest.requireMock('@/services/aiModelDefaults.server') as
 };
 
 const usage = {
+  ai: {
+    used: 42, baseLimit: 1000, hardCap: 1100, baseRemaining: 958,
+    graceRemaining: 100, state: 'normal', resetsAt: '2026-08-01T00:00:00.000Z',
+  },
+  transcription: {
+    used: 3600, baseLimit: 36000, hardCap: 39600, baseRemaining: 32400,
+    graceRemaining: 3600, state: 'normal', resetsAt: '2026-08-01T00:00:00.000Z',
+  },
+  audio: {
+    used: 123.5, baseLimit: 12000, hardCap: 13200, baseRemaining: 11876.5,
+    graceRemaining: 1200, state: 'normal', resetsAt: '2026-08-01T00:00:00.000Z',
+  },
   aiLimit: 1000, aiUsed: 42, aiRemaining: 958,
   transcriptionSecondsLimit: 36000, transcriptionSecondsUsed: 3600, transcriptionSecondsRemaining: 32400,
   audioSecondsUsed: 123.5,
@@ -93,7 +105,11 @@ describe('GET /api/me/entitlement', () => {
         tts: { available: getFunctionCatalog('tts'), current: { providerId: 'openai', modelId: 'gpt-4o-mini-tts' } },
       },
       usage,
-      limits: { aiCallsPerPeriod: 1000, transcriptionSecondsPerPeriod: 36000 },
+      limits: {
+        aiCallsPerPeriod: 1000,
+        transcriptionSecondsPerPeriod: 36000,
+        audioSecondsPerPeriod: 12000,
+      },
       paidTier: 'tier2',
     });
     expect(response.headers.get('Cache-Control')).toContain('no-store');

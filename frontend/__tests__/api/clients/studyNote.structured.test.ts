@@ -6,6 +6,7 @@
  */
 import * as structuredOutput from '@clients/structuredOutput';
 import { analyzeStudyNote } from '@clients/studyNote.structured';
+import { UsageCapReachedError } from '@/services/usageLimits';
 
 // Mock the structuredOutput module
 jest.mock('@clients/structuredOutput', () => ({
@@ -161,6 +162,19 @@ describe('analyzeStudyNote', () => {
     // Assert
     expect(result.success).toBe(false);
     expect(result.error).toBe('API timeout');
+  });
+
+  it('does not turn a usage cap into a study-note fallback', async () => {
+    const capError = new UsageCapReachedError(
+      'ai',
+      110,
+      100,
+      110,
+      '2026-08-01T00:00:00.000Z'
+    );
+    (structuredOutput.callWithStructuredOutput as jest.Mock).mockRejectedValue(capError);
+
+    await expect(analyzeStudyNote('Test content')).rejects.toBe(capError);
   });
 
   it('should filter invalid scripture refs', async () => {

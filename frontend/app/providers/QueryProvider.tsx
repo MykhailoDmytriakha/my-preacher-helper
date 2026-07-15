@@ -5,6 +5,8 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import UsageCapGlobalHandler from '@/components/usage/UsageCapGlobalHandler';
+import { notifyUsageCapReached } from '@/services/usageCapClient';
 import { registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
 import { createIDBPersister } from '@/utils/queryPersister';
 
@@ -28,6 +30,8 @@ export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
     const client = new QueryClient({
         mutationCache: new MutationCache({
           onError: (error: unknown) => {
+            if (notifyUsageCapReached(error)) return;
+
             // GLOBAL 401 GUARD (C2 Fix)
             const err = error as { status?: number; message?: string };
             if (err?.status === 401 || err?.message?.includes('401')) {
@@ -88,6 +92,7 @@ export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
         queryClient.resumePausedMutations();
       }}
     >
+      <UsageCapGlobalHandler />
       {children}
     </PersistQueryClientProvider>
   );

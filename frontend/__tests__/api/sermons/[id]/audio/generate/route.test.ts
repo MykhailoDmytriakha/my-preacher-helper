@@ -8,7 +8,8 @@ import { resolveUserTtsTarget } from '@/api/clients/ai/tierPolicy';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { generateChunkAudio, splitTextEvenly, splitTextIntoChunks } from '@/api/clients/tts.client';
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { assertAiUsageAvailable, consumeAiUsage, consumeAudioSeconds } from '@/services/usageLimits.server';
+import { UsageCapReachedError } from '@/services/usageLimits';
+import { createUsageAdmission, consumeAiUsage, consumeAudioSeconds } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide } from '@/services/userEntitlement.server';
 import { concatenateAudioBlobs, createSilenceBlob } from '@/utils/audioConcat';
 import { getMeteredAudioDurationSeconds } from '@/utils/server/audioDurationMetering.server';
@@ -105,7 +106,7 @@ jest.mock('@/services/userEntitlement.server', () => ({
 }));
 
 jest.mock('@/services/usageLimits.server', () => ({
-  assertAiUsageAvailable: jest.fn(),
+  createUsageAdmission: jest.fn(),
   consumeAiUsage: jest.fn(),
   consumeAudioSeconds: jest.fn(),
 }));
@@ -179,6 +180,10 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     });
     (consumeAiUsage as jest.Mock).mockResolvedValue(undefined);
     (consumeAudioSeconds as jest.Mock).mockResolvedValue(undefined);
+    (createUsageAdmission as jest.Mock).mockReturnValue({
+      userId: 'user-1',
+      resources: ['ai', 'audio'],
+    });
     (getMeteredAudioDurationSeconds as jest.Mock).mockResolvedValue(1);
 
     (adminDb.collection as jest.Mock).mockReturnValue({
@@ -438,8 +443,10 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
       undefined,
       expect.any(Date)
     );
-    expect(assertAiUsageAvailable).toHaveBeenCalledWith(
+    expect(createUsageAdmission).toHaveBeenCalledWith(
+      'user-1',
       { paidTier: 'tier2' },
+      ['ai', 'audio'],
       expect.any(Date)
     );
     expect(consumeAiUsage).toHaveBeenCalledWith('user-1', expect.any(Date));
@@ -950,7 +957,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
       String(text).startsWith('Introduction'))).toHaveLength(2);
   });
 
-  it('charges AI usage only for offset zero while metering every generated batch', async () => {
+  it('admits only offset zero and lets later batches finish after crossing the cap', async () => {
     (generateChunkAudio as jest.Mock).mockResolvedValue({
       audioBlob: new Blob(['batch-chunk'], { type: 'audio/mpeg' }),
       index: 0,
@@ -974,6 +981,11 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     );
     await readStreamEvents(firstResponse.body as ReadableStream<Uint8Array>);
 
+    (getUserEntitlementServerSide as jest.Mock).mockResolvedValue({
+      paidTier: 'tier2',
+      usage: { aiUsed: 220, audioSecondsUsed: 13_200 },
+    });
+
     const secondResponse = await POST(
       createRequest({
         userId: 'user-1',
@@ -989,6 +1001,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
 
     expect(consumeAudioSeconds).toHaveBeenNthCalledWith(1, 'user-1', 1.25, expect.any(Date));
     expect(consumeAudioSeconds).toHaveBeenNthCalledWith(2, 'user-1', 2.5, expect.any(Date));
+    expect(createUsageAdmission).toHaveBeenCalledTimes(1);
     expect(consumeAiUsage).toHaveBeenCalledTimes(1);
     expect(consumeAiUsage).toHaveBeenCalledWith('user-1', expect.any(Date));
   });
@@ -1028,9 +1041,15 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     expect(consumeAudioSeconds).not.toHaveBeenCalled();
   });
 
-  it('returns 429 before TTS and does not count when AI usage is exhausted', async () => {
-    (assertAiUsageAvailable as jest.Mock).mockImplementationOnce(() => {
-      throw Object.assign(new Error('AI usage limit exhausted'), { code: 'USAGE_EXHAUSTED' });
+  it('returns a typed 429 envelope before TTS when usage is capped', async () => {
+    (createUsageAdmission as jest.Mock).mockImplementationOnce(() => {
+      throw new UsageCapReachedError(
+        'audio',
+        1_320,
+        1_200,
+        1_320,
+        '2026-08-01T00:00:00.000Z'
+      );
     });
 
     const response = await POST(
@@ -1039,7 +1058,14 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     );
 
     expect(response.status).toBe(429);
-    await expect(response.json()).resolves.toEqual({ error: 'AI usage limit exhausted' });
+    await expect(response.json()).resolves.toEqual({
+      code: 'USAGE_CAP_REACHED',
+      resource: 'audio',
+      used: 1_320,
+      baseLimit: 1_200,
+      hardCap: 1_320,
+      resetsAt: '2026-08-01T00:00:00.000Z',
+    });
     expect(generateChunkAudio).not.toHaveBeenCalled();
     expect(consumeAiUsage).not.toHaveBeenCalled();
     expect(consumeAudioSeconds).not.toHaveBeenCalled();

@@ -9,6 +9,7 @@ import { useAiUsage } from '@/hooks/useAiUsage';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { SermonPoint, SermonOutline } from '@/models/models';
 import { useConnection } from '@/providers/ConnectionProvider';
+import { isUsageCapReachedError } from '@/services/usageLimits';
 import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
 import { FocusRecorderButton } from "@components/FocusRecorderButton";
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
@@ -402,6 +403,11 @@ export default function EditThoughtModal({
       setVoiceError(null);
       setVoiceRetryCount(0);
     } catch (error) {
+      if (isUsageCapReachedError(error)) {
+        setIsDictating(false);
+        return;
+      }
+
       // Never lose the thought: keep the recording for the in-session recovery panel.
       storedVoiceBlobRef.current = audioBlob;
       const message = error instanceof TranscriptionClientError

@@ -14,12 +14,15 @@
 import { thoughtSystemPrompt, createThoughtUserMessage } from "@/config/prompts";
 import { ThoughtResponseSchema, ThoughtResponse } from "@/config/schemas/zod";
 import { Sermon } from "@/models/models";
+import { isUsageCapReachedError } from '@/services/usageLimits';
 import { normalizeSpokenScriptureReferences } from "@/utils/scriptureReferenceNormalizer";
 import { sanitizeAvailableThoughtTags, sanitizeThoughtTags } from "@/utils/thoughtTagSanitizer";
 
 import { logger } from "./openAIHelpers";
 import { buildSimplePromptBlueprint } from "./promptBuilder";
 import { callWithStructuredOutput, StructuredOutputResult } from "./structuredOutput";
+
+import type { UsageAdmission } from '@/services/usageLimits.server';
 
 const isDebugMode = process.env.DEBUG_MODE === 'true';
 
@@ -42,6 +45,7 @@ interface GenerateThoughtOptions {
   maxRetries?: number;
   /** Server-trusted identity charged for this thought generation. */
   userId?: string;
+  usageAdmission?: UsageAdmission;
 }
 
 /**
@@ -75,7 +79,7 @@ export async function generateThoughtStructured(
   availableTags: string[] = [],
   options: GenerateThoughtOptions = {}
 ): Promise<GenerateThoughtResult> {
-  const { maxRetries = 3, userId = sermon.userId } = options;
+  const { maxRetries = 3, userId = sermon.userId, usageAdmission } = options;
   const auxiliaryTags = sanitizeAvailableThoughtTags(availableTags);
 
   // Create user message with sermon context
@@ -103,6 +107,7 @@ export async function generateThoughtStructured(
       availableTags: auxiliaryTags,
       attempt,
       userId,
+      usageAdmission,
     });
 
     if (attemptResult.type === "success" || attemptResult.type === "fail") {
@@ -132,8 +137,9 @@ async function runThoughtAttempt(params: {
   availableTags: string[];
   attempt: number;
   userId: string;
+  usageAdmission?: UsageAdmission;
 }): Promise<AttemptOutcome> {
-  const { content, sermon, userMessage, availableTags, attempt, userId } = params;
+  const { content, sermon, userMessage, availableTags, attempt, userId, usageAdmission } = params;
 
   try {
     const promptBlueprint = buildSimplePromptBlueprint({
@@ -155,6 +161,7 @@ async function runThoughtAttempt(params: {
       {
         formatName: "thought",
         userId,
+        usageAdmission,
         promptBlueprint,
         logContext: {
           sermonTitle: sermon.title,
@@ -172,6 +179,7 @@ async function runThoughtAttempt(params: {
       attempt,
     });
   } catch (error) {
+    if (isUsageCapReachedError(error)) throw error;
     logger.error('GenerateThoughtStructured', `Attempt ${attempt} failed with error`, error);
     return { type: "fail", result: createFailureResult(content) };
   }

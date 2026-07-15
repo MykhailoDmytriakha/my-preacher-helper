@@ -1,4 +1,9 @@
+import { isUsageCapReachedError } from '@/services/usageLimits';
 import { apiClient } from '@/utils/apiClient';
+
+const rethrowUsageCapReached = (error: unknown): void => {
+  if (isUsageCapReachedError(error)) throw error;
+};
 
 /** Returns a server-verifiable Firebase identity or fails before any AI request is sent. */
 export async function getTranscriptionAuthorizationHeaders(): Promise<HeadersInit> {
@@ -194,6 +199,7 @@ export async function transcribeAudioWithRetry(
     try {
       response = await call(options.endpoint, buildTranscriptionRequest(formData, headers));
     } catch (transportError) {
+      rethrowUsageCapReached(transportError);
       // apiClient threw before any HTTP response — a genuine transport failure.
       const message = transportError instanceof Error ? transportError.message : 'Network error';
       attempts.push({ kind: 'network', status: 0, message });

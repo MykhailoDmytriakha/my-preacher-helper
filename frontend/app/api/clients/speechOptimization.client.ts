@@ -12,6 +12,7 @@ import { buildSimplePromptBlueprint } from "./promptBuilder";
 import { callWithStructuredOutput } from "./structuredOutput";
 
 import type { Sermon } from '@/models/models';
+import type { UsageAdmission } from '@/services/usageLimits.server';
 import type {
     SpeechOptimizationOptions,
     SpeechOptimizationResult,
@@ -50,7 +51,8 @@ export async function optimizeTextForSpeech(
     rawText: string,
     sermon: Sermon,
     options: SpeechOptimizationOptions,
-    userId: string = sermon.userId
+    userId: string = sermon.userId,
+    usageAdmission?: UsageAdmission
 ): Promise<SpeechOptimizationResult> {
     const userPrompt = buildOptimizationPrompt(rawText, options);
 
@@ -85,6 +87,7 @@ export async function optimizeTextForSpeech(
         {
             formatName: "speech_optimization",
             userId,
+            usageAdmission,
             workload: 'structured.speechOptimization',
             promptBlueprint,
             logContext: {

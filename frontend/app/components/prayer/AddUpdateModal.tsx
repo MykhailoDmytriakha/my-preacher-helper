@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import { useAiUsage } from '@/hooks/useAiUsage';
+import { isUsageCapReachedError } from '@/services/usageLimits';
 import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
 import { FocusRecorderButton } from '@components/FocusRecorderButton';
 
@@ -52,6 +53,11 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
       setVoiceError(null);
       setVoiceRetryCount(0);
     } catch (err) {
+      if (isUsageCapReachedError(err)) {
+        setDictating(false);
+        return;
+      }
+
       // Never lose the thought: keep the recording for the in-session recovery panel.
       storedVoiceBlobRef.current = audioBlob;
       const message = err instanceof TranscriptionClientError
