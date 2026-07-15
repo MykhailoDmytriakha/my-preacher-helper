@@ -561,6 +561,8 @@
     "aiInfo": "AI-використання витрачається під час створення або покращення змісту проповіді за допомогою AI.",
     "transcriptionRemaining": "Залишок транскрибування",
     "transcriptionSeconds": "{{count}} секунд",
+    "audioGenerated": "Створено аудіо",
+    "audioSeconds": "{{count}} секунд",
     "aiUsageExhausted": "Недостатньо доступного AI-використання.",
     "transcriptionUsageExhausted": "Недостатньо доступного ліміту транскрибування."
   },
@@ -694,6 +696,7 @@
     "usage": "Використання",
     "aiUsage": "Використання ШІ",
     "transcriptionSeconds": "Секунди транскрибування",
+    "audioSeconds": "Секунди створеного аудіо",
     "noChange": "Не змінювати",
     "invalidPromotion": "Вкажіть коректний строк дії промо.",
     "invalidUsage": "Використання має бути невід'ємним числом.",

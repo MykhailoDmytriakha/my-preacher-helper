@@ -17,6 +17,7 @@ export interface UserEntitlementResponse {
     transcriptionSecondsLimit: number;
     transcriptionSecondsUsed: number;
     transcriptionSecondsRemaining: number;
+    audioSecondsUsed: number;
     aiBlocked: boolean;
     transcriptionBlocked: boolean;
     periodResets: boolean;

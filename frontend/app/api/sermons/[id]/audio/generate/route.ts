@@ -14,13 +14,15 @@ import { isFunctionCatalogTarget } from '@/api/clients/ai/functionCatalog';
 import { resolveUserTtsTarget } from '@/api/clients/ai/tierPolicy';
 import { generateChunkAudio } from '@/api/clients/tts.client';
 import { resolveSections } from '@/api/services/sermonTextService';
+import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { assertAiUsageAvailable, consumeAiUsage } from '@/services/usageLimits.server';
+import { assertAiUsageAvailable, consumeAiUsage, consumeAudioSeconds } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide, resolveEffectiveTier } from '@/services/userEntitlement.server';
 import { SERMON_SECTIONS, GOOGLE_TTS_VOICES } from '@/types/audioGeneration.types';
 import { concatenateAudioBlobs, createSilenceBlob } from '@/utils/audioConcat';
 import { normalizeScriptureReferencesForTts } from '@/utils/scriptureReferenceNormalizer';
-import { GOOGLE_TTS_MAX_CHUNK_SIZE, splitGoogleTextForRequestLimit } from '@/utils/server/googleTtsChunking';
+import { getMeteredAudioDurationSeconds } from '@/utils/server/audioDurationMetering.server';
+import { GOOGLE_TTS_MAX_CHUNK_SIZE, splitGoogleTextForGeneration } from '@/utils/server/googleTtsChunking';
 
 import type { Sermon } from '@/models/models';
 import type {
@@ -59,6 +61,7 @@ type DownloadCompleteEvent = {
     filename: string;
     audioUrl: string;
     mimeType?: string;
+    totalChunks?: number;
 };
 
 type ErrorEvent = {
@@ -100,6 +103,8 @@ const GOOGLE_TTS_MODEL_31_KEY = 'gemini-3.1-flash-tts-preview';
 const GOOGLE_TTS_MODEL_25_CATALOG = 'gemini-2.5-flash-tts';
 const GOOGLE_TTS_MODEL_31_CATALOG = 'gemini-3.1-flash-tts';
 const OPENAI_TTS_VOICES: readonly TTSVoice[] = ['onyx', 'echo', 'ash'];
+const TTS_CHUNK_ATTEMPTS = 2;
+const TTS_CHUNK_RETRY_BACKOFF_MS = 100;
 
 function groupChunksByMajorSection(chunks: AudioChunk[]): AudioChunk[] {
     const now = new Date().toISOString();
@@ -111,7 +116,7 @@ function groupChunksByMajorSection(chunks: AudioChunk[]): AudioChunk[] {
             .join('\n\n');
 
         if (!text) return [];
-        return splitGoogleTextForRequestLimit(text).map(part => ({ text: part, sectionId, createdAt: now, index: 0 }));
+        return splitGoogleTextForGeneration(text).map(part => ({ text: part, sectionId, createdAt: now, index: 0 }));
     }).map((chunk, index) => ({ ...chunk, index }));
 }
 
@@ -149,8 +154,12 @@ function getValidatedVoice(
         : null;
 }
 
-function insertGoogleSectionPauses(blobs: Blob[], chunks: AudioChunk[]): Blob[] {
-    if (blobs.length <= 1) return blobs;
+function insertGoogleSectionPauses(
+    blobs: Blob[],
+    chunks: AudioChunk[],
+    nextChunkAfterBatch?: AudioChunk
+): Blob[] {
+    if (blobs.length === 0) return blobs;
 
     const result: Blob[] = [];
     let silenceBlob: Blob | null = null;
@@ -166,13 +175,33 @@ function insertGoogleSectionPauses(blobs: Blob[], chunks: AudioChunk[]): Blob[] 
 
     blobs.forEach((blob, index) => {
         result.push(blob);
-        const nextChunk = chunks[index + 1];
+        const nextChunk = chunks[index + 1] ?? (index === blobs.length - 1 ? nextChunkAfterBatch : undefined);
         if (nextChunk && nextChunk.sectionId !== chunks[index]?.sectionId) {
             result.push(getSilenceBlob());
         }
     });
 
     return result;
+}
+
+async function generateChunkAudioWithRetry(
+    text: string,
+    options: Parameters<typeof generateChunkAudio>[1]
+): Promise<Awaited<ReturnType<typeof generateChunkAudio>>> {
+    let lastError: unknown;
+
+    for (let attempt = 1; attempt <= TTS_CHUNK_ATTEMPTS; attempt++) {
+        try {
+            return await generateChunkAudio(text, options);
+        } catch (error) {
+            lastError = error;
+            if (attempt === TTS_CHUNK_ATTEMPTS) break;
+            console.warn(`[TTS] Chunk attempt ${attempt}/${TTS_CHUNK_ATTEMPTS} failed; retrying...`, error);
+            await new Promise(resolve => setTimeout(resolve, TTS_CHUNK_RETRY_BACKOFF_MS));
+        }
+    }
+
+    throw lastError;
 }
 
 /**
@@ -301,14 +330,22 @@ export async function POST(
         // Batched generation: the browser drives several sub-60s requests, each
         // generating a slice [offset, offset+limit) of the section-filtered chunk
         // list, then byte-concatenates the returned MP3 streams client-side. Without
-        // offset/limit → whole set (back-compat). Slicing is OpenAI-only: Google
-        // regroups by major section and its section-pause logic assumes the full
-        // grouped list, so it always stays a single request.
+        // offset/limit → whole set (back-compat). Google participates only while
+        // the reversible small-chunk rollout is enabled; flag OFF preserves its
+        // legacy whole-section, single-request behavior exactly.
         const { offset: batchOffset, limit: batchLimit } = resolveBatchWindow(body);
-        const isBatched = provider !== 'google' && batchLimit !== undefined;
+        const isBatched = batchLimit !== undefined && (
+            provider !== 'google' || GOOGLE_SMALL_CHUNKING
+        );
         const chunksForGeneration = isBatched
             ? baseChunksForGeneration.slice(batchOffset, batchOffset + batchLimit)
             : baseChunksForGeneration;
+        const batchEndOffset = isBatched
+            ? Math.min(baseChunksForGeneration.length, batchOffset + (batchLimit as number))
+            : baseChunksForGeneration.length;
+        const nextChunkAfterBatch = isBatched
+            ? baseChunksForGeneration[batchEndOffset]
+            : undefined;
 
         if (chunksForGeneration.length === 0) {
             return NextResponse.json(
@@ -320,7 +357,8 @@ export async function POST(
         assertAiUsageAvailable(entitlement, usageNow);
 
         if (provider === 'google') {
-            console.log(`[TTS] Google grouping: ${chunks.length} prepared chunks → ${chunksForGeneration.length} request chunks (max ${GOOGLE_TTS_MAX_CHUNK_SIZE} chars/request)`);
+            const chunkingMode = GOOGLE_SMALL_CHUNKING ? 'even quality chunks' : `legacy max ${GOOGLE_TTS_MAX_CHUNK_SIZE} chars/request`;
+            console.log(`[TTS] Google grouping: ${chunks.length} prepared chunks → ${baseChunksForGeneration.length} request chunks (${chunkingMode})`);
         }
         if (isBatched) {
             console.log(`[TTS] Batch slice: offset=${batchOffset}, limit=${batchLimit} → ${chunksForGeneration.length}/${baseChunksForGeneration.length} chunks`);
@@ -338,7 +376,7 @@ export async function POST(
                     // takes ~32s, so a 6-chunk sermon ran ~190s and was killed at the 60s
                     // cap. A bounded-concurrency pool keeps wall time near a single chunk
                     // while respecting OpenAI rate limits and preserving chunk order for
-                    // concatenation (audioBlobs is index-addressed, not push-ordered).
+                    // concatenation (generatedChunks is index-addressed, not push-ordered).
                     const ttsOptions = {
                         provider,
                         voice,
@@ -347,7 +385,12 @@ export async function POST(
                     };
 
                     const TTS_CONCURRENCY = provider === 'google' ? 1 : 6;
-                    const audioBlobs: Blob[] = new Array<Blob>(chunksForGeneration.length);
+                    const generatedChunks: Array<{
+                        blob: Blob;
+                        chunk: AudioChunk;
+                        index: number;
+                        mimeType: string;
+                    } | undefined> = new Array(chunksForGeneration.length);
                     let completed = 0;
                     let cursor = 0;
 
@@ -359,8 +402,19 @@ export async function POST(
 
                             console.log(`[TTS] Generating chunk ${i + 1}/${total}: "${preview}..."`);
 
-                            const result = await generateChunkAudio(chunk.text, ttsOptions);
-                            audioBlobs[i] = result.audioBlob;
+                            try {
+                                const result = await generateChunkAudioWithRetry(chunk.text, ttsOptions);
+                                generatedChunks[i] = {
+                                    blob: result.audioBlob,
+                                    chunk,
+                                    index: i,
+                                    mimeType: result.mimeType || result.audioBlob.type || (
+                                        provider === 'google' ? 'audio/wav' : 'audio/mpeg'
+                                    ),
+                                };
+                            } catch (error) {
+                                console.error(`[TTS] Chunk ${i + 1}/${total} failed:`, error);
+                            }
 
                             completed++;
                             const percent = Math.round((completed / total) * 80);
@@ -374,10 +428,27 @@ export async function POST(
                         }
                     };
 
-                    await Promise.all(
+                    await Promise.allSettled(
                         Array.from({ length: Math.min(TTS_CONCURRENCY, chunksForGeneration.length) }, worker)
                     );
-                    await consumeAiUsage(uid, usageNow);
+                    const successfulChunks = generatedChunks.filter((result): result is NonNullable<typeof result> =>
+                        result !== undefined
+                    );
+                    if (successfulChunks.length === 0) {
+                        throw new Error('All TTS chunks failed');
+                    }
+
+                    const measuredDurations = await Promise.all(successfulChunks.map(({ blob, chunk, mimeType }) =>
+                        getMeteredAudioDurationSeconds(blob, mimeType, chunk.text)
+                    ));
+                    const audioSeconds = measuredDurations.reduce((sum, seconds) => sum + seconds, 0);
+                    await consumeAudioSeconds(uid, audioSeconds, usageNow);
+                    if (!isBatched || batchOffset === 0) {
+                        await consumeAiUsage(uid, usageNow);
+                    }
+
+                    const audioBlobs = successfulChunks.map(({ blob }) => blob);
+                    const successfulAudioChunks = successfulChunks.map(({ chunk }) => chunk);
 
                     // Phase 2: Concatenate MP3 chunks (80-90%)
                     // MP3 frames are self-contained, so a plain byte-level concat plays
@@ -394,7 +465,11 @@ export async function POST(
 
                     const finalMimeType = provider === 'google' ? 'audio/wav' : 'audio/mpeg';
                     const finalAudio = provider === 'google'
-                        ? await concatenateAudioBlobs(insertGoogleSectionPauses(audioBlobs, chunksForGeneration))
+                        ? await concatenateAudioBlobs(insertGoogleSectionPauses(
+                            audioBlobs,
+                            successfulAudioChunks,
+                            nextChunkAfterBatch
+                        ))
                         : new Blob(audioBlobs, { type: finalMimeType });
 
                     // Phase 4: Convert to data URL and STREAM it
@@ -479,6 +554,7 @@ export async function POST(
                         filename: safeFilename,
                         audioUrl: '', // Client reassembles it
                         mimeType: finalMimeType,
+                        totalChunks: baseChunksForGeneration.length,
                     });
 
                     controller.close();

@@ -561,6 +561,8 @@
     "aiInfo": "AI usage is consumed when you generate or improve sermon content with AI.",
     "transcriptionRemaining": "Transcription remaining",
     "transcriptionSeconds": "{{count}} seconds",
+    "audioGenerated": "Audio generated",
+    "audioSeconds": "{{count}} seconds",
     "aiUsageExhausted": "Not enough AI usage remaining.",
     "transcriptionUsageExhausted": "Not enough transcription usage remaining."
   },
@@ -694,6 +696,7 @@
     "usage": "Usage",
     "aiUsage": "AI usage",
     "transcriptionSeconds": "Transcription seconds",
+    "audioSeconds": "Generated audio seconds",
     "noChange": "No change",
     "invalidPromotion": "Enter a valid promotion expiry date.",
     "invalidUsage": "Usage values must be non-negative numbers.",

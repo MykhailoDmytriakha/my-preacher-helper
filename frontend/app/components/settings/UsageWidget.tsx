@@ -76,6 +76,10 @@ export default function UsageWidget({ user }: UsageWidgetProps) {
             size="full"
           />
         </div>
+        <div className="flex items-center justify-between gap-3 text-sm text-slate-600 dark:text-slate-400">
+          <dt>{t('settings.usage.audioGenerated')}</dt>
+          <dd>{t('settings.usage.audioSeconds', { count: entitlement.usage.audioSecondsUsed })}</dd>
+        </div>
       </dl>
     </section>
   );

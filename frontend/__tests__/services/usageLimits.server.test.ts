@@ -10,6 +10,7 @@ import {
   assertAiUsageAvailable,
   assertTranscriptionUsageAvailable,
   consumeAiUsage,
+  consumeAudioSeconds,
   consumeTranscriptionSeconds,
   resolveUsageRemaining,
   UsageExhaustedError,
@@ -39,7 +40,7 @@ describe('usage limits', () => {
   it('does not block a free user with used=0', () => {
     const remaining = resolveUsageRemaining({
       paidTier: 'free',
-      usage: { aiUsed: 0, transcriptionSecondsUsed: 0, periodStart: currentPeriod },
+      usage: { aiUsed: 0, transcriptionSecondsUsed: 0, audioSecondsUsed: 0, periodStart: currentPeriod },
     }, now);
 
     expect(TIER_LIMITS.free.aiCallsPerPeriod).toBeGreaterThan(0);
@@ -48,6 +49,7 @@ describe('usage limits', () => {
     expect(remaining.aiRemaining).toBe(TIER_LIMITS.free.aiCallsPerPeriod);
     expect(remaining.transcriptionSecondsLimit).toBe(3600);
     expect(remaining.transcriptionSecondsUsed).toBe(0);
+    expect(remaining.audioSecondsUsed).toBe(0);
     expect(remaining.aiBlocked).toBe(false);
     expect(remaining.transcriptionBlocked).toBe(false);
   });
@@ -55,7 +57,7 @@ describe('usage limits', () => {
   it('returns the current period limits and post-reset used values for partial usage', () => {
     const remaining = resolveUsageRemaining({
       paidTier: 'free',
-      usage: { aiUsed: 40, transcriptionSecondsUsed: 900, periodStart: currentPeriod },
+      usage: { aiUsed: 40, transcriptionSecondsUsed: 900, audioSecondsUsed: 0, periodStart: currentPeriod },
     }, now);
 
     expect(remaining).toMatchObject({
@@ -65,6 +67,7 @@ describe('usage limits', () => {
       transcriptionSecondsLimit: 3600,
       transcriptionSecondsUsed: 900,
       transcriptionSecondsRemaining: 2700,
+      audioSecondsUsed: 0,
       periodResets: false,
     });
   });
@@ -75,6 +78,7 @@ describe('usage limits', () => {
       usage: {
         aiUsed: TIER_LIMITS.free.aiCallsPerPeriod,
         transcriptionSecondsUsed: 0,
+        audioSecondsUsed: 0,
         periodStart: currentPeriod,
       },
     };
@@ -94,6 +98,7 @@ describe('usage limits', () => {
       usage: {
         aiUsed: TIER_LIMITS.free.aiCallsPerPeriod,
         transcriptionSecondsUsed: TIER_LIMITS.free.transcriptionSecondsPerPeriod,
+        audioSecondsUsed: 777,
         periodStart: '2026-06-30T23:59:59.999Z',
       },
     }, now);
@@ -105,6 +110,7 @@ describe('usage limits', () => {
       transcriptionSecondsLimit: TIER_LIMITS.free.transcriptionSecondsPerPeriod,
       transcriptionSecondsUsed: 0,
       transcriptionSecondsRemaining: TIER_LIMITS.free.transcriptionSecondsPerPeriod,
+      audioSecondsUsed: 0,
       aiBlocked: false,
       transcriptionBlocked: false,
       periodResets: true,
@@ -117,6 +123,7 @@ describe('usage limits', () => {
       usage: {
         aiUsed: 0,
         transcriptionSecondsUsed: TIER_LIMITS.free.transcriptionSecondsPerPeriod - 2,
+        audioSecondsUsed: 0,
         periodStart: currentPeriod,
       },
     };
@@ -130,7 +137,7 @@ describe('usage limits', () => {
     transactionGet.mockResolvedValue({
       exists: true,
       data: () => ({
-        usage: { aiUsed: 4, transcriptionSecondsUsed: 20, periodStart: currentPeriod },
+        usage: { aiUsed: 4, transcriptionSecondsUsed: 20, audioSecondsUsed: 8, periodStart: currentPeriod },
       }),
     });
 
@@ -139,7 +146,7 @@ describe('usage limits', () => {
     expect(adminDb.collection).toHaveBeenCalledWith('users');
     expect(mockDoc).toHaveBeenCalledWith('user-1');
     expect(transactionSet).toHaveBeenCalledWith(mockUserRef, {
-      usage: { aiUsed: 5, transcriptionSecondsUsed: 20, periodStart: currentPeriod },
+      usage: { aiUsed: 5, transcriptionSecondsUsed: 20, audioSecondsUsed: 8, periodStart: currentPeriod },
     }, { merge: true });
   });
 
@@ -147,14 +154,14 @@ describe('usage limits', () => {
     transactionGet.mockResolvedValue({
       exists: true,
       data: () => ({
-        usage: { aiUsed: 100, transcriptionSecondsUsed: 300, periodStart: '2026-06-01T00:00:00.000Z' },
+        usage: { aiUsed: 100, transcriptionSecondsUsed: 300, audioSecondsUsed: 45, periodStart: '2026-06-01T00:00:00.000Z' },
       }),
     });
 
     await consumeTranscriptionSeconds('user-1', 12.5, now);
 
     expect(transactionSet).toHaveBeenCalledWith(mockUserRef, {
-      usage: { aiUsed: 0, transcriptionSecondsUsed: 12.5, periodStart: currentPeriod },
+      usage: { aiUsed: 0, transcriptionSecondsUsed: 12.5, audioSecondsUsed: 0, periodStart: currentPeriod },
     }, { merge: true });
   });
 
@@ -162,4 +169,27 @@ describe('usage limits', () => {
     await consumeTranscriptionSeconds('user-1', 0, now);
     expect(adminDb.runTransaction).not.toHaveBeenCalled();
   });
+
+  it('increments generated audio seconds through the same transaction', async () => {
+    transactionGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        usage: { aiUsed: 4, transcriptionSecondsUsed: 20, audioSecondsUsed: 3.25, periodStart: currentPeriod },
+      }),
+    });
+
+    await consumeAudioSeconds('user-1', 6.75, now);
+
+    expect(transactionSet).toHaveBeenCalledWith(mockUserRef, {
+      usage: { aiUsed: 4, transcriptionSecondsUsed: 20, audioSecondsUsed: 10, periodStart: currentPeriod },
+    }, { merge: true });
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    'does not write an invalid audio amount (%p)',
+    async (seconds) => {
+      await consumeAudioSeconds('user-1', seconds, now);
+      expect(adminDb.runTransaction).not.toHaveBeenCalled();
+    }
+  );
 });

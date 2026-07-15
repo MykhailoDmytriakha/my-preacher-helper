@@ -6,6 +6,17 @@ import StepByStepWizard from '@/components/audio/StepByStepWizard';
 import useSermon from '@/hooks/useSermon';
 import { useUserEntitlement } from '@/hooks/useUserEntitlement';
 
+if (!Blob.prototype.arrayBuffer) {
+    Blob.prototype.arrayBuffer = function () {
+        return new Promise<ArrayBuffer>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as ArrayBuffer);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsArrayBuffer(this);
+        });
+    };
+}
+
 // Polyfills for JSDOM
 if (typeof TextEncoder === 'undefined') {
     const { TextEncoder, TextDecoder } = require('util');
@@ -100,6 +111,25 @@ const sermonWithChunks = (chunks: any[], extra: Record<string, any> = {}) => ({
     sermon: { title: 'Test Sermon', thoughts: [], audioChunks: chunks, ...extra },
     loading: false,
 } as any);
+
+const wavBase64 = (data: number[]): string => {
+    const buffer = Buffer.alloc(44 + data.length);
+    buffer.write('RIFF', 0);
+    buffer.writeUInt32LE(36 + data.length, 4);
+    buffer.write('WAVE', 8);
+    buffer.write('fmt ', 12);
+    buffer.writeUInt32LE(16, 16);
+    buffer.writeUInt16LE(1, 20);
+    buffer.writeUInt16LE(1, 22);
+    buffer.writeUInt32LE(24000, 24);
+    buffer.writeUInt32LE(48000, 28);
+    buffer.writeUInt16LE(2, 32);
+    buffer.writeUInt16LE(16, 34);
+    buffer.write('data', 36);
+    buffer.writeUInt32LE(data.length, 40);
+    Buffer.from(data).copy(buffer, 44);
+    return buffer.toString('base64');
+};
 
 const defaultProps = { sermonId: 'sermon-123', sermonTitle: 'Test Sermon', onClose: jest.fn() };
 
@@ -497,6 +527,59 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         const blob = (global.URL.createObjectURL as jest.Mock).mock.calls.at(-1)?.[0] as Blob;
         expect(blob.size).toBe(6);
         expect(blob.type).toBe('audio/mpeg');
+    });
+
+    it('drives one quality chunk per Google batch and merges the WAV batches in-browser', async () => {
+        setTtsEntitlement('tier2', { providerId: 'gemini', modelId: 'gemini-3.1-flash-tts' });
+        const googleChunks = [0, 1, 2, 3].map(i => ({ index: i, text: `Google ${i}`, sectionId: i < 2 ? 'introduction' : 'mainPart' }));
+        mockUseSermon.mockReturnValue(sermonWithChunks(googleChunks, {
+            audioMetadata: { provider: 'google', mode: 'raw', voice: 'Puck', model: 'gemini-3.1-flash-tts' },
+        }));
+
+        const encoder = new TextEncoder();
+        const streamFor = (data: number[]) => ({
+            ok: true,
+            body: {
+                getReader: () => ({
+                    read: jest.fn()
+                        .mockResolvedValueOnce({
+                            done: false,
+                            value: encoder.encode(JSON.stringify({ type: 'audio_chunk', data: wavBase64(data) }) + '\n'
+                                + JSON.stringify({ type: 'download_complete', filename: 'sermon-audio.wav', mimeType: 'audio/wav', totalChunks: 4 }) + '\n'),
+                        })
+                        .mockResolvedValueOnce({ done: true, value: undefined }),
+                }),
+            },
+        });
+        (global.fetch as jest.Mock)
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ chunks: googleChunks, originalLength: 32, optimizedLength: 32 }) })
+            .mockResolvedValueOnce(streamFor([1, 2]))
+            .mockResolvedValueOnce(streamFor([3, 4]))
+            .mockResolvedValueOnce(streamFor([5, 6]))
+            .mockResolvedValueOnce(streamFor([7, 8]));
+
+        render(<StepByStepWizard {...defaultProps} />);
+        await goToSource();
+        await waitFor(() => expect(screen.getByText('Google 0')).toBeInTheDocument());
+        await goToPreview();
+        fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
+        await screen.findByRole('link', { name: /Download Again/ });
+
+        const generateCalls = (global.fetch as jest.Mock).mock.calls.filter(([url]) => String(url).includes('/audio/generate'));
+        expect(generateCalls).toHaveLength(4);
+        expect(generateCalls.map(([, init]) => JSON.parse(init.body))).toEqual([
+            expect.objectContaining({ provider: 'google', offset: 0, limit: 1 }),
+            expect.objectContaining({ provider: 'google', offset: 1, limit: 1 }),
+            expect.objectContaining({ provider: 'google', offset: 2, limit: 1 }),
+            expect.objectContaining({ provider: 'google', offset: 3, limit: 1 }),
+        ]);
+
+        const blob = (global.URL.createObjectURL as jest.Mock).mock.calls.at(-1)?.[0] as Blob;
+        const merged = await blob.arrayBuffer();
+        const view = new DataView(merged);
+        expect(view.getUint32(0, false)).toBe(0x52494646);
+        expect(view.getUint32(40, true)).toBe(8);
+        expect(blob.type).toBe('audio/wav');
     });
 
     it('returns to the wizard on a stream error event and logs malformed lines', async () => {

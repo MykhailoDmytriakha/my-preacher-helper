@@ -122,7 +122,7 @@ describe('GET /api/admin/users', () => {
             paidTier: 'tier1',
             lastSeenAt: '2026-07-13T09:30:00.000Z',
             promotion: { tier: 'tier3', expiresAt: '2099-01-01T00:00:00.000Z' },
-            usage: { aiUsed: 7, transcriptionSecondsUsed: 120 },
+            usage: { aiUsed: 7, transcriptionSecondsUsed: 120, audioSecondsUsed: 45 },
             role: 'admin',
             referredBy: 'inviter-uid',
             providerData: [{ secret: 'must-not-leak' }],
@@ -167,7 +167,7 @@ describe('GET /api/admin/users', () => {
       role: 'admin',
       referredBy: 'inviter-uid',
       referralCount: 2,
-      usage: expect.objectContaining({ aiUsed: 7, transcriptionSecondsUsed: 120 }),
+      usage: expect.objectContaining({ aiUsed: 7, transcriptionSecondsUsed: 120, audioSecondsUsed: 45 }),
     }));
     expect(body.users[0]).not.toHaveProperty('providerData');
     expect(body.users[1]).toEqual(expect.objectContaining({
@@ -177,7 +177,7 @@ describe('GET /api/admin/users', () => {
       paidTier: 'free',
       effectiveTier: 'free',
       referralCount: 0,
-      usage: expect.objectContaining({ aiUsed: 0, transcriptionSecondsUsed: 0 }),
+      usage: expect.objectContaining({ aiUsed: 0, transcriptionSecondsUsed: 0, audioSecondsUsed: 0 }),
     }));
   });
 

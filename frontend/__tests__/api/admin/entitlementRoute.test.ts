@@ -78,6 +78,7 @@ describe('POST /api/admin/users/[uid]/entitlement', () => {
       usage: {
         aiUsed: 0,
         transcriptionSecondsUsed: 0,
+        audioSecondsUsed: 0,
         periodStart: '2026-07-01T00:00:00.000Z',
       },
     };
@@ -99,7 +100,7 @@ describe('POST /api/admin/users/[uid]/entitlement', () => {
   it('preserves explicit promotion clearing and partial usage updates', async () => {
     const body = {
       promotion: null,
-      usage: { aiUsed: 12 },
+      usage: { aiUsed: 12, audioSecondsUsed: 27.5 },
       role: 'admin',
     };
     mockGetUserEntitlementServerSide.mockResolvedValue({
@@ -107,6 +108,7 @@ describe('POST /api/admin/users/[uid]/entitlement', () => {
       usage: {
         aiUsed: 12,
         transcriptionSecondsUsed: 0,
+        audioSecondsUsed: 27.5,
         periodStart: '2026-07-01T00:00:00.000Z',
       },
     });
@@ -140,6 +142,7 @@ describe('POST /api/admin/users/[uid]/entitlement', () => {
     [{ promotion: { tier: 'tier2', expiresAt: '2026-08-12T12:00:00' } }, 'expiry without offset'],
     [{ promotion: { tier: 'tier2', expiresAt: '2026-08-12T12:00:00+99:99' } }, 'invalid offset'],
     [{ usage: { aiUsed: -1 } }, 'negative usage'],
+    [{ usage: { audioSecondsUsed: -1 } }, 'negative audio usage'],
     [{ usage: { periodStart: '2026-07-01T00:00:00' } }, 'period anchor without offset'],
     [{ paidTier: 'tier2', injected: true }, 'unknown root field'],
     [{ usage: { aiUsed: 1, injected: true } }, 'unknown nested field'],

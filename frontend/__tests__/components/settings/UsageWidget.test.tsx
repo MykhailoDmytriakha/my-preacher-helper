@@ -30,6 +30,7 @@ describe('UsageWidget', () => {
           transcriptionSecondsLimit: 3600,
           transcriptionSecondsUsed: 0,
           transcriptionSecondsRemaining: 3600,
+          audioSecondsUsed: 125.5,
           aiBlocked: false,
           transcriptionBlocked: false,
           periodResets: false,
@@ -43,6 +44,7 @@ describe('UsageWidget', () => {
     expect(screen.getByText('2')).toBeInTheDocument();
     expect(screen.getByText('18')).toBeInTheDocument();
     expect(screen.getByText('3600')).toBeInTheDocument();
+    expect(screen.getByText('125.5')).toBeInTheDocument();
     const bars = screen.getAllByTestId('usage-bar-fill');
     expect(bars).toHaveLength(2);
     expect(bars[0]).toHaveStyle({ width: '2%' });
@@ -57,7 +59,7 @@ describe('UsageWidget', () => {
     mockUseUserEntitlement.mockReturnValue({
       data: {
         effectiveTier: 'free', paidTier: 'free',
-        usage: { aiLimit: 10, aiUsed: 0, aiRemaining: 10, transcriptionSecondsLimit: 3600, transcriptionSecondsUsed: 0, transcriptionSecondsRemaining: 3600, aiBlocked: false, transcriptionBlocked: false, periodResets: false },
+        usage: { aiLimit: 10, aiUsed: 0, aiRemaining: 10, transcriptionSecondsLimit: 3600, transcriptionSecondsUsed: 0, transcriptionSecondsRemaining: 3600, audioSecondsUsed: 0, aiBlocked: false, transcriptionBlocked: false, periodResets: false },
         limits: { aiCallsPerPeriod: 10, transcriptionSecondsPerPeriod: 3600 },
       }, isLoading: false, isError: false,
     } as unknown as ReturnType<typeof useUserEntitlement>);
@@ -82,7 +84,7 @@ describe('UsageWidget', () => {
     mockUseUserEntitlement.mockReturnValue({
       data: {
         effectiveTier: 'free', paidTier: 'free',
-        usage: { aiLimit: 10, aiUsed: 0, aiRemaining: 10, transcriptionSecondsLimit: 3600, transcriptionSecondsUsed: 0, transcriptionSecondsRemaining: 3600, aiBlocked: false, transcriptionBlocked: false, periodResets: false },
+        usage: { aiLimit: 10, aiUsed: 0, aiRemaining: 10, transcriptionSecondsLimit: 3600, transcriptionSecondsUsed: 0, transcriptionSecondsRemaining: 3600, audioSecondsUsed: 0, aiBlocked: false, transcriptionBlocked: false, periodResets: false },
         limits: { aiCallsPerPeriod: 10, transcriptionSecondsPerPeriod: 3600 },
       }, isLoading: false, isError: false,
     } as unknown as ReturnType<typeof useUserEntitlement>);

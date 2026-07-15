@@ -17,7 +17,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { generateSermonTransitions } from '@/api/clients/sermonTransitions.client';
 import { optimizeTextForSpeech } from '@/api/clients/speechOptimization.client';
-import { createAudioChunks, splitTextEvenly } from '@/api/clients/tts.client';
+import { createAudioChunks, EVEN_SPLIT_IDEAL_SIZE, splitTextEvenly } from '@/api/clients/tts.client';
 import { buildGenerationSegments, type GenerationSegment } from '@/api/services/sermonAudioSegments';
 import {
     SectionKey,
@@ -30,10 +30,11 @@ import {
     type SegmentBody,
     type TransitionSegment,
 } from '@/api/services/sermonTransitions';
+import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { SERMON_SECTIONS } from '@/types/audioGeneration.types';
 import { normalizeScriptureReferencesForTts } from '@/utils/scriptureReferenceNormalizer';
-import { GOOGLE_TTS_MAX_CHUNK_SIZE, splitGoogleTextForRequestLimit } from '@/utils/server/googleTtsChunking';
+import { GOOGLE_TTS_MAX_CHUNK_SIZE, splitGoogleTextForGeneration } from '@/utils/server/googleTtsChunking';
 
 import type { Sermon } from '@/models/models';
 import type { AudioChunk, SectionSelection } from '@/types/audioGeneration.types';
@@ -190,7 +191,8 @@ export async function POST(
 // ============================================================================
 
 /**
- * Google "use as-is" path: voice the exact section text, split only for request limits.
+ * Google "use as-is" path: voice the exact section text, using the reversible
+ * quality-chunk rollout (or the intact request-limit splitter when disabled).
  * One segment per major section (Google raw has no per-point outline granularity).
  */
 function buildGoogleRawSegmentBodies(
@@ -201,7 +203,10 @@ function buildGoogleRawSegmentBodies(
     let originalLength = 0;
     let optimizedLength = 0;
 
-    console.log(`[OptimizeAPI] Preparing Google raw text by major section (max ${GOOGLE_TTS_MAX_CHUNK_SIZE} chars/request).`);
+    const chunkingMode = GOOGLE_SMALL_CHUNKING
+        ? `even ~${EVEN_SPLIT_IDEAL_SIZE}-character quality chunks`
+        : `legacy max ${GOOGLE_TTS_MAX_CHUNK_SIZE} chars/request`;
+    console.log(`[OptimizeAPI] Preparing Google raw text by major section (${chunkingMode}).`);
     for (const section of sectionsToProcess) {
         const originalRawText = getRawSectionText(sermon, section);
         const rawText = normalizeScriptureReferencesForTts(originalRawText);
@@ -216,7 +221,7 @@ function buildGoogleRawSegmentBodies(
             section,
             title: SECTION_CONFIG[section].title,
             level: 'point',
-            bodyChunks: createAudioChunks(splitGoogleTextForRequestLimit(rawText), section),
+            bodyChunks: createAudioChunks(splitGoogleTextForGeneration(rawText), section),
         });
     }
 

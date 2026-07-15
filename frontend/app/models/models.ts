@@ -416,6 +416,8 @@ export interface UserEntitlement {
   usage?: {
     aiUsed: number;
     transcriptionSecondsUsed: number;
+    /** Optional for compatibility with usage records persisted before audio metering. */
+    audioSecondsUsed?: number;
     /** ISO-8601 UTC anchor for the calendar month containing this usage. */
     periodStart: string;
   };

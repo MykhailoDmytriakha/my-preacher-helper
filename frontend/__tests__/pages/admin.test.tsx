@@ -26,12 +26,12 @@ describe('Admin Page', () => {
       uid: 'user-alpha', email: 'alpha@example.com', emailVerified: true, disabled: false,
       lastSignInTime: '2026-07-12T10:00:00.000Z', lastSeenAt: '2026-07-13T09:00:00.000Z', creationTime: '2026-01-12T10:00:00.000Z',
       paidTier: 'tier1', effectiveTier: 'tier3', promotion: { tier: 'tier3', expiresAt: '2099-01-01T00:00:59.999Z' },
-      usage: { aiUsed: 7, transcriptionSecondsUsed: 120, periodStart: '2026-07-01T00:00:00.000Z' }, role: 'admin', referredBy: 'inviter-uid', referralCount: 3,
+      usage: { aiUsed: 7, transcriptionSecondsUsed: 120, audioSecondsUsed: 45, periodStart: '2026-07-01T00:00:00.000Z' }, role: 'admin', referredBy: 'inviter-uid', referralCount: 3,
     },
     {
       uid: 'user-beta', email: 'beta@example.com', emailVerified: false, disabled: false,
       lastSignInTime: '2026-06-12T10:00:00.000Z', lastSeenAt: null, creationTime: '2026-02-12T10:00:00.000Z', paidTier: 'free', effectiveTier: 'free', promotion: null,
-      usage: { aiUsed: 0, transcriptionSecondsUsed: 0, periodStart: '2026-07-01T00:00:00.000Z' }, role: null, referredBy: null, referralCount: 0,
+      usage: { aiUsed: 0, transcriptionSecondsUsed: 0, audioSecondsUsed: 0, periodStart: '2026-07-01T00:00:00.000Z' }, role: null, referredBy: null, referralCount: 0,
     },
   ];
 
@@ -109,6 +109,7 @@ describe('Admin Page', () => {
     expect(within(drawer).getByLabelText('admin.role')).toHaveValue('admin');
     expect(within(drawer).getByLabelText('admin.aiUsage')).toHaveValue(7);
     expect(within(drawer).getByLabelText('admin.transcriptionSeconds')).toHaveValue(120);
+    expect(within(drawer).getByLabelText('admin.audioSeconds')).toHaveValue(45);
     expect(within(drawer).getByText('inviter-uid')).toBeInTheDocument();
     expect(within(drawer).getByText('admin.users.fields.lastSeen')).toBeInTheDocument();
     const invitedCount = within(drawer).getByText('admin.users.fields.invitedCount').parentElement;
@@ -243,7 +244,7 @@ describe('Admin Page', () => {
     mockAuthorizedList();
     fetchMock.mockResponseOnce(JSON.stringify({
       paidTier: 'tier1', promotion: { tier: 'tier2', expiresAt: '2099-01-01T00:00:00.000Z' },
-      usage: { aiUsed: 0, transcriptionSecondsUsed: 0, periodStart: '2026-07-01T00:00:00.000Z' },
+      usage: { aiUsed: 0, transcriptionSecondsUsed: 0, audioSecondsUsed: 0, periodStart: '2026-07-01T00:00:00.000Z' },
     }));
     render(<AdminPage />);
 
@@ -284,6 +285,7 @@ describe('Admin Page', () => {
     expect(screen.getByLabelText('admin.role')).toHaveValue('');
     expect(screen.getByLabelText('admin.aiUsage')).toHaveValue(null);
     expect(screen.getByLabelText('admin.transcriptionSeconds')).toHaveValue(null);
+    expect(screen.getByLabelText('admin.audioSeconds')).toHaveValue(null);
     expect(screen.getByRole('button', { name: 'admin.users.promo.unchanged' })).toHaveAttribute('aria-pressed', 'true');
   });
 

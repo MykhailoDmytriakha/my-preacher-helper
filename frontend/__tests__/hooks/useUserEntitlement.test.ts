@@ -27,6 +27,7 @@ describe('fetchUserEntitlement', () => {
           transcriptionSecondsLimit: 3600,
           transcriptionSecondsUsed: 0,
           transcriptionSecondsRemaining: 3600,
+          audioSecondsUsed: 0,
           aiBlocked: false,
           transcriptionBlocked: false,
           periodResets: false,

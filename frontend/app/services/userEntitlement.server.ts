@@ -33,7 +33,7 @@ function getPromotion(value: unknown): UserEntitlement['promotion'] {
 export function normalizeEntitlementUsage(
   value: unknown,
   now: Date
-): NonNullable<UserEntitlement['usage']> {
+): Required<NonNullable<UserEntitlement['usage']>> {
   const usage = isRecord(value) ? value : {};
   const storedPeriodStart = typeof usage.periodStart === 'string'
     && !Number.isNaN(Date.parse(usage.periodStart))
@@ -46,6 +46,7 @@ export function normalizeEntitlementUsage(
     transcriptionSecondsUsed: toUsageValue(
       usage.transcriptionSecondsUsed ?? usage.transcriptionSeconds
     ),
+    audioSecondsUsed: toUsageValue(usage.audioSecondsUsed),
     periodStart: storedPeriodStart,
   };
 }

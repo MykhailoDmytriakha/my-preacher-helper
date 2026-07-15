@@ -24,6 +24,11 @@ const config: Config = {
   modulePaths: ['.', '..'],
   moduleDirectories: ['node_modules', '../node_modules'],
   moduleNameMapper: {
+    // Jest 29 does not resolve music-metadata's ESM-only conditional export.
+    // Mapping the installed entry keeps the default setup mock working while
+    // allowing parser integration tests to explicitly jest.unmock it.
+    '^music-metadata$': '<rootDir>/node_modules/music-metadata/lib/index.js',
+    '^file-type$': '<rootDir>/node_modules/file-type/index.js',
     // Handle module aliases (aligning with tsconfig.json)
     // Specific paths first
     '^@components/(.*)$': '<rootDir>/app/components/$1',

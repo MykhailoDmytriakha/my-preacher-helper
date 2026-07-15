@@ -26,6 +26,7 @@ export interface UsageRemaining {
   transcriptionSecondsLimit: number;
   transcriptionSecondsUsed: number;
   transcriptionSecondsRemaining: number;
+  audioSecondsUsed: number;
   aiBlocked: boolean;
   transcriptionBlocked: boolean;
   periodResets: boolean;
@@ -49,6 +50,7 @@ export function resolveUsageRemaining(
   const periodResets = isPriorCalendarMonth(usage.periodStart, now);
   const aiUsed = periodResets ? 0 : usage.aiUsed;
   const transcriptionSecondsUsed = periodResets ? 0 : usage.transcriptionSecondsUsed;
+  const audioSecondsUsed = periodResets ? 0 : usage.audioSecondsUsed;
   const aiRemaining = Math.max(0, limits.aiCallsPerPeriod - aiUsed);
   const transcriptionSecondsRemaining = Math.max(
     0,
@@ -62,6 +64,7 @@ export function resolveUsageRemaining(
     transcriptionSecondsLimit: limits.transcriptionSecondsPerPeriod,
     transcriptionSecondsUsed,
     transcriptionSecondsRemaining,
+    audioSecondsUsed,
     aiBlocked: aiRemaining <= 0,
     transcriptionBlocked: transcriptionSecondsRemaining <= 0,
     periodResets,
@@ -93,7 +96,7 @@ export function assertTranscriptionUsageAvailable(
   }
 }
 
-type UsageCounter = 'aiUsed' | 'transcriptionSecondsUsed';
+type UsageCounter = 'aiUsed' | 'transcriptionSecondsUsed' | 'audioSecondsUsed';
 
 async function consumeUsage(
   userId: string,
@@ -115,6 +118,7 @@ async function consumeUsage(
         ...(periodResets ? {
           aiUsed: 0,
           transcriptionSecondsUsed: 0,
+          audioSecondsUsed: 0,
           periodStart: getUsagePeriodStart(now),
         } : {}),
         [counter]: current + amount,
@@ -134,4 +138,13 @@ export async function consumeTranscriptionSeconds(
 ): Promise<void> {
   if (!Number.isFinite(seconds) || seconds <= 0) return;
   await consumeUsage(userId, 'transcriptionSecondsUsed', seconds, now);
+}
+
+export async function consumeAudioSeconds(
+  userId: string,
+  seconds: number,
+  now: Date
+): Promise<void> {
+  if (!Number.isFinite(seconds) || seconds <= 0) return;
+  await consumeUsage(userId, 'audioSecondsUsed', seconds, now);
 }

@@ -24,6 +24,7 @@ const promotionSchema = z.object({
 const usageSchema = z.object({
   aiUsed: z.number().finite().nonnegative().optional(),
   transcriptionSecondsUsed: z.number().finite().nonnegative().optional(),
+  audioSecondsUsed: z.number().finite().nonnegative().optional(),
   periodStart: isoDateTimeSchema.optional(),
 }).strict();
 const entitlementPatchSchema = z.object({

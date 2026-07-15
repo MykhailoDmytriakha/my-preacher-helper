@@ -6,11 +6,12 @@ import { TextDecoder, TextEncoder } from 'util';
 
 import { resolveUserTtsTarget } from '@/api/clients/ai/tierPolicy';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
-import { generateChunkAudio, splitTextIntoChunks } from '@/api/clients/tts.client';
+import { generateChunkAudio, splitTextEvenly, splitTextIntoChunks } from '@/api/clients/tts.client';
 import { adminDb } from '@/config/firebaseAdminConfig';
-import { assertAiUsageAvailable, consumeAiUsage } from '@/services/usageLimits.server';
+import { assertAiUsageAvailable, consumeAiUsage, consumeAudioSeconds } from '@/services/usageLimits.server';
 import { getUserEntitlementServerSide } from '@/services/userEntitlement.server';
 import { concatenateAudioBlobs, createSilenceBlob } from '@/utils/audioConcat';
+import { getMeteredAudioDurationSeconds } from '@/utils/server/audioDurationMetering.server';
 
 globalThis.ReadableStream = globalThis.ReadableStream || ReadableStream;
 globalThis.TextEncoder = globalThis.TextEncoder || (TextEncoder as typeof globalThis.TextEncoder);
@@ -81,6 +82,7 @@ jest.mock('@/config/firebaseAdminConfig', () => ({
 
 jest.mock('@/api/clients/tts.client', () => ({
   generateChunkAudio: jest.fn(),
+  splitTextEvenly: jest.fn((text: string) => [text]),
   splitTextIntoChunks: jest.fn((text: string) => [text]),
 }));
 
@@ -93,6 +95,10 @@ jest.mock('@/utils/audioConcat', () => ({
   createSilenceBlob: jest.fn(),
 }));
 
+jest.mock('@/utils/server/audioDurationMetering.server', () => ({
+  getMeteredAudioDurationSeconds: jest.fn(),
+}));
+
 jest.mock('@/services/userEntitlement.server', () => ({
   getUserEntitlementServerSide: jest.fn(),
   resolveEffectiveTier: jest.fn((entitlement: { paidTier?: string } | null | undefined) => entitlement?.paidTier ?? 'free'),
@@ -101,6 +107,7 @@ jest.mock('@/services/userEntitlement.server', () => ({
 jest.mock('@/services/usageLimits.server', () => ({
   assertAiUsageAvailable: jest.fn(),
   consumeAiUsage: jest.fn(),
+  consumeAudioSeconds: jest.fn(),
 }));
 
 jest.mock('@/api/auth/requireAuthenticatedUid.server', () => ({
@@ -161,6 +168,8 @@ async function readStreamEvents(stream: ReadableStream<Uint8Array>): Promise<Rec
 describe('POST /api/sermons/[id]/audio/generate', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (splitTextEvenly as jest.Mock).mockImplementation((text: string) => [text]);
+    (splitTextIntoChunks as jest.Mock).mockImplementation((text: string) => [text]);
     (getRequiredAuthenticatedUid as jest.Mock).mockResolvedValue('user-1');
 
     (getUserEntitlementServerSide as jest.Mock).mockResolvedValue({ paidTier: 'tier2' });
@@ -169,6 +178,8 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
       modelId: 'gemini-3.1-flash-tts',
     });
     (consumeAiUsage as jest.Mock).mockResolvedValue(undefined);
+    (consumeAudioSeconds as jest.Mock).mockResolvedValue(undefined);
+    (getMeteredAudioDurationSeconds as jest.Mock).mockResolvedValue(1);
 
     (adminDb.collection as jest.Mock).mockReturnValue({
       doc: mockDoc,
@@ -433,6 +444,8 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     );
     expect(consumeAiUsage).toHaveBeenCalledWith('user-1', expect.any(Date));
     expect(consumeAiUsage).toHaveBeenCalledTimes(1);
+    expect(getMeteredAudioDurationSeconds).toHaveBeenCalledTimes(2);
+    expect(consumeAudioSeconds).toHaveBeenCalledWith('user-1', 2, expect.any(Date));
 
     expect(mockUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -614,9 +627,9 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     );
   });
 
-  it('splits oversized Google section requests with the Google-specific limit only', async () => {
+  it('splits oversized Google sections into even quality chunks', async () => {
     const oversizedMainText = 'Main oversized section. '.repeat(1300);
-    (splitTextIntoChunks as jest.Mock).mockReturnValueOnce([
+    (splitTextEvenly as jest.Mock).mockReturnValueOnce([
       'Main oversized section part one.',
       'Main oversized section part two.',
     ]);
@@ -677,7 +690,8 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
 
     await readStreamEvents(response.body as ReadableStream<Uint8Array>);
 
-    expect(splitTextIntoChunks).toHaveBeenCalledWith(oversizedMainText.trim(), 24576);
+    expect(splitTextEvenly).toHaveBeenCalledWith(oversizedMainText.trim());
+    expect(splitTextIntoChunks).not.toHaveBeenCalled();
     expect(generateChunkAudio).toHaveBeenNthCalledWith(
       1,
       'Main oversized section part one.',
@@ -696,6 +710,84 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     expect(createSilenceBlob).toHaveBeenCalledTimes(1);
     const mergedBlobs = (concatenateAudioBlobs as jest.Mock).mock.calls[0][0] as Blob[];
     expect(mergedBlobs).toHaveLength(4);
+  });
+
+  it('preserves exactly one Google section pause across one-chunk batch seams', async () => {
+    mockGet.mockResolvedValue({
+      exists: true,
+      id: 'sermon-1',
+      data: () => ({
+        id: 'sermon-1',
+        title: 'Grace & Peace',
+        userId: 'user-1',
+        audioChunks: [
+          { text: 'Intro first. Intro second.', sectionId: 'introduction', createdAt: '2026-02-27T00:00:00.000Z', index: 0 },
+          { text: 'Main only.', sectionId: 'mainPart', createdAt: '2026-02-27T00:00:00.000Z', index: 1 },
+        ],
+      }),
+    });
+    (splitTextEvenly as jest.Mock).mockImplementation((text: string) =>
+      text.startsWith('Intro') ? ['Intro first.', 'Intro second.'] : [text]
+    );
+    (generateChunkAudio as jest.Mock).mockResolvedValue({
+      audioBlob: new Blob([new Uint8Array(10)], { type: 'audio/wav' }),
+      index: 0,
+      durationSeconds: 1,
+      mimeType: 'audio/wav',
+    });
+
+    const batchEvents = [];
+    for (const offset of [0, 1, 2]) {
+      const response = await POST(
+        createRequest({
+          userId: 'user-1',
+          provider: 'google',
+          voice: 'Puck',
+          model: 'gemini-2.5-flash-tts',
+          quality: 'standard',
+          sections: 'all',
+          offset,
+          limit: 1,
+        }) as never,
+        { params: Promise.resolve({ id: 'sermon-1' }) }
+      );
+      batchEvents.push(await readStreamEvents(response.body as ReadableStream<Uint8Array>));
+    }
+
+    expect(createSilenceBlob).toHaveBeenCalledTimes(1);
+    expect((concatenateAudioBlobs as jest.Mock).mock.calls.map(([blobs]) => blobs.length)).toEqual([1, 2, 1]);
+    expect(batchEvents.flat()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'download_complete', totalChunks: 3 }),
+    ]));
+    expect(consumeAiUsage).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['OpenAI', { provider: 'openai', voice: 'onyx', model: 'gpt-4o-mini-tts' }],
+    ['Google', { provider: 'google', voice: 'Puck', model: 'gemini-2.5-flash-tts' }],
+  ])('retries one transient %s chunk failure and then succeeds', async (_label, providerBody) => {
+    (generateChunkAudio as jest.Mock)
+      .mockRejectedValueOnce(new Error('transient provider failure'))
+      .mockResolvedValueOnce({
+        audioBlob: new Blob([new Uint8Array(10)], { type: providerBody.provider === 'google' ? 'audio/wav' : 'audio/mpeg' }),
+        index: 0,
+        durationSeconds: 1,
+        mimeType: providerBody.provider === 'google' ? 'audio/wav' : 'audio/mpeg',
+      });
+
+    const response = await POST(
+      createRequest({
+        userId: 'user-1',
+        ...providerBody,
+        quality: 'standard',
+        sections: 'introduction',
+      }) as never,
+      { params: Promise.resolve({ id: 'sermon-1' }) }
+    );
+    const events = await readStreamEvents(response.body as ReadableStream<Uint8Array>);
+
+    expect(generateChunkAudio).toHaveBeenCalledTimes(2);
+    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'download_complete' })]));
   });
 
   it('defaults Google TTS generation to the configured Gemini 2.5 env model', async () => {
@@ -817,6 +909,90 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     );
   });
 
+  it('continues an export after one chunk rejects and meters only successful audio', async () => {
+    (generateChunkAudio as jest.Mock).mockImplementation((text: string) => {
+      if (text.startsWith('Introduction')) {
+        return Promise.reject(new Error('first chunk failed'));
+      }
+      return Promise.resolve({
+        audioBlob: new Blob(['successful-chunk'], { type: 'audio/mpeg' }),
+        index: 1,
+        durationSeconds: 99,
+        mimeType: 'audio/mpeg',
+      });
+    });
+    (getMeteredAudioDurationSeconds as jest.Mock).mockResolvedValueOnce(2.75);
+
+    const response = await POST(
+      createRequest({
+        userId: 'user-1',
+        voice: 'onyx',
+        quality: 'standard',
+        sections: 'all',
+      }) as never,
+      { params: Promise.resolve({ id: 'sermon-1' }) }
+    );
+
+    const events = await readStreamEvents(response.body as ReadableStream<Uint8Array>);
+
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'download_complete' }),
+    ]));
+    expect(events.some(event => event.type === 'error')).toBe(false);
+    expect(getMeteredAudioDurationSeconds).toHaveBeenCalledWith(
+      expect.any(Blob),
+      'audio/mpeg',
+      'Main part chunk text.'
+    );
+    expect(consumeAudioSeconds).toHaveBeenCalledWith('user-1', 2.75, expect.any(Date));
+    expect(consumeAiUsage).toHaveBeenCalledTimes(1);
+    expect((generateChunkAudio as jest.Mock).mock.calls.filter(([text]) =>
+      String(text).startsWith('Introduction'))).toHaveLength(2);
+  });
+
+  it('charges AI usage only for offset zero while metering every generated batch', async () => {
+    (generateChunkAudio as jest.Mock).mockResolvedValue({
+      audioBlob: new Blob(['batch-chunk'], { type: 'audio/mpeg' }),
+      index: 0,
+      durationSeconds: 99,
+      mimeType: 'audio/mpeg',
+    });
+    (getMeteredAudioDurationSeconds as jest.Mock)
+      .mockResolvedValueOnce(1.25)
+      .mockResolvedValueOnce(2.5);
+
+    const firstResponse = await POST(
+      createRequest({
+        userId: 'user-1',
+        voice: 'onyx',
+        quality: 'standard',
+        sections: 'all',
+        offset: 0,
+        limit: 1,
+      }) as never,
+      { params: Promise.resolve({ id: 'sermon-1' }) }
+    );
+    await readStreamEvents(firstResponse.body as ReadableStream<Uint8Array>);
+
+    const secondResponse = await POST(
+      createRequest({
+        userId: 'user-1',
+        voice: 'onyx',
+        quality: 'standard',
+        sections: 'all',
+        offset: 1,
+        limit: 1,
+      }) as never,
+      { params: Promise.resolve({ id: 'sermon-1' }) }
+    );
+    await readStreamEvents(secondResponse.body as ReadableStream<Uint8Array>);
+
+    expect(consumeAudioSeconds).toHaveBeenNthCalledWith(1, 'user-1', 1.25, expect.any(Date));
+    expect(consumeAudioSeconds).toHaveBeenNthCalledWith(2, 'user-1', 2.5, expect.any(Date));
+    expect(consumeAiUsage).toHaveBeenCalledTimes(1);
+    expect(consumeAiUsage).toHaveBeenCalledWith('user-1', expect.any(Date));
+  });
+
   it('sends an error event when generation fails inside the stream', async () => {
     // Chunks are generated in parallel, so make every chunk fail to keep the
     // stream deterministic: a single failing chunk could otherwise race with a
@@ -836,17 +1012,20 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
 
     const events = await readStreamEvents(response.body as ReadableStream<Uint8Array>);
 
-    expect(events).toEqual([
+    expect(events).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'progress', current: 2, total: 2, percent: 80 }),
       {
         type: 'error',
-        message: 'TTS generation failed with openai/gpt-4o-mini-tts: TTS failed',
+        message: 'TTS generation failed with openai/gpt-4o-mini-tts: All TTS chunks failed',
       },
-    ]);
+    ]));
     expect((generateChunkAudio as jest.Mock).mock.calls.every(([, options]) =>
       options.provider === 'openai' && options.model === 'gpt-4o-mini-tts'))
       .toBe(true);
     expect(mockUpdate).not.toHaveBeenCalled();
+    expect(getMeteredAudioDurationSeconds).not.toHaveBeenCalled();
     expect(consumeAiUsage).not.toHaveBeenCalled();
+    expect(consumeAudioSeconds).not.toHaveBeenCalled();
   });
 
   it('returns 429 before TTS and does not count when AI usage is exhausted', async () => {
@@ -863,6 +1042,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     await expect(response.json()).resolves.toEqual({ error: 'AI usage limit exhausted' });
     expect(generateChunkAudio).not.toHaveBeenCalled();
     expect(consumeAiUsage).not.toHaveBeenCalled();
+    expect(consumeAudioSeconds).not.toHaveBeenCalled();
   });
 
   it('returns 500 when the route setup fails before the stream starts', async () => {

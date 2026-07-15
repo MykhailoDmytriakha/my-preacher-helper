@@ -24,6 +24,7 @@ const SERVER_MANAGED_USER_FIELDS = {
   usage: {
     aiUsed: 999,
     transcriptionSecondsUsed: 999,
+    audioSecondsUsed: 999,
     periodStart: '2026-07-01T00:00:00.000Z',
   },
   role: 'admin',
@@ -49,6 +50,7 @@ const SERVER_MANAGED_USER_FIELDS = {
       usage: {
         aiUsed: 1,
         transcriptionSecondsUsed: 2,
+        audioSecondsUsed: 3,
         periodStart: '2026-07-01T00:00:00.000Z',
       },
       role: 'user',

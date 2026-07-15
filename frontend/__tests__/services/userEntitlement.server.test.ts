@@ -84,7 +84,7 @@ describe('getUserEntitlementServerSide', () => {
 
     await expect(getUserEntitlementServerSide('user-1')).resolves.toEqual({
       paidTier: 'free',
-      usage: { aiUsed: 0, transcriptionSecondsUsed: 0, periodStart: expect.any(String) },
+      usage: { aiUsed: 0, transcriptionSecondsUsed: 0, audioSecondsUsed: 0, periodStart: expect.any(String) },
     });
     expect(mockCollection).toHaveBeenCalledWith('users');
     expect(mockDoc).toHaveBeenCalledWith('user-1');
@@ -105,7 +105,7 @@ describe('getUserEntitlementServerSide', () => {
       paidTier: 'tier2',
       lastSeenAt: '2026-07-12T11:00:00.000Z',
       promotion: { tier: 'tier3', expiresAt: '2026-08-01T00:00:00.000Z' },
-      usage: { aiUsed: 12, transcriptionSecondsUsed: 0, periodStart },
+      usage: { aiUsed: 12, transcriptionSecondsUsed: 0, audioSecondsUsed: 0, periodStart },
     });
   });
 
@@ -123,7 +123,7 @@ describe('getUserEntitlementServerSide', () => {
       includeTextPreference: true,
     })).resolves.toEqual({
       paidTier: 'tier2',
-      usage: { aiUsed: 0, transcriptionSecondsUsed: 0, periodStart: expect.any(String) },
+      usage: { aiUsed: 0, transcriptionSecondsUsed: 0, audioSecondsUsed: 0, periodStart: expect.any(String) },
       preferredProviderId: 'gemini',
       preferredModelId: 'gemini-2.5-flash-lite',
     });
@@ -167,7 +167,7 @@ describe('getUserEntitlementServerSide', () => {
       includeTextPreference: true,
     })).resolves.toEqual({
       paidTier: 'free',
-      usage: { aiUsed: 0, transcriptionSecondsUsed: 0, periodStart: expect.any(String) },
+      usage: { aiUsed: 0, transcriptionSecondsUsed: 0, audioSecondsUsed: 0, periodStart: expect.any(String) },
     });
   });
 
@@ -185,7 +185,7 @@ describe('getUserEntitlementServerSide', () => {
 
       await expect(getUserEntitlementServerSide('user-1')).resolves.toEqual({
         paidTier: 'free',
-        usage: { aiUsed: 0, transcriptionSecondsUsed: 0, periodStart: expect.any(String) },
+        usage: { aiUsed: 0, transcriptionSecondsUsed: 0, audioSecondsUsed: 0, periodStart: expect.any(String) },
       });
     }
   );
@@ -203,7 +203,26 @@ describe('getUserEntitlementServerSide', () => {
       usage: {
         aiUsed: 7,
         transcriptionSecondsUsed: 42,
+        audioSecondsUsed: 0,
         periodStart: expect.any(String),
+      },
+    });
+  });
+
+  it('defaults audio usage for entitlement data persisted before audio metering', async () => {
+    mockGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        usage: { aiUsed: 3, transcriptionSecondsUsed: 15, periodStart },
+      }),
+    });
+
+    await expect(getUserEntitlementServerSide('stale-user')).resolves.toMatchObject({
+      usage: {
+        aiUsed: 3,
+        transcriptionSecondsUsed: 15,
+        audioSecondsUsed: 0,
+        periodStart,
       },
     });
   });

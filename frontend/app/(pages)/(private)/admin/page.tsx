@@ -30,7 +30,7 @@ type UserFilter = 'all' | 'paid' | 'unverified';
 type EntitlementPatch = {
   paidTier?: Tier;
   promotion?: { tier: Tier; expiresAt: string } | null;
-  usage?: { aiUsed?: number; transcriptionSecondsUsed?: number };
+  usage?: { aiUsed?: number; transcriptionSecondsUsed?: number; audioSecondsUsed?: number };
   role?: Role;
 };
 
@@ -48,6 +48,7 @@ type AdminUser = {
   usage: {
     aiUsed: number;
     transcriptionSecondsUsed: number;
+    audioSecondsUsed: number;
     periodStart: string;
   };
   role: Role | null;
@@ -157,6 +158,7 @@ const isAdminUser = (value: unknown): value is AdminUser => {
     && promotionIsValid
     && typeof value.usage.aiUsed === 'number'
     && typeof value.usage.transcriptionSecondsUsed === 'number'
+    && typeof value.usage.audioSecondsUsed === 'number'
     && typeof value.usage.periodStart === 'string'
     && (value.role === null || isRole(value.role))
     && isNullableString(value.referredBy)
@@ -574,6 +576,7 @@ type DrawerProps = {
   promotionExpiresAt: string;
   aiUsage: string;
   transcriptionSeconds: string;
+  audioSeconds: string;
   submitting: boolean;
   submitError: string;
   onClose: () => void;
@@ -586,6 +589,7 @@ type DrawerProps = {
   onPromotionExpiresAtChange: (value: string) => void;
   onAiUsageChange: (value: string) => void;
   onTranscriptionSecondsChange: (value: string) => void;
+  onAudioSecondsChange: (value: string) => void;
 };
 
 function UserDrawer(props: DrawerProps) {
@@ -632,7 +636,7 @@ function UserDrawer(props: DrawerProps) {
               <p className="-mt-2 text-xs text-slate-400 dark:text-slate-500">{t('admin.users.manualUidHint')}</p>
               <div className="grid grid-cols-2 gap-3"><label className="text-sm font-semibold text-slate-600 dark:text-slate-300" htmlFor="paid-tier">{t('admin.paidTier')}<select className={fieldClassName} id="paid-tier" onChange={(event) => props.onPaidTierChange(event.target.value as Tier | '')} value={props.paidTier}><option value="">{t('admin.noChange')}</option>{TIER_VALUES.map((tier) => <option key={tier} value={tier}>{t(`admin.users.tiers.${tier}`)}</option>)}</select></label><label className="text-sm font-semibold text-slate-600 dark:text-slate-300" htmlFor="role">{t('admin.role')}<select className={fieldClassName} id="role" onChange={(event) => props.onRoleChange(event.target.value as Role | '')} value={props.role}><option value="">{t('admin.noChange')}</option>{(['user', 'admin', 'superuser'] as Role[]).map((value) => <option key={value} value={value}>{t(`admin.users.roles.${value}`)}</option>)}</select></label></div>
               <fieldset><legend className="mb-1.5 text-sm font-semibold text-slate-600 dark:text-slate-300">{t('admin.promotion')}</legend><div aria-label={t('admin.promotionAction')} className="flex overflow-hidden rounded-lg border border-slate-300 dark:border-slate-600">{(['unchanged', 'set', 'clear'] as PromotionMode[]).map((mode) => <button aria-pressed={props.promotionMode === mode} className={`${props.promotionMode === mode ? 'bg-blue-600 text-white' : 'bg-slate-50 text-slate-600 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700'} flex-1 border-r border-slate-300 px-2 py-2 text-xs font-bold last:border-r-0 dark:border-slate-600`} key={mode} onClick={() => props.onPromotionModeChange(mode)} type="button">{t(`admin.users.promo.${mode}`)}</button>)}</div>{props.promotionMode === 'set' && <div className="mt-3 grid grid-cols-2 gap-3"><label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="promotion-tier">{t('admin.promotionTier')}<select className={fieldClassName} id="promotion-tier" onChange={(event) => props.onPromotionTierChange(event.target.value as Tier)} value={props.promotionTier}>{TIER_VALUES.map((tier) => <option key={tier} value={tier}>{t(`admin.users.tiers.${tier}`)}</option>)}</select></label><label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="promotion-expires-at">{t('admin.promotionExpiresAt')}<input className={fieldClassName} id="promotion-expires-at" onChange={(event) => props.onPromotionExpiresAtChange(event.target.value)} type="datetime-local" value={props.promotionExpiresAt} /></label></div>}<p className="mt-1.5 text-xs text-slate-400 dark:text-slate-500">{t('admin.users.promoHint')}</p></fieldset>
-              <fieldset><legend className="mb-1.5 text-sm font-semibold text-slate-600 dark:text-slate-300">{t('admin.usage')}</legend><div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="ai-usage">{t('admin.aiUsage')}<input className={fieldClassName} id="ai-usage" min="0" onChange={(event) => props.onAiUsageChange(event.target.value)} step="any" type="number" value={props.aiUsage} /></label><label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="transcription-seconds">{t('admin.transcriptionSeconds')}<input className={fieldClassName} id="transcription-seconds" min="0" onChange={(event) => props.onTranscriptionSecondsChange(event.target.value)} step="any" type="number" value={props.transcriptionSeconds} /></label></div></fieldset>
+              <fieldset><legend className="mb-1.5 text-sm font-semibold text-slate-600 dark:text-slate-300">{t('admin.usage')}</legend><div className="grid grid-cols-2 gap-3"><label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="ai-usage">{t('admin.aiUsage')}<input className={fieldClassName} id="ai-usage" min="0" onChange={(event) => props.onAiUsageChange(event.target.value)} step="any" type="number" value={props.aiUsage} /></label><label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="transcription-seconds">{t('admin.transcriptionSeconds')}<input className={fieldClassName} id="transcription-seconds" min="0" onChange={(event) => props.onTranscriptionSecondsChange(event.target.value)} step="any" type="number" value={props.transcriptionSeconds} /></label><label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor="audio-seconds">{t('admin.audioSeconds')}<input className={fieldClassName} id="audio-seconds" min="0" onChange={(event) => props.onAudioSecondsChange(event.target.value)} step="any" type="number" value={props.audioSeconds} /></label></div></fieldset>
               {props.submitError && <p className="text-sm text-rose-700 dark:text-rose-300" role="alert">{props.submitError}</p>}
             </div>
           </div>
@@ -664,6 +668,7 @@ export default function AdminPage() {
   const [promotionExpiresAt, setPromotionExpiresAt] = useState('');
   const [aiUsage, setAiUsage] = useState('');
   const [transcriptionSeconds, setTranscriptionSeconds] = useState('');
+  const [audioSeconds, setAudioSeconds] = useState('');
   const [role, setRole] = useState<Role | ''>('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -745,11 +750,11 @@ export default function AdminPage() {
   }, [toastVisible]);
 
   const resetEntitlementFields = () => {
-    setPaidTier(''); setRole(''); setAiUsage(''); setTranscriptionSeconds(''); setPromotionMode('unchanged'); setPromotionDirty(false); setPromotionTier('free'); setPromotionExpiresAt(''); setSubmitError('');
+    setPaidTier(''); setRole(''); setAiUsage(''); setTranscriptionSeconds(''); setAudioSeconds(''); setPromotionMode('unchanged'); setPromotionDirty(false); setPromotionTier('free'); setPromotionExpiresAt(''); setSubmitError('');
   };
 
   const selectUser = (user: AdminUser) => {
-    setSelectedUid(user.uid); setTargetUid(user.uid); setPaidTier(user.paidTier); setRole(user.role ?? ''); setAiUsage(String(user.usage.aiUsed)); setTranscriptionSeconds(String(user.usage.transcriptionSecondsUsed));
+    setSelectedUid(user.uid); setTargetUid(user.uid); setPaidTier(user.paidTier); setRole(user.role ?? ''); setAiUsage(String(user.usage.aiUsed)); setTranscriptionSeconds(String(user.usage.transcriptionSecondsUsed)); setAudioSeconds(String(user.usage.audioSecondsUsed));
     if (user.promotion) { setPromotionMode('unchanged'); setPromotionTier(user.promotion.tier); setPromotionExpiresAt(formatDateTimeLocal(user.promotion.expiresAt)); } else { setPromotionMode('unchanged'); setPromotionTier('free'); setPromotionExpiresAt(''); }
     setPromotionDirty(false); setSubmitError(''); setDrawerOpen(true);
   };
@@ -812,7 +817,13 @@ export default function AdminPage() {
     setUsers((currentUsers) => currentUsers.map((user) => {
       if (user.uid !== uid) return user;
       const promotion = updatedEntitlement.promotion ?? null;
-      return { ...user, paidTier: updatedEntitlement.paidTier, promotion, usage: updatedEntitlement.usage ?? user.usage, role: patch.role ?? user.role, referredBy: updatedEntitlement.referredBy ?? user.referredBy, effectiveTier: resolveEffectiveTierClient(updatedEntitlement.paidTier, promotion) };
+      const usage = updatedEntitlement.usage
+        ? {
+            ...updatedEntitlement.usage,
+            audioSecondsUsed: updatedEntitlement.usage.audioSecondsUsed ?? user.usage.audioSecondsUsed,
+          }
+        : user.usage;
+      return { ...user, paidTier: updatedEntitlement.paidTier, promotion, usage, role: patch.role ?? user.role, referredBy: updatedEntitlement.referredBy ?? user.referredBy, effectiveTier: resolveEffectiveTierClient(updatedEntitlement.paidTier, promotion) };
     }));
   };
 
@@ -820,8 +831,8 @@ export default function AdminPage() {
     event.preventDefault(); setSubmitError('');
     const uid = targetUid.trim();
     if (!uid) { setSubmitError(t('admin.targetUidRequired')); return; }
-    const usage = { aiUsed: parseNonNegativeNumber(aiUsage), transcriptionSecondsUsed: parseNonNegativeNumber(transcriptionSeconds) };
-    if ((aiUsage.trim() && usage.aiUsed === undefined) || (transcriptionSeconds.trim() && usage.transcriptionSecondsUsed === undefined)) { setSubmitError(t('admin.invalidUsage')); return; }
+    const usage = { aiUsed: parseNonNegativeNumber(aiUsage), transcriptionSecondsUsed: parseNonNegativeNumber(transcriptionSeconds), audioSecondsUsed: parseNonNegativeNumber(audioSeconds) };
+    if ((aiUsage.trim() && usage.aiUsed === undefined) || (transcriptionSeconds.trim() && usage.transcriptionSecondsUsed === undefined) || (audioSeconds.trim() && usage.audioSecondsUsed === undefined)) { setSubmitError(t('admin.invalidUsage')); return; }
     const patch: EntitlementPatch = {};
     if (paidTier) patch.paidTier = paidTier;
     // Security invariant: promotion is sent only after an explicit Keep/Set/Clear edit.
@@ -831,7 +842,7 @@ export default function AdminPage() {
       if (!promotionExpiresAt || Number.isNaN(expiresAt.getTime())) { setSubmitError(t('admin.invalidPromotion')); return; }
       patch.promotion = { tier: promotionTier, expiresAt: expiresAt.toISOString() };
     }
-    if (usage.aiUsed !== undefined || usage.transcriptionSecondsUsed !== undefined) patch.usage = usage;
+    if (usage.aiUsed !== undefined || usage.transcriptionSecondsUsed !== undefined || usage.audioSecondsUsed !== undefined) patch.usage = usage;
     if (role) patch.role = role;
     if (Object.keys(patch).length === 0) { setSubmitError(t('admin.noChanges')); return; }
     const currentUser = auth.currentUser;
@@ -857,5 +868,5 @@ export default function AdminPage() {
     ? t('admin.users.pageDescription')
     : t('admin.modelDefaults.description');
 
-  return <><LanguageInitializer /><main className="mx-auto max-w-screen-2xl px-4 py-7 md:px-5 md:py-8"><div className="grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)] md:items-start md:gap-8"><aside className="md:sticky md:top-4"><AdminNav activeSection={activeSection} onSectionChange={setActiveSection} /></aside><div className="min-w-0"><header className="mb-5 flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white" id="admin-page-title">{pageTitle}</h1><p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">{pageDescription}</p></div><div className="flex items-center gap-3">{activeSection === 'users' && <button className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800" onClick={openManualEditor} type="button">{t('admin.users.manualEdit')}</button>}<Link className="text-sm font-bold text-blue-700 hover:underline dark:text-blue-300" href="/settings">{t('admin.backToSettings')}</Link></div></header>{activeSection === 'users' ? <><KpiStrip users={users} /><UserList error={usersError ? t('admin.users.loadFailed') : ''} filter={filter} filteredUsers={filteredUsers} language={i18n.language} loading={usersLoading} loadingMore={loadingMore} nextPageToken={nextPageToken} onFilterChange={setFilter} onLoadMore={handleLoadMore} onSearchChange={setSearch} onSelect={selectUser} search={search} selectedUid={selectedUid} users={users} /></> : <ModelDefaultsSection defaults={modelDefaults} error={modelDefaultsError} loading={modelDefaultsLoading} onChange={handleModelDefaultChange} onSave={handleModelDefaultsSave} ready={modelDefaultsReady} saving={modelDefaultsSaving} success={modelDefaultsSaved} />}</div></div></main><UserDrawer aiUsage={aiUsage} onAiUsageChange={setAiUsage} onClose={() => setDrawerOpen(false)} onPaidTierChange={setPaidTier} onPromotionExpiresAtChange={(value) => { setPromotionExpiresAt(value); setPromotionDirty(true); }} onPromotionModeChange={(value) => { setPromotionMode(value); setPromotionDirty(true); }} onPromotionTierChange={(value) => { setPromotionTier(value); setPromotionDirty(true); }} onRoleChange={setRole} onSubmit={handleSubmit} onTargetUidChange={handleTargetUidChange} onTranscriptionSecondsChange={setTranscriptionSeconds} open={drawerOpen} paidTier={paidTier} promotionExpiresAt={promotionExpiresAt} promotionMode={promotionMode} promotionTier={promotionTier} role={role} submitError={submitError} submitting={submitting} targetUid={targetUid} transcriptionSeconds={transcriptionSeconds} user={selectedUser} />{toastVisible && <div aria-live="polite" className="fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white shadow-xl dark:bg-emerald-600"><span aria-hidden="true">✓</span>{t('admin.users.toastSaved')}</div>}</>;
+  return <><LanguageInitializer /><main className="mx-auto max-w-screen-2xl px-4 py-7 md:px-5 md:py-8"><div className="grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)] md:items-start md:gap-8"><aside className="md:sticky md:top-4"><AdminNav activeSection={activeSection} onSectionChange={setActiveSection} /></aside><div className="min-w-0"><header className="mb-5 flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white" id="admin-page-title">{pageTitle}</h1><p className="mt-1 max-w-2xl text-sm text-slate-500 dark:text-slate-400">{pageDescription}</p></div><div className="flex items-center gap-3">{activeSection === 'users' && <button className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800" onClick={openManualEditor} type="button">{t('admin.users.manualEdit')}</button>}<Link className="text-sm font-bold text-blue-700 hover:underline dark:text-blue-300" href="/settings">{t('admin.backToSettings')}</Link></div></header>{activeSection === 'users' ? <><KpiStrip users={users} /><UserList error={usersError ? t('admin.users.loadFailed') : ''} filter={filter} filteredUsers={filteredUsers} language={i18n.language} loading={usersLoading} loadingMore={loadingMore} nextPageToken={nextPageToken} onFilterChange={setFilter} onLoadMore={handleLoadMore} onSearchChange={setSearch} onSelect={selectUser} search={search} selectedUid={selectedUid} users={users} /></> : <ModelDefaultsSection defaults={modelDefaults} error={modelDefaultsError} loading={modelDefaultsLoading} onChange={handleModelDefaultChange} onSave={handleModelDefaultsSave} ready={modelDefaultsReady} saving={modelDefaultsSaving} success={modelDefaultsSaved} />}</div></div></main><UserDrawer aiUsage={aiUsage} audioSeconds={audioSeconds} onAiUsageChange={setAiUsage} onAudioSecondsChange={setAudioSeconds} onClose={() => setDrawerOpen(false)} onPaidTierChange={setPaidTier} onPromotionExpiresAtChange={(value) => { setPromotionExpiresAt(value); setPromotionDirty(true); }} onPromotionModeChange={(value) => { setPromotionMode(value); setPromotionDirty(true); }} onPromotionTierChange={(value) => { setPromotionTier(value); setPromotionDirty(true); }} onRoleChange={setRole} onSubmit={handleSubmit} onTargetUidChange={handleTargetUidChange} onTranscriptionSecondsChange={setTranscriptionSeconds} open={drawerOpen} paidTier={paidTier} promotionExpiresAt={promotionExpiresAt} promotionMode={promotionMode} promotionTier={promotionTier} role={role} submitError={submitError} submitting={submitting} targetUid={targetUid} transcriptionSeconds={transcriptionSeconds} user={selectedUser} />{toastVisible && <div aria-live="polite" className="fixed bottom-6 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-2 rounded-xl bg-emerald-700 px-4 py-3 text-sm font-bold text-white shadow-xl dark:bg-emerald-600"><span aria-hidden="true">✓</span>{t('admin.users.toastSaved')}</div>}</>;
 }

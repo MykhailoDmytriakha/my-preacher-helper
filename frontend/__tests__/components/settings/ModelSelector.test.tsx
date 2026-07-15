@@ -19,7 +19,7 @@ const user = { uid: 'user-1' } as never;
 
 const usage = {
   aiLimit: 100, aiUsed: 0, aiRemaining: 100,
-  transcriptionSecondsLimit: 3600, transcriptionSecondsUsed: 0, transcriptionSecondsRemaining: 3600,
+  transcriptionSecondsLimit: 3600, transcriptionSecondsUsed: 0, transcriptionSecondsRemaining: 3600, audioSecondsUsed: 0,
   aiBlocked: false, transcriptionBlocked: false, periodResets: false,
 };
 

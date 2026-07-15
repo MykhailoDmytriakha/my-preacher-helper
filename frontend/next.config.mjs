@@ -28,6 +28,21 @@ const withSerwist = withSerwistInit({
 const nextConfig = {
   reactStrictMode: true, // Enable Strict Mode to surface issues early
 
+  // next/jest only transforms ESM dependencies listed here. Keep this test-only
+  // so parser integration tests can unmock music-metadata and execute its real
+  // dependency graph without changing production bundling behavior.
+  transpilePackages: process.env.NODE_ENV === "test" ? [
+    "music-metadata",
+    "strtok3",
+    "token-types",
+    "@tokenizer/token",
+    "@tokenizer/inflate",
+    "uint8array-extras",
+    "file-type",
+    "@borewit/text-codec",
+    "win-guid",
+  ] : [],
+
   // Build identity exposed to the client (used by the optional "Show version"
   // setting). VERCEL_GIT_COMMIT_SHA is provided on Vercel builds; falls back to
   // 'dev' locally. Lets us confirm a redeploy actually landed in production.

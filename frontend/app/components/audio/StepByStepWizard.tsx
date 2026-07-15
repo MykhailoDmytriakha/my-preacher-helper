@@ -29,6 +29,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { GOOGLE_SMALL_CHUNKING } from '@/config/audioGeneration';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useAuth } from '@/hooks/useAuth';
 import useSermon from '@/hooks/useSermon';
@@ -45,6 +46,7 @@ import {
     TTSVoice,
     SermonSection,
 } from '@/types/audioGeneration.types';
+import { concatenateAudioBlobs } from '@/utils/audioConcat';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { getSortedThoughts } from '@/utils/sermonSorting';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
@@ -70,6 +72,7 @@ interface StreamEvent {
     mimeType?: string;
     message?: string;
     data?: string;
+    totalChunks?: number;
 }
 
 type WizardStep = 1 | 2 | 3;
@@ -121,13 +124,13 @@ const googleModelShort = (model: GoogleTTSModel): string =>
  * under 60s — and the browser stitches the batches into one file.
  */
 const GENERATION_BATCH_SIZE = 3;
+const GOOGLE_GENERATION_BATCH_SIZE = 1;
 
 /**
  * Decode a complete base64 string to raw bytes. We decode each batch to BYTES and
- * concatenate those (via Blob) — concatenating the base64 STRINGS instead would
- * inject padding '=' mid-stream wherever a part's length isn't a multiple of 3 and
- * corrupt the audio. MP3 frames are self-contained, so byte-concat plays back as
- * one continuous file.
+ * concatenate those — concatenating the base64 STRINGS instead would inject padding
+ * '=' mid-stream wherever a part's length isn't a multiple of 3. OpenAI MP3 frames
+ * are byte-concatenated; Google WAV batches go through the PCM-aware WAV merger.
  */
 function base64ToUint8Array(base64: string): Uint8Array {
     const binary = atob(base64);
@@ -141,6 +144,7 @@ interface BatchAccumulator {
     audioDataParts: string[];
     filename?: string;
     mimeType?: string;
+    totalChunks?: number;
 }
 
 /** Apply one parsed stream event to the accumulator. Throws on an `error` event. */
@@ -158,6 +162,7 @@ function applyBatchEvent(
     } else if (event.type === 'download_complete' || event.type === 'complete') {
         acc.filename = event.filename;
         acc.mimeType = event.mimeType;
+        acc.totalChunks = event.totalChunks;
     } else if (event.type === 'error') {
         throw new Error(event.message || 'Generation failed');
     }
@@ -344,7 +349,7 @@ export default function StepByStepWizard({
         body: Record<string, unknown>,
         signal: AbortSignal,
         onChunkProgress: (current: number, total: number) => void,
-    ): Promise<{ bytes: Uint8Array; filename?: string; mimeType?: string }> => {
+    ): Promise<{ bytes: Uint8Array; filename?: string; mimeType?: string; totalChunks?: number }> => {
         const authHeaders = await getAuthenticatedRequestHeaders();
         const response = await fetch(`/api/sermons/${sermonId}/audio/generate`, {
             method: 'POST',
@@ -382,7 +387,12 @@ export default function StepByStepWizard({
             }
         }
 
-        return { bytes: base64ToUint8Array(acc.audioDataParts.join('')), filename: acc.filename, mimeType: acc.mimeType };
+        return {
+            bytes: base64ToUint8Array(acc.audioDataParts.join('')),
+            filename: acc.filename,
+            mimeType: acc.mimeType,
+            totalChunks: acc.totalChunks,
+        };
     }, [sermonId]);
 
     // ------------------------------------------------------------------
@@ -521,14 +531,38 @@ export default function StepByStepWizard({
             let filename: string | undefined;
             let mimeType: string | undefined;
 
-            if (isGoogle) {
-                // Google regroups by major section server-side, so it stays one request.
+            if (isGoogle && !GOOGLE_SMALL_CHUNKING) {
+                // Reversible legacy path: one server request containing section pieces.
                 const res = await fetchBatchBytes(baseBody, controller.signal, (current, total) =>
                     setGenProgress({ current, total, percent: Math.round((current / (total || 1)) * 100) }),
                 );
                 parts.push(res.bytes);
                 filename = res.filename;
                 mimeType = res.mimeType;
+            } else if (isGoogle) {
+                // Google runs serially server-side, so one ~1750-char quality chunk per
+                // request keeps every function invocation safely below 60 seconds.
+                let offset = 0;
+                let serverTotal = Math.max(1, totalChunks);
+                while (offset < serverTotal) {
+                    const res = await fetchBatchBytes(
+                        { ...baseBody, offset, limit: GOOGLE_GENERATION_BATCH_SIZE },
+                        controller.signal,
+                        (current) => {
+                            const overall = Math.min(serverTotal, offset + current);
+                            setGenProgress({ current: overall, total: serverTotal, percent: Math.round((overall / serverTotal) * 100) });
+                        },
+                    );
+                    if (typeof res.totalChunks === 'number' && res.totalChunks > 0) {
+                        serverTotal = res.totalChunks;
+                    }
+                    parts.push(res.bytes);
+                    filename = res.filename ?? filename;
+                    mimeType = res.mimeType ?? mimeType;
+                    offset += GOOGLE_GENERATION_BATCH_SIZE;
+                    const completed = Math.min(offset, serverTotal);
+                    setGenProgress({ current: completed, total: serverTotal, percent: Math.round((completed / serverTotal) * 100) });
+                }
             } else {
                 // OpenAI: drive batches of GENERATION_BATCH_SIZE chunks, each its own
                 // sub-60s request, then byte-concatenate the returned MP3 streams.
@@ -555,7 +589,10 @@ export default function StepByStepWizard({
 
             const finalMime = mimeType || (isGoogle ? 'audio/wav' : 'audio/mpeg');
             const finalName = filename || (isGoogle ? 'sermon_audio.wav' : 'sermon_audio.mp3');
-            const url = URL.createObjectURL(new Blob(parts, { type: finalMime }));
+            const finalBlob = isGoogle && parts.length > 1
+                ? await concatenateAudioBlobs(parts.map(bytes => new Blob([bytes], { type: finalMime })))
+                : new Blob(parts, { type: finalMime });
+            const url = URL.createObjectURL(finalBlob);
 
             const link = document.createElement('a');
             link.href = url;

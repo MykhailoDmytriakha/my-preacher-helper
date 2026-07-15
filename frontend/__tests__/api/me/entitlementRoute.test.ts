@@ -52,6 +52,7 @@ const defaultsService = jest.requireMock('@/services/aiModelDefaults.server') as
 const usage = {
   aiLimit: 1000, aiUsed: 42, aiRemaining: 958,
   transcriptionSecondsLimit: 36000, transcriptionSecondsUsed: 3600, transcriptionSecondsRemaining: 32400,
+  audioSecondsUsed: 123.5,
   aiBlocked: false, transcriptionBlocked: false, periodResets: false,
 };
 

@@ -528,7 +528,7 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
         }));
     });
 
-    it('should group Google raw text by major section before applying the Google request limit', async () => {
+    it('should group Google raw text by major section before applying even quality chunking', async () => {
         (createAudioChunks as jest.Mock).mockImplementation((textChunks: string[], sectionId: string) =>
             textChunks.map((text, index) => ({ text, sectionId, index }))
         );
@@ -572,6 +572,7 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
         expect(json.totalChunks).toBe(1);
         expect(optimizeTextForSpeech).not.toHaveBeenCalled();
         expect(splitTextIntoChunks).not.toHaveBeenCalled();
+        expect(splitTextEvenly).toHaveBeenCalledWith('Intro thought one.\n\nIntro thought two.');
         expect(createAudioChunks).toHaveBeenCalledWith([
             'Intro thought one.\n\nIntro thought two.'
         ], 'introduction');
@@ -641,9 +642,9 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
         ]);
     });
 
-    it('should split oversized Google raw sections with the Google request limit', async () => {
+    it('should split oversized Google raw sections with even quality chunking', async () => {
         const oversizedText = 'Google raw main text. '.repeat(1300);
-        (splitTextIntoChunks as jest.Mock).mockReturnValueOnce(['Google part one.', 'Google part two.']);
+        (splitTextEvenly as jest.Mock).mockReturnValueOnce(['Google part one.', 'Google part two.']);
         (createAudioChunks as jest.Mock).mockImplementation((textChunks: string[], sectionId: string) =>
             textChunks.map((text, index) => ({ text, sectionId, index }))
         );
@@ -677,7 +678,8 @@ describe('POST /api/sermons/[id]/audio/optimize', () => {
 
         expect(res.status).toBe(200);
         expect(json.totalChunks).toBe(2);
-        expect(splitTextIntoChunks).toHaveBeenCalledWith(oversizedText.trim(), 24576);
+        expect(splitTextEvenly).toHaveBeenCalledWith(oversizedText.trim());
+        expect(splitTextIntoChunks).not.toHaveBeenCalled();
         expect(createAudioChunks).toHaveBeenCalledWith(['Google part one.', 'Google part two.'], 'mainPart');
     });
 
