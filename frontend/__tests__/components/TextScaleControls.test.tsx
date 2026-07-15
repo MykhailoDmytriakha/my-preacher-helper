@@ -59,12 +59,12 @@ describe('TextScaleControls', () => {
 
     fireEvent.click(increaseBtn);
     await waitFor(() => {
-      expect(screen.getByText('120%')).toBeInTheDocument();
+      expect(screen.getByText('110%')).toBeInTheDocument();
     });
 
     fireEvent.click(increaseBtn);
     await waitFor(() => {
-      expect(screen.getByText('140%')).toBeInTheDocument();
+      expect(screen.getByText('120%')).toBeInTheDocument();
     });
   });
 
@@ -85,12 +85,12 @@ describe('TextScaleControls', () => {
     fireEvent.click(increaseBtn);
     fireEvent.click(increaseBtn);
     await waitFor(() => {
-      expect(screen.getByText('140%')).toBeInTheDocument();
+      expect(screen.getByText('120%')).toBeInTheDocument();
     });
 
     fireEvent.click(decreaseBtn);
     await waitFor(() => {
-      expect(screen.getByText('120%')).toBeInTheDocument();
+      expect(screen.getByText('110%')).toBeInTheDocument();
     });
 
     fireEvent.click(decreaseBtn);
@@ -121,8 +121,8 @@ describe('TextScaleControls', () => {
 
     const increaseBtn = screen.getByLabelText('Increase text size');
 
-    // Click to reach maximum (200%)
-    for (let i = 0; i < 5; i++) {
+    // Click to reach maximum (200%) — 10% steps from 100% need 10 clicks
+    for (let i = 0; i < 10; i++) {
       fireEvent.click(increaseBtn);
     }
 

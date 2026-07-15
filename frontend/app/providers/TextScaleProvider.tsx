@@ -8,8 +8,8 @@ interface TextScaleContextType {
   increaseScale: () => void;
   decreaseScale: () => void;
   resetScale: () => void;
-  scalePercentage: number; // 100, 120, 140, etc.
-  availableScales: number[]; // [1, 1.2, 1.4, 1.6, 1.8, 2]
+  scalePercentage: number; // 100, 110, 120, etc.
+  availableScales: number[]; // [1, 1.1, 1.2, ... 2]
 }
 
 const TextScaleContext = createContext<TextScaleContextType | undefined>(undefined);
@@ -21,10 +21,12 @@ const STEP = 0.1;
 const DEFAULT_SCALE = 1;
 
 // Generate available scales: 1, 1.1, 1.2, ... 2 (10% increments)
+// Iterate by integer step count so float drift never drops the final value (2).
 const generateAvailableScales = (): number[] => {
   const scales: number[] = [];
-  for (let s = MIN_SCALE; s <= MAX_SCALE; s += STEP) {
-    scales.push(Math.round(s * 100) / 100);
+  const stepCount = Math.round((MAX_SCALE - MIN_SCALE) / STEP);
+  for (let i = 0; i <= stepCount; i++) {
+    scales.push(Math.round((MIN_SCALE + i * STEP) * 100) / 100);
   }
   return scales;
 };
@@ -55,7 +57,9 @@ export const TextScaleProvider: React.FC<{ children: ReactNode }> = ({ children 
 
   const setScale = useCallback((newScale: number) => {
     const clampedScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, newScale));
-    setScaleState(clampedScale);
+    // Round to 2 decimals so float drift (0.1 + 0.1 = 0.2000000000000001)
+    // never leaks into the stored value or the --text-scale CSS variable.
+    setScaleState(Math.round(clampedScale * 100) / 100);
   }, []);
 
   const increaseScale = useCallback(() => {

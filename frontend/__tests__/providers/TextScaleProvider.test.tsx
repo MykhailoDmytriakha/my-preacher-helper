@@ -24,7 +24,7 @@ describe('TextScaleProvider', () => {
     expect(screen.getByTestId('scale')).toHaveTextContent('100%');
   });
 
-  it('increaseScale increases the scale by 0.2 steps', () => {
+  it('increaseScale increases the scale by 0.1 steps', () => {
     const TestComponent = () => {
       const { scalePercentage, increaseScale } = useTextScale();
       return (
@@ -46,13 +46,13 @@ describe('TextScaleProvider', () => {
     expect(screen.getByTestId('scale')).toHaveTextContent('100%');
 
     fireEvent.click(screen.getByTestId('increase-btn'));
-    expect(screen.getByTestId('scale')).toHaveTextContent('120%');
+    expect(screen.getByTestId('scale')).toHaveTextContent('110%');
 
     fireEvent.click(screen.getByTestId('increase-btn'));
-    expect(screen.getByTestId('scale')).toHaveTextContent('140%');
+    expect(screen.getByTestId('scale')).toHaveTextContent('120%');
   });
 
-  it('decreaseScale decreases the scale by 0.2 steps', () => {
+  it('decreaseScale decreases the scale by 0.1 steps', () => {
     const TestComponent = () => {
       const { scalePercentage, decreaseScale, setScale } = useTextScale();
       return (
@@ -78,7 +78,7 @@ describe('TextScaleProvider', () => {
     expect(screen.getByTestId('scale')).toHaveTextContent('140%');
 
     fireEvent.click(screen.getByTestId('decrease-btn'));
-    expect(screen.getByTestId('scale')).toHaveTextContent('120%');
+    expect(screen.getByTestId('scale')).toHaveTextContent('130%');
   });
 
   it('resetScale resets to default (100%)', () => {
@@ -105,7 +105,7 @@ describe('TextScaleProvider', () => {
 
     fireEvent.click(screen.getByTestId('increase-btn'));
     fireEvent.click(screen.getByTestId('increase-btn'));
-    expect(screen.getByTestId('scale')).toHaveTextContent('140%');
+    expect(screen.getByTestId('scale')).toHaveTextContent('120%');
 
     fireEvent.click(screen.getByTestId('reset-btn'));
     expect(screen.getByTestId('scale')).toHaveTextContent('100%');
@@ -169,7 +169,7 @@ describe('TextScaleProvider', () => {
     fireEvent.click(screen.getByTestId('increase-btn'));
 
     await waitFor(() => {
-      expect(localStorage.getItem('text-scale-preference')).toBe('1.4');
+      expect(localStorage.getItem('text-scale-preference')).toBe('1.2');
     });
 
     unmount();
@@ -206,7 +206,7 @@ describe('TextScaleProvider', () => {
       </TextScaleProvider>
     );
 
-    expect(screen.getByTestId('scales')).toHaveTextContent('1,1.2,1.4,1.6,1.8,2');
+    expect(screen.getByTestId('scales')).toHaveTextContent('1,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2');
   });
 
   it('throws error when useTextScale is used outside provider', () => {
