@@ -317,7 +317,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6" aria-label={t('dashboardHome.metrics.label')}>
+      <section className="grid gap-3 grid-flow-col auto-cols-fr grid-rows-6 sm:grid-rows-3 lg:grid-rows-2 xl:grid-rows-1" aria-label={t('dashboardHome.metrics.label')}>
         {metrics.map((metric) => (
           <MetricCard key={metric.label} metric={metric} />
         ))}
