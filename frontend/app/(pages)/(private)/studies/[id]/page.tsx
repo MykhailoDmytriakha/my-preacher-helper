@@ -8,6 +8,7 @@ import TextareaAutosize from 'react-textarea-autosize';
 import { toast } from 'sonner';
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
+import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { useAiUsage } from '@/hooks/useAiUsage';
@@ -848,7 +849,7 @@ export default function StudyNoteEditorPage() {
                             />
                         </div>
                     ) : (
-                        <div className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-800 dark:prose-p:text-gray-200 prose-p:leading-relaxed max-w-none text-lg md:text-xl">
+                        <div className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-800 dark:prose-p:text-gray-200 prose-p:leading-relaxed max-w-none text-lg md:text-xl prose-scaled">
                             <MarkdownDisplay content={content} searchQuery={searchQuery} />
                         </div>
                     )}
@@ -1041,6 +1042,9 @@ export default function StudyNoteEditorPage() {
                 currentTags={tags}
                 currentScriptureRefs={scriptureRefs}
             />
+
+            {/* Reading-mode text size control — same floating violet FAB as preaching view. */}
+            {!isEditing && <FloatingTextScaleControls />}
         </div>
     );
 }

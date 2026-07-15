@@ -17,10 +17,10 @@ const TextScaleContext = createContext<TextScaleContextType | undefined>(undefin
 const STORAGE_KEY = 'text-scale-preference';
 const MIN_SCALE = 1;
 const MAX_SCALE = 2;
-const STEP = 0.2;
+const STEP = 0.1;
 const DEFAULT_SCALE = 1;
 
-// Generate available scales: 1, 1.2, 1.4, 1.6, 1.8, 2
+// Generate available scales: 1, 1.1, 1.2, ... 2 (10% increments)
 const generateAvailableScales = (): number[] => {
   const scales: number[] = [];
   for (let s = MIN_SCALE; s <= MAX_SCALE; s += STEP) {
