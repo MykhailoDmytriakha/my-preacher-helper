@@ -24,6 +24,7 @@ jest.mock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
     collection: jest.fn(),
     batch: jest.fn(),
+    runTransaction: jest.fn(),
   },
 }));
 
@@ -31,6 +32,7 @@ const { adminDb } = jest.requireMock('@/config/firebaseAdminConfig') as {
   adminDb: {
     collection: jest.Mock<unknown, unknown[]>;
     batch: jest.Mock<unknown, unknown[]>;
+    runTransaction: jest.Mock;
   };
 };
 
@@ -40,6 +42,27 @@ const mockDocumentSnapshot = {
   exists: true,
   id: 'series-1',
   data: () => ({ ...mockSeriesData }),
+};
+
+const guardTransactionReadOrder = (transaction: any) => {
+  let hasWritten = false;
+  const guardWrite = (method: 'set' | 'update' | 'delete') => (...args: any[]) => {
+    hasWritten = true;
+    return transaction[method](...args);
+  };
+
+  return {
+    ...transaction,
+    get: (...args: any[]) => {
+      if (hasWritten) {
+        throw new Error('Firestore transactions require all reads to be executed before all writes');
+      }
+      return transaction.get(...args);
+    },
+    ...(transaction.set && { set: guardWrite('set') }),
+    ...(transaction.update && { update: guardWrite('update') }),
+    ...(transaction.delete && { delete: guardWrite('delete') }),
+  };
 };
 
 const setupFirestoreMocks = () => {
@@ -56,6 +79,11 @@ const setupFirestoreMocks = () => {
   });
 
   mockGet.mockResolvedValue(mockDocumentSnapshot);
+  adminDb.runTransaction.mockImplementation(async (callback: (transaction: any) => Promise<unknown>) => callback(guardTransactionReadOrder({
+    get: (source: { get: () => Promise<unknown> }) => source.get(),
+    update: (ref: { update: (...args: unknown[]) => unknown }, ...args: unknown[]) => ref.update(...args),
+    delete: (ref: { delete: () => unknown }) => ref.delete(),
+  })));
 };
 
 // Mock Date to return consistent timestamps
@@ -80,45 +108,92 @@ describe('SeriesRepository', () => {
   });
 
   describe('deleteSermonAndDetachFromAllSeries', () => {
-    it('atomically detaches owned series and deletes the sermon in ONE batch, skipping foreign series', async () => {
-      const logSpy = jest.spyOn(console, 'log').mockImplementation();
-      const batchUpdate = jest.fn();
-      const batchDelete = jest.fn();
-      const batchCommit = jest.fn().mockResolvedValue(undefined);
-      (adminDb.batch as jest.Mock).mockReturnValue({ update: batchUpdate, delete: batchDelete, commit: batchCommit });
-
+    it('retries from a concurrent same-owner edit and atomically detaches before deleting the sermon', async () => {
       const ownedRef = { id: 'series-owned' };
       const foreignRef = { id: 'series-foreign' };
       const sermonRef = { id: 'sermon-1' };
+      const liveOwned: any = {
+        ...mockSeriesData,
+        userId: 'user-1',
+        sermonIds: ['sermon-1'],
+        items: [{ id: 'target', type: 'sermon', refId: 'sermon-1', position: 1 }],
+      };
+      const liveForeign = {
+        ...mockSeriesData,
+        userId: 'attacker',
+        sermonIds: ['sermon-1'],
+        items: [{ id: 'foreign-target', type: 'sermon', refId: 'sermon-1', position: 1 }],
+      };
+      let sermonExists = true;
+      const query = { kind: 'sermon-query' };
 
       (mockCollection as jest.Mock).mockImplementation((name: string) => {
         if (name === 'sermons') {
           return { doc: jest.fn().mockReturnValue(sermonRef) };
         }
         return {
-          where: jest.fn().mockReturnValue({
-            get: jest.fn().mockResolvedValue({
-              docs: [
-                { id: 'series-owned', ref: ownedRef, data: () => ({ ...mockSeriesData, userId: 'user-1', sermonIds: ['sermon-1'], items: [{ type: 'sermon', refId: 'sermon-1' }] }) },
-                { id: 'series-foreign', ref: foreignRef, data: () => ({ ...mockSeriesData, userId: 'attacker', sermonIds: ['sermon-1'], items: [{ type: 'sermon', refId: 'sermon-1' }] }) },
-              ],
-            }),
-          }),
+          where: jest.fn().mockReturnValue(query),
         };
+      });
+      adminDb.runTransaction.mockImplementationOnce(async (callback: (transaction: any) => Promise<unknown>) => {
+        const runAttempt = async (commit: boolean) => {
+          const staged: Array<() => void> = [];
+          const result = await callback(guardTransactionReadOrder({
+            get: jest.fn(async (source) => {
+              expect(source).toBe(query);
+              return {
+                docs: [
+                  { id: 'series-owned', ref: ownedRef, data: () => ({ ...liveOwned, items: [...liveOwned.items], sermonIds: [...liveOwned.sermonIds] }) },
+                  { id: 'series-foreign', ref: foreignRef, data: () => ({ ...liveForeign }) },
+                ],
+              };
+            }),
+            update: jest.fn((ref, value) => staged.push(() => {
+              if (ref === ownedRef) Object.assign(liveOwned, value);
+              if (ref === foreignRef) throw new Error('foreign series must not be staged');
+            })),
+            delete: jest.fn((ref) => staged.push(() => {
+              if (ref === sermonRef) sermonExists = false;
+            })),
+          }));
+          if (commit) staged.forEach((write) => write());
+          return result;
+        };
+
+        await runAttempt(false);
+        liveOwned.items.push({ id: 'concurrent', type: 'sermon', refId: 'sermon-2', position: 2 });
+        liveOwned.sermonIds.push('sermon-2');
+        return runAttempt(true);
       });
 
       await repository.deleteSermonAndDetachFromAllSeries('sermon-1', 'user-1');
 
-      // Only the owner's series is detached; the foreign-owned series is never touched.
-      expect(batchUpdate).toHaveBeenCalledTimes(1);
-      expect(batchUpdate).toHaveBeenCalledWith(
-        ownedRef,
-        expect.objectContaining({ sermonIds: expect.not.arrayContaining(['sermon-1']) })
-      );
-      // The sermon is deleted in the SAME batch — one atomic commit, all-or-nothing.
-      expect(batchDelete).toHaveBeenCalledWith(sermonRef);
-      expect(batchCommit).toHaveBeenCalledTimes(1);
-      logSpy.mockRestore();
+      expect(liveOwned.sermonIds).toEqual(['sermon-2']);
+      expect(liveOwned.items).toEqual([expect.objectContaining({ refId: 'sermon-2' })]);
+      expect(liveForeign.sermonIds).toEqual(['sermon-1']);
+      expect(sermonExists).toBe(false);
+    });
+
+    it('leaves every series and the sermon unchanged when the transaction commit fails', async () => {
+      const ownedRef = { id: 'series-owned' };
+      const sermonRef = { id: 'sermon-1' };
+      const liveItems = [{ id: 'target', type: 'sermon', refId: 'sermon-1', position: 1 }];
+      const query = { kind: 'sermon-query' };
+      (mockCollection as jest.Mock).mockImplementation((name: string) => name === 'sermons'
+        ? { doc: jest.fn().mockReturnValue(sermonRef) }
+        : { where: jest.fn().mockReturnValue(query) });
+      adminDb.runTransaction.mockImplementationOnce(async (callback: (transaction: any) => Promise<unknown>) => {
+        await callback(guardTransactionReadOrder({
+          get: jest.fn().mockResolvedValue({ docs: [{ id: 'series-owned', ref: ownedRef, data: () => ({ ...mockSeriesData, items: liveItems }) }] }),
+          update: jest.fn(),
+          delete: jest.fn(),
+        }));
+        throw new Error('transaction commit failed');
+      });
+
+      await expect(repository.deleteSermonAndDetachFromAllSeries('sermon-1', 'user-1'))
+        .rejects.toThrow('transaction commit failed');
+      expect(liveItems).toEqual([{ id: 'target', type: 'sermon', refId: 'sermon-1', position: 1 }]);
     });
   });
 
@@ -285,6 +360,66 @@ describe('SeriesRepository', () => {
         })
       );
       expect(refUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it('retries from a concurrent same-owner edit without clobbering the new series item', async () => {
+      const seriesRef = { id: 'series-1' };
+      const liveSeries: any = {
+        ...mockSeriesData,
+        items: [
+          { id: 'group', type: 'group', refId: 'group-1', position: 1 },
+          { id: 'sermon-1', type: 'sermon', refId: 'sermon-1', position: 2 },
+        ],
+        sermonIds: ['sermon-1'],
+      };
+      const query = { kind: 'owner-query' };
+      const where = jest.fn().mockReturnValue(query);
+      (mockCollection as jest.Mock).mockReturnValue({ where });
+      adminDb.runTransaction.mockImplementationOnce(async (callback: (transaction: any) => Promise<unknown>) => {
+        const runAttempt = async (commit: boolean) => {
+          const staged: Array<() => void> = [];
+          const result = await callback(guardTransactionReadOrder({
+            get: jest.fn(async () => ({
+              docs: [{ id: 'series-1', ref: seriesRef, data: () => ({ ...liveSeries, items: [...liveSeries.items], sermonIds: [...liveSeries.sermonIds] }) }],
+            })),
+            update: jest.fn((_ref, value) => staged.push(() => Object.assign(liveSeries, value))),
+          }));
+          if (commit) staged.forEach((write) => write());
+          return result;
+        };
+
+        await runAttempt(false);
+        liveSeries.items.push({ id: 'sermon-2', type: 'sermon', refId: 'sermon-2', position: 3 });
+        liveSeries.sermonIds.push('sermon-2');
+        return runAttempt(true);
+      });
+
+      await repository.removeGroupFromAllSeries('group-1', 'user-1');
+
+      expect(where).toHaveBeenCalledWith('userId', '==', 'user-1');
+      expect(liveSeries.sermonIds).toEqual(['sermon-1', 'sermon-2']);
+      expect(liveSeries.items).toEqual([
+        expect.objectContaining({ refId: 'sermon-1' }),
+        expect.objectContaining({ refId: 'sermon-2' }),
+      ]);
+    });
+
+    it('leaves matching series unchanged when the group-removal transaction fails', async () => {
+      const liveItems = [{ id: 'group', type: 'group', refId: 'group-1', position: 1 }];
+      (mockCollection as jest.Mock).mockReturnValue({ where: jest.fn().mockReturnValue({ kind: 'owner-query' }) });
+      adminDb.runTransaction.mockImplementationOnce(async (callback: (transaction: any) => Promise<unknown>) => {
+        await callback(guardTransactionReadOrder({
+          get: jest.fn().mockResolvedValue({
+            docs: [{ id: 'series-1', ref: { id: 'series-1' }, data: () => ({ ...mockSeriesData, items: liveItems }) }],
+          }),
+          update: jest.fn(),
+        }));
+        throw new Error('transaction commit failed');
+      });
+
+      await expect(repository.removeGroupFromAllSeries('group-1', 'user-1'))
+        .rejects.toThrow('transaction commit failed');
+      expect(liveItems).toEqual([{ id: 'group', type: 'group', refId: 'group-1', position: 1 }]);
     });
   });
 });

@@ -11,6 +11,7 @@ jest.mock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
     collection: jest.fn(),
     batch: jest.fn(),
+    runTransaction: jest.fn(),
   },
 }));
 
@@ -18,6 +19,7 @@ const { adminDb } = jest.requireMock('@/config/firebaseAdminConfig') as {
   adminDb: {
     collection: jest.Mock;
     batch: jest.Mock;
+    runTransaction: jest.Mock;
   };
 };
 
@@ -32,6 +34,7 @@ type MockDocRef = {
   id: string;
   get: jest.Mock;
   set: jest.Mock;
+  update: jest.Mock;
   delete: jest.Mock;
 };
 
@@ -46,6 +49,27 @@ const snapshotFromDocs = (docs: any[]) => ({
   forEach: (callback: (doc: any) => void) => docs.forEach(callback),
 });
 
+const guardTransactionReadOrder = (transaction: any) => {
+  let hasWritten = false;
+  const guardWrite = (method: 'set' | 'update' | 'delete') => (...args: any[]) => {
+    hasWritten = true;
+    return transaction[method](...args);
+  };
+
+  return {
+    ...transaction,
+    get: (...args: any[]) => {
+      if (hasWritten) {
+        throw new Error('Firestore transactions require all reads to be executed before all writes');
+      }
+      return transaction.get(...args);
+    },
+    ...(transaction.set && { set: guardWrite('set') }),
+    ...(transaction.update && { update: guardWrite('update') }),
+    ...(transaction.delete && { delete: guardWrite('delete') }),
+  };
+};
+
 describe('StudiesRepository', () => {
   let repository: StudiesRepository;
   let materialWhereGet: jest.Mock;
@@ -58,6 +82,7 @@ describe('StudiesRepository', () => {
     id,
     get: jest.fn(),
     set: jest.fn().mockResolvedValue(undefined),
+    update: jest.fn().mockResolvedValue(undefined),
     delete: jest.fn().mockResolvedValue(undefined),
   });
 
@@ -95,6 +120,12 @@ describe('StudiesRepository', () => {
       createdBatches.push(batch);
       return batch;
     });
+
+    adminDb.runTransaction.mockImplementation(async (callback: (transaction: any) => Promise<unknown>) => callback(guardTransactionReadOrder({
+      get: (ref: MockDocRef) => ref.get(),
+      set: (ref: MockDocRef, ...args: unknown[]) => ref.set(...args),
+      update: (ref: MockDocRef, ...args: unknown[]) => ref.update(...args),
+    })));
 
     adminDb.collection.mockImplementation((name: string) => {
       if (name === 'studyNotes') {
@@ -144,25 +175,43 @@ describe('StudiesRepository', () => {
     );
   });
 
-  it("removes note references from the owner's materials before deleting the note", async () => {
+  it("atomically removes the note id without clobbering a concurrently added note id", async () => {
+    const liveNoteIds = ['note-1', 'note-2'];
+    const materialRef = { id: 'mat-1' };
     materialWhereGet.mockResolvedValue(
       snapshotFromDocs([
         {
-          ref: { id: 'mat-1' },
-          data: () => ({ userId: 'user-1', noteIds: ['note-1', 'note-2'] }),
-        },
-        {
-          ref: { id: 'mat-2' },
-          data: () => ({ userId: 'user-1', noteIds: ['note-2'] }),
+          ref: materialRef,
+          data: () => ({ userId: 'user-1', noteIds: [...liveNoteIds] }),
         },
       ])
     );
+    adminDb.batch.mockImplementationOnce(() => {
+      const stagedUpdates: Array<{ data: { noteIds: { __op: string; value: string } } }> = [];
+      const batch = {
+        update: jest.fn((_ref, data) => stagedUpdates.push({ data })),
+        commit: jest.fn(async () => {
+          // The query has already read noteIds. Another writer appends before this commit.
+          liveNoteIds.push('note-concurrent');
+          stagedUpdates.forEach(({ data }) => {
+            if (data.noteIds.__op === 'arrayRemove') {
+              const next = liveNoteIds.filter((id) => id !== data.noteIds.value);
+              liveNoteIds.splice(0, liveNoteIds.length, ...next);
+            }
+          });
+        }),
+      };
+      createdBatches.push(batch);
+      return batch;
+    });
 
     await repository.deleteNote('note-2', 'user-1');
 
     expect(createdBatches).toHaveLength(1);
-    expect(createdBatches[0].update).toHaveBeenNthCalledWith(1, { id: 'mat-1' }, { noteIds: ['note-1'] });
-    expect(createdBatches[0].update).toHaveBeenNthCalledWith(2, { id: 'mat-2' }, { noteIds: [] });
+    expect(createdBatches[0].update).toHaveBeenCalledWith(materialRef, {
+      noteIds: { __op: 'arrayRemove', value: 'note-2' },
+    });
+    expect(liveNoteIds).toEqual(['note-1', 'note-concurrent']);
     expect(createdBatches[0].commit).toHaveBeenCalledTimes(1);
     expect(getNoteRef('note-2').delete).toHaveBeenCalledTimes(1);
   });
@@ -179,7 +228,10 @@ describe('StudiesRepository', () => {
 
     // Only the owner's material is cleaned; a foreign-owned material is left untouched.
     expect(createdBatches[0].update).toHaveBeenCalledTimes(1);
-    expect(createdBatches[0].update).toHaveBeenCalledWith({ id: 'mine' }, { noteIds: [] });
+    expect(createdBatches[0].update).toHaveBeenCalledWith(
+      { id: 'mine' },
+      { noteIds: { __op: 'arrayRemove', value: 'note-2' } }
+    );
     expect(getNoteRef('note-2').delete).toHaveBeenCalledTimes(1);
   });
 
@@ -327,15 +379,13 @@ describe('StudiesRepository', () => {
       noteIds: ['note-2', 'note-3', 'note-3'],
     });
 
-    expect(createdBatches).toHaveLength(2);
+    expect(createdBatches).toHaveLength(0);
     expect(FieldValue.arrayUnion).toHaveBeenCalledWith('mat-1');
     expect(FieldValue.arrayRemove).toHaveBeenCalledWith('mat-1');
-    expect(createdBatches[0].update).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'note-3' }),
+    expect(getNoteRef('note-3').update).toHaveBeenCalledWith(
       { materialIds: { __op: 'arrayUnion', value: 'mat-1' } }
     );
-    expect(createdBatches[1].update).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'note-1' }),
+    expect(getNoteRef('note-1').update).toHaveBeenCalledWith(
       { materialIds: { __op: 'arrayRemove', value: 'mat-1' } }
     );
     expect(getMaterialRef('mat-1').set).toHaveBeenCalledWith(
@@ -377,6 +427,103 @@ describe('StudiesRepository', () => {
     );
 
     dateSpy.mockRestore();
+  });
+
+  it('retries updateMaterial from the concurrent committed state without losing fields or dangling note refs', async () => {
+    const materialRef = getMaterialRef('mat-race');
+    const liveMaterial: any = {
+      userId: 'user-1',
+      title: 'Original',
+      description: 'Original description',
+      type: 'study',
+      noteIds: ['note-1'],
+      createdAt: '2024-01-01T00:00:00.000Z',
+      updatedAt: '2024-01-01T00:00:00.000Z',
+    };
+    const noteMaterialIds = new Map([
+      ['note-1', ['mat-race']],
+      ['note-2', []],
+    ]);
+    for (const noteId of noteMaterialIds.keys()) {
+      getNoteRef(noteId).get.mockImplementation(async () => ({
+        exists: true,
+        id: noteId,
+        data: () => ({ userId: 'user-1', materialIds: [...noteMaterialIds.get(noteId)!] }),
+      }));
+    }
+
+    let attempt = 0;
+    adminDb.runTransaction.mockImplementationOnce(async (callback: (transaction: any) => Promise<any>) => {
+      const runAttempt = async (commit: boolean) => {
+        const staged: Array<() => void> = [];
+        const transaction = {
+          get: jest.fn(async (ref: MockDocRef) => {
+            if (ref === materialRef) {
+              return { exists: true, id: 'mat-race', data: () => ({ ...liveMaterial, noteIds: [...liveMaterial.noteIds] }) };
+            }
+            return ref.get();
+          }),
+          set: jest.fn((ref: MockDocRef, value: any) => staged.push(() => Object.assign(liveMaterial, value))),
+          update: jest.fn((ref: MockDocRef, value: any) => staged.push(() => {
+            const ids = noteMaterialIds.get(ref.id)!;
+            const op = value.materialIds;
+            noteMaterialIds.set(ref.id, op.__op === 'arrayUnion'
+              ? Array.from(new Set([...ids, op.value]))
+              : ids.filter((id) => id !== op.value));
+          })),
+        };
+        const result = await callback(guardTransactionReadOrder(transaction));
+        if (commit) staged.forEach((write) => write());
+        return result;
+      };
+
+      attempt += 1;
+      await runAttempt(false);
+      // A same-owner writer commits after the first read, forcing Firestore to retry.
+      liveMaterial.description = 'Concurrent description';
+      attempt += 1;
+      return runAttempt(true);
+    });
+
+    const result = await repository.updateMaterial('mat-race', {
+      title: 'Our title',
+      noteIds: ['note-2'],
+    });
+
+    expect(attempt).toBe(2);
+    expect(liveMaterial).toEqual(expect.objectContaining({
+      title: 'Our title',
+      description: 'Concurrent description',
+      noteIds: ['note-2'],
+    }));
+    expect(noteMaterialIds.get('note-1')).toEqual([]);
+    expect(noteMaterialIds.get('note-2')).toEqual(['mat-race']);
+    expect(result).toEqual(expect.objectContaining({ description: 'Concurrent description', noteIds: ['note-2'] }));
+  });
+
+  it('does not leave material or note-ref writes behind when updateMaterial transaction fails', async () => {
+    const materialRef = getMaterialRef('mat-atomic');
+    const liveMaterial = { userId: 'user-1', title: 'Original', type: 'study', noteIds: ['note-1'] };
+    getNoteRef('note-1').get.mockResolvedValue({ exists: true, id: 'note-1', data: () => ({ userId: 'user-1' }) });
+    getNoteRef('note-2').get.mockResolvedValue({ exists: true, id: 'note-2', data: () => ({ userId: 'user-1' }) });
+    const transactionUpdate = jest.fn();
+    adminDb.runTransaction.mockImplementationOnce(async (callback: (transaction: any) => Promise<any>) => {
+      await callback(guardTransactionReadOrder({
+        get: (ref: MockDocRef) => ref === materialRef
+          ? Promise.resolve({ exists: true, id: 'mat-atomic', data: () => ({ ...liveMaterial }) })
+          : ref.get(),
+        set: jest.fn(),
+        update: transactionUpdate,
+      }));
+      throw new Error('transaction commit failed');
+    });
+
+    await expect(repository.updateMaterial('mat-atomic', { noteIds: ['note-2'] }))
+      .rejects.toThrow('transaction commit failed');
+
+    expect(liveMaterial).toEqual({ userId: 'user-1', title: 'Original', type: 'study', noteIds: ['note-1'] });
+    expect(transactionUpdate).toHaveBeenCalledTimes(2);
+    expect(createdBatches).toHaveLength(0);
   });
 
   it('throws when updating a missing material', async () => {

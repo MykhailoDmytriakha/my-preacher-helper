@@ -42,8 +42,7 @@ export class StudiesRepository {
       materialsWithNote.forEach((doc) => {
         const data = doc.data() as StudyMaterial;
         if (data.userId !== ownerUid) return; // never mutate a foreign-owned material
-        const filtered = (data.noteIds || []).filter((n) => n !== id);
-        batch.update(doc.ref, { noteIds: filtered });
+        batch.update(doc.ref, { noteIds: FieldValue.arrayRemove(id) });
         hasWrites = true;
       });
       if (hasWrites) await batch.commit();
@@ -118,31 +117,61 @@ export class StudiesRepository {
   }
 
   async updateMaterial(id: string, updates: Partial<StudyMaterial>): Promise<StudyMaterial> {
-    const existing = await this.getMaterial(id);
-    if (!existing) throw new Error('Study material not found');
+    const materialRef = adminDb.collection(MATERIALS_COLLECTION).doc(id);
 
-    const next: StudyMaterial = {
-      ...existing,
-      ...updates,
-      noteIds: updates.noteIds ? Array.from(new Set(updates.noteIds)) : existing.noteIds,
-      updatedAt: new Date().toISOString(),
-    };
+    return adminDb.runTransaction(async (transaction) => {
+      const materialSnapshot = await transaction.get(materialRef);
+      if (!materialSnapshot.exists) throw new Error('Study material not found');
 
-    // Sync note references — but only for notes the material's owner actually owns, so an
-    // update can never add OR remove this material's ref on a foreign user's note (a legacy
-    // material may still list a victim's note; we must not write to it even to clean up).
-    if (updates.noteIds) {
-      const ownedNoteIds = await this.filterOwnedNoteIds(next.noteIds, existing.userId);
-      next.noteIds = ownedNoteIds;
-      const added = ownedNoteIds.filter((n) => !existing.noteIds.includes(n));
-      const removedCandidates = existing.noteIds.filter((n) => !ownedNoteIds.includes(n));
-      const removed = await this.filterOwnedNoteIds(removedCandidates, existing.userId);
-      await this.addMaterialRefToNotes(added, id);
-      await this.removeMaterialRefFromNotes(removed, id);
-    }
+      const existing = {
+        ...(materialSnapshot.data() as StudyMaterial),
+        id: materialSnapshot.id,
+      };
+      const next: StudyMaterial = {
+        ...existing,
+        ...updates,
+        noteIds: updates.noteIds ? Array.from(new Set(updates.noteIds)) : existing.noteIds,
+        updatedAt: new Date().toISOString(),
+      };
 
-    await adminDb.collection(MATERIALS_COLLECTION).doc(id).set(next, { merge: true });
-    return next;
+      // Keep the material and both sides of its note references in the same retryable
+      // transaction. arrayUnion/arrayRemove remain idempotent atomic transforms, while a
+      // retry recomputes the diff from the latest committed material snapshot.
+      if (updates.noteIds) {
+        const candidateNoteIds = Array.from(new Set([...existing.noteIds, ...next.noteIds]));
+        // Parallelize the ownership reads — all reads still precede any write in the txn.
+        const noteSnapshots = await Promise.all(
+          candidateNoteIds.map((noteId) =>
+            transaction.get(adminDb.collection(NOTES_COLLECTION).doc(noteId))
+          )
+        );
+        const ownedNoteIds = new Set<string>(
+          noteSnapshots
+            .filter((snap) => snap.exists && (snap.data() as StudyNote).userId === existing.userId)
+            .map((snap) => snap.id)
+        );
+
+        next.noteIds = next.noteIds.filter((noteId) => ownedNoteIds.has(noteId));
+        const added = next.noteIds.filter((noteId) => !existing.noteIds.includes(noteId));
+        const removed = existing.noteIds.filter(
+          (noteId) => !next.noteIds.includes(noteId) && ownedNoteIds.has(noteId)
+        );
+
+        added.forEach((noteId) => {
+          transaction.update(adminDb.collection(NOTES_COLLECTION).doc(noteId), {
+            materialIds: FieldValue.arrayUnion(id),
+          });
+        });
+        removed.forEach((noteId) => {
+          transaction.update(adminDb.collection(NOTES_COLLECTION).doc(noteId), {
+            materialIds: FieldValue.arrayRemove(id),
+          });
+        });
+      }
+
+      transaction.set(materialRef, next, { merge: true });
+      return next;
+    });
   }
 
   async deleteMaterial(id: string): Promise<void> {

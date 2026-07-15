@@ -60,6 +60,11 @@
 
 > One-line principles. History in git blame. Newest first.
 
+### 2026-07-14 Transient Attachments And Persisted Text Need Separate Size Budgets
+**Problem:** A request can fit below the hosting gateway limit while its unbounded text still exceeds the database document limit; conversely, individually valid Base64 images can exceed the transport limit in combination.
+**Solution:** Enforce an actual serialized-payload byte cap before the browser fetch and again on the server, keep a decoded per-image cap, add a separate persisted-text byte cap below the database limit, and disclose both per-image and total attachment limits in the UI.
+**Principle:** Size every boundary independently: decoded file, serialized transport, and persisted document are different resources with different failure limits.
+
 ### 2026-07-14 Admin Cascades Need Downstream Ownership Closure
 **Problem:** Authenticating and owner-checking a root resource is not enough when an Admin-SDK cascade follows user-controlled reference IDs; forged references can turn deletion of an owned parent into writes against another user's documents.
 **Solution:** Authenticate before input/DB work, owner-check the root, and restrict every downstream query/batch/update to documents whose stored owner equals the verified token uid; thread that same uid explicitly into AI metering and model resolution.

@@ -103,65 +103,68 @@ export class SeriesRepository {
   }
 
   /**
-   * Atomically deletes a sermon AND detaches it from every one of the owner's series in a
-   * SINGLE write batch — all-or-nothing. Either everything commits or nothing does, so a
-   * delete can never leave a series pointing at a non-existent sermon (the previous flow
-   * deleted the sermon first and swallowed a failed cleanup, returning 200 with dangling
-   * refs). Foreign-owned series are never touched.
+   * Atomically deletes a sermon AND detaches it from every one of the owner's series.
+   * The transaction retries from a fresh series snapshot when a concurrent edit commits,
+   * so it provides both read isolation and all-or-nothing writes. Foreign-owned series are
+   * never touched.
    */
   async deleteSermonAndDetachFromAllSeries(sermonId: string, ownerUid: string): Promise<void> {
-    const seriesSnapshot = await adminDb.collection(this.collection)
-      .where('sermonIds', 'array-contains', sermonId)
-      .get();
+    const seriesQuery = adminDb.collection(this.collection)
+      .where('sermonIds', 'array-contains', sermonId);
+    const sermonRef = adminDb.collection('sermons').doc(sermonId);
 
-    const batch = adminDb.batch();
+    await adminDb.runTransaction(async (transaction) => {
+      const seriesSnapshot = await transaction.get(seriesQuery);
 
-    seriesSnapshot.docs.forEach((doc) => {
-      const series = this.hydrateSeries({ id: doc.id, ...doc.data() } as Series);
-      if (series.userId !== ownerUid) {
-        return; // never mutate a foreign-owned series
-      }
-      const nextItems = removeSeriesItemByRef(series.items || [], { type: 'sermon', refId: sermonId });
-      batch.update(doc.ref, {
-        items: nextItems,
-        sermonIds: deriveSermonIdsFromItems(nextItems),
-        seriesKind: inferSeriesKind(nextItems),
-        updatedAt: new Date().toISOString(),
+      seriesSnapshot.docs.forEach((doc) => {
+        const series = this.hydrateSeries({ id: doc.id, ...doc.data() } as Series);
+        if (series.userId !== ownerUid) {
+          return; // never mutate a foreign-owned series
+        }
+        const nextItems = removeSeriesItemByRef(series.items || [], { type: 'sermon', refId: sermonId });
+        transaction.update(doc.ref, {
+          items: nextItems,
+          sermonIds: deriveSermonIdsFromItems(nextItems),
+          seriesKind: inferSeriesKind(nextItems),
+          updatedAt: new Date().toISOString(),
+        });
       });
+
+      transaction.delete(sermonRef);
     });
-
-    batch.delete(adminDb.collection('sermons').doc(sermonId));
-
-    // One commit: series detach + sermon delete land together, or not at all.
-    await batch.commit();
   }
 
   async removeGroupFromAllSeries(groupId: string, ownerUid: string): Promise<void> {
     console.log(`Firestore: removing group ${groupId} from owner ${ownerUid}'s series`);
 
     try {
-      const snapshot = await adminDb.collection(this.collection).get();
-      const candidates = snapshot.docs
-        .map((doc) => ({ id: doc.id, data: this.hydrateSeries({ id: doc.id, ...doc.data() } as Series), ref: doc.ref }))
-        .filter((entry) => entry.data.userId === ownerUid)
-        .filter((entry) => (entry.data.items || []).some((item) => item.type === 'group' && item.refId === groupId));
+      const ownerSeriesQuery = adminDb.collection(this.collection).where('userId', '==', ownerUid);
+      let removedFromCount = 0;
+      await adminDb.runTransaction(async (transaction) => {
+        const snapshot = await transaction.get(ownerSeriesQuery);
+        const candidates = snapshot.docs
+          .map((doc) => ({ id: doc.id, data: this.hydrateSeries({ id: doc.id, ...doc.data() } as Series), ref: doc.ref }))
+          .filter((entry) => entry.data.userId === ownerUid)
+          .filter((entry) => (entry.data.items || []).some((item) => item.type === 'group' && item.refId === groupId));
 
-      if (candidates.length === 0) {
-        console.log(`No series found containing group ${groupId}`);
-        return;
-      }
-
-      await Promise.all(
-        candidates.map(async ({ ref, data, id }) => {
+        candidates.forEach(({ ref, data }) => {
           const nextItems = removeSeriesItemByRef(data.items || [], { type: 'group', refId: groupId });
-          await ref.update({
+          transaction.update(ref, {
             items: nextItems,
             sermonIds: deriveSermonIdsFromItems(nextItems),
             seriesKind: inferSeriesKind(nextItems),
             updatedAt: new Date().toISOString(),
           });
-          console.log(`Removed group ${groupId} from series ${id}`);
-        })
+        });
+
+        removedFromCount = candidates.length;
+      });
+
+      // Log once, AFTER commit — never inside the retryable callback (retries would duplicate).
+      console.log(
+        removedFromCount === 0
+          ? `No series found containing group ${groupId}`
+          : `Removed group ${groupId} from ${removedFromCount} of the owner's series`
       );
     } catch (error) {
       console.error(`Error removing group ${groupId} from all series:`, error);
