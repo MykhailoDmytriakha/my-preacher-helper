@@ -19,13 +19,24 @@ jest.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+// Seedable store so tests can simulate an initial URL param (e.g. ?search=…),
+// mirroring how nuqs reads the query string on mount.
+const mockQueryState: Record<string, string> = {};
+
 jest.mock('nuqs', () => {
   const React = require('react');
   return {
     useQueryState: jest.fn((key: string, options: any) => {
-      const defaultValue = options?.defaultValue || '';
-      const [state, setState] = React.useState(defaultValue);
-      return [state, setState];
+      const initial = mockQueryState[key] ?? options?.defaultValue ?? '';
+      const [state, setState] = React.useState(initial);
+      return [
+        state,
+        (next: string) => {
+          mockQueryState[key] = next;
+          setState(next);
+          return Promise.resolve(next);
+        },
+      ];
     }),
   };
 });
@@ -89,6 +100,7 @@ const baseUseStudyNoteShareLinksValue = (): ReturnType<typeof useStudyNoteShareL
 
 describe('StudiesPage', () => {
   beforeEach(() => {
+    for (const key of Object.keys(mockQueryState)) delete mockQueryState[key];
     mockUseStudyNotes.mockReturnValue(baseUseStudyNotesValue());
     mockUseStudyNoteShareLinks.mockReturnValue(baseUseStudyNoteShareLinksValue());
     mockUseTags.mockReturnValue({
@@ -337,6 +349,59 @@ describe('StudiesPage', () => {
 
       const allCards = screen.getAllByRole('article');
       expect(allCards).toHaveLength(2);
+    });
+
+    it('clears the search query and results when Escape is pressed', async () => {
+      const notes: StudyNote[] = [
+        createMockNote({ id: '1', title: 'Alpha note' }),
+        createMockNote({ id: '2', title: 'Beta note' }),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+
+      render(<StudiesPage />);
+
+      const searchInput = screen.getByPlaceholderText(/studiesWorkspace\.searchPlaceholder/i);
+      fireEvent.change(searchInput, { target: { value: 'Alpha' } });
+
+      await waitFor(() => {
+        const visibleCards = screen.getAllByRole('article');
+        expect(visibleCards).toHaveLength(1);
+        expect(visibleCards[0]).toHaveTextContent(/Alpha note/i);
+      });
+
+      fireEvent.keyDown(searchInput, { key: 'Escape' });
+
+      await waitFor(() => expect(searchInput).toHaveValue(''));
+      expect(screen.getAllByRole('article')).toHaveLength(2);
+    });
+
+    it('initializes the search from the URL query param and filters on mount', async () => {
+      mockQueryState.search = 'Alpha';
+
+      const notes: StudyNote[] = [
+        createMockNote({ id: '1', title: 'Alpha note' }),
+        createMockNote({ id: '2', title: 'Beta note' }),
+      ];
+
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes,
+      });
+
+      render(<StudiesPage />);
+
+      const searchInput = screen.getByPlaceholderText(/studiesWorkspace\.searchPlaceholder/i);
+      expect(searchInput).toHaveValue('Alpha');
+
+      await waitFor(() => {
+        const visibleCards = screen.getAllByRole('article');
+        expect(visibleCards).toHaveLength(1);
+        expect(visibleCards[0]).toHaveTextContent(/Alpha note/i);
+      });
     });
 
     it('shows content snippet when content matches token', async () => {

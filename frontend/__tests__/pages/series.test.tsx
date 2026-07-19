@@ -238,6 +238,22 @@ describe('Series Page', () => {
             expect(screen.getByTestId('series-card-series-2')).toBeInTheDocument();
             expect(screen.getByTestId('series-card-series-3')).toBeInTheDocument();
         });
+
+        it('clears search when Escape is pressed', () => {
+            render(<SeriesPage />);
+
+            const searchInput = screen.getByPlaceholderText('Search by title, book, theme...');
+            fireEvent.change(searchInput, { target: { value: 'First' } });
+
+            expect(screen.queryByTestId('series-card-series-2')).not.toBeInTheDocument();
+
+            fireEvent.keyDown(searchInput, { key: 'Escape' });
+
+            expect(searchInput).toHaveValue('');
+            expect(screen.getByTestId('series-card-series-1')).toBeInTheDocument();
+            expect(screen.getByTestId('series-card-series-2')).toBeInTheDocument();
+            expect(screen.getByTestId('series-card-series-3')).toBeInTheDocument();
+        });
     });
 
     describe('Status Filter', () => {

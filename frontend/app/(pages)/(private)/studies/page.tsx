@@ -14,7 +14,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQueryState } from 'nuqs';
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
 
@@ -63,9 +63,30 @@ export default function StudiesPage() {
   }, [tagData.customTags, tagData.requiredTags]);
 
   // Filters (URL state via nuqs)
-  const [searchQueryParam, setSearchQueryParam] = useQueryState('search', { defaultValue: '' });
+  // nuqs owns the URL param (persistence across navigation), but the input's
+  // displayed value + filtering read from a LOCAL mirror. Reason: nuqs's
+  // optimistic→URL reconciliation makes searchQueryParam briefly bounce back to
+  // the old value on a real Escape/clear keypress (verified: value + list +
+  // highlights flash old→new→old). Local state clears synchronously in one
+  // render, so nothing rendered ever bounces. See applySearch below.
+  const [searchQueryParam, setSearchQueryParam] = useQueryState('search', { defaultValue: '', throttleMs: 0 });
   const [tagFilter, setTagFilter] = useQueryState('tag', { defaultValue: '' });
   const [bookFilter, setBookFilter] = useQueryState('book', { defaultValue: '' });
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [search, setSearch] = useState(searchQueryParam);
+  // Single writer: local mirror (instant, drives UI) + URL param (persistence).
+  const applySearch = useCallback((value: string) => {
+    setSearch(value);
+    void setSearchQueryParam(value);
+  }, [setSearchQueryParam]);
+  // Adopt URL→local only on external changes (back-nav restore) while the user
+  // is NOT typing — this ignores nuqs's transient bounce during a focused clear.
+  useEffect(() => {
+    if (searchQueryParam !== search && document.activeElement !== searchInputRef.current) {
+      setSearch(searchQueryParam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQueryParam]);
 
   // Type tabs
   type NoteTabType = 'all' | 'notes' | 'questions';
@@ -99,8 +120,8 @@ export default function StudiesPage() {
     );
   }, [availableTags, notes]);
 
-  // Trimmed search query for filtering and highlighting
-  const searchQuery = useMemo(() => searchQueryParam.trim(), [searchQueryParam]);
+  // Trimmed search query for filtering and highlighting (from local mirror)
+  const searchQuery = useMemo(() => search.trim(), [search]);
 
   // Tokenized search for multi-word matching (AND across tokens, order-agnostic)
   const searchTokens = useMemo(
@@ -237,12 +258,12 @@ export default function StudiesPage() {
   }, []);
 
   const clearFilters = () => {
-    setSearchQueryParam('');
+    applySearch('');
     setTagFilter('');
     setBookFilter('');
   };
 
-  const hasActiveFilters = searchQueryParam || tagFilter || bookFilter;
+  const hasActiveFilters = search || tagFilter || bookFilter;
 
   return (
     <section className="space-y-4 md:space-y-6">
@@ -345,7 +366,7 @@ export default function StudiesPage() {
             {searchQuery && (
               <button
                 type="button"
-                onClick={() => setSearchQueryParam('')}
+                onClick={() => applySearch('')}
                 className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 rounded-md bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
                 aria-label={t('studiesWorkspace.clearSearch')}
               >
@@ -354,8 +375,10 @@ export default function StudiesPage() {
               </button>
             )}
             <input
-              value={searchQueryParam}
-              onChange={(e) => setSearchQueryParam(e.target.value)}
+              ref={searchInputRef}
+              value={search}
+              onChange={(e) => applySearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Escape') applySearch(''); }}
               placeholder={t('studiesWorkspace.searchPlaceholder')}
               className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-12 sm:pr-28 text-sm shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-200 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             />

@@ -68,7 +68,24 @@ export default function PrayerPage() {
     defaultValue: 'updatedAt',
     parse: (value) => normalizePrayerSortKey(value),
   });
-  const [searchQuery, setSearchQuery] = useQueryState('q', { defaultValue: '' });
+  // nuqs owns the URL param (persistence); a LOCAL mirror drives the input +
+  // filtering. Reason: nuqs's optimistic→URL reconciliation can make the value
+  // bounce back old→new→old on a real clear keypress once the list render is
+  // heavy enough (proven on the studies page). Local state clears in one render,
+  // so nothing rendered bounces. Single writer = updateSearch below.
+  const [searchParam, setSearchParam] = useQueryState('q', { defaultValue: '' });
+  const prayerSearchInputRef = useRef<HTMLInputElement>(null);
+  const [searchQuery, setSearchQuery] = useState(searchParam);
+  const updateSearch = (value: string) => {
+    setSearchQuery(value);
+    void setSearchParam(value);
+  };
+  useEffect(() => {
+    if (searchParam !== searchQuery && document.activeElement !== prayerSearchInputRef.current) {
+      setSearchQuery(searchParam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParam]);
 
   const [searchInUpdates, setSearchInUpdates] = useState(() => {
     try {
@@ -363,11 +380,13 @@ export default function PrayerPage() {
                   <MagnifyingGlassIcon className="h-5 w-5" />
                 </button>
                 <input
+                  ref={prayerSearchInputRef}
                   id="prayer-search-input"
                   type="search"
                   placeholder={searchPrayersLabel}
                   value={searchQuery}
-                  onChange={(event) => void setSearchQuery(event.target.value)}
+                  onChange={(event) => updateSearch(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === 'Escape') updateSearch(''); }}
                   className={`w-full bg-transparent py-2 text-sm text-gray-900 outline-none transition-opacity duration-300 dark:text-gray-100 sm:text-base ${
                     isSearchExpanded
                       ? 'opacity-100 pr-16 placeholder-gray-400 dark:placeholder-gray-500'
@@ -384,7 +403,7 @@ export default function PrayerPage() {
                   {searchQuery && (
                     <button
                       type="button"
-                      onClick={() => void setSearchQuery('')}
+                      onClick={() => updateSearch('')}
                       aria-label={t('dashboard.clearSearch')}
                       className="rounded-full p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-300"
                     >

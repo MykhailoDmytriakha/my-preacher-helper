@@ -285,6 +285,36 @@ describe('Prayer Page', () => {
     });
   });
 
+  it('clears the search query when Escape is pressed', async () => {
+    render(<PrayerPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Search prayers...' }));
+    const searchbox = screen.getByRole('searchbox');
+    fireEvent.change(searchbox, { target: { value: 'church' } });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('prayer-card-active-1')).toHaveAttribute('data-search-query', 'church');
+    });
+
+    fireEvent.keyDown(searchbox, { key: 'Escape' });
+
+    await waitFor(() => expect(searchbox).toHaveValue(''));
+    expect(screen.getByTestId('prayer-card-active-1')).toHaveAttribute('data-search-query', '');
+  });
+
+  it('initializes the search from the URL query param on mount', async () => {
+    queryStateDefaults.q = 'church';
+
+    render(<PrayerPage />);
+
+    const searchbox = screen.getByRole('searchbox');
+    expect(searchbox).toHaveValue('church');
+
+    await waitFor(() => {
+      expect(screen.getByTestId('prayer-card-active-1')).toHaveAttribute('data-search-query', 'church');
+    });
+  });
+
   it('handles create, edit, delete, update, and status flows through the page callbacks', async () => {
     createPrayer.mockResolvedValue(undefined);
     updatePrayer.mockResolvedValue(undefined);

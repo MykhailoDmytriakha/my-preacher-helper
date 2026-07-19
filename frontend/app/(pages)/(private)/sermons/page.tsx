@@ -291,6 +291,7 @@ export default function SermonsPage() {
                   placeholder={searchSermonsLabel}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Escape') setSearchQuery(''); }}
                   className={`w-full py-2 bg-transparent text-sm sm:text-base text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 outline-none
                     transition-opacity duration-300 ${isSearchExpanded ? 'opacity-100 pr-16' : 'opacity-0'}`}
                   tabIndex={isSearchExpanded ? 0 : -1}

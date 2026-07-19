@@ -204,6 +204,7 @@ export default function SeriesPage() {
             <input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Escape') setSearchTerm(''); }}
               placeholder={t('common.search', { defaultValue: 'Search by title, book, theme...' })}
               className="w-full rounded-lg border border-gray-200 bg-white py-2.5 pl-10 pr-10 text-sm text-gray-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/50 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
             />
