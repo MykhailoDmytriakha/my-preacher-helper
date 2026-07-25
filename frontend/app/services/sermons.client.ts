@@ -20,6 +20,7 @@ import {
   Thought,
   ThoughtsBySection,
 } from '@/models/models';
+import { atomicUpdate } from '@/services/atomicUpdate.client';
 import { newClientId } from '@/utils/clientId';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { compareById, timeOrZero } from '@/utils/sortHelpers';
@@ -290,11 +291,13 @@ export async function deleteScratchNoteViaClient(
  * The id is reused from the caller's optimistic thought (which survives a reload
  * and is replayed unchanged on retry) instead of being minted fresh each call;
  * the optimistic "local-" prefix is stripped so the saved thought is classified
- * as real, not pending. Combined with upsert-by-id (read-modify-write), a create
- * that gets sent twice — the native Firestore offline queue committing the
- * original write AND a reload-recovered retry — collapses to ONE thought instead
- * of two. (Plain arrayUnion would append a near-duplicate whenever a replay
- * carries a different `date`/field.)
+ * as real, not pending. Combined with INSERT-IF-ABSENT by that id, a create sent
+ * twice — the native Firestore offline queue committing the original write AND a
+ * reload-recovered retry — collapses to ONE thought instead of two, and the
+ * second send is a true no-op: it does NOT overwrite what is stored, because an
+ * edit may have landed in between (a transient error can arrive after a commit).
+ * (Plain arrayUnion would append a near-duplicate whenever a replay carries a
+ * different `date`/field; an upsert-by-id REPLACE would clobber the newer edit.)
  */
 export async function createManualThoughtViaClient(
   sermonId: string,
@@ -319,20 +322,33 @@ export async function createManualThoughtViaClient(
     throw new Error('Thought is missing required fields');
   }
 
-  // Upsert by id: replace a thought already carrying this id, else append. The
-  // sermon doc exists here (we're adding to it), so the getDoc read passes the
-  // ownsExisting rule — unlike a create-on-missing-doc pre-read, which would not.
-  const ref = sermonRef(sermonId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error(SERMON_NOT_FOUND);
-  const existing = (snap.data() as Sermon).thoughts || [];
+  // INSERT-IF-ABSENT by id (not a replace). A create that is sent twice — the
+  // native offline queue committing the original AND a reload-recovered retry —
+  // must collapse to ONE thought; and because a transient error can arrive AFTER
+  // a successful commit, the second attempt must NOT overwrite what is already
+  // stored (an edit may have landed in between). Being a no-op on an existing id
+  // is exactly what makes this operation safe to replay.
   const cleanBuilt = deepCleanUndefined(built);
-  const idx = existing.findIndex((t) => t.id === built.id);
-  const nextThoughts =
-    idx === -1 ? [...existing, cleanBuilt] : existing.map((t, i) => (i === idx ? cleanBuilt : t));
-
-  await updateDoc(ref, { thoughts: nextThoughts, updatedAt: now() });
-  return built;
+  // On a replay we return what is actually STORED, not our own copy: the stored
+  // one may already carry a newer edit, and echoing the stale copy would flash
+  // the old text back into the UI.
+  let committed: Thought = built;
+  await atomicUpdate<Sermon>(
+    sermonRef(sermonId),
+    (sermon) => {
+      const existing = sermon.thoughts || [];
+      const stored = existing.find((t) => t.id === built.id);
+      if (stored) {
+        committed = stored; // replay no-op
+        return null;
+      }
+      committed = built;
+      return { thoughts: [...existing, cleanBuilt], updatedAt: now() };
+    },
+    SERMON_NOT_FOUND,
+    { retryTransientAsQueuedWrite: true }
+  );
+  return committed;
 }
 
 /** Mirror PUT /api/thoughts — merge into the persisted thought, replace in-place. */
@@ -342,6 +358,15 @@ export async function updateThoughtViaClient(
 ): Promise<Thought> {
   if (!updatedThought.id) throw new Error('Thought id is required');
 
+  // DELIBERATELY NOT transactional. This merges a FULL caller-supplied Thought
+  // into the persisted one, so re-running the mutator is NOT safe: Firestore
+  // internally retries a transaction up to 5 attempts and re-invokes the callback,
+  // and a transient error can arrive AFTER a commit — a rerun would then reapply
+  // this stale payload over a newer edit that landed in between. A transaction
+  // here would therefore ADD a corruption path HEAD does not have. Making this
+  // path safe requires accepting a minimal FIELD PATCH instead of a whole object
+  // (tracked as the same-item-merge item in FIRESTORE_SYNC_RESEARCH.md); until
+  // then it keeps HEAD's single read-then-write.
   const ref = sermonRef(sermonId);
   const snap = await getDoc(ref);
   if (!snap.exists()) throw new Error(SERMON_NOT_FOUND);
@@ -388,18 +413,24 @@ export async function updateThoughtViaClient(
 
 /** Mirror DELETE /api/thoughts — remove the thought (by id) from the array. */
 export async function deleteThoughtViaClient(sermonId: string, thought: Thought): Promise<void> {
-  const ref = sermonRef(sermonId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error(SERMON_NOT_FOUND);
-  const sermon = snap.data() as Sermon;
-  const thoughts = (sermon.thoughts || []).filter((t) => t.id !== thought.id);
-  await updateDoc(ref, { thoughts, updatedAt: now() });
+  await atomicUpdate<Sermon>(
+    sermonRef(sermonId),
+    (sermon) => ({
+      thoughts: (sermon.thoughts || []).filter((t) => t.id !== thought.id),
+      updatedAt: now(),
+    }),
+    SERMON_NOT_FOUND,
+    // A removal recomputed against fresh data is idempotent: replaying it cannot
+    // resurrect stale fields or drop a concurrent addition.
+    { retryTransientAsQueuedWrite: true }
+  );
 }
 
 // --- preachDates[] ---
 
 /**
- * Mirror POST /api/sermons/:id/preach-dates. Idempotent by a client-supplied id:
+ * Mirror POST /api/sermons/:id/preach-dates. Insert-if-absent by client id (an
+ * existing id is returned UNCHANGED — never replaced):
  * a replayed add (the dashboard online-flush double-fire) is a no-op, so the
  * native offline queue can own create-with-planned-date without duplicating the
  * date. Without an id we generate one (back-compat with non-replayed callers).
@@ -414,23 +445,35 @@ export async function addPreachDateViaClient(
   const ref = sermonRef(sermonId);
 
   if (data.id) {
-    const snap = await getDoc(ref);
-    if (!snap.exists()) throw new Error(SERMON_NOT_FOUND);
-    const preachDates = (snap.data() as Sermon).preachDates || [];
-    const existing = preachDates.find((pd) => pd.id === data.id);
-    if (existing) return existing; // replay no-op
-    const newPreachDate: PreachDate = {
-      ...data,
-      date: normalizedDate,
-      status: data.status || 'planned',
-      id: data.id,
-      createdAt: now(),
-    };
-    await updateDoc(ref, {
-      preachDates: [...preachDates, deepCleanUndefined(newPreachDate)],
-      updatedAt: now(),
-    });
-    return newPreachDate;
+    // Insert-if-absent by client id (an existing id is returned UNCHANGED, never
+    // replaced). atomicUpdate recomputes against fresh data,
+    // so a date added on another device survives instead of being wiped.
+    let committed: PreachDate | undefined;
+    await atomicUpdate<Sermon>(
+      ref,
+      (sermon) => {
+        const preachDates = sermon.preachDates || [];
+        const existing = preachDates.find((pd) => pd.id === data.id);
+        if (existing) {
+          committed = existing; // replay no-op
+          return null;
+        }
+        committed = {
+          ...data,
+          date: normalizedDate,
+          status: data.status || 'planned',
+          id: data.id,
+          createdAt: now(),
+        } as PreachDate;
+        return {
+          preachDates: [...preachDates, deepCleanUndefined(committed)],
+          updatedAt: now(),
+        };
+      },
+      SERMON_NOT_FOUND,
+      { retryTransientAsQueuedWrite: true } // no-ops when the id already exists
+    );
+    return committed as PreachDate;
   }
 
   const newPreachDate: PreachDate = {
@@ -453,11 +496,16 @@ export async function updatePreachDateViaClient(
   dateId: string,
   updates: Partial<PreachDate>
 ): Promise<PreachDate> {
+  // DELIBERATELY NOT transactional — same reason as updateThoughtViaClient: it
+  // merges caller-supplied fields into the persisted entry, and Firestore may
+  // re-run a transaction callback (up to 5 attempts) even after a commit whose
+  // response was lost, which would reapply this payload over a newer edit.
+  // Order matters: read + locate BEFORE validating the date, so a missing
+  // sermon/date still reports not-found (HEAD's error precedence).
   const ref = sermonRef(sermonId);
   const snap = await getDoc(ref);
   if (!snap.exists()) throw new Error(SERMON_NOT_FOUND);
-  const sermon = snap.data() as Sermon;
-  const preachDates = sermon.preachDates || [];
+  const preachDates = (snap.data() as Sermon).preachDates || [];
   const index = preachDates.findIndex((pd) => pd.id === dateId);
   if (index === -1) throw new Error('Preach date not found');
 
@@ -476,19 +524,21 @@ export async function updatePreachDateViaClient(
 
   const updatedArray = [...preachDates];
   updatedArray[index] = deepCleanUndefined(updatedPreachDate);
-
   await updateDoc(ref, { preachDates: updatedArray, updatedAt: now() });
   return updatedPreachDate;
 }
 
 /** Mirror DELETE /api/sermons/:id/preach-dates/:dateId. */
 export async function deletePreachDateViaClient(sermonId: string, dateId: string): Promise<void> {
-  const ref = sermonRef(sermonId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error(SERMON_NOT_FOUND);
-  const sermon = snap.data() as Sermon;
-  const preachDates = (sermon.preachDates || []).filter((pd) => pd.id !== dateId);
-  await updateDoc(ref, { preachDates, updatedAt: now() });
+  await atomicUpdate<Sermon>(
+    sermonRef(sermonId),
+    (sermon) => ({
+      preachDates: (sermon.preachDates || []).filter((pd) => pd.id !== dateId),
+      updatedAt: now(),
+    }),
+    SERMON_NOT_FOUND,
+    { retryTransientAsQueuedWrite: true } // removal is idempotent on fresh data
+  );
 }
 
 // NB: createSermon is intentionally NOT migrated — it stays on the server. See

@@ -2,6 +2,7 @@ import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, whe
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { Group, GroupFlowItem, GroupMeetingDate } from '@/models/models';
+import { atomicUpdate } from '@/services/atomicUpdate.client';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { newClientId } from '@/utils/clientId';
 
@@ -137,25 +138,40 @@ async function addGroupMeetingDateViaClient(
 ): Promise<GroupMeetingDate> {
   const db = getClientDb();
   const ref = doc(db, GROUPS_COLLECTION, groupId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error(GROUP_NOT_FOUND);
-  const meetingDates = (snap.data() as Group).meetingDates || [];
+  const mintedId = data.id ?? newClientId();
 
-  if (data.id) {
-    const existing = meetingDates.find((entry) => entry.id === data.id);
-    if (existing) return existing; // replay no-op (caller-minted id)
-  }
+  // Full-array write → must be computed from fresh data, or a meeting date added
+  // on another device is wiped. atomicUpdate re-runs this if the doc changed.
+  let committed!: GroupMeetingDate;
+  await atomicUpdate<Group>(
+    ref,
+    (group) => {
+      const meetingDates = group.meetingDates || [];
 
-  const newMeetingDate: GroupMeetingDate = {
-    ...data,
-    id: data.id ?? newClientId(),
-    createdAt: new Date().toISOString(),
-  };
-  await updateDoc(ref, {
-    meetingDates: [...meetingDates, deepCleanUndefined(newMeetingDate)],
-    updatedAt: new Date().toISOString(),
-  });
-  return newMeetingDate;
+      // Look up by the id that will actually be written — including one minted
+      // here. `deadline-exceeded` can be reported AFTER a successful commit, so a
+      // retry (SDK-internal or our queued fallback) must find its own entry and
+      // no-op instead of appending a duplicate.
+      const existing = meetingDates.find((entry) => entry.id === mintedId);
+      if (existing) {
+        committed = existing; // replay no-op
+        return null;
+      }
+
+      committed = {
+        ...data,
+        id: mintedId,
+        createdAt: new Date().toISOString(),
+      } as GroupMeetingDate;
+      return {
+        meetingDates: [...meetingDates, deepCleanUndefined(committed)],
+        updatedAt: new Date().toISOString(),
+      };
+    },
+    GROUP_NOT_FOUND,
+    { retryTransientAsQueuedWrite: true } // no-ops when mintedId already exists
+  );
+  return committed;
 }
 
 async function updateGroupMeetingDateViaClient(
@@ -165,9 +181,13 @@ async function updateGroupMeetingDateViaClient(
 ): Promise<GroupMeetingDate> {
   const db = getClientDb();
   const ref = doc(db, GROUPS_COLLECTION, groupId);
+
+  // DELIBERATELY NOT transactional — same reason as updateThoughtViaClient: a
+  // merge of caller-supplied fields is unsafe to re-run, and Firestore may
+  // re-invoke a transaction callback after a commit whose response was lost.
   const snap = await getDoc(ref);
   if (!snap.exists()) throw new Error(GROUP_NOT_FOUND);
-  const meetingDates = (snap.data() as Group).meetingDates || [];
+  const meetingDates = (hydrateGroup({ ...(snap.data() as Omit<Group, 'id'>), id: snap.id } as Group)).meetingDates || [];
   const index = meetingDates.findIndex((entry) => entry.id === dateId);
   if (index === -1) throw new Error('Meeting date not found');
 
@@ -177,19 +197,24 @@ async function updateGroupMeetingDateViaClient(
     id: meetingDates[index].id,
     createdAt: meetingDates[index].createdAt,
   };
-  const updatedArray = [...meetingDates];
-  updatedArray[index] = deepCleanUndefined(updatedMeetingDate);
-  await updateDoc(ref, { meetingDates: updatedArray, updatedAt: new Date().toISOString() });
+
+  const nextDates = [...meetingDates];
+  nextDates[index] = deepCleanUndefined(updatedMeetingDate);
+  await updateDoc(ref, { meetingDates: nextDates, updatedAt: new Date().toISOString() });
   return updatedMeetingDate;
 }
 
 async function deleteGroupMeetingDateViaClient(groupId: string, dateId: string): Promise<void> {
   const db = getClientDb();
-  const ref = doc(db, GROUPS_COLLECTION, groupId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error(GROUP_NOT_FOUND);
-  const meetingDates = ((snap.data() as Group).meetingDates || []).filter((entry) => entry.id !== dateId);
-  await updateDoc(ref, { meetingDates, updatedAt: new Date().toISOString() });
+  await atomicUpdate<Group>(
+    doc(db, GROUPS_COLLECTION, groupId),
+    (group) => ({
+      meetingDates: (group.meetingDates || []).filter((entry) => entry.id !== dateId),
+      updatedAt: new Date().toISOString(),
+    }),
+    GROUP_NOT_FOUND,
+    { retryTransientAsQueuedWrite: true } // removal is idempotent on fresh data
+  );
 }
 
 // NOTE: write paths intentionally do NOT pre-check connectivity. When offline,

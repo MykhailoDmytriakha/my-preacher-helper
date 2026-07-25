@@ -10,6 +10,23 @@ const mockAddDoc = jest.fn();
 const mockUpdateDoc = jest.fn();
 const mockDeleteDoc = jest.fn();
 const mockGetClientDb = jest.fn(() => mockDb);
+// atomicUpdate takes the transaction path when online (jsdom reports online), so
+// the mock must honour the real contract: read through the transaction, write
+// through it. Routing tx.get/tx.update at the existing getDoc/updateDoc mocks
+// keeps every assertion about the written payload valid.
+const mockRunTransaction = jest.fn(
+  async (
+    _db: unknown,
+    fn: (tx: {
+      get: (ref: unknown) => Promise<unknown>;
+      update: (ref: unknown, payload: unknown) => void;
+    }) => Promise<void>
+  ) =>
+    fn({
+      get: (ref: unknown) => mockGetDoc(ref),
+      update: (ref: unknown, payload: unknown) => mockUpdateDoc(ref, payload),
+    })
+);
 
 const basePrayer = {
   userId: 'user-1',
@@ -44,6 +61,7 @@ async function importServiceWithClientMocks() {
     getDoc: mockGetDoc,
     getDocs: mockGetDocs,
     query: mockQuery,
+    runTransaction: mockRunTransaction,
     setDoc: mockSetDoc,
     updateDoc: mockUpdateDoc,
     where: mockWhere,

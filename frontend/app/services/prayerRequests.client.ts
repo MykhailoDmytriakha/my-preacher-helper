@@ -11,6 +11,7 @@ import {
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { PrayerRequest, PrayerStatus, PrayerUpdate } from '@/models/models';
+import { atomicUpdate } from '@/services/atomicUpdate.client';
 
 const PRAYER_REQUESTS_COLLECTION = 'prayerRequests';
 const PRAYER_NOT_FOUND_ERROR = 'Prayer request not found';
@@ -106,22 +107,35 @@ export async function addPrayerUpdateViaClient(
 
   const db = getClientDb();
   const ref = doc(db, PRAYER_REQUESTS_COLLECTION, id);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error(PRAYER_NOT_FOUND_ERROR);
 
-  const current = hydratePrayerRequest(snap.data() as Omit<PrayerRequest, 'id'>, snap.id);
-  if (current.updates.some((update) => update.id === payload.updateId)) {
-    return current;
-  }
+  // Appends to updates[] — a full-array write, so it must be computed from fresh
+  // data or an update added on another device is wiped. atomicUpdate re-runs this
+  // when the doc changed mid-flight; `result` holds the committed value.
+  let result!: PrayerRequest;
+  await atomicUpdate<Omit<PrayerRequest, 'id'>>(
+    ref,
+    (data) => {
+      const current = hydratePrayerRequest(data, id);
+      if (current.updates.some((update) => update.id === payload.updateId)) {
+        result = current; // replay no-op
+        return null;
+      }
 
-  const update: PrayerUpdate = {
-    id: payload.updateId,
-    text: trimmedText,
-    createdAt: payload.createdAt,
-  };
-  const updates = [...current.updates, update];
-  await updateDoc(ref, { updates, updatedAt: payload.createdAt });
-  return hydratePrayerRequest({ ...current, updates, updatedAt: payload.createdAt }, id);
+      const update: PrayerUpdate = {
+        id: payload.updateId,
+        text: trimmedText,
+        createdAt: payload.createdAt,
+      };
+      const updates = [...current.updates, update];
+      result = hydratePrayerRequest({ ...current, updates, updatedAt: payload.createdAt }, id);
+      return { updates, updatedAt: payload.createdAt };
+    },
+    PRAYER_NOT_FOUND_ERROR,
+    // No-ops when this updateId is already stored, so replaying a transient
+    // failure cannot duplicate the update or overwrite a newer edit.
+    { retryTransientAsQueuedWrite: true }
+  );
+  return result;
 }
 
 export interface SetPrayerStatusViaClientPayload {

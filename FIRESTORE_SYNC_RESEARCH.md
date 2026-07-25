@@ -185,7 +185,7 @@ Popper loop: Claude proposal → Codex `gpt-5.6-sol` (high effort, open mandate 
 5. **Outbox duplicate/reorder/head-of-line deadlock** — lost ACK + two tabs replaying + local-only opId → resurrect/lose data, or strict FIFO deadlocks the doc. → one sequencer per {uid,docId} w/ lease/auth-epoch; server transaction applies command + writes opId to a dedupe ledger; ACK only after commit; conflict → `blocked_conflict` (other docs keep syncing).
 6. **ID-based array rebase undefined for reorder** — series passes reorder as full `itemIds[]` (`seriesMembership.client.ts:29`); rebasing full ID lists loses/resurrects/misplaces. → per-item docs + tombstones + item revisions + positional `move X after Y` ops; remove-vs-edit / move-vs-delete / same-text-edit are **unclosable automatically → mandatory visible conflict**. "Gradual normalization" is itself dangerous (old client writes embedded array, new writes subdocs) → one canonical writer + migration epoch, no dual-write w/o version gate.
 7. **Delete vs offline edit** (`sermons.client.ts` set vs update) → revisioned tombstone w/ retention; offline-edit-vs-tombstone → conflict (restore-as-new / copy / export / discard). Auto-resolution impossible.
-8. **Cross-account cache leak** — detail key omits UID (`useSermon.ts:53`), RQ persister global key (`queryPersister.ts:7`), logout clears neither (`useAuth.ts:39`). → UID in ALL keys/outbox/registries + auth epoch + synchronous purge on logout; never render a doc if `doc.userId !== activeUid`.
+8. **Cross-account cache leak** — detail key omits UID (`useSermon.ts:53`), RQ persister global key (`queryPersister.ts:7`), logout clears neither (`useAuth.ts:39`). → ⛔ NOT "synchronous purge on logout" (tried 2026-07-25 and REVERTED: it destroyed persisted paused mutations = unsynced offline edits, and left Firestore's own persistentLocalCache untouched). → PARTITION instead of purge: persister key per resolved uid, one QueryClient per owner, owner-uid + auth-epoch in the persisted envelope with late-restore rejection, do not restore before auth resolves (anonymous uids are real owners too), handle the Firestore cache separately (memory cache by default or a coordinated multi-tab terminate/clear preserving pending writes), and put the uid in every key including details.
 9. **Listener recovery zombie subscription** (P1) — retry timer reattaches old account/query after route/UID change. → subscription manager keyed {uid, authEpoch, routeGeneration, canonicalQuery}; classify errors (unavailable→retry; unauth/denied→wait for auth; failed-precondition→code bug; resource-exhausted→quota-red, no retry). "Recover from EVERY cause" is unclosable → explicit degraded/fatal state, not infinite retry.
 10. **`includeMetadataChanges` is NOT a reconciliation gate** (P1) — after resume the listener emits `fromCache=true` first; user can hit a destructive edit before server-current. → editor state machine: destructive remote save allowed ONLY when auth epoch matches + listener generation active + `fromCache=false`.
 11. **Browser storage destruction** — unclosable; clear-site-data/eviction/device-loss destroys the only offline copy. → if durable storage unavailable, block offline destructive editing OR mark "not durable" + export. Accepted, surfaced risk.
@@ -215,3 +215,63 @@ revision + schemaEpoch + deletedAt on every editable doc; ONE CAS protocol acros
 - **Cheapest highest-value win regardless of path:** kill the dashboard's 5 whole-collection reads (one summary/projection doc) + hard-paginate lists (`limit(20)` cursors) + server-filter the calendar date range. This is what actually moves the quota needle.
 
 **Decision fork (needs the owner's call):** (A) accept *graceful degradation* on Spark (bounded queries + caps + red-mode + write-conflict hardening) — no hard guarantee but no data-loss/no app-death, moderate work; (B) build the *server quota-gateway* for a true guarantee — bigger change; (C) move to *Blaze* + strict budget caps/alerts — accepts possible spend, removes shutdown. Write-conflict hardening (11d) is needed in ALL three (it's the root of the real overwrite bug).
+
+---
+
+## 12. MEASURED (2026-07-24) — the quota problem does not exist; Phase 1 CANCELLED
+
+Read-only probe via Admin SDK `count()` aggregation (1 billed read per query). Whole DB, 5 dashboard collections:
+
+| Metric | Value |
+|---|---|
+| Total docs (sermons+series+studyNotes+prayerRequests+groups) | **200** |
+| Heaviest single user (M = billed docs per cold dashboard session) | **154** |
+| M p95 | **31** |
+| M median | **5** |
+| Users total / with real data | **25 / 3** |
+
+Per-collection totals: sermons 90 · studyNotes 83 · series 14 · groups 7 · prayerRequests 6.
+
+**Ceiling check** (`reads/day = DAU × sessions × M`, 3 sessions/day):
+- 20 DAU × M_max(154) = 9,240 → **18%** of 50k
+- 30 DAU × M_max = 13,860 → **28%**
+- 100 DAU × M_max = 46,200 → 92% — but that assumes EVERY one of 100 users is as heavy as today's heaviest (65 sermons each). Realistic p95: 100 × 3 × 31 = **9,300 → 19%**.
+
+**VERDICT: quota is a non-problem at current and foreseeable scale.** §11b's alarming ceiling (166 docs/session at 100 DAU) was computed against an *illustrative* N=300; the real N is 154 worst / 5 median. **Phase 1 (bounded queries: summary dashboard doc, `limit(20)` lists, calendar server-filter) is CANCELLED as premature optimization** — the cheapest win is work not done. Revisit ONLY if a measured single-user M approaches ~400 (re-run the probe; script pattern in §12 note below).
+
+**Predict-then-verify miss (mine):** I predicted ~300 docs/session from Codex's illustrative model and treated it as near-fact. Real = 154 max / 5 median (2–60× off). **Lesson: a number inside a cost model is not a measurement.** Anchor cost claims to a probe before designing against them.
+
+**Consequence for the plan:** all remaining value is in the WRITE track (§6, §11a, §11d) — lost edits and silent overwrites — plus the cross-account cache leak (§1, §11a-8). Read-freshness listeners (§5a) stay valuable for UX but are NOT quota-driven and must not land before the write-side protections (a snapshot would clobber unsaved edits — the `useSermonStructureData.ts:242-264` scar).
+
+**Probe re-run:** `node --env-file=frontend/.env.local <script>` with `NODE_PATH=frontend/node_modules`; uses `db.collection(c).where('userId','==',uid).count().get()` per collection per user. Read-only, ~130 aggregation reads for 25 users.
+
+---
+
+## 13. IMPLEMENTED (2026-07-25, UNCOMMITTED working tree) — three write modes, and what is still open
+
+**Shipped in `frontend/app/services/atomicUpdate.client.ts`, used by 7 client call sites** — only operations whose re-application is safe: ADDS (thought create, now insert-if-absent · preachDate add by client id · prayer update by updateId · group meetingDate add by mintedId) and DELETES (thought · preachDate · group meetingDate). The three UPDATE paths are deliberately left non-transactional (see the correction at the end of this section). THREE modes, in this order:
+
+1. **Known-offline** (`!navigator.onLine`) → legacy `getDoc` + `updateDoc`. Enters Firestore's durable queue, replays on reconnect. Still last-write-wins → the offline-replay gap (§6) is UNCHANGED.
+2. **Online** → `runTransaction`: the SDK re-runs the mutator against fresh data if the doc changed mid-flight = compare-and-set. **This closes the online lost-update race** without a hand-rolled `revision` field or a Rules change.
+3. **Transient failure of (2)** (`unavailable` / `deadline-exceeded`) → degraded fallback to the queued write, which USUALLY saves the edit a captive portal would otherwise destroy. ⚠️ CONDITIONAL, not a floor: the fallback re-reads first, and `getDoc` itself can reject when the server is unreachable and the doc is not cached locally — then nothing is queued and the edit is still lost (a transaction never enters the durable queue; propagating the rejection would make callers roll back their optimistic state — strictly worse than before the change). `internal` is NOT swallowed (broken invariant must surface); `permission-denied`, `aborted` contention and application errors propagate.
+
+**Idempotency is the SELECTION CRITERION, not an afterthought.** `deadline-exceeded` can be returned AFTER a successful commit, and Firestore itself re-runs a transaction callback (up to 5 attempts). So a path may only be transactional if re-applying its mutation cannot destroy a newer edit. Removals (recomputed against fresh data) and insert-if-absent qualify; a merge carrying a caller-built full object does NOT. Our queued-write retry is additionally opt-in per call site (`retryTransientAsQueuedWrite`), on for the 7 safe paths, off by default. `groups.meetingDates` add was corrected to match on the id it actually writes (`mintedId`), not only a caller-supplied one; thought create became insert-if-absent and returns the STORED value on a replay so the UI cannot flash a stale copy.
+
+**Account isolation: ATTEMPTED AND REVERTED (2026-07-25).** Clearing the React Query cache + IDB persister on a uid change was reverted after independent review found three P0s. Decisive one: on SIGN-OUT it deleted persisted paused mutations — **permanently losing unsynced offline edits**, including sign-out followed by the SAME user signing back in. It also missed the main surface: Firestore keeps its OWN `persistentLocalCache`, untouched by `queryClient.clear()`, and `PersistQueryClientProvider` starts restoring the single ownerless payload BEFORE the owner is known (a late restore can hydrate A's data into B's session; multi-tab shares one key). Correct shape: partition persistence BY resolved uid (per-owner QueryClient + owner/auth-epoch in the envelope + do not restore until auth resolves), and handle the Firestore cache separately (memory cache by default, or a coordinated multi-tab terminate/clear that preserves pending writes). Tracked as open in BUGS.md.
+
+**REJECTED during review (recorded so it is not retried):** routing writes through the non-transactional path when `document.visibilityState === 'hidden'`. `hidden` also means background tab / locked screen, so it silently reopened the lost-update race for anyone switching tabs while a debounced save was pending. Measured: a backgrounded tab reports `visibilityState === 'hidden'`.
+
+**Page-exit flush: TRIED AND REMOVED (2026-07-25).** A `pagehide` + visibility-hidden flush of pending debounced saves was added and then removed: `hidden` fires on ordinary tab switches, so flushing V1 there and letting the user return and type V2 produced a newest-edit-LOSES race (V2 commits, then the in-flight V1 writes its stale full Thought), whereas the plain debounce coalesced V1+V2 into one save. Rescuing an edit from a killed tab needs per-`{sermonId,thoughtId}` serialization with stale-completion suppression plus a durable intent.
+
+### Still OPEN (ranked by data-loss risk)
+1. **Offline replay clobber** (§6, §11a-1) — an offline edit queues a STALE FULL ARRAY; on reconnect it lands last and wipes what another device committed meanwhile. Needs durable ID-based intents + rebase, or normalizing hot arrays (the ideal shape is a map keyed by id / per-item docs, where a write touches only its own key — idempotent AND offline-safe, no outbox and no transaction needed; that is a DATA MIGRATION and therefore a human decision).
+2. **Killed-page loss window** — the SDK retries a transaction up to 5 attempts (15s RPC timeout), so on a bad link the edit lives in memory for tens of seconds; a tab killed then loses it. Same cure: durable intent recorded when the edit happens.
+3. **Same-item merge** (§11a-6-adjacent) — callers hand over a FULL stale `Thought` (`useSermonActions.ts:263-273`), so field-disjoint edits to the same item overwrite each other (e.g. `isLocked`). Cure: accept a minimal field patch. NOT done here because `isLocked` is legitimately written through the same path (`structure/page.tsx:481`), so it needs a contract change across 4 callers.
+4. **Two rapid saves out of order** — 500ms debounce coalesces only before execution; two in-flight saves can commit oldest-last. Needs per-`{sermonId,thoughtId}` serialization + discarding obsolete operations.
+5. **Server/Admin path** — production preachDates go through `/api/sermons/:id/preach-dates` → `sermons.repository.ts:274,320,363` (stale RMW), so the three client preachDate conversions are not on the production path.
+
+### Correction (2026-07-25): the "whole client-side RMW class" claim was wrong
+SEVEN paths are converted — adds (thought create as insert-if-absent · preachDate add · prayer update · group meetingDate add) and deletes (thought · preachDate · group meetingDate). The three update paths are NOT (see Correction 2). **The scratch array is NOT converted and remains the same online RMW class:** `addScratchNoteViaClient` / `updateScratchNoteViaClient` / `deleteScratchNoteViaClient` / `applyScratchToOutlineViaClient` (`sermons.client.ts:219,253`) accept a fully caller-built `scratch[]` and write it with a plain `updateDoc` — two online tabs overwrite each other's note. Independent review confirmed that none of the converted sites double-applies a domain item under a post-commit retry. One residual, INHERITED from HEAD and now tracked as open: a replayed ADD cannot distinguish "never added" from "added, then deleted elsewhere", so it can resurrect a just-deleted item. HEAD had the same hole AND additionally clobbered concurrent additions (it rewrote the whole stale array), so this is a narrowing, not a regression; closing it fully needs a tombstone/applied-operation ledger — the same infrastructure as the durable outbox.
+
+### Correction 2 (2026-07-25): the three UPDATE paths are intentionally NOT transactional
+`updateThoughtViaClient`, `updatePreachDateViaClient` and `updateGroupMeetingDateViaClient` keep HEAD's single read-then-write. Reason found by independent review: they merge a FULL caller-supplied object, and a transaction's callback can be re-invoked by the SDK (5 attempts) even after a commit whose response was lost — the rerun would reapply the stale payload over a newer edit, i.e. the transaction would ADD a corruption path HEAD does not have. `maxAttempts: 1` is not an answer either: it would remove the compare-and-set retry that makes the transaction worth having. These paths become safe once they accept a minimal FIELD PATCH instead of a whole object (the same-item-merge open item) — that is the prerequisite, not the transaction.

@@ -12,6 +12,22 @@ const mockAddDoc = jest.fn();
 const mockUpdateDoc = jest.fn();
 const mockGetClientDb = jest.fn(() => mockDb);
 const mockFetch = jest.fn();
+// meeting-date writes go through atomicUpdate, which takes the transaction path
+// when online (jsdom reports online). Routing tx.get/tx.update at the existing
+// getDoc/updateDoc mocks keeps every payload assertion below valid.
+const mockRunTransaction = jest.fn(
+  async (
+    _db: unknown,
+    fn: (tx: {
+      get: (ref: unknown) => Promise<unknown>;
+      update: (ref: unknown, payload: unknown) => void;
+    }) => Promise<void>
+  ) =>
+    fn({
+      get: (ref: unknown) => mockGetDoc(ref),
+      update: (ref: unknown, payload: unknown) => mockUpdateDoc(ref, payload),
+    })
+);
 
 async function importServiceWithClientMocks() {
   jest.resetModules();
@@ -27,6 +43,7 @@ async function importServiceWithClientMocks() {
     getDoc: mockGetDoc,
     getDocs: mockGetDocs,
     query: mockQuery,
+    runTransaction: mockRunTransaction,
     setDoc: mockSetDoc,
     updateDoc: mockUpdateDoc,
     where: mockWhere,
@@ -170,7 +187,7 @@ describe('groups.service', () => {
     mockUpdateDoc.mockResolvedValue(undefined);
 
     const service = await importServiceWithClientMocks();
-    // Caller-minted id -> the add is idempotent (upsert-by-id).
+    // Caller-minted id -> the add is idempotent (insert-if-absent by that id).
     const added = await service.addGroupMeetingDate('g1', { date: '2026-02-11', id: 'd1' });
     const updated = await service.updateGroupMeetingDate('g1', 'd1', { date: '2026-02-12' });
     await service.deleteGroupMeetingDate('g1', 'd1');
@@ -211,3 +228,33 @@ describe('groups.service', () => {
 jest.mock('@/utils/authenticatedRequest', () => ({
   getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
 }));
+
+// The mintedId correction: when the caller supplies NO id, the duplicate check must
+// still match on the id we are about to WRITE. Otherwise a replay (a transient
+// error can arrive after a successful commit) appends the same meeting twice.
+describe('addGroupMeetingDate without a caller id de-duplicates on the MINTED id', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    global.fetch = jest.fn() as unknown as typeof fetch;
+  });
+
+  it('no-ops on replay instead of appending a second entry', async () => {
+    const service = await importServiceWithClientMocks();
+
+    // First pass: empty group -> the entry is written, and we learn the minted id.
+    mockGetDoc.mockResolvedValue(docSnap('g1', { ...baseGroup, meetingDates: [] }));
+    mockUpdateDoc.mockResolvedValue(undefined);
+    const added = await service.addGroupMeetingDate('g1', { date: '2026-02-11' });
+    expect(added.id).toBeTruthy();
+
+    // Replay of that SAME write, now against a document that already contains it.
+    mockUpdateDoc.mockClear();
+    mockGetDoc.mockResolvedValue(
+      docSnap('g1', { ...baseGroup, meetingDates: [{ ...added }] })
+    );
+    const replayed = await service.addGroupMeetingDate('g1', { date: '2026-02-11', id: added.id });
+
+    expect(replayed.id).toBe(added.id);
+    expect(mockUpdateDoc).not.toHaveBeenCalled(); // pure no-op, no duplicate
+  });
+});

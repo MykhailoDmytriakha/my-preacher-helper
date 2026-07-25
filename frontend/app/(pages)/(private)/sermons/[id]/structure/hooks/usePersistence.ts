@@ -134,6 +134,13 @@ export const usePersistence = ({ setSermon, onThoughtSyncStateChange }: UsePersi
     await saveThought(latest.sermonId, latest.thought);
   }, [saveThought]);
 
+  // NOTE (2026-07-25): a pagehide/visibility flush of pending debounced saves was
+  // tried here and REMOVED. `hidden` fires on ordinary tab switches, so flushing
+  // V1 there and letting the user come back and type V2 produced a newest-edit-
+  // LOSES race (V2 commits, then the in-flight V1 writes its stale full Thought),
+  // whereas the plain debounce coalesced V1+V2 into one save. Rescuing an edit
+  // from a killed tab needs per-{sermonId,thoughtId} serialization with stale-
+  // completion suppression plus a durable intent — see FIRESTORE_SYNC_RESEARCH.md.
   // Prevent stray saves after unmount or navigation
   // Cancel debounced functions on unmount to avoid writing to stale sermons
   useEffect(() => {
