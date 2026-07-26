@@ -801,8 +801,13 @@ describe('useDashboardOptimisticSermons', () => {
       // Replayed with the SAME persisted variables, and the defaults' onSuccess
       // reconciled the fresh client's list cache.
       expect(mockUpdateSermon).toHaveBeenCalledTimes(2);
+      // The replay carries a SURGICAL patch and the revision it was built from:
+      // without them a queued edit rewrote the whole stale snapshot (preparation
+      // included) and silently erased what another device had written.
       expect(mockUpdateSermon).toHaveBeenLastCalledWith(
-        expect.objectContaining({ id: 'sermon-reload', title: 'Survives Reload' })
+        expect.objectContaining({ id: 'sermon-reload', title: 'Survives Reload' }),
+        { title: 'Survives Reload', verse: 'John 3:16' },
+        0
       );
       const reloadedList = clientB.getQueryData<Sermon[]>(['sermons', 'user-1']);
       expect(reloadedList?.[0].title).toBe('Survives Reload');

@@ -20,6 +20,7 @@ import {
   deleteSermon as deleteSermonRequest,
   updateSermon as updateSermonRequest,
 } from '@/services/sermon.service';
+import { SERMON_CORE_AGGREGATE } from '@/services/sermons.client';
 import { createStudyNote, deleteStudyNote, updateStudyNote } from '@/services/studies.service';
 import { createStudyNoteShareLink, deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
 import { addCustomTag, removeCustomTag, updateTag } from '@/services/tag.service';
@@ -571,7 +572,17 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
       const { sermon, title, verse, plannedDate, initialPlannedDate, unspecifiedChurchName } = input;
       const existingPlannedDate = getNextPlannedDate(sermon);
 
-      const updatedBase = await updateSermonRequest({ ...sermon, title, verse });
+      // Surgical patch + stated revision. Without the patch this rewrote the WHOLE
+      // core snapshot from a possibly day-old `sermon` object — verse, isPreached
+      // and the entire preparation map included — so replaying a queued title edit
+      // silently erased whatever another device had written meanwhile. Stating the
+      // revision means such a replay is REFUSED (the sync badge offers Retry)
+      // instead of destroying text.
+      const updatedBase = await updateSermonRequest(
+        { ...sermon, title, verse },
+        { title, verse },
+        sermon.rev?.[SERMON_CORE_AGGREGATE] ?? 0
+      );
       if (!updatedBase) {
         throw new Error('Failed to update sermon.');
       }
@@ -635,7 +646,9 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
     mutationFn: async (vars: DashboardSermonMarkVars): Promise<Sermon> => {
       const { sermon, preferredDate } = vars;
       await updatePreachDate(sermon.id, preferredDate.id, { status: 'preached' });
-      const updatedSermon = await updateSermonRequest({ ...sermon, isPreached: true });
+      // Only the flag — never the whole snapshot, or marking a sermon preached
+      // would revert a title/verse/preparation edit made on another device.
+      const updatedSermon = await updateSermonRequest({ ...sermon, isPreached: true }, { isPreached: true });
       if (!updatedSermon) {
         throw new Error(PREACHED_STATUS_UPDATE_ERROR);
       }
@@ -672,7 +685,8 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
         );
       }
 
-      const updatedSermon = await updateSermonRequest({ ...sermon, isPreached: false });
+      // Only the flag — see the note on markPreached.
+      const updatedSermon = await updateSermonRequest({ ...sermon, isPreached: false }, { isPreached: false });
       if (!updatedSermon) {
         throw new Error(PREACHED_STATUS_UPDATE_ERROR);
       }
@@ -713,7 +727,8 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
         ? await updatePreachDate(sermon.id, preachDateToMark.id, { ...data, status: 'preached' })
         : await addPreachDate(sermon.id, { id: newPreachDateId, ...data, status: data.status || 'preached' });
 
-      const updatedSermon = await updateSermonRequest({ ...sermon, isPreached: true });
+      // Only the flag — see the note on markPreached.
+      const updatedSermon = await updateSermonRequest({ ...sermon, isPreached: true }, { isPreached: true });
       if (!updatedSermon) {
         throw new Error(PREACHED_STATUS_UPDATE_ERROR);
       }
