@@ -50,7 +50,8 @@ export default function PrayerDetailPage() {
     keepMineOnConflict,
     takeTheirsOnConflict,
   } =
-    usePrayerRequests(user?.uid ?? null);
+    // The id makes a refused save durable — see usePrayerRequests.
+    usePrayerRequests(user?.uid ?? null, typeof id === 'string' ? id : null);
 
   const prayer = prayerRequests.find((p) => p.id === id);
 
@@ -240,7 +241,7 @@ export default function PrayerDetailPage() {
       {saveConflict && (
         <SaveConflictBanner
           entityKey="entityRecord"
-          pendingText={saveConflict.updates.title ?? saveConflict.updates.description ?? undefined}
+          pendingText={saveConflict.payload.updates.title ?? saveConflict.payload.updates.description ?? undefined}
           onKeepMine={keepMineOnConflict}
           onTakeTheirs={takeTheirsOnConflict}
           busy={resolvingConflict}

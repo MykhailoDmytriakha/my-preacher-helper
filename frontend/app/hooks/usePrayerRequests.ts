@@ -3,10 +3,12 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { PRAYER_CORE_AGGREGATE } from '@/services/prayerRequests.client';
 import { newClientId } from '@/utils/clientId';
 import { PRAYER_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import { normalizeError } from '@/utils/normalizeError';
@@ -43,7 +45,13 @@ type StatusMutationVars = {
   answerText?: string;
 };
 
-export function usePrayerRequests(userId?: string | null) {
+/**
+ * @param activeDocId id of the prayer the caller currently has OPEN. Supplying it
+ *   makes a refused save durable: without a document key the conflict can only
+ *   live in memory, and a reload before the person chooses destroys the only copy
+ *   of the typed text. List screens can omit it — they do not edit text.
+ */
+export function usePrayerRequests(userId?: string | null, activeDocId?: string | null) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [mutationError, setMutationError] = useState<Error | null>(null);
@@ -52,12 +60,10 @@ export function usePrayerRequests(userId?: string | null) {
    * optimistic rollback. Without this the person's words are gone from the screen
    * and only a toast remains — the silent loss the mechanism exists to prevent.
    */
-  const [saveConflict, setSaveConflict] = useState<{
+  const [saveConflict, setSaveConflict] = usePersistedConflict<{
     id: string;
     updates: Partial<PrayerRequest>;
-    /** The server's revision at refusal — what a deliberate overwrite must state. */
-    actualRevision: number;
-  } | null>(null);
+  }>(userId ?? null, activeDocId ?? null, PRAYER_CORE_AGGREGATE);
   const [resolvingConflict, setResolvingConflict] = useState(false);
   const { uid: resolvedUid } = useResolvedUid();
   const effectiveUserId = userId ?? resolvedUid ?? null;
@@ -163,7 +169,7 @@ export function usePrayerRequests(userId?: string | null) {
       queryClient.setQueryData(listKey, ctx?.previous ?? []);
       if (ctx?.id) queryClient.setQueryData(detailKey(ctx.id), ctx.previousDetail);
       if (isStaleWriteError(e)) {
-        setSaveConflict({ id: vars.id, updates: vars.updates, actualRevision: e.actualRevision });
+        setSaveConflict({ payload: { id: vars.id, updates: vars.updates }, actualRevision: e.actualRevision });
         return;
       }
       reportError(e);
@@ -289,8 +295,8 @@ export function usePrayerRequests(userId?: string | null) {
       // NOT cleared here: `mutate` only starts the write. `onSuccess` clears the
       // conflict once it committed; a later refusal or failure keeps the text.
       updateMutation.mutate({
-        id: saveConflict.id,
-        updates: saveConflict.updates,
+        id: saveConflict.payload.id,
+        updates: saveConflict.payload.updates,
         expectedRevision: saveConflict.actualRevision,
       });
     } finally {
@@ -334,12 +340,20 @@ export function usePrayerRequests(userId?: string | null) {
       createMutation.mutate({ ...payload, id });
       return id;
     },
+    /**
+     * AWAITED on purpose. It used to call `mutate` and resolve immediately, so the
+     * screen said "Updated" and closed the modal before the write had even been
+     * attempted — and a refusal arriving afterwards contradicted a success the
+     * person had already been shown. `mutateAsync` settles on the real outcome;
+     * offline the mutation pauses and this simply does not resolve, which is
+     * honest rather than falsely cheerful.
+     */
     updatePrayer: async (
       id: string,
       updates: Partial<PrayerRequest>,
       expectedRevision?: number | null
     ) => {
-      updateMutation.mutate({ id, updates, expectedRevision });
+      await updateMutation.mutateAsync({ id, updates, expectedRevision });
     },
     /** A refused save waiting for a decision — render the conflict choice. */
     saveConflict,

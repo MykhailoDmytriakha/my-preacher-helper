@@ -274,19 +274,23 @@ describe('usePrayerRequests', () => {
    * reads like a glitch.
    */
   describe('a refused save is held, not rolled away in silence', () => {
+    // The conflict is persisted now, so one test's refusal would otherwise be
+    // restored into the next test's fresh mount.
+    beforeEach(() => localStorage.clear());
     it('holds the refused edit with the revision the server actually had', async () => {
       mockUpdatePrayerRequest.mockRejectedValueOnce(new StaleWriteError('core', 2, 7));
       const { wrapper } = createWrapper();
-      const { result } = renderHook(() => usePrayerRequests('user-1'), { wrapper });
+      const { result } = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper });
 
       await act(async () => {
-        await result.current.updatePrayer('p1', { title: 'Typed on the laptop' }, 2);
+        // `updatePrayer` is awaited for real now, so a refusal reaches the caller
+        // instead of being announced as success — swallow it here on purpose.
+        await result.current.updatePrayer('p1', { title: 'Typed on the laptop' }, 2).catch(() => {});
       });
 
       await waitFor(() =>
         expect(result.current.saveConflict).toEqual({
-          id: 'p1',
-          updates: { title: 'Typed on the laptop' },
+          payload: { id: 'p1', updates: { title: 'Typed on the laptop' } },
           actualRevision: 7,
         })
       );
@@ -295,10 +299,12 @@ describe('usePrayerRequests', () => {
     it('re-sends with the server revision when "keep mine" is chosen', async () => {
       mockUpdatePrayerRequest.mockRejectedValueOnce(new StaleWriteError('core', 2, 7));
       const { wrapper } = createWrapper();
-      const { result } = renderHook(() => usePrayerRequests('user-1'), { wrapper });
+      const { result } = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper });
 
       await act(async () => {
-        await result.current.updatePrayer('p1', { title: 'Typed on the laptop' }, 2);
+        // `updatePrayer` is awaited for real now, so a refusal reaches the caller
+        // instead of being announced as success — swallow it here on purpose.
+        await result.current.updatePrayer('p1', { title: 'Typed on the laptop' }, 2).catch(() => {});
       });
       await waitFor(() => expect(result.current.saveConflict).not.toBeNull());
 
@@ -316,13 +322,36 @@ describe('usePrayerRequests', () => {
       );
     });
 
+
+    it('gives the refused text back after a reload', async () => {
+      // Held only in component state, a refusal died with the page. The page now
+      // supplies the open prayer's id, which is what makes the slot durable.
+      mockUpdatePrayerRequest.mockRejectedValueOnce(new StaleWriteError('core', 2, 7));
+      const { wrapper } = createWrapper();
+      const first = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper });
+
+      await act(async () => {
+        await first.result.current.updatePrayer('p1', { title: 'Typed on the laptop' }, 2).catch(() => {});
+      });
+      await waitFor(() => expect(first.result.current.saveConflict).not.toBeNull());
+      first.unmount();
+
+      const { wrapper: wrapper2 } = createWrapper();
+      const second = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper: wrapper2 });
+
+      expect(second.result.current.saveConflict).toEqual({
+        payload: { id: 'p1', updates: { title: 'Typed on the laptop' } },
+        actualRevision: 7,
+      });
+    });
+
     it('leaves a generic failure on the old error path', async () => {
       mockUpdatePrayerRequest.mockRejectedValueOnce(new Error('permission denied'));
       const { wrapper } = createWrapper();
-      const { result } = renderHook(() => usePrayerRequests('user-1'), { wrapper });
+      const { result } = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper });
 
       await act(async () => {
-        await result.current.updatePrayer('p1', { title: 'Updated' }, 2);
+        await result.current.updatePrayer('p1', { title: 'Updated' }, 2).catch(() => {});
       });
 
       await waitFor(() => expect(result.current.error).not.toBeNull());
