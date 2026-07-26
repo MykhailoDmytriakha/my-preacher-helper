@@ -40,6 +40,7 @@ export const AudioRecorder = ({
   splitLeft,
   splitRight,
   splitSeparate,
+  hideRecordButton = false,
   enableAudioLevelMonitoring = true,
 }: AudioRecorderProps) => {
   const { t } = useTranslation();
@@ -110,6 +111,7 @@ export const AudioRecorder = ({
           t={t}
           title={title}
           separate={splitSeparate}
+          hideRecordButton={hideRecordButton}
         />
       ) : (
         <div

@@ -1727,6 +1727,8 @@
       "delete": "Удалить заметку",
       "deleteSuccess": "Заметка удалена",
       "undoDelete": "Отменить",
+      "deleteConfirmTitle": "Удалить заметку?",
+      "deleteConfirm": "Этот набросок будет удалён:\n{{text}}",
       "save": "Сохранить",
       "cancel": "Отмена",
       "placedIn": "В разделе {{section}}"

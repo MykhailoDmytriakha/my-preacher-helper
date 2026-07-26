@@ -25,6 +25,8 @@ export interface AudioRecorderProps {
   splitRight?: ReactNode;
   /** Render the split controls as two separate buttons (gap) instead of one welded pill. */
   splitSeparate?: boolean;
+  /** Hide the record button so a split control can own the whole row. */
+  hideRecordButton?: boolean;
   enableAudioLevelMonitoring?: boolean;
 }
 
@@ -113,6 +115,11 @@ export interface SplitRecordButtonProps {
   title?: string;
   /** When true, render splitLeft/mic/splitRight as separate rounded buttons with a gap. */
   separate?: boolean;
+  /**
+   * Drop the record button and let the split control own the whole row — used when the
+   * side control expands into a panel and the row must read as that one mode.
+   */
+  hideRecordButton?: boolean;
 }
 
 export interface UseAudioRecorderLifecycleArgs {

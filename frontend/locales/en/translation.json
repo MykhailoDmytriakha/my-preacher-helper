@@ -1727,6 +1727,8 @@
       "delete": "Delete note",
       "deleteSuccess": "Note deleted",
       "undoDelete": "Undo",
+      "deleteConfirmTitle": "Delete note?",
+      "deleteConfirm": "This scratch note will be deleted:\n{{text}}",
       "save": "Save",
       "cancel": "Cancel",
       "placedIn": "In {{section}}"

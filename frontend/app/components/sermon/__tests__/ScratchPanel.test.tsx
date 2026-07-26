@@ -27,6 +27,10 @@ jest.mock("react-i18next", () => ({
         "scratch.card.delete": "Delete note",
         "scratch.card.deleteSuccess": "Note deleted",
         "scratch.card.undoDelete": "Undo",
+        "scratch.card.deleteConfirmTitle": "Delete note?",
+        "scratch.card.deleteConfirm": `This scratch note will be deleted: ${params?.text ?? ""}`,
+        "common.delete": "Delete",
+        "common.cancel": "Cancel",
         "scratch.card.save": "Save",
         "scratch.card.cancel": "Cancel",
         "scratch.card.placedIn": `In ${params?.section ?? ""}`,
@@ -62,6 +66,48 @@ jest.mock("@/components/sermon/AudioRecorderPortalBridge", () => {
         React.createElement("button", { type: "button" }, "New recording"),
         manualControl
       ),
+  };
+});
+
+jest.mock("@/components/ui/ConfirmModal", () => {
+  const React = jest.requireActual("react") as typeof import("react");
+
+  return {
+    __esModule: true,
+    default: ({
+      isOpen,
+      onClose,
+      onConfirm,
+      title,
+      description,
+      confirmText,
+      cancelText,
+    }: {
+      isOpen: boolean;
+      onClose: () => void;
+      onConfirm: () => void;
+      title: string;
+      description?: string;
+      confirmText?: string;
+      cancelText?: string;
+    }) =>
+      isOpen
+        ? React.createElement(
+            "div",
+            { role: "dialog", "aria-label": title },
+            React.createElement("p", null, description),
+            React.createElement(
+              "button",
+              { type: "button", onClick: onConfirm },
+              confirmText ?? "Confirm"
+            ),
+            React.createElement(
+              "button",
+              { type: "button", onClick: onClose },
+              cancelText ?? "Cancel"
+            )
+          )
+        : null,
   };
 });
 
@@ -144,6 +190,7 @@ describe("ScratchPanel", () => {
     expect(within(card).queryByText("Scratch")).not.toBeInTheDocument();
 
     fireEvent.click(within(card).getByRole("button", { name: "Delete note" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
 
     expect(props.deleteScratchNote).toHaveBeenCalledWith("note-1");
     const [, options] = toastMock().success.mock.calls[0] as [
@@ -160,5 +207,54 @@ describe("ScratchPanel", () => {
 
     options.action.onClick();
     expect(props.restoreScratchNote).toHaveBeenCalledWith(note);
+  });
+
+  it("asks for confirmation before deleting a note and keeps it when the preacher backs out", () => {
+    const note: ScratchNote = {
+      id: "note-1",
+      text: "An idea that would be painful to retype",
+      createdAt: "2026-07-05T00:00:00.000Z",
+    };
+    const props = renderScratchPanel({ notes: [note] });
+
+    fireEvent.click(
+      within(screen.getByTestId("scratch-note-card-note-1")).getByRole("button", {
+        name: "Delete note",
+      })
+    );
+
+    // Armed, not fired: nothing is gone yet and the note text is quoted back.
+    expect(props.deleteScratchNote).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog");
+    expect(
+      within(dialog).getByText(
+        "This scratch note will be deleted: An idea that would be painful to retype"
+      )
+    ).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(props.deleteScratchNote).not.toHaveBeenCalled();
+    expect(toastMock().success).not.toHaveBeenCalled();
+    expect(screen.getByTestId("scratch-note-card-note-1")).toBeInTheDocument();
+  });
+
+  it("routes an emptied note through the same confirmation instead of deleting silently", () => {
+    const note: ScratchNote = {
+      id: "note-1",
+      text: "A note about to be cleared",
+      createdAt: "2026-07-05T00:00:00.000Z",
+    };
+    const props = renderScratchPanel({ notes: [note] });
+
+    fireEvent.click(screen.getByText("A note about to be cleared"));
+    const textarea = screen.getByRole("textbox");
+    fireEvent.change(textarea, { target: { value: "   " } });
+    fireEvent.blur(textarea);
+
+    expect(props.deleteScratchNote).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
+    expect(props.deleteScratchNote).toHaveBeenCalledWith("note-1");
   });
 });

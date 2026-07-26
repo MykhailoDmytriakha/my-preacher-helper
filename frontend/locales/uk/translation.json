@@ -1727,6 +1727,8 @@
       "delete": "Видалити нотатку",
       "deleteSuccess": "Нотатку видалено",
       "undoDelete": "Скасувати",
+      "deleteConfirmTitle": "Видалити нотатку?",
+      "deleteConfirm": "Цей начерк буде видалено:\n{{text}}",
       "save": "Зберегти",
       "cancel": "Скасувати",
       "placedIn": "У розділі {{section}}"

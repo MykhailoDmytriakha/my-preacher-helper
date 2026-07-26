@@ -520,31 +520,34 @@ export const SplitRecordButton = ({
   t,
   title,
   separate = false,
+  hideRecordButton = false,
 }: SplitRecordButtonProps) => {
   return (
     <div className={separate ? "flex w-full gap-3" : "flex w-full overflow-hidden rounded-xl shadow-lg"}>
       {splitLeft ? (
         <>
           {splitLeft}
-          {!separate && <div className="w-px self-stretch bg-white/20" />}
+          {!separate && !hideRecordButton && <div className="w-px self-stretch bg-white/20" />}
         </>
       ) : null}
-      <button
-        type="button"
-        onClick={onStart}
-        disabled={isButtonDisabled}
-        className={`flex-1 bg-green-600 px-6 py-3 font-medium text-white transition-all duration-200 active:scale-[0.98] hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:bg-green-600 disabled:active:scale-100 ${separate ? "rounded-xl shadow-lg" : ""}`}
-        aria-label={t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)}
-        title={title ?? `${t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)} (Ctrl+Space)`}
-      >
-        <div className="flex items-center justify-center">
-          <MicFilledIcon className="mr-2 h-5 w-5" />
-          {t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)}
-        </div>
-      </button>
+      {!hideRecordButton && (
+        <button
+          type="button"
+          onClick={onStart}
+          disabled={isButtonDisabled}
+          className={`flex-1 bg-green-600 px-6 py-3 font-medium text-white transition-all duration-200 active:scale-[0.98] hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:bg-green-600 disabled:active:scale-100 ${separate ? "rounded-xl shadow-lg" : ""}`}
+          aria-label={t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)}
+          title={title ?? `${t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)} (Ctrl+Space)`}
+        >
+          <div className="flex items-center justify-center">
+            <MicFilledIcon className="mr-2 h-5 w-5" />
+            {t(AUDIO_TRANSLATION_KEYS.NEW_RECORDING)}
+          </div>
+        </button>
+      )}
       {splitRight ? (
         <>
-          {!separate && <div className="w-px self-stretch bg-white/20" />}
+          {!separate && !hideRecordButton && <div className="w-px self-stretch bg-white/20" />}
           {splitRight}
         </>
       ) : null}

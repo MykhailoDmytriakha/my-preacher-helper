@@ -24,6 +24,7 @@ import { AudioRecorder } from "@/components/AudioRecorder";
 import OutlineBoard from "@/components/plan-editor/OutlineBoard";
 import PointNote from "@/components/PointNote";
 import AudioRecorderPortalBridge from "@/components/sermon/AudioRecorderPortalBridge";
+import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useConnection } from "@/providers/ConnectionProvider";
 import { composePlanFromScratch } from "@/services/scratch.service";
@@ -93,6 +94,15 @@ const PLAN_EDITOR_BUTTON_CLASS =
 const COMPOSE_TIMEOUT_MS = 55_000;
 const APPLY_SETTLE_TIMEOUT_MS = 8_000;
 const SCRATCH_TOAST_OPTIONS = { position: "bottom-right" as const };
+/** Enough of the note to recognise which one is about to go, without a wall of text. */
+const CONFIRM_PREVIEW_LIMIT = 100;
+
+function truncateForConfirm(text: string) {
+  const clean = text.trim();
+  return clean.length > CONFIRM_PREVIEW_LIMIT
+    ? `${clean.slice(0, CONFIRM_PREVIEW_LIMIT)}…`
+    : clean;
+}
 
 type StripScratchMetadataResult = {
   outline: SermonOutline;
@@ -430,6 +440,8 @@ export default function ScratchPanel({
   const [voiceRetryCount, setVoiceRetryCount] = useState(0);
   const [voiceRecoveryUrl, setVoiceRecoveryUrl] = useState<string | null>(null);
   const [isApplying, setIsApplying] = useState(false);
+  /** Note queued for deletion — the trash click only ARMS it, the modal confirms. */
+  const [pendingDeleteNoteId, setPendingDeleteNoteId] = useState<string | null>(null);
   const isCaptureLocked = isReadOnly || isApplying;
   const isBoardLocked = isReadOnly || isApplying || isScratchWritePending;
   const scratchSignature = useMemo(() => getScratchSignature(notes), [notes]);
@@ -577,8 +589,8 @@ export default function ScratchPanel({
     return true;
   }, [addScratchNote, clearComposition, markScratchChanged]);
 
+  /** Closing keeps what was typed — a stray click on the head must not eat a draft. */
   const collapseManualCapture = useCallback(() => {
-    setManualDraft("");
     setIsManualCaptureOpen(false);
   }, []);
 
@@ -727,6 +739,32 @@ export default function ScratchPanel({
     },
     [clearComposition, deleteScratchNote, markScratchChanged, notes, restoreScratchNote, t]
   );
+
+  /**
+   * Deleting a scratch note is one click away from an idea the preacher cannot retype,
+   * so the click only ARMS the delete; the modal is what actually pulls the trigger.
+   * Both delete paths funnel here — the trash button and clearing the note text to empty.
+   */
+  const requestDeleteNote = useCallback(
+    (noteId: string) => {
+      if (scratchMutationLockedRef.current) return;
+      setPendingDeleteNoteId(noteId);
+    },
+    []
+  );
+
+  const cancelDeleteNote = useCallback(() => setPendingDeleteNoteId(null), []);
+
+  const confirmDeleteNote = useCallback(() => {
+    const noteId = pendingDeleteNoteId;
+    setPendingDeleteNoteId(null);
+    if (!noteId) return;
+    handleDeleteNote(noteId);
+  }, [handleDeleteNote, pendingDeleteNoteId]);
+
+  const pendingDeleteNote = pendingDeleteNoteId
+    ? notes.find((note) => note.id === pendingDeleteNoteId) ?? null
+    : null;
 
   const handleScratchPlace = useCallback(
     (noteId: string, target: ScratchPlacement | null) => {
@@ -951,24 +989,40 @@ export default function ScratchPanel({
         : undefined;
 
   const renderManualCaptureControl = () => {
+    // Open = the button is the HEAD of the form below it: same violet accent, squared
+    // bottom, no gap. Otherwise the panel reads as a stray card owned by nothing.
     return (
       <button
         type="button"
         onClick={() => {
           if (isCaptureLocked) return;
+          if (isManualCaptureOpen) {
+            collapseManualCapture();
+            return;
+          }
           setIsManualCaptureOpen(true);
           manualInputRef.current?.focus();
         }}
         className={[
-          "flex min-w-0 flex-1 items-center justify-center gap-2 self-stretch rounded-xl border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800 px-4 py-3 font-medium text-gray-700 dark:text-gray-200 shadow-sm transition-all duration-200 hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70",
-          isManualCaptureOpen ? "bg-gray-200 dark:bg-gray-700" : "",
+          "flex min-w-0 flex-1 items-center justify-center gap-2 self-stretch border px-4 py-3 font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70",
+          isManualCaptureOpen
+            ? "rounded-xl rounded-b-none border-b-0 border-violet-400 bg-violet-50 text-violet-900 focus:ring-violet-400 dark:border-violet-500 dark:bg-violet-600/15 dark:text-violet-100"
+            : "rounded-xl border-gray-300 bg-gray-100 text-gray-700 shadow-sm hover:bg-gray-200 focus:ring-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700",
         ].join(" ")}
         disabled={isCaptureLocked}
         title={t("scratch.capture.manualAdd")}
         aria-label={t("scratch.capture.manualAdd")}
         aria-expanded={isManualCaptureOpen}
       >
-        <Pencil className="h-5 w-5 shrink-0 text-gray-500 dark:text-gray-400" aria-hidden="true" />
+        <Pencil
+          className={[
+            "h-5 w-5 shrink-0",
+            isManualCaptureOpen
+              ? "text-violet-600 dark:text-violet-300"
+              : "text-gray-500 dark:text-gray-400",
+          ].join(" ")}
+          aria-hidden="true"
+        />
         <span className="min-w-0 text-center leading-tight">{t("scratch.capture.manualAdd")}</span>
       </button>
     );
@@ -978,30 +1032,20 @@ export default function ScratchPanel({
     if (!isManualCaptureOpen) return null;
 
     return (
+      // Open = manual mode: the recorder button steps aside, the head goes full width and
+      // this panel continues it — one shape, so it is obvious what you are doing.
       <form
-        className="mb-4 rounded-xl border border-gray-200 bg-gray-50 p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800/60 sm:p-4"
+        className="mb-4 rounded-xl rounded-t-none border border-t-0 border-violet-400 bg-violet-50/60 p-3 dark:border-violet-500 dark:bg-violet-600/[0.07] sm:p-4"
         onSubmit={(event) => {
           event.preventDefault();
           handleManualSubmit();
         }}
       >
-        <div className="flex items-center justify-between gap-3">
-          <label
-            htmlFor="scratch-manual-note-input"
-            className="text-sm font-semibold text-gray-800 dark:text-gray-100"
-          >
-            {t("scratch.capture.manualLabel")}
-          </label>
-          <button
-            type="button"
-            onClick={collapseManualCapture}
-            className="rounded-md p-1.5 text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-            aria-label={t("common.close")}
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
-        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+        {/* The head above already names the mode — no second title here. */}
+        <label htmlFor="scratch-manual-note-input" className="sr-only">
+          {t("scratch.capture.manualLabel")}
+        </label>
+        <div className="flex flex-col gap-2 sm:flex-row">
           <TextareaAutosize
             id="scratch-manual-note-input"
             ref={manualInputRef}
@@ -1018,16 +1062,26 @@ export default function ScratchPanel({
             }}
             placeholder={t("scratch.capture.manualLabel")}
             aria-label={t("scratch.capture.manualLabel")}
-            className="min-w-0 flex-1 resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:ring-violet-900/40"
+            className="min-w-0 flex-1 resize-none rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-violet-400/70 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:border-violet-800 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-violet-300/40 dark:focus:ring-violet-900/40"
             disabled={isCaptureLocked}
           />
-          <button
-            type="submit"
-            disabled={!manualDraft.trim() || isCaptureLocked}
-            className="inline-flex items-center justify-center rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-violet-600 dark:bg-violet-500 dark:hover:bg-violet-400"
-          >
-            {t("scratch.capture.add")}
-          </button>
+          <div className="flex items-start gap-2">
+            <button
+              type="submit"
+              disabled={!manualDraft.trim() || isCaptureLocked}
+              className="inline-flex flex-1 items-center justify-center rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-violet-600 dark:bg-violet-500 dark:hover:bg-violet-400 sm:flex-none"
+            >
+              {t("scratch.capture.add")}
+            </button>
+            <button
+              type="button"
+              onClick={collapseManualCapture}
+              className="shrink-0 rounded-lg p-2 text-violet-500 transition hover:bg-violet-100 hover:text-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 dark:text-violet-300 dark:hover:bg-violet-900/50 dark:hover:text-violet-100"
+              aria-label={t("common.close")}
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          </div>
         </div>
       </form>
     );
@@ -1076,7 +1130,9 @@ export default function ScratchPanel({
           </button>
         </div>
 
-        <div className="mb-4" ref={setCapturePortal} />
+        {/* No gap under the recorder row while the manual form is open — the button and
+            the panel below it have to read as one block, not two stacked cards. */}
+        <div className={isManualCaptureOpen ? "" : "mb-4"} ref={setCapturePortal} />
         <AudioRecorderPortalBridge
           RecorderComponent={AudioRecorder}
           portalTarget={capturePortal}
@@ -1099,9 +1155,10 @@ export default function ScratchPanel({
           manualThoughtTitle={t("scratch.capture.manualAdd")}
           manualButtonPlacement="right"
           manualButtonSeparate
+          hideRecordButton={isManualCaptureOpen}
         />
-        {renderVoiceRecoveryPanel()}
         {renderManualCaptureForm()}
+        {renderVoiceRecoveryPanel()}
 
         {notes.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-300 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
@@ -1116,7 +1173,7 @@ export default function ScratchPanel({
                 isReadOnly={isCaptureLocked}
                 sectionLabel={note.section ? t(`scratch.sections.${note.section}`) : undefined}
                 onEdit={handleEditNote}
-                onDelete={handleDeleteNote}
+                onDelete={requestDeleteNote}
               />
             ))}
           </div>
@@ -1136,7 +1193,7 @@ export default function ScratchPanel({
         isReadOnly={isBoardLocked}
         dragHandleProps={dragHandleProps}
         onEdit={handleEditNote}
-        onDelete={handleDeleteNote}
+        onDelete={requestDeleteNote}
         onUnplace={placements[currentNote.id] ? (noteId) => handleScratchPlace(noteId, null) : undefined}
       />
     );
@@ -1251,6 +1308,16 @@ export default function ScratchPanel({
   return (
     <motion.div layout={false} className="space-y-4 sm:space-y-6" data-scratch-count={notes.length}>
       {view === "capture" ? renderCapture() : renderBoard()}
+      <ConfirmModal
+        isOpen={Boolean(pendingDeleteNote)}
+        onClose={cancelDeleteNote}
+        onConfirm={confirmDeleteNote}
+        title={t("scratch.card.deleteConfirmTitle")}
+        description={t("scratch.card.deleteConfirm", {
+          text: truncateForConfirm(pendingDeleteNote?.text ?? ""),
+        })}
+        confirmText={t("common.delete")}
+      />
     </motion.div>
   );
 }
