@@ -320,10 +320,10 @@ describe('OptionMenu Component', () => {
 
     // Verify sermon was updated with isPreached: false (dates stay in DB)
     await waitFor(() => {
-      expect(updateSermon).toHaveBeenCalledWith({
-        ...preachedSermon,
-        isPreached: false
-      });
+      expect(updateSermon).toHaveBeenCalledWith(
+        { ...preachedSermon, isPreached: false },
+        { isPreached: false }
+      );
     });
 
     // Verify cache invalidation
@@ -364,10 +364,10 @@ describe('OptionMenu Component', () => {
 
     await waitFor(() => {
       expect(preachDatesService.updatePreachDate).toHaveBeenCalledWith('sermon-1', 'pd-plan', { status: 'preached' });
-      expect(updateSermon).toHaveBeenCalledWith({
-        ...plannedSermon,
-        isPreached: true
-      });
+      expect(updateSermon).toHaveBeenCalledWith(
+        { ...plannedSermon, isPreached: true },
+        { isPreached: true }
+      );
     });
 
     expect(screen.queryByTestId('preach-date-modal')).not.toBeInTheDocument();
@@ -420,10 +420,10 @@ describe('OptionMenu Component', () => {
         })
       );
       expect(preachDatesService.addPreachDate).not.toHaveBeenCalled();
-      expect(updateSermon).toHaveBeenCalledWith({
-        ...plannedSermon,
-        isPreached: true
-      });
+      expect(updateSermon).toHaveBeenCalledWith(
+        { ...plannedSermon, isPreached: true },
+        { isPreached: true }
+      );
     });
   });
 
@@ -501,10 +501,10 @@ describe('OptionMenu Component', () => {
       expect(preachDatesService.addPreachDate).toHaveBeenCalledWith('sermon-1', expect.objectContaining({
         status: 'preached'
       }));
-      expect(updateSermon).toHaveBeenCalledWith({
-        ...mockSermon,
-        isPreached: true
-      });
+      expect(updateSermon).toHaveBeenCalledWith(
+        { ...mockSermon, isPreached: true },
+        { isPreached: true }
+      );
     });
   });
 

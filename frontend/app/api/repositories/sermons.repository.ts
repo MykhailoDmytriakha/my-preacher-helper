@@ -50,7 +50,18 @@ export class SermonsRepository {
     }
   }
 
-  async updateSermonData(id: string, updateData: Record<string, unknown>): Promise<void> {
+  /**
+   * @param aggregate which editable aggregate this write touches. Server writes go
+   * around the client guard, so if they change data WITHOUT advancing the counter
+   * it starts to lie: a later client save built from an older text then looks up to
+   * date and is granted permission to overwrite what the server just stored.
+   * Passing the aggregate keeps the counter truthful across both sides.
+   */
+  async updateSermonData(
+    id: string,
+    updateData: Record<string, unknown>,
+    aggregate?: string
+  ): Promise<void> {
     console.log(`Firestore: updating sermon data ${id}`);
     try {
       const docRef = adminDb.collection(this.collection).doc(id);
@@ -58,6 +69,7 @@ export class SermonsRepository {
       // Inject the server timestamp for updatedAt
       const dataWithTimestamp = {
         ...updateData,
+        ...(aggregate ? { [`rev.${aggregate}`]: FieldValue.increment(1) } : {}),
         updatedAt: new Date().toISOString()
       };
 
@@ -157,7 +169,7 @@ export class SermonsRepository {
 
       // Update both the draft field and legacy plan for backward compatibility
       // Note: We keep "draft" as the field name in DB but refer to it as "content" in code
-      await this.updateSermonData(sermonId, { draft: content, plan: content });
+      await this.updateSermonData(sermonId, { draft: content, plan: content }, 'plan');
       console.log(`Sermon content updated for sermon id ${sermonId}`);
 
       return content;

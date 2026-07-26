@@ -78,8 +78,12 @@ export const createPrayerRequest = async (
   return res.json();
 };
 
-export const updatePrayerRequest = async (id: string, updates: Partial<PrayerRequest>): Promise<PrayerRequest> => {
-  return updatePrayerRequestViaClient(id, updates);
+export const updatePrayerRequest = async (
+  id: string,
+  updates: Partial<PrayerRequest>,
+  expectedRevision: number | null = null
+): Promise<PrayerRequest> => {
+  return updatePrayerRequestViaClient(id, updates, expectedRevision);
 };
 
 export const deletePrayerRequest = async (id: string): Promise<void> => {

@@ -187,10 +187,7 @@ export default function OptionMenu({
     }
 
     await preachDatesService.updatePreachDate(sermon.id, preferredDate.id, { status: 'preached' });
-    const updated = await updateSermon({
-      ...sermon,
-      isPreached: true
-    });
+    const updated = await updateSermon({ ...sermon, isPreached: true }, { isPreached: true });
     applySermonUpdateResult(updated);
     closeMenu();
   };
@@ -211,10 +208,7 @@ export default function OptionMenu({
       );
     }
 
-    const updated = await updateSermon({
-      ...sermon,
-      isPreached: false
-    });
+    const updated = await updateSermon({ ...sermon, isPreached: false }, { isPreached: false });
     applySermonUpdateResult(updated);
     closeMenu();
   };
@@ -266,10 +260,7 @@ export default function OptionMenu({
         });
       }
 
-      const updated = await updateSermon({
-        ...sermon,
-        isPreached: true
-      });
+      const updated = await updateSermon({ ...sermon, isPreached: true }, { isPreached: true });
 
       invalidateCalendarCache();
 

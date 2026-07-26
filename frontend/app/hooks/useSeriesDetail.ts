@@ -1,11 +1,14 @@
 import { useQueryClient } from '@tanstack/react-query';
+import i18n from 'i18next';
 import { useCallback, useState } from 'react';
+import { toast } from 'sonner';
 
 import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
+import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { normalizeSeriesItems } from '@/utils/seriesItems';
 import { getGroupById } from '@services/groups.service';
-import { getSeriesById, updateSeries } from '@services/series.service';
+import { getSeriesById, SERIES_META_AGGREGATE, updateSeries } from '@services/series.service';
 import { getSermonById } from '@services/sermon.service';
 
 import type { Group, Series, SeriesItem, Sermon } from '@/models/models';
@@ -205,17 +208,82 @@ export function useSeriesDetail(seriesId: string) {
     [series, reorderSeries]
   );
 
-  const updateSeriesDetail = useCallback(
-    async (updates: Partial<Series>) => {
+  /**
+   * A refused edit, held so it can be re-offered instead of quietly dropped.
+   * The modal that submitted it has already closed, so this state is the ONLY
+   * remaining copy of what the person typed.
+   */
+  const [saveConflict, setSaveConflict] = useState<{
+    updates: Partial<Series>;
+    /** The server's revision at refusal — what a deliberate overwrite must state. */
+    actualRevision: number;
+  } | null>(null);
+  const [resolvingConflict, setResolvingConflict] = useState(false);
+
+  const writeSeriesDetail = useCallback(
+    async (updates: Partial<Series>, statedRevision: number) => {
       if (!series) return;
       await withMutationGuard(async () => {
-        await updateSeries(series.id, updates);
+        try {
+          // State the revision this edit was built from, so a save from a tab that
+          // never saw another device's change is refused rather than replacing it.
+          await updateSeries(series.id, updates, statedRevision);
+          setSaveConflict(null);
+        } catch (error) {
+          if (isStaleWriteError(error)) {
+            // REFUSED, not failed. Hold the text and hand the person the choice —
+            // a generic save error would read as a glitch and hide a real conflict.
+            setSaveConflict({ updates, actualRevision: error.actualRevision });
+            toast.error(i18n.t('freshness.staleSaveToast'));
+            return;
+          }
+          throw error;
+        }
         await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, series.id] });
         await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
       });
     },
     [series, withMutationGuard, queryClient]
   );
+
+  const updateSeriesDetail = useCallback(
+    async (updates: Partial<Series>) => {
+      if (!series) return;
+      await writeSeriesDetail(updates, series.rev?.[SERIES_META_AGGREGATE] ?? 0);
+    },
+    [series, writeSeriesDetail]
+  );
+
+  /** Save the refused edit on top of the newer version — a deliberate overwrite. */
+  const keepMineOnConflict = useCallback(async () => {
+    if (!saveConflict || resolvingConflict) return;
+    setResolvingConflict(true);
+    try {
+      // Adopt the revision the server held AT REFUSAL. Resending the original one
+      // would be refused again, making the button a promise it never keeps.
+      await writeSeriesDetail(saveConflict.updates, saveConflict.actualRevision);
+    } finally {
+      setResolvingConflict(false);
+    }
+  }, [saveConflict, resolvingConflict, writeSeriesDetail]);
+
+  /** Drop the refused edit and load what the other device stored. */
+  const takeTheirsOnConflict = useCallback(async () => {
+    if (resolvingConflict) return;
+    setResolvingConflict(true);
+    try {
+      // TanStack `refetch()` RESOLVES an error result instead of throwing, so a
+      // bare await would let a failed load clear the only copy of the typed text.
+      const result = await refetch();
+      if (result.isError) {
+        toast.error(i18n.t('common.saveError', { defaultValue: 'Failed to load' }));
+        return;
+      }
+      setSaveConflict(null);
+    } finally {
+      setResolvingConflict(false);
+    }
+  }, [resolvingConflict, refetch]);
 
   return {
     series,
@@ -235,5 +303,10 @@ export function useSeriesDetail(seriesId: string) {
     reorderSeriesSermons,
     reorderMixedItems,
     updateSeriesDetail,
+    /** A refused save waiting for a decision — render the conflict choice. */
+    saveConflict,
+    resolvingConflict,
+    keepMineOnConflict,
+    takeTheirsOnConflict,
   };
 }

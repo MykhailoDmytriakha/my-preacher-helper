@@ -201,11 +201,17 @@ describe('PrayerDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete forever?' }));
 
     await waitFor(() => {
-      expect(updatePrayer).toHaveBeenCalledWith('p1', {
-        title: 'Edited prayer',
-        description: 'Edited description',
-        tags: ['hope'],
-      });
+      // Third argument = the revision this edit was built from, so a save from a
+      // tab that never saw another device's change is refused, not applied.
+      expect(updatePrayer).toHaveBeenCalledWith(
+        'p1',
+        {
+          title: 'Edited prayer',
+          description: 'Edited description',
+          tags: ['hope'],
+        },
+        0
+      );
       expect(addUpdate).toHaveBeenCalledWith('p1', 'Fresh note');
       expect(setStatus).toHaveBeenCalledWith('p1', 'not_answered');
       expect(setStatus).toHaveBeenCalledWith('p1', 'answered', 'Answer text');

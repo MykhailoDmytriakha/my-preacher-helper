@@ -6,6 +6,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { Series, Sermon } from '@/models/models';
 import { getGroupById } from '@/services/groups.service';
 import { commitSeriesBatch, type SeriesTransform } from '@/services/seriesMembership.client';
+import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { getSeriesById, updateSeries } from '@/services/series.service';
 import { getSermonById } from '@/services/sermon.service';
 
@@ -234,7 +235,9 @@ describe('useSeriesDetail', () => {
       await result.current.updateSeriesDetail({ title: 'Updated title' });
     });
 
-    expect(mockUpdateSeries).toHaveBeenCalledWith('series-1', { title: 'Updated title' });
+    // Third argument = the revision this edit was built from, so a save from a
+    // tab that never saw another device's change is refused, not applied.
+    expect(mockUpdateSeries).toHaveBeenCalledWith('series-1', { title: 'Updated title' }, 0);
   });
 
   it('refreshes data on demand', async () => {
@@ -247,4 +250,86 @@ describe('useSeriesDetail', () => {
 
     expect(mockGetSeriesById).toHaveBeenCalledTimes(2);
   });
+
+  /**
+   * A refused save must survive as an OFFER, not vanish.
+   *
+   * The edit modal has already closed by the time the write is refused, so this
+   * hook holds the only remaining copy of what was typed. Dropping it after a
+   * toast is exactly the silent loss the whole mechanism exists to prevent.
+   */
+  describe('a refused save is held and can be resolved', () => {
+    it('keeps the refused edit and the revision the server actually held', async () => {
+      mockUpdateSeries.mockRejectedValueOnce(new StaleWriteError('meta', 0, 6));
+      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateSeriesDetail({ title: 'Typed on the laptop' });
+      });
+
+      expect(result.current.saveConflict).toEqual({
+        updates: { title: 'Typed on the laptop' },
+        actualRevision: 6,
+      });
+    });
+
+    it('re-sends with the server revision when "keep mine" is chosen', async () => {
+      mockUpdateSeries.mockRejectedValueOnce(new StaleWriteError('meta', 0, 6));
+      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateSeriesDetail({ title: 'Typed on the laptop' });
+      });
+
+      mockUpdateSeries.mockResolvedValueOnce(mockSeries);
+      await act(async () => {
+        await result.current.keepMineOnConflict();
+      });
+
+      // 6, NOT 0: resending the original revision would be refused again, and the
+      // button would promise an action it never performs.
+      expect(mockUpdateSeries).toHaveBeenLastCalledWith(
+        'series-1',
+        { title: 'Typed on the laptop' },
+        6
+      );
+      expect(result.current.saveConflict).toBeNull();
+    });
+
+    it('drops the refused edit and reloads when "take theirs" is chosen', async () => {
+      mockUpdateSeries.mockRejectedValueOnce(new StaleWriteError('meta', 0, 6));
+      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateSeriesDetail({ title: 'Typed on the laptop' });
+      });
+
+      // There must BE something to choose about — otherwise this test would pass
+      // even against a build that drops refused edits on the floor.
+      expect(result.current.saveConflict).not.toBeNull();
+
+      const callsBefore = mockGetSeriesById.mock.calls.length;
+      await act(async () => {
+        await result.current.takeTheirsOnConflict();
+      });
+
+      expect(mockGetSeriesById.mock.calls.length).toBeGreaterThan(callsBefore);
+      expect(result.current.saveConflict).toBeNull();
+    });
+
+    it('leaves no conflict behind when the save goes through', async () => {
+      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateSeriesDetail({ title: 'Updated title' });
+      });
+
+      expect(result.current.saveConflict).toBeNull();
+    });
+  });
+
 });

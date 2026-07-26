@@ -21,6 +21,17 @@ jest.mock('react-i18next', () => ({
 }));
 
 // Mock hooks
+// This suite covers pagination and editing, not live sync. The real hook opens a
+// Firestore listener, which the global SDK mock here cannot serve; freshness has
+// its own dedicated tests.
+jest.mock('@/hooks/useDocumentFreshness', () => ({
+  useDocumentFreshness: () => ({
+    state: 'fresh',
+    remote: null,
+    remotelyDeleted: false,
+    markSynced: jest.fn(),
+  }),
+}));
 jest.mock('@/hooks/useStudyNotes');
 jest.mock('@/hooks/useTags');
 jest.mock('@/hooks/useStudyNoteShareLinks');

@@ -26,7 +26,10 @@ export const getPlanTemplates = (userId: string): Promise<PlanTemplate[]> =>
 export const createPlanTemplate = (payload: CreatePlanTemplatePayload): Promise<PlanTemplate> =>
   createPlanTemplateViaClient(payload);
 
-export const updatePlanTemplate = (id: string, updates: UpdatePlanTemplatePayload): Promise<void> =>
-  updatePlanTemplateViaClient(id, updates);
+export const updatePlanTemplate = (
+  id: string,
+  updates: UpdatePlanTemplatePayload,
+  expectedRevision: number | null = null
+): Promise<void> => updatePlanTemplateViaClient(id, updates, expectedRevision);
 
 export const deletePlanTemplate = (id: string): Promise<void> => deletePlanTemplateViaClient(id);

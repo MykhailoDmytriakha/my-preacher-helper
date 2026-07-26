@@ -2,6 +2,10 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
+jest.mock('@/hooks/useDocumentFreshness', () => ({
+  useDocumentFreshness: () => ({ state: 'fresh', remote: null, remotelyDeleted: false, markSynced: jest.fn() }),
+}));
+
 jest.mock('@locales/i18n', () => ({}));
 import SermonPage from '@/(pages)/(private)/sermons/[id]/page';
 

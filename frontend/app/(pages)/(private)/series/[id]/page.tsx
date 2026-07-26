@@ -29,12 +29,15 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import AddSermonModal from '@/components/AddSermonModal';
+import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
+import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import AddGroupToSeriesModal from '@/components/series/AddGroupToSeriesModal';
 import AddSermonToSeriesModal from '@/components/series/AddSermonToSeriesModal';
 import EditSeriesModal from '@/components/series/EditSeriesModal';
 import SeriesItemCard from '@/components/series/SeriesItemCard';
 import { SeriesDetailSkeleton } from '@/components/skeletons/SeriesDetailSkeleton';
+import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useRouteId } from '@/hooks/useRouteId';
 import { useSeries } from '@/hooks/useSeries';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
@@ -79,9 +82,60 @@ export default function SeriesDetailPage() {
     updateSeriesDetail,
     refreshSeriesDetail,
     isRefetching,
+    saveConflict,
+    resolvingConflict,
+    keepMineOnConflict,
+    takeTheirsOnConflict,
   } = useSeriesDetail(seriesId);
 
   const [optimisticItems, setOptimisticItems] = useState(items);
+
+  // Does the server hold a newer version of THIS series? Same shared layer as the
+  // note editor: observe only, never swap what is on screen without a decision.
+  type SeriesWatched = {
+    title: string;
+    description: string;
+    theme: string;
+    bookOrTopic: string;
+    status: string;
+    itemCount: number;
+  };
+  const knownSeries = useMemo<SeriesWatched | null>(
+    () =>
+      series
+        ? {
+            title: series.title || '',
+            description: series.description || '',
+            theme: series.theme || '',
+            bookOrTopic: series.bookOrTopic || '',
+            status: series.status || '',
+            itemCount: (series.items ?? []).length,
+          }
+        : null,
+    [series]
+  );
+
+  const seriesFreshness = useDocumentFreshness<SeriesWatched>({
+    collection: 'series',
+    docId: seriesId || null,
+    uid: series?.userId ?? null,
+    enabled: Boolean(series),
+    known: knownSeries,
+    select: (data) => ({
+      title: (data.title as string) || '',
+      description: (data.description as string) || '',
+      theme: (data.theme as string) || '',
+      bookOrTopic: (data.bookOrTopic as string) || '',
+      status: (data.status as string) || '',
+      itemCount: ((data.items as unknown[]) ?? []).length,
+    }),
+  });
+
+  const [seriesFreshnessDismissed, setSeriesFreshnessDismissed] = useState(false);
+  useEffect(() => {
+    if (seriesFreshness.state === 'stale') setSeriesFreshnessDismissed(false);
+  }, [seriesFreshness.remote, seriesFreshness.state]);
+
 
   const { user } = useAuth();
   const { deleteExistingSeries } = useSeries(user?.uid || null);
@@ -255,6 +309,39 @@ export default function SeriesDetailPage() {
 
   return (
     <div className="space-y-7">
+      {/* A save was TURNED AWAY. The edit modal has already closed, so this banner
+          holds the only remaining copy of what was typed until it is resolved. */}
+      {saveConflict && (
+        <SaveConflictBanner
+          entityKey="entitySeries"
+          pendingText={saveConflict.updates.title ?? saveConflict.updates.description ?? undefined}
+          onKeepMine={keepMineOnConflict}
+          onTakeTheirs={takeTheirsOnConflict}
+          busy={resolvingConflict}
+        />
+      )}
+      {/* This SERIES changed elsewhere. Distinct from the app-update toast, and it
+          refreshes the record rather than reloading the application. */}
+      {seriesFreshness.state === 'stale' && !seriesFreshnessDismissed && (
+        <DataFreshnessBanner
+          entityKey="entitySeries"
+          dirty={false}
+          deleted={seriesFreshness.remotelyDeleted}
+          onRefresh={async () => {
+            // Only declare it refreshed once the refetch actually succeeded.
+            // Dismissing first left the screen stale with no warning when the
+            // refresh failed or the device was offline — worse than not offering it.
+            try {
+              await refreshSeriesDetail();
+              if (seriesFreshness.remote) seriesFreshness.markSynced(seriesFreshness.remote);
+              setSeriesFreshnessDismissed(true);
+            } catch {
+              /* keep the banner up: the screen is still stale */
+            }
+          }}
+          onDismiss={() => setSeriesFreshnessDismissed(true)}
+        />
+      )}
       <div className="overflow-hidden rounded-3xl border border-gray-200/70 bg-gradient-to-br from-blue-600/10 via-indigo-600/10 to-cyan-600/10 p-6 shadow-sm dark:border-gray-800 dark:from-blue-500/10 dark:via-indigo-500/10 dark:to-cyan-500/10">
         <div className="flex flex-col gap-6">
           {/* Top Section: Back Button and Title */}

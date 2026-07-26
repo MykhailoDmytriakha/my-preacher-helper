@@ -94,11 +94,7 @@ export default function EditSermonModal({ sermon, onClose, onUpdate, onSaveReque
     setIsSubmitting(true);
 
     try {
-      const data = await updateSermon({
-        ...sermon,
-        title,
-        verse
-      });
+      const data = await updateSermon({ ...sermon, title, verse }, { title, verse });
 
       if (!data) {
         throw new Error('Failed to update sermon');

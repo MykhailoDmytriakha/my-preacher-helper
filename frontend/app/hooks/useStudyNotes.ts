@@ -51,8 +51,18 @@ export function useStudyNotes() {
 
   const updateNoteMutation = useMutation({
     mutationKey: STUDY_NOTE_MUTATION_KEYS.update,
-    mutationFn: ({ id, updates, userId }: { id: string; updates: Partial<StudyNote>; userId: string }) =>
-      updateStudyNote(id, { ...updates, userId }),
+    mutationFn: ({
+      id,
+      updates,
+      userId,
+      expectedRevision,
+    }: {
+      id: string;
+      updates: Partial<StudyNote>;
+      userId: string;
+      // Which revision the editor built this text from. null = unguarded (legacy).
+      expectedRevision?: number | null;
+    }) => updateStudyNote(id, { ...updates, userId }, expectedRevision ?? null),
     onSuccess: (updated) => {
       queryClient.setQueryData<StudyNote[]>(notesKey(uid), (old = []) =>
         (old ?? []).map((n) => (n.id === updated.id ? updated : n))
@@ -98,9 +108,17 @@ export function useStudyNotes() {
       return optimistic;
     },
     updating: updateNoteMutation.isPending,
-    updateNote: ({ id, updates }: { id: string; updates: Partial<StudyNote> }) => {
+    updateNote: ({
+      id,
+      updates,
+      expectedRevision,
+    }: {
+      id: string;
+      updates: Partial<StudyNote>;
+      expectedRevision?: number | null;
+    }) => {
       if (!uid) return Promise.reject(new Error('No user'));
-      return updateNoteMutation.mutateAsync({ id, updates, userId: uid });
+      return updateNoteMutation.mutateAsync({ id, updates, userId: uid, expectedRevision });
     },
     deleteNote: (id: string) => {
       if (!uid) return Promise.reject(new Error('No user'));

@@ -297,8 +297,17 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
     onSuccess: invalidate(['series']),
   });
   queryClient.setMutationDefaults(SERIES_MUTATION_KEYS.update, {
-    mutationFn: ({ seriesId, updates }: { seriesId: string; updates: Partial<Series> }) =>
-      updateSeries(seriesId, updates),
+    // Same rule as study notes: `expectedRevision` must survive persistence, or a
+    // replay after reload silently downgrades a guarded save to an unchecked one.
+    mutationFn: ({
+      seriesId,
+      updates,
+      expectedRevision,
+    }: {
+      seriesId: string;
+      updates: Partial<Series>;
+      expectedRevision?: number | null;
+    }) => updateSeries(seriesId, updates, expectedRevision ?? null),
     onSuccess: invalidate(['series']),
   });
   queryClient.setMutationDefaults(SERIES_MUTATION_KEYS.delete, {
@@ -314,8 +323,18 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
     onSuccess: invalidate(['prayerRequests']),
   });
   queryClient.setMutationDefaults(PRAYER_MUTATION_KEYS.update, {
-    mutationFn: ({ id, updates }: { id: string; updates: Partial<PrayerRequest> }) =>
-      updatePrayerRequest(id, updates),
+    // Same rule as study notes and series: `expectedRevision` must survive
+    // persistence. A replay that drops it silently becomes an unguarded write and
+    // can overwrite what another device stored while this one was offline.
+    mutationFn: ({
+      id,
+      updates,
+      expectedRevision,
+    }: {
+      id: string;
+      updates: Partial<PrayerRequest>;
+      expectedRevision?: number | null;
+    }) => updatePrayerRequest(id, updates, expectedRevision ?? null),
     onSuccess: invalidate(['prayerRequests']),
   });
   queryClient.setMutationDefaults(PRAYER_MUTATION_KEYS.delete, {
@@ -353,8 +372,18 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
     onSuccess: invalidate(['planTemplates']),
   });
   queryClient.setMutationDefaults(PLAN_TEMPLATE_MUTATION_KEYS.update, {
-    mutationFn: ({ id, updates }: { id: string; updates: UpdatePlanTemplatePayload }) =>
-      updatePlanTemplate(id, updates),
+    // `expectedRevision` MUST survive persistence here too. Destructuring only
+    // {id, updates} silently downgrades a replayed edit to the unguarded path, so
+    // after a reload it would overwrite whatever another device stored meanwhile.
+    mutationFn: ({
+      id,
+      updates,
+      expectedRevision,
+    }: {
+      id: string;
+      updates: UpdatePlanTemplatePayload;
+      expectedRevision?: number | null;
+    }) => updatePlanTemplate(id, updates, expectedRevision ?? null),
     onSuccess: invalidate(['planTemplates']),
   });
   queryClient.setMutationDefaults(PLAN_TEMPLATE_MUTATION_KEYS.delete, {
@@ -422,8 +451,21 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
     onSuccess: invalidate([STUDY_NOTES_KEY]),
   });
   queryClient.setMutationDefaults(STUDY_NOTE_MUTATION_KEYS.update, {
-    mutationFn: ({ id, updates, userId }: { id: string; updates: Partial<StudyNote>; userId: string }) =>
-      updateStudyNote(id, { ...updates, userId }),
+    // `expectedRevision` MUST survive persistence. This default is what runs after
+    // a reload replays a paused mutation; dropping the field there turned a guarded
+    // save into an ordinary one, so an edit made offline could come back and
+    // overwrite something newer without any check.
+    mutationFn: ({
+      id,
+      updates,
+      userId,
+      expectedRevision,
+    }: {
+      id: string;
+      updates: Partial<StudyNote>;
+      userId: string;
+      expectedRevision?: number | null;
+    }) => updateStudyNote(id, { ...updates, userId }, expectedRevision ?? null),
     onSuccess: invalidate([STUDY_NOTES_KEY]),
   });
   queryClient.setMutationDefaults(STUDY_NOTE_MUTATION_KEYS.delete, {

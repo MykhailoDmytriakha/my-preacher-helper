@@ -32,6 +32,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
+import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import AddBlockButton from '@/components/groups/AddBlockButton';
 import FlowEditor from '@/components/groups/FlowEditor';
 import FlowFooter from '@/components/groups/FlowFooter';
@@ -40,13 +42,15 @@ import SeriesSelector from '@/components/series/SeriesSelector';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import DatePickerField from '@/components/ui/DatePickerField';
 import { useAutoSave } from '@/hooks/useAutoSave';
+import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { useRouteId } from '@/hooks/useRouteId';
 import { useSeries } from '@/hooks/useSeries';
 import { useSeriesMembership } from '@/hooks/useSeriesMembership';
-import { GroupBlockStatus, GroupBlockTemplate, GroupBlockTemplateType, GroupFlowItem } from '@/models/models';
+import { Group, GroupBlockStatus, GroupBlockTemplate, GroupBlockTemplateType, GroupFlowItem } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { hasGroupsAccess } from '@/services/userSettings.service';
+import { changedFields } from '@/utils/changedFields';
 import {
   createFlowItem,
   createTemplate,
@@ -68,8 +72,19 @@ export default function GroupDetailPage() {
   const [groupsEnabled, setGroupsEnabled] = useState(false);
   const [accessLoading, setAccessLoading] = useState(true);
 
-  const { group, loading, updateGroupDetail, addMeetingDate, updateMeetingDate, removeMeetingDate, deleteGroupDetail } =
-    useGroupDetail(groupsEnabled ? groupId : '');
+  const {
+    group,
+    loading,
+    updateGroupDetail,
+    addMeetingDate,
+    updateMeetingDate,
+    removeMeetingDate,
+    deleteGroupDetail,
+    saveConflict,
+    resolvingConflict,
+    keepMineOnConflict,
+    takeTheirsOnConflict,
+  } = useGroupDetail(groupsEnabled ? groupId : '');
 
   const groupsUserId = user?.uid && groupsEnabled ? user.uid : null;
   const { series } = useSeries(groupsUserId);
@@ -198,15 +213,122 @@ export default function GroupDetailPage() {
     existingMeetingIdRef.current = group?.meetingDates?.[0]?.id;
   }, [group]);
 
+  /**
+   * What this page last knew to be the truth: the group as loaded, then whatever a
+   * save sent. This — NOT the live cache — is the baseline for "did the user change
+   * this field?".
+   *
+   * Diffing against the cache is the intuitive choice and it destroys data. Two
+   * tabs: A renames the group, B (opened earlier, still showing the old name)
+   * refetches on focus, so B's CACHE holds A's new name while B's INPUT holds the
+   * old one. Against the cache, B's untouched title reads as a deliberate rename
+   * back and overwrites A. Reproduced live on the note editor, which had the same
+   * mistake. A field the user genuinely changed stays different from this baseline
+   * until a save carries it, so a failed write still gets re-sent.
+   */
+  const baselineRef = useRef<{
+    title: string;
+    description: string | undefined;
+    status: Group['status'];
+    templates: Group['templates'];
+    flow: Group['flow'];
+  } | null>(null);
+  // Keyed by document: navigating between groups re-renders this page WITHOUT
+  // unmounting, so an unkeyed baseline would keep describing the group we left and
+  // silently mark real edits as unchanged.
+  const baselineGroupIdRef = useRef<string | null>(null);
+  if (group && baselineGroupIdRef.current !== group.id) {
+    baselineGroupIdRef.current = group.id;
+    baselineRef.current = {
+      title: group.title,
+      description: group.description || undefined,
+      status: group.status,
+      templates: group.templates || [],
+      flow: normalizeFlow(group.flow || []),
+    };
+  }
+
+  // Does the server hold a newer version of THIS group? Shared layer with the
+  // note/sermon/series pages: observe only, never swap what is on screen.
+  type GroupWatched = {
+    title: string;
+    description: string;
+    status: string;
+    templateCount: number;
+    flowCount: number;
+  };
+  const knownGroup = useMemo<GroupWatched | null>(
+    () =>
+      group
+        ? {
+            title: group.title || '',
+            description: group.description || '',
+            status: group.status || '',
+            templateCount: (group.templates ?? []).length,
+            flowCount: (group.flow ?? []).length,
+          }
+        : null,
+    [group]
+  );
+  const groupFreshness = useDocumentFreshness<GroupWatched>({
+    collection: 'groups',
+    docId: group?.id ?? null,
+    uid: group?.userId ?? null,
+    enabled: Boolean(group),
+    known: knownGroup,
+    select: (data) => ({
+      title: (data.title as string) || '',
+      description: (data.description as string) || '',
+      status: (data.status as string) || '',
+      templateCount: ((data.templates as unknown[]) ?? []).length,
+      flowCount: ((data.flow as unknown[]) ?? []).length,
+    }),
+  });
+  const [groupFreshnessDismissed, setGroupFreshnessDismissed] = useState(false);
+  useEffect(() => {
+    if (groupFreshness.state === 'stale') setGroupFreshnessDismissed(false);
+  }, [groupFreshness.remote, groupFreshness.state]);
+
   const performSave = useCallback(
     async () => {
-      await updateGroupDetailRef.current({
-        title: titleRef.current.trim(),
-        description: descriptionRef.current.trim() || undefined,
-        status: statusRef.current,
-        templates: templatesRef.current,
-        flow: normalizeFlow(flowRef.current),
+      // Send ONLY what actually changed. Sending every field means a stale tab's
+      // title edit overwrites newer templates/flow text written from another
+      // device — the whole document is replaced from one editor's snapshot.
+      // Let React commit any state change that triggered this save before the
+      // refs below are read. Autosave can start while the originating event is
+      // still on the stack, so the refs — assigned during render — would still
+      // hold pre-change values. HEAD got this for free because it ALWAYS awaited
+      // the group write first; now that an unchanged group skips that write, the
+      // yield has to be explicit rather than an accident of statement order.
+      await Promise.resolve();
+
+      const base = baselineRef.current;
+      const nextTitle = titleRef.current.trim();
+      const nextDescription = descriptionRef.current.trim() || undefined;
+      const nextStatus = statusRef.current;
+      const nextTemplates = templatesRef.current;
+      const nextFlow = normalizeFlow(flowRef.current);
+
+      const changed = changedFields(base, {
+        title: nextTitle,
+        description: nextDescription,
+        status: nextStatus,
+        templates: nextTemplates,
+        flow: nextFlow,
       });
+
+      if (Object.keys(changed).length > 0) {
+        await updateGroupDetailRef.current(changed);
+        // ⚠️ The baseline is deliberately NOT advanced here. `updateGroupDetail` is
+        // fire-and-forget (`useGroupDetail.ts:105`) — it returns before the backend
+        // answers, so "sent" is not "stored". Advancing here made a REJECTED write
+        // vanish: the field matched the baseline again, dropped out of every later
+        // diff, and was never re-sent — strictly worse than HEAD, which resent all
+        // content fields on every autosave. Leaving the baseline at the value this
+        // page opened with means everything the user changed keeps being sent until
+        // it lands. Re-sending the user's own current value is idempotent; losing it
+        // is not.
+      }
 
       // Sync single meeting date
       const date = meetingDateRef.current;
@@ -426,6 +548,37 @@ export default function GroupDetailPage() {
 
   return (
     <section className="space-y-6">
+      {/* A save was TURNED AWAY. The typed text is still in the fields (a refusal
+          deliberately does NOT refetch), so the choice is all that is needed. */}
+      {saveConflict && (
+        <SaveConflictBanner
+          entityKey="entityRecord"
+          onKeepMine={keepMineOnConflict}
+          onTakeTheirs={takeTheirsOnConflict}
+          busy={resolvingConflict}
+        />
+      )}
+      {/* This GROUP changed elsewhere — distinct from the app-update toast. While
+          the editor holds unsaved changes the action becomes "review". */}
+      {groupFreshness.state === 'stale' && !groupFreshnessDismissed && (
+        <DataFreshnessBanner
+          entityKey="entityRecord"
+          dirty={Boolean(
+            baselineRef.current &&
+              Object.keys(
+                changedFields(baselineRef.current, {
+                  title: titleRef.current.trim(),
+                  description: descriptionRef.current.trim() || undefined,
+                  status: statusRef.current,
+                  templates: templatesRef.current,
+                  flow: normalizeFlow(flowRef.current),
+                })
+              ).length > 0
+          )}
+          deleted={groupFreshness.remotelyDeleted}
+          onDismiss={() => setGroupFreshnessDismissed(true)}
+        />
+      )}
       <header className="rounded-3xl border border-gray-200/70 bg-gradient-to-br from-emerald-600/10 via-cyan-600/10 to-blue-600/10 p-6 shadow-sm dark:border-gray-800 dark:from-emerald-500/10 dark:via-cyan-500/10 dark:to-blue-500/10">
         <div className="mb-5 flex items-center justify-between">
           <button

@@ -15,14 +15,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import HighlightedText from '@/components/HighlightedText';
 import AddUpdateModal from '@/components/prayer/AddUpdateModal';
 import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
 import MarkAnsweredModal from '@/components/prayer/MarkAnsweredModal';
 import PrayerStatusBadge from '@/components/prayer/PrayerStatusBadge';
+import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
+import { PRAYER_CORE_AGGREGATE } from '@/services/prayerRequests.client';
 import '@locales/i18n';
 
 const PRAYER_FOCUS_TYPES = new Set(['title', 'description', 'answer', 'tags']);
@@ -34,10 +38,54 @@ export default function PrayerDetailPage() {
   const searchParams = useSearchParams();
   const { user } = useAuth();
 
-  const { prayerRequests, loading, updatePrayer, deletePrayer, addUpdate, setStatus } =
+  const {
+    prayerRequests,
+    loading,
+    updatePrayer,
+    deletePrayer,
+    addUpdate,
+    setStatus,
+    saveConflict,
+    resolvingConflict,
+    keepMineOnConflict,
+    takeTheirsOnConflict,
+  } =
     usePrayerRequests(user?.uid ?? null);
 
   const prayer = prayerRequests.find((p) => p.id === id);
+
+  // Does the server hold a newer version of THIS prayer request? Same shared layer
+  // as the other detail pages: observe only, never swap what is on screen.
+  type PrayerWatched = { title: string; description: string; status: string; updateCount: number };
+  const knownPrayer = useMemo<PrayerWatched | null>(
+    () =>
+      prayer
+        ? {
+            title: prayer.title || '',
+            description: prayer.description || '',
+            status: prayer.status || '',
+            updateCount: (prayer.updates ?? []).length,
+          }
+        : null,
+    [prayer]
+  );
+  const prayerFreshness = useDocumentFreshness<PrayerWatched>({
+    collection: 'prayerRequests',
+    docId: prayer?.id ?? null,
+    uid: prayer?.userId ?? null,
+    enabled: Boolean(prayer),
+    known: knownPrayer,
+    select: (data) => ({
+      title: (data.title as string) || '',
+      description: (data.description as string) || '',
+      status: (data.status as string) || '',
+      updateCount: ((data.updates as unknown[]) ?? []).length,
+    }),
+  });
+  const [prayerFreshnessDismissed, setPrayerFreshnessDismissed] = useState(false);
+  useEffect(() => {
+    if (prayerFreshness.state === 'stale') setPrayerFreshnessDismissed(false);
+  }, [prayerFreshness.remote, prayerFreshness.state]);
 
   const [showEdit, setShowEdit] = useState(false);
   const [showAddUpdate, setShowAddUpdate] = useState(false);
@@ -133,7 +181,9 @@ export default function PrayerDetailPage() {
   }
 
   const handleEdit = async (payload: Pick<PrayerRequest, 'title'> & Partial<Pick<PrayerRequest, 'description' | 'tags'>>) => {
-    await updatePrayer(prayer.id, payload);
+    // State the revision this edit was built from, so a save from a tab that never
+    // saw another device's change is refused rather than replacing it.
+    await updatePrayer(prayer.id, payload, prayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0);
     toast.success(t('prayer.toast.updated'));
     setShowEdit(false);
   };
@@ -170,6 +220,26 @@ export default function PrayerDetailPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-6">
+      {/* A save was TURNED AWAY. The optimistic cache was rolled back to the server's
+          truth, so this banner holds the only remaining copy of what was typed. */}
+      {saveConflict && (
+        <SaveConflictBanner
+          entityKey="entityRecord"
+          pendingText={saveConflict.updates.title ?? saveConflict.updates.description ?? undefined}
+          onKeepMine={keepMineOnConflict}
+          onTakeTheirs={takeTheirsOnConflict}
+          busy={resolvingConflict}
+        />
+      )}
+      {/* This PRAYER REQUEST changed elsewhere — distinct from the app-update toast. */}
+      {prayerFreshness.state === 'stale' && !prayerFreshnessDismissed && (
+        <DataFreshnessBanner
+          entityKey="entityRecord"
+          dirty={false}
+          deleted={prayerFreshness.remotelyDeleted}
+          onDismiss={() => setPrayerFreshnessDismissed(true)}
+        />
+      )}
       {/* Back */}
       <Link href="/prayers" className="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-rose-500 transition-colors">
         <ArrowLeftIcon className="h-4 w-4" />

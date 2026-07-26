@@ -54,9 +54,11 @@ function buildManualThought(thought: Record<string, unknown>): Thought {
 }
 
 async function appendThoughtToSermon(sermonId: string, thought: Thought, union: (value: Thought) => unknown) {
+  // Server-side thought writes advance the `thoughts` counter too, so a client
+  // editing thoughts cannot later be granted false permission.
   await sermonsRepository.updateSermonData(sermonId, {
     thoughts: union(thought)
-  });
+  }, 'thoughts');
 }
 
 function normalizeGenerationResult(params: {
@@ -377,7 +379,7 @@ export async function DELETE(request: Request) {
 
     await sermonsRepository.updateSermonData(sermonId, {
       thoughts: FieldValue.arrayRemove(thought)
-    });
+    }, 'thoughts');
 
     console.log("Successfully deleted thought.");
     return NextResponse.json({ message: "Thought deleted successfully." });

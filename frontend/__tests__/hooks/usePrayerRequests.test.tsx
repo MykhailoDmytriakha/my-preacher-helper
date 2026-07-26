@@ -5,6 +5,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
+import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import {
   addPrayerUpdate,
   createPrayerRequest,
@@ -119,7 +120,9 @@ describe('usePrayerRequests', () => {
     expect(mockCreatePrayerRequest).toHaveBeenCalledWith(
       expect.objectContaining({ userId: 'user-1', title: 'New prayer', id: expect.any(String) })
     );
-    expect(mockUpdatePrayerRequest).toHaveBeenCalledWith('p1', { title: 'Updated prayer' });
+    // Third argument = the revision this edit was built from; the hook passes
+    // `null` when the caller states none, keeping the unguarded legacy path.
+    expect(mockUpdatePrayerRequest).toHaveBeenCalledWith('p1', { title: 'Updated prayer' }, null);
     expect(mockAddPrayerUpdate).toHaveBeenCalledWith('p1', {
       updateId: expect.any(String),
       text: 'Fresh update',
@@ -254,4 +257,69 @@ describe('usePrayerRequests', () => {
       expect(rolledBack.map((item) => item.id)).toEqual(['p1', 'p2']);
     });
   });
+
+  /**
+   * A refused prayer edit must not vanish with the optimistic rollback.
+   *
+   * The rollback itself is right — the server is the truth. What must not happen
+   * is the person's words disappearing along with it, leaving only a toast that
+   * reads like a glitch.
+   */
+  describe('a refused save is held, not rolled away in silence', () => {
+    it('holds the refused edit with the revision the server actually had', async () => {
+      mockUpdatePrayerRequest.mockRejectedValueOnce(new StaleWriteError('core', 2, 7));
+      const { wrapper } = createWrapper();
+      const { result } = renderHook(() => usePrayerRequests('user-1'), { wrapper });
+
+      await act(async () => {
+        await result.current.updatePrayer('p1', { title: 'Typed on the laptop' }, 2);
+      });
+
+      await waitFor(() =>
+        expect(result.current.saveConflict).toEqual({
+          id: 'p1',
+          updates: { title: 'Typed on the laptop' },
+          actualRevision: 7,
+        })
+      );
+    });
+
+    it('re-sends with the server revision when "keep mine" is chosen', async () => {
+      mockUpdatePrayerRequest.mockRejectedValueOnce(new StaleWriteError('core', 2, 7));
+      const { wrapper } = createWrapper();
+      const { result } = renderHook(() => usePrayerRequests('user-1'), { wrapper });
+
+      await act(async () => {
+        await result.current.updatePrayer('p1', { title: 'Typed on the laptop' }, 2);
+      });
+      await waitFor(() => expect(result.current.saveConflict).not.toBeNull());
+
+      await act(async () => {
+        await result.current.keepMineOnConflict();
+      });
+
+      // 7, NOT 2: otherwise the resend is refused again and the button lies.
+      await waitFor(() =>
+        expect(mockUpdatePrayerRequest).toHaveBeenLastCalledWith(
+          'p1',
+          { title: 'Typed on the laptop' },
+          7
+        )
+      );
+    });
+
+    it('leaves a generic failure on the old error path', async () => {
+      mockUpdatePrayerRequest.mockRejectedValueOnce(new Error('permission denied'));
+      const { wrapper } = createWrapper();
+      const { result } = renderHook(() => usePrayerRequests('user-1'), { wrapper });
+
+      await act(async () => {
+        await result.current.updatePrayer('p1', { title: 'Updated' }, 2);
+      });
+
+      await waitFor(() => expect(result.current.error).not.toBeNull());
+      expect(result.current.saveConflict).toBeNull();
+    });
+  });
+
 });

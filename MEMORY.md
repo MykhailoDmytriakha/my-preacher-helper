@@ -60,6 +60,11 @@
 
 > One-line principles. History in git blame. Newest first.
 
+### 2026-07-25 Freshness Proof Must Follow The Editor, Not The Cache
+**Problem:** A listener can compare the server with a live query cache that already refreshed while the editor still shows its open-time value; reduced selectors, hidden unknown states, and destructive “load newer” actions then turn a safety banner into either silence or data loss.
+**Solution:** Key one immutable editor baseline by auth owner and document, use a revision/hash changed by every writer, show unknown explicitly, suppress own writes only by exact acknowledged identity, and never apply/reload remote state while any local editor is dirty.
+**Principle:** Freshness is a proof about what the user is actually seeing; cache equality is not that proof, and a refresh control must preserve both versions until the user resolves them.
+
 ### 2026-07-15 Global Error Ownership Requires Local Catch Suppression
 **Problem:** A global typed-error handler can show the correct user-facing message while legacy per-call catches still render raw/generic errors, duplicate toasts, or save retry drafts that can only fail again.
 **Solution:** In every UI catch, detect the typed globally-owned error before generic formatting, toast notification, and recovery persistence; keep cleanup in the guard/finally path and regression-test the error through a real component catch.

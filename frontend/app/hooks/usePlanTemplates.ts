@@ -68,9 +68,23 @@ export function usePlanTemplates(userId: string | null | undefined) {
 
   const updateMutation = useMutation({
     mutationKey: PLAN_TEMPLATE_MUTATION_KEYS.update,
-    mutationFn: ({ id, updates }: { id: string; updates: UpdatePlanTemplatePayload }) =>
-      updatePlanTemplate(id, updates),
-    onMutate: async ({ id, updates }: { id: string; updates: UpdatePlanTemplatePayload }) => {
+    mutationFn: ({
+      id,
+      updates,
+      expectedRevision,
+    }: {
+      id: string;
+      updates: UpdatePlanTemplatePayload;
+      expectedRevision?: number | null;
+    }) => updatePlanTemplate(id, updates, expectedRevision ?? null),
+    onMutate: async ({
+      id,
+      updates,
+    }: {
+      id: string;
+      updates: UpdatePlanTemplatePayload;
+      expectedRevision?: number | null;
+    }) => {
       const context = await snapshot();
       queryClient.setQueryData<PlanTemplate[]>(buildQueryKey(userId), (old = []) =>
         old.map((t) => (t.id === id ? { ...t, ...updates } : t))
@@ -101,8 +115,11 @@ export function usePlanTemplates(userId: string | null | undefined) {
     error: templatesQuery.error as Error | null,
     refresh: templatesQuery.refetch,
     createTemplate: createMutation.mutateAsync,
-    updateTemplate: (id: string, updates: UpdatePlanTemplatePayload) =>
-      updateMutation.mutateAsync({ id, updates }),
+    updateTemplate: (
+      id: string,
+      updates: UpdatePlanTemplatePayload,
+      expectedRevision?: number | null
+    ) => updateMutation.mutateAsync({ id, updates, expectedRevision }),
     deleteTemplate: deleteMutation.mutateAsync,
   };
 }

@@ -9,6 +9,8 @@ import { toast } from 'sonner';
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
+import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { PLAN_TEMPLATE_AGGREGATE } from '@/services/planTemplates.client';
 import { newClientId } from '@/utils/clientId';
 
 import type { PlanTemplate, SermonOutline } from '@/models/models';
@@ -68,8 +70,14 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
     setRenamingId(null);
     if (!name || name === tpl.name) return;
     try {
-      await updateTemplate(tpl.id, { name });
+      // State the revision this edit was built from, so a rename from a tab that
+      // never saw another device's change is refused rather than replacing it.
+      await updateTemplate(tpl.id, { name }, tpl.rev?.[PLAN_TEMPLATE_AGGREGATE] ?? 0);
     } catch (err) {
+      if (isStaleWriteError(err)) {
+        toast.error(t('freshness.staleSaveToast'));
+        return;
+      }
       console.error('Error renaming plan template:', err);
       toast.error(t('planTemplates.renameError'));
     }
@@ -97,7 +105,17 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
     setDraftStructure(structure);
     if (saveTimers.current[tpl.id]) clearTimeout(saveTimers.current[tpl.id]);
     saveTimers.current[tpl.id] = setTimeout(() => {
-      void updateTemplate(tpl.id, { structure }).catch((err) => {
+      void updateTemplate(
+        tpl.id,
+        { structure },
+        tpl.rev?.[PLAN_TEMPLATE_AGGREGATE] ?? 0
+      ).catch((err) => {
+        if (isStaleWriteError(err)) {
+          // REFUSED, not failed. The board still shows `draftStructure`, so the
+          // edit is on screen — say plainly that it did not reach the server.
+          toast.error(t('freshness.staleSaveToast'));
+          return;
+        }
         console.error('Error saving template structure:', err);
         toast.error(t('planTemplates.saveStructureError'));
       });

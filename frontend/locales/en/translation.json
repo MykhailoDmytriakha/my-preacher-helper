@@ -1,4 +1,32 @@
 {
+  "freshness": {
+    "title": "Changed on another device",
+    "description": "This {{entity}} was edited somewhere else. Load the newer version?",
+    "dirtyDescription": "This {{entity}} was edited somewhere else. You have unsaved changes here — review them before loading.",
+    "deletedTitle": "Deleted on another device",
+    "deletedDescription": "This {{entity}} no longer exists on the server. Your text here is not saved.",
+    "refreshAction": "Load newer",
+    "reviewAction": "Review changes",
+    "dismissAction": "Keep mine",
+    "entityNote": "note",
+    "entitySermon": "sermon",
+    "entitySeries": "series",
+    "entityRecord": "record",
+    "unknownTitle": "Freshness unknown",
+    "unknownDescription": "Cannot check right now whether this {{entity}} changed elsewhere — you may be offline.",
+    "conflictTitle": "Your change was not saved",
+    "conflictDescription": "This {{entity}} was edited on another device while you were typing. Your text is not lost — it is right here. Choose what to keep.",
+    "conflictKeepMine": "Keep my text",
+    "conflictTakeTheirs": "Take the other version",
+    "staleSaveToast": "Not saved — this was changed on another device. Your text is still here; reload the newer version, then re-apply it.",
+    "conflictPendingLabel": "Your text:"
+  },
+  "unsavedDraft": {
+    "title": "Unsaved text found",
+    "description": "Edits from an earlier session were never saved.",
+    "restore": "Restore",
+    "discard": "Discard"
+  },
   "navigation": {
     "appName": "My Preacher Helper",
     "dashboard": "Dashboard",
@@ -2796,9 +2824,9 @@
   },
   "pwa": {
     "updateAvailable": {
-      "title": "New version available",
-      "description": "Reload to get the latest version of the app.",
-      "action": "Reload"
+      "title": "New app version available",
+      "description": "This updates the APP, not your notes. Reload to get it.",
+      "action": "Reload app"
     }
   }
 }

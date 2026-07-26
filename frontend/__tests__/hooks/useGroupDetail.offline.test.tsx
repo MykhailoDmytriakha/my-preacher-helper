@@ -23,6 +23,8 @@ jest.mock('@/config/firebaseClientDb', () => ({
 }));
 
 jest.mock('firebase/firestore', () => ({
+  // Counter bump rides the ordinary updateDoc path (works offline).
+  increment: (n: number) => ({ __increment: n }),
   addDoc: jest.fn(),
   arrayUnion: jest.fn((v: unknown) => v),
   collection: jest.fn((_db: unknown, path: string) => ({ path })),
@@ -32,6 +34,14 @@ jest.mock('firebase/firestore', () => ({
   query: jest.fn(),
   setDoc: jest.fn(),
   updateDoc: (...args: unknown[]) => mockUpdateDoc(...args),
+  // Offline, a transaction does NOT queue — it fails outright
+  // (firebase.google.com/docs/firestore/manage-data/enable-offline). The guarded
+  // path must therefore degrade to the ordinary queued write, not lose the edit.
+  runTransaction: jest.fn(async () => {
+    throw Object.assign(new Error('Failed to get document because the client is offline'), {
+      code: 'unavailable',
+    });
+  }),
   where: jest.fn(),
 }));
 

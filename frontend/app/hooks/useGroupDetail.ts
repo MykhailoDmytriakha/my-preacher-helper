@@ -7,6 +7,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { Group, GroupMeetingDate } from '@/models/models';
+import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { newClientId } from '@/utils/clientId';
 import { GROUP_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import {
@@ -14,6 +15,7 @@ import {
   deleteGroup,
   deleteGroupMeetingDate,
   getGroupById,
+  GROUP_CONTENT_AGGREGATE,
   updateGroup,
   updateGroupMeetingDate,
 } from '@services/groups.service';
@@ -80,11 +82,41 @@ export function useGroupDetail(groupId: string) {
     [queryClient, groupId, uid, t]
   );
 
+  /**
+   * A refused edit, held so it can be re-offered instead of quietly dropped.
+   *
+   * The group write is fire-and-forget, so without this the refusal would land in
+   * `reconcileWriteError`, read as a generic failure, and trigger a refetch that
+   * replaces the person's still-unsent text with the server's — the silent loss
+   * this whole mechanism exists to prevent. So a refusal does NOT refetch: the
+   * typed text stays on screen and the choice is handed over.
+   */
+  const [saveConflict, setSaveConflict] = useState<{
+    updates: Partial<Group>;
+    /** The server's revision at refusal — what a deliberate overwrite must state. */
+    actualRevision: number;
+  } | null>(null);
+  const [resolvingConflict, setResolvingConflict] = useState(false);
+
+  /**
+   * The revision this hook last COMMITTED, kept out of band.
+   * The cached group is refreshed asynchronously, so relying on it to learn what
+   * we just wrote makes the next keystroke state the pre-write number and get
+   * refused against the person's OWN save. Keyed by group id so it cannot leak
+   * across a navigation.
+   */
+  const committedRevRef = useRef<{ groupId: string; revision: number } | null>(null);
+
   const updateGroupDetail = useCallback(
-    async (updates: Partial<Group>) => {
+    async (updates: Partial<Group>, statedRevision?: number | null) => {
       if (!group) return;
       setMutationError(null);
       const id = group.id;
+      const cachedRevision = group.rev?.[GROUP_CONTENT_AGGREGATE] ?? 0;
+      const ownCommitted =
+        committedRevRef.current?.groupId === group.id ? committedRevRef.current.revision : 0;
+      const revision =
+        statedRevision === undefined ? Math.max(cachedRevision, ownCommitted) : statedRevision;
       // Cancel any in-flight ['group-detail'] refetch before the optimistic write,
       // else a slower server-first refetch can resolve with pre-edit data and clobber
       // the optimistic patch (restores the pre-migration guard dropped in the rewrite).
@@ -105,8 +137,27 @@ export function useGroupDetail(groupId: string) {
       // Fire-and-forget: offline `updateDoc` never resolves (Firestore queues it
       // natively), so awaiting would hang the caller's autosave. The optimistic
       // writes above keep the UI truthful; durability lives in the offline queue.
-      void updateGroup(id, updates)
-        .then(() => {
+      void updateGroup(id, updates, revision)
+        .then((saved) => {
+          setSaveConflict(null);
+          // Carry the COMMITTED revision into the caches. Without it the next
+          // keystroke states the pre-write number and is refused against the
+          // person's OWN save — a false conflict, and worse than before the guard.
+          const committedRev = saved?.rev;
+          const own = committedRev?.[GROUP_CONTENT_AGGREGATE];
+          if (typeof own === 'number') committedRevRef.current = { groupId: id, revision: own };
+          if (committedRev) {
+            queryClient.setQueryData<Group | null>([QUERY_KEYS.GROUP_DETAIL, id], (old) =>
+              old ? ({ ...old, rev: { ...(old.rev ?? {}), ...committedRev } } as Group) : old
+            );
+            queryClient.setQueryData<Group[]>([QUERY_KEYS.GROUPS, uid], (old) =>
+              old
+                ? old.map((g) =>
+                    g.id === id ? ({ ...g, rev: { ...(g.rev ?? {}), ...committedRev } } as Group) : g
+                  )
+                : old
+            );
+          }
           // A group can be a series member; series views snapshot the group's title
           // (useSeriesDetail buildPayload -> getGroupById), so refresh them after a
           // content edit. `.then` fires on backend commit (immediately online, on
@@ -115,10 +166,52 @@ export function useGroupDetail(groupId: string) {
           queryClient.invalidateQueries({ queryKey: ['series'] });
           queryClient.invalidateQueries({ queryKey: ['series-detail'] });
         })
-        .catch(reconcileWriteError);
+        .catch((errorValue: unknown) => {
+          if (isStaleWriteError(errorValue)) {
+            // REFUSED, not failed. Deliberately NO refetch here — see above.
+            setSaveConflict({ updates, actualRevision: errorValue.actualRevision });
+            toast.error(t('freshness.staleSaveToast'));
+            return;
+          }
+          reconcileWriteError(errorValue);
+        });
     },
-    [group, queryClient, uid, reconcileWriteError]
+    [group, queryClient, uid, reconcileWriteError, t]
   );
+
+  /** Save the refused edit on top of the newer version — a deliberate overwrite. */
+  const keepMineOnConflict = useCallback(async () => {
+    if (!saveConflict || resolvingConflict) return;
+    setResolvingConflict(true);
+    try {
+      // Adopt the revision the server held AT REFUSAL, or the resend is refused
+      // again and the button promises what it never performs.
+      await updateGroupDetail(saveConflict.updates, saveConflict.actualRevision);
+    } finally {
+      setResolvingConflict(false);
+    }
+  }, [saveConflict, resolvingConflict, updateGroupDetail]);
+
+  /** Drop the refused edit and load what the other device stored. */
+  const takeTheirsOnConflict = useCallback(async () => {
+    if (resolvingConflict) return;
+    setResolvingConflict(true);
+    try {
+      // Judge by the REFETCH RESULT, not by invalidation. `invalidateQueries`
+      // resolves even when the refetch fails, and TanStack's `refetch()` resolves
+      // an error result rather than throwing — so a bare await would discard the
+      // only copy of the typed text without ever loading the promised version.
+      const result = await refetch();
+      if (result.isError) {
+        toast.error(t('workspaces.groups.errors.updateFailed', { defaultValue: 'Failed to update group' }));
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.GROUPS, uid] });
+      setSaveConflict(null);
+    } finally {
+      setResolvingConflict(false);
+    }
+  }, [resolvingConflict, queryClient, refetch, uid, t]);
 
   const addMeetingDate = useCallback(
     async (payload: Omit<GroupMeetingDate, 'id' | 'createdAt'>) => {
@@ -227,5 +320,10 @@ export function useGroupDetail(groupId: string) {
     updateMeetingDate,
     removeMeetingDate,
     deleteGroupDetail,
+    /** A refused save waiting for a decision — render the conflict choice. */
+    saveConflict,
+    resolvingConflict,
+    keepMineOnConflict,
+    takeTheirsOnConflict,
   };
 }

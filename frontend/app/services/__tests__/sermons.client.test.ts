@@ -21,6 +21,8 @@ import {
   deleteThoughtViaClient,
   updatePreachDateViaClient,
   updateScratchNoteViaClient,
+  updateSermonPreparationViaClient,
+  updateSermonViaClient,
 } from '@/services/sermons.client';
 
 type StoredSermon = {
@@ -43,9 +45,12 @@ jest.mock('@/config/firebaseClientDb', () => ({ getClientDb: () => ({}) }));
 let onTransactionAttempt: ((attempt: number) => void) | null = null;
 
 jest.mock('firebase/firestore', () => ({
+  // Counter bump rides the ordinary updateDoc path (works offline).
+  increment: (n: number) => ({ __increment: n }),
   // doc/getDoc/updateDoc cover the offline path; runTransaction covers the online
   // path taken by atomicUpdate. The rest are stubbed so imports resolve.
   arrayUnion: jest.fn((v: unknown) => v),
+  deleteField: jest.fn(() => '__DELETE__'),
   collection: jest.fn(),
   query: jest.fn(),
   where: jest.fn(),
@@ -393,5 +398,143 @@ describe('updatePreachDateViaClient error precedence matches HEAD', () => {
     await expect(
       updatePreachDateViaClient('s1', 'd1', { date: 'not-a-date' })
     ).rejects.toThrow('Invalid preach date format');
+  });
+});
+
+/**
+ * Surgical field patches.
+ *
+ * Callers used to hand over a whole `Sermon` rebuilt from page state captured when
+ * the page opened, so saving ONE field wrote the entire whitelist back — including
+ * the nested `preparation` object. Editing a verse on a stale tab therefore
+ * reverted preparation written meanwhile from another device. These lock the rule
+ * that only named fields reach Firestore.
+ */
+describe('field patches keep untouched fields out of the write', () => {
+  const SERMON_ID = 'patch-sermon';
+
+  const fullSermon = {
+    id: SERMON_ID,
+    userId: 'u1',
+    title: 'Stale title from this tab',
+    verse: 'New verse the user just typed',
+    isPreached: false,
+    date: '2026-01-01',
+    thoughts: [],
+    preparation: { textContext: { note: 'stale copy loaded at page open' } },
+  };
+
+  beforeEach(() => {
+    store[SERMON_ID] = { userId: 'u1', thoughts: [] };
+  });
+
+  it('writes ONLY the patched field, not the whole whitelist', async () => {
+    await updateSermonViaClient(fullSermon as never, { verse: fullSermon.verse });
+
+    const written = store[SERMON_ID] as unknown as Record<string, unknown>;
+    expect(written.verse).toBe('New verse the user just typed');
+    // The stale title and preparation must not have been pushed back.
+    expect(written.title).toBeUndefined();
+    expect(written.preparation).toBeUndefined();
+  });
+
+  it('still writes the whole whitelist when no patch is given (legacy callers)', async () => {
+    await updateSermonViaClient(fullSermon as never);
+
+    const written = store[SERMON_ID] as unknown as Record<string, unknown>;
+    expect(written.title).toBe('Stale title from this tab');
+    expect(written.preparation).toBeDefined();
+  });
+
+  it('DELETES a step the user removed, instead of quietly leaving the old one', async () => {
+    // Omitting the field path leaves the old value on the server: the UI looks
+    // saved and the deleted step comes back after a reload. Firestore needs the
+    // deleteField sentinel to remove a nested field.
+    const preparation = { textContext: undefined, exegeticalPlan: [{ id: 'x' }] };
+
+    await updateSermonPreparationViaClient(SERMON_ID, preparation as never, ['textContext']);
+
+    const written = store[SERMON_ID] as unknown as Record<string, unknown>;
+    expect(written['preparation.textContext']).toBe('__DELETE__');
+  });
+
+  it('addresses changed preparation steps by nested path, leaving others alone', async () => {
+    const preparation = {
+      textContext: { note: 'edited here' },
+      exegeticalPlan: [{ id: 'x', title: 'untouched on this device' }],
+    };
+
+    await updateSermonPreparationViaClient(SERMON_ID, preparation as never, ['textContext']);
+
+    const written = store[SERMON_ID] as unknown as Record<string, unknown>;
+    expect(written['preparation.textContext']).toEqual({ note: 'edited here' });
+    // A whole-object write would appear as `preparation` and replace every step.
+    expect(written.preparation).toBeUndefined();
+    expect(written['preparation.exegeticalPlan']).toBeUndefined();
+  });
+});
+
+/**
+ * A guarded save must return WHAT IT COMMITTED — never a fresh read.
+ *
+ * Found live with a probe: immediately after the transaction commits, `getDoc`
+ * still answers from the local replica, which has not caught up. It returned the
+ * other device's text and the pre-commit revision, so a correct save put stale
+ * data back on screen, and the stale revision made the person's own next edit get
+ * refused as a conflict.
+ */
+describe('the guarded sermon write reports its own result', () => {
+  const sermonArg = {
+    id: 's-guarded',
+    title: 'Old title',
+    verse: 'Old verse',
+    date: '2026-07-25',
+    userId: 'u1',
+    thoughts: [],
+    outline: { introduction: [], main: [], conclusion: [] },
+    rev: { core: 4, thoughts: 2 },
+  } as unknown as Parameters<typeof updateSermonViaClient>[0];
+
+  beforeEach(() => {
+    Object.keys(store).forEach((k) => delete store[k]);
+    store['s-guarded'] = {
+      userId: 'u1',
+      thoughts: [],
+      // @ts-expect-error loose fixture shape — the store is untyped storage here
+      verse: 'Old verse',
+      rev: { core: 4, thoughts: 2 },
+    };
+  });
+
+  it('returns the written text with the COMMITTED revision', async () => {
+    const result = await updateSermonViaClient(
+      { ...sermonArg, verse: 'Typed here' },
+      { verse: 'Typed here' },
+      4
+    );
+
+    expect(result?.verse).toBe('Typed here');
+    // 5, not 4: the caller's next save must state the revision that now exists,
+    // otherwise its own follow-up edit is refused as stale.
+    expect(result?.rev?.core).toBe(5);
+    // Untouched aggregates keep their counters — no false conflicts elsewhere.
+    expect(result?.rev?.thoughts).toBe(2);
+  });
+
+  it('ignores a lagging replica instead of publishing its stale answer', async () => {
+    // Simulate exactly what was observed: after the commit, reads still answer with
+    // the pre-commit document.
+    const committedStore = JSON.parse(JSON.stringify(store['s-guarded']));
+    const result = await updateSermonViaClient(
+      { ...sermonArg, verse: 'Typed here' },
+      { verse: 'Typed here' },
+      4
+    ).then((r) => {
+      store['s-guarded'] = committedStore; // replica rolls back to the old view
+      return r;
+    });
+
+    expect(result?.verse).toBe('Typed here');
+    expect(result?.rev?.core).toBe(5);
   });
 });

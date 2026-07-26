@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from 'sonner';
 import "@locales/i18n";
 
+import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import PlanEditorModal from "@/components/plan-editor/PlanEditorModal";
 import AudioRecorderPortalBridge from '@/components/sermon/AudioRecorderPortalBridge';
 import ClassicThoughtsPanel from '@/components/sermon/ClassicThoughtsPanel';
@@ -29,6 +30,7 @@ import SermonOutline from "@/components/sermon/SermonOutline";
 import StructurePreview from "@/components/sermon/StructurePreview";
 import StructureStats from "@/components/sermon/StructureStats";
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
+import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useRouteId } from "@/hooks/useRouteId";
 import { useSeries } from "@/hooks/useSeries";
 import useSermon from "@/hooks/useSermon";
@@ -265,6 +267,37 @@ export default function SermonPage() {
   const { t } = useTranslation();
   const { sermon, setSermon, loading, error } = useSermon(id);
 
+  // Does the server hold a newer version of THIS sermon? Shared layer with the
+  // note and series pages: observe only, never swap what is on screen.
+  type SermonWatched = { title: string; verse: string; thoughtCount: number };
+  const knownSermon = useMemo<SermonWatched | null>(
+    () =>
+      sermon
+        ? {
+            title: sermon.title || '',
+            verse: sermon.verse || '',
+            thoughtCount: (sermon.thoughts ?? []).length,
+          }
+        : null,
+    [sermon]
+  );
+  const sermonFreshness = useDocumentFreshness<SermonWatched>({
+    collection: 'sermons',
+    docId: id || null,
+    uid: sermon?.userId ?? null,
+    enabled: Boolean(sermon),
+    known: knownSermon,
+    select: (data) => ({
+      title: (data.title as string) || '',
+      verse: (data.verse as string) || '',
+      thoughtCount: ((data.thoughts as unknown[]) ?? []).length,
+    }),
+  });
+  const [sermonFreshnessDismissed, setSermonFreshnessDismissed] = useState(false);
+  useEffect(() => {
+    if (sermonFreshness.state === 'stale') setSermonFreshnessDismissed(false);
+  }, [sermonFreshness.remote, sermonFreshness.state]);
+
   // Normalize thoughts if they are null (happens in some test scenarios/legacy data)
   if (sermon && sermon.thoughts === null) {
     sermon.thoughts = [];
@@ -323,7 +356,25 @@ useEffect(() => {
       localStorage.setItem(`prep-draft-backup-${sermon.id}`, JSON.stringify(next));
     } catch { }
 
-    const updated = await updateSermonPreparation(sermon.id, next);
+    // Only the steps that actually differ from what the server holds. Writing
+    // `next` wholesale would push back every OTHER step from this page's snapshot,
+    // silently reverting work done on another device.
+    const server = (sermon.preparation ?? {}) as Preparation;
+    // Union of both sides: a step the user REMOVED is absent from `next`, so
+    // iterating `next` alone would never notice it and the removal would never
+    // reach the server (it looked saved, then came back after a reload).
+    const allKeys = Array.from(
+      new Set([...Object.keys(next), ...Object.keys(server)])
+    ) as (keyof Preparation)[];
+    const changedKeys = allKeys.filter(
+      (key) => JSON.stringify(next[key]) !== JSON.stringify(server[key])
+    );
+    if (changedKeys.length === 0) {
+      setSavingPrep(false);
+      return;
+    }
+
+    const updated = await updateSermonPreparation(sermon.id, next, changedKeys);
     if (updated) {
       setSermon(prev => (prev ? { ...prev, preparation: updated } : prev));
       try {
@@ -1152,7 +1203,7 @@ useEffect(() => {
           onSaveVerse={async (nextVerse: string) => {
             if (!sermon) return;
             setSermon(prev => prev ? { ...prev, verse: nextVerse } : prev);
-            const updated = await updateSermon({ ...sermon, verse: nextVerse });
+            const updated = await updateSermon({ ...sermon, verse: nextVerse }, { verse: nextVerse });
             if (updated) setSermon(updated);
           }}
           readWholeBookOnceConfirmed={Boolean(prepDraft?.textContext?.readWholeBookOnceConfirmed)}
@@ -1361,6 +1412,15 @@ useEffect(() => {
 
   return (
     <div className="space-y-4 sm:space-y-6 py-4 sm:py-8">
+      {/* This SERMON changed elsewhere — distinct from the app-update toast. */}
+      {sermonFreshness.state === 'stale' && !sermonFreshnessDismissed && (
+        <DataFreshnessBanner
+          entityKey="entitySermon"
+          dirty={false}
+          deleted={sermonFreshness.remotelyDeleted}
+          onDismiss={() => setSermonFreshnessDismissed(true)}
+        />
+      )}
       <SermonHeader sermon={sermon} series={series} onUpdate={handleSermonUpdate} />
       <div className="lg:hidden">
         <StructureStats

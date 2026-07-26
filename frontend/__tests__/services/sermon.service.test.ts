@@ -48,8 +48,9 @@ describe('sermon.service', () => {
 
     expect(mockGetSermonsViaClient).toHaveBeenCalledWith('u1');
     expect(mockGetSermonByIdViaClient).toHaveBeenCalledWith('s1');
-    expect(mockUpdateSermonViaClient).toHaveBeenCalledWith(sermon);
-    expect(mockUpdateSermonPreparationViaClient).toHaveBeenCalledWith('s1', preparation);
+    // Third argument = expectedRevision; null means "unguarded", as before.
+    expect(mockUpdateSermonViaClient).toHaveBeenCalledWith(sermon, undefined, null);
+    expect(mockUpdateSermonPreparationViaClient).toHaveBeenCalledWith('s1', preparation, undefined);
     expect(mockApiClient).not.toHaveBeenCalled();
   });
 

@@ -110,7 +110,9 @@ describe('PlanTemplatesSection', () => {
     fireEvent.change(input, { target: { value: 'Alpha renamed' } });
     fireEvent.click(screen.getByLabelText('common.save'));
 
-    await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith('t1', { name: 'Alpha renamed' }));
+    // Third argument = the revision this edit was built from, so a rename from a
+    // tab that never saw another device's change is refused, not applied.
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledWith('t1', { name: 'Alpha renamed' }, 0));
   });
 
   it('shows a newly added point immediately, before any refetch', () => {

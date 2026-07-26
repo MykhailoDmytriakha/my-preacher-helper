@@ -1,5 +1,6 @@
 import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 
+import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { getClientDb } from '@/config/firebaseClientDb';
 import { StudyNote } from '@/models/models';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
@@ -9,6 +10,9 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 // Study-note reads, create, and content updates use the client Firestore SDK.
 // DELETE stays on the server because it cascades into studyMaterials, and study
 // materials + share links stay on the server.
+/** The note body is one editable unit; server-side links (materialIds) are not. */
+export const NOTE_AGGREGATE = 'note';
+
 const NOTES_COLLECTION = 'studyNotes';
 
 // Fields a client UPDATE may touch — the user-editable note content only. Never
@@ -34,6 +38,10 @@ function computeDraft(note: Pick<StudyNote, 'tags' | 'scriptureRefs'>): boolean 
 
 function normalizeNote(data: StudyNote): StudyNote {
   return {
+    // `rev` rides along with the note itself. Taking the revision ONLY from the
+    // freshness listener was not enough: a save that happened before the first
+    // server snapshot went out with no revision at all, so the guard never ran and
+    // a stale tab overwrote a newer one — reproduced with two tabs.
     ...data,
     scriptureRefs: data.scriptureRefs || [],
     tags: data.tags || [],
@@ -140,7 +148,11 @@ async function createStudyNoteViaClient(
   return hydrate(ref.id);
 }
 
-async function updateStudyNoteViaClient(id: string, updates: Partial<StudyNote>): Promise<StudyNote> {
+async function updateStudyNoteViaClient(
+  id: string,
+  updates: Partial<StudyNote>,
+  expectedRevision: number | null = null
+): Promise<StudyNote & { revision?: number }> {
   const db = getClientDb();
   const ref = doc(db, NOTES_COLLECTION, id);
   const snap = await getDoc(ref);
@@ -153,7 +165,22 @@ async function updateStudyNoteViaClient(id: string, updates: Partial<StudyNote>)
   }
   const merged = normalizeNote({ ...existing, ...whitelisted, updatedAt: new Date().toISOString() } as StudyNote);
   const cleanUpdates = deepCleanUndefined({ ...whitelisted, updatedAt: merged.updatedAt, isDraft: merged.isDraft });
-  await updateDoc(ref, cleanUpdates);
+
+  // GUARDED PATH. The caller tells us which revision its text was built from, so a
+  // save from a tab that never saw the phone's edit is REFUSED instead of quietly
+  // replacing it. Callers that cannot state a revision keep the old behaviour
+  // exactly — this must not change anything for paths not yet migrated.
+  if (expectedRevision !== null) {
+    const revision = await conflictSafeUpdate(ref, cleanUpdates, 'Study note not found', {
+      aggregate: NOTE_AGGREGATE,
+      expectedRevision,
+    });
+    return { ...merged, revision };
+  }
+
+  // Unguarded path still advances the counter — otherwise it would lie and give a
+  // later stale save false permission. `increment` works offline; a transaction does not.
+  await updateDoc(ref, { ...cleanUpdates, ...revisionBump(NOTE_AGGREGATE) });
   return merged;
 }
 
@@ -167,8 +194,12 @@ export async function createStudyNote(
   return createStudyNoteViaClient(note);
 }
 
-export async function updateStudyNote(id: string, updates: Partial<StudyNote> & { userId: string }): Promise<StudyNote> {
-  return updateStudyNoteViaClient(id, updates);
+export async function updateStudyNote(
+  id: string,
+  updates: Partial<StudyNote> & { userId: string },
+  expectedRevision: number | null = null
+): Promise<StudyNote & { revision?: number }> {
+  return updateStudyNoteViaClient(id, updates, expectedRevision);
 }
 
 export async function deleteStudyNote(id: string, userId: string): Promise<void> {

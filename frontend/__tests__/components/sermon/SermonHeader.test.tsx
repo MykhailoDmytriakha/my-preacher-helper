@@ -3,7 +3,8 @@ import React from 'react';
 
 import SermonHeader from '@/components/sermon/SermonHeader';
 import { Sermon, Series } from '@/models/models';
-import { updateSermon } from '@/services/sermon.service';
+import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { getSermonById, updateSermon } from '@/services/sermon.service';
 import { getExportContent } from '@utils/exportContent';
 import '@testing-library/jest-dom';
 
@@ -16,7 +17,12 @@ jest.mock('@/providers/ConnectionProvider', () => ({
 }));
 
 jest.mock('@/services/sermon.service', () => ({
-  updateSermon: jest.fn()
+  updateSermon: jest.fn(),
+  getSermonById: jest.fn()
+}));
+
+jest.mock('sonner', () => ({
+  toast: { error: jest.fn(), success: jest.fn() }
 }));
 
 jest.mock('@utils/dateFormatter', () => ({
@@ -259,10 +265,16 @@ describe('SermonHeader Component', () => {
       fireEvent.click(saveButton);
 
       await waitFor(() => {
-        expect(mockUpdateSermon).toHaveBeenCalledWith({
-          ...mockSermon,
-          title: 'Updated Title'
-        });
+        // The second argument is the surgical patch: only the field the user
+        // touched is written, so an untouched verse cannot be reverted from a
+        // stale snapshot.
+        // Third argument = the revision this edit was built from; a document with
+        // no counter yet reads as 0.
+        expect(mockUpdateSermon).toHaveBeenCalledWith(
+          { ...mockSermon, title: 'Updated Title' },
+          { title: 'Updated Title' },
+          0
+        );
         expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon);
       });
     });
@@ -309,10 +321,11 @@ describe('SermonHeader Component', () => {
       fireEvent.click(saveButton);
 
       await waitFor(() => {
-        expect(mockUpdateSermon).toHaveBeenCalledWith({
-          ...mockSermon,
-          verse: 'Updated verse text'
-        });
+        expect(mockUpdateSermon).toHaveBeenCalledWith(
+          { ...mockSermon, verse: 'Updated verse text' },
+          { verse: 'Updated verse text' },
+          0
+        );
         expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon);
       });
     });
@@ -368,10 +381,11 @@ describe('SermonHeader Component', () => {
       fireEvent.click(saveButton);
 
       await waitFor(() => {
-        expect(mockUpdateSermon).toHaveBeenCalledWith({
-          ...mockSermon,
-          verse: multiLineVerse
-        });
+        expect(mockUpdateSermon).toHaveBeenCalledWith(
+          { ...mockSermon, verse: multiLineVerse },
+          { verse: multiLineVerse },
+          0
+        );
         expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon);
       });
     });
@@ -393,10 +407,11 @@ describe('SermonHeader Component', () => {
       fireEvent.keyDown(verseTextarea, { key: 'Enter', ctrlKey: true });
 
       await waitFor(() => {
-        expect(mockUpdateSermon).toHaveBeenCalledWith({
-          ...mockSermon,
-          verse: 'Updated verse text'
-        });
+        expect(mockUpdateSermon).toHaveBeenCalledWith(
+          { ...mockSermon, verse: 'Updated verse text' },
+          { verse: 'Updated verse text' },
+          0
+        );
         expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon);
       });
     });
@@ -573,4 +588,126 @@ describe('SermonHeader Component', () => {
       });
     });
   });
+});
+
+/**
+ * A REFUSED save must not cost the person their words.
+ *
+ * `EditableTitle`/`EditableVerse` treat a resolved `onSave` as success: they close
+ * the editor, and an effect resets the field to the server value. So a refusal
+ * that is merely toasted erases what was typed — and these fields have no durable
+ * draft behind them. The header must HOLD the refused text and offer the choice.
+ */
+describe('SermonHeader — a refused save keeps the text and offers a choice', () => {
+  const updateSermonMock = updateSermon as jest.MockedFunction<typeof updateSermon>;
+  const getSermonByIdMock = getSermonById as jest.MockedFunction<typeof getSermonById>;
+
+  const sermonAtRev4: Sermon = {
+    id: 'sermon-1',
+    title: 'Server title',
+    verse: 'Server verse',
+    date: '2024-01-15',
+    userId: 'test-user-id',
+    thoughts: [],
+    outline: { introduction: [], main: [], conclusion: [] },
+    isPreached: false,
+    preparation: {},
+    rev: { core: 4 },
+  };
+
+  const editTitle = (value: string) => {
+    fireEvent.click(screen.getAllByTitle('Edit')[0]);
+    fireEvent.change(screen.getByDisplayValue('Server title'), { target: { value } });
+    fireEvent.click(screen.getByTitle('Save'));
+  };
+
+  beforeEach(() => {
+    updateSermonMock.mockReset();
+    getSermonByIdMock.mockReset();
+  });
+
+  it('shows the refused text instead of losing it', async () => {
+    // The other device already moved the server to revision 7.
+    updateSermonMock.mockRejectedValue(new StaleWriteError('core', 4, 7));
+
+    render(<SermonHeader sermon={sermonAtRev4} onUpdate={jest.fn()} />);
+    editTitle('Typed on the laptop');
+
+    // THE POINT: the words are on screen, not merely promised to be safe.
+    expect(await screen.findByText('Typed on the laptop')).toBeInTheDocument();
+    expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
+  });
+
+  it('re-sends with the revision the server held at refusal, so "keep mine" lands', async () => {
+    updateSermonMock.mockRejectedValueOnce(new StaleWriteError('core', 4, 7));
+    const onUpdate = jest.fn();
+
+    render(<SermonHeader sermon={sermonAtRev4} onUpdate={onUpdate} />);
+    editTitle('Typed on the laptop');
+    await screen.findByText('freshness.conflictTitle');
+
+    const saved = { ...sermonAtRev4, title: 'Typed on the laptop', rev: { core: 8 } };
+    updateSermonMock.mockResolvedValueOnce(saved);
+    getSermonByIdMock.mockResolvedValue(saved);
+    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
+
+    await waitFor(() => {
+      // 7, NOT 4: resending the original revision would be refused again and the
+      // button would promise an action it never performs.
+      expect(updateSermonMock).toHaveBeenLastCalledWith(
+        expect.objectContaining({ title: 'Typed on the laptop' }),
+        { title: 'Typed on the laptop' },
+        7
+      );
+      expect(onUpdate).toHaveBeenCalledWith(saved);
+    });
+    expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument();
+  });
+
+  it('loads the other version when "take theirs" is chosen', async () => {
+    updateSermonMock.mockRejectedValue(new StaleWriteError('core', 4, 7));
+    const onUpdate = jest.fn();
+
+    render(<SermonHeader sermon={sermonAtRev4} onUpdate={onUpdate} />);
+    editTitle('Typed on the laptop');
+    await screen.findByText('freshness.conflictTitle');
+
+    const fromServer = { ...sermonAtRev4, title: 'Typed on the phone', rev: { core: 7 } };
+    getSermonByIdMock.mockResolvedValue(fromServer);
+    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+
+    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith(fromServer));
+    expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument();
+  });
+
+  it('stays out of the way when the save succeeds', async () => {
+    updateSermonMock.mockResolvedValue({ ...sermonAtRev4, title: 'Typed on the laptop' });
+
+    render(<SermonHeader sermon={sermonAtRev4} onUpdate={jest.fn()} />);
+    editTitle('Typed on the laptop');
+
+    await waitFor(() => expect(updateSermonMock).toHaveBeenCalled());
+    expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument();
+  });
+
+  it('publishes the saved value WITHOUT re-reading the just-written document', async () => {
+    // Proven live with a probe: right after the transaction commits, a read still
+    // answers from the local replica and returns the OTHER device's text plus the
+    // pre-commit revision. Re-reading therefore put stale data back on screen after
+    // a correct save. The write path returns what it committed; nothing re-reads.
+    updateSermonMock.mockRejectedValueOnce(new StaleWriteError('core', 4, 7));
+    const onUpdate = jest.fn();
+
+    render(<SermonHeader sermon={sermonAtRev4} onUpdate={onUpdate} />);
+    editTitle('Typed on the laptop');
+    await screen.findByText('freshness.conflictTitle');
+
+    const committed = { ...sermonAtRev4, title: 'Typed on the laptop', rev: { core: 8 } };
+    updateSermonMock.mockResolvedValueOnce(committed);
+    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
+
+    await waitFor(() => expect(onUpdate).toHaveBeenLastCalledWith(committed));
+    expect(getSermonByIdMock).not.toHaveBeenCalled();
+  });
+
 });

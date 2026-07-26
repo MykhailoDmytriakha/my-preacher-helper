@@ -1,6 +1,7 @@
 import {
   arrayUnion,
   collection,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -21,6 +22,7 @@ import {
   ThoughtsBySection,
 } from '@/models/models';
 import { atomicUpdate } from '@/services/atomicUpdate.client';
+import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { newClientId } from '@/utils/clientId';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { compareById, timeOrZero } from '@/utils/sortHelpers';
@@ -167,26 +169,106 @@ export async function fetchCalendarSermonsViaClient(
 // a stale sibling snapshot — that is the structure-overwrite bug class #13) ---
 
 /** Mirror PUT /api/sermons/:id — whitelist title/verse/isPreached/preparation. */
-export async function updateSermonViaClient(updated: Sermon): Promise<Sermon | null> {
+/**
+ * Fields a caller may hand over when it wants ONLY those written.
+ *
+ * WHY. Callers used to pass a whole `Sermon` built from page state loaded when
+ * the page opened, e.g. `updateSermon({ ...sermon, verse })`. This service then
+ * wrote title, verse, isPreached AND the entire nested `preparation` — so saving
+ * a verse silently reverted preparation edited meanwhile on another device.
+ * Passing an explicit patch keeps the blast radius to what the user touched.
+ */
+export type SermonCoreUpdate = Partial<Pick<Sermon, 'title' | 'verse' | 'isPreached' | 'preparation'>>;
+
+/** Aggregate name for the sermon's own fields (title/verse/isPreached/preparation). */
+export const SERMON_CORE_AGGREGATE = 'core';
+
+export async function updateSermonViaClient(
+  updated: Sermon,
+  patch?: SermonCoreUpdate,
+  expectedRevision: number | null = null
+): Promise<Sermon | null> {
   const ref = sermonRef(updated.id);
   const data: Record<string, unknown> = {};
-  if (updated.title) data.title = updated.title;
-  if (updated.verse) data.verse = updated.verse;
-  if (typeof updated.isPreached === 'boolean') data.isPreached = updated.isPreached;
-  if (updated.preparation && typeof updated.preparation === 'object') {
-    data.preparation = updated.preparation;
+  const source = patch ?? updated;
+  // `patch` is authoritative when given: only the keys it carries are written,
+  // so an absent key means "leave whatever is on the server alone".
+  if (!patch || 'title' in patch) {
+    if (source.title) data.title = source.title;
+  }
+  if (!patch || 'verse' in patch) {
+    if (source.verse) data.verse = source.verse;
+  }
+  if (!patch || 'isPreached' in patch) {
+    if (typeof source.isPreached === 'boolean') data.isPreached = source.isPreached;
+  }
+  if (!patch || 'preparation' in patch) {
+    if (source.preparation && typeof source.preparation === 'object') {
+      data.preparation = source.preparation;
+    }
   }
   if (Object.keys(data).length === 0) return null; // server replies 400 -> service null
   data.updatedAt = now();
-  await updateDoc(ref, deepCleanUndefined(data) as SermonUpdate);
+
+  // GUARDED PATH: refuse a save built from an older revision instead of quietly
+  // replacing what another device stored. Callers that cannot state a revision
+  // keep the previous behaviour untouched.
+  if (expectedRevision !== null) {
+    const committed = await conflictSafeUpdate(
+      ref,
+      deepCleanUndefined(data) as SermonUpdate,
+      'Sermon not found',
+      { aggregate: SERMON_CORE_AGGREGATE, expectedRevision }
+    );
+    // DO NOT re-read here. Proven live with a probe: right after the transaction
+    // commits, `getDoc` still answers from the local replica, which has not yet
+    // caught up — it returned the OTHER device's text and the pre-commit revision,
+    // so a correct save put stale data back on screen. We already know exactly what
+    // was written; returning it (with the committed revision) also keeps the next
+    // save's stated revision current, instead of refusing the person's own follow-up
+    // edit as stale.
+    return {
+      ...updated,
+      ...(data as Partial<Sermon>),
+      rev: { ...(updated.rev ?? {}), [SERMON_CORE_AGGREGATE]: committed },
+    };
+  }
+
+  // Unguarded path still advances the counter — see revisionBump.
+  await updateDoc(ref, {
+    ...(deepCleanUndefined(data) as SermonUpdate),
+    ...revisionBump(SERMON_CORE_AGGREGATE),
+  });
   return (await getSermonByIdViaClient(updated.id)) ?? null;
 }
 
 /** Mirror PUT /api/sermons/:id with { preparation } only. */
 export async function updateSermonPreparationViaClient(
   sermonId: string,
-  preparation: Preparation
+  preparation: Preparation,
+  changedKeys?: (keyof Preparation)[]
 ): Promise<Preparation | null> {
+  // WHOLE-OBJECT WRITE (no changedKeys) replaces every preparation step from the
+  // caller's snapshot, so editing one step on this device reverts a DIFFERENT
+  // step edited meanwhile on another. When the caller knows which steps changed
+  // we address them by nested field path instead, leaving the rest untouched —
+  // Firestore merges `a.b` writes into the existing map rather than replacing it.
+  if (changedKeys && changedKeys.length > 0) {
+    const patch: { [field: string]: FieldValue | Partial<unknown> | undefined } = {
+      updatedAt: now(),
+    };
+    changedKeys.forEach((key) => {
+      const value = preparation[key];
+      // A step the user REMOVED must be deleted explicitly. Simply omitting the
+      // field path leaves the old value on the server: the UI looked saved and the
+      // deleted step reappeared after a reload. Firestore needs the deleteField
+      // sentinel to remove a nested field.
+      patch[`preparation.${String(key)}`] = value === undefined ? deleteField() : value;
+    });
+    await updateDoc(sermonRef(sermonId), deepCleanUndefined(patch));
+    return preparation;
+  }
+
   await updateDoc(sermonRef(sermonId), deepCleanUndefined({ preparation, updatedAt: now() }));
   return preparation;
 }

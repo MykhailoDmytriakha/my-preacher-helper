@@ -205,7 +205,10 @@ describe('Thoughts API POST', () => {
             })
           ])
         })
-      })
+      }),
+      // Third argument names the aggregate whose counter this write advances, so
+      // the server cannot silently change data while the number stays put.
+      'thoughts'
     );
 
     spyConsoleWarn.mockRestore();

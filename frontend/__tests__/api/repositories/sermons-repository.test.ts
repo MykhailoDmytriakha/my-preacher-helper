@@ -22,6 +22,8 @@ jest.mock('@/config/firebaseAdminConfig', () => {
     initAdmin: jest.fn().mockResolvedValue(mockAdminDb),
     FieldValue: {
       arrayUnion: mockArrayUnion,
+      // Server writes advance the aggregate counter so it cannot lie to clients.
+      increment: jest.fn((n: number) => ({ __increment: n })),
       serverTimestamp: jest.fn().mockReturnValue('mocked-server-timestamp')
     },
   };
@@ -126,7 +128,14 @@ describe('SermonsRepository', () => {
             name: 'successfully updates valid plan',
             run: async () => {
               const result = await sermonsRepository.updateSermonPlan('test-sermon-123', validPlan);
-              expect(mockUpdate).toHaveBeenCalledWith({ draft: validPlan, plan: validPlan, updatedAt: expect.any(String) });
+              // The plan is a human-edited aggregate, so this server write advances
+              // its counter — otherwise a later stale client save would look valid.
+              expect(mockUpdate).toHaveBeenCalledWith({
+                draft: validPlan,
+                plan: validPlan,
+                'rev.plan': { __increment: 1 },
+                updatedAt: expect.any(String),
+              });
               expect(result).toEqual(validPlan);
             }
           },
@@ -147,7 +156,7 @@ describe('SermonsRepository', () => {
                 conclusion: { outline: '' }
               };
               const result = await sermonsRepository.updateSermonPlan('test-sermon-123', emptyPlan);
-              expect(mockUpdate).toHaveBeenCalledWith({ draft: emptyPlan, plan: emptyPlan, updatedAt: expect.any(String) });
+              expect(mockUpdate).toHaveBeenCalledWith({ draft: emptyPlan, plan: emptyPlan, 'rev.plan': { __increment: 1 }, updatedAt: expect.any(String) });
               expect(result).toEqual(emptyPlan);
             }
           },
@@ -160,7 +169,7 @@ describe('SermonsRepository', () => {
                 conclusion: { outline: 'Conclusion outline', outlinePoints: { point3: 'content3' } }
               };
               await sermonsRepository.updateSermonPlan('test-sermon-123', planWithSermonPoints);
-              expect(mockUpdate).toHaveBeenCalledWith({ draft: planWithSermonPoints, plan: planWithSermonPoints, updatedAt: expect.any(String) });
+              expect(mockUpdate).toHaveBeenCalledWith({ draft: planWithSermonPoints, plan: planWithSermonPoints, 'rev.plan': { __increment: 1 }, updatedAt: expect.any(String) });
             }
           },
           {

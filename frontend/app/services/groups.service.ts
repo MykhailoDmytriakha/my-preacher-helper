@@ -3,6 +3,7 @@ import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, whe
 import { getClientDb } from '@/config/firebaseClientDb';
 import { Group, GroupFlowItem, GroupMeetingDate } from '@/models/models';
 import { atomicUpdate } from '@/services/atomicUpdate.client';
+import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { newClientId } from '@/utils/clientId';
 
@@ -94,7 +95,14 @@ async function createGroupViaClient(group: Omit<Group, 'id'> & { id?: string }):
   return hydrateGroup({ ...clean, id: ref.id } as Group);
 }
 
-async function updateGroupViaClient(groupId: string, updates: Partial<Group>): Promise<Group> {
+/** Group content edited by a human is one aggregate; meetingDates are handled apart. */
+export const GROUP_CONTENT_AGGREGATE = 'content';
+
+async function updateGroupViaClient(
+  groupId: string,
+  updates: Partial<Group>,
+  expectedRevision: number | null = null
+): Promise<Group> {
   const db = getClientDb();
   const ref = doc(db, GROUPS_COLLECTION, groupId);
   const snap = await getDoc(ref);
@@ -105,7 +113,25 @@ async function updateGroupViaClient(groupId: string, updates: Partial<Group>): P
     ...(updates.flow ? { flow: normalizeFlow(updates.flow) } : {}),
     updatedAt: new Date().toISOString(),
   });
-  await updateDoc(ref, cleanUpdates);
+  // GUARDED PATH — see conflictSafeUpdate.client.ts. No revision stated = old path.
+  if (expectedRevision !== null) {
+    const committed = await conflictSafeUpdate(ref, cleanUpdates, GROUP_NOT_FOUND, {
+      aggregate: GROUP_CONTENT_AGGREGATE,
+      expectedRevision,
+    });
+    // Carry the COMMITTED revision back. Without it the caller keeps the pre-write
+    // number and its next save is refused as stale — a false conflict on the
+    // person's own follow-up edit, which is exactly what trains people to click
+    // through the dialog.
+    return hydrateGroup({
+      ...current,
+      ...cleanUpdates,
+      rev: { ...(current.rev ?? {}), [GROUP_CONTENT_AGGREGATE]: committed },
+    } as Group);
+  }
+
+  // Unguarded path still advances the counter — see revisionBump.
+  await updateDoc(ref, { ...cleanUpdates, ...revisionBump(GROUP_CONTENT_AGGREGATE) });
   return hydrateGroup({ ...current, ...cleanUpdates } as Group);
 }
 
@@ -234,13 +260,18 @@ export const createGroup = async (group: Omit<Group, 'id'> & { id?: string }): P
   return createGroupViaClient(group);
 };
 
-export const updateGroup = async (groupId: string, updates: Partial<Group>): Promise<Group> => {
+export const updateGroup = async (
+  groupId: string,
+  updates: Partial<Group>,
+  /** Revision this edit was built from; `null` keeps the unguarded legacy path. */
+  expectedRevision: number | null = null
+): Promise<Group> => {
   // Playlist model: a group's series membership lives in series.items and is
   // written ONLY by the client sweep (useSeriesMembership) — never as a group
   // back-ref. Strip the deprecated seriesId/seriesPosition so a stray caller
   // can't write them, and keep updateGroup a pure own-doc client write.
   const { seriesId: _seriesId, seriesPosition: _seriesPosition, ...contentUpdates } = updates;
-  return updateGroupViaClient(groupId, contentUpdates);
+  return updateGroupViaClient(groupId, contentUpdates, expectedRevision);
 };
 
 // DELETE stays on the server: it cascades via seriesRepository.removeGroupFromAllSeries

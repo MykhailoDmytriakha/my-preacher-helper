@@ -457,7 +457,22 @@ jest.mock('firebase/firestore', () => {
     where: jest.fn(),
     orderBy: jest.fn(),
     limit: jest.fn(),
-    onSnapshot: jest.fn(),
+    // Any page that watches a document reaches getClientDb(), which initialises
+    // Firestore with a persistent cache. Without these the page throws on render
+    // and the failure looks like a bug in the page under test.
+    initializeFirestore: jest.fn().mockReturnValue({}),
+    persistentLocalCache: jest.fn().mockReturnValue({}),
+    persistentMultipleTabManager: jest.fn().mockReturnValue({}),
+    memoryLocalCache: jest.fn().mockReturnValue({}),
+    connectFirestoreEmulator: jest.fn(),
+    enableIndexedDbPersistence: jest.fn(),
+    deleteField: jest.fn(() => '__DELETE__'),
+    increment: jest.fn((n) => ({ __increment: n })),
+    arrayUnion: jest.fn((v) => v),
+    arrayRemove: jest.fn((v) => v),
+    runTransaction: jest.fn(),
+    writeBatch: jest.fn(),
+    onSnapshot: jest.fn(() => jest.fn()),
     Timestamp: {
       now: jest.fn().mockReturnValue({ toDate: jest.fn() }),
       fromDate: jest.fn().mockReturnValue({}),

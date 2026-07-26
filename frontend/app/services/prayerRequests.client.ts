@@ -12,9 +12,20 @@ import {
 import { getClientDb } from '@/config/firebaseClientDb';
 import { PrayerRequest, PrayerStatus, PrayerUpdate } from '@/models/models';
 import { atomicUpdate } from '@/services/atomicUpdate.client';
+import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 
 const PRAYER_REQUESTS_COLLECTION = 'prayerRequests';
 const PRAYER_NOT_FOUND_ERROR = 'Prayer request not found';
+
+/**
+ * Independently edited parts of a prayer request. Kept apart so marking one
+ * answered, or logging an update, never collides with someone editing the text —
+ * false conflicts teach people to click through the dialog, which is worse than
+ * having none.
+ */
+export const PRAYER_CORE_AGGREGATE = 'core';
+export const PRAYER_STATUS_AGGREGATE = 'status';
+export const PRAYER_UPDATES_AGGREGATE = 'updates';
 
 export interface AddPrayerUpdateViaClientPayload {
   updateId: string;
@@ -72,7 +83,9 @@ export async function getPrayerRequestByIdViaClient(id: string): Promise<PrayerR
 
 export async function updatePrayerRequestViaClient(
   id: string,
-  updates: Partial<PrayerRequest>
+  updates: Partial<PrayerRequest>,
+  /** Revision this edit was built from; `null` keeps the unguarded legacy path. */
+  expectedRevision: number | null = null
 ): Promise<PrayerRequest> {
   const db = getClientDb();
   const ref = doc(db, PRAYER_REQUESTS_COLLECTION, id);
@@ -86,7 +99,17 @@ export async function updatePrayerRequestViaClient(
     ...safeUpdates,
     updatedAt: new Date().toISOString(),
   });
-  await updateDoc(ref, cleanUpdates);
+  // GUARDED PATH — see conflictSafeUpdate.client.ts. No revision stated = old path.
+  if (expectedRevision !== null) {
+    await conflictSafeUpdate(ref, cleanUpdates, PRAYER_NOT_FOUND_ERROR, {
+      aggregate: PRAYER_CORE_AGGREGATE,
+      expectedRevision,
+    });
+  } else {
+    // Unguarded writers must STILL advance the counter, or it lies and a later
+    // stale save is handed permission to overwrite — see revisionBump.
+    await updateDoc(ref, { ...cleanUpdates, ...revisionBump(PRAYER_CORE_AGGREGATE) });
+  }
   return hydratePrayerRequest(
     { ...current, ...cleanUpdates } as Omit<PrayerRequest, 'id'>,
     id
@@ -128,7 +151,7 @@ export async function addPrayerUpdateViaClient(
       };
       const updates = [...current.updates, update];
       result = hydratePrayerRequest({ ...current, updates, updatedAt: payload.createdAt }, id);
-      return { updates, updatedAt: payload.createdAt };
+      return { updates, updatedAt: payload.createdAt, ...revisionBump(PRAYER_UPDATES_AGGREGATE) };
     },
     PRAYER_NOT_FOUND_ERROR,
     // No-ops when this updateId is already stored, so replaying a transient
@@ -161,6 +184,6 @@ export async function setPrayerStatusViaClient(
     ...(payload.answeredAt !== undefined ? { answeredAt: payload.answeredAt } : {}),
     ...(payload.answerText !== undefined ? { answerText: payload.answerText } : {}),
   });
-  await updateDoc(ref, patch);
+  await updateDoc(ref, { ...patch, ...revisionBump(PRAYER_STATUS_AGGREGATE) });
   return hydratePrayerRequest({ ...current, ...patch } as Omit<PrayerRequest, 'id'>, id);
 }

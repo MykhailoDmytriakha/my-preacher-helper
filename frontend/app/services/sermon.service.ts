@@ -4,6 +4,7 @@ import {
   getSermonsViaClient,
   updateSermonPreparationViaClient,
   updateSermonViaClient,
+  type SermonCoreUpdate,
 } from '@/services/sermons.client';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
@@ -61,10 +62,24 @@ export async function deleteSermon(sermonId: string): Promise<void> {
   }
 }
 
-export const updateSermon = async (updatedSermon: Sermon): Promise<Sermon | null> => {
-  return updateSermonViaClient(updatedSermon);
+/**
+ * `patch` names the fields the caller actually changed. Without it the whole
+ * whitelist (title, verse, isPreached, preparation) is written from the caller's
+ * snapshot, so saving one field reverts the others if they changed elsewhere.
+ */
+export const updateSermon = async (
+  updatedSermon: Sermon,
+  patch?: SermonCoreUpdate,
+  expectedRevision: number | null = null
+): Promise<Sermon | null> => {
+  return updateSermonViaClient(updatedSermon, patch, expectedRevision);
 };
 
-export const updateSermonPreparation = async (sermonId: string, updates: Preparation): Promise<Preparation | null> => {
-  return updateSermonPreparationViaClient(sermonId, updates);
+/** `changedKeys` limits the write to those preparation steps — see the client. */
+export const updateSermonPreparation = async (
+  sermonId: string,
+  updates: Preparation,
+  changedKeys?: (keyof Preparation)[]
+): Promise<Preparation | null> => {
+  return updateSermonPreparationViaClient(sermonId, updates, changedKeys);
 };

@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     };
 
     // Update the sermon with insights using sermonsRepository instead of direct adminDb
-    await sermonsRepository.updateSermonData(sermonId, { insights: updatedInsights });
+    await sermonsRepository.updateSermonData(sermonId, { insights: updatedInsights }, 'insights');
     console.log("Verses route: Updated sermon with generated related verses");
 
     return NextResponse.json({ insights: updatedInsights });

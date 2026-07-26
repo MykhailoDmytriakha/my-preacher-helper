@@ -212,7 +212,8 @@ describe('Thoughts API route additional coverage', () => {
           thoughts: expect.objectContaining({
             elements: [expect.objectContaining({ tags: ['Примеры'] })],
           }),
-        })
+        }),
+        'thoughts'
       );
     });
 

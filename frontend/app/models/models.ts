@@ -76,6 +76,8 @@ export interface PlanTemplate {
   structure: SermonOutline;
   createdAt: string;
   updatedAt: string;
+  /** Per-aggregate revision counters — see conflictSafeUpdate.client.ts. */
+  rev?: Record<string, number>;
 }
 
 export interface ThoughtsBySection {
@@ -185,6 +187,8 @@ export interface Sermon {
     lastOptimized?: string;
   };
   updatedAt?: string;
+  /** Revision per editable aggregate; absent reads as 0. See conflictSafeUpdate.client.ts */
+  rev?: Record<string, number>;
 }
 
 export type SeriesKind = 'sermon' | 'group' | 'mixed';
@@ -256,6 +260,8 @@ export interface Group {
   seriesPosition?: number | null;
   createdAt: string;
   updatedAt: string;
+  /** Revision per editable aggregate; absent reads as 0. */
+  rev?: Record<string, number>;
 }
 
 export interface Preparation {
@@ -336,6 +342,8 @@ export interface Series {
 
   createdAt: string;
   updatedAt: string;
+  /** Revision per editable aggregate; absent reads as 0. */
+  rev?: Record<string, number>;
 }
 
 export interface ExegeticalPlanNode {
@@ -489,6 +497,11 @@ export interface StudyNote {
   relatedSermonIds?: string[];
   /** Type of the note: standard note or a question to be answered later */
   type?: 'note' | 'question';
+  /**
+   * Revision counter per editable aggregate, used to refuse a save built from an
+   * older version. Absent on documents written before the guard existed — read as 0.
+   */
+  rev?: Record<string, number>;
 }
 
 export interface StudyNoteShareLink {
@@ -558,6 +571,8 @@ export interface PrayerRequest {
   updatedAt: string;
   answeredAt?: string;
   answerText?: string;
+  /** Per-aggregate revision counters — see conflictSafeUpdate.client.ts. */
+  rev?: Record<string, number>;
 }
 
 export interface PrayerCategory {

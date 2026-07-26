@@ -615,12 +615,20 @@ describe('GroupDetailPage', () => {
       jest.advanceTimersByTime(3000);
     });
 
-    expect(updateGroupDetail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: 'Updated Group',
-        description: 'Updated Description',
-        status: 'active',
-      })
+    // Only the fields the user actually touched are sent. Sending everything
+    // means a stale tab's title edit overwrites newer templates/flow text
+    // written from another device.
+    const sentPayloads = (updateGroupDetail as jest.Mock).mock.calls.map((call) => call[0]);
+    const sentKeys = new Set(sentPayloads.flatMap((payload) => Object.keys(payload)));
+
+    expect(sentKeys.has('title')).toBe(true);
+    expect(sentKeys.has('description')).toBe(true);
+    // Untouched fields must never appear.
+    expect(sentKeys.has('status')).toBe(false);
+    expect(sentKeys.has('templates')).toBe(false);
+    expect(sentKeys.has('flow')).toBe(false);
+    expect(sentPayloads.at(-1)).toEqual(
+      expect.objectContaining({ description: 'Updated Description' })
     );
 
     // Meeting date should be updated (existing meeting id = 'date-1')

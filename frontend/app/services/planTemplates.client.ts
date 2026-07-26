@@ -11,6 +11,10 @@ import {
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { PlanTemplate, SermonOutline } from '@/models/models';
+import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
+
+/** A template's name and structure are edited together by one person. */
+export const PLAN_TEMPLATE_AGGREGATE = 'template';
 
 // Client-SDK CRUD for plan templates (offline replica in IndexedDB + Security Rules).
 // The server route was removed in the Phase 5 cleanup, so planTemplate.service.ts
@@ -59,7 +63,9 @@ export async function createPlanTemplateViaClient(payload: {
 
 export async function updatePlanTemplateViaClient(
   id: string,
-  updates: Partial<Pick<PlanTemplate, 'name' | 'structure'>>
+  updates: Partial<Pick<PlanTemplate, 'name' | 'structure'>>,
+  /** Revision this edit was built from; `null` keeps the unguarded legacy path. */
+  expectedRevision: number | null = null
 ): Promise<void> {
   const db = getClientDb();
   const patch: { updatedAt: string; name?: string; structure?: SermonOutline } = {
@@ -67,7 +73,17 @@ export async function updatePlanTemplateViaClient(
   };
   if (updates.name !== undefined) patch.name = updates.name;
   if (updates.structure !== undefined) patch.structure = normalizeStructure(updates.structure);
-  await updateDoc(doc(db, COLLECTION, id), patch);
+  const ref = doc(db, COLLECTION, id);
+  // GUARDED PATH — see conflictSafeUpdate.client.ts. No revision stated = old path.
+  if (expectedRevision !== null) {
+    await conflictSafeUpdate(ref, patch, 'Plan template not found', {
+      aggregate: PLAN_TEMPLATE_AGGREGATE,
+      expectedRevision,
+    });
+    return;
+  }
+  // Unguarded writers must STILL advance the counter — see revisionBump.
+  await updateDoc(ref, { ...patch, ...revisionBump(PLAN_TEMPLATE_AGGREGATE) });
 }
 
 export async function deletePlanTemplateViaClient(id: string): Promise<void> {

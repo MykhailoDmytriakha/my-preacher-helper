@@ -29,6 +29,8 @@ async function importServiceWithClientFlag() {
 
   jest.doMock('@/config/firebaseClientDb', () => ({ getClientDb: mockGetClientDb }));
   jest.doMock('firebase/firestore', () => ({
+    // Counter bump rides the ordinary updateDoc path (works offline).
+    increment: (n: number) => ({ __increment: n }),
     collection: mockCollection,
     deleteDoc: mockDeleteDoc,
     doc: mockDoc,

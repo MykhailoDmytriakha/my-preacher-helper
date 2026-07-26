@@ -2,6 +2,7 @@ import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, whe
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { Series } from '@/models/models';
+import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 import { timeOrZero, compareById } from '@/utils/sortHelpers';
@@ -96,7 +97,14 @@ async function createSeriesViaClient(series: Omit<Series, 'id'> & { id?: string 
   return hydrateSeries({ ...clean, id: ref.id } as Series);
 }
 
-async function updateSeriesViaClient(seriesId: string, updates: Partial<Series>): Promise<Series> {
+/** Series metadata edited by a human is one aggregate; membership items are not. */
+export const SERIES_META_AGGREGATE = 'meta';
+
+async function updateSeriesViaClient(
+  seriesId: string,
+  updates: Partial<Series>,
+  expectedRevision: number | null = null
+): Promise<Series> {
   const db = getClientDb();
   const ref = doc(db, SERIES_COLLECTION, seriesId);
   const snap = await getDoc(ref);
@@ -108,7 +116,25 @@ async function updateSeriesViaClient(seriesId: string, updates: Partial<Series>)
     if (updates[field] !== undefined) whitelisted[field] = updates[field];
   }
   const cleanUpdates = deepCleanUndefined({ ...whitelisted, updatedAt: new Date().toISOString() });
-  await updateDoc(ref, cleanUpdates);
+
+  // GUARDED PATH — see conflictSafeUpdate.client.ts. Without a stated revision the
+  // behaviour is exactly what it was.
+  if (expectedRevision !== null) {
+    const committed = await conflictSafeUpdate(ref, cleanUpdates, `Series ${seriesId} not found`, {
+      aggregate: SERIES_META_AGGREGATE,
+      expectedRevision,
+    });
+    // Carry the COMMITTED revision back, or the caller's next save states the
+    // pre-write number and is refused as stale — a false conflict on its own edit.
+    return hydrateSeries({
+      ...current,
+      ...cleanUpdates,
+      rev: { ...(current.rev ?? {}), [SERIES_META_AGGREGATE]: committed },
+    } as Series);
+  }
+
+  // Unguarded path still advances the counter — see revisionBump.
+  await updateDoc(ref, { ...cleanUpdates, ...revisionBump(SERIES_META_AGGREGATE) });
   return hydrateSeries({ ...current, ...cleanUpdates } as Series);
 }
 
@@ -130,11 +156,15 @@ export const createSeries = async (series: Omit<Series, 'id'> & { id?: string })
   return createSeriesViaClient(series);
 };
 
-export const updateSeries = async (seriesId: string, updates: Partial<Series>): Promise<Series> => {
+export const updateSeries = async (
+  seriesId: string,
+  updates: Partial<Series>,
+  expectedRevision: number | null = null
+): Promise<Series> => {
   // Items/sermonIds membership flows through the dedicated cascade endpoints, never
   // updateSeries; the client path whitelists metadata only (same as the server route),
   // so it stays a pure own-doc write with no cross-collection effect.
-  return updateSeriesViaClient(seriesId, updates);
+  return updateSeriesViaClient(seriesId, updates, expectedRevision);
 };
 
 export const deleteSeries = async (seriesId: string): Promise<void> => {

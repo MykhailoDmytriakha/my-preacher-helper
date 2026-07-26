@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     };
 
     // Update the sermon with insights using sermonsRepository instead of direct adminDb
-    await sermonsRepository.updateSermonData(sermonId, { insights: updatedInsights });
+    await sermonsRepository.updateSermonData(sermonId, { insights: updatedInsights }, 'insights');
     console.log("Plan route: Updated sermon with generated thoughts plan");
 
     return NextResponse.json({ insights: updatedInsights });
