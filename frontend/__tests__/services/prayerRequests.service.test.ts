@@ -70,12 +70,18 @@ describe('prayerRequests.service', () => {
       text: 'Fresh update',
       createdAt: expect.any(String),
     });
-    expect(mockSetPrayerStatusViaClient).toHaveBeenCalledWith('p1', {
-      status: 'answered',
-      answerText: 'Yes',
-      updatedAt: expect.any(String),
-      answeredAt: expect.any(String),
-    });
+    // Third argument = the revision the answer was built from; `null` keeps the
+    // unguarded legacy path for callers that cannot state one.
+    expect(mockSetPrayerStatusViaClient).toHaveBeenCalledWith(
+      'p1',
+      {
+        status: 'answered',
+        answerText: 'Yes',
+        updatedAt: expect.any(String),
+        answeredAt: expect.any(String),
+      },
+      null
+    );
     expect(mockFetch).not.toHaveBeenCalled();
   });
 

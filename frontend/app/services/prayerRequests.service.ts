@@ -101,8 +101,9 @@ export const addPrayerUpdate = async (
 export const setPrayerStatus = async (
   id: string,
   statusOrPayload: PrayerStatus | SetPrayerStatusPayload,
-  answerText?: string
+  answerText?: string,
+  expectedRevision: number | null = null
 ): Promise<PrayerRequest> => {
   const payload = normalizeStatusPayload(statusOrPayload, answerText);
-  return setPrayerStatusViaClient(id, withStableStatusReplayFields(payload));
+  return setPrayerStatusViaClient(id, withStableStatusReplayFields(payload), expectedRevision);
 };

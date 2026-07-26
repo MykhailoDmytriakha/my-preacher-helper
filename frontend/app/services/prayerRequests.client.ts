@@ -170,7 +170,15 @@ export interface SetPrayerStatusViaClientPayload {
 
 export async function setPrayerStatusViaClient(
   id: string,
-  payload: SetPrayerStatusViaClientPayload
+  payload: SetPrayerStatusViaClientPayload,
+  /**
+   * Revision of the status aggregate this change was built from. Stated whenever
+   * the caller can: marking a prayer answered carries `answerText`, which is
+   * human text — two devices answering the same prayer used to overwrite each
+   * other silently, and the detector never noticed because status and counts
+   * matched on both sides.
+   */
+  expectedRevision: number | null = null
 ): Promise<PrayerRequest> {
   const db = getClientDb();
   const ref = doc(db, PRAYER_REQUESTS_COLLECTION, id);
@@ -184,6 +192,19 @@ export async function setPrayerStatusViaClient(
     ...(payload.answeredAt !== undefined ? { answeredAt: payload.answeredAt } : {}),
     ...(payload.answerText !== undefined ? { answerText: payload.answerText } : {}),
   });
+  if (expectedRevision !== null) {
+    const committed = await conflictSafeUpdate(ref, patch, PRAYER_NOT_FOUND_ERROR, {
+      aggregate: PRAYER_STATUS_AGGREGATE,
+      expectedRevision,
+    });
+    return hydratePrayerRequest(
+      { ...current, ...patch, rev: { ...(current.rev ?? {}), [PRAYER_STATUS_AGGREGATE]: committed } } as Omit<
+        PrayerRequest,
+        'id'
+      >,
+      id
+    );
+  }
   await updateDoc(ref, { ...patch, ...revisionBump(PRAYER_STATUS_AGGREGATE) });
   return hydratePrayerRequest({ ...current, ...patch } as Omit<PrayerRequest, 'id'>, id);
 }

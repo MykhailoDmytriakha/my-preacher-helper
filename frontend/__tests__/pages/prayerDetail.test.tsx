@@ -214,7 +214,9 @@ describe('PrayerDetailPage', () => {
       );
       expect(addUpdate).toHaveBeenCalledWith('p1', 'Fresh note');
       expect(setStatus).toHaveBeenCalledWith('p1', 'not_answered');
-      expect(setStatus).toHaveBeenCalledWith('p1', 'answered', 'Answer text');
+      // Fourth argument = the revision the answer was built from: the answer is
+      // human text, so two devices answering must not overwrite each other.
+      expect(setStatus).toHaveBeenCalledWith('p1', 'answered', 'Answer text', 0);
       expect(deletePrayer).toHaveBeenCalledWith('p1');
       expect(mockPush).toHaveBeenCalledWith('/prayers');
     });

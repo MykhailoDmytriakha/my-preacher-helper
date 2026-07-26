@@ -36,6 +36,8 @@ type AddUpdateMutationVars = {
 type StatusMutationVars = {
   id: string;
   status: PrayerStatus;
+  /** Revision the status change was built from; guards the human `answerText`. */
+  expectedRevision?: number | null;
   updatedAt: string;
   answeredAt?: string;
   answerText?: string;
@@ -240,8 +242,8 @@ export function usePrayerRequests(userId?: string | null) {
 
   const statusMutation = useMutation({
     mutationKey: PRAYER_MUTATION_KEYS.status,
-    mutationFn: ({ id, status, answerText, updatedAt, answeredAt }: StatusMutationVars) =>
-      setPrayerStatus(id, { status, answerText, updatedAt, answeredAt }),
+    mutationFn: ({ id, status, answerText, updatedAt, answeredAt, expectedRevision }: StatusMutationVars) =>
+      setPrayerStatus(id, { status, answerText, updatedAt, answeredAt }, undefined, expectedRevision ?? null),
     onMutate: async ({ id, status, answerText, updatedAt, answeredAt }) => {
       await queryClient.cancelQueries({ queryKey: listKey });
       const previous = queryClient.getQueryData<PrayerRequest[]>(listKey);
@@ -355,13 +357,19 @@ export function usePrayerRequests(userId?: string | null) {
         createdAt: new Date().toISOString(),
       });
     },
-    setStatus: async (id: string, status: PrayerStatus, answerText?: string) => {
+    setStatus: async (
+      id: string,
+      status: PrayerStatus,
+      answerText?: string,
+      expectedRevision?: number | null
+    ) => {
       const updatedAt = new Date().toISOString();
       statusMutation.mutate({
         id,
         status,
         answerText,
         updatedAt,
+        expectedRevision,
         ...(status === 'answered' ? { answeredAt: updatedAt } : {}),
       });
     },

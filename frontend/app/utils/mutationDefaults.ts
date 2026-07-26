@@ -90,6 +90,8 @@ interface PrayerStatusVars {
   updatedAt?: string;
   answeredAt?: string;
   answerText?: string;
+  /** Must survive persistence, or a replayed "answered" overwrites another device's answer. */
+  expectedRevision?: number | null;
 }
 
 export const TAG_MUTATION_KEYS = {
@@ -348,8 +350,10 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
     onSuccess: invalidate(['prayerRequests']),
   });
   queryClient.setMutationDefaults(PRAYER_MUTATION_KEYS.status, {
-    mutationFn: ({ id, status, answerText, updatedAt, answeredAt }: PrayerStatusVars) =>
-      setPrayerStatus(id, { status, answerText, updatedAt, answeredAt }),
+    // `expectedRevision` must survive persistence here too: a replayed "answered"
+    // carries human text and would otherwise overwrite another device's answer.
+    mutationFn: ({ id, status, answerText, updatedAt, answeredAt, expectedRevision }: PrayerStatusVars) =>
+      setPrayerStatus(id, { status, answerText, updatedAt, answeredAt }, undefined, expectedRevision ?? null),
     onSuccess: invalidate(['prayerRequests']),
   });
 

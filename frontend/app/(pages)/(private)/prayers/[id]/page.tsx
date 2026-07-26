@@ -26,7 +26,7 @@ import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
-import { PRAYER_CORE_AGGREGATE } from '@/services/prayerRequests.client';
+import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
 import '@locales/i18n';
 
 const PRAYER_FOCUS_TYPES = new Set(['title', 'description', 'answer', 'tags']);
@@ -56,7 +56,16 @@ export default function PrayerDetailPage() {
 
   // Does the server hold a newer version of THIS prayer request? Same shared layer
   // as the other detail pages: observe only, never swap what is on screen.
-  type PrayerWatched = { title: string; description: string; status: string; updateCount: number };
+  // `answerText` and the updates' TEXT are watched, not just their count: two
+  // devices can both answer a prayer, or edit an update, without changing any
+  // length — and the screen would have called itself fresh while holding stale text.
+  type PrayerWatched = {
+    title: string;
+    description: string;
+    status: string;
+    answerText: string;
+    updates: string;
+  };
   const knownPrayer = useMemo<PrayerWatched | null>(
     () =>
       prayer
@@ -64,7 +73,8 @@ export default function PrayerDetailPage() {
             title: prayer.title || '',
             description: prayer.description || '',
             status: prayer.status || '',
-            updateCount: (prayer.updates ?? []).length,
+            answerText: prayer.answerText || '',
+            updates: (prayer.updates ?? []).map((u) => `${u.id}:${u.text}`).join('\u0000'),
           }
         : null,
     [prayer]
@@ -79,7 +89,10 @@ export default function PrayerDetailPage() {
       title: (data.title as string) || '',
       description: (data.description as string) || '',
       status: (data.status as string) || '',
-      updateCount: ((data.updates as unknown[]) ?? []).length,
+      answerText: (data.answerText as string) || '',
+      updates: (((data.updates as { id?: string; text?: string }[]) ?? []) || [])
+        .map((u) => `${u.id ?? ''}:${u.text ?? ''}`)
+        .join('\u0000'),
     }),
   });
   const [prayerFreshnessDismissed, setPrayerFreshnessDismissed] = useState(false);
@@ -211,7 +224,9 @@ export default function PrayerDetailPage() {
   };
 
   const handleMarkAnswered = async (answerText?: string) => {
-    await setStatus(prayer.id, 'answered', answerText);
+    // The answer is human text, so state the revision it was built from: two
+    // devices answering the same prayer must not overwrite each other in silence.
+    await setStatus(prayer.id, 'answered', answerText, prayer.rev?.[PRAYER_STATUS_AGGREGATE] ?? 0);
     toast.success(t('prayer.toast.statusChanged'));
     setShowMarkAnswered(false);
   };

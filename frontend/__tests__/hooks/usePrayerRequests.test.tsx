@@ -128,12 +128,20 @@ describe('usePrayerRequests', () => {
       text: 'Fresh update',
       createdAt: expect.any(String),
     });
-    expect(mockSetPrayerStatus).toHaveBeenCalledWith('p1', {
-      status: 'answered',
-      answerText: 'God answered',
-      updatedAt: expect.any(String),
-      answeredAt: expect.any(String),
-    });
+    // The answer carries human text, so the write states the revision it was built
+    // from (`null` when the caller does not know one) — two devices answering the
+    // same prayer must not overwrite each other in silence.
+    expect(mockSetPrayerStatus).toHaveBeenCalledWith(
+      'p1',
+      {
+        status: 'answered',
+        answerText: 'God answered',
+        updatedAt: expect.any(String),
+        answeredAt: expect.any(String),
+      },
+      undefined,
+      null
+    );
     const statusPayload = mockSetPrayerStatus.mock.calls[0][1] as { updatedAt: string; answeredAt?: string };
     expect(statusPayload.answeredAt).toBe(statusPayload.updatedAt);
     expect(mockDeletePrayerRequest).toHaveBeenCalledWith('p1');
