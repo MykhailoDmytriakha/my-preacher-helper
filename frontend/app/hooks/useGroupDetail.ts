@@ -100,6 +100,17 @@ export function useGroupDetail(groupId: string) {
   const [resolvingConflict, setResolvingConflict] = useState(false);
 
   /**
+   * How many own-doc writes are in flight.
+   *
+   * The group write is fire-and-forget (offline `updateDoc` never settles, so
+   * awaiting it would hang autosave). That made the "Saved" indicator lie: it
+   * appeared the moment the write was SENT, before the transaction could refuse
+   * it. Counting in-flight writes lets the screen say "saving" until the backend
+   * has actually answered — and offline it stays "saving", which is the truth.
+   */
+  const [pendingWrites, setPendingWrites] = useState(0);
+
+  /**
    * The revision this hook last COMMITTED, kept out of band.
    * The cached group is refreshed asynchronously, so relying on it to learn what
    * we just wrote makes the next keystroke state the pre-write number and get
@@ -138,6 +149,7 @@ export function useGroupDetail(groupId: string) {
       // Fire-and-forget: offline `updateDoc` never resolves (Firestore queues it
       // natively), so awaiting would hang the caller's autosave. The optimistic
       // writes above keep the UI truthful; durability lives in the offline queue.
+      setPendingWrites((n) => n + 1);
       void updateGroup(id, updates, revision)
         .then((saved) => {
           setSaveConflict(null);
@@ -167,6 +179,7 @@ export function useGroupDetail(groupId: string) {
           queryClient.invalidateQueries({ queryKey: ['series'] });
           queryClient.invalidateQueries({ queryKey: ['series-detail'] });
         })
+        .finally(() => setPendingWrites((n) => Math.max(0, n - 1)))
         .catch((errorValue: unknown) => {
           if (isStaleWriteError(errorValue)) {
             // REFUSED, not failed. Deliberately NO refetch here — see above.
@@ -321,6 +334,8 @@ export function useGroupDetail(groupId: string) {
     updateMeetingDate,
     removeMeetingDate,
     deleteGroupDetail,
+    /** Writes sent but not yet answered — the UI must not claim "saved" while > 0. */
+    pendingWrites,
     /** A refused save waiting for a decision — render the conflict choice. */
     saveConflict,
     resolvingConflict,

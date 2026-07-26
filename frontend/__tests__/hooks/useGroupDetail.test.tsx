@@ -322,6 +322,28 @@ describe('useGroupDetail', () => {
       expect(result.current.saveConflict).not.toBeNull();
     });
 
+
+    it('keeps the write counted until the backend answers', async () => {
+      // The write is fire-and-forget, so the "Saved" indicator used to appear the
+      // moment the request was SENT — before the transaction could refuse it, and
+      // even while offline. The screen reads this counter instead.
+      let settle: (v: unknown) => void = () => {};
+      mockUpdateGroup.mockImplementationOnce(() => new Promise((res) => { settle = res; }) as never);
+      const { result } = mountAtRev5();
+
+      await act(async () => {
+        await result.current.updateGroupDetail({ title: 'In flight' });
+      });
+
+      expect(result.current.pendingWrites).toBe(1);
+
+      await act(async () => {
+        settle({ ...groupAtRev5, rev: { content: 6 } });
+      });
+
+      await waitFor(() => expect(result.current.pendingWrites).toBe(0));
+    });
+
     it('a generic failure still goes down the old reconcile path', async () => {
       mockUpdateGroup.mockRejectedValueOnce(new Error('permission denied'));
       const { result } = mountAtRev5();

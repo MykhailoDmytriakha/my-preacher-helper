@@ -26,6 +26,34 @@ service cloud.firestore {
       return signedIn() && request.resource.data[field] == request.auth.uid;
     }
 
+    // ---- Revision protocol (PREPARED, NOT ARMED — see the checklist) ----
+    //
+    // The freshness mechanism refuses a save built from an older revision by
+    // comparing `rev.<aggregate>` inside a transaction. That guarantee holds only
+    // while EVERY writer maintains the counter. Today's clients do; an OLD build
+    // still installed as a PWA on someone's phone does not — it changes content
+    // and leaves the number alone, which makes the counter LIE, and a later stale
+    // save is then handed permission to overwrite.
+    //
+    // The rule below closes that hole at the database. It is deliberately left
+    // COMMENTED OUT, because arming it is a rollout decision, not a code change:
+    // the moment it ships, every client that does not bump the counter starts
+    // getting permission-denied — including old PWA installs that have not picked
+    // up the new bundle yet.
+    //
+    // ACTIVATION CHECKLIST (owner's call):
+    //   1. The new build has been live long enough that stale PWA installs have
+    //      refreshed (the service worker updates on next visit).
+    //   2. Admin SDK writers are audited: they BYPASS rules entirely, so any
+    //      server path that changes content must advance the counter on its own
+    //      (`updateSermonData` takes an aggregate name; check new writers too).
+    //   3. Deploy the rules, then watch for permission-denied in the logs.
+    //
+    // function advancesRevision(aggregate) {
+    //   return !(aggregate in request.resource.data.get('rev', {}))
+    //     || request.resource.data.rev[aggregate] > resource.data.get('rev', {}).get(aggregate, 0);
+    // }
+
     // ---- Collections owned via a `userId` field ----
     match /sermons/{id} {
       allow read, delete: if ownsExisting('userId');

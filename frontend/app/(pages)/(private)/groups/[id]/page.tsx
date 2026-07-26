@@ -81,6 +81,7 @@ export default function GroupDetailPage() {
     updateMeetingDate,
     removeMeetingDate,
     deleteGroupDetail,
+    pendingWrites,
     saveConflict,
     resolvingConflict,
     keepMineOnConflict,
@@ -353,7 +354,7 @@ export default function GroupDetailPage() {
     []
   );
 
-  const { debouncedSave, status: saveStatus } = useAutoSave(performSave, {
+  const { debouncedSave, status: autoSaveStatus } = useAutoSave(performSave, {
     delay: 500,
     onError: () => {
       toast.error(
@@ -363,6 +364,16 @@ export default function GroupDetailPage() {
       );
     },
   });
+
+  /**
+   * What the indicator is allowed to claim.
+   *
+   * The group write is fire-and-forget, so `autoSaveStatus` flips to "saved" the
+   * moment the request is SENT — before the transaction could refuse it, and even
+   * while offline. While a write is still in flight the screen says "saving",
+   * which is the truth.
+   */
+  const saveStatus = pendingWrites > 0 ? 'saving' : autoSaveStatus;
 
   const templatesById = useMemo(
     () => new Map(templates.map((template) => [template.id, template])),
