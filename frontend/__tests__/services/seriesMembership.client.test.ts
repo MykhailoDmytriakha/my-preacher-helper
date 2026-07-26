@@ -17,9 +17,22 @@ async function importClient() {
     getDoc: mockGetDoc,
     updateDoc: mockUpdateDoc,
     writeBatch: mockWriteBatch,
+    // Counter bump rides the ordinary write payload.
+    increment: (n: number) => ({ __increment: n }),
+    // ONLINE the commit runs inside one transaction: read every target, then
+    // write. Mirrors the real contract closely enough to assert on the writes.
+    runTransaction: async (_db: unknown, fn: (tx: unknown) => Promise<void>) => {
+      const tx = {
+        get: (ref: unknown) => mockGetDoc(ref),
+        update: (ref: unknown, payload: unknown) => mockTxUpdate(ref, payload),
+      };
+      await fn(tx);
+    },
   }));
   return import('@/services/seriesMembership.client');
 }
+
+const mockTxUpdate = jest.fn();
 
 const snap = (id: string, data: Record<string, unknown> | null) => ({
   id,
@@ -37,10 +50,11 @@ const sermonItem = (refId: string, position = 1) => ({
 
 describe('seriesMembership.client — commitSeriesBatch', () => {
   beforeEach(() => {
+    mockTxUpdate.mockReset();
     jest.clearAllMocks();
   });
 
-  it('MOVE is ONE atomic writeBatch and leaves the ref in EXACTLY one series (DESYNC guard)', async () => {
+  it('MOVE is ONE atomic transaction and leaves the ref in EXACTLY one series (DESYNC guard)', async () => {
     // target has nothing; source currently holds s1. A move must add to target and
     // remove from source in a single batch.
     mockGetDoc.mockImplementation((ref: { id: string }) => {
@@ -57,14 +71,14 @@ describe('seriesMembership.client — commitSeriesBatch', () => {
       { seriesId: 'source', op: 'remove', refs: [{ type: 'sermon', refId: 's1' }] },
     ]);
 
-    // ONE atomic batch commit (all-or-nothing).
-    expect(mockWriteBatch).toHaveBeenCalledTimes(1);
-    expect(batchCommit).toHaveBeenCalledTimes(1);
-    expect(batchUpdate).toHaveBeenCalledTimes(2);
+    // ONE transaction, both docs written inside it. Read-then-batch used to leave
+    // a window where a concurrent transform was silently dropped.
+    expect(mockTxUpdate).toHaveBeenCalledTimes(2);
+    expect(batchCommit).not.toHaveBeenCalled();
 
     // Assert "≤1 series contains s1" DIRECTLY on the written raw items (not via derive).
     const writtenBySeries = new Map<string, { items: Array<{ refId: string }> }>();
-    for (const call of batchUpdate.mock.calls) {
+    for (const call of mockTxUpdate.mock.calls) {
       const ref = call[0] as { id: string };
       const payload = call[1] as { items: Array<{ refId: string }> };
       writtenBySeries.set(ref.id, payload);
@@ -93,8 +107,28 @@ describe('seriesMembership.client — commitSeriesBatch', () => {
       { seriesId: 'target', op: 'add', refs: [{ type: 'sermon', refId: 's1' }] },
     ]);
 
-    expect(batchUpdate).toHaveBeenCalledTimes(1); // only 'target' written; 'gone' skipped
-    expect(batchCommit).toHaveBeenCalledTimes(1);
+    expect(mockTxUpdate).toHaveBeenCalledTimes(1); // only 'target' written; 'gone' skipped
+  });
+
+  it('OFFLINE falls back to the queued batch, because a transaction cannot run', async () => {
+    // Membership must keep working without a connection — that is why this writer
+    // is fired without awaiting. Degrade openly to the pre-existing path.
+    const onLine = Object.getOwnPropertyDescriptor(Navigator.prototype, 'onLine');
+    Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true });
+    mockGetDoc.mockImplementation(() => Promise.resolve(snap('target', { items: [], sermonIds: [] })));
+
+    try {
+      const client = await importClient();
+      await client.commitSeriesBatch([
+        { seriesId: 'target', op: 'add', refs: [{ type: 'sermon', refId: 's1' }] },
+      ]);
+
+      expect(batchUpdate).toHaveBeenCalledTimes(1);
+      expect(batchCommit).toHaveBeenCalledTimes(1);
+      expect(mockTxUpdate).not.toHaveBeenCalled();
+    } finally {
+      if (onLine) Object.defineProperty(Navigator.prototype, 'onLine', onLine);
+    }
   });
 
   it('no-ops (no batch) when given an empty transform list', async () => {

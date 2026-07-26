@@ -1,7 +1,8 @@
-import { doc, getDoc, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, runTransaction, writeBatch } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { Series, SeriesItem, SeriesItemType } from '@/models/models';
+import { revisionBump } from '@/services/conflictSafeUpdate.client';
 import {
   deriveSermonIdsFromItems,
   inferSeriesKind,
@@ -25,6 +26,9 @@ import {
 // a keyed mutation carrying them stays safe to persist/replay.
 
 const SERIES_COLLECTION = 'series';
+
+/** Membership (`series.items`) is edited independently of the series' own text. */
+export const SERIES_ITEMS_AGGREGATE = 'items';
 
 export type SeriesMembershipRef = { type: SeriesItemType; refId: string };
 
@@ -108,23 +112,48 @@ export function applySeriesTransform(currentItems: SeriesItem[], transform: Seri
 export async function commitSeriesBatch(transforms: SeriesTransform[]): Promise<void> {
   if (transforms.length === 0) return;
   const db = getClientDb();
+  const refs = transforms.map((transform) => doc(db, SERIES_COLLECTION, transform.seriesId));
 
-  const snaps = await Promise.all(
-    transforms.map((transform) => getDoc(doc(db, SERIES_COLLECTION, transform.seriesId)))
-  );
-
-  const batch = writeBatch(db);
-  let writes = 0;
-  transforms.forEach((transform, index) => {
-    const snap = snaps[index];
-    if (!snap.exists()) return; // tolerate a concurrently-deleted series doc
-    const series = { ...(snap.data() as Omit<Series, 'id'>), id: snap.id } as Series;
+  /** Apply one transform to a document's stored state. Shared by both paths. */
+  const nextFieldsFor = (index: number, data: Omit<Series, 'id'> | undefined) => {
+    const series = { ...(data as Omit<Series, 'id'>), id: transforms[index].seriesId } as Series;
     const currentItems = normalizeSeriesItems(series.items, series.sermonIds || []);
-    const nextItems = applySeriesTransform(currentItems, transform);
-    batch.update(doc(db, SERIES_COLLECTION, transform.seriesId), recomputeDocFields(nextItems));
-    writes += 1;
-  });
+    const nextItems = applySeriesTransform(currentItems, transforms[index]);
+    // Membership is its own aggregate: adding a sermon must not read as a change
+    // to the series title, and vice versa. The counter also keeps the freshness
+    // detector honest for a reorder, which changes no length at all.
+    return { ...recomputeDocFields(nextItems), ...revisionBump(SERIES_ITEMS_AGGREGATE) };
+  };
 
-  if (writes === 0) return;
-  await batch.commit();
+  // OFFLINE: a transaction cannot run without the server, and this writer must
+  // keep working offline (the whole point of firing it without awaiting). Fall
+  // back to the pre-existing read + batch, exactly as before — see the note in
+  // conflictSafeUpdate.client.ts about degrading openly rather than pretending.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const snaps = await Promise.all(refs.map((ref) => getDoc(ref)));
+    const batch = writeBatch(db);
+    let writes = 0;
+    snaps.forEach((snap, index) => {
+      if (!snap.exists()) return; // tolerate a concurrently-deleted series doc
+      batch.update(refs[index], nextFieldsFor(index, snap.data() as Omit<Series, 'id'>));
+      writes += 1;
+    });
+    if (writes === 0) return;
+    await batch.commit();
+    return;
+  }
+
+  // ONLINE: read and write inside ONE transaction. The previous read-then-batch
+  // left a window where two devices both read `[A, B]`, one added C and the other
+  // reordered — and the later commit dropped C without a trace. The SDK re-runs
+  // this callback when a target document changed mid-flight, so the transform is
+  // always applied to what is actually stored.
+  await runTransaction(db, async (tx) => {
+    // Firestore requires every read before any write inside a transaction.
+    const snaps = await Promise.all(refs.map((ref) => tx.get(ref)));
+    snaps.forEach((snap, index) => {
+      if (!snap.exists()) return; // tolerate a concurrently-deleted series doc
+      tx.update(refs[index], nextFieldsFor(index, snap.data() as Omit<Series, 'id'>));
+    });
+  });
 }
