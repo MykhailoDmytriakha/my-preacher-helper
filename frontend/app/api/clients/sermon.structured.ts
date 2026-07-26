@@ -27,7 +27,7 @@ import {
 	ComposePlanResponseSchema,
 	BrainstormSuggestionSchema,
 	type ComposedPlanOutline,
-	type ComposePlanPoint,
+	type ComposePlanResponse,
 } from "@/config/schemas/zod";
 import {
     Sermon,
@@ -52,6 +52,13 @@ const isDebugMode = process.env.DEBUG_MODE === 'true';
 type ComposeSectionKey = 'introduction' | 'main' | 'conclusion';
 
 const COMPOSE_SECTION_KEYS: ComposeSectionKey[] = ['introduction', 'main', 'conclusion'];
+
+/**
+ * Compose-plan per-request deadline. Sits under the 60s Vercel function wall so a stalled
+ * provider is aborted by us with a real error instead of the platform killing the whole
+ * invocation with an empty 504. Measured healthy latency for this call is ~2s.
+ */
+const COMPOSE_PLAN_REQUEST_TIMEOUT_MS = 45_000;
 
 // ===== Structured Output Functions =====
 
@@ -368,8 +375,39 @@ function scratchSectionLabel(section: ScratchNote['section']) {
     return 'unplaced';
 }
 
+/**
+ * Notes reach the model as SHORT KEYS (n1, n2, …), never as UUIDs.
+ * Measured 2026-07-26: with `id=<uuid>` in a numbered list the model echoed the ORDINAL
+ * ("20") instead of the UUID in 4 of 5 runs — 25 of 25 ids wrong — and the whole response
+ * was discarded downstream. Short keys make that failure unreachable.
+ */
+function scratchNoteKey(index: number) {
+    return `n${index + 1}`;
+}
+
+function outlinePointKey(index: number) {
+    return `p${index + 1}`;
+}
+
 function scratchPromptLine(note: ScratchNote, index: number) {
-    return `${index + 1}. id=${note.id}; section=${scratchSectionLabel(note.section)}; text="${note.text.replace(/"/g, '\\"')}"`;
+    const pinned = note.section ? ` [pinned:${scratchSectionLabel(note.section)}]` : '';
+    return `${scratchNoteKey(index)}: ${note.text.replace(/\s+/g, ' ').trim()}${pinned}`;
+}
+
+/**
+ * Scratch notes are stored newest-first, so the sequence the preacher actually dictated
+ * reached the model REVERSED (measured: first array element createdAt 22:30:52, last
+ * 21:59:59). That order carries intent — notes routinely continue one another ("после
+ * этого", "переходим к"). Sorted here by timestamp, with id as a stable tie-break.
+ *
+ * Honest naming: this is TIMESTAMP order, not proven dictation order — `createdAt` comes
+ * from the browser clock, so notes written on two devices with skewed clocks can invert.
+ */
+function sortScratchByCapture(scratch: ScratchNote[]): ScratchNote[] {
+    return [...scratch].sort((left, right) => {
+        const byTime = (left.createdAt ?? '').localeCompare(right.createdAt ?? '');
+        return byTime !== 0 ? byTime : left.id.localeCompare(right.id);
+    });
 }
 
 const LEADING_CONCLUSION_CUE_PATTERN = /^\s*(?:в\s+конце|в\s+заключение|заключение|призыв|завершение)(?=$|[\s—–:,.!?;])/iu;
@@ -413,10 +451,6 @@ function composeSubPointId() {
     return `sp-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
 }
 
-function collectComposePoints(outline: Record<ComposeSectionKey, ComposePlanPoint[]>) {
-    return COMPOSE_SECTION_KEYS.flatMap((section) => outline[section].map((point) => ({ section, point })));
-}
-
 function cloneSubPoint(subPoint: SubPoint) {
     return { ...subPoint };
 }
@@ -436,22 +470,24 @@ function normalizeExistingOutline(existingOutline?: SermonOutline): ComposedPlan
     };
 }
 
-function outlinePromptLine(section: ComposeSectionKey, point: OutlinePoint, index: number) {
-    const subPoints = (point.subPoints ?? [])
-        .map((subPoint) => `${subPoint.id}:${subPoint.text}`)
-        .join(' | ');
-    const note = point.note ? `; note="${point.note.replace(/"/g, '\\"')}"` : '';
-    const children = subPoints ? `; subPoints=${subPoints}` : '';
-
-    return `${index + 1}. id=${point.id}; section=${section}; text="${point.text.replace(/"/g, '\\"')}"${note}${children}`;
+/**
+ * Existing outline points also get short keys (p1, p2, …) so the model can target them
+ * without ever seeing — or inventing — a real point id.
+ */
+function collectExistingPoints(existingOutline?: SermonOutline) {
+    return COMPOSE_SECTION_KEYS.flatMap((section) =>
+        (existingOutline?.[section] ?? []).map((point) => ({ section, point }))
+    );
 }
 
-function existingOutlinePrompt(existingOutline?: SermonOutline) {
-    const lines = COMPOSE_SECTION_KEYS.flatMap((section) =>
-        (existingOutline?.[section] ?? []).map((point, index) => outlinePromptLine(section, point, index))
-    );
+function existingOutlinePrompt(entries: Array<{ section: ComposeSectionKey; point: OutlinePoint }>) {
+    if (entries.length === 0) return '(none)';
 
-    return lines.length > 0 ? lines.join('\n') : '(none)';
+    return entries
+        .map(({ section, point }, index) =>
+            `${outlinePointKey(index)} [${section}]: ${point.text.replace(/\s+/g, ' ').trim()}`
+        )
+        .join('\n');
 }
 
 function findPointLocation(outline: ComposedPlanOutline, pointId: string) {
@@ -476,7 +512,7 @@ function addScratchAsSubPoint(
     outline: ComposedPlanOutline,
     targetPointId: string,
     scratchNote: ScratchNote,
-    point: ComposePlanPoint
+    headingText: string
 ) {
     for (const section of COMPOSE_SECTION_KEYS) {
         outline[section] = outline[section].map((candidate) => {
@@ -489,8 +525,11 @@ function addScratchAsSubPoint(
                     {
                         id: composeSubPointId(),
                         scratchNoteId: scratchNote.id,
-                        text: compactScratchText(point.text || scratchNote.text),
-                        note: point.note?.trim() || scratchNote.text,
+                        text: compactScratchText(headingText || scratchNote.text),
+                        // The preacher's raw phrase comes from OUR copy of the note, never
+                        // from the model. It used to be echoed back verbatim — 5287 wasted
+                        // characters on a 25-note sermon, and a chance to corrupt the text.
+                        note: scratchNote.text,
                         source: scratchSource(scratchNote),
                         position: nextSubPointPosition(existingSubPoints),
                     },
@@ -504,65 +543,85 @@ function addScratchAsNewPoint(
     outline: ComposedPlanOutline,
     section: ComposeSectionKey,
     scratchNote: ScratchNote,
-    point?: ComposePlanPoint
+    headingText?: string
 ) {
     outline[section].push({
         id: composePointId(),
         scratchNoteId: scratchNote.id,
-        text: compactScratchText(point?.text || scratchNote.text),
-        note: point?.note?.trim() || scratchNote.text,
+        text: compactScratchText(headingText || scratchNote.text),
+        note: scratchNote.text,
         source: scratchSource(scratchNote),
     });
 }
 
-function normalizeComposePlan(
-    aiPlan: Record<ComposeSectionKey, ComposePlanPoint[]>,
-    scratch: ScratchNote[],
+interface KeyedComposeResult {
+    outline: ComposedPlanOutline;
+    /** Notes the model never placed (or placed with an unusable key). Reported, not hidden. */
+    unplacedScratchNoteIds: string[];
+    /** Keys the model invented. Each is dropped on its own — the response is NOT discarded. */
+    unknownNoteKeys: string[];
+}
+
+/**
+ * Turn the model's key-based placements back into a real outline.
+ *
+ * Two guarantees the old path did not give:
+ * - a bad key drops only ITSELF (the previous code threw away the entire response when a
+ *   single id looked wrong — and the model got ids wrong in 4 of 5 measured runs);
+ * - completeness is decided by COUNTING, not by set membership, so a note referenced twice
+ *   cannot masquerade as full coverage.
+ */
+function normalizeKeyedComposePlan(
+    response: ComposePlanResponse,
+    orderedScratch: ScratchNote[],
+    existingEntries: Array<{ section: ComposeSectionKey; point: OutlinePoint }>,
     existingOutline?: SermonOutline
-): ComposedPlanOutline {
-    const scratchById = new Map(scratch.map((note) => [note.id, note]));
+): KeyedComposeResult {
+    const scratchByKey = new Map(orderedScratch.map((note, index) => [scratchNoteKey(index), note]));
+    const pointIdByKey = new Map(existingEntries.map(({ point }, index) => [outlinePointKey(index), point.id]));
     const consumedScratchIds = new Set<string>();
+    const unknownNoteKeys: string[] = [];
     const normalized = normalizeExistingOutline(existingOutline);
 
-    collectComposePoints(aiPlan).forEach(({ section, point }) => {
-        const scratchNote = scratchById.get(point.scratchNoteId);
-        if (!scratchNote || consumedScratchIds.has(scratchNote.id)) return;
+    response.placements.forEach((placement) => {
+        const scratchNote = scratchByKey.get(placement.noteKey);
+        if (!scratchNote) {
+            unknownNoteKeys.push(placement.noteKey);
+            return;
+        }
+        // Second mention of the same note is ignored, not applied twice.
+        if (consumedScratchIds.has(scratchNote.id)) return;
 
+        // A manual pin, then an explicit leading cue, always beat the model's opinion.
         const forcedSection = scratchNote.section ?? inferExplicitCueSection(scratchNote.text);
-        const targetLocation = point.outlinePointId ? findPointLocation(normalized, point.outlinePointId) : null;
+        const targetPointId = placement.targetKind === 'existing_point'
+            ? pointIdByKey.get(placement.targetKey)
+            : undefined;
+        const targetLocation = targetPointId ? findPointLocation(normalized, targetPointId) : null;
 
         if (targetLocation && (!forcedSection || forcedSection === targetLocation.section)) {
-            addScratchAsSubPoint(normalized, targetLocation.point.id, scratchNote, point);
+            addScratchAsSubPoint(normalized, targetLocation.point.id, scratchNote, placement.text);
         } else {
-            addScratchAsNewPoint(normalized, forcedSection ?? targetLocation?.section ?? section, scratchNote, point);
+            addScratchAsNewPoint(
+                normalized,
+                forcedSection ?? targetLocation?.section ?? placement.section,
+                scratchNote,
+                placement.text
+            );
         }
         consumedScratchIds.add(scratchNote.id);
     });
 
-    scratch.forEach((scratchNote) => {
+    // Nothing is lost silently: whatever the model skipped still lands in the outline,
+    // and its id is handed back so the caller can say so out loud.
+    const unplacedScratchNoteIds: string[] = [];
+    orderedScratch.forEach((scratchNote) => {
         if (consumedScratchIds.has(scratchNote.id)) return;
-
-        const targetSection = scratchNote.section ?? inferSectionFromCue(scratchNote.text);
-        addScratchAsNewPoint(normalized, targetSection, scratchNote);
+        unplacedScratchNoteIds.push(scratchNote.id);
+        addScratchAsNewPoint(normalized, scratchNote.section ?? inferSectionFromCue(scratchNote.text), scratchNote);
     });
 
-    return normalized;
-}
-
-function findUnknownScratchIds(
-    aiPlan: Record<ComposeSectionKey, ComposePlanPoint[]>,
-    scratch: ScratchNote[]
-): string[] {
-    const knownIds = new Set(scratch.map((note) => note.id));
-    const unknownIds = new Set<string>();
-
-    collectComposePoints(aiPlan).forEach(({ point }) => {
-        if (!knownIds.has(point.scratchNoteId)) {
-            unknownIds.add(point.scratchNoteId);
-        }
-    });
-
-    return [...unknownIds];
+    return { outline: normalized, unplacedScratchNoteIds, unknownNoteKeys };
 }
 
 /**
@@ -574,47 +633,47 @@ export async function composePlanFromScratchStructured(
     sermon: Sermon,
     existingOutline?: SermonOutline,
     userId: string = sermon.userId
-): Promise<{ outline: ComposedPlanOutline; success: boolean }> {
+): Promise<{ outline: ComposedPlanOutline; success: boolean; unplacedScratchNoteIds: string[] }> {
     const scratch = sermon.scratch ?? [];
     const outlineToAugment = existingOutline ?? sermon.outline;
     const baseOutline = normalizeExistingOutline(outlineToAugment);
 
     if (scratch.length === 0) {
-        return { outline: baseOutline, success: true };
+        return { outline: baseOutline, success: true, unplacedScratchNoteIds: [] };
     }
 
-    const manualCount = scratch.filter((note) => note.section).length;
-    const unplacedCount = scratch.length - manualCount;
-    const scratchList = scratch.map(scratchPromptLine).join('\n');
-    const outlineList = existingOutlinePrompt(outlineToAugment);
-    const existingPointCount = COMPOSE_SECTION_KEYS.reduce(
-        (count, section) => count + (outlineToAugment?.[section]?.length ?? 0),
-        0
-    );
+    const orderedScratch = sortScratchByCapture(scratch);
+    const existingEntries = collectExistingPoints(outlineToAugment);
+    const manualCount = orderedScratch.filter((note) => note.section).length;
+    const unplacedCount = orderedScratch.length - manualCount;
+    const scratchList = orderedScratch.map(scratchPromptLine).join('\n');
+    const outlineList = existingOutlinePrompt(existingEntries);
+    const existingPointCount = existingEntries.length;
     const hasNonLatinChars = /[^\u0000-\u007F]/.test(
         [
             sermon.title,
             sermon.verse,
-            ...scratch.map((note) => note.text),
-            ...COMPOSE_SECTION_KEYS.flatMap((section) => (outlineToAugment?.[section] ?? []).map((point) => point.text)),
+            ...orderedScratch.map((note) => note.text),
+            ...existingEntries.map(({ point }) => point.text),
         ].join(' ')
     );
     const expectedLanguage = hasNonLatinChars ? 'non-english' : 'en';
 
-    const systemPrompt = `You are a sermon preparation assistant augmenting an existing sermon outline with scratch notes.
+    const systemPrompt = `You are a sermon preparation assistant arranging a preacher's scratch notes into a sermon outline.
 
-Return scratch-note placements grouped by introduction, main, and conclusion.
+You never see the notes' real identifiers. Each scratch note has a SHORT KEY (n1, n2, ...) and each existing outline point has a SHORT KEY (p1, p2, ...). Answer with keys only.
 
 Rules:
-1. Every scratch note must appear exactly once using its exact scratchNoteId.
-2. Prefer attaching a scratch note to the best-matching EXISTING OUTLINE POINT as a sub-point by returning outlinePointId.
-3. Create a new outline point only when no existing point fits; in that case omit outlinePointId.
-4. Never invent outline point ids. Use only ids from EXISTING OUTLINE when outlinePointId is present.
-5. Notes that already have section=introduction/main/conclusion must stay in that section.
-6. Respect leading note cues only: "в начале", "сначала", "вступление" at the start -> introduction; "в конце", "в заключение", "заключение", "призыв" at the start -> conclusion.
-7. Keep text concise, sermon-outline style, in the same language as the notes.
-8. Put the original wording in note. Use note to preserve the preacher's raw phrase.
-9. Order new points naturally inside each section.`;
+1. NEVER repeat the text of a scratch note. Reference every note ONLY by its key.
+2. Every note key must appear EXACTLY ONCE — either in "placements" or in "unplaced". Never omit a key, never use one twice.
+3. Use only keys listed below. Never invent a key.
+4. Attach a note to the best-matching EXISTING outline point when one fits: targetKind="existing_point", targetKey="p<N>".
+5. Otherwise start a new point: targetKind="new_point", targetKey="".
+6. "text" is a SHORT outline heading YOU write for that note - sermon-outline style, same language as the notes, ideally under 8 words.
+7. "section" is introduction, main or conclusion. A note marked [pinned:...] must keep that section.
+8. Respect leading note cues: "в начале", "сначала", "вступление" at the start -> introduction; "в конце", "в заключение", "заключение", "призыв" at the start -> conclusion.
+9. The notes are listed in the order the preacher recorded them. That sequence carries his intended flow - a note often continues the previous one. Keep it unless the content clearly says otherwise.
+10. Put a note in "unplaced" only when it genuinely fits nowhere, with a short reasonCode.`;
 
     const userMessage = `SERMON TITLE: ${sermon.title || '(untitled)'}
 SCRIPTURE: ${sermon.verse || '(not provided)'}
@@ -622,17 +681,17 @@ MANUAL_PLACED_NOTES: ${manualCount}
 UNPLACED_NOTES: ${unplacedCount}
 EXISTING_OUTLINE_POINTS: ${existingPointCount}
 
-EXISTING OUTLINE:
+EXISTING OUTLINE POINTS:
 ${outlineList}
 
-SCRATCH NOTES:
+SCRATCH NOTES (${orderedScratch.length}, in the order the preacher recorded them):
 ${scratchList}
 
-Place each scratch note into the existing outline when it fits, or create a new point placement when it does not.`;
+Arrange every note. Return keys and headings only.`;
 
     const promptBlueprint = buildPromptBlueprint({
         promptName: "compose_plan_from_scratch",
-        promptVersion: "v2",
+        promptVersion: "v3-keys",
         expectedLanguage,
         context: {
             sermonId: sermon.id,
@@ -666,6 +725,11 @@ Place each scratch note into the existing outline when it fits, or create a new 
             formatName: "compose_plan_from_scratch",
             userId,
             promptBlueprint,
+            // Our own deadline sits UNDER the 60s Vercel wall, and the SDK is told not to
+            // retry silently (its default is 2 hidden retries with a 10-minute timeout).
+            // A slow provider is then aborted by US — a typed error the route can answer
+            // with — instead of the platform killing the function with no JSON body.
+            requestOptions: { timeout: COMPOSE_PLAN_REQUEST_TIMEOUT_MS, maxRetries: 0 },
             logContext: {
                 sermonId: sermon.id,
                 sermonTitle: sermon.title,
@@ -679,19 +743,28 @@ Place each scratch note into the existing outline when it fits, or create a new 
 
     if (!result.success || !result.data) {
         console.error("ERROR: Failed to compose plan from scratch:", result.error || result.refusal);
-        return { outline: baseOutline, success: false };
+        return { outline: baseOutline, success: false, unplacedScratchNoteIds: [] };
     }
 
-    const unknownScratchIds = findUnknownScratchIds(result.data, scratch);
-    if (unknownScratchIds.length > 0) {
-        console.error("ERROR: Compose plan returned unknown scratch ids:", unknownScratchIds);
-        return { outline: baseOutline, success: false };
+    const { outline, unplacedScratchNoteIds, unknownNoteKeys } = normalizeKeyedComposePlan(
+        result.data,
+        orderedScratch,
+        existingEntries,
+        outlineToAugment
+    );
+
+    // Both are reported, never fatal: an invented key costs only itself, and a skipped note
+    // still reaches the outline. Previously either one discarded the whole response.
+    if (unknownNoteKeys.length > 0) {
+        console.warn("WARN: Compose plan referenced unknown note keys (dropped):", unknownNoteKeys);
+    }
+    if (unplacedScratchNoteIds.length > 0) {
+        console.warn(
+            `WARN: Compose plan left ${unplacedScratchNoteIds.length} of ${orderedScratch.length} notes unplaced; appended them as their own points.`
+        );
     }
 
-    return {
-        outline: normalizeComposePlan(result.data, scratch, outlineToAugment),
-        success: true,
-    };
+    return { outline, success: true, unplacedScratchNoteIds };
 }
 
 /**

@@ -64,6 +64,13 @@ export interface StructuredOutputOptions {
   userId?: string;
   /** Request-scoped admission created by the owning route for a composite action. */
   usageAdmission?: UsageAdmission;
+  /**
+   * Per-request transport overrides. The SDK defaults are `maxRetries: 2` and a 10-minute
+   * timeout — both longer than the 60s serverless wall, so a stalled provider takes the
+   * whole function down with no JSON body. Callers that run behind that wall should pass
+   * a deadline under it and `maxRetries: 0`. Omitted => unchanged SDK behaviour.
+   */
+  requestOptions?: { timeout?: number; maxRetries?: number };
 }
 
 async function executeStructuredTarget<T extends z.ZodType>(
@@ -73,11 +80,13 @@ async function executeStructuredTarget<T extends z.ZodType>(
     userMessage,
     schema,
     formatName,
+    requestOptions,
   }: {
     systemPrompt: string;
     userMessage: string;
     schema: T;
     formatName: string;
+    requestOptions?: { timeout?: number; maxRetries?: number };
   }
 ) {
   const client = providerAdapters[target.providerId].client;
@@ -86,11 +95,17 @@ async function executeStructuredTarget<T extends z.ZodType>(
     { role: "user", content: userMessage },
   ];
 
-  return client.beta.chat.completions.parse({
+  const params = {
     model: target.modelId,
     messages,
     response_format: zodResponseFormat(schema, formatName),
-  });
+  };
+
+  // Callers without transport overrides keep the exact previous call shape — no second
+  // argument at all — so nothing else in the app changes behaviour because of this option.
+  return requestOptions
+    ? client.beta.chat.completions.parse(params, requestOptions)
+    : client.beta.chat.completions.parse(params);
 }
 
 async function runWithFallback<TResult>(
@@ -202,6 +217,7 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
         userMessage: promptBlueprint.userMessage,
         schema,
         formatName,
+        requestOptions: options.requestOptions,
       }),
       (target) => {
         executionState.target = target;

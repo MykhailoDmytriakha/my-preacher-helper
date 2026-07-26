@@ -231,15 +231,15 @@ describe('sermon.structured', () => {
   });
 
   it('pins manually placed scratch notes to their selected sections when composing hybrid plans', async () => {
+    // n1/n2 follow createdAt order; the model puts both in main, the pin must still win.
     mockStructuredCall.mockResolvedValue({
       success: true,
       data: {
-        introduction: [],
-        main: [
-          { scratchNoteId: 'manual-intro', text: 'Model tried to move manual intro', source: 'ai' },
-          { scratchNoteId: 'ai-main', text: 'AI main point', source: 'ai' },
+        placements: [
+          { noteKey: 'n1', text: 'Model tried to move manual intro', section: 'main', targetKind: 'new_point', targetKey: '' },
+          { noteKey: 'n2', text: 'AI main point', section: 'main', targetKind: 'new_point', targetKey: '' },
         ],
-        conclusion: [],
+        unplaced: [],
       },
       refusal: null,
       error: null,
@@ -289,19 +289,20 @@ describe('sermon.structured', () => {
       ],
       conclusion: [],
     };
+    // The existing point is addressed by its short key p1, never by its real id.
     mockStructuredCall.mockResolvedValue({
       success: true,
       data: {
-        introduction: [],
-        main: [
+        placements: [
           {
-            scratchNoteId: 'ai-main',
-            outlinePointId: 'existing-main',
+            noteKey: 'n1',
             text: 'Application under existing point',
-            note: 'Raw application note',
+            section: 'main',
+            targetKind: 'existing_point',
+            targetKey: 'p1',
           },
         ],
-        conclusion: [],
+        unplaced: [],
       },
       refusal: null,
       error: null,
@@ -329,7 +330,8 @@ describe('sermon.structured', () => {
       expect.objectContaining({
         scratchNoteId: 'ai-main',
         text: 'Application under existing point',
-        note: 'Raw application note',
+        // The raw phrase now comes from OUR copy of the note, not from the model echo.
+        note: 'Apply this existing point',
         source: 'ai',
         position: 2000,
       }),
@@ -342,12 +344,11 @@ describe('sermon.structured', () => {
     mockStructuredCall.mockResolvedValue({
       success: true,
       data: {
-        introduction: [],
-        main: [
-          { scratchNoteId: 'cue-intro', text: 'в начале — start with the question', source: 'ai' },
-          { scratchNoteId: 'cue-conclusion', text: 'в конце — call them to respond', source: 'ai' },
+        placements: [
+          { noteKey: 'n1', text: 'в начале — start with the question', section: 'main', targetKind: 'new_point', targetKey: '' },
+          { noteKey: 'n2', text: 'в конце — call them to respond', section: 'main', targetKind: 'new_point', targetKey: '' },
         ],
-        conclusion: [],
+        unplaced: [],
       },
       refusal: null,
       error: null,
@@ -383,11 +384,16 @@ describe('sermon.structured', () => {
     mockStructuredCall.mockResolvedValue({
       success: true,
       data: {
-        introduction: [
-          { scratchNoteId: 'mixed-cue', text: 'Model tried to make this an intro point', source: 'ai' },
+        placements: [
+          {
+            noteKey: 'n1',
+            text: 'Model tried to make this an intro point',
+            section: 'introduction',
+            targetKind: 'new_point',
+            targetKey: '',
+          },
         ],
-        main: [],
-        conclusion: [],
+        unplaced: [],
       },
       refusal: null,
       error: null,
@@ -414,5 +420,155 @@ describe('sermon.structured', () => {
         source: 'ai',
       }),
     ]);
+  });
+
+  it('drops only the invented key and keeps the rest of the composition', async () => {
+    // The old path discarded the ENTIRE response when a single id looked wrong, and the
+    // model got ids wrong in 4 of 5 measured runs. One bad key must now cost only itself.
+    mockStructuredCall.mockResolvedValue({
+      success: true,
+      data: {
+        placements: [
+          { noteKey: 'n1', text: 'Real placement', section: 'main', targetKind: 'new_point', targetKey: '' },
+          { noteKey: 'n99', text: 'Invented key', section: 'main', targetKind: 'new_point', targetKey: '' },
+        ],
+        unplaced: [],
+      },
+      refusal: null,
+      error: null,
+    });
+
+    const result = await composePlanFromScratchStructured({
+      ...baseSermon,
+      scratch: [{ id: 'note-a', text: 'First note', createdAt: '2026-07-04T00:00:00.000Z' }],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.outline.main).toEqual([
+      expect.objectContaining({ scratchNoteId: 'note-a', text: 'Real placement' }),
+    ]);
+    expect(result.unplacedScratchNoteIds).toEqual([]);
+  });
+
+  it('falls back to a new point when the model targets an outline point that does not exist', async () => {
+    // Seen live: with an EMPTY outline the model still answered targetKind="existing_point"
+    // for 19 of 25 notes. An unresolvable target must degrade to a new point, never drop
+    // the note and never throw.
+    mockStructuredCall.mockResolvedValue({
+      success: true,
+      data: {
+        placements: [
+          { noteKey: 'n1', text: 'Points at nothing', section: 'main', targetKind: 'existing_point', targetKey: 'p7' },
+        ],
+        unplaced: [],
+      },
+      refusal: null,
+      error: null,
+    });
+
+    const result = await composePlanFromScratchStructured({
+      ...baseSermon,
+      scratch: [{ id: 'note-a', text: 'Lonely note', createdAt: '2026-07-04T00:00:00.000Z' }],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.unplacedScratchNoteIds).toEqual([]);
+    expect(result.outline.main).toEqual([
+      expect.objectContaining({ scratchNoteId: 'note-a', text: 'Points at nothing' }),
+    ]);
+  });
+
+  it('reports notes the model skipped instead of hiding them as orphan points', async () => {
+    // One measured run returned 17 objects for 25 notes; the eight missing ones were
+    // silently appended. They still land in the outline, but the caller is now told.
+    mockStructuredCall.mockResolvedValue({
+      success: true,
+      data: {
+        placements: [
+          { noteKey: 'n1', text: 'Placed one', section: 'main', targetKind: 'new_point', targetKey: '' },
+        ],
+        unplaced: [{ noteKey: 'n2', reasonCode: 'ambiguous' }],
+      },
+      refusal: null,
+      error: null,
+    });
+
+    const result = await composePlanFromScratchStructured({
+      ...baseSermon,
+      scratch: [
+        { id: 'note-a', text: 'First note', createdAt: '2026-07-04T00:00:00.000Z' },
+        { id: 'note-b', text: 'Second note', createdAt: '2026-07-04T00:01:00.000Z' },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.unplacedScratchNoteIds).toEqual(['note-b']);
+    expect(result.outline.main.map((point) => point.scratchNoteId)).toEqual(['note-a', 'note-b']);
+  });
+
+  it('applies a repeated note key once, so completeness cannot be faked by duplication', async () => {
+    mockStructuredCall.mockResolvedValue({
+      success: true,
+      data: {
+        placements: [
+          { noteKey: 'n1', text: 'First mention', section: 'main', targetKind: 'new_point', targetKey: '' },
+          { noteKey: 'n1', text: 'Second mention', section: 'conclusion', targetKind: 'new_point', targetKey: '' },
+        ],
+        unplaced: [],
+      },
+      refusal: null,
+      error: null,
+    });
+
+    const result = await composePlanFromScratchStructured({
+      ...baseSermon,
+      scratch: [{ id: 'note-a', text: 'Only note', createdAt: '2026-07-04T00:00:00.000Z' }],
+    });
+
+    expect(result.outline.main).toEqual([
+      expect.objectContaining({ scratchNoteId: 'note-a', text: 'First mention' }),
+    ]);
+    expect(result.outline.conclusion).toEqual([]);
+  });
+
+  it('numbers note keys by capture time, not by the newest-first storage order', async () => {
+    // Scratch is stored newest-first, so the dictated sequence used to reach the model
+    // reversed. n1 must be the note the preacher recorded FIRST.
+    mockStructuredCall.mockResolvedValue({
+      success: true,
+      data: { placements: [], unplaced: [] },
+      refusal: null,
+      error: null,
+    });
+
+    await composePlanFromScratchStructured({
+      ...baseSermon,
+      scratch: [
+        { id: 'newest', text: 'Recorded last', createdAt: '2026-07-04T10:00:00.000Z' },
+        { id: 'oldest', text: 'Recorded first', createdAt: '2026-07-04T09:00:00.000Z' },
+      ],
+    });
+
+    const userMessage = mockStructuredCall.mock.calls[0][1] as string;
+    expect(userMessage).toContain('n1: Recorded first');
+    expect(userMessage).toContain('n2: Recorded last');
+  });
+
+  it('gives the AI call a deadline under the serverless wall and forbids hidden SDK retries', async () => {
+    mockStructuredCall.mockResolvedValue({
+      success: true,
+      data: { placements: [], unplaced: [] },
+      refusal: null,
+      error: null,
+    });
+
+    await composePlanFromScratchStructured({
+      ...baseSermon,
+      scratch: [{ id: 'note-a', text: 'Note', createdAt: '2026-07-04T00:00:00.000Z' }],
+    });
+
+    const options = mockStructuredCall.mock.calls[0][3] as { requestOptions?: { timeout?: number; maxRetries?: number } };
+    expect(options.requestOptions?.maxRetries).toBe(0);
+    expect(options.requestOptions?.timeout).toBeLessThan(60_000);
   });
 });

@@ -82,7 +82,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       ? { ...sermon, scratch: scratchForCompose }
       : sermon;
     const knownScratchIds = new Set(scratchForCompose.map((note) => note.id));
-    const { outline, success } = await composePlanFromScratch(sermonForCompose, existingOutline, uid);
+    const { outline, success, unplacedScratchNoteIds } = await composePlanFromScratch(
+      sermonForCompose,
+      existingOutline,
+      uid
+    );
 
     if (!success) {
       return jsonNoStore(
@@ -106,7 +110,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       );
     }
 
-    return jsonNoStore({ outline: parsedOutline.data });
+    // Notes the model skipped are still in the outline, but the caller is told which ones
+    // so the interface can say it out loud instead of quietly growing orphan points.
+    return jsonNoStore({ outline: parsedOutline.data, unplacedScratchNoteIds });
   } catch (error: unknown) {
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
