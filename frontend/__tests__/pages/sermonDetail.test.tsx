@@ -699,7 +699,12 @@ describe('Sermon Detail Page', () => {
 
 
       expect(require('@/services/sermon.service').updateSermonPreparation).toHaveBeenCalled();
-    });
+      // This case drives ~23 sequential userEvent clicks through a full page render, so it
+      // genuinely needs longer than Jest's 5s default. On a loaded machine it exceeded that
+      // and went red while passing in isolation — and since the Vercel build runs the suite,
+      // a flake here fails a deploy for a reason that has nothing to do with the change
+      // being deployed. The work is legitimately slow; give it room instead of pretending.
+    }, 30_000);
 
     it('updates structure when edited thought moves to a different section', async () => {
       const useSermonMock = require('@/hooks/useSermon').default;
