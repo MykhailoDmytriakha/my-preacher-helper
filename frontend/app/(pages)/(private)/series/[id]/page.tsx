@@ -42,6 +42,7 @@ import { useRouteId } from '@/hooks/useRouteId';
 import { useSeries } from '@/hooks/useSeries';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
 import { useAuth } from '@/providers/AuthProvider';
+import { contentFingerprint } from '@/utils/contentFingerprint';
 import { debugLog } from '@/utils/debugMode';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 
@@ -98,7 +99,7 @@ export default function SeriesDetailPage() {
     theme: string;
     bookOrTopic: string;
     status: string;
-    itemCount: number;
+    items: string;
   };
   const knownSeries = useMemo<SeriesWatched | null>(
     () =>
@@ -109,7 +110,8 @@ export default function SeriesDetailPage() {
             theme: series.theme || '',
             bookOrTopic: series.bookOrTopic || '',
             status: series.status || '',
-            itemCount: (series.items ?? []).length,
+            // Reordering keeps the count identical — fingerprint the items themselves.
+            items: contentFingerprint(series.items ?? []),
           }
         : null,
     [series]
@@ -127,7 +129,7 @@ export default function SeriesDetailPage() {
       theme: (data.theme as string) || '',
       bookOrTopic: (data.bookOrTopic as string) || '',
       status: (data.status as string) || '',
-      itemCount: ((data.items as unknown[]) ?? []).length,
+      items: contentFingerprint(data.items ?? []),
     }),
   });
 

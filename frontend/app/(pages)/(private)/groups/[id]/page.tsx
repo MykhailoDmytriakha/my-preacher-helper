@@ -33,11 +33,11 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
-import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import AddBlockButton from '@/components/groups/AddBlockButton';
 import FlowEditor from '@/components/groups/FlowEditor';
 import FlowFooter from '@/components/groups/FlowFooter';
 import FlowItemRow from '@/components/groups/FlowItemRow';
+import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import SeriesSelector from '@/components/series/SeriesSelector';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import DatePickerField from '@/components/ui/DatePickerField';
@@ -51,6 +51,7 @@ import { Group, GroupBlockStatus, GroupBlockTemplate, GroupBlockTemplateType, Gr
 import { useAuth } from '@/providers/AuthProvider';
 import { hasGroupsAccess } from '@/services/userSettings.service';
 import { changedFields } from '@/utils/changedFields';
+import { contentFingerprint } from '@/utils/contentFingerprint';
 import {
   createFlowItem,
   createTemplate,
@@ -250,12 +251,15 @@ export default function GroupDetailPage() {
 
   // Does the server hold a newer version of THIS group? Shared layer with the
   // note/sermon/series pages: observe only, never swap what is on screen.
+  // Fingerprints, not counts — editing a block's text or reordering the flow
+  // keeps both lengths identical, and the stale screen used to look fresh.
   type GroupWatched = {
     title: string;
     description: string;
     status: string;
-    templateCount: number;
-    flowCount: number;
+    templates: string;
+    flow: string;
+    meetingDates: string;
   };
   const knownGroup = useMemo<GroupWatched | null>(
     () =>
@@ -264,8 +268,9 @@ export default function GroupDetailPage() {
             title: group.title || '',
             description: group.description || '',
             status: group.status || '',
-            templateCount: (group.templates ?? []).length,
-            flowCount: (group.flow ?? []).length,
+            templates: contentFingerprint(group.templates ?? []),
+            flow: contentFingerprint(group.flow ?? []),
+            meetingDates: contentFingerprint(group.meetingDates ?? []),
           }
         : null,
     [group]
@@ -280,8 +285,9 @@ export default function GroupDetailPage() {
       title: (data.title as string) || '',
       description: (data.description as string) || '',
       status: (data.status as string) || '',
-      templateCount: ((data.templates as unknown[]) ?? []).length,
-      flowCount: ((data.flow as unknown[]) ?? []).length,
+      templates: contentFingerprint(data.templates ?? []),
+      flow: contentFingerprint(data.flow ?? []),
+      meetingDates: contentFingerprint(data.meetingDates ?? []),
     }),
   });
   const [groupFreshnessDismissed, setGroupFreshnessDismissed] = useState(false);

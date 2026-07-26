@@ -42,6 +42,7 @@ import { updateSermonOutline } from "@/services/outline.service";
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
 import { updateStructure } from "@/services/structure.service";
 import { newClientId } from "@/utils/clientId";
+import { contentFingerprint } from '@/utils/contentFingerprint';
 import CreateThoughtModal from "@components/CreateThoughtModal";
 import EditThoughtModal from "@components/EditThoughtModal";
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
@@ -269,14 +270,30 @@ export default function SermonPage() {
 
   // Does the server hold a newer version of THIS sermon? Shared layer with the
   // note and series pages: observe only, never swap what is on screen.
-  type SermonWatched = { title: string; verse: string; thoughtCount: number };
+  // Fingerprints, not counts: editing a thought, reordering the outline or
+  // rewriting the plan leaves every length identical, and the stale screen used
+  // to call itself fresh. The listener already carries the whole document, so
+  // this costs no extra reads.
+  type SermonWatched = {
+    title: string;
+    verse: string;
+    thoughts: string;
+    outline: string;
+    plan: string;
+    preparation: string;
+    scratch: string;
+  };
   const knownSermon = useMemo<SermonWatched | null>(
     () =>
       sermon
         ? {
             title: sermon.title || '',
             verse: sermon.verse || '',
-            thoughtCount: (sermon.thoughts ?? []).length,
+            thoughts: contentFingerprint(sermon.thoughts ?? []),
+            outline: contentFingerprint(sermon.outline ?? null),
+            plan: contentFingerprint(sermon.plan ?? sermon.draft ?? null),
+            preparation: contentFingerprint(sermon.preparation ?? null),
+            scratch: contentFingerprint(sermon.scratch ?? []),
           }
         : null,
     [sermon]
@@ -290,7 +307,11 @@ export default function SermonPage() {
     select: (data) => ({
       title: (data.title as string) || '',
       verse: (data.verse as string) || '',
-      thoughtCount: ((data.thoughts as unknown[]) ?? []).length,
+      thoughts: contentFingerprint(data.thoughts ?? []),
+      outline: contentFingerprint(data.outline ?? null),
+      plan: contentFingerprint(data.plan ?? data.draft ?? null),
+      preparation: contentFingerprint(data.preparation ?? null),
+      scratch: contentFingerprint(data.scratch ?? []),
     }),
   });
   const [sermonFreshnessDismissed, setSermonFreshnessDismissed] = useState(false);
