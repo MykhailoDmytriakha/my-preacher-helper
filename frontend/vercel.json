@@ -25,6 +25,9 @@
     "app/api/sermons/[id]/plan/route.ts": {
       "maxDuration": 60
     },
+    "app/api/sermons/[id]/compose-plan-from-scratch/route.ts": {
+      "maxDuration": 60
+    },
     "app/api/sermons/[id]/audio/generate/route.ts": {
       "maxDuration": 60
     },

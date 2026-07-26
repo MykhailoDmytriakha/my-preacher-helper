@@ -12,4 +12,10 @@ describe('vercel function duration config', () => {
   ])('allows enough runtime for %s to finish transcription plus polish', (route) => {
     expect(vercelConfig.functions?.[route]?.maxDuration).toBeGreaterThanOrEqual(60);
   });
+
+  it.each([
+    'app/api/sermons/[id]/compose-plan-from-scratch/route.ts',
+  ])('allows enough runtime for %s to finish the LLM call', (route) => {
+    expect(vercelConfig.functions?.[route]?.maxDuration).toBeGreaterThanOrEqual(60);
+  });
 });
