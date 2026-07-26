@@ -419,6 +419,8 @@ export default function ScratchPanel({
   const [composedOutline, setComposedOutline] = useState<ComposedPlanOutline | null>(null);
   const [manualOutline, setManualOutline] = useState<SermonOutline | null>(null);
   const [composeNoticeKey, setComposeNoticeKey] = useState<string | null>(null);
+  /** How many notes the model skipped. They are in the plan, but placed by fallback. */
+  const [composeUnplacedCount, setComposeUnplacedCount] = useState(0);
   const [composeError, setComposeError] = useState<string | null>(null);
   const [isComposing, setIsComposing] = useState(false);
   const [placements, setPlacements] = useState<Record<string, ScratchPlacement>>({});
@@ -514,6 +516,7 @@ export default function ScratchPanel({
   const clearComposition = useCallback(() => {
     setComposedOutline(null);
     setComposeNoticeKey(null);
+    setComposeUnplacedCount(0);
     setComposeError(null);
   }, []);
 
@@ -779,6 +782,7 @@ export default function ScratchPanel({
     const composeOutlineRevision = outlineRevisionRef.current;
     setIsComposing(true);
     setComposeNoticeKey(null);
+    setComposeUnplacedCount(0);
     setComposeError(null);
 
     const isLatestRequest = () => composeRequestIdRef.current === requestId;
@@ -799,7 +803,7 @@ export default function ScratchPanel({
     }, COMPOSE_TIMEOUT_MS);
 
     try {
-      const outlineFromScratch = await composePlanFromScratch(
+      const { outline: outlineFromScratch, unplacedScratchNoteIds } = await composePlanFromScratch(
         sermonId,
         currentOutline,
         pooledNotes.map((note) => note.id)
@@ -817,6 +821,7 @@ export default function ScratchPanel({
 
       setComposedOutline(outlineFromScratch);
       setComposeNoticeKey(getComposeNoticeKey(outlineFromScratch));
+      setComposeUnplacedCount(unplacedScratchNoteIds.length);
       setComposeError(null);
       await refreshAiUsage();
     } catch (error) {
@@ -1162,6 +1167,15 @@ export default function ScratchPanel({
       {composeNoticeKey && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
           {t(composeNoticeKey)}
+        </div>
+      )}
+
+      {composeUnplacedCount > 0 && (
+        <div
+          data-testid="compose-unplaced-notice"
+          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200"
+        >
+          {t("scratch.board.composeUnplaced", { count: composeUnplacedCount })}
         </div>
       )}
 

@@ -64,12 +64,34 @@ describe('scratch.service', () => {
         category: 'ai',
       })
     );
-    expect(result.introduction[0]).toEqual(
+    expect(result.outline.introduction[0]).toEqual(
       expect.objectContaining({
         scratchNoteId: 'n1',
         text: 'Intro point',
       })
     );
+    expect(result.unplacedScratchNoteIds).toEqual([]);
+  });
+
+  it('surfaces the notes the model skipped instead of dropping that fact', async () => {
+    apiClientMock().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        outline: {
+          introduction: [],
+          main: [
+            { id: 'p1', scratchNoteId: 'n1', text: 'Placed', source: 'ai' },
+            { id: 'p2', scratchNoteId: 'n2', text: 'Fallback point', source: 'ai' },
+          ],
+          conclusion: [],
+        },
+        unplacedScratchNoteIds: ['n2'],
+      }),
+    });
+
+    const result = await composePlanFromScratch('sermon-1', emptyOutline, ['n1', 'n2']);
+
+    expect(result.unplacedScratchNoteIds).toEqual(['n2']);
   });
 
   it('rejects composed outlines containing scratch ids the client did not request', async () => {

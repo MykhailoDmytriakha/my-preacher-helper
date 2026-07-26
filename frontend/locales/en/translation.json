@@ -1753,6 +1753,7 @@
       "composeSuccessAllAi": "Done: AI placed every note, respected beginning/end cues, and added point notes.",
       "composeSuccessHybrid": "Done: your manual placements stayed put; AI placed the rest and marked them.",
       "composeSuccessAllManual": "Done: every manual placement stayed in its section; AI only ordered and shaped the points.",
+      "composeUnplaced": "AI could not place {{count}} of your notes — they were added as separate points. Worth a look.",
       "apply": "Apply to sermon plan",
       "applyNeedsProposal": "Compose a proposed plan or place a note on a point.",
       "applyVoiceProcessing": "Wait until the voice note finishes transcribing.",

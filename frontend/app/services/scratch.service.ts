@@ -39,11 +39,17 @@ function collectReturnedScratchIds(outline: ComposedPlanOutline): string[] {
   ]).filter((scratchNoteId): scratchNoteId is string => Boolean(scratchNoteId));
 }
 
+export interface ComposePlanResult {
+  outline: ComposedPlanOutline;
+  /** Ids of notes the model did not place; they landed in the outline as their own points. */
+  unplacedScratchNoteIds: string[];
+}
+
 export async function composePlanFromScratch(
   sermonId: string,
   existingOutline: SermonOutline | undefined,
   knownScratchNoteIds: Iterable<string>
-): Promise<ComposedPlanOutline> {
+): Promise<ComposePlanResult> {
   if (isBrowserOffline()) {
     throw new Error('Scratch compose is unavailable offline');
   }
@@ -94,5 +100,11 @@ export async function composePlanFromScratch(
     throw new Error(`Compose plan returned unknown scratch ids: ${unknownScratchIds.join(', ')}`);
   }
 
-  return parsed.data.outline;
+  return {
+    outline: parsed.data.outline,
+    // Notes the model skipped. They ARE in the outline, each as its own point — but the
+    // preacher deserves to know his thought was placed by fallback, not by judgement.
+    // A measured run placed 17 of 25 notes and said nothing.
+    unplacedScratchNoteIds: parsed.data.unplacedScratchNoteIds ?? [],
+  };
 }

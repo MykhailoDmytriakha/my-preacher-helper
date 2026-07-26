@@ -275,10 +275,20 @@ const baseNotes: ScratchNote[] = [
   { id: 'n2', text: 'Second scratch note', createdAt: '2026-07-04T00:01:00.000Z', section: 'introduction' },
 ];
 
-const composeOutline = (outline: Partial<ComposedPlanOutline>): ComposedPlanOutline => ({
-  introduction: outline.introduction ?? [],
-  main: outline.main ?? [],
-  conclusion: outline.conclusion ?? [],
+/**
+ * Compose now answers with the outline PLUS the notes the model skipped, so the panel can
+ * say so out loud. Tests that do not care about skipped notes get an empty list.
+ */
+const composeOutline = (
+  outline: Partial<ComposedPlanOutline>,
+  unplacedScratchNoteIds: string[] = []
+) => ({
+  outline: {
+    introduction: outline.introduction ?? [],
+    main: outline.main ?? [],
+    conclusion: outline.conclusion ?? [],
+  } as ComposedPlanOutline,
+  unplacedScratchNoteIds,
 });
 
 function renderScratchPanel(overrides: Partial<React.ComponentProps<typeof ScratchPanel>> = {}) {
@@ -886,6 +896,43 @@ describe('ScratchPanel', () => {
     expect(await screen.findByText('Composed from pooled note')).toBeInTheDocument();
   });
 
+  it('says out loud when the model skipped notes, instead of quietly adding orphan points', async () => {
+    // A measured run placed 17 of 25 notes and reported nothing; the other eight were
+    // appended as their own points and looked like a deliberate choice.
+    composePlanFromScratchMock().mockResolvedValueOnce(
+      composeOutline(
+        {
+          main: [
+            { id: 'p1', scratchNoteId: 'n1', text: 'Placed by judgement', source: 'ai' },
+            { id: 'p2', scratchNoteId: 'n2', text: 'Placed by fallback', source: 'ai' },
+          ],
+        },
+        ['n2']
+      )
+    );
+    const { user } = renderScratchPanel();
+
+    await openBoard(user);
+    await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
+
+    expect(await screen.findByTestId('compose-unplaced-notice')).toBeInTheDocument();
+  });
+
+  it('stays quiet when every note was placed', async () => {
+    composePlanFromScratchMock().mockResolvedValueOnce(
+      composeOutline({
+        main: [{ id: 'p1', scratchNoteId: 'n1', text: 'Placed by judgement', source: 'ai' }],
+      })
+    );
+    const { user } = renderScratchPanel();
+
+    await openBoard(user);
+    await user.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
+
+    await screen.findByText('Placed by judgement');
+    expect(screen.queryByTestId('compose-unplaced-notice')).not.toBeInTheDocument();
+  });
+
   it('keeps edits to an AI proposal local until Apply and consumes the composed source note', async () => {
     const onOutlineChange = jest.fn().mockResolvedValue(undefined);
     const onApplyOutline = jest.fn().mockResolvedValue(undefined);
@@ -1128,9 +1175,9 @@ describe('ScratchPanel', () => {
   });
 
   it('discards a composed response if scratch notes changed while the request was in flight', async () => {
-    let resolveCompose: (outline: ComposedPlanOutline) => void = () => undefined;
+    let resolveCompose: (result: ReturnType<typeof composeOutline>) => void = () => undefined;
     composePlanFromScratchMock().mockReturnValueOnce(
-      new Promise<ComposedPlanOutline>((resolve) => {
+      new Promise<ReturnType<typeof composeOutline>>((resolve) => {
         resolveCompose = resolve;
       })
     );
@@ -1188,9 +1235,9 @@ describe('ScratchPanel', () => {
 
   it('ignores a late compose response after timeout and keeps the surfaced error', async () => {
     jest.useFakeTimers();
-    let resolveCompose: (outline: ComposedPlanOutline) => void = () => undefined;
+    let resolveCompose: (result: ReturnType<typeof composeOutline>) => void = () => undefined;
     composePlanFromScratchMock().mockReturnValueOnce(
-      new Promise<ComposedPlanOutline>((resolve) => {
+      new Promise<ReturnType<typeof composeOutline>>((resolve) => {
         resolveCompose = resolve;
       })
     );
