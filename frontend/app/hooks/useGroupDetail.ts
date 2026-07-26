@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { Group, GroupMeetingDate } from '@/models/models';
@@ -91,11 +92,11 @@ export function useGroupDetail(groupId: string) {
    * this whole mechanism exists to prevent. So a refusal does NOT refetch: the
    * typed text stays on screen and the choice is handed over.
    */
-  const [saveConflict, setSaveConflict] = useState<{
-    updates: Partial<Group>;
-    /** The server's revision at refusal — what a deliberate overwrite must state. */
-    actualRevision: number;
-  } | null>(null);
+  const [saveConflict, setSaveConflict] = usePersistedConflict<Partial<Group>>(
+    group?.userId,
+    groupId,
+    GROUP_CONTENT_AGGREGATE
+  );
   const [resolvingConflict, setResolvingConflict] = useState(false);
 
   /**
@@ -169,7 +170,7 @@ export function useGroupDetail(groupId: string) {
         .catch((errorValue: unknown) => {
           if (isStaleWriteError(errorValue)) {
             // REFUSED, not failed. Deliberately NO refetch here — see above.
-            setSaveConflict({ updates, actualRevision: errorValue.actualRevision });
+            setSaveConflict({ payload: updates, actualRevision: errorValue.actualRevision });
             toast.error(t('freshness.staleSaveToast'));
             return;
           }
@@ -186,7 +187,7 @@ export function useGroupDetail(groupId: string) {
     try {
       // Adopt the revision the server held AT REFUSAL, or the resend is refused
       // again and the button promises what it never performs.
-      await updateGroupDetail(saveConflict.updates, saveConflict.actualRevision);
+      await updateGroupDetail(saveConflict.payload, saveConflict.actualRevision);
     } finally {
       setResolvingConflict(false);
     }

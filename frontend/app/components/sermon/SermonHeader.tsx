@@ -13,6 +13,7 @@ import OptionMenu from '@/components/dashboard/OptionMenu';
 import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { useAuth } from '@/hooks/useAuth';
+import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { useUserSettings } from '@/hooks/useUserSettings';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { getSermonById, updateSermon } from '@/services/sermon.service'; // Import updateSermon service
@@ -85,12 +86,11 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
    * gone from the screen — and unlike the note, these fields have no durable
    * draft behind them. A toast claiming "your text is still here" was false.
    */
-  const [conflict, setConflict] = React.useState<{
-    field: 'title' | 'verse';
-    value: string;
-    /** The server's revision at refusal — what a deliberate overwrite must state. */
-    actualRevision: number;
-  } | null>(null);
+  const [conflict, setConflict] = usePersistedConflict<{ field: 'title' | 'verse'; value: string }>(
+    sermon.userId,
+    sermon.id,
+    SERMON_CORE_AGGREGATE
+  );
   const [resolvingConflict, setResolvingConflict] = React.useState(false);
 
   /**
@@ -117,7 +117,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
       if (isStaleWriteError(error)) {
         // REFUSED, not failed: the server holds a newer version. Hold the text and
         // hand the choice to the person instead of reporting a generic glitch.
-        setConflict({ field, value, actualRevision: error.actualRevision });
+        setConflict({ payload: { field, value }, actualRevision: error.actualRevision });
         toast.error(t('freshness.staleSaveToast'));
         return;
       }
@@ -153,7 +153,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
       // that put stale data back on screen after a correct save. The write path
       // itself now returns what it committed, so `saveCoreField` already published
       // the right thing.
-      await saveCoreField(conflict.field, conflict.value, conflict.actualRevision);
+      await saveCoreField(conflict.payload.field, conflict.payload.value, conflict.actualRevision);
     } finally {
       setResolvingConflict(false);
     }
@@ -192,7 +192,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
       {conflict && (
         <SaveConflictBanner
           entityKey="entitySermon"
-          pendingText={conflict.value}
+          pendingText={conflict.payload.value}
           onKeepMine={handleKeepMine}
           onTakeTheirs={handleTakeTheirs}
           busy={resolvingConflict}

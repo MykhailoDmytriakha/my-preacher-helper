@@ -109,6 +109,9 @@ describe('useSeriesDetail', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    // A refused save is persisted so it survives a reload — clear it between tests,
+    // or one test's conflict is restored into the next one's fresh mount.
+    localStorage.clear();
     mockGetSeriesById.mockResolvedValue(mockSeries);
     mockGetSermonById.mockImplementation((id) =>
       Promise.resolve(mockSermons.find((sermon) => sermon.id === id))
@@ -269,7 +272,7 @@ describe('useSeriesDetail', () => {
       });
 
       expect(result.current.saveConflict).toEqual({
-        updates: { title: 'Typed on the laptop' },
+        payload: { title: 'Typed on the laptop' },
         actualRevision: 6,
       });
     });

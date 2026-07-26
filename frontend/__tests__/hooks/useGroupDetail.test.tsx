@@ -70,6 +70,9 @@ const createWrapper = () => {
 describe('useGroupDetail', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // A refused save is persisted so it survives a reload — clear it between tests,
+    // or one test's conflict is restored into the next one's fresh mount.
+    localStorage.clear();
     mockUseServerFirstQuery.mockReturnValue({
       data: {
         id: 'g1',
@@ -244,7 +247,7 @@ describe('useGroupDetail', () => {
 
       await waitFor(() =>
         expect(result.current.saveConflict).toEqual({
-          updates: { title: 'Typed on the laptop' },
+          payload: { title: 'Typed on the laptop' },
           actualRevision: 9,
         })
       );

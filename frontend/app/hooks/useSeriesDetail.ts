@@ -3,6 +3,7 @@ import i18n from 'i18next';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 
+import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
@@ -213,11 +214,11 @@ export function useSeriesDetail(seriesId: string) {
    * The modal that submitted it has already closed, so this state is the ONLY
    * remaining copy of what the person typed.
    */
-  const [saveConflict, setSaveConflict] = useState<{
-    updates: Partial<Series>;
-    /** The server's revision at refusal — what a deliberate overwrite must state. */
-    actualRevision: number;
-  } | null>(null);
+  const [saveConflict, setSaveConflict] = usePersistedConflict<Partial<Series>>(
+    series?.userId,
+    seriesId,
+    SERIES_META_AGGREGATE
+  );
   const [resolvingConflict, setResolvingConflict] = useState(false);
 
   const writeSeriesDetail = useCallback(
@@ -233,7 +234,7 @@ export function useSeriesDetail(seriesId: string) {
           if (isStaleWriteError(error)) {
             // REFUSED, not failed. Hold the text and hand the person the choice —
             // a generic save error would read as a glitch and hide a real conflict.
-            setSaveConflict({ updates, actualRevision: error.actualRevision });
+            setSaveConflict({ payload: updates, actualRevision: error.actualRevision });
             toast.error(i18n.t('freshness.staleSaveToast'));
             return;
           }
@@ -261,7 +262,7 @@ export function useSeriesDetail(seriesId: string) {
     try {
       // Adopt the revision the server held AT REFUSAL. Resending the original one
       // would be refused again, making the button a promise it never keeps.
-      await writeSeriesDetail(saveConflict.updates, saveConflict.actualRevision);
+      await writeSeriesDetail(saveConflict.payload, saveConflict.actualRevision);
     } finally {
       setResolvingConflict(false);
     }

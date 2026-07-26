@@ -314,7 +314,7 @@ export default function SeriesDetailPage() {
       {saveConflict && (
         <SaveConflictBanner
           entityKey="entitySeries"
-          pendingText={saveConflict.updates.title ?? saveConflict.updates.description ?? undefined}
+          pendingText={saveConflict.payload.title ?? saveConflict.payload.description ?? undefined}
           onKeepMine={keepMineOnConflict}
           onTakeTheirs={takeTheirsOnConflict}
           busy={resolvingConflict}
