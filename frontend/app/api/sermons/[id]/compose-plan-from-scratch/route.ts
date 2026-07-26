@@ -23,14 +23,76 @@ function jsonNoStore(body: unknown, init: ResponseInit = {}) {
   return NextResponse.json(body, { ...init, headers });
 }
 
-async function readComposeRequest(request: NextRequest) {
+type ComposeRequestRead =
+  | { kind: 'absent' }
+  | { kind: 'invalid'; reason: string }
+  | { kind: 'ok'; body: NonNullable<Awaited<ReturnType<typeof parseComposeBody>>> };
+
+function parseComposeBody(data: unknown) {
+  const parsed = ComposePlanApiRequestSchema.safeParse(data);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/**
+ * A malformed body used to collapse into `undefined`, which the route read as "no subset
+ * requested" and answered by composing EVERY scratch note. A version-skewed client could
+ * therefore rearrange the whole sermon while believing it had asked about two notes.
+ * Absent body stays legal (compose everything); a body that is present but unreadable is
+ * now an error, because guessing what the caller meant is how silent damage happens.
+ */
+async function readComposeRequest(request: NextRequest): Promise<ComposeRequestRead> {
+  let raw: string;
   try {
-    const data = await request.json();
-    const parsed = ComposePlanApiRequestSchema.safeParse(data);
-    return parsed.success ? parsed.data : undefined;
+    raw = await request.text();
   } catch {
-    return undefined;
+    return { kind: 'invalid', reason: 'Request body could not be read' };
   }
+
+  if (raw.trim().length === 0) return { kind: 'absent' };
+
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return { kind: 'invalid', reason: 'Request body is not valid JSON' };
+  }
+
+  const body = parseComposeBody(data);
+  if (!body) return { kind: 'invalid', reason: 'Request body does not match the expected shape' };
+
+  return { kind: 'ok', body };
+}
+
+/**
+ * Guards on the requested subset. Each case used to fail SILENTLY:
+ * an empty list answered 200 with the untouched outline, duplicates collapsed through a
+ * Set, and a note deleted between the client's read and ours simply disappeared from the
+ * composition — the preacher got a plan missing a thought he had explicitly asked about.
+ */
+function findSelectionProblem(
+  requestedScratchNoteIds: string[] | undefined,
+  scratch: Array<{ id: string }>
+): { status: number; payload: Record<string, unknown> } | null {
+  if (!requestedScratchNoteIds) return null;
+
+  if (requestedScratchNoteIds.length === 0) {
+    return { status: 400, payload: { error: 'scratchNoteIds must not be empty' } };
+  }
+
+  if (new Set(requestedScratchNoteIds).size !== requestedScratchNoteIds.length) {
+    return { status: 400, payload: { error: 'scratchNoteIds must not contain duplicates' } };
+  }
+
+  const availableIds = new Set(scratch.map((note) => note.id));
+  const missingScratchNoteIds = requestedScratchNoteIds.filter((id) => !availableIds.has(id));
+  if (missingScratchNoteIds.length > 0) {
+    return {
+      status: 409,
+      payload: { error: 'Some requested scratch notes no longer exist', missingScratchNoteIds },
+    };
+  }
+
+  return null;
 }
 
 function collectScratchNoteIds(outline: unknown): string[] {
@@ -69,9 +131,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const requestBody = await readComposeRequest(request);
+    const read = await readComposeRequest(request);
+    if (read.kind === 'invalid') {
+      return jsonNoStore({ error: read.reason }, { status: 400 });
+    }
+
+    const requestBody = read.kind === 'ok' ? read.body : undefined;
     const existingOutline = requestBody?.existingOutline ?? sermon.outline;
     const requestedScratchNoteIds = requestBody?.scratchNoteIds;
+
+    const selectionProblem = findSelectionProblem(requestedScratchNoteIds, sermon.scratch ?? []);
+    if (selectionProblem) {
+      return jsonNoStore(selectionProblem.payload, { status: selectionProblem.status });
+    }
+
     const requestedScratchIdSet = requestedScratchNoteIds
       ? new Set(requestedScratchNoteIds)
       : null;
