@@ -1334,7 +1334,8 @@
     "payloadTooLarge": "Feedback is too large for one request. Shorten the message or remove an attachment.",
     "attachmentBudgetRemaining": "{{amount}} MB attachment budget remaining",
     "removeImage": "Remove image",
-    "imagesNote": "Up to 3 images, max 3 MB each and 4.4 MB total"
+    "imagesNote": "Up to 3 images, max 3 MB each and 4.4 MB total",
+    "pasteHint": "Or paste a screenshot straight from the clipboard — Ctrl+V / ⌘V"
   },
   "planEditor": {
     "title": "Plan editor",

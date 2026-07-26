@@ -28,6 +28,7 @@ jest.mock('react-i18next', () => ({
         'feedback.imageTooLarge': 'Image is too large (max 3 MB)',
         'feedback.payloadTooLarge': 'Feedback is too large for one request. Shorten the message or remove an attachment.',
         'feedback.attachmentBudgetRemaining': '{{amount}} MB attachment budget remaining',
+        'feedback.pasteHint': 'Or paste a screenshot straight from the clipboard — Ctrl+V / ⌘V',
       };
       return (translations[key] || key).replace('{{amount}}', options?.amount || '');
     }
@@ -430,5 +431,169 @@ describe('FeedbackForm Component', () => {
     fireEvent.submit(form!);
 
     expect(mockOnSubmit).toHaveBeenCalledWith('Test feedback message', 'suggestion', []);
+  });
+
+  describe('pasting an image from the clipboard', () => {
+    // Mirrors what a browser hands a paste handler: the bitmap arrives as a file entry.
+    function clipboardWith(files: File[], text?: string) {
+      const types = [...(text === undefined ? [] : ['text/plain']), ...(files.length ? ['Files'] : [])];
+      return {
+        files,
+        items: files.map(file => ({ kind: 'file', type: file.type, getAsFile: () => file })),
+        types,
+        getData: () => text ?? '',
+      };
+    }
+
+    test('attaches a pasted screenshot without touching the attach button', async () => {
+      const dataUrl = 'data:image/png;base64,cGFzdGVk';
+      const restore = mockFileReader(dataUrl);
+
+      render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
+      const textarea = screen.getByPlaceholderText('Please tell us what you think...');
+
+      await act(async () => {
+        fireEvent.paste(textarea, { clipboardData: clipboardWith([createMockFile('screenshot.png')]) });
+        await Promise.resolve();
+      });
+
+      expect(screen.getAllByAltText(/^attachment-/)).toHaveLength(1);
+      expect(screen.getByAltText('attachment-1')).toHaveAttribute('src', dataUrl);
+
+      restore();
+    });
+
+    test('submits the pasted image with the feedback', async () => {
+      const dataUrl = 'data:image/png;base64,cGFzdGVk';
+      const restore = mockFileReader(dataUrl);
+
+      render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
+      const textarea = screen.getByPlaceholderText('Please tell us what you think...');
+
+      await act(async () => {
+        fireEvent.paste(textarea, { clipboardData: clipboardWith([createMockFile('screenshot.png')]) });
+        await Promise.resolve();
+      });
+      fireEvent.change(textarea, { target: { value: 'Here is what I see' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+      await waitFor(() => {
+        expect(mockOnSubmit).toHaveBeenCalledWith('Here is what I see', 'suggestion', [dataUrl]);
+      });
+
+      restore();
+    });
+
+    test('swallows an image-only paste so nothing lands in the textarea', async () => {
+      const restore = mockFileReader('data:image/png;base64,cGFzdGVk');
+      render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
+      const textarea = screen.getByPlaceholderText('Please tell us what you think...');
+
+      let notPrevented = true;
+      await act(async () => {
+        notPrevented = fireEvent.paste(textarea, {
+          clipboardData: clipboardWith([createMockFile('screenshot.png')]),
+        });
+        await Promise.resolve();
+      });
+
+      expect(notPrevented).toBe(false);
+      restore();
+    });
+
+    test('keeps the text of a mixed paste while attaching its image', async () => {
+      const restore = mockFileReader('data:image/png;base64,cGFzdGVk');
+      render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
+      const textarea = screen.getByPlaceholderText('Please tell us what you think...');
+
+      let notPrevented = false;
+      await act(async () => {
+        notPrevented = fireEvent.paste(textarea, {
+          clipboardData: clipboardWith([createMockFile('screenshot.png')], 'copied words'),
+        });
+        await Promise.resolve();
+      });
+
+      // Default behaviour left alone → the browser still inserts "copied words".
+      expect(notPrevented).toBe(true);
+      expect(screen.getAllByAltText(/^attachment-/)).toHaveLength(1);
+
+      restore();
+    });
+
+    test('leaves a plain text paste alone', async () => {
+      render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
+      const textarea = screen.getByPlaceholderText('Please tell us what you think...');
+
+      let notPrevented = false;
+      await act(async () => {
+        notPrevented = fireEvent.paste(textarea, { clipboardData: clipboardWith([], 'just words') });
+        await Promise.resolve();
+      });
+
+      expect(notPrevented).toBe(true);
+      expect(screen.queryByTestId('image-previews')).not.toBeInTheDocument();
+    });
+
+    test('accepts a paste made while nothing inside the form has focus', async () => {
+      const restore = mockFileReader('data:image/png;base64,cGFzdGVk');
+      render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
+
+      await act(async () => {
+        fireEvent.paste(document.body, {
+          clipboardData: clipboardWith([createMockFile('screenshot.png')]),
+        });
+        await Promise.resolve();
+      });
+
+      expect(screen.getAllByAltText(/^attachment-/)).toHaveLength(1);
+      restore();
+    });
+
+    test('rejects a pasted image whose type the form does not accept', async () => {
+      render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
+      const textarea = screen.getByPlaceholderText('Please tell us what you think...');
+
+      await act(async () => {
+        fireEvent.paste(textarea, {
+          clipboardData: clipboardWith([createMockFile('vector.svg', 1000, 'image/svg+xml')]),
+        });
+        await Promise.resolve();
+      });
+
+      expect(screen.getByTestId('image-error')).toHaveTextContent(
+        'Only PNG, JPEG, and WebP images are supported'
+      );
+      expect(screen.queryByTestId('image-previews')).not.toBeInTheDocument();
+    });
+
+    test('rejects a pasted image once the three-image limit is reached', async () => {
+      const restore = mockFileReader('data:image/png;base64,cGFzdGVk');
+      render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
+      const textarea = screen.getByPlaceholderText('Please tell us what you think...');
+
+      for (const name of ['one.png', 'two.png', 'three.png']) {
+        await act(async () => {
+          fireEvent.paste(textarea, { clipboardData: clipboardWith([createMockFile(name)]) });
+          await Promise.resolve();
+        });
+      }
+      expect(screen.getAllByAltText(/^attachment-/)).toHaveLength(3);
+
+      await act(async () => {
+        fireEvent.paste(textarea, { clipboardData: clipboardWith([createMockFile('four.png')]) });
+        await Promise.resolve();
+      });
+
+      expect(screen.getAllByAltText(/^attachment-/)).toHaveLength(3);
+      expect(screen.getByTestId('image-error')).toHaveTextContent('Maximum 3 images allowed');
+
+      restore();
+    });
+
+    test('tells the user that pasting works', () => {
+      render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
+      expect(screen.getByTestId('paste-hint')).toHaveTextContent('Ctrl+V');
+    });
   });
 });

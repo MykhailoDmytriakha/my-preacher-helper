@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import "@locales/i18n";
+import { clipboardHasText, extractClipboardImageFiles } from '@/utils/clipboardImages';
 import {
   getFeedbackPayloadByteLength,
   getUtf8ByteLength,
@@ -33,18 +34,18 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
   const feedbackTextRef = useRef('');
   const imagesRef = useRef<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // One acceptance path for every source of a file — the picker, a paste, anything added later.
+  // `imagesRef` rather than `images` because two pastes can land before React re-renders.
+  const addImageFiles = useCallback((files: File[]) => {
     setImageError('');
-    const files = Array.from(e.target.files || []);
     if (!files.length) return;
 
-    const remaining = MAX_FEEDBACK_IMAGES - images.length;
-    if (remaining <= 0) {
+    const remaining = MAX_FEEDBACK_IMAGES - imagesRef.current.length;
+    if (files.length > remaining) {
       setImageError(t('feedback.imageLimitReached') || 'Maximum 3 images allowed');
-      // Reset input so same file can be re-selected if image is removed
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
+      if (remaining <= 0) return;
     }
 
     const toProcess = files.slice(0, remaining);
@@ -92,10 +93,39 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
       };
       reader.readAsDataURL(file);
     });
+  }, [t]);
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    addImageFiles(Array.from(e.target.files || []));
     // Reset input so the same file can be re-selected after removal
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
+
+  const handleClipboard = useCallback((event: ClipboardEvent | React.ClipboardEvent) => {
+    if (isSubmitting) return;
+
+    const pastedImages = extractClipboardImageFiles(event.clipboardData);
+    if (!pastedImages.length) return;
+
+    // A screenshot paste carries no text worth keeping, and letting it through makes some browsers
+    // drop the image's markup or file name into the textarea. A mixed paste keeps its text.
+    if (!clipboardHasText(event.clipboardData)) event.preventDefault();
+
+    addImageFiles(pastedImages);
+  }, [addImageFiles, isSubmitting]);
+
+  // The form handler covers pastes into its own fields; this covers Ctrl+V while the modal is open
+  // but nothing inside it has focus — which is exactly how someone pastes a fresh screenshot.
+  useEffect(() => {
+    const onDocumentPaste = (event: ClipboardEvent) => {
+      const target = event.target as Node | null;
+      if (target && formRef.current?.contains(target)) return;
+      handleClipboard(event);
+    };
+
+    document.addEventListener('paste', onDocumentPaste);
+    return () => document.removeEventListener('paste', onDocumentPaste);
+  }, [handleClipboard]);
 
   const handleRemoveImage = (index: number) => {
     const nextImages = imagesRef.current.filter((_, i) => i !== index);
@@ -172,7 +202,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
   );
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form ref={formRef} onSubmit={handleSubmit} onPaste={handleClipboard}>
       <div className="mb-4">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1" suppressHydrationWarning={true}>
           {t('feedback.typeLabel') || 'Feedback Type'}
@@ -272,6 +302,14 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
             {t('feedback.imagesNote') || 'Up to 3 images, max 3 MB each and 4.4 MB total'}
           </span>
         </div>
+
+        <p
+          className="mt-1 text-xs text-gray-500 dark:text-gray-400"
+          data-testid="paste-hint"
+          suppressHydrationWarning={true}
+        >
+          {t('feedback.pasteHint') || 'Or paste a screenshot straight from the clipboard (Ctrl+V)'}
+        </p>
 
         <p
           className="mt-1 text-xs text-gray-400 dark:text-gray-500"
