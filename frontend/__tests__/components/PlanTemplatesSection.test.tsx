@@ -9,6 +9,7 @@ import type { PlanTemplate } from '@/models/models';
 const mockCreate = jest.fn().mockResolvedValue(undefined);
 const mockUpdate = jest.fn().mockResolvedValue(undefined);
 const mockDelete = jest.fn().mockResolvedValue(undefined);
+const mockRefresh = jest.fn().mockResolvedValue({ isError: false });
 let mockTemplates: PlanTemplate[] = [];
 
 jest.mock('@/hooks/usePlanTemplates', () => ({
@@ -18,6 +19,7 @@ jest.mock('@/hooks/usePlanTemplates', () => ({
     createTemplate: mockCreate,
     updateTemplate: mockUpdate,
     deleteTemplate: mockDelete,
+    refresh: mockRefresh,
   }),
 }));
 
@@ -43,6 +45,7 @@ jest.mock('@/components/ui/ConfirmModal', () => {
 });
 
 import PlanTemplatesSection from '@/components/settings/PlanTemplatesSection';
+import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 
 const user = { uid: 'u1' } as unknown as User;
 
@@ -131,5 +134,53 @@ describe('PlanTemplatesSection', () => {
 
     // Visible right away — no waitFor, no updateTemplate round-trip needed.
     expect(screen.getByText('New point')).toBeInTheDocument();
+  });
+});
+
+/**
+ * A refused rename must not evaporate.
+ *
+ * `renamingId` is cleared before the request, so by the time the refusal arrives
+ * the input is gone. A bare toast therefore announced a loss instead of
+ * preventing one — adversarial review's P1.
+ */
+describe('PlanTemplatesSection — a refused edit offers the choice', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    mockUpdate.mockReset();
+    mockRefresh.mockReset().mockResolvedValue({ isError: false });
+    mockTemplates = [tpl('t1', 'Alpha')];
+  });
+
+  const renameTo = async (value: string) => {
+    fireEvent.click(screen.getByLabelText('common.edit'));
+    fireEvent.change(screen.getByDisplayValue('Alpha'), { target: { value } });
+    fireEvent.click(screen.getByLabelText('common.save'));
+  };
+
+  it('holds the typed name and shows both choices', async () => {
+    mockUpdate.mockRejectedValueOnce(new StaleWriteError('template', 0, 5));
+    render(<PlanTemplatesSection user={user} />);
+
+    await renameTo('Alpha renamed');
+
+    expect(await screen.findByText('freshness.conflictTitle')).toBeInTheDocument();
+    expect(screen.getByText('Alpha renamed')).toBeInTheDocument();
+    expect(screen.getByText('freshness.conflictKeepMine')).toBeInTheDocument();
+  });
+
+  it('re-sends with the server revision when "keep mine" is chosen', async () => {
+    mockUpdate.mockRejectedValueOnce(new StaleWriteError('template', 0, 5));
+    render(<PlanTemplatesSection user={user} />);
+    await renameTo('Alpha renamed');
+    await screen.findByText('freshness.conflictTitle');
+
+    mockUpdate.mockResolvedValueOnce(undefined);
+    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
+
+    // 5, not 0 — otherwise the resend is refused again and the button lies.
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenLastCalledWith('t1', { name: 'Alpha renamed' }, 5)
+    );
   });
 });

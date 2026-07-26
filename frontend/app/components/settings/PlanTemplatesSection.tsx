@@ -7,7 +7,9 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
+import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { PLAN_TEMPLATE_AGGREGATE } from '@/services/planTemplates.client';
@@ -26,7 +28,26 @@ const countPoints = (outline?: SermonOutline): number =>
 
 const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => {
   const { t } = useTranslation();
-  const { templates, loading, createTemplate, updateTemplate, deleteTemplate } = usePlanTemplates(user?.uid);
+  const { templates, loading, createTemplate, updateTemplate, deleteTemplate, refresh } =
+    usePlanTemplates(user?.uid);
+
+  /** Which template the pending conflict belongs to — keys its durable slot. */
+  const [conflictTemplateId, setConflictTemplateId] = useState<string | null>(null);
+
+  /**
+   * A refused template edit, held so it can be re-offered.
+   *
+   * Adversarial review was right that a toast alone loses it: `renamingId` is
+   * cleared before the request, so the input is already closed when the refusal
+   * arrives, and a structure edit lives only in `draftStructure` memory. The
+   * conflict is persisted, so a reload does not cost the person their work.
+   */
+  const [conflict, setConflict] = usePersistedConflict<{
+    templateId: string;
+    label: string;
+    updates: { name?: string; structure?: SermonOutline };
+  }>(user?.uid, conflictTemplateId, PLAN_TEMPLATE_AGGREGATE);
+  const [resolvingConflict, setResolvingConflict] = useState(false);
 
   const [newName, setNewName] = useState('');
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -75,6 +96,13 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
       await updateTemplate(tpl.id, { name }, tpl.rev?.[PLAN_TEMPLATE_AGGREGATE] ?? 0);
     } catch (err) {
       if (isStaleWriteError(err)) {
+        // The rename input is already closed, so the typed name would vanish with
+        // a bare toast. Hold it and hand over the choice.
+        setConflictTemplateId(tpl.id);
+        setConflict({
+          payload: { templateId: tpl.id, label: name, updates: { name } },
+          actualRevision: err.actualRevision,
+        });
         toast.error(t('freshness.staleSaveToast'));
         return;
       }
@@ -111,8 +139,13 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
         tpl.rev?.[PLAN_TEMPLATE_AGGREGATE] ?? 0
       ).catch((err) => {
         if (isStaleWriteError(err)) {
-          // REFUSED, not failed. The board still shows `draftStructure`, so the
-          // edit is on screen — say plainly that it did not reach the server.
+          // The board still shows `draftStructure`, but only in memory — a reload
+          // would take it. Hold the structure itself and offer the choice.
+          setConflictTemplateId(tpl.id);
+          setConflict({
+            payload: { templateId: tpl.id, label: tpl.name, updates: { structure } },
+            actualRevision: err.actualRevision,
+          });
           toast.error(t('freshness.staleSaveToast'));
           return;
         }
@@ -122,12 +155,58 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
     }, 400);
   };
 
+  const handleKeepMine = async () => {
+    if (!conflict || resolvingConflict) return;
+    setResolvingConflict(true);
+    try {
+      // Adopt the revision the server held AT REFUSAL — a deliberate overwrite.
+      await updateTemplate(conflict.payload.templateId, conflict.payload.updates, conflict.actualRevision);
+      setConflict(null);
+    } catch (err) {
+      console.error('Error re-sending the refused template edit:', err);
+      toast.error(t('planTemplates.saveStructureError'));
+    } finally {
+      setResolvingConflict(false);
+    }
+  };
+
+  const handleTakeTheirs = async () => {
+    if (!conflict || resolvingConflict) return;
+    setResolvingConflict(true);
+    try {
+      const result = await refresh();
+      // `refetch()` resolves an error result instead of throwing; clearing the
+      // conflict then would discard the only copy without loading theirs.
+      if ((result as { isError?: boolean })?.isError) {
+        toast.error(t('planTemplates.saveStructureError'));
+        return;
+      }
+      setDraftStructure(null);
+      setConflict(null);
+    } finally {
+      setResolvingConflict(false);
+    }
+  };
+
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 md:p-6">
       <h2 className="text-lg md:text-xl font-semibold mb-2">
         <span suppressHydrationWarning={true}>{t('settings.planTemplates')}</span>
       </h2>
       <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 md:mb-6">{t('planTemplates.description')}</p>
+
+      {/* A save was TURNED AWAY. The rename input has already closed and the
+          structure lives only in memory, so this panel holds the refused edit. */}
+      {conflict && (
+        <SaveConflictBanner
+          entityKey="entityRecord"
+          pendingText={conflict.payload.updates.name ?? conflict.payload.label}
+          onKeepMine={handleKeepMine}
+          onTakeTheirs={handleTakeTheirs}
+          busy={resolvingConflict}
+          className="mb-4"
+        />
+      )}
 
       {/* Create new */}
       <div className="flex items-center gap-2 mb-6 max-w-xl">
