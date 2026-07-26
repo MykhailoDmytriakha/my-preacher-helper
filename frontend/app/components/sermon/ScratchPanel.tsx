@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
 
 import { AudioRecoveryPanel } from "@/components/audio-recorder/AudioRecorderControls";
@@ -440,7 +441,7 @@ export default function ScratchPanel({
   const localScratchChangeRef = useRef(0);
   const outlineRevisionRef = useRef(0);
   const pendingManualOutlineSignatureRef = useRef<string | null>(null);
-  const manualInputRef = useRef<HTMLInputElement | null>(null);
+  const manualInputRef = useRef<HTMLTextAreaElement | null>(null);
   const storedVoiceBlobRef = useRef<Blob | null>(null);
   const voiceRecoveryUrlRef = useRef<string | null>(null);
   const composeRequestIdRef = useRef(0);
@@ -1001,10 +1002,10 @@ export default function ScratchPanel({
           </button>
         </div>
         <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-          <input
+          <TextareaAutosize
             id="scratch-manual-note-input"
             ref={manualInputRef}
-            type="text"
+            minRows={2}
             value={manualDraft}
             onChange={(event) => {
               if (!isCaptureLocked) setManualDraft(event.target.value);
@@ -1017,7 +1018,7 @@ export default function ScratchPanel({
             }}
             placeholder={t("scratch.capture.manualLabel")}
             aria-label={t("scratch.capture.manualLabel")}
-            className="min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:ring-violet-900/40"
+            className="min-w-0 flex-1 resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-500 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-400 dark:focus:ring-violet-900/40"
             disabled={isCaptureLocked}
           />
           <button

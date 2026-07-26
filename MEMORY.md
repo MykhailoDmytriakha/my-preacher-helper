@@ -60,6 +60,11 @@
 
 > One-line principles. History in git blame. Newest first.
 
+### 2026-07-26 Free-Form Scratch Capture Must Use A Multiline Autosizing Control
+**Problem:** Manual sermon scratch capture used `input type="text"`, forcing one line and turning `Enter` into premature submission.
+**Solution:** Use the repository-standard `react-textarea-autosize` with `minRows={2}` and no `maxRows`, preserve explicit-button submission, and validate both line breaks and content-driven height in a real browser.
+**Principle:** A free-form note field must express multiline intent in its native control; autosize is UX behavior, not a cosmetic CSS patch.
+
 ### 2026-07-25 Freshness Proof Must Follow The Editor, Not The Cache
 **Problem:** A listener can compare the server with a live query cache that already refreshed while the editor still shows its open-time value; reduced selectors, hidden unknown states, and destructive “load newer” actions then turn a safety banner into either silence or data loss.
 **Solution:** Key one immutable editor baseline by auth owner and document, use a revision/hash changed by every writer, show unknown explicitly, suppress own writes only by exact acknowledged identity, and never apply/reload remote state while any local editor is dirty.
