@@ -91,7 +91,7 @@ describe('usePersistence', () => {
             await act(async () => {
               await result.current.saveThought('sermon-1', mockThought);
             });
-            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought);
+            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought, null);
           },
         },
         {
@@ -113,8 +113,8 @@ describe('usePersistence', () => {
               await result.current.saveThought('', mockThought);
               await result.current.saveThought('sermon-123_abc', mockThought);
             });
-            expect(mockUpdateThought).toHaveBeenCalledWith('', mockThought);
-            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-123_abc', mockThought);
+            expect(mockUpdateThought).toHaveBeenCalledWith('', mockThought, null);
+            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-123_abc', mockThought, null);
           },
         },
       ]);
@@ -187,7 +187,7 @@ describe('usePersistence', () => {
             await act(async () => {
               await result.current.saveStructure('sermon-1', mockStructure);
             });
-            expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', mockStructure);
+            expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', mockStructure, null);
           },
         },
         {
@@ -216,8 +216,11 @@ describe('usePersistence', () => {
               await result.current.saveStructure('sermon-1', emptyStructure);
               await result.current.saveStructure('sermon-1', largeStructure);
             });
-            expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', emptyStructure);
-            expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', largeStructure);
+            expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', emptyStructure, null);
+            // The SECOND save states what the first one committed: what this screen
+            // believes is stored has to move forward, or it would keep re-asserting an
+            // arrangement the server has already left behind.
+            expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', largeStructure, emptyStructure);
           },
         },
       ]);
@@ -250,8 +253,8 @@ describe('usePersistence', () => {
               result.current.debouncedSaveThought('sermon-1', thought2);
             });
             await flushDebounce();
-            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought);
-            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', thought2);
+            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought, null);
+            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', thought2, null);
           },
         },
         {
@@ -263,8 +266,8 @@ describe('usePersistence', () => {
               result.current.debouncedSaveThought('sermon-2', mockThought);
             });
             await flushDebounce();
-            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought);
-            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-2', mockThought);
+            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought, null);
+            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-2', mockThought, null);
           },
         },
       ]);
@@ -296,7 +299,7 @@ describe('usePersistence', () => {
               result.current.debouncedSaveStructure('sermon-1', structure2);
             });
             await flushDebounce();
-            expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', structure2);
+            expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', structure2, null);
           },
         },
         {
@@ -308,7 +311,7 @@ describe('usePersistence', () => {
               result.current.debouncedSaveStructure('sermon-2', mockStructure);
             });
             await flushDebounce();
-            expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-2', mockStructure);
+            expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-2', mockStructure, null);
           },
         },
       ]);
@@ -366,7 +369,7 @@ describe('usePersistence', () => {
             await act(async () => {
               await result.current.saveThought('sermon-1', largeThought);
             });
-            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', largeThought);
+            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', largeThought, null);
             mockUpdateThought.mockClear();
           },
         },
@@ -399,8 +402,8 @@ describe('usePersistence', () => {
               await result.current.saveThought('sermon-1', mockThought);
               await result.current.saveStructure('sermon-1', mockStructure);
             });
-            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought);
-            expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', mockStructure);
+            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought, null);
+            expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', mockStructure, null);
             mockUpdateThought.mockClear();
             mockUpdateStructure.mockClear();
           },
@@ -414,8 +417,8 @@ describe('usePersistence', () => {
               result.current.debouncedSaveStructure('sermon-1', mockStructure);
             });
             await flushDebounce();
-            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought);
-            expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', mockStructure);
+            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought, null);
+            expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', mockStructure, null);
             mockUpdateThought.mockClear();
             mockUpdateStructure.mockClear();
           },
@@ -428,9 +431,9 @@ describe('usePersistence', () => {
             await act(async () => {
               await result.current.saveStructure('sermon-1', mockStructure);
             });
-            expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', mockStructure);
+            expect(mockUpdateStructure).toHaveBeenCalledWith('sermon-1', mockStructure, null);
             await flushDebounce();
-            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought);
+            expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought, null);
           },
         },
       ]);
@@ -445,7 +448,7 @@ describe('usePersistence', () => {
         await act(async () => {
           await result.current.saveThought(sermonId as any, mockThought);
         });
-        expect(mockUpdateThought).toHaveBeenCalledWith(sermonId, mockThought);
+        expect(mockUpdateThought).toHaveBeenCalledWith(sermonId, mockThought, null);
         mockUpdateThought.mockClear();
       }
     });
@@ -473,6 +476,47 @@ describe('usePersistence', () => {
         await successResult.current.saveThought('sermon-1', mockThought);
       });
       expect(mockToast.success).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * WHAT THIS SCREEN BELIEVES IS STORED MUST MOVE FORWARD.
+   *
+   * Only the fields that differ from that belief are written. Frozen at the value the
+   * screen opened with, the SECOND save of a session states its own already-committed
+   * text as a change again — and overwrites whatever landed in between.
+   */
+  describe('the stated opening value advances with every confirmed save', () => {
+    it('states the CONFIRMED thought on the second save, not the first snapshot', async () => {
+      const asOpened: Thought = { ...mockThought, text: 'as opened' };
+      const committed: Thought = { ...mockThought, text: 'committed by this screen' };
+      mockUpdateThought.mockResolvedValue(committed);
+
+      const { result } = renderHook(() => usePersistence(defaultProps));
+
+      await act(async () => {
+        await result.current.saveThought('sermon-1', { ...asOpened, outlinePointId: 'p1' }, {
+          baseThought: asOpened,
+        });
+      });
+      expect(mockUpdateThought).toHaveBeenLastCalledWith(
+        'sermon-1',
+        expect.objectContaining({ outlinePointId: 'p1' }),
+        asOpened
+      );
+
+      await act(async () => {
+        await result.current.saveThought('sermon-1', { ...committed, outlinePointId: 'p2' }, {
+          baseThought: asOpened,
+        });
+      });
+
+      // The second save compares against what the FIRST one committed.
+      expect(mockUpdateThought).toHaveBeenLastCalledWith(
+        'sermon-1',
+        expect.objectContaining({ outlinePointId: 'p2' }),
+        committed
+      );
     });
   });
 });

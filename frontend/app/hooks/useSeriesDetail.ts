@@ -222,14 +222,25 @@ export function useSeriesDetail(seriesId: string) {
   const [resolvingConflict, setResolvingConflict] = useState(false);
 
   const writeSeriesDetail = useCallback(
-    async (updates: Partial<Series>, statedRevision: number) => {
+    async (
+      updates: Partial<Series>,
+      statedRevision: number,
+      /**
+       * The values the form OPENED with. `null` means a DELIBERATE overwrite (the
+       * person saw the other version and chose theirs) — then only the counter is
+       * checked, or the content comparison would refuse the very act they confirmed.
+       */
+      expectedBaseline: Record<string, unknown> | null = null
+    ) => {
       if (!series) return;
       await withMutationGuard(async () => {
         try {
-          // State the revision this edit was built from, so a save from a tab that
-          // never saw another device's change is refused rather than replacing it.
-          await updateSeries(series.id, updates, statedRevision);
-          setSaveConflict(null);
+          // State the revision this edit was built from AND what it was built from,
+          // so a save from a tab that never saw another device's change is refused
+          // rather than replacing it — even if that device left the counter alone.
+          await updateSeries(series.id, updates, statedRevision, expectedBaseline);
+          // NAME the series this commit resolves — see usePersistedConflict.
+          setSaveConflict(null, series.id);
         } catch (error) {
           if (isStaleWriteError(error)) {
             // REFUSED, not failed. Hold the text and hand the person the choice —
@@ -244,13 +255,29 @@ export function useSeriesDetail(seriesId: string) {
         await queryClient.invalidateQueries({ queryKey: ['series', series.userId] });
       });
     },
-    [series, withMutationGuard, queryClient]
+    [series, withMutationGuard, queryClient, setSaveConflict]
   );
 
   const updateSeriesDetail = useCallback(
-    async (updates: Partial<Series>) => {
+    /**
+     * @param baseRevision the revision the EDITOR was opened with. Pass it: the
+     *   live document can advance under an open form, and pairing that fresh
+     *   number with the form's older text makes compare-and-set approve an
+     *   overwrite it exists to refuse. Omitting it falls back to the live value,
+     *   which is only safe for writes built at this instant.
+     */
+    async (
+      updates: Partial<Series>,
+      baseRevision?: number | null,
+      /** The same fields as the form OPENED them — see `writeSeriesDetail`. */
+      expectedBaseline?: Record<string, unknown> | null
+    ) => {
       if (!series) return;
-      await writeSeriesDetail(updates, series.rev?.[SERIES_META_AGGREGATE] ?? 0);
+      const stated =
+        baseRevision === undefined || baseRevision === null
+          ? (series.rev?.[SERIES_META_AGGREGATE] ?? 0)
+          : baseRevision;
+      await writeSeriesDetail(updates, stated, expectedBaseline ?? null);
     },
     [series, writeSeriesDetail]
   );
@@ -280,11 +307,11 @@ export function useSeriesDetail(seriesId: string) {
         toast.error(i18n.t('common.saveError', { defaultValue: 'Failed to load' }));
         return;
       }
-      setSaveConflict(null);
+      setSaveConflict(null, seriesId);
     } finally {
       setResolvingConflict(false);
     }
-  }, [resolvingConflict, refetch]);
+  }, [resolvingConflict, refetch, seriesId, setSaveConflict]);
 
   return {
     series,

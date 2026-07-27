@@ -96,7 +96,10 @@ describe('useScratchNotes', () => {
           id: 'scratch-client-id',
           text: 'capture this idea',
         }),
-      ])
+      ]),
+      // Third argument: the list this operation STARTED from — what turns the write
+      // into a merge instead of a whole-array replace.
+      expect.any(Array)
     );
 
     await act(async () => {
@@ -149,7 +152,8 @@ describe('useScratchNotes', () => {
 
     await waitFor(() => expect(result.current.isWritePending).toBe(true));
     expect(sermonRef.current?.scratch).toEqual([restoredNote]);
-    expect(scratchServiceMocks().addScratchNote).toHaveBeenCalledWith('sermon-1', [restoredNote]);
+    expect(scratchServiceMocks().addScratchNote).toHaveBeenCalledWith('sermon-1', [restoredNote],
+      expect.any(Array));
 
     await act(async () => {
       resolvePersist([restoredNote]);
@@ -204,7 +208,8 @@ describe('useScratchNotes', () => {
     expect(result.current.isWritePending).toBe(false);
     expect(scratchServiceMocks().addScratchNote).toHaveBeenCalledWith(
       'sermon-1',
-      expect.arrayContaining([expect.objectContaining({ text: 'offline idea' })])
+      expect.arrayContaining([expect.objectContaining({ text: 'offline idea' })]),
+      expect.any(Array)
     );
   });
 
@@ -257,7 +262,10 @@ describe('useScratchNotes', () => {
       expect(sermonsClientMocks().applyScratchToOutlineViaClient).toHaveBeenCalledWith(
         'sermon-1',
         appliedOutline,
-        []
+        [],
+        // Fourth argument: what this apply STARTED from — both fields, so the write
+        // merges the plan and the note list instead of replacing them together.
+        expect.objectContaining({ outline: expect.anything(), scratch: expect.any(Array) })
       )
     );
     await waitFor(() =>
@@ -334,7 +342,8 @@ describe('useScratchNotes', () => {
       expect(sermonsClientMocks().applyScratchToOutlineViaClient).toHaveBeenCalledWith(
         'sermon-1',
         appliedOutline,
-        [keptNote]
+        [keptNote],
+        expect.objectContaining({ scratch: expect.any(Array) })
       )
     );
     expect(sermonRef.current?.scratch).toEqual([keptNote]);

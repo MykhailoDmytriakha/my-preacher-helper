@@ -29,8 +29,8 @@ interface UseAiSortingDiffProps {
   outlinePoints: { introduction: SermonPoint[]; main: SermonPoint[]; conclusion: SermonPoint[] };
   sermon: Sermon | null;
   sermonId: string | null;
-  debouncedSaveThought: (sermonId: string, thought: Thought) => void;
-  debouncedSaveStructure: (sermonId: string, structure: ThoughtsBySection) => void;
+  debouncedSaveThought: (sermonId: string, thought: Thought, baseThought?: Thought | null) => void;
+  debouncedSaveStructure: (sermonId: string, structure: ThoughtsBySection, baseStructure?: ThoughtsBySection | null) => void;
 }
 
 // Helper function to collect thought updates from highlighted items
@@ -66,7 +66,7 @@ const collectThoughtUpdates = (
 const processThoughtUpdates = (
   thoughtUpdates: Array<{id: string, outlinePointId?: string, subPointId?: string | null}>,
   sermon: Sermon,
-  debouncedSaveThought: (sermonId: string, thought: Thought) => void,
+  debouncedSaveThought: (sermonId: string, thought: Thought, baseThought?: Thought | null) => void,
   sermonId: string
 ): void => {
   for (const update of thoughtUpdates) {
@@ -77,7 +77,9 @@ const processThoughtUpdates = (
         outlinePointId: update.outlinePointId,
         subPointId: update.subPointId ?? null,
       };
-      debouncedSaveThought(sermonId, updatedThought);
+      // Plan links only: `thought` is the opening value, so the write does not also
+      // re-send this screen's copy of the thought's TEXT.
+      debouncedSaveThought(sermonId, updatedThought, thought);
     }
   }
 };
@@ -452,7 +454,7 @@ export const useAiSortingDiff = ({
             outlinePointId: nextOutline,
             subPointId: nextSubPoint,
           };
-          debouncedSaveThought(sermonId!, updatedThought);
+          debouncedSaveThought(sermonId!, updatedThought, thought);
         }
       }
     }
@@ -466,7 +468,7 @@ export const useAiSortingDiff = ({
     };
     
     // Update structure in database
-    debouncedSaveStructure(sermonId!, newStructure);
+    debouncedSaveStructure(sermonId!, newStructure, sermon?.structure);
   }, [
     containers, 
     sermon, 
@@ -538,7 +540,7 @@ export const useAiSortingDiff = ({
             outlinePointId: originalItem.outlinePointId,
             subPointId: originalItem.subPointId ?? null,
           };
-          debouncedSaveThought(sermonId!, updatedThought);
+          debouncedSaveThought(sermonId!, updatedThought, thought);
         }
       }
     }
@@ -552,7 +554,7 @@ export const useAiSortingDiff = ({
     };
     
     // Update structure in database
-    debouncedSaveStructure(sermonId!, newStructure);
+    debouncedSaveStructure(sermonId!, newStructure, sermon?.structure);
   }, [
     preSortState, 
     containers, 
@@ -577,7 +579,7 @@ export const useAiSortingDiff = ({
 
     // Create and save new structure
     const newStructure = createStructureFromContainers(containers);
-    debouncedSaveStructure(sermonId!, newStructure);
+    debouncedSaveStructure(sermonId!, newStructure, sermon?.structure);
 
     // Clear highlighted items and exit diff mode
     setHighlightedItems({});

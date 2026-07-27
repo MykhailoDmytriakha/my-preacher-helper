@@ -240,7 +240,7 @@ describe('useSeriesDetail', () => {
 
     // Third argument = the revision this edit was built from, so a save from a
     // tab that never saw another device's change is refused, not applied.
-    expect(mockUpdateSeries).toHaveBeenCalledWith('series-1', { title: 'Updated title' }, 0);
+    expect(mockUpdateSeries).toHaveBeenCalledWith('series-1', { title: 'Updated title' }, 0, null);
   });
 
   it('refreshes data on demand', async () => {
@@ -277,6 +277,49 @@ describe('useSeriesDetail', () => {
       });
     });
 
+
+    it('states the revision the FORM was opened with, not the live one', async () => {
+      // The modal keeps the text it opened with. If a focus refetch advances the
+      // page object meanwhile, saving with the LIVE revision pairs fresh
+      // permission with stale text and compare-and-set waves it through — the
+      // overwrite the guard exists to refuse.
+      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateSeriesDetail({ title: 'Typed in a form opened earlier' }, 3);
+      });
+
+      expect(mockUpdateSeries).toHaveBeenCalledWith(
+        'series-1',
+        { title: 'Typed in a form opened earlier' },
+        3,
+        null
+      );
+    });
+
+    it('states the VALUES the form opened with, so a frozen counter cannot wave a stale save through', async () => {
+      // The scenario the disabled Firestore rule cannot catch: an old installed PWA
+      // changes the series title WITHOUT advancing `rev.meta`. Hours later this
+      // client saves from the same number — the counter agrees, and only comparing
+      // the values the form started from stops the phone's title being replaced.
+      const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateSeriesDetail({ title: 'Typed on the laptop' }, 0, {
+          title: 'the title this form opened with',
+        });
+      });
+
+      expect(mockUpdateSeries).toHaveBeenCalledWith(
+        'series-1',
+        { title: 'Typed on the laptop' },
+        0,
+        { title: 'the title this form opened with' }
+      );
+    });
+
     it('re-sends with the server revision when "keep mine" is chosen', async () => {
       mockUpdateSeries.mockRejectedValueOnce(new StaleWriteError('meta', 0, 6));
       const { result } = renderHook(() => useSeriesDetail('series-1'), { wrapper: createWrapper() });
@@ -293,10 +336,13 @@ describe('useSeriesDetail', () => {
 
       // 6, NOT 0: resending the original revision would be refused again, and the
       // button would promise an action it never performs.
+      // And NO baseline: the person saw the other version and chose their own, so
+      // comparing content here would refuse the very act they just confirmed.
       expect(mockUpdateSeries).toHaveBeenLastCalledWith(
         'series-1',
         { title: 'Typed on the laptop' },
-        6
+        6,
+        null
       );
       expect(result.current.saveConflict).toBeNull();
     });

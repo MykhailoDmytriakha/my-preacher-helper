@@ -1,4 +1,5 @@
 import {
+  arrayRemove,
   arrayUnion,
   collection,
   deleteField,
@@ -22,9 +23,20 @@ import {
   ThoughtsBySection,
 } from '@/models/models';
 import { atomicUpdate } from '@/services/atomicUpdate.client';
-import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
+import {
+  conflictSafeUpdate,
+  isUnreachableWriteError,
+  readRevision,
+  revisionBump,
+} from '@/services/conflictSafeUpdate.client';
+import { auth } from '@/services/firebaseAuth.service';
+import { enqueueWrite, newIntentId, type OutboxEntry } from '@/services/writeOutbox.client';
+import { changedFields } from '@/utils/changedFields';
 import { newClientId } from '@/utils/clientId';
 import { toDateOnlyKey } from '@/utils/dateOnly';
+import { mergeOutline } from '@/utils/mergeOutline';
+import { mergeScratch } from '@/utils/mergeScratch';
+import { mergeSections } from '@/utils/mergeSections';
 import { compareById, timeOrZero } from '@/utils/sortHelpers';
 import { stripStructureTags } from '@/utils/thoughtTagSanitizer';
 
@@ -39,6 +51,9 @@ import { stripStructureTags } from '@/utils/thoughtTagSanitizer';
 // client path is no longer gated.
 
 const SERMONS_COLLECTION = 'sermons';
+
+/** Thoughts are their own aggregate: editing one must not collide with the title. */
+export const SERMON_THOUGHTS_AGGREGATE = 'thoughts';
 const SERMON_NOT_FOUND = 'Sermon not found';
 // Prefix historically used for not-yet-saved local thought ids. Keep stripping
 // it as a defensive migration backstop so saved thoughts read as real ids.
@@ -182,11 +197,24 @@ export type SermonCoreUpdate = Partial<Pick<Sermon, 'title' | 'verse' | 'isPreac
 
 /** Aggregate name for the sermon's own fields (title/verse/isPreached/preparation). */
 export const SERMON_CORE_AGGREGATE = 'core';
+/**
+ * Aggregates whose writers live below. The names MIRROR the server's, because
+ * both write the same fields and a counter only tells the truth when every
+ * writer of that field moves the SAME number: `sermons.repository.ts:132`
+ * ('outline'), `:369,:392` ('preachDates'), `api/thoughts-by-section/route.ts:42`
+ * ('thoughts' — a section arrangement is an arrangement OF thoughts).
+ */
+export const SERMON_OUTLINE_AGGREGATE = 'outline';
+export const SERMON_SCRATCH_AGGREGATE = 'scratch';
+export const SERMON_PREACH_DATES_AGGREGATE = 'preachDates';
+export const SERMON_PREPARATION_AGGREGATE = 'preparation';
 
 export async function updateSermonViaClient(
   updated: Sermon,
   patch?: SermonCoreUpdate,
-  expectedRevision: number | null = null
+  expectedRevision: number | null = null,
+  /** The written fields AS THE EDITOR OPENED THEM — see the guard. */
+  expectedBaseline?: Record<string, unknown> | null
 ): Promise<Sermon | null> {
   const ref = sermonRef(updated.id);
   const data: Record<string, unknown> = {};
@@ -218,7 +246,18 @@ export async function updateSermonViaClient(
       ref,
       deepCleanUndefined(data) as SermonUpdate,
       'Sermon not found',
-      { aggregate: SERMON_CORE_AGGREGATE, expectedRevision }
+      {
+        aggregate: SERMON_CORE_AGGREGATE,
+        expectedRevision,
+        // Content check on top of the counter: an old build that changed the title
+        // without bumping is invisible to the number and visible here.
+        expectedBaseline,
+        // Offline this queues the INTENT; `replayOutbox` puts it back through the
+        // same guard on reconnect, stating the revision the text was built from.
+        outboxRoute: updated.userId
+          ? { uid: updated.userId, collection: SERMONS_COLLECTION, docId: updated.id, savedAt: Date.now() }
+          : undefined,
+      }
     );
     // DO NOT re-read here. Proven live with a probe: right after the transaction
     // commits, `getDoc` still answers from the local replica, which has not yet
@@ -265,12 +304,61 @@ export async function updateSermonPreparationViaClient(
       // sentinel to remove a nested field.
       patch[`preparation.${String(key)}`] = value === undefined ? deleteField() : value;
     });
-    await updateDoc(sermonRef(sermonId), deepCleanUndefined(patch));
+    await updateDoc(sermonRef(sermonId), {
+      ...deepCleanUndefined(patch),
+      ...revisionBump(SERMON_PREPARATION_AGGREGATE),
+    });
     return preparation;
   }
 
-  await updateDoc(sermonRef(sermonId), deepCleanUndefined({ preparation, updatedAt: now() }));
-  return preparation;
+  /**
+   * OFFLINE: NESTED FIELD PATHS, so the SERVER merges the steps.
+   *
+   * The transactional merge below cannot run without a server, and offline it
+   * degrades to a queued whole-object write that replaces the map at reconnect. But
+   * Firestore merges `preparation.<step>` paths into the stored map by itself: steps
+   * this screen does not mention keep whatever they hold. Same protection, no
+   * transaction, no base, no caller change — the queue applies it at reconnect
+   * instead of overwriting.
+   */
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const nestedPatch: { [field: string]: FieldValue | Partial<unknown> | undefined } = {
+      updatedAt: now(),
+      ...revisionBump(SERMON_PREPARATION_AGGREGATE),
+    };
+    Object.entries(preparation as Record<string, unknown>).forEach(([key, value]) => {
+      nestedPatch[`preparation.${key}`] = value as Partial<unknown>;
+    });
+    await updateDoc(sermonRef(sermonId), deepCleanUndefined(nestedPatch));
+    return preparation;
+  }
+
+  // WHOLE-OBJECT BRANCH — now merged PER STEP instead of replacing everything.
+  //
+  // A caller that cannot say which steps it changed used to hand over its entire
+  // snapshot, so a step filled in on the phone this morning vanished when the laptop
+  // saved any other step tonight. Merging by key keeps both: the caller's steps win
+  // for the keys it carries, and anything it has never heard of stays. Like the
+  // scratch merge, this NEVER refuses — so it cannot introduce the "refused forever"
+  // failure that guarded editors kept producing. Deleting a step still goes through
+  // the `changedKeys` path above, which is the only way to say "remove this".
+  let committedPreparation = preparation;
+  await atomicUpdate<Sermon>(
+    sermonRef(sermonId),
+    (current) => {
+      committedPreparation = {
+        ...((current.preparation ?? {}) as Preparation),
+        ...preparation,
+      };
+      return {
+        ...deepCleanUndefined({ preparation: committedPreparation, updatedAt: now() }),
+        ...revisionBump(SERMON_PREPARATION_AGGREGATE),
+      };
+    },
+    SERMON_NOT_FOUND,
+    { retryTransientAsQueuedWrite: true }
+  );
+  return committedPreparation;
 }
 
 /**
@@ -279,29 +367,241 @@ export async function updateSermonPreparationViaClient(
  */
 export async function updateStructureViaClient(
   sermonId: string,
-  structure: ThoughtsBySection
+  structure: ThoughtsBySection,
+  /**
+   * The arrangement AS THIS SCREEN OPENED IT. Given it, a thought moved only on the
+   * other device keeps ITS new section instead of being pulled back here — see
+   * `mergeSections`. Absent → behaviour unchanged.
+   */
+  baseStructure?: ThoughtsBySection | null
 ): Promise<{ message: string }> {
-  await updateDoc(
+  // MERGED, not replaced. The map is built from the sermon this screen loaded, so a
+  // thought created on another device is simply absent from it — and writing the map
+  // whole dropped that thought out of every section, leaving it shown nowhere until
+  // someone re-sorted by hand. `mergeSections` keeps ids this map never mentions
+  // where the document has them, needs nothing from the five call sites, and cannot
+  // refuse. See its own file for why no baseline is required.
+  //
+  // OFFLINE: the same intent-in-the-queue as the plan — the arrangement is ordered,
+  // so a queued computed map would replace the other device's at reconnect.
+  const structureIntent = () =>
+    queueMergeIntent(
+      sermonId,
+      SERMON_THOUGHTS_AGGREGATE,
+      { structure: deepCleanUndefined(structure) as unknown } as Record<string, unknown>,
+      { kind: 'structure', base: baseStructure ?? undefined }
+    );
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    if (structureIntent()) return { message: 'ThoughtsBySection queued for merge on reconnect' };
+    throw new UnsavedMergeError(SERMON_THOUGHTS_AGGREGATE);
+  }
+
+  let committed = structure;
+  await atomicUpdate<Sermon>(
     sermonRef(sermonId),
-    deepCleanUndefined({ thoughtsBySection: structure, structure })
-  );
+    (current) => {
+      committed = mergeSections(
+        structure,
+        (current.thoughtsBySection ?? current.structure) as ThoughtsBySection | undefined,
+        baseStructure ?? null
+      );
+      return {
+        ...deepCleanUndefined({ thoughtsBySection: committed, structure: committed }),
+        ...revisionBump(SERMON_THOUGHTS_AGGREGATE),
+      };
+    },
+    SERMON_NOT_FOUND
+  ).catch((error: unknown) => {
+    // Captive portal: the OPERATION goes to the queue, never the computed map.
+    if (isUnreachableWriteError(error)) {
+      if (structureIntent()) return;
+      throw new UnsavedMergeError(SERMON_THOUGHTS_AGGREGATE);
+    }
+    throw error;
+  });
   return { message: 'ThoughtsBySection updated successfully' };
 }
 
-/** Mirror PUT /api/sermons/outline — writes only the outline field. */
+/**
+ * Put the OPERATION in the durable queue — the one move that all the failure paths
+ * need.
+ *
+ * Three moments demand it, and every one of them used to fall back to writing the
+ * computed value instead: the browser knows it is offline; the browser THINKS it is
+ * online but the transport is dead (a captive portal); and the queue itself refuses
+ * for want of room. In all three the computed value is built from a cached read, so at
+ * reconnect it replaces whatever the other device stored — the exact disease.
+ *
+ * Returns whether the intent is really stored. A `false` must never be turned into a
+ * computed write; the caller reports a plain failure and keeps its text instead.
+ */
+function queueMergeIntent(
+  sermonId: string,
+  aggregate: string,
+  patch: Record<string, unknown>,
+  merge: NonNullable<OutboxEntry['merge']>
+): boolean {
+  const actorUid = auth.currentUser?.uid;
+  if (!actorUid) return false;
+  return enqueueWrite({
+    id: newIntentId(),
+    uid: actorUid,
+    collection: SERMONS_COLLECTION,
+    docId: sermonId,
+    aggregate,
+    patch,
+    baseRevision: 0,
+    merge,
+    status: 'pending',
+    savedAt: Date.now(),
+  });
+}
+
+/** A save that could not be stored anywhere — the caller must NOT claim success. */
+export class UnsavedMergeError extends Error {
+  constructor(readonly aggregate: string) {
+    super(`Could not store the ${aggregate} change for later`);
+    this.name = 'UnsavedMergeError';
+  }
+}
+
+export function isUnsavedMergeError(error: unknown): boolean {
+  return (error as Error | null)?.name === 'UnsavedMergeError';
+}
+
+/**
+ * The plan was written in two places and the same point differs in both.
+ *
+ * Reported instead of guessed. It carries what the server holds so the screen can
+ * show both versions, and it marks itself as a refusal (`isStaleWrite`) because
+ * that is what it is: nothing was written, and a person has to decide.
+ */
+export class OutlineCollisionError extends Error {
+  readonly isStaleWrite = true;
+  readonly aggregate = SERMON_OUTLINE_AGGREGATE;
+  constructor(
+    readonly collisions: string[],
+    readonly serverOutline: SermonOutline | null,
+    readonly actualRevision: number
+  ) {
+    super(`The plan changed on another device in the same point(s): ${collisions.join(', ')}`);
+    this.name = 'OutlineCollisionError';
+  }
+}
+
+export function isOutlineCollisionError(error: unknown): error is OutlineCollisionError {
+  return (error as OutlineCollisionError | null)?.name === 'OutlineCollisionError';
+}
+
+/**
+ * Mirror PUT /api/sermons/outline — writes only the outline field.
+ *
+ * WITH `baseOutline` the write MERGES instead of replacing. The plan is stored as
+ * one whole field, so without a base this call takes whatever the caller assembled
+ * and overwrites every point — and a laptop that has been open since last night
+ * erases the point added from the phone this morning, silently. Given the plan the
+ * editor OPENED with, the merge can tell "added there" from "deleted here" and keep
+ * both people's work; only the same point written in two places is a real question,
+ * and that one is refused rather than guessed.
+ *
+ * The merge is computed INSIDE the transaction attempt, from the document as just
+ * read. That is what makes it safe when Firestore re-runs the callback (it may,
+ * even after a commit whose response was lost): each attempt merges against fresh
+ * data instead of replaying a snapshot from before.
+ */
 export async function updateSermonOutlineViaClient(
   sermonId: string,
-  outline: SermonOutline
+  outline: SermonOutline,
+  options?: { baseOutline?: SermonOutline | null }
 ): Promise<SermonOutline | null> {
   if (!outline.main) outline.main = [];
-  await updateDoc(sermonRef(sermonId), deepCleanUndefined({ outline, updatedAt: now() }));
+
+  if (options && 'baseOutline' in options) {
+    /**
+     * OFFLINE: QUEUE THE OPERATION, not the computed plan.
+     *
+     * The merge below needs a server. Offline it degrades to "read the cache, compute
+     * the whole plan, hand it to the native queue" — and at reconnect that plan
+     * replaces the point added on the phone. The plan is ordered, so there is no
+     * commutative Firestore operation to lean on the way scratch and preparation do.
+     *
+     * So the INTENT goes into the durable outbox instead, carrying what this editor
+     * started from; `replayOutbox` re-runs THIS function on reconnect, and the merge
+     * happens against what the server actually holds. If storage refuses the intent,
+     * we fall through to the old behaviour rather than pretending — a queued stale
+     * plan is bad, but losing the edit outright is worse.
+     */
+    const outlineIntent = () =>
+      queueMergeIntent(
+        sermonId,
+        SERMON_OUTLINE_AGGREGATE,
+        { outline: deepCleanUndefined(outline) as unknown } as Record<string, unknown>,
+        { kind: 'outline', base: options.baseOutline ?? null }
+      );
+
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      if (outlineIntent()) return outline;
+      // Nowhere to store the operation. Say so — a computed plan queued from a cached
+      // read would replace the other device's points at reconnect, which is the very
+      // thing this path exists to prevent.
+      throw new UnsavedMergeError(SERMON_OUTLINE_AGGREGATE);
+    }
+
+    let committed: SermonOutline = outline;
+    await atomicUpdate<Sermon>(
+      sermonRef(sermonId),
+      (current) => {
+        const { outline: merged, collisions } = mergeOutline(
+          options.baseOutline ?? null,
+          outline,
+          current.outline ?? null
+        );
+        if (collisions.length > 0) {
+          throw new OutlineCollisionError(
+            collisions,
+            current.outline ?? null,
+            readRevision(current as unknown as Record<string, unknown>, SERMON_OUTLINE_AGGREGATE)
+          );
+        }
+        committed = merged;
+        return {
+          ...deepCleanUndefined({ outline: merged, updatedAt: now() }),
+          ...revisionBump(SERMON_OUTLINE_AGGREGATE),
+        };
+      },
+      SERMON_NOT_FOUND
+    ).catch((error: unknown) => {
+      // A CAPTIVE PORTAL leaves `navigator.onLine === true` and the transaction fails
+      // with `unavailable`. Queue the OPERATION — never the merge computed from a
+      // cached read, which is what the generic queued fallback would have written.
+      if (isUnreachableWriteError(error)) {
+        if (outlineIntent()) return;
+        throw new UnsavedMergeError(SERMON_OUTLINE_AGGREGATE);
+      }
+      throw error;
+    });
+    return committed;
+  }
+
+  await updateDoc(sermonRef(sermonId), {
+    ...deepCleanUndefined({ outline, updatedAt: now() }),
+    ...revisionBump(SERMON_OUTLINE_AGGREGATE),
+  });
   return outline;
 }
 
 export async function applyScratchToOutlineViaClient(
   sermonId: string,
   outline: SermonOutline,
-  scratch: ScratchNote[]
+  scratch: ScratchNote[],
+  /**
+   * What the screen started this apply from — the plan AND the note list. With them
+   * BOTH fields are merged in ONE transaction instead of being replaced together,
+   * which matters here more than anywhere: this single write touches the two things
+   * a person is most likely to have changed on the other device.
+   */
+  base?: { outline?: SermonOutline | null; scratch?: ScratchNote[] | null }
 ): Promise<{ outline: SermonOutline; scratch: ScratchNote[] }> {
   const cleanOutline: SermonOutline = {
     introduction: outline.introduction ?? [],
@@ -310,12 +610,75 @@ export async function applyScratchToOutlineViaClient(
   };
   const cleanScratch = sanitizeScratchNotes(scratch);
 
-  await updateDoc(
-    sermonRef(sermonId),
-    deepCleanUndefined({ outline: cleanOutline, scratch: cleanScratch, updatedAt: now() })
-  );
+  if (!base) {
+    await updateDoc(sermonRef(sermonId), {
+      ...deepCleanUndefined({ outline: cleanOutline, scratch: cleanScratch, updatedAt: now() }),
+      ...revisionBump(SERMON_OUTLINE_AGGREGATE),
+      ...revisionBump(SERMON_SCRATCH_AGGREGATE),
+    });
+    return { outline: cleanOutline, scratch: cleanScratch };
+  }
 
-  return { outline: cleanOutline, scratch: cleanScratch };
+  // OFFLINE: intent in the queue, for the same reason as the plan — this write
+  // carries an ordered structure, so a queued computed value replaces the other
+  // device's plan AND notes at reconnect.
+  const applyIntent = () =>
+    queueMergeIntent(
+      sermonId,
+      SERMON_OUTLINE_AGGREGATE,
+      {
+        outline: deepCleanUndefined(cleanOutline) as unknown,
+        scratch: deepCleanUndefined(cleanScratch) as unknown,
+      } as Record<string, unknown>,
+      { kind: 'applyScratch', base }
+    );
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    if (applyIntent()) return { outline: cleanOutline, scratch: cleanScratch };
+    throw new UnsavedMergeError(SERMON_OUTLINE_AGGREGATE);
+  }
+
+  let committedOutline = cleanOutline;
+  let committedScratch = cleanScratch;
+  await atomicUpdate<Sermon>(
+    sermonRef(sermonId),
+    (current) => {
+      // Both merges recomputed INSIDE the attempt, from the document as just read —
+      // the SDK may re-run this, and a merge built from an earlier snapshot would
+      // replay stale data over a newer commit.
+      const { outline: mergedOutline } = mergeOutline(
+        base.outline ?? null,
+        cleanOutline,
+        current.outline ?? null
+      );
+      // A collision here is NOT refused: this path consumes notes into the plan, and
+      // stopping it would strand them in neither place. The local wording wins, which
+      // is what the whole-field write did — never worse, and the other device's
+      // untouched points and notes now survive.
+      committedOutline = mergedOutline;
+      committedScratch = sanitizeScratchNotes(
+        mergeScratch(base.scratch ?? null, cleanScratch, current.scratch ?? [])
+      );
+      return {
+        ...deepCleanUndefined({
+          outline: committedOutline,
+          scratch: committedScratch,
+          updatedAt: now(),
+        }),
+        ...revisionBump(SERMON_OUTLINE_AGGREGATE),
+        ...revisionBump(SERMON_SCRATCH_AGGREGATE),
+      };
+    },
+    SERMON_NOT_FOUND
+  ).catch((error: unknown) => {
+    if (isUnreachableWriteError(error)) {
+      if (applyIntent()) return;
+      throw new UnsavedMergeError(SERMON_OUTLINE_AGGREGATE);
+    }
+    throw error;
+  });
+
+  return { outline: committedOutline, scratch: committedScratch };
 }
 
 // --- scratch[] ---
@@ -334,35 +697,135 @@ function sanitizeScratchNotes(scratch: ScratchNote[]): ScratchNote[] {
 
 async function writeScratchNotesViaClient(
   sermonId: string,
-  scratch: ScratchNote[]
+  scratch: ScratchNote[],
+  /**
+   * The list this screen started the operation from. Given it, the write MERGES by
+   * note id instead of replacing the whole array — a note captured on the phone this
+   * morning survives a save from a laptop that never saw it. The merge NEVER refuses
+   * (notes are separate items; only the same note edited twice overlaps, and there
+   * the local wording wins exactly as it did before), so this cannot grow the
+   * "refused forever" failure that guarded UIs kept producing.
+   */
+  baseScratch?: ScratchNote[] | null
 ): Promise<ScratchNote[]> {
   const cleanScratch = sanitizeScratchNotes(scratch);
-  await updateDoc(
+
+  if (baseScratch === undefined) {
+    await updateDoc(sermonRef(sermonId), {
+      ...deepCleanUndefined({ scratch: cleanScratch, updatedAt: now() }),
+      ...revisionBump(SERMON_SCRATCH_AGGREGATE),
+    });
+    return cleanScratch;
+  }
+
+  /**
+   * OFFLINE: SEND THE OPERATION, NOT THE ARRAY.
+   *
+   * The merge below lives inside a transaction, and a transaction cannot run without
+   * a server — offline it degrades to "read the cache, compute the whole array, queue
+   * it", and on reconnect that array replaces whatever the other device stored. The
+   * eighth review found exactly that, and it is the owner's own scenario: notes taken
+   * on a train, phone used at home, laptop reconnects later.
+   *
+   * Firestore's own `arrayUnion`/`arrayRemove` are commutative on the SERVER: queued
+   * offline, they apply to whatever is stored at reconnect instead of overwriting it.
+   * The operation is derived from the base — no caller has to change, and only the
+   * pure add/remove shapes qualify. A text edit has no commutative equivalent and
+   * still takes the transactional path (online) or the old whole-array queue (offline,
+   * unchanged and no worse than before).
+   */
+  if (typeof navigator !== 'undefined' && navigator.onLine === false && baseScratch) {
+    const baseIds = new Set(baseScratch.map((n) => n.id));
+    const mineIds = new Set(cleanScratch.map((n) => n.id));
+    const added = cleanScratch.filter((n) => !baseIds.has(n.id));
+    const removed = baseScratch.filter((n) => !mineIds.has(n.id));
+    const unchangedElsewhere = cleanScratch.every((n) => {
+      if (!baseIds.has(n.id)) return true;
+      const before = baseScratch.find((b) => b.id === n.id);
+      return before ? before.text === n.text && before.section === n.section : true;
+    });
+
+    if (unchangedElsewhere && added.length > 0 && removed.length === 0) {
+      await updateDoc(sermonRef(sermonId), {
+        scratch: arrayUnion(...added.map((n) => deepCleanUndefined(n))),
+        updatedAt: now(),
+        ...revisionBump(SERMON_SCRATCH_AGGREGATE),
+      });
+      return cleanScratch;
+    }
+    if (unchangedElsewhere && removed.length > 0 && added.length === 0) {
+      await updateDoc(sermonRef(sermonId), {
+        scratch: arrayRemove(...removed.map((n) => deepCleanUndefined(n))),
+        updatedAt: now(),
+        ...revisionBump(SERMON_SCRATCH_AGGREGATE),
+      });
+      return cleanScratch;
+    }
+
+    // A TEXT EDIT has no commutative equivalent — `arrayUnion`/`arrayRemove` only
+    // describe membership, not new wording. Editing a note offline used to queue the
+    // whole computed array, so at reconnect it deleted a note added elsewhere. The
+    // OPERATION goes to the durable queue instead, and the replay re-runs this writer
+    // so the merge happens against fresh data.
+    if (
+      queueMergeIntent(
+        sermonId,
+        SERMON_SCRATCH_AGGREGATE,
+        { scratch: deepCleanUndefined(cleanScratch) as unknown } as Record<string, unknown>,
+        { kind: 'scratch', base: baseScratch }
+      )
+    ) {
+      return cleanScratch;
+    }
+    throw new UnsavedMergeError(SERMON_SCRATCH_AGGREGATE);
+  }
+
+  let committed = cleanScratch;
+  await atomicUpdate<Sermon>(
     sermonRef(sermonId),
-    deepCleanUndefined({ scratch: cleanScratch, updatedAt: now() })
+    (current) => {
+      // Merged INSIDE the attempt, from the document as just read: Firestore may
+      // re-run this callback, and a merge computed from a pre-read snapshot would
+      // replay stale data over a newer commit.
+      committed = sanitizeScratchNotes(
+        mergeScratch(baseScratch, cleanScratch, current.scratch ?? [])
+      );
+      return {
+        ...deepCleanUndefined({ scratch: committed, updatedAt: now() }),
+        ...revisionBump(SERMON_SCRATCH_AGGREGATE),
+      };
+    },
+    SERMON_NOT_FOUND,
+    { retryTransientAsQueuedWrite: true }
   );
-  return cleanScratch;
+  return committed;
 }
 
 export async function addScratchNoteViaClient(
   sermonId: string,
-  scratch: ScratchNote[]
+  scratch: ScratchNote[],
+  /** The list this screen started from — see `writeScratchNotesViaClient`. */
+  baseScratch?: ScratchNote[] | null
 ): Promise<ScratchNote[]> {
-  return writeScratchNotesViaClient(sermonId, scratch);
+  return writeScratchNotesViaClient(sermonId, scratch, baseScratch);
 }
 
 export async function updateScratchNoteViaClient(
   sermonId: string,
-  scratch: ScratchNote[]
+  scratch: ScratchNote[],
+  /** The list this screen started from — see `writeScratchNotesViaClient`. */
+  baseScratch?: ScratchNote[] | null
 ): Promise<ScratchNote[]> {
-  return writeScratchNotesViaClient(sermonId, scratch);
+  return writeScratchNotesViaClient(sermonId, scratch, baseScratch);
 }
 
 export async function deleteScratchNoteViaClient(
   sermonId: string,
-  scratch: ScratchNote[]
+  scratch: ScratchNote[],
+  /** The list this screen started from — see `writeScratchNotesViaClient`. */
+  baseScratch?: ScratchNote[] | null
 ): Promise<ScratchNote[]> {
-  return writeScratchNotesViaClient(sermonId, scratch);
+  return writeScratchNotesViaClient(sermonId, scratch, baseScratch);
 }
 
 // --- thoughts[] ---
@@ -425,7 +888,11 @@ export async function createManualThoughtViaClient(
         return null;
       }
       committed = built;
-      return { thoughts: [...existing, cleanBuilt], updatedAt: now() };
+      return {
+        thoughts: [...existing, cleanBuilt],
+        updatedAt: now(),
+        ...revisionBump(SERMON_THOUGHTS_AGGREGATE),
+      };
     },
     SERMON_NOT_FOUND,
     { retryTransientAsQueuedWrite: true }
@@ -436,61 +903,102 @@ export async function createManualThoughtViaClient(
 /** Mirror PUT /api/thoughts — merge into the persisted thought, replace in-place. */
 export async function updateThoughtViaClient(
   sermonId: string,
-  updatedThought: Thought
+  updatedThought: Thought,
+  /**
+   * The thought AS THIS SCREEN OPENED IT. Given it, only the fields the person
+   * actually changed are written; everything else keeps whatever is stored.
+   *
+   * Without it the whole thought travels, and an untouched field carries this
+   * screen's hours-old copy of itself: drag a thought to another plan point at noon
+   * and the laptop also re-sends the text it read at eight, over the paragraph
+   * rewritten on the phone at nine. The transaction cannot see that — it merges
+   * SIBLINGS correctly and then writes the stale text as if it were an edit.
+   *
+   * It never refuses: an unchanged field is simply not written, so this cannot grow
+   * the "refused forever" failures that guarded screens kept producing. Callers that
+   * cannot state an opening value behave exactly as before.
+   */
+  baseThought?: Thought | null
 ): Promise<Thought> {
   if (!updatedThought.id) throw new Error('Thought id is required');
 
-  // DELIBERATELY NOT transactional. This merges a FULL caller-supplied Thought
-  // into the persisted one, so re-running the mutator is NOT safe: Firestore
-  // internally retries a transaction up to 5 attempts and re-invokes the callback,
-  // and a transient error can arrive AFTER a commit — a rerun would then reapply
-  // this stale payload over a newer edit that landed in between. A transaction
-  // here would therefore ADD a corruption path HEAD does not have. Making this
-  // path safe requires accepting a minimal FIELD PATCH instead of a whole object
-  // (tracked as the same-item-merge item in FIRESTORE_SYNC_RESEARCH.md); until
-  // then it keeps HEAD's single read-then-write.
+  // TRANSACTIONAL, and the merge happens INSIDE each attempt.
+  //
+  // This used to be a single read-then-write of the WHOLE thoughts array, which
+  // made it the owner's original bug in miniature: edit thought A on the phone,
+  // edit thought B on the laptop an hour later, and the laptop's array — built
+  // from what it read before — silently restored the old A.
+  //
+  // The earlier objection to a transaction was that re-running the callback could
+  // reapply a stale payload. That only holds when the merge is computed from a
+  // caller-held array snapshot. Computing it from the FRESHLY READ document on
+  // every attempt makes the operation idempotent for the target thought and always
+  // current for its siblings, which is what the person actually asked for. What
+  // remains is a same-thought overwrite when another device edits the SAME thought
+  // within the retry window — sub-second, and far less likely than the hours-apart
+  // sibling loss this replaces.
   const ref = sermonRef(sermonId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error(SERMON_NOT_FOUND);
-  const sermon = snap.data() as Sermon;
-  const thoughts = sermon.thoughts || [];
+  let sanitizedResult!: Thought;
 
-  const oldThought = thoughts.find((t) => t.id === updatedThought.id);
-  if (!oldThought) throw new Error('Thought not found in sermon');
+  await atomicUpdate<Sermon>(
+    ref,
+    (data) => {
+      const thoughts = data.thoughts || [];
+      const oldThought = thoughts.find((t) => t.id === updatedThought.id);
+      if (!oldThought) throw new Error('Thought not found in sermon');
 
-  const merged: Thought = {
-    ...oldThought,
-    ...updatedThought,
-    id: updatedThought.id,
-    text: updatedThought.text ?? oldThought.text,
-    date: updatedThought.date ?? oldThought.date,
-    tags: stripStructureTags(
-      Array.isArray(updatedThought.tags) ? updatedThought.tags : oldThought.tags
-    ),
-  };
+      /**
+       * WHAT THE PERSON ACTUALLY CHANGED — the only thing this write may state.
+       * With no opening value we cannot tell, so everything is claimed, as before.
+       */
+      const intent: Partial<Thought> = baseThought
+        ? changedFields(baseThought, updatedThought)
+        : updatedThought;
 
-  if (Object.prototype.hasOwnProperty.call(updatedThought, 'outlinePointId')) {
-    merged.outlinePointId = updatedThought.outlinePointId ?? null;
-  }
-  if (Object.prototype.hasOwnProperty.call(updatedThought, 'subPointId')) {
-    merged.subPointId = updatedThought.subPointId ?? null;
-  }
-  if (!Object.prototype.hasOwnProperty.call(updatedThought, 'position')) {
-    if (typeof oldThought.position === 'number') {
+        const merged: Thought = {
+          ...oldThought,
+          ...intent,
+          id: updatedThought.id,
+          text: intent.text ?? oldThought.text,
+          date: intent.date ?? oldThought.date,
+          tags: stripStructureTags(
+      Array.isArray(intent.tags) ? intent.tags : oldThought.tags
+          ),
+        };
+
+        if (Object.prototype.hasOwnProperty.call(intent, 'outlinePointId')) {
+          merged.outlinePointId = intent.outlinePointId ?? null;
+        }
+        if (Object.prototype.hasOwnProperty.call(intent, 'subPointId')) {
+          merged.subPointId = intent.subPointId ?? null;
+        }
+        if (!Object.prototype.hasOwnProperty.call(intent, 'position')) {
+          if (typeof oldThought.position === 'number') {
       merged.position = oldThought.position;
-    } else {
+          } else {
       delete (merged as unknown as Record<string, unknown>).position;
-    }
-  }
+          }
+        }
 
-  const sanitized = deepCleanUndefined(merged);
-  if (!sanitized.id || !sanitized.text || !sanitized.date || !sanitized.tags) {
-    throw new Error('Thought is missing required fields');
-  }
+      const sanitized = deepCleanUndefined(merged);
+      if (!sanitized.id || !sanitized.text || !sanitized.date || !sanitized.tags) {
+        throw new Error('Thought is missing required fields');
+      }
 
-  const updatedThoughts = thoughts.map((t) => (t.id === sanitized.id ? sanitized : t));
-  await updateDoc(ref, { thoughts: updatedThoughts, updatedAt: now() });
-  return sanitized;
+      sanitizedResult = sanitized;
+      return {
+        thoughts: thoughts.map((t) => (t.id === sanitized.id ? sanitized : t)),
+        updatedAt: now(),
+        // Every writer of an aggregate advances its counter, or the counter lies.
+        ...revisionBump(SERMON_THOUGHTS_AGGREGATE),
+      };
+    },
+    SERMON_NOT_FOUND,
+    // Re-running is safe: the merge is recomputed from the stored document.
+    { retryTransientAsQueuedWrite: true }
+  );
+
+  return sanitizedResult;
 }
 
 /** Mirror DELETE /api/thoughts — remove the thought (by id) from the array. */
@@ -500,6 +1008,7 @@ export async function deleteThoughtViaClient(sermonId: string, thought: Thought)
     (sermon) => ({
       thoughts: (sermon.thoughts || []).filter((t) => t.id !== thought.id),
       updatedAt: now(),
+      ...revisionBump(SERMON_THOUGHTS_AGGREGATE),
     }),
     SERMON_NOT_FOUND,
     // A removal recomputed against fresh data is idempotent: replaying it cannot
@@ -550,6 +1059,7 @@ export async function addPreachDateViaClient(
         return {
           preachDates: [...preachDates, deepCleanUndefined(committed)],
           updatedAt: now(),
+          ...revisionBump(SERMON_PREACH_DATES_AGGREGATE),
         };
       },
       SERMON_NOT_FOUND,
@@ -568,6 +1078,7 @@ export async function addPreachDateViaClient(
   await updateDoc(ref, {
     preachDates: arrayUnion(deepCleanUndefined(newPreachDate)),
     updatedAt: now(),
+    ...revisionBump(SERMON_PREACH_DATES_AGGREGATE),
   });
   return newPreachDate;
 }
@@ -606,7 +1117,11 @@ export async function updatePreachDateViaClient(
 
   const updatedArray = [...preachDates];
   updatedArray[index] = deepCleanUndefined(updatedPreachDate);
-  await updateDoc(ref, { preachDates: updatedArray, updatedAt: now() });
+  await updateDoc(ref, {
+    preachDates: updatedArray,
+    updatedAt: now(),
+    ...revisionBump(SERMON_PREACH_DATES_AGGREGATE),
+  });
   return updatedPreachDate;
 }
 
@@ -617,6 +1132,7 @@ export async function deletePreachDateViaClient(sermonId: string, dateId: string
     (sermon) => ({
       preachDates: (sermon.preachDates || []).filter((pd) => pd.id !== dateId),
       updatedAt: now(),
+      ...revisionBump(SERMON_PREACH_DATES_AGGREGATE),
     }),
     SERMON_NOT_FOUND,
     { retryTransientAsQueuedWrite: true } // removal is idempotent on fresh data

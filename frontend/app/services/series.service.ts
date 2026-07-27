@@ -103,7 +103,17 @@ export const SERIES_META_AGGREGATE = 'meta';
 async function updateSeriesViaClient(
   seriesId: string,
   updates: Partial<Series>,
-  expectedRevision: number | null = null
+  expectedRevision: number | null = null,
+  /**
+   * The metadata fields as the EDIT FORM OPENED them.
+   *
+   * Series was the last aggregate judged by the counter alone, and that is exactly
+   * the hole the rules cannot close while they are disabled: an old installed PWA
+   * changes the title WITHOUT advancing `rev.meta`, so hours later a save from the
+   * same number looks legitimate and silently replaces the phone's title. Comparing
+   * the values the form started from catches it without anyone's cooperation.
+   */
+  expectedBaseline: Record<string, unknown> | null = null
 ): Promise<Series> {
   const db = getClientDb();
   const ref = doc(db, SERIES_COLLECTION, seriesId);
@@ -123,6 +133,10 @@ async function updateSeriesViaClient(
     const committed = await conflictSafeUpdate(ref, cleanUpdates, `Series ${seriesId} not found`, {
       aggregate: SERIES_META_AGGREGATE,
       expectedRevision,
+      expectedBaseline,
+      outboxRoute: current.userId
+        ? { uid: current.userId, collection: SERIES_COLLECTION, docId: seriesId, savedAt: Date.now() }
+        : undefined,
     });
     // Carry the COMMITTED revision back, or the caller's next save states the
     // pre-write number and is refused as stale — a false conflict on its own edit.
@@ -159,12 +173,14 @@ export const createSeries = async (series: Omit<Series, 'id'> & { id?: string })
 export const updateSeries = async (
   seriesId: string,
   updates: Partial<Series>,
-  expectedRevision: number | null = null
+  expectedRevision: number | null = null,
+  /** The metadata fields as the form OPENED them — see the guard's baseline. */
+  expectedBaseline: Record<string, unknown> | null = null
 ): Promise<Series> => {
   // Items/sermonIds membership flows through the dedicated cascade endpoints, never
   // updateSeries; the client path whitelists metadata only (same as the server route),
   // so it stays a pure own-doc write with no cross-collection effect.
-  return updateSeriesViaClient(seriesId, updates, expectedRevision);
+  return updateSeriesViaClient(seriesId, updates, expectedRevision, expectedBaseline);
 };
 
 export const deleteSeries = async (seriesId: string): Promise<void> => {

@@ -286,7 +286,9 @@ describe('Thought Service', () => {
       const result = await updateThought(mockSermonId, mockThought);
 
       expect(result).toEqual(mockThought);
-      expect(mockUpdateThoughtViaClient).toHaveBeenCalledWith(mockSermonId, mockThought);
+      // The third argument is the thought AS THE SCREEN OPENED IT; this caller does
+      // not state one, so the write claims every field, exactly as before.
+      expect(mockUpdateThoughtViaClient).toHaveBeenCalledWith(mockSermonId, mockThought, undefined);
       expect(mockFetch).not.toHaveBeenCalled();
     });
 

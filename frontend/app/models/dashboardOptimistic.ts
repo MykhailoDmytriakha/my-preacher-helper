@@ -8,6 +8,12 @@ export interface DashboardSermonSyncState {
   status: DashboardSyncStatus;
   operation: DashboardSyncOperation;
   message?: string;
+  /**
+   * The write was REFUSED because the record changed on another device — not a
+   * failure to repeat. The badge says so in those words, and its two buttons become a
+   * real choice: send mine anyway, or keep what the other device stored.
+   */
+  conflict?: boolean;
 }
 
 export interface DashboardCreateSermonInput {

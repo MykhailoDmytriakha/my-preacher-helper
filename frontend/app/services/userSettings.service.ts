@@ -121,7 +121,15 @@ export async function updateUserLanguage(userId: string, language: string): Prom
       return;
     }
 
+    // NO early return offline. It used to bail out here, so a language chosen on a
+    // train never reached the server at all: the cookie made it look applied on this
+    // device, and picking up a phone the next day showed the old language back. The
+    // client SDK queues an ordinary write in its own durable buffer and replays it
+    // on reconnect — so we simply write, without awaiting a server that is not there.
     if (isBrowserOffline()) {
+      void updateUserSettingsViaClient(userId, { language }).catch((error) => {
+        console.error('Queued language update failed', error);
+      });
       return;
     }
 
@@ -147,10 +155,6 @@ export async function updateUserProfile(
   try {
     if (!userId) return;
 
-    if (isBrowserOffline()) {
-      return;
-    }
-
     // Only update provided fields
     const updates: Record<string, unknown> = {};
     if (email !== undefined) updates.email = email;
@@ -158,6 +162,16 @@ export async function updateUserProfile(
 
     // Don't make the API call if there's nothing to update
     if (Object.keys(updates).length === 0) return;
+
+    // Offline this used to return as if saved and drop the change entirely. The
+    // client SDK's own durable buffer replays an ordinary write on reconnect, so
+    // fire it without awaiting a server that is not there.
+    if (isBrowserOffline()) {
+      void updateUserSettingsViaClient(userId, updates).catch((error) => {
+        console.error('Queued profile update failed', error);
+      });
+      return;
+    }
 
     // Update settings without specifying language
     await updateUserSettingsViaClient(userId, updates);
@@ -228,18 +242,24 @@ export async function initializeUserSettings(
   try {
     if (!userId) return;
 
-    if (isBrowserOffline()) {
-      if (language) {
-        setLanguageCookie(language);
-      }
-      return;
-    }
-
     // Build request payload with only provided fields
     const payload: Record<string, unknown> = { userId };
     if (language !== undefined) payload.language = language;
     if (email !== undefined) payload.email = email;
     if (displayName !== undefined) payload.displayName = displayName;
+
+    // Offline: queue the write rather than only setting the cookie. Cookie-only
+    // meant the choice existed on this device and nowhere else, so the next device
+    // showed the old value and the person had no idea why.
+    if (isBrowserOffline()) {
+      void updateUserSettingsViaClient(userId, payload).catch((error) => {
+        console.error('Queued settings initialization failed', error);
+      });
+      if (language) {
+        setLanguageCookie(language);
+      }
+      return;
+    }
 
     // setDoc(merge) only writes the provided fields; we deliberately do NOT
     // force a default language here, so a re-init can't clobber an existing

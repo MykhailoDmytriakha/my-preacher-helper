@@ -122,7 +122,7 @@ describe('usePrayerRequests', () => {
     );
     // Third argument = the revision this edit was built from; the hook passes
     // `null` when the caller states none, keeping the unguarded legacy path.
-    expect(mockUpdatePrayerRequest).toHaveBeenCalledWith('p1', { title: 'Updated prayer' }, null);
+    expect(mockUpdatePrayerRequest).toHaveBeenCalledWith('p1', { title: 'Updated prayer' }, null, null);
     expect(mockAddPrayerUpdate).toHaveBeenCalledWith('p1', {
       updateId: expect.any(String),
       text: 'Fresh update',
@@ -140,6 +140,7 @@ describe('usePrayerRequests', () => {
         answeredAt: expect.any(String),
       },
       undefined,
+      null,
       null
     );
     const statusPayload = mockSetPrayerStatus.mock.calls[0][1] as { updatedAt: string; answeredAt?: string };
@@ -313,11 +314,15 @@ describe('usePrayerRequests', () => {
       });
 
       // 7, NOT 2: otherwise the resend is refused again and the button lies.
+      // And NO baseline: the person has SEEN the other version and chose their own,
+      // so this is a deliberate overwrite — comparing content here would refuse the
+      // very action they just confirmed.
       await waitFor(() =>
         expect(mockUpdatePrayerRequest).toHaveBeenLastCalledWith(
           'p1',
           { title: 'Typed on the laptop' },
-          7
+          7,
+          null
         )
       );
     });
@@ -359,4 +364,134 @@ describe('usePrayerRequests', () => {
     });
   });
 
+});
+
+/**
+ * The ANSWER is the longest text on this screen and it lives nowhere but the modal
+ * that carries it. "The modal stays open" is not durability: the backdrop, the ✕ and
+ * a reload all take it. Status/answer is a different aggregate from the core fields,
+ * so it needs its own slot — sharing one would let a refused title overwrite a
+ * refused answer.
+ */
+describe('a refused ANSWER survives the modal', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    jest.clearAllMocks();
+    // Standalone setup: relying on the previous describe's beforeEach makes this
+    // block pass only when the whole file runs, and crash when run alone.
+    mockUseOnlineStatus.mockReturnValue(true);
+    mockUseResolvedUid.mockReturnValue({ uid: 'user-1' } as never);
+    mockUseServerFirstQuery.mockReturnValue({ data: [], isLoading: false, error: null } as never);
+  });
+
+  it('is held durably and retired only once the resend commits', async () => {
+    mockSetPrayerStatus.mockRejectedValueOnce(new StaleWriteError('status', 0, 4));
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper });
+
+    await act(async () => {
+      await result.current
+        .setStatus('p1', 'answered', 'God provided a job', 0, { status: 'active' })
+        .catch(() => {});
+    });
+
+    await waitFor(() => expect(result.current.statusConflict).not.toBeNull());
+    expect(result.current.statusConflict?.payload.answerText).toBe('God provided a job');
+    // Written where a reload can find it — not in component state.
+    expect(Object.keys(localStorage).some((k) => k.includes('conflict:status'))).toBe(true);
+
+    // Keep mine: the resend adopts the revision the server held at refusal, states
+    // NO baseline (the overwrite is deliberate now), and commits.
+    mockSetPrayerStatus.mockResolvedValueOnce({ id: 'p1' } as never);
+    await act(async () => {
+      await result.current.keepMineOnStatusConflict();
+    });
+
+    await waitFor(() => expect(result.current.statusConflict).toBeNull());
+    expect(mockSetPrayerStatus).toHaveBeenLastCalledWith(
+      'p1',
+      expect.objectContaining({ status: 'answered', answerText: 'God provided a job' }),
+      undefined,
+      4,
+      null
+    );
+  });
+
+  it('still holds the answer when the resend is refused AGAIN', async () => {
+    // Two devices, hours apart: while the person reads the question, the other device
+    // saves once more. Retiring the answer the moment the resend is SENT would leave
+    // nothing to hold the second refusal — the words would be gone for good.
+    mockSetPrayerStatus.mockRejectedValueOnce(new StaleWriteError('status', 0, 4));
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper });
+
+    await act(async () => {
+      await result.current.setStatus('p1', 'answered', 'God provided a job', 0).catch(() => {});
+    });
+    await waitFor(() => expect(result.current.statusConflict).not.toBeNull());
+
+    mockSetPrayerStatus.mockRejectedValueOnce(new StaleWriteError('status', 4, 9));
+    await act(async () => {
+      await result.current.keepMineOnStatusConflict();
+    });
+
+    await waitFor(() => expect(result.current.statusConflict?.actualRevision).toBe(9));
+    expect(result.current.statusConflict?.payload.answerText).toBe('God provided a job');
+  });
+
+  it('keeps the answer when the resend fails for any OTHER reason', async () => {
+    // A refusal re-captures itself in onError; a network failure does not. So the
+    // copy may only be retired on a confirmed commit — retiring it when the resend
+    // is merely SENT loses the answer to a dropped connection.
+    mockSetPrayerStatus.mockRejectedValueOnce(new StaleWriteError('status', 0, 4));
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper });
+
+    await act(async () => {
+      await result.current.setStatus('p1', 'answered', 'God provided a job', 0).catch(() => {});
+    });
+    await waitFor(() => expect(result.current.statusConflict).not.toBeNull());
+
+    mockSetPrayerStatus.mockRejectedValueOnce(new Error('network down'));
+    await act(async () => {
+      await result.current.keepMineOnStatusConflict();
+    });
+    await waitFor(() => expect(result.current.error).not.toBeNull());
+
+    expect(result.current.statusConflict?.payload.answerText).toBe('God provided a job');
+  });
+
+  it('gives the refused answer back after a reload', async () => {
+    mockSetPrayerStatus.mockRejectedValueOnce(new StaleWriteError('status', 0, 4));
+    const { wrapper } = createWrapper();
+    const first = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper });
+
+    await act(async () => {
+      await first.result.current
+        .setStatus('p1', 'answered', 'God provided a job', 0, { status: 'active' })
+        .catch(() => {});
+    });
+    await waitFor(() => expect(first.result.current.statusConflict).not.toBeNull());
+    first.unmount();
+
+    const { wrapper: wrapper2 } = createWrapper();
+    const second = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper: wrapper2 });
+
+    expect(second.result.current.statusConflict?.payload.answerText).toBe('God provided a job');
+  });
+
+  it('keeps the refused answer out of the core slot', async () => {
+    // Two aggregates, two slots. One shared slot would mean the answer replaces a
+    // refused title (or the other way round) and one of them is gone.
+    mockSetPrayerStatus.mockRejectedValueOnce(new StaleWriteError('status', 0, 4));
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper });
+
+    await act(async () => {
+      await result.current.setStatus('p1', 'answered', 'God provided a job', 0).catch(() => {});
+    });
+
+    await waitFor(() => expect(result.current.statusConflict).not.toBeNull());
+    expect(result.current.saveConflict).toBeNull();
+  });
 });

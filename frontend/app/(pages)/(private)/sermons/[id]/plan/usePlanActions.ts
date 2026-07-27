@@ -129,9 +129,12 @@ export default function usePlanActions({
         },
       };
 
+      // ONE SECTION is what this save changed — state only it. Sending the whole
+      // plan meant the two untouched sections travelled as this screen's hours-old
+      // copy and replaced whatever another device had written into them.
       await saveSermonPlan({
         sermonId: sermon.id,
-        plan: updatedPlan,
+        plan: { [section]: updatedPlan[section] },
       });
 
       await onSaved({

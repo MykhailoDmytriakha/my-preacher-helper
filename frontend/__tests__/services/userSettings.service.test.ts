@@ -145,17 +145,35 @@ describe('userSettings.service', () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
-  it('keeps no-op and offline guards for profile, language, and initialization helpers', async () => {
+  it('writes nothing when there is nothing to write, or nobody to write for', async () => {
     const service = await importServiceWithClientMocks();
     await expect(service.updateUserProfile('', 'user@example.com')).resolves.toBeUndefined();
     await expect(service.updateUserProfile('user1')).resolves.toBeUndefined();
 
+    expect(mockSetDoc).not.toHaveBeenCalled();
+  });
+
+  it('QUEUES an offline settings change instead of dropping it', async () => {
+    // It used to return early offline. The cookie made the new language look
+    // applied on this device while the server never heard about it, so picking up
+    // a phone the next day showed the old one back — a preference silently lost.
+    // The client SDK's own durable buffer replays an ordinary write on reconnect.
+    const service = await importServiceWithClientMocks();
     setNavigatorOnline(false);
+
     await expect(service.updateUserLanguage('user1', 'ru')).resolves.toBeUndefined();
     await expect(service.updateUserProfile('user1', 'user@example.com')).resolves.toBeUndefined();
     await expect(service.initializeUserSettings('user1', 'uk')).resolves.toBeUndefined();
 
-    expect(mockSetDoc).not.toHaveBeenCalled();
+    const written = mockSetDoc.mock.calls.map((call) => call[1]);
+    expect(written).toEqual(
+      expect.arrayContaining([
+        { language: 'ru' },
+        { email: 'user@example.com' },
+        expect.objectContaining({ language: 'uk' }),
+      ])
+    );
+    // The cookie still gives this device the immediate effect.
     expect(service.getCookieLanguage()).toBe('uk');
   });
 

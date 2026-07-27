@@ -22,9 +22,15 @@ export interface DataFreshnessBannerProps {
    * names the thing in front of the user instead of a generic "record". A shared
    * component with hardcoded wording told sermon readers their "note" had changed.
    */
-  entityKey?: 'entityNote' | 'entitySermon' | 'entitySeries' | 'entityRecord';
+  entityKey?: 'entityNote' | 'entitySermon' | 'entitySeries' | 'entitySettings' | 'entityRecord';
   /** The document was deleted elsewhere; refreshing would show nothing. */
   deleted?: boolean;
+  /**
+   * We cannot currently tell whether this changed elsewhere — the listener is
+   * cache-only or died. Showing nothing here is the quiet lie: the person keeps
+   * editing what may already be someone else's yesterday. Same pill, honest words.
+   */
+  unknown?: boolean;
   /**
    * Take the newer server version. OMIT IT when no safe refresh exists here — the
    * button then disappears and the banner is a pure notification.
@@ -45,6 +51,7 @@ export function DataFreshnessBanner({
   dirty,
   entityKey = 'entityRecord',
   deleted = false,
+  unknown = false,
   onRefresh,
   onDismiss,
   className = '',
@@ -54,23 +61,33 @@ export function DataFreshnessBanner({
   const entity = t(`freshness.${entityKey}`);
   const description = deleted
     ? t('freshness.deletedDescription')
-    : dirty
-      ? t('freshness.dirtyDescription', { entity })
-      : t('freshness.description', { entity });
+    : unknown
+      ? t('freshness.unknownDescription', { entity })
+      : dirty
+        ? t('freshness.dirtyDescription', { entity })
+        : t('freshness.description', { entity });
 
   return (
     <div
       role="status"
-      className={`flex flex-col gap-3 rounded-xl border border-sky-300 bg-sky-50 px-4 py-3 text-sm dark:border-sky-500/40 dark:bg-sky-500/10 sm:flex-row sm:items-center sm:justify-between ${className}`}
+      className={`flex flex-col gap-3 rounded-xl border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between ${
+        unknown
+          ? 'border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10'
+          : 'border-sky-300 bg-sky-50 dark:border-sky-500/40 dark:bg-sky-500/10'
+      } ${className}`}
     >
       <div className="min-w-0">
-        <p className="font-medium text-sky-900 dark:text-sky-200">
-          {deleted ? t('freshness.deletedTitle') : t('freshness.title')}
+        <p className={`font-medium ${unknown ? 'text-amber-900 dark:text-amber-200' : 'text-sky-900 dark:text-sky-200'}`}>
+          {deleted
+            ? t('freshness.deletedTitle')
+            : unknown
+              ? t('freshness.unknownTitle')
+              : t('freshness.title')}
         </p>
-        <p className="mt-0.5 text-sky-800/80 dark:text-sky-200/70">{description}</p>
+        <p className={`mt-0.5 ${unknown ? 'text-amber-800/80 dark:text-amber-200/70' : 'text-sky-800/80 dark:text-sky-200/70'}`}>{description}</p>
       </div>
       <div className="flex shrink-0 gap-2">
-        {!deleted && onRefresh && (
+        {!deleted && !unknown && onRefresh && (
           <button
             type="button"
             onClick={onRefresh}

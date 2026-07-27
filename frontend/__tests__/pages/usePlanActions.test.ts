@@ -393,6 +393,9 @@ describe("usePlanActions", () => {
       await result.current.saveSermonPoint("p1", "Fresh intro", "introduction");
     });
 
+    // ONLY the edited section travels. Sending the untouched sections as well —
+    // here as invented empty outlines — is how a save of the introduction used to
+    // blank a conclusion written on another device.
     expect(mockSaveSermonPlan).toHaveBeenCalledWith({
       sermonId: "sermon-1",
       plan: {
@@ -400,8 +403,6 @@ describe("usePlanActions", () => {
           outline: "## Intro 1\n\nFresh intro",
           outlinePoints: { p1: "Fresh intro" },
         },
-        main: { outline: "" },
-        conclusion: { outline: "" },
       },
     });
     expect(onSaved).toHaveBeenCalled();

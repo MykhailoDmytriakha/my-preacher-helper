@@ -98,6 +98,14 @@ export function useGroupDetail(groupId: string) {
     GROUP_CONTENT_AGGREGATE
   );
   const [resolvingConflict, setResolvingConflict] = useState(false);
+  /**
+   * Bumped when the person chose "take theirs" AND the fresh version really loaded.
+   *
+   * The screen needs this signal: its form initialises once per group id, so after a
+   * refetch the inputs kept the OLD local text — the promised version never appeared,
+   * and the next autosave conflicted all over again.
+   */
+  const [adoptRemoteNonce, setAdoptRemoteNonce] = useState(0);
 
   /**
    * How many own-doc writes are in flight.
@@ -120,7 +128,16 @@ export function useGroupDetail(groupId: string) {
   const committedRevRef = useRef<{ groupId: string; revision: number } | null>(null);
 
   const updateGroupDetail = useCallback(
-    async (updates: Partial<Group>, statedRevision?: number | null) => {
+    async (
+      updates: Partial<Group>,
+      statedRevision?: number | null,
+      /**
+       * The content fields as the SCREEN OPENED them. Without it the service used
+       * to hash its own fresh read — which compares the server with itself, always
+       * agrees, and let a stale save replace what the other device stored.
+       */
+      expectedBaseline?: Record<string, unknown> | null
+    ) => {
       if (!group) return;
       setMutationError(null);
       const id = group.id;
@@ -150,9 +167,11 @@ export function useGroupDetail(groupId: string) {
       // natively), so awaiting would hang the caller's autosave. The optimistic
       // writes above keep the UI truthful; durability lives in the offline queue.
       setPendingWrites((n) => n + 1);
-      void updateGroup(id, updates, revision)
+      void updateGroup(id, updates, revision, expectedBaseline ?? null)
         .then((saved) => {
-          setSaveConflict(null);
+          // NAME the group this commit resolves: landing after the person opened
+          // another group, an unnamed clear empties THAT group's slot instead.
+          setSaveConflict(null, id);
           // Carry the COMMITTED revision into the caches. Without it the next
           // keystroke states the pre-write number and is refused against the
           // person's OWN save — a false conflict, and worse than before the guard.
@@ -190,7 +209,7 @@ export function useGroupDetail(groupId: string) {
           reconcileWriteError(errorValue);
         });
     },
-    [group, queryClient, uid, reconcileWriteError, t]
+    [group, queryClient, uid, reconcileWriteError, setSaveConflict, t]
   );
 
   /** Save the refused edit on top of the newer version — a deliberate overwrite. */
@@ -221,11 +240,14 @@ export function useGroupDetail(groupId: string) {
         return;
       }
       await queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.GROUPS, uid] });
-      setSaveConflict(null);
+      setSaveConflict(null, groupId);
+      // Now tell the form to adopt what just loaded — clearing the conflict alone
+      // left the person looking at their own old text.
+      setAdoptRemoteNonce((n) => n + 1);
     } finally {
       setResolvingConflict(false);
     }
-  }, [resolvingConflict, queryClient, refetch, uid, t]);
+  }, [resolvingConflict, queryClient, refetch, uid, groupId, setSaveConflict, t]);
 
   const addMeetingDate = useCallback(
     async (payload: Omit<GroupMeetingDate, 'id' | 'createdAt'>) => {
@@ -341,5 +363,6 @@ export function useGroupDetail(groupId: string) {
     resolvingConflict,
     keepMineOnConflict,
     takeTheirsOnConflict,
+    adoptRemoteNonce,
   };
 }

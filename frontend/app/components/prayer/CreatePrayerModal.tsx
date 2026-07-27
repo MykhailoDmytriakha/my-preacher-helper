@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import { PrayerRequest } from '@/models/models';
+import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 
 interface Props {
   onClose: () => void;
@@ -50,7 +51,17 @@ export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mo
         setSaving(false);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error');
+      // A REFUSAL is not a crash — say it in the person's language. The raw guard
+      // message ("Refused a stale write to \"core\": built from revision 0…") leaked
+      // into this box during live validation: technically true, useless to read, and
+      // in English on a Russian screen.
+      setError(
+        isStaleWriteError(err)
+          ? t('freshness.staleSaveToast')
+          : err instanceof Error
+            ? err.message
+            : 'Error'
+      );
       setSaving(false);
     }
   };

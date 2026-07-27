@@ -348,7 +348,9 @@ function StructurePageContent() {
       setSermon((prev) => prev ? { ...prev, thoughts: [...prev.thoughts, thought], structure: newStructure, thoughtsBySection: newStructure } : prev);
 
       // Use debounced structure save
-      debouncedSaveStructure(sermon.id, newStructure);
+      // Third argument: the arrangement as this screen holds it stored, so a move
+      // made on another device is not reverted by this save.
+      debouncedSaveStructure(sermon.id, newStructure, sermon.structure);
     } catch (e) {
       console.error('Error handling audio thought creation:', e);
       toast.error(t(TRANSLATION_KEYS.ERRORS.SAVING_ERROR));
@@ -563,7 +565,9 @@ function StructurePageContent() {
 
       // 3. Update backend for each thought
       thoughtsToUpdate.forEach(thought => {
-        debouncedSaveThought(sermon.id, { ...thought, outlinePointId: null, subPointId: null });
+        // Only the plan link changes here — state `thought` as the opening value so
+        // the write does not also re-send this screen's copy of the thought's text.
+        debouncedSaveThought(sermon.id, { ...thought, outlinePointId: null, subPointId: null }, thought);
       });
 
     } catch (error) {
@@ -605,7 +609,7 @@ function StructurePageContent() {
       });
 
       thoughtsToUpdate.forEach((thought) => {
-        debouncedSaveThought(sermon.id, { ...thought, subPointId: null });
+        debouncedSaveThought(sermon.id, { ...thought, subPointId: null }, thought);
       });
     } catch (error) {
       console.error('Error updating thoughts after sub-point deletion:', error);

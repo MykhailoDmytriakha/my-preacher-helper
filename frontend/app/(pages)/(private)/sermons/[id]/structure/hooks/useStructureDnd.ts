@@ -594,7 +594,9 @@ const handleStructureUpdate = async (
   };
   const changesDetected = isStructureChanged(sermon.structure || {}, normalizedStructure);
   if (changesDetected) {
-    await updateStructure(sermon.id, normalizedStructure);
+    // `sermon.structure` is the arrangement this screen holds as stored: with it, a
+    // thought moved on another device keeps that section instead of jumping back.
+    await updateStructure(sermon.id, normalizedStructure, sermon.structure);
     setSermon((prev: Sermon | null) => (prev ? { ...prev, structure: normalizedStructure } : prev));
   }
 };

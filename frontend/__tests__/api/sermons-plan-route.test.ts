@@ -90,6 +90,7 @@ describe('Sermon Plan Route', () => {
     // Setup repository mock
     (sermonsRepository.fetchSermonById as jest.Mock).mockResolvedValue(mockSermon);
     (sermonsRepository.updateSermonContent as jest.Mock).mockResolvedValue({});
+    (sermonsRepository.updateSermonContentSections as jest.Mock).mockResolvedValue({});
     (sermonsRepository.fetchAdjacentOutlinePoints as jest.Mock).mockResolvedValue({
       previousPoint: { text: 'Prev' },
       nextPoint: { text: 'Next' },
@@ -535,6 +536,31 @@ describe('Sermon Plan Route', () => {
       expect(responseData).toHaveProperty('error');
     });
 
+    /**
+     * ONE PERSON, TWO DEVICES, HOURS APART. The plan editor saves ONE point of ONE
+     * section, but used to PUT the whole plan — so the two sections it never touched
+     * travelled as this laptop's hours-old copy and replaced an introduction rewritten
+     * on the phone that morning. Nothing warned anybody.
+     */
+    it('writes ONLY the sections the caller states, leaving the others untouched', async () => {
+      const mockRequest = {
+        json: jest.fn().mockResolvedValue({
+          main: { outline: 'Main, edited here', outlinePoints: { p2: 'Main point' } },
+        }),
+      } as unknown as NextRequest;
+
+      const response = await PUT(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
+
+      expect(response.status).toBe(200);
+      expect(sermonsRepository.updateSermonContentSections).toHaveBeenCalledWith('test-sermon-123', {
+        main: { outline: 'Main, edited here', outlinePoints: { p2: 'Main point' } },
+      });
+      // NOT the whole plan: an absent section must not be written at all, and must
+      // certainly not be invented as an empty one.
+      const [, written] = (sermonsRepository.updateSermonContentSections as jest.Mock).mock.calls[0];
+      expect(Object.keys(written)).toEqual(['main']);
+    });
+
     it('should save plan content and return success', async () => {
       const mockRequest = {
         json: jest.fn().mockResolvedValue({
@@ -547,7 +573,10 @@ describe('Sermon Plan Route', () => {
       const response = await PUT(mockRequest, { params: Promise.resolve({ id: 'test-sermon-123' }) });
       const responseData = await response.json();
 
-      expect(sermonsRepository.updateSermonContent).toHaveBeenCalledWith('test-sermon-123', expect.any(Object));
+      expect(sermonsRepository.updateSermonContentSections).toHaveBeenCalledWith(
+        'test-sermon-123',
+        expect.objectContaining({ introduction: expect.any(Object), main: expect.any(Object), conclusion: expect.any(Object) })
+      );
       expect(responseData).toHaveProperty('success', true);
       expect(responseData.plan).toHaveProperty('introduction');
       expect(responseData.plan).toHaveProperty('main');

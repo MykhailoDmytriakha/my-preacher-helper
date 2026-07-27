@@ -18,9 +18,15 @@ import AddUpdateModal from '@/components/prayer/AddUpdateModal';
 import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
 import MarkAnsweredModal from '@/components/prayer/MarkAnsweredModal';
 import PrayerRequestCard from '@/components/prayer/PrayerRequestCard';
+import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
+import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
+import {
+  PRAYER_CORE_AGGREGATE,
+  PRAYER_STATUS_AGGREGATE,
+} from '@/services/prayerRequests.client';
 import {
   filterPrayerRequests,
   getDefaultPrayerSortKey,
@@ -51,14 +57,55 @@ export default function PrayerPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
 
-  const { prayerRequests, loading, createPrayer, updatePrayer, deletePrayer, addUpdate, setStatus } =
-    usePrayerRequests(user?.uid ?? null);
-
   const [showCreate, setShowCreate] = useState(false);
   const [editingPrayer, setEditingPrayer] = useState<PrayerRequest | null>(null);
   const [addingUpdateForId, setAddingUpdateForId] = useState<string | null>(null);
-  const [markingAnsweredId, setMarkingAnsweredId] = useState<string | null>(null);
+  /**
+   * The prayer being answered, SNAPSHOT at the moment the modal opened — not just
+   * its id. The list refetches on focus, so looking the prayer up again at save
+   * time would pair a fresh revision with the text typed against the old one: the
+   * guard would then approve exactly the overwrite it exists to refuse.
+   */
+  const [markingAnswered, setMarkingAnswered] = useState<PrayerRequest | null>(null);
+  /**
+   * WHICH prayer a refusal belongs to — and it must OUTLIVE the modal.
+   *
+   * The durable slot is addressed by document id, and this screen used to take that
+   * id straight from the open modal. Close the modal and the id became null, so the
+   * refused answer — still on disk — had nothing to display it: the banner vanished
+   * and the text was unreachable until the person happened to reopen that same
+   * prayer. Remembering the last document keeps the choice on screen.
+   */
+  const openModalDocId = editingPrayer?.id ?? markingAnswered?.id ?? null;
+  const [pinnedDocId, setPinnedDocId] = useState<string | null>(null);
+  useEffect(() => {
+    if (openModalDocId) setPinnedDocId(openModalDocId);
+  }, [openModalDocId]);
+  const conflictDocId = openModalDocId ?? pinnedDocId;
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+
+  /**
+   * WHICH prayer this screen currently has open — the hook needs it to give a
+   * refused save a durable home. Without it the conflict lived only in hook memory,
+   * unreachable and gone on reload: the modal stayed open (so the text was on
+   * screen), but a reload took it.
+   */
+  const {
+    prayerRequests,
+    loading,
+    createPrayer,
+    updatePrayer,
+    deletePrayer,
+    addUpdate,
+    setStatus,
+    saveConflict,
+    resolvingConflict,
+    keepMineOnConflict,
+    takeTheirsOnConflict,
+    statusConflict,
+    keepMineOnStatusConflict,
+    takeTheirsOnStatusConflict,
+  } = usePrayerRequests(user?.uid ?? null, conflictDocId);
 
   const [filterStatus, setFilterStatus] = useQueryState<PrayerFilterStatus>('filter', {
     defaultValue: 'active',
@@ -208,7 +255,30 @@ export default function PrayerPage() {
       Partial<Pick<PrayerRequest, 'description' | 'tags'>>
   ) => {
     if (!editingPrayer) return;
-    await updatePrayer(editingPrayer.id, payload);
+    // State what this modal opened with — revision AND values. Without them the
+    // list screen was a hole straight through the protection: a laptop showing
+    // yesterday's list could rename a prayer the phone had rewritten in the
+    // morning, and nothing refused it.
+    try {
+      await updatePrayer(
+        editingPrayer.id,
+        payload,
+        editingPrayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0,
+        {
+          title: editingPrayer.title,
+          description: editingPrayer.description ?? null,
+          tags: editingPrayer.tags ?? [],
+        }
+      );
+    } catch (error) {
+      // Refused or failed: KEEP the modal open. The typed text lives only here.
+      toast.error(isStaleWriteError(error) ? t('freshness.staleSaveToast') : t('common.saveError'));
+      // RETHROW. Swallowing it made the promise FULFIL, and the modal closes on a
+      // fulfilled submit — so a refused answer was reported as saved and the typed
+      // text went with the modal. The comment here used to claim the modal stayed
+      // open; it did not.
+      throw error;
+    }
     toast.success(t('prayer.toast.updated'));
     setEditingPrayer(null);
   };
@@ -220,7 +290,7 @@ export default function PrayerPage() {
 
   const handleSetStatus = async (id: string, status: PrayerStatus) => {
     if (status === 'answered') {
-      setMarkingAnsweredId(id);
+      setMarkingAnswered(prayerRequests.find((candidate) => candidate.id === id) ?? null);
       return;
     }
 
@@ -229,10 +299,27 @@ export default function PrayerPage() {
   };
 
   const handleMarkAnswered = async (answerText?: string) => {
-    if (!markingAnsweredId) return;
-    await setStatus(markingAnsweredId, 'answered', answerText);
+    if (!markingAnswered) return;
+    // The answer is human text. State the revision and the values this modal
+    // opened with, and keep the modal open on refusal — the words live nowhere else.
+    try {
+      await setStatus(
+        markingAnswered.id,
+        'answered',
+        answerText,
+        markingAnswered.rev?.[PRAYER_STATUS_AGGREGATE] ?? 0,
+        { status: markingAnswered.status, answerText: markingAnswered.answerText ?? null }
+      );
+    } catch (error) {
+      toast.error(isStaleWriteError(error) ? t('freshness.staleSaveToast') : t('common.saveError'));
+      // RETHROW. Swallowing it made the promise FULFIL, and the modal closes on a
+      // fulfilled submit — so a refused answer was reported as saved and the typed
+      // text went with the modal. The comment here used to claim the modal stayed
+      // open; it did not.
+      throw error;
+    }
     toast.success(t('prayer.toast.statusChanged'));
-    setMarkingAnsweredId(null);
+    setMarkingAnswered(null);
   };
 
   const handleAddUpdate = async (text: string) => {
@@ -278,6 +365,33 @@ export default function PrayerPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
+      {/* A save this screen made was TURNED AWAY. The refused text is held durably,
+          so it is still here after a reload — and the choice is visible instead of
+          living in memory nobody can reach. */}
+      {saveConflict && (
+        <SaveConflictBanner
+          entityKey="entityRecord"
+          pendingText={
+            saveConflict.payload.updates.title ??
+            saveConflict.payload.updates.description ??
+            undefined
+          }
+          onKeepMine={keepMineOnConflict}
+          onTakeTheirs={takeTheirsOnConflict}
+          busy={resolvingConflict}
+        />
+      )}
+      {/* The ANSWER, refused. Its own aggregate and its own slot: the modal that
+          carried it is gone the moment the write fails, and this is the only copy. */}
+      {statusConflict && (
+        <SaveConflictBanner
+          entityKey="entityRecord"
+          pendingText={statusConflict.payload.answerText ?? undefined}
+          onKeepMine={keepMineOnStatusConflict}
+          onTakeTheirs={takeTheirsOnStatusConflict}
+          busy={resolvingConflict}
+        />
+      )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <HeartIcon className="h-6 w-6 flex-shrink-0 text-rose-500" />
@@ -665,9 +779,9 @@ export default function PrayerPage() {
           onSubmit={handleAddUpdate}
         />
       )}
-      {markingAnsweredId && (
+      {markingAnswered && (
         <MarkAnsweredModal
-          onClose={() => setMarkingAnsweredId(null)}
+          onClose={() => setMarkingAnswered(null)}
           onSubmit={handleMarkAnswered}
         />
       )}

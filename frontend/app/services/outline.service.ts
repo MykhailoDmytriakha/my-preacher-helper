@@ -24,13 +24,26 @@ export const getSermonOutline = async (sermonId: string): Promise<SermonOutline 
  * @param outline The updated outline data
  * @returns The updated outline or null if the update failed
  */
-export const updateSermonOutline = async (sermonId: string, outline: SermonOutline): Promise<SermonOutline | null> => {
+export const updateSermonOutline = async (
+  sermonId: string,
+  outline: SermonOutline,
+  /**
+   * The plan this editor OPENED with. Given it, the write MERGES by point id
+   * instead of replacing the whole field: a point added on the phone survives a
+   * save from a laptop that never saw it, and only the same point written in two
+   * places is reported as a collision. Omit it and the old whole-field overwrite
+   * happens, which is what silently erased other devices' work.
+   */
+  baseOutline?: SermonOutline | null
+): Promise<SermonOutline | null> => {
   // Validate outline data
   if (!outline.main) {
     outline.main = [];
   }
 
-  return updateSermonOutlineViaClient(sermonId, outline);
+  return baseOutline === undefined
+    ? updateSermonOutlineViaClient(sermonId, outline)
+    : updateSermonOutlineViaClient(sermonId, outline, { baseOutline });
 };
 
 /**

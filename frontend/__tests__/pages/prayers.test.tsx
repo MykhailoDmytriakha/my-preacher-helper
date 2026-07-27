@@ -59,7 +59,10 @@ jest.mock('@/providers/AuthProvider', () => ({
 }));
 
 jest.mock('@/hooks/usePrayerRequests', () => ({
-  usePrayerRequests: () => mockUsePrayerRequests(),
+  // The ARGUMENTS matter: the second one addresses the durable slot a refusal is
+  // stored in, and dropping it here would hide the whole class of "the refused text
+  // is on disk but nothing on screen can reach it" defects.
+  usePrayerRequests: (...args: unknown[]) => mockUsePrayerRequests(...args),
 }));
 
 jest.mock('@/components/prayer/PrayerRequestCard', () => {
@@ -345,15 +348,23 @@ describe('Prayer Page', () => {
         description: 'Context',
         tags: ['hope'],
       });
-      expect(updatePrayer).toHaveBeenCalledWith('active-1', {
-        title: 'Edited prayer',
-        description: 'Context',
-        tags: ['hope'],
-      });
+      // The list screen states BOTH what it opened with: the revision (0 here — no
+      // counter yet) and the values. Before that it saved unconditionally, so a
+      // laptop showing yesterday's list could overwrite a prayer rewritten on the
+      // phone and nothing refused it.
+      expect(updatePrayer).toHaveBeenCalledWith(
+        'active-1',
+        { title: 'Edited prayer', description: 'Context', tags: ['hope'] },
+        0,
+        { title: 'Pray for church', description: 'Sunday service', tags: ['church'] }
+      );
       expect(deletePrayer).toHaveBeenCalledWith('active-1');
       expect(addUpdate).toHaveBeenCalledWith('active-1', 'Fresh note');
       expect(setStatus).toHaveBeenCalledWith('active-1', 'not_answered');
-      expect(setStatus).toHaveBeenCalledWith('active-1', 'answered', 'Answer text');
+      expect(setStatus).toHaveBeenCalledWith('active-1', 'answered', 'Answer text', 0, {
+        status: 'active',
+        answerText: null,
+      });
     });
 
     expect(mockToastSuccess).toHaveBeenCalledWith('Prayer created');
@@ -434,5 +445,49 @@ describe('Prayer Page', () => {
     const { container } = render(<PrayerPage />);
 
     expect(container.querySelectorAll('.animate-pulse')).toHaveLength(3);
+  });
+
+  /**
+   * A REFUSED ANSWER MUST OUTLIVE THE MODAL IT WAS TYPED IN.
+   *
+   * This screen addressed the durable slot with the id of whatever modal was open.
+   * Close the modal — or let it close itself on submit — and the id became null, so
+   * the refused answer stayed on disk with nothing able to display it.
+   */
+  it('keeps addressing the prayer whose answer was refused after the modal closes', async () => {
+    render(<PrayerPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'set-answered-active-1' }));
+    // The stubbed modal closes itself after submitting, exactly like the real one.
+    fireEvent.click(screen.getByRole('button', { name: 'submit answer' }));
+
+    await waitFor(() => expect(screen.queryByTestId('mark-answered-modal')).not.toBeInTheDocument());
+
+    const lastCall = mockUsePrayerRequests.mock.calls[mockUsePrayerRequests.mock.calls.length - 1];
+    expect(lastCall[1]).toBe('active-1');
+  });
+
+  it('shows the refused ANSWER with a choice, separately from a refused edit', () => {
+    mockUsePrayerRequests.mockReturnValue({
+      prayerRequests: [],
+      loading: false,
+      createPrayer,
+      updatePrayer,
+      deletePrayer,
+      addUpdate,
+      setStatus,
+      saveConflict: null,
+      statusConflict: {
+        payload: { id: 'active-1', status: 'answered', answerText: 'God provided a job' },
+        actualRevision: 4,
+      },
+      keepMineOnStatusConflict: jest.fn(),
+      takeTheirsOnStatusConflict: jest.fn(),
+    });
+
+    render(<PrayerPage />);
+
+    // The typed answer is ON SCREEN — this banner is its only remaining copy.
+    expect(screen.getByText(/God provided a job/)).toBeInTheDocument();
   });
 });

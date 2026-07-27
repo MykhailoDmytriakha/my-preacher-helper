@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import { useDashboardOptimisticSermons } from '@/hooks/useDashboardOptimisticSermons';
+import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
 import type { Sermon } from '@/models/models';
 
@@ -875,5 +876,107 @@ describe('useDashboardOptimisticSermons', () => {
         expect(getCachedSermons(queryClient)[0].title).toBe('Edited Offline');
       });
     });
+  });
+
+  /**
+   * "RETRY" MUST BE ABLE TO SUCCEED.
+   *
+   * A refused save (the record changed on another device) came back with the server's
+   * real revision. Re-firing the SAME variables states the same outdated number again,
+   * so the button is refused every time — and Dismiss then throws the typed title away.
+   * The retry has to re-aim at what the server actually holds; that is what makes it a
+   * genuine "keep mine" against Dismiss's "keep theirs".
+   */
+  it('re-aims a refused edit at the revision the server actually had', async () => {
+    const queryClient = createTestQueryClient();
+    setCachedSermons(queryClient, [createSermon('sermon-stale', { rev: { core: 2 } } as never)]);
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    mockUpdateSermon.mockRejectedValueOnce(new StaleWriteError('core', 2, 7));
+
+    const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
+    const original = getCachedSermons(queryClient)[0];
+
+    await act(async () => {
+      await result.current.actions.saveEditedSermon({
+        sermon: original,
+        title: 'Typed on the laptop',
+        verse: original.verse,
+        plannedDate: '',
+        initialPlannedDate: '',
+      });
+    });
+
+    await waitFor(() => expect(result.current.syncStatesById['sermon-stale']?.status).toBe('error'));
+
+    mockUpdateSermon.mockResolvedValueOnce({ ...original, title: 'Typed on the laptop' });
+    await act(async () => {
+      await result.current.actions.retrySync('sermon-stale');
+    });
+
+    await waitFor(() => expect(mockUpdateSermon).toHaveBeenCalledTimes(2));
+    // 7, not 2: the number the server held AT REFUSAL. Anything else is refused again.
+    expect(mockUpdateSermon.mock.calls[1][2]).toBe(7);
+    await waitFor(() =>
+      expect(getCachedSermons(queryClient)[0].title).toBe('Typed on the laptop')
+    );
+  });
+
+  it('marks a refused edit as a CONFLICT, not a generic failure', async () => {
+    // The badge chooses its words from this flag. Called "Sync failed / Retry", the
+    // person presses Retry, is refused again, and ends up pressing Dismiss — which
+    // deletes their own text.
+    const queryClient = createTestQueryClient();
+    setCachedSermons(queryClient, [createSermon('sermon-conflict', { rev: { core: 2 } } as never)]);
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    mockUpdateSermon.mockRejectedValueOnce(new StaleWriteError('core', 2, 7));
+
+    const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
+    const original = getCachedSermons(queryClient)[0];
+
+    await act(async () => {
+      await result.current.actions.saveEditedSermon({
+        sermon: original,
+        title: 'Typed on the laptop',
+        verse: original.verse,
+        plannedDate: '',
+        initialPlannedDate: '',
+      });
+    });
+
+    await waitFor(() =>
+      expect(result.current.syncStatesById['sermon-conflict']?.conflict).toBe(true)
+    );
+  });
+
+  it('leaves an ordinary failure unmarked', async () => {
+    const queryClient = createTestQueryClient();
+    setCachedSermons(queryClient, [createSermon('sermon-netfail')]);
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    mockUpdateSermon.mockRejectedValueOnce(new Error('Network down'));
+
+    const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
+    const original = getCachedSermons(queryClient)[0];
+
+    await act(async () => {
+      await result.current.actions.saveEditedSermon({
+        sermon: original,
+        title: 'Typed on the laptop',
+        verse: original.verse,
+        plannedDate: '',
+        initialPlannedDate: '',
+      });
+    });
+
+    await waitFor(() =>
+      expect(result.current.syncStatesById['sermon-netfail']?.status).toBe('error')
+    );
+    expect(result.current.syncStatesById['sermon-netfail']?.conflict).toBeFalsy();
   });
 });

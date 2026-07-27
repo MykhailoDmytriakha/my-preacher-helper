@@ -128,4 +128,39 @@ describe('useServerFirstQuery', () => {
     expect(result.current.isLoading).toBe(false);
     expect(queryFn).not.toHaveBeenCalled();
   });
+
+  /**
+   * A CALLER THAT ASKS FOR A FOCUS REFETCH MUST GET ONE.
+   *
+   * Cache-first switches the focus refetch OFF by default, which is right for screens
+   * with a document listener and wrong for the calendar — it has none, so a date added
+   * on the phone stayed invisible on a laptop left open. The calendar asks for the focus
+   * refetch explicitly; if this wrapper ever swallowed that request, the screen would go
+   * back to being silently stale with nothing to notice it.
+   */
+  it('honours an explicit focus refetch even in cache-first mode', async () => {
+    mockUseOnlineStatus.mockReturnValue(true);
+    const { wrapper } = createWrapper();
+    const queryFn = jest.fn().mockResolvedValue('server-data');
+
+    const { result } = renderHook(
+      () =>
+        useServerFirstQuery({
+          queryKey: ['focus-refetch'],
+          queryFn,
+          refetchOnWindowFocus: true,
+          staleTime: 0,
+        }),
+      { wrapper }
+    );
+
+    await waitFor(() => expect(result.current.data).toBe('server-data'));
+    expect(queryFn).toHaveBeenCalledTimes(1);
+
+    // Coming back to the tab is exactly the moment work continues from another device.
+    window.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('focus'));
+
+    await waitFor(() => expect(queryFn.mock.calls.length).toBeGreaterThan(1));
+  });
 });

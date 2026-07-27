@@ -65,11 +65,16 @@ function storage(): Storage | null {
 /**
  * Persist a draft. Never throws: losing the safety net must not break typing.
  *
- * On a quota error we evict the OLDEST drafts (never the one being written) and
- * retry once. Failing silently after that is the correct trade — the editor
- * keeps working, and the caller learns nothing it could act on anyway.
+ * On a quota error we evict the OLDEST ORDINARY drafts (never the one being
+ * written, and never a `conflict:` record) and retry once.
+ *
+ * Conflict records are exempt on purpose: an ordinary draft duplicates text that
+ * is still visible in an open editor, but a conflict record is the LAST copy of
+ * text the server has already refused — evicting it to make room is trading a
+ * backup for an original. Adversarial review found the old eviction sweeping
+ * those away silently.
  */
-export function saveDraft<T>(key: string, value: T): void {
+export function saveDraft<T>(key: string, value: T, protectKey?: string): void {
   const store = storage();
   if (!store) return;
 
@@ -78,11 +83,13 @@ export function saveDraft<T>(key: string, value: T): void {
   try {
     store.setItem(key, payload);
   } catch {
-    evictOldestDrafts(store, key);
+    evictOldestDrafts(store, key, protectKey);
     try {
       store.setItem(key, payload);
     } catch {
-      // Out of room even after eviction — the draft is simply not kept.
+      // Out of room even after eviction. Say so once: for a conflict record this
+      // is the last copy of refused text, and silence would be the loss itself.
+      console.error('durableDraft: no room to persist', key);
     }
   }
 }
@@ -130,6 +137,56 @@ export function clearDraftIfMatches<T>(key: string, confirmed: T): void {
   clearDraft(key);
 }
 
+/**
+ * Carry a draft to a new address, leaving no window with no durable copy.
+ *
+ * WHY. A new note is written under the placeholder id "new", and the moment the
+ * create returns a real id the placeholder record is retired. But the create
+ * resolves OPTIMISTICALLY — it hands back a client-generated id without waiting
+ * for the server (`useStudyNotes.ts` createNote) — so between "placeholder
+ * cleared" and "the editor's next keystroke writes under the real id", the text
+ * exists only in React state. A tab closed in that window, with the write later
+ * refused, loses it: exactly the failure this module exists to prevent, moved one
+ * step later.
+ *
+ * Copy FIRST, delete after, and never delete when there is nothing to carry — an
+ * unconditional clear here would destroy a draft the destination already owns.
+ */
+export function moveDraft(fromKey: string, toKey: string): void {
+  if (fromKey === toKey) return;
+  const stored = readDraft<unknown>(fromKey);
+  if (!stored) return;
+  // The source is protected from eviction: making room for the copy by deleting the
+  // very thing being copied is how a move ends with the text nowhere at all.
+  saveDraft(toKey, stored.value, fromKey);
+  // VERIFY THE COPY LANDED. `saveDraft` never throws — out of room it logs and
+  // gives up — so clearing the source on faith would leave the text with no durable
+  // copy at all, which is worse than not moving it.
+  const carried = readDraft<unknown>(toKey);
+  if (!carried || JSON.stringify(carried.value) !== JSON.stringify(stored.value)) return;
+  clearDraft(fromKey);
+}
+
+/**
+ * Which documents currently hold a stored record for `aggregate`, newest first.
+ *
+ * Needed because a screen can own MANY documents — the settings page lists every
+ * plan template — so it cannot know on mount which one a refused edit belongs to.
+ * Without discovery the choice was either one shared slot (two refusals overwrite
+ * each other) or a key nobody can find again after a reload.
+ */
+export function findDraftDocIds(uid: string, aggregate: string): string[] {
+  const store = storage();
+  if (!store) return [];
+  const prefix = `${PREFIX}${uid}:`;
+  const suffix = `:${aggregate}`;
+  return listDraftKeys(store)
+    .filter((key) => key.startsWith(prefix) && key.endsWith(suffix))
+    .map((key) => ({ docId: key.slice(prefix.length, key.length - suffix.length), key }))
+    .sort((a, b) => (readDraft(b.key)?.savedAt ?? 0) - (readDraft(a.key)?.savedAt ?? 0))
+    .map((entry) => entry.docId);
+}
+
 /** All draft keys currently stored, oldest first. Used for eviction and cleanup. */
 export function listDraftKeys(store: Storage = storage() as Storage): string[] {
   if (!store) return [];
@@ -171,11 +228,22 @@ export function clearDraftsForOwner(uid: string): void {
 }
 
 /** Free room by dropping the oldest drafts, never the one being written. */
-function evictOldestDrafts(store: Storage, keepKey: string): void {
+function evictOldestDrafts(store: Storage, keepKey: string, protectKey?: string): void {
   const entries = listDraftKeys(store)
     .filter((key) => key !== keepKey)
+    // The draft being COPIED is protected as well: evicting it to make room for its
+    // own copy, and then failing to write that copy, is how a move can end with the
+    // text nowhere at all.
+    .filter((key) => key !== protectKey)
+    // NEVER evict a refused-save record. An ordinary draft duplicates text still
+    // visible in an editor; a conflict record is the last copy of text the server
+    // turned away. Freeing space by deleting it destroys the original to save a
+    // backup — exactly the loss this module exists to prevent.
+    .filter((key) => !key.includes(':conflict:'))
     .map((key) => ({ key, savedAt: readDraft(key)?.savedAt ?? 0 }))
     .sort((a, b) => a.savedAt - b.savedAt);
+
+  if (entries.length === 0) return;
 
   // Half is arbitrary but bounded: enough room for a large note without wiping
   // every other unsaved draft the user may still need.

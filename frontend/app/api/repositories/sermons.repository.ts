@@ -126,7 +126,10 @@ export class SermonsRepository {
       }
 
       // Update the outline field in the sermon document
-      await this.updateSermonData(sermonId, { outline });
+      // The counter must move for EVERY writer of an aggregate: a writer that
+      // changes data and leaves the number alone makes it lie, and the next stale
+      // save is then handed permission to overwrite.
+      await this.updateSermonData(sermonId, { outline }, 'outline');
       console.log(`Sermon outline updated for sermon id ${sermonId}`);
 
       return outline;
@@ -177,6 +180,42 @@ export class SermonsRepository {
       console.error(`Error updating sermon content for sermon ${sermonId}:`, error);
       throw error;
     }
+  }
+
+  /**
+   * Write ONLY the plan sections the caller states — each by its own nested path.
+   *
+   * WHY THIS EXISTS. The plan editor saves one point of one section, but the save
+   * used to travel as a whole `SermonContent`: the two sections it never touched went
+   * along as this laptop's hours-old copy and replaced an introduction rewritten on
+   * the phone that morning, silently. Firestore merges a nested path into the stored
+   * map, so a section nobody mentioned is not written at all — two devices working on
+   * DIFFERENT sections stop colliding entirely, with no refusal and nothing to decide.
+   *
+   * `draft` is the stored field and `plan` its legacy alias; both are kept in sync,
+   * section by section, exactly as the whole-document writer did.
+   */
+  async updateSermonContentSections(
+    sermonId: string,
+    sections: Partial<SermonContent>
+  ): Promise<Partial<SermonContent>> {
+    const keys = (Object.keys(sections) as (keyof SermonContent)[]).filter(
+      (key) => sections[key] !== undefined
+    );
+    if (!keys.length) throw new Error('Invalid content structure - no sections given');
+
+    const payload: Record<string, unknown> = {};
+    keys.forEach((key) => {
+      const section = sections[key];
+      if (typeof section?.outline !== 'string') {
+        throw new Error('Invalid content structure - outline values must be strings');
+      }
+      payload[`draft.${key}`] = section;
+      payload[`plan.${key}`] = section;
+    });
+
+    await this.updateSermonData(sermonId, payload, 'plan');
+    return sections;
   }
 
   /** @deprecated Use updateSermonContent instead. Kept for backward compatibility. */
@@ -304,7 +343,7 @@ export class SermonsRepository {
         };
         await this.updateSermonData(sermonId, {
           preachDates: [...existingDates, newPreachDate]
-        });
+        }, 'preachDates');
         console.log(`Firestore: added preach date ${newPreachDate.id} to sermon ${sermonId}`);
         return newPreachDate;
       }
@@ -319,7 +358,7 @@ export class SermonsRepository {
 
       await this.updateSermonData(sermonId, {
         preachDates: FieldValue.arrayUnion(newPreachDate)
-      });
+      }, 'preachDates');
 
       console.log(`Firestore: added preach date ${newPreachDate.id} to sermon ${sermonId}`);
       return newPreachDate;
@@ -363,7 +402,7 @@ export class SermonsRepository {
       const updatedArray = [...preachDates];
       updatedArray[index] = updatedPreachDate;
 
-      await this.updateSermonData(sermonId, { preachDates: updatedArray });
+      await this.updateSermonData(sermonId, { preachDates: updatedArray }, 'preachDates');
       console.log(`Firestore: updated preach date ${dateId} for sermon ${sermonId}`);
       return updatedPreachDate;
     } catch (error) {
@@ -386,7 +425,7 @@ export class SermonsRepository {
       const preachDates = sermon.preachDates || [];
       const updatedArray = preachDates.filter(pd => pd.id !== dateId);
 
-      await this.updateSermonData(sermonId, { preachDates: updatedArray });
+      await this.updateSermonData(sermonId, { preachDates: updatedArray }, 'preachDates');
       console.log(`Firestore: deleted preach date ${dateId} from sermon ${sermonId}`);
     } catch (error) {
       console.error(`Error deleting preach date ${dateId} from sermon ${sermonId}:`, error);

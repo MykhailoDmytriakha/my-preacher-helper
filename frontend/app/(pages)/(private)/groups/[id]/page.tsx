@@ -43,6 +43,7 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
 import DatePickerField from '@/components/ui/DatePickerField';
 import { useAutoSave } from '@/hooks/useAutoSave';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
+import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { useRouteId } from '@/hooks/useRouteId';
 import { useSeries } from '@/hooks/useSeries';
@@ -86,6 +87,7 @@ export default function GroupDetailPage() {
     resolvingConflict,
     keepMineOnConflict,
     takeTheirsOnConflict,
+    adoptRemoteNonce,
   } = useGroupDetail(groupsEnabled ? groupId : '');
 
   const groupsUserId = user?.uid && groupsEnabled ? user.uid : null;
@@ -191,10 +193,17 @@ export default function GroupDetailPage() {
   }, [updateGroupDetail]);
 
   const initializedGroupIdRef = useRef<string | null>(null);
+  /** Which "take theirs" this form has already adopted. */
+  const adoptedNonceRef = useRef(0);
 
   useEffect(() => {
     if (!group) return;
-    if (initializedGroupIdRef.current === group.id) return;
+    // Re-initialise ALSO when the person chose the other device's version: the
+    // one-per-id guard used to refuse it, so the inputs kept the old local text and
+    // the promised version never actually appeared on screen.
+    if (initializedGroupIdRef.current === group.id && adoptedNonceRef.current === adoptRemoteNonce) {
+      return;
+    }
 
     setTitle(group.title);
     setDescription(group.description || '');
@@ -207,7 +216,17 @@ export default function GroupDetailPage() {
     setMeetingAudience(firstMeeting?.audience || '');
 
     initializedGroupIdRef.current = group.id;
-  }, [group]);
+    adoptedNonceRef.current = adoptRemoteNonce;
+    // The diff baseline moves with the text, or every later autosave would re-send
+    // what was just deliberately discarded.
+    baselineRef.current = {
+      title: group.title,
+      description: group.description || undefined,
+      status: group.status,
+      templates: group.templates || [],
+      flow: normalizeFlow(group.flow || []),
+    };
+  }, [group, adoptRemoteNonce]);
 
   // Keep a ref to the server-side meeting date id so we know whether to add/update/remove
   const existingMeetingIdRef = useRef<string | undefined>(undefined);
@@ -276,10 +295,16 @@ export default function GroupDetailPage() {
         : null,
     [group]
   );
+  const freshnessUid = useFreshnessUid(group?.userId);
   const groupFreshness = useDocumentFreshness<GroupWatched>({
     collection: 'groups',
     docId: group?.id ?? null,
-    uid: group?.userId ?? null,
+    // The CURRENT signed-in owner, not the owner stored on the cached document.
+    // A listener keyed by the document's own userId survives a logout: the cached
+    // entity keeps the old owner, the prop never changes, so the effect never
+    // cleans up. Requiring the two to match also refuses to listen to a foreign
+    // document left in the cache.
+    uid: freshnessUid,
     enabled: Boolean(group),
     known: knownGroup,
     select: (data) => ({
@@ -293,7 +318,7 @@ export default function GroupDetailPage() {
   });
   const [groupFreshnessDismissed, setGroupFreshnessDismissed] = useState(false);
   useEffect(() => {
-    if (groupFreshness.state === 'stale') setGroupFreshnessDismissed(false);
+    if (groupFreshness.state === 'stale' || groupFreshness.state === 'unknown') setGroupFreshnessDismissed(false);
   }, [groupFreshness.remote, groupFreshness.state]);
 
   const performSave = useCallback(
@@ -325,6 +350,20 @@ export default function GroupDetailPage() {
       });
 
       if (Object.keys(changed).length > 0) {
+        // ⚠️ NO CONTENT BASELINE HERE — REVERTED 2026-07-26, deliberately.
+        //
+        // Passing the open-time values looked right and made this screen WORSE THAN
+        // BEFORE: the baseline is never advanced (that is what keeps a REFUSED field
+        // being re-sent until it lands), so after the first save commits, the second
+        // legitimate edit compares its text against values the server no longer has
+        // and is refused — against the person's own save, minutes earlier. Content
+        // has the final word, so the counter could not save it either.
+        //
+        // Two invariants of my own collided; the law is to revert, not to pile on a
+        // third. The counter still guards this write. What is given up: an old client
+        // that changes group text WITHOUT advancing the counter is not caught here.
+        // Closing that needs the confirmed-save baseline advance described in
+        // BUGS.md, and that is part of the owner's architecture decision.
         await updateGroupDetailRef.current(changed);
         // ⚠️ The baseline is deliberately NOT advanced here. `updateGroupDetail` is
         // fire-and-forget (`useGroupDetail.ts:105`) — it returns before the backend
@@ -577,7 +616,7 @@ export default function GroupDetailPage() {
       )}
       {/* This GROUP changed elsewhere — distinct from the app-update toast. While
           the editor holds unsaved changes the action becomes "review". */}
-      {groupFreshness.state === 'stale' && !groupFreshnessDismissed && (
+      {(groupFreshness.state === 'stale' || groupFreshness.state === 'unknown') && !groupFreshnessDismissed && (
         <DataFreshnessBanner
           entityKey="entityRecord"
           dirty={Boolean(
@@ -593,6 +632,7 @@ export default function GroupDetailPage() {
               ).length > 0
           )}
           deleted={groupFreshness.remotelyDeleted}
+          unknown={groupFreshness.state === 'unknown'}
           onDismiss={() => setGroupFreshnessDismissed(true)}
         />
       )}

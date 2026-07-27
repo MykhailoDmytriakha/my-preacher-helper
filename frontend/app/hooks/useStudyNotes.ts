@@ -56,13 +56,19 @@ export function useStudyNotes() {
       updates,
       userId,
       expectedRevision,
+      expectedBaseline,
     }: {
       id: string;
       updates: Partial<StudyNote>;
       userId: string;
       // Which revision the editor built this text from. null = unguarded (legacy).
       expectedRevision?: number | null;
-    }) => updateStudyNote(id, { ...updates, userId }, expectedRevision ?? null),
+      // And what those fields held when it opened — the guard needs BOTH: the
+      // number can be stale-but-equal if some writer forgot to move it, and the
+      // values are what actually prove nothing changed underneath.
+      expectedBaseline?: Record<string, unknown> | null;
+    }) =>
+      updateStudyNote(id, { ...updates, userId }, expectedRevision ?? null, expectedBaseline ?? null),
     onSuccess: (updated) => {
       queryClient.setQueryData<StudyNote[]>(notesKey(uid), (old = []) =>
         (old ?? []).map((n) => (n.id === updated.id ? updated : n))
@@ -112,13 +118,15 @@ export function useStudyNotes() {
       id,
       updates,
       expectedRevision,
+      expectedBaseline,
     }: {
       id: string;
       updates: Partial<StudyNote>;
       expectedRevision?: number | null;
+      expectedBaseline?: Record<string, unknown> | null;
     }) => {
       if (!uid) return Promise.reject(new Error('No user'));
-      return updateNoteMutation.mutateAsync({ id, updates, userId: uid, expectedRevision });
+      return updateNoteMutation.mutateAsync({ id, updates, userId: uid, expectedRevision, expectedBaseline });
     },
     deleteNote: (id: string) => {
       if (!uid) return Promise.reject(new Error('No user'));

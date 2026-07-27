@@ -187,6 +187,27 @@ describe('useDurableDraft', () => {
     expect(result.current.recovered).toBeNull();
   });
 
+  it('discarding the offer KEEPS text typed after it appeared', () => {
+    // The offer sits on screen while the person keeps working. Rejecting the OLD
+    // recovered text must not delete what they have written since — that would be
+    // a loss of unconfirmed text disguised as a dismissal.
+    saveDraft(KEY, 'abandoned text');
+    const { result, rerender } = render('loaded from server');
+    expect(result.current.recovered).toBe('abandoned text');
+
+    rerender({ value: 'what the person is writing now' });
+    act(() => {
+      jest.advanceTimersByTime(300);
+    });
+
+    act(() => {
+      result.current.discardRecovered();
+    });
+
+    expect(result.current.recovered).toBeNull();
+    expect(readDraft<string>(KEY)?.value).toBe('what the person is writing now');
+  });
+
   it('discarding removes the stored draft, not just the banner', () => {
     saveDraft(KEY, 'abandoned text');
     const { result } = render('loaded from server');

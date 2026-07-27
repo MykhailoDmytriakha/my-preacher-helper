@@ -1,3 +1,5 @@
+import { FieldValue } from 'firebase-admin/firestore';
+
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { Series } from '@/models/models';
 import {
@@ -87,6 +89,10 @@ export class SeriesRepository {
           items: nextItems,
           sermonIds: nextSermonIds,
           seriesKind: inferSeriesKind(nextItems),
+          // Membership is its own aggregate and EVERY writer must advance its
+          // counter — this one runs with Admin rights, which bypass Security
+          // Rules, so nothing else would notice it lying.
+          'rev.items': FieldValue.increment(1),
           updatedAt: new Date().toISOString()
         });
 
@@ -126,6 +132,7 @@ export class SeriesRepository {
           items: nextItems,
           sermonIds: deriveSermonIdsFromItems(nextItems),
           seriesKind: inferSeriesKind(nextItems),
+          'rev.items': FieldValue.increment(1),
           updatedAt: new Date().toISOString(),
         });
       });
@@ -153,6 +160,7 @@ export class SeriesRepository {
             items: nextItems,
             sermonIds: deriveSermonIdsFromItems(nextItems),
             seriesKind: inferSeriesKind(nextItems),
+            'rev.items': FieldValue.increment(1),
             updatedAt: new Date().toISOString(),
           });
         });

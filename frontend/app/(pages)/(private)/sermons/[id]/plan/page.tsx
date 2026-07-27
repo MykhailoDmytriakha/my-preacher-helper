@@ -9,13 +9,17 @@ import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
+import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import { useAiUsage } from "@/hooks/useAiUsage";
+import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
+import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useRouteId } from "@/hooks/useRouteId";
 import useSermon from "@/hooks/useSermon";
 import { SermonPoint, Sermon, Thought, Plan } from "@/models/models";
 import { updateThought } from "@/services/thought.service";
 import { TimerPhase } from "@/types/TimerState";
+import { contentFingerprint } from '@/utils/contentFingerprint';
 import { debugLog } from "@/utils/debugMode";
 import { getExportContent as buildThoughtExportContent } from "@/utils/exportContent";
 import { normalizePlanArrows } from "@/utils/markdownUtils";
@@ -140,6 +144,51 @@ export default function PlanPage() {
   const isOnline = useOnlineStatus();
   const { aiBlocked, refresh: refreshAiUsage } = useAiUsage();
   const { sermon, setSermon, loading: isLoadingRaw, error: sermonError } = useSermon(sermonId);
+
+  /**
+   * DOES THE SERVER HOLD A NEWER PLAN?
+   *
+   * This screen had no detector at all, which made it the worst blind spot in the
+   * app: the plan is where a preacher spends the most time, and it is exactly what
+   * they carry from a laptop to a phone and back. Someone could keep this page open
+   * from Friday evening, rewrite the plan from a phone on Saturday, and the laptop
+   * would show Friday's version with no hint whatsoever.
+   *
+   * Observing only — the plan on screen is never swapped underneath anyone. And the
+   * fingerprint covers the WHOLE plan (points, sub-points, notes, the generated
+   * text), because counts stay identical when wording changes.
+   */
+  type PlanWatched = { outline: string; plan: string; thoughts: string };
+  const planFreshnessUid = useFreshnessUid(sermon?.userId);
+  const knownPlan = useMemo<PlanWatched | null>(
+    () =>
+      sermon
+        ? {
+            outline: contentFingerprint(sermon.outline ?? null),
+            plan: contentFingerprint(sermon.plan ?? sermon.draft ?? null),
+            thoughts: contentFingerprint(sermon.thoughts ?? []),
+          }
+        : null,
+    [sermon]
+  );
+  const planFreshness = useDocumentFreshness<PlanWatched>({
+    collection: 'sermons',
+    docId: sermonId || null,
+    uid: planFreshnessUid,
+    enabled: Boolean(sermon),
+    known: knownPlan,
+    select: (data) => ({
+      outline: contentFingerprint(data.outline ?? null),
+      plan: contentFingerprint(data.plan ?? data.draft ?? null),
+      thoughts: contentFingerprint(data.thoughts ?? []),
+    }),
+  });
+  const [planFreshnessDismissed, setPlanFreshnessDismissed] = useState(false);
+  useEffect(() => {
+    if (planFreshness.state === 'stale' || planFreshness.state === 'unknown') {
+      setPlanFreshnessDismissed(false);
+    }
+  }, [planFreshness.remote, planFreshness.state]);
   const sermonRef = useRef<Sermon | null>(sermon);
   const thoughtSaveVersionRef = useRef<Record<string, number>>({});
   const latestThoughtDraftsRef = useRef<Record<string, Thought>>({});
@@ -1002,6 +1051,20 @@ export default function PlanPage() {
 
   return (
     <>
+      {/* Deliberately NOT shown in preaching or immersive view: someone standing in
+          front of a congregation must not be handed a decision. */}
+      {(planFreshness.state === 'stale' || planFreshness.state === 'unknown') &&
+        !planFreshnessDismissed && (
+          <DataFreshnessBanner
+            entityKey="entitySermon"
+            dirty={false}
+            deleted={planFreshness.remotelyDeleted}
+            unknown={planFreshness.state === 'unknown'}
+            onRefresh={undefined}
+            onDismiss={() => setPlanFreshnessDismissed(true)}
+            className="mb-3"
+          />
+        )}
       <PlanOverlayPortal
         isPlanOverlay={isPlanOverlay}
         sermon={sermon}

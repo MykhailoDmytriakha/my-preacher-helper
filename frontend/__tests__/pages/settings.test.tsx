@@ -63,6 +63,26 @@ jest.mock('@/components/settings/SettingsNav', () => ({ activeSection, onNavigat
     </button>
   </nav>
 ));
+// The freshness layer is shared; here we only drive its OUTPUT, to prove this screen
+// actually renders the pill when the document moved on elsewhere.
+const mockFreshness = {
+  state: 'fresh' as 'fresh' | 'stale' | 'unknown',
+  remote: null as unknown,
+  remotelyDeleted: false,
+  markSynced: jest.fn(),
+};
+const freshnessCalls: Array<Record<string, unknown>> = [];
+jest.mock('@/hooks/useDocumentFreshness', () => ({
+  // ARGUMENTS ARE PART OF THE CONTRACT here: this screen holds no copy of the
+  // settings document, so it must ask the hook to adopt the first server answer as
+  // the baseline. A mock that swallows the options hides a dead pill behind a green
+  // test — which is exactly what happened, and what live validation caught.
+  useDocumentFreshness: (options: Record<string, unknown>) => {
+    freshnessCalls.push(options);
+    return mockFreshness;
+  },
+}));
+
 jest.mock('@/components/navigation/LanguageInitializer', () => () => (
   <div data-testid="language-initializer">Language Initializer</div>
 ));
@@ -70,7 +90,9 @@ jest.mock('@/components/navigation/LanguageInitializer', () => () => (
 // Mock i18n
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => {
+    // Interpolates `entity`, because that is exactly what makes the data pill say
+    // WHICH thing changed — a mock that swallows it cannot tell the two pills apart.
+    t: (key: string, options?: Record<string, unknown>) => {
       const translations: { [key: string]: string } = {
         'settings.title': 'Settings',
         'settings.loading': 'Loading settings...',
@@ -78,7 +100,8 @@ jest.mock('react-i18next', () => ({
         'settings.manageTags': 'Tags Management',
         'settings.nav.aiModels': 'AI & limits',
       };
-      return translations[key] || key;
+      const text = translations[key] || key;
+      return options?.entity ? `${text} [${String(options.entity)}]` : text;
     },
   }),
 }));
@@ -394,4 +417,62 @@ describe('Settings Page', () => {
       });
     });
   });
-}); 
+});
+
+/**
+ * SETTINGS WERE IN THE COVERAGE LIST WITH NOTHING AT ALL.
+ *
+ * A preference changed on the phone left this screen showing the old value, silently,
+ * until a reload. Every toggle here writes the field it owns, so the screen quietly
+ * disagreed with the server. The pill is the whole fix — nothing here is half-typed
+ * text, so loading the newer values cannot destroy anything.
+ */
+describe('Settings freshness', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockFreshness.state = 'fresh';
+    mockFreshness.remote = null;
+    freshnessCalls.length = 0;
+  });
+
+  it('says nothing while the screen agrees with the server', async () => {
+    render(
+      <TestProviders>
+        <SettingsPage />
+      </TestProviders>
+    );
+
+    await waitFor(() => expect(screen.getAllByTestId('settings-layout').length).toBeGreaterThan(0));
+    expect(screen.queryByText('freshness.title')).not.toBeInTheDocument();
+  });
+
+  it('asks the freshness layer to treat the first server answer as the baseline', async () => {
+    // Without this the screen passes `known: null` forever, the hook can never call
+    // anything stale, and the pill is dead while every unit test stays green.
+    render(
+      <TestProviders>
+        <SettingsPage />
+      </TestProviders>
+    );
+
+    await waitFor(() => expect(freshnessCalls.length).toBeGreaterThan(0));
+    const call = freshnessCalls[freshnessCalls.length - 1];
+    expect(call.adoptFirstServerAnswerAsKnown).toBe(true);
+    expect(call.collection).toBe('users');
+  });
+
+  it('shows the data pill — named for settings — when they changed elsewhere', async () => {
+    mockFreshness.state = 'stale';
+    mockFreshness.remote = { fields: 'newer' };
+
+    render(
+      <TestProviders>
+        <SettingsPage />
+      </TestProviders>
+    );
+
+    await waitFor(() => expect(screen.getByText('freshness.title')).toBeInTheDocument());
+    // The wording names the entity, so it cannot be confused with the app-update toast.
+    expect(screen.getByRole('status')).toHaveTextContent('freshness.entitySettings');
+  });
+});

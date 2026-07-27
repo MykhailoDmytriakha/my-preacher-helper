@@ -81,9 +81,11 @@ export const createPrayerRequest = async (
 export const updatePrayerRequest = async (
   id: string,
   updates: Partial<PrayerRequest>,
-  expectedRevision: number | null = null
+  expectedRevision: number | null = null,
+  /** The edited fields as the form OPENED them — see the guard's baseline. */
+  expectedBaseline: Record<string, unknown> | null = null
 ): Promise<PrayerRequest> => {
-  return updatePrayerRequestViaClient(id, updates, expectedRevision);
+  return updatePrayerRequestViaClient(id, updates, expectedRevision, expectedBaseline);
 };
 
 export const deletePrayerRequest = async (id: string): Promise<void> => {
@@ -102,8 +104,15 @@ export const setPrayerStatus = async (
   id: string,
   statusOrPayload: PrayerStatus | SetPrayerStatusPayload,
   answerText?: string,
-  expectedRevision: number | null = null
+  expectedRevision: number | null = null,
+  /** Status/answer as the modal OPENED them — see the guard's baseline. */
+  expectedBaseline: Record<string, unknown> | null = null
 ): Promise<PrayerRequest> => {
   const payload = normalizeStatusPayload(statusOrPayload, answerText);
-  return setPrayerStatusViaClient(id, withStableStatusReplayFields(payload), expectedRevision);
+  return setPrayerStatusViaClient(
+    id,
+    withStableStatusReplayFields(payload),
+    expectedRevision,
+    expectedBaseline
+  );
 };

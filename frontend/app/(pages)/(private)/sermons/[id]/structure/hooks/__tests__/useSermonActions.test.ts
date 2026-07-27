@@ -158,7 +158,11 @@ describe('useSermonActions', () => {
                     text: 'Updated Text',
                     tags: ['intro', 'Tag A'],
                     outlinePointId: 'point-1',
-                })
+                }),
+                // AND the thought AS IT WAS BEFORE the modal: without it the write
+                // claims every field, so an untouched one carries this screen's
+                // hours-old copy over whatever another device stored.
+                expect.objectContaining({ id: 'thought-1', text: 'Existing Thought' })
             );
             expect(defaultProps.setSermon).toHaveBeenCalled();
             expect(defaultProps.setContainers).toHaveBeenCalled();

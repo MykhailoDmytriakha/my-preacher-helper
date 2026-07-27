@@ -31,6 +31,7 @@ import StructurePreview from "@/components/sermon/StructurePreview";
 import StructureStats from "@/components/sermon/StructureStats";
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
+import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useRouteId } from "@/hooks/useRouteId";
 import { useSeries } from "@/hooks/useSeries";
 import useSermon from "@/hooks/useSermon";
@@ -43,6 +44,7 @@ import { updateSermonPreparation, updateSermon } from '@/services/sermon.service
 import { updateStructure } from "@/services/structure.service";
 import { newClientId } from "@/utils/clientId";
 import { contentFingerprint } from '@/utils/contentFingerprint';
+import { clearDraftIfMatches, draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
 import CreateThoughtModal from "@components/CreateThoughtModal";
 import EditThoughtModal from "@components/EditThoughtModal";
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
@@ -168,6 +170,9 @@ const calculateThoughtsPerSermonPoint = (sermon: Sermon | null) => {
   });
   return counts;
 };
+
+/** Preparation is its own aggregate in the durable store, as it is on the server. */
+const PREPARATION_DRAFT_AGGREGATE = 'preparation';
 
 const getPrepCompleteness = (prepDraft: Preparation | undefined) => {
   const isTextContextDone = Boolean(
@@ -298,10 +303,16 @@ export default function SermonPage() {
         : null,
     [sermon]
   );
+  const freshnessUid = useFreshnessUid(sermon?.userId);
   const sermonFreshness = useDocumentFreshness<SermonWatched>({
     collection: 'sermons',
     docId: id || null,
-    uid: sermon?.userId ?? null,
+    // The CURRENT signed-in owner, not the owner stored on the cached document.
+    // A listener keyed by the document's own userId survives a logout: the cached
+    // entity keeps the old owner, the prop never changes, so the effect never
+    // cleans up. Requiring the two to match also refuses to listen to a foreign
+    // document left in the cache.
+    uid: freshnessUid,
     enabled: Boolean(sermon),
     known: knownSermon,
     select: (data) => ({
@@ -316,7 +327,7 @@ export default function SermonPage() {
   });
   const [sermonFreshnessDismissed, setSermonFreshnessDismissed] = useState(false);
   useEffect(() => {
-    if (sermonFreshness.state === 'stale') setSermonFreshnessDismissed(false);
+    if (sermonFreshness.state === 'stale' || sermonFreshness.state === 'unknown') setSermonFreshnessDismissed(false);
   }, [sermonFreshness.remote, sermonFreshness.state]);
 
   // Normalize thoughts if they are null (happens in some test scenarios/legacy data)
@@ -329,6 +340,13 @@ export default function SermonPage() {
   const scratchOutlinePersistVersionRef = useRef(0);
   const [savingPrep, setSavingPrep] = useState(false);
   const [prepDraft, setPrepDraft] = useState<Preparation>({});
+  /**
+   * Preparation text that was never confirmed saved — a failed write, a closed tab.
+   * OFFERED, never applied by itself: a leftover copy silently merged over the
+   * server's preparation is how work done on another device disappeared.
+   */
+  const [prepRecovery, setPrepRecovery] = useState<Preparation | null>(null);
+  const prepRecoveryCheckedRef = useRef<string | null>(null);
   const [classicPortal, setClassicPortal] = useState<HTMLDivElement | null>(null);
   const [prepPortal, setPrepPortal] = useState<HTMLDivElement | null>(null);
   const invalidateScratchOutlinePersistence = useCallback(() => {
@@ -354,28 +372,61 @@ export default function SermonPage() {
     }
   }, [modeParam, id]);
 
+/**
+ * THE SERVER'S PREPARATION IS WHAT THE EDITOR SHOWS.
+ *
+ * This used to merge a leftover `prep-draft-backup-<sermonId>` over it — "local wins
+ * over stale remote" — so a backup left behind by a failed save weeks earlier silently
+ * replaced work done on another device since, and the next save pushed it to the
+ * server. Unconfirmed text is OFFERED now, never applied by itself, and it lives in
+ * the uid-scoped durable store (the old key had no uid, so on a shared computer the
+ * next account could read the previous one's text).
+ */
 useEffect(() => {
-  if (sermon?.preparation) {
-    let mergedPrep = { ...sermon.preparation };
-    try {
-      const backup = localStorage.getItem(`prep-draft-backup-${sermon.id}`);
-      if (backup) {
-        const parsed = JSON.parse(backup);
-        mergedPrep = { ...mergedPrep, ...parsed }; // Local wins over stale remote
-      }
-    } catch { }
-    setPrepDraft(mergedPrep);
-  }
+  if (sermon?.preparation) setPrepDraft(sermon.preparation);
 }, [sermon?.preparation, sermon?.id]);
+
+/**
+ * Look for unconfirmed preparation text ONCE per sermon, and only OFFER it.
+ *
+ * Text left by an older build under the uid-less `prep-draft-backup-<sermonId>` key is
+ * carried into the uid-scoped store first, so nothing anybody typed is destroyed — it
+ * simply stops being applied by itself. (That old key had no uid at all, so on a shared
+ * computer the next account could read the previous one's text; it is retired here.)
+ */
+useEffect(() => {
+  const uid = user?.uid;
+  if (!uid || !sermon?.id) return;
+  const key = draftKey(uid, sermon.id, PREPARATION_DRAFT_AGGREGATE);
+  if (prepRecoveryCheckedRef.current === key) return;
+  prepRecoveryCheckedRef.current = key;
+
+  try {
+    const legacy = localStorage.getItem(`prep-draft-backup-${sermon.id}`);
+    if (legacy) {
+      const parsed = JSON.parse(legacy) as Preparation;
+      if (!readDraft<Preparation>(key)) saveDraft(key, parsed);
+      localStorage.removeItem(`prep-draft-backup-${sermon.id}`);
+    }
+  } catch { }
+
+  const stored = readDraft<Preparation>(key);
+  if (!stored) return;
+  // Nothing to offer when it says exactly what the server already holds.
+  const server = sermonRef.current?.preparation ?? {};
+  const differs = (Object.keys(stored.value) as (keyof Preparation)[]).some(
+    (field) => JSON.stringify(stored.value[field]) !== JSON.stringify(server[field])
+  );
+  if (differs) setPrepRecovery(stored.value);
+}, [user?.uid, sermon?.id]);
   const savePreparation = useCallback(async (partial: Preparation) => {
     if (!sermon) return;
     setSavingPrep(true);
     const next: Preparation = { ...(sermon.preparation ?? {}), ...partial };
     
-    // Backup to localStorage immediately in case network fails
-    try {
-      localStorage.setItem(`prep-draft-backup-${sermon.id}`, JSON.stringify(next));
-    } catch { }
+    // A durable copy BEFORE the write is attempted — uid-scoped, and retired only
+    // once the server has accepted exactly this value.
+    if (user?.uid) saveDraft(draftKey(user.uid, sermon.id, PREPARATION_DRAFT_AGGREGATE), next);
 
     // Only the steps that actually differ from what the server holds. Writing
     // `next` wholesale would push back every OTHER step from this page's snapshot,
@@ -398,15 +449,17 @@ useEffect(() => {
     const updated = await updateSermonPreparation(sermon.id, next, changedKeys);
     if (updated) {
       setSermon(prev => (prev ? { ...prev, preparation: updated } : prev));
-      try {
-        localStorage.removeItem(`prep-draft-backup-${sermon.id}`);
-      } catch { }
+      // Retire OUR copy only — compare first, so a copy another tab stored since
+      // survives (it is that tab's only unconfirmed text).
+      if (user?.uid) {
+        clearDraftIfMatches(draftKey(user.uid, sermon.id, PREPARATION_DRAFT_AGGREGATE), next);
+      }
     } else {
       // If update failed (offline), we keep the backup and show a toast
       toast.error('Changes saved locally. They will sync when you are back online.', { id: 'prep-sync-error' });
     }
     setSavingPrep(false);
-  }, [sermon, setSermon]);
+  }, [sermon, setSermon, user?.uid]);
 
   const applyPrepDraftUpdate = useCallback(async (next: Preparation) => {
     setPrepDraft(next);
@@ -425,7 +478,9 @@ useEffect(() => {
     if (!currentSermon || !sanitizedStructure) return;
 
     try {
-      await updateStructure(currentSermon.id, sanitizedStructure);
+      // State the arrangement this screen holds as stored, so a thought moved only on
+      // the other device is not pulled back here.
+      await updateStructure(currentSermon.id, sanitizedStructure, currentSermon.structure);
     } catch (structureError) {
       console.error("Failed to update structure after thought sync", structureError);
       throw structureError;
@@ -526,7 +581,7 @@ useEffect(() => {
     );
 
     try {
-      await updateStructure(sermon.id, updatedStructure);
+      await updateStructure(sermon.id, updatedStructure, sermon.structure);
     } catch (error) {
       console.error("Failed to update structure after adding thought", error);
     }
@@ -596,7 +651,11 @@ useEffect(() => {
     // never blocks on the network. Offline the write parks in the native queue.
     void (async () => {
       try {
-        const savedThought = await updateThought(baseSermon.id, optimisticThought);
+        // `thoughtToUpdate` is the thought AS THE EDITOR OPENED IT and `patch` is
+        // what the person changed, so the write states only the changed fields —
+        // dragging a thought no longer re-sends this screen's hours-old copy of its
+        // text over a rewrite made on another device.
+        const savedThought = await updateThought(baseSermon.id, optimisticThought, thoughtToUpdate);
         // Reconcile with the server's returned thought; fall back to the optimistic
         // one if the service resolves empty (offline path / void return) so we never
         // dereference undefined and never skip the structure persist below.
@@ -1385,6 +1444,47 @@ useEffect(() => {
 
     return (
       <div className="space-y-4 sm:space-y-6">
+        {/* Unconfirmed preparation text found in the durable store. It is shown, not
+            applied: applying it by itself replaced newer work from another device. */}
+        {prepRecovery && (
+          <div className="flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="font-medium text-amber-900 dark:text-amber-200">{t('unsavedDraft.title')}</p>
+              <p className="mt-0.5 text-amber-800/80 dark:text-amber-200/70">{t('unsavedDraft.description')}</p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                data-testid="restore-prep-draft"
+                onClick={() => {
+                  setPrepDraft((prev) => ({ ...(prev || {}), ...prepRecovery }));
+                  // KEEP the stored copy: it is still unconfirmed until a save lands.
+                  setPrepRecovery(null);
+                }}
+                className="rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-amber-700"
+              >
+                {t('unsavedDraft.restore')}
+              </button>
+              <button
+                type="button"
+                data-testid="discard-prep-draft"
+                onClick={() => {
+                  const rejected = prepRecovery;
+                  setPrepRecovery(null);
+                  if (user?.uid && sermon?.id && rejected) {
+                    clearDraftIfMatches(
+                      draftKey(user.uid, sermon.id, PREPARATION_DRAFT_AGGREGATE),
+                      rejected
+                    );
+                  }
+                }}
+                className="rounded-lg border border-amber-400 px-3 py-1.5 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-500/20"
+              >
+                {t('unsavedDraft.discard')}
+              </button>
+            </div>
+          </div>
+        )}
         {prepStepConfigs.map((step) => (
           <PrepStepCard
             key={step.id}
@@ -1434,11 +1534,12 @@ useEffect(() => {
   return (
     <div className="space-y-4 sm:space-y-6 py-4 sm:py-8">
       {/* This SERMON changed elsewhere — distinct from the app-update toast. */}
-      {sermonFreshness.state === 'stale' && !sermonFreshnessDismissed && (
+      {(sermonFreshness.state === 'stale' || sermonFreshness.state === 'unknown') && !sermonFreshnessDismissed && (
         <DataFreshnessBanner
           entityKey="entitySermon"
           dirty={false}
           deleted={sermonFreshness.remotelyDeleted}
+          unknown={sermonFreshness.state === 'unknown'}
           onDismiss={() => setSermonFreshnessDismissed(true)}
         />
       )}

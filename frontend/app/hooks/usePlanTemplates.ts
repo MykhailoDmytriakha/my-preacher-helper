@@ -76,7 +76,7 @@ export function usePlanTemplates(userId: string | null | undefined) {
       id: string;
       updates: UpdatePlanTemplatePayload;
       expectedRevision?: number | null;
-    }) => updatePlanTemplate(id, updates, expectedRevision ?? null),
+    }) => updatePlanTemplate(id, updates, expectedRevision ?? null, userId ?? undefined),
     onMutate: async ({
       id,
       updates,

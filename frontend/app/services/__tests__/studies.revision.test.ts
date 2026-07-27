@@ -59,14 +59,39 @@ describe('the note write carries the revision it was built from', () => {
   });
 
   it('uses the GUARDED write and passes the stated revision', async () => {
-    await updateStudyNote('note-1', { content: 'my edit', userId: 'u1' }, 4);
+    await updateStudyNote(
+      'note-1',
+      { content: 'my edit', userId: 'u1' },
+      4,
+      { content: 'the content this editor opened with' }
+    );
 
     expect(conflictSafeUpdate).toHaveBeenCalledTimes(1);
     const [, patch, , options] = conflictSafeUpdate.mock.calls[0];
-    expect(options).toEqual({ aggregate: 'note', expectedRevision: 4 });
+    // The route is what lets an OFFLINE attempt be queued as an intent and
+    // replayed through this same guard, instead of becoming a blind write.
+    expect(options).toEqual({
+      aggregate: 'note',
+      expectedRevision: 4,
+      outboxRoute: { uid: 'u1', collection: 'studyNotes', docId: 'note-1', savedAt: expect.any(Number) },
+      // ⚠️ THE CALLER'S baseline, verbatim — NOT anything derived from the read the
+      // service just performed. Fingerprinting a fresh read compares the server
+      // with itself, agrees every time, and lets the stale save through; the whole
+      // protection was a no-op while it did that (adversarial review found it).
+      expectedBaseline: { content: 'the content this editor opened with' },
+    });
     expect(patch).toEqual(expect.objectContaining({ content: 'my edit' }));
     // The unguarded path must NOT also run.
     expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  it('never manufactures a baseline from its own fresh read', async () => {
+    // The fresh read says "server content". If the service passed THAT as the
+    // baseline, the guard would compare the document with itself and always agree.
+    await updateStudyNote('note-1', { content: 'my edit', userId: 'u1' }, 4);
+
+    const [, , , options] = conflictSafeUpdate.mock.calls[0];
+    expect(options.expectedBaseline).toBeNull();
   });
 
   it('returns the committed revision so the editor can build the next save on it', async () => {

@@ -298,42 +298,31 @@ export async function PUT(
       return jsonNoStore({ error: 'Invalid plan data' }, { status: 400 });
     }
 
-    // Ensure the content has all required sections
-    const content: SermonContent = {
-      introduction: { outline: '' },
-      main: { outline: '' },
-      conclusion: { outline: '' }
-    };
-
-    // Update with provided data, maintaining nested structure
-    if (planData.introduction) {
-      content.introduction = {
-        outline: planData.introduction.outline || '',
-        ...(planData.introduction.outlinePoints && { outlinePoints: planData.introduction.outlinePoints })
+    /**
+     * ONLY THE SECTIONS THE CALLER STATES.
+     *
+     * This used to fill in every absent section with an empty outline and write the
+     * whole plan, so a save of ONE point in ONE section carried the caller's hours-old
+     * copy of the other two — and replaced an introduction rewritten on another device
+     * that morning, silently. An absent section now means "not mine to write".
+     */
+    const sections: Partial<SermonContent> = {};
+    (['introduction', 'main', 'conclusion'] as const).forEach((key) => {
+      const given = planData[key];
+      if (!given) return;
+      sections[key] = {
+        outline: given.outline || '',
+        ...(given.outlinePoints && { outlinePoints: given.outlinePoints }),
       };
-      console.log("saved introduction content", content.introduction);
+    });
+
+    if (!Object.keys(sections).length) {
+      return jsonNoStore({ error: 'Invalid plan data' }, { status: 400 });
     }
 
-    if (planData.main) {
-      content.main = {
-        outline: planData.main.outline || '',
-        ...(planData.main.outlinePoints && { outlinePoints: planData.main.outlinePoints })
-      };
-      console.log("saved main content", content.main);
-    }
+    await sermonsRepository.updateSermonContentSections(id, sections);
 
-    if (planData.conclusion) {
-      content.conclusion = {
-        outline: planData.conclusion.outline || '',
-        ...(planData.conclusion.outlinePoints && { outlinePoints: planData.conclusion.outlinePoints })
-      };
-      console.log("saved conclusion content", content.conclusion);
-    }
-
-    // Save content to database
-    await sermonsRepository.updateSermonContent(id, content);
-
-    return jsonNoStore({ success: true, plan: content });
+    return jsonNoStore({ success: true, plan: sections });
   } catch (error: unknown) {
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
     const { id } = await params;

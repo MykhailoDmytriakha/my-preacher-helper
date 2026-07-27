@@ -1,8 +1,8 @@
 import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 
-import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { getClientDb } from '@/config/firebaseClientDb';
 import { StudyNote } from '@/models/models';
+import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
@@ -151,7 +151,14 @@ async function createStudyNoteViaClient(
 async function updateStudyNoteViaClient(
   id: string,
   updates: Partial<StudyNote>,
-  expectedRevision: number | null = null
+  expectedRevision: number | null = null,
+  /**
+   * The values these fields had when the editor OPENED — its own baseline, not a
+   * fresh read. This is the whole difference between a real check and a no-op: a
+   * fingerprint taken from a `getDoc` issued moments before the write compares the
+   * server with itself and always agrees, so the stale text goes in.
+   */
+  expectedBaseline: Record<string, unknown> | null = null
 ): Promise<StudyNote & { revision?: number }> {
   const db = getClientDb();
   const ref = doc(db, NOTES_COLLECTION, id);
@@ -174,6 +181,17 @@ async function updateStudyNoteViaClient(
     const revision = await conflictSafeUpdate(ref, cleanUpdates, 'Study note not found', {
       aggregate: NOTE_AGGREGATE,
       expectedRevision,
+      // Content check alongside the counter: an old build that edits a note without
+      // advancing the number is invisible to the counter and visible here. The
+      // values come from the CALLER's baseline — see `expectedBaseline`.
+      expectedBaseline,
+      // Offline this queues the INTENT instead of writing blindly; `replayOutbox`
+      // puts it back through this same guard on reconnect, stating the revision
+      // the text was built from. Without the route an offline save would simply
+      // fail — never become an unconditional write.
+      outboxRoute: existing.userId
+        ? { uid: existing.userId, collection: NOTES_COLLECTION, docId: id, savedAt: Date.now() }
+        : undefined,
     });
     return { ...merged, revision };
   }
@@ -197,9 +215,11 @@ export async function createStudyNote(
 export async function updateStudyNote(
   id: string,
   updates: Partial<StudyNote> & { userId: string },
-  expectedRevision: number | null = null
+  expectedRevision: number | null = null,
+  /** The note's fields as the editor OPENED them — see the guard's baseline. */
+  expectedBaseline: Record<string, unknown> | null = null
 ): Promise<StudyNote & { revision?: number }> {
-  return updateStudyNoteViaClient(id, updates, expectedRevision);
+  return updateStudyNoteViaClient(id, updates, expectedRevision, expectedBaseline);
 }
 
 export async function deleteStudyNote(id: string, userId: string): Promise<void> {

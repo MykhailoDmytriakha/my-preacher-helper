@@ -65,7 +65,9 @@ export async function updatePlanTemplateViaClient(
   id: string,
   updates: Partial<Pick<PlanTemplate, 'name' | 'structure'>>,
   /** Revision this edit was built from; `null` keeps the unguarded legacy path. */
-  expectedRevision: number | null = null
+  expectedRevision: number | null = null,
+  /** Owner, so an offline attempt can be queued as an intent and replayed. */
+  ownerUid?: string
 ): Promise<void> {
   const db = getClientDb();
   const patch: { updatedAt: string; name?: string; structure?: SermonOutline } = {
@@ -79,6 +81,9 @@ export async function updatePlanTemplateViaClient(
     await conflictSafeUpdate(ref, patch, 'Plan template not found', {
       aggregate: PLAN_TEMPLATE_AGGREGATE,
       expectedRevision,
+      outboxRoute: ownerUid
+        ? { uid: ownerUid, collection: COLLECTION, docId: id, savedAt: Date.now() }
+        : undefined,
     });
     return;
   }

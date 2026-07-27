@@ -171,6 +171,11 @@ describe('SeriesRepository', () => {
       expect(liveOwned.sermonIds).toEqual(['sermon-2']);
       expect(liveOwned.items).toEqual([expect.objectContaining({ refId: 'sermon-2' })]);
       expect(liveForeign.sermonIds).toEqual(['sermon-1']);
+      // The detach is a membership change, so it must advance the membership
+      // counter — otherwise an open series screen keeps stating a revision the
+      // server no longer holds and its next save is granted permission to
+      // overwrite this detach.
+      expect(liveOwned['rev.items']).toEqual(expect.objectContaining({ operand: 1 }));
       expect(sermonExists).toBe(false);
     });
 
@@ -237,6 +242,7 @@ describe('SeriesRepository', () => {
         sermonIds: ['sermon-2'],
         updatedAt: '2024-01-01T12:00:00.000Z',
         seriesKind: 'sermon',
+        'rev.items': expect.objectContaining({ operand: 1 }),
       }));
       expect(docUpdate).toHaveBeenCalledTimes(1);
       logSpy.mockRestore();
@@ -356,6 +362,12 @@ describe('SeriesRepository', () => {
           items: expect.arrayContaining([expect.objectContaining({ type: 'sermon', refId: 'sermon-1' })]),
           sermonIds: ['sermon-1'],
           seriesKind: 'sermon',
+          // Membership is its own aggregate and every writer advances its counter —
+          // this path runs with Admin rights, which bypass Security Rules.
+          // The membership counter must move on THIS path too: it is its own
+          // aggregate, and a writer that skips the counter hands out permission
+          // to overwrite. `operand` is how FieldValue.increment(1) is shaped.
+          'rev.items': expect.objectContaining({ operand: 1 }),
           updatedAt: '2024-01-01T12:00:00.000Z',
         })
       );

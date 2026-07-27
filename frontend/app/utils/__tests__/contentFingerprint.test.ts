@@ -1,4 +1,5 @@
 import { contentFingerprint } from '@/utils/contentFingerprint';
+import { normalizeSeriesItems } from '@/utils/seriesItems';
 
 /**
  * The detector's job is to notice that the server holds something different.
@@ -40,5 +41,17 @@ describe('contentFingerprint', () => {
     const after = { intro: [{ id: 'p1', subPoints: [{ id: 's1', text: 'y' }] }] };
 
     expect(contentFingerprint(before)).not.toBe(contentFingerprint(after));
+  });
+
+  it('gives a LEGACY series the same fingerprint on both sides', () => {
+    // The page holds items derived from `sermonIds`; the raw document has none.
+    // Fingerprinting the raw side produced a permanent phantom "changed on
+    // another device" that no refresh could clear — both sides must normalize.
+    const rawLegacyDoc = { items: undefined, sermonIds: ['s1', 's2'] };
+    const whatThePageHolds = normalizeSeriesItems(undefined, ['s1', 's2']);
+
+    expect(contentFingerprint(normalizeSeriesItems(rawLegacyDoc.items, rawLegacyDoc.sermonIds))).toBe(
+      contentFingerprint(whatThePageHolds)
+    );
   });
 });

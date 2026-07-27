@@ -139,6 +139,25 @@ describe('EditSermonModal Component', () => {
     jest.spyOn(React, 'useEffect').mockImplementation(f => f());
   });
 
+  test('keeps saving through the plain writer — the guarded fallback was REVERTED', () => {
+    // The guarded version made the FIRST refusal permanent: this modal has nowhere
+    // to keep a refused edit, so every further Save repeated the same opening values
+    // and was refused again, while Cancel took the text away. Worse than before, so
+    // it was reverted (BUGS.md records the hole this re-opens and its direction).
+    render(<EditSermonModal {...mockProps} />);
+
+    fireEvent.change(screen.getByLabelText('Title'), {
+      target: { value: 'Title typed on the laptop' },
+    });
+    fireEvent.click(screen.getByText('Save'));
+
+    return waitFor(() => {
+      expect(updateSermon).toHaveBeenCalled();
+      const call = (updateSermon as jest.Mock).mock.calls[0];
+      expect(call).toHaveLength(2);
+    });
+  });
+
   test('renders modal with correct initial values', () => {
     render(<EditSermonModal {...mockProps} />);
 

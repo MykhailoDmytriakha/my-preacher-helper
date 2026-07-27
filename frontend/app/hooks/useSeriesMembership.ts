@@ -8,6 +8,7 @@ import { getAllSeries } from '@/services/series.service';
 import {
   applySeriesTransform,
   commitSeriesBatch,
+  isMembershipQueueFullError,
   type SeriesMembershipRef,
   type SeriesTransform,
 } from '@/services/seriesMembership.client';
@@ -188,7 +189,11 @@ export function useSeriesMembership() {
         queryClient.invalidateQueries({ queryKey: seriesDetailKey(transform.seriesId) })
       );
     },
-    onError: (_error, transforms) => {
+    onError: (error, transforms) => {
+      // A membership change that could NOT even be stored for later must be said
+      // out loud. The queue used to swallow a storage refusal, so the screen kept
+      // the new membership, the mutation resolved, and a reload showed it gone.
+      if (isMembershipQueueFullError(error)) toast.error(t('common.saveError'));
       // Online failure -> reconcile from the server (list + every touched detail).
       // Offline this is a no-op (useServerFirstQuery disables the query) and the
       // write stays queued.

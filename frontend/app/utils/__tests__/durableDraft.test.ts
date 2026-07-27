@@ -4,6 +4,7 @@ import {
   clearDraftsForOwner,
   draftKey,
   listDraftKeys,
+  moveDraft,
   readDraft,
   saveDraft,
 } from '@/utils/durableDraft';
@@ -121,5 +122,80 @@ describe('durableDraft', () => {
 
     expect(listDraftKeys(window.localStorage)).toEqual([draftKey('uid-1', 'note-1', 'note')]);
     expect(window.localStorage.getItem('some-other-app-key')).toBe('x');
+  });
+
+  it('never evicts a refused-save record to make room', () => {
+    // An ordinary draft duplicates text still visible in an editor; a conflict
+    // record is the last copy of text the server turned away. Freeing space by
+    // deleting it trades the original for a backup.
+    // ONLY a conflict record is stored, so it is the only eviction candidate:
+    // if conflicts were evictable this would delete it, and the test would fail.
+    saveDraft(draftKey('u1', 'sermon-1', 'conflict:core'), {
+      payload: { value: 'refused text' },
+      actualRevision: 4,
+    });
+
+    const original = Storage.prototype.setItem;
+    let firstAttempt = true;
+    jest.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, k: string, v: string) {
+      if (firstAttempt && k.includes('note-2')) {
+        firstAttempt = false;
+        throw new DOMException('QuotaExceededError');
+      }
+      return original.call(this, k, v);
+    });
+
+    try {
+      saveDraft(draftKey('u1', 'note-2', 'note'), { text: 'a big new draft' });
+    } finally {
+      (Storage.prototype.setItem as jest.Mock).mockRestore();
+    }
+
+    expect(readDraft(draftKey('u1', 'sermon-1', 'conflict:core'))).not.toBeNull();
+  });
+
+});
+
+describe('moveDraft — a new note keeps a durable home while its id changes', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('carries the record to the new key and retires the old one', () => {
+    saveDraft(draftKey('u1', 'new', 'note'), { title: 'half a thought' });
+
+    moveDraft(draftKey('u1', 'new', 'note'), draftKey('u1', 'real-id', 'note'));
+
+    expect(readDraft(draftKey('u1', 'real-id', 'note'))?.value).toEqual({ title: 'half a thought' });
+    expect(readDraft(draftKey('u1', 'new', 'note'))).toBeNull();
+  });
+
+  it('leaves an existing destination alone when there is nothing to carry', () => {
+    saveDraft(draftKey('u1', 'real-id', 'note'), { title: 'text the editor is holding' });
+
+    moveDraft(draftKey('u1', 'new', 'note'), draftKey('u1', 'real-id', 'note'));
+
+    expect(readDraft(draftKey('u1', 'real-id', 'note'))?.value).toEqual({
+      title: 'text the editor is holding',
+    });
+  });
+
+  it('keeps the source when the destination could not be written', () => {
+    // `saveDraft` never throws — out of room it logs and gives up. Clearing the
+    // source anyway would leave the text with NO durable copy at all, which is worse
+    // than never moving it.
+    saveDraft(draftKey('u1', 'new', 'note'), { title: 'half a thought' });
+    const setItem = jest
+      .spyOn(window.localStorage.__proto__, 'setItem')
+      .mockImplementation(() => {
+        throw new Error('QuotaExceededError');
+      });
+    const consoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    moveDraft(draftKey('u1', 'new', 'note'), draftKey('u1', 'real-id', 'note'));
+
+    setItem.mockRestore();
+    expect(readDraft(draftKey('u1', 'new', 'note'))?.value).toEqual({ title: 'half a thought' });
+    consoleError.mockRestore();
   });
 });

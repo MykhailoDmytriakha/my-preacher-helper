@@ -183,4 +183,28 @@ describe('PlanTemplatesSection — a refused edit offers the choice', () => {
       expect(mockUpdate).toHaveBeenLastCalledWith('t1', { name: 'Alpha renamed' }, 5)
     );
   });
+
+  it('keeps two refused templates apart and finds them after a reload', async () => {
+    // One shared slot meant the second refusal erased the first, and a key derived
+    // from state nobody has on mount could never be found again after a reload.
+    mockTemplates = [tpl('t1', 'Alpha'), tpl('t2', 'Beta')];
+    // Reject the rename, but keep a default for any other save the screen makes —
+    // an undefined return would blow up on `.catch` and hide the real assertion.
+    mockUpdate.mockRejectedValueOnce(new StaleWriteError('template', 0, 5));
+    mockUpdate.mockResolvedValue(undefined);
+
+    const first = render(<PlanTemplatesSection user={user} />);
+    fireEvent.click(screen.getAllByLabelText('common.edit')[0]);
+    fireEvent.change(screen.getByDisplayValue('Alpha'), { target: { value: 'Alpha renamed' } });
+    fireEvent.click(screen.getByLabelText('common.save'));
+    await screen.findByText('freshness.conflictTitle');
+    first.unmount();
+
+    // A reload: fresh mount, nothing in memory — the refusal must still be found.
+    render(<PlanTemplatesSection user={user} />);
+
+    expect(await screen.findByText('freshness.conflictTitle')).toBeInTheDocument();
+    expect(screen.getByText('Alpha renamed')).toBeInTheDocument();
+  });
+
 });

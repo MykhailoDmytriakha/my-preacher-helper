@@ -10,6 +10,7 @@ import DatePickerField from '@/components/ui/DatePickerField';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { DashboardEditSermonInput } from '@/models/dashboardOptimistic';
 import { Church, PreachDate, Sermon } from '@/models/models';
+import { SERMON_CORE_AGGREGATE } from '@/services/sermons.client';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { getNextPlannedDate } from '@/utils/preachDateStatus';
 import { addPreachDate, deletePreachDate, updatePreachDate } from '@services/preachDates.service';
@@ -34,6 +35,26 @@ export default function EditSermonModal({ sermon, onClose, onUpdate, onSaveReque
   const [plannedDate, setPlannedDate] = useState(initialPlannedDate);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [mounted, setMounted] = useState(false);
+  /**
+   * WHAT THIS FORM OPENED WITH, frozen per sermon.
+   *
+   * The fallback save below wrote `{title, verse}` with neither a revision nor these
+   * values, so a laptop that had this modal open since last night resent its stale
+   * VERSE while changing only the title — silently replacing what the phone stored.
+   * Keyed by id because a focus refetch replaces the `sermon` object without the
+   * form having been reopened; taking the values from it then would compare the
+   * server with itself.
+   */
+  const openedWithRef = React.useRef<{ id: string; title: string; verse: string; revision: number } | null>(null);
+  if (openedWithRef.current?.id !== sermon.id) {
+    openedWithRef.current = {
+      id: sermon.id,
+      title: sermon.title,
+      verse: sermon.verse,
+      revision: sermon.rev?.[SERMON_CORE_AGGREGATE] ?? 0,
+    };
+  }
+
   const hasChanges = title !== sermon.title || verse !== sermon.verse || plannedDate !== initialPlannedDate;
 
   const mergePreachDate = (baseSermon: Sermon, preachDate: PreachDate): Sermon => {
@@ -94,6 +115,20 @@ export default function EditSermonModal({ sermon, onClose, onUpdate, onSaveReque
     setIsSubmitting(true);
 
     try {
+      const openedWith = openedWithRef.current;
+      // ⚠️ REVERTED to the unguarded call, 2026-07-26, deliberately.
+      //
+      // Stating the opening revision and values closed a real hole (a stale tab
+      // re-sending its old verse), but it opened a worse one: this modal has no
+      // place to keep a refused edit, so the FIRST refusal became permanent — every
+      // further Save repeated the same opening values and was refused again, and
+      // Cancel took the typed text with it. Before today the next save simply went
+      // through. A guard that can only ever say "no" is worse than no guard.
+      //
+      // Restoring the previous behaviour is the law (own regression → revert). The
+      // hole it re-opens is recorded in BUGS.md with the direction: this modal needs
+      // a durable refused payload and a real take/keep choice, which belongs to the
+      // owner's decision about the write boundary — not to another patch tonight.
       const data = await updateSermon({ ...sermon, title, verse }, { title, verse });
 
       if (!data) {

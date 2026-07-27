@@ -85,7 +85,14 @@ export async function updatePrayerRequestViaClient(
   id: string,
   updates: Partial<PrayerRequest>,
   /** Revision this edit was built from; `null` keeps the unguarded legacy path. */
-  expectedRevision: number | null = null
+  expectedRevision: number | null = null,
+  /**
+   * The values these fields had when the editor OPENED — the caller's own
+   * baseline, never a fresh read. A fingerprint taken from a read issued moments
+   * before the write compares the server with itself and always agrees, which
+   * turns the whole check into a no-op.
+   */
+  expectedBaseline: Record<string, unknown> | null = null
 ): Promise<PrayerRequest> {
   const db = getClientDb();
   const ref = doc(db, PRAYER_REQUESTS_COLLECTION, id);
@@ -104,6 +111,11 @@ export async function updatePrayerRequestViaClient(
     await conflictSafeUpdate(ref, cleanUpdates, PRAYER_NOT_FOUND_ERROR, {
       aggregate: PRAYER_CORE_AGGREGATE,
       expectedRevision,
+      // Content check alongside the counter, from the CALLER's opening values.
+      expectedBaseline,
+      outboxRoute: current.userId
+        ? { uid: current.userId, collection: PRAYER_REQUESTS_COLLECTION, docId: id, savedAt: Date.now() }
+        : undefined,
     });
   } else {
     // Unguarded writers must STILL advance the counter, or it lies and a later
@@ -178,7 +190,9 @@ export async function setPrayerStatusViaClient(
    * other silently, and the detector never noticed because status and counts
    * matched on both sides.
    */
-  expectedRevision: number | null = null
+  expectedRevision: number | null = null,
+  /** The status/answer values as the modal OPENED them — see the guard. */
+  expectedBaseline: Record<string, unknown> | null = null
 ): Promise<PrayerRequest> {
   const db = getClientDb();
   const ref = doc(db, PRAYER_REQUESTS_COLLECTION, id);
@@ -196,6 +210,11 @@ export async function setPrayerStatusViaClient(
     const committed = await conflictSafeUpdate(ref, patch, PRAYER_NOT_FOUND_ERROR, {
       aggregate: PRAYER_STATUS_AGGREGATE,
       expectedRevision,
+      // Content check alongside the counter, from the CALLER's opening values.
+      expectedBaseline,
+      outboxRoute: current.userId
+        ? { uid: current.userId, collection: PRAYER_REQUESTS_COLLECTION, docId: id, savedAt: Date.now() }
+        : undefined,
     });
     return hydratePrayerRequest(
       { ...current, ...patch, rev: { ...(current.rev ?? {}), [PRAYER_STATUS_AGGREGATE]: committed } } as Omit<

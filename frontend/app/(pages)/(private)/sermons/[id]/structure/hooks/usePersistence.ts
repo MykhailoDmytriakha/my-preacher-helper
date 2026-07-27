@@ -23,6 +23,17 @@ export const usePersistence = ({ setSermon, onThoughtSyncStateChange }: UsePersi
   const { t } = useTranslation();
   const debouncedThoughtsRef = useRef<Map<string, ReturnType<typeof debounce>>>(new Map());
   const latestThoughtByKeyRef = useRef<Map<string, { sermonId: string; thought: Thought }>>(new Map());
+  /**
+   * The thought AS THIS SCREEN LAST KNEW IT TO BE STORED — the opening value, then
+   * whatever a save confirmed. The write states only the fields that differ from it,
+   * so dragging a thought between plan points stops re-sending this screen's old copy
+   * of its TEXT over a rewrite made on another device hours earlier.
+   *
+   * It must ADVANCE on every confirmed save. Frozen at the opening value, the second
+   * save of the session would state its own already-committed text as a change again
+   * and overwrite whatever landed in between.
+   */
+  const baseThoughtByKeyRef = useRef<Map<string, Thought>>(new Map());
   const successTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const buildSyncExpiresAt = useCallback(() => {
@@ -47,10 +58,19 @@ export const usePersistence = ({ setSermon, onThoughtSyncStateChange }: UsePersi
   }, [clearSuccessTimer, onThoughtSyncStateChange]);
 
   // Save functions for structure and thoughts
+  /**
+   * The arrangement this screen believes is stored — the value it opened with, then
+   * whatever a save confirmed. It lets the write tell a move made HERE from one made on
+   * another device; frozen, the second save of a session would revert their move again.
+   */
+  const baseStructureRef = useRef<ThoughtsBySection | null>(null);
+
   const saveStructure = useCallback(
-    async (sermonId: string, structure: ThoughtsBySection) => {
+    async (sermonId: string, structure: ThoughtsBySection, baseStructure?: ThoughtsBySection | null) => {
+      if (baseStructure && !baseStructureRef.current) baseStructureRef.current = baseStructure;
       try {
-        await updateStructure(sermonId, structure);
+        await updateStructure(sermonId, structure, baseStructureRef.current);
+        baseStructureRef.current = structure;
       } catch {
         toast.error(t('errors.failedToSaveStructure'));
       }
@@ -59,9 +79,16 @@ export const usePersistence = ({ setSermon, onThoughtSyncStateChange }: UsePersi
   );
 
   const saveThought = useCallback(
-    async (sermonId: string, thought: Thought, options?: { markPending?: boolean }) => {
+    async (
+      sermonId: string,
+      thought: Thought,
+      options?: { markPending?: boolean; baseThought?: Thought | null }
+    ) => {
       const key = `${sermonId}:${thought.id}`;
       latestThoughtByKeyRef.current.set(key, { sermonId, thought });
+      if (options?.baseThought && !baseThoughtByKeyRef.current.has(key)) {
+        baseThoughtByKeyRef.current.set(key, options.baseThought);
+      }
       clearSuccessTimer(thought.id);
 
       if (options?.markPending !== false) {
@@ -72,7 +99,13 @@ export const usePersistence = ({ setSermon, onThoughtSyncStateChange }: UsePersi
       }
 
       try {
-        const updatedThought = await updateThought(sermonId, thought);
+        const updatedThought = await updateThought(
+          sermonId,
+          thought,
+          baseThoughtByKeyRef.current.get(key) ?? null
+        );
+        // CONFIRMED: this is now what the screen knows to be stored.
+        baseThoughtByKeyRef.current.set(key, updatedThought);
         setSermon((prev: Sermon | null) => {
           if (!prev) return prev;
           return {
@@ -100,9 +133,12 @@ export const usePersistence = ({ setSermon, onThoughtSyncStateChange }: UsePersi
   // Create debounced versions
   const debouncedSaveStructure = useMemo(() => debounce(saveStructure, 500), [saveStructure]);
   const debouncedSaveThought = useCallback(
-    (sermonId: string, thought: Thought) => {
+    (sermonId: string, thought: Thought, baseThought?: Thought | null) => {
       const key = `${sermonId}:${thought.id}`;
       latestThoughtByKeyRef.current.set(key, { sermonId, thought });
+      if (baseThought && !baseThoughtByKeyRef.current.has(key)) {
+        baseThoughtByKeyRef.current.set(key, baseThought);
+      }
       clearSuccessTimer(thought.id);
       onThoughtSyncStateChange?.(thought.id, 'pending', {
         expiresAt: buildSyncExpiresAt(),

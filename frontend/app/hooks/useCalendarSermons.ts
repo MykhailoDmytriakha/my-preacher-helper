@@ -23,6 +23,20 @@ export function useCalendarSermons(startDate?: Date, endDate?: Date) {
             return preachDatesService.fetchCalendarSermons(userId, startStr, endStr);
         },
         enabled: !!userId,
+        /**
+         * ASK THE SERVER AGAIN WHENEVER THE PERSON COMES BACK TO THIS TAB.
+         *
+         * The calendar is the one screen in the coverage list with no document
+         * listener — it shows MANY sermons, so a listener per sermon is the wrong
+         * trade. But the default cache-first behaviour also switched off the focus
+         * refetch, and nothing else could invalidate this query from another device:
+         * a date added on the phone stayed invisible on a laptop calendar that was
+         * left open, indefinitely and with no hint.
+         *
+         * Returning to the tab is exactly the moment a person continues work started
+         * elsewhere, and it costs one query — cheap for a screen nobody types into.
+         */
+        refetchOnWindowFocus: true,
     });
 
     // Identify "pending" sermons (legacy preached sermons without factual preached dates)

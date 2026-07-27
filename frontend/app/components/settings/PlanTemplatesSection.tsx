@@ -14,6 +14,7 @@ import { usePlanTemplates } from '@/hooks/usePlanTemplates';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { PLAN_TEMPLATE_AGGREGATE } from '@/services/planTemplates.client';
 import { newClientId } from '@/utils/clientId';
+import { findDraftDocIds } from '@/utils/durableDraft';
 
 import type { PlanTemplate, SermonOutline } from '@/models/models';
 
@@ -31,8 +32,18 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
   const { templates, loading, createTemplate, updateTemplate, deleteTemplate, refresh } =
     usePlanTemplates(user?.uid);
 
-  /** Which template the pending conflict belongs to — keys its durable slot. */
-  const [conflictTemplateId, setConflictTemplateId] = useState<string | null>(null);
+
+  /**
+   * Which template the pending conflict belongs to.
+   *
+   * Per TEMPLATE, not one shared slot: two refused edits would otherwise overwrite
+   * each other. Discovered on mount, because after a reload this screen has no
+   * idea which template a stored refusal came from — a key nobody can find again
+   * is the same as no key at all.
+   */
+  const [conflictTemplateId, setConflictTemplateId] = useState<string | null>(() =>
+    user?.uid ? (findDraftDocIds(user.uid, `conflict:${PLAN_TEMPLATE_AGGREGATE}`)[0] ?? null) : null
+  );
 
   /**
    * A refused template edit, held so it can be re-offered.
@@ -99,10 +110,12 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
         // The rename input is already closed, so the typed name would vanish with
         // a bare toast. Hold it and hand over the choice.
         setConflictTemplateId(tpl.id);
-        setConflict({
-          payload: { templateId: tpl.id, label: name, updates: { name } },
-          actualRevision: err.actualRevision,
-        });
+        // Pass the id explicitly: the state above is not committed yet, so the key
+        // would otherwise be built from the PREVIOUS value.
+        setConflict(
+          { payload: { templateId: tpl.id, label: name, updates: { name } }, actualRevision: err.actualRevision },
+          tpl.id
+        );
         toast.error(t('freshness.staleSaveToast'));
         return;
       }
@@ -142,10 +155,13 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
           // The board still shows `draftStructure`, but only in memory — a reload
           // would take it. Hold the structure itself and offer the choice.
           setConflictTemplateId(tpl.id);
-          setConflict({
-            payload: { templateId: tpl.id, label: tpl.name, updates: { structure } },
-            actualRevision: err.actualRevision,
-          });
+          setConflict(
+            {
+              payload: { templateId: tpl.id, label: tpl.name, updates: { structure } },
+              actualRevision: err.actualRevision,
+            },
+            tpl.id
+          );
           toast.error(t('freshness.staleSaveToast'));
           return;
         }
@@ -155,16 +171,45 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
     }, 400);
   };
 
+  /**
+   * Show the NEXT stored refusal, if any.
+   *
+   * Discovery only runs on mount, so resolving one conflict used to leave a second
+   * one invisible in storage until a reload — and it would then resurface days
+   * later with no explanation of where it came from.
+   */
+  const advanceToNextStoredConflict = () => {
+    if (!user?.uid) return;
+    const next = findDraftDocIds(user.uid, `conflict:${PLAN_TEMPLATE_AGGREGATE}`).find(
+      (id) => id !== conflictTemplateId
+    );
+    setConflictTemplateId(next ?? null);
+  };
+
   const handleKeepMine = async () => {
     if (!conflict || resolvingConflict) return;
     setResolvingConflict(true);
     try {
       // Adopt the revision the server held AT REFUSAL — a deliberate overwrite.
       await updateTemplate(conflict.payload.templateId, conflict.payload.updates, conflict.actualRevision);
-      setConflict(null);
+      // NAME the template this resolves: the slot is per template, and an unnamed
+      // clear would empty whichever one the section is pointing at right now.
+      setConflict(null, conflict.payload.templateId);
+      advanceToNextStoredConflict();
     } catch (err) {
-      console.error('Error re-sending the refused template edit:', err);
-      toast.error(t('planTemplates.saveStructureError'));
+      // Refused AGAIN: the template moved on between the first refusal and this
+      // click. Re-aim at what the server holds now, or every further press resends
+      // the same outdated number and the button never works.
+      if (isStaleWriteError(err)) {
+        setConflict(
+          { payload: conflict.payload, actualRevision: err.actualRevision },
+          conflict.payload.templateId
+        );
+        toast.error(t('freshness.staleSaveToast'));
+      } else {
+        console.error('Error re-sending the refused template edit:', err);
+        toast.error(t('planTemplates.saveStructureError'));
+      }
     } finally {
       setResolvingConflict(false);
     }
@@ -182,7 +227,8 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
         return;
       }
       setDraftStructure(null);
-      setConflict(null);
+      setConflict(null, conflict.payload.templateId);
+      advanceToNextStoredConflict();
     } finally {
       setResolvingConflict(false);
     }

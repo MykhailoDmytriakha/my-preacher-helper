@@ -172,6 +172,16 @@ export interface DashboardSermonUpdateVars {
   uid: string | undefined;
   newPlannedDateId: string;
   input: DashboardEditSermonInput;
+  /**
+   * The revision to state INSTEAD of the one carried by `input.sermon`.
+   *
+   * Set only when the person, having been told the record changed elsewhere, asks to
+   * send their text anyway. Without it a retry re-states the number the first attempt
+   * was refused for, so the button can never succeed — and Dismiss then throws the
+   * typed title away. It must survive persistence: a refused edit is replayed from the
+   * mutation cache after a reload.
+   */
+  expectedRevision?: number | null;
 }
 export interface DashboardSermonDeleteVars {
   sermonId: string;
@@ -465,12 +475,18 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
       updates,
       userId,
       expectedRevision,
+      expectedBaseline,
     }: {
       id: string;
       updates: Partial<StudyNote>;
       userId: string;
       expectedRevision?: number | null;
-    }) => updateStudyNote(id, { ...updates, userId }, expectedRevision ?? null),
+      expectedBaseline?: Record<string, unknown> | null;
+    }) =>
+      // The BASELINE must survive persistence for the same reason the revision
+      // does: a replayed save that forgot what it started from can only fall back
+      // to the counter, and the counter is exactly what an old build fails to move.
+      updateStudyNote(id, { ...updates, userId }, expectedRevision ?? null, expectedBaseline ?? null),
     onSuccess: invalidate([STUDY_NOTES_KEY]),
   });
   queryClient.setMutationDefaults(STUDY_NOTE_MUTATION_KEYS.delete, {
@@ -585,7 +601,9 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
       const updatedBase = await updateSermonRequest(
         { ...sermon, title, verse },
         { title, verse },
-        sermon.rev?.[SERMON_CORE_AGGREGATE] ?? 0
+        // A deliberate re-send aims at what the server holds NOW; otherwise the
+        // revision this edit was built from.
+        vars.expectedRevision ?? sermon.rev?.[SERMON_CORE_AGGREGATE] ?? 0
       );
       if (!updatedBase) {
         throw new Error('Failed to update sermon.');

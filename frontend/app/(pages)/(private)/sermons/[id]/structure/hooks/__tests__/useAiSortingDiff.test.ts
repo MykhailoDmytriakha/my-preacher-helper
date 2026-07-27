@@ -548,7 +548,11 @@ describe('useAiSortingDiff', () => {
         expect.objectContaining({
           id: 'thought-1',
           outlinePointId: 'intro-1',
-        })
+        }),
+        // Sorting changes only where a thought sits, so it must ALSO state the
+        // thought as this screen holds it — then the text is not written at all and
+        // a rewrite made on another device survives.
+        expect.objectContaining({ id: 'thought-1' })
       );
       expect(debouncedSaveStructure).toHaveBeenCalled();
       expect(mockToast.success).toHaveBeenCalled();
@@ -584,7 +588,8 @@ describe('useAiSortingDiff', () => {
         expect.objectContaining({
           id: 'thought-1',
           outlinePointId: undefined,
-        })
+        }),
+        expect.objectContaining({ id: 'thought-1' })
       );
       expect(revertSaveStructure).toHaveBeenCalledTimes(1);
     });

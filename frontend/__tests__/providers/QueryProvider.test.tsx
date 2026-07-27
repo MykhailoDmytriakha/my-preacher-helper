@@ -66,6 +66,40 @@ describe('QueryProvider', () => {
     expect(mockCreateIDBPersister).toHaveBeenCalled();
   });
 
+  it('never retries a REFUSAL, only transient failures', async () => {
+    // Found live: the note editor showed "Saving…" for about a minute and the
+    // conflict choice never appeared, because a StaleWriteError went through the
+    // whole five-step retry ladder. Retrying a refusal is worse than useless — with
+    // the freshness listener advancing the revision meanwhile, one of those retries
+    // can LAND and overwrite the other device.
+    mockCreateIDBPersister.mockReturnValue({
+      persistClient: jest.fn(),
+      restoreClient: jest.fn(),
+      removeClient: jest.fn(),
+    });
+    const onReady = jest.fn();
+    render(
+      <QueryProvider>
+        <ClientProbe onReady={onReady} />
+      </QueryProvider>
+    );
+    await waitFor(() => expect(onReady).toHaveBeenCalled());
+    const client = onReady.mock.calls[0][0];
+    const retry = client.getDefaultOptions().mutations?.retry as (
+      failureCount: number,
+      error: unknown
+    ) => boolean;
+
+    const refusal = Object.assign(new Error('refused'), { isStaleWrite: true });
+    const queued = Object.assign(new Error('queued'), { isOfflineQueued: true });
+
+    expect(retry(0, refusal)).toBe(false);
+    expect(retry(0, queued)).toBe(false);
+    // A transient failure still gets the retries that offline work depends on.
+    expect(retry(0, new Error('network hiccup'))).toBe(true);
+    expect(retry(5, new Error('network hiccup'))).toBe(false);
+  });
+
   it('handles global 401 mutation errors', async () => {
     mockCreateIDBPersister.mockReturnValue({
       persistClient: jest.fn(),

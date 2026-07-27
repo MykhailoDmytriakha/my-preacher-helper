@@ -344,7 +344,8 @@ describe('SermonsRepository', () => {
             name: 'updates outline when sermon exists',
             run: async () => {
               const result = await sermonsRepository.updateSermonOutline('test-sermon-123', validOutline);
-              expect(mockUpdate).toHaveBeenCalledWith({ outline: validOutline, updatedAt: expect.any(String) });
+              // The outline writer advances its own counter, like every other writer.
+              expect(mockUpdate).toHaveBeenCalledWith({ outline: validOutline, 'rev.outline': { __increment: 1 }, updatedAt: expect.any(String) });
               expect(result).toEqual(validOutline);
             }
           },
@@ -663,7 +664,9 @@ describe('SermonsRepository', () => {
         status: 'preached',
       });
 
+      // Every writer of an aggregate advances its counter, or the counter lies.
       expect(mockUpdate).toHaveBeenCalledWith({
+        'rev.preachDates': { __increment: 1 },
         preachDates: [
           expect.objectContaining({
             id: 'pd-1',
@@ -734,7 +737,9 @@ describe('SermonsRepository', () => {
       await expect(
         sermonsRepository.deletePreachDate('sermon-1', 'pd-1')
       ).resolves.toBeUndefined();
+      // Every writer of an aggregate advances its counter, or the counter lies.
       expect(mockUpdate).toHaveBeenCalledWith({
+        'rev.preachDates': { __increment: 1 },
         preachDates: [
           { id: 'pd-2', date: '2026-02-02', church: { id: 'c2', name: 'Church 2' }, createdAt: 'y' },
         ],
@@ -880,6 +885,46 @@ describe('SermonsRepository', () => {
       await expect(
         sermonsRepository.fetchSermonsWithPreachDates('user-1')
       ).rejects.toThrow('Firestore query failed');
+    });
+  });
+
+  /**
+   * A SECTION NOBODY MENTIONED MUST NOT BE WRITTEN.
+   *
+   * The plan editor saves one point of one section. Writing the whole `draft` map
+   * carried the caller's hours-old copy of the other two sections and replaced an
+   * introduction rewritten on the phone that morning. A nested path merges into the
+   * stored map, so two devices working on different sections never collide.
+   */
+  describe('updateSermonContentSections', () => {
+    beforeEach(() => {
+      mockGet.mockResolvedValue({ exists: true, data: () => ({ userId: 'u1' }) });
+      mockUpdate.mockResolvedValue({});
+    });
+
+    it('addresses each stated section by its own nested path, and only those', async () => {
+      await sermonsRepository.updateSermonContentSections('test-sermon-123', {
+        main: { outline: 'Main, edited here' },
+      });
+
+      expect(mockUpdate).toHaveBeenCalledWith({
+        'draft.main': { outline: 'Main, edited here' },
+        'plan.main': { outline: 'Main, edited here' },
+        // The counter still moves, or a later client save is granted permission to
+        // overwrite what this write just stored.
+        'rev.plan': { __increment: 1 },
+        updatedAt: expect.any(String),
+      });
+      const [payload] = mockUpdate.mock.calls[0];
+      expect(Object.keys(payload)).not.toContain('draft');
+      expect(Object.keys(payload)).not.toContain('draft.introduction');
+    });
+
+    it('refuses a write that names no section, instead of blanking the plan', async () => {
+      await expect(
+        sermonsRepository.updateSermonContentSections('test-sermon-123', {})
+      ).rejects.toThrow();
+      expect(mockUpdate).not.toHaveBeenCalled();
     });
   });
 });

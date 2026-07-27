@@ -21,6 +21,11 @@ export default function MarkAnsweredModal({ onClose, onSubmit }: Props) {
     try {
       await onSubmit(text?.trim() || undefined);
       onClose();
+    } catch {
+      // REFUSED or failed — stay open. This answer is human text that lives nowhere
+      // else, so closing would destroy it; the parent has already said what went
+      // wrong. Swallowing the rejection here only keeps it from becoming an
+      // unhandled one — it must never be turned into a close.
     } finally {
       setSaving(false);
     }

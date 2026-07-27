@@ -49,7 +49,9 @@ describe('sermon.service', () => {
     expect(mockGetSermonsViaClient).toHaveBeenCalledWith('u1');
     expect(mockGetSermonByIdViaClient).toHaveBeenCalledWith('s1');
     // Third argument = expectedRevision; null means "unguarded", as before.
-    expect(mockUpdateSermonViaClient).toHaveBeenCalledWith(sermon, undefined, null);
+    // Fourth argument = content fingerprint; `undefined` when the caller does not
+    // supply one, which keeps the counter-only behaviour for unmigrated paths.
+    expect(mockUpdateSermonViaClient).toHaveBeenCalledWith(sermon, undefined, null, undefined);
     expect(mockUpdateSermonPreparationViaClient).toHaveBeenCalledWith('s1', preparation, undefined);
     expect(mockApiClient).not.toHaveBeenCalled();
   });

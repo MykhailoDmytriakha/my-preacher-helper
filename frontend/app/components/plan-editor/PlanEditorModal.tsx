@@ -9,9 +9,11 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
+import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { updateSermonOutline } from '@/services/outline.service';
+import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
 
 import type { OutlinePoint, Sermon, SermonOutline, SubPoint } from '@/models/models';
@@ -121,10 +123,61 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const outlineRef = useRef<SermonOutline>(emptyOutline());
+
+  /**
+   * THE PLAN THIS EDITOR OPENED WITH — and, after each save, what the server
+   * actually committed.
+   *
+   * It is what lets the write MERGE instead of replace. Without it, saving the plan
+   * from a laptop that has been open since last night wipes the point added from a
+   * phone this morning, silently: the plan is one whole field, so the laptop's
+   * snapshot simply becomes the new truth.
+   */
+  const baseOutlineRef = useRef<SermonOutline | null>(null);
+  /**
+   * The same point was rewritten here AND on the other device. Nothing is written
+   * and nothing is guessed — the person decides, and their text stays on screen.
+   *
+   * Stored DURABLY, not in component state. Escape, the backdrop, the X and "Done"
+   * all close this modal, and while the refusal lived in state alone, any of them
+   * threw away the only copy of the refused plan — the modal reopened from the
+   * server and the laptop's work was simply gone. Now closing is safe: the text and
+   * the question come back.
+   */
+  const [storedCollision, setStoredCollision] = usePersistedConflict<{
+    outline: SermonOutline;
+    serverOutline: SermonOutline | null;
+  }>(sermon.userId, sermon.id, 'outlineConflict');
+  const collision = storedCollision
+    ? { serverOutline: storedCollision.payload.serverOutline }
+    : null;
+  const setCollision = useCallback(
+    (next: { serverOutline: SermonOutline | null } | null, refused?: SermonOutline) => {
+      if (!next) {
+        // NAME the sermon this clears. The modal can be re-rendered for another
+        // sermon before a write settles, and an unnamed clear would empty THAT
+        // sermon's slot — the only durable copy of a refusal it has not shown yet.
+        setStoredCollision(null, sermon.id);
+        return;
+      }
+      setStoredCollision(
+        { payload: { outline: refused ?? outlineRef.current, serverOutline: next.serverOutline }, actualRevision: 0 },
+        sermon.id
+      );
+    },
+    [setStoredCollision, sermon.id]
+  );
+
+  outlineRef.current = outline;
 
   useEffect(() => {
     if (isOpen) {
-      setOutline(fromSermon(sermon.outline));
+      // A refusal stored on a previous visit wins over the server copy: it is the
+      // person's own unconfirmed text, and it is what the question is about.
+      const refused = storedCollisionRef.current?.payload.outline;
+      setOutline(refused ?? fromSermon(sermon.outline));
+      baseOutlineRef.current = fromSermon(sermon.outline);
       setUndoStack([]);
       setRedoStack([]);
       setTemplatesMenuOpen(false);
@@ -134,6 +187,10 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, sermon.id]);
+
+  // Read without re-running the open effect on every storage change.
+  const storedCollisionRef = useRef(storedCollision);
+  storedCollisionRef.current = storedCollision;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -153,15 +210,70 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     return () => document.removeEventListener('mousedown', onClick);
   }, [templatesMenuOpen]);
 
+  /**
+   * Which local version of the plan is on screen right now.
+   *
+   * It exists because a response can arrive AFTER the person has typed more. The
+   * first version of this code applied whatever came back unconditionally, so an
+   * answer to the edit of point 1 wiped the edit of point 2 out from under the
+   * cursor — text lost while the app looked like it was saving, and strictly worse
+   * than before, when nothing was applied back at all.
+   */
+  const generationRef = useRef(0);
+
   const persist = useCallback(
-    (next: SermonOutline) => {
+    (next: SermonOutline, options?: { force?: boolean; clearStoredOnSuccess?: boolean }) => {
       if (isReadOnly || !sermon.id) return;
+      // A refusal is on screen: hammering the server would eventually land one of
+      // these saves and quietly resolve the very question we are asking the person.
+      // `force` is the person ANSWERING that question — and it clears the flag right
+      // here, synchronously: `setCollision(null)` alone leaves the ref set until the
+      // next render, so the resend was cancelled and "keep mine" did nothing at all.
+      if (options?.force) collisionRef.current = null;
+      else if (collisionRef.current) {
+        // A refusal is on screen: writing again would eventually land one of these
+        // saves and quietly answer the question being asked of the person.
+        //
+        // But the person KEEPS WRITING while they think, and the durable copy used to
+        // be a snapshot of the FIRST refusal — so everything typed afterwards died
+        // when the modal closed. Refresh the stored copy with what is on the board
+        // now; the question stays, the words stay too.
+        setStoredCollision(
+          {
+            payload: { outline: next, serverOutline: collisionRef.current.serverOutline },
+            actualRevision: 0,
+          },
+          sermon.id
+        );
+        return;
+      }
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      const generationAtRequest = generationRef.current;
       saveTimeoutRef.current = setTimeout(async () => {
         try {
-          await updateSermonOutline(sermon.id, next);
-          onOutlineUpdate?.(next);
+          const committed = await updateSermonOutline(sermon.id, next, baseOutlineRef.current);
+          // The COMMITTED plan can legitimately contain more than we sent — a point
+          // added on the other device that the merge kept. Adopt it as the new base
+          // and show it, or the next save would treat that point as deleted here.
+          const stored = committed ?? next;
+          if (generationRef.current !== generationAtRequest) {
+            // The person has typed since. Do not touch the board, and do NOT adopt
+            // this as the base either: with a newer local plan that never saw the
+            // other device's point, that point would read as "deleted here" and the
+            // next save would remove it. Keeping the older base lets the merge
+            // re-add it instead.
+            return;
+          }
+          baseOutlineRef.current = stored;
+          // CONFIRMED: only now is the refused copy safe to retire.
+          if (options?.clearStoredOnSuccess) setCollision(null);
+          setOutline(stored);
+          onOutlineUpdate?.(stored);
         } catch (err) {
+          if (isOutlineCollisionError(err)) {
+            setCollision({ serverOutline: err.serverOutline }, next);
+            return;
+          }
           console.error('PlanEditorModal: failed to save outline', err);
           toast.error(t('errors.saveOutlineError'));
         }
@@ -169,6 +281,11 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     },
     [isReadOnly, sermon.id, onOutlineUpdate, t]
   );
+
+  // Read inside the debounced callback, so a refusal that arrives mid-typing stops
+  // the NEXT save without re-creating the callback on every keystroke.
+  const collisionRef = useRef<typeof collision>(null);
+  collisionRef.current = collision;
 
   // Every committed change snapshots the current outline onto the undo stack and
   // drops the redo branch (a new action invalidates any "redo" path). Closure
@@ -178,6 +295,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     (next: SermonOutline) => {
       setUndoStack((s) => capPush(s, outline));
       setRedoStack([]);
+      generationRef.current += 1;
       setOutline(next);
       persist(next);
     },
@@ -189,6 +307,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     const previous = undoStack[undoStack.length - 1];
     setUndoStack(undoStack.slice(0, -1));
     setRedoStack((r) => capPush(r, outline));
+    generationRef.current += 1;
     setOutline(previous);
     persist(previous);
   }, [undoStack, outline, persist]);
@@ -198,6 +317,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     const nextOutline = redoStack[redoStack.length - 1];
     setRedoStack(redoStack.slice(0, -1));
     setUndoStack((s) => capPush(s, outline));
+    generationRef.current += 1;
     setOutline(nextOutline);
     persist(nextOutline);
   }, [redoStack, outline, persist]);
@@ -412,6 +532,57 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
             </button>
           </div>
         </header>
+
+        {/* THE SAME POINT WAS REWRITTEN IN TWO PLACES. Nothing was written, nothing
+            was guessed, and the person's text is still on the board — they choose.
+            Everything that did NOT collide was already merged by the write itself,
+            so this appears only for a genuine overlap. */}
+        {collision && (
+          <div
+            role="alert"
+            className="mx-3 mt-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10 sm:mx-4"
+          >
+            <p className="font-medium text-amber-900 dark:text-amber-200">
+              {t('freshness.conflictTitle')}
+            </p>
+            <p className="mt-0.5 text-amber-800/80 dark:text-amber-200/70">
+              {t('freshness.conflictDescription', { entity: t('freshness.entitySermon') })}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  // A DELIBERATE overwrite of the colliding point: state the server's
+                  // plan as the base, so the merge sees this editor's version as the
+                  // only change and there is nothing left to collide with.
+                  // Do NOT clear the durable copy yet: a network failure here would
+                  // leave the person with a toast and nothing else. The stored copy is
+                  // retired by the confirmed write below.
+                  baseOutlineRef.current = collision.serverOutline;
+                  collisionRef.current = null;
+                  persist(outline, { force: true, clearStoredOnSuccess: true });
+                }}
+                className="rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-amber-700"
+              >
+                {t('freshness.conflictKeepMine')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const theirs = fromSermon(collision.serverOutline);
+                  baseOutlineRef.current = theirs;
+                  setCollision(null);
+                  generationRef.current += 1;
+                  setOutline(theirs);
+                  onOutlineUpdate?.(theirs);
+                }}
+                className="rounded-lg border border-amber-300 px-3 py-1.5 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20"
+              >
+                {t('freshness.conflictTakeTheirs')}
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="flex-1 overflow-hidden p-3 sm:p-4">
           <OutlineBoard

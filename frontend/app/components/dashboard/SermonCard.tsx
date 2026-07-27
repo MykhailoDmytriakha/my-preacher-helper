@@ -113,11 +113,29 @@ function SermonSyncBadge({ sermonId, syncState, optimisticActions, t }: SermonSy
     );
   }
 
+  /**
+   * A REFUSAL IS NOT AN ERROR TO REPEAT. The record changed on another device, so the
+   * two buttons are a choice — send mine anyway, or keep theirs — and the words have to
+   * say that. Worded as "Sync failed / Retry" the person presses Retry, gets refused
+   * again, and eventually presses Dismiss, which throws their own text away.
+   */
+  const isConflict = Boolean(syncState.conflict);
+
   return (
-    <div className="inline-flex items-center gap-1.5 rounded-full bg-red-50 text-red-700 dark:bg-red-900/25 dark:text-red-300 px-2 py-0.5 text-xs font-medium">
+    <div className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${
+      isConflict
+        ? 'bg-amber-50 text-amber-800 dark:bg-amber-900/25 dark:text-amber-200'
+        : 'bg-red-50 text-red-700 dark:bg-red-900/25 dark:text-red-300'
+    }`}>
       <AlertCircle className="w-3 h-3" />
-      <span className="uppercase tracking-wide text-[10px]">{t('errors.generic', { defaultValue: 'Error' })}</span>
-      <span className="max-w-[120px] truncate">{syncState.message || t('errors.savingError', { defaultValue: 'Sync failed' })}</span>
+      <span className="uppercase tracking-wide text-[10px]">
+        {isConflict ? t('freshness.title') : t('errors.generic', { defaultValue: 'Error' })}
+      </span>
+      <span className="max-w-[160px] truncate">
+        {isConflict
+          ? t('freshness.staleSaveToast')
+          : syncState.message || t('errors.savingError', { defaultValue: 'Sync failed' })}
+      </span>
       <button
         type="button"
         onClick={(event) => {
@@ -127,7 +145,7 @@ function SermonSyncBadge({ sermonId, syncState, optimisticActions, t }: SermonSy
         }}
         className="ml-1 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 hover:bg-red-200 dark:bg-red-800 dark:hover:bg-red-700"
       >
-        {t('buttons.retry', { defaultValue: 'Retry' })}
+        {isConflict ? t('freshness.conflictKeepMine') : t('buttons.retry', { defaultValue: 'Retry' })}
       </button>
       <button
         type="button"
@@ -138,7 +156,7 @@ function SermonSyncBadge({ sermonId, syncState, optimisticActions, t }: SermonSy
         }}
         className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-white/70 hover:bg-white dark:bg-gray-800/70 dark:hover:bg-gray-700"
       >
-        {t('buttons.dismiss', { defaultValue: 'Dismiss' })}
+        {isConflict ? t('freshness.conflictTakeTheirs') : t('buttons.dismiss', { defaultValue: 'Dismiss' })}
       </button>
     </div>
   );

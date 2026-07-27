@@ -338,6 +338,31 @@ describe('SermonCard Component', () => {
     expect(card).toHaveClass('border-blue-200');
   });
 
+  /**
+   * TWO DIFFERENT SITUATIONS MUST NOT WEAR THE SAME WORDS.
+   *
+   * "Sync failed / Retry" is right for a dropped connection. For a refusal — the record
+   * changed on another device — it sends the person in a circle: Retry, refused again,
+   * then Dismiss, which throws away the only copy of what they typed. A refusal is a
+   * CHOICE: send mine anyway, or keep theirs.
+   */
+  it('words a refusal as a choice, not as a failure to repeat', () => {
+    render(
+      <SermonCard
+        sermon={baseSermon}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+        syncState={{ status: 'error', operation: 'update', conflict: true }}
+        optimisticActions={optimisticActions as any}
+      />
+    );
+
+    expect(screen.getByText('freshness.conflictKeepMine')).toBeInTheDocument();
+    expect(screen.getByText('freshness.conflictTakeTheirs')).toBeInTheDocument();
+    expect(screen.queryByText('buttons.retry')).not.toBeInTheDocument();
+    expect(screen.queryByText('errors.generic')).not.toBeInTheDocument();
+  });
+
   it('renders error sync badge and triggers retry/dismiss handlers', () => {
     render(
       <SermonCard

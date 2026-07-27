@@ -1249,12 +1249,18 @@ describe('useStructureDnd', () => {
           position: 0,
         })
       );
-      expect(mockUpdateStructure).toHaveBeenCalledWith(sermon.id, {
+      expect(mockUpdateStructure).toHaveBeenCalledWith(
+        sermon.id,
+        {
         introduction: [THOUGHT_TWO, THOUGHT_ONE],
         main: [],
         conclusion: [],
         ambiguous: [],
-      });
+        },
+        // …and the arrangement the screen holds as stored, so a move made on another
+        // device is not reverted by this save.
+        expect.anything()
+      );
     });
 
     it('commits the live preview when over collapses onto the dragged card (2-card swap recovery)', async () => {
@@ -1317,6 +1323,7 @@ describe('useStructureDnd', () => {
       expect(mockUpdateStructure).toHaveBeenCalledWith(
         sermon.id,
         expect.objectContaining({ introduction: [THOUGHT_TWO, THOUGHT_ONE] }),
+        expect.anything(),
       );
     });
 
@@ -1461,12 +1468,18 @@ describe('useStructureDnd', () => {
           tags: [],
         })
       );
-      expect(mockUpdateStructure).toHaveBeenCalledWith(sermon.id, {
+      expect(mockUpdateStructure).toHaveBeenCalledWith(
+        sermon.id,
+        {
         introduction: [THOUGHT_ONE, THOUGHT_THREE, THOUGHT_TWO],
         main: [],
         conclusion: [],
         ambiguous: [],
-      });
+        },
+        // …and the arrangement the screen holds as stored, so a move made on another
+        // device is not reverted by this save.
+        expect.anything()
+      );
     });
 
     it('inherits outline point from target item when dropping on item in another section', async () => {
@@ -1517,12 +1530,18 @@ describe('useStructureDnd', () => {
           tags: [],
         })
       );
-      expect(mockUpdateStructure).toHaveBeenCalledWith(sermon.id, {
+      expect(mockUpdateStructure).toHaveBeenCalledWith(
+        sermon.id,
+        {
         introduction: [],
         main: [THOUGHT_ONE, THOUGHT_TWO],
         conclusion: [],
         ambiguous: [],
-      });
+        },
+        // …and the arrangement the screen holds as stored, so a move made on another
+        // device is not reverted by this save.
+        expect.anything()
+      );
       expect(mockSetSermon).toHaveBeenCalledWith(expect.any(Function));
     });
 
@@ -1581,12 +1600,18 @@ describe('useStructureDnd', () => {
           tags: [CUSTOM_TAG.name],
         })
       );
-      expect(mockUpdateStructure).toHaveBeenCalledWith(sermon.id, {
+      expect(mockUpdateStructure).toHaveBeenCalledWith(
+        sermon.id,
+        {
         introduction: [],
         main: [],
         conclusion: [],
         ambiguous: [THOUGHT_ONE],
-      });
+        },
+        // …and the arrangement the screen holds as stored, so a move made on another
+        // device is not reverted by this save.
+        expect.anything()
+      );
     });
 
     it('rolls back on updateStructure failure and shows toast', async () => {

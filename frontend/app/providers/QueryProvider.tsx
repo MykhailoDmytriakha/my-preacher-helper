@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 
 import UsageCapGlobalHandler from '@/components/usage/UsageCapGlobalHandler';
+import { isOfflineQueuedError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { notifyUsageCapReached } from '@/services/usageCapClient';
 import { registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
 import { createIDBPersister } from '@/utils/queryPersister';
@@ -59,7 +60,25 @@ export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
           },
           mutations: {
             networkMode: 'offlineFirst',
-            retry: 5, // More retries for important offline work
+            /**
+             * Retries are for TRANSIENT trouble. A REFUSAL is not transient.
+             *
+             * Found live: the note editor sat on "Saving…" for about a minute and the
+             * conflict choice never appeared, because a `StaleWriteError` was being
+             * retried five times with backoff. Three things wrong with that: the
+             * person is told "saving" while nothing can ever save; the decision they
+             * must make is delayed by the whole retry ladder; and if the freshness
+             * listener advances the revision meanwhile, one of those retries could
+             * actually LAND and quietly overwrite the other device — the precise
+             * outcome the guard exists to prevent.
+             *
+             * A queued offline intent is likewise final: it is already stored and
+             * will be replayed by the outbox, so re-sending it here is pure noise.
+             */
+            retry: (failureCount, error) => {
+              if (isStaleWriteError(error) || isOfflineQueuedError(error)) return false;
+              return failureCount < 5; // transient failures: keep trying, offline work matters
+            },
             // FULL JITTER (S2 Fix): random between 0 and delay
             retryDelay: (attemptIndex) => {
               const baseDelay = Math.min(1000 * 2 ** attemptIndex, 30000);

@@ -16,7 +16,13 @@ interface GeneratePlanPointContentResponse {
 
 interface SaveSermonPlanParams {
   sermonId: string;
-  plan: Plan;
+  /**
+   * ONLY the sections this save actually changed. The route writes each stated
+   * section by its own nested path and leaves the rest alone, so an editor open since
+   * last night no longer carries its stale copy of the other sections over a rewrite
+   * made on another device.
+   */
+  plan: Partial<Plan>;
 }
 
 function createPlanGenerationRequestId(): string {

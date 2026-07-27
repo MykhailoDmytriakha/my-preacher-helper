@@ -6,6 +6,7 @@ import '@testing-library/jest-dom';
 
 const mockPush = jest.fn();
 const mockToastSuccess = jest.fn();
+const mockToastError = jest.fn();
 const mockUsePrayerRequests = jest.fn();
 let mockSearchParams = new URLSearchParams();
 
@@ -27,6 +28,11 @@ jest.mock('next/navigation', () => ({
 jest.mock('sonner', () => ({
   toast: {
     success: (...args: unknown[]) => mockToastSuccess(...args),
+    // Missing `error` made every failure path throw inside its own catch, which
+    // rejected the submit for the WRONG reason and hid whether the page was
+    // rethrowing on purpose. A partial mock of a module the code depends on is a
+    // test that cannot tell right from wrong.
+    error: (...args: unknown[]) => mockToastError(...args),
   },
 }));
 
@@ -67,11 +73,33 @@ jest.mock('@/components/prayer/AddUpdateModal', () => ({
   ),
 }));
 
+/**
+ * MIRRORS THE REAL MODAL'S CONTRACT: it closes on a FULFILLED submit and stays open
+ * on a rejected one. The old stub just called `onSubmit` and never closed, so the
+ * composed defect was invisible — the page swallowed a refusal (fulfilling the
+ * promise), the real modal closed, and the typed answer was destroyed while both
+ * halves looked correct in isolation.
+ */
+const answeredModalClosedAfterSubmit = jest.fn();
 jest.mock('@/components/prayer/MarkAnsweredModal', () => ({
   __esModule: true,
   default: ({ onSubmit, onClose }: any) => (
     <div data-testid="mark-answered-modal">
-      <button onClick={() => onSubmit('Answer text')}>submit answer</button>
+      <button
+        onClick={async () => {
+          try {
+            await onSubmit('Answer text');
+            // Reached ONLY on a fulfilled submit — which is precisely why a page that
+            // swallows a refusal destroys the answer.
+            answeredModalClosedAfterSubmit();
+            onClose();
+          } catch {
+            /* stays open — the answer lives only here */
+          }
+        }}
+      >
+        submit answer
+      </button>
       <button onClick={onClose}>close answer</button>
     </div>
   ),
@@ -210,13 +238,20 @@ describe('PrayerDetailPage', () => {
           description: 'Edited description',
           tags: ['hope'],
         },
-        0
+        0,
+        // Fourth argument = the VALUES the form opened with. Frozen at open, like
+        // the revision: a value read at save time would agree with the server by
+        // construction, and the check would protect nothing.
+        { title: 'Pray for family', description: 'Need wisdom', tags: ['family', 'hope'] }
       );
       expect(addUpdate).toHaveBeenCalledWith('p1', 'Fresh note');
       expect(setStatus).toHaveBeenCalledWith('p1', 'not_answered');
       // Fourth argument = the revision the answer was built from: the answer is
       // human text, so two devices answering must not overwrite each other.
-      expect(setStatus).toHaveBeenCalledWith('p1', 'answered', 'Answer text', 0);
+      expect(setStatus).toHaveBeenCalledWith('p1', 'answered', 'Answer text', 0, {
+        status: 'active',
+        answerText: null,
+      });
       expect(deletePrayer).toHaveBeenCalledWith('p1');
       expect(mockPush).toHaveBeenCalledWith('/prayers');
     });
@@ -225,6 +260,36 @@ describe('PrayerDetailPage', () => {
     expect(mockToastSuccess).toHaveBeenCalledWith('Update added');
     expect(mockToastSuccess).toHaveBeenCalledWith('Prayer status changed');
     expect(mockToastSuccess).toHaveBeenCalledWith('Prayer deleted');
+  });
+
+  it('a REFUSED answer keeps the modal open, so the typed text is not destroyed', async () => {
+    answeredModalClosedAfterSubmit.mockClear();
+    // The page used to catch the refusal and return, which FULFILS the promise — and
+    // a fulfilled submit closes the modal. The answer, which lives nowhere but that
+    // modal, went with it while a toast said the save had failed.
+    const staleError = Object.assign(new Error('refused'), { isStaleWrite: true, actualRevision: 7 });
+    const setStatus = jest.fn().mockRejectedValue(staleError);
+
+    mockUsePrayerRequests.mockReturnValue({
+      prayerRequests: [activePrayer],
+      loading: false,
+      updatePrayer: jest.fn().mockResolvedValue(undefined),
+      deletePrayer: jest.fn(),
+      addUpdate: jest.fn(),
+      setStatus,
+    });
+
+    render(<PrayerDetailPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'Mark Answered' }));
+    fireEvent.click(screen.getByRole('button', { name: 'submit answer' }));
+
+    await waitFor(() => expect(setStatus).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The submit must REJECT, so the modal never reaches its close — that is the
+    // only thing standing between a refusal and the loss of the typed answer.
+    expect(answeredModalClosedAfterSubmit).not.toHaveBeenCalled();
+    expect(answeredModalClosedAfterSubmit).not.toHaveBeenCalled();
+    expect(screen.getByTestId('mark-answered-modal')).toBeInTheDocument();
   });
 
   it('highlights and scrolls to the exact matched word from a prayer card search target', async () => {
@@ -304,5 +369,29 @@ describe('PrayerDetailPage', () => {
     await waitFor(() => {
       expect(setStatus).toHaveBeenCalledWith('p1', 'active');
     });
+  });
+
+  it('holds a refused ANSWER on the page, not inside the modal that closed', () => {
+    // The modal is gone the moment a write fails — the backdrop, the ✕ and a reload
+    // all take it. The refused answer has to be somewhere the page itself shows.
+    mockUsePrayerRequests.mockReturnValue({
+      prayerRequests: [activePrayer],
+      loading: false,
+      updatePrayer: jest.fn(),
+      deletePrayer: jest.fn(),
+      addUpdate: jest.fn(),
+      setStatus: jest.fn(),
+      saveConflict: null,
+      statusConflict: {
+        payload: { id: 'p1', status: 'answered', answerText: 'God provided a job' },
+        actualRevision: 4,
+      },
+      keepMineOnStatusConflict: jest.fn(),
+      takeTheirsOnStatusConflict: jest.fn(),
+    });
+
+    render(<PrayerDetailPage />);
+
+    expect(screen.getByText(/God provided a job/)).toBeInTheDocument();
   });
 });

@@ -1,3 +1,4 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
@@ -31,7 +32,15 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'thoughtsBySection is required in the request body' }, { status: 400 });
     }
 
-    await sermonDocRef.update({ thoughtsBySection, structure: thoughtsBySection });
+    // Regrouping thoughts CHANGES content, so it must advance the thoughts
+    // counter like every other writer of that aggregate. Writing straight past
+    // it left the number stale, and a later save built on the old grouping was
+    // then waved through by the guard.
+    await sermonDocRef.update({
+      thoughtsBySection,
+      structure: thoughtsBySection,
+      'rev.thoughts': FieldValue.increment(1),
+    });
     console.log(`ThoughtsBySection updated for sermon ${sermonId}`);
     return NextResponse.json({ message: 'ThoughtsBySection updated successfully' });
   } catch (error) {

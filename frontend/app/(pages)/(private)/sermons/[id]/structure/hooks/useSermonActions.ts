@@ -23,7 +23,7 @@ interface UseSermonActionsProps {
     containersRef: React.MutableRefObject<Record<string, Item[]>>;
     allowedTags: { name: string; color: string }[];
     debouncedSaveThought: (sermonId: string, thought: Thought) => void;
-    debouncedSaveStructure: (sermonId: string, structure: ThoughtsBySection) => void;
+    debouncedSaveStructure: (sermonId: string, structure: ThoughtsBySection, baseStructure?: ThoughtsBySection | null) => void;
     retryThoughtSave?: (thoughtId: string) => Promise<void>;
 }
 
@@ -233,7 +233,7 @@ export function useSermonActions({
 
                 const persistStructure = buildStructureFromContainers(containersRef.current);
                 try {
-                    await updateStructure(currentSermon.id, persistStructure);
+                    await updateStructure(currentSermon.id, persistStructure, currentSermon.structure);
                 } catch (structureError) {
                     console.error("Error updating structure after add:", structureError);
                     toast.error(t('errors.failedToSaveStructure'));
@@ -303,7 +303,10 @@ export function useSermonActions({
         // Fire-and-forget so the edit modal closes without waiting on the network.
         void (async () => {
             try {
-                const updatedThought = await updateThought(currentSermon.id, updatedItem);
+                // `existingThought` is what this screen holds as stored, so only the
+                // fields the person actually edited in the modal are written — the rest
+                // keeps whatever is on the server, including a text rewritten elsewhere.
+                const updatedThought = await updateThought(currentSermon.id, updatedItem, existingThought);
                 if (thoughtUpdateVersionRef.current[updatedItem.id] !== nextVersion) {
                     return;
                 }
@@ -390,7 +393,7 @@ export function useSermonActions({
                 // so a DnD reorder made while the delete was in flight is preserved
                 // instead of being overwritten by the older pre-await snapshot.
                 const persistStructure = structureFromContainers(containersRef.current);
-                await updateStructure(currentSermon.id, persistStructure);
+                await updateStructure(currentSermon.id, persistStructure, currentSermon.structure);
                 toast.success(t('structure.thoughtDeletedSuccess') || "Thought deleted successfully.");
             } catch (error) {
                 console.error("Error deleting thought:", error);
@@ -487,7 +490,7 @@ export function useSermonActions({
         }
 
         const newStructure = structureFromContainers(updatedContainers);
-        debouncedSaveStructure(sermon.id, newStructure);
+        debouncedSaveStructure(sermon.id, newStructure, sermon.structure);
     };
 
     return {

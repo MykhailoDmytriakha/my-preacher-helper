@@ -138,3 +138,22 @@ describe('useCalendarSermons', () => {
     expect(mockFetchCalendarSermons).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * The calendar has no document listener by design — it shows many sermons at once,
+ * and one listener per sermon is the wrong trade. Returning to the tab is what
+ * replaces it: without that, a date added on the phone stayed invisible on a laptop
+ * calendar left open, indefinitely and with no hint.
+ */
+describe('the calendar re-asks the server when the person returns', () => {
+  it('requests a focus refetch instead of trusting the cache', () => {
+    mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as unknown as ReturnType<typeof useAuth>);
+    mockUseServerFirstQuery.mockReturnValue(buildServerFirstResult([] as Sermon[]));
+
+    renderHook(() => useCalendarSermons(new Date('2026-07-01'), new Date('2026-07-31')));
+
+    expect(mockUseServerFirstQuery).toHaveBeenCalledWith(
+      expect.objectContaining({ refetchOnWindowFocus: true })
+    );
+  });
+});

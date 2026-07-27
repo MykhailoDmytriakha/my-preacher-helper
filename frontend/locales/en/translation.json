@@ -1,5 +1,12 @@
 {
   "freshness": {
+    "entitySettings": "settings page",
+    "copyTextAction": "Copy my text",
+    "copiedToast": "Copied",
+    "deletedElsewhereTitle": "This record was deleted on another device",
+    "deletedElsewhereBody": "There is nothing left to save into, so your text is kept here — copy it before discarding.",
+    "discardAction": "Discard",
+    "queuedPending": "Waiting to be sent: {{count}}",
     "title": "Changed on another device",
     "description": "This {{entity}} was edited somewhere else. Load the newer version?",
     "dirtyDescription": "This {{entity}} was edited somewhere else. You have unsaved changes here — review them before loading.",

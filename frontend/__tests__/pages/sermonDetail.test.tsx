@@ -109,6 +109,14 @@ jest.mock('@/components/sermon/ScratchPanel', () => ({
   },
 }));
 
+// The page reads the signed-in uid to address its durable drafts; TestProviders has
+// no AuthProvider, so without this the draft paths are silently skipped and a test
+// about them would pass while proving nothing.
+jest.mock('@/providers/AuthProvider', () => ({
+  useAuth: () => ({ user: { uid: 'u1' }, loading: false }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+
 jest.mock('@/hooks/useSermon', () => ({
   __esModule: true,
   default: jest.fn().mockReturnValue({
@@ -887,7 +895,14 @@ describe('Sermon Detail Page', () => {
 
       const applyPromise = mockScratchPanelProps.onApplyOutline!(appliedOutline, ['scratch-1']) as Promise<void>;
       await waitFor(() =>
-        expect(applyScratchToOutlineViaClient).toHaveBeenCalledWith('sermon-123', appliedOutline, [])
+        expect(applyScratchToOutlineViaClient).toHaveBeenCalledWith(
+          'sermon-123',
+          appliedOutline,
+          [],
+          // The plan and the note list this apply STARTED from: both fields are
+          // merged in one transaction instead of being replaced together.
+          expect.objectContaining({ scratch: expect.any(Array) })
+        )
       );
       await waitFor(() => expect(snapshots.at(-1).outline).toEqual(appliedOutline));
       await expect(applyPromise).resolves.toBeUndefined();
@@ -948,7 +963,14 @@ describe('Sermon Detail Page', () => {
       mockScratchPanelProps.onApplyOutline!(appliedOutline, ['scratch-1']);
 
       await waitFor(() =>
-        expect(applyScratchToOutlineViaClient).toHaveBeenCalledWith('sermon-123', appliedOutline, [])
+        expect(applyScratchToOutlineViaClient).toHaveBeenCalledWith(
+          'sermon-123',
+          appliedOutline,
+          [],
+          // The plan and the note list this apply STARTED from: both fields are
+          // merged in one transaction instead of being replaced together.
+          expect.objectContaining({ scratch: expect.any(Array) })
+        )
       );
       await waitFor(() => expect(snapshots[0].outline).toEqual(appliedOutline));
       expect(snapshots[0].scratch).toEqual([]);
@@ -1030,5 +1052,98 @@ describe('Sermon Detail Page', () => {
       expect(snapshots.at(-1).scratch).not.toEqual(previousScratch);
       consoleErrorSpy.mockRestore();
     });
+  });
+
+  /**
+   * A LEFTOVER LOCAL COPY MUST NOT BE APPLIED BY ITSELF.
+   *
+   * The preparation editor merged `prep-draft-backup-<sermonId>` over the server's
+   * preparation on mount — "local wins over stale remote" — so a backup left behind by
+   * a failed save weeks ago silently replaced what had been written on another device
+   * since, and the next save pushed it to the server. That is the exact failure the
+   * durable-draft layer exists to prevent: recovered text is OFFERED, never applied.
+   */
+  describe('preparation: a stale local backup is not applied silently', () => {
+    it('keeps the server value and does not send the leftover text', async () => {
+      const user = userEvent.setup();
+      const useSermonMock = require('@/hooks/useSermon').default;
+      useSermonMock.mockReturnValue({
+        ...defaultUseSermonReturn,
+        sermon: {
+          ...defaultUseSermonReturn.sermon,
+          preparation: { authorIntent: 'rewritten on the phone this morning' },
+        },
+      });
+      mockLocalStorage.getItem.mockImplementation((key: string) => {
+        if (key === 'sermon-sermon-123-mode') return 'prep';
+        if (key === 'prep-draft-backup-sermon-123') {
+          return JSON.stringify({ authorIntent: 'STALE text from a failed save' });
+        }
+        return null;
+      });
+      mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? 'prep' : null) });
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      await waitFor(() => expect(screen.queryByTestId('save-context-notes')).toBeInTheDocument());
+      // Edit a DIFFERENT field. The leftover copy of `authorIntent` must not ride along.
+      await user.click(screen.getByTestId('save-context-notes'));
+
+      const updateSermonPreparation = require('@/services/sermon.service').updateSermonPreparation;
+      await waitFor(() => expect(updateSermonPreparation).toHaveBeenCalled());
+      const [, payload, changedKeys] = updateSermonPreparation.mock.calls[0];
+      expect(payload.authorIntent).toBe('rewritten on the phone this morning');
+      expect(changedKeys).not.toContain('authorIntent');
+    }, 15_000);
+
+    it('OFFERS the leftover text instead, and applies it only when asked', async () => {
+      // Not applying it silently is only half the fix: the text must still be
+      // reachable, or "protecting" it means quietly discarding it.
+      const user = userEvent.setup();
+      const useSermonMock = require('@/hooks/useSermon').default;
+      useSermonMock.mockReturnValue({
+        ...defaultUseSermonReturn,
+        sermon: {
+          ...defaultUseSermonReturn.sermon,
+          preparation: { authorIntent: 'rewritten on the phone this morning' },
+        },
+      });
+      // A STATEFUL store for this one test: the shared mock does not keep what it is
+      // given, and the carry from the legacy key into the durable store is exactly a
+      // write followed by a read. With a forgetful mock the offer can never appear and
+      // the test would pass for the wrong reason.
+      const store = new Map<string, string>([
+        ['prep-draft-backup-sermon-123', JSON.stringify({ authorIntent: 'STALE text from a failed save' })],
+      ]);
+      mockLocalStorage.getItem.mockImplementation((key: string) => {
+        if (key === 'sermon-sermon-123-mode') return 'prep';
+        return store.get(key) ?? null;
+      });
+      mockLocalStorage.setItem.mockImplementation((key: string, value: string) => {
+        store.set(key, value);
+      });
+      mockLocalStorage.removeItem.mockImplementation((key: string) => {
+        store.delete(key);
+      });
+      mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? 'prep' : null) });
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      // The offer is on screen…
+      const restore = await screen.findByTestId('restore-prep-draft');
+      // …and the uid-less legacy key is retired, not read again on the next mount.
+      expect(mockLocalStorage.removeItem).toHaveBeenCalledWith('prep-draft-backup-sermon-123');
+
+      await user.click(restore);
+      expect(screen.queryByTestId('restore-prep-draft')).not.toBeInTheDocument();
+    }, 15_000);
   });
 });

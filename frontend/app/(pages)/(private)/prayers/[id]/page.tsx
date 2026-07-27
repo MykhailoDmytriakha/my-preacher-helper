@@ -23,9 +23,11 @@ import MarkAnsweredModal from '@/components/prayer/MarkAnsweredModal';
 import PrayerStatusBadge from '@/components/prayer/PrayerStatusBadge';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
+import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
+import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
 import '@locales/i18n';
 
@@ -49,6 +51,9 @@ export default function PrayerDetailPage() {
     resolvingConflict,
     keepMineOnConflict,
     takeTheirsOnConflict,
+    statusConflict,
+    keepMineOnStatusConflict,
+    takeTheirsOnStatusConflict,
   } =
     // The id makes a refused save durable — see usePrayerRequests.
     usePrayerRequests(user?.uid ?? null, typeof id === 'string' ? id : null);
@@ -80,10 +85,16 @@ export default function PrayerDetailPage() {
         : null,
     [prayer]
   );
+  const freshnessUid = useFreshnessUid(prayer?.userId);
   const prayerFreshness = useDocumentFreshness<PrayerWatched>({
     collection: 'prayerRequests',
     docId: prayer?.id ?? null,
-    uid: prayer?.userId ?? null,
+    // The CURRENT signed-in owner, not the owner stored on the cached document.
+    // A listener keyed by the document's own userId survives a logout: the cached
+    // entity keeps the old owner, the prop never changes, so the effect never
+    // cleans up. Requiring the two to match also refuses to listen to a foreign
+    // document left in the cache.
+    uid: freshnessUid,
     enabled: Boolean(prayer),
     known: knownPrayer,
     select: (data) => ({
@@ -98,10 +109,24 @@ export default function PrayerDetailPage() {
   });
   const [prayerFreshnessDismissed, setPrayerFreshnessDismissed] = useState(false);
   useEffect(() => {
-    if (prayerFreshness.state === 'stale') setPrayerFreshnessDismissed(false);
+    if (prayerFreshness.state === 'stale' || prayerFreshness.state === 'unknown') setPrayerFreshnessDismissed(false);
   }, [prayerFreshness.remote, prayerFreshness.state]);
 
   const [showEdit, setShowEdit] = useState(false);
+  /**
+   * The revision the edit form OPENED with — frozen, not read at save time.
+   * A focus refetch can advance the page object while the modal still holds the
+   * text it was opened with; pairing that fresh number with older text makes
+   * compare-and-set approve exactly the overwrite it exists to refuse.
+   */
+  const [editBaseRevision, setEditBaseRevision] = useState<number | null>(null);
+  /**
+   * And the VALUES the form opened with. The number alone is not enough: any writer
+   * that changes text without moving the counter leaves it truthful-looking, and
+   * the service used to fill this in from a read taken moments before the write —
+   * comparing the server with itself, which always agrees.
+   */
+  const [editBaseContent, setEditBaseContent] = useState<Record<string, unknown> | null>(null);
   const [showAddUpdate, setShowAddUpdate] = useState(false);
   const [showMarkAnswered, setShowMarkAnswered] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -197,7 +222,12 @@ export default function PrayerDetailPage() {
   const handleEdit = async (payload: Pick<PrayerRequest, 'title'> & Partial<Pick<PrayerRequest, 'description' | 'tags'>>) => {
     // State the revision this edit was built from, so a save from a tab that never
     // saw another device's change is refused rather than replacing it.
-    await updatePrayer(prayer.id, payload, prayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0);
+    await updatePrayer(
+      prayer.id,
+      payload,
+      editBaseRevision ?? prayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0,
+      editBaseContent
+    );
     toast.success(t('prayer.toast.updated'));
     setShowEdit(false);
   };
@@ -227,7 +257,23 @@ export default function PrayerDetailPage() {
   const handleMarkAnswered = async (answerText?: string) => {
     // The answer is human text, so state the revision it was built from: two
     // devices answering the same prayer must not overwrite each other in silence.
-    await setStatus(prayer.id, 'answered', answerText, prayer.rev?.[PRAYER_STATUS_AGGREGATE] ?? 0);
+    try {
+      // The answer is human text, so state the revision it was built from: two
+      // devices answering the same prayer must not overwrite each other.
+      await setStatus(prayer.id, 'answered', answerText, prayer.rev?.[PRAYER_STATUS_AGGREGATE] ?? 0, {
+        status: prayer.status,
+        answerText: prayer.answerText ?? null,
+      });
+    } catch (error) {
+      // REFUSED or failed — keep the modal OPEN. The typed answer lives nowhere
+      // else, so closing here would destroy it while claiming success.
+      toast.error(
+        isStaleWriteError(error) ? t('freshness.staleSaveToast') : t('common.saveError')
+      );
+      // RETHROW — see the note on the list page: a fulfilled submit closes the modal
+      // and takes the only copy of the typed answer with it.
+      throw error;
+    }
     toast.success(t('prayer.toast.statusChanged'));
     setShowMarkAnswered(false);
   };
@@ -247,12 +293,25 @@ export default function PrayerDetailPage() {
           busy={resolvingConflict}
         />
       )}
+      {/* The ANSWER was turned away. It is the longest text on this screen and it
+          lived only inside the modal — the backdrop, the ✕ and a reload all took it.
+          Its own aggregate, so its own banner: a refused title must not displace it. */}
+      {statusConflict && (
+        <SaveConflictBanner
+          entityKey="entityRecord"
+          pendingText={statusConflict.payload.answerText ?? undefined}
+          onKeepMine={keepMineOnStatusConflict}
+          onTakeTheirs={takeTheirsOnStatusConflict}
+          busy={resolvingConflict}
+        />
+      )}
       {/* This PRAYER REQUEST changed elsewhere — distinct from the app-update toast. */}
-      {prayerFreshness.state === 'stale' && !prayerFreshnessDismissed && (
+      {(prayerFreshness.state === 'stale' || prayerFreshness.state === 'unknown') && !prayerFreshnessDismissed && (
         <DataFreshnessBanner
           entityKey="entityRecord"
           dirty={false}
           deleted={prayerFreshness.remotelyDeleted}
+          unknown={prayerFreshness.state === 'unknown'}
           onDismiss={() => setPrayerFreshnessDismissed(true)}
         />
       )}
@@ -350,7 +409,15 @@ export default function PrayerDetailPage() {
 
           <div className="flex gap-1 ml-auto">
             <button
-              onClick={() => setShowEdit(true)}
+              onClick={() => {
+                setEditBaseRevision(prayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0);
+                setEditBaseContent({
+                  title: prayer.title,
+                  description: prayer.description ?? null,
+                  tags: prayer.tags ?? [],
+                });
+                setShowEdit(true);
+              }}
               className="flex items-center gap-1 px-3 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 rounded-lg"
             >
               <PencilIcon className="h-4 w-4" />

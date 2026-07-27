@@ -1,12 +1,9 @@
-import {
-  increment,
-  runTransaction,
-  updateDoc,
-  type DocumentReference,
-  type FieldValue,
-} from 'firebase/firestore';
+import { increment, runTransaction, type DocumentReference, type FieldValue } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
+import { auth } from '@/services/firebaseAuth.service';
+import { enqueueWrite, newIntentId } from '@/services/writeOutbox.client';
+import { contentFingerprint } from '@/utils/contentFingerprint';
 
 /**
  * Refuse a save that would overwrite a NEWER version.
@@ -80,15 +77,72 @@ export function revisionBump(aggregate: string): Record<string, FieldValue> {
   return { [`rev.${aggregate}`]: increment(1) };
 }
 
+/** The write could not be attempted; it is queued and will replay through the guard. */
+export class OfflineQueuedError extends Error {
+  readonly isOfflineQueued = true;
+  constructor(readonly aggregate: string) {
+    super(`No connection: the "${aggregate}" change is queued and will be saved when back online`);
+    this.name = 'OfflineQueuedError';
+  }
+}
+
+export function isOfflineQueuedError(error: unknown): error is OfflineQueuedError {
+  return Boolean((error as OfflineQueuedError | null)?.isOfflineQueued);
+}
+
 export interface ConflictSafeUpdateOptions {
   /** Which independently edited part of the document this write touches. */
   aggregate: string;
+  /**
+   * Where this write lives, so an offline attempt can be queued and replayed.
+   * Omit it and an offline caller simply gets the transaction's own failure —
+   * used by writers that have no durable identity to replay under.
+   */
+  outboxRoute?: { uid: string; collection: string; docId: string; savedAt: number };
   /**
    * The revision the caller's text was built from. `null` means the caller cannot
    * prove what it started from, so the write proceeds WITHOUT the guard — used by
    * paths not yet migrated, so behaviour there is exactly as before.
    */
   expectedRevision: number | null;
+  /**
+   * Fingerprint of the fields being written AS THE CALLER FOUND THEM, together
+   * with the exact field list it covers.
+   *
+   * The list is not decoration: the caller can only vouch for fields whose OPENING
+   * value it knows, while the patch may also carry fields the service derives on
+   * its own. Hashing "everything in the patch" on this side and "everything the
+   * editor knew" on the other guarantees a mismatch — a legitimate save refused
+   * forever.
+   *
+   * The counter alone is only as honest as the writers that maintain it. An old
+   * build still installed on someone's phone changes content and leaves the number
+   * alone — the counter then LIES, and a stale save matching that number is handed
+   * permission to overwrite. Enforcing the counter in Security Rules would close it
+   * but also lock those old clients out, which is a rollout decision, not a code
+   * change (see firestore.rules).
+   *
+   * Comparing the CONTENT closes the same hole from this side and needs nobody's
+   * cooperation: if the stored values of these very fields differ from what the
+   * caller started with, something changed them — counter or no counter — and the
+   * write is refused. Omit it and only the counter is checked, exactly as before.
+   */
+  /**
+   * The values of the written fields AS THE EDITOR OPENED THEM. The guard hashes
+   * these itself — callers pass plain values, never a precomputed hash, so there
+   * is one place where "what did we start from" is defined.
+   *
+   * Stored VERBATIM in the offline queue rather than as a hash: a replay may need
+   * to check only SOME of these fields (the others having been rewritten by an
+   * earlier intent from the same person), and a hash cannot be narrowed.
+   */
+  expectedBaseline?: Record<string, unknown> | null;
+}
+
+/** A fingerprint plus the fields it covers. Built by `baselineFingerprint`. */
+export interface ExpectedContent {
+  fields: string[];
+  fingerprint: string;
 }
 
 /**
@@ -116,62 +170,176 @@ export function isUnreachableWriteError(error: unknown): boolean {
  * only ever compares and writes the caller's fixed patch — it does not rebuild
  * anything from data it read.
  *
- * OFFLINE — two different situations, deliberately handled differently.
+ * OFFLINE — two situations, and NEITHER of them writes unconditionally.
  *
- * (a) The browser ALREADY KNOWS it is offline (`navigator.onLine === false`): a
- *     transaction is impossible, so we take the pre-guard path openly — see the
- *     comment at the check below.
- * (b) The server turns out to be unreachable MID-FLIGHT: the transaction rejects
- *     and that rejection is passed to the caller untouched. It is NOT converted
- *     into a write. An earlier version did exactly that — a queued unconditional
- *     last-write-wins patch that ALSO reported success — and adversarial review
- *     was right to kill it: the editor retired its durable draft for a write the
- *     server had never seen, and on reconnect that patch overwrote whatever the
- *     other device had stored. Both outcomes this mechanism exists to prevent.
+ * (a) The browser already knows it is offline and the caller gave an
+ *     `outboxRoute`: the intent is queued and `OfflineQueuedError` is thrown, so
+ *     the caller says "will save when you are back online" and KEEPS its draft.
+ *     `replayOutbox` later puts that intent through this same function.
+ * (b) The server turns out to be unreachable mid-flight (or the caller gave no
+ *     route): the transaction's own rejection reaches the caller untouched.
  *
- * Callers can tell (b) apart from a conflict with `isUnreachableWriteError`, so the
- * UI can say "no connection" instead of showing a conflict choice. The real fix for
- * offline protection is a durable OUTBOX replaying the SAME compare-and-set on
- * reconnect — see BUGS.md; it is a build, not a fallback.
+ * An earlier version "helpfully" converted both into an ordinary queued write
+ * that ALSO reported success. Adversarial review was right to call it the worst
+ * thing here: the editor retired its durable draft for a write the server had
+ * never seen, and on reconnect that patch overwrote whatever the other device had
+ * stored. Callers tell the two apart with `isOfflineQueuedError` and
+ * `isUnreachableWriteError`, so the UI can say "no connection" rather than
+ * showing a conflict choice for something that never reached a server.
  */
+/**
+ * Fingerprint the stored values of exactly the fields this write would replace.
+ *
+ * Only those: a write that touches the title must not be refused because someone
+ * edited the verse — false conflicts teach people to click through the dialog,
+ * and then the real one is skipped too.
+ */
+function fingerprintOfFields(stored: Record<string, unknown>, fields: string[]): string {
+  return contentFingerprint(
+    [...fields].sort().map((name) => [name, stored[name] ?? null])
+  );
+}
+
+/**
+ * Fingerprint the fields this write replaces, taken FROM THE VALUES THE EDITOR
+ * OPENED WITH — never from a fresh read.
+ *
+ * ⚠️ THIS DISTINCTION IS THE WHOLE PROTECTION. Every service used to compute the
+ * fingerprint from a `getDoc` performed moments before the write. That compares
+ * the server with ITSELF: the fingerprint always matched, content had the final
+ * word over the counter, and a laptop saving text built from revision 4 quietly
+ * replaced the paragraph the phone had stored as revision 5. Adversarial review
+ * called it correctly — the protection was a no-op wherever it was computed that
+ * way.
+ *
+ * Only fields whose OPENING value we actually know are fingerprinted. A field the
+ * service adds by itself (`updatedAt`, a derived flag) is not something the caller
+ * started from, and vouching for it would refuse legitimate saves.
+ *
+ * No baseline at all → NO fingerprint, and the counter alone decides. That errs
+ * toward a false refusal, which costs a question; the other error costs text.
+ */
+export function baselineFingerprint(
+  baseline: Record<string, unknown> | null | undefined,
+  writtenFields: Record<string, unknown>
+): ExpectedContent | undefined {
+  if (!baseline) return undefined;
+  const fields = Object.keys(writtenFields)
+    .filter((name) => !name.startsWith('rev.') && name !== 'updatedAt')
+    .filter((name) => name in baseline)
+    .sort();
+  if (fields.length === 0) return undefined;
+  return {
+    fields,
+    fingerprint: contentFingerprint(fields.map((name) => [name, baseline[name] ?? null])),
+  };
+}
+
 export async function conflictSafeUpdate(
   ref: DocumentReference,
   // Firestore accepts nulls too (a field explicitly set to null), so the shape
   // must not be narrower than what callers already pass to `updateDoc`.
   patch: { [field: string]: FieldValue | Partial<unknown> | null | undefined },
   notFoundMessage: string,
-  { aggregate, expectedRevision }: ConflictSafeUpdateOptions
+  { aggregate, expectedRevision, outboxRoute, expectedBaseline }: ConflictSafeUpdateOptions
 ): Promise<number> {
-  // OFFLINE: take the PRE-GUARD path deliberately, not as a disguised CAS.
-  // A transaction cannot run without the server, and failing outright would be a
-  // functional regression for a PWA (before this mechanism an offline edit queued
-  // and landed on reconnect). So we issue the ordinary write and AWAIT it — offline
-  // that promise does not settle until reconnect, exactly as before, which is what
-  // keeps it honest: the caller never sees a success it did not get, never marks
-  // anything saved, and never retires its durable draft. The counter still advances
-  // via `increment`. What we do NOT get is protection — impossible without a server;
-  // on reconnect this is last-write-wins, the same risk the app always had here.
-  // The real fix is a durable outbox replaying the same CAS (BUGS.md).
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-    await updateDoc(ref, { ...patch, ...revisionBump(aggregate) });
-    return (expectedRevision ?? 0) + 1;
+  // OFFLINE: queue the INTENT, never an unconditional write.
+  //
+  // A transaction cannot run without the server. Writing an ordinary patch instead
+  // would land on reconnect as last-write-wins and could silently replace whatever
+  // another device stored meanwhile — the exact bug this mechanism exists to
+  // prevent, which is why adversarial review called that fallback a P0. So the
+  // patch, its aggregate and the revision it was built from go into the durable
+  // outbox, and `replayOutbox` puts each one through THIS SAME function on
+  // reconnect. Refused there, it is kept as `conflicted` with its text intact.
+  //
+  // The caller is told plainly (`OfflineQueuedError`) so it can say "will save
+  // when you are back online" and KEEP its draft — never "saved".
+  const queueIntent = (): boolean => {
+    if (!outboxRoute) return false;
+    // The intent belongs to the person WHO IS SIGNED IN, never to the owner field
+    // of a cached document. On a shared browser those differ: account B editing a
+    // stale copy of account A's document would queue under A, vanish from B, and
+    // then replay inside A's authorized session later. Queue nothing rather than
+    // launder a write into someone else's account.
+    const actorUid = auth.currentUser?.uid;
+    if (!actorUid || actorUid !== outboxRoute.uid) return false;
+    return enqueueWrite({
+      // A FRESH id per intent: a shared one made the queue a single slot, so a
+      // second offline edit of the same aggregate erased the first.
+      id: newIntentId(),
+      uid: actorUid,
+      collection: outboxRoute!.collection,
+      docId: outboxRoute!.docId,
+      aggregate,
+      patch: patch as Record<string, unknown>,
+      baseRevision: expectedRevision ?? 0,
+      // The content check must survive the queue. Without it a replayed offline
+      // edit falls back to the counter alone — and the counter is exactly what an
+      // old build fails to advance, which is the hole the fingerprint closes.
+      // Verbatim, not hashed — see `expectedBaseline` on the options.
+      expectedBaseline: expectedBaseline ?? undefined,
+      status: 'pending',
+      savedAt: outboxRoute!.savedAt,
+    });
+  };
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false && outboxRoute) {
+    // Only claim "queued" when it REALLY is. If storage refused the entry, fall
+    // through to the transaction so the caller gets a visible failure instead of
+    // a promise nobody can keep.
+    if (queueIntent()) throw new OfflineQueuedError(aggregate);
   }
 
   let committedRevision = 0;
 
-  await runTransaction(getClientDb(), async (tx) => {
+  try {
+    await runTransaction(getClientDb(), async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists()) throw new Error(notFoundMessage);
 
     const current = readRevision(snap.data() as Record<string, unknown>, aggregate);
 
-    if (expectedRevision !== null && current !== expectedRevision) {
+    // Two questions, and the CONTENT gets the final word.
+    //
+    // The counter tracks the whole aggregate, so it moves when ANY of its fields
+    // changes — including one this write does not touch. Judging by the counter
+    // alone therefore refuses a title save because the phone toggled "preached",
+    // and a person who meets that a few times learns to click through the dialog.
+    // The counter is also only as honest as the writers that maintain it: an old
+    // build changes text and leaves it alone.
+    //
+    // So: if the fields WE are about to replace are byte-for-byte what this caller
+    // started from, the write is safe no matter what the counter says. If they are
+    // not, it is refused no matter how reassuring the counter looks.
+    const expectedContent = baselineFingerprint(expectedBaseline, patch as Record<string, unknown>);
+    const fingerprintMatches =
+      expectedContent !== undefined &&
+      fingerprintOfFields(snap.data() as Record<string, unknown>, expectedContent.fields) ===
+        expectedContent.fingerprint;
+
+    if (expectedContent !== undefined) {
+      if (!fingerprintMatches) {
+        throw new StaleWriteError(aggregate, expectedRevision ?? current, current);
+      }
+    } else if (expectedRevision !== null && current !== expectedRevision) {
+      // No content to compare — the counter is all we have.
       throw new StaleWriteError(aggregate, expectedRevision, current);
     }
 
-    committedRevision = current + 1;
-    tx.update(ref, { ...patch, [`rev.${aggregate}`]: committedRevision });
-  });
+      committedRevision = current + 1;
+      tx.update(ref, { ...patch, [`rev.${aggregate}`]: committedRevision });
+    });
+  } catch (error) {
+    // NOMINALLY ONLINE but unreachable — a captive portal, a dead hotel link. The
+    // offline branch above never ran because the browser claimed a connection, so
+    // without this the text would live only in the DOM until the tab closes.
+    // A refusal is the mechanism working and must never be turned into a write.
+    if (!isStaleWriteError(error) && isUnreachableWriteError(error) && queueIntent()) {
+      throw new OfflineQueuedError(aggregate);
+    }
+    throw error;
+  }
 
   return committedRevision;
 }

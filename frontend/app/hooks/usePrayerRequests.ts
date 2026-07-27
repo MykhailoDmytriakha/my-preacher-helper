@@ -8,7 +8,7 @@ import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
-import { PRAYER_CORE_AGGREGATE } from '@/services/prayerRequests.client';
+import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
 import { newClientId } from '@/utils/clientId';
 import { PRAYER_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import { normalizeError } from '@/utils/normalizeError';
@@ -40,6 +40,12 @@ type StatusMutationVars = {
   status: PrayerStatus;
   /** Revision the status change was built from; guards the human `answerText`. */
   expectedRevision?: number | null;
+  /**
+   * Status/answer values as the MODAL OPENED them. The service must not derive this
+   * from its own fresh read — that compares the server with itself and agrees every
+   * time, which is how a stale answer replaced the one written on the other device.
+   */
+  expectedBaseline?: Record<string, unknown> | null;
   updatedAt: string;
   answeredAt?: string;
   answerText?: string;
@@ -64,6 +70,18 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
     id: string;
     updates: Partial<PrayerRequest>;
   }>(userId ?? null, activeDocId ?? null, PRAYER_CORE_AGGREGATE);
+  /**
+   * A REFUSED ANSWER, held durably — the answer is the longest text in this screen and
+   * it lives nowhere but the modal that carries it. The modal now stays open on a
+   * refusal, but the backdrop and the ✕ still close it, and a reload always did: the
+   * ninth review was right that "stays open" is not durability. This is a separate
+   * slot from the core fields, because status and answer are their own aggregate.
+   */
+  const [statusConflict, setStatusConflict] = usePersistedConflict<{
+    id: string;
+    status: PrayerStatus;
+    answerText?: string;
+  }>(userId ?? null, activeDocId ?? null, PRAYER_STATUS_AGGREGATE);
   const [resolvingConflict, setResolvingConflict] = useState(false);
   const { uid: resolvedUid } = useResolvedUid();
   const effectiveUserId = userId ?? resolvedUid ?? null;
@@ -144,11 +162,13 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
       id,
       updates,
       expectedRevision,
+      expectedBaseline,
     }: {
       id: string;
       updates: Partial<PrayerRequest>;
       expectedRevision?: number | null;
-    }) => updatePrayerRequest(id, updates, expectedRevision ?? null),
+      expectedBaseline?: Record<string, unknown> | null;
+    }) => updatePrayerRequest(id, updates, expectedRevision ?? null, expectedBaseline ?? null),
     onMutate: async ({ id, updates }) => {
       await queryClient.cancelQueries({ queryKey: listKey });
       const previous = queryClient.getQueryData<PrayerRequest[]>(listKey);
@@ -174,11 +194,13 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
       }
       reportError(e);
     },
-    onSuccess: (updated) => {
+    onSuccess: (updated, vars) => {
       if (updated?.id) replacePrayerInCaches(updated);
       // Clear the conflict HERE — on the actual commit. Clearing it at click time
       // would throw the typed text away before knowing whether the resend landed.
-      setSaveConflict(null);
+      // And NAME the prayer it belongs to: a commit landing after the person opened
+      // another one would otherwise empty THAT prayer's slot instead.
+      setSaveConflict(null, vars.id);
       setMutationError(null);
     },
     onSettled: () => {
@@ -232,7 +254,7 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
       setMutationError(null);
       return { previous: previous ?? [], previousDetail, id };
     },
-    onError: (e: unknown, _vars, ctx) => {
+    onError: (e: unknown, vars, ctx) => {
       queryClient.setQueryData(listKey, ctx?.previous ?? []);
       if (ctx?.id) queryClient.setQueryData(detailKey(ctx.id), ctx.previousDetail);
       reportError(e);
@@ -248,8 +270,22 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
 
   const statusMutation = useMutation({
     mutationKey: PRAYER_MUTATION_KEYS.status,
-    mutationFn: ({ id, status, answerText, updatedAt, answeredAt, expectedRevision }: StatusMutationVars) =>
-      setPrayerStatus(id, { status, answerText, updatedAt, answeredAt }, undefined, expectedRevision ?? null),
+    mutationFn: ({
+      id,
+      status,
+      answerText,
+      updatedAt,
+      answeredAt,
+      expectedRevision,
+      expectedBaseline,
+    }: StatusMutationVars) =>
+      setPrayerStatus(
+        id,
+        { status, answerText, updatedAt, answeredAt },
+        undefined,
+        expectedRevision ?? null,
+        expectedBaseline ?? null
+      ),
     onMutate: async ({ id, status, answerText, updatedAt, answeredAt }) => {
       await queryClient.cancelQueries({ queryKey: listKey });
       const previous = queryClient.getQueryData<PrayerRequest[]>(listKey);
@@ -271,19 +307,58 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
       setMutationError(null);
       return { previous: previous ?? [], previousDetail, id };
     },
-    onError: (e: unknown, _vars, ctx) => {
+    onError: (e: unknown, vars, ctx) => {
       queryClient.setQueryData(listKey, ctx?.previous ?? []);
       if (ctx?.id) queryClient.setQueryData(detailKey(ctx.id), ctx.previousDetail);
+      // A REFUSAL keeps the typed answer somewhere that survives the modal, the
+      // backdrop, the ✕ and a reload. Any other failure is reported as before.
+      if (isStaleWriteError(e)) {
+        setStatusConflict(
+          {
+            payload: { id: vars.id, status: vars.status, answerText: vars.answerText },
+            actualRevision: e.actualRevision,
+          },
+          vars.id
+        );
+      }
       reportError(e);
     },
-    onSuccess: (updated) => {
+    onSuccess: (updated, vars) => {
       if (updated?.id) replacePrayerInCaches(updated);
+      // Committed — only now is the refused answer safe to retire, and only for the
+      // prayer it was typed for.
+      setStatusConflict(null, vars.id);
       setMutationError(null);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: PRAYER_PREFIX });
     },
   });
+
+  /** Send the refused ANSWER again, deliberately, on top of the newer version. */
+  const keepMineOnStatusConflict = async () => {
+    if (!statusConflict || resolvingConflict) return;
+    setResolvingConflict(true);
+    try {
+      const updatedAt = new Date().toISOString();
+      statusMutation.mutate({
+        id: statusConflict.payload.id,
+        status: statusConflict.payload.status,
+        answerText: statusConflict.payload.answerText,
+        updatedAt,
+        expectedRevision: statusConflict.actualRevision,
+        ...(statusConflict.payload.status === 'answered' ? { answeredAt: updatedAt } : {}),
+      });
+    } finally {
+      setResolvingConflict(false);
+    }
+  };
+
+  /** Drop the refused answer and keep what the other device stored. */
+  const takeTheirsOnStatusConflict = () => {
+    if (!statusConflict) return;
+    setStatusConflict(null, statusConflict.payload.id);
+  };
 
   /** Save the refused edit on top of the newer version — a deliberate overwrite. */
   const keepMineOnConflict = async () => {
@@ -321,7 +396,7 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
         reportError(new Error('refresh failed'));
         return;
       }
-      setSaveConflict(null);
+      setSaveConflict(null, saveConflict?.payload.id);
     } finally {
       setResolvingConflict(false);
     }
@@ -351,15 +426,20 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
     updatePrayer: async (
       id: string,
       updates: Partial<PrayerRequest>,
-      expectedRevision?: number | null
+      expectedRevision?: number | null,
+      /** The edited fields as the form OPENED them — see the guard's baseline. */
+      expectedBaseline?: Record<string, unknown> | null
     ) => {
-      await updateMutation.mutateAsync({ id, updates, expectedRevision });
+      await updateMutation.mutateAsync({ id, updates, expectedRevision, expectedBaseline });
     },
     /** A refused save waiting for a decision — render the conflict choice. */
     saveConflict,
     resolvingConflict,
     keepMineOnConflict,
     takeTheirsOnConflict,
+    statusConflict,
+    keepMineOnStatusConflict,
+    takeTheirsOnStatusConflict,
     deletePrayer: async (id: string) => {
       deleteMutation.mutate(id);
     },
@@ -371,19 +451,29 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
         createdAt: new Date().toISOString(),
       });
     },
+    /**
+     * AWAITED, like updatePrayer. Marking a prayer answered carries human text,
+     * and this used to resolve the moment the write was SENT: the page announced
+     * the change and closed the modal, the guarded write was refused afterwards,
+     * and the typed answer — which lived only in that modal — was gone. Awaiting
+     * the real outcome lets the caller keep the modal open and the words on screen.
+     */
     setStatus: async (
       id: string,
       status: PrayerStatus,
       answerText?: string,
-      expectedRevision?: number | null
+      expectedRevision?: number | null,
+      /** Status/answer as the modal OPENED them — see the guard's baseline. */
+      expectedBaseline?: Record<string, unknown> | null
     ) => {
       const updatedAt = new Date().toISOString();
-      statusMutation.mutate({
+      await statusMutation.mutateAsync({
         id,
         status,
         answerText,
         updatedAt,
         expectedRevision,
+        expectedBaseline,
         ...(status === 'answered' ? { answeredAt: updatedAt } : {}),
       });
     },

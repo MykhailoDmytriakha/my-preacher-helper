@@ -70,9 +70,10 @@ export async function deleteSermon(sermonId: string): Promise<void> {
 export const updateSermon = async (
   updatedSermon: Sermon,
   patch?: SermonCoreUpdate,
-  expectedRevision: number | null = null
+  expectedRevision: number | null = null,
+  expectedBaseline?: Record<string, unknown> | null
 ): Promise<Sermon | null> => {
-  return updateSermonViaClient(updatedSermon, patch, expectedRevision);
+  return updateSermonViaClient(updatedSermon, patch, expectedRevision, expectedBaseline);
 };
 
 /** `changedKeys` limits the write to those preparation steps — see the client. */

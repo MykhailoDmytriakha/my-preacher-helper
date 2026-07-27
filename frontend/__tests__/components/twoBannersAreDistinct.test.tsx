@@ -1,0 +1,66 @@
+import { render, screen } from '@testing-library/react';
+
+import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
+import en from '@locales/en/translation.json';
+import ru from '@locales/ru/translation.json';
+import uk from '@locales/uk/translation.json';
+import '@testing-library/jest-dom';
+
+/**
+ * TWO DIFFERENT EVENTS MUST NOT SOUND THE SAME.
+ *
+ * "The app has a new version" and "this document changed on another device" call for
+ * opposite reactions: one is safe to postpone, the other means the text on screen is
+ * already someone's yesterday. The app used to have only the first, worded facelessly
+ * ("A new version is available"), so there was nothing to distinguish. These pin the
+ * distinction in all three locales — a wording change that quietly merges them again
+ * fails here.
+ */
+const locales: Record<string, Record<string, unknown>> = { en, ru, uk };
+
+jest.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: Record<string, unknown>) => {
+      const value = key
+        .split('.')
+        .reduce<unknown>((node, part) => (node as Record<string, unknown>)?.[part], locales.ru);
+      const text = typeof value === 'string' ? value : key;
+      return options?.entity ? text.replace('{{entity}}', String(options.entity)) : text;
+    },
+  }),
+}));
+
+describe('the data pill and the app-update toast say different things', () => {
+  it.each(['en', 'ru', 'uk'])('%s: neither title is a copy of the other', (locale) => {
+    const bundle = locales[locale] as unknown as {
+      pwa: { updateAvailable: { title: string; description: string; action: string } };
+      freshness: { title: string; description: string };
+    };
+
+    const appTitle = bundle.pwa.updateAvailable.title;
+    const dataTitle = bundle.freshness.title;
+
+    expect(appTitle).toBeTruthy();
+    expect(dataTitle).toBeTruthy();
+    expect(appTitle).not.toBe(dataTitle);
+    // And each says WHICH of the two things happened, rather than a bare
+    // "something is available".
+    expect(`${appTitle} ${bundle.pwa.updateAvailable.description}`.toLowerCase()).toMatch(
+      /app|прилож|застосун|програм/
+    );
+    expect(`${dataTitle} ${bundle.freshness.description}`.toLowerCase()).toMatch(
+      /device|устройств|пристро/
+    );
+  });
+
+  it('the data pill names the entity and offers to load the newer version', () => {
+    render(
+      <DataFreshnessBanner dirty={false} entityKey="entitySermon" onRefresh={() => undefined} onDismiss={() => undefined} />
+    );
+
+    expect(screen.getByRole('status')).toHaveTextContent(ru.freshness.title);
+    // The entity is interpolated, so the person knows WHAT changed.
+    expect(screen.getByRole('status')).toHaveTextContent(ru.freshness.entitySermon);
+    expect(screen.getByText(ru.freshness.refreshAction)).toBeInTheDocument();
+  });
+});

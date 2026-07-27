@@ -109,7 +109,7 @@ describe('useGroupDetail', () => {
 
     // Third argument = the revision this edit was built from, so a save from a tab
     // that never saw another device's change is refused rather than applied.
-    expect(mockUpdateGroup).toHaveBeenCalledWith('g1', { title: 'Updated' }, 0);
+    expect(mockUpdateGroup).toHaveBeenCalledWith('g1', { title: 'Updated' }, 0, null);
     // addMeetingDate mints a stable client id in the wrapper (idempotent add).
     expect(mockAddGroupMeetingDate).toHaveBeenCalledWith(
       'g1',
@@ -234,7 +234,7 @@ describe('useGroupDetail', () => {
         await result.current.updateGroupDetail({ title: 'Updated' });
       });
 
-      expect(mockUpdateGroup).toHaveBeenCalledWith('g1', { title: 'Updated' }, 5);
+      expect(mockUpdateGroup).toHaveBeenCalledWith('g1', { title: 'Updated' }, 5, null);
     });
 
     it('holds the refused edit instead of toasting a generic failure', async () => {
@@ -269,7 +269,7 @@ describe('useGroupDetail', () => {
       });
 
       // 9, NOT 5: otherwise the resend is refused again and the button lies.
-      expect(mockUpdateGroup).toHaveBeenLastCalledWith('g1', { title: 'Typed on the laptop' }, 9);
+      expect(mockUpdateGroup).toHaveBeenLastCalledWith('g1', { title: 'Typed on the laptop' }, 9, null);
     });
 
 
@@ -292,7 +292,37 @@ describe('useGroupDetail', () => {
       });
 
       // 6, not 5 — the second save is built on what the first one committed.
-      expect(mockUpdateGroup).toHaveBeenLastCalledWith('g1', { title: 'Second edit' }, 6);
+      expect(mockUpdateGroup).toHaveBeenLastCalledWith('g1', { title: 'Second edit' }, 6, null);
+    });
+
+    it('tells the form to ADOPT the other version, not just clear the banner', async () => {
+      // Clearing the conflict was not enough: the screen initialises its inputs once
+      // per group id, so after the refetch the person was still looking at their own
+      // old text — the version they asked for never appeared, and the next autosave
+      // conflicted again. The nonce is that signal.
+      mockUpdateGroup.mockRejectedValueOnce(new StaleWriteError('content', 5, 9));
+      // The refresh SUCCEEDS here — that is the case under test.
+      mockUseServerFirstQuery.mockReturnValue({
+        data: groupAtRev5,
+        isLoading: false,
+        isFetching: false,
+        error: null,
+        refetch: jest.fn().mockResolvedValue({ isError: false, data: groupAtRev5 }),
+      } as any);
+      const { result } = renderHook(() => useGroupDetail('g1'), { wrapper: createWrapper() });
+
+      await act(async () => {
+        await result.current.updateGroupDetail({ title: 'Typed on the laptop' });
+      });
+      await waitFor(() => expect(result.current.saveConflict).not.toBeNull());
+      const before = result.current.adoptRemoteNonce;
+
+      await act(async () => {
+        await result.current.takeTheirsOnConflict();
+      });
+
+      expect(result.current.saveConflict).toBeNull();
+      expect(result.current.adoptRemoteNonce).toBe(before + 1);
     });
 
     it('does NOT discard the refused text when "take theirs" fails to load', async () => {

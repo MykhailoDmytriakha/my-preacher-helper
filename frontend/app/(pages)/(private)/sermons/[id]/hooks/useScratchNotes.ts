@@ -87,10 +87,20 @@ export function useScratchNotes({
   const isWritePending = pendingWriteCount > 0;
 
   const persistScratch = useCallback(
-    (action: ScratchPersistAction, sermonId: string, scratch: ScratchNote[]) => {
-      if (action === 'add') return persistAddedScratchNotes(sermonId, scratch);
-      if (action === 'delete') return persistDeletedScratchNotes(sermonId, scratch);
-      return persistUpdatedScratchNotes(sermonId, scratch);
+    (
+      action: ScratchPersistAction,
+      sermonId: string,
+      scratch: ScratchNote[],
+      /**
+       * The list this operation STARTED from. It is what turns the write from
+       * "replace the whole array" into "merge by note id": without it, a note added
+       * on the phone this morning disappears when this screen saves anything.
+       */
+      baseScratch: ScratchNote[]
+    ) => {
+      if (action === 'add') return persistAddedScratchNotes(sermonId, scratch, baseScratch);
+      if (action === 'delete') return persistDeletedScratchNotes(sermonId, scratch, baseScratch);
+      return persistUpdatedScratchNotes(sermonId, scratch, baseScratch);
     },
     []
   );
@@ -209,11 +219,15 @@ export function useScratchNotes({
       action: ScratchPersistAction,
       mutate: (currentScratch: ScratchNote[]) => ScratchNote[]
     ) => {
+      // Captured while building the next list — the values this operation started
+      // from, which is exactly what the merge needs.
+      let baseScratch: ScratchNote[] = [];
       enqueueSermonScratchMutation({
-        buildNext: (currentSermon) => ({
-          scratch: mutate(currentSermon.scratch ?? []),
-        }),
-        persist: (sermonId, next) => persistScratch(action, sermonId, next.scratch),
+        buildNext: (currentSermon) => {
+          baseScratch = currentSermon.scratch ?? [];
+          return { scratch: mutate(baseScratch) };
+        },
+        persist: (sermonId, next) => persistScratch(action, sermonId, next.scratch, baseScratch),
         errorMessage: 'Failed to persist scratch notes',
       });
     },
@@ -291,14 +305,29 @@ export function useScratchNotes({
     (finalOutline: SermonOutline, consumedNoteIds: string[]) => {
       const consumedIds = new Set(consumedNoteIds);
 
+      // What this apply STARTED from — both fields, captured while building the next
+      // state. It is what lets the write merge instead of replacing the plan and the
+      // note list together.
+      let applyBase: { outline?: SermonOutline | null; scratch?: ScratchNote[] | null } = {};
       return enqueueSermonScratchMutation({
         writesOutline: true,
-        buildNext: (currentSermon) => ({
-          outline: finalOutline,
-          scratch: (currentSermon.scratch ?? []).filter((note) => !consumedIds.has(note.id)),
-        }),
+        buildNext: (currentSermon) => {
+          applyBase = {
+            outline: currentSermon.outline ?? null,
+            scratch: currentSermon.scratch ?? [],
+          };
+          return {
+            outline: finalOutline,
+            scratch: (currentSermon.scratch ?? []).filter((note) => !consumedIds.has(note.id)),
+          };
+        },
         persist: (sermonId, next) =>
-          applyScratchToOutlineViaClient(sermonId, next.outline ?? finalOutline, next.scratch),
+          applyScratchToOutlineViaClient(
+            sermonId,
+            next.outline ?? finalOutline,
+            next.scratch,
+            applyBase
+          ),
         mergeScratchRollback: (latestScratch, previousScratch) => {
           const latestIds = new Set(latestScratch.map((note) => note.id));
           const restoredConsumedNotes = previousScratch.filter(

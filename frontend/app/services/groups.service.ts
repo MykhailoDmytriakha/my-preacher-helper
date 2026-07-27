@@ -97,11 +97,19 @@ async function createGroupViaClient(group: Omit<Group, 'id'> & { id?: string }):
 
 /** Group content edited by a human is one aggregate; meetingDates are handled apart. */
 export const GROUP_CONTENT_AGGREGATE = 'content';
+export const GROUP_MEETING_DATES_AGGREGATE = 'meetingDates';
 
 async function updateGroupViaClient(
   groupId: string,
   updates: Partial<Group>,
-  expectedRevision: number | null = null
+  expectedRevision: number | null = null,
+  /**
+   * The values these fields had when the editor OPENED — its own baseline, not a
+   * fresh read. This is the whole difference between a real check and a no-op: a
+   * fingerprint taken from a `getDoc` issued moments before the write compares the
+   * server with itself and always agrees, so the stale text goes in.
+   */
+  expectedBaseline: Record<string, unknown> | null = null
 ): Promise<Group> {
   const db = getClientDb();
   const ref = doc(db, GROUPS_COLLECTION, groupId);
@@ -118,6 +126,13 @@ async function updateGroupViaClient(
     const committed = await conflictSafeUpdate(ref, cleanUpdates, GROUP_NOT_FOUND, {
       aggregate: GROUP_CONTENT_AGGREGATE,
       expectedRevision,
+      // Content check alongside the counter — from the CALLER's opening values, so
+      // a writer that skipped the counter is caught and an unrelated field never
+      // provokes a false conflict.
+      expectedBaseline,
+      outboxRoute: current.userId
+        ? { uid: current.userId, collection: GROUPS_COLLECTION, docId: groupId, savedAt: Date.now() }
+        : undefined,
     });
     // Carry the COMMITTED revision back. Without it the caller keeps the pre-write
     // number and its next save is refused as stale — a false conflict on the
@@ -192,6 +207,7 @@ async function addGroupMeetingDateViaClient(
       return {
         meetingDates: [...meetingDates, deepCleanUndefined(committed)],
         updatedAt: new Date().toISOString(),
+        ...revisionBump(GROUP_MEETING_DATES_AGGREGATE),
       };
     },
     GROUP_NOT_FOUND,
@@ -226,7 +242,13 @@ async function updateGroupMeetingDateViaClient(
 
   const nextDates = [...meetingDates];
   nextDates[index] = deepCleanUndefined(updatedMeetingDate);
-  await updateDoc(ref, { meetingDates: nextDates, updatedAt: new Date().toISOString() });
+  await updateDoc(ref, {
+    meetingDates: nextDates,
+    updatedAt: new Date().toISOString(),
+    // Its own aggregate: a meeting-date edit must not make the CONTENT editor
+    // look stale, and content edits must not vouch for meeting dates.
+    ...revisionBump(GROUP_MEETING_DATES_AGGREGATE),
+  });
   return updatedMeetingDate;
 }
 
@@ -237,6 +259,7 @@ async function deleteGroupMeetingDateViaClient(groupId: string, dateId: string):
     (group) => ({
       meetingDates: (group.meetingDates || []).filter((entry) => entry.id !== dateId),
       updatedAt: new Date().toISOString(),
+      ...revisionBump(GROUP_MEETING_DATES_AGGREGATE),
     }),
     GROUP_NOT_FOUND,
     { retryTransientAsQueuedWrite: true } // removal is idempotent on fresh data
@@ -264,14 +287,16 @@ export const updateGroup = async (
   groupId: string,
   updates: Partial<Group>,
   /** Revision this edit was built from; `null` keeps the unguarded legacy path. */
-  expectedRevision: number | null = null
+  expectedRevision: number | null = null,
+  /** The content fields as the SCREEN OPENED them — see the guard's baseline. */
+  expectedBaseline: Record<string, unknown> | null = null
 ): Promise<Group> => {
   // Playlist model: a group's series membership lives in series.items and is
   // written ONLY by the client sweep (useSeriesMembership) — never as a group
   // back-ref. Strip the deprecated seriesId/seriesPosition so a stray caller
   // can't write them, and keep updateGroup a pure own-doc client write.
   const { seriesId: _seriesId, seriesPosition: _seriesPosition, ...contentUpdates } = updates;
-  return updateGroupViaClient(groupId, contentUpdates, expectedRevision);
+  return updateGroupViaClient(groupId, contentUpdates, expectedRevision, expectedBaseline);
 };
 
 // DELETE stays on the server: it cascades via seriesRepository.removeGroupFromAllSeries

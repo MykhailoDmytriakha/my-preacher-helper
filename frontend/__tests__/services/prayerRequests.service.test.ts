@@ -63,7 +63,7 @@ describe('prayerRequests.service', () => {
     expect(mockGetPrayerRequestByIdViaClient).toHaveBeenCalledWith('p1');
     // Third argument = the revision this edit was built from; `null` keeps the
     // unguarded legacy path for callers that cannot state one.
-    expect(mockUpdatePrayerRequestViaClient).toHaveBeenCalledWith('p1', { title: 'Updated' }, null);
+    expect(mockUpdatePrayerRequestViaClient).toHaveBeenCalledWith('p1', { title: 'Updated' }, null, null);
     expect(mockDeletePrayerRequestViaClient).toHaveBeenCalledWith('p1');
     expect(mockAddPrayerUpdateViaClient).toHaveBeenCalledWith('p1', {
       updateId: 'stable-client-id',
@@ -80,6 +80,7 @@ describe('prayerRequests.service', () => {
         updatedAt: expect.any(String),
         answeredAt: expect.any(String),
       },
+      null,
       null
     );
     expect(mockFetch).not.toHaveBeenCalled();

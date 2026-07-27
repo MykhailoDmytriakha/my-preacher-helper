@@ -207,9 +207,11 @@ export const deleteThought = async (
 
 export const updateThought = async (
   sermonId: string,
-  thought: Thought
+  thought: Thought,
+  /** The thought AS THE SCREEN OPENED IT — see updateThoughtViaClient. */
+  baseThought?: Thought | null
 ): Promise<Thought> => {
-  return updateThoughtViaClient(sermonId, thought);
+  return updateThoughtViaClient(sermonId, thought, baseThought);
 };
 
 export const createManualThought = async (

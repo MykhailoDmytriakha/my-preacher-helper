@@ -493,10 +493,15 @@ export async function PUT(request: Request) {
           t.id === sanitizedMergedThought.id ? sanitizedMergedThought : t
         );
 
-        // Update in a single transaction with updatedAt
+        // Update in a single transaction with updatedAt. The counter MUST move
+        // here too: a writer that changes thoughts and leaves the number alone
+        // makes it lie, and a later stale save is then handed permission to
+        // overwrite. This mirror runs with Admin rights, which bypass Security
+        // Rules entirely, so nothing else would catch it.
         transaction.update(sermonDocRef, {
           thoughts: updatedThoughts,
-          updatedAt: new Date().toISOString()
+          updatedAt: new Date().toISOString(),
+          'rev.thoughts': FieldValue.increment(1)
         });
       });
 

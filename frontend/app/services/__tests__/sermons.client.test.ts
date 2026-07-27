@@ -13,6 +13,8 @@
  * read-modify-write across the two sends.
  */
 import {
+  addPreachDateViaClient,
+  updateThoughtViaClient,
   addScratchNoteViaClient,
   applyScratchToOutlineViaClient,
   createManualThoughtViaClient,
@@ -21,13 +23,15 @@ import {
   deleteThoughtViaClient,
   updatePreachDateViaClient,
   updateScratchNoteViaClient,
+  updateSermonOutlineViaClient,
   updateSermonPreparationViaClient,
   updateSermonViaClient,
+  updateStructureViaClient,
 } from '@/services/sermons.client';
 
 type StoredSermon = {
   userId: string;
-  thoughts: { id: string }[];
+  thoughts: { id: string; text?: string; tags?: string[]; date?: string; outlinePointId?: string | null }[];
   scratch?: { id: string; text: string; createdAt: string; section?: string }[];
   outline?: {
     introduction: { id: string; text: string }[];
@@ -49,7 +53,10 @@ jest.mock('firebase/firestore', () => ({
   increment: (n: number) => ({ __increment: n }),
   // doc/getDoc/updateDoc cover the offline path; runTransaction covers the online
   // path taken by atomicUpdate. The rest are stubbed so imports resolve.
-  arrayUnion: jest.fn((v: unknown) => v),
+  arrayUnion: jest.fn((...v: unknown[]) => (v.length === 1 ? v[0] : { __arrayUnion: v })),
+  // Marked so a test can tell a COMMUTATIVE operation from a computed array: offline
+  // the difference is whether the other device's notes survive the reconnect.
+  arrayRemove: jest.fn((...v: unknown[]) => ({ __arrayRemove: v })),
   deleteField: jest.fn(() => '__DELETE__'),
   collection: jest.fn(),
   query: jest.fn(),
@@ -536,5 +543,397 @@ describe('the guarded sermon write reports its own result', () => {
 
     expect(result?.verse).toBe('Typed here');
     expect(result?.rev?.core).toBe(5);
+  });
+});
+
+/**
+ * Every writer of an aggregate must move that aggregate's counter.
+ *
+ * WHY THIS MATTERS EVEN THOUGH CONTENT DECIDES. The refusal is settled by the
+ * fingerprint of the fields being overwritten, so a writer that forgets the
+ * counter can no longer hand out permission to clobber. But the counter is still
+ * the FALLBACK for callers that state no fingerprint, and the Firestore rule the
+ * owner may arm compares it — a writer that leaves it frozen reports a document
+ * as untouched when it was rewritten. These writers all replace a whole field
+ * (the plan, the scratch list, the section arrangement, the preach dates), which
+ * is exactly where a stale editor silently wins.
+ *
+ * The mock stores the payload verbatim, so `increment(1)` lands as the literal
+ * dotted key with `{ __increment: 1 }`.
+ */
+describe('whole-field sermon writers advance their own counter', () => {
+  beforeEach(() => {
+    Object.keys(store).forEach((k) => delete store[k]);
+    store['sermon-rev'] = {
+      userId: 'user-1',
+      thoughts: [],
+      scratch: [{ id: 's1', text: 'one', createdAt: '2026-01-01T00:00:00.000Z' }],
+      outline: { introduction: [], main: [{ id: 'p1', text: 'point' }], conclusion: [] },
+      preachDates: [{ id: 'd1', date: '2026-02-01', status: 'planned', createdAt: '2026-01-01T00:00:00.000Z' }],
+    } as never;
+  });
+
+  const bumped = (aggregate: string) =>
+    (store['sermon-rev'] as unknown as Record<string, unknown>)[`rev.${aggregate}`];
+
+  it('the plan writer moves rev.outline', async () => {
+    await updateSermonOutlineViaClient('sermon-rev', {
+      introduction: [],
+      main: [{ id: 'p1', text: 'edited' }],
+      conclusion: [],
+    } as never);
+    expect(bumped('outline')).toEqual({ __increment: 1 });
+  });
+
+  it('applying scratch to the plan moves BOTH rev.outline and rev.scratch', async () => {
+    await applyScratchToOutlineViaClient(
+      'sermon-rev',
+      { introduction: [], main: [{ id: 'p1', text: 'point' }], conclusion: [] } as never,
+      []
+    );
+    expect(bumped('outline')).toEqual({ __increment: 1 });
+    expect(bumped('scratch')).toEqual({ __increment: 1 });
+  });
+
+  it('the scratch writer moves rev.scratch', async () => {
+    // These writers take the WHOLE recomputed list (that is precisely why they
+    // are dangerous from a stale editor) — the counter has to move with it.
+    await addScratchNoteViaClient('sermon-rev', [
+      { id: 's1', text: 'one', createdAt: '2026-01-01T00:00:00.000Z' },
+      { id: 's2', text: 'two', createdAt: '2026-01-02T00:00:00.000Z' },
+    ] as never);
+    expect(bumped('scratch')).toEqual({ __increment: 1 });
+  });
+
+  it('the section-arrangement writer moves rev.thoughts, mirroring the server route', async () => {
+    await updateStructureViaClient('sermon-rev', { introduction: [], main: ['t1'], conclusion: [], ambiguous: [] } as never);
+    expect(bumped('thoughts')).toEqual({ __increment: 1 });
+  });
+
+  it('the preparation writer moves rev.preparation', async () => {
+    await updateSermonPreparationViaClient('sermon-rev', { spiritual: { done: true } } as never);
+    expect(bumped('preparation')).toEqual({ __increment: 1 });
+  });
+
+  it('CREATING and DELETING a thought moves rev.thoughts too', async () => {
+    // The earlier claim "every client writer bumps" was true for whole-field
+    // rewrites and FALSE for the create/delete branches, which go through the
+    // transactional path. A create that leaves the number alone makes it lie.
+    await createManualThoughtViaClient('sermon-rev', {
+      id: 'local-new',
+      text: 'a thought typed on the laptop',
+      tags: [],
+      date: '2026-01-03T00:00:00.000Z',
+    } as never);
+    expect(bumped('thoughts')).toEqual({ __increment: 1 });
+  });
+
+  it('a preach date ADDED moves rev.preachDates', async () => {
+    await addPreachDateViaClient('sermon-rev', { date: '2026-03-01', status: 'planned' } as never);
+    expect(bumped('preachDates')).toEqual({ __increment: 1 });
+  });
+
+  it('a preach date EDITED moves rev.preachDates', async () => {
+    await updatePreachDateViaClient('sermon-rev', 'd1', { status: 'preached' } as never);
+    expect(bumped('preachDates')).toEqual({ __increment: 1 });
+  });
+});
+
+/**
+ * THE WIRING, not just the pure function.
+ *
+ * A merge that exists in `utils/` and is never reached from the writer is a green
+ * test over a dead feature — the trap this codebase has hit before. This one goes
+ * through the real client function and asserts what actually gets written.
+ */
+describe('the scratch writer MERGES by note id instead of replacing the array', () => {
+  beforeEach(() => {
+    Object.keys(store).forEach((k) => delete store[k]);
+    store['sermon-merge'] = {
+      userId: 'user-1',
+      thoughts: [],
+      // What the OTHER device stored while this screen was working.
+      scratch: [
+        { id: 'kept', text: 'from the laptop', createdAt: '2026-07-01T00:00:00.000Z' },
+        { id: 'phone', text: 'captured on the phone', createdAt: '2026-07-02T00:00:00.000Z' },
+      ],
+    } as never;
+  });
+
+  it('keeps the note added on the phone while saving this screen\'s own list', async () => {
+    // This screen started from ONE note and added another; it never saw 'phone'.
+    const base = [{ id: 'kept', text: 'from the laptop', createdAt: '2026-07-01T00:00:00.000Z' }];
+    const mine = [
+      ...base,
+      { id: 'mine', text: 'typed on the laptop', createdAt: '2026-07-03T00:00:00.000Z' },
+    ];
+
+    const committed = await addScratchNoteViaClient('sermon-merge', mine as never, base as never);
+
+    const ids = (committed as Array<{ id: string }>).map((n) => n.id).sort();
+    expect(ids).toEqual(['kept', 'mine', 'phone']);
+    // And that is what actually landed in the document.
+    const storedIds = ((store['sermon-merge'] as unknown as { scratch: Array<{ id: string }> }).scratch ?? [])
+      .map((n) => n.id)
+      .sort();
+    expect(storedIds).toEqual(['kept', 'mine', 'phone']);
+  });
+
+  it('still honours a deletion made here', async () => {
+    const base = [
+      { id: 'kept', text: 'from the laptop', createdAt: '2026-07-01T00:00:00.000Z' },
+      { id: 'phone', text: 'captured on the phone', createdAt: '2026-07-02T00:00:00.000Z' },
+    ];
+    const mine = [base[0]];
+
+    const committed = await deleteScratchNoteViaClient('sermon-merge', mine as never, base as never);
+
+    expect((committed as Array<{ id: string }>).map((n) => n.id)).toEqual(['kept']);
+  });
+});
+
+describe('the preparation writer merges per STEP', () => {
+  beforeEach(() => {
+    Object.keys(store).forEach((k) => delete store[k]);
+    store['sermon-prep'] = {
+      userId: 'user-1',
+      thoughts: [],
+      // Filled in on the phone this morning.
+      preparation: { spiritual: { done: true }, exegetical: { notes: 'from the phone' } },
+    } as never;
+  });
+
+  it('keeps a step this screen never saw while saving its own', async () => {
+    // The whole-object branch used to hand over the caller's snapshot entire, so the
+    // phone's step disappeared the moment the laptop saved a different one.
+    const committed = await updateSermonPreparationViaClient('sermon-prep', {
+      spiritual: { done: false },
+    } as never);
+
+    expect(committed).toEqual(
+      expect.objectContaining({
+        spiritual: { done: false },
+        exegetical: { notes: 'from the phone' },
+      })
+    );
+    const stored = (store['sermon-prep'] as unknown as { preparation: Record<string, unknown> })
+      .preparation;
+    expect(stored).toEqual(
+      expect.objectContaining({ exegetical: { notes: 'from the phone' } })
+    );
+  });
+});
+
+describe('applying scratch to the plan merges BOTH fields', () => {
+  beforeEach(() => {
+    Object.keys(store).forEach((k) => delete store[k]);
+    store['sermon-apply'] = {
+      userId: 'user-1',
+      thoughts: [],
+      // The other device added a plan point AND a note while this screen worked.
+      outline: { introduction: [], main: [{ id: 'phone-point', text: 'added on the phone' }], conclusion: [] },
+      scratch: [{ id: 'phone-note', text: 'captured on the phone', createdAt: '2026-07-02T00:00:00.000Z' }],
+    } as never;
+  });
+
+  it('keeps the phone\'s point AND its note while consuming the local ones', async () => {
+    // This single write touches the two things most likely to have changed
+    // elsewhere; replacing both together is how an apply erased them.
+    const base = {
+      outline: { introduction: [], main: [], conclusion: [] },
+      scratch: [{ id: 'local', text: 'to be consumed', createdAt: '2026-07-01T00:00:00.000Z' }],
+    };
+    const applied = {
+      introduction: [],
+      main: [{ id: 'from-local', text: 'to be consumed' }],
+      conclusion: [],
+    };
+
+    const result = await applyScratchToOutlineViaClient(
+      'sermon-apply',
+      applied as never,
+      [] as never,
+      base as never
+    );
+
+    expect(result.outline.main.map((p) => p.id).sort()).toEqual(['from-local', 'phone-point']);
+    expect(result.scratch.map((n) => n.id)).toEqual(['phone-note']);
+  });
+});
+
+describe('the section-arrangement writer keeps thoughts it never heard of', () => {
+  beforeEach(() => {
+    Object.keys(store).forEach((k) => delete store[k]);
+    store['sermon-structure'] = {
+      userId: 'user-1',
+      thoughts: [],
+      thoughtsBySection: { introduction: ['t1'], main: [], conclusion: ['from-the-phone'] },
+    } as never;
+  });
+
+  it('preserves a thought created elsewhere while saving this screen\'s arrangement', async () => {
+    // The laptop's map is built from the sermon it loaded, so 'from-the-phone' is
+    // simply not in it. Writing the map whole dropped that thought out of every
+    // section — it stopped being shown anywhere until someone re-sorted by hand.
+    await updateStructureViaClient('sermon-structure', {
+      introduction: [],
+      main: ['t1'],
+      conclusion: [],
+    } as never);
+
+    const stored = (store['sermon-structure'] as unknown as {
+      thoughtsBySection: { main: string[]; conclusion: string[] };
+    }).thoughtsBySection;
+    expect(stored.main).toEqual(['t1']);
+    expect(stored.conclusion).toEqual(['from-the-phone']);
+  });
+});
+
+/**
+ * OFFLINE is where the merge used to vanish: a transaction cannot run without a
+ * server, so the write degraded to "compute the whole array from cache and queue
+ * it", and on reconnect that array replaced whatever the other device had stored.
+ * This is the owner's own scenario — notes on a train, phone at home, laptop
+ * reconnects later.
+ */
+describe('offline scratch writes send a COMMUTATIVE operation, not a computed array', () => {
+  beforeEach(() => {
+    Object.keys(store).forEach((k) => delete store[k]);
+    store['sermon-offline'] = {
+      userId: 'user-1',
+      thoughts: [],
+      scratch: [{ id: 'a', text: 'already there', createdAt: '2026-07-01T00:00:00.000Z' }],
+    } as never;
+  });
+
+  afterEach(() => {
+    delete (window.navigator as unknown as Record<string, unknown>).onLine;
+  });
+
+  it('adds with arrayUnion so a note stored elsewhere survives the reconnect', async () => {
+    Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true });
+    const base = [{ id: 'a', text: 'already there', createdAt: '2026-07-01T00:00:00.000Z' }];
+    const mine = [
+      ...base,
+      { id: 'new', text: 'typed on the train', createdAt: '2026-07-02T00:00:00.000Z' },
+    ];
+
+    await addScratchNoteViaClient('sermon-offline', mine as never, base as never);
+
+    // What landed is the ADDED note alone (the union sentinel), not the caller's
+    // two-item list — so at reconnect the server adds it to whatever it holds.
+    const written = (store['sermon-offline'] as unknown as { scratch: { id?: string } }).scratch;
+    expect(written).toEqual(expect.objectContaining({ id: 'new' }));
+  });
+
+  it('removes with arrayRemove instead of writing the remaining list', async () => {
+    Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true });
+    const base = [
+      { id: 'a', text: 'already there', createdAt: '2026-07-01T00:00:00.000Z' },
+      { id: 'gone', text: 'to remove', createdAt: '2026-07-02T00:00:00.000Z' },
+    ];
+    const mine = [base[0]];
+
+    await deleteScratchNoteViaClient('sermon-offline', mine as never, base as never);
+
+    const written = (store['sermon-offline'] as unknown as { scratch: unknown }).scratch;
+    // A REMOVE operation naming the deleted note — not the remaining list.
+    expect(written).toEqual({ __arrayRemove: [expect.objectContaining({ id: 'gone' })] });
+  });
+});
+
+describe('offline preparation writes address STEPS, not the whole map', () => {
+  beforeEach(() => {
+    Object.keys(store).forEach((k) => delete store[k]);
+    store['sermon-prep-offline'] = {
+      userId: 'user-1',
+      thoughts: [],
+      preparation: { exegetical: { notes: 'from the phone' } },
+    } as never;
+  });
+
+  afterEach(() => {
+    delete (window.navigator as unknown as Record<string, unknown>).onLine;
+  });
+
+  it('sends nested field paths so the server keeps steps this screen never mentioned', async () => {
+    // Offline the transactional merge cannot run, and a queued whole-object write
+    // replaces the map at reconnect. Nested paths are merged by Firestore itself.
+    Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true });
+
+    await updateSermonPreparationViaClient('sermon-prep-offline', {
+      spiritual: { done: true },
+    } as never);
+
+    const written = store['sermon-prep-offline'] as unknown as Record<string, unknown>;
+    expect(written['preparation.spiritual']).toEqual({ done: true });
+    // The whole-map key was NOT written — that is what would have erased the phone.
+    expect(written.preparation).toEqual({ exegetical: { notes: 'from the phone' } });
+  });
+});
+
+/**
+ * ONE PERSON, TWO DEVICES, HOURS APART — the case the whole mechanism exists for.
+ *
+ * The edit reaches the write as a WHOLE thought, so every field the person did not
+ * touch travels along as whatever this screen happened to hold when it opened. Drag a
+ * thought to another plan point on the laptop at noon and the laptop also re-sends the
+ * text it read at eight — over the paragraph rewritten on the phone at nine. The
+ * transaction does not help: it merges SIBLINGS correctly and then writes this stale
+ * text as if it were an edit.
+ */
+describe('updateThoughtViaClient — an untouched field must not travel', () => {
+  beforeEach(() => {
+    for (const key of Object.keys(store)) delete store[key];
+    store.s1 = {
+      userId: 'u1',
+      thoughts: [
+        {
+          id: 't1',
+          // Rewritten on the phone at nine, after this screen opened.
+          text: 'Rewritten on the phone, three paragraphs long',
+          tags: ['mytag'],
+          date: '2026-06-09T00:00:00.000Z',
+        },
+      ],
+    };
+  });
+
+  const asOpened = {
+    id: 't1',
+    text: 'The old wording this screen opened with',
+    tags: ['mytag'],
+    date: '2026-06-09T00:00:00.000Z',
+  };
+
+  it('keeps the phone\'s text when this screen only moved the thought', async () => {
+    // The person changed ONE thing: which plan point it belongs to.
+    await updateThoughtViaClient(
+      's1',
+      { ...asOpened, outlinePointId: 'point-2' } as never,
+      asOpened as never
+    );
+
+    expect(store.s1.thoughts[0].text).toBe('Rewritten on the phone, three paragraphs long');
+    expect(store.s1.thoughts[0].outlinePointId).toBe('point-2');
+  });
+
+  it('still writes the text when the text is what changed', async () => {
+    await updateThoughtViaClient(
+      's1',
+      { ...asOpened, text: 'Written here, deliberately' } as never,
+      asOpened as never
+    );
+
+    expect(store.s1.thoughts[0].text).toBe('Written here, deliberately');
+  });
+
+  it('without a stated opening value behaves exactly as before', async () => {
+    // No baseline means we cannot tell what the person touched; sending everything
+    // is the old behaviour and must stay reachable, or callers that cannot supply a
+    // baseline would silently stop saving.
+    await updateThoughtViaClient('s1', { ...asOpened, outlinePointId: 'point-2' } as never);
+
+    expect(store.s1.thoughts[0].text).toBe('The old wording this screen opened with');
   });
 });

@@ -16,16 +16,31 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const SCRATCH_COMPOSE_TIMEOUT_MS = 55_000;
 const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
 
-export function addScratchNote(sermonId: string, scratch: ScratchNote[]): Promise<ScratchNote[]> {
-  return addScratchNoteViaClient(sermonId, scratch);
+export function addScratchNote(
+  sermonId: string,
+  scratch: ScratchNote[],
+  /** The list the screen started from — enables the merge instead of a replace. */
+  baseScratch?: ScratchNote[] | null
+): Promise<ScratchNote[]> {
+  return addScratchNoteViaClient(sermonId, scratch, baseScratch);
 }
 
-export function updateScratchNote(sermonId: string, scratch: ScratchNote[]): Promise<ScratchNote[]> {
-  return updateScratchNoteViaClient(sermonId, scratch);
+export function updateScratchNote(
+  sermonId: string,
+  scratch: ScratchNote[],
+  /** The list the screen started from — enables the merge instead of a replace. */
+  baseScratch?: ScratchNote[] | null
+): Promise<ScratchNote[]> {
+  return updateScratchNoteViaClient(sermonId, scratch, baseScratch);
 }
 
-export function deleteScratchNote(sermonId: string, scratch: ScratchNote[]): Promise<ScratchNote[]> {
-  return deleteScratchNoteViaClient(sermonId, scratch);
+export function deleteScratchNote(
+  sermonId: string,
+  scratch: ScratchNote[],
+  /** The list the screen started from — enables the merge instead of a replace. */
+  baseScratch?: ScratchNote[] | null
+): Promise<ScratchNote[]> {
+  return deleteScratchNoteViaClient(sermonId, scratch, baseScratch);
 }
 
 function collectReturnedScratchIds(outline: ComposedPlanOutline): string[] {

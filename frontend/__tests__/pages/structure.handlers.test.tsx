@@ -452,6 +452,9 @@ describe('StructurePage handlers', () => {
           outlinePointId: null,
           subPointId: null,
         }),
+        // The opening value travels too: only the plan links change here, so the
+        // thought's TEXT must not be re-sent from this screen's snapshot.
+        expect.objectContaining({ id: 't1' }),
       );
     });
   });
@@ -514,6 +517,7 @@ describe('StructurePage handlers', () => {
           id: 't1',
           subPointId: null,
         }),
+        expect.objectContaining({ id: 't1' }),
       );
     });
   });

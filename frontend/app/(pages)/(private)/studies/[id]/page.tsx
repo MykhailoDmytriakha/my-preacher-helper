@@ -21,14 +21,12 @@ import { useRouteId } from '@/hooks/useRouteId';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { ScriptureReference, StudyNote } from '@/models/models';
-import { isStaleWriteError, readRevision } from '@/services/conflictSafeUpdate.client';
+import { readRevision } from '@/services/conflictSafeUpdate.client';
 import { auth } from '@/services/firebaseAuth.service';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
 import { deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { apiClient } from '@/utils/apiClient';
-import { changedFields } from '@/utils/changedFields';
-import { clearDraft, draftKey } from '@/utils/durableDraft';
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
@@ -42,6 +40,9 @@ import { parseReferenceText } from '../referenceParser';
 import ScriptureRefBadge from '../ScriptureRefBadge';
 import ScriptureRefPicker from '../ScriptureRefPicker';
 import TagCatalogModal from '../TagCatalogModal';
+
+import { type NoteDraftPayload } from './noteDraft';
+import { useNoteAutoSave } from './useNoteAutoSave';
 
 const makeId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 
@@ -106,19 +107,6 @@ function useNoteKeyboardNavigation({
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
     }, [isEditing, prevNoteId, nextNoteId, router, searchParams]);
-}
-
-/**
- * Exactly the fields this editor owns. The durable draft stores this shape, so a
- * recovered draft can be compared against, and applied to, the editor state
- * without dragging along server-owned fields (ids, timestamps, materialIds).
- */
-export interface NoteDraftPayload {
-    title: string;
-    content: string;
-    tags: string[];
-    scriptureRefs: ScriptureReference[];
-    type: 'note' | 'question';
 }
 
 /** Value equality for draft-vs-editor comparison; field order is fixed by construction. */
@@ -189,128 +177,6 @@ function useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router }: any) {
     };
 }
 
-function useNoteAutoSave({
-    noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, t, baselineRef, revisionRef, resaveNonce, saveBlocked, onConflict, onSaved
-}: {
-    noteId: string; isNew: boolean; isInitialized: boolean; existingNote?: StudyNote; title: string;
-    content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: 'note' | 'question';
-    updateNote: (args: { id: string; updates: Partial<StudyNote>; expectedRevision?: number | null }) => Promise<StudyNote & { revision?: number }>;
-    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>) => Promise<StudyNote>;
-    uid: string | undefined; setCreatedNoteId: (id: string) => void;
-    t: ReturnType<typeof useTranslation>['t'];
-    /** Baseline owned by the page so both autosave and "load newer" can move it. */
-    baselineRef: React.MutableRefObject<NoteDraftPayload | null>;
-    /** Revision this text was built from; null keeps the write unguarded. */
-    revisionRef: React.MutableRefObject<number | null>;
-    /** Changes when the person asks to send the same text again after a refusal. */
-    resaveNonce: number;
-    /** While true the server already refused: stop saving until the person chooses. */
-    saveBlocked: boolean;
-    /** Raised when the server refused a stale write — the text is NOT lost. */
-    onConflict: () => void;
-    /**
-     * Called ONLY after the server accepted exactly this payload, so the durable
-     * draft holding the same text can be retired. Never called on failure — a
-     * surviving draft is precisely the signal that text is unconfirmed.
-     */
-    onSaved?: (saved: NoteDraftPayload) => void;
-}) {
-    const [isSaving, setIsSaving] = useState(false);
-    const [lastSaved, setLastSaved] = useState<Date | null>(null);
-    const [saveError, setSaveError] = useState<string | null>(null);
-
-
-    const saveChanges = useCallback(async () => {
-        if (!noteId || !isInitialized) return;
-        // A refusal is already on screen. Continuing to autosave would keep firing
-        // writes at a document we know is newer — and one of them could land.
-        if (saveBlocked) return;
-
-        if (isNew) {
-            if (!title.trim() && !content.trim() && tags.length === 0 && scriptureRefs.length === 0) return;
-
-            setIsSaving(true);
-            setSaveError(null);
-            try {
-                const newNote = await createNote({
-                    title, content, tags, scriptureRefs, type,
-                    userId: uid ?? '', materialIds: [], relatedSermonIds: []
-                });
-                setLastSaved(new Date());
-                baselineRef.current = { title, content, tags, scriptureRefs, type };
-                onSaved?.({ title, content, tags, scriptureRefs, type });
-                // The note was drafted under the placeholder id "new". `onSaved`
-                // retires that draft only when it still matches what was created —
-                // if the user kept typing during the create it would be orphaned
-                // and offered when the NEXT new note opens. The id is now real, so
-                // the placeholder draft is dead either way.
-                if (uid) clearDraft(draftKey(uid, 'new', 'note'));
-                window.history.replaceState(null, '', `/studies/${newNote.id}`);
-                setCreatedNoteId(newNote.id);
-            } catch (e) {
-                console.error('Auto-create error', e);
-                setSaveError(t('common.saveError') || 'Error saving changes');
-            } finally {
-                setIsSaving(false);
-            }
-            return;
-        }
-
-        // Send ONLY the fields this editor actually changed. Sending all five means
-        // an untouched field is written back from the snapshot this tab loaded, so
-        // a stale tab silently reverts text edited elsewhere. `existingNote` is the
-        // live cache entry, so a failed write (rolled back) shows up as changed
-        // again on the next pass and is re-sent.
-        const updates: Partial<StudyNote> = changedFields(baselineRef.current, {
-            title, content, tags, scriptureRefs, type,
-        });
-
-        if (Object.keys(updates).length === 0) return;
-
-        setIsSaving(true);
-        setSaveError(null);
-        try {
-            const saved = await updateNote({
-                id: noteId,
-                updates,
-                expectedRevision: revisionRef.current,
-            });
-            // The server accepted it, so this is now what our text is built from.
-            if (typeof (saved as { revision?: number })?.revision === 'number') {
-                revisionRef.current = (saved as { revision?: number }).revision as number;
-            }
-            setLastSaved(new Date());
-            // Confirmed by the server, so it becomes the new baseline: these fields
-            // are no longer "changed by the user" and must not be re-sent.
-            baselineRef.current = { title, content, tags, scriptureRefs, type };
-            onSaved?.({ title, content, tags, scriptureRefs, type });
-        } catch (e) {
-            if (isStaleWriteError(e)) {
-                // REFUSED, not failed. The server holds a newer version, so this text
-                // was NOT written — and it was NOT lost either: the durable draft
-                // already holds it and the inputs still show it. Stop hammering the
-                // server and hand the decision to the person.
-                onConflict();
-                setSaveError(null);
-                return;
-            }
-            console.error('Auto-save error', e);
-            setSaveError(t('common.saveError') || 'Error saving changes');
-        } finally {
-            setIsSaving(false);
-        }
-    }, [noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, t, baselineRef, revisionRef, onConflict, onSaved]);
-
-    useEffect(() => {
-        if (!isInitialized) return;
-        const timeoutId = setTimeout(() => {
-            saveChanges();
-        }, 1500);
-        return () => clearTimeout(timeoutId);
-    }, [title, content, tags, scriptureRefs, type, isInitialized, resaveNonce, saveChanges]);
-
-    return { isSaving, lastSaved, saveError, setLastSaved };
-}
 
 function useNoteAIAssistant({
     noteId, content, availableTags, setTitle, setContent, setScriptureRefs, setTags, t
@@ -703,6 +569,7 @@ export default function StudyNoteEditorPage() {
     const isNew = noteId === 'new';
 
     const { uid, notes, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
+
     const { tags: tagData } = useTags(uid);
     const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
 
@@ -773,6 +640,8 @@ export default function StudyNoteEditorPage() {
      * same silence this whole effort is against.
      */
     const [resaveNonce, setResaveNonce] = useState(0);
+    /** Set by "keep my text", cleared once that send has been made. */
+    const deliberateOverwriteRef = useRef(false);
 
     // Establish the revision from the LOADED NOTE, not only from the listener. A
     // save that fired before the first server snapshot used to go out unguarded,
@@ -807,6 +676,7 @@ export default function StudyNoteEditorPage() {
         noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type,
         updateNote, createNote, uid, setCreatedNoteId, t, baselineRef,
         revisionRef: serverRevisionRef,
+        deliberateOverwriteRef,
         resaveNonce,
         saveBlocked: saveConflict,
         onConflict: () => setSaveConflict(true),
@@ -865,7 +735,7 @@ export default function StudyNoteEditorPage() {
     const [freshnessDismissed, setFreshnessDismissed] = useState(false);
     useEffect(() => {
         // A new remote change re-arms the banner after a previous dismissal.
-        if (freshness.state === 'stale') setFreshnessDismissed(false);
+        if (freshness.state === 'stale' || freshness.state === 'unknown') setFreshnessDismissed(false);
     }, [freshness.remote, freshness.state]);
 
     const editorIsDirty = useMemo(
@@ -1004,6 +874,9 @@ export default function StudyNoteEditorPage() {
                             if (remoteRevisionRef.current !== null) {
                                 serverRevisionRef.current = remoteRevisionRef.current;
                             }
+                            // And say plainly that this one send is deliberate, or the
+                            // content check refuses it again and the button never works.
+                            deliberateOverwriteRef.current = true;
                             setSaveConflict(false);
                             setResaveNonce((n) => n + 1);
                         }}
@@ -1016,11 +889,12 @@ export default function StudyNoteEditorPage() {
                 )}
                 {/* The RECORD changed elsewhere. Distinct from the app-update toast,
                     and it never replaces what is on screen without a decision. */}
-                {freshness.state === 'stale' && !freshnessDismissed && (
+                {(freshness.state === 'stale' || freshness.state === 'unknown') && !freshnessDismissed && (
                     <DataFreshnessBanner
           entityKey="entityNote"
                         dirty={editorIsDirty}
                         deleted={freshness.remotelyDeleted}
+          unknown={freshness.state === 'unknown'}
                         onRefresh={editorIsDirty ? undefined : applyRemote}
                         onDismiss={() => setFreshnessDismissed(true)}
                         className="mb-2"

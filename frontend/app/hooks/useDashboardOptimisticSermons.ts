@@ -2,6 +2,7 @@ import { useMutation, useMutationState, useQueryClient } from '@tanstack/react-q
 import { useCallback } from 'react';
 
 import { useSeriesMembership } from '@/hooks/useSeriesMembership';
+import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { newClientId } from '@/utils/clientId';
 import {
   DASHBOARD_SERMON_KEY_PREFIX,
@@ -118,6 +119,9 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
       operation: operationOf(mutation),
       status: mutation.state.status,
       message: mutation.state.error ? toMessage(mutation.state.error) : undefined,
+      // A refusal reads nothing like a network failure and must not be worded like
+      // one: the person has to know their text is competing with a newer version.
+      conflict: isStaleWriteError(mutation.state.error),
       submittedAt: mutation.state.submittedAt ?? 0,
     }),
   });
@@ -132,7 +136,12 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
       latestBySermon[snapshot.sermonId] = snapshot.submittedAt;
       syncStatesById[snapshot.sermonId] =
         snapshot.status === 'error'
-          ? { status: 'error', operation: snapshot.operation, message: snapshot.message ?? FALLBACK_ERROR_MESSAGE }
+          ? {
+              status: 'error',
+              operation: snapshot.operation,
+              message: snapshot.message ?? FALLBACK_ERROR_MESSAGE,
+              conflict: snapshot.conflict,
+            }
           : { status: 'pending', operation: snapshot.operation };
     }
   }
@@ -267,7 +276,22 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
       if (!target) return;
 
       const operationKey = String(target.options.mutationKey?.[1]);
-      const variables = target.state.variables;
+      let variables = target.state.variables;
+      /**
+       * A REFUSAL is not a failure to repeat — it is a question already answered.
+       *
+       * The server turned the write away because the record had moved on, and it said
+       * which revision it actually holds. Re-firing the same variables states the same
+       * outdated number, so the retry is refused every single time and the only copy of
+       * the typed title lives in a mutation record the Dismiss button deletes. Pressing
+       * Retry means "send mine anyway", so it aims at the revision the server had.
+       */
+      if (operationKey === 'update' && isStaleWriteError(target.state.error)) {
+        variables = {
+          ...(variables as DashboardSermonUpdateVars),
+          expectedRevision: target.state.error.actualRevision,
+        };
+      }
       // Remove the failed entries first so the re-fired mutation is the only
       // badge source for this sermon (mirrors the old single-retry-slot ref).
       failed.forEach((mutation) => cache.remove(mutation));

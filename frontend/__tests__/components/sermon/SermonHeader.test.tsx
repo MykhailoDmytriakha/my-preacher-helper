@@ -270,10 +270,16 @@ describe('SermonHeader Component', () => {
         // stale snapshot.
         // Third argument = the revision this edit was built from; a document with
         // no counter yet reads as 0.
+        // Fourth argument = THE FIELD AS IT WAS WHEN THE EDIT STARTED. The counter
+        // alone trusts every writer to maintain it; comparing the value catches an
+        // old build that changed the title and left the number alone. It must be
+        // the opening value — a value read fresh at save time would agree with the
+        // server by construction and protect nothing.
         expect(mockUpdateSermon).toHaveBeenCalledWith(
           { ...mockSermon, title: 'Updated Title' },
           { title: 'Updated Title' },
-          0
+          0,
+          { title: mockSermon.title }
         );
         expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon);
       });
@@ -324,7 +330,8 @@ describe('SermonHeader Component', () => {
         expect(mockUpdateSermon).toHaveBeenCalledWith(
           { ...mockSermon, verse: 'Updated verse text' },
           { verse: 'Updated verse text' },
-          0
+          0,
+          { verse: mockSermon.verse }
         );
         expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon);
       });
@@ -384,7 +391,8 @@ describe('SermonHeader Component', () => {
         expect(mockUpdateSermon).toHaveBeenCalledWith(
           { ...mockSermon, verse: multiLineVerse },
           { verse: multiLineVerse },
-          0
+          0,
+          { verse: mockSermon.verse }
         );
         expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon);
       });
@@ -410,7 +418,8 @@ describe('SermonHeader Component', () => {
         expect(mockUpdateSermon).toHaveBeenCalledWith(
           { ...mockSermon, verse: 'Updated verse text' },
           { verse: 'Updated verse text' },
-          0
+          0,
+          { verse: mockSermon.verse }
         );
         expect(mockOnUpdate).toHaveBeenCalledWith(updatedSermon);
       });
@@ -654,10 +663,13 @@ describe('SermonHeader — a refused save keeps the text and offers a choice', (
     await waitFor(() => {
       // 7, NOT 4: resending the original revision would be refused again and the
       // button would promise an action it never performs.
+      // No fingerprint on a deliberate overwrite: the person has SEEN the other
+      // version and chose to replace it, so differing content is the point.
       expect(updateSermonMock).toHaveBeenLastCalledWith(
         expect.objectContaining({ title: 'Typed on the laptop' }),
         { title: 'Typed on the laptop' },
-        7
+        7,
+        undefined
       );
       expect(onUpdate).toHaveBeenCalledWith(saved);
     });

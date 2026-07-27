@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
-  clearDraft,
   clearDraftIfMatches,
   draftKey,
   readDraft,
@@ -195,10 +194,21 @@ export function useDurableDraft<T>({
     setRecovered(null);
   }, []);
 
-  /** The user rejected the recovered text — this is the one path that deletes it. */
+  /**
+   * The user rejected the recovered text — this is the one path that deletes it.
+   *
+   * It deletes THAT version and nothing else. The offer stays on screen while the
+   * person keeps working, so by the time they dismiss it the slot may already hold
+   * NEWER text typed since: an unconditional clear here threw away the very text
+   * they were writing (loss of unconfirmed text, dressed as a dismissal). Compare
+   * first, delete only on an exact match.
+   */
+  const recoveredRef = useRef<T | null>(null);
+  recoveredRef.current = recovered;
   const discardRecovered = useCallback(() => {
+    const rejected = recoveredRef.current;
     setRecovered(null);
-    if (keyRef.current) clearDraft(keyRef.current);
+    if (keyRef.current && rejected !== null) clearDraftIfMatches(keyRef.current, rejected);
   }, []);
 
   const markSaved = useCallback((confirmed: T) => {

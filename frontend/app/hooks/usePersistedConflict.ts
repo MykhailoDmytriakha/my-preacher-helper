@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { clearDraft, draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
+import { clearDraftIfMatches, draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
 
 /**
  * A refused save, held somewhere that survives a reload.
@@ -51,16 +51,69 @@ export function usePersistedConflict<T>(
     if (restoredForRef.current === key) return;
     restoredForRef.current = key;
     const stored = readDraft<PersistedConflict<T>>(key);
+    if (stored) ownByKeyRef.current.set(key, stored.value);
     setConflictState(stored ? stored.value : null);
   }, [key]);
 
-  const setConflict = useCallback((next: PersistedConflict<T> | null) => {
-    setConflictState(next);
-    const currentKey = keyRef.current;
+  /**
+   * What THIS tab believes the pending conflict to be — PER DOCUMENT.
+   *
+   * It used to be a single value, and that was a hole with teeth: one hook instance
+   * serves many documents, because a navigation re-renders the page instead of
+   * remounting it. So a resolution for document A landing after the person moved to
+   * document B compared A's record against B's key, matched nothing — and cleared
+   * B's slot regardless, destroying the only durable copy of a refusal B had not even
+   * shown yet.
+   *
+   * Binding the key at write time was tried first and PROVED INSUFFICIENT by its own
+   * test, for the reason this map fixes: by the time A's answer lands, the restore
+   * effect has already replaced the single remembered value with B's. Remembering
+   * ownership per key removes the collision instead of racing it — every document
+   * keeps its own record, and a clear can only ever remove the record it stored.
+   */
+  const ownByKeyRef = useRef<Map<string, PersistedConflict<T>>>(new Map());
+
+  /**
+   * @param docIdOverride the document this conflict belongs to, when the caller
+   *   learns it in the SAME render as the conflict itself. Without it the key
+   *   would be built from state React has not committed yet, and the record would
+   *   land under the previous document — or under none at all.
+   */
+  const setConflict = useCallback(
+    (next: PersistedConflict<T> | null, docIdOverride?: string) => {
+    const currentKey =
+      docIdOverride && uid ? draftKey(uid, docIdOverride, `conflict:${aggregate}`) : keyRef.current;
+
+    if (next) {
+      setConflictState(next);
+      if (!currentKey) return;
+      ownByKeyRef.current.set(currentKey, next);
+      saveDraft(currentKey, next);
+      return;
+    }
+
+    // A CLEAR MAY ONLY EMPTY THE DOCUMENT IT NAMES. When it names another one — a
+    // resolution finishing after the person navigated away — blanking the visible
+    // slot would erase the banner holding THIS document's refused text from the
+    // screen, even though the disk still had it.
+    if (currentKey && keyRef.current && currentKey !== keyRef.current) {
+      const mine = readDraft<PersistedConflict<T>>(keyRef.current);
+      setConflictState(mine ? mine.value : null);
+    } else {
+      setConflictState(null);
+    }
     if (!currentKey) return;
-    if (next) saveDraft(currentKey, next);
-    else clearDraft(currentKey);
-  }, []);
+
+    // COMPARE BEFORE CLEARING. Two tabs on one document share this slot, so the
+    // later refusal owns it. An unconditional clear meant tab A, resolving its
+    // own conflict, deleted tab B's only copy of refused text — the loss this
+    // layer exists to prevent, introduced by the layer itself.
+    const own = ownByKeyRef.current.get(currentKey);
+    ownByKeyRef.current.delete(currentKey);
+    if (own) clearDraftIfMatches(currentKey, own);
+    },
+    [uid, aggregate]
+  );
 
   return [conflict, setConflict] as const;
 }

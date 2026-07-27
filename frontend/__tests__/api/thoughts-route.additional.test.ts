@@ -19,6 +19,8 @@ jest.mock('firebase-admin/firestore', () => ({
     arrayUnion: (value: unknown) => ({ elements: [value] }),
     arrayRemove: (value: unknown) => ({ elements: [value] }),
     serverTimestamp: () => 'mocked-server-timestamp',
+    // The thoughts mirror advances its aggregate counter — see the route.
+    increment: (n: number) => ({ __increment: n }),
   },
 }));
 
@@ -615,6 +617,9 @@ describe('Thoughts API route additional coverage', () => {
           expect.objectContaining({ id: 'thought-1', text: 'new' }),
         ]),
         updatedAt: expect.any(String),
+        // Every writer of an aggregate advances its counter, or the counter lies —
+        // and this Admin mirror bypasses Security Rules, so nothing else catches it.
+        'rev.thoughts': { __increment: 1 },
       });
     });
 
@@ -658,6 +663,7 @@ describe('Thoughts API route additional coverage', () => {
       expect(transactionUpdateMock).toHaveBeenCalledWith(sermonDocRef, {
         thoughts: [expect.objectContaining({ id: 'thought-1', tags: ['Примеры'] })],
         updatedAt: expect.any(String),
+        'rev.thoughts': { __increment: 1 },
       });
     });
 

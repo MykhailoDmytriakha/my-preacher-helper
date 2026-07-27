@@ -15,7 +15,7 @@ import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { useAuth } from '@/hooks/useAuth';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { useUserSettings } from '@/hooks/useUserSettings';
-import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { isOfflineQueuedError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { getSermonById, updateSermon } from '@/services/sermon.service'; // Import updateSermon service
 import { SERMON_CORE_AGGREGATE } from "@/services/sermons.client";
 import EditableTitle from '@components/common/EditableTitle'; // Import the new component
@@ -101,15 +101,26 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
   const saveCoreField = async (
     field: 'title' | 'verse',
     value: string,
-    statedRevision: number
+    statedRevision: number,
+    /**
+     * What this field held when the edit started — see `expectedBaseline` on the
+     * guard. `null` means "do not check the content": used for a deliberate
+     * overwrite, where the person has SEEN the other version and chose to replace
+     * it.
+     */
+    baseValue: string | null
   ) => {
     const patch = field === 'title' ? { title: value } : { verse: value };
+    // The ONE field being replaced, as it looked when the edit started. The guard
+    // hashes it itself, so there is a single definition of "what we started from".
+    const baseline = baseValue === null ? undefined : { [field]: baseValue };
     const updatedSermonData = { ...sermon, [field]: value };
     try {
       // State the revision this edit was built from, so a save from a stale tab is
       // refused instead of replacing what another device stored.
-      const updatedResult = await updateSermon(updatedSermonData, patch, statedRevision);
-      setConflict(null);
+      const updatedResult = await updateSermon(updatedSermonData, patch, statedRevision, baseline);
+      // NAME the sermon this commit resolves — see usePersistedConflict.
+      setConflict(null, sermon.id);
       if (updatedResult && onUpdate) {
         onUpdate(updatedResult);
       }
@@ -119,6 +130,14 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
         // hand the choice to the person instead of reporting a generic glitch.
         setConflict({ payload: { field, value }, actualRevision: error.actualRevision });
         toast.error(t('freshness.staleSaveToast'));
+        return;
+      }
+      if (isOfflineQueuedError(error)) {
+        // QUEUED, not failed. Reporting a red error here made people press save
+        // again, and each press queued another intent with the same base revision
+        // — so on reconnect the first landed and the rest came back as "changed on
+        // another device", against their own save moments earlier.
+        toast.success(t('freshness.queuedPending', { count: 1 }));
         return;
       }
       console.error(`Error saving sermon ${field}:`, error);
@@ -131,13 +150,13 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
   // Handler passed to EditableTitle
   const handleSaveSermonTitle = async (newTitle: string) => {
     if (isReadOnly) return;
-    await saveCoreField('title', newTitle, currentCoreRevision);
+    await saveCoreField('title', newTitle, currentCoreRevision, sermon.title ?? '');
   };
 
   // Handler passed to EditableVerse
   const handleSaveSermonVerse = async (newVerse: string) => {
     if (isReadOnly) return;
-    await saveCoreField('verse', newVerse, currentCoreRevision);
+    await saveCoreField('verse', newVerse, currentCoreRevision, sermon.verse ?? '');
   };
 
   const handleKeepMine = async () => {
@@ -153,7 +172,14 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
       // that put stale data back on screen after a correct save. The write path
       // itself now returns what it committed, so `saveCoreField` already published
       // the right thing.
-      await saveCoreField(conflict.payload.field, conflict.payload.value, conflict.actualRevision);
+      // Deliberate overwrite: no fingerprint — the person has SEEN the other
+      // version and chose to replace it, so content differing is the point.
+      await saveCoreField(
+        conflict.payload.field,
+        conflict.payload.value,
+        conflict.actualRevision,
+        null
+      );
     } finally {
       setResolvingConflict(false);
     }
@@ -166,7 +192,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
       // Pull what the other device stored, so the closed editor re-syncs to it.
       const fresh = await getSermonById(sermon.id);
       if (fresh && onUpdate) onUpdate(fresh);
-      setConflict(null);
+      setConflict(null, sermon.id);
     } catch (error) {
       console.error('Error loading the newer sermon version:', error);
       toast.error(t('errors.failedToLoadSermon'));
