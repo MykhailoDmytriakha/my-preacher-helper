@@ -391,7 +391,14 @@ describe('api/feedback/route', () => {
     });
 
     test('POST rejects an oversized image using a production-reachable payload', async () => {
-        const image = `data:image/png;base64,${Buffer.alloc(MAX_FEEDBACK_IMAGE_BYTES + 1).toString('base64')}`;
+        /**
+         * Built as characters, not via a 3 MB Buffer plus its base64 copy: this ran
+         * on a 2-core build machine and the extra megabytes bought nothing. All-'A'
+         * base64 has no padding, so the decoded size is length/4*3 — one character
+         * group above the cap is enough to be oversized.
+         */
+        const oversizedBase64Length = (Math.floor(MAX_FEEDBACK_IMAGE_BYTES / 3) + 1) * 4;
+        const image = `data:image/png;base64,${'A'.repeat(oversizedBase64Length)}`;
         const serializedBody = JSON.stringify({ feedbackText: 'Oversized image', images: [image] });
         expect(getUtf8ByteLength(serializedBody)).toBeLessThan(MAX_FEEDBACK_PAYLOAD_BYTES);
 
@@ -400,8 +407,24 @@ describe('api/feedback/route', () => {
             body: serializedBody,
         });
 
+        /**
+         * The route answers 500 by swallowing whatever threw into `console.error`,
+         * and the build runs with logs suppressed — so when this failed on Vercel
+         * (413 expected, 500 received) while passing on every local run, the reason
+         * was invisible. Capture it and put it in the assertion: a failure here must
+         * say WHY, not just that the number differs.
+         */
+        const errors: unknown[] = [];
+        const consoleErrorSpy = jest
+            .spyOn(console, 'error')
+            .mockImplementation((...args: unknown[]) => {
+                errors.push(args.map((a) => (a instanceof Error ? `${a.name}: ${a.message}` : a)));
+            });
+
         const response = await POST(request);
-        expect(response.status).toBe(413);
+        consoleErrorSpy.mockRestore();
+
+        expect({ status: response.status, errors }).toEqual({ status: 413, errors: [] });
         expect(mockAdd).not.toHaveBeenCalled();
     });
 
