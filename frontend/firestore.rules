@@ -41,13 +41,45 @@ service cloud.firestore {
     // getting permission-denied — including old PWA installs that have not picked
     // up the new bundle yet.
     //
-    // ACTIVATION CHECKLIST (owner's call):
-    //   1. The new build has been live long enough that stale PWA installs have
-    //      refreshed (the service worker updates on next visit).
-    //   2. Admin SDK writers are audited: they BYPASS rules entirely, so any
-    //      server path that changes content must advance the counter on its own
-    //      (`updateSermonData` takes an aggregate name; check new writers too).
-    //   3. Deploy the rules, then watch for permission-denied in the logs.
+    // ⚠️ THE DRAFT BELOW IS NOT A SWITCH. Uncommenting it and shipping would take
+    // the app DOWN, and the reason is worth reading before touching this block.
+    //
+    // On an update `request.resource.data` is the WHOLE future document, not just
+    // the fields being sent
+    // (https://firebase.google.com/docs/firestore/security/rules-conditions).
+    // A sermon carries FOUR counters — `rev: {core, thoughts, outline, plan}` — and
+    // an edit advances only the one it touched. So a rule that demands
+    // `advancesRevision('core')` on every update evaluates `4 > 4` for any save
+    // that did not touch core: false, permission-denied. That is MOST saves, from
+    // TODAY's clients — the opposite of the stale-PWA case this exists for.
+    //
+    // Two more facts the draft does not cover:
+    //   · nothing calls it. There is no `advancesRevision(...)` in any `allow`
+    //     below, so uncommenting alone changes nothing at all — it is dead code,
+    //     not an armed guard;
+    //   · `users` documents must stay OUT of it entirely. Settings are written with
+    //     `setDoc(merge)` and deliberately move no counter (`userSettings.service.ts`):
+    //     there is no typed text to protect there, only toggles. Under this rule
+    //     saving any setting would simply stop working.
+    //
+    // WHAT WOULD ACTUALLY WORK, in order:
+    //   1. Rewrite the condition as "if the fields of aggregate X changed, then
+    //      `rev.X` must grow", i.e. drive it from
+    //      `request.resource.data.diff(resource.data).affectedKeys()` rather than
+    //      checking one aggregate unconditionally.
+    //   2. Wire it into each `allow update` where the revision schema is real, and
+    //      leave `users` out by construction.
+    //   3. Prove it on the Firestore emulator — every writer, including the ones
+    //      that touch a single aggregate. Production is not the place to find out.
+    //   4. Audit the Admin SDK writers: they BYPASS rules entirely, so a server
+    //      path that changes content must advance the counter itself
+    //      (`sermons.repository.ts` takes an aggregate name; check new writers).
+    //   5. ONLY THEN the rollout question — wait until stale PWA installs have
+    //      picked up a build that maintains the counter, deploy, and watch the logs
+    //      for permission-denied.
+    //
+    // Risk as it stands: zero. Nothing calls this, so nothing can break — the
+    // danger appears the moment someone treats the draft as ready to switch on.
     //
     // function advancesRevision(aggregate) {
     //   return !(aggregate in request.resource.data.get('rev', {}))

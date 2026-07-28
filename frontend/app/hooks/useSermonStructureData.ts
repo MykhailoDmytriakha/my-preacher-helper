@@ -8,6 +8,7 @@ import { Item, Sermon, SermonOutline, SermonPoint, Tag, Thought, ThoughtsBySecti
 import { getSermonOutline } from '@/services/outline.service';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
+import { resolveOwnerUid, sermonDetailKey } from '@/utils/queryKeys';
 import { normalizeStructureTag } from '@/utils/tagUtils';
 import { canonicalizeStructure } from '@/utils/thoughtOrdering';
 import { getSectionBaseColor } from '@lib/sections';
@@ -18,14 +19,29 @@ async function fetchSermonData(
   queryClient: ReturnType<typeof useQueryClient>,
   isOnlineResolved: boolean
 ): Promise<Sermon | null> {
-  const cachedSermon = queryClient.getQueryData<Sermon>(["sermon", sermonId]);
+  /**
+   * The owner is fixed HERE, when the work starts, and not read again when it
+   * finishes. Sign-out and sign-in can happen while a fetch is in flight, and
+   * resolving the uid at completion time would file the FIRST account's sermon
+   * under the SECOND account's cache key — putting one person's sermon inside
+   * another person's cache, which is the leak this key exists to prevent.
+   */
+  const startedAsUid = resolveOwnerUid();
+  const key = sermonDetailKey(startedAsUid, sermonId);
+  const cachedSermon = queryClient.getQueryData<Sermon>(key);
   if (cachedSermon) {
     return cachedSermon;
   }
 
   if (isOnlineResolved) {
     const fetched = await getSermonById(sermonId);
-    queryClient.setQueryData(["sermon", sermonId], fetched ?? undefined);
+    // The account may have changed while this was in flight. Returning the sermon
+    // anyway is not enough: the caller feeds it straight into `setSermon`, which
+    // pins the owner AGAIN — now the new one — and files the first account's sermon
+    // under the second account's key, then builds the visible columns from it. A
+    // late answer for a signed-out account is dropped entirely.
+    if (resolveOwnerUid() !== startedAsUid) return null;
+    queryClient.setQueryData(key, fetched ?? undefined);
     return fetched ?? null;
   }
 
@@ -242,10 +258,15 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
   const setSermon = useCallback(async (updater: React.SetStateAction<Sermon | null>) => {
     if (!sermonId) return;
 
-    await queryClient.cancelQueries({ queryKey: ["sermon", sermonId] });
+    // Owner pinned before the await, for the same reason as in fetchSermonData:
+    // an account switch mid-flight must not redirect this write to the new owner.
+    const startedAsUid = resolveOwnerUid();
+    const key = sermonDetailKey(startedAsUid, sermonId);
+    await queryClient.cancelQueries({ queryKey: key });
+    if (resolveOwnerUid() !== startedAsUid) return;
 
     let nextSermon: Sermon | null = null;
-    queryClient.setQueryData(["sermon", sermonId], (prev: Sermon | undefined) => {
+    queryClient.setQueryData(key, (prev: Sermon | undefined) => {
       const next = updater instanceof Function ? updater(prev || null) : updater;
       nextSermon = next;
       return next ?? undefined;
@@ -255,7 +276,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     setSermonState(nextSermon);
 
     // NOTE: do NOT invalidateQueries here. setQueryData already updates the cache
-    // AND triggers the IndexedDB persister. Marking ["sermon", id] stale used to make
+    // AND triggers the IndexedDB persister. Marking the sermon key stale used to make
     // the detail page (useSermon is cache-first with refetchOnMount) refetch on return
     // from structure mode — and that background refetch could clobber the just-edited
     // structure with server data that hadn't caught up with the debounced save yet,

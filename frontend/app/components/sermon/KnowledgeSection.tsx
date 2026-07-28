@@ -1,8 +1,10 @@
 "use client";
 
 import { ChevronDownIcon } from '@heroicons/react/20/solid';
+import i18n from 'i18next';
 import React, { useState, useEffect } from "react";
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 
 import "@locales/i18n";
 import { MarkdownRenderer } from '@/components/ui/MarkdownRenderer';
@@ -15,6 +17,7 @@ import {
   generatePossibleDirections,
   generateThoughtsBasedPlan
 } from "@/services/insights.service";
+import { isUsageCapReachedError } from '@/services/usageLimits';
 import { debugLog } from "@/utils/debugMode";
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 import { RefreshIcon } from '@components/Icons';
@@ -31,7 +34,48 @@ interface KnowledgeSectionProps {
 
 // Types for section regeneration
 type InsightSectionType = 'topics' | 'verses' | 'directions';
-type RegenerationFunction = (sermonId: string) => Promise<Insights | null>;
+type RegenerationFunction = (sermonId: string) => Promise<Insights>;
+
+/**
+ * SAY IT OUT LOUD when generation fails.
+ *
+ * Every failure used to end as `null` here, so nothing appeared and nothing was
+ * said: a provider error, an exhausted quota and a request killed by the 60s
+ * function ceiling were all indistinguishable from "there was nothing to suggest".
+ * The person was left watching a block that simply never showed up.
+ */
+/**
+ * When several sections failed, say the thing the person can ACT on. "Split the
+ * sermon" is a step they can take; "try again" is not, and reporting whichever
+ * failure happened to come first would hide the useful one behind it.
+ */
+function mostActionable(failures: unknown[]): unknown {
+  // An exhausted quota outranks everything else, because it makes every other
+  // advice wrong: "try again" cannot work until the quota resets, and the global
+  // handler is already saying so. Returning it here means `reportAiFailure` stays
+  // silent instead of contradicting that message.
+  const capped = failures.find((f) => isUsageCapReachedError(f));
+  if (capped) return capped;
+  return (
+    failures.find((f) => (f as { reason?: unknown } | null)?.reason === 'too-large') ?? failures[0]
+  );
+}
+
+function reportAiFailure(error: unknown) {
+  // An exhausted quota is announced by the global usage handler, with the number
+  // and the reset time. Saying "could not generate this" on top of it contradicts
+  // that message and invites a retry that cannot work.
+  if (isUsageCapReachedError(error)) return;
+  // Read the reason off the value rather than testing the class: this runs behind
+  // a module boundary that tests and bundlers may replace, and a failed identity
+  // check here would throw INSIDE the error path — silence again, now louder.
+  const reason = (error as { reason?: unknown } | null | undefined)?.reason;
+  toast.error(
+    reason === 'too-large'
+      ? i18n.t('knowledge.failedTooLarge')
+      : i18n.t('knowledge.failedUnavailable')
+  );
+}
 
 // Constants for repeated CSS classes and text
 const REFRESH_BUTTON_CLASSES = "p-1 text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded transition-colors disabled:opacity-40 disabled:grayscale disabled:cursor-not-allowed";
@@ -148,6 +192,7 @@ const regenerateInsightSection = async ({
     showSuccessNotification(setSuccessNotification);
   } catch (error) {
     console.error(`Failed to generate ${sectionType}:`, error);
+    reportAiFailure(error);
   } finally {
     setGeneratingState(false);
   }
@@ -162,6 +207,7 @@ const generateAllInsightsForSermon = async ({
   setShowAllVerses,
   setShowAllDirections,
   setExpanded,
+  existingInsights,
   generators
 }: {
   sermonId: string | undefined;
@@ -172,6 +218,7 @@ const generateAllInsightsForSermon = async ({
   setShowAllVerses: React.Dispatch<React.SetStateAction<boolean>>;
   setShowAllDirections: React.Dispatch<React.SetStateAction<boolean>>;
   setExpanded: React.Dispatch<React.SetStateAction<boolean>>;
+  existingInsights?: Insights;
   generators: {
     generateTopics: RegenerationFunction;
     generateRelatedVerses: RegenerationFunction;
@@ -190,56 +237,87 @@ const generateAllInsightsForSermon = async ({
   setSuccessNotification(false);
 
   try {
-    console.log('📝 Creating empty insights object');
-    // Create empty insights object to start with
+    /**
+     * START FROM WHAT THE SERMON ALREADY HAS, not from empty arrays.
+     *
+     * This object REPLACES the stored insights wholesale, so any section left empty
+     * here is a section deleted from the sermon. Starting blank meant a failed
+     * topics call silently wiped topics the person already had — losing content in
+     * the name of adding some.
+     */
     const insights: Insights = {
-      topics: [],
-      relatedVerses: [],
-      possibleDirections: []
+      topics: existingInsights?.topics ?? [],
+      relatedVerses: existingInsights?.relatedVerses ?? [],
+      possibleDirections: existingInsights?.possibleDirections ?? [],
+      ...(existingInsights?.sectionHints ? { sectionHints: existingInsights.sectionHints } : {}),
+    };
+
+    /**
+     * ONE SECTION FAILING MUST NOT THROW AWAY THE OTHERS.
+     *
+     * Each generator is a separate paid call. Letting the first failure escape
+     * would (a) stop the remaining sections from being attempted at all and
+     * (b) discard sections that already succeeded — their quota and their minutes
+     * spent for nothing. So each is awaited on its own and the partial result is
+     * kept; the person is told once, at the end, that something did not come.
+     */
+    const failures: unknown[] = [];
+    const attempt = async (label: string, run: () => Promise<Insights>) => {
+      try {
+        return await run();
+      } catch (error) {
+        console.error(`❌ ${label} failed:`, error);
+        failures.push(error);
+        return null;
+      }
     };
 
     console.log('🎯 Starting topics generation...');
-    // Generate all sections sequentially
-    const topicsResult = await generators.generateTopics(sermonId);
+    const topicsResult = await attempt('topics', () => generators.generateTopics(sermonId));
     if (topicsResult?.topics) {
       insights.topics = topicsResult.topics;
       console.log('✅ Topics generated:', topicsResult.topics.length);
     }
 
     console.log('🎯 Starting verses generation...');
-    const versesResult = await generators.generateRelatedVerses(sermonId);
+    const versesResult = await attempt('verses', () => generators.generateRelatedVerses(sermonId));
     if (versesResult?.relatedVerses) {
       insights.relatedVerses = versesResult.relatedVerses;
       console.log('✅ Verses generated:', versesResult.relatedVerses.length);
     }
 
     console.log('🎯 Starting directions generation...');
-    const directionsResult = await generators.generatePossibleDirections(sermonId);
+    const directionsResult = await attempt('directions', () => generators.generatePossibleDirections(sermonId));
     if (directionsResult?.possibleDirections) {
       insights.possibleDirections = directionsResult.possibleDirections;
       console.log('✅ Directions generated:', directionsResult.possibleDirections.length);
     }
 
     console.log('🎯 Starting thoughts plan generation...');
-    // Generate thoughts-based plan
-    const sectionHintsResult = await generators.generateThoughtsBasedPlan(sermonId);
+    const sectionHintsResult = await attempt('plan', () => generators.generateThoughtsBasedPlan(sermonId));
     if (sectionHintsResult?.sectionHints) {
       insights.sectionHints = sectionHintsResult.sectionHints;
     }
 
-    // Update the sermon with all new insights
-    onInsightsUpdated(insights);
+    // Whatever DID come back is applied — partial results are still results. But
+    // if NOTHING came back there is nothing to apply, and writing the untouched
+    // object back would be a no-op dressed as an update.
+    const anySucceeded = failures.length < 4;
+    if (anySucceeded) onInsightsUpdated(insights);
+    if (failures.length > 0) reportAiFailure(mostActionable(failures));
 
     // Reset visibility states when generating new insights
     setShowAllTopics(true);
     setShowAllVerses(true);
     setShowAllDirections(true);
 
-    showSuccessNotification(setSuccessNotification);
+    // "Generated!" over four failures is a lie the person can see through.
+    if (anySucceeded) showSuccessNotification(setSuccessNotification);
 
-    console.log('🎉 COMPLETED handleGenerateAllInsights successfully');
+    console.log('🎉 COMPLETED handleGenerateAllInsights');
   } catch (error) {
     console.error("❌ FAILED to generate insights:", error);
+    reportAiFailure(error);
   } finally {
     setIsGeneratingAll(false);
     setExpanded(true);
@@ -257,7 +335,7 @@ const generateSectionHintsForSermon = async ({
   setIsGeneratingPlan: React.Dispatch<React.SetStateAction<boolean>>;
   setSuccessNotification: React.Dispatch<React.SetStateAction<boolean>>;
   onInsightsUpdated: (insights: Insights) => void;
-  generateThoughtsBasedPlan: (sermonId: string) => Promise<Insights | null>;
+  generateThoughtsBasedPlan: RegenerationFunction;
 }) => {
   if (!sermonId) {
     console.error("Cannot generate plan hints: sermon or sermon.id is missing");
@@ -277,6 +355,7 @@ const generateSectionHintsForSermon = async ({
     }
   } catch (error) {
     console.error("Failed to generate plan hints:", error);
+    reportAiFailure(error);
   } finally {
     setIsGeneratingPlan(false);
   }
@@ -588,6 +667,7 @@ const KnowledgeSection: React.FC<KnowledgeSectionProps> = ({ sermon, updateSermo
       setShowAllVerses,
       setShowAllDirections,
       setExpanded,
+      existingInsights: localInsights ?? sermon?.insights,
       generators: {
         generateTopics,
         generateRelatedVerses,

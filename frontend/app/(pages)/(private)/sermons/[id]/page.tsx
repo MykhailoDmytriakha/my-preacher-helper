@@ -271,7 +271,7 @@ export default function SermonPage() {
   const [uiMode, setUiMode] = useState<SermonUiMode>(() => getInitialUiMode(modeParam, id as string));
 
   const { t } = useTranslation();
-  const { sermon, setSermon, loading, error } = useSermon(id);
+  const { sermon, setSermon, loading, isOnline, awaitingFirstAnswer } = useSermon(id);
 
   // Does the server hold a newer version of THIS sermon? Shared layer with the
   // note and series pages: observe only, never swap what is on screen.
@@ -1505,7 +1505,11 @@ useEffect(() => {
     );
   };
 
-  if (loading || (!sermon && !error)) {
+  // Wait only while an answer can still arrive on its own — see awaitingFirstAnswer.
+  // The old test (`!sermon && !error`) also covered a PAUSED and a DISABLED query,
+  // neither of which ever settles, which is how this page kept showing placeholders
+  // forever and made the branch below it unreachable.
+  if (loading || awaitingFirstAnswer) {
     return <SermonDetailSkeleton />;
   }
 
@@ -1513,7 +1517,9 @@ useEffect(() => {
     return (
       <div className="py-8">
         <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 text-center">
-          <h2 className="text-xl font-semibold mb-2">{t('sermon.notFound')}</h2>
+          <h2 className="text-xl font-semibold mb-2">
+            {isOnline ? t('sermon.notFound') : t('sermon.unavailableOffline')}
+          </h2>
           <Link href="/dashboard" className="text-blue-600 dark:text-blue-400 hover:underline">
             {t('sermon.backToList')}
           </Link>

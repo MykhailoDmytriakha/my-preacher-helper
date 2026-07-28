@@ -5,12 +5,17 @@ import '@testing-library/jest-dom';
 import KnowledgeSection from '@/components/sermon/KnowledgeSection';
 import { Sermon, Insights, Plan, SectionHints } from '@/models/models';
 import * as insightsService from '@/services/insights.service';
+import { toast } from 'sonner';
 import { TestProviders } from '../../test-utils/test-providers';
 
 // Extend global Window interface to include our test flag
 declare global {
   var __CONSOLE_OVERRIDDEN_BY_TEST__: boolean;
 }
+
+jest.mock('sonner', () => ({
+  toast: { error: jest.fn(), success: jest.fn() },
+}));
 
 // Mock the insights service
 jest.mock('@/services/insights.service', () => ({
@@ -902,4 +907,136 @@ describe('KnowledgeSection Component', () => {
     expect(screen.getByText('Possible Directions')).toBeInTheDocument();
     expect(screen.getByText('Suggested Plan')).toBeInTheDocument();
   });
-}); 
+
+  /**
+   * EACH GENERATOR IS A SEPARATE PAID CALL. One failing must not throw away the
+   * ones that already came back, nor stop the remaining ones from being attempted:
+   * that spends quota and minutes and shows nothing for them.
+   */
+  it('keeps the sections that succeeded when one of them fails', async () => {
+    (insightsService.generateTopics as jest.Mock).mockResolvedValue({ topics: ['t1', 't2'] });
+    (insightsService.generateRelatedVerses as jest.Mock).mockRejectedValue(new Error('provider exploded'));
+    (insightsService.generatePossibleDirections as jest.Mock).mockResolvedValue({ possibleDirections: ['d1'] });
+    (insightsService.generateThoughtsBasedPlan as jest.Mock).mockResolvedValue({ sectionHints: {} });
+
+    const sermonWithEnoughThoughts = {
+      ...mockSermonWithoutInsights,
+      thoughts: Array(20).fill({ id: 'thought-id', text: 'Thought text', tags: [] })
+    };
+
+    render(
+      <TestProviders>
+        <KnowledgeSection sermon={sermonWithEnoughThoughts} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Generate Insights' }));
+    });
+
+    await waitFor(() => expect(mockUpdateSermon).toHaveBeenCalled());
+
+    // The later generators still ran despite the failure in the middle...
+    expect(insightsService.generatePossibleDirections).toHaveBeenCalled();
+    expect(insightsService.generateThoughtsBasedPlan).toHaveBeenCalled();
+    // ...and what DID come back was applied, not discarded.
+    const applied = mockUpdateSermon.mock.calls[mockUpdateSermon.mock.calls.length - 1][0];
+    expect(applied.insights.topics).toEqual(['t1', 't2']);
+    expect(applied.insights.possibleDirections).toEqual(['d1']);
+  });
+
+
+  /**
+   * Four failed calls must not end in "Insights generated!". The seeding from the
+   * sermon's existing sections is defensive — today this control only appears when
+   * there are none — but the false success is reachable and was being shown.
+   */
+  it('does not claim success when every section failed', async () => {
+    const boom = () => Promise.reject(new Error('provider exploded'));
+    (insightsService.generateTopics as jest.Mock).mockImplementation(boom);
+    (insightsService.generateRelatedVerses as jest.Mock).mockImplementation(boom);
+    (insightsService.generatePossibleDirections as jest.Mock).mockImplementation(boom);
+    (insightsService.generateThoughtsBasedPlan as jest.Mock).mockImplementation(boom);
+
+    const sermonWithEnoughThoughts = {
+      ...mockSermonWithoutInsights,
+      thoughts: Array(20).fill({ id: 'thought-id', text: 'Thought text', tags: [] })
+    };
+
+    render(
+      <TestProviders>
+        <KnowledgeSection sermon={sermonWithEnoughThoughts} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    });
+    mockUpdateSermon.mockClear();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Generate Insights' }));
+    });
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(mockUpdateSermon).not.toHaveBeenCalled();
+    expect(screen.queryByText('Insights generated!')).not.toBeInTheDocument();
+  });
+
+  /**
+   * A FAILURE MUST REACH THE PERSON, and it must say WHICH failure it was.
+   *
+   * These generators used to answer every problem with `null`, so the block just did
+   * not appear: an exhausted quota, a provider error and a request killed by the 60s
+   * ceiling were indistinguishable from "there was nothing to suggest". The only
+   * trace was a console line nobody sees.
+   */
+  describe('a failed generation is spoken about', () => {
+    beforeEach(() => {
+      (toast.error as jest.Mock).mockClear();
+    });
+
+    const failWith = async (error: unknown) => {
+      (insightsService.generateTopics as jest.Mock).mockRejectedValue(error);
+      render(
+        <TestProviders>
+          <KnowledgeSection sermon={mockSermonWithInsights} updateSermon={mockUpdateSermon} />
+        </TestProviders>
+      );
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: 'Show more' })).toBeInTheDocument();
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+      });
+      const refreshButtons = screen.getAllByTitle('Refresh');
+      await act(async () => {
+        fireEvent.click(refreshButtons[0]);
+      });
+      await waitFor(() => expect(toast.error).toHaveBeenCalled());
+      return (toast.error as jest.Mock).mock.calls[0][0];
+    };
+
+    it('tells the person a too-large request is different from a broken one', async () => {
+      const tooLarge = await failWith({ reason: 'too-large', message: 'timed out' });
+      (toast.error as jest.Mock).mockClear();
+      const unavailable = await failWith(new Error('provider exploded'));
+
+      expect(tooLarge).toBeTruthy();
+      expect(unavailable).toBeTruthy();
+      // The whole point of carrying a reason: one asks them to split the text, the
+      // other asks them to try again. Same message for both = the reason was lost.
+      expect(tooLarge).not.toEqual(unavailable);
+    });
+  });
+
+});

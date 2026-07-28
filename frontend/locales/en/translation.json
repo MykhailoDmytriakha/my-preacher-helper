@@ -886,7 +886,8 @@
     }
   },
   "sermon": {
-    "notFound": "Sermon not found",
+    "notFound": "Sermon not found or unavailable",
+    "unavailableOffline": "No connection and no local copy of this sermon",
     "backToList": "Back to list",
     "allThoughts": "All Thoughts",
     "noThoughts": "No thoughts for this sermon",
@@ -1246,7 +1247,9 @@
     "showAll": "Show all",
     "hideAll": "Hide all",
     "clickToExpand": "Click the arrow above to view insights",
-    "insightsThreshold": "You need {{count}} more thoughts to unlock insights. Currently: {{thoughtsCount}} of {{threshold}} required"
+    "insightsThreshold": "You need {{count}} more thoughts to unlock insights. Currently: {{thoughtsCount}} of {{threshold}} required",
+    "failedTooLarge": "The request did not fit in the time allowed — try splitting the sermon into parts, or try again",
+    "failedUnavailable": "Could not generate this — please try again"
   },
   "common": {
     "done": "Done",
@@ -2734,6 +2737,8 @@
     }
   },
   "prayer": {
+    "notFound": "Prayer request not found",
+    "back": "Back",
     "title": "Prayer Journal",
     "add": "Add Prayer",
     "empty": "No prayer requests yet",

@@ -3,6 +3,7 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import useSermon from '@/hooks/useSermon';
+import { sermonDetailKey } from '@/utils/queryKeys';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { debugLog } from '@/utils/debugMode';
@@ -115,7 +116,7 @@ describe('useSermon', () => {
     const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
 
     await waitFor(() => {
-      expect(queryClient.getQueryData(['sermon', 'sermon-1'])).toEqual(cached);
+      expect(queryClient.getQueryData(sermonDetailKey('user-1', 'sermon-1'))).toEqual(cached);
     });
 
     expect(result.current.sermon).toEqual(cached);
@@ -142,7 +143,7 @@ describe('useSermon', () => {
       await result.current.setSermon(null);
     });
 
-    expect(queryClient.getQueryData(['sermon', 'sermon-1'])).toBeUndefined();
+    expect(queryClient.getQueryData(sermonDetailKey('user-1', 'sermon-1'))).toBeUndefined();
   });
 
   it('sets sermon when updater is a direct value', async () => {
@@ -164,7 +165,7 @@ describe('useSermon', () => {
     });
 
     await waitFor(() => {
-      expect(queryClient.getQueryData(['sermon', 'sermon-1'])).toEqual(updated);
+      expect(queryClient.getQueryData(sermonDetailKey('user-1', 'sermon-1'))).toEqual(updated);
     });
   });
 
@@ -185,7 +186,7 @@ describe('useSermon', () => {
       expect(result.current.sermon).toEqual(baseSermon);
     });
 
-    expect(queryClient.getQueryData(['sermon', 'sermon-1'])).toBeUndefined();
+    expect(queryClient.getQueryData(sermonDetailKey('user-1', 'sermon-1'))).toBeUndefined();
     expect(debugLog).not.toHaveBeenCalledWith(expect.stringContaining("Sermon cache hydrated"), expect.anything());
   });
 
@@ -208,7 +209,7 @@ describe('useSermon', () => {
     const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
 
     await waitFor(() => {
-      expect(queryClient.getQueryData(['sermon', 'sermon-1'])).toEqual(cached);
+      expect(queryClient.getQueryData(sermonDetailKey('guest-1', 'sermon-1'))).toEqual(cached);
     });
 
     expect(result.current.sermon).toEqual(cached);
@@ -227,7 +228,7 @@ describe('useSermon', () => {
 
     const { result } = renderHook(() => useSermon(''), { wrapper });
 
-    expect(queryClient.getQueryData(['sermon', ''])).toBeUndefined();
+    expect(queryClient.getQueryData(sermonDetailKey('user-1', ''))).toBeUndefined();
     expect(result.current.sermon).toBeNull();
     expect(result.current.loading).toBe(false);
 
@@ -284,5 +285,38 @@ describe('useSermon', () => {
     const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
 
     expect(result.current.sermon).toEqual(baseSermon);
+  });
+
+  /**
+   * A PAUSED retry is not a finished one: React Query resumes it on focus or
+   * reconnect. Only the REASON can end the wait — rules refusing the document is an
+   * answer, a dropped connection is not. Treating every pause as final made the page
+   * flash "not found" over a perfectly good sermon on a momentary network failure.
+   */
+  describe('a paused query', () => {
+    const pausedWith = (reason: unknown) => {
+      mockUseServerFirstQuery.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        error: null,
+        isFetched: false,
+        failureReason: reason,
+        refetch: jest.fn(),
+      } as any);
+      const { wrapper } = createWrapper();
+      return renderHook(() => useSermon('sermon-1'), { wrapper });
+    };
+
+    it('keeps waiting when the read merely failed to get through', () => {
+      mockUseOnlineStatus.mockReturnValue(true);
+      const { result } = pausedWith({ code: 'unavailable', message: 'network' });
+      expect(result.current.awaitingFirstAnswer).toBe(true);
+    });
+
+    it('stops waiting when the rules refused the document', () => {
+      mockUseOnlineStatus.mockReturnValue(true);
+      const { result } = pausedWith({ code: 'permission-denied', message: 'Missing or insufficient permissions.' });
+      expect(result.current.awaitingFirstAnswer).toBe(false);
+    });
   });
 });

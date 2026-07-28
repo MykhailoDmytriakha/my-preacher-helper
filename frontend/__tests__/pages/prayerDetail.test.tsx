@@ -189,8 +189,10 @@ describe('PrayerDetailPage', () => {
 
     render(<PrayerDetailPage />);
 
-    expect(screen.getByText('Prayer request not found.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '← Back' })).toHaveAttribute('href', '/prayers');
+    // The strings are translated now, so the assertion follows the KEYS: hardcoded
+    // English here is what let the untranslated text survive in the first place.
+    expect(screen.getByText('prayer.notFound')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '← prayer.back' })).toHaveAttribute('href', '/prayers');
   });
 
   it('handles edit, update, status, and delete flows for active prayers', async () => {

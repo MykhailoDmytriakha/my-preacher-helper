@@ -261,7 +261,8 @@ jest.mock('react-i18next', () => ({
       const translations: { [key: string]: string } = {
         'sermon.loading': 'Loading sermon...',
         'sermon.error': 'Error loading sermon',
-        'sermon.notFound': 'Sermon not found',
+        'sermon.notFound': 'Sermon not found or unavailable',
+        'sermon.unavailableOffline': 'No connection and no local copy of this sermon',
         'sermon.backToList': 'Back to list',
         'filters.filter': 'Filter',
         'filters.activeFilters': 'Active filters',
@@ -445,11 +446,19 @@ describe('Sermon Detail Page', () => {
       expect(screen.getByTestId('sermon-detail-skeleton')).toBeInTheDocument();
     });
 
-    it('shows skeleton when no sermon and no error yet (initial fetch)', async () => {
+    /**
+     * CONTRACT CHANGED 2026-07-28. "No sermon and no error" is NOT a reason to wait:
+     * a refused read is PAUSED by React Query (pending, no error, forever) and an
+     * offline read is disabled, so the old test — which asserted skeletons for that
+     * exact state — was locking the infinite-skeleton bug in place. Waiting is now
+     * driven by `awaitingFirstAnswer`: an answer that can still arrive by itself.
+     */
+    it('shows skeleton while an answer can still arrive', async () => {
       const useSermonMock = require('@/hooks/useSermon').default;
       useSermonMock.mockReturnValue({
         sermon: null,
         loading: false,
+        awaitingFirstAnswer: true,
         setSermon: jest.fn(),
         refreshSermon: jest.fn(),
         getSortedThoughts: jest.fn().mockReturnValue([]),
@@ -463,6 +472,29 @@ describe('Sermon Detail Page', () => {
       );
 
       expect(screen.getByTestId('sermon-detail-skeleton')).toBeInTheDocument();
+    });
+
+    it('stops waiting and says so when no answer can arrive any more', async () => {
+      const useSermonMock = require('@/hooks/useSermon').default;
+      useSermonMock.mockReturnValue({
+        sermon: null,
+        loading: false,
+        awaitingFirstAnswer: false,
+        isOnline: true,
+        setSermon: jest.fn(),
+        refreshSermon: jest.fn(),
+        getSortedThoughts: jest.fn().mockReturnValue([]),
+        error: null,
+      });
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      expect(screen.queryByTestId('sermon-detail-skeleton')).not.toBeInTheDocument();
+      expect(screen.getByText('Sermon not found or unavailable')).toBeInTheDocument();
     });
 
     it('loads sermon data on mount', async () => {
@@ -533,6 +565,8 @@ describe('Sermon Detail Page', () => {
       useSermonMock.mockReturnValue({
         sermon: null,
         loading: false,
+        awaitingFirstAnswer: false,
+        isOnline: true,
         setSermon: jest.fn(),
         refreshSermon: jest.fn(),
         getSortedThoughts: jest.fn().mockReturnValue([]),
@@ -546,7 +580,7 @@ describe('Sermon Detail Page', () => {
       );
 
       await waitFor(() => {
-        expect(screen.getByText('Sermon not found')).toBeInTheDocument();
+        expect(screen.getByText('Sermon not found or unavailable')).toBeInTheDocument();
         expect(screen.getByText('Back to list')).toBeInTheDocument();
       });
 

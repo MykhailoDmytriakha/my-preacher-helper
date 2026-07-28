@@ -16,6 +16,17 @@ const TIMEOUT_BY_CATEGORY: Record<RequestCategory, number> = {
   metadata: 5000,
   detail: 15000,
   crud: 8000,
+  /**
+   * Deliberately ABOVE the 60s function ceiling, not aligned with it.
+   *
+   * Tried 65s and reverted the same day: this clock starts before `fetch` and
+   * therefore measures the whole round trip — upload, edge routing, response —
+   * while `maxDuration` bounds only the function's own execution. A call that used
+   * 59s of legal server time plus a few seconds of overhead would be cut off by the
+   * client although the server was about to answer. And `category:'ai'` is not just
+   * the insight routes: sorting, plan generation, brainstorm, outline, studies
+   * analysis and audio all ride it.
+   */
   ai: 90000,
   // Audio requests run transcription plus follow-up AI formatting/tagging.
   // A 45s cutoff causes false offline/timeouts for valid long-running work.

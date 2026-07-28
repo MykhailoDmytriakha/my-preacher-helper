@@ -213,8 +213,8 @@ export default function PrayerDetailPage() {
   if (!prayer) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-6 text-center text-gray-400 dark:text-gray-500">
-        <p>Prayer request not found.</p>
-        <Link href="/prayers" className="text-rose-500 text-sm mt-2 inline-block">← Back</Link>
+        <p>{t('prayer.notFound')}</p>
+        <Link href="/prayers" className="text-rose-500 text-sm mt-2 inline-block">← {t('prayer.back')}</Link>
       </div>
     );
   }
