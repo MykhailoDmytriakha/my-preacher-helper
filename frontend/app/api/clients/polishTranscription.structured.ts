@@ -125,7 +125,7 @@ export async function polishTranscription(
     try {
         const userMessage = `Clean up this voice transcription:\n\n${trimmed}`;
         const promptBlueprint = buildSimplePromptBlueprint({
-            promptName: "polishTranscription",
+            promptName: "dictation.transcript_cleanup",
             promptVersion: "v3",
             systemPrompt: POLISH_SYSTEM_PROMPT,
             userMessage,

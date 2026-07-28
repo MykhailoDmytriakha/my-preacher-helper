@@ -152,7 +152,7 @@ describe('generateThoughtStructured', () => {
       expect.objectContaining({
         formatName: 'thought',
         promptBlueprint: expect.objectContaining({
-          promptName: 'thought',
+          promptName: "sermon.thoughts.transcript_polish",
           promptVersion: 'v6',
         }),
       })

@@ -74,7 +74,7 @@ export async function generateSermonInsightsStructured(
     const sermonContent = extractSermonContent(sermon);
     const userMessage = createInsightsUserMessage(sermon, sermonContent);
     const promptBlueprint = buildSimplePromptBlueprint({
-        promptName: "sermon_insights",
+        promptName: "sermon.insights.all",
         promptVersion: "v1",
         systemPrompt: insightsSystemPrompt,
         userMessage,
@@ -125,7 +125,7 @@ export async function generateSermonTopicsStructured(
     const sermonContent = extractSermonContent(sermon);
     const userMessage = createTopicsUserMessage(sermon, sermonContent);
     const promptBlueprint = buildSimplePromptBlueprint({
-        promptName: "sermon_topics",
+        promptName: "sermon.insights.topics",
         promptVersion: "v1",
         systemPrompt: topicsSystemPrompt,
         userMessage,
@@ -176,7 +176,7 @@ export async function generateSermonVersesStructured(
     const sermonContent = extractSermonContent(sermon);
     const userMessage = createVersesUserMessage(sermon, sermonContent);
     const promptBlueprint = buildSimplePromptBlueprint({
-        promptName: "sermon_verses",
+        promptName: "sermon.insights.verses",
         promptVersion: "v2",
         systemPrompt: versesSystemPrompt,
         userMessage,
@@ -227,7 +227,7 @@ export async function generateSectionHintsStructured(
     const sermonContent = extractSermonContent(sermon);
     const userMessage = createSectionHintsUserMessage(sermon, sermonContent);
     const promptBlueprint = buildSimplePromptBlueprint({
-        promptName: "section_hints",
+        promptName: "sermon.insights.section_hints",
         promptVersion: "v1",
         systemPrompt: planSystemPrompt,
         userMessage,
@@ -311,7 +311,7 @@ ${sectionContent}
 Generate each outline point as a short, clear phrase (not a complete sentence). Make each point build logically on the previous ones.
 Keep the outline points in the ${hasNonLatinChars ? 'same non-English' : 'English'} language as the input.`;
     const promptBlueprint = buildPromptBlueprint({
-        promptName: "sermon_points",
+        promptName: "sermon.structure.focus.generate_outline",
         promptVersion: "v1",
         expectedLanguage: hasNonLatinChars ? "non-english" : "en",
         context: {
@@ -690,7 +690,7 @@ ${scratchList}
 Arrange every note. Return keys and headings only.`;
 
     const promptBlueprint = buildPromptBlueprint({
-        promptName: "compose_plan_from_scratch",
+        promptName: "sermon.scratch.to_outline",
         promptVersion: "v3-keys",
         expectedLanguage,
         context: {
@@ -779,7 +779,7 @@ export async function generateBrainstormSuggestionStructured(
     const sermonContent = extractSermonContent(sermon);
     const userMessage = createBrainstormUserMessage(sermon, sermonContent);
     const promptBlueprint = buildSimplePromptBlueprint({
-        promptName: "brainstorm_suggestion",
+        promptName: "sermon.ideas.suggest",
         promptVersion: "v1",
         systemPrompt: brainstormSystemPrompt,
         userMessage,

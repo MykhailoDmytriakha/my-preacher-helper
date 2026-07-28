@@ -123,7 +123,7 @@ describe('analyzeStudyNote', () => {
       expect.any(Object),
       expect.objectContaining({
         promptBlueprint: expect.objectContaining({
-          promptName: 'studyNoteAnalysis',
+          promptName: "studies.note.analyze_all",
           promptVersion: 'v2',
         }),
       })

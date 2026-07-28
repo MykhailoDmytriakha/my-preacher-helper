@@ -143,7 +143,7 @@ async function runThoughtAttempt(params: {
 
   try {
     const promptBlueprint = buildSimplePromptBlueprint({
-      promptName: "thought",
+      promptName: "sermon.thoughts.transcript_polish",
       promptVersion: "v6",
       systemPrompt: thoughtSystemPrompt,
       userMessage,

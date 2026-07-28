@@ -73,7 +73,7 @@ export async function generateSermonTransitions(
                 formatName: "sermon_transitions",
                 userId,
                 usageAdmission,
-                promptName: "sermon_transitions",
+                promptName: "sermon.export.part_links",
                 promptVersion: "v1",
                 logContext: {
                     sermonTitle: sermon.title,

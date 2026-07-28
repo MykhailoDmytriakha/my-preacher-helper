@@ -59,7 +59,7 @@ describe('speechOptimization client', () => {
 
     expect(buildSimplePromptBlueprint).toHaveBeenCalledWith(
       expect.objectContaining({
-        promptName: 'speech_optimization',
+        promptName: "sermon.export.speech_text",
         promptVersion: 'v1',
         context: expect.objectContaining({
           sermonTitle: sermon.title,
@@ -85,7 +85,7 @@ describe('speechOptimization client', () => {
         formatName: 'speech_optimization',
         workload: 'structured.speechOptimization',
         promptBlueprint: expect.objectContaining({
-          promptName: 'speech_optimization',
+          promptName: "sermon.export.speech_text",
         }),
         logContext: {
           sermonTitle: sermon.title,

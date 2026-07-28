@@ -69,6 +69,33 @@ function loadServiceAccount() {
   }
 }
 
+/**
+ * Человеческие имена берём из реестра `app/api/clients/ai/promptRegistry.ts`.
+ * Скрипт на чистом JS и импортировать TypeScript не может, поэтому читает файл
+ * и вынимает пары «ключ → display» и «старое имя → ключ» разбором текста.
+ * Не разобралось — работаем на сырых ключах: они и сами говорящие.
+ */
+function loadRegistry() {
+  const file = path.join(ROOT, 'app', 'api', 'clients', 'ai', 'promptRegistry.ts');
+  const display = new Map();
+  const legacy = new Map();
+  if (!fs.existsSync(file)) return { display, legacy };
+
+  const text = fs.readFileSync(file, 'utf8');
+  const entry = /"([a-z][a-z0-9_.]+)":\s*\{([\s\S]*?)\n {2}\}/g;
+  let match;
+  while ((match = entry.exec(text)) !== null) {
+    const [, key, body] = match;
+    const displayMatch = body.match(/display:\s*"([^"]+)"/);
+    if (displayMatch) display.set(key, displayMatch[1]);
+    const legacyMatch = body.match(/legacyNames:\s*\[([^\]]*)\]/);
+    if (legacyMatch) {
+      for (const raw of legacyMatch[1].matchAll(/"([^"]+)"/g)) legacy.set(raw[1], key);
+    }
+  }
+  return { display, legacy };
+}
+
 function stats(values) {
   if (!values.length) return null;
   const s = [...values].sort((a, b) => a - b);
@@ -82,17 +109,27 @@ admin.initializeApp({ credential: admin.credential.cert(loadServiceAccount()) })
 const db = admin.firestore();
 
 const collection = process.env.AI_TELEMETRY_COLLECTION || 'ai_prompt_telemetry';
-const snap = await db.collection(collection).get();
-
 const cutoff = WINDOW_DAYS ? new Date(Date.now() - WINDOW_DAYS * 86_400_000).toISOString() : null;
+
+// Фильтр по дате отдаём базе, а не себе, и тянем ТОЛЬКО нужные поля: документ
+// телеметрии весит ~21 KB (в нём лежит текст промпта и ответа), и без проекции
+// один прогон качал бы всю коллекцию целиком — на 10 000 событий это сотни
+// мегабайт трафика и пятая часть дневного лимита чтений.
+let query = db.collection(collection).select('promptName', 'latencyMs', 'status', 'jsonStructureStatus', 'phase', 'timestamp');
+if (cutoff) query = query.where('timestamp', '>=', cutoff);
+const snap = await query.get();
+
+const { display: DISPLAY, legacy: LEGACY } = loadRegistry();
 const byPrompt = new Map();
 let minTs = null;
 let maxTs = null;
 
 snap.forEach((doc) => {
   const e = doc.data();
-  if (cutoff && (e.timestamp || '') < cutoff) return;
-  const name = e.promptName || '(без имени)';
+  const rawName = e.promptName || '(без имени)';
+  // События до переименования сводим к текущему ключу, иначе один промпт
+  // разъедется на две строки.
+  const name = LEGACY.get(rawName) || rawName;
   if (!byPrompt.has(name)) byPrompt.set(name, { lat: [], status: {} });
   const b = byPrompt.get(name);
   if (typeof e.latencyMs === 'number') b.lat.push(e.latencyMs);
@@ -113,18 +150,21 @@ const rows = [...byPrompt.entries()]
   .sort((a, b) => b.st.p50 - a.st.p50);
 
 const header =
-  'промпт'.padEnd(28) + 'n'.padStart(5) + 'min'.padStart(9) + 'p50'.padStart(10) +
-  'p90'.padStart(9) + 'max'.padStart(9) + '   >10s'.padEnd(16) + 'статусы';
+  'ключ'.padEnd(42) + 'n'.padStart(5) + 'min'.padStart(9) + 'p50'.padStart(10) +
+  'p90'.padStart(9) + 'max'.padStart(9) + '   >10s'.padEnd(15) + 'статусы';
 console.log(header);
 console.log('-'.repeat(header.length));
 
 for (const { name, st, b } of rows) {
   const over = b.lat.filter((v) => v > DEFAULT_CAP_MS).length;
   const pct = ((100 * over) / b.lat.length).toFixed(0);
+  // Сперва человеческое имя — по нему видно, где в приложении это происходит;
+  // ключ идёт следом, потому что им адресуют админку и логи.
+  console.log(`\n${DISPLAY.get(name) || name}`);
   console.log(
-    name.padEnd(28) + String(st.n).padStart(5) + sec(st.min).padStart(9) +
+    ('  ' + name).padEnd(42) + String(st.n).padStart(5) + sec(st.min).padStart(9) +
     sec(st.p50).padStart(10) + sec(st.p90).padStart(9) + sec(st.max).padStart(9) +
-    `   ${over}/${b.lat.length} (${pct}%)`.padEnd(16) + JSON.stringify(b.status)
+    `   ${over}/${b.lat.length} (${pct}%)`.padEnd(15) + JSON.stringify(b.status)
   );
 }
 

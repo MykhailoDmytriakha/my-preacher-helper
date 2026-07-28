@@ -266,7 +266,7 @@ describe('polishTranscription', () => {
             expect.objectContaining({
                 formatName: 'polishTranscription',
                 promptBlueprint: expect.objectContaining({
-                    promptName: 'polishTranscription',
+                    promptName: "dictation.transcript_cleanup",
                     promptVersion: 'v3',
                 }),
             })

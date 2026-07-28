@@ -688,7 +688,7 @@ describe('openAI.client additional coverage', () => {
     expect(callArgs[3]).toEqual(
       expect.objectContaining({
         promptBlueprint: expect.objectContaining({
-          promptName: 'plan_point_content',
+          promptName: "sermon.conspect.point",
           promptVersion: 'v13',
         }),
       })

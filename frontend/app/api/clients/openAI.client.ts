@@ -609,7 +609,7 @@ export async function sortItemsWithAI(
       outlinePointCount: outlinePoints.length
     };
     const promptBlueprint = buildSimplePromptBlueprint({
-      promptName: "sort_items",
+      promptName: "sermon.structure.sort",
       promptVersion: "v1",
       systemPrompt: sortingSystemPrompt,
       userMessage,
@@ -714,7 +714,7 @@ export async function generatePlanForSection(
         (sermon.outline[section.toLowerCase() as keyof typeof sermon.outline] as unknown[]).length > 0
     };
     const promptBlueprint = buildPromptBlueprint({
-      promptName: "plan_for_section",
+      promptName: "sermon.conspect.section",
       promptVersion: "v1",
       expectedLanguage: detectedLanguage,
       context: inputInfo,
@@ -843,7 +843,7 @@ export async function generateSermonDirections(
       contentLength: sermonContent.length
     };
     const promptBlueprint = buildSimplePromptBlueprint({
-      promptName: "sermon_directions",
+      promptName: "sermon.insights.directions",
       promptVersion: "v2",
       systemPrompt: directionsSystemPrompt,
       userMessage,
@@ -1161,7 +1161,7 @@ export async function generatePlanPointContent(
       style
     };
     const promptBlueprint = buildSimplePromptBlueprint({
-      promptName: "plan_point_content",
+      promptName: "sermon.conspect.point",
       promptVersion: "v13",
       expectedLanguage: languageInfo.telemetryLanguage,
       systemPrompt,

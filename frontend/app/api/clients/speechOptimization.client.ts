@@ -57,7 +57,7 @@ export async function optimizeTextForSpeech(
     const userPrompt = buildOptimizationPrompt(rawText, options);
 
     const promptBlueprint = buildSimplePromptBlueprint({
-        promptName: "speech_optimization",
+        promptName: "sermon.export.speech_text",
         promptVersion: "v1",
         systemPrompt: SPEECH_OPTIMIZATION_SYSTEM_PROMPT,
         userMessage: userPrompt,

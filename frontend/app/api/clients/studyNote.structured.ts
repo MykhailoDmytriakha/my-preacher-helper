@@ -60,6 +60,19 @@ function detectLanguage(text: string): {
  */
 export type AnalysisType = 'all' | 'title' | 'tags' | 'scriptureRefs';
 
+/**
+ * Имя промпта у разбора заметки зависит от того, ЧТО разбирали. Одно имя на все
+ * четыре случая делало телеметрию слепой: разбор целиком и точечная расстановка
+ * тегов — разные работы с разной ценой ошибки, а в сводке выглядели одинаково.
+ * Ключи описаны в `ai/promptRegistry.ts`.
+ */
+const STUDY_NOTE_PROMPT_KEYS: Record<AnalysisType, string> = {
+  all: 'studies.note.analyze_all',
+  title: 'studies.note.analyze_title',
+  tags: 'studies.note.analyze_tags',
+  scriptureRefs: 'studies.note.analyze_refs',
+};
+
 function buildSystemPrompt(languageHint: string, analysisType: AnalysisType): string {
   // Build language directive based on detected language
   let languageDirective: string;
@@ -400,7 +413,9 @@ export async function analyzeStudyNote(
     const systemPrompt = buildSystemPrompt(languageHint, analysisType);
     const userMessage = buildUserMessage(noteContent, existingTags);
     const promptBlueprint = buildSimplePromptBlueprint({
-      promptName: "studyNoteAnalysis",
+      // Четыре разных разбора — четыре имени. Раньше все писались под одним, и
+      // «плохо разобрал заметку целиком» было неотличимо от «плохо расставил теги».
+      promptName: STUDY_NOTE_PROMPT_KEYS[analysisType],
       promptVersion: "v2",
       expectedLanguage: telemetryExpectedLanguage === "unknown" ? null : telemetryExpectedLanguage,
       systemPrompt,

@@ -13,14 +13,37 @@ Goal: improve prompts through reviewed production examples, not through raw JSON
   - `bad`: use as a failing prompt example.
   - `needs_review`: suspicious, but not yet classified.
 
+## Prompt Names
+
+Prompt keys say **where in the app** the call happens and **which step it is**:
+`sermon.conspect.point`, `dictation.transcript_cleanup`, `studies.note.analyze_tags`.
+The map of key → area, stage, human name and UI location lives in
+`app/api/clients/ai/promptRegistry.ts`; the summary endpoint returns the human
+name alongside the key.
+
+Records written before the rename (`plan_point_content`, `thought`,
+`polishTranscription`, `studyNoteAnalysis`, …) are folded onto the current key by
+`resolvePromptKey`, so history does not split. The Review Baselines table below
+still lists the historical names — that is deliberate, it records what was true
+when each version shipped.
+
+A prompt used in code but missing from the registry fails
+`__tests__/api/clients/promptRegistry.test.ts`, and so does a registry entry that
+no code uses.
+
 ## Protected Admin Access
 
-All endpoints require `x-admin-secret: $ADMIN_SECRET`.
+All endpoints require a **Firebase ID token of an admin account**:
+`Authorization: Bearer <idToken>` — see `requireAdminEmail` in
+`app/api/admin/adminAuth.ts`. A missing or non-admin token returns `401`.
 
-Production stays disabled unless both are set:
+> The header `x-admin-secret: $ADMIN_SECRET` documented here previously is no
+> longer accepted — the endpoints were moved onto bearer + admin-email checks
+> during the app-wide auth hardening. Verified 2026-07-27: the old header returns
+> `Unauthorized`.
 
-- `ADMIN_SECRET`
-- `ALLOW_ADMIN_TELEMETRY_IN_PRODUCTION=true`
+In production the telemetry endpoints stay disabled unless
+`ALLOW_ADMIN_TELEMETRY_IN_PRODUCTION=true` is set as well.
 
 ## Review Workflow
 
@@ -29,15 +52,15 @@ Recommended cadence: monthly, or after a meaningful prompt/code version bump.
 1. Get version summary:
 
 ```bash
-curl -H "x-admin-secret: $ADMIN_SECRET" \
+curl -H "Authorization: Bearer $ADMIN_ID_TOKEN" \
   "http://localhost:3000/api/admin/telemetry"
 ```
 
 2. Pull recent examples for one prompt:
 
 ```bash
-curl -H "x-admin-secret: $ADMIN_SECRET" \
-  "http://localhost:3000/api/admin/telemetry/polishTranscription?version=v3&limit=50"
+curl -H "Authorization: Bearer $ADMIN_ID_TOKEN" \
+  "http://localhost:3000/api/admin/telemetry/dictation.transcript_cleanup?version=v3&limit=50"
 ```
 
 3. Mark a bad example:
@@ -45,7 +68,7 @@ curl -H "x-admin-secret: $ADMIN_SECRET" \
 ```bash
 curl -X PATCH \
   -H "content-type: application/json" \
-  -H "x-admin-secret: $ADMIN_SECRET" \
+  -H "Authorization: Bearer $ADMIN_ID_TOKEN" \
   -d '{
     "eventId": "EVENT_ID",
     "quality": "bad",
@@ -54,19 +77,19 @@ curl -X PATCH \
     "notes": "Dictated reference stayed as prose.",
     "expectedOutput": "Втор. 10:11"
   }' \
-  "http://localhost:3000/api/admin/telemetry/polishTranscription"
+  "http://localhost:3000/api/admin/telemetry/dictation.transcript_cleanup"
 ```
 
 4. Pull reviewed examples:
 
 ```bash
-curl -H "x-admin-secret: $ADMIN_SECRET" \
-  "http://localhost:3000/api/admin/telemetry/polishTranscription?quality=bad"
+curl -H "Authorization: Bearer $ADMIN_ID_TOKEN" \
+  "http://localhost:3000/api/admin/telemetry/dictation.transcript_cleanup?quality=bad"
 ```
 
 ```bash
-curl -H "x-admin-secret: $ADMIN_SECRET" \
-  "http://localhost:3000/api/admin/telemetry/polishTranscription?quality=good&examples=true"
+curl -H "Authorization: Bearer $ADMIN_ID_TOKEN" \
+  "http://localhost:3000/api/admin/telemetry/dictation.transcript_cleanup?quality=good&examples=true"
 ```
 
 5. Fix prompt/code, then bump `promptVersion`.
@@ -116,22 +139,27 @@ Any change that can affect final AI output must increment `promptVersion`, even 
 
 Structured telemetry prompts:
 
-| Prompt | Version | Main purpose |
-| --- | --- | --- |
-| `thought` | `v6` | Turn dictated sermon thought into polished prose + auxiliary tags only, without adding sermon-context material or deprecated structural section tags. |
-| `polishTranscription` | `v3` | Clean raw voice transcription for notes/thought text. |
-| `studyNoteAnalysis` | `v2` | Extract study-note title, Scripture refs, and tags. |
-| `plan_point_content` | `v13` | Generate the FILLING of a preacher cue sheet for one outline point or its sub-points (the headings come from the sermon structure): route arrow on top, sub-points as real `### ` sub-headings, per-group Scripture refs rendered inline one per line; no model-generated title. Detailed mode preserves more source-supported references, fragments, examples, and transitions. |
-| `sermon_verses` | `v2` | Suggest related Bible verses. |
-| `sermon_directions` | `v2` | Suggest research/development directions. |
-| `sermon_insights` | `v1` | Generate topics, verses, and directions together. |
-| `sermon_topics` | `v1` | Extract sermon topics/themes. |
-| `section_hints` | `v1` | Suggest intro/main/conclusion organization hints. |
-| `sermon_points` | `v1` | Generate outline points for a section. |
-| `brainstorm_suggestion` | `v1` | Generate one thinking prompt to unblock sermon work. |
-| `sort_items` | `v1` | Sort thoughts and assign outline/sub-point placement. |
-| `plan_for_section` | `v1` | Generate section-level plan content. |
-| `speech_optimization` | `v1` | Convert written sermon text to TTS-friendly chunks. |
+| Key | Version | Human name | Main purpose |
+| --- | --- | --- | --- |
+| `sermon.scratch.to_outline` | `v3-keys` | Проповедь · Наброски · разложить наброски в план | Place scratch notes into outline points. |
+| `sermon.thoughts.transcript_polish` | `v6` | Проповедь · Мысли · диктовка → мысль (проза + теги) | Turn dictated sermon thought into polished prose + auxiliary tags only, without adding sermon-context material or deprecated structural section tags. |
+| `sermon.ideas.suggest` | `v1` | Проповедь · Идеи · подсказка, когда застрял | Generate one thinking prompt to unblock sermon work. |
+| `sermon.insights.all` | `v1` | Проповедь · Размышления · всё сразу | Generate topics, verses, and directions together. |
+| `sermon.insights.topics` | `v1` | Проповедь · Размышления · темы | Extract sermon topics/themes. |
+| `sermon.insights.verses` | `v2` | Проповедь · Размышления · стихи | Suggest related Bible verses. |
+| `sermon.insights.directions` | `v2` | Проповедь · Размышления · направления | Suggest research/development directions. |
+| `sermon.insights.section_hints` | `v1` | Проповедь · Размышления · предположенный план | Suggest intro/main/conclusion organization hints. |
+| `sermon.structure.focus.generate_outline` | `v1` | Проповедь · Структура · режим фокуса · создать пункты плана | Generate outline points for a section. |
+| `sermon.structure.sort` | `v1` | Проповедь · Структура · разложить мысли по пунктам | Sort thoughts and assign outline/sub-point placement. |
+| `sermon.conspect.section` | `v1` | Проповедь · Конспект · текст раздела | Generate section-level conspect content. |
+| `sermon.conspect.point` | `v13` | Проповедь · Конспект · текст одного пункта | Generate the FILLING of a preacher cue sheet for one outline point or its sub-points (the headings come from the sermon structure): route arrow on top, sub-points as real `### ` sub-headings, per-group Scripture refs rendered inline one per line; no model-generated title. Detailed mode preserves more source-supported references, fragments, examples, and transitions. |
+| `sermon.export.speech_text` | `v1` | Проповедь · Экспорт · текст под озвучку | Convert written sermon text to TTS-friendly chunks. |
+| `sermon.export.part_links` | `v1` | Проповедь · Экспорт · вступление, связки между частями, концовка | Spoken intro, per-part lead-ins and closing for the audio export. |
+| `dictation.transcript_cleanup` | `v3` | Диктовка · вычитка расшифровки (без тегов) | Clean raw voice transcription for notes/thought text. |
+| `studies.note.analyze_all` | `v2` | Изучение · Заметка · разобрать целиком | Extract study-note title, Scripture refs, and tags. |
+| `studies.note.analyze_title` | `v2` | Изучение · Заметка · только заголовок | Same prompt family, title only. |
+| `studies.note.analyze_tags` | `v2` | Изучение · Заметка · только теги | Same prompt family, tags only. |
+| `studies.note.analyze_refs` | `v2` | Изучение · Заметка · только ссылки на Писание | Same prompt family, Scripture refs only. |
 
 Non-structured AI path:
 
