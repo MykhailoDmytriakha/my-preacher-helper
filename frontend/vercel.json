@@ -13,6 +13,9 @@
     "app/api/insights/directions/route.ts": {
       "maxDuration": 60
     },
+    "app/api/insights/plan/route.ts": {
+      "maxDuration": 60
+    },
     "app/api/thoughts/route.ts": {
       "maxDuration": 60
     },
@@ -26,6 +29,12 @@
       "maxDuration": 60
     },
     "app/api/sermons/[id]/compose-plan-from-scratch/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/sermons/[id]/generate-outline-points/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/sermons/[id]/brainstorm/route.ts": {
       "maxDuration": 60
     },
     "app/api/sermons/[id]/audio/generate/route.ts": {
