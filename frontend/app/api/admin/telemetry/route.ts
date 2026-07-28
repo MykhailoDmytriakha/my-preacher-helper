@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { describePrompt, resolvePromptKey } from "@/api/clients/ai/promptRegistry";
+
 import { checkTelemetryAdminAuth, TELEMETRY_COLLECTION } from "./telemetryAdmin";
 
 function round2(n: number): number {
@@ -8,6 +10,13 @@ function round2(n: number): number {
 
 type VersionAccumulator = {
   count: number;
+  /**
+   * Турникет: запись отмечена на входе, но не на выходе. Это вызов, который НЕ
+   * вернулся — убит потолком maxDuration, упал процесс, оборвалась связь. Считается
+   * отдельно и НЕ участвует в знаменателе долей: иначе успех «размывался» бы теми,
+   * кто вообще не доехал, и обе цифры врали бы разом.
+   */
+  started: number;
   success: number;
   refusal: number;
   error: number;
@@ -39,13 +48,15 @@ export async function GET(request: Request) {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     function processRecord(d: any) {
-      const promptName = (d.promptName as string) ?? "unknown";
+      // События, записанные до переименования, сводятся к текущему ключу — иначе
+      // один и тот же промпт разъехался бы на две строки.
+      const promptName = resolvePromptKey((d.promptName as string) ?? "unknown");
       const version = (d.promptVersion as string) ?? "unknown";
 
       if (!summary[promptName]) summary[promptName] = { total: 0, versions: {} };
       if (!summary[promptName].versions[version]) {
         summary[promptName].versions[version] = {
-          count: 0, success: 0, refusal: 0, error: 0, invalid_response: 0,
+          count: 0, started: 0, success: 0, refusal: 0, error: 0, invalid_response: 0,
           totalTokens: 0, tokenSamples: 0, totalLatencyMs: 0, langMismatch: 0,
           reviewed: 0, unreviewed: 0, good: 0, bad: 0, needs_review: 0, examples: 0,
           lastSeen: "",
@@ -55,6 +66,8 @@ export async function GET(request: Request) {
       const entry = summary[promptName].versions[version];
       summary[promptName].total++;
       entry.count++;
+
+      if (d.phase === "started") entry.started++;
 
       const status = (d.jsonStructureStatus ?? d.status) as string;
       if (status === "success") entry.success++;
@@ -103,21 +116,32 @@ export async function GET(request: Request) {
 
     const result: Record<string, unknown> = {};
     for (const [promptName, data] of Object.entries(summary)) {
+      const descriptor = describePrompt(promptName);
       result[promptName] = {
+        // Человеческое имя рядом с ключом: по ключу видно «где», по имени — «что».
+        display: descriptor?.display ?? promptName,
+        area: descriptor?.areaLabel ?? null,
+        stage: descriptor?.stageLabel ?? null,
+        step: descriptor?.step ?? null,
         total: data.total,
         versions: Object.fromEntries(
           Object.entries(data.versions)
             .sort(([a], [b]) => a.localeCompare(b))
-            .map(([version, s]) => [
+            .map(([version, s]) => {
+              // Доли считаются от ВЕРНУВШИХСЯ, а не от начатых.
+              const finished = Math.max(1, s.count - s.started);
+              return [
               version,
               {
                 count: s.count,
-                jsonStructureSuccessRate: round2(s.success / s.count),
-                successRate: round2(s.success / s.count),
-                refusalRate: round2(s.refusal / s.count),
-                errorRate: round2(s.error / s.count),
-                invalidResponseRate: round2(s.invalid_response / s.count),
-                langMismatchRate: round2(s.langMismatch / s.count),
+                unfinishedCount: s.started,
+                unfinishedRate: round2(s.started / s.count),
+                jsonStructureSuccessRate: round2(s.success / finished),
+                successRate: round2(s.success / finished),
+                refusalRate: round2(s.refusal / finished),
+                errorRate: round2(s.error / finished),
+                invalidResponseRate: round2(s.invalid_response / finished),
+                langMismatchRate: round2(s.langMismatch / finished),
                 reviewedCount: s.reviewed,
                 unreviewedCount: s.unreviewed,
                 goodCount: s.good,
@@ -127,10 +151,11 @@ export async function GET(request: Request) {
                 goodRate: s.reviewed > 0 ? round2(s.good / s.reviewed) : null,
                 badRate: s.reviewed > 0 ? round2(s.bad / s.reviewed) : null,
                 avgTokens: s.tokenSamples > 0 ? Math.round(s.totalTokens / s.tokenSamples) : null,
-                avgLatencyMs: Math.round(s.totalLatencyMs / s.count),
+                avgLatencyMs: Math.round(s.totalLatencyMs / finished),
                 lastSeen: s.lastSeen || null,
               },
-            ])
+            ];
+            })
         ),
       };
     }

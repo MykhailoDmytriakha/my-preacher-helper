@@ -4,6 +4,7 @@ const openaiParseMock = jest.fn();
 const geminiParseMock = jest.fn();
 const openRouterParseMock = jest.fn();
 const emitStructuredTelemetryEvent = jest.fn();
+const openStructuredTelemetryEvent = jest.fn();
 const logger = {
   info: jest.fn(),
   debug: jest.fn(),
@@ -47,6 +48,7 @@ jest.mock('openai/helpers/zod', () => ({
 
 jest.mock('@/api/clients/aiTelemetry', () => ({
   emitStructuredTelemetryEvent,
+  openStructuredTelemetryEvent,
 }));
 
 jest.mock('@/api/clients/openAIHelpers', () => ({
@@ -99,6 +101,7 @@ describe('structuredOutput client', () => {
       systemPrompt: 'SYS',
       userMessage: 'USR',
     });
+    openStructuredTelemetryEvent.mockResolvedValue('evt-open-1');
     mockGetUserEntitlementServerSide.mockResolvedValue({ paidTier: 'free' });
     mockConsumeAiUsage.mockResolvedValue(undefined);
     mockIsUsageAdmitted.mockReturnValue(false);
@@ -157,6 +160,72 @@ describe('structuredOutput client', () => {
       })
     );
     expect(mockGetUserEntitlementServerSide).not.toHaveBeenCalled();
+  });
+
+  it('stamps the turnstile BEFORE calling the provider and settles the same record', async () => {
+    openaiParseMock.mockResolvedValueOnce({
+      choices: [{ message: { parsed: { answer: 'ok' }, content: 'raw' } }],
+    });
+
+    const mod = await import('@/api/clients/structuredOutput');
+    await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+      formatName: 'test-format',
+      logContext: { source: 'test' },
+    });
+
+    // Отметка входа обязана лечь ДО вызова модели: иначе убитый потолком вызов
+    // не оставит следа, и «не вернулся» будет неотличимо от «не начинался».
+    expect(openStructuredTelemetryEvent).toHaveBeenCalledTimes(1);
+    expect(openStructuredTelemetryEvent.mock.invocationCallOrder[0])
+      .toBeLessThan(openaiParseMock.mock.invocationCallOrder[0]);
+
+    expect(openStructuredTelemetryEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'OPENAI',
+        model: 'gpt-test',
+        formatName: 'test-format',
+        promptBlueprint: expect.objectContaining({ promptName: 'test' }),
+      })
+    );
+
+    // Выход дописывает ТУ ЖЕ карточку, а не создаёт вторую.
+    expect(emitStructuredTelemetryEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: 'evt-open-1', status: 'success' })
+    );
+  });
+
+  it('still calls the provider when the turnstile stamp could not be written', async () => {
+    openStructuredTelemetryEvent.mockResolvedValueOnce(null);
+    openaiParseMock.mockResolvedValueOnce({
+      choices: [{ message: { parsed: { answer: 'ok' }, content: 'raw' } }],
+    });
+
+    const mod = await import('@/api/clients/structuredOutput');
+    const result = await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+      formatName: 'test-format',
+    });
+
+    // Измерение не имеет права ломать работу человека.
+    expect(result.success).toBe(true);
+    expect(openaiParseMock).toHaveBeenCalledTimes(1);
+    expect(emitStructuredTelemetryEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: null, status: 'success' })
+    );
+  });
+
+  it('settles the turnstile record when the provider call fails', async () => {
+    openaiParseMock.mockRejectedValueOnce(new Error('provider exploded'));
+
+    const mod = await import('@/api/clients/structuredOutput');
+    const result = await mod.callWithStructuredOutput('System prompt', 'User prompt', schema, {
+      formatName: 'test-format',
+    });
+
+    expect(result.success).toBe(false);
+    // Живая, известная ошибка не должна оставлять карточку висеть в `started`.
+    expect(emitStructuredTelemetryEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: 'evt-open-1', status: 'error' })
+    );
   });
 
   it('returns refusal when model declines response', async () => {

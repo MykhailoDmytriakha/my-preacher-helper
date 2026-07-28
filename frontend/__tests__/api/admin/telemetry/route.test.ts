@@ -224,4 +224,58 @@ describe('/api/admin/telemetry Main Route', () => {
             expect(response.status).toBe(500);
         });
     });
+
+    describe('Prompt names and the turnstile', () => {
+        const summaryFor = async (docs: Array<Record<string, unknown>>) => {
+            getMock.mockResolvedValueOnce({
+                docs: docs.map((d, i) => ({ data: () => d, ref: { id: `d${i}` } })),
+                size: docs.length,
+            });
+            const request = new Request('http://localhost/api/admin/telemetry', { headers: adminHeaders });
+            return (await (await GET(request)).json()) as any;
+        };
+
+        it('folds records written under the old name onto the current key', async () => {
+            const data = await summaryFor([
+                // Записано до переименования.
+                { promptName: 'plan_point_content', promptVersion: 'v13', status: 'success', latencyMs: 1000, timestamp: '2026-07-01T00:00:00Z' },
+                // Записано после.
+                { promptName: 'sermon.conspect.point', promptVersion: 'v13', status: 'success', latencyMs: 3000, timestamp: '2026-07-27T00:00:00Z' },
+            ]);
+
+            // Один промпт — одна строка, иначе история разъедется надвое.
+            expect(Object.keys(data)).toEqual(['sermon.conspect.point']);
+            expect(data['sermon.conspect.point'].total).toBe(2);
+            expect(data['sermon.conspect.point'].display).toBe('Проповедь · Конспект · текст одного пункта');
+            expect(data['sermon.conspect.point'].area).toBe('Проповедь');
+            expect(data['sermon.conspect.point'].stage).toBe('Конспект');
+        });
+
+        it('counts unfinished calls apart and keeps them out of the success denominator', async () => {
+            const data = await summaryFor([
+                { promptName: 'sermon.conspect.point', promptVersion: 'v13', status: 'success', latencyMs: 1000, timestamp: '2026-07-27T00:00:00Z', phase: 'finished' },
+                { promptName: 'sermon.conspect.point', promptVersion: 'v13', status: 'success', latencyMs: 1000, timestamp: '2026-07-27T00:01:00Z', phase: 'finished' },
+                // Отмечен на входе и не вернулся: убит потолком, упал процесс, оборвалась связь.
+                { promptName: 'sermon.conspect.point', promptVersion: 'v13', timestamp: '2026-07-27T00:02:00Z', phase: 'started' },
+            ]);
+
+            const version = data['sermon.conspect.point'].versions.v13;
+            expect(version.count).toBe(3);
+            expect(version.unfinishedCount).toBe(1);
+            expect(version.unfinishedRate).toBe(0.33);
+            // Успех считается от ВЕРНУВШИХСЯ: 2 из 2, а не 2 из 3 — иначе доехавшие
+            // выглядели бы хуже, чем они есть, и обе цифры врали бы разом.
+            expect(version.successRate).toBe(1);
+            expect(version.avgLatencyMs).toBe(1000);
+        });
+
+        it('shows an unknown name as it is instead of hiding it', async () => {
+            const data = await summaryFor([
+                { promptName: 'some_future_prompt', promptVersion: 'v1', status: 'success', latencyMs: 100, timestamp: '2026-07-27T00:00:00Z' },
+            ]);
+
+            expect(data['some_future_prompt'].display).toBe('some_future_prompt');
+            expect(data['some_future_prompt'].area).toBeNull();
+        });
+    });
 });

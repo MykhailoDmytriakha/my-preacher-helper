@@ -1,5 +1,6 @@
 import {
   buildStructuredTelemetryEvent,
+  buildStructuredTelemetryOpenRecord,
   emitStructuredTelemetryEvent,
 } from "@clients/aiTelemetry";
 import { buildSimplePromptBlueprint } from "@clients/promptBuilder";
@@ -7,7 +8,7 @@ import { buildSimplePromptBlueprint } from "@clients/promptBuilder";
 describe("aiTelemetry", () => {
   it("builds structured telemetry event with prompt metadata and hashes", () => {
     const promptBlueprint = buildSimplePromptBlueprint({
-      promptName: "sermon_insights",
+      promptName: "sermon.insights.all",
       promptVersion: "v3",
       expectedLanguage: "ru",
       systemPrompt: "System prompt body",
@@ -30,7 +31,7 @@ describe("aiTelemetry", () => {
     expect(event.provider).toBe("OPENAI");
     expect(event.model).toBe("gpt-4o-mini");
     expect(event.correlationId).toBe("req-123");
-    expect(event.promptName).toBe("sermon_insights");
+    expect(event.promptName).toBe("sermon.insights.all");
     expect(event.promptVersion).toBe("v3");
     expect(event.structured).toBe(true);
     expect(event.latencyMs).toBe(1241);
@@ -45,9 +46,65 @@ describe("aiTelemetry", () => {
     expect(event.response.parsedOutput?.value).toContain("Hope");
   });
 
+  it("opens a turnstile record with the input captured and no outcome yet", () => {
+    const promptBlueprint = buildSimplePromptBlueprint({
+      promptName: "sermon.insights.section_hints",
+      promptVersion: "v2",
+      expectedLanguage: "ru",
+      systemPrompt: "System prompt body",
+      userMessage: "Whole sermon text",
+      context: { sermonId: "sermon-9" },
+    });
+
+    const record = buildStructuredTelemetryOpenRecord({
+      provider: "OPENAI",
+      model: "gpt-5-mini",
+      formatName: "section_hints",
+      promptBlueprint,
+      logContext: { requestId: "req-7" },
+    });
+
+    expect(record.phase).toBe("started");
+    expect(record.startedAt).toEqual(expect.any(String));
+    expect(record.timestamp).toBe(record.startedAt);
+    expect(record.correlationId).toBe("req-7");
+    expect(record.promptName).toBe("sermon.insights.section_hints");
+    expect(record.promptVersion).toBe("v2");
+
+    // Вход захвачен на ВХОДЕ: у убитого вызова останется то, что его убило.
+    expect(record.request.userMessage.value).toContain("Whole sermon text");
+    expect(record.request.systemPrompt.hash).toMatch(/^[a-f0-9]{64}$/);
+
+    // Исхода ещё нет — статус ставится только вторым пиком.
+    expect(record).not.toHaveProperty("status");
+    expect(record).not.toHaveProperty("latencyMs");
+    expect(record.language).toEqual({ expected: "ru", detectedOutput: null });
+  });
+
+  it("marks a record built in one shot as finished, without an entry stamp", () => {
+    const promptBlueprint = buildSimplePromptBlueprint({
+      promptName: "sermon.thoughts.transcript_polish",
+      systemPrompt: "System",
+      userMessage: "User",
+    });
+
+    const event = buildStructuredTelemetryEvent({
+      provider: "OPENAI",
+      model: "gpt-test",
+      formatName: "thought",
+      promptBlueprint,
+      latencyMs: 100,
+      status: "success",
+      parsedOutput: { ok: true },
+    });
+
+    expect(event.phase).toBe("finished");
+    expect(event.startedAt).toBeNull();
+  });
+
   it("does not throw when emitting telemetry in test environment", () => {
     const promptBlueprint = buildSimplePromptBlueprint({
-      promptName: "thought",
+      promptName: "sermon.thoughts.transcript_polish",
       systemPrompt: "System",
       userMessage: "User",
     });
@@ -67,7 +124,7 @@ describe("aiTelemetry", () => {
 
   it("does not infer English output when parsed output is missing", () => {
     const promptBlueprint = buildSimplePromptBlueprint({
-      promptName: "plan_point_content",
+      promptName: "sermon.conspect.point",
       promptVersion: "v3",
       expectedLanguage: "ru",
       systemPrompt: "System prompt",

@@ -19,7 +19,7 @@ import { isUsageCapReachedError } from "@/services/usageLimits";
 
 import { providerAdapters } from "./ai/providerAdapters";
 import { resolveStructuredTargets, type ModelTarget, type Workload } from "./ai/routing";
-import { emitStructuredTelemetryEvent, TokenUsage } from "./aiTelemetry";
+import { emitStructuredTelemetryEvent, openStructuredTelemetryEvent, TokenUsage } from "./aiTelemetry";
 import { logger, formatDuration } from "./openAIHelpers";
 import { buildSimplePromptBlueprint, PromptBlueprint } from "./promptBuilder";
 
@@ -181,6 +181,10 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
   }
 
   const startTime = performance.now();
+  // Объявлено вне try: ветка ошибки обязана дописать ТУ ЖЕ карточку, а не создать
+  // вторую. Остаётся null, если падение случилось раньше отметки входа.
+  let telemetryEventId: string | null = null;
+  let intendedTarget: ModelTarget | null = null;
 
   try {
     let targets: [ModelTarget, ...ModelTarget[]] = [legacyTarget];
@@ -209,6 +213,19 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
       }, now);
       consumeSuccessfulAiCall = () => consumeAiUsage(options.userId as string, now);
     }
+
+    // Турникет, отметка на ВХОДЕ: пишется до вызова модели, поэтому уцелеет,
+    // даже если функцию убьёт потолок maxDuration. Запись, оставшаяся в состоянии
+    // `started`, и есть тот вызов, который не вернулся. Ждём её намеренно —
+    // fire-and-forget не успел бы отправиться из умирающего процесса.
+    intendedTarget = targets[0];
+    telemetryEventId = await openStructuredTelemetryEvent({
+      provider: intendedTarget.providerId.toUpperCase(),
+      model: intendedTarget.modelId,
+      formatName,
+      promptBlueprint,
+      logContext,
+    });
 
     const completion = await runWithFallback(
       targets,
@@ -259,6 +276,7 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
         formatName,
         promptBlueprint,
         logContext,
+        eventId: telemetryEventId,
         latencyMs: durationMs,
         status: "refusal",
         refusal: message.refusal,
@@ -285,6 +303,7 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
         formatName,
         promptBlueprint,
         logContext,
+        eventId: telemetryEventId,
         latencyMs: durationMs,
         status: "invalid_response",
         rawMessage: message?.content || null,
@@ -313,6 +332,7 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
       formatName,
       promptBlueprint,
       logContext,
+      eventId: telemetryEventId,
       latencyMs: durationMs,
       status: "success",
       parsedOutput: parsed,
@@ -335,13 +355,18 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
     const formattedDuration = formatDuration(durationMs);
 
     logger.error(operationName, `Failed after ${formattedDuration}`, error);
-    if (executionState.target) {
+    // Цель могла не успеть выбраться — тогда берём намеренную. Иначе открытая
+    // карточка зависла бы в `started` при живой, известной ошибке, и «не вернулся»
+    // перестало бы отличаться от «упал с ответом».
+    const failedTarget = executionState.target ?? intendedTarget;
+    if (failedTarget) {
       emitStructuredTelemetryEvent({
-        provider: executionState.target.providerId.toUpperCase(),
-        model: executionState.target.modelId,
+        provider: failedTarget.providerId.toUpperCase(),
+        model: failedTarget.modelId,
         formatName,
         promptBlueprint,
         logContext,
+        eventId: telemetryEventId,
         latencyMs: durationMs,
         status: "error",
         errorMessage: error instanceof Error ? error.message : String(error),
