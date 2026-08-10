@@ -1,23 +1,66 @@
 import {
   getAuth,
+  initializeAuth,
   GoogleAuthProvider,
   signInWithPopup,
   User,
   signOut,
   signInAnonymously,
-  setPersistence,
   browserLocalPersistence,
+  browserPopupRedirectResolver,
 } from "firebase/auth";
 import { toast } from "sonner";
 
 import app from "@/config/firebaseConfig";
 import { updateUserProfile } from "@services/userSettings.service";
 const GUEST_EXPIRATION_DAYS = 5;
-export const auth = getAuth(app);
-const provider = new GoogleAuthProvider();
 
-// Use browserLocalPersistence for standard multi-tab behavior
-setPersistence(auth, browserLocalPersistence);
+/**
+ * PERSISTENCE IS CHOSEN AT CREATION, NEVER MIGRATED AFTERWARDS.
+ *
+ * This used to be `getAuth(app)` followed by a fire-and-forget
+ * `setPersistence(auth, browserLocalPersistence)`. That is two steps, and the gap
+ * between them was the bug: `getAuth` picks IndexedDB when it is available and
+ * moves the signed-in user there, then our call moved them back to localStorage —
+ * DELETING the persistence record before writing the new one.
+ *
+ * Another tab watching that storage sees the record disappear and reads it as
+ * "the user changed": it drops the identity, Firestore then sends requests with no
+ * identity at all and the rules answer "missing or insufficient permissions". The
+ * SDK does not refresh the token after that, because permission-denied counts as a
+ * permanent failure — so the tab stays broken until it is fully closed. Reloading
+ * repeats the same migration and does not help. Meanwhile ProtectedRoute, which
+ * looks for Firebase's own `firebase:authUser:` key in localStorage, sees nothing
+ * during the gap and bounces the other tab back to the landing page.
+ *
+ * `initializeAuth` sets the persistence up front, so the record is written once and
+ * never removed. It must run before anything else touches auth on this app
+ * instance; the fallback keeps a stray earlier `getAuth` from breaking sign-in.
+ *
+ * localStorage is deliberate, not incidental: ProtectedRoute depends on that key
+ * (see ProtectedRoute.tsx). Moving persistence to IndexedDB would silently start
+ * redirecting signed-in people to the landing page.
+ *
+ * `popupRedirectResolver` must be passed explicitly here — unlike `getAuth`,
+ * `initializeAuth` does not install one, and `signInWithPopup` would fail without it.
+ */
+function createAuth() {
+  // No browser storage during SSR — fall back to the default in-memory instance.
+  if (typeof window === "undefined") return getAuth(app);
+  try {
+    return initializeAuth(app, {
+      persistence: browserLocalPersistence,
+      popupRedirectResolver: browserPopupRedirectResolver,
+    });
+  } catch {
+    // Something already initialised auth on this app instance. Losing sign-in
+    // entirely would be worse than losing the guarantee, so take what exists.
+    return getAuth(app);
+  }
+}
+
+export const auth = createAuth();
+const provider = new GoogleAuthProvider();
 
 export const checkGuestExpiration = (user: User): boolean => {
   if (!user.isAnonymous) return true;

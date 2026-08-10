@@ -3,6 +3,7 @@ const mockSignInAnonymously = jest.fn();
 const mockSignOut = jest.fn();
 const mockSetPersistence = jest.fn();
 const mockGetAuth = jest.fn(() => ({ currentUser: null }));
+const mockInitializeAuth = jest.fn(() => ({ currentUser: null }));
 const mockGoogleAuthProvider = jest.fn(() => ({ providerId: 'google.com' }));
 const mockUpdateUserProfile = jest.fn();
 const mockToastError = jest.fn();
@@ -21,7 +22,9 @@ describe('firebaseAuth.service', () => {
       signOut: mockSignOut,
       signInAnonymously: mockSignInAnonymously,
       setPersistence: mockSetPersistence,
+      initializeAuth: mockInitializeAuth,
       browserLocalPersistence: 'browserLocalPersistence',
+      browserPopupRedirectResolver: 'browserPopupRedirectResolver',
     }));
 
     jest.doMock('@/config/firebaseConfig', () => ({
@@ -58,11 +61,42 @@ describe('firebaseAuth.service', () => {
     Date.now = originalDateNow;
   });
 
-  it('configures auth persistence on module load', async () => {
+  /**
+   * BUG-20260810-firestore-permission-denied-silent
+   *
+   * Persistence is chosen at creation and NEVER migrated afterwards. The previous
+   * shape — `getAuth()` plus a fire-and-forget `setPersistence()` — moved the signed
+   * in user out of one store and into another, deleting the record in between.
+   * Another tab read that deletion as "the user changed", dropped the identity, and
+   * Firestore then answered "missing or insufficient permissions" to everything —
+   * permanently, because the SDK does not refresh a token after that error.
+   *
+   * So this guards two things at once: persistence IS browser-local (ProtectedRoute
+   * looks for Firebase's own localStorage key), and the migration does NOT come back.
+   */
+  it('sets persistence at creation and never migrates it afterwards', async () => {
+    loadModule();
+
+    expect(mockInitializeAuth).toHaveBeenCalledWith(
+      { name: 'mock-app' },
+      expect.objectContaining({
+        persistence: 'browserLocalPersistence',
+        // initializeAuth installs no popup resolver of its own — without this,
+        // signInWithPopup would break.
+        popupRedirectResolver: 'browserPopupRedirectResolver',
+      })
+    );
+    expect(mockSetPersistence).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the existing auth instance rather than losing sign-in', async () => {
+    mockInitializeAuth.mockImplementationOnce(() => {
+      throw new Error('already initialized');
+    });
+
     loadModule();
 
     expect(mockGetAuth).toHaveBeenCalledWith({ name: 'mock-app' });
-    expect(mockSetPersistence).toHaveBeenCalledWith({ currentUser: null }, 'browserLocalPersistence');
   });
 
   it('checkGuestExpiration returns true for non-anonymous users', async () => {
