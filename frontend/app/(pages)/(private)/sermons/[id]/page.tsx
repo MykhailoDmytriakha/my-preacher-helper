@@ -43,8 +43,11 @@ import { updateSermonOutline } from "@/services/outline.service";
 import { updateSermonPreparation, updateSermon } from '@/services/sermon.service';
 import { updateStructure } from "@/services/structure.service";
 import { newClientId } from "@/utils/clientId";
-import { contentFingerprint } from '@/utils/contentFingerprint';
 import { clearDraftIfMatches, draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
+import {
+  sermonFreshnessProjection,
+  type SermonFreshnessProjection,
+} from '@/utils/sermonFreshnessProjection';
 import CreateThoughtModal from "@components/CreateThoughtModal";
 import EditThoughtModal from "@components/EditThoughtModal";
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
@@ -279,32 +282,15 @@ export default function SermonPage() {
   // rewriting the plan leaves every length identical, and the stale screen used
   // to call itself fresh. The listener already carries the whole document, so
   // this costs no extra reads.
-  type SermonWatched = {
-    title: string;
-    verse: string;
-    thoughts: string;
-    outline: string;
-    plan: string;
-    preparation: string;
-    scratch: string;
-  };
-  const knownSermon = useMemo<SermonWatched | null>(
-    () =>
-      sermon
-        ? {
-            title: sermon.title || '',
-            verse: sermon.verse || '',
-            thoughts: contentFingerprint(sermon.thoughts ?? []),
-            outline: contentFingerprint(sermon.outline ?? null),
-            plan: contentFingerprint(sermon.plan ?? sermon.draft ?? null),
-            preparation: contentFingerprint(sermon.preparation ?? null),
-            scratch: contentFingerprint(sermon.scratch ?? []),
-          }
-        : null,
+  // ONE function for both sides of the comparison. This and the `select` below used
+  // to hold two copies of the same rule; drifting apart, they would themselves look
+  // exactly like a foreign edit.
+  const knownSermon = useMemo<SermonFreshnessProjection | null>(
+    () => (sermon ? sermonFreshnessProjection(sermon as unknown as Record<string, unknown>) : null),
     [sermon]
   );
   const freshnessUid = useFreshnessUid(sermon?.userId);
-  const sermonFreshness = useDocumentFreshness<SermonWatched>({
+  const sermonFreshness = useDocumentFreshness<SermonFreshnessProjection>({
     collection: 'sermons',
     docId: id || null,
     // The CURRENT signed-in owner, not the owner stored on the cached document.
@@ -315,15 +301,7 @@ export default function SermonPage() {
     uid: freshnessUid,
     enabled: Boolean(sermon),
     known: knownSermon,
-    select: (data) => ({
-      title: (data.title as string) || '',
-      verse: (data.verse as string) || '',
-      thoughts: contentFingerprint(data.thoughts ?? []),
-      outline: contentFingerprint(data.outline ?? null),
-      plan: contentFingerprint(data.plan ?? data.draft ?? null),
-      preparation: contentFingerprint(data.preparation ?? null),
-      scratch: contentFingerprint(data.scratch ?? []),
-    }),
+    select: (data) => sermonFreshnessProjection(data),
   });
   const [sermonFreshnessDismissed, setSermonFreshnessDismissed] = useState(false);
   useEffect(() => {

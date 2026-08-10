@@ -19,10 +19,13 @@ import useSermon from "@/hooks/useSermon";
 import { SermonPoint, Sermon, Thought, Plan } from "@/models/models";
 import { updateThought } from "@/services/thought.service";
 import { TimerPhase } from "@/types/TimerState";
-import { contentFingerprint } from '@/utils/contentFingerprint';
 import { debugLog } from "@/utils/debugMode";
 import { getExportContent as buildThoughtExportContent } from "@/utils/exportContent";
 import { normalizePlanArrows } from "@/utils/markdownUtils";
+import {
+  planFreshnessProjection,
+  type PlanFreshnessProjection,
+} from '@/utils/sermonFreshnessProjection';
 import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrder";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { normalizeStructureTag, getTranslationKeyForTag } from "@utils/tagUtils";
@@ -158,30 +161,20 @@ export default function PlanPage() {
    * fingerprint covers the WHOLE plan (points, sub-points, notes, the generated
    * text), because counts stay identical when wording changes.
    */
-  type PlanWatched = { outline: string; plan: string; thoughts: string };
   const planFreshnessUid = useFreshnessUid(sermon?.userId);
-  const knownPlan = useMemo<PlanWatched | null>(
-    () =>
-      sermon
-        ? {
-            outline: contentFingerprint(sermon.outline ?? null),
-            plan: contentFingerprint(sermon.plan ?? sermon.draft ?? null),
-            thoughts: contentFingerprint(sermon.thoughts ?? []),
-          }
-        : null,
+  // ONE rule for both sides, shared with the sermon screen. Thoughts are compared
+  // by content rather than by position: the writer appends, the screen prepends.
+  const knownPlan = useMemo<PlanFreshnessProjection | null>(
+    () => (sermon ? planFreshnessProjection(sermon as unknown as Record<string, unknown>) : null),
     [sermon]
   );
-  const planFreshness = useDocumentFreshness<PlanWatched>({
+  const planFreshness = useDocumentFreshness<PlanFreshnessProjection>({
     collection: 'sermons',
     docId: sermonId || null,
     uid: planFreshnessUid,
     enabled: Boolean(sermon),
     known: knownPlan,
-    select: (data) => ({
-      outline: contentFingerprint(data.outline ?? null),
-      plan: contentFingerprint(data.plan ?? data.draft ?? null),
-      thoughts: contentFingerprint(data.thoughts ?? []),
-    }),
+    select: (data) => planFreshnessProjection(data),
   });
   const [planFreshnessDismissed, setPlanFreshnessDismissed] = useState(false);
   useEffect(() => {

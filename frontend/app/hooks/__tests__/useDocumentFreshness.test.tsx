@@ -392,4 +392,99 @@ describe('a new document starts from knowing nothing', () => {
       expect(result.current.state).toBe('fresh');
     });
   });
+
+  /**
+   * BUG-20260809-false-remote-edit-banner, second half.
+   *
+   * The comparison lived ONLY inside the snapshot handler: a snapshot arrived, it
+   * was compared once. When the screen later caught up — the editor's own write
+   * returning with its response — nobody re-compared, and the warning stayed up
+   * until the document happened to change again. To the person it looked like the
+   * "another device" banner simply never going away, long after the mismatch was
+   * gone.
+   *
+   * Freshness is a relation between TWO values, not an event on one of them.
+   */
+  describe('when the screen catches up with the server', () => {
+    it('clears the warning without waiting for another snapshot', () => {
+      const { result, rerender } = render({ title: 'what the screen had' });
+
+      act(() => emit?.(server({ title: 'own write, already on the server' })));
+      expect(result.current.state).toBe('stale');
+
+      // The response came back and the screen updated — no mismatch left.
+      rerender({ known: { title: 'own write, already on the server' } });
+
+      expect(result.current.state).toBe('fresh');
+      expect(result.current.remote).toBeNull();
+    });
+
+    it('keeps the warning when the screen caught up to something else', () => {
+      const { result, rerender } = render({ title: 'what the screen had' });
+
+      act(() => emit?.(server({ title: 'the server holds something else' })));
+      expect(result.current.state).toBe('stale');
+
+      rerender({ known: { title: 'the screen moved, but not that way' } });
+
+      expect(result.current.state).toBe('stale');
+    });
+
+    /**
+     * A REMEMBERED SERVER VALUE MUST NOT OUTLIVE THE PROOF IT CAME WITH.
+     *
+     * The recheck compares against what the server last said. If that memory
+     * survives into a state where we no longer have server proof — the connection
+     * dropped, the listener errored, the document was deleted — then a screen that
+     * happens to match the OLD remote would be told "fresh". That is the exact lie
+     * this hook exists to prevent: claiming knowledge we no longer have.
+     */
+    it('does not clear "cannot tell" by matching a value the server said earlier', () => {
+      const { result, rerender } = render({ title: 'what the screen had' });
+
+      act(() => emit?.(server({ title: 'the server holds something else' })));
+      expect(result.current.state).toBe('stale');
+
+      // The connection drops: a cache-only emission means we can no longer tell.
+      act(() => emit?.(server({ title: 'the server holds something else' }, { fromCache: true })));
+      expect(result.current.state).toBe('unknown');
+
+      // The screen now happens to match what the server said BEFORE we lost proof.
+      rerender({ known: { title: 'the server holds something else' } });
+
+      expect(result.current.state).toBe('unknown');
+    });
+
+    it('does not clear a remote deletion by matching the value it used to hold', () => {
+      const { result, rerender } = render({ title: 'what the screen had' });
+
+      act(() => emit?.(server({ title: 'still here' })));
+      act(() =>
+        emit?.({
+          metadata: { hasPendingWrites: false, fromCache: false },
+          exists: () => false,
+          data: () => ({}),
+        })
+      );
+      expect(result.current.state).toBe('stale');
+      expect(result.current.remotelyDeleted).toBe(true);
+
+      rerender({ known: { title: 'still here' } });
+
+      expect(result.current.state).toBe('stale');
+      expect(result.current.remotelyDeleted).toBe(true);
+    });
+
+    it('never raises a warning on its own while the server has said nothing', () => {
+      // A cold start is deliberately quiet: "unknown" is suppressed before the first
+      // answer so a freshly opened page does not cry wolf. The recheck must not break
+      // that — on its own it has no right to raise anything.
+      const { result, rerender } = render({ title: 'what the screen had' });
+
+      rerender({ known: { title: 'the person keeps typing' } });
+
+      expect(result.current.state).not.toBe('stale');
+      expect(result.current.remote).toBeNull();
+    });
+  });
 });

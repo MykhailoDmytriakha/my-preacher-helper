@@ -114,7 +114,19 @@ export function useDocumentFreshness<T>({
   // Serialised value the editor already accounts for. Kept in a ref so a new
   // keystroke never re-subscribes the listener.
   const knownRef = useRef<string | null>(null);
-  knownRef.current = known === null || known === undefined ? null : JSON.stringify(known);
+  const serialisedKnown = known === null || known === undefined ? null : JSON.stringify(known);
+  knownRef.current = serialisedKnown;
+
+  /**
+   * What the server last said, in the very shape the comparison uses.
+   *
+   * Freshness is a relation between TWO values, not an event on one of them. The
+   * comparison used to live only inside the snapshot handler: a snapshot arrived,
+   * it was compared once. When the screen later caught up — the editor's own write
+   * coming back with its response — nobody re-compared, and the warning stayed up
+   * until the document happened to change again.
+   */
+  const lastRemoteSerialisedRef = useRef<string | null>(null);
 
   /**
    * The baseline this hook adopted itself, for callers that hold no document.
@@ -134,6 +146,29 @@ export function useDocumentFreshness<T>({
 
   /** When the server last told us anything about THIS document. */
   const lastServerProofRef = useRef(0);
+
+  /**
+   * THE SCREEN CAUGHT UP — THE WARNING CLEARS WITHOUT WAITING FOR A NEW SNAPSHOT.
+   *
+   * The editor's own write travels to the server and comes back as a response.
+   * Between those two moments the server already holds the new value while the
+   * screen still holds the old one, and the snapshot honestly reports a mismatch.
+   * The screen then catches up and the mismatch is gone — but nobody re-compared,
+   * so the warning stayed up until the document happened to change again.
+   *
+   * This recheck can only CLEAR. Only the server may raise the warning: otherwise
+   * a person who is merely typing would announce a "remote edit" to himself.
+   */
+  useEffect(() => {
+    const base = baseline();
+    const lastRemote = lastRemoteSerialisedRef.current;
+    if (base === null || lastRemote === null) return;
+    if (lastRemote === base) {
+      setState('fresh');
+      setRemote(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serialisedKnown]);
 
   useEffect(() => {
     if (!enabled || !docId || !uid) {
@@ -157,6 +192,7 @@ export function useDocumentFreshness<T>({
     setRemotelyDeleted(false);
     lastServerProofRef.current = 0;
     adoptedKnownRef.current = null;
+    lastRemoteSerialisedRef.current = null;
     setSilenceIsNews(false);
     const graceTimer = window.setTimeout(() => {
       if (active) setSilenceIsNews(true);
@@ -179,11 +215,18 @@ export function useDocumentFreshness<T>({
           // A cached emission proves nothing about the server RIGHT NOW, even if a
           // server snapshot arrived earlier: the connection may since have dropped.
           // Keeping a stale "fresh" here is the lie this state exists to prevent.
+          //
+          // The remembered server value goes with it. It must never outlive the proof
+          // it arrived with: a screen that later happens to match that old value would
+          // otherwise be told "fresh" while we in fact know nothing.
+          lastRemoteSerialisedRef.current = null;
           setState('unknown');
           return;
         }
 
         if (!snapshot.exists()) {
+          // Nothing on the server to match against any more.
+          lastRemoteSerialisedRef.current = null;
           setRemotelyDeleted(true);
           setState('stale');
           setRemote(null);
@@ -211,6 +254,7 @@ export function useDocumentFreshness<T>({
           return;
         }
 
+        lastRemoteSerialisedRef.current = serialised;
         setState('stale');
         setRemote(value);
       },
@@ -218,7 +262,9 @@ export function useDocumentFreshness<T>({
         if (!active) return;
         setEverAnswered(true);
         // A listener error is terminal — Firestore sends nothing more. Saying
-        // "fresh" here would claim knowledge we no longer have.
+        // "fresh" here would claim knowledge we no longer have, and so would letting
+        // the remembered server value survive to be matched later.
+        lastRemoteSerialisedRef.current = null;
         setState('unknown');
         setRemote(null);
       }
@@ -251,6 +297,7 @@ export function useDocumentFreshness<T>({
           lastServerProofRef.current = Date.now();
           setEverAnswered(true);
           if (!snapshot.exists()) {
+            lastRemoteSerialisedRef.current = null;
             setRemotelyDeleted(true);
             setState('stale');
             setRemote(null);
@@ -270,13 +317,19 @@ export function useDocumentFreshness<T>({
             setRemote(null);
             return;
           }
+          // Remember it here too, or a warning raised by this path could never be
+          // cleared by the screen catching up — only by another snapshot arriving.
+          lastRemoteSerialisedRef.current = serialised;
           setState('stale');
           setRemote(value);
         })
         .catch(() => {
           // Could not reach the server on a deliberate ask — that is a real "cannot
           // tell", not silence to be papered over with a comforting "fresh".
-          if (active) setState('unknown');
+          if (active) {
+            lastRemoteSerialisedRef.current = null;
+            setState('unknown');
+          }
         });
     };
 
