@@ -42,6 +42,11 @@ export interface DataFreshnessBannerProps {
    * So callers pass this only when they can refresh WITHOUT touching unsaved text.
    */
   onRefresh?: () => void;
+  /**
+   * The refresh is in flight. Pulling a record takes a moment on a slow connection,
+   * and a button that looks idle while working invites a second and third press.
+   */
+  refreshing?: boolean;
   /** Keep working on what is on screen and stop nagging. */
   onDismiss: () => void;
   className?: string;
@@ -53,6 +58,7 @@ export function DataFreshnessBanner({
   deleted = false,
   unknown = false,
   onRefresh,
+  refreshing = false,
   onDismiss,
   className = '',
 }: DataFreshnessBannerProps) {
@@ -105,9 +111,21 @@ export function DataFreshnessBanner({
           <button
             type="button"
             onClick={onRefresh}
-            className="rounded-lg bg-sky-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-sky-700"
+            disabled={refreshing}
+            aria-busy={refreshing}
+            className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {dirty ? t('freshness.reviewAction') : t('freshness.refreshAction')}
+            {refreshing && (
+              <span
+                aria-hidden="true"
+                className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/40 border-t-white"
+              />
+            )}
+            {refreshing
+              ? t('freshness.refreshingAction')
+              : dirty
+                ? t('freshness.reviewAction')
+                : t('freshness.refreshAction')}
           </button>
         )}
         <button

@@ -404,10 +404,27 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
 
   // Fire-and-forget + optimistic: resolve immediately so UI never hangs awaiting
   // the network; offline the mutation pauses + persists and replays on reconnect.
+  /**
+   * Pull the newer version in place, for the "changed on another device" banner.
+   *
+   * Throws when the refetch fails, so the caller can say so instead of quietly
+   * showing a success while the screen still holds the older version — the same
+   * trap the conflict resolution above guards against.
+   */
+  const refreshPrayers = async () => {
+    await queryClient.refetchQueries({ queryKey: PRAYER_PREFIX });
+    const failed = queryClient
+      .getQueryCache()
+      .findAll({ queryKey: PRAYER_PREFIX })
+      .some((q) => q.state.status === 'error');
+    if (failed) throw new Error('prayer refresh failed');
+  };
+
   return {
     prayerRequests,
     loading: isLoading,
     error: (error as Error | null) ?? mutationError,
+    refreshPrayers,
     createPrayer: async (payload: CreatePrayerPayload): Promise<string> => {
       // Returns the client-generated id immediately so callers can navigate to
       // the new prayer's detail route without awaiting the network round-trip.

@@ -76,6 +76,38 @@ describe('DataFreshnessBanner', () => {
       ).toBeInTheDocument();
     });
 
+    /**
+     * BUG-20260810-freshness-no-soft-refresh
+     *
+     * Pulling a record takes a moment on a slow connection. A button that looks idle
+     * while working invites a second and third press, and each one refetches.
+     */
+    it('shows the refresh is in flight and refuses a second press', () => {
+      render(
+        <DataFreshnessBanner
+          dirty={false}
+          entityKey="entitySermon"
+          onRefresh={noop}
+          refreshing
+          onDismiss={noop}
+        />
+      );
+
+      const button = screen.getByText('freshness.refreshingAction').closest('button');
+      expect(button).toBeDisabled();
+      expect(button).toHaveAttribute('aria-busy', 'true');
+      expect(screen.queryByText('freshness.refreshAction')).not.toBeInTheDocument();
+    });
+
+    it('is pressable again once the refresh is done', () => {
+      render(
+        <DataFreshnessBanner dirty={false} entityKey="entitySermon" onRefresh={noop} onDismiss={noop} />
+      );
+
+      const button = screen.getByText('freshness.refreshAction').closest('button');
+      expect(button).toBeEnabled();
+    });
+
     it('keeps asking — with the button — when a refresh really is offered', () => {
       render(
         <DataFreshnessBanner dirty={false} entityKey="entitySermon" onRefresh={noop} onDismiss={noop} />

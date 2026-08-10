@@ -146,7 +146,28 @@ export default function PlanPage() {
 
   const isOnline = useOnlineStatus();
   const { aiBlocked, refresh: refreshAiUsage } = useAiUsage();
-  const { sermon, setSermon, loading: isLoadingRaw, error: sermonError } = useSermon(sermonId);
+  const { sermon, setSermon, loading: isLoadingRaw, error: sermonError, refreshSermon } = useSermon(sermonId);
+
+  /**
+   * Pull the newer plan in place, without a page reload.
+   *
+   * Same reason as on the sermon screen: the banner used to announce a newer version
+   * and offer no way to take it, so the only route was reloading by hand. Refetching
+   * swaps the data and leaves local drafts (generated plan text, open editors) alone.
+   */
+  const [isRefreshingPlan, setIsRefreshingPlan] = useState(false);
+  const handleRefreshPlan = useCallback(async () => {
+    if (isRefreshingPlan) return;
+    setIsRefreshingPlan(true);
+    try {
+      await refreshSermon();
+      toast.success(t('freshness.refreshedToast'));
+    } catch {
+      toast.error(t('freshness.refreshFailedToast'));
+    } finally {
+      setIsRefreshingPlan(false);
+    }
+  }, [isRefreshingPlan, refreshSermon, t]);
 
   /**
    * DOES THE SERVER HOLD A NEWER PLAN?
@@ -1053,7 +1074,8 @@ export default function PlanPage() {
             dirty={false}
             deleted={planFreshness.remotelyDeleted}
             unknown={planFreshness.state === 'unknown'}
-            onRefresh={undefined}
+            onRefresh={handleRefreshPlan}
+            refreshing={isRefreshingPlan}
             onDismiss={() => setPlanFreshnessDismissed(true)}
             className="mb-3"
           />

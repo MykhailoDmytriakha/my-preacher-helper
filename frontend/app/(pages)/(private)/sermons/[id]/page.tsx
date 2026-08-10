@@ -274,7 +274,7 @@ export default function SermonPage() {
   const [uiMode, setUiMode] = useState<SermonUiMode>(() => getInitialUiMode(modeParam, id as string));
 
   const { t } = useTranslation();
-  const { sermon, setSermon, loading, isOnline, awaitingFirstAnswer } = useSermon(id);
+  const { sermon, setSermon, loading, isOnline, awaitingFirstAnswer, refreshSermon } = useSermon(id);
 
   // Does the server hold a newer version of THIS sermon? Shared layer with the
   // note and series pages: observe only, never swap what is on screen.
@@ -304,6 +304,35 @@ export default function SermonPage() {
     select: (data) => sermonFreshnessProjection(data),
   });
   const [sermonFreshnessDismissed, setSermonFreshnessDismissed] = useState(false);
+
+  /**
+   * PULL THE NEWER VERSION IN PLACE — no page reload.
+   *
+   * The banner used to have no action at all here, because the only refresh anyone
+   * had written was `window.location.reload()`, and that threw away whatever was
+   * being typed. So the screen asked "load the newer version?" and offered no way to
+   * say yes; the answer was to go to the browser and reload by hand.
+   *
+   * Refetching the query replaces the sermon data and leaves component state alone:
+   * an open thought modal keeps its text, the title being edited keeps its draft.
+   * The banner then disappears on its own — once the screen holds what the server
+   * holds, the freshness comparison stops finding a difference.
+   */
+  const [isRefreshingSermon, setIsRefreshingSermon] = useState(false);
+  const handleRefreshSermon = useCallback(async () => {
+    if (isRefreshingSermon) return;
+    setIsRefreshingSermon(true);
+    try {
+      await refreshSermon();
+      toast.success(t('freshness.refreshedToast'));
+    } catch {
+      // Staying on the older version is not a disaster; silently pretending it
+      // worked would be. The banner remains, so the offer stays available.
+      toast.error(t('freshness.refreshFailedToast'));
+    } finally {
+      setIsRefreshingSermon(false);
+    }
+  }, [isRefreshingSermon, refreshSermon, t]);
   useEffect(() => {
     if (sermonFreshness.state === 'stale' || sermonFreshness.state === 'unknown') setSermonFreshnessDismissed(false);
   }, [sermonFreshness.remote, sermonFreshness.state]);
@@ -1524,6 +1553,8 @@ useEffect(() => {
           dirty={false}
           deleted={sermonFreshness.remotelyDeleted}
           unknown={sermonFreshness.state === 'unknown'}
+          onRefresh={handleRefreshSermon}
+          refreshing={isRefreshingSermon}
           onDismiss={() => setSermonFreshnessDismissed(true)}
         />
       )}

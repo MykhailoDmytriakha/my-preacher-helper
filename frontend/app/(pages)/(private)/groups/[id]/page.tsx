@@ -65,6 +65,20 @@ import { getSeriesForRef } from '@/utils/seriesMembership';
 
 const STATUS_CYCLE: GroupBlockStatus[] = ['empty', 'draft', 'filled'];
 
+/**
+ * Anything typed here that the server has not seen yet.
+ *
+ * Kept outside the component on purpose: it is a pure comparison, and the page
+ * function is already at the complexity ceiling.
+ */
+function hasUnsavedGroupEdits(
+  baseline: Parameters<typeof changedFields>[0] | null,
+  current: Parameters<typeof changedFields>[1]
+): boolean {
+  if (!baseline) return false;
+  return Object.keys(changedFields(baseline, current)).length > 0;
+}
+
 export default function GroupDetailPage() {
   const id = useRouteId();
   const router = useRouter();
@@ -88,6 +102,7 @@ export default function GroupDetailPage() {
     keepMineOnConflict,
     takeTheirsOnConflict,
     adoptRemoteNonce,
+    refreshGroupDetail,
   } = useGroupDetail(groupsEnabled ? groupId : '');
 
   const groupsUserId = user?.uid && groupsEnabled ? user.uid : null;
@@ -317,6 +332,7 @@ export default function GroupDetailPage() {
     }),
   });
   const [groupFreshnessDismissed, setGroupFreshnessDismissed] = useState(false);
+  const [isRefreshingGroup, setIsRefreshingGroup] = useState(false);
   useEffect(() => {
     if (groupFreshness.state === 'stale' || groupFreshness.state === 'unknown') setGroupFreshnessDismissed(false);
   }, [groupFreshness.remote, groupFreshness.state]);
@@ -602,6 +618,35 @@ export default function GroupDetailPage() {
     );
   }
 
+  /**
+   * Does the form hold anything the server has not seen? Computed once, used twice:
+   * it decides the banner's wording AND whether pulling the newer version is safe.
+   *
+   * Refreshing while these fields are dirty would overwrite what the person is
+   * typing, so the action is withheld exactly then — the banner still says the
+   * record changed, it just does not offer to replace unsaved work.
+   */
+  const groupHasUnsavedChanges = hasUnsavedGroupEdits(baselineRef.current, {
+    title: titleRef.current.trim(),
+    description: descriptionRef.current.trim() || undefined,
+    status: statusRef.current,
+    templates: templatesRef.current,
+    flow: normalizeFlow(flowRef.current),
+  });
+
+  const handleRefreshGroup = async () => {
+    if (isRefreshingGroup) return;
+    setIsRefreshingGroup(true);
+    try {
+      await refreshGroupDetail();
+      toast.success(t('freshness.refreshedToast'));
+    } catch {
+      toast.error(t('freshness.refreshFailedToast'));
+    } finally {
+      setIsRefreshingGroup(false);
+    }
+  };
+
   return (
     <section className="space-y-6">
       {/* A save was TURNED AWAY. The typed text is still in the fields (a refusal
@@ -619,20 +664,11 @@ export default function GroupDetailPage() {
       {(groupFreshness.state === 'stale' || groupFreshness.state === 'unknown') && !groupFreshnessDismissed && (
         <DataFreshnessBanner
           entityKey="entityRecord"
-          dirty={Boolean(
-            baselineRef.current &&
-              Object.keys(
-                changedFields(baselineRef.current, {
-                  title: titleRef.current.trim(),
-                  description: descriptionRef.current.trim() || undefined,
-                  status: statusRef.current,
-                  templates: templatesRef.current,
-                  flow: normalizeFlow(flowRef.current),
-                })
-              ).length > 0
-          )}
+          dirty={groupHasUnsavedChanges}
           deleted={groupFreshness.remotelyDeleted}
           unknown={groupFreshness.state === 'unknown'}
+          onRefresh={groupHasUnsavedChanges ? undefined : handleRefreshGroup}
+          refreshing={isRefreshingGroup}
           onDismiss={() => setGroupFreshnessDismissed(true)}
         />
       )}

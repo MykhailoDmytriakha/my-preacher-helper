@@ -54,6 +54,7 @@ export default function PrayerDetailPage() {
     statusConflict,
     keepMineOnStatusConflict,
     takeTheirsOnStatusConflict,
+    refreshPrayers,
   } =
     // The id makes a refused save durable — see usePrayerRequests.
     usePrayerRequests(user?.uid ?? null, typeof id === 'string' ? id : null);
@@ -108,6 +109,21 @@ export default function PrayerDetailPage() {
     }),
   });
   const [prayerFreshnessDismissed, setPrayerFreshnessDismissed] = useState(false);
+
+  /** Pull the newer prayer in place — no page reload, no lost modal text. */
+  const [isRefreshingPrayer, setIsRefreshingPrayer] = useState(false);
+  const handleRefreshPrayer = async () => {
+    if (isRefreshingPrayer) return;
+    setIsRefreshingPrayer(true);
+    try {
+      await refreshPrayers();
+      toast.success(t('freshness.refreshedToast'));
+    } catch {
+      toast.error(t('freshness.refreshFailedToast'));
+    } finally {
+      setIsRefreshingPrayer(false);
+    }
+  };
   useEffect(() => {
     if (prayerFreshness.state === 'stale' || prayerFreshness.state === 'unknown') setPrayerFreshnessDismissed(false);
   }, [prayerFreshness.remote, prayerFreshness.state]);
@@ -312,6 +328,8 @@ export default function PrayerDetailPage() {
           dirty={false}
           deleted={prayerFreshness.remotelyDeleted}
           unknown={prayerFreshness.state === 'unknown'}
+          onRefresh={handleRefreshPrayer}
+          refreshing={isRefreshingPrayer}
           onDismiss={() => setPrayerFreshnessDismissed(true)}
         />
       )}
