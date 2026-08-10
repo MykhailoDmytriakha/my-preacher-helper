@@ -30,27 +30,30 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-describe('the data pill and the app-update toast say different things', () => {
-  it.each(['en', 'ru', 'uk'])('%s: neither title is a copy of the other', (locale) => {
+describe('the data pill and the app update say different things', () => {
+  it.each(['en', 'ru', 'uk'])('%s: neither wording is a copy of the other', (locale) => {
     const bundle = locales[locale] as unknown as {
-      pwa: { updateAvailable: { title: string; description: string; action: string } };
+      pwa: { updateAvailable: { hint: string; action: string } };
       freshness: { title: string; description: string };
     };
 
-    const appTitle = bundle.pwa.updateAvailable.title;
+    // The app update is no longer a toast with a title — it is a header button whose
+    // tooltip carries the whole explanation. The distinction it must keep is the same.
+    const appHint = bundle.pwa.updateAvailable.hint;
     const dataTitle = bundle.freshness.title;
 
-    expect(appTitle).toBeTruthy();
+    expect(appHint).toBeTruthy();
     expect(dataTitle).toBeTruthy();
-    expect(appTitle).not.toBe(dataTitle);
-    // And each says WHICH of the two things happened, rather than a bare
+    expect(appHint).not.toBe(dataTitle);
+    // Each says WHICH of the two things happened, rather than a bare
     // "something is available".
-    expect(`${appTitle} ${bundle.pwa.updateAvailable.description}`.toLowerCase()).toMatch(
-      /app|прилож|застосун|програм/
-    );
+    expect(appHint.toLowerCase()).toMatch(/app|прилож|застосун|програм/);
     expect(`${dataTitle} ${bundle.freshness.description}`.toLowerCase()).toMatch(
       /device|устройств|пристро/
     );
+    // And the app update must not claim the person's RECORDS changed — the whole
+    // confusion this separation exists to prevent.
+    expect(appHint.toLowerCase()).not.toMatch(/device|устройств|пристро/);
   });
 
   it('the data pill names the entity and offers to load the newer version', () => {

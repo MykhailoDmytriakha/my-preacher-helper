@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import { Inter, Roboto_Mono } from "next/font/google";
 
 import { OfflineBanner } from "./components/OfflineBanner";
-import { SwUpdateToast } from "./components/SwUpdateToast";
 import { ThemeWatcher } from "./components/ThemeWatcher";
 import LanguageInitializer from "./components/navigation/LanguageInitializer";
 import { AuthProvider } from "./providers/AuthProvider";
@@ -77,7 +76,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <QueryProvider>
                 <NuqsAdapter>
                   <LanguageInitializer />
-                  <SwUpdateToast />
                   <Toaster richColors closeButton position="top-right" />
                   <div className="min-h-screen flex flex-col" id="app-shell">
                     <OfflineBanner />

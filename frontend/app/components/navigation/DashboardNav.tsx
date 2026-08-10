@@ -27,6 +27,7 @@ import { debugLog } from "@/utils/debugMode";
 import { getNavItemTheme } from "@/utils/themeColors";
 import { isConductRoute } from '@/utils/usageGrace';
 
+import { AppUpdateButton } from "./AppUpdateButton";
 import ModeToggle, { type SermonMode } from "./ModeToggle";
 import { OfflineIndicator } from "./OfflineIndicator";
 
@@ -315,6 +316,7 @@ export default function DashboardNav() {
           {/* Right: Desktop controls */}
           <div className="flex shrink-0 items-center gap-2 rounded-full border border-gray-200/70 bg-gray-50/85 px-2 py-1 shadow-sm dark:border-gray-700/60 dark:bg-gray-900/70">
             {usageGrace && <UsageGraceIndicator model={usageGrace} placement="desktop" />}
+            <AppUpdateButton />
             <OfflineIndicator />
             {/* Feedback button for desktop */}
             <button
@@ -391,6 +393,7 @@ export default function DashboardNav() {
             {/* Right: Mobile controls */}
             <div className="flex items-center gap-2 z-10">
               {usageGrace && <UsageGraceIndicator model={usageGrace} placement="mobile" />}
+              <AppUpdateButton />
               <OfflineIndicator />
               {/* Feedback button for mobile */}
               <button

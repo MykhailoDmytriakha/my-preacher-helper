@@ -2843,9 +2843,8 @@
   },
   "pwa": {
     "updateAvailable": {
-      "title": "New app version available",
-      "description": "This updates the APP, not your notes. Reload to get it.",
-      "action": "Reload app"
+      "action": "Update the app",
+      "hint": "The app has an update ready. Press to restart it on the newer version — your records stay where they are."
     }
   }
 }
