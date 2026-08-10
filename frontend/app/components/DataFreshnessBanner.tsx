@@ -59,13 +59,27 @@ export function DataFreshnessBanner({
   const { t } = useTranslation();
 
   const entity = t(`freshness.${entityKey}`);
+  /**
+   * NEVER ASK A QUESTION THE BANNER CANNOT ANSWER.
+   *
+   * The default wording ends in "load the newer version?" — but the button that
+   * does exactly that only appears when `onRefresh` was passed, and callers
+   * deliberately omit it wherever refreshing would destroy unsaved work (see the
+   * prop docs above). The result on screen was a question with no way to say yes:
+   * the owner hit it on production and read it as a broken interface.
+   *
+   * Without an action the banner states the situation and names what the person can
+   * do themselves, instead of promising a button that is not there.
+   */
   const description = deleted
     ? t('freshness.deletedDescription')
     : unknown
       ? t('freshness.unknownDescription', { entity })
       : dirty
         ? t('freshness.dirtyDescription', { entity })
-        : t('freshness.description', { entity });
+        : onRefresh
+          ? t('freshness.description', { entity })
+          : t('freshness.descriptionNoAction', { entity });
 
   return (
     <div

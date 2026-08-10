@@ -9,6 +9,7 @@
     "queuedPending": "Waiting to be sent: {{count}}",
     "title": "Changed on another device",
     "description": "This {{entity}} was edited somewhere else. Load the newer version?",
+    "descriptionNoAction": "This {{entity}} was edited somewhere else. You are looking at the earlier version — reload the page when you are ready.",
     "dirtyDescription": "This {{entity}} was edited somewhere else. You have unsaved changes here — review them before loading.",
     "deletedTitle": "Deleted on another device",
     "deletedDescription": "This {{entity}} no longer exists on the server. Your text here is not saved.",
@@ -468,7 +469,7 @@
     "generating": "Generating...",
     "optimizing": "Preparing...",
     "stepOptimize": "Prepare Text →",
-    "stepGenerate": "Generate →",
+    "stepGenerate": "Generation",
     "next": "Next",
     "nextReview": "Next: Review Content",
     "optimizeBtn": "Optimize Content",
@@ -528,7 +529,6 @@
     "stepSettings": "Settings",
     "stepSource": "Source",
     "stepPreview": "Preview",
-    "stepGenerate": "Generation",
     "stepCount": "Step {{n}} of 3",
     "providerOpenaiSub": "Onyx · Echo",
     "providerGoogleSub": "Gemini · 4 voices",
@@ -600,67 +600,67 @@
     "planTemplates": "Plan Templates",
     "backToDashboard": "Back",
     "title": "Settings",
-  "userSettings": "User Settings",
-  "usage": {
-    "title": "Plan usage",
-    "tier": {
-      "free": "Free",
-      "paid": "Paid tier {{tier}}",
-      "admin": "Admin"
-    },
-    "aiRemaining": "AI usage remaining",
-    "aiUsage": "AI usage",
-    "aiInfoLabel": "What consumes AI usage?",
-    "aiInfo": "AI usage is consumed when you generate or improve sermon content with AI.",
-    "transcriptionRemaining": "Transcription remaining",
-    "speechRecognition": "Speech recognition",
-    "transcriptionSeconds": "{{count}} seconds",
-    "audioGenerated": "Audio generated",
-    "audio": "Audio",
-    "audioSeconds": "{{count}} seconds",
-    "minutesOfLimit": "{{used}} / {{limit}} min",
-    "aiUsageExhausted": "Not enough AI usage remaining.",
-    "transcriptionUsageExhausted": "Not enough transcription usage remaining."
-  },
-  "modelSelector": {
-    "title": "AI models by function",
-    "description": "Each task has its own model. See what it does at a glance.",
-    "current": "current",
-    "quality": "Quality",
-    "cost": "Cost",
-    "paidLocked": "🔒 paid",
-    "freeHint": "The free plan uses the default model. The other models unlock on a paid plan.",
-    "providers": {
-      "openai": "OpenAI",
-      "openrouter": "OpenRouter",
-      "gemini": "Google"
-    },
-    "functions": {
-      "transcription": {
-        "title": "Speech transcription",
-        "description": "Turns what you say aloud into text."
+    "userSettings": "User Settings",
+    "usage": {
+      "title": "Plan usage",
+      "tier": {
+        "free": "Free",
+        "paid": "Paid tier {{tier}}",
+        "admin": "Admin"
       },
-      "text": {
-        "title": "Text work",
-        "description": "Polishing, plan creation, and suggestions."
-      },
-      "tts": {
-        "title": "Voice output",
-        "description": "Exports a sermon as audio."
-      }
+      "aiRemaining": "AI usage remaining",
+      "aiUsage": "AI usage",
+      "aiInfoLabel": "What consumes AI usage?",
+      "aiInfo": "AI usage is consumed when you generate or improve sermon content with AI.",
+      "transcriptionRemaining": "Transcription remaining",
+      "speechRecognition": "Speech recognition",
+      "transcriptionSeconds": "{{count}} seconds",
+      "audioGenerated": "Audio generated",
+      "audio": "Audio",
+      "audioSeconds": "{{count}} seconds",
+      "minutesOfLimit": "{{used}} / {{limit}} min",
+      "aiUsageExhausted": "Not enough AI usage remaining.",
+      "transcriptionUsageExhausted": "Not enough transcription usage remaining."
     },
-    "loadError": "Could not load your available AI models. Please try again.",
-    "saveError": "Could not save your model preference. Please try again."
-  },
-  "referral": {
-    "title": "Invite a friend",
-    "description": "Your friend signs up via your link → you get a month of paid",
-    "linkLabel": "Referral link",
-    "reward": "Your friend signs up via the link → you get one month of Paid",
-    "invitedCount": "Invited {{count}}",
-    "copy": "Copy",
-    "copied": "Copied"
-  },
+    "modelSelector": {
+      "title": "AI models by function",
+      "description": "Each task has its own model. See what it does at a glance.",
+      "current": "current",
+      "quality": "Quality",
+      "cost": "Cost",
+      "paidLocked": "🔒 paid",
+      "freeHint": "The free plan uses the default model. The other models unlock on a paid plan.",
+      "providers": {
+        "openai": "OpenAI",
+        "openrouter": "OpenRouter",
+        "gemini": "Google"
+      },
+      "functions": {
+        "transcription": {
+          "title": "Speech transcription",
+          "description": "Turns what you say aloud into text."
+        },
+        "text": {
+          "title": "Text work",
+          "description": "Polishing, plan creation, and suggestions."
+        },
+        "tts": {
+          "title": "Voice output",
+          "description": "Exports a sermon as audio."
+        }
+      },
+      "loadError": "Could not load your available AI models. Please try again.",
+      "saveError": "Could not save your model preference. Please try again."
+    },
+    "referral": {
+      "title": "Invite a friend",
+      "description": "Your friend signs up via your link → you get a month of paid",
+      "linkLabel": "Referral link",
+      "reward": "Your friend signs up via the link → you get one month of Paid",
+      "invitedCount": "Invited {{count}}",
+      "copy": "Copy",
+      "copied": "Copied"
+    },
     "firstDayOfWeek": {
       "title": "First day of week",
       "description": "Choose how calendars are arranged across the app.",

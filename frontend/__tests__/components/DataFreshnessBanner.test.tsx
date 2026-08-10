@@ -47,4 +47,44 @@ describe('DataFreshnessBanner', () => {
 
     expect(screen.getByText('freshness.deletedTitle')).toBeInTheDocument();
   });
+
+  /**
+   * BUG-20260810-freshness-banner-no-primary-action
+   *
+   * The default wording asks "load the newer version?" — but that button only
+   * exists when a caller passes `onRefresh`, and callers deliberately omit it where
+   * refreshing would destroy unsaved work. On production the owner met a question
+   * with no way to say yes, and read it as a broken screen. A banner must never ask
+   * something it cannot answer.
+   */
+  describe('when no refresh action is available', () => {
+    it('does not ask to load the newer version', () => {
+      render(<DataFreshnessBanner dirty={false} entityKey="entitySermon" onDismiss={noop} />);
+
+      expect(
+        screen.queryByText('freshness.description:freshness.entitySermon')
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText('freshness.refreshAction')).not.toBeInTheDocument();
+    });
+
+    it('tells the person what they can do instead', () => {
+      render(<DataFreshnessBanner dirty={false} entityKey="entitySermon" onDismiss={noop} />);
+
+      expect(screen.getByText('freshness.title')).toBeInTheDocument();
+      expect(
+        screen.getByText('freshness.descriptionNoAction:freshness.entitySermon')
+      ).toBeInTheDocument();
+    });
+
+    it('keeps asking — with the button — when a refresh really is offered', () => {
+      render(
+        <DataFreshnessBanner dirty={false} entityKey="entitySermon" onRefresh={noop} onDismiss={noop} />
+      );
+
+      expect(
+        screen.getByText('freshness.description:freshness.entitySermon')
+      ).toBeInTheDocument();
+      expect(screen.getByText('freshness.refreshAction')).toBeInTheDocument();
+    });
+  });
 });
