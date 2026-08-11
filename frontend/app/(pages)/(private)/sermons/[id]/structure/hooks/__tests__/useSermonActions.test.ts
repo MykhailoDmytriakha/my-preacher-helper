@@ -198,7 +198,11 @@ describe('useSermonActions', () => {
             expect(defaultProps.setContainers).toHaveBeenCalled();
             expect(defaultProps.debouncedSaveThought).toHaveBeenCalledWith(
                 'sermon-1',
-                expect.objectContaining({ outlinePointId: null })
+                expect.objectContaining({ outlinePointId: null }),
+                // `expect.anything()` rejects null, so this asserts a baseline was
+                // actually STATED — without one the write claims every field and a
+                // move republishes this screen's copy of the text.
+                expect.anything()
             );
             expect(defaultProps.debouncedSaveStructure).toHaveBeenCalled();
         });

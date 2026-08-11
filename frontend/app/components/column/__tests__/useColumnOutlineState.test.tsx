@@ -120,7 +120,12 @@ describe("useColumnOutlineState", () => {
         main: expect.arrayContaining([
           expect.objectContaining({ id: "point-1", note: "remember lowercase phrasing" }),
         ]),
-      })
+      }),
+      // The base the write merges against — these tests are about the text
+      // that reaches the plan, not about the merge, so it is left unpinned.
+      expect.anything(),
+      // …and the collision mode this caller asks for.
+      expect.anything()
     );
 
     act(() => {
@@ -155,7 +160,12 @@ describe("useColumnOutlineState", () => {
             ]),
           }),
         ]),
-      })
+      }),
+      // The base the write merges against — these tests are about the text
+      // that reaches the plan, not about the merge, so it is left unpinned.
+      expect.anything(),
+      // …and the collision mode this caller asks for.
+      expect.anything()
     );
   });
 
@@ -183,7 +193,12 @@ describe("useColumnOutlineState", () => {
       "sermon-1",
       expect.objectContaining({
         main: expect.arrayContaining([expect.objectContaining({ text: '"Новый пункт' })]),
-      })
+      }),
+      // The base the write merges against — these tests are about the text
+      // that reaches the plan, not about the merge, so it is left unpinned.
+      expect.anything(),
+      // …and the collision mode this caller asks for.
+      expect.anything()
     );
 
     act(() => {

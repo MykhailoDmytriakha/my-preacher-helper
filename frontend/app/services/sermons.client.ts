@@ -513,7 +513,23 @@ export function isOutlineCollisionError(error: unknown): error is OutlineCollisi
 export async function updateSermonOutlineViaClient(
   sermonId: string,
   outline: SermonOutline,
-  options?: { baseOutline?: SermonOutline | null }
+  options?: {
+    baseOutline?: SermonOutline | null;
+    /**
+     * What to do when the SAME point was rewritten in two places.
+     *
+     * `refuse` (the default) throws `OutlineCollisionError` so the caller can show a
+     * choice. ONLY a caller that stores the refused plan may ask for it: a refusal
+     * reaching a plain `catch` becomes an error toast and the person's edit dies at
+     * the next reload — "overwrote someone else" turned into "silently lost your own".
+     *
+     * `preferMine` merges without refusing: everything the other device added still
+     * survives, and the local wording wins for the one point edited in both places.
+     * That is exactly what happened before merging existed, so it can never be worse
+     * than the old whole-field overwrite — while still saving the other points.
+     */
+    onCollision?: 'refuse' | 'preferMine';
+  }
 ): Promise<SermonOutline | null> {
   if (!outline.main) outline.main = [];
 
@@ -555,9 +571,12 @@ export async function updateSermonOutlineViaClient(
         const { outline: merged, collisions } = mergeOutline(
           options.baseOutline ?? null,
           outline,
-          current.outline ?? null
+          current.outline ?? null,
+          // Callers with nowhere to ask let the local decision win — including a
+          // deletion, which otherwise comes back on the next save.
+          options.onCollision === 'preferMine'
         );
-        if (collisions.length > 0) {
+        if (collisions.length > 0 && options.onCollision !== 'preferMine') {
           throw new OutlineCollisionError(
             collisions,
             current.outline ?? null,
@@ -915,10 +934,15 @@ export async function updateThoughtViaClient(
    * SIBLINGS correctly and then writes the stale text as if it were an edit.
    *
    * It never refuses: an unchanged field is simply not written, so this cannot grow
-   * the "refused forever" failures that guarded screens kept producing. Callers that
-   * cannot state an opening value behave exactly as before.
+   * the "refused forever" failures that guarded screens kept producing.
+   *
+   * REQUIRED ON PURPOSE — `null` is a decision, not a default. While this parameter
+   * was optional, three call sites silently took the whole-object path just by not
+   * mentioning it, and one of them was a padlock button that republished stale text.
+   * A caller with genuinely no opening value writes `null` and the old behaviour is
+   * restored; nobody gets it by forgetting.
    */
-  baseThought?: Thought | null
+  baseThought: Thought | null
 ): Promise<Thought> {
   if (!updatedThought.id) throw new Error('Thought id is required');
 

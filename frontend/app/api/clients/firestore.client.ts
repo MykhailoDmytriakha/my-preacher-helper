@@ -1,3 +1,5 @@
+import { FieldValue } from "firebase-admin/firestore";
+
 import { adminDb } from "@/config/firebaseAdminConfig";
 import { Tag } from "@/models/models";
 import {
@@ -109,29 +111,61 @@ export async function deleteTag(userId: string, tagName: string) {
     await tagsRef.doc(querySnapshot.docs[0].id).delete();
     console.log(`Firestore: deleted tag ${tagName} for user ${userId}`);
     // Cascade: remove tag from all thoughts in all user's sermons
+    /**
+     * CASCADE THE REMOVAL, DO NOT REPLAY A SNAPSHOT.
+     *
+     * This used to read every sermon, strip the tag in memory and write the WHOLE
+     * `thoughts` array back through a batch. A batch is atomic per write but gives no
+     * read isolation, so anything stored between the read and the commit was replaced
+     * — and this runs across ALL of the person's sermons at once, so deleting one tag
+     * in Settings could swallow a thought dictated on the phone a second earlier.
+     *
+     * Each sermon now gets its own transaction: the array is recomputed from the
+     * document AS READ INSIDE the attempt, and the SDK re-runs the callback if it
+     * changed meanwhile. Safe to re-run precisely because removing a tag is
+     * idempotent — a second pass over already-clean thoughts changes nothing.
+     *
+     * `rev.thoughts` moves too. Leaving it alone made the counter LIE: a later client
+     * save built from older text still matched the number and was handed permission
+     * to overwrite what the server had just written.
+     */
     const sermonsSnap = await adminDb.collection("sermons").where("userId", "==", userId).get();
     let affectedThoughts = 0;
-    const batch = adminDb.batch();
-    sermonsSnap.forEach((doc) => {
-      const data = doc.data();
-      const thoughts = Array.isArray(data.thoughts) ? data.thoughts : [];
-      const updated = thoughts.map((th: Record<string, unknown>) => ({
+
+    const stripTag = (thoughts: Record<string, unknown>[]) =>
+      thoughts.map((th) => ({
         ...th,
         tags: Array.isArray(th.tags) ? th.tags.filter((t: string) => t !== tagName) : []
       }));
-      // Count diffs
-      thoughts.forEach((th: Record<string, unknown>, idx: number) => {
-        const before = Array.isArray(th.tags) ? th.tags.length : 0;
-        const after = Array.isArray(updated[idx].tags) ? updated[idx].tags.length : 0;
-        if (after < before) affectedThoughts += (before - after);
+
+    const countRemoved = (before: Record<string, unknown>[], after: Record<string, unknown>[]) =>
+      before.reduce((total, th, idx) => {
+        const had = Array.isArray(th.tags) ? th.tags.length : 0;
+        const has = Array.isArray(after[idx]?.tags) ? (after[idx].tags as string[]).length : 0;
+        return total + Math.max(0, had - has);
+      }, 0);
+
+    // Sequential rather than parallel: tag deletion is rare, and one transaction at a
+    // time keeps contention (and retries) out of the picture entirely.
+    for (const sermonDoc of sermonsSnap.docs) {
+      await adminDb.runTransaction(async (tx) => {
+        const fresh = await tx.get(sermonDoc.ref);
+        if (!fresh.exists) return;
+        const data = fresh.data() as { thoughts?: Record<string, unknown>[] };
+        const thoughts = Array.isArray(data.thoughts) ? data.thoughts : [];
+        const updated = stripTag(thoughts);
+        if (JSON.stringify(updated) === JSON.stringify(thoughts)) return;
+
+        // Counted from the transaction's own read, and reset per attempt by being
+        // derived rather than accumulated across retries.
+        affectedThoughts += countRemoved(thoughts, updated);
+        tx.update(sermonDoc.ref, {
+          thoughts: updated,
+          'rev.thoughts': FieldValue.increment(1)
+        });
       });
-      if (JSON.stringify(updated) !== JSON.stringify(thoughts)) {
-        batch.update(doc.ref, { thoughts: updated });
-      }
-    });
-    if (!sermonsSnap.empty) {
-      await batch.commit();
     }
+
     return { affectedThoughts };
   } catch (error) {
     console.error(`Error deleting tag ${tagName} for user ${userId}:`, error);

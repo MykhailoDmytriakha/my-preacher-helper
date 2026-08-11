@@ -206,6 +206,8 @@ export default function PlanPage() {
   const sermonRef = useRef<Sermon | null>(sermon);
   const thoughtSaveVersionRef = useRef<Record<string, number>>({});
   const latestThoughtDraftsRef = useRef<Record<string, Thought>>({});
+  /** Per thought: the value this screen opened with, then whatever a save confirmed. */
+  const thoughtBaselinesRef = useRef<Record<string, Thought>>({});
   const isRestoring = useIsRestoring();
   const isLoading = isLoadingRaw || isRestoring;
   const [error, setError] = useState<string | null>(null);
@@ -272,6 +274,9 @@ export default function PlanPage() {
   useEffect(() => {
     thoughtSaveVersionRef.current = {};
     latestThoughtDraftsRef.current = {};
+    // A baseline belongs to ONE sermon: carried across, it would describe a thought
+    // this screen never opened.
+    thoughtBaselinesRef.current = {};
   }, [sermonId]);
 
   const {
@@ -593,6 +598,19 @@ export default function PlanPage() {
     thoughtSaveVersionRef.current[thoughtId] = saveVersion;
     latestThoughtDraftsRef.current[thoughtId] = updatedThought;
 
+    /**
+     * WHAT THIS SCREEN BELIEVED TO BE STORED before the person started editing.
+     *
+     * Recorded ONCE per thought and only advanced by a confirmed save, so the write
+     * below states just the fields the person actually touched. Taken from the live
+     * cache on every save instead, an untouched field would be re-sent from whatever
+     * this tab happens to hold and would revert an edit made on another device —
+     * the trap spelled out in `utils/changedFields.ts`.
+     */
+    if (previousThought && !thoughtBaselinesRef.current[thoughtId]) {
+      thoughtBaselinesRef.current[thoughtId] = previousThought;
+    }
+
     // Optimistic (React Query cache via setSermon): show the edit immediately;
     // the client-SDK write lands in the native Firestore offline queue.
     setSermon((prevSermon) =>
@@ -614,10 +632,16 @@ export default function PlanPage() {
       }
 
       try {
-        const savedThought = await updateThought(latestSermon.id, latestThought);
+        const savedThought = await updateThought(
+          latestSermon.id,
+          latestThought,
+          thoughtBaselinesRef.current[thoughtId] ?? null
+        );
         if (thoughtSaveVersionRef.current[thoughtId] !== requestVersion) {
           return savedThought;
         }
+        // CONFIRMED: this is now what the screen knows to be stored.
+        thoughtBaselinesRef.current[thoughtId] = savedThought;
 
         setSermon((prevSermon) => {
           if (!prevSermon) return prevSermon;

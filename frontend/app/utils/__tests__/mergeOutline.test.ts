@@ -253,6 +253,152 @@ describe('mergeOutline — two devices, hours apart', () => {
     expect(mergeOutline(null, mine, null).outline).toBe(mine);
   });
 
+  /**
+   * ORDER IS WORK TOO.
+   *
+   * The order of the points IS the shape of the sermon — moving the conclusion ahead
+   * of the main part is a decision, not formatting. Until now the order of a section
+   * was always taken from this editor, so a reordering done on the phone was undone
+   * the moment anything at all was saved from a laptop that had been open since the
+   * night before. Nothing was reported, because no point's TEXT had changed.
+   *
+   * Resolved the same way as content: whoever moved decides. It is deliberately NOT
+   * reported as a collision — a refusal over ordering would teach the person to
+   * dismiss the question, and then a real collision goes with it.
+   */
+  it('keeps a reordering made on the phone when nothing was reordered here', () => {
+    const base = outline([point('a', 'A'), point('b', 'B'), point('c', 'C')]);
+    // The laptop only rewords a point; it never touches the order.
+    const mine = outline([point('a', 'A, reworded'), point('b', 'B'), point('c', 'C')]);
+    const theirs = outline([point('b', 'B'), point('a', 'A'), point('c', 'C')]);
+
+    const { outline: merged, collisions } = mergeOutline(base, mine, theirs);
+
+    expect(merged.main.map((p) => p.id)).toEqual(['b', 'a', 'c']);
+    // The wording written here still wins — only the order came from the phone.
+    expect(merged.main.find((p) => p.id === 'a')?.text).toBe('A, reworded');
+    expect(collisions).toEqual([]);
+  });
+
+  it('emits a server point only once when the server order contains its id twice', () => {
+    const base = outline([point('a', 'A'), point('b', 'B'), point('c', 'C')]);
+    const mine = outline([point('a', 'A'), point('b', 'B'), point('c', 'C')]);
+    // Older app versions could persist duplicate ids. The phone-side reorder makes
+    // the server sequence authoritative, which used to emit `b` once per occurrence.
+    const theirs = outline([point('b', 'B'), point('a', 'A'), point('b', 'B'), point('c', 'C')]);
+
+    expect(mergeOutline(base, mine, theirs).outline.main.map((p) => p.id)).toEqual([
+      'b',
+      'a',
+      'c',
+    ]);
+  });
+
+  it('emits a duplicated server id in only one section', () => {
+    const base = outline([]);
+    const mine = outline([]);
+    const theirs: SermonOutline = {
+      introduction: [point('p', 'Opening copy')],
+      main: [point('p', 'Main copy')],
+      conclusion: [],
+    };
+
+    const merged = mergeOutline(base, mine, theirs).outline;
+
+    expect([...merged.introduction, ...merged.main, ...merged.conclusion].map((p) => p.id)).toEqual([
+      'p',
+    ]);
+    expect(merged.introduction.map((p) => p.text)).toEqual(['Opening copy']);
+  });
+
+  it('emits a local point only once when the local order contains its id twice', () => {
+    const base = outline([point('a', 'A'), point('b', 'B'), point('c', 'C')]);
+    const mine = outline([point('b', 'B'), point('a', 'A'), point('b', 'B'), point('c', 'C')]);
+    const theirs = outline([point('a', 'A'), point('b', 'B'), point('c', 'C')]);
+
+    expect(mergeOutline(base, mine, theirs).outline.main.map((p) => p.id)).toEqual([
+      'b',
+      'a',
+      'c',
+    ]);
+  });
+
+  it('keeps the reordering made here when the phone left the order alone', () => {
+    const base = outline([point('a', 'A'), point('b', 'B'), point('c', 'C')]);
+    const mine = outline([point('c', 'C'), point('a', 'A'), point('b', 'B')]);
+    const theirs = outline([point('a', 'A'), point('b', 'B'), point('c', 'C, reworded')]);
+
+    const { outline: merged, collisions } = mergeOutline(base, mine, theirs);
+
+    expect(merged.main.map((p) => p.id)).toEqual(['c', 'a', 'b']);
+    expect(collisions).toEqual([]);
+  });
+
+  it('lets this editor win when BOTH reordered, without raising a question', () => {
+    const base = outline([point('a', 'A'), point('b', 'B'), point('c', 'C')]);
+    const mine = outline([point('b', 'B'), point('a', 'A'), point('c', 'C')]);
+    const theirs = outline([point('a', 'A'), point('c', 'C'), point('b', 'B')]);
+
+    const { outline: merged, collisions } = mergeOutline(base, mine, theirs);
+
+    expect(merged.main.map((p) => p.id)).toEqual(['b', 'a', 'c']);
+    // No refusal over ordering: see above.
+    expect(collisions).toEqual([]);
+  });
+
+  /**
+   * A POINT ADDED AT THE FRONT ELSEWHERE MUST NOT LAND AT THE BACK.
+   *
+   * Found by an independent review of this change (2026-08-10) and reproduced here
+   * before fixing: only the immediate predecessor was consulted for placement, so a
+   * point with nothing before it had no anchor at all and was appended last. The
+   * preacher opens his plan and finds the thought he meant to start with sitting
+   * after the conclusion of that section.
+   */
+  it('keeps a point the other device inserted at the FRONT at the front', () => {
+    const base = outline([point('a', 'A'), point('b', 'B')]);
+    const mine = outline([point('a', 'A'), point('b', 'B')]);
+    const theirs = outline([point('x', 'Added first on the phone'), point('a', 'A'), point('b', 'B')]);
+
+    expect(mergeOutline(base, mine, theirs).outline.main.map((p) => p.id)).toEqual(['x', 'a', 'b']);
+  });
+
+  it('keeps a point MOVED into this section ahead of everything at the front', () => {
+    const base = outline([point('a', 'A'), point('b', 'B')], [point('m', 'M')]);
+    const mine = outline([point('a', 'A'), point('b', 'B')], [point('m', 'M')]);
+    // The phone moved `m` out of the introduction and put it first in the main part.
+    const theirs = outline([point('m', 'M'), point('a', 'A'), point('b', 'B')], []);
+
+    expect(mergeOutline(base, mine, theirs).outline.main.map((p) => p.id)).toEqual(['m', 'a', 'b']);
+  });
+
+  it('puts an addition first when its preceding server point was deleted by the merge', () => {
+    const base = outline([point('removed', 'Remove me'), point('a', 'A'), point('b', 'B')]);
+    const mine = outline([point('a', 'A'), point('b', 'B')]);
+    const theirs = outline([
+      point('removed', 'Remove me'),
+      point('x', 'Added after the point that was removed'),
+      point('a', 'A'),
+      point('b', 'B'),
+    ]);
+
+    expect(mergeOutline(base, mine, theirs).outline.main.map((p) => p.id)).toEqual(['x', 'a', 'b']);
+  });
+
+  it('deduplicates a brand-new local plan within and across sections', () => {
+    const mine: SermonOutline = {
+      introduction: [point('p', 'Opening')],
+      main: [point('p', 'Duplicate placement'), point('q', 'First copy'), point('q', 'Latest copy')],
+      conclusion: [point('q', 'Duplicate placement')],
+    };
+
+    const merged = mergeOutline(null, mine, null).outline;
+
+    expect(merged.introduction.map((p) => p.id)).toEqual(['p']);
+    expect(merged.main.map((p) => [p.id, p.text])).toEqual([['q', 'Latest copy']]);
+    expect(merged.conclusion).toEqual([]);
+  });
+
   it('treats an unknown base as "changed on both sides" rather than assuming agreement', () => {
     // No base means we cannot tell who wrote what. A collision is the honest
     // answer — better an unnecessary question than a silent overwrite.

@@ -122,6 +122,20 @@ function StructurePageContent() {
 
   // Ref to hold the latest containers state
   const containersRef = useRef(containers);
+  /**
+   * The plan this page last saw CONFIRMED — not the one merely on screen.
+   *
+   * A new point appears immediately, before the server answers. That is right; what
+   * is wrong is judging the NEXT save against it. If the first save failed, the held
+   * plan holds a point the server never received, and the merge would read its
+   * absence there as a deletion made on another device — dropping it for good.
+   */
+  const outlineSaveStateRef = useRef<{
+    sermonId: string;
+    nextSequence: number;
+    confirmedSequence: number;
+    confirmedOutline: SermonOutline;
+  } | null>(null);
   // Stateful instance (holds the sticky-target hysteresis across a drag).
   const { detect: collisionDetector, reset: resetCollision } = useMemo(() => createStructureCollisionDetection(), []);
   useEffect(() => {
@@ -480,7 +494,11 @@ function StructurePageContent() {
     applyThoughtLockState(thoughtsToUpdate.map((thought) => thought.id), isLocked);
 
     const results = await Promise.allSettled(
-      thoughtsToUpdate.map((thought) => updateThought(sermon.id, { ...thought, isLocked })),
+      // The thought itself is the baseline, so the write states ONLY `isLocked`.
+      // Without it every field of this screen's copy is claimed as changed, and a
+      // padlock pressed on a tab open since morning republishes its stale text over
+      // a rewrite made on another device.
+      thoughtsToUpdate.map((thought) => updateThought(sermon.id, { ...thought, isLocked }, thought)),
     );
 
     const hasFailures = results.some((result) => result.status === "rejected");
@@ -490,7 +508,14 @@ function StructurePageContent() {
       const successfulRollbacks = thoughtsToUpdate.filter((_, index) => results[index]?.status === "fulfilled");
       if (successfulRollbacks.length > 0) {
         await Promise.allSettled(
-          successfulRollbacks.map((thought) => updateThought(sermon.id, thought)),
+          // Legacy thoughts omit `isLocked`, but omission means unlocked. Materialize
+          // that value here or the diff has no lock key and the server stays locked
+          // while the optimistic rollback falsely shows an unlocked card.
+          successfulRollbacks.map((thought) => updateThought(
+            sermon.id,
+            { ...thought, isLocked: Boolean(thought.isLocked) },
+            { ...thought, isLocked },
+          )),
         );
       }
 
@@ -635,6 +660,35 @@ function StructurePageContent() {
         conclusion: [...(sermon.outline?.conclusion || [])]
       };
 
+      /**
+       * The plan THIS PAGE LOADED WITH — the base the write merges against.
+       *
+       * Taken before the insertion below, and deliberately from the loaded sermon
+       * rather than a fresh read: a base read moments before the write compares the
+       * server with itself and always agrees, so nothing is ever detected. Without a
+       * base at all the save replaced the whole field, erasing every point stored
+       * since this page loaded.
+       */
+      // Initialize once. Re-reading the optimistic screen after a failed overlapping
+      // save would certify an uncommitted point as stored, so the next merge could
+      // interpret its server-side absence as a deletion and discard it.
+      let saveState = outlineSaveStateRef.current;
+      if (!saveState || saveState.sermonId !== sermon.id) {
+        saveState = {
+          sermonId: sermon.id,
+          nextSequence: 0,
+          confirmedSequence: 0,
+          confirmedOutline: {
+            introduction: [...(sermon.outline?.introduction || [])],
+            main: [...(sermon.outline?.main || [])],
+            conclusion: [...(sermon.outline?.conclusion || [])]
+          },
+        };
+        outlineSaveStateRef.current = saveState;
+      }
+      const baseOutline = saveState.confirmedOutline;
+      const saveSequence = ++saveState.nextSequence;
+
       // 3. insert new point at specified index
       const sectionPoints = updatedOutline[sectionId as keyof SermonOutline] || [];
       if (index >= sectionPoints.length) {
@@ -649,7 +703,19 @@ function StructurePageContent() {
 
       // 5. Save to backend
       const { updateSermonOutline } = await import('@/services/outline.service');
-      await updateSermonOutline(sermon.id, updatedOutline);
+      // `preferMine` — no surface here to ask the person to choose; see the writer.
+      const savedOutline = await updateSermonOutline(sermon.id, updatedOutline, baseOutline, 'preferMine');
+      // Only a newer SUCCESS may advance the base. A newer request that failed does
+      // not block this late answer, while an older delayed answer cannot roll back a
+      // baseline already confirmed by a newer successful save.
+      const currentSaveState = outlineSaveStateRef.current;
+      if (
+        currentSaveState?.sermonId === sermon.id
+        && saveSequence > currentSaveState.confirmedSequence
+      ) {
+        currentSaveState.confirmedOutline = savedOutline ?? updatedOutline;
+        currentSaveState.confirmedSequence = saveSequence;
+      }
 
     } catch (error) {
       console.error('Error adding outline point:', error);

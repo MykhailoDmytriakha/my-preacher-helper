@@ -76,7 +76,21 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
   const [collapsedPoints, setCollapsedPoints] = useState<Record<string, boolean>>({});
 
   // --- All useRef hooks after useState ---
+  /**
+   * The plan THIS VIEW LOADED WITH — the base its saves merge against.
+   *
+   * Without it every save replaced the whole field, so a point added on another
+   * device disappeared the moment anything was edited here. It must come from the
+   * load below and never from a read taken just before writing: that would compare
+   * the server with itself and agree every time.
+   */
+  const baseOutlineRef = useRef<SermonOutline | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  /**
+   * Counts EDITS made here, so a response that arrives after the person has changed
+   * something else is not applied over them. Attempts of the same save do not count.
+   */
+  const saveGenerationRef = useRef(0);
   const addInputRef = useRef<HTMLInputElement>(null);
   const editInputRef = useRef<HTMLInputElement>(null);
 
@@ -113,6 +127,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
               conclusion: outline.conclusion || [],
             };
             setSectionPoints(mappedOutline);
+            baseOutlineRef.current = outline;
             setExpandedSections({
               introduction: !isMobile && mappedOutline.introduction.length > 0,
               mainPart: !isMobile && mappedOutline.mainPart.length > 0,
@@ -133,6 +148,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
           };
 
           setSectionPoints(mappedOutline);
+          baseOutlineRef.current = outlineData;
 
           const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
           // Auto-expand sections that have content (desktop only)
@@ -214,8 +230,13 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
   };
 
   // Direct save function that takes the updated points to save
-  const directlySaveOutlineChanges = (pointsToSave: Record<SectionType, SermonPoint[]>) => {
+  const directlySaveOutlineChanges = (
+    pointsToSave: Record<SectionType, SermonPoint[]>,
+    /** A re-attempt of the SAME save, not a new edit — see `saveGenerationRef`. */
+    isRetry = false
+  ) => {
     if (isReadOnly) return;
+    if (!isRetry) saveGenerationRef.current += 1;
     // Clear any existing timeout to debounce saves
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
@@ -231,7 +252,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
 
       if (saving) {
         // Retry after the current save is done
-        saveTimeoutRef.current = setTimeout(() => directlySaveOutlineChanges(pointsToSave), 500);
+        saveTimeoutRef.current = setTimeout(() => directlySaveOutlineChanges(pointsToSave, true), 500);
         return;
       }
 
@@ -246,8 +267,39 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
           conclusion: pointsToSave.conclusion,
         };
 
-        await updateSermonOutline(sermon.id, outlineToSave);
-        onOutlineUpdate?.(outlineToSave);
+        const generationAtRequest = saveGenerationRef.current;
+        // `preferMine` — this view cannot hold a refused plan; see the writer.
+        const saved = await updateSermonOutline(sermon.id, outlineToSave, baseOutlineRef.current, 'preferMine');
+
+        /**
+         * THE BASE AND WHAT IS ON SCREEN MOVE TOGETHER — OR NOT AT ALL.
+         *
+         * The committed plan can hold MORE than we sent: a point added on another
+         * device that the merge kept. Adopting it into the base while the screen keeps
+         * its own list puts the two out of step, and the next save reads that gap as
+         * "deleted here" (`utils/mergeOutline.ts`) — so the other device's point is
+         * removed for good, one edit after it silently vanished from view.
+         *
+         * Nothing is adopted once the person has edited since: applying an older
+         * answer would wipe what they are typing, and taking only the base would
+         * delete the unseen point on the next save. Keeping the older base lets the
+         * merge re-add it. (Same reasoning as `PlanEditorModal`.)
+         */
+        if (generationAtRequest !== saveGenerationRef.current) return;
+        // Section by section, so a writer that answers with a partial object cannot
+        // blank the board.
+        const committed: SermonOutline = {
+          introduction: saved?.introduction ?? outlineToSave.introduction,
+          main: saved?.main ?? outlineToSave.main,
+          conclusion: saved?.conclusion ?? outlineToSave.conclusion,
+        };
+        baseOutlineRef.current = committed;
+        setSectionPoints({
+          introduction: committed.introduction,
+          mainPart: committed.main,
+          conclusion: committed.conclusion,
+        });
+        onOutlineUpdate?.(committed);
       } catch (err) {
         console.error("Error saving sermon outline:", err);
         setError(t('errors.saveOutlineError'));

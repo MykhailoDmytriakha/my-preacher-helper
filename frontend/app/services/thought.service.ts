@@ -208,8 +208,12 @@ export const deleteThought = async (
 export const updateThought = async (
   sermonId: string,
   thought: Thought,
-  /** The thought AS THE SCREEN OPENED IT — see updateThoughtViaClient. */
-  baseThought?: Thought | null
+  /**
+   * The thought AS THE SCREEN OPENED IT — see updateThoughtViaClient. Required, so
+   * that "send the whole object" is something a caller states with `null` rather
+   * than something it gets by forgetting.
+   */
+  baseThought: Thought | null
 ): Promise<Thought> => {
   return updateThoughtViaClient(sermonId, thought, baseThought);
 };

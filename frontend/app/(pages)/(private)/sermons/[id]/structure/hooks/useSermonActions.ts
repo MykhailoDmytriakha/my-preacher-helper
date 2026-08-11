@@ -22,7 +22,7 @@ interface UseSermonActionsProps {
     setContainers: React.Dispatch<React.SetStateAction<Record<string, Item[]>>>;
     containersRef: React.MutableRefObject<Record<string, Item[]>>;
     allowedTags: { name: string; color: string }[];
-    debouncedSaveThought: (sermonId: string, thought: Thought) => void;
+    debouncedSaveThought: (sermonId: string, thought: Thought, baseThought: Thought | null) => void;
     debouncedSaveStructure: (sermonId: string, structure: ThoughtsBySection, baseStructure?: ThoughtsBySection | null) => void;
     retryThoughtSave?: (thoughtId: string) => Promise<void>;
 }
@@ -486,7 +486,9 @@ export function useSermonActions({
                 ],
                 outlinePointId: null,
             };
-            debouncedSaveThought(sermon.id, updatedThought);
+            // The screen's own copy is the baseline, so only the cleared placement
+            // travels and the words stay as stored.
+            debouncedSaveThought(sermon.id, updatedThought, thought);
         }
 
         const newStructure = structureFromContainers(updatedContainers);

@@ -160,7 +160,7 @@ describe('usePersistence', () => {
       const { result } = renderHook(() => usePersistence(defaultProps));
 
       act(() => {
-        result.current.debouncedSaveThought('sermon-1', mockThought);
+        result.current.debouncedSaveThought('sermon-1', mockThought, null);
       });
 
       await act(async () => {
@@ -235,9 +235,9 @@ describe('usePersistence', () => {
           run: async () => {
             const { result } = renderHook(() => usePersistence(defaultProps));
             act(() => {
-              result.current.debouncedSaveThought('sermon-1', mockThought);
-              result.current.debouncedSaveThought('sermon-1', mockThought);
-              result.current.debouncedSaveThought('sermon-1', mockThought);
+              result.current.debouncedSaveThought('sermon-1', mockThought, null);
+              result.current.debouncedSaveThought('sermon-1', mockThought, null);
+              result.current.debouncedSaveThought('sermon-1', mockThought, null);
             });
             await flushDebounce();
             expect(mockUpdateThought).toHaveBeenCalledTimes(1);
@@ -249,8 +249,8 @@ describe('usePersistence', () => {
             const thought2: Thought = { ...mockThought, id: 'thought-2', text: 'Test thought 2' };
             const { result } = renderHook(() => usePersistence(defaultProps));
             act(() => {
-              result.current.debouncedSaveThought('sermon-1', mockThought);
-              result.current.debouncedSaveThought('sermon-1', thought2);
+              result.current.debouncedSaveThought('sermon-1', mockThought, null);
+              result.current.debouncedSaveThought('sermon-1', thought2, null);
             });
             await flushDebounce();
             expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought, null);
@@ -262,8 +262,8 @@ describe('usePersistence', () => {
           run: async () => {
             const { result } = renderHook(() => usePersistence(defaultProps));
             act(() => {
-              result.current.debouncedSaveThought('sermon-1', mockThought);
-              result.current.debouncedSaveThought('sermon-2', mockThought);
+              result.current.debouncedSaveThought('sermon-1', mockThought, null);
+              result.current.debouncedSaveThought('sermon-2', mockThought, null);
             });
             await flushDebounce();
             expect(mockUpdateThought).toHaveBeenCalledWith('sermon-1', mockThought, null);
@@ -349,7 +349,7 @@ describe('usePersistence', () => {
             const { result } = renderHook(() => usePersistence(defaultProps));
             const start = Date.now();
             for (let i = 0; i < 100; i++) {
-              act(() => result.current.debouncedSaveThought('sermon-1', mockThought));
+              act(() => result.current.debouncedSaveThought('sermon-1', mockThought, null));
             }
             expect(Date.now() - start).toBeLessThan(100);
             await flushDebounce();
@@ -413,7 +413,7 @@ describe('usePersistence', () => {
           run: async () => {
             const { result } = renderHook(() => usePersistence(defaultProps));
             act(() => {
-              result.current.debouncedSaveThought('sermon-1', mockThought);
+              result.current.debouncedSaveThought('sermon-1', mockThought, null);
               result.current.debouncedSaveStructure('sermon-1', mockStructure);
             });
             await flushDebounce();
@@ -427,7 +427,7 @@ describe('usePersistence', () => {
           name: 'mixed saves',
           run: async () => {
             const { result } = renderHook(() => usePersistence(defaultProps));
-            act(() => result.current.debouncedSaveThought('sermon-1', mockThought));
+            act(() => result.current.debouncedSaveThought('sermon-1', mockThought, null));
             await act(async () => {
               await result.current.saveStructure('sermon-1', mockStructure);
             });

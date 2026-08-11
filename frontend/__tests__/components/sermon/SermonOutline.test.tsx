@@ -278,7 +278,15 @@ describe('SermonOutline Component', () => {
         main: [{ id: 'main1', text: 'Main point 1' }],
         conclusion: [{ id: 'concl1', text: 'Conclusion point 1' }]
       };
-      expect(mockUpdateSermonOutline).toHaveBeenCalledWith(mockSermon.id, expectedOutline);
+      expect(mockUpdateSermonOutline).toHaveBeenCalledWith(
+        mockSermon.id,
+        expectedOutline,
+        // The plan this view loaded with, so the write merges instead of replacing
+        // every point stored since. Its value is pinned by its own test.
+        expect.anything(),
+        // …and the collision mode this caller asks for.
+        expect.anything()
+      );
       expect(mockOnOutlineUpdate).toHaveBeenCalledWith(expectedOutline);
     });
   }, 40000); // Increased timeout to 40 seconds
@@ -403,7 +411,15 @@ describe('SermonOutline Component', () => {
           main: [{ id: 'main1', text: 'Main point 1' }],
           conclusion: [{ id: 'concl1', text: 'Conclusion point 1' }]
         };
-        expect(mockUpdateSermonOutline).toHaveBeenCalledWith(mockSermon.id, expectedOutline);
+        expect(mockUpdateSermonOutline).toHaveBeenCalledWith(
+        mockSermon.id,
+        expectedOutline,
+        // The plan this view loaded with, so the write merges instead of replacing
+        // every point stored since. Its value is pinned by its own test.
+        expect.anything(),
+        // …and the collision mode this caller asks for.
+        expect.anything()
+      );
         expect(mockOnOutlineUpdate).toHaveBeenCalledWith(expectedOutline);
       });
     } finally {
@@ -452,7 +468,15 @@ describe('SermonOutline Component', () => {
         main: [{ id: 'main1', text: 'Main point 1' }],
         conclusion: [{ id: 'concl1', text: 'Conclusion point 1' }]
       };
-      expect(mockUpdateSermonOutline).toHaveBeenCalledWith(mockSermon.id, expectedOutline);
+      expect(mockUpdateSermonOutline).toHaveBeenCalledWith(
+        mockSermon.id,
+        expectedOutline,
+        // The plan this view loaded with, so the write merges instead of replacing
+        // every point stored since. Its value is pinned by its own test.
+        expect.anything(),
+        // …and the collision mode this caller asks for.
+        expect.anything()
+      );
       expect(mockOnOutlineUpdate).toHaveBeenCalledWith(expectedOutline);
     });
   }, 15000);

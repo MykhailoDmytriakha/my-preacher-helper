@@ -345,6 +345,26 @@ export default function SermonPage() {
   const sermonRef = useRef<Sermon | null>(sermon);
   const structurePersistVersionRef = useRef(0);
   const scratchOutlinePersistVersionRef = useRef(0);
+  /**
+   * THE PLAN THIS SCREEN LAST SAW **CONFIRMED** — never the one merely on display.
+   *
+   * The edited plan is shown before the server answers, and the held sermon is
+   * updated with it. Using that as the merge base is fine while saves succeed and
+   * destructive the moment one fails: the next save would state a plan containing a
+   * point the server never received, the merge would read the absence as a deletion
+   * made on another device, and the point would be dropped for good.
+   *
+   * So the baseline only advances on a confirmed answer. `unconfirmed` records that
+   * Stamped with the SAVE THAT CONFIRMED IT, not with a boolean "unconfirmed" flag.
+   * A flag cannot say WHICH save the baseline belongs to, and that gap wedged it:
+   * save A left, save B failed, A's success arrived afterwards and was discarded as
+   * "stale" — so the flag stayed set forever and the baseline froze at the plan from
+   * before A. From then on this screen's own wording looked like a fresh edit, and
+   * the next save collided with the phone's rewrite of the same point and quietly
+   * restored the old words. A late answer is stale for the SCREEN and still perfectly
+   * good news about the SERVER.
+   */
+  const confirmedOutlineRef = useRef<{ version: number; outline: SermonOutlineType | null } | null>(null);
   const [savingPrep, setSavingPrep] = useState(false);
   const [prepDraft, setPrepDraft] = useState<Preparation>({});
   /**
@@ -974,13 +994,41 @@ useEffect(() => {
       const currentSermon = sermonRef.current ?? sermon;
       if (!currentSermon) return;
 
+      /**
+       * The plan as it stood BEFORE this apply — the base the write merges against.
+       *
+       * Captured here, above `handleOutlineUpdate`, because that call replaces the
+       * held sermon with the new plan: read afterwards this would be the new value
+       * compared with itself, which always agrees and detects nothing. Without a base
+       * the save replaced the whole field and erased points added on another device.
+       */
+      // Seeded ONCE, from the plan as it stands before the first optimistic update.
+      // After that only an answered save may move it: the held plan can contain a
+      // point the server never received, and adopting that would turn the point into
+      // a deletion on the next merge.
+      if (!confirmedOutlineRef.current) {
+        confirmedOutlineRef.current = { version: 0, outline: currentSermon.outline ?? null };
+      }
+      const baseOutline = confirmedOutlineRef.current.outline;
+
       const persistVersion = scratchOutlinePersistVersionRef.current + 1;
       scratchOutlinePersistVersionRef.current = persistVersion;
       handleOutlineUpdate(outline);
       setOutlineRefreshKey((key) => key + 1);
 
       try {
-        const savedOutline = await updateSermonOutline(currentSermon.id, outline);
+        // `preferMine` — applying scratch has no choice dialog; see the writer.
+        const savedOutline = await updateSermonOutline(currentSermon.id, outline, baseOutline, 'preferMine');
+
+        // CONFIRMED — recorded BEFORE the stale-version check on purpose. An answer
+        // that arrives after a newer save was issued must not touch the SCREEN, but
+        // it still tells us what the SERVER committed, and that is exactly what the
+        // next save must be judged against. The version keeps a late answer from
+        // overwriting a newer confirmation.
+        if (savedOutline && persistVersion >= confirmedOutlineRef.current.version) {
+          confirmedOutlineRef.current = { version: persistVersion, outline: savedOutline };
+        }
+
         if (persistVersion !== scratchOutlinePersistVersionRef.current) return;
         if (!savedOutline) {
           throw new Error(t('scratch.board.applyError'));

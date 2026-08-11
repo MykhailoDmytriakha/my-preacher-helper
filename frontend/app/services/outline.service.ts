@@ -34,7 +34,13 @@ export const updateSermonOutline = async (
    * places is reported as a collision. Omit it and the old whole-field overwrite
    * happens, which is what silently erased other devices' work.
    */
-  baseOutline?: SermonOutline | null
+  baseOutline?: SermonOutline | null,
+  /**
+   * Only a caller that can STORE a refused plan and ask the person to choose may
+   * leave this at `refuse`. Everywhere else a refusal turns into an error toast and
+   * the edit is lost at the next reload — see the writer for the whole reasoning.
+   */
+  onCollision: 'refuse' | 'preferMine' = 'refuse'
 ): Promise<SermonOutline | null> => {
   // Validate outline data
   if (!outline.main) {
@@ -43,7 +49,7 @@ export const updateSermonOutline = async (
 
   return baseOutline === undefined
     ? updateSermonOutlineViaClient(sermonId, outline)
-    : updateSermonOutlineViaClient(sermonId, outline, { baseOutline });
+    : updateSermonOutlineViaClient(sermonId, outline, { baseOutline, onCollision });
 };
 
 /**

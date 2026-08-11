@@ -747,7 +747,8 @@ describe('useStructureDnd', () => {
           id: THOUGHT_ONE,
           outlinePointId: OUTLINE_INTRO,
           subPointId: 'sp-1',
-        })
+        }),
+        expect.anything(),
       );
       expect(mockUpdateStructure).not.toHaveBeenCalled();
     });
@@ -1247,7 +1248,8 @@ describe('useStructureDnd', () => {
         expect.objectContaining({
           id: THOUGHT_TWO,
           position: 0,
-        })
+        }),
+        expect.anything(),
       );
       expect(mockUpdateStructure).toHaveBeenCalledWith(
         sermon.id,
@@ -1319,6 +1321,7 @@ describe('useStructureDnd', () => {
       expect(mockDebouncedSaveThought).toHaveBeenCalledWith(
         sermon.id,
         expect.objectContaining({ id: THOUGHT_TWO }),
+        expect.anything(),
       );
       expect(mockUpdateStructure).toHaveBeenCalledWith(
         sermon.id,
@@ -1378,7 +1381,8 @@ describe('useStructureDnd', () => {
           id: THOUGHT_ONE,
           outlinePointId: OUTLINE_INTRO,
           tags: [CUSTOM_TAG.name],
-        })
+        }),
+        expect.anything(),
       );
       expect(mockUpdateStructure).not.toHaveBeenCalled();
     });
@@ -1466,7 +1470,8 @@ describe('useStructureDnd', () => {
           subPointId: null,
           position: 2000,
           tags: [],
-        })
+        }),
+        expect.anything(),
       );
       expect(mockUpdateStructure).toHaveBeenCalledWith(
         sermon.id,
@@ -1528,7 +1533,8 @@ describe('useStructureDnd', () => {
           id: THOUGHT_ONE,
           outlinePointId: OUTLINE_MAIN,
           tags: [],
-        })
+        }),
+        expect.anything(),
       );
       expect(mockUpdateStructure).toHaveBeenCalledWith(
         sermon.id,
@@ -1598,7 +1604,8 @@ describe('useStructureDnd', () => {
         expect.objectContaining({
           id: THOUGHT_ONE,
           tags: [CUSTOM_TAG.name],
-        })
+        }),
+        expect.anything(),
       );
       expect(mockUpdateStructure).toHaveBeenCalledWith(
         sermon.id,

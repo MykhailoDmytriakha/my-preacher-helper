@@ -133,7 +133,16 @@ export const usePersistence = ({ setSermon, onThoughtSyncStateChange }: UsePersi
   // Create debounced versions
   const debouncedSaveStructure = useMemo(() => debounce(saveStructure, 500), [saveStructure]);
   const debouncedSaveThought = useCallback(
-    (sermonId: string, thought: Thought, baseThought?: Thought | null) => {
+    /**
+     * `baseThought` is REQUIRED here, not only at the writer.
+     *
+     * Narrowing the service alone left this wrapper as a hole: a caller that simply
+     * did not mention a baseline got `null` passed on, and `null` means "claim every
+     * field". Dragging a thought then republished this screen's copy of its TEXT over
+     * a paragraph rewritten on another device — the very loss the baseline exists to
+     * stop, reached through a move that never touched the words.
+     */
+    (sermonId: string, thought: Thought, baseThought: Thought | null) => {
       const key = `${sermonId}:${thought.id}`;
       latestThoughtByKeyRef.current.set(key, { sermonId, thought });
       if (baseThought && !baseThoughtByKeyRef.current.has(key)) {

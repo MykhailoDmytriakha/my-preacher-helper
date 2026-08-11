@@ -1,6 +1,38 @@
+import { randomUUID } from 'crypto';
+
 import { adminDb, FieldValue } from '@/config/firebaseAdminConfig';
 import { Sermon, SermonOutline, SermonContent, SermonPoint, PreachDate } from '@/models/models';
 import { toDateOnlyKey } from '@/utils/dateOnly';
+
+/**
+ * REPLAY MEMORY FOR PREACH-DATE WRITES.
+ *
+ * The Firestore SDK can run a transaction callback again even after the commit
+ * already landed — the acknowledgement is what got lost, not the write. So each
+ * logical operation carries an id, the sermon remembers the recent ones, and a
+ * replay recognises itself instead of applying its work twice: re-adding an entry
+ * deleted meanwhile, re-deleting one re-created meanwhile, or laying an old patch
+ * over a newer edit.
+ *
+ * The memory is a SHORT RING inside the sermon document, deliberately not a marker
+ * document per write: a marker collection grows without bound, outlives the sermon
+ * it belongs to (Firestore keeps orphaned subcollections after the parent is
+ * deleted), and doubles the cost of every date edit — a permanent price for a
+ * window measured in milliseconds. Twenty is well past the largest real burst,
+ * which is the dashboard updating several dates at once
+ * (`components/dashboard/OptionMenu.tsx`).
+ */
+const PREACH_DATE_OPS_REMEMBERED = 20;
+
+type PreachDateDoc = Sermon & { preachDateOps?: string[] };
+
+const readPreachDateState = (snapshot: FirebaseFirestore.DocumentSnapshot) => {
+  const data = (snapshot.data() || {}) as PreachDateDoc;
+  return { preachDates: data.preachDates || [], appliedOps: data.preachDateOps || [] };
+};
+
+const rememberOperation = (appliedOps: string[], operationId: string): string[] =>
+  [...appliedOps, operationId].slice(-PREACH_DATE_OPS_REMEMBERED);
 
 // Error message constants
 const ERROR_MESSAGES = {
@@ -322,30 +354,52 @@ export class SermonsRepository {
       // duplicate. We read-modify-write instead of arrayUnion, because two replays
       // build objects with different createdAt -> arrayUnion would treat them as
       // distinct and append both. With a client id, the SECOND add is a no-op.
-      if (preachDate.id) {
+      const clientId = preachDate.id;
+      if (clientId) {
         const docRef = adminDb.collection(this.collection).doc(sermonId);
-        const docSnap = await docRef.get();
-        if (!docSnap.exists) {
-          throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
-        }
-        const existingDates = (docSnap.data() as Sermon).preachDates || [];
-        const existing = existingDates.find(pd => pd.id === preachDate.id);
-        if (existing) {
-          console.log(`Firestore: preach date ${preachDate.id} already on sermon ${sermonId} (idempotent no-op)`);
-          return existing;
-        }
-        const newPreachDate: PreachDate = {
-          ...preachDate,
-          date: normalizedDate,
-          status: preachDate.status || 'planned',
-          id: preachDate.id,
-          createdAt: new Date().toISOString()
-        };
-        await this.updateSermonData(sermonId, {
-          preachDates: [...existingDates, newPreachDate]
-        }, 'preachDates');
-        console.log(`Firestore: added preach date ${newPreachDate.id} to sermon ${sermonId}`);
-        return newPreachDate;
+        const operationId = randomUUID();
+        const result = await adminDb.runTransaction(async (transaction) => {
+          const docSnap = await transaction.get(docRef);
+          if (!docSnap.exists) {
+            throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
+          }
+
+          const { preachDates: existingDates, appliedOps } = readPreachDateState(docSnap);
+          if (appliedOps.includes(operationId)) {
+            // Our write already landed; the entry may since have been deleted from
+            // another device. Re-adding it would resurrect what someone removed.
+            const current = existingDates.find(pd => pd.id === clientId);
+            if (current) return current;
+            return { ...preachDate, id: clientId } as PreachDate;
+          }
+
+          const freshNormalizedDate = toDateOnlyKey(preachDate.date);
+          if (!freshNormalizedDate) {
+            throw new Error("Invalid preach date format");
+          }
+          const existing = existingDates.find(pd => pd.id === clientId);
+          if (existing) {
+            return existing;
+          }
+
+          const newPreachDate: PreachDate = {
+            ...preachDate,
+            date: freshNormalizedDate,
+            status: preachDate.status || 'planned',
+            id: clientId,
+            createdAt: new Date().toISOString()
+          };
+          transaction.update(docRef, {
+            preachDates: [...existingDates, newPreachDate],
+            preachDateOps: rememberOperation(appliedOps, operationId),
+            'rev.preachDates': FieldValue.increment(1),
+            updatedAt: new Date().toISOString()
+          });
+          return newPreachDate;
+        });
+
+        console.log(`Firestore: added preach date ${result.id} to sermon ${sermonId}`);
+        return result;
       }
 
       const newPreachDate: PreachDate = {
@@ -372,37 +426,57 @@ export class SermonsRepository {
     console.log(`Firestore: updating preach date ${dateId} for sermon ${sermonId}`);
     try {
       const docRef = adminDb.collection(this.collection).doc(sermonId);
-      const docSnap = await docRef.get();
+      // Of the three, this is the one a replay can actively corrupt: it merges a
+      // PARTIAL patch onto whatever it reads, so replaying would lay the old patch
+      // over a newer edit of the same date. See `PREACH_DATE_OPS_REMEMBERED`.
+      const operationId = randomUUID();
+      const updatedPreachDate = await adminDb.runTransaction(async (transaction) => {
+        const docSnap = await transaction.get(docRef);
+        if (!docSnap.exists) {
+          throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
+        }
 
-      if (!docSnap.exists) {
-        throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
-      }
+        const { preachDates, appliedOps } = readPreachDateState(docSnap);
 
-      const sermon = docSnap.data() as Sermon;
-      const preachDates = sermon.preachDates || [];
-      const index = preachDates.findIndex(pd => pd.id === dateId);
+        if (appliedOps.includes(operationId)) {
+          // This write already landed. Report what is stored NOW — a newer edit made
+          // in between is the truth, and echoing our own copy would hide it.
+          const current = preachDates.find(pd => pd.id === dateId);
+          if (!current) {
+            throw new Error("Preach date not found");
+          }
+          return current;
+        }
 
-      if (index === -1) {
-        throw new Error("Preach date not found");
-      }
+        const index = preachDates.findIndex(pd => pd.id === dateId);
+        if (index === -1) {
+          throw new Error("Preach date not found");
+        }
 
-      const normalizedDate = updates.date === undefined ? undefined : toDateOnlyKey(updates.date);
-      if (updates.date !== undefined && !normalizedDate) {
-        throw new Error("Invalid preach date format");
-      }
+        const normalizedDate = updates.date === undefined ? undefined : toDateOnlyKey(updates.date);
+        if (updates.date !== undefined && !normalizedDate) {
+          throw new Error("Invalid preach date format");
+        }
 
-      const updatedPreachDate: PreachDate = {
-        ...preachDates[index],
-        ...updates,
-        ...(normalizedDate ? { date: normalizedDate } : {}),
-        id: preachDates[index].id, // Ensure ID and createdAt are not changed
-        createdAt: preachDates[index].createdAt
-      };
+        const result: PreachDate = {
+          ...preachDates[index],
+          ...updates,
+          ...(normalizedDate ? { date: normalizedDate } : {}),
+          id: preachDates[index].id,
+          createdAt: preachDates[index].createdAt
+        };
+        const updatedArray = [...preachDates];
+        updatedArray[index] = result;
 
-      const updatedArray = [...preachDates];
-      updatedArray[index] = updatedPreachDate;
+        transaction.update(docRef, {
+          preachDates: updatedArray,
+          preachDateOps: rememberOperation(appliedOps, operationId),
+          'rev.preachDates': FieldValue.increment(1),
+          updatedAt: new Date().toISOString()
+        });
+        return result;
+      });
 
-      await this.updateSermonData(sermonId, { preachDates: updatedArray }, 'preachDates');
       console.log(`Firestore: updated preach date ${dateId} for sermon ${sermonId}`);
       return updatedPreachDate;
     } catch (error) {
@@ -415,17 +489,28 @@ export class SermonsRepository {
     console.log(`Firestore: deleting preach date ${dateId} from sermon ${sermonId}`);
     try {
       const docRef = adminDb.collection(this.collection).doc(sermonId);
-      const docSnap = await docRef.get();
+      // Removing an id that is already gone lands on the same array, so a replay is
+      // harmless — EXCEPT when the same id was re-created meanwhile, which a replay
+      // would delete again. See `PREACH_DATE_OPS_REMEMBERED`.
+      const operationId = randomUUID();
+      await adminDb.runTransaction(async (transaction) => {
+        const docSnap = await transaction.get(docRef);
+        if (!docSnap.exists) {
+          throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
+        }
 
-      if (!docSnap.exists) {
-        throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
-      }
+        const { preachDates, appliedOps } = readPreachDateState(docSnap);
+        if (appliedOps.includes(operationId)) return;
 
-      const sermon = docSnap.data() as Sermon;
-      const preachDates = sermon.preachDates || [];
-      const updatedArray = preachDates.filter(pd => pd.id !== dateId);
+        const updatedArray = preachDates.filter(pd => pd.id !== dateId);
+        transaction.update(docRef, {
+          preachDates: updatedArray,
+          preachDateOps: rememberOperation(appliedOps, operationId),
+          'rev.preachDates': FieldValue.increment(1),
+          updatedAt: new Date().toISOString()
+        });
+      });
 
-      await this.updateSermonData(sermonId, { preachDates: updatedArray }, 'preachDates');
       console.log(`Firestore: deleted preach date ${dateId} from sermon ${sermonId}`);
     } catch (error) {
       console.error(`Error deleting preach date ${dateId} from sermon ${sermonId}:`, error);

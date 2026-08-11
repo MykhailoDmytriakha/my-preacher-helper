@@ -29,7 +29,7 @@ interface UseAiSortingDiffProps {
   outlinePoints: { introduction: SermonPoint[]; main: SermonPoint[]; conclusion: SermonPoint[] };
   sermon: Sermon | null;
   sermonId: string | null;
-  debouncedSaveThought: (sermonId: string, thought: Thought, baseThought?: Thought | null) => void;
+  debouncedSaveThought: (sermonId: string, thought: Thought, baseThought: Thought | null) => void;
   debouncedSaveStructure: (sermonId: string, structure: ThoughtsBySection, baseStructure?: ThoughtsBySection | null) => void;
 }
 
@@ -66,7 +66,7 @@ const collectThoughtUpdates = (
 const processThoughtUpdates = (
   thoughtUpdates: Array<{id: string, outlinePointId?: string, subPointId?: string | null}>,
   sermon: Sermon,
-  debouncedSaveThought: (sermonId: string, thought: Thought, baseThought?: Thought | null) => void,
+  debouncedSaveThought: (sermonId: string, thought: Thought, baseThought: Thought | null) => void,
   sermonId: string
 ): void => {
   for (const update of thoughtUpdates) {

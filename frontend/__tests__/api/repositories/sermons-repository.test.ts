@@ -8,6 +8,7 @@ jest.mock('@/config/firebaseAdminConfig', () => {
     __arrayUnion: value,
   }));
   const mockAdminDb = {
+    runTransaction: jest.fn(),
     collection: jest.fn().mockReturnValue({
       doc: jest.fn().mockReturnValue({
         get: jest.fn(),
@@ -35,6 +36,7 @@ describe('SermonsRepository', () => {
   let mockUpdate: jest.Mock;
   let mockGet: jest.Mock;
   let mockDelete: jest.Mock;
+  let mockTransactionSet: jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -43,11 +45,20 @@ describe('SermonsRepository', () => {
     mockUpdate = jest.fn();
     mockGet = jest.fn();
     mockDelete = jest.fn();
+    mockTransactionSet = jest.fn();
+
+    const mockOperationRef = {
+      get: jest.fn().mockResolvedValue({ exists: false }),
+      set: mockTransactionSet,
+    };
 
     mockDocRef = {
       get: mockGet,
       update: mockUpdate,
-      delete: mockDelete
+      delete: mockDelete,
+      collection: jest.fn().mockReturnValue({
+        doc: jest.fn().mockReturnValue(mockOperationRef),
+      }),
     };
 
     // Mock the collection().doc() chain
@@ -55,6 +66,22 @@ describe('SermonsRepository', () => {
     mockedAdminDb.collection.mockReturnValue({
       doc: jest.fn().mockReturnValue(mockDocRef)
     });
+    (adminDb as unknown as { runTransaction: jest.Mock }).runTransaction.mockImplementation(
+      async (callback: (transaction: any) => Promise<unknown>) => {
+        const pendingWrites: Promise<unknown>[] = [];
+        const result = await callback({
+          get: (ref: { get: () => Promise<unknown> }) => ref.get(),
+          update: (ref: { update: (value: unknown) => unknown }, value: unknown) => {
+            pendingWrites.push(Promise.resolve(ref.update(value)));
+          },
+          set: (ref: { set: (value: unknown) => unknown }, value: unknown) => {
+            pendingWrites.push(Promise.resolve(ref.set(value)));
+          },
+        });
+        await Promise.all(pendingWrites);
+        return result;
+      }
+    );
   });
 
   describe('updateSermonPlan', () => {
@@ -591,6 +618,217 @@ describe('SermonsRepository', () => {
   });
 
   describe('preach dates repository methods', () => {
+    const installConcurrentPreachDatesWrite = (
+      initialPreachDates: Array<Record<string, any>>,
+      concurrentMutation: (stored: { preachDates: Array<Record<string, any>>; rev: { preachDates: number } }) => void,
+      retryAfterCommittedAttempt = false
+    ) => {
+      const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+      const stored: {
+        preachDates: Array<Record<string, any>>;
+        rev: { preachDates: number };
+        // The replay memory lives IN the sermon document (a bounded ring), so the
+        // simulated store has to hold it — otherwise the stand models a marker
+        // collection the code no longer writes, and every replay test lies.
+        preachDateOps?: string[];
+      } = {
+        preachDates: clone(initialPreachDates),
+        rev: { preachDates: 0 },
+      };
+      let pendingConcurrentMutation: typeof concurrentMutation | undefined = concurrentMutation;
+
+      const applyUpdate = (value: Record<string, any>) => {
+        if (value.preachDates?.__arrayUnion) {
+          const candidate = clone(value.preachDates.__arrayUnion);
+          if (!stored.preachDates.some((entry) => JSON.stringify(entry) === JSON.stringify(candidate))) {
+            stored.preachDates.push(candidate);
+          }
+        } else if (value.preachDates) {
+          stored.preachDates = clone(value.preachDates);
+        }
+        if (value.preachDateOps) {
+          stored.preachDateOps = clone(value.preachDateOps);
+        }
+        if (value['rev.preachDates']?.__increment) {
+          stored.rev.preachDates += value['rev.preachDates'].__increment;
+        }
+      };
+
+      const sermonRef: any = {
+        get: jest.fn(async () => ({
+          exists: true,
+          data: () => clone(stored),
+        })),
+        update: jest.fn(async (value: Record<string, any>) => {
+          if (pendingConcurrentMutation) {
+            const mutate = pendingConcurrentMutation;
+            pendingConcurrentMutation = undefined;
+            mutate(stored);
+          }
+          applyUpdate(value);
+        }),
+        collection: jest.fn().mockReturnValue({
+          doc: jest.fn((operationId: string) => ({ kind: 'operation', operationId })),
+        }),
+      };
+
+      const mockedAdminDb = adminDb as unknown as {
+        collection: jest.Mock;
+        runTransaction: jest.Mock;
+      };
+      mockedAdminDb.collection.mockReturnValue({
+        doc: jest.fn().mockReturnValue(sermonRef),
+      });
+      mockedAdminDb.runTransaction.mockImplementation(
+        async (callback: (transaction: any) => Promise<unknown>) => {
+          const runAttempt = async (commit: boolean) => {
+            const stagedWrites: Array<() => void> = [];
+            const result = await callback({
+              get: jest.fn(async () => ({ exists: true, data: () => clone(stored) })),
+              update: jest.fn((_ref: any, value: Record<string, any>) => {
+                stagedWrites.push(() => applyUpdate(value));
+              }),
+            });
+            if (commit) stagedWrites.forEach((write) => write());
+            return result;
+          };
+
+          if (pendingConcurrentMutation) {
+            await runAttempt(retryAfterCommittedAttempt);
+            const mutate = pendingConcurrentMutation;
+            pendingConcurrentMutation = undefined;
+            mutate(stored);
+          }
+          return runAttempt(true);
+        }
+      );
+
+      return stored;
+    };
+
+    it('preserves a preach date added after the client-id add read', async () => {
+      const stored = installConcurrentPreachDatesWrite(
+        [{ id: 'existing', date: '2026-02-01', church: { id: 'c1', name: 'Church' }, createdAt: 'x' }],
+        (live) => {
+          live.preachDates.push({
+            id: 'from-phone',
+            date: '2026-02-02',
+            church: { id: 'c2', name: 'Phone Church' },
+            createdAt: 'y',
+          });
+        }
+      );
+
+      await sermonsRepository.addPreachDate('sermon-1', {
+        id: 'ours',
+        date: '2026-02-03',
+        church: { id: 'c3', name: 'Our Church' },
+      });
+
+      expect(stored.preachDates.map((entry) => entry.id)).toEqual([
+        'existing',
+        'from-phone',
+        'ours',
+      ]);
+      expect(stored.rev.preachDates).toBe(1);
+    });
+
+    it('does not re-add a client-id date when a post-commit retry follows a newer delete', async () => {
+      const stored = installConcurrentPreachDatesWrite(
+        [],
+        (live) => {
+          live.preachDates = live.preachDates.filter((entry) => entry.id !== 'ours');
+        },
+        true
+      );
+
+      await sermonsRepository.addPreachDate('sermon-1', {
+        id: 'ours',
+        date: '2026-02-03',
+        church: { id: 'c3', name: 'Our Church' },
+      });
+
+      expect(stored.preachDates).toEqual([]);
+      expect(stored.rev.preachDates).toBe(1);
+    });
+
+    it('preserves another preach date edited after the update read', async () => {
+      const stored = installConcurrentPreachDatesWrite(
+        [
+          { id: 'ours', date: '2026-02-01', status: 'planned', church: { id: 'c1', name: 'Church' }, createdAt: 'x' },
+          { id: 'other', date: '2026-02-02', notes: 'before', church: { id: 'c2', name: 'Other Church' }, createdAt: 'y' },
+        ],
+        (live) => {
+          live.preachDates[1] = { ...live.preachDates[1], notes: 'changed elsewhere' };
+        }
+      );
+
+      await sermonsRepository.updatePreachDate('sermon-1', 'ours', { status: 'preached' });
+
+      expect(stored.preachDates.find((entry) => entry.id === 'ours')?.status).toBe('preached');
+      expect(stored.preachDates.find((entry) => entry.id === 'other')?.notes).toBe('changed elsewhere');
+      expect(stored.rev.preachDates).toBe(1);
+    });
+
+    it('does not reapply an update over a newer same-field edit after the first commit', async () => {
+      const stored = installConcurrentPreachDatesWrite(
+        [{ id: 'ours', date: '2026-02-01', status: 'planned', church: { id: 'c1', name: 'Church' }, createdAt: 'x' }],
+        (live) => {
+          live.preachDates[0] = { ...live.preachDates[0], status: 'planned' };
+        },
+        true
+      );
+
+      await sermonsRepository.updatePreachDate('sermon-1', 'ours', { status: 'preached' });
+
+      expect(stored.preachDates[0].status).toBe('planned');
+      expect(stored.rev.preachDates).toBe(1);
+    });
+
+    it('preserves a preach date added after the delete read', async () => {
+      const stored = installConcurrentPreachDatesWrite(
+        [
+          { id: 'delete-me', date: '2026-02-01', church: { id: 'c1', name: 'Church' }, createdAt: 'x' },
+          { id: 'keep-me', date: '2026-02-02', church: { id: 'c2', name: 'Other Church' }, createdAt: 'y' },
+        ],
+        (live) => {
+          live.preachDates.push({
+            id: 'from-laptop',
+            date: '2026-02-03',
+            church: { id: 'c3', name: 'Laptop Church' },
+            createdAt: 'z',
+          });
+        }
+      );
+
+      await sermonsRepository.deletePreachDate('sermon-1', 'delete-me');
+
+      expect(stored.preachDates.map((entry) => entry.id)).toEqual(['keep-me', 'from-laptop']);
+      expect(stored.rev.preachDates).toBe(1);
+    });
+
+    it('does not re-delete a same-id date created after the first delete commit', async () => {
+      const stored = installConcurrentPreachDatesWrite(
+        [{ id: 'delete-me', date: '2026-02-01', church: { id: 'c1', name: 'Church' }, createdAt: 'old' }],
+        (live) => {
+          live.preachDates.push({
+            id: 'delete-me',
+            date: '2026-02-04',
+            church: { id: 'c4', name: 'New Church' },
+            createdAt: 'new',
+          });
+        },
+        true
+      );
+
+      await sermonsRepository.deletePreachDate('sermon-1', 'delete-me');
+
+      expect(stored.preachDates).toEqual([
+        expect.objectContaining({ id: 'delete-me', createdAt: 'new' }),
+      ]);
+      expect(stored.rev.preachDates).toBe(1);
+    });
+
     it('addPreachDate normalizes date and defaults status to planned', async () => {
       mockUpdate.mockResolvedValueOnce(undefined);
       const originalCrypto = global.crypto;
@@ -665,7 +903,9 @@ describe('SermonsRepository', () => {
       });
 
       // Every writer of an aggregate advances its counter, or the counter lies.
-      expect(mockUpdate).toHaveBeenCalledWith({
+      // `objectContaining` because the write also carries the replay memory, which
+      // this test is not about.
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
         'rev.preachDates': { __increment: 1 },
         preachDates: [
           expect.objectContaining({
@@ -676,7 +916,7 @@ describe('SermonsRepository', () => {
           }),
         ],
         updatedAt: expect.any(String)
-      });
+      }));
       expect(result.id).toBe('pd-1');
       expect(result.createdAt).toBe('2026-02-01T00:00:00.000Z');
       expect(result.date).toBe('2026-02-20');
@@ -738,13 +978,14 @@ describe('SermonsRepository', () => {
         sermonsRepository.deletePreachDate('sermon-1', 'pd-1')
       ).resolves.toBeUndefined();
       // Every writer of an aggregate advances its counter, or the counter lies.
-      expect(mockUpdate).toHaveBeenCalledWith({
+      // `objectContaining` because the write also carries the replay memory.
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
         'rev.preachDates': { __increment: 1 },
         preachDates: [
           { id: 'pd-2', date: '2026-02-02', church: { id: 'c2', name: 'Church 2' }, createdAt: 'y' },
         ],
         updatedAt: expect.any(String)
-      });
+      }));
 
       mockGet.mockResolvedValueOnce({ exists: false });
       await expect(

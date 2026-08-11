@@ -562,7 +562,7 @@ const persistThoughtChange = (
   finalSermonPointId: string | null | undefined,
   finalSubPointId: string | null | undefined,
   newPos: number,
-  debouncedSaveThought: (sermonId: string, thought: Thought) => void
+  debouncedSaveThought: (sermonId: string, thought: Thought, baseThought: Thought | null) => void
 ): boolean => {
   const thought = sermon.thoughts.find((t: Thought) => t.id === movedItem.id);
   if (thought) {
@@ -576,7 +576,9 @@ const persistThoughtChange = (
       subPointId: finalSubPointId ?? null,
       position: newPos,
     };
-    debouncedSaveThought(sermon.id, updatedThought);
+    // The pre-drag thought IS the baseline: a move changes placement, so the write
+    // must state placement only and leave the words alone.
+    debouncedSaveThought(sermon.id, updatedThought, thought);
     return true;
   }
   return false;
@@ -607,7 +609,7 @@ interface UseStructureDndProps {
   containersRef: React.MutableRefObject<Record<string, Item[]>>;
   sermon: Sermon | null;
   setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>;
-  debouncedSaveThought: (sermonId: string, thought: Thought) => void;
+  debouncedSaveThought: (sermonId: string, thought: Thought, baseThought: Thought | null) => void;
 }
 
 export const useStructureDnd = ({
@@ -939,7 +941,7 @@ export const useStructureDnd = ({
               position: typeof now.item.position === 'number' ? now.item.position : movedThought.position,
               outlinePointId: now.item.outlinePointId,
               subPointId: now.item.subPointId ?? null,
-            });
+            }, movedThought);
           }
         } catch (error) {
           console.error('Error committing preview drag:', error);
@@ -1035,7 +1037,8 @@ export const useStructureDnd = ({
             ...thought,
             position: newPos,
           };
-          debouncedSaveThought(sermon.id, updatedThought);
+          // Reordering states position only; the baseline keeps the text out of it.
+          debouncedSaveThought(sermon.id, updatedThought, thought);
         }
       }
 

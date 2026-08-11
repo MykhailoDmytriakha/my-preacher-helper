@@ -7,6 +7,7 @@ import { TestProviders } from '@test-utils/test-providers';
 import { createAudioThought } from '@services/thought.service';
 import { applyScratchToOutlineViaClient } from '@/services/sermons.client';
 import { updateSermonOutline } from '@/services/outline.service';
+import { mergeOutline } from '@/utils/mergeOutline';
 import '@testing-library/jest-dom';
 
 import type { ScratchNote, SermonOutline } from '@/models/models';
@@ -851,7 +852,14 @@ describe('Sermon Detail Page', () => {
       const manualSavePromise = mockScratchPanelProps.onOutlineChange!(manualDraftOutline) as Promise<void>;
 
       await waitFor(() =>
-        expect(updateSermonOutline).toHaveBeenCalledWith('sermon-123', manualDraftOutline)
+        expect(updateSermonOutline).toHaveBeenCalledWith(
+          'sermon-123',
+          manualDraftOutline,
+          // The plan this page loaded with, so the write merges instead of replacing.
+          expect.anything(),
+          // …and the collision mode this caller asks for.
+          expect.anything()
+        )
       );
       expect(snapshots.at(-1).outline).toEqual(manualDraftOutline);
 
@@ -861,6 +869,248 @@ describe('Sermon Detail Page', () => {
       });
 
       expect(snapshots.at(-1).outline).toEqual(manualSavedOutline);
+    });
+
+    /**
+     * A POINT ADDED ON ANOTHER DEVICE MUST SURVIVE A PLAN SAVE FROM THIS PAGE.
+     *
+     * The neighbouring test proves the base is HANDED OVER; it stays green even if
+     * the merge underneath is broken, because it looks at the arguments of the call.
+     * This one lets the real `mergeOutline` play the server and then asks the only
+     * question that matters to the person: is the phone's point still there?
+     */
+    it('keeps a point added on another device when the plan is saved here', async () => {
+      const phonePoint = { id: 'phone-main', text: 'Added on the phone' };
+      /** Stands in for the stored plan. */
+      let storedOutline: SermonOutline = {
+        introduction: [],
+        main: [{ id: 'p1', text: 'Grace' }, phonePoint],
+        conclusion: [],
+      };
+
+      (updateSermonOutline as jest.Mock).mockImplementation(
+        async (
+          _sermonId: string,
+          mine: SermonOutline,
+          base?: SermonOutline | null,
+          onCollision?: 'refuse' | 'preferMine'
+        ) => {
+          if (base === undefined) {
+            // What the unguarded path does: replace the whole field.
+            storedOutline = mine;
+            return storedOutline;
+          }
+          const { outline } = mergeOutline(base, mine, storedOutline, onCollision === 'preferMine');
+          storedOutline = outline;
+          return storedOutline;
+        }
+      );
+
+      // This page loaded BEFORE the phone's point existed.
+      let currentSermon: any = {
+        ...defaultUseSermonReturn.sermon,
+        outline: { introduction: [], main: [{ id: 'p1', text: 'Grace' }], conclusion: [] },
+        scratch: [],
+      };
+      const setSermon = jest.fn((updater: any) => {
+        currentSermon = typeof updater === 'function' ? updater(currentSermon) : updater;
+      });
+      const useSermonMock = require('@/hooks/useSermon').default;
+      useSermonMock.mockReturnValue({
+        ...defaultUseSermonReturn,
+        sermon: currentSermon,
+        setSermon,
+      });
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      await waitFor(() => expect(mockScratchPanelProps.onOutlineChange).toBeDefined());
+      await act(async () => {
+        await mockScratchPanelProps.onOutlineChange!({
+          introduction: [],
+          main: [{ id: 'p1', text: 'Grace, revised here' }],
+          conclusion: [],
+        });
+      });
+
+      // The edit landed...
+      expect(storedOutline.main.map((point) => point.text)).toContain('Grace, revised here');
+      // ...and the phone's point was not swept away with it.
+      expect(storedOutline.main.map((point) => point.id)).toContain('phone-main');
+    });
+
+    /**
+     * A FAILED SAVE MUST NOT BECOME THE STORY OF WHAT WAS SAVED.
+     *
+     * The plan is shown the moment it is edited, before the server confirms — right,
+     * or every keystroke would wait on the network. What is NOT right is treating
+     * that unconfirmed plan as "what I started from" on the next save.
+     *
+     * Sequence: the server holds [a]. A point `x` is added here and the save FAILS,
+     * but the screen keeps showing [a,x]. Then `y` is added. If the second save
+     * states [a,x] as its starting point, the merge sees `x` missing on the server,
+     * reads that as "deleted on the other device", and commits [a,y] — `x` is gone
+     * for good, and nobody was asked. Found by an independent review 2026-08-10.
+     */
+    it('does not treat a plan from a FAILED save as the baseline of the next one', async () => {
+      let storedOutline: SermonOutline = {
+        introduction: [],
+        main: [{ id: 'a', text: 'Grace' }],
+        conclusion: [],
+      };
+      let failNextSave = true;
+
+      (updateSermonOutline as jest.Mock).mockImplementation(
+        async (
+          _sermonId: string,
+          mine: SermonOutline,
+          base?: SermonOutline | null,
+          onCollision?: 'refuse' | 'preferMine'
+        ) => {
+          if (failNextSave) {
+            failNextSave = false;
+            throw new Error('network died');
+          }
+          const { outline } = mergeOutline(base ?? null, mine, storedOutline, onCollision === 'preferMine');
+          storedOutline = outline;
+          return storedOutline;
+        }
+      );
+
+      let currentSermon: any = {
+        ...defaultUseSermonReturn.sermon,
+        outline: { introduction: [], main: [{ id: 'a', text: 'Grace' }], conclusion: [] },
+        scratch: [],
+      };
+      const setSermon = jest.fn((updater: any) => {
+        currentSermon = typeof updater === 'function' ? updater(currentSermon) : updater;
+      });
+      const useSermonMock = require('@/hooks/useSermon').default;
+      useSermonMock.mockReturnValue({ ...defaultUseSermonReturn, sermon: currentSermon, setSermon });
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      await waitFor(() => expect(mockScratchPanelProps.onOutlineChange).toBeDefined());
+
+      // First save fails — the screen keeps the point, the server never got it.
+      await act(async () => {
+        await expect(
+          mockScratchPanelProps.onOutlineChange!({
+            introduction: [],
+            main: [{ id: 'a', text: 'Grace' }, { id: 'x', text: 'Added here' }],
+            conclusion: [],
+          })
+        ).rejects.toThrow('network died');
+      });
+
+      // Second save, with one more point.
+      await act(async () => {
+        await mockScratchPanelProps.onOutlineChange!({
+          introduction: [],
+          main: [
+            { id: 'a', text: 'Grace' },
+            { id: 'x', text: 'Added here' },
+            { id: 'y', text: 'Added after the failure' },
+          ],
+          conclusion: [],
+        });
+      });
+
+      expect(storedOutline.main.map((point) => point.id)).toContain('y');
+      // The point from the failed save is not read as a deletion made elsewhere.
+      expect(storedOutline.main.map((point) => point.id)).toContain('x');
+    });
+
+    /**
+     * A LATE-BUT-SUCCESSFUL SAVE MUST STILL ADVANCE THE BASELINE.
+     *
+     * The baseline says what this screen believes is stored, and only an answered
+     * save may move it. The trap is the ORDER of answers: save A leaves, save B
+     * leaves and fails, and A's success arrives afterwards. A's answer is stale for
+     * the SCREEN — a newer plan is on it — but it is perfectly good news about the
+     * SERVER. Discarding it freezes the baseline at the plan from before A, forever.
+     *
+     * What that costs the person: the frozen baseline makes his own earlier wording
+     * look like a fresh edit, so the next save collides with the phone's rewrite of
+     * the same point and `preferMine` quietly restores the old words.
+     *
+     * Found by an independent review 2026-08-10.
+     */
+    it('advances the plan baseline on a late save answer, so a phone rewrite is not erased', async () => {
+      const point = (text: string) => ({ id: 'p', text });
+      let storedOutline: SermonOutline = { introduction: [], main: [point('T0')], conclusion: [] };
+
+      let resolveFirst: (o: SermonOutline) => void = () => undefined;
+      let call = 0;
+      (updateSermonOutline as jest.Mock).mockImplementation(
+        async (
+          _id: string,
+          mine: SermonOutline,
+          base?: SermonOutline | null,
+          onCollision?: 'refuse' | 'preferMine'
+        ) => {
+          call += 1;
+          if (call === 1) {
+            // Save A: commits T1 on the server, but its answer arrives late.
+            return new Promise<SermonOutline>((resolve) => {
+              resolveFirst = (o) => { storedOutline = o; resolve(o); };
+            });
+          }
+          if (call === 2) throw new Error('network died');   // Save B fails.
+          const { outline } = mergeOutline(base ?? null, mine, storedOutline, onCollision === 'preferMine');
+          storedOutline = outline;
+          return storedOutline;
+        }
+      );
+
+      let currentSermon: any = {
+        ...defaultUseSermonReturn.sermon,
+        outline: { introduction: [], main: [point('T0')], conclusion: [] },
+        scratch: [],
+      };
+      const setSermon = jest.fn((updater: any) => {
+        currentSermon = typeof updater === 'function' ? updater(currentSermon) : updater;
+      });
+      const useSermonMock = require('@/hooks/useSermon').default;
+      useSermonMock.mockReturnValue({ ...defaultUseSermonReturn, sermon: currentSermon, setSermon });
+
+      render(<TestProviders><SermonDetailPage /></TestProviders>);
+      await waitFor(() => expect(mockScratchPanelProps.onOutlineChange).toBeDefined());
+
+      const saveA = mockScratchPanelProps.onOutlineChange!({
+        introduction: [], main: [point('T1')], conclusion: [],
+      }) as Promise<void>;
+      await act(async () => {
+        await expect(
+          mockScratchPanelProps.onOutlineChange!({ introduction: [], main: [point('T1b')], conclusion: [] })
+        ).rejects.toThrow('network died');
+      });
+      // Save A lands only now — after B already failed.
+      await act(async () => {
+        resolveFirst({ introduction: [], main: [point('T1')], conclusion: [] });
+        await saveA.catch(() => undefined);
+      });
+
+      // The phone rewrites the same point.
+      storedOutline = { introduction: [], main: [point('PHONE')], conclusion: [] };
+
+      // An ordinary later save from this screen, carrying the wording it already has.
+      await act(async () => {
+        await mockScratchPanelProps.onOutlineChange!({
+          introduction: [], main: [point('T1')], conclusion: [],
+        });
+      });
+
+      // This screen did not touch the point since A, so the phone's words must stand.
+      expect(storedOutline.main.map((p) => p.text)).toEqual(['PHONE']);
     });
 
     it('ignores a stale manual outline save ack that resolves after Apply writes an outline', async () => {
@@ -923,7 +1173,14 @@ describe('Sermon Detail Page', () => {
       await waitFor(() => expect(mockScratchPanelProps.onOutlineChange).toBeDefined());
       const manualSavePromise = mockScratchPanelProps.onOutlineChange!(manualDraftOutline) as Promise<void>;
       await waitFor(() =>
-        expect(updateSermonOutline).toHaveBeenCalledWith('sermon-123', manualDraftOutline)
+        expect(updateSermonOutline).toHaveBeenCalledWith(
+          'sermon-123',
+          manualDraftOutline,
+          // The plan this page loaded with, so the write merges instead of replacing.
+          expect.anything(),
+          // …and the collision mode this caller asks for.
+          expect.anything()
+        )
       );
       expect(snapshots.at(-1).outline).toEqual(manualDraftOutline);
 

@@ -283,19 +283,20 @@ describe('Thought Service', () => {
     it('should successfully update thought', async () => {
       mockUpdateThoughtViaClient.mockResolvedValueOnce(mockThought);
 
-      const result = await updateThought(mockSermonId, mockThought);
+      const result = await updateThought(mockSermonId, mockThought, null);
 
       expect(result).toEqual(mockThought);
-      // The third argument is the thought AS THE SCREEN OPENED IT; this caller does
-      // not state one, so the write claims every field, exactly as before.
-      expect(mockUpdateThoughtViaClient).toHaveBeenCalledWith(mockSermonId, mockThought, undefined);
+      // The third argument is the thought AS THE SCREEN OPENED IT. It is required, so
+      // `null` is a stated decision — "I have no opening value, claim every field",
+      // the pre-baseline behaviour — rather than something a caller drifts into.
+      expect(mockUpdateThoughtViaClient).toHaveBeenCalledWith(mockSermonId, mockThought, null);
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
     it('should surface client update errors', async () => {
       mockUpdateThoughtViaClient.mockRejectedValueOnce(new Error('client update failed'));
 
-      await expect(updateThought(mockSermonId, mockThought)).rejects.toThrow(
+      await expect(updateThought(mockSermonId, mockThought, null)).rejects.toThrow(
         'client update failed'
       );
     });

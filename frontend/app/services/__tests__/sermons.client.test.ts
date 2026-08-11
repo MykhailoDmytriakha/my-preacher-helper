@@ -928,11 +928,12 @@ describe('updateThoughtViaClient — an untouched field must not travel', () => 
     expect(store.s1.thoughts[0].text).toBe('Written here, deliberately');
   });
 
-  it('without a stated opening value behaves exactly as before', async () => {
+  it('with an explicit null opening value behaves exactly as before', async () => {
     // No baseline means we cannot tell what the person touched; sending everything
     // is the old behaviour and must stay reachable, or callers that cannot supply a
-    // baseline would silently stop saving.
-    await updateThoughtViaClient('s1', { ...asOpened, outlinePointId: 'point-2' } as never);
+    // baseline would silently stop saving. Stating `null` is how a caller asks for
+    // it — the parameter is required precisely so this cannot happen by omission.
+    await updateThoughtViaClient('s1', { ...asOpened, outlinePointId: 'point-2' } as never, null);
 
     expect(store.s1.thoughts[0].text).toBe('The old wording this screen opened with');
   });

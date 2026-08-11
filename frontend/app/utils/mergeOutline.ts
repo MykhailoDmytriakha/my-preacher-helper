@@ -41,6 +41,42 @@ const SECTIONS: Section[] = ['introduction', 'main', 'conclusion'];
 const byId = (points: OutlinePoint[] | undefined): Map<string, OutlinePoint> =>
   new Map((points ?? []).map((p) => [p.id, p]));
 
+function uniquePointsById(points: OutlinePoint[] | undefined): OutlinePoint[] {
+  const seen = new Set<string>();
+  return (points ?? []).filter((point) => {
+    if (seen.has(point.id)) return false;
+    seen.add(point.id);
+    return true;
+  });
+}
+
+function withoutDuplicateIds(outline: SermonOutline): SermonOutline {
+  const seen = new Set<string>();
+  let changed = false;
+  const result: SermonOutline = { introduction: [], main: [], conclusion: [] };
+
+  SECTIONS.forEach((section) => {
+    const indexInSection = new Map<string, number>();
+    (outline[section] ?? []).forEach((point) => {
+      if (!seen.has(point.id)) {
+        seen.add(point.id);
+        indexInSection.set(point.id, result[section].length);
+        result[section].push(point);
+        return;
+      }
+
+      changed = true;
+      const existingIndex = indexInSection.get(point.id);
+      // Earlier versions could persist the same id more than once. Its first
+      // position keeps the sermon shape, while the last copy in that same section
+      // keeps the newest words instead of silently restoring an older duplicate.
+      if (existingIndex !== undefined) result[section][existingIndex] = point;
+    });
+  });
+
+  return changed ? result : outline;
+}
+
 /** Same content? Compared on the fields a person can actually change. */
 function samePoint(a: OutlinePoint | undefined, b: OutlinePoint | undefined): boolean {
   if (!a || !b) return a === b;
@@ -72,13 +108,59 @@ function sectionOf(outline: SermonOutline | null | undefined, id: string): Secti
   return SECTIONS.find((section) => (outline?.[section] ?? []).some((point) => point.id === id));
 }
 
+/**
+ * Whose ORDER should this section follow?
+ *
+ * The order of the points IS the shape of the sermon, so a reordering is work, not
+ * formatting — and it used to be lost in silence: this editor's order was always
+ * taken, so a phone that moved the conclusion ahead had its decision undone by the
+ * next save from a laptop that merely reworded something.
+ *
+ * Decided exactly like content: whoever MOVED decides, and this editor wins when
+ * both did. Deliberately NOT a collision — a refusal over ordering would train the
+ * person to dismiss the question, and the next real one goes with it.
+ *
+ * Compared over the ids all three sides hold in this section, so an addition or a
+ * deletion on either side is not mistaken for a move.
+ */
+function sectionFollowsTheirOrder(
+  base: SermonOutline | null | undefined,
+  mine: SermonOutline,
+  theirs: SermonOutline,
+  section: Section
+): boolean {
+  if (!base) return false;
+  const shared = (id: string) =>
+    (base[section] ?? []).some((p) => p.id === id) &&
+    (mine[section] ?? []).some((p) => p.id === id) &&
+    (theirs[section] ?? []).some((p) => p.id === id);
+  const orderOf = (outline: SermonOutline) =>
+    uniquePointsById(outline[section]).map((p) => p.id).filter(shared);
+
+  const started = orderOf(base);
+  const movedHere = orderOf(mine).some((id, index) => id !== started[index]);
+  const movedThere = orderOf(theirs).some((id, index) => id !== started[index]);
+  return !movedHere && movedThere;
+}
+
 export function mergeOutline(
   base: SermonOutline | null | undefined,
   mine: SermonOutline,
-  theirs: SermonOutline | null | undefined
+  theirs: SermonOutline | null | undefined,
+  /**
+   * Let the LOCAL decision win where nobody can be asked.
+   *
+   * The default keeps their version on a collision and reports it, which is right
+   * for the plan editor: it stores the refusal and offers a choice. Views without
+   * that surface pass `true` — otherwise a deletion made here comes back on the next
+   * save, which is worse than the whole-field overwrite they used to do.
+   *
+   * The collision is still REPORTED either way; this only changes who wins.
+   */
+  preferMineOnCollision = false
 ): OutlineMergeResult {
   // No server version to reconcile with (a brand-new document): nothing to merge.
-  if (!theirs) return { outline: mine, collisions: [] };
+  if (!theirs) return { outline: withoutDuplicateIds(mine), collisions: [] };
 
   const merged: SermonOutline = { introduction: [], main: [], conclusion: [] };
   const collisions: string[] = [];
@@ -132,6 +214,9 @@ export function mergeOutline(
         // outrank a written change: keep their version and raise the question.
         if (start && samePoint(start, there)) return;
         collisions.push(id);
+        // Reported either way; who WINS depends on whether the caller can ask.
+        // Placing nothing here is what makes the deletion stick.
+        if (preferMineOnCollision) return;
         placement.set(id, thereSection as Section);
         content.set(id, there);
         return;
@@ -172,29 +257,53 @@ export function mergeOutline(
     }
   });
 
+  const emitted = new Set<string>();
+
   SECTIONS.forEach((section) => {
     const result: OutlinePoint[] = [];
 
-    // This editor's order first, for the points that end up in THIS section.
-    (mine[section] ?? []).forEach((point) => {
+    // Whoever reordered leads; this editor leads when nobody did, or when both did.
+    const theirOrder = sectionFollowsTheirOrder(base, mine, theirs, section);
+    const leading = uniquePointsById(theirOrder ? theirs[section] : mine[section]);
+    const trailing = uniquePointsById(theirOrder ? mine[section] : theirs[section]);
+
+    // The leading order first, for the points that end up in THIS section.
+    leading.forEach((point) => {
       if (placement.get(point.id) !== section) return;
+      if (emitted.has(point.id)) return;
       const decided = content.get(point.id);
-      if (decided) result.push(decided);
+      if (decided) {
+        result.push(decided);
+        emitted.add(point.id);
+      }
     });
 
-    // Then whatever the server placed here that this editor does not list — an
-    // addition made there, or a point they moved into this section. Each lands after
-    // the neighbour it followed on the server, so their placement is respected
+    // Then whatever the OTHER side places here and the leader does not list — an
+    // addition made over there, or a point moved into this section. Each lands after
+    // the neighbour it followed on its own side, so its placement is respected
     // instead of everything piling up at the end.
-    (theirs[section] ?? []).forEach((server, index) => {
-      if (placement.get(server.id) !== section) return;
-      if (result.some((p) => p.id === server.id)) return;
-      const decided = content.get(server.id);
+    trailing.forEach((point, index) => {
+      if (placement.get(point.id) !== section) return;
+      if (emitted.has(point.id)) return;
+      const decided = content.get(point.id);
       if (!decided) return;
-      const previous = (theirs[section] ?? [])[index - 1];
-      const anchor = previous ? result.findIndex((p) => p.id === previous.id) : -1;
+      /**
+       * Land it after the nearest point that preceded it ON ITS OWN SIDE and is
+       * already placed here. Only the IMMEDIATE predecessor used to be consulted, so
+       * a point inserted at the FRONT — or moved into this section ahead of
+       * everything — had no anchor and was appended to the very end instead. The
+       * order of the points is the shape of the sermon, and silently moving one from
+       * first to last changes what gets preached when.
+       */
+      let anchor = -1;
+      for (let back = index - 1; back >= 0 && anchor < 0; back -= 1) {
+        anchor = result.findIndex((p) => p.id === trailing[back].id);
+      }
       if (anchor >= 0) result.splice(anchor + 1, 0, decided);
-      else result.push(decided);
+      // If every predecessor was removed by the merge, this is the first surviving
+      // point from that side; appending it would turn an opening thought into a close.
+      else result.unshift(decided);
+      emitted.add(point.id);
     });
 
     merged[section] = result;

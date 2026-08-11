@@ -1179,7 +1179,13 @@ describe('Column Component', () => {
             introduction: expect.arrayContaining([
               expect.objectContaining({ id: 'point1', note: 'Point reminder updated' }),
             ]),
-          })
+          }),
+          // The base the write merges against. This test is about the reminder text
+          // reaching the plan, not about the merge — pinning its value here would
+          // make an unrelated test fail whenever the base is refined.
+          expect.anything(),
+          // …and the collision mode this caller asks for.
+          expect.anything()
         );
       });
 
@@ -1200,7 +1206,10 @@ describe('Column Component', () => {
                 ]),
               }),
             ]),
-          })
+          }),
+          expect.anything(),
+          // …and the collision mode this caller asks for.
+          expect.anything()
         );
       });
     });
