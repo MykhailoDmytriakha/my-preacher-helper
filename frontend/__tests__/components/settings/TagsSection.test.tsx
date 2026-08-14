@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { useTags } from '@/hooks/useTags';
 import { Tag } from '@/models/models';
 import TagsSection from '@components/settings/TagsSection';
+import { persistedWrite } from '@/utils/recoverableWrite';
 
 // --- Mocks --- //
 
@@ -51,7 +52,13 @@ jest.mock('@components/settings/AddTagForm', () => (props: any) => {
   return (
     <div data-testid="add-tag-form">
       Mock AddTagForm
-      <button onClick={() => mockAddTag('New Tag from Mock', '#123456')}>Add Mock Tag</button>
+      {/* The real form AWAITS this promise and keeps the draft when it rejects, so the
+          stand-in must not let a refusal escape as an unhandled rejection. */}
+      {/* The real form awaits the submission's acceptance and keeps the draft when it
+          rejects; the stand-in must not let a refusal escape unobserved. */}
+      <button onClick={() => { void mockAddTag('New Tag from Mock', '#123456')?.acceptance?.catch(() => undefined); }}>
+        Add Mock Tag
+      </button>
     </div>
   );
 });
@@ -94,10 +101,13 @@ describe('TagsSection', () => {
     jest.clearAllMocks();
     (useTags as jest.Mock).mockReturnValue({
       tags: mockInitialTags,
-      addCustomTag: mockAddCustomTag,
-      removeCustomTag: mockRemoveCustomTag,
-      updateTag: mockUpdateTag,
+      addCustomTag: (...args: unknown[]) => mockAddCustomTag(...args),
+      removeCustomTag: (...args: unknown[]) => mockRemoveCustomTag(...args),
+      updateTag: (...args: unknown[]) => mockUpdateTag(...args),
     });
+    mockAddCustomTag.mockImplementation((tag: Tag) => persistedWrite(Promise.resolve(tag)));
+    mockRemoveCustomTag.mockImplementation(() => persistedWrite(Promise.resolve(undefined)));
+    mockUpdateTag.mockImplementation((tag: Tag) => persistedWrite(Promise.resolve(tag)));
 
     // Reset mock component interaction functions
     mockAddTag.mockClear();
@@ -148,7 +158,9 @@ describe('TagsSection', () => {
   });
 
   it('shows error when trying to add reserved structure tag name', async () => {
-    mockAddCustomTag.mockRejectedValueOnce(new Error('Reserved tag name'));
+    mockAddCustomTag.mockReturnValueOnce(persistedWrite(Promise.reject(Object.assign(
+      new Error('Reserved tag name'), { code: 'permission-denied', name: 'FirebaseError' }
+    ))));
     renderSection();
     const addMockTagButton = screen.getByRole('button', { name: /Add Mock Tag/i });
     await userEvent.click(addMockTagButton);
@@ -158,7 +170,7 @@ describe('TagsSection', () => {
   });
 
   it('calls removeCustomTag and refetches tags when editable TagList calls onRemoveTag', async () => {
-    mockRemoveCustomTag.mockResolvedValue({ message: 'Tag removed', affectedThoughts: 2 });
+    mockRemoveCustomTag.mockReturnValue(persistedWrite(Promise.resolve(undefined)));
     renderSection();
 
     // Find the remove button within the mock editable list
@@ -171,8 +183,8 @@ describe('TagsSection', () => {
       expect(mockRemoveCustomTag).toHaveBeenCalledWith('Prayer');
     });
 
-    // Check that toast shown
-    expect(toast.success).toHaveBeenCalled();
+    // A queued tag removal never announces server-side completion.
+    expect(toast.success).not.toHaveBeenCalled();
   });
 
   it('opens ColorPickerModal when editable TagList calls onEditColor', async () => {
@@ -239,4 +251,4 @@ describe('TagsSection', () => {
      expect(useTags).toHaveBeenCalledWith(undefined);
    });
 
-}); 
+});

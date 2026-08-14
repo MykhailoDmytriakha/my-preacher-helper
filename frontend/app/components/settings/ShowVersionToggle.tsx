@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useUserSettings } from '@/hooks/useUserSettings';
+import { awaitAcceptance } from '@/utils/recoverableWrite';
 
 const APP_VERSION = process.env.NEXT_PUBLIC_APP_VERSION || 'dev';
 const BUILD_TIME = process.env.NEXT_PUBLIC_BUILD_TIME || '';
@@ -49,11 +50,18 @@ export default function ShowVersionToggle() {
 
     const newValue = !enabled;
     setEnabled(newValue); // optimistic
-    try {
-      await updateShowAppVersion(newValue);
-    } catch (error) {
+    // The refusal for a queued settings write arrives LATE — reporting it only from
+    // the catch would leave the switch flipped and the person uninformed.
+    const reportFailure = (error: unknown) => {
       console.error('ShowVersionToggle: Error updating setting:', error);
-      setEnabled(!newValue); // revert on failure
+      // Message comes from the shared recovery toast; restore the switch only.
+      setEnabled(!newValue);
+    };
+
+    try {
+      await awaitAcceptance(updateShowAppVersion(newValue), reportFailure);
+    } catch (error) {
+      reportFailure(error);
     }
   };
 

@@ -2,6 +2,7 @@ import {
   conflictSafeUpdate,
   isStaleWriteError,
   isUnreachableWriteError,
+  isWriteRefusedError,
   readRevision,
   StaleWriteError,
 } from '@/services/conflictSafeUpdate.client';
@@ -160,12 +161,16 @@ describe('conflictSafeUpdate', () => {
   it('surfaces a missing document instead of creating one', async () => {
     delete store['note-1'];
 
-    await expect(
-      conflictSafeUpdate(ref, { content: 'x' }, 'Study note not found', {
-        aggregate: 'note',
-        expectedRevision: 0,
-      })
-    ).rejects.toThrow('Study note not found');
+    const error = await conflictSafeUpdate(ref, { content: 'x' }, 'Study note not found', {
+      aggregate: 'note',
+      expectedRevision: 0,
+    }).catch((caught) => caught);
+
+    expect(error).toMatchObject({
+      message: 'Study note not found',
+      code: 'not-found',
+    });
+    expect(isWriteRefusedError(error)).toBe(true);
   });
 });
 

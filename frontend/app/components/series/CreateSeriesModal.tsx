@@ -9,10 +9,11 @@ import TextareaAutosize from 'react-textarea-autosize';
 import ColorPickerModal from '@/components/ColorPickerModal';
 import { Series } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
+import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 
 interface CreateSeriesModalProps {
   onClose: () => void;
-  onCreate: (series: Omit<Series, 'id'>) => Promise<void>;
+  onCreate: (series: Omit<Series, 'id'>) => WriteSubmission;
   initialSermonIds?: string[]; // For multi-select flow
 }
 
@@ -34,7 +35,7 @@ export default function CreateSeriesModal({ onClose, onCreate, initialSermonIds 
 
     try {
       setSaving(true);
-      await onCreate({
+      await awaitAcceptance(onCreate({
         title: title.trim(),
         theme: title.trim(), // Use title as theme for simplicity
         description: description.trim() || undefined,
@@ -45,12 +46,18 @@ export default function CreateSeriesModal({ onClose, onCreate, initialSermonIds 
         userId: user?.uid || '',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
-      });
+      // useSeries' create recovery descriptor reports a late refusal while this screen is mounted.
+      }), () => undefined);
 
       onClose();
     } catch (error) {
+        /**
+         * The refusal is reported by this entity's recovery descriptor, which carries
+         * the person's text and follows them off this screen. This editor's job is to
+         * stay open and keep what they typed — saying it here as well showed one
+         * refused action as two failures.
+         */
       console.error('Failed to create series:', error);
-      setError('Failed to create series. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -212,7 +219,7 @@ export default function CreateSeriesModal({ onClose, onCreate, initialSermonIds 
                   className={`flex h-9 w-9 items-center justify-center rounded-full border-2 bg-gradient-to-br from-indigo-500 via-pink-500 to-amber-400 text-white shadow-sm transition hover:scale-105 ${
                     !colorOptions.includes(color) ? 'ring-2 ring-white/60 dark:ring-gray-900' : ''
                   }`}
-                  title="Custom color"
+                  title={t('workspaces.series.form.customColor')}
                 >
                   +
                 </button>

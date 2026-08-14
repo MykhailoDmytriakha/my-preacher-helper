@@ -14,7 +14,9 @@ import { useTranslation } from 'react-i18next';
 
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { changedFields } from '@/utils/changedFields';
-import { draftKey, moveDraft } from '@/utils/durableDraft';
+import { draftKey, clearDraftIfMatches, moveDraft } from '@/utils/durableDraft';
+import { announceIfPersisted, awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
+import { formatScriptureRefs, recoveryText } from '@/utils/writeRecovery';
 
 import type { NoteDraftPayload } from './noteDraft';
 import type { ScriptureReference, StudyNote } from '@/models/models';
@@ -29,8 +31,10 @@ export function useNoteAutoSave({
         updates: Partial<StudyNote>;
         expectedRevision?: number | null;
         expectedBaseline?: Record<string, unknown> | null;
-    }) => Promise<StudyNote & { revision?: number }>;
-    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>) => Promise<StudyNote>;
+        recoveryDraft?: string;
+    }) => WriteSubmission & { result: Promise<StudyNote & { revision?: number }> };
+    createNote: (note: Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'>) =>
+        WriteSubmission & { note: StudyNote };
     uid: string | undefined; setCreatedNoteId: (id: string) => void;
     t: ReturnType<typeof useTranslation>['t'];
     /** Baseline owned by the page so both autosave and "load newer" can move it. */
@@ -64,6 +68,10 @@ export function useNoteAutoSave({
 
     const saveChanges = useCallback(async () => {
         if (!noteId || !isInitialized) return;
+        // Moving a new note to its client id re-renders this hook before the first
+        // create is accepted. A second save in that gap must not become an update
+        // against a document the server may still refuse to create.
+        if (isSaving) return;
         // A refusal is already on screen. Continuing to autosave would keep firing
         // writes at a document we know is newer — and one of them could land.
         if (saveBlocked) return;
@@ -73,30 +81,61 @@ export function useNoteAutoSave({
 
             setIsSaving(true);
             setSaveError(null);
+            setLastSaved(null);
             try {
-                const newNote = await createNote({
+                const submission = createNote({
                     title, content, tags, scriptureRefs, type,
                     userId: uid ?? '', materialIds: [], relatedSermonIds: []
                 });
-                setLastSaved(new Date());
-                baselineRef.current = { title, content, tags, scriptureRefs, type };
+                const newNote = submission.note;
                 // CARRY THE DRAFT FIRST, THEN report the save.
                 //
                 // The note was drafted under the placeholder id "new" and now has a
-                // real id. The record is carried, not deleted: the create resolved
-                // optimistically, so the server has confirmed nothing yet, and a plain
-                // clear would leave the text with no durable home until the next
-                // keystroke. Reporting the save BEFORE the move broke exactly that —
+                // real id. The record is carried, not deleted: the id arrived before
+                // the server may have confirmed anything, and a plain clear would leave
+                // the text with no durable home until the next keystroke. Reporting the
+                // save BEFORE the move broke exactly that —
                 // `markSaved` retires the draft under the key the hook still holds
                 // ("new"), so the move found nothing left to carry and the safety net
                 // was gone while the write was still in flight.
                 if (uid) moveDraft(draftKey(uid, 'new', 'note'), draftKey(uid, newNote.id, 'note'));
-                onSaved?.({ title, content, tags, scriptureRefs, type });
                 window.history.replaceState(null, '', `/studies/${newNote.id}`);
                 setCreatedNoteId(newNote.id);
+
+                // The stable id prevents a second create while an online request is
+                // awaiting `persisted` acceptance. On a refusal the editor remains on
+                // screen with this same text and with its draft carried to this id.
+                // useStudyNotes' create recovery descriptor reports a late refusal while this screen is mounted.
+                const acceptance = await awaitAcceptance(submission, () => undefined);
+
+                const confirmedPayload = { title, content, tags, scriptureRefs, type };
+                const retirePersistedCreateDraft = () => {
+                    // The draft was moved to the real id before the route changed. Never
+                    // retire it from the old hook's moving key; remove only this exact,
+                    // server-confirmed payload at its stable destination.
+                    if (uid) clearDraftIfMatches(draftKey(uid, newNote.id, 'note'), confirmedPayload);
+                };
+                if (acceptance.kind === 'persisted') {
+                    retirePersistedCreateDraft();
+                    announceIfPersisted(acceptance, () => {
+                        baselineRef.current = confirmedPayload;
+                        setLastSaved(new Date());
+                    });
+                } else if (acceptance.kind === 'queued') {
+                    // A queued write stays silent forever as a *queued* submission.
+                    // Once persistence really lands we may retire its exact durable
+                    // copy, but still do not set Saved: `queued` is not `persisted`.
+                    void submission.persistence.then(retirePersistedCreateDraft).catch(() => undefined);
+                }
             } catch (e) {
+                /**
+                 * A STATUS, not a second explanation. The refusal itself is announced by
+                 * the note's recovery descriptor (and a version conflict opens the choice
+                 * instead); this flag only tells the person that the last auto-save did
+                 * not go through. It holds a translation KEY — the screen translates it.
+                 */
                 console.error('Auto-create error', e);
-                setSaveError(t('common.saveError') || 'Error saving changes');
+                setSaveError('common.saveError');
             } finally {
                 setIsSaving(false);
             }
@@ -116,9 +155,13 @@ export function useNoteAutoSave({
 
         setIsSaving(true);
         setSaveError(null);
+        // A previous server save says nothing about the text currently being sent.
+        // Clear it before this write so `queued` cannot fall back to a stale Saved
+        // indicator after the spinner ends.
+        setLastSaved(null);
         const wasDeliberate = deliberateOverwriteRef.current;
         try {
-            const saved = await updateNote({
+            const submission = updateNote({
                 id: noteId,
                 updates,
                 expectedRevision: revisionRef.current,
@@ -135,17 +178,42 @@ export function useNoteAutoSave({
                 expectedBaseline: deliberateOverwriteRef.current
                     ? null
                     : (baselineRef.current as unknown as Record<string, unknown>),
+                recoveryDraft: recoveryText([
+                    title,
+                    content,
+                    tags.join(', '),
+                    formatScriptureRefs(scriptureRefs),
+                    type,
+                ]),
             });
+            // useStudyNotes' update recovery descriptor reports a late refusal while this screen is mounted.
+            const acceptance = await awaitAcceptance(submission, () => undefined);
+            if (acceptance.kind !== 'persisted') {
+                /**
+                 * A QUEUED write is a durable hand-off: the text is in the outbox and will
+                 * replay. The status stays quiet — nothing is on the server yet, so no
+                 * "saved" tick — but the BASELINE must move, otherwise this exact note is
+                 * enqueued again on the next autosave tick, and again, every 1.5 seconds,
+                 * each time under a fresh id. That fills the outbox with copies of one
+                 * note and can exhaust storage the later typing depends on.
+                 */
+                if (acceptance.kind === 'queued') {
+                    baselineRef.current = { title, content, tags, scriptureRefs, type };
+                    onSaved?.({ title, content, tags, scriptureRefs, type });
+                }
+                return;
+            }
+            const saved = await submission.result;
             // The server accepted it, so this is now what our text is built from.
             if (typeof (saved as { revision?: number })?.revision === 'number') {
                 revisionRef.current = (saved as { revision?: number }).revision as number;
             }
-            setLastSaved(new Date());
             // Confirmed by the server, so it becomes the new baseline: these fields
             // are no longer "changed by the user" and must not be re-sent.
             baselineRef.current = { title, content, tags, scriptureRefs, type };
             if (wasDeliberate) deliberateOverwriteRef.current = false;
             onSaved?.({ title, content, tags, scriptureRefs, type });
+            announceIfPersisted(acceptance, () => setLastSaved(new Date()));
         } catch (e) {
             if (isStaleWriteError(e)) {
                 // REFUSED, not failed. The server holds a newer version, so this text
@@ -156,12 +224,19 @@ export function useNoteAutoSave({
                 setSaveError(null);
                 return;
             }
+            /**
+             * The MESSAGE belongs to the note's recovery descriptor (useStudyNotes): it
+             * carries the text and follows the person off this screen. This flag stays a
+             * STATUS — "the last auto-save did not go through" — so the editor can show
+             * that something is unsaved without repeating the explanation.
+             */
+            // Same status flag as the create branch above.
             console.error('Auto-save error', e);
-            setSaveError(t('common.saveError') || 'Error saving changes');
+            setSaveError('common.saveError');
         } finally {
             setIsSaving(false);
         }
-    }, [noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, t, baselineRef, revisionRef, onConflict, onSaved]);
+    }, [noteId, isNew, isInitialized, isSaving, existingNote, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, t, baselineRef, revisionRef, onConflict, onSaved]);
 
     useEffect(() => {
         if (!isInitialized) return;

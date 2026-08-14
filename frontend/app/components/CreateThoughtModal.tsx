@@ -10,18 +10,24 @@ import { useScrollLock } from '@/hooks/useScrollLock';
 import { Thought, SermonOutline } from '@/models/models';
 import { useConnection } from '@/providers/ConnectionProvider';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import {
+  announceIfPersisted,
+  awaitAcceptance,
+  type WriteSubmission,
+} from '@/utils/recoverableWrite';
 import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
+import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { FocusRecorderButton } from '@components/FocusRecorderButton';
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from '@utils/tagUtils';
 
 import { RichMarkdownEditor } from './ui/RichMarkdownEditor';
 import '@locales/i18n';
 
-
 interface CreateThoughtModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreateThought: (thought: Omit<Thought, 'id'>) => Promise<void> | void;
+  onCreateThought: (thought: Omit<Thought, 'id'>) => WriteSubmission;
+  onSubmissionRejected?: () => void;
   allowedTags?: { name: string; color: string; translationKey?: string }[];
   sermonOutline?: SermonOutline;
   disabled?: boolean;
@@ -38,6 +44,7 @@ export default function CreateThoughtModal({
   isOpen,
   onClose,
   onCreateThought,
+  onSubmissionRejected,
   allowedTags = [],
   sermonOutline,
   disabled = false,
@@ -58,6 +65,7 @@ export default function CreateThoughtModal({
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [voiceRetryCount, setVoiceRetryCount] = useState(0);
   const storedVoiceBlobRef = useRef<Blob | null>(null);
+  const submissionInFlightRef = useRef(false);
   const VOICE_MAX_RETRIES = 3;
   const { t } = useTranslation();
   const { isOnline, isMagicAvailable } = useConnection();
@@ -135,11 +143,22 @@ export default function CreateThoughtModal({
     setVoiceRetryCount(0);
   };
 
+  const reportCreateFailure = (error: unknown) => {
+    console.error('Error creating thought:', error);
+    toast.error(t(writeFailureTranslationKey(error, 'errors.addThoughtError')));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (disabled) return;
+    if (disabled || submissionInFlightRef.current) return;
     const trimmedText = text.trim();
     if (!trimmedText) return;
+
+    const submittedDraft = {
+      text,
+      tags: [...tags],
+      selectedSermonPointId,
+    };
 
     const newThought: Omit<Thought, 'id'> = {
       text: trimmedText,
@@ -149,14 +168,35 @@ export default function CreateThoughtModal({
     };
 
     try {
+      submissionInFlightRef.current = true;
       setIsSubmitting(true);
-      await onCreateThought(newThought);
-      toast.success(t(successMessageKey));
+      const submission = onCreateThought(newThought);
+
+      const acceptance = await awaitAcceptance(submission, (error) => {
+        /**
+         * ONE REFUSAL, ONE VOICE — the same rule the edit modal follows.
+         *
+         * A LATE refusal arrives when this modal has already closed, so its own toast
+         * was invisible half the time and duplicated the owner's message the other
+         * half: the page reports the refusal with the verbatim text, and the person
+         * heard the same thing twice in two different wordings.
+         *
+         * Restoring the fields is still this component's job — they are its state —
+         * but announcing belongs to whoever knows where the person is now.
+         */
+        console.error('Error creating thought:', error);
+        setText(submittedDraft.text);
+        setTags(submittedDraft.tags);
+        setSelectedSermonPointId(submittedDraft.selectedSermonPointId);
+        onSubmissionRejected?.();
+      });
+
+      announceIfPersisted(acceptance, () => toast.success(t(successMessageKey)));
       resetAndClose();
     } catch (error) {
-      console.error('Error creating thought:', error);
-      toast.error(t('errors.addThoughtError'));
+      reportCreateFailure(error);
     } finally {
+      submissionInFlightRef.current = false;
       setIsSubmitting(false);
     }
   };

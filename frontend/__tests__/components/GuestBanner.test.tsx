@@ -3,11 +3,11 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import { GuestBanner } from '@components/GuestBanner';
-import { auth } from '@services/firebaseAuth.service';
 
 // Mock the firebase auth service
 let mockCurrentUser: { isAnonymous: boolean } | null = null;
 let mockIsGuestExpired = false;
+const mockLogOut = jest.fn();
 
 jest.mock('@services/firebaseAuth.service', () => ({
   auth: {
@@ -17,6 +17,9 @@ jest.mock('@services/firebaseAuth.service', () => ({
     },
     signOut: jest.fn(),
   },
+  // Expiry must go through logOut, not `auth.signOut()`: signing out also clears the
+  // recovery messages, which hold text that must not wait on screen for the next person.
+  logOut: (...args: unknown[]) => mockLogOut(...args),
   checkGuestExpiration: jest.fn(() => mockIsGuestExpired),
 }));
 
@@ -107,7 +110,7 @@ describe('GuestBanner', () => {
     // Wait for useEffect logic
     await waitFor(() => {
       expect(localStorageRemoveSpy).toHaveBeenCalledWith('guestUser');
-      expect(auth.signOut).toHaveBeenCalledTimes(1);
+      expect(mockLogOut).toHaveBeenCalledTimes(1);
     });
 
     // The banner should not render because the user is logged out
@@ -127,6 +130,6 @@ describe('GuestBanner', () => {
      await new Promise(resolve => setTimeout(resolve, 50));
 
      expect(localStorageRemoveSpy).not.toHaveBeenCalled();
-     expect(auth.signOut).not.toHaveBeenCalled();
+     expect(mockLogOut).not.toHaveBeenCalled();
    });
 }); 

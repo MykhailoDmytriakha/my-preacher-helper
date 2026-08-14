@@ -66,7 +66,11 @@ export async function atomicUpdate<T>(
   try {
     await runTransaction(getClientDb(), async (tx) => {
       const snap = await tx.get(ref);
-      if (!snap.exists()) throw new Error(notFoundMessage);
+      // CODED, not bare. Recovery classifies by `error.code` alone, so an uncoded
+      // Error was shown as a transient failure with a "Retry" button — and retrying a
+      // document that does not exist fails identically, forever. The person was told to
+      // keep trying instead of being told the truth.
+      if (!snap.exists()) throw Object.assign(new Error(notFoundMessage), { code: 'not-found' });
       const patch = buildPatch(snap.data() as T);
       if (patch) tx.update(ref, patch);
     });
@@ -105,7 +109,7 @@ async function queuedUpdate<T>(
   notFoundMessage: string
 ): Promise<void> {
   const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error(notFoundMessage);
+  if (!snap.exists()) throw Object.assign(new Error(notFoundMessage), { code: 'not-found' });
   const patch = buildPatch(snap.data() as T);
   if (patch) await updateDoc(ref, patch);
 }

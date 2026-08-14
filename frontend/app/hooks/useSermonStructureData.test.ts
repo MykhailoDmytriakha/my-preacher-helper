@@ -528,4 +528,124 @@ describe('useSermonStructureData Hook', () => {
     expect(result.current.allowedTags).toEqual([]);
   });
 
-}); 
+});
+
+/**
+ * Freshness of what the preacher is looking at.
+ *
+ * The locally stored copy plays TWO roles at once, and the difference decides who
+ * wins. It is the snapshot left over from an earlier session — which may be days
+ * old, because the store keeps entries for a week — and it is also where an edit
+ * made on this screen lives until the server confirms it. Preferring the stored
+ * copy blindly shows yesterday's paragraph as if it were current; preferring the
+ * server blindly wipes an edit that has not been saved yet. Both are silent, and
+ * both cost the preacher words he spoke aloud.
+ *
+ * The revision counter already separates them: another device's saved edit raises
+ * it, an unsaved local edit does not. So "the server's number is higher" means
+ * "somebody else stored something newer" and nothing else.
+ */
+describe('useSermonStructureData · which copy the screen shows', () => {
+  // The stored copy is filed under its owner, and the suite signs in as this uid
+  // (jest.setup.js). Seeding any other key silently misses and the test would then
+  // measure a cache that was never there.
+  const cacheKeyFor = (sermonId: string) => ['sermon', 'test-user-id', sermonId];
+
+  const sermonWith = (text: string, revThoughts: number): Sermon => ({
+    ...mockSermon,
+    id: 'freshness1',
+    rev: { thoughts: revThoughts },
+    thoughts: [{ id: 't1', text, tags: [], date: '2023-01-01T10:00:00Z' }],
+    structure: { introduction: [], main: [], conclusion: [], ambiguous: ['t1'] },
+  } as Sermon);
+
+  const renderWithSeededCache = (seeded: Sermon | null, sermonId = 'freshness1') => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    if (seeded) queryClient.setQueryData(cacheKeyFor(sermonId), seeded);
+    const wrapper = ({ children }: { children: React.ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: queryClient }, children);
+    return renderHook(() => useSermonStructureData(sermonId, mockT as MockTFunction), { wrapper });
+  };
+
+  beforeEach(() => {
+    mockedGetSermonById.mockClear();
+    mockedGetTags.mockClear();
+    mockedGetSermonOutline.mockClear();
+    mockedUseOnlineStatus.mockReturnValue(true);
+    mockedGetTags.mockResolvedValue({ requiredTags: [], customTags: [] });
+    mockedGetSermonOutline.mockResolvedValue(null);
+  });
+
+  it('shows what the server stores when another device saved a newer version', async () => {
+    // Left over from an earlier session on this machine…
+    const stored = sermonWith('Older copy left on this device', 1);
+    // …while the phone stored a newer version, which raised the revision.
+    mockedGetSermonById.mockResolvedValue(sermonWith('Newer version saved elsewhere', 2));
+
+    const { result } = renderWithSeededCache(stored);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.sermon?.thoughts[0].text).toBe('Newer version saved elsewhere');
+    expect(mockedGetSermonById).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an edit made here that the server has not stored yet', async () => {
+    // The revision is the same on both sides: nothing was saved elsewhere, so the
+    // difference in text is this screen's own work, waiting to be written.
+    const unsavedEdit = sermonWith('Edited here, not saved yet', 4);
+    mockedGetSermonById.mockResolvedValue(sermonWith('What the server still holds', 4));
+
+    const { result } = renderWithSeededCache(unsavedEdit);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.sermon?.thoughts[0].text).toBe('Edited here, not saved yet');
+  });
+
+  it('reads the stored copy and leaves the network alone while offline', async () => {
+    mockedUseOnlineStatus.mockReturnValue(false);
+    const stored = sermonWith('Available without a connection', 1);
+
+    const { result } = renderWithSeededCache(stored);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.sermon?.thoughts[0].text).toBe('Available without a connection');
+    expect(mockedGetSermonById).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the write timestamp on sermons written before revisions existed', async () => {
+    // Most sermons carry no counters at all, so a rule that needs them would leave the
+    // oldest ones — the likeliest to be stale — exactly as broken as before.
+    const stored = { ...sermonWith('Older copy of an old sermon', 0), rev: undefined, updatedAt: '2026-08-01T10:00:00.000Z' } as Sermon;
+    const server = { ...sermonWith('Newer version saved elsewhere', 0), rev: undefined, updatedAt: '2026-08-05T10:00:00.000Z' } as Sermon;
+    mockedGetSermonById.mockResolvedValue(server);
+
+    const { result } = renderWithSeededCache(stored);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.sermon?.thoughts[0].text).toBe('Newer version saved elsewhere');
+  });
+
+  it('keeps an unsaved edit on an old sermon, because the timestamp did not move', async () => {
+    const sameMoment = '2026-08-01T10:00:00.000Z';
+    const unsavedEdit = { ...sermonWith('Edited here, not saved yet', 0), rev: undefined, updatedAt: sameMoment } as Sermon;
+    const server = { ...sermonWith('What the server still holds', 0), rev: undefined, updatedAt: sameMoment } as Sermon;
+    mockedGetSermonById.mockResolvedValue(server);
+
+    const { result } = renderWithSeededCache(unsavedEdit);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.sermon?.thoughts[0].text).toBe('Edited here, not saved yet');
+  });
+
+  it('keeps showing the stored copy when the server cannot be reached', async () => {
+    // A refused or dropped request must not blank a sermon the preacher can see:
+    // losing the screen is worse than showing a copy that may be a few minutes old.
+    const stored = sermonWith('Still readable after a failed refresh', 1);
+    mockedGetSermonById.mockRejectedValue(new Error('network down'));
+
+    const { result } = renderWithSeededCache(stored);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.sermon?.thoughts[0].text).toBe('Still readable after a failed refresh');
+  });
+});

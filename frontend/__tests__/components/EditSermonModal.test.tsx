@@ -1,10 +1,12 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import EditSermonModal from '@/components/EditSermonModal';
 import { Sermon } from '@/models/models';
 import { addPreachDate, deletePreachDate, updatePreachDate } from '@/services/preachDates.service';
 import { updateSermon } from '@/services/sermon.service';
+import { queuedWrite } from '@/utils/recoverableWrite';
+import { persistedWrite } from '@/utils/recoverableWrite';
 import '@testing-library/jest-dom';
 
 const mockUseConnection = jest.fn(() => ({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() }));
@@ -67,6 +69,7 @@ jest.mock('react-i18next', () => ({
           'buttons.save': 'Save',
           'buttons.saving': 'Saving',
           'calendar.unspecifiedChurch': 'Church not specified',
+          'writeRecovery.refused': 'Save refused. Nothing was saved; your text is still here.',
         };
         return translations[key] || key;
       }
@@ -225,6 +228,26 @@ describe('EditSermonModal Component', () => {
     (console.error as jest.Mock).mockRestore();
   });
 
+  test('names a rules refusal and keeps the exact sermon edit retrievable', async () => {
+    (updateSermon as jest.Mock).mockRejectedValueOnce(
+      Object.assign(new Error('Permission denied'), { code: 'permission-denied' })
+    );
+    render(<EditSermonModal {...mockProps} />);
+
+    const title = screen.getByLabelText('Title');
+    const verse = screen.getByLabelText('Scripture Reference');
+    fireEvent.change(title, { target: { value: 'Exact refused sermon title' } });
+    fireEvent.change(verse, { target: { value: 'Exact refused sermon verse' } });
+    fireEvent.click(screen.getByText('Save'));
+
+    const dialog = screen.getByRole('dialog', { name: 'Edit Sermon' });
+    // The MESSAGE belongs to the dashboard's card badge — one refusal, one reporter.
+    // The editor's duty is what is checked above: it stays open with the exact text.
+    expect(title).toHaveValue('Exact refused sermon title');
+    expect(verse).toHaveValue('Exact refused sermon verse');
+    expect(mockProps.onClose).not.toHaveBeenCalled();
+  });
+
   test('creates planned date when user sets planned date and saves', async () => {
     render(<EditSermonModal {...mockProps} />);
 
@@ -361,7 +384,7 @@ describe('EditSermonModal Component', () => {
   });
 
   test('delegates save to onSaveRequest when provided', async () => {
-    const onSaveRequest = jest.fn().mockResolvedValue(undefined);
+    const onSaveRequest = jest.fn(() => persistedWrite(Promise.resolve()));
     const onClose = jest.fn();
     const onUpdate = jest.fn();
 
@@ -396,8 +419,9 @@ describe('EditSermonModal Component', () => {
     expect(onUpdate).not.toHaveBeenCalled();
   });
 
-  test('logs delegated save errors and exits submitting state', async () => {
-    const onSaveRequest = jest.fn().mockRejectedValue(new Error('delegated-save-failed'));
+  test('keeps a synchronously refused delegated edit open with its exact text', async () => {
+    const refusal = Object.assign(new Error('Permission denied'), { code: 'permission-denied' });
+    const onSaveRequest = jest.fn(() => persistedWrite(Promise.reject(refusal)));
     const onClose = jest.fn();
     const onUpdate = jest.fn();
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
@@ -418,9 +442,13 @@ describe('EditSermonModal Component', () => {
 
     await waitFor(() => {
       expect(onSaveRequest).toHaveBeenCalled();
-      expect(onClose).toHaveBeenCalledTimes(1);
+      expect(onClose).not.toHaveBeenCalled();
       expect(screen.getByText('Save')).toBeEnabled();
     });
+
+    expect(screen.getByLabelText('Title')).toHaveValue('Delegated Error Title');
+    // The MESSAGE belongs to the dashboard's card badge — one refusal, one reporter.
+    // The editor's duty is what is checked above: it stays open with the exact text.
 
     expect(consoleSpy).toHaveBeenCalledWith(
       'Error scheduling optimistic sermon update:',
@@ -429,5 +457,82 @@ describe('EditSermonModal Component', () => {
     expect(onUpdate).not.toHaveBeenCalled();
 
     consoleSpy.mockRestore();
+  });
+
+  test('renders a dashboard terminal refusal even when the delegated submission is still pending', async () => {
+    const neverSettles = new Promise<void>(() => undefined);
+
+    function DashboardFailureHarness() {
+      const [syncState, setSyncState] = React.useState<{
+        status: 'error';
+        operation: 'update';
+        message: string;
+        refused: true;
+        submissionId: number;
+      }>();
+
+      return (
+        <EditSermonModal
+          {...mockProps}
+          syncState={syncState}
+          onSaveRequest={() => {
+            setSyncState({
+              status: 'error',
+              operation: 'update',
+              message: 'Save refused. Nothing was saved; your text is still here.',
+              refused: true,
+              submissionId: 41,
+            });
+            return queuedWrite('sermon:update:pending', neverSettles);
+          }}
+        />
+      );
+    }
+
+    render(<DashboardFailureHarness />);
+    fireEvent.change(screen.getByLabelText('Title'), {
+      target: { value: 'Detached dashboard refusal title' },
+    });
+    fireEvent.click(screen.getByText('Save'));
+
+    const dialog = screen.getByRole('dialog', { name: 'Edit Sermon' });
+    /**
+     * DIFFERENT from the editor speaking for itself: this is the dashboard's own state
+     * (`syncState`) rendered where the person is looking. The rule forbids a SECOND
+     * reporter, not showing the one reporter's verdict inside the open editor.
+     */
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Save refused. Nothing was saved; your text is still here.'
+    );
+    expect(within(dialog).getByLabelText('Title')).toHaveValue('Detached dashboard refusal title');
+    // Queued acceptance closes the editor before the dashboard's later terminal
+    // refusal is rendered; recovery owns the draft after that boundary.
+    expect(mockProps.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test('closes silently after a delegated offline edit is locally queued', async () => {
+    const onSaveRequest = jest.fn(() => queuedWrite('sermon:update:queued', new Promise<void>(() => undefined)));
+    const onClose = jest.fn();
+    const alertSpy = jest.spyOn(window, 'alert').mockImplementation();
+
+    render(
+      <EditSermonModal
+        sermon={mockSermon}
+        onClose={onClose}
+        onUpdate={jest.fn()}
+        onSaveRequest={onSaveRequest}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText('Title'), {
+      target: { value: 'Queued offline sermon title' },
+    });
+    fireEvent.click(screen.getByText('Save'));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(onSaveRequest).toHaveBeenCalledTimes(1);
+    expect(alertSpy).not.toHaveBeenCalled();
+
+    alertSpy.mockRestore();
   });
 });

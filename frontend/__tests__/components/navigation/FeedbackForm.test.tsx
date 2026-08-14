@@ -29,6 +29,7 @@ jest.mock('react-i18next', () => ({
         'feedback.payloadTooLarge': 'Feedback is too large for one request. Shorten the message or remove an attachment.',
         'feedback.attachmentBudgetRemaining': '{{amount}} MB attachment budget remaining',
         'feedback.pasteHint': 'Or paste a screenshot straight from the clipboard — Ctrl+V / ⌘V',
+        'writeRecovery.refused': 'Save refused. Nothing was saved; your text is still here.',
       };
       return (translations[key] || key).replace('{{amount}}', options?.amount || '');
     }
@@ -307,6 +308,53 @@ describe('FeedbackForm Component', () => {
       expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
       expect(screen.getByRole('button', { name: 'Submit' })).toBeEnabled();
     });
+  });
+
+  test('names a rules refusal and keeps the exact feedback visible', async () => {
+    const dataUrl = 'data:image/png;base64,exact-refused-image';
+    const restore = mockFileReader(dataUrl);
+    const rejectedSubmit = jest.fn().mockRejectedValue(
+      Object.assign(new Error('Forbidden'), { code: 'permission-denied' })
+    );
+    render(<FeedbackForm onSubmit={rejectedSubmit} onCancel={mockOnCancel} />);
+    const type = screen.getByRole('combobox');
+    const textarea = screen.getByPlaceholderText('Please tell us what you think...');
+    await act(async () => {
+      fireEvent.change(screen.getByTestId('image-file-input'), {
+        target: { files: [createMockFile('exact-refused.png')] },
+      });
+      await Promise.resolve();
+    });
+    fireEvent.change(type, { target: { value: 'bug' } });
+    fireEvent.change(textarea, { target: { value: 'Exact feedback that failed' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Save refused. Nothing was saved; your text is still here.'
+    );
+    expect(textarea).toHaveValue('Exact feedback that failed');
+    expect(type).toHaveValue('bug');
+    expect(screen.getByAltText('attachment-1')).toHaveAttribute('src', dataUrl);
+    expect(rejectedSubmit).toHaveBeenCalledWith(
+      'Exact feedback that failed',
+      'bug',
+      [dataUrl]
+    );
+    restore();
+  });
+
+  test('keeps a paused offline submission silent while it is still pending', async () => {
+    const pendingSubmit = jest.fn(() => new Promise<boolean>(() => undefined));
+    render(<FeedbackForm onSubmit={pendingSubmit} onCancel={mockOnCancel} />);
+    fireEvent.change(screen.getByPlaceholderText('Please tell us what you think...'), {
+      target: { value: 'Still sending' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+
+    await waitFor(() => expect(pendingSubmit).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   test('trims whitespace from feedback text', async () => {

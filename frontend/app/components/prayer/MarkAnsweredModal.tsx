@@ -5,27 +5,55 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
+import { toast } from 'sonner';
+
+import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { announceIfPersisted, awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 
 interface Props {
   onClose: () => void;
-  onSubmit: (answerText?: string) => Promise<void>;
+  onSubmit: (answerText?: string, recoveryDraft?: string) => WriteSubmission;
 }
 
 export default function MarkAnsweredModal({ onClose, onSubmit }: Props) {
   const { t } = useTranslation();
   const [answerText, setAnswerText] = useState('');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (text?: string) => {
+    setError(null);
     setSaving(true);
     try {
-      await onSubmit(text?.trim() || undefined);
+      const acceptance = await awaitAcceptance(
+        onSubmit(text?.trim() || undefined, text),
+        // usePrayerRequests' status recovery descriptor reports a late refusal while this screen is mounted.
+        () => undefined
+      );
+      announceIfPersisted(acceptance, () => toast.success(t('prayer.toast.statusChanged')));
       onClose();
-    } catch {
-      // REFUSED or failed — stay open. This answer is human text that lives nowhere
-      // else, so closing would destroy it; the parent has already said what went
-      // wrong. Swallowing the rejection here only keeps it from becoming an
-      // unhandled one — it must never be turned into a close.
+    } catch (errorValue) {
+      // A refusal belongs to the open editor: keep the answer exactly where it was
+      // typed and use the shared wording instead of silently doing nothing.
+      if (isStaleWriteError(errorValue)) {
+        /**
+         * A STALE REFUSAL IS A CHOICE, and the choice lives on the page: the conflict
+         * banner already holds this exact answer text and offers "keep mine / take
+         * theirs". This modal is `fixed inset-0 z-50`, so leaving it open buries that
+         * banner under an overlay nothing can be clicked through — the person was left
+         * with a Save that appeared to do nothing. Stepping aside loses no text.
+         */
+        onClose();
+        return;
+      }
+      /**
+       * SILENT. Every prayer write has a recovery descriptor (`useWriteRecovery` in
+       * usePrayerRequests), and it reports terminal failures with the person's text and a
+       * retry. This editor showed its own message on top — sometimes the raw technical
+       * one — so a single failed save arrived as two messages, one of them untranslated.
+       * The editor's whole duty here is to stay open holding what was typed.
+       */
+      setError(null);
     } finally {
       setSaving(false);
     }
@@ -59,6 +87,8 @@ export default function MarkAnsweredModal({ onClose, onSubmit }: Props) {
           minRows={3}
           autoFocus
         />
+
+        {error && <p className="mt-2 text-sm text-red-500" role="alert">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-4">
           <button

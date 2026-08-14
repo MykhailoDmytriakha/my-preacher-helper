@@ -5,6 +5,7 @@ import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import StudyNoteEditorPage from '../page';
 import { StudyNote } from '@/models/models';
+import { persistedWrite } from '@/utils/recoverableWrite';
 
 // Mock next/navigation
 jest.mock('next/navigation', () => ({
@@ -130,6 +131,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         (useStudyNoteShareLinks as jest.Mock).mockReturnValue({
             shareLinks: [],
             loading: false,
+            deleteShareLink: jest.fn(),
         });
     });
 
@@ -149,6 +151,56 @@ describe('StudyNoteEditorPage Pagination', () => {
 
         // Check the counter (Note 2 of 3 -> "2 / 3")
         expect(screen.getByText('2 / 3')).toBeInTheDocument();
+    });
+
+    it('drops the "saved" tick as soon as the text differs from what the server has', async () => {
+        /**
+         * Found in the browser, not by a test: the green "Saved" stayed up while newer
+         * keystrokes sat unsent. "Saved" is a claim about THIS text, not a memory that a
+         * save happened at some point — and an app that says it while the server has
+         * something else is making exactly the claim this migration exists to stop.
+         */
+        render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+
+        await waitFor(() => expect(screen.getByText('common.saved')).toBeInTheDocument());
+
+        const editor = screen.getByTestId('rich-markdown-editor');
+        fireEvent.change(editor, { target: { value: 'Текст, которого ещё нет на сервере' } });
+
+        await waitFor(() => expect(screen.queryByText('common.saved')).not.toBeInTheDocument());
+    });
+
+    it('brings the tick back once the save lands, instead of hiding it forever', async () => {
+        // The first cut of the fix compared against a REF, which never re-renders: the tick
+        // went out on the first keystroke and never returned, even after the server had the
+        // text. Saying nothing is not better than saying it wrong.
+        const updateNote = jest.fn().mockReturnValue({
+            acceptance: Promise.resolve({ kind: 'persisted' }),
+            persistence: Promise.resolve(),
+            result: Promise.resolve({ id: 'note-2', revision: 2 }),
+        });
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1',
+            notes: mockNotes,
+            loading: false,
+            createNote: jest.fn(),
+            updateNote,
+            deleteNote: jest.fn(),
+        });
+
+        render(<StudyNoteEditorPage />);
+        fireEvent.click(screen.getByTitle('common.edit'));
+
+        fireEvent.change(screen.getByTestId('rich-markdown-editor'), {
+            target: { value: 'Текст, который сервер принял' },
+        });
+        await waitFor(() => expect(screen.queryByText('common.saved')).not.toBeInTheDocument());
+
+        await waitFor(() => expect(updateNote).toHaveBeenCalled(), { timeout: 5000 });
+        await waitFor(() => expect(screen.getByText('common.saved')).toBeInTheDocument(), {
+            timeout: 5000,
+        });
     });
 
     it('navigates to the previous note when the left chevron is clicked', () => {
@@ -388,7 +440,10 @@ describe('StudyNoteEditorPage Pagination', () => {
     describe('Missing Coverage Tests', () => {
         it('handles new note creation on input', async () => {
             jest.useFakeTimers();
-            const mockCreateNote = jest.fn().mockResolvedValue({ id: 'new-note-id' });
+            const mockCreateNote = jest.fn(() => ({
+                ...persistedWrite(Promise.resolve()),
+                note: { id: 'new-note-id' },
+            }));
             (useStudyNotes as jest.Mock).mockReturnValue({
                 uid: 'user-1',
                 notes: mockNotes,
@@ -415,7 +470,14 @@ describe('StudyNoteEditorPage Pagination', () => {
 
         it('shows error if new note creation fails', async () => {
             jest.useFakeTimers();
-            const mockCreateNote = jest.fn().mockRejectedValue(new Error('fail'));
+            const refusal = Object.assign(new Error('Missing or insufficient permissions.'), {
+                code: 'permission-denied',
+                name: 'FirebaseError',
+            });
+            const mockCreateNote = jest.fn(() => ({
+                ...persistedWrite(Promise.reject(refusal)),
+                note: { id: 'new-note-id' },
+            }));
             (useStudyNotes as jest.Mock).mockReturnValue({
                 uid: 'user-1',
                 notes: mockNotes,
@@ -441,7 +503,8 @@ describe('StudyNoteEditorPage Pagination', () => {
         });
 
         it('handles delete note click correctly', async () => {
-            const mockDeleteNote = jest.fn().mockResolvedValue(undefined);
+            const mockDeleteNote = jest.fn(() => persistedWrite(Promise.resolve()));
+            const mockDeleteShareLink = jest.fn(() => persistedWrite(Promise.resolve()));
             (useStudyNotes as jest.Mock).mockReturnValue({
                 uid: 'user-1',
                 notes: mockNotes,
@@ -449,6 +512,11 @@ describe('StudyNoteEditorPage Pagination', () => {
                 createNote: jest.fn(),
                 updateNote: jest.fn(),
                 deleteNote: mockDeleteNote,
+            });
+            (useStudyNoteShareLinks as jest.Mock).mockReturnValue({
+                shareLinks: [{ noteId: 'note-1', id: 'link-1' }],
+                loading: false,
+                deleteShareLink: mockDeleteShareLink,
             });
             window.confirm = jest.fn(() => true);
             (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
@@ -466,6 +534,7 @@ describe('StudyNoteEditorPage Pagination', () => {
 
             await waitFor(() => {
                 expect(mockDeleteNote).toHaveBeenCalledWith('note-1');
+                expect(mockDeleteShareLink).toHaveBeenCalledWith('link-1');
                 expect(mockRouter.push).toHaveBeenCalledWith('/studies');
             });
         });
@@ -509,7 +578,10 @@ describe('StudyNoteEditorPage Pagination', () => {
 
         it('triggers auto-save when content changes', async () => {
             jest.useFakeTimers();
-            const mockUpdateNote = jest.fn().mockResolvedValue(true);
+            const mockUpdateNote = jest.fn(() => {
+                const result = Promise.resolve({ ...mockNotes[1], revision: 1 });
+                return { ...persistedWrite(result), result };
+            });
             (useStudyNotes as jest.Mock).mockReturnValue({
                 uid: 'user-1',
                 notes: mockNotes,
@@ -535,7 +607,14 @@ describe('StudyNoteEditorPage Pagination', () => {
 
         it('handles auto-save error', async () => {
             jest.useFakeTimers();
-            const mockUpdateNote = jest.fn().mockRejectedValue(new Error('save failed'));
+            const refusal = Object.assign(new Error('Missing or insufficient permissions.'), {
+                code: 'permission-denied',
+                name: 'FirebaseError',
+            });
+            const mockUpdateNote = jest.fn(() => {
+                const result = Promise.reject(refusal);
+                return { ...persistedWrite(result), result };
+            });
             (useStudyNotes as jest.Mock).mockReturnValue({ uid: 'user-1', notes: mockNotes, loading: false, createNote: jest.fn(), updateNote: mockUpdateNote, deleteNote: jest.fn() });
 
             render(<StudyNoteEditorPage />);

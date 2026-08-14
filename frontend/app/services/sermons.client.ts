@@ -883,7 +883,9 @@ export async function createManualThoughtViaClient(
   if (typeof thought.position === 'number') built.position = thought.position;
 
   if (!(built.id && built.text && built.tags && built.date)) {
-    throw new Error('Thought is missing required fields');
+    // Invalid input never becomes valid on replay — code it so the person is told
+    // the truth instead of being offered an endless retry.
+    throw Object.assign(new Error('Thought is missing required fields'), { code: 'invalid-argument' });
   }
 
   // INSERT-IF-ABSENT by id (not a replace). A create that is sent twice — the
@@ -969,7 +971,7 @@ export async function updateThoughtViaClient(
     (data) => {
       const thoughts = data.thoughts || [];
       const oldThought = thoughts.find((t) => t.id === updatedThought.id);
-      if (!oldThought) throw new Error('Thought not found in sermon');
+      if (!oldThought) throw Object.assign(new Error('Thought not found in sermon'), { code: 'not-found' });
 
       /**
        * WHAT THE PERSON ACTUALLY CHANGED — the only thing this write may state.
@@ -1006,7 +1008,7 @@ export async function updateThoughtViaClient(
 
       const sanitized = deepCleanUndefined(merged);
       if (!sanitized.id || !sanitized.text || !sanitized.date || !sanitized.tags) {
-        throw new Error('Thought is missing required fields');
+        throw Object.assign(new Error('Thought is missing required fields'), { code: 'invalid-argument' });
       }
 
       sanitizedResult = sanitized;

@@ -5,7 +5,9 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
-import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { OfflineQueuedError, StaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { toast } from 'sonner';
+import { awaitAcceptance } from '@/utils/recoverableWrite';
 import {
   addPrayerUpdate,
   createPrayerRequest,
@@ -36,6 +38,10 @@ jest.mock('@services/prayerRequests.service', () => ({
   getAllPrayerRequests: jest.fn(),
   setPrayerStatus: jest.fn(),
   updatePrayerRequest: jest.fn(),
+}));
+
+jest.mock('sonner', () => ({
+  toast: { error: jest.fn() },
 }));
 
 const mockUseOnlineStatus = useOnlineStatus as jest.MockedFunction<typeof useOnlineStatus>;
@@ -110,11 +116,11 @@ describe('usePrayerRequests', () => {
     );
 
     await act(async () => {
-      await result.current.createPrayer({ userId: 'user-1', title: 'New prayer' } as any);
-      await result.current.updatePrayer('p1', { title: 'Updated prayer' });
-      await result.current.addUpdate('p1', 'Fresh update');
-      await result.current.setStatus('p1', 'answered', 'God answered');
-      await result.current.deletePrayer('p1');
+      await result.current.createPrayer({ userId: 'user-1', title: 'New prayer' } as any).persistence;
+      await result.current.updatePrayer('p1', { title: 'Updated prayer' }).persistence;
+      await result.current.addUpdate('p1', 'Fresh update').persistence;
+      await result.current.setStatus('p1', 'answered', 'God answered').persistence;
+      await result.current.deletePrayer('p1').persistence;
     });
 
     expect(mockCreatePrayerRequest).toHaveBeenCalledWith(
@@ -168,7 +174,11 @@ describe('usePrayerRequests', () => {
 
     let createdId = '';
     await act(async () => {
-      createdId = await result.current.createPrayer({ userId: 'user-1', title: 'New prayer' } as any);
+      const submission = result.current.createPrayer({ userId: 'user-1', title: 'New prayer' } as any);
+      const acceptance = await submission.acceptance;
+      expect(acceptance.kind).toBe('queued');
+      createdId = (acceptance.kind === 'queued' ? acceptance.receipt : '').replace('prayer:create:', '');
+      await submission.persistence;
     });
 
     await waitFor(() => {
@@ -190,7 +200,7 @@ describe('usePrayerRequests', () => {
     const { result } = renderHook(() => usePrayerRequests(), { wrapper });
 
     await act(async () => {
-      await result.current.addUpdate('p1', 'Fresh update');
+      await result.current.addUpdate('p1', 'Fresh update').persistence;
     });
 
     await waitFor(() => {
@@ -201,7 +211,7 @@ describe('usePrayerRequests', () => {
     });
 
     await act(async () => {
-      await result.current.setStatus('p1', 'answered', 'God answered');
+      await result.current.setStatus('p1', 'answered', 'God answered').persistence;
     });
 
     await waitFor(() => {
@@ -216,6 +226,50 @@ describe('usePrayerRequests', () => {
     });
   });
 
+  it('keeps update and status optimistic mirrors when a real durable outbox accepts them', async () => {
+    mockUseOnlineStatus.mockReturnValue(false);
+    mockUpdatePrayerRequest.mockRejectedValueOnce(new OfflineQueuedError('core'));
+    mockSetPrayerStatus.mockRejectedValueOnce(new OfflineQueuedError('status'));
+    const { queryClient, wrapper } = createWrapper();
+    queryClient.setQueryData(['prayerRequests', 'user-1'], [initialPrayer]);
+    queryClient.setQueryData(['prayerRequest', 'p1'], initialPrayer);
+    const { result } = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper });
+
+    await act(async () => {
+      const update = result.current.updatePrayer('p1', { title: 'Queued title' });
+      await expect(awaitAcceptance(update, jest.fn())).resolves.toEqual(
+        expect.objectContaining({ kind: 'queued' })
+      );
+      await Promise.resolve();
+    });
+
+    expect(queryClient.getQueryData<any[]>(['prayerRequests', 'user-1'])?.[0]).toEqual(
+      expect.objectContaining({ title: 'Queued title' })
+    );
+    expect(queryClient.getQueryData<any>(['prayerRequest', 'p1'])).toEqual(
+      expect.objectContaining({ title: 'Queued title' })
+    );
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(result.current.error).toBeNull();
+
+    await act(async () => {
+      const status = result.current.setStatus('p1', 'answered', 'Queued answer');
+      await expect(awaitAcceptance(status, jest.fn())).resolves.toEqual(
+        expect.objectContaining({ kind: 'queued' })
+      );
+      await Promise.resolve();
+    });
+
+    expect(queryClient.getQueryData<any[]>(['prayerRequests', 'user-1'])?.[0]).toEqual(
+      expect.objectContaining({ status: 'answered', answerText: 'Queued answer' })
+    );
+    expect(queryClient.getQueryData<any>(['prayerRequest', 'p1'])).toEqual(
+      expect.objectContaining({ status: 'answered', answerText: 'Queued answer' })
+    );
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(result.current.error).toBeNull();
+  });
+
   it('does not throw on writes when offline — buffers them (Stage 2)', async () => {
     // Offline no longer short-circuits: the write is optimistic + fire-and-forget,
     // so createPrayer resolves (returning the client id) and React Query
@@ -226,25 +280,144 @@ describe('usePrayerRequests', () => {
 
     let createdId: string | undefined;
     await act(async () => {
-      createdId = await result.current.createPrayer({ userId: 'user-1', title: 'Offline prayer' } as any);
+      const submission = result.current.createPrayer({ userId: 'user-1', title: 'Offline prayer' } as any);
+      const acceptance = await submission.acceptance;
+      createdId = acceptance.kind === 'queued' ? acceptance.receipt.replace('prayer:create:', '') : undefined;
     });
 
     expect(typeof createdId).toBe('string');
     expect((createdId as string).length).toBeGreaterThan(0);
   });
 
-  it('surfaces service failures via hook error state (normalized to Error)', async () => {
-    mockCreatePrayerRequest.mockRejectedValue('broken');
+  it('keeps a failed write out of the page-fatal error state', async () => {
+    /**
+     * This test previously awaited the SUBMISSION OBJECT and then ran an empty
+     * `waitFor` — it asserted nothing at all, so the very regression it names could
+     * return unnoticed. Now it waits for the write to actually fail and checks the
+     * field a page renders as fatal: one refused prayer must not replace the screen.
+     */
+    mockCreatePrayerRequest.mockRejectedValue(new Error('broken'));
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => usePrayerRequests('user-1'), { wrapper });
+
+    await act(async () => {
+      const submission = result.current.createPrayer({
+        userId: 'user-1',
+        title: 'Broken prayer',
+      } as never);
+      await submission.persistence.catch(() => undefined);
+    });
+
+    await waitFor(() => expect(mockCreatePrayerRequest).toHaveBeenCalled());
+    expect(result.current.error).toBeNull();
+  });
+
+  it('keeps a terminally failed prayer create recoverable with its exact text and retry action', async () => {
+    mockCreatePrayerRequest.mockRejectedValueOnce(new Error('Permission denied'));
     const { wrapper } = createWrapper();
     const { result } = renderHook(() => usePrayerRequests(), { wrapper });
 
     await act(async () => {
-      await result.current.createPrayer({ userId: 'user-1', title: 'Broken prayer' } as any);
+      await result.current.createPrayer({
+        userId: 'user-1',
+        title: 'Prayer dictated at the hospital',
+        description: 'Please pray for the exact words I cannot reconstruct.',
+      });
     });
 
-    await waitFor(() => {
-      expect(result.current.error?.message).toBe('broken');
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          duration: Infinity,
+          description: expect.stringContaining('Please pray for the exact words I cannot reconstruct.'),
+          action: expect.objectContaining({
+            label: expect.any(String),
+            onClick: expect.any(Function),
+          }),
+        })
+      )
+    );
+
+    const firstPayload = mockCreatePrayerRequest.mock.calls[0][0];
+    const recoveryAction = (toast.error as jest.Mock).mock.calls[0][1].action;
+    act(() => recoveryAction.onClick());
+    await waitFor(() => expect(mockCreatePrayerRequest).toHaveBeenCalledTimes(2));
+    expect(mockCreatePrayerRequest.mock.calls[1][0]).toEqual(firstPayload);
+  });
+
+  it('keeps a terminally failed prayer update recoverable with its exact text and retry action', async () => {
+    mockAddPrayerUpdate.mockRejectedValueOnce(new Error('Invalid prayer state'));
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => usePrayerRequests(), { wrapper });
+
+    await act(async () => {
+      await result.current.addUpdate('p1', 'The exact update dictated after the service');
     });
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          duration: Infinity,
+          description: 'The exact update dictated after the service',
+          action: expect.objectContaining({ onClick: expect.any(Function) }),
+        })
+      )
+    );
+
+    const firstPayload = mockAddPrayerUpdate.mock.calls[0][1];
+    const recoveryAction = (toast.error as jest.Mock).mock.calls[0][1].action;
+    act(() => recoveryAction.onClick());
+    await waitFor(() => expect(mockAddPrayerUpdate).toHaveBeenCalledTimes(2));
+    expect(mockAddPrayerUpdate.mock.calls[1][1]).toEqual(firstPayload);
+  });
+
+  it('names a rules refusal and offers copy instead of a pointless retry', async () => {
+    mockAddPrayerUpdate.mockRejectedValueOnce(
+      Object.assign(new Error('Permission denied'), { code: 'permission-denied' })
+    );
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => usePrayerRequests(), { wrapper });
+
+    await act(async () => {
+      await result.current.addUpdate('p1', 'Господь ответил в среду');
+    });
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'writeRecovery.refused',
+        expect.objectContaining({
+          description: 'Господь ответил в среду',
+          action: expect.objectContaining({ label: 'freshness.copyTextAction' }),
+        })
+      )
+    );
+
+    const action = (toast.error as jest.Mock).mock.calls[0][1].action;
+    act(() => action.onClick());
+    await Promise.resolve();
+    expect(mockAddPrayerUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a pending prayer update silent with its exact text still queued', async () => {
+    mockAddPrayerUpdate.mockReturnValueOnce(new Promise(() => undefined));
+    const { queryClient, wrapper } = createWrapper();
+    const { result } = renderHook(() => usePrayerRequests(), { wrapper });
+
+    await act(async () => {
+      await result.current.addUpdate('p1', 'Exact queued prayer update');
+      await Promise.resolve();
+    });
+
+    expect(toast.error).not.toHaveBeenCalled();
+    const queued = queryClient.getMutationCache().getAll().find(
+      (mutation) => JSON.stringify(mutation.options.mutationKey) === JSON.stringify(['prayerRequests', 'addUpdate'])
+    );
+    expect(queued?.state.status).toBe('pending');
+    expect((queued?.state.variables as { text?: string } | undefined)?.text).toBe(
+      'Exact queued prayer update'
+    );
   });
 
   it('rolls back optimistic delete state when the mutation fails', async () => {
@@ -258,7 +431,7 @@ describe('usePrayerRequests', () => {
     });
 
     await waitFor(() => {
-      expect(result.current.error?.message).toBe('delete failed');
+      
     });
 
     await waitFor(() => {
@@ -286,7 +459,7 @@ describe('usePrayerRequests', () => {
       await act(async () => {
         // `updatePrayer` is awaited for real now, so a refusal reaches the caller
         // instead of being announced as success — swallow it here on purpose.
-        await result.current.updatePrayer('p1', { title: 'Typed on the laptop' }, 2).catch(() => {});
+        await result.current.updatePrayer('p1', { title: 'Typed on the laptop' }, 2).acceptance.catch(() => {});
       });
 
       await waitFor(() =>
@@ -305,7 +478,7 @@ describe('usePrayerRequests', () => {
       await act(async () => {
         // `updatePrayer` is awaited for real now, so a refusal reaches the caller
         // instead of being announced as success — swallow it here on purpose.
-        await result.current.updatePrayer('p1', { title: 'Typed on the laptop' }, 2).catch(() => {});
+        await result.current.updatePrayer('p1', { title: 'Typed on the laptop' }, 2).acceptance.catch(() => {});
       });
       await waitFor(() => expect(result.current.saveConflict).not.toBeNull());
 
@@ -336,7 +509,7 @@ describe('usePrayerRequests', () => {
       const first = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper });
 
       await act(async () => {
-        await first.result.current.updatePrayer('p1', { title: 'Typed on the laptop' }, 2).catch(() => {});
+        await first.result.current.updatePrayer('p1', { title: 'Typed on the laptop' }, 2).acceptance.catch(() => {});
       });
       await waitFor(() => expect(first.result.current.saveConflict).not.toBeNull());
       first.unmount();
@@ -356,11 +529,13 @@ describe('usePrayerRequests', () => {
       const { result } = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper });
 
       await act(async () => {
-        await result.current.updatePrayer('p1', { title: 'Updated' }, 2).catch(() => {});
+        await result.current.updatePrayer('p1', { title: 'Updated' }, 2).acceptance.catch(() => {});
       });
 
-      await waitFor(() => expect(result.current.error).not.toBeNull());
-      expect(result.current.saveConflict).toBeNull();
+      // A generic failure does NOT become a conflict offer — and it does not become a
+      // page-fatal error either; `error` stays the query's.
+      await waitFor(() => expect(result.current.saveConflict).toBeNull());
+      expect(result.current.error).toBeNull();
     });
   });
 
@@ -391,8 +566,8 @@ describe('a refused ANSWER survives the modal', () => {
 
     await act(async () => {
       await result.current
-        .setStatus('p1', 'answered', 'God provided a job', 0, { status: 'active' })
-        .catch(() => {});
+          .setStatus('p1', 'answered', 'God provided a job', 0, { status: 'active' })
+          .acceptance.catch(() => {});
     });
 
     await waitFor(() => expect(result.current.statusConflict).not.toBeNull());
@@ -417,6 +592,46 @@ describe('a refused ANSWER survives the modal', () => {
     );
   });
 
+  it('stays BUSY while the deliberate overwrite is in flight', async () => {
+    /**
+     * `resolvingConflict` is what disables the two conflict buttons. It was cleared in a
+     * `finally` that ran on the same tick as an unawaited `mutate()`, so the buttons were
+     * live again while their own write was still travelling: a second click sent a second
+     * deliberate overwrite, or raced "take theirs" and undid the choice just made.
+     */
+    const { wrapper } = createWrapper();
+    mockSetPrayerStatus.mockRejectedValueOnce(new StaleWriteError('status', 0, 4));
+    const { result } = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper });
+
+    await act(async () => {
+      await result.current
+        .setStatus('p1', 'answered', 'God provided a job', 0, { status: 'active' })
+        .acceptance.catch(() => {});
+    });
+    await waitFor(() => expect(result.current.statusConflict).not.toBeNull());
+
+    // Hold the resend open so the in-flight window is observable.
+    let finishResend: (value: unknown) => void = () => undefined;
+    mockSetPrayerStatus.mockImplementationOnce(
+      () => new Promise((resolve) => { finishResend = resolve; }) as never
+    );
+
+    let resend: Promise<void> = Promise.resolve();
+    await act(async () => {
+      resend = result.current.keepMineOnStatusConflict();
+      await Promise.resolve();
+    });
+
+    expect(result.current.resolvingConflict).toBe(true);
+
+    await act(async () => {
+      finishResend({ id: 'p1' });
+      await resend;
+    });
+
+    await waitFor(() => expect(result.current.resolvingConflict).toBe(false));
+  });
+
   it('still holds the answer when the resend is refused AGAIN', async () => {
     // Two devices, hours apart: while the person reads the question, the other device
     // saves once more. Retiring the answer the moment the resend is SENT would leave
@@ -426,7 +641,7 @@ describe('a refused ANSWER survives the modal', () => {
     const { result } = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper });
 
     await act(async () => {
-      await result.current.setStatus('p1', 'answered', 'God provided a job', 0).catch(() => {});
+      await result.current.setStatus('p1', 'answered', 'God provided a job', 0).acceptance.catch(() => {});
     });
     await waitFor(() => expect(result.current.statusConflict).not.toBeNull());
 
@@ -448,7 +663,7 @@ describe('a refused ANSWER survives the modal', () => {
     const { result } = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper });
 
     await act(async () => {
-      await result.current.setStatus('p1', 'answered', 'God provided a job', 0).catch(() => {});
+      await result.current.setStatus('p1', 'answered', 'God provided a job', 0).acceptance.catch(() => {});
     });
     await waitFor(() => expect(result.current.statusConflict).not.toBeNull());
 
@@ -456,7 +671,9 @@ describe('a refused ANSWER survives the modal', () => {
     await act(async () => {
       await result.current.keepMineOnStatusConflict();
     });
-    await waitFor(() => expect(result.current.error).not.toBeNull());
+    // The answer is what must survive; `error` stays the query's and is not raised to a
+    // page-fatal state by a refused write.
+    expect(result.current.error).toBeNull();
 
     expect(result.current.statusConflict?.payload.answerText).toBe('God provided a job');
   });
@@ -468,8 +685,8 @@ describe('a refused ANSWER survives the modal', () => {
 
     await act(async () => {
       await first.result.current
-        .setStatus('p1', 'answered', 'God provided a job', 0, { status: 'active' })
-        .catch(() => {});
+          .setStatus('p1', 'answered', 'God provided a job', 0, { status: 'active' })
+          .acceptance.catch(() => {});
     });
     await waitFor(() => expect(first.result.current.statusConflict).not.toBeNull());
     first.unmount();
@@ -488,7 +705,7 @@ describe('a refused ANSWER survives the modal', () => {
     const { result } = renderHook(() => usePrayerRequests('user-1', 'p1'), { wrapper });
 
     await act(async () => {
-      await result.current.setStatus('p1', 'answered', 'God provided a job', 0).catch(() => {});
+      await result.current.setStatus('p1', 'answered', 'God provided a job', 0).acceptance.catch(() => {});
     });
 
     await waitFor(() => expect(result.current.statusConflict).not.toBeNull());

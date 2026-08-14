@@ -91,9 +91,11 @@ describe('QueryProvider', () => {
     ) => boolean;
 
     const refusal = Object.assign(new Error('refused'), { isStaleWrite: true });
+    const rulesRefusal = Object.assign(new Error('denied'), { code: 'permission-denied' });
     const queued = Object.assign(new Error('queued'), { isOfflineQueued: true });
 
     expect(retry(0, refusal)).toBe(false);
+    expect(retry(0, rulesRefusal)).toBe(false);
     expect(retry(0, queued)).toBe(false);
     // A transient failure still gets the retries that offline work depends on.
     expect(retry(0, new Error('network hiccup'))).toBe(true);
@@ -124,10 +126,15 @@ describe('QueryProvider', () => {
     const onError = (mutationCache.config as any).onError;
     onError({ status: 401, message: 'Unauthorized' });
 
+    // Through the translation layer, and saying only the CAUSE. The old wording promised
+    // "edits are saved locally", which contradicted the write's own recovery message
+    // ("nothing was saved") and pointed the person at the wrong action.
     expect(toast.error).toHaveBeenCalledWith(
-      expect.stringContaining('session has expired'),
+      expect.any(String),
       expect.objectContaining({ id: 'auth-expired-error' })
     );
+    const said = (toast.error as jest.Mock).mock.calls[0][0] as string;
+    expect(said).not.toMatch(/saved locally/i);
   });
 
   it('shows the hard-cap message globally for a typed mutation error', async () => {

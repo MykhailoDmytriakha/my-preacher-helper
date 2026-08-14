@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useUserSettings } from '@/hooks/useUserSettings';
+import { awaitAcceptance } from '@/utils/recoverableWrite';
 
 export default function StructurePreviewToggle() {
     const { t } = useTranslation();
@@ -46,13 +47,20 @@ export default function StructurePreviewToggle() {
     const handleToggle = async () => {
         if (!user?.uid) return;
 
+        // Queued acceptance means the refusal comes LATE; a no-op there hides it.
+        const previous = enabled;
+        const reportFailure = (error: unknown) => {
+            console.error('❌ StructurePreviewToggle: Error updating setting:', error);
+            // Message comes from the shared recovery toast; restore the switch only.
+            setEnabled(previous);
+        };
+
         try {
             const newValue = !enabled;
-            await updateStructurePreviewAccess(newValue);
+            await awaitAcceptance(updateStructurePreviewAccess(newValue), reportFailure);
             setEnabled(newValue);
         } catch (error) {
-            console.error('❌ StructurePreviewToggle: Error updating setting:', error);
-            alert('Failed to update setting');
+            reportFailure(error);
         }
     };
 

@@ -169,9 +169,12 @@ describe("ScratchPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add" }));
 
     expect(props.addScratchNote).toHaveBeenCalledWith("Manual note");
-    expect(toastMock().success).toHaveBeenCalledWith(
+    // NO success message: the note lands in an in-process queue that does not
+    // survive a reload, so "added" would be a claim about durability nobody made.
+    // The note appearing in the list is the acceptance signal.
+    expect(toastMock().success).not.toHaveBeenCalledWith(
       "Note added to scratch notes.",
-      expect.objectContaining({ position: "bottom-right" })
+      expect.anything()
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Close" }));

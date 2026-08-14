@@ -4,14 +4,18 @@ import { Bars3Icon, CheckIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroico
 import Link from 'next/link';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 
 import { SubPointList } from '@/components/column/SubPointList';
 import { useConnection } from '@/providers/ConnectionProvider';
 import { getSermonOutline, updateSermonOutline } from '@/services/outline.service';
+import { newClientId } from '@/utils/clientId';
+import { awaitAcceptance, persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 import { getSectionStyling } from '@/utils/themeColors';
 import { getPreachOrderedThoughtsBySection } from '@/utils/thoughtOrdering';
 import { getFocusModeUrl } from '@/utils/urlUtils';
+import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { getSectionLabel } from '@lib/sections';
 
 import type { Sermon, SermonOutline, SermonPoint, SubPoint } from '@/models/models';
@@ -194,7 +198,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
     }
 
     const newPoint = {
-      id: Date.now().toString(),
+      id: newClientId(),
       text: textToSave,
     };
 
@@ -269,7 +273,14 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
 
         const generationAtRequest = saveGenerationRef.current;
         // `preferMine` — this view cannot hold a refused plan; see the writer.
-        const saved = await updateSermonOutline(sermon.id, outlineToSave, baseOutlineRef.current, 'preferMine');
+        const request = updateSermonOutline(sermon.id, outlineToSave, baseOutlineRef.current, 'preferMine');
+        const acceptance = await awaitAcceptance(
+          typeof navigator !== 'undefined' && navigator.onLine === false
+            ? queuedMutation(`outline:${sermon.id}`, request)
+            : persistedWrite(request),
+          (error) => toast.error(t(writeFailureTranslationKey(error, 'errors.saveOutlineError')))
+        );
+        const saved = acceptance.kind === 'persisted' ? await request : outlineToSave;
 
         /**
          * THE BASE AND WHAT IS ON SCREEN MOVE TOGETHER — OR NOT AT ALL.
@@ -302,7 +313,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
         onOutlineUpdate?.(committed);
       } catch (err) {
         console.error("Error saving sermon outline:", err);
-        setError(t('errors.saveOutlineError'));
+        setError(t(writeFailureTranslationKey(err, 'errors.saveOutlineError')));
       } finally {
         setSaving(false);
       }

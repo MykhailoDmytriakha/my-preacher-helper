@@ -35,10 +35,7 @@ export default function SeriesPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [sort, setSort] = useState<SortOption>('recent');
 
-  const handleCreateSeries = async (seriesData: Parameters<typeof createNewSeries>[0]) => {
-    await createNewSeries(seriesData);
-    setShowCreateModal(false);
-  };
+  const handleCreateSeries = (seriesData: Parameters<typeof createNewSeries>[0]) => createNewSeries(seriesData);
 
   const filteredSeries = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();

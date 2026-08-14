@@ -51,25 +51,82 @@ describe('useSermon', () => {
     window.localStorage.clear();
   });
 
-  it('hydrates sermon detail from cached list data immediately while online', () => {
+  it('shows the newer server copy instead of an older sermon cached in the list', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
       },
     });
-    const cachedSermon = makeSermon();
-    queryClient.setQueryData(['sermons', 'user-1'], [cachedSermon]);
-    mutableAuth.currentUser = { uid: 'user-1' };
+    const cachedSermon = makeSermon({
+      userId: 'test-user-id',
+      title: 'Older sermon left on this device',
+      rev: { core: 1 },
+    });
+    queryClient.setQueryData(['sermons', 'test-user-id'], [cachedSermon]);
+    mutableAuth.currentUser = { uid: 'test-user-id' };
     mockUseOnlineStatus.mockReturnValue(true);
-    mockGetSermonById.mockResolvedValue(makeSermon({ title: 'Server sermon' }));
+    mockGetSermonById.mockResolvedValue(
+      makeSermon({
+        userId: 'test-user-id',
+        title: 'Newer sermon saved elsewhere',
+        rev: { core: 2 },
+      })
+    );
 
     const { result } = renderHook(() => useSermon('sermon-1'), {
       wrapper: createWrapper(queryClient),
     });
 
-    expect(result.current.sermon).toEqual(cachedSermon);
-    expect(result.current.loading).toBe(false);
-    expect(mockGetSermonById).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(result.current.sermon?.title).toBe('Newer sermon saved elsewhere')
+    );
+    expect(mockGetSermonById).toHaveBeenCalledWith('sermon-1');
+  });
+
+  it('keeps an unsaved local sermon edit when the server revision is not ahead', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const unsaved = makeSermon({
+      userId: 'test-user-id',
+      title: 'Edited here, not saved yet',
+      rev: { core: 4 },
+    });
+    queryClient.setQueryData(['sermons', 'test-user-id'], [unsaved]);
+    mutableAuth.currentUser = { uid: 'test-user-id' };
+    mockUseOnlineStatus.mockReturnValue(true);
+    mockGetSermonById.mockResolvedValue(
+      makeSermon({
+        userId: 'test-user-id',
+        title: 'What the server still holds',
+        rev: { core: 4 },
+      })
+    );
+
+    const { result } = renderHook(() => useSermon('sermon-1'), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(mockGetSermonById).toHaveBeenCalledWith('sermon-1'));
+    expect(result.current.sermon?.title).toBe('Edited here, not saved yet');
+  });
+
+  it('keeps showing the stored sermon when the server request fails', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const stored = makeSermon({
+      userId: 'test-user-id',
+      title: 'Still readable after a failed refresh',
+      rev: { core: 1 },
+    });
+    queryClient.setQueryData(['sermons', 'test-user-id'], [stored]);
+    mutableAuth.currentUser = { uid: 'test-user-id' };
+    mockUseOnlineStatus.mockReturnValue(true);
+    mockGetSermonById.mockRejectedValue(new Error('network down'));
+
+    const { result } = renderHook(() => useSermon('sermon-1'), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(mockGetSermonById).toHaveBeenCalledWith('sermon-1'));
+    expect(result.current.sermon?.title).toBe('Still readable after a failed refresh');
   });
 
   /**

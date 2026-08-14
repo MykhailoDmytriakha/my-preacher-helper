@@ -9,6 +9,24 @@ import { newClientId } from '@/utils/clientId';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
+const codeByStatus: Record<number, string> = {
+  400: 'invalid-argument',
+  401: 'unauthenticated',
+  403: 'permission-denied',
+  404: 'not-found',
+  413: 'invalid-argument',
+};
+
+async function writeResponseError(response: Response, fallbackMessage: string): Promise<Error> {
+  // A proxy can return HTML for a 413. Parse best-effort so that malformed error
+  // bodies cannot erase the response class which tells recovery not to retry.
+  const body = await response.json().catch(() => null);
+  const data = body && typeof body === 'object' ? (body as { error?: unknown; code?: unknown }) : {};
+  const message = typeof data.error === 'string' ? data.error : fallbackMessage;
+  const code = typeof data.code === 'string' ? data.code : codeByStatus[response.status];
+  return Object.assign(new Error(message), { status: response.status, ...(code ? { code } : {}) });
+}
+
 // Groups use the client Firestore SDK for reads and own-doc writes, including
 // meeting dates (embedded read-modify-write of the group's meetingDates[] array
 // — same `groups` doc, so the native offline queue owns durability). Only
@@ -310,7 +328,7 @@ export const deleteGroup = async (groupId: string): Promise<void> => {
   });
 
   if (!response.ok) {
-    throw new Error('Failed to delete group');
+    throw await writeResponseError(response, 'Failed to delete group');
   }
 };
 

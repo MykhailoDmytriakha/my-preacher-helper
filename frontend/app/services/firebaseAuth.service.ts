@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner";
 
 import app from "@/config/firebaseConfig";
+import { forgetReportedFailures } from "@/utils/writeRecovery";
 import { updateUserProfile } from "@services/userSettings.service";
 const GUEST_EXPIRATION_DAYS = 5;
 
@@ -142,7 +143,17 @@ export const signInAsGuest = async (): Promise<User | null> => {
 export const logOut = async (): Promise<void> => {
   try {
     await signOut(auth);
-    console.log("User logged out");
+    /**
+     * Recovery messages live until dismissed — that is deliberate, because they hold
+     * text a person must not lose. But they must not OUTLIVE the person: a refusal
+     * toast carrying someone's sermon title, prayer answer or note, with a "copy my
+     * text" button, stayed on screen through a sign-out and was there for whoever
+     * signed in next.
+     */
+    toast.dismiss();
+    // …and forget that those refusals were ever announced, so signing back in shows
+    // them again rather than treating them as handled.
+    forgetReportedFailures();
   } catch (error) {
     console.error("Error logging out:", error);
     throw error;

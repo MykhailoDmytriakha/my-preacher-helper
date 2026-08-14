@@ -1,9 +1,10 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
+import { toast } from 'sonner';
 
 import SermonHeader from '@/components/sermon/SermonHeader';
 import { Sermon, Series } from '@/models/models';
-import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { OfflineQueuedError, StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { getSermonById, updateSermon } from '@/services/sermon.service';
 import { getExportContent } from '@utils/exportContent';
 import '@testing-library/jest-dom';
@@ -22,7 +23,7 @@ jest.mock('@/services/sermon.service', () => ({
 }));
 
 jest.mock('sonner', () => ({
-  toast: { error: jest.fn(), success: jest.fn() }
+  toast: { error: jest.fn(), message: jest.fn(), success: jest.fn() }
 }));
 
 jest.mock('@utils/dateFormatter', () => ({
@@ -305,6 +306,25 @@ describe('SermonHeader Component', () => {
       });
 
       expect(mockOnUpdate).not.toHaveBeenCalled();
+    });
+
+    it('uses a neutral waiting notice, never success, when the durable outbox owns the title write', async () => {
+      mockUpdateSermon.mockRejectedValue(new OfflineQueuedError('core'));
+
+      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
+
+      const titleEditButton = screen.getAllByTitle('Edit')[0];
+      fireEvent.click(titleEditButton);
+      fireEvent.change(screen.getByDisplayValue('Test Sermon Title'), {
+        target: { value: 'Queued title' },
+      });
+      fireEvent.click(screen.getByTitle('Save'));
+
+      await waitFor(() => {
+        expect(toast.message).toHaveBeenCalledWith('freshness.queuedPending');
+      });
+      // The outbox owns a future attempt; it is not evidence that the server saved it.
+      expect(toast.success).not.toHaveBeenCalledWith('freshness.queuedPending');
     });
   });
 

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { auth, checkGuestExpiration } from "@services/firebaseAuth.service";
+import { auth, logOut, checkGuestExpiration } from "@services/firebaseAuth.service";
 
 export function GuestBanner() {
   const [isGuest] = useState(false);
@@ -11,7 +11,10 @@ export function GuestBanner() {
     const user = auth.currentUser;
     if (user?.isAnonymous && !checkGuestExpiration(user)) {
       localStorage.removeItem('guestUser');
-      auth.signOut();
+      // Through logOut, never `auth.signOut()` directly: signing out has to clear the
+      // recovery messages too, and those hold text — a sermon title, a prayer answer —
+      // that must not be waiting on screen for whoever uses this browser next.
+      void logOut();
     }
   }, []);
   

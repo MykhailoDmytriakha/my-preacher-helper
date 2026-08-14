@@ -4,13 +4,29 @@ import React from 'react';
 
 import SermonDetailPage from '@/(pages)/(private)/sermons/[id]/page';
 import { TestProviders } from '@test-utils/test-providers';
-import { createAudioThought } from '@services/thought.service';
+import { createAudioThought, createManualThought, updateThought } from '@services/thought.service';
 import { applyScratchToOutlineViaClient } from '@/services/sermons.client';
 import { updateSermonOutline } from '@/services/outline.service';
 import { mergeOutline } from '@/utils/mergeOutline';
 import '@testing-library/jest-dom';
 
 import type { ScratchNote, SermonOutline } from '@/models/models';
+
+let mockFirestoreSnapshotNext: ((snapshot: {
+  exists: () => boolean;
+  data: () => { thoughts: Array<{ id: string }> };
+}) => void) | null = null;
+const mockFirestoreUnsubscribe = jest.fn();
+
+jest.mock('firebase/firestore', () => ({
+  doc: jest.fn((_db: unknown, collectionName: string, id: string) => ({ collectionName, id })),
+  onSnapshot: jest.fn((_ref: unknown, _options: unknown, next: typeof mockFirestoreSnapshotNext) => {
+    mockFirestoreSnapshotNext = next;
+    return mockFirestoreUnsubscribe;
+  }),
+}));
+
+jest.mock('@/config/firebaseClientDb', () => ({ getClientDb: () => ({}) }));
 
 // Render portals inline so AudioRecorder stays in the React tree without DOM moves
 jest.mock('react-dom', () => ({
@@ -79,11 +95,24 @@ jest.mock('@/components/sermon/ThoughtList', () => ({ onDelete, onEditStart }: a
   </div>
 ));
 
-jest.mock('@components/EditThoughtModal', () => ({ onSave }: any) => (
-  <div data-testid="edit-thought-modal">
-    <button onClick={() => onSave('Updated text', ['main'], 'main-1')}>Mock Save</button>
-  </div>
-));
+let mockCreateThoughtModalProps: any = null;
+let mockEditThoughtModalProps: any = null;
+jest.mock('@components/CreateThoughtModal', () => ({
+  __esModule: true,
+  default: (props: any) => {
+    mockCreateThoughtModalProps = props;
+    return null;
+  },
+}));
+
+jest.mock('@components/EditThoughtModal', () => ({ onSave, ...props }: any) => {
+  mockEditThoughtModalProps = { onSave, ...props };
+  return (
+    <div data-testid="edit-thought-modal">
+      <button onClick={() => onSave('Updated text', ['main'], 'main-1')}>Mock Save</button>
+    </div>
+  );
+});
 
 jest.mock('@/components/sermon/prep/PrepStepCard', () => ({ children, title }: any) => (
   <div data-testid="prep-step-card" title={title}>
@@ -118,6 +147,20 @@ jest.mock('@/providers/AuthProvider', () => ({
   AuthProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+/**
+ * The LIVE identity, mutable on purpose. Late-refusal reporters ask who is signed in at
+ * the moment they speak — a hook value cannot answer that after unmount — so tests that
+ * cover "the person left / signed out" must be able to change it.
+ */
+let signedInUid: string | undefined = 'u1';
+jest.mock('@services/firebaseAuth.service', () => ({
+  auth: {
+    get currentUser() {
+      return signedInUid ? { uid: signedInUid } : null;
+    },
+  },
+}));
+
 jest.mock('@/hooks/useSermon', () => ({
   __esModule: true,
   default: jest.fn().mockReturnValue({
@@ -143,6 +186,7 @@ jest.mock('@/hooks/useSermon', () => ({
 // Mock services
 jest.mock('@/services/thought.service', () => ({
   createAudioThought: jest.fn(),
+  createManualThought: jest.fn(),
   deleteThought: jest.fn(),
   updateThought: jest.fn(),
 }));
@@ -308,6 +352,10 @@ describe('Sermon Detail Page', () => {
     jest.clearAllMocks();
     mockLocalStorage.getItem.mockReturnValue(null);
     mockScratchPanelProps = {};
+    mockCreateThoughtModalProps = null;
+    mockEditThoughtModalProps = null;
+    mockFirestoreSnapshotNext = null;
+    mockFirestoreUnsubscribe.mockClear();
     require('@/hooks/useSermon').default.mockReturnValue(defaultUseSermonReturn);
     const sermonsClient = require('@/services/sermons.client');
     sermonsClient.addScratchNoteViaClient.mockResolvedValue([]);
@@ -368,6 +416,273 @@ describe('Sermon Detail Page', () => {
       });
     });
 
+  });
+
+  describe('Manual thought persistence acceptance', () => {
+    it('says NOTHING when the refusal lands after someone else has signed in', async () => {
+    /**
+     * The privacy case a frozen snapshot could not catch. These reporters live in
+     * closures that outlive the page and the session, so they must read who is signed in
+     * NOW: after A leaves and B signs in, A's dictated text must never appear on B's
+     * screen — and the sign-out sweep cannot help, because this message would be created
+     * after it ran.
+     */
+    const { toast } = require('sonner') as { toast: { error: jest.Mock } };
+    const toastError = jest.spyOn(toast, 'error').mockImplementation(() => 'toast-id');
+    let rejectUpdate!: (error: unknown) => void;
+    (updateThought as jest.Mock).mockReturnValue(
+      new Promise((_resolve, reject) => {
+        rejectUpdate = reject;
+      })
+    );
+    require('@/hooks/useSermon').default.mockReturnValue({
+      ...defaultUseSermonReturn,
+      sermon: {
+        ...defaultUseSermonReturn.sermon,
+        thoughts: [{ id: 'thought-1', text: 'Hello', tags: [], date: '2026-08-11' }],
+      },
+    });
+
+    const { unmount } = render(<TestProviders><SermonDetailPage /></TestProviders>);
+    fireEvent.click((await screen.findAllByText('Mock Edit Start'))[0]);
+    await waitFor(() => expect(mockEditThoughtModalProps).not.toBeNull());
+
+    let submission!: { acceptance: Promise<unknown>; persistence: Promise<void> };
+    act(() => {
+      submission = mockEditThoughtModalProps.onSave('Private words of the first account', ['main'], 'main-1');
+    });
+    void submission.acceptance.catch(() => undefined);
+
+    unmount();
+    // Someone else is at this browser now.
+    signedInUid = 'somebody-else';
+
+    await act(async () => {
+      rejectUpdate(
+        Object.assign(new Error('Missing or insufficient permissions.'), {
+          code: 'permission-denied',
+          name: 'FirebaseError',
+        })
+      );
+      await submission.persistence.catch(() => undefined);
+    });
+
+    expect(toastError).not.toHaveBeenCalled();
+    toastError.mockRestore();
+    signedInUid = 'u1';
+  });
+
+  it('still tells the person about a refusal that lands after they left the page', async () => {
+      // The silence this pins down: a refusal arriving after navigation used to reopen an
+      // editor nobody renders, so the edit vanished from the document without a word.
+      const { toast } = require('sonner') as { toast: { error: jest.Mock } };
+      const toastError = jest.spyOn(toast, 'error').mockImplementation(() => 'toast-id');
+      let rejectUpdate!: (error: unknown) => void;
+      (updateThought as jest.Mock).mockReturnValue(
+        new Promise((_resolve, reject) => {
+          rejectUpdate = reject;
+        })
+      );
+      require('@/hooks/useSermon').default.mockReturnValue({
+        ...defaultUseSermonReturn,
+        sermon: {
+          ...defaultUseSermonReturn.sermon,
+          thoughts: [{ id: 'thought-1', text: 'Hello', tags: [], date: '2026-08-11' }],
+        },
+      });
+
+      const { unmount } = render(<TestProviders><SermonDetailPage /></TestProviders>);
+      fireEvent.click((await screen.findAllByText('Mock Edit Start'))[0]);
+      await waitFor(() => expect(mockEditThoughtModalProps).not.toBeNull());
+
+      let submission!: { acceptance: Promise<unknown>; persistence: Promise<void> };
+      act(() => {
+        submission = mockEditThoughtModalProps.onSave('Edit made just before leaving', ['main'], 'main-1');
+      });
+      void submission.acceptance.catch(() => undefined);
+
+      // The person navigates away while the write is still in flight.
+      unmount();
+
+      await act(async () => {
+        rejectUpdate(
+          Object.assign(new Error('Missing or insufficient permissions.'), {
+            code: 'permission-denied',
+            name: 'FirebaseError',
+          })
+        );
+        await submission.persistence.catch(() => undefined);
+      });
+
+      await waitFor(() => expect(toastError).toHaveBeenCalled());
+      const [, options] = toastError.mock.calls.at(-1) as [string, { description: string }];
+      // The text has to travel with the message — the editor that held it is gone.
+      expect(options.description).toContain('Edit made just before leaving');
+      toastError.mockRestore();
+    });
+
+    it('does NOT accept a refused create, so the editor keeps what was dictated', async () => {
+      // The failure this pins down: a refused create used to be indistinguishable from a
+      // queued one, the modal closed, and the dictated thought was gone with no message.
+      const refusal = Object.assign(new Error('Missing or insufficient permissions.'), {
+        code: 'permission-denied',
+        name: 'FirebaseError',
+      });
+      (createManualThought as jest.Mock).mockRejectedValue(refusal);
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      await waitFor(() => expect(mockCreateThoughtModalProps).not.toBeNull());
+      let submission!: { acceptance: Promise<unknown>; persistence: Promise<void> };
+      act(() => {
+        submission = mockCreateThoughtModalProps.onCreateThought({
+          text: 'Dictated thought that must survive a refusal',
+          tags: [],
+          date: '2026-08-11T00:00:00.000Z',
+        });
+      });
+
+      let rejectedWith: unknown;
+      await act(async () => {
+        rejectedWith = await submission.acceptance.then(
+          () => undefined,
+          (error: unknown) => error
+        );
+      });
+
+      // Acceptance REJECTS: the editor's catch is what keeps the text on screen.
+      expect(rejectedWith).toMatchObject({ code: 'permission-denied' });
+      // And the refused thought is not left drawn as if it had been saved.
+      expect(
+        screen.queryByText('Dictated thought that must survive a refusal')
+      ).not.toBeInTheDocument();
+    });
+
+    it('accepts from the local Firestore snapshot without waiting for the server promise', async () => {
+      (createManualThought as jest.Mock).mockReturnValue(new Promise(() => undefined));
+
+      render(
+        <TestProviders>
+          <SermonDetailPage />
+        </TestProviders>
+      );
+
+      await waitFor(() => expect(mockCreateThoughtModalProps).not.toBeNull());
+      let submission: { acceptance: Promise<unknown>; persistence: Promise<void> };
+      act(() => {
+        submission = mockCreateThoughtModalProps.onCreateThought({
+          text: 'Queued thought',
+          tags: [],
+          date: '2026-08-11T00:00:00.000Z',
+        });
+      });
+
+      const submittedThought = (createManualThought as jest.Mock).mock.calls[0][1];
+      let locallyAccepted = false;
+      void submission!.acceptance.then(() => {
+        locallyAccepted = true;
+      });
+      await act(async () => Promise.resolve());
+      expect(locallyAccepted).toBe(false);
+
+      await act(async () => {
+        mockFirestoreSnapshotNext?.({
+          exists: () => true,
+          data: () => ({ thoughts: [submittedThought] }),
+        });
+        await submission!.acceptance;
+      });
+
+      expect(locallyAccepted).toBe(true);
+      expect(mockFirestoreUnsubscribe).toHaveBeenCalledTimes(1);
+    });
+
+    it('accepts an exact edited payload from the local replica without waiting for the server', async () => {
+      (updateThought as jest.Mock).mockReturnValue(new Promise(() => undefined));
+      require('@/hooks/useSermon').default.mockReturnValue({
+        ...defaultUseSermonReturn,
+        sermon: {
+          ...defaultUseSermonReturn.sermon,
+          thoughts: [{ id: 'thought-1', text: 'Hello', tags: [], date: '2026-08-11' }],
+        },
+      });
+      render(<TestProviders><SermonDetailPage /></TestProviders>);
+      fireEvent.click((await screen.findAllByText('Mock Edit Start'))[0]);
+      await waitFor(() => expect(mockEditThoughtModalProps).not.toBeNull());
+
+      let submission!: { acceptance: Promise<unknown>; persistence: Promise<void> };
+      act(() => {
+        submission = mockEditThoughtModalProps.onSave('Queued exact edit', ['main'], 'main-1');
+      });
+      const submittedThought = (updateThought as jest.Mock).mock.calls[0][1];
+      let accepted = false;
+      void submission.acceptance.then(() => { accepted = true; });
+
+      await act(async () => {
+        mockFirestoreSnapshotNext?.({
+          exists: () => true,
+          data: () => ({ thoughts: [{ ...submittedThought, text: 'Old local text' }] }),
+        });
+        await Promise.resolve();
+      });
+      expect(accepted).toBe(false);
+
+      await act(async () => {
+        mockFirestoreSnapshotNext?.({
+          exists: () => true,
+          data: () => ({ thoughts: [submittedThought] }),
+        });
+        await submission.acceptance;
+      });
+      expect(accepted).toBe(true);
+    });
+
+    it('queues the exact rejected edit behind a newer editor instead of reopening on top of it', async () => {
+      let rejectPersistence!: (error: Error) => void;
+      (updateThought as jest.Mock).mockReturnValue(new Promise((_resolve, reject) => {
+        rejectPersistence = reject;
+      }));
+      require('@/hooks/useSermon').default.mockReturnValue({
+        ...defaultUseSermonReturn,
+        sermon: {
+          ...defaultUseSermonReturn.sermon,
+          thoughts: [{ id: 'thought-1', text: 'Hello', tags: [], date: '2026-08-11' }],
+        },
+      });
+      render(<TestProviders><SermonDetailPage /></TestProviders>);
+      fireEvent.click((await screen.findAllByText('Mock Edit Start'))[0]);
+      await waitFor(() => expect(mockEditThoughtModalProps).not.toBeNull());
+
+      let submission!: { acceptance: Promise<unknown>; persistence: Promise<void> };
+      act(() => {
+        submission = mockEditThoughtModalProps.onSave('Exact rejected page edit', ['main'], 'main-1');
+      });
+      const submittedThought = (updateThought as jest.Mock).mock.calls[0][1];
+      await act(async () => {
+        mockFirestoreSnapshotNext?.({
+          exists: () => true,
+          data: () => ({ thoughts: [submittedThought] }),
+        });
+        await submission.acceptance;
+      });
+      act(() => mockEditThoughtModalProps.onClose());
+
+      fireEvent.click((await screen.findAllByText('Mock Edit Start'))[0]);
+      await waitFor(() => expect(mockEditThoughtModalProps.initialText).toBe('Hello'));
+
+      await act(async () => {
+        rejectPersistence(new Error('Permission denied'));
+        await expect(submission.persistence).rejects.toThrow('Permission denied');
+      });
+      expect(mockEditThoughtModalProps.initialText).toBe('Hello');
+
+      act(() => mockEditThoughtModalProps.onClose());
+      await waitFor(() => expect(mockEditThoughtModalProps.initialText).toBe('Exact rejected page edit'));
+    });
   });
 
   describe('UI Mode Management', () => {

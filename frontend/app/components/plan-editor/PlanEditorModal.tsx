@@ -15,6 +15,8 @@ import { useScrollLock } from '@/hooks/useScrollLock';
 import { updateSermonOutline } from '@/services/outline.service';
 import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
+import { awaitAcceptance, persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
+import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
 import type { OutlinePoint, Sermon, SermonOutline, SubPoint } from '@/models/models';
 
@@ -251,7 +253,14 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
       const generationAtRequest = generationRef.current;
       saveTimeoutRef.current = setTimeout(async () => {
         try {
-          const committed = await updateSermonOutline(sermon.id, next, baseOutlineRef.current);
+          const request = updateSermonOutline(sermon.id, next, baseOutlineRef.current);
+          const acceptance = await awaitAcceptance(
+            typeof navigator !== 'undefined' && navigator.onLine === false
+              ? queuedMutation(`outline:${sermon.id}`, request)
+              : persistedWrite(request),
+            (error) => toast.error(t(writeFailureTranslationKey(error, 'errors.saveOutlineError')))
+          );
+          const committed = acceptance.kind === 'persisted' ? await request : next;
           // The COMMITTED plan can legitimately contain more than we sent — a point
           // added on the other device that the merge kept. Adopt it as the new base
           // and show it, or the next save would treat that point as deleted here.
@@ -275,7 +284,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
             return;
           }
           console.error('PlanEditorModal: failed to save outline', err);
-          toast.error(t('errors.saveOutlineError'));
+          toast.error(t(writeFailureTranslationKey(err, 'errors.saveOutlineError')));
         }
       }, 120);
     },
@@ -381,13 +390,19 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
     const name = saveAsName.trim();
     if (!name) return;
     try {
-      await createTemplate({ id: newClientId(), userId: sermon.userId, name, structure: stripNotesFromOutline(outline) });
-      toast.success(t('planEditor.templateSaved'));
+      await awaitAcceptance(
+        createTemplate({ id: newClientId(), userId: sermon.userId, name, structure: stripNotesFromOutline(outline) }),
+        // usePlanTemplates' create recovery descriptor reports a late refusal while this screen is mounted.
+        () => undefined
+      );
       setSaveAsOpen(false);
       setSaveAsName('');
     } catch (err) {
+      /**
+       * NO message here — the entity's recovery descriptor reports this refusal and
+       * carries the text. One refusal, one reporter (docs/recoverable-writes.md).
+       */
       console.error('PlanEditorModal: failed to save template', err);
-      toast.error(t('planEditor.templateSaveError'));
     }
   };
 

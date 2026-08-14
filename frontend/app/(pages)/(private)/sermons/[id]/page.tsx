@@ -1,5 +1,6 @@
 "use client";
 
+import { doc, onSnapshot } from "firebase/firestore";
 import { motion } from "framer-motion";
 import { BookOpen, Sparkles } from "lucide-react";
 import dynamicImport from "next/dynamic";
@@ -30,6 +31,7 @@ import SermonOutline from "@/components/sermon/SermonOutline";
 import StructurePreview from "@/components/sermon/StructurePreview";
 import StructureStats from "@/components/sermon/StructureStats";
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
+import { getClientDb } from "@/config/firebaseClientDb";
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useRouteId } from "@/hooks/useRouteId";
@@ -44,14 +46,22 @@ import { updateSermonPreparation, updateSermon } from '@/services/sermon.service
 import { updateStructure } from "@/services/structure.service";
 import { newClientId } from "@/utils/clientId";
 import { clearDraftIfMatches, draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
+import { awaitAcceptance, queuedMutation, refusedWrite, replicaAcceptedWrite, skippedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
 import {
   sermonFreshnessProjection,
   type SermonFreshnessProjection,
 } from '@/utils/sermonFreshnessProjection';
+import {
+  recoveryText,
+  reportLateRefusal,
+  showRecoverableWriteFailure,
+  writeFailureTranslationKey,
+} from '@/utils/writeRecovery';
 import CreateThoughtModal from "@components/CreateThoughtModal";
 import EditThoughtModal from "@components/EditThoughtModal";
 import { useThoughtFiltering } from '@hooks/useThoughtFiltering';
 import { STRUCTURE_TAGS } from '@lib/constants';
+import { auth } from "@services/firebaseAuth.service";
 import { createAudioThought, createManualThought, deleteThought, updateThought } from "@services/thought.service";
 import { getCanonicalTagForSection, normalizeStructureTag } from '@utils/tagUtils';
 import { UI_COLORS } from "@utils/themeColors";
@@ -79,11 +89,66 @@ export const dynamic = "force-dynamic";
 const THOUGHT_LOCAL_ID_PREFIX = "local-thought-";
 const STRUCTURE_SAVE_ERROR_KEY = "errors.failedToSaveStructure";
 
+/** Wait until the local replica contains this submission, not merely any document change. */
+function waitForThoughtInLocalReplica(
+  sermonId: string,
+  carriesPayload: (thoughts: Thought[]) => boolean
+): { seen: Promise<void>; stop: () => void } {
+  let unsubscribe: (() => void) | undefined;
+  let stopped = false;
+  // The snapshot callback and acceptance cleanup may both stop the listener.
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    unsubscribe?.();
+  };
+
+  const seen = new Promise<void>((resolve, reject) => {
+    unsubscribe = onSnapshot(
+      doc(getClientDb(), 'sermons', sermonId),
+      { includeMetadataChanges: true },
+      (snapshot) => {
+        if (!snapshot.exists()) return;
+        const stored = ((snapshot.data() as { thoughts?: Thought[] } | undefined)?.thoughts ?? []);
+        if (!carriesPayload(stored)) return;
+        stop();
+        resolve();
+      },
+      // A listener with no error branch never settles: a refused read left the editor
+      // waiting forever, and each retry stacked another live listener.
+      (listenError) => {
+        stop();
+        reject(listenError);
+      }
+    );
+    if (stopped) unsubscribe?.();
+  });
+
+  return { seen, stop };
+}
+
+/** Compare every editable field; text-only matching misses tag and placement edits. */
+function carriesEdit(stored: Thought, submitted: Thought): boolean {
+  const sameTags =
+    (stored.tags ?? []).length === (submitted.tags ?? []).length &&
+    (submitted.tags ?? []).every((tag) => (stored.tags ?? []).includes(tag));
+  return (
+    stored.text === submitted.text &&
+    sameTags &&
+    (stored.outlinePointId ?? null) === (submitted.outlinePointId ?? null) &&
+    (stored.subPointId ?? null) === (submitted.subPointId ?? null)
+  );
+}
+
 type ThoughtPatch = Pick<Thought, "text" | "tags" | "outlinePointId" | "subPointId">;
 type SermonUiMode = 'classic' | 'prep' | 'raw';
+// The editor seeds state on mount, so every opening needs a distinct identity.
+type EditingModalData = { thought: Thought; index: number; session: number };
 
 interface ThoughtPatchOptions {
   outlineOverride?: SermonOutlineType;
+  // Recovery needs the original error to choose copy-text versus retry UI.
+  recoverRejectedEdit?: (thought: Thought, error: unknown) => void;
 }
 
 const sanitizeThoughtStructure = (structure: Sermon["structure"] | undefined) => {
@@ -264,6 +329,21 @@ const checkForInconsistentThoughtsHelper = (sermon: Sermon | null): boolean => {
 export default function SermonPage() {
   const id = useRouteId();
   const { user } = useAuth();
+  /**
+   * WHOSE screen this is, answered from the LIVE source at report time.
+   *
+   * A late refusal fires from a closure that outlives the editor, the page and even the
+   * session, so it must ask who is signed in NOW — and a React ref cannot answer that:
+   * it stops updating the moment the component unmounts, which is exactly the case this
+   * guards (submit → navigate away → sign out → someone else signs in). `auth.currentUser`
+   * is a module singleton and stays current after unmount, so it is the only honest
+   * answer here. The sign-out sweep cannot help either: this message is created AFTER it
+   * has run.
+   */
+  const authorUidRef = useRef(user?.uid);
+  if (user?.uid && !authorUidRef.current) authorUidRef.current = user.uid;
+  const stillTheSamePerson = () =>
+    Boolean(authorUidRef.current) && auth.currentUser?.uid === authorUidRef.current;
   const { series } = useSeries(user?.uid || null);
   const { settings: userSettings } = useUserSettings(user?.uid);
   const { isMagicAvailable } = useConnection();
@@ -541,7 +621,23 @@ useEffect(() => {
   const [retryCount, setRetryCount] = useState(0);
   const [storedAudioBlob, setStoredAudioBlob] = useState<Blob | null>(null);
   const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
-  const [editingModalData, setEditingModalData] = useState<{ thought: Thought; index: number } | null>(null);
+  const [editingModalData, setEditingModalData] = useState<EditingModalData | null>(null);
+  const rejectedEditQueueRef = useRef<EditingModalData[]>([]);
+  // Whether this screen is still on the person's display. A write outlives the page
+  // it started on, so the late-refusal path asks this before choosing who reports.
+  const isPageMountedRef = useRef(true);
+  // Live replica listeners started by in-flight thought edits, so leaving the page
+  // takes them down with it.
+  const replicaWatchersRef = useRef(new Set<() => void>());
+  useEffect(() => {
+    isPageMountedRef.current = true;
+    const watchers = replicaWatchersRef.current;
+    return () => {
+      isPageMountedRef.current = false;
+      watchers.forEach((stop) => stop());
+      watchers.clear();
+    };
+  }, []);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [manuallyExpanded, setManuallyExpanded] = useState<Set<PrepStepId>>(new Set());
   const stepRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -553,6 +649,10 @@ useEffect(() => {
   const [isBrainstormOpen, setIsBrainstormOpen] = useState(false);
   const [brainstormSuggestion, setBrainstormSuggestion] = useState<BrainstormSuggestion | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  // Whether the create editor is on screen RIGHT NOW. The write outlives the modal, so
+  // its late failure must ask this at report time, not capture it at submit time.
+  const isCreateModalOpenRef = useRef(isCreateModalOpen);
+  isCreateModalOpenRef.current = isCreateModalOpen;
   const [isPlanEditorOpen, setIsPlanEditorOpen] = useState(false);
   // Bumped when the plan editor changes the outline, to force SermonOutline to
   // re-read the freshly saved outline (its fetch effect keys on sermon.id only).
@@ -578,6 +678,26 @@ useEffect(() => {
   });
 
   const filterButtonRef = useRef<HTMLButtonElement>(null);
+
+  const editSessionRef = useRef(0);
+  const nextEditSession = useCallback(() => {
+    editSessionRef.current += 1;
+    return editSessionRef.current;
+  }, []);
+
+  const queueRejectedEdit = useCallback((rejectedEdit: EditingModalData) => {
+    setEditingModalData((currentEdit) => {
+      if (currentEdit) {
+        rejectedEditQueueRef.current.push(rejectedEdit);
+        return currentEdit;
+      }
+      return rejectedEdit;
+    });
+  }, []);
+
+  const closeEditingModal = useCallback(() => {
+    setEditingModalData(rejectedEditQueueRef.current.shift() ?? null);
+  }, []);
 
   const appendNewThoughtWithStructure = useCallback(async (newThought: Thought) => {
     if (!sermon) return;
@@ -614,13 +734,15 @@ useEffect(() => {
     }
   }, [sermon, setSermon]);
 
-  const handleSaveThoughtPatch = useCallback(async (
+  const handleSaveThoughtPatch = useCallback((
     thoughtToUpdate: Thought,
     patch: ThoughtPatch,
     options: ThoughtPatchOptions = {}
-  ) => {
+  ): WriteSubmission => {
     const currentSermon = sermonRef.current ?? sermon;
-    if (!currentSermon) return;
+    // No sermon means nothing holds this edit — `skipped` would close the editor and
+    // clear the fields as if the write were safe elsewhere. It is not.
+    if (!currentSermon) return refusedWrite('not-found', 'This sermon is no longer available', t('writeRecovery.refused'));
 
     const baseSermon: Sermon = options.outlineOverride
       ? { ...currentSermon, outline: options.outlineOverride }
@@ -655,13 +777,9 @@ useEffect(() => {
       thoughtsBySection: optimisticStructure ?? baseSermon.thoughtsBySection,
     };
     const structurePersistVersion = structureWillChange ? ++structurePersistVersionRef.current : null;
-
     sermonRef.current = optimisticSermon;
 
-    // Optimistic (React Query cache via setSermon): patch the thought + structure
-    // so the edit shows instantly. The client-SDK write (updateThought) lands in
-    // the native Firestore offline queue; on a real failure we roll the cache back
-    // and surface a toast (replaces the old per-card sync badge + retry button).
+    // Keep the thought and its structure placement optimistic as one UI update.
     setSermon((prevSermon) =>
       prevSermon
         ? {
@@ -674,11 +792,11 @@ useEffect(() => {
         : prevSermon
     );
 
-    // Fire-and-forget the persistence so the caller (edit modal / outline select)
-    // never blocks on the network. Offline the write parks in the native queue.
-    void (async () => {
+    // Acceptance decides whether the current editor or late-recovery path owns failure UI.
+    let acceptedLocally = false;
+    const persistence = (async () => {
       try {
-        // `thoughtToUpdate` is the thought AS THE EDITOR OPENED IT and `patch` is
+        // `thoughtToUpdate` is the thought as opened by the editor and `patch` is
         // what the person changed, so the write states only the changed fields —
         // dragging a thought no longer re-sends this screen's hours-old copy of its
         // text over a rewrite made on another device.
@@ -751,19 +869,45 @@ useEffect(() => {
               }
             : prevSermon
         );
-        toast.error(t("errors.thoughtUpdateError"));
+        // Early refusal stays in the open editor. Queueing it too would reopen a stale
+        // rejected draft after the corrected edit is saved.
+        if (options.recoverRejectedEdit && (acceptedLocally || !isPageMountedRef.current)) {
+          options.recoverRejectedEdit(optimisticThought, updateError);
+        }
+        throw updateError;
       }
     })();
+    const replica = waitForThoughtInLocalReplica(baseSermon.id, (stored) =>
+      stored.some((thought) => thought.id === optimisticThought.id && carriesEdit(thought, optimisticThought))
+    );
+    // Page cleanup must also stop listeners whose acceptance is still pending.
+    replicaWatchersRef.current.add(replica.stop);
+    const submission = replicaAcceptedWrite(
+      `thought:update:${baseSermon.id}:${optimisticThought.id}`,
+      replica,
+      persistence
+    );
+    const forget = () => replicaWatchersRef.current.delete(replica.stop);
+    void submission.acceptance.then(
+      () => {
+        acceptedLocally = true;
+        forget();
+      },
+      forget
+    );
+    return submission;
   }, [buildStructureWithThought, sermon, persistStructureForThoughts, setSermon, t]);
 
-  const handleCreateManualThought = useCallback(async (draftThought: Omit<Thought, "id">) => {
-    if (!sermon) return;
+  const handleCreateManualThought = useCallback((draftThought: Omit<Thought, "id">): WriteSubmission => {
+    // The sermon is gone, so nothing holds this dictated text. Closing the editor as
+    // a mere skip erased it without a word; refuse instead and keep the draft.
+    if (!sermon) return refusedWrite('not-found', 'This sermon is no longer available', t('writeRecovery.refused'));
 
+    // Did this create reach acceptance before it failed? Until then the modal owns the
+    // message; afterwards it may already be closed and only this page can speak.
+    let acceptedLocally = false;
     const previousSermon = sermonRef.current;
-    // Mint the real id up front (no "local-" placeholder): the optimistic row, the
-    // client-SDK write and the stored doc all share one stable id, so a buffered
-    // write that ever replays is idempotent and the structure never needs a
-    // temp->real id swap. Mirrors the useGroups/usePrayerRequests create idiom.
+    // One stable id keeps optimistic UI, queued replay, and structure references aligned.
     const newThought: Thought = {
       ...draftThought,
       id: newClientId(),
@@ -778,7 +922,6 @@ useEffect(() => {
       thought: newThought,
       targetSection,
     });
-
     setSermon((prevSermon) =>
       prevSermon
         ? {
@@ -790,9 +933,7 @@ useEffect(() => {
         : prevSermon
     );
 
-    // Fire-and-forget so the create modal closes immediately; offline the write
-    // parks in the native Firestore queue and replays on reconnect.
-    void (async () => {
+    const persistence = (async () => {
       try {
         const savedThought = await createManualThought(sermon.id, newThought);
         const idChanged = savedThought.id !== newThought.id;
@@ -836,10 +977,66 @@ useEffect(() => {
         }
       } catch (createError) {
         console.error("Failed to create thought", createError);
-        setSermon(() => previousSermon);
-        toast.error(t("errors.addThoughtError"));
+        // Undo only this create; restoring the whole submit-time sermon would erase
+        // unrelated edits or snapshots that arrived while the write was in flight.
+        setSermon((prevSermon) =>
+          prevSermon
+            ? {
+                ...prevSermon,
+                thoughts: prevSermon.thoughts.filter((thought) => thought.id !== newThought.id),
+                ...(optimisticStructure
+                  ? {
+                      structure: previousSermon?.structure ?? prevSermon.structure,
+                      thoughtsBySection:
+                        previousSermon?.thoughtsBySection ?? prevSermon.thoughtsBySection,
+                    }
+                  : {}),
+              }
+            : prevSermon
+        );
+        /**
+         * SAY IT ONCE, AND ONLY WHEN NOBODY ELSE WILL.
+         *
+         * Two failures were measured on this path, in opposite directions. Reporting
+         * only when the page was gone left the COMMON case mute: the modal had closed
+         * after local acceptance, the server refused later, the thought rolled back off
+         * the screen and nothing explained why. Reporting unconditionally then gave the
+         * EARLY refusal two voices — the modal's own catch is still open and speaking.
+         *
+         * The dividing line is whether the modal is still awaiting this write: before
+         * acceptance it owns the message, after acceptance nobody does but this branch.
+         */
+        if ((acceptedLocally || !isCreateModalOpenRef.current) && stillTheSamePerson()) showRecoverableWriteFailure({
+          error: createError,
+          title: t(writeFailureTranslationKey(createError, 'errors.failedToSaveThought')),
+          description: recoveryText([newThought.text, (newThought.tags ?? []).join(', ')]),
+          retryLabel: t('buttons.retry'),
+          retry: () => undefined,
+          copyLabel: t('freshness.copyTextAction'),
+          id: `write-recovery:thought-create:${newThought.id}`,
+        });
+        throw createError;
       }
     })();
+
+    const replica = waitForThoughtInLocalReplica(sermon.id, (stored) =>
+      stored.some((thought) => thought.id === newThought.id)
+    );
+    replicaWatchersRef.current.add(replica.stop);
+    const submission = replicaAcceptedWrite(
+      `thought:create:${sermon.id}:${newThought.id}`,
+      replica,
+      persistence
+    );
+    const forget = () => replicaWatchersRef.current.delete(replica.stop);
+    void submission.acceptance.then(
+      () => {
+        acceptedLocally = true;
+        forget();
+      },
+      forget
+    );
+    return submission;
   }, [buildStructureWithThought, sermon, persistStructureForThoughts, setSermon, t]);
 
   const handleThoughtUpdate = useCallback((updatedThought: Thought) => {
@@ -856,21 +1053,46 @@ useEffect(() => {
 
   const handleThoughtOutlinePointChange = useCallback(async (thought: Thought, outlinePointId?: string | null, subPointId?: string | null) => {
     const outlineChanged = outlinePointId !== (thought.outlinePointId ?? null);
-    await handleSaveThoughtPatch(thought, {
-      text: thought.text,
-      tags: thought.tags,
-      outlinePointId,
-      subPointId: subPointId !== undefined ? subPointId : (outlineChanged ? null : thought.subPointId ?? null),
-    });
-  }, [handleSaveThoughtPatch]);
+    /**
+     * A REFUSAL HERE WAS SWALLOWED. This write was fired with `void`, so a refused move
+     * rolled the thought back to its old point and said nothing at all: the person saw
+     * their drag undo itself for no stated reason. There is no editor holding text to
+     * recover — the recovery IS knowing that the move did not happen.
+     */
+    const report = (error: unknown) => {
+      if (!stillTheSamePerson()) return;
+      showRecoverableWriteFailure({
+        error,
+        title: t(writeFailureTranslationKey(error, 'errors.thoughtUpdateError')),
+        description: '',
+        retryLabel: t('buttons.retry'),
+        retry: () => undefined,
+        copyLabel: t('freshness.copyTextAction'),
+        id: `write-recovery:thought-move:${thought.id}`,
+      });
+    };
+    try {
+      await awaitAcceptance(
+        handleSaveThoughtPatch(thought, {
+          text: thought.text,
+          tags: thought.tags,
+          outlinePointId,
+          subPointId: subPointId !== undefined ? subPointId : (outlineChanged ? null : thought.subPointId ?? null),
+        }),
+        report
+      );
+    } catch (error) {
+      report(error);
+    }
+  }, [handleSaveThoughtPatch, t]);
 
-  const handleDeleteThought = useCallback(async (thoughtId: string) => {
-    if (!sermon) return;
+  const handleDeleteThought = useCallback((thoughtId: string): WriteSubmission => {
+    if (!sermon) return skippedWrite();
 
     const thoughtToDelete = sermon.thoughts.find((thought) => thought.id === thoughtId);
     if (!thoughtToDelete) {
       console.error("Could not find thought with ID:", thoughtId);
-      return;
+      return skippedWrite();
     }
 
     const previousSermon = sermonRef.current;
@@ -891,9 +1113,7 @@ useEffect(() => {
       };
     });
 
-    // Fire-and-forget: the card disappears immediately; offline the delete parks
-    // in the native Firestore queue.
-    void (async () => {
+    const persistence = (async () => {
       try {
         await deleteThought(sermon.id, thoughtToDelete);
         try {
@@ -904,40 +1124,79 @@ useEffect(() => {
         }
       } catch (deleteError) {
         console.error("Failed to delete thought", deleteError);
-        setSermon(() => previousSermon);
+        // Put back only the thought that was not deleted. Restoring the whole
+        // pre-submit sermon also resurrected the state of every OTHER thought as it
+        // was at submit time, discarding edits made while this delete was in flight.
+        setSermon((prevSermon) =>
+          prevSermon
+            ? {
+                ...prevSermon,
+                thoughts: prevSermon.thoughts.some((thought) => thought.id === thoughtId)
+                  ? prevSermon.thoughts
+                  : [thoughtToDelete, ...prevSermon.thoughts],
+                structure: previousSermon?.structure ?? prevSermon.structure,
+                thoughtsBySection:
+                  previousSermon?.thoughtsBySection ?? prevSermon.thoughtsBySection,
+              }
+            : prevSermon
+        );
         toast.error(t("errors.deletingError"));
+        throw deleteError;
       }
     })();
+    return queuedMutation(`thought:delete:${sermon.id}:${thoughtId}`, persistence);
   }, [sermon, persistStructureForThoughts, setSermon, t]);
 
-  const handleSaveEditedThought = async (updatedText: string, updatedTags: string[], outlinePointId?: string | null, subPointId?: string | null) => {
-    if (!editingModalData) return;
+  const handleSaveEditedThought = (updatedText: string, updatedTags: string[], outlinePointId?: string | null, subPointId?: string | null): WriteSubmission => {
+    // No target owns the draft, so keep the editor open with a refusal.
+    if (!editingModalData) return refusedWrite('not-found', 'The thought being edited is gone', t('writeRecovery.refused'));
     const currentSermon = sermon;
-    if (!currentSermon) {
-      setEditingModalData(null);
-      return;
-    }
+    if (!currentSermon) return skippedWrite();
     const originalThoughtId = editingModalData.thought.id;
+    const originalIndex = editingModalData.index;
 
     const thoughtToUpdate = currentSermon.thoughts.find((thought) => thought.id === originalThoughtId);
     if (!thoughtToUpdate) {
       console.error("Could not find thought with ID:", originalThoughtId);
-      setEditingModalData(null);
-      return;
+      throw new Error('Thought is not available');
     }
 
     const outlineChanged = outlinePointId !== (thoughtToUpdate.outlinePointId ?? null);
-    await handleSaveThoughtPatch(thoughtToUpdate, {
+    const submission = handleSaveThoughtPatch(thoughtToUpdate, {
       text: updatedText.trim(),
       tags: updatedTags,
       outlinePointId,
       subPointId: subPointId !== undefined ? subPointId : (outlineChanged ? null : thoughtToUpdate.subPointId ?? null),
+    }, {
+      recoverRejectedEdit: (rejectedThought, rejectionError) => {
+        // Not to a DIFFERENT person: this callback outlives the session that created it.
+        if (!stillTheSamePerson()) return;
+        // Who reports depends on where the person is — see reportLateRefusal.
+        reportLateRefusal({
+          isEditorMounted: isPageMountedRef.current,
+          reopenEditor: () =>
+            queueRejectedEdit({ thought: rejectedThought, index: originalIndex, session: nextEditSession() }),
+          toast: {
+            error: rejectionError,
+            title: t(writeFailureTranslationKey(rejectionError, 'errors.thoughtUpdateError')),
+            description: recoveryText([
+              rejectedThought.text,
+              (rejectedThought.tags ?? []).join(', '),
+            ]),
+            retryLabel: t('buttons.retry'),
+            // The editor that owned this retry is gone; the text itself is the recovery.
+            retry: () => undefined,
+            copyLabel: t('freshness.copyTextAction'),
+            id: `write-recovery:thought:${rejectedThought.id}`,
+          },
+        });
+      },
     });
-    setEditingModalData(null);
+    return submission;
   };
 
   const handleEditThoughtStart = (thought: Thought, index: number) => {
-    setEditingModalData({ thought, index });
+    setEditingModalData({ thought, index, session: nextEditSession() });
   };
 
   const activeStepId = getActiveStepId(prepDraft) as PrepStepId;
@@ -1045,30 +1304,68 @@ useEffect(() => {
     [handleOutlineUpdate, sermon, t]
   );
 
+  const applyScratchOutlineAndConsume = scratchNotes.applyOutlineAndConsume;
   const handleApplyScratchOutline = useCallback(
     (outline: SermonOutlineType, consumedNoteIds: string[]) => {
-      const applyResult = scratchNotes.applyOutlineAndConsume(outline, consumedNoteIds);
+      const applyResult = applyScratchOutlineAndConsume(outline, consumedNoteIds);
       setOutlineRefreshKey((key) => key + 1);
       return applyResult;
     },
-    [scratchNotes.applyOutlineAndConsume]
+    [applyScratchOutlineAndConsume]
+  );
+
+  /**
+   * A BULK move/detach speaks ONCE, not per thought.
+   *
+   * Deleting an outline point detaches every thought under it — a dozen writes from one
+   * click. Fired with `void`, a refusal rolled each thought back to where it was and said
+   * nothing, so the person saw some thoughts quietly stay put. Reporting each failure
+   * separately would be its own kind of noise, so one message covers the operation.
+   */
+  const applyToThoughtsAndReportOnce = useCallback(
+    (
+      thoughts: Thought[],
+      patchFor: (thought: Thought) => ThoughtPatch,
+      options?: ThoughtPatchOptions
+    ) => {
+      let alreadyReported = false;
+      const report = (error: unknown) => {
+        if (alreadyReported || !stillTheSamePerson()) return;
+        alreadyReported = true;
+        showRecoverableWriteFailure({
+          error,
+          title: t(writeFailureTranslationKey(error, 'errors.thoughtUpdateError')),
+          description: '',
+          retryLabel: t('buttons.retry'),
+          retry: () => undefined,
+          copyLabel: t('freshness.copyTextAction'),
+          id: 'write-recovery:thought-bulk-move',
+        });
+      };
+
+      thoughts.forEach((thought) => {
+        void awaitAcceptance(handleSaveThoughtPatch(thought, patchFor(thought), options), report).catch(
+          report
+        );
+      });
+    },
+    [handleSaveThoughtPatch, t]
   );
 
   const handleOutlinePointDeleted = useCallback((outlinePointId: string) => {
     const currentSermon = sermon;
     if (!currentSermon) return;
 
-    currentSermon.thoughts
-      .filter((thought) => thought.outlinePointId === outlinePointId)
-      .forEach((thought) => {
-        void handleSaveThoughtPatch(thought, {
-          text: thought.text,
-          tags: thought.tags,
-          outlinePointId: null,
-          subPointId: null,
-        });
-      });
-  }, [handleSaveThoughtPatch, sermon]);
+    applyToThoughtsAndReportOnce(
+      currentSermon.thoughts.filter((thought) => thought.outlinePointId === outlinePointId),
+      (thought) => ({
+        text: thought.text,
+        tags: thought.tags,
+        outlinePointId: null,
+        subPointId: null,
+      })
+    );
+  }, [applyToThoughtsAndReportOnce, sermon]);
 
   const handleOutlinePointMoved = useCallback((
     outlinePointId: string,
@@ -1086,17 +1383,17 @@ useEffect(() => {
       prevSermon ? { ...prevSermon, outline: updatedOutline } : prevSermon
     );
 
-    currentSermon.thoughts
-      .filter((thought) => thought.outlinePointId === outlinePointId)
-      .forEach((thought) => {
-        void handleSaveThoughtPatch(thought, {
-          text: thought.text,
-          tags: withStructureTagForSection(thought.tags, destinationSection),
-          outlinePointId: thought.outlinePointId ?? null,
-          subPointId: thought.subPointId ?? null,
-        }, { outlineOverride: updatedOutline });
-      });
-  }, [handleSaveThoughtPatch, sermon, setSermon]);
+    applyToThoughtsAndReportOnce(
+      currentSermon.thoughts.filter((thought) => thought.outlinePointId === outlinePointId),
+      (thought) => ({
+        text: thought.text,
+        tags: withStructureTagForSection(thought.tags, destinationSection),
+        outlinePointId: thought.outlinePointId ?? null,
+        subPointId: thought.subPointId ?? null,
+      }),
+      { outlineOverride: updatedOutline }
+    );
+  }, [applyToThoughtsAndReportOnce, sermon, setSermon]);
 
   const handleSubPointMoved = useCallback((
     subPointId: string,
@@ -1116,33 +1413,34 @@ useEffect(() => {
       prevSermon ? { ...prevSermon, outline: updatedOutline } : prevSermon
     );
 
-    currentSermon.thoughts
-      .filter((thought) => thought.subPointId === subPointId)
-      .forEach((thought) => {
-        void handleSaveThoughtPatch(thought, {
-          text: thought.text,
-          tags: withStructureTagForSection(thought.tags, destinationSection),
-          outlinePointId: destinationPointId,
-          subPointId: thought.subPointId ?? subPointId,
-        }, { outlineOverride: updatedOutline });
-      });
-  }, [handleSaveThoughtPatch, sermon, setSermon]);
+    applyToThoughtsAndReportOnce(
+      currentSermon.thoughts.filter((thought) => thought.subPointId === subPointId),
+      (thought) => ({
+        text: thought.text,
+        tags: withStructureTagForSection(thought.tags, destinationSection),
+        outlinePointId: destinationPointId,
+        subPointId: thought.subPointId ?? subPointId,
+      }),
+      { outlineOverride: updatedOutline }
+    );
+  }, [applyToThoughtsAndReportOnce, sermon, setSermon]);
 
   const handleSubPointDeleted = useCallback((outlinePointId: string, subPointId: string) => {
     const currentSermon = sermon;
     if (!currentSermon) return;
 
-    currentSermon.thoughts
-      .filter((thought) => thought.outlinePointId === outlinePointId && thought.subPointId === subPointId)
-      .forEach((thought) => {
-        void handleSaveThoughtPatch(thought, {
-          text: thought.text,
-          tags: thought.tags,
-          outlinePointId: thought.outlinePointId ?? null,
-          subPointId: null,
-        });
-      });
-  }, [handleSaveThoughtPatch, sermon]);
+    applyToThoughtsAndReportOnce(
+      currentSermon.thoughts.filter(
+        (thought) => thought.outlinePointId === outlinePointId && thought.subPointId === subPointId
+      ),
+      (thought) => ({
+        text: thought.text,
+        tags: thought.tags,
+        outlinePointId: thought.outlinePointId ?? null,
+        subPointId: null,
+      })
+    );
+  }, [applyToThoughtsAndReportOnce, sermon]);
 
   const handleSermonUpdate = useCallback((updatedSermon: Sermon) => {
     setSermon(updatedSermon);
@@ -1693,6 +1991,8 @@ useEffect(() => {
       </div>
       {editingModalData && (
         <EditThoughtModal
+          // Remount for every queued edit because the modal seeds its fields only on mount.
+          key={editingModalData.session}
           initialText={editingModalData.thought.text}
           initialTags={editingModalData.thought.tags}
           initialSermonPointId={editingModalData.thought.outlinePointId || undefined}
@@ -1700,7 +2000,7 @@ useEffect(() => {
           allowedTags={allowedTags}
           sermonOutline={sermon?.outline}
           onSave={handleSaveEditedThought}
-          onClose={() => setEditingModalData(null)}
+          onClose={closeEditingModal}
           allowOffline={true}
         />
       )}
@@ -1708,6 +2008,7 @@ useEffect(() => {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onCreateThought={handleCreateManualThought}
+        onSubmissionRejected={() => setIsCreateModalOpen(true)}
         allowedTags={allowedTags}
         sermonOutline={sermon?.outline}
         disabled={isReadOnly}

@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import {
@@ -12,6 +13,7 @@ import {
   updateModelPreference as persistModelPreference,
 } from '@/services/userSettings.service';
 import { SETTINGS_MUTATION_KEYS } from '@/utils/mutationDefaults';
+import { queuedMutation, refusedWrite, useWriteRecovery, type WriteSubmission } from '@/utils/recoverableWrite';
 
 import type { UserSettings } from '@/models/models';
 import type { ModelPreference } from '@/services/userSettings.service';
@@ -22,6 +24,7 @@ const SETTINGS_PREFIX = ['user-settings'];
 const buildQueryKey = (userId: string | null | undefined) => ['user-settings', userId ?? null];
 
 export function useUserSettings(userId: string | null | undefined) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
 
   const settingsQuery = useServerFirstQuery<UserSettings | null>({
@@ -147,10 +150,73 @@ export function useUserSettings(userId: string | null | undefined) {
     },
   });
 
+  // Named as a hook because it IS one: it calls useWriteRecovery. The previous name
+  // broke the rules-of-hooks lint, and that rule is not cosmetic here — a helper that
+  // hides a hook call is exactly how conditional hook order gets introduced later.
+  const useSettingRecovery = <TVars,>(
+    mutationKey: readonly unknown[],
+    field: string,
+    retry: (payload: TVars) => void
+  ) =>
+    useWriteRecovery<TVars>(queryClient, {
+      mutationKey,
+      fallbackTitleKey: 'errors.savingError',
+      // A switch has no typed text, so the shared "your text is still here" wording
+      // would promise something meaningless. This says what actually happened.
+      refusalTitleKey: 'writeRecovery.refusedChange',
+      recoveryText: () => undefined,
+      toastId: (payload) => `write-recovery:settings:${field}:${(payload as { userId: string }).userId}`,
+      owns: (payload) => (payload as { userId: string }).userId === userId,
+      retry,
+    });
+
+  useSettingRecovery<{ userId: string; value: boolean }>(
+    SETTINGS_MUTATION_KEYS.prepMode,
+    'prep-mode',
+    (payload) => updatePrepModeMutation.mutate(payload)
+  );
+  useSettingRecovery<{ userId: string; value: boolean }>(
+    SETTINGS_MUTATION_KEYS.audioGeneration,
+    'audio-generation',
+    (payload) => updateAudioGenerationMutation.mutate(payload)
+  );
+  useSettingRecovery<{ userId: string; value: boolean }>(
+    SETTINGS_MUTATION_KEYS.structurePreview,
+    'structure-preview',
+    (payload) => updateStructurePreviewMutation.mutate(payload)
+  );
+  useSettingRecovery<{ userId: string; value: FirstDayOfWeek }>(
+    SETTINGS_MUTATION_KEYS.firstDayOfWeek,
+    'first-day-of-week',
+    (payload) => updateFirstDayOfWeekMutation.mutate(payload)
+  );
+  useSettingRecovery<{ userId: string; value: boolean }>(
+    SETTINGS_MUTATION_KEYS.showAppVersion,
+    'show-app-version',
+    (payload) => updateShowAppVersionMutation.mutate(payload)
+  );
+  useSettingRecovery<{ userId: string; preference: ModelPreference }>(
+    SETTINGS_MUTATION_KEYS.modelPreference,
+    'model-preference',
+    (payload) => updateModelPreferenceMutation.mutate(payload)
+  );
+  useSettingRecovery<{ userId: string; preference: FunctionModelPreference }>(
+    SETTINGS_MUTATION_KEYS.functionModelPreference,
+    'function-model-preference',
+    (payload) => updateFunctionModelPreferenceMutation.mutate(payload)
+  );
+
   // A toggle without a user id is an invalid call (settings require auth), not an
-  // offline case — reject it rather than buffering a write the server can't key.
-  const guarded = <T,>(run: (uid: string) => Promise<T>): Promise<T> =>
-    userId ? run(userId) : Promise.reject(new Error('No user'));
+  // offline case — refuse it rather than buffering a write the server can't key.
+  // `refusedWrite` and not a bare rejection: no mutation exists here, so no recovery
+  // descriptor can ever speak for it, and the toggle would silently snap back.
+  const guarded = (
+    receipt: string,
+    createRequest: (uid: string) => Promise<unknown>
+  ): WriteSubmission =>
+    userId
+      ? queuedMutation(`${receipt}:${userId}`, createRequest(userId))
+      : refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
 
   return {
     settings: settingsQuery.data ?? null,
@@ -158,25 +224,25 @@ export function useUserSettings(userId: string | null | undefined) {
     error: settingsQuery.error as Error | null,
     refresh: settingsQuery.refetch,
     updatePrepModeAccess: (enabled: boolean) =>
-      guarded((uid) => updatePrepModeMutation.mutateAsync({ userId: uid, value: enabled })),
+      guarded('settings:prep-mode', (uid) => updatePrepModeMutation.mutateAsync({ userId: uid, value: enabled })),
     updatingPrepMode: updatePrepModeMutation.isPending,
     updateAudioGenerationAccess: (enabled: boolean) =>
-      guarded((uid) => updateAudioGenerationMutation.mutateAsync({ userId: uid, value: enabled })),
+      guarded('settings:audio-generation', (uid) => updateAudioGenerationMutation.mutateAsync({ userId: uid, value: enabled })),
     updatingAudioGeneration: updateAudioGenerationMutation.isPending,
     updateStructurePreviewAccess: (enabled: boolean) =>
-      guarded((uid) => updateStructurePreviewMutation.mutateAsync({ userId: uid, value: enabled })),
+      guarded('settings:structure-preview', (uid) => updateStructurePreviewMutation.mutateAsync({ userId: uid, value: enabled })),
     updatingStructurePreview: updateStructurePreviewMutation.isPending,
     updateFirstDayOfWeek: (firstDayOfWeek: FirstDayOfWeek) =>
-      guarded((uid) => updateFirstDayOfWeekMutation.mutateAsync({ userId: uid, value: firstDayOfWeek })),
+      guarded('settings:first-day-of-week', (uid) => updateFirstDayOfWeekMutation.mutateAsync({ userId: uid, value: firstDayOfWeek })),
     updatingFirstDayOfWeek: updateFirstDayOfWeekMutation.isPending,
     updateShowAppVersion: (enabled: boolean) =>
-      guarded((uid) => updateShowAppVersionMutation.mutateAsync({ userId: uid, value: enabled })),
+      guarded('settings:show-app-version', (uid) => updateShowAppVersionMutation.mutateAsync({ userId: uid, value: enabled })),
     updatingShowAppVersion: updateShowAppVersionMutation.isPending,
     updateModelPreference: (preference: ModelPreference) =>
-      guarded((uid) => updateModelPreferenceMutation.mutateAsync({ userId: uid, preference })),
+      guarded('settings:model-preference', (uid) => updateModelPreferenceMutation.mutateAsync({ userId: uid, preference })),
     updatingModelPreference: updateModelPreferenceMutation.isPending,
     updateFunctionModelPreference: (preference: FunctionModelPreference) =>
-      guarded((uid) => updateFunctionModelPreferenceMutation.mutateAsync({ userId: uid, preference })),
+      guarded('settings:function-model-preference', (uid) => updateFunctionModelPreferenceMutation.mutateAsync({ userId: uid, preference })),
     updatingFunctionModelPreference: updateFunctionModelPreferenceMutation.isPending,
   };
 }

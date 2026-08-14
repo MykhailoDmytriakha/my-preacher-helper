@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { persistedWrite } from '@/utils/recoverableWrite';
 import React from 'react';
 
 import '@testing-library/jest-dom';
@@ -56,6 +57,13 @@ jest.mock('next/navigation', () => ({
 }));
 
 // Mock hooks
+// The freshness banner only appears when the record IS stale, so the suite has to put it
+// there — otherwise a test about "which banner wins" passes with neither on screen.
+const mockFreshness = jest.fn();
+jest.mock('@/hooks/useDocumentFreshness', () => ({
+  useDocumentFreshness: () => mockFreshness(),
+}));
+
 jest.mock('@/hooks/useSeriesDetail', () => ({
   useSeriesDetail: (seriesId: string) => mockUseSeriesDetail(seriesId),
 }));
@@ -105,8 +113,50 @@ jest.mock('react-i18next', () => ({
 
 // Mock components
 jest.mock('@/components/series/EditSeriesModal', () => {
-  return function MockEditSeriesModal({ showEditModal }: { showEditModal: boolean }) {
-    return showEditModal ? <div data-testid="edit-series-modal">Edit Modal</div> : null;
+  return function MockEditSeriesModal({
+    series,
+    onClose,
+    onUpdate,
+  }: {
+    series: { id: string; title: string };
+    onClose: () => void;
+    // THE PRODUCTION CONTRACT: a submission, not a bare promise. The stand-in used to
+    // `await onUpdate(...)` directly, so it closed on whatever the page returned — a page
+    // that closed the editor on a REFUSAL would still have looked fine here.
+    onUpdate: (
+      seriesId: string,
+      updates: { title: string }
+    ) => { acceptance: Promise<unknown>; persistence: Promise<void> };
+  }) {
+    const [title, setTitle] = React.useState(series.title);
+    const [saveError, setSaveError] = React.useState('');
+
+    return (
+      <div role="dialog" aria-label="Edit series page modal" data-testid="edit-series-modal">
+        <label htmlFor="page-series-title">Series title in page modal</label>
+        <input
+          id="page-series-title"
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+        />
+        <button
+          type="button"
+          onClick={async () => {
+            setSaveError('');
+            try {
+              // Close only once the write is ACCEPTED — the same rule the real modal follows.
+              await onUpdate(series.id, { title }).acceptance;
+              onClose();
+            } catch {
+              setSaveError('Save refused in page modal');
+            }
+          }}
+        >
+          Save page series
+        </button>
+        {saveError && <p role="alert">{saveError}</p>}
+      </div>
+    );
   };
 });
 
@@ -191,11 +241,18 @@ jest.mock('sonner', () => ({
 describe('SeriesDetailPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockAddSermons.mockResolvedValue(undefined);
+    // The hook returns a WriteSubmission — callers await its ACCEPTANCE, not the object.
+    mockAddSermons.mockReturnValue(persistedWrite(Promise.resolve(undefined)));
     mockUseParams.mockReturnValue({ id: 'test-series-id' });
     mockUseAuth.mockReturnValue({ user: { uid: 'test-user-id' } });
     mockUseSeries.mockReturnValue({ deleteExistingSeries: jest.fn() });
     mockUseSeriesDetail.mockReturnValue(createSeriesDetailMock());
+    mockFreshness.mockReturnValue({
+      state: 'fresh',
+      remote: null,
+      remotelyDeleted: false,
+      markSynced: jest.fn(),
+    });
   });
 
   it('renders series details correctly', () => {
@@ -208,6 +265,42 @@ describe('SeriesDetailPage', () => {
     expect(screen.getByText('Test Series')).toBeInTheDocument();
     expect(screen.getByText('Test Theme')).toBeInTheDocument();
     expect(screen.getAllByText('workspaces.series.form.statuses.active')).toHaveLength(1);
+  });
+
+  it('shows ONE banner when a save conflict is on screen, not two', async () => {
+    /**
+     * Found in the browser, not by a test: a refused save rendered the conflict banner
+     * ("your edit was not saved — here is your text, choose") AND the freshness banner
+     * ("this changed elsewhere, load the newer version?") at the same time. One event,
+     * two headlines, four buttons — and "take theirs" and "load newer" meant the same
+     * thing. The conflict banner holds the person's text, so it is the one that stays.
+     */
+    // The record HAS changed elsewhere — so without the rule under test both banners
+    // would be on screen at once.
+    mockFreshness.mockReturnValue({
+      state: 'stale',
+      remote: { title: 'Изменено на другом устройстве' },
+      remotelyDeleted: false,
+      markSynced: jest.fn(),
+    });
+    mockUseSeriesDetail.mockReturnValue(
+      createSeriesDetailMock({
+        saveConflict: { payload: { title: 'Название с моего ноутбука' }, actualRevision: 2 },
+        keepMineOnConflict: jest.fn(),
+        takeTheirsOnConflict: jest.fn(),
+        resolvingConflict: false,
+      })
+    );
+
+    render(
+      <TestProviders>
+        <SeriesDetailPage />
+      </TestProviders>
+    );
+
+    expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
+    expect(screen.getByText('Название с моего ноутбука')).toBeInTheDocument();
+    expect(screen.queryByText('freshness.title')).not.toBeInTheDocument();
   });
 
   it('renders skeleton when loading', () => {
@@ -297,6 +390,38 @@ describe('SeriesDetailPage', () => {
 
     expect(mockPush).toHaveBeenCalledWith('/series');
     expect(mockBack).not.toHaveBeenCalled();
+  });
+
+  it('keeps the rendered edit modal and its exact title after the page update rejects', async () => {
+    // A REAL submission whose acceptance rejects — that is what the page hands the editor.
+    // Mocking a bare rejected promise let this pass no matter how the page was wired.
+    const refusal = Object.assign(new Error('Permission denied'), { code: 'permission-denied' });
+    const updateSeriesDetail = jest.fn(() => {
+      const acceptance = Promise.reject(refusal);
+      const persistence = Promise.reject(refusal);
+      void acceptance.catch(() => undefined);
+      void persistence.catch(() => undefined);
+      return { acceptance, persistence };
+    });
+    mockUseSeriesDetail.mockReturnValue(createSeriesDetailMock({ updateSeriesDetail }));
+
+    render(
+      <TestProviders>
+        <SeriesDetailPage />
+      </TestProviders>
+    );
+
+    fireEvent.click(screen.getByText('workspaces.series.editSeries'));
+    const title = screen.getByLabelText('Series title in page modal');
+    fireEvent.change(title, { target: { value: 'Exact refused page series title' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save page series' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Save refused in page modal');
+    expect(screen.getByRole('dialog', { name: 'Edit series page modal' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Series title in page modal')).toHaveValue(
+      'Exact refused page series title'
+    );
+    expect(screen.queryByText('workspaces.series.errors.updateFailed')).not.toBeInTheDocument();
   });
 
   it('opens add sermon modal when Add Sermon button is clicked', async () => {
@@ -419,7 +544,15 @@ describe('SeriesDetailPage', () => {
   });
 
   it('keeps create modal open when adding sermon to series fails', async () => {
-    mockAddSermons.mockRejectedValueOnce(new Error('Add failed'));
+    // A REFUSED SUBMISSION, not a rejected bare promise. Mocking the old shape is why
+    // this test stayed green while production `await`-ed the submission object itself
+    // and never saw the refusal: the modal closed and the new sermon silently stayed
+    // outside the series.
+    mockAddSermons.mockReturnValueOnce(
+      persistedWrite(
+        Promise.reject(Object.assign(new Error('Add failed'), { code: 'permission-denied' }))
+      )
+    );
 
     render(
       <TestProviders>

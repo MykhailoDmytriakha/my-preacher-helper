@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import CreateThoughtModal from '@/components/CreateThoughtModal';
+import { persistedWrite, queuedWrite } from '@/utils/recoverableWrite';
 import { UsageCapReachedError } from '@/services/usageLimits';
 import { transcribeAudioWithRetry } from '@/utils/transcriptionRetryClient';
 
@@ -115,7 +116,7 @@ describe('CreateThoughtModal', () => {
     });
 
     it('submits thought and calls onCreateThought on success', async () => {
-        const onCreateThought = jest.fn().mockResolvedValue(undefined);
+        const onCreateThought = jest.fn(() => persistedWrite(Promise.resolve()));
         render(<CreateThoughtModal {...defaultProps} onCreateThought={onCreateThought} />);
 
         fireEvent.change(screen.getByTestId('mock-rich-editor'), { target: { value: 'Hello world' } });
@@ -144,7 +145,7 @@ describe('CreateThoughtModal', () => {
     });
 
     it('shows error toast when onCreateThought fails', async () => {
-        const onCreateThought = jest.fn().mockRejectedValueOnce(new Error('Server error'));
+        const onCreateThought = jest.fn(() => persistedWrite(Promise.reject(Object.assign(new Error('Server error'), { code: 'permission-denied', name: 'FirebaseError' }))));
 
         render(<CreateThoughtModal {...defaultProps} onCreateThought={onCreateThought} />);
         fireEvent.change(screen.getByTestId('mock-rich-editor'), { target: { value: 'Some text' } });
@@ -152,6 +153,87 @@ describe('CreateThoughtModal', () => {
         fireEvent.click(screen.getByRole('button', { name: /buttons\.save/i }));
 
         await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    });
+
+    it('keeps the exact draft open when persistence rejects before local acceptance', async () => {
+        const rejection = Object.assign(new Error('Permission denied'), { code: 'permission-denied' });
+        const persistence = Promise.reject(rejection);
+        void persistence.catch(() => undefined);
+        const onClose = jest.fn();
+        const onCreateThought = jest.fn(() => persistedWrite(persistence)) as jest.Mock;
+
+        render(
+            <CreateThoughtModal
+                {...defaultProps}
+                onClose={onClose}
+                onCreateThought={onCreateThought}
+            />
+        );
+        const editor = screen.getByTestId('mock-rich-editor');
+        fireEvent.change(editor, { target: { value: '  Exact dictated thought  ' } });
+
+        fireEvent.click(screen.getByRole('button', { name: /buttons\.save/i }));
+
+        await waitFor(() => expect(toast.error).toHaveBeenCalledWith('writeRecovery.refused'));
+        expect(onClose).not.toHaveBeenCalled();
+        expect(editor).toHaveValue('  Exact dictated thought  ');
+        expect(toast.success).not.toHaveBeenCalled();
+    });
+
+    it('closes and clears after local acceptance without waiting for a server acknowledgement', async () => {
+        const onClose = jest.fn();
+        const persistence = new Promise<void>(() => undefined);
+        const onCreateThought = jest.fn(() => queuedWrite('thought:create:queued', persistence)) as jest.Mock;
+
+        render(
+            <CreateThoughtModal
+                {...defaultProps}
+                onClose={onClose}
+                onCreateThought={onCreateThought}
+            />
+        );
+        const editor = screen.getByTestId('mock-rich-editor');
+        fireEvent.change(editor, { target: { value: 'Queued while offline' } });
+
+        fireEvent.click(screen.getByRole('button', { name: /buttons\.save/i }));
+
+        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+        expect(screen.getByTestId('mock-rich-editor')).toHaveValue('');
+        // Queue ownership is not server persistence, so this outcome must stay silent.
+        expect(toast.success).not.toHaveBeenCalledWith('manualThought.addedSuccess');
+    });
+
+    it('restores and reopens the exact submitted draft when an accepted write later rejects', async () => {
+        let rejectPersistence!: (error: Error) => void;
+        const persistence = new Promise<void>((_resolve, reject) => {
+            rejectPersistence = reject;
+        });
+        const onClose = jest.fn();
+        const onSubmissionRejected = jest.fn();
+        const onCreateThought = jest.fn(() => queuedWrite('thought:create:late-failure', persistence)) as jest.Mock;
+
+        render(
+            <CreateThoughtModal
+                {...defaultProps}
+                onClose={onClose}
+                onCreateThought={onCreateThought}
+                onSubmissionRejected={onSubmissionRejected}
+            />
+        );
+        fireEvent.change(screen.getByTestId('mock-rich-editor'), {
+            target: { value: '  Rejected after local acceptance  ' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: /buttons\.save/i }));
+        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+
+        rejectPersistence(new Error('Permission denied after local apply'));
+
+        await waitFor(() => expect(onSubmissionRejected).toHaveBeenCalledTimes(1));
+        expect(screen.getByTestId('mock-rich-editor')).toHaveValue('  Rejected after local acceptance  ');
+        // Deliberately silent: by the time a LATE refusal arrives this modal has closed,
+        // so its message would be invisible while the page reports the same refusal with
+        // the dictated text. Restoring the fields stays here; announcing does not.
+        expect(toast.error).not.toHaveBeenCalled();
     });
 
     it('renders allowed tags and allows adding a tag', () => {

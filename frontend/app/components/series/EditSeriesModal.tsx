@@ -9,11 +9,14 @@ import TextareaAutosize from 'react-textarea-autosize';
 import ColorPickerModal from '@/components/ColorPickerModal';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { Series } from '@/models/models';
+import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
+import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
 interface EditSeriesModalProps {
   series: Series;
   onClose: () => void;
-  onUpdate: (seriesId: string, updates: Partial<Series>) => Promise<void>;
+  onUpdate: (seriesId: string, updates: Partial<Series>) => WriteSubmission;
 }
 
 export default function EditSeriesModal({ series, onClose, onUpdate }: EditSeriesModalProps) {
@@ -45,19 +48,38 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
 
     try {
       setSaving(true);
-      await onUpdate(series.id, {
+      await awaitAcceptance(onUpdate(series.id, {
         title: title!.trim(),
         theme: title!.trim(), // Use title as theme for simplicity
         description: description.trim() || undefined,
         bookOrTopic: bookOrTopic.trim(),
         color: color || undefined,
         status
-      });
+      // useSeries' update recovery descriptor reports a late refusal while this screen is mounted.
+      }), () => undefined);
 
       onClose();
     } catch (error) {
-      console.error('Failed to update series:', error);
-      setError('Failed to update series. Please try again.');
+      /**
+       * One refusal, one reporter (docs/recoverable-writes.md): this entity's recovery
+       * descriptor carries the text and follows the person off this screen. The editor
+       * stays open holding what was typed; a transient failure still shows here,
+       * because nothing else explains it.
+       */
+      if (isStaleWriteError(error)) {
+        /**
+         * The series page's conflict banner already holds this text and offers "keep mine
+         * / take theirs". This modal covers the page, so staying open would hide the only
+         * place the choice can be made. Stepping aside loses nothing.
+         */
+        onClose();
+        return;
+      }
+      setError(
+        writeFailureTranslationKey(error, '') === 'writeRecovery.refused'
+          ? ''
+          : t('common.saveError')
+      );
     } finally {
       setSaving(false);
     }
@@ -116,7 +138,7 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
           </div>
 
           {error && (
-            <div className="mt-4 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200">
+            <div role="alert" className="mt-4 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200">
               {error}
             </div>
           )}
@@ -220,7 +242,7 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
                     onClick={() => setIsColorPickerOpen(true)}
                     className={`flex h-9 w-9 items-center justify-center rounded-full border-2 bg-gradient-to-br from-indigo-500 via-pink-500 to-amber-400 text-white shadow-sm transition hover:scale-105 ${!colorOptions.includes(color) ? 'ring-2 ring-white/60 dark:ring-gray-900' : ''
                       }`}
-                    title="Custom color"
+                    title={t('workspaces.series.form.customColor')}
                   >
                     +
                   </button>

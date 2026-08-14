@@ -175,6 +175,22 @@ describe('groups.service', () => {
     );
   });
 
+  it('keeps an HTTP refusal class when server delete is forbidden', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      json: async () => ({ error: 'Forbidden' }),
+    });
+
+    const service = await importServiceWithClientMocks();
+
+    await expect(service.deleteGroup('g1')).rejects.toMatchObject({
+      message: 'Forbidden',
+      code: 'permission-denied',
+      status: 403,
+    });
+  });
+
   it('performs meeting-date operations through the client SDK (own-doc RMW)', async () => {
     // add reads the group (empty meetingDates), update reads it holding d1,
     // delete reads it holding d1 — each op then writes only { meetingDates, updatedAt }.

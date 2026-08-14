@@ -18,17 +18,22 @@ import { toast } from 'sonner';
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import HighlightedText from '@/components/HighlightedText';
 import AddUpdateModal from '@/components/prayer/AddUpdateModal';
-import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
+import CreatePrayerModal, { type PrayerFormPayload } from '@/components/prayer/CreatePrayerModal';
 import MarkAnsweredModal from '@/components/prayer/MarkAnsweredModal';
 import PrayerStatusBadge from '@/components/prayer/PrayerStatusBadge';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
+import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
-import { PrayerRequest, PrayerStatus } from '@/models/models';
+import { PrayerStatus } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
-import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
+import {
+  announceIfPersisted,
+  awaitAcceptance,
+  skippedWrite,
+} from '@/utils/recoverableWrite';
 import '@locales/i18n';
 
 const PRAYER_FOCUS_TYPES = new Set(['title', 'description', 'answer', 'tags']);
@@ -41,7 +46,6 @@ export default function PrayerDetailPage() {
   const { user } = useAuth();
 
   const {
-    prayerRequests,
     loading,
     updatePrayer,
     deletePrayer,
@@ -59,7 +63,14 @@ export default function PrayerDetailPage() {
     // The id makes a refused save durable — see usePrayerRequests.
     usePrayerRequests(user?.uid ?? null, typeof id === 'string' ? id : null);
 
-  const prayer = prayerRequests.find((p) => p.id === id);
+  // Detail pages must be driven by the document query. A persisted empty list can
+  // legitimately be fresh for its cache window while this document already exists;
+  // using that list as an existence check produced a false "not found" even though
+  // the breadcrumb's document query had already loaded the prayer.
+  const { prayer, isLoading: detailLoading } = usePrayerDetail(
+    typeof id === 'string' ? id : '',
+    user?.uid
+  );
 
   // Does the server hold a newer version of THIS prayer request? Same shared layer
   // as the other detail pages: observe only, never swap what is on screen.
@@ -216,7 +227,7 @@ export default function PrayerDetailPage() {
     };
   }, [focusTargetId, prayer]);
 
-  if (loading) {
+  if (loading || detailLoading) {
     return (
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-4">
         <div className="h-8 w-32 bg-gray-100 dark:bg-gray-800 rounded animate-pulse" />
@@ -235,63 +246,65 @@ export default function PrayerDetailPage() {
     );
   }
 
-  const handleEdit = async (payload: Pick<PrayerRequest, 'title'> & Partial<Pick<PrayerRequest, 'description' | 'tags'>>) => {
+  const handleEdit = (payload: PrayerFormPayload) => {
     // State the revision this edit was built from, so a save from a tab that never
     // saw another device's change is refused rather than replacing it.
-    await updatePrayer(
+    const { recoveryDraft, ...updates } = payload;
+    return updatePrayer(
       prayer.id,
-      payload,
+      updates,
       editBaseRevision ?? prayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0,
-      editBaseContent
+      editBaseContent,
+      recoveryDraft
     );
-    toast.success(t('prayer.toast.updated'));
-    setShowEdit(false);
   };
 
   const handleDelete = async () => {
     if (!confirmDelete) { setConfirmDelete(true); return; }
-    await deletePrayer(prayer.id);
-    toast.success(t('prayer.toast.deleted'));
-    router.push('/prayers');
+    // No success message: deletePrayer returns on launch, so a refused delete used
+    // to be announced as done. The row leaving the list is the acceptance signal.
+    const submission = deletePrayer(prayer.id);
+    try {
+      // usePrayerRequests' delete recovery descriptor reports a late refusal while this screen is mounted.
+      await awaitAcceptance(submission, () => undefined);
+      router.push('/prayers');
+    } catch {
+      // Recovery owns the terminal error; stay on the prayer that was not deleted.
+    }
   };
 
-  const handleAddUpdate = async (text: string) => {
-    await addUpdate(prayer.id, text);
-    toast.success(t('prayer.toast.updateAdded'));
-    setShowAddUpdate(false);
+  const handleAddUpdate = (text: string, recoveryDraft: string) => {
+    // Queue-owned at launch: the modal closes after acceptance and stays silent.
+    return addUpdate(prayer.id, text, recoveryDraft);
   };
 
-  const handleSetStatus = async (status: PrayerStatus) => {
+  const handleSetStatus = (status: PrayerStatus) => {
     if (status === 'answered') {
       setShowMarkAnswered(true);
-      return;
+      return skippedWrite();
     }
-    await setStatus(prayer.id, status);
-    toast.success(t('prayer.toast.statusChanged'));
+    const submission = setStatus(prayer.id, status);
+    // usePrayerRequests' status recovery descriptor reports a late refusal while this screen is mounted.
+    void awaitAcceptance(submission, () => undefined)
+      .then((acceptance) => announceIfPersisted(acceptance, () => toast.success(t('prayer.toast.statusChanged'))))
+      .catch(() => undefined);
+    return submission;
   };
 
-  const handleMarkAnswered = async (answerText?: string) => {
+  const handleMarkAnswered = (answerText?: string, recoveryDraft?: string) => {
     // The answer is human text, so state the revision it was built from: two
     // devices answering the same prayer must not overwrite each other in silence.
-    try {
-      // The answer is human text, so state the revision it was built from: two
-      // devices answering the same prayer must not overwrite each other.
-      await setStatus(prayer.id, 'answered', answerText, prayer.rev?.[PRAYER_STATUS_AGGREGATE] ?? 0, {
+    return setStatus(
+      prayer.id,
+      'answered',
+      answerText,
+      prayer.rev?.[PRAYER_STATUS_AGGREGATE] ?? 0,
+      {
         status: prayer.status,
         answerText: prayer.answerText ?? null,
-      });
-    } catch (error) {
-      // REFUSED or failed — keep the modal OPEN. The typed answer lives nowhere
-      // else, so closing here would destroy it while claiming success.
-      toast.error(
-        isStaleWriteError(error) ? t('freshness.staleSaveToast') : t('common.saveError')
-      );
-      // RETHROW — see the note on the list page: a fulfilled submit closes the modal
-      // and takes the only copy of the typed answer with it.
-      throw error;
-    }
-    toast.success(t('prayer.toast.statusChanged'));
-    setShowMarkAnswered(false);
+      },
+      recoveryDraft
+    );
   };
 
   const isActive = prayer.status === 'active';
@@ -322,7 +335,11 @@ export default function PrayerDetailPage() {
         />
       )}
       {/* This PRAYER REQUEST changed elsewhere — distinct from the app-update toast. */}
-      {(prayerFreshness.state === 'stale' || prayerFreshness.state === 'unknown') && !prayerFreshnessDismissed && (
+      {/* EITHER conflict silences it. This screen has two — an edit refusal and a refused
+          answer/status change — and both already say the record changed elsewhere while
+          holding the person's text. Guarding only the first one left the second showing two
+          banners and four competing actions for one event. */}
+      {!saveConflict && !statusConflict && (prayerFreshness.state === 'stale' || prayerFreshness.state === 'unknown') && !prayerFreshnessDismissed && (
         <DataFreshnessBanner
           entityKey="entityRecord"
           dirty={false}

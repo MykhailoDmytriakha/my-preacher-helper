@@ -10,10 +10,17 @@ import DatePickerField from '@/components/ui/DatePickerField';
 import { Group } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { createFlowItem, createTemplate } from '@/utils/groupFlow';
+import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 
 interface CreateGroupModalProps {
   onClose: () => void;
-  onCreate: (group: Omit<Group, 'id'>) => Promise<void>;
+  /**
+   * CANONICAL: a write prop returns a `WriteSubmission`, never `Promise<void>`.
+   * From here `Promise<void>` cannot tell "the write started" from "the write was
+   * accepted", and that indistinguishability is the bug this contract removes.
+   * See frontend/docs/recoverable-writes.md.
+   */
+  onCreate: (group: Omit<Group, 'id'>) => WriteSubmission;
 }
 
 const generateMeetingDateId = () => {
@@ -70,7 +77,11 @@ export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModal
         ]
         : [];
 
-      await onCreate({
+      // Wait for ACCEPTANCE, not for the call to return. A refusal that arrives
+      // before anything owns this write rejects here, and the catch below keeps the
+      // form open with every field intact — which is the whole contract.
+      await awaitAcceptance(
+        onCreate({
         userId: user?.uid || '',
         title: title.trim(),
         description: description.trim() || undefined,
@@ -86,16 +97,22 @@ export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModal
         updatedAt: now,
         seriesId: null,
         seriesPosition: null,
-      });
+        }),
+        // useGroups' create recovery descriptor reports a late refusal with this draft
+        // while the groups screen is mounted; after that it is the tracked navigation debt.
+        () => undefined
+      );
 
       onClose();
-    } catch (errorValue) {
-      console.error('Failed to create group:', errorValue);
-      setError(
-        t('workspaces.groups.errors.createFailed', {
-          defaultValue: 'Failed to create group. Please try again.',
-        })
-      );
+    } catch (error) {
+      /**
+       * NO message here — this is the canonical example, and it must show the rule
+       * rather than break it. `useGroups` declares the recovery descriptor for this
+       * write: it carries the title and description, offers "copy my text", and keeps
+       * reporting after this modal closes. The modal's duty on a refusal is to stay
+       * open with everything the person typed still in it.
+       */
+      console.error('Failed to create group:', error);
     } finally {
       setSaving(false);
     }

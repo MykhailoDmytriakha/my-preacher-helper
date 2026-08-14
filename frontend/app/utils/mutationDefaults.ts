@@ -1,3 +1,4 @@
+import { isOfflineQueuedError } from '@/services/conflictSafeUpdate.client';
 import { createGroup, deleteGroup, updateGroup } from '@/services/groups.service';
 import {
   createPlanTemplate,
@@ -646,7 +647,14 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
     onSuccess: async (persisted: Sermon, vars: DashboardSermonUpdateVars) => {
       await writeSermons(vars.uid, (old) => old.map((s) => (s.id === vars.sermonId ? persisted : s)));
     },
-    onError: async (_error: unknown, vars: DashboardSermonUpdateVars) => {
+    onError: async (error: unknown, vars: DashboardSermonUpdateVars) => {
+      /**
+       * A QUEUED write is not a failed one. When Firestore is unreachable the change is
+       * stored in the durable outbox and surfaces as `OfflineQueuedError`; rolling the row
+       * back here would take the person's edit off the screen while it sits safely waiting
+       * to replay — the screen would contradict what was actually kept.
+       */
+      if (isOfflineQueuedError(error)) return;
       await writeSermons(vars.uid, (old) =>
         old.map((s) => (s.id === vars.sermonId ? vars.input.sermon : s))
       );
@@ -668,18 +676,14 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
     mutationFn: async (vars: DashboardSermonMarkVars): Promise<Sermon> => {
       const { sermon, preferredDate } = vars;
       await updatePreachDate(sermon.id, preferredDate.id, { status: 'preached' });
-      // Only the flag — never the whole snapshot, or marking a sermon preached
-      // would revert a title/verse/preparation edit made on another device.
-      const updatedSermon = await updateSermonRequest({ ...sermon, isPreached: true }, { isPreached: true });
-      if (!updatedSermon) {
-        throw new Error(PREACHED_STATUS_UPDATE_ERROR);
-      }
-      return mergePreachDate(updatedSermon, { ...preferredDate, status: 'preached' });
+      // A preached date is the source of truth for the derived status. Avoid a
+      // second core write: it could be refused after this date persisted and make
+      // the UI falsely roll both changes back.
+      return mergePreachDate({ ...sermon, isPreached: true }, { ...preferredDate, status: 'preached' });
     },
     onMutate: async (vars: DashboardSermonMarkVars) => {
       const optimisticSermon: Sermon = {
         ...vars.sermon,
-        isPreached: true,
         preachDates: (vars.sermon.preachDates || []).map((pd) =>
           pd.id === vars.preferredDate.id ? { ...pd, status: 'preached' as const } : pd
         ),
@@ -692,7 +696,9 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
       await writeSermons(vars.uid, (old) => old.map((s) => (s.id === vars.sermonId ? persisted : s)));
       invalidateCalendar();
     },
-    onError: async (_error: unknown, vars: DashboardSermonMarkVars) => {
+    onError: async (error: unknown, vars: DashboardSermonMarkVars) => {
+      // Same reason as the update rollback above: a queued write is stored, not failed.
+      if (isOfflineQueuedError(error)) return;
       await writeSermons(vars.uid, (old) => old.map((s) => (s.id === vars.sermonId ? vars.sermon : s)));
     },
   });
@@ -707,16 +713,16 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
         );
       }
 
-      // Only the flag — see the note on markPreached.
-      const updatedSermon = await updateSermonRequest({ ...sermon, isPreached: false }, { isPreached: false });
-      if (!updatedSermon) {
-        throw new Error(PREACHED_STATUS_UPDATE_ERROR);
-      }
-
       const preachedIdSet = new Set(preachedDates.map((pd) => pd.id));
+      if (preachedIdSet.size === 0) {
+        const updatedSermon = await updateSermonRequest({ ...sermon, isPreached: false }, { isPreached: false });
+        if (!updatedSermon) throw new Error(PREACHED_STATUS_UPDATE_ERROR);
+        return updatedSermon;
+      }
       return {
-        ...updatedSermon,
-        preachDates: (updatedSermon.preachDates || []).map((pd) =>
+        ...sermon,
+        isPreached: false,
+        preachDates: (sermon.preachDates || []).map((pd) =>
           preachedIdSet.has(pd.id) ? { ...pd, status: 'planned' as const } : pd
         ),
       };
@@ -724,7 +730,6 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
     onMutate: async (vars: DashboardSermonUnmarkVars) => {
       const optimisticSermon: Sermon = {
         ...vars.sermon,
-        isPreached: false,
         preachDates: (vars.sermon.preachDates || []).map((pd) =>
           pd.status === 'preached' ? { ...pd, status: 'planned' as const } : pd
         ),
@@ -737,7 +742,9 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
       await writeSermons(vars.uid, (old) => old.map((s) => (s.id === vars.sermonId ? persisted : s)));
       invalidateCalendar();
     },
-    onError: async (_error: unknown, vars: DashboardSermonUnmarkVars) => {
+    onError: async (error: unknown, vars: DashboardSermonUnmarkVars) => {
+      // Same reason as the update rollback above: a queued write is stored, not failed.
+      if (isOfflineQueuedError(error)) return;
       await writeSermons(vars.uid, (old) => old.map((s) => (s.id === vars.sermonId ? vars.sermon : s)));
     },
   });
@@ -749,46 +756,16 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
         ? await updatePreachDate(sermon.id, preachDateToMark.id, { ...data, status: 'preached' })
         : await addPreachDate(sermon.id, { id: newPreachDateId, ...data, status: data.status || 'preached' });
 
-      // Only the flag — see the note on markPreached.
-      const updatedSermon = await updateSermonRequest({ ...sermon, isPreached: true }, { isPreached: true });
-      if (!updatedSermon) {
-        throw new Error(PREACHED_STATUS_UPDATE_ERROR);
-      }
-      return mergePreachDate(updatedSermon, persistedPreachDate);
+      // See markPreached: the date is sufficient and makes this a single write.
+      return mergePreachDate({ ...sermon, isPreached: true }, persistedPreachDate);
     },
-    onMutate: async (vars: DashboardSermonSaveDateVars) => {
-      const { sermon, data, preachDateToMark, newPreachDateId } = vars;
-      const optimisticSermon: Sermon = preachDateToMark
-        ? {
-            ...sermon,
-            isPreached: true,
-            preachDates: (sermon.preachDates || []).map((pd) =>
-              pd.id === preachDateToMark.id ? { ...pd, ...data, status: 'preached' as const } : pd
-            ),
-          }
-        : {
-            ...sermon,
-            isPreached: true,
-            preachDates: [
-              ...(sermon.preachDates || []),
-              {
-                id: newPreachDateId,
-                ...data,
-                status: data.status || 'preached',
-                createdAt: new Date().toISOString(),
-              },
-            ],
-          };
-      await writeSermons(vars.uid, (old) =>
-        old.map((s) => (s.id === vars.sermonId ? optimisticSermon : s))
-      );
-    },
+    // Do not optimistically mark the sermon preached while this mutation owns an
+    // open PreachDateModal. The Active-tab filter would remove the card, unmount
+    // the modal, and destroy its only copy of a refused draft before Firestore can
+    // return the terminal error. A confirmed write moves the card in onSuccess.
     onSuccess: async (persisted: Sermon, vars: DashboardSermonSaveDateVars) => {
       await writeSermons(vars.uid, (old) => old.map((s) => (s.id === vars.sermonId ? persisted : s)));
       invalidateCalendar();
-    },
-    onError: async (_error: unknown, vars: DashboardSermonSaveDateVars) => {
-      await writeSermons(vars.uid, (old) => old.map((s) => (s.id === vars.sermonId ? vars.sermon : s)));
     },
   });
 }

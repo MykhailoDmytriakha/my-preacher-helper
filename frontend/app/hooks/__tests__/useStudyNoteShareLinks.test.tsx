@@ -5,6 +5,7 @@ import React from 'react';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useAuth } from '@/providers/AuthProvider';
 import { auth } from '@/services/firebaseAuth.service';
+import { awaitAcceptance } from '@/utils/recoverableWrite';
 import {
   createStudyNoteShareLink,
   deleteStudyNoteShareLink,
@@ -159,7 +160,8 @@ describe('useStudyNoteShareLinks', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     await act(async () => {
-      await result.current.createShareLink('note-1');
+      const acceptance = await awaitAcceptance(result.current.createShareLink('note-1'), () => undefined);
+      expect(acceptance).toEqual({ kind: 'persisted' });
     });
 
     expect(mockCreateShareLink).toHaveBeenCalledWith('auth-1', 'note-1');
@@ -185,7 +187,8 @@ describe('useStudyNoteShareLinks', () => {
     await waitFor(() => expect(result.current.shareLinks).toEqual([linkA, linkB]));
 
     await act(async () => {
-      await result.current.deleteShareLink('link-1');
+      const acceptance = await awaitAcceptance(result.current.deleteShareLink('link-1'), () => undefined);
+      expect(acceptance).toEqual({ kind: 'persisted' });
     });
 
     expect(mockDeleteShareLink).toHaveBeenCalledWith('auth-1', 'link-1');
@@ -202,6 +205,10 @@ describe('useStudyNoteShareLinks', () => {
 
     const { result } = renderHook(() => useStudyNoteShareLinks(), { wrapper: createWrapper() });
 
-    await expect(result.current.createShareLink('note-1')).rejects.toThrow('No user');
+    // A LOCAL refusal now: it rejects AND announces itself, because no mutation exists
+    // for a recovery descriptor to report — see `refusedWrite`.
+    await expect(result.current.createShareLink('note-1').acceptance).rejects.toThrow(
+      'No signed-in user'
+    );
   });
 });

@@ -386,4 +386,29 @@ describe('SermonCard Component', () => {
     const card = screen.getByTestId(`sermon-card-${baseSermon.id}`);
     expect(card).toHaveClass('border-red-300');
   });
+
+  it('shows the exact refused sermon text next to the refusal', () => {
+    render(
+      <SermonCard
+        sermon={baseSermon}
+        onDelete={mockOnDelete}
+        onUpdate={mockOnUpdate}
+        syncState={{
+          status: 'error',
+          operation: 'update',
+          message: 'writeRecovery.refused',
+          recoveryText: 'Exact refused title\nExact refused verse',
+          refused: true,
+        }}
+        optimisticActions={optimisticActions as any}
+      />
+    );
+
+    expect(screen.getByText('writeRecovery.refused')).toBeInTheDocument();
+    expect(screen.getByText('freshness.copyTextAction')).toBeInTheDocument();
+    expect(screen.queryByText('buttons.retry')).not.toBeInTheDocument();
+    expect(screen.getByText(/Exact refused title/)).toHaveTextContent(
+      'Exact refused title Exact refused verse'
+    );
+  });
 });

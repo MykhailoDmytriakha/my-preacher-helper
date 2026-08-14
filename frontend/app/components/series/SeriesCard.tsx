@@ -60,6 +60,12 @@ function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
 
 export default function SeriesCard({ series }: SeriesCardProps) {
   const { t } = useTranslation();
+  // A series stored before `status` existed (or written by an older build) has no
+  // status at all. Indexing the style map with it returned undefined and the `.bg`
+  // read threw, which React turns into a blank "Application error" page — one such
+  // document took down the WHOLE series list, not just its own card.
+  const status: Series["status"] = series.status ?? "draft";
+  const statusStyle = statusStyles[status] ?? statusStyles.draft;
   const sermonCount = series.items
     ? series.items.filter((i) => i.type === "sermon").length
     : series.sermonIds?.length || 0;
@@ -113,9 +119,9 @@ export default function SeriesCard({ series }: SeriesCardProps) {
             </p>
           </div>
           <span
-            className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${statusStyles[series.status].bg} ${statusStyles[series.status].text} ${statusStyles[series.status].ring}`}
+            className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${statusStyle.bg} ${statusStyle.text} ${statusStyle.ring}`}
           >
-            {t(`workspaces.series.form.statuses.${series.status}`)}
+            {t(`workspaces.series.form.statuses.${status}`)}
           </span>
         </div>
 

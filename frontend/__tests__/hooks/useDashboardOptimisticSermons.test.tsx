@@ -3,8 +3,9 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import { useDashboardOptimisticSermons } from '@/hooks/useDashboardOptimisticSermons';
-import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { OfflineQueuedError, StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
+import { persistedWrite } from '@/utils/recoverableWrite';
 import type { Sermon } from '@/models/models';
 
 const mockCreateSermon = jest.fn();
@@ -13,6 +14,8 @@ const mockDeleteSermon = jest.fn();
 const mockAddPreachDate = jest.fn();
 const mockUpdatePreachDate = jest.fn();
 const mockDeletePreachDate = jest.fn();
+const mockAddToSeries = jest.fn();
+const mockRemoveFromAllSeries = jest.fn();
 
 jest.mock('@services/firebaseAuth.service', () => ({
   auth: {
@@ -30,6 +33,27 @@ jest.mock('@services/preachDates.service', () => ({
   addPreachDate: (...args: unknown[]) => mockAddPreachDate(...args),
   updatePreachDate: (...args: unknown[]) => mockUpdatePreachDate(...args),
   deletePreachDate: (...args: unknown[]) => mockDeletePreachDate(...args),
+}));
+
+jest.mock('@/hooks/useSeriesMembership', () => ({
+  useSeriesMembership: () => ({
+    addToSeries: mockAddToSeries,
+    removeFromAllSeries: mockRemoveFromAllSeries,
+  }),
+}));
+
+jest.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, options?: { name?: string; defaultValue?: string }) => {
+      const messages: Record<string, string> = {
+        'writeRecovery.sermonCreateFailed': `Sermon "${options?.name}" was not saved. Your text is ready to retry.`,
+        'writeRecovery.sermonUpdateFailed': `Changes to "${options?.name}" were not saved. Your text is ready to retry.`,
+        'writeRecovery.preachDateFailed': `Preaching details for "${options?.name}" were not saved. Your notes are ready to retry.`,
+        'writeRecovery.sermonFailed': 'Sermon changes were not saved. Your text is ready to retry.',
+      };
+      return messages[key] || options?.defaultValue || key;
+    },
+  }),
 }));
 
 const { auth: mockAuth } = jest.requireMock('@services/firebaseAuth.service') as {
@@ -130,6 +154,8 @@ describe('useDashboardOptimisticSermons', () => {
     mockAddPreachDate.mockReset();
     mockUpdatePreachDate.mockReset();
     mockDeletePreachDate.mockReset();
+    mockAddToSeries.mockReset();
+    mockRemoveFromAllSeries.mockReset();
   });
 
   it('creates a sermon with a client id and reconciles it with the persisted sermon', async () => {
@@ -142,7 +168,7 @@ describe('useDashboardOptimisticSermons', () => {
 
     const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
 
-    let createdId: string | undefined;
+    let createdId: { sermonId: string } | undefined;
     await act(async () => {
       createdId = await result.current.actions.createSermon({
         title: 'Optimistic Sermon',
@@ -155,17 +181,17 @@ describe('useDashboardOptimisticSermons', () => {
     const cacheAfterAction = getCachedSermons(queryClient);
     expect(cacheAfterAction).toHaveLength(1);
     expect(createdId).toBeTruthy();
-    expect(cacheAfterAction[0].id).toBe(createdId);
+    expect(cacheAfterAction[0].id).toBe(createdId?.sermonId);
     expect(cacheAfterAction[0].id.startsWith('temp-sermon-')).toBe(false);
     // The badge map is derived from the mutation cache via useMutationState,
     // whose subscription notifies on the next tick — poll instead of reading
     // synchronously.
     await waitFor(() => {
-      expect(result.current.syncStatesById[createdId as string]?.status).toBe('pending');
+      expect(result.current.syncStatesById[createdId!.sermonId]?.status).toBe('pending');
     });
 
     // The server echoes the same id back (idempotent create).
-    const persisted = createSermon(createdId as string, { title: 'Persisted Sermon' });
+    const persisted = createSermon(createdId!.sermonId, { title: 'Persisted Sermon' });
     await act(async () => {
       createFlow.resolve(persisted);
     });
@@ -173,9 +199,105 @@ describe('useDashboardOptimisticSermons', () => {
     await waitFor(() => {
       const cache = getCachedSermons(queryClient);
       expect(cache).toHaveLength(1);
-      expect(cache[0].id).toBe(createdId);
+      expect(cache[0].id).toBe(createdId!.sermonId);
       expect(cache[0].title).toBe('Persisted Sermon');
-      expect(result.current.syncStatesById[createdId as string]).toBeUndefined();
+      expect(result.current.syncStatesById[createdId!.sermonId]).toBeUndefined();
+    });
+  });
+
+  it('does NOT badge a QUEUED write as a failure', async () => {
+    /**
+     * Nominally online, Firestore unreachable: the write goes to the durable outbox and
+     * surfaces as `OfflineQueuedError`. Painting that as an error badge told the person a
+     * stored edit had failed — and its Retry would have enqueued a second copy. Failed
+     * mutations are persisted, so the false alarm even survived a reload.
+     */
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    mockCreateSermon.mockRejectedValueOnce(new OfflineQueuedError('core'));
+
+    const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
+
+    let created: { sermonId: string } | undefined;
+    await act(async () => {
+      created = await result.current.actions.createSermon({
+        title: 'Stored while unreachable',
+        verse: 'Psalm 1',
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.syncStatesById[created!.sermonId]?.status).not.toBe('error');
+    });
+    expect(result.current.syncStatesById[created!.sermonId]).toBeUndefined();
+  });
+
+  it('keeps the created sermon accepted when only the series membership is refused', async () => {
+    // Deliberate asymmetry. Rejecting here would leave the editor open over a sermon
+    // that HAS been created, and submitting again mints a new id — a duplicate. The
+    // membership refusal is not swallowed: useSeriesMembership owns its own recovery
+    // toast for every surface, with an idempotent retry.
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const membershipRefusal = Object.assign(new Error('Membership denied'), { code: 'permission-denied' });
+    mockCreateSermon.mockResolvedValueOnce(createSermon('created-in-series'));
+    mockAddToSeries.mockReturnValueOnce(persistedWrite(Promise.reject(membershipRefusal)));
+
+    const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
+
+    let submission!: ReturnType<typeof result.current.actions.createSermon>;
+    await act(async () => {
+      submission = result.current.actions.createSermon({
+        title: 'Series sermon',
+        verse: 'Romans 8:1',
+        seriesId: 'series-1',
+      });
+    });
+
+    await expect(submission.acceptance).resolves.toMatchObject({ kind: 'persisted' });
+    expect(mockAddToSeries).toHaveBeenCalledWith('series-1', {
+      type: 'sermon',
+      refId: submission.sermonId,
+    });
+    // The sermon exists, so nothing about the series link is undone.
+    expect(mockRemoveFromAllSeries).not.toHaveBeenCalled();
+  });
+
+  it('unlinks the series when the sermon create itself is refused', async () => {
+    // The direction that DOES need joining: membership committed while the create was
+    // refused leaves the series pointing at a sermon that does not exist, and nothing
+    // else in the app would ever clean that up.
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const createRefusal = Object.assign(new Error('Missing or insufficient permissions.'), {
+      code: 'permission-denied',
+      name: 'FirebaseError',
+    });
+    mockCreateSermon.mockRejectedValueOnce(createRefusal);
+    mockAddToSeries.mockReturnValueOnce(persistedWrite(Promise.resolve(undefined)));
+
+    const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
+
+    let submission!: ReturnType<typeof result.current.actions.createSermon>;
+    await act(async () => {
+      submission = result.current.actions.createSermon({
+        title: 'Orphan sermon',
+        verse: 'Romans 8:2',
+        seriesId: 'series-1',
+      });
+      await submission.acceptance.catch(() => undefined);
+    });
+
+    await expect(submission.acceptance).rejects.toMatchObject({ code: 'permission-denied' });
+    expect(mockRemoveFromAllSeries).toHaveBeenCalledWith({
+      type: 'sermon',
+      refId: submission.sermonId,
     });
   });
 
@@ -210,8 +332,19 @@ describe('useDashboardOptimisticSermons', () => {
 
     await waitFor(() => {
       expect(result.current.syncStatesById['sermon-1']?.status).toBe('error');
+      expect(result.current.syncStatesById['sermon-1']?.message).toBe(
+        'Changes to "Updated Title" were not saved. Your text is ready to retry.'
+      );
+      expect(result.current.syncStatesById['sermon-1']?.recoveryText).toBe(
+        `Updated Title\n${original.verse}`
+      );
       expect(getCachedSermons(queryClient)[0].title).toBe(original.title);
     });
+
+    const failedEdit = queryClient.getMutationCache().getAll().find(
+      (mutation) => mutation.state.status === 'error'
+    );
+    expect((failedEdit?.state.variables as { input?: { title?: string } })?.input?.title).toBe('Updated Title');
 
     mockUpdateSermon.mockResolvedValueOnce({ ...original, title: 'Updated Title' });
 
@@ -222,6 +355,40 @@ describe('useDashboardOptimisticSermons', () => {
     await waitFor(() => {
       expect(getCachedSermons(queryClient)[0].title).toBe('Updated Title');
       expect(result.current.syncStatesById['sermon-1']).toBeUndefined();
+    });
+  });
+
+  it('names a rules refusal and exposes the exact sermon edit without suggesting connectivity', async () => {
+    const queryClient = createTestQueryClient();
+    const original = createSermon('sermon-refused');
+    setCachedSermons(queryClient, [original]);
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    mockUpdateSermon.mockRejectedValueOnce(
+      Object.assign(new Error('Permission denied'), { code: 'permission-denied' })
+    );
+
+    const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
+    await act(async () => {
+      await result.current.actions.saveEditedSermon({
+        sermon: original,
+        title: 'Exact refused sermon title',
+        verse: 'Exact refused sermon verse',
+        plannedDate: '',
+        initialPlannedDate: '',
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.syncStatesById[original.id]).toEqual(
+        expect.objectContaining({
+          status: 'error',
+          refused: true,
+          message: 'writeRecovery.refused',
+          recoveryText: 'Exact refused sermon title\nExact refused sermon verse',
+        })
+      );
     });
   });
 
@@ -247,7 +414,17 @@ describe('useDashboardOptimisticSermons', () => {
       expect(ids).toHaveLength(1);
       tempId = ids[0];
       expect(result.current.syncStatesById[tempId]?.status).toBe('error');
+      expect(result.current.syncStatesById[tempId]?.message).toBe(
+        'Sermon "Will Fail" was not saved. Your text is ready to retry.'
+      );
     });
+
+    const failedCreate = queryClient.getMutationCache().getAll().find(
+      (mutation) => mutation.state.status === 'error'
+    );
+    expect((failedCreate?.state.variables as { input?: { title?: string; verse?: string } })?.input).toEqual(
+      expect.objectContaining({ title: 'Will Fail', verse: 'Mark 1' })
+    );
 
     await act(async () => {
       result.current.actions.dismissSyncError(tempId);
@@ -415,7 +592,11 @@ describe('useDashboardOptimisticSermons', () => {
     expect(mockDeletePreachDate).toHaveBeenCalledWith('sermon-3', 'pd-existing');
   });
 
-  it('skips second optimistic edit while first update is pending', async () => {
+  it('skips a REPEATED identical edit, but lets a genuinely different one through', async () => {
+    // Rewritten after adversarial review: the previous version submitted "First" and
+    // then a DIFFERENT "Second", asserted a single request, and called that duplicate
+    // suppression. It was not — the second edit resolved as `skipped`, so the editor
+    // closed as if accepted and the person's revised title was dropped in silence.
     const queryClient = createTestQueryClient();
     const original = createSermon('sermon-4');
     setCachedSermons(queryClient, [original]);
@@ -424,39 +605,36 @@ describe('useDashboardOptimisticSermons', () => {
     );
 
     const updateFlow = createDeferred<Sermon | null>();
-    mockUpdateSermon.mockReturnValueOnce(updateFlow.promise);
+    mockUpdateSermon.mockReturnValue(updateFlow.promise);
 
     const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
 
-    await act(async () => {
-      await result.current.actions.saveEditedSermon({
-        sermon: original,
-        title: 'First',
-        verse: original.verse,
-        plannedDate: '',
-        initialPlannedDate: '',
-      });
+    const edit = (title: string) => ({
+      sermon: original,
+      title,
+      verse: original.verse,
+      plannedDate: '',
+      initialPlannedDate: '',
     });
 
     await act(async () => {
-      await result.current.actions.saveEditedSermon({
-        sermon: original,
-        title: 'Second',
-        verse: original.verse,
-        plannedDate: '',
-        initialPlannedDate: '',
-      });
+      await result.current.actions.saveEditedSermon(edit('First'));
     });
 
+    // The same write fired twice — a double-submit — is the case the guard exists for.
+    await act(async () => {
+      await result.current.actions.saveEditedSermon(edit('First'));
+    });
     expect(mockUpdateSermon).toHaveBeenCalledTimes(1);
 
+    // A different title is a different write and must NOT be swallowed.
     await act(async () => {
-      updateFlow.resolve({ ...original, title: 'First' });
+      await result.current.actions.saveEditedSermon(edit('Second'));
     });
+    expect(mockUpdateSermon).toHaveBeenCalledTimes(2);
 
-    await waitFor(() => {
-      expect(getCachedSermons(queryClient)[0].title).toBe('First');
-      expect(result.current.syncStatesById['sermon-4']).toBeUndefined();
+    await act(async () => {
+      updateFlow.resolve({ ...original, title: 'Second' });
     });
   });
 
@@ -510,22 +688,22 @@ describe('useDashboardOptimisticSermons', () => {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
 
-    mockUpdatePreachDate.mockResolvedValue(undefined);
-    mockUpdateSermon.mockResolvedValueOnce(null);
+    mockUpdatePreachDate.mockRejectedValueOnce(new Error('mark-preached-failed'));
 
     const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
 
     await act(async () => {
-      await result.current.actions.markAsPreachedFromPreferred(original, original.preachDates![0]);
+      await result.current.actions.markAsPreachedFromPreferred(original, original.preachDates![0]).persistence.catch(() => undefined);
     });
 
     await waitFor(() => {
       expect(result.current.syncStatesById['sermon-preached']?.status).toBe('error');
+      expect(result.current.syncStatesById['sermon-preached']?.message).toBe(
+        'Sermon changes were not saved. Your text is ready to retry.'
+      );
       expect(getCachedSermons(queryClient)[0].isPreached).toBeUndefined();
       expect(getCachedSermons(queryClient)[0].preachDates?.[0].status).toBe('planned');
     });
-
-    mockUpdateSermon.mockResolvedValueOnce({ ...original, isPreached: true });
 
     await act(async () => {
       await result.current.actions.retrySync('sermon-preached');
@@ -575,7 +753,7 @@ describe('useDashboardOptimisticSermons', () => {
     const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
 
     await act(async () => {
-      await result.current.actions.unmarkAsPreached(original);
+      await result.current.actions.unmarkAsPreached(original).persistence;
     });
 
     await waitFor(() => {
@@ -617,15 +795,29 @@ describe('useDashboardOptimisticSermons', () => {
           date: '2026-09-02',
           status: 'preached',
           church: { id: 'c1', name: 'Church', city: 'City' },
+          notes: 'Exact notes dictated after preaching',
         },
         original.preachDates![0]
-      );
+      ).persistence.catch(() => undefined);
     });
 
     await waitFor(() => {
       expect(result.current.syncStatesById['sermon-save-date']?.status).toBe('error');
+      expect(result.current.syncStatesById['sermon-save-date']?.message).toBe(
+        'Preaching details for "Sermon sermon-save-date" were not saved. Your notes are ready to retry.'
+      );
+      expect(result.current.syncStatesById['sermon-save-date']?.recoveryText).toContain(
+        'Exact notes dictated after preaching'
+      );
       expect(getCachedSermons(queryClient)[0].preachDates?.[0].status).toBe('planned');
     });
+
+    const failedSaveDate = queryClient.getMutationCache().getAll().find(
+      (mutation) => mutation.state.status === 'error'
+    );
+    expect((failedSaveDate?.state.variables as { data?: { notes?: string } })?.data?.notes).toBe(
+      'Exact notes dictated after preaching'
+    );
 
     mockUpdatePreachDate.mockResolvedValueOnce({
       id: 'pd-existing',
@@ -634,12 +826,6 @@ describe('useDashboardOptimisticSermons', () => {
       church: { id: 'c1', name: 'Church', city: 'City' },
       createdAt: '2026-02-10T10:00:00.000Z',
     });
-    mockUpdateSermon.mockResolvedValueOnce({
-      ...original,
-      isPreached: true,
-      preachDates: original.preachDates,
-    });
-
     await act(async () => {
       await result.current.actions.retrySync('sermon-save-date');
     });
@@ -732,9 +918,11 @@ describe('useDashboardOptimisticSermons', () => {
       await waitFor(() => {
         expect(result.current.syncStatesById['sermon-offline']?.status).toBe('pending');
       });
+      expect(result.current.syncStatesById['sermon-offline']?.message).toBeUndefined();
       const paused = queryClient.getMutationCache().getAll();
       expect(paused).toHaveLength(1);
       expect(paused[0].state.isPaused).toBe(true);
+      expect((paused[0].state.variables as { input?: { title?: string } }).input?.title).toBe('Offline Title');
 
       mockUpdateSermon.mockResolvedValueOnce({ ...original, title: 'Offline Title' });
       act(() => {
@@ -746,6 +934,82 @@ describe('useDashboardOptimisticSermons', () => {
         expect(result.current.syncStatesById['sermon-offline']).toBeUndefined();
         expect(getCachedSermons(queryClient)[0].title).toBe('Offline Title');
       });
+    });
+
+    it('keeps a paused offline sermon create silent with its exact text queued', async () => {
+      const queryClient = createOfflineTestQueryClient();
+      const wrapper = ({ children }: { children: React.ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      );
+      act(() => {
+        onlineManager.setOnline(false);
+      });
+      mockCreateSermon.mockRejectedValueOnce(new Error('network down'));
+      const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
+
+      let sermonId: { sermonId: string } | undefined;
+      await act(async () => {
+        sermonId = await result.current.actions.createSermon({
+          title: 'Offline sermon title',
+          verse: 'Offline exact verse',
+        });
+      });
+
+      await waitFor(() => {
+        expect(result.current.syncStatesById[sermonId!.sermonId]?.status).toBe('pending');
+      });
+      expect(result.current.syncStatesById[sermonId!.sermonId]?.message).toBeUndefined();
+      const queued = queryClient.getMutationCache().getAll()[0];
+      expect(queued.state.isPaused).toBe(true);
+      expect((queued.state.variables as { input?: { verse?: string } }).input?.verse).toBe('Offline exact verse');
+
+      mockCreateSermon.mockResolvedValueOnce(createSermon(sermonId!.sermonId));
+    });
+
+    it('keeps paused offline preaching details silent with the exact notes queued', async () => {
+      const queryClient = createOfflineTestQueryClient();
+      const original = createSermon('sermon-offline-preach');
+      setCachedSermons(queryClient, [original]);
+      const wrapper = ({ children }: { children: React.ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      );
+      act(() => {
+        onlineManager.setOnline(false);
+      });
+      mockAddPreachDate.mockRejectedValueOnce(new Error('network down'));
+      const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
+
+      await act(async () => {
+        await result.current.actions.savePreachDate(
+          original,
+          {
+            date: '2026-10-01',
+            status: 'preached',
+            church: { id: 'c1', name: 'Church', city: 'City' },
+            notes: 'Offline exact preaching notes',
+          },
+          null
+        );
+      });
+
+      await waitFor(() => {
+        expect(result.current.syncStatesById[original.id]?.status).toBe('pending');
+      });
+      expect(result.current.syncStatesById[original.id]?.message).toBeUndefined();
+      const queued = queryClient.getMutationCache().getAll()[0];
+      expect(queued.state.isPaused).toBe(true);
+      expect((queued.state.variables as { data?: { notes?: string } }).data?.notes).toBe(
+        'Offline exact preaching notes'
+      );
+
+      mockAddPreachDate.mockResolvedValueOnce({
+        id: 'pd-offline',
+        date: '2026-10-01',
+        status: 'preached',
+        church: { id: 'c1', name: 'Church', city: 'City' },
+        createdAt: '2026-08-11T00:00:00.000Z',
+      });
+    mockUpdatePreachDate.mockResolvedValueOnce(undefined);
     });
 
     it('replays a paused offline edit after a simulated reload (dehydrate -> hydrate -> resume)', async () => {
@@ -828,7 +1092,7 @@ describe('useDashboardOptimisticSermons', () => {
 
       const { result } = renderHook(() => useDashboardOptimisticSermons(), { wrapper });
 
-      let createdId: string | undefined;
+      let createdId: { sermonId: string } | undefined;
       await act(async () => {
         createdId = await result.current.actions.createSermon({ title: 'Offline Created', verse: 'V' });
       });
@@ -838,7 +1102,7 @@ describe('useDashboardOptimisticSermons', () => {
 
       // Edit the still-unsynced optimistic row while offline: queues a SECOND
       // mutation (paused offline ops deliberately don't block new edits).
-      const optimisticRow = getCachedSermons(queryClient).find((sermon) => sermon.id === createdId);
+      const optimisticRow = getCachedSermons(queryClient).find((sermon) => sermon.id === createdId?.sermonId);
       expect(optimisticRow).toBeTruthy();
       mockUpdateSermon.mockRejectedValueOnce(new Error('network down'));
       await act(async () => {
@@ -872,7 +1136,7 @@ describe('useDashboardOptimisticSermons', () => {
         // Create replays BEFORE the edit (serial, submission order) — the old
         // retryActionsRef keyed by sermonId would have dropped the create.
         expect(replayOrder).toEqual(['create', 'update']);
-        expect(result.current.syncStatesById[createdId as string]).toBeUndefined();
+        expect(result.current.syncStatesById[createdId!.sermonId]).toBeUndefined();
         expect(getCachedSermons(queryClient)[0].title).toBe('Edited Offline');
       });
     });

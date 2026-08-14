@@ -16,8 +16,16 @@ import { useRouteId } from "@/hooks/useRouteId";
 import { useSermonStructureData } from "@/hooks/useSermonStructureData";
 import { Item, Sermon, SermonPoint, Thought, SermonOutline } from "@/models/models";
 import "@locales/i18n";
+import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
 import { updateThought } from "@/services/thought.service";
+import { newClientId } from "@/utils/clientId";
 import { getExportContent } from "@/utils/exportContent";
+import {
+  awaitAcceptance,
+  queuedMutation,
+  skippedWrite,
+  type WriteSubmission,
+} from "@/utils/recoverableWrite";
 import { normalizeStructureTag } from "@/utils/tagUtils";
 import { getSectionLabel } from "@lib/sections";
 import { getSermonPlanData } from "@utils/sermonPlanAccess";
@@ -149,10 +157,7 @@ function StructurePageContent() {
     ambiguous: getSectionLabel(t, 'ambiguous'),
   }), [t]);
 
-  // Persistence hook. The optional sync-state callback (the old per-card "saving"
-  // badge feed) is intentionally not passed: thought create/edit/delete are now
-  // optimistic via the React Query cache and ride the native Firestore offline
-  // queue, so there is no separate pending layer to report to.
+  // Pending state comes from the optimistic write path, so no separate sync callback is needed.
   const { debouncedSaveThought, debouncedSaveStructure, retryThoughtSave } = usePersistence({
     setSermon,
   });
@@ -225,8 +230,6 @@ function StructurePageContent() {
     await refreshAiUsage();
   }, [handleAiSort, refreshAiUsage]);
 
-  // No changes needed here, just removing the old columnTitles definition later
-
   // DnD hook
   const {
     sensors: dndSensors,
@@ -241,7 +244,6 @@ function StructurePageContent() {
     containersRef,
     sermon,
     setSermon,
-    debouncedSaveThought,
   });
 
   // Safety timeout to prevent stuck drag state (especially on touch devices)
@@ -387,8 +389,7 @@ function StructurePageContent() {
     return getSermonPlanData(sermon);
   }, [sermon]);
 
-  // REVISED HANDLER: Function to DELETE a thought and remove it from the structure
-  const handleRemoveFromStructure = async (itemId: string, containerId: string) => {
+  const handleRemoveFromStructure = (itemId: string, containerId: string) => {
     if (!sermon || containerId !== 'ambiguous') {
       toast.error(t('errors.removingError') || "Error removing item.");
       return;
@@ -408,7 +409,16 @@ function StructurePageContent() {
     if (!window.confirm(confirmMessage)) {
       return;
     }
-    await handleDeleteThought(itemId);
+    const submission = handleDeleteThought(itemId);
+    let failureReported = false;
+    const reportFailure = () => {
+      if (failureReported) return;
+      failureReported = true;
+      toast.error(t('errors.deletingError') || "Failed to delete thought.");
+    };
+    // Deletes have no editor to keep open. The optimistic row may disappear on
+    // `queued`, but a later refusal restores it in the hook and is reported here.
+    void awaitAcceptance(submission, reportFailure).catch(reportFailure);
   };
 
   // Function to handle outline updates from Column components
@@ -469,41 +479,42 @@ function StructurePageContent() {
     containersRef.current = previousContainers;
   }, [setContainers, setSermon]);
 
-  const commitThoughtLockChange = useCallback(async ({
+  const commitThoughtLockChange = useCallback(({
     thoughtIds,
     isLocked,
-    successMessage,
     errorMessage,
   }: {
     thoughtIds: string[];
     isLocked: boolean;
-    successMessage: string;
     errorMessage: string;
-  }) => {
-    if (!sermon || thoughtIds.length === 0) return;
+  }): WriteSubmission => {
+    if (!sermon || thoughtIds.length === 0) return skippedWrite();
 
     const thoughtsToUpdate = sermon.thoughts.filter((thought) => (
       thoughtIds.includes(thought.id) && Boolean(thought.isLocked) !== isLocked
     ));
 
-    if (thoughtsToUpdate.length === 0) return;
+    if (thoughtsToUpdate.length === 0) return skippedWrite();
 
     const previousSermon = sermon;
     const previousContainers = containers;
 
     applyThoughtLockState(thoughtsToUpdate.map((thought) => thought.id), isLocked);
 
-    const results = await Promise.allSettled(
-      // The thought itself is the baseline, so the write states ONLY `isLocked`.
-      // Without it every field of this screen's copy is claimed as changed, and a
-      // padlock pressed on a tab open since morning republishes its stale text over
-      // a rewrite made on another device.
-      thoughtsToUpdate.map((thought) => updateThought(sermon.id, { ...thought, isLocked }, thought)),
-    );
+    const persistence = (async () => {
+      const results = await Promise.allSettled(
+        // The thought itself is the baseline, so the write states only `isLocked`.
+        // Without it every field of this screen's copy is claimed as changed, and a
+        // padlock pressed on a tab open since morning republishes its stale text over
+        // a rewrite made on another device.
+        thoughtsToUpdate.map((thought) => updateThought(sermon.id, { ...thought, isLocked }, thought)),
+      );
 
-    const hasFailures = results.some((result) => result.status === "rejected");
-    if (hasFailures) {
-      restoreLockSnapshot(previousSermon, previousContainers);
+      const failed = results.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected" && !isOfflineQueuedError(result.reason),
+      );
+      if (!failed) return;
 
       const successfulRollbacks = thoughtsToUpdate.filter((_, index) => results[index]?.status === "fulfilled");
       if (successfulRollbacks.length > 0) {
@@ -519,40 +530,53 @@ function StructurePageContent() {
         );
       }
 
-      toast.error(errorMessage);
-      return;
-    }
+      throw failed.reason;
+    })();
 
-    toast.success(successMessage);
+    // This surface is offline-first: React Query is not involved, but the client
+    // write can hand the intent to the durable outbox. Therefore it is `queued`,
+    // never an asserted server save, and no lock success toast is allowed.
+    const submission = queuedMutation(`thought:lock:${sermon.id}:${thoughtIds.join(',')}:${isLocked}`, persistence);
+    let failureReported = false;
+    const handleFailure = () => {
+      if (failureReported) return;
+      failureReported = true;
+      restoreLockSnapshot(previousSermon, previousContainers);
+      toast.error(errorMessage);
+    };
+    void awaitAcceptance(submission, handleFailure).catch(handleFailure);
+    return submission;
   }, [applyThoughtLockState, containers, restoreLockSnapshot, sermon]);
 
-  const handleToggleThoughtLock = useCallback(async (thoughtId: string, isLocked: boolean) => {
-    await commitThoughtLockChange({
+  const handleToggleThoughtLock = useCallback((thoughtId: string, isLocked: boolean): WriteSubmission => {
+    return commitThoughtLockChange({
       thoughtIds: [thoughtId],
       isLocked,
-      successMessage: t(isLocked ? "structure.thoughtLocked" : "structure.thoughtUnlocked", {
-        defaultValue: isLocked ? "Thought locked" : "Thought unlocked",
-      }),
       errorMessage: t("errors.failedToSaveThought", { defaultValue: "Failed to save thought." }),
     });
   }, [commitThoughtLockChange, t]);
 
-  const handleTogglePointLock = useCallback(async (outlinePointId: string, isLocked: boolean) => {
-    if (!sermon) return;
+  const handleTogglePointLock = useCallback((outlinePointId: string, isLocked: boolean): WriteSubmission => {
+    if (!sermon) return skippedWrite();
 
     const thoughtIds = sermon.thoughts
       .filter((thought) => thought.outlinePointId === outlinePointId)
       .map((thought) => thought.id);
 
-    await commitThoughtLockChange({
+    return commitThoughtLockChange({
       thoughtIds,
       isLocked,
-      successMessage: t(isLocked ? "structure.pointLockedSuccess" : "structure.pointUnlockedSuccess", {
-        defaultValue: isLocked ? "All thoughts in this outline point are locked" : "All thoughts in this outline point are unlocked",
-      }),
       errorMessage: t("errors.failedToSaveThought", { defaultValue: "Failed to save thought." }),
     });
   }, [commitThoughtLockChange, sermon, t]);
+
+  const submitThoughtLockToggle = useCallback((thoughtId: string, isLocked: boolean): void => {
+    void handleToggleThoughtLock(thoughtId, isLocked);
+  }, [handleToggleThoughtLock]);
+
+  const submitPointLockToggle = useCallback((outlinePointId: string, isLocked: boolean): void => {
+    void handleTogglePointLock(outlinePointId, isLocked);
+  }, [handleTogglePointLock]);
 
   const handleOutlinePointDeleted = (pointId: string, sectionId: string) => {
     if (!sermon) return;
@@ -646,8 +670,8 @@ function StructurePageContent() {
     if (!sermon || !text.trim()) return;
 
     try {
-      // 1. Generate a temporary ID for the new point
-      const newPointId = `temp-${Date.now()}`;
+      // The merge identifies plan points by id, so this id must remain unique after it is saved.
+      const newPointId = newClientId();
       const newPoint: SermonPoint = {
         id: newPointId,
         text: text.trim(),
@@ -860,8 +884,8 @@ function StructurePageContent() {
                 onRevertAll={() => handleRevertAll("introduction")}
                 activeId={dndActiveId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
-                onTogglePointLock={handleTogglePointLock}
-                onToggleThoughtLock={handleToggleThoughtLock}
+                onTogglePointLock={submitPointLockToggle}
+                onToggleThoughtLock={submitThoughtLockToggle}
                 onSwitchPage={handleSwitchToPlan}
                 onNavigateToSection={navigateToSection}
                 planData={planData}
@@ -902,8 +926,8 @@ function StructurePageContent() {
                 onRevertAll={() => handleRevertAll("main")}
                 activeId={dndActiveId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
-                onTogglePointLock={handleTogglePointLock}
-                onToggleThoughtLock={handleToggleThoughtLock}
+                onTogglePointLock={submitPointLockToggle}
+                onToggleThoughtLock={submitThoughtLockToggle}
                 onSwitchPage={handleSwitchToPlan}
                 onNavigateToSection={navigateToSection}
                 planData={planData}
@@ -942,8 +966,8 @@ function StructurePageContent() {
                 onRevertAll={() => handleRevertAll("conclusion")}
                 activeId={dndActiveId}
                 onMoveToAmbiguous={handleMoveToAmbiguous}
-                onTogglePointLock={handleTogglePointLock}
-                onToggleThoughtLock={handleToggleThoughtLock}
+                onTogglePointLock={submitPointLockToggle}
+                onToggleThoughtLock={submitThoughtLockToggle}
                 onSwitchPage={handleSwitchToPlan}
                 onNavigateToSection={navigateToSection}
                 planData={planData}

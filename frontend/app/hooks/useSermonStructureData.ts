@@ -9,16 +9,29 @@ import { getSermonOutline } from '@/services/outline.service';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
 import { resolveOwnerUid, sermonDetailKey } from '@/utils/queryKeys';
+// ONE definition of "has the server proved its copy is newer" for the whole app: this
+// hook used to carry a byte-identical private copy, and two copies of a rule that
+// decides whether someone's unsaved words may be discarded is one copy too many.
+import { serverCopyIsNewer } from '@/utils/readFreshness';
 import { normalizeStructureTag } from '@/utils/tagUtils';
 import { canonicalizeStructure } from '@/utils/thoughtOrdering';
 import { getSectionBaseColor } from '@lib/sections';
 
-// Helper: Fetch sermon data
+
+/**
+ * Fetch the sermon, and decide which copy the screen should show.
+ *
+ * Reading the stored copy and returning it was the whole of this function, so the
+ * server was never consulted at all: a full page reload still rendered whatever
+ * this browser happened to hold, for up to a week. Observed live on production
+ * 2026-08-11 — a plan point deleted a day earlier was still on screen after a
+ * reload, while the document had not held it since.
+ */
 async function fetchSermonData(
   sermonId: string,
   queryClient: ReturnType<typeof useQueryClient>,
   isOnlineResolved: boolean
-): Promise<Sermon | null> {
+): Promise<{ sermon: Sermon | null; adoptedFromServer: boolean }> {
   /**
    * The owner is fixed HERE, when the work starts, and not read again when it
    * finishes. Sign-out and sign-in can happen while a fetch is in flight, and
@@ -28,24 +41,36 @@ async function fetchSermonData(
    */
   const startedAsUid = resolveOwnerUid();
   const key = sermonDetailKey(startedAsUid, sermonId);
-  const cachedSermon = queryClient.getQueryData<Sermon>(key);
-  if (cachedSermon) {
-    return cachedSermon;
+  const stored = queryClient.getQueryData<Sermon>(key) ?? null;
+
+  // Without a connection the stored copy is not a stale second-best, it is the only
+  // thing there is — and it is why this sermon opens at all on a phone in a hall.
+  if (!isOnlineResolved) return { sermon: stored, adoptedFromServer: false };
+
+  let fetched: Sermon | null;
+  try {
+    fetched = (await getSermonById(sermonId)) ?? null;
+  } catch (error) {
+    // A refused or dropped request must never blank a sermon the preacher can
+    // already see. Losing the screen is worse than showing a copy a few minutes old.
+    if (stored) return { sermon: stored, adoptedFromServer: false };
+    throw error;
   }
 
-  if (isOnlineResolved) {
-    const fetched = await getSermonById(sermonId);
-    // The account may have changed while this was in flight. Returning the sermon
-    // anyway is not enough: the caller feeds it straight into `setSermon`, which
-    // pins the owner AGAIN — now the new one — and files the first account's sermon
-    // under the second account's key, then builds the visible columns from it. A
-    // late answer for a signed-out account is dropped entirely.
-    if (resolveOwnerUid() !== startedAsUid) return null;
-    queryClient.setQueryData(key, fetched ?? undefined);
-    return fetched ?? null;
+  // The account may have changed while this was in flight. Returning the sermon
+  // anyway is not enough: the caller feeds it straight into `setSermon`, which
+  // pins the owner AGAIN — now the new one — and files the first account's sermon
+  // under the second account's key, then builds the visible columns from it. A
+  // late answer for a signed-out account is dropped entirely.
+  if (resolveOwnerUid() !== startedAsUid) return { sermon: null, adoptedFromServer: false };
+
+  if (!fetched) return { sermon: stored, adoptedFromServer: false };
+  if (stored && !serverCopyIsNewer(fetched, stored)) {
+    return { sermon: stored, adoptedFromServer: false };
   }
 
-  return null;
+  queryClient.setQueryData(key, fetched);
+  return { sermon: fetched, adoptedFromServer: Boolean(stored) };
 }
 
 // Helper: Fetch and process tags
@@ -186,12 +211,19 @@ async function fetchOutlineData(
   fetchedSermon: Sermon,
   queryClient: ReturnType<typeof useQueryClient>,
   isOnlineResolved: boolean,
-  t: TFunction
+  t: TFunction,
+  /**
+   * The sermon itself turned out to be behind and was replaced by the server's
+   * version. The plan is stored under its own key, so trusting it now would refresh
+   * the thoughts and leave the plan a week old — which is exactly what was seen on
+   * production: a deleted plan point still on screen beside up-to-date text.
+   */
+  sermonWasBehind = false
 ): Promise<SermonOutline | undefined> {
   let outlineData: SermonOutline | undefined;
   const cachedOutline = queryClient.getQueryData<SermonOutline>(["sermon-outline", sermonId]);
 
-  if (cachedOutline) {
+  if (cachedOutline && !sermonWasBehind) {
     outlineData = cachedOutline;
   } else if (isOnlineResolved) {
     try {
@@ -303,7 +335,11 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
 
       try {
         // Fetch sermon
-        const fetchedSermon = await fetchSermonData(sermonId, queryClient, isOnlineResolved);
+        const { sermon: fetchedSermon, adoptedFromServer } = await fetchSermonData(
+          sermonId,
+          queryClient,
+          isOnlineResolved
+        );
         if (!fetchedSermon) {
           setSermon(null);
           setContainers({ introduction: [], main: [], conclusion: [], ambiguous: [] });
@@ -349,7 +385,8 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
           fetchedSermon,
           queryClient,
           isOnlineResolved,
-          t
+          t,
+          adoptedFromServer
         );
 
         if (outlineData) {

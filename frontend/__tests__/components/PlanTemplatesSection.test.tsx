@@ -1,14 +1,15 @@
-import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
 
 import type { User } from 'firebase/auth';
 import type { PlanTemplate } from '@/models/models';
+import { persistedWrite, queuedWrite } from '@/utils/recoverableWrite';
 
-const mockCreate = jest.fn().mockResolvedValue(undefined);
-const mockUpdate = jest.fn().mockResolvedValue(undefined);
-const mockDelete = jest.fn().mockResolvedValue(undefined);
+const mockCreate = jest.fn((_payload: unknown) => persistedWrite(Promise.resolve(undefined)));
+const mockUpdate = jest.fn(() => persistedWrite(Promise.resolve(undefined)));
+const mockDelete = jest.fn(() => persistedWrite(Promise.resolve(undefined)));
 const mockRefresh = jest.fn().mockResolvedValue({ isError: false });
 let mockTemplates: PlanTemplate[] = [];
 
@@ -77,7 +78,7 @@ describe('PlanTemplatesSection', () => {
     fireEvent.click(screen.getByText('planTemplates.create'));
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
-    const payload = mockCreate.mock.calls[0][0];
+    const payload = mockCreate.mock.calls[0]?.[0] as PlanTemplate;
     expect(payload).toEqual(
       expect.objectContaining({ userId: 'u1', name: 'Parable analysis' })
     );
@@ -159,7 +160,7 @@ describe('PlanTemplatesSection — a refused edit offers the choice', () => {
   };
 
   it('holds the typed name and shows both choices', async () => {
-    mockUpdate.mockRejectedValueOnce(new StaleWriteError('template', 0, 5));
+    mockUpdate.mockReturnValueOnce(persistedWrite(Promise.reject(new StaleWriteError('template', 0, 5))));
     render(<PlanTemplatesSection user={user} />);
 
     await renameTo('Alpha renamed');
@@ -169,18 +170,89 @@ describe('PlanTemplatesSection — a refused edit offers the choice', () => {
     expect(screen.getByText('freshness.conflictKeepMine')).toBeInTheDocument();
   });
 
+  it('offers the choice when the conflict arrives AFTER the write was accepted', async () => {
+    /**
+     * The production path, and the one the earlier test missed. A template write is
+     * owned by the durable queue, so acceptance resolves a tick after launch and the
+     * transaction's verdict lands LATE — in the late-failure callback, not in the
+     * editor's catch. With that callback empty, the person got a generic refusal
+     * instead of "keep mine / take theirs", and the typed name left the closed input.
+     */
+    // The rejection must land AFTER acceptance, or it arrives in the editor's catch and
+    // the late path is never exercised — which is exactly how this defect hid.
+    let rejectLater: (error: unknown) => void = () => undefined;
+    const persistence = new Promise<never>((_resolve, reject) => {
+      rejectLater = reject as (error: unknown) => void;
+    });
+    void persistence.catch(() => undefined);
+    mockUpdate.mockReturnValueOnce(queuedWrite('plan-template:update:late', persistence));
+    render(<PlanTemplatesSection user={user} />);
+
+    await renameTo('Renamed on the other device');
+    // Let ACCEPTANCE happen first — it yields one macrotask — so the rejection below is
+    // genuinely late. Without this wait it lands in the editor's catch and the late
+    // path, where the defect lived, is never exercised.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await act(async () => {
+      rejectLater(new StaleWriteError('template', 0, 5));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(await screen.findByText('freshness.conflictTitle')).toBeInTheDocument();
+    expect(screen.getByText('Renamed on the other device')).toBeInTheDocument();
+    expect(screen.getByText('freshness.conflictKeepMine')).toBeInTheDocument();
+  });
+
   it('re-sends with the server revision when "keep mine" is chosen', async () => {
-    mockUpdate.mockRejectedValueOnce(new StaleWriteError('template', 0, 5));
+    mockUpdate.mockReturnValueOnce(persistedWrite(Promise.reject(new StaleWriteError('template', 0, 5))));
     render(<PlanTemplatesSection user={user} />);
     await renameTo('Alpha renamed');
     await screen.findByText('freshness.conflictTitle');
 
-    mockUpdate.mockResolvedValueOnce(undefined);
+    mockUpdate.mockReturnValueOnce(persistedWrite(Promise.resolve(undefined)));
     fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
 
     // 5, not 0 — otherwise the resend is refused again and the button lies.
     await waitFor(() =>
       expect(mockUpdate).toHaveBeenLastCalledWith('t1', { name: 'Alpha renamed' }, 5)
+    );
+  });
+
+  it('brings the choice back when the resend is refused LATE, not before acceptance', async () => {
+    /**
+     * Production hands this button a `queuedWrite`: acceptance arrives a tick later and a
+     * second refusal lands AFTER it. Nobody was listening — the screen passed an empty
+     * late-failure callback, and the update descriptor ignores stale errors on purpose
+     * (they are a choice, not a message). The rename, or an entire plan structure, was
+     * left with no banner, no message and nothing to copy.
+     */
+    mockUpdate.mockReturnValueOnce(persistedWrite(Promise.reject(new StaleWriteError('template', 0, 5))));
+    render(<PlanTemplatesSection user={user} />);
+    await renameTo('Alpha renamed');
+    await screen.findByText('freshness.conflictTitle');
+
+    // Accepted by the queue first, refused by the server afterwards.
+    let refuseLate: (error: unknown) => void = () => undefined;
+    const persistence = new Promise<void>((_resolve, reject) => {
+      refuseLate = reject;
+    });
+    mockUpdate.mockReturnValueOnce(queuedWrite('outbox:plan-template:t1', persistence));
+
+    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      refuseLate(new StaleWriteError('template', 5, 9));
+      await Promise.resolve();
+    });
+
+    // The choice is back, aimed at what the server holds NOW.
+    await screen.findByText('freshness.conflictTitle');
+    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenLastCalledWith('t1', { name: 'Alpha renamed' }, 9)
     );
   });
 
@@ -190,8 +262,8 @@ describe('PlanTemplatesSection — a refused edit offers the choice', () => {
     mockTemplates = [tpl('t1', 'Alpha'), tpl('t2', 'Beta')];
     // Reject the rename, but keep a default for any other save the screen makes —
     // an undefined return would blow up on `.catch` and hide the real assertion.
-    mockUpdate.mockRejectedValueOnce(new StaleWriteError('template', 0, 5));
-    mockUpdate.mockResolvedValue(undefined);
+    mockUpdate.mockReturnValueOnce(persistedWrite(Promise.reject(new StaleWriteError('template', 0, 5))));
+    mockUpdate.mockImplementation(() => persistedWrite(Promise.resolve(undefined)));
 
     const first = render(<PlanTemplatesSection user={user} />);
     fireEvent.click(screen.getAllByLabelText('common.edit')[0]);

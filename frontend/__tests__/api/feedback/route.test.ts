@@ -439,6 +439,23 @@ describe('api/feedback/route', () => {
         expect(mockAdd).not.toHaveBeenCalled();
     });
 
+    test('POST preserves an Admin SDK permission denial as a typed 403 refusal', async () => {
+        mockAdd.mockRejectedValueOnce(
+            Object.assign(new Error('Firestore permission denied'), { code: 7 })
+        );
+        const request = new NextRequest('http://localhost/api/feedback', {
+            method: 'POST',
+            body: JSON.stringify({ feedbackText: 'Exact refused feedback', feedbackType: 'bug' }),
+        });
+
+        const response = await POST(request);
+
+        expect(response.status).toBe(403);
+        await expect(response.json()).resolves.toMatchObject({
+            code: 'permission-denied',
+        });
+    });
+
     test('POST rejects feedback text that would exceed Firestore document limits', async () => {
         const serializedBody = JSON.stringify({
             feedbackText: 'x'.repeat(MAX_FEEDBACK_TEXT_BYTES + 1),

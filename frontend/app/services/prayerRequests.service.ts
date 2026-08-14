@@ -12,6 +12,24 @@ import { newClientId } from '@/utils/clientId';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
+const codeByStatus: Record<number, string> = {
+  400: 'invalid-argument',
+  401: 'unauthenticated',
+  403: 'permission-denied',
+  404: 'not-found',
+  413: 'invalid-argument',
+};
+
+async function writeResponseError(response: Response, fallbackMessage: string): Promise<Error> {
+  // A proxy can return HTML for a 413. Parse best-effort so that malformed error
+  // bodies cannot erase the response class which tells recovery not to retry.
+  const body = await response.json().catch(() => null);
+  const data = body && typeof body === 'object' ? (body as { error?: unknown; code?: unknown }) : {};
+  const message = typeof data.error === 'string' ? data.error : fallbackMessage;
+  const code = typeof data.code === 'string' ? data.code : codeByStatus[response.status];
+  return Object.assign(new Error(message), { status: response.status, ...(code ? { code } : {}) });
+}
+
 export interface AddPrayerUpdatePayload {
   updateId?: string;
   text: string;
@@ -74,7 +92,7 @@ export const createPrayerRequest = async (
     headers: { 'Content-Type': 'application/json', ...authHeaders },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error('Failed to create prayer request');
+  if (!res.ok) throw await writeResponseError(res, 'Failed to create prayer request');
   return res.json();
 };
 

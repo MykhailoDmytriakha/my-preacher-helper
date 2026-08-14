@@ -353,12 +353,15 @@ describe('the offline membership queue keeps its promises', () => {
     });
 
     const client = await importClient();
-    await expect(
-      client.commitSeriesBatch([
-        { seriesId: 'target', op: 'add', refs: [{ type: 'sermon', refId: 's1' }] },
-        { seriesId: 'source', op: 'remove', refs: [{ type: 'sermon', refId: 's1' }] },
-      ])
-    ).rejects.toThrow(/not found/i);
+    const error = await client.commitSeriesBatch([
+      { seriesId: 'target', op: 'add', refs: [{ type: 'sermon', refId: 's1' }] },
+      { seriesId: 'source', op: 'remove', refs: [{ type: 'sermon', refId: 's1' }] },
+    ]).catch((caught) => caught);
+
+    expect(error).toMatchObject({
+      message: expect.stringMatching(/not found/i),
+      code: 'not-found',
+    });
 
     // And the source was NOT written.
     expect(mockTxUpdate).not.toHaveBeenCalled();

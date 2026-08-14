@@ -4,7 +4,10 @@ import { toast } from 'sonner';
 
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { Item, SermonPoint, Thought, Sermon, ThoughtsBySection } from "@/models/models";
+import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
 import { sortItemsWithAI } from "@/services/sortAI.service";
+import { updateStructure } from "@/services/structure.service";
+import { updateThought } from "@/services/thought.service";
 import { isUsageCapReachedError } from "@/services/usageLimits";
 import {
   MAX_AI_SORT_ITEMS,
@@ -13,6 +16,7 @@ import {
   hasLockedThoughtAnchorsPreserved,
   replaceScopedItemsInColumn,
 } from "@/utils/aiSorting";
+import { awaitAcceptance, queuedMutation, skippedWrite, type WriteSubmission } from "@/utils/recoverableWrite";
 
 import { buildStructureFromContainers, isLocalThoughtId } from "../utils/structure";
 
@@ -60,28 +64,6 @@ const collectThoughtUpdates = (
   }
 
   return thoughtUpdates;
-};
-
-// Helper function to process thought updates
-const processThoughtUpdates = (
-  thoughtUpdates: Array<{id: string, outlinePointId?: string, subPointId?: string | null}>,
-  sermon: Sermon,
-  debouncedSaveThought: (sermonId: string, thought: Thought, baseThought: Thought | null) => void,
-  sermonId: string
-): void => {
-  for (const update of thoughtUpdates) {
-    const thought = sermon.thoughts.find((t: Thought) => t.id === update.id);
-    if (thought) {
-      const updatedThought: Thought = {
-        ...thought,
-        outlinePointId: update.outlinePointId,
-        subPointId: update.subPointId ?? null,
-      };
-      // Plan links only: `thought` is the opening value, so the write does not also
-      // re-send this screen's copy of the thought's TEXT.
-      debouncedSaveThought(sermonId, updatedThought, thought);
-    }
-  }
 };
 
 // Helper function to create new structure from containers
@@ -566,37 +548,76 @@ export const useAiSortingDiff = ({
   ]);
 
   // Handler for accepting all remaining changes
-  const handleKeepAll = useCallback(() => {
-    if (!highlightedItems || Object.keys(highlightedItems).length === 0) return;
-
-    // Collect thought updates from highlighted items
-    const thoughtUpdates = collectThoughtUpdates(highlightedItems, containers, sermon);
-
-    // Process thought updates
-    if (thoughtUpdates.length > 0 && sermon && sermonId) {
-      processThoughtUpdates(thoughtUpdates, sermon, debouncedSaveThought, sermonId);
+  const handleKeepAll = useCallback((): WriteSubmission => {
+    if (Object.keys(highlightedItems).length === 0 || !sermon || !sermonId) {
+      return skippedWrite();
     }
 
-    // Create and save new structure
+    const thoughtUpdates = collectThoughtUpdates(highlightedItems, containers, sermon);
+
+    // Persist the exact accepted placement now. A debounced callback has no
+    // acceptance or refusal channel, so using it here let a rejected AI result
+    // stay on screen as if it had been saved.
+    const thoughtRequests = thoughtUpdates.map((update) => {
+      const thought = sermon.thoughts.find((candidate) => candidate.id === update.id);
+      return thought
+        ? updateThought(
+            sermonId,
+            {
+              ...thought,
+              outlinePointId: update.outlinePointId,
+              subPointId: update.subPointId ?? null,
+            },
+            thought
+          )
+        : Promise.resolve();
+    });
+
     const newStructure = createStructureFromContainers(containers);
-    debouncedSaveStructure(sermonId!, newStructure, sermon?.structure);
+    const persistence = Promise.allSettled([
+      ...thoughtRequests,
+      updateStructure(sermonId, newStructure, sermon.structure),
+    ]).then((results) => {
+      const refused = results.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === 'rejected' && !isOfflineQueuedError(result.reason),
+      );
+      if (refused) throw refused.reason;
+    });
+    const submission = queuedMutation(`structure:ai-sort:${sermonId}`, persistence);
 
     // Clear highlighted items and exit diff mode
     setHighlightedItems({});
     setIsDiffModeActive(false);
     setPreSortState(null);
 
-    // Show confirmation toast
+    // This confirms the review decision, not persistence. The write is `queued`,
+    // so it never claims that the server saved anything.
     toast.success(t('structure.aiSortChangesAccepted', {
       defaultValue: 'All AI suggestions accepted.'
     }));
+
+    let failureReported = false;
+    const restoreRejectedSort = () => {
+      if (failureReported) return;
+      failureReported = true;
+      if (preSortState) {
+        setContainers((previous) => ({ ...previous, ...preSortState }));
+      }
+      toast.error(t('errors.failedToSaveStructure'));
+    };
+    // `queued` resolves immediately because the durable writer owns the intent;
+    // a refusal after that must still be visible and must remove the unaccepted
+    // arrangement from the board.
+    void awaitAcceptance(submission, restoreRejectedSort).catch(restoreRejectedSort);
+    return submission;
   }, [
     highlightedItems,
     containers,
     sermon,
     sermonId,
-    debouncedSaveThought,
-    debouncedSaveStructure,
+    preSortState,
+    setContainers,
     setHighlightedItems,
     setIsDiffModeActive,
     setPreSortState,

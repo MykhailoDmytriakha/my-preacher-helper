@@ -10,7 +10,9 @@ jest.mock('@services/feedback.service', () => ({
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string) => key === 'writeRecovery.refused'
+      ? 'Save refused. Nothing was saved; your text is still here.'
+      : key,
   }),
 }));
 
@@ -90,6 +92,7 @@ describe('useFeedback', () => {
     (submitFeedback as jest.Mock).mockRejectedValue(new Error('Network error'));
 
     const { result } = renderHook(() => useFeedback());
+    act(() => result.current.handleFeedbackClick());
 
     let returnValue: boolean | void = undefined;
     await act(async () => {
@@ -98,5 +101,50 @@ describe('useFeedback', () => {
 
     expect(toast.error).toHaveBeenCalledWith('feedback.errorMessage');
     expect(returnValue).toBe(false);
+    expect(result.current.showFeedbackModal).toBe(true);
+  });
+
+  test('preserves a rules refusal for the form and keeps the modal open', async () => {
+    (submitFeedback as jest.Mock).mockRejectedValue(
+      Object.assign(new Error('Forbidden'), { code: 'permission-denied' })
+    );
+    const { result } = renderHook(() => useFeedback());
+    act(() => result.current.handleFeedbackClick());
+
+    let refusal: unknown;
+    await act(async () => {
+      try {
+        await result.current.handleSubmitFeedback('Exact refused feedback', 'bug');
+      } catch (error) {
+        refusal = error;
+      }
+    });
+
+    expect(refusal).toMatchObject({ code: 'permission-denied' });
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(result.current.showFeedbackModal).toBe(true);
+  });
+
+  test('keeps a paused offline submission silent while no terminal answer exists', async () => {
+    let resolveSubmission!: () => void;
+    (submitFeedback as jest.Mock).mockReturnValue(new Promise<void>((resolve) => {
+      resolveSubmission = resolve;
+    }));
+    const { result } = renderHook(() => useFeedback());
+    act(() => result.current.handleFeedbackClick());
+
+    let submission!: Promise<boolean>;
+    act(() => {
+      submission = result.current.handleSubmitFeedback('Queued feedback', 'suggestion');
+    });
+
+    await act(async () => Promise.resolve());
+    expect(result.current.showFeedbackModal).toBe(true);
+    expect(toast.error).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveSubmission();
+      await submission;
+    });
   });
 });

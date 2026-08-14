@@ -8,15 +8,27 @@ import { useTranslation } from "react-i18next";
 import DatePickerField from "@/components/ui/DatePickerField";
 import { PreachDate, Church, PreachDateStatus } from "@/models/models";
 import { getTodayDateOnlyKey, toDateOnlyKey } from "@/utils/dateOnly";
+import {
+    awaitAcceptance,
+    type WriteSubmission,
+} from "@/utils/recoverableWrite";
 
 import ChurchAutocomplete from "./ChurchAutocomplete";
+
+import type { DashboardSermonSyncState } from "@/models/dashboardOptimistic";
+
+const SAVE_ERROR_KEY = 'common.saveError';
 
 interface PreachDateModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (data: Omit<PreachDate, 'id' | 'createdAt'>) => Promise<void>;
+    onSave: (
+        data: Omit<PreachDate, 'id' | 'createdAt'>
+    ) => WriteSubmission;
     initialData?: PreachDate;
     defaultStatus?: PreachDateStatus;
+    /** Terminal state from the dashboard mutation cache, which owns rollback. */
+    syncState?: DashboardSermonSyncState;
 }
 
 export default function PreachDateModal({
@@ -24,7 +36,8 @@ export default function PreachDateModal({
     onClose,
     onSave,
     initialData,
-    defaultStatus
+    defaultStatus,
+    syncState,
 }: PreachDateModalProps) {
     const { t } = useTranslation();
     const [date, setDate] = useState(toDateOnlyKey(initialData?.date) || getTodayDateOnlyKey());
@@ -32,6 +45,7 @@ export default function PreachDateModal({
     const [audience, setAudience] = useState(initialData?.audience || "");
     const [notes, setNotes] = useState(initialData?.notes || "");
     const [isSaving, setIsSaving] = useState(false);
+    const [saveError, setSaveError] = useState("");
     const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
@@ -51,7 +65,24 @@ export default function PreachDateModal({
             setAudience("");
             setNotes("");
         }
+        setSaveError("");
     }, [initialData, isOpen]);
+
+    useEffect(() => {
+        /**
+         * NO `isSaving` GATE — it is cleared in `finally`, before the failed state
+         * arrives, so an early refusal was silent while the covered badge could not
+         * speak for it either.
+         */
+        if (syncState?.status !== 'error') return;
+
+        setSaveError(
+            syncState.refused || syncState.conflict
+                ? t('writeRecovery.refused')
+                : syncState.message || t(SAVE_ERROR_KEY)
+        );
+        setIsSaving(false);
+    }, [syncState, t]);
 
     if (!isOpen) return null;
 
@@ -62,17 +93,25 @@ export default function PreachDateModal({
         const resolvedStatus = initialData ? initialData.status : defaultStatus;
 
         setIsSaving(true);
+        setSaveError("");
         try {
-            await onSave({
+            const submission = onSave({
                 date,
                 status: resolvedStatus,
                 church,
                 audience: audience.trim() || undefined,
                 notes: notes.trim() || undefined,
             });
+
+            await awaitAcceptance(submission, (error) => {
+                // Reported by usePreachDates' recovery descriptor, which carries the
+                // church, audience and notes — one refusal, one reporter.
+                console.error('Preach date write refused after acceptance:', error);
+            });
             onClose();
         } catch (error) {
-            console.error("Error saving preach date:", error);
+            // Same reporter owns an early refusal; this editor stays open with the text.
+            console.error('Preach date write refused:', error);
         } finally {
             setIsSaving(false);
         }
@@ -80,9 +119,14 @@ export default function PreachDateModal({
 
     const modalContent = (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md shadow-2xl border border-gray-100 dark:border-gray-700">
+            <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="preach-date-modal-title"
+                className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md shadow-2xl border border-gray-100 dark:border-gray-700"
+            >
                 <div className="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-700">
-                    <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                    <h2 id="preach-date-modal-title" className="text-xl font-bold text-gray-900 dark:text-gray-100">
                         {initialData ? t('calendar.editPreachDate') : t('calendar.addPreachDate')}
                     </h2>
                     <button
@@ -104,7 +148,10 @@ export default function PreachDateModal({
                         <DatePickerField
                             id="preach-date-input"
                             value={date}
-                            onChange={setDate}
+                            onChange={(value) => {
+                                setDate(value);
+                                setSaveError("");
+                            }}
                             inputClassName="w-full px-3 py-2 pr-12 border rounded-lg border-gray-200 dark:border-gray-700 dark:bg-gray-800 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
                             required
                         />
@@ -112,7 +159,10 @@ export default function PreachDateModal({
 
                     <ChurchAutocomplete
                         initialValue={church}
-                        onChange={setChurch}
+                        onChange={(value) => {
+                            setChurch(value);
+                            setSaveError("");
+                        }}
                     />
 
                     <div>
@@ -126,8 +176,11 @@ export default function PreachDateModal({
                             id="preach-audience-input"
                             type="text"
                             value={audience}
-                            onChange={(e) => setAudience(e.target.value)}
-                            placeholder="e.g. Youth, General Service, Wedding"
+                            onChange={(e) => {
+                                setAudience(e.target.value);
+                                setSaveError("");
+                            }}
+                            placeholder={t('calendar.audiencePlaceholder')}
                             className="w-full px-3 py-2 border rounded-lg border-gray-200 dark:border-gray-700 dark:bg-gray-800 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow"
                         />
                     </div>
@@ -142,12 +195,21 @@ export default function PreachDateModal({
                         <textarea
                             id="preach-notes-input"
                             value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
+                            onChange={(e) => {
+                                setNotes(e.target.value);
+                                setSaveError("");
+                            }}
                             rows={3}
-                            placeholder="Any specific feedback or things to improve..."
+                            placeholder={t('calendar.notesPlaceholder')}
                             className="w-full px-3 py-2 border rounded-lg border-gray-200 dark:border-gray-700 dark:bg-gray-800 bg-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow resize-none"
                         />
                     </div>
+
+                    {saveError && (
+                        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+                            {saveError}
+                        </p>
+                    )}
 
                     <div className="flex gap-3 pt-4">
                         <button

@@ -5,6 +5,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useUserSettings } from '@/hooks/useUserSettings';
+import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { FirstDayOfWeek, normalizeFirstDayOfWeek } from '@/utils/weekStart';
 
 interface UserSettingsSectionProps {
@@ -28,11 +29,19 @@ const UserSettingsSection: React.FC<UserSettingsSectionProps> = ({ user }) => {
     }
 
     setFirstDayError(null);
-    try {
-      await updateFirstDayOfWeek(value);
-    } catch (error) {
+    /**
+     * The setting's own recovery descriptor (`useUserSettings`) reports this refusal and
+     * restores what the person sees. Saying it here as well gave one refused change two
+     * messages — the rule is one refusal, one reporter (docs/recoverable-writes.md).
+     */
+    const reportFailure = (error: unknown) => {
       console.error('UserSettingsSection: failed to update first day of week:', error);
-      setFirstDayError(t('settings.firstDayOfWeek.error'));
+    };
+
+    try {
+      await awaitAcceptance(updateFirstDayOfWeek(value), reportFailure);
+    } catch (error) {
+      reportFailure(error);
     }
   };
 

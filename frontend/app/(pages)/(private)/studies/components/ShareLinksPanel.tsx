@@ -6,14 +6,15 @@ import { useTranslation } from 'react-i18next';
 
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
+import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { getShareNotePath, getShareNoteUrl } from '@/utils/shareNoteUtils';
 
 interface ShareLinksPanelProps {
   notes: StudyNote[];
   shareLinks: StudyNoteShareLink[];
   loading?: boolean;
-  onCreate: (noteId: string) => Promise<StudyNoteShareLink>;
-  onDelete: (linkId: string) => Promise<void>;
+  onCreate: (noteId: string) => WriteSubmission;
+  onDelete: (linkId: string) => WriteSubmission;
 }
 
 const PANEL_CLASS = 'rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800';
@@ -38,6 +39,7 @@ export default function ShareLinksPanel({
   const [selectedNoteId, setSelectedNoteId] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [writeError, setWriteError] = useState<string | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const copyTimeoutRef = useRef<number | null>(null);
 
@@ -62,8 +64,17 @@ export default function ShareLinksPanel({
     if (!selectedNoteId || isCreating) return;
     try {
       setIsCreating(true);
-      await onCreate(selectedNoteId);
+      setWriteError(null);
+      // useStudyNoteShareLinks' create recovery descriptor reports a late refusal while this screen is mounted.
+      await awaitAcceptance(onCreate(selectedNoteId), () => undefined);
       setSelectedNoteId('');
+    } catch (error) {
+      /**
+       * NO message here. `useStudyNoteShareLinks` declares the recovery descriptor for
+       * this write and reports the same refusal. Two reporters presented one refused
+       * action as two failures — see docs/recoverable-writes.md.
+       */
+      console.error('Share link create refused:', error);
     } finally {
       setIsCreating(false);
     }
@@ -73,7 +84,15 @@ export default function ShareLinksPanel({
     if (deletingId) return;
     try {
       setDeletingId(linkId);
-      await onDelete(linkId);
+      setWriteError(null);
+      // useStudyNoteShareLinks' delete recovery descriptor reports a late refusal while this screen is mounted.
+      await awaitAcceptance(onDelete(linkId), () => undefined);
+    } catch (error) {
+      /**
+       * NO message here — the entity's recovery descriptor reports this refusal and
+       * carries the text. One refusal, one reporter (docs/recoverable-writes.md).
+       */
+      console.error('Share link write refused:', error);
     } finally {
       setDeletingId(null);
     }
@@ -131,6 +150,12 @@ export default function ShareLinksPanel({
           </button>
         </div>
       </div>
+
+      {writeError && (
+        <p role="alert" className="mb-4 text-sm text-red-600 dark:text-red-300">
+          {writeError}
+        </p>
+      )}
 
       <div className="mt-4 space-y-3">
         {loading && shareLinks.length === 0 ? (

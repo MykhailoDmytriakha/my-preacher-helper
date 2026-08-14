@@ -23,6 +23,7 @@ import {
     getEffectiveIsPreached,
     getEffectivePreachDateStatus
 } from "@/utils/preachDateStatus";
+import { persistedWrite, refusedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
 
 export default function CalendarPage() {
     const { t } = useTranslation();
@@ -173,22 +174,28 @@ export default function CalendarPage() {
         setSelectedDate(today);
     };
 
-    const handleSaveDate = async (data: Omit<PreachDate, 'id' | 'createdAt'>) => {
-        if (!selectedSermon) return;
-        try {
-            await preachDatesService.addPreachDate(selectedSermon.id, {
-                ...data,
-                status: getEffectiveIsPreached(selectedSermon) ? 'preached' : (data.status || 'planned')
-            });
-            setIsModalOpen(false);
-            setSelectedSermon(null);
-            await Promise.all([refetch(), refetchGroups()]);
-        } catch (err) {
-            console.error("Failed to save preach date:", err);
-            // Error handling is inside the modal (isSaving state + throw in service)
-            // But we might want to show a toast here if we had a toast system
-            throw err;
+    const handleSaveDate = (data: Omit<PreachDate, 'id' | 'createdAt'>): WriteSubmission => {
+        if (!selectedSermon) {
+            // Nothing to write to, and nothing downstream can say so: this never becomes a
+            // mutation, so the modal would just sit there looking like it had saved.
+            return refusedWrite(
+                'not-found',
+                'No sermon selected for the preach date.',
+                t('writeRecovery.refused')
+            );
         }
+
+        const sermon = selectedSermon;
+        return persistedWrite(
+            preachDatesService
+                .addPreachDate(sermon.id, {
+                    ...data,
+                    status: getEffectiveIsPreached(sermon) ? 'preached' : (data.status || 'planned')
+                })
+                .then(async () => {
+                    await Promise.all([refetch(), refetchGroups()]);
+                })
+        );
     };
 
     if (error || groupsError) {

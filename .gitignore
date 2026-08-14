@@ -79,3 +79,8 @@ output/
 # Deploy-session temp trackers (removed at S7 post-deploy, not shipped)
 /DEPLOY-PROGRESS.md
 /DEPLOY-CHECKLIST-monetization.md
+
+# Local manual-validation stand (emulator with deny-write rules) — never committed
+frontend/.emulator-*
+frontend/.probe-*
+frontend/.stand/

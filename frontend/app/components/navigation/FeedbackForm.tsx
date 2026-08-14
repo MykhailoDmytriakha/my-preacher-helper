@@ -14,9 +14,11 @@ import {
   MAX_FEEDBACK_IMAGES,
   MAX_FEEDBACK_TEXT_BYTES,
 } from '@/utils/feedbackPayload';
+import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
 const FEEDBACK_TYPE_PAYLOAD_PLACEHOLDER = 'suggestion';
+const PAYLOAD_TOO_LARGE_KEY = 'feedback.payloadTooLarge';
 
 interface FeedbackFormProps {
   onSubmit: (text: string, type: string, images: string[]) => Promise<boolean | void>;
@@ -31,6 +33,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
   const [images, setImages] = useState<string[]>([]);
   const [imageError, setImageError] = useState('');
   const [payloadError, setPayloadError] = useState('');
+  const [submissionError, setSubmissionError] = useState('');
   const feedbackTextRef = useRef('');
   const imagesRef = useRef<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -83,7 +86,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
             serializedAttachmentBytes > MAX_FEEDBACK_ATTACHMENT_PAYLOAD_BYTES ||
             serializedPayloadBytes > MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES
           ) {
-            setImageError(t('feedback.payloadTooLarge'));
+            setImageError(t(PAYLOAD_TOO_LARGE_KEY));
             return;
           }
 
@@ -146,13 +149,14 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
       getUtf8ByteLength(value) > MAX_FEEDBACK_TEXT_BYTES ||
       serializedPayloadBytes > MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES
     ) {
-      setPayloadError(t('feedback.payloadTooLarge'));
+      setPayloadError(t(PAYLOAD_TOO_LARGE_KEY));
       return;
     }
 
     feedbackTextRef.current = value;
     setFeedbackText(value);
     setPayloadError('');
+    setSubmissionError('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -165,15 +169,19 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
         userId: '',
       });
       if (serializedPayloadBytes > MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES) {
-        setPayloadError(t('feedback.payloadTooLarge'));
+        setPayloadError(t(PAYLOAD_TOO_LARGE_KEY));
         return;
       }
 
       try {
         setIsSubmitting(true);
-        await onSubmit(feedbackText, feedbackType, images);
-      } catch {
-        // Error is handled in the parent component
+        setSubmissionError('');
+        const accepted = await onSubmit(feedbackText, feedbackType, images);
+        if (accepted === false) {
+          setSubmissionError(t('feedback.errorMessage'));
+        }
+      } catch (error) {
+        setSubmissionError(t(writeFailureTranslationKey(error, 'feedback.errorMessage')));
       } finally {
         setIsSubmitting(false);
       }
@@ -331,6 +339,12 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
           </p>
         )}
       </div>
+
+      {submissionError && (
+        <p className="mb-4 text-sm text-red-600 dark:text-red-400" role="alert">
+          {submissionError}
+        </p>
+      )}
 
       <div className="flex justify-end gap-2">
         <button

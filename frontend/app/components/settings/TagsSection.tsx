@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 
 import { useTags } from '@/hooks/useTags';
 import { Tag } from '@/models/models';
+import { awaitAcceptance, refusedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
 import ColorPickerModal from '@components/ColorPickerModal';
 
 import AddTagForm from './AddTagForm';
@@ -22,8 +23,10 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
   const [currentTagBeingEdited, setCurrentTagBeingEdited] = useState<Tag | null>(null);
   const { tags, addCustomTag, removeCustomTag, updateTag } = useTags(user?.uid);
 
-  const handleAddTag = async (name: string, color: string) => {
-    if (!user?.uid) return;
+  const handleAddTag = (name: string, color: string): WriteSubmission => {
+    // No signed-in user means nothing holds this tag name — refuse, so the form keeps it
+    // instead of clearing over a write that never existed.
+    if (!user?.uid) return refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
     
     const newTagObj: Tag = {
       id: '',
@@ -33,31 +36,39 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
       required: false,
     };
     
-    try {
-      await addCustomTag(newTagObj);
-    } catch (error: unknown) {
-      const err = error as { message?: string } | null;
-      const message = err?.message === 'Reserved tag name'
-        ? t('errors.reservedTagName')
-        : (t('errors.savingError') || 'Error saving');
-      toast.error(message);
-    }
+    /**
+     * Only the case this form alone can explain. A reserved name is not a write that
+     * failed — it is input this app will not accept, and the person needs to know THAT
+     * rather than "could not save". Everything else is reported by the recovery
+     * descriptor in `useTags`, which carries the tag name and follows the person off
+     * this page; announcing both showed one failed write as two failures.
+     */
+    const reportFailure = (error: unknown) => {
+      console.error('Error adding tag:', error);
+      if ((error as { message?: string } | null)?.message === 'Reserved tag name') {
+        toast.error(t('errors.reservedTagName'));
+      }
+    };
+
+    const submission = addCustomTag(newTagObj);
+    // The form awaits ACCEPTANCE itself and keeps the draft when it rejects; this only
+    // adds the one explanation the form alone can give.
+    void submission.acceptance.catch(reportFailure);
+    return submission;
   };
 
   const handleRemoveTag = async (tagName: string) => {
+    // Reported by the remove descriptor in useTags — see the note above.
+    const reportFailure = (error: unknown) => {
+      console.error('Error removing tag:', error);
+    };
+
     try {
       if (user?.uid) {
-        const result = await removeCustomTag(tagName);
-        if (result?.affectedThoughts != null) {
-          const count = result.affectedThoughts as number;
-          if (count > 0) {
-            toast.success(`${count} ${t('structure.thoughts')} ${t('actions.remove').toLowerCase()}`);
-          }
-        }
+        await awaitAcceptance(removeCustomTag(tagName), reportFailure);
       }
     } catch (error) {
-      console.error('Error removing tag:', error);
-      toast.error(t('errors.removingError') || 'Error removing');
+      reportFailure(error);
     }
   };
 
@@ -68,10 +79,17 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
   const handleUpdateColor = async (newColor: string) => {
     if (!currentTagBeingEdited || !user?.uid) return;
     const updatedTag = { ...currentTagBeingEdited, color: newColor };
-    try {
-      await updateTag(updatedTag);
-    } catch (error) {
+    // Queued acceptance means a refused colour change comes back LATE; without a
+    // reporter there the tag keeps the new colour and nobody is told.
+    // Reported by the update descriptor in useTags — see the note above.
+    const reportColorFailure = (error: unknown) => {
       console.error("Error updating tag color:", error);
+    };
+
+    try {
+      await awaitAcceptance(updateTag(updatedTag), reportColorFailure);
+    } catch (error) {
+      reportColorFailure(error);
     } finally {
       setCurrentTagBeingEdited(null);
     }
@@ -128,4 +146,4 @@ const TagsSection: React.FC<TagsSectionProps> = ({ user }) => {
   );
 };
 
-export default TagsSection; 
+export default TagsSection;

@@ -39,9 +39,12 @@ describe('firebaseAuth.service', () => {
     jest.doMock('sonner', () => ({
       toast: {
         error: mockToastError,
+        dismiss: mockToastDismiss,
       },
     }));
   };
+
+  const mockToastDismiss = jest.fn();
 
   const loadModule = () =>
     jest.requireActual('../../app/services/firebaseAuth.service') as typeof import('@/services/firebaseAuth.service');
@@ -231,6 +234,17 @@ describe('firebaseAuth.service', () => {
     await logOut();
 
     expect(mockSignOut).toHaveBeenCalledWith(auth);
+  });
+
+  it('logOut clears recovery messages so they do not outlive the person', async () => {
+    // Recovery toasts stay until dismissed BECAUSE they hold text someone must not
+    // lose — which is exactly why they must not survive a sign-out: the next person to
+    // use this browser would see the previous one's words, with a copy button.
+    const { logOut } = loadModule();
+
+    await logOut();
+
+    expect(mockToastDismiss).toHaveBeenCalled();
   });
 
   it('logOut rethrows sign out failures', async () => {

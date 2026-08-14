@@ -35,6 +35,7 @@ import type {
   SectionColors,
   SermonSectionKey,
 } from "./types";
+import type { WriteSubmission } from '@/utils/recoverableWrite';
 
 const Card = React.forwardRef<HTMLDivElement, { className?: string; children: React.ReactNode }>(
   ({ className, children }, ref) => (
@@ -602,7 +603,7 @@ export interface PlanMainLayoutProps {
   modalSermonPointId: string | null;
   setModalSermonPointId: React.Dispatch<React.SetStateAction<string | null>>;
   findSermonPointById: (outlinePointId: string) => SermonPoint | undefined;
-  onThoughtSave: (updatedThought: Thought) => Promise<Thought | void>;
+  onThoughtSave: (updatedThought: Thought) => WriteSubmission;
   getThoughtsForSermonPoint: (outlinePointId: string) => Thought[];
   onGenerate: (outlinePointId: string) => Promise<void>;
   onSaveSermonPoint: (outlinePointId: string, content: string, section: keyof Plan) => Promise<void>;

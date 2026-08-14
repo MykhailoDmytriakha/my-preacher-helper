@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import PrayerPage from '@/(pages)/(private)/prayers/page';
+import { persistedWrite } from '@/utils/recoverableWrite';
 import '@testing-library/jest-dom';
 
 const mockUsePrayerRequests = jest.fn();
@@ -87,11 +88,14 @@ jest.mock('@/components/prayer/CreatePrayerModal', () => ({
     <div data-testid={`${mode}-prayer-modal`}>
       <button
         onClick={async () => {
+          // THE PRODUCTION CONTRACT: close only once the write is ACCEPTED. Awaiting the
+          // returned object itself resolved to the object — so this stand-in closed even
+          // on a refusal, and could not have caught a page that erased the draft.
           await onSubmit({
             title: mode === 'edit' ? 'Edited prayer' : 'Created prayer',
             description: 'Context',
             tags: ['hope'],
-          });
+          }).acceptance;
           onClose();
         }}
       >
@@ -107,7 +111,7 @@ jest.mock('@/components/prayer/AddUpdateModal', () => ({
     <div data-testid="add-update-modal">
       <button
         onClick={async () => {
-          await onSubmit('Fresh note');
+          await onSubmit('Fresh note').acceptance;
           onClose();
         }}
       >
@@ -123,7 +127,10 @@ jest.mock('@/components/prayer/MarkAnsweredModal', () => ({
     <div data-testid="mark-answered-modal">
       <button
         onClick={async () => {
-          await onSubmit('Answer text');
+          // Close only once ACCEPTED — awaiting the submission object resolves to the
+          // object itself, so this stand-in used to close over a refusal and discard the
+          // answer, and no page-level regression would have shown it.
+          await onSubmit('Answer text').acceptance;
           onClose();
         }}
       >
@@ -185,6 +192,11 @@ describe('Prayer Page', () => {
     queryStateDefaults.sort = 'updatedAt';
     queryStateDefaults.q = '';
     window.localStorage.clear();
+    createPrayer.mockReturnValue(persistedWrite(Promise.resolve()));
+    updatePrayer.mockReturnValue(persistedWrite(Promise.resolve()));
+    deletePrayer.mockReturnValue(persistedWrite(Promise.resolve()));
+    addUpdate.mockReturnValue(persistedWrite(Promise.resolve()));
+    setStatus.mockReturnValue(persistedWrite(Promise.resolve()));
 
     mockUsePrayerRequests.mockReturnValue({
       prayerRequests: [
@@ -319,11 +331,6 @@ describe('Prayer Page', () => {
   });
 
   it('handles create, edit, delete, update, and status flows through the page callbacks', async () => {
-    createPrayer.mockResolvedValue(undefined);
-    updatePrayer.mockResolvedValue(undefined);
-    deletePrayer.mockResolvedValue(undefined);
-    addUpdate.mockResolvedValue(undefined);
-    setStatus.mockResolvedValue(undefined);
 
     render(<PrayerPage />);
 
@@ -356,22 +363,25 @@ describe('Prayer Page', () => {
         'active-1',
         { title: 'Edited prayer', description: 'Context', tags: ['hope'] },
         0,
-        { title: 'Pray for church', description: 'Sunday service', tags: ['church'] }
+        { title: 'Pray for church', description: 'Sunday service', tags: ['church'] },
+        undefined
       );
       expect(deletePrayer).toHaveBeenCalledWith('active-1');
-      expect(addUpdate).toHaveBeenCalledWith('active-1', 'Fresh note');
+      expect(addUpdate).toHaveBeenCalledWith('active-1', 'Fresh note', undefined);
       expect(setStatus).toHaveBeenCalledWith('active-1', 'not_answered');
       expect(setStatus).toHaveBeenCalledWith('active-1', 'answered', 'Answer text', 0, {
         status: 'active',
         answerText: null,
-      });
+      }, undefined);
     });
 
-    expect(mockToastSuccess).toHaveBeenCalledWith('Prayer created');
-    expect(mockToastSuccess).toHaveBeenCalledWith('Prayer updated');
-    expect(mockToastSuccess).toHaveBeenCalledWith('Prayer deleted');
-    expect(mockToastSuccess).toHaveBeenCalledWith('Update added');
+    // The page delegates editor-owned confirmation to the modal. It must not add a
+    // second success message for queue-owned writes or for a modal it no longer owns.
+    expect(mockToastSuccess).not.toHaveBeenCalledWith('Prayer updated');
     expect(mockToastSuccess).toHaveBeenCalledWith('Prayer status changed');
+    expect(mockToastSuccess).not.toHaveBeenCalledWith('Prayer created');
+    expect(mockToastSuccess).not.toHaveBeenCalledWith('Prayer deleted');
+    expect(mockToastSuccess).not.toHaveBeenCalledWith('Update added');
   });
 
   it('resets filters after sort and scope changes, and collapses an empty search on blur', async () => {

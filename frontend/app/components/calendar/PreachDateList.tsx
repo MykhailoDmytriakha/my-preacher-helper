@@ -17,6 +17,7 @@ import { usePreachDates } from "@/hooks/usePreachDates";
 import { PreachDate } from "@/models/models";
 import { parseDateOnlyAsLocalDate } from "@/utils/dateOnly";
 import { getEffectivePreachDateStatus } from "@/utils/preachDateStatus";
+import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 
 import PreachDateModal from "./PreachDateModal";
 
@@ -51,16 +52,23 @@ export default function PreachDateList({ sermonId }: PreachDateListProps) {
 
     const handleDeleteClick = async (dateId: string) => {
         if (window.confirm(t('calendar.deleteConfirm'))) {
-            await deleteDate(dateId);
+            try {
+                // usePreachDates' delete recovery descriptor reports a late refusal while this screen is mounted.
+                await awaitAcceptance(deleteDate(dateId), () => undefined);
+            } catch (error) {
+                // Reported by the delete descriptor in `usePreachDates`, which also
+                // follows the person off this screen. Announcing here as well showed
+                // one refused delete as two failures.
+                console.error('Error deleting preach date:', error);
+            }
         }
     };
 
-    const handleSave = async (data: Omit<PreachDate, 'id' | 'createdAt'>) => {
+    const handleSave = (data: Omit<PreachDate, 'id' | 'createdAt'>): WriteSubmission => {
         if (editingDate) {
-            await updateDate({ dateId: editingDate.id, updates: data });
-        } else {
-            await addDate(data);
+            return updateDate({ dateId: editingDate.id, updates: data });
         }
+        return addDate(data);
     };
 
     if (isLoading) {

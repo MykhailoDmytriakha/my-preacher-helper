@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import PrayerRequestCard from '@/components/prayer/PrayerRequestCard';
+import { skippedWrite } from '@/utils/recoverableWrite';
 import '@testing-library/jest-dom';
 
 jest.mock('next/link', () => ({
@@ -52,8 +53,8 @@ const basePrayer = {
 
 describe('PrayerRequestCard', () => {
   it('renders active prayers and routes action menu callbacks', async () => {
-    const onSetStatus = jest.fn().mockResolvedValue(undefined);
-    const onDelete = jest.fn().mockResolvedValue(undefined);
+    const onSetStatus = jest.fn(() => skippedWrite());
+    const onDelete = jest.fn(() => skippedWrite());
     const onAddUpdate = jest.fn();
     const onEdit = jest.fn();
 
@@ -118,8 +119,8 @@ describe('PrayerRequestCard', () => {
           ],
         } as any}
         searchQuery="family breakthrough"
-        onSetStatus={jest.fn().mockResolvedValue(undefined)}
-        onDelete={jest.fn().mockResolvedValue(undefined)}
+        onSetStatus={jest.fn(() => skippedWrite())}
+        onDelete={jest.fn(() => skippedWrite())}
         onAddUpdate={jest.fn()}
         onEdit={jest.fn()}
       />
@@ -148,8 +149,8 @@ describe('PrayerRequestCard', () => {
           ],
         } as any}
         searchQuery="breakthrough"
-        onSetStatus={jest.fn().mockResolvedValue(undefined)}
-        onDelete={jest.fn().mockResolvedValue(undefined)}
+        onSetStatus={jest.fn(() => skippedWrite())}
+        onDelete={jest.fn(() => skippedWrite())}
         onAddUpdate={jest.fn()}
         onEdit={jest.fn()}
       />
@@ -165,8 +166,8 @@ describe('PrayerRequestCard', () => {
     render(
       <PrayerRequestCard
         prayer={basePrayer as any}
-        onSetStatus={jest.fn().mockResolvedValue(undefined)}
-        onDelete={jest.fn().mockResolvedValue(undefined)}
+        onSetStatus={jest.fn(() => skippedWrite())}
+        onDelete={jest.fn(() => skippedWrite())}
         onAddUpdate={jest.fn()}
         onEdit={jest.fn()}
       />

@@ -137,7 +137,10 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
         // again, and each press queued another intent with the same base revision
         // — so on reconnect the first landed and the rest came back as "changed on
         // another device", against their own save moments earlier.
-        toast.success(t('freshness.queuedPending', { count: 1 }));
+        // This is durable ownership, not persistence. Keep the honest existing
+        // wording but use a neutral notice: green success styling would say the
+        // sermon is saved even though the server has not accepted it yet.
+        toast.message(t('freshness.queuedPending', { count: 1 }));
         return;
       }
       console.error(`Error saving sermon ${field}:`, error);

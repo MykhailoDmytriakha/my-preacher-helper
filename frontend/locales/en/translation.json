@@ -24,7 +24,7 @@
     "entitySeries": "series",
     "entityRecord": "record",
     "unknownTitle": "Freshness unknown",
-    "unknownDescription": "Cannot check right now whether this {{entity}} changed elsewhere — you may be offline.",
+    "unknownDescription": "Cannot verify right now whether this {{entity}} matches the server.",
     "conflictTitle": "Your change was not saved",
     "conflictDescription": "This {{entity}} was edited on another device while you were typing. Your text is not lost — it is right here. Choose what to keep.",
     "conflictKeepMine": "Keep my text",
@@ -388,6 +388,22 @@
     "close": "Close",
     "deleting": "Deleting...",
     "saved": "Saved"
+  },
+  "writeRecovery": {
+    "refusedLabel": "Save refused",
+    "refused": "Save refused. Nothing was saved; your text is still here.",
+    "refusedChange": "Change refused. Nothing was saved, and what you see has been restored.",
+    "prayerCreateFailed": "Prayer request \"{{name}}\" was not saved.",
+    "prayerUpdateFailed": "The prayer update was not saved.",
+    "seriesCreateFailed": "Series \"{{name}}\" was not saved.",
+    "seriesSermonsFailed": "The selected sermons were not added to the series.",
+    "seriesGroupsFailed": "The selected groups were not added to the series.",
+    "groupCreateFailed": "Group \"{{name}}\" was not saved. Your text is ready to retry.",
+    "sermonCreateFailed": "Sermon \"{{name}}\" was not saved. Your text is ready to retry.",
+    "sermonUpdateFailed": "Changes to \"{{name}}\" were not saved. Your text is ready to retry.",
+    "preachDateFailed": "Preaching details for \"{{name}}\" were not saved. Your notes are ready to retry.",
+    "sermonFailed": "Sermon changes were not saved. Your text is ready to retry.",
+    "thoughtEditFailed": "Your thought was not saved. Your words are back in the editor so you can try again or copy them."
   },
   "export": {
     "soonAvailable": "Coming soon!",
@@ -1339,6 +1355,8 @@
     "cancelButton": "Cancel",
     "successMessage": "Thank you for your feedback!",
     "errorMessage": "Sorry, there was a problem sending your feedback. Please try again.",
+    "tooManySubmissions": "Too many messages in a short time. Your text is still here — send it a little later.",
+    "tooManySubmissionsIn": "Too many messages in a short time. Your text is still here — try again in about {{minutes}} min.",
     "attachImages": "Attach images (optional)",
     "imagesLabel": "Attachments",
     "imageLimitReached": "Maximum 3 images allowed",
@@ -1634,7 +1652,9 @@
       "placeholder": "Enter church name...",
       "cityPlaceholder": "Enter city (optional)"
     },
-    "noPreachDatesWarning": "Marked as preached, but no dates added"
+    "noPreachDatesWarning": "Marked as preached, but no dates added",
+    "audiencePlaceholder": "e.g. Youth, General Service, Wedding",
+    "notesPlaceholder": "Any specific feedback or things to improve..."
   },
   "copy": {
     "title": "Copy Content",
@@ -2241,7 +2261,8 @@
       "seriesDeleted": "Series deleted successfully",
       "sermonAdded": "Sermon added to series",
       "sermonRemoved": "Sermon removed from series",
-      "sermonsAdded": "Sermon{{count, plural, one {} other {s}}} added to series",
+      "sermonsAdded_one": "Sermon added to series",
+      "sermonsAdded_other": "{{count}} sermons added to series",
       "sermonsReordered": "Sermons reordered successfully",
       "form": {
         "title": "Series Title",
@@ -2264,7 +2285,8 @@
         "createHint": "Give your series a name, theme, and pick a color.",
         "editHint": "Update the title, theme, status, or color.",
         "initialSermonsHint_one": "{{count}} sermon will be added to this series",
-        "initialSermonsHint_other": "{{count}} sermons will be added to this series"
+        "initialSermonsHint_other": "{{count}} sermons will be added to this series",
+        "customColor": "Custom color"
       },
       "actions": {
         "createSeries": "Create Series",
@@ -2341,7 +2363,8 @@
         "reorderFailed": "Failed to reorder sermons",
         "addGroupFailed": "Failed to add group to series"
       },
-      "groupsAdded": "Group{{count, plural, one {} other {s}}} added to series"
+      "groupsAdded_one": "Group added to series",
+      "groupsAdded_other": "{{count}} groups added to series"
     },
     "studies": {
       "badge": "Preview",
@@ -2846,5 +2869,9 @@
       "action": "Update the app",
       "hint": "The app has an update ready. Press to restart it on the newer version — your records stay where they are."
     }
+  },
+  "connection": {
+    "offlineBanner": "Working offline. Your changes are saved on this device and will be sent when the connection returns.",
+    "sessionExpired": "Your session has expired. Sign in again to keep saving — your text stays on screen until then."
   }
 }

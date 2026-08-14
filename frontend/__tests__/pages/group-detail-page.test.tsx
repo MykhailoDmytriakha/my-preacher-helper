@@ -548,7 +548,11 @@ describe('GroupDetailPage', () => {
         type: 'group',
         refId: 'group-1',
       });
-      expect(mockToastSuccess).toHaveBeenCalledWith('Assigned to series');
+      // NO success message: the membership sweep is fire-and-forget, so a message
+      // here would land next to the refusal that follows. The optimistic binding on
+      // screen is the acceptance signal; a terminal refusal speaks for itself from
+      // useSeriesMembership.
+      expect(mockToastSuccess).not.toHaveBeenCalledWith('Assigned to series');
       expect(screen.queryByTestId('series-selector-mock')).not.toBeInTheDocument(); // modal closes
     });
   });
@@ -586,7 +590,8 @@ describe('GroupDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Remove' }));
     await waitFor(() => {
       expect(mockRemoveFromAllSeries).toHaveBeenCalledWith({ type: 'group', refId: 'group-1' });
-      expect(mockToastSuccess).toHaveBeenCalledWith('Unlinked from series');
+      // Same reason as the assign flow above: no success on a launch-time return.
+      expect(mockToastSuccess).not.toHaveBeenCalledWith('Unlinked from series');
     });
   });
 

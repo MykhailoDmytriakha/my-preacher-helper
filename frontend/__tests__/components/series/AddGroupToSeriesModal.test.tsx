@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import AddGroupToSeriesModal from '@/components/series/AddGroupToSeriesModal';
 import { useGroups } from '@/hooks/useGroups';
+import { queuedWrite } from '@/utils/recoverableWrite';
 
 jest.mock('@/hooks/useGroups', () => ({
   useGroups: jest.fn(),
@@ -44,7 +45,7 @@ describe('AddGroupToSeriesModal', () => {
 
   it('filters out already linked groups and adds selected ids', async () => {
     const onClose = jest.fn();
-    const onAddGroups = jest.fn().mockResolvedValue(undefined);
+    const onAddGroups = jest.fn(() => queuedWrite('test:membership:add', Promise.resolve()));
     mockUseGroups.mockReturnValue({
       groups: [
         { id: 'g1', title: 'Alpha Group', description: 'Desc', templates: [], flow: [] },

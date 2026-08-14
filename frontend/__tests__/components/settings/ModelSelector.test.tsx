@@ -5,6 +5,7 @@ import { aiFunctionIds, getFunctionCatalog, getFunctionDefault } from '@/api/cli
 import ModelSelector from '@/components/settings/ModelSelector';
 import { useUserEntitlement } from '@/hooks/useUserEntitlement';
 import { useUserSettings } from '@/hooks/useUserSettings';
+import { persistedWrite } from '@/utils/recoverableWrite';
 
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
@@ -83,7 +84,7 @@ describe('ModelSelector', () => {
     mockUseUserEntitlement.mockReturnValue({
       data: { effectiveTier: 'tier2', functions: functionsForTier(false), usage, limits: { aiCallsPerPeriod: 100, transcriptionSecondsPerPeriod: 3600 }, paidTier: 'tier2' }, isLoading: false, isError: false,
     } as unknown as ReturnType<typeof useUserEntitlement>);
-    updateFunctionModelPreference.mockResolvedValue(undefined);
+    updateFunctionModelPreference.mockImplementation(() => persistedWrite(Promise.resolve(undefined)));
 
     render(<ModelSelector user={user} />);
     fireEvent.click(screen.getByRole('radio', { name: /deepseek\/deepseek-v4-pro/ }));
@@ -116,5 +117,16 @@ describe('ModelSelector', () => {
     expect(screen.getAllByTestId('selected-radio-indicator')[0].firstElementChild).toHaveClass('bg-blue-600');
     expect(screen.getAllByText('settings.modelSelector.paidLocked')).toHaveLength(6);
     expect(screen.getByText('settings.modelSelector.freeHint')).toBeInTheDocument();
+  });
+
+  it('does not crash when a cached entitlement misses one function child', () => {
+    const functions = functionsForTier(false);
+    delete functions.tts;
+    mockUseUserEntitlement.mockReturnValue({
+      data: { effectiveTier: 'tier2', functions, usage, limits: { aiCallsPerPeriod: 100, transcriptionSecondsPerPeriod: 3600 }, paidTier: 'tier2' }, isLoading: false, isError: false,
+    } as unknown as ReturnType<typeof useUserEntitlement>);
+
+    expect(() => render(<ModelSelector user={user} />)).not.toThrow();
+    expect(screen.queryByRole('heading', { name: /functions\.tts\.title/ })).not.toBeInTheDocument();
   });
 });

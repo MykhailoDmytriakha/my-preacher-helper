@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { persistedWrite } from '@/utils/recoverableWrite';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -33,7 +34,8 @@ jest.mock('@components/ColorPickerModal', () => (props: any) => {
 // --- Test Suite --- //
 
 describe('AddTagForm', () => {
-  const mockOnAddTag = jest.fn();
+  // Returns a SUBMISSION, like the real prop: the form clears only on acceptance.
+  const mockOnAddTag = jest.fn(() => persistedWrite(Promise.resolve(undefined)));
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -82,8 +84,26 @@ describe('AddTagForm', () => {
     expect(mockOnAddTag).toHaveBeenCalledTimes(1);
     expect(mockOnAddTag).toHaveBeenCalledWith('My First Tag', expect.stringMatching(/^#[0-9A-F]{6}$/i)); 
 
-    expect(tagNameInput).toHaveValue('');
+    await waitFor(() => expect(tagNameInput).toHaveValue(''));
     expect(screen.getByRole('button', { name: /settings.addTag/i })).toBeDisabled();
+  });
+
+  it('keeps the typed name and colour when the write is refused', async () => {
+    // The defect this pins down: the form used to clear in the same breath as it fired
+    // the write, so a refused tag — a reserved name, a denied write — left the person
+    // with an empty form and nothing to retype from.
+    mockOnAddTag.mockReturnValueOnce(persistedWrite(Promise.reject(new Error('Reserved tag name'))));
+    renderForm();
+    const tagNameInput = screen.getByLabelText(/settings.tagName/i);
+    const colorButton = screen.getByRole('button', { name: /settings.selectColor/i });
+    const colorBefore = colorButton.style.backgroundColor;
+
+    await userEvent.type(tagNameInput, 'Introduction');
+    await fireEvent.submit(screen.getByTestId('add-tag-form-element'));
+
+    await waitFor(() => expect(mockOnAddTag).toHaveBeenCalledTimes(1));
+    expect(tagNameInput).toHaveValue('Introduction');
+    expect(colorButton.style.backgroundColor).toBe(colorBefore);
   });
 
    it('opens color picker modal when color button is clicked', async () => {

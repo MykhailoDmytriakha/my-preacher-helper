@@ -3,15 +3,18 @@ import { toast } from 'sonner';
 
 import { Item, Sermon, Thought } from '@/models/models';
 import { updateStructure } from '@/services/structure.service';
+import { updateThought } from '@/services/thought.service';
 
 import { useStructureDnd } from '../useStructureDnd';
 
 
 // Mock services
 jest.mock('@/services/structure.service');
+jest.mock('@/services/thought.service');
 jest.mock('sonner');
 
 const mockUpdateStructure = updateStructure as jest.MockedFunction<typeof updateStructure>;
+const mockUpdateThought = updateThought as jest.MockedFunction<typeof updateThought>;
 const mockToastError = toast.error as jest.Mock;
 
 describe('useStructureDnd', () => {
@@ -169,6 +172,7 @@ describe('useStructureDnd', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUpdateStructure.mockResolvedValue(undefined);
+    mockUpdateThought.mockImplementation(async (_sermonId, thought) => thought);
     mockToastError.mockClear();
   });
 
@@ -741,7 +745,7 @@ describe('useStructureDnd', () => {
         await result.current.handleDragEnd(mockEvent);
       });
 
-      expect(mockDebouncedSaveThought).toHaveBeenCalledWith(
+      expect(mockUpdateThought).toHaveBeenCalledWith(
         sermon.id,
         expect.objectContaining({
           id: THOUGHT_ONE,
@@ -1005,6 +1009,36 @@ describe('useStructureDnd', () => {
   });
 
   describe('handleDragEnd side effects', () => {
+    it('rolls back an optimistic drag and reports a Firebase refusal that arrives after queued acceptance', async () => {
+      const sermon = buildSermon();
+      const containers = buildContainers();
+      const containersRef = { current: containers };
+      const refusal = Object.assign(new Error('Missing or insufficient permissions.'), {
+        code: 'permission-denied',
+        name: 'FirebaseError',
+      });
+      mockUpdateThought.mockRejectedValueOnce(refusal);
+
+      const { result } = renderHook(() => useStructureDnd({
+        ...defaultProps,
+        sermon,
+        containers,
+        containersRef,
+      }));
+
+      act(() => result.current.handleDragStart({ active: { id: THOUGHT_ONE } } as any));
+      await act(async () => {
+        await result.current.handleDragEnd(buildDragEvent(
+          THOUGHT_ONE,
+          buildOver('main', 'main'),
+        ));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(containersRef.current).toEqual(containers);
+      expect(mockToastError).toHaveBeenCalledWith(expect.anything());
+    });
+
     it('returns early when sermon is missing', async () => {
       const containers = buildContainers();
       const containersRef = { current: containers };
@@ -1133,7 +1167,7 @@ describe('useStructureDnd', () => {
 
       // With live preview, no-op drops call setContainers to restore original state
       expect(mockSetContainers).toHaveBeenCalled();
-      expect(mockDebouncedSaveThought).not.toHaveBeenCalled();
+      expect(mockUpdateThought).not.toHaveBeenCalled();
       expect(mockUpdateStructure).not.toHaveBeenCalled();
       expect(containersRef.current).toEqual(containers);
     });
@@ -1243,7 +1277,7 @@ describe('useStructureDnd', () => {
         await result.current.handleDragEnd(mockEvent);
       });
 
-      expect(mockDebouncedSaveThought).toHaveBeenCalledWith(
+      expect(mockUpdateThought).toHaveBeenCalledWith(
         sermon.id,
         expect.objectContaining({
           id: THOUGHT_TWO,
@@ -1318,7 +1352,7 @@ describe('useStructureDnd', () => {
       });
 
       expect(containersRef.current.introduction.map((i) => i.id)).toEqual([THOUGHT_TWO, THOUGHT_ONE]);
-      expect(mockDebouncedSaveThought).toHaveBeenCalledWith(
+      expect(mockUpdateThought).toHaveBeenCalledWith(
         sermon.id,
         expect.objectContaining({ id: THOUGHT_TWO }),
         expect.anything(),
@@ -1375,7 +1409,7 @@ describe('useStructureDnd', () => {
         await result.current.handleDragEnd(mockEvent);
       });
 
-      expect(mockDebouncedSaveThought).toHaveBeenCalledWith(
+      expect(mockUpdateThought).toHaveBeenCalledWith(
         sermon.id,
         expect.objectContaining({
           id: THOUGHT_ONE,
@@ -1462,7 +1496,7 @@ describe('useStructureDnd', () => {
         await result.current.handleDragEnd(mockEvent);
       });
 
-      expect(mockDebouncedSaveThought).toHaveBeenCalledWith(
+      expect(mockUpdateThought).toHaveBeenCalledWith(
         sermon.id,
         expect.objectContaining({
           id: THOUGHT_THREE,
@@ -1527,7 +1561,7 @@ describe('useStructureDnd', () => {
         await result.current.handleDragEnd(mockEvent);
       });
 
-      expect(mockDebouncedSaveThought).toHaveBeenCalledWith(
+      expect(mockUpdateThought).toHaveBeenCalledWith(
         sermon.id,
         expect.objectContaining({
           id: THOUGHT_ONE,
@@ -1599,7 +1633,7 @@ describe('useStructureDnd', () => {
         await result.current.handleDragEnd(mockEvent);
       });
 
-      expect(mockDebouncedSaveThought).toHaveBeenCalledWith(
+      expect(mockUpdateThought).toHaveBeenCalledWith(
         sermon.id,
         expect.objectContaining({
           id: THOUGHT_ONE,
@@ -1691,7 +1725,7 @@ describe('useStructureDnd', () => {
         await result.current.handleDragEnd(mockEvent);
       });
 
-      expect(mockDebouncedSaveThought).not.toHaveBeenCalled();
+      expect(mockUpdateThought).not.toHaveBeenCalled();
       expect(mockUpdateStructure).not.toHaveBeenCalled();
     });
   });

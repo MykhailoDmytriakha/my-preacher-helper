@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 import '@locales/i18n';
 
 import AddSermonModal from '@/components/AddSermonModal';
+import { SermonSyncBadge } from '@/components/dashboard/SermonSyncBadge';
 import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
 import { useDashboardOptimisticSermons } from '@/hooks/useDashboardOptimisticSermons';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
@@ -31,7 +32,12 @@ import { useAuth } from '@/providers/AuthProvider';
 import { getContrastColor } from '@/utils/color';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
+import { awaitAcceptance, persistedWrite } from '@/utils/recoverableWrite';
 
+import type {
+  DashboardOptimisticActions,
+  DashboardSermonSyncState,
+} from '@/models/dashboardOptimistic';
 import type { TFunction } from 'i18next';
 
 type Tone = 'blue' | 'emerald' | 'amber' | 'rose' | 'gray' | 'violet' | 'cyan';
@@ -44,6 +50,9 @@ type Metric = {
   icon: LucideIcon;
   tone: Exclude<Tone, 'gray'>;
 };
+
+/** Stable identity so hiding the verdicts does not remount the panel on every render. */
+const EMPTY_SYNC_STATES: Record<string, DashboardSermonSyncState> = {};
 
 type SermonRow = {
   id: string;
@@ -202,7 +211,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const { user } = useAuth();
   const { sermons } = useDashboardSermons();
-  const { actions: optimisticSermonActions } = useDashboardOptimisticSermons();
+  const { actions: optimisticSermonActions, syncStatesById } = useDashboardOptimisticSermons();
   const { series } = useSeries(user?.uid || null);
   const { notes } = useStudyNotes();
   const { prayerRequests, createPrayer } = usePrayerRequests(user?.uid || null);
@@ -223,8 +232,11 @@ export default function DashboardPage() {
       throw new Error('User is not authenticated');
     }
 
-    const createdPrayerId = await createPrayer({ userId: user.uid, ...payload });
-    router.push(`/prayers/${createdPrayerId}`);
+    // Navigate only once the write is ACCEPTED, and to the id the hook minted — the
+    // previous code awaited the submission OBJECT and pushed `/prayers/[object Object]`.
+    const submission = createPrayer({ userId: user.uid, ...payload });
+    await awaitAcceptance(submission, () => undefined);
+    router.push(`/prayers/${submission.prayerId}`);
   };
 
   const metrics: Metric[] = [
@@ -325,7 +337,13 @@ export default function DashboardPage() {
 
       {/* Row order matches the approved color demo: Sermons · Studies · Calendar */}
       <section className="grid gap-3 xl:grid-cols-6">
-        <SermonsPanel sermons={dashboardData.sermonRows} />
+        {/* While the create form covers the page it reports its own refusal, so the rows
+            stay quiet: a verdict drawn underneath it could not be read anyway. */}
+        <SermonsPanel
+          sermons={dashboardData.sermonRows}
+          syncStatesById={showSermonModal ? EMPTY_SYNC_STATES : syncStatesById}
+          optimisticActions={optimisticSermonActions}
+        />
         <RecentStudiesPanel studies={dashboardData.studyItems} />
         <AgendaPanel agendaItems={dashboardData.agendaItems} />
       </section>
@@ -344,23 +362,25 @@ export default function DashboardPage() {
           allowPlannedDate
           closeOnSuccess
           onClose={() => setShowSermonModal(false)}
-          onCreateRequest={async (input) => {
-            // Optimistic + offline-buffered create (same path as /sermons): the
-            // sermon is never lost offline and replays on reconnect.
-            const createdId = await optimisticSermonActions.createSermon(input);
-            // Navigate to the editor only when online — offline the sermon hasn't
-            // synced yet and its editor route can't load it; the dashboard stays
-            // put and the create flushes on reconnect.
-            if (createdId && typeof navigator !== 'undefined' && navigator.onLine) {
-              router.push(`/sermons/${createdId}`);
-            }
+          onCreateRequest={(input) => {
+            const submission = optimisticSermonActions.createSermon(input);
+            // A queued create has a durable owner but no server document yet, so
+            // stay on the dashboard. Navigation is allowed only after persistence.
+            // A refusal is reported by the row badge; here it only means "do not navigate".
+            // Without the catch the rejection escaped as an unhandled promise error.
+            void submission.acceptance
+              .then((acceptance) => {
+                if (acceptance.kind === 'persisted') router.push(`/sermons/${submission.sermonId}`);
+              })
+              .catch(() => undefined);
+            return submission;
           }}
         />
       )}
       {showPrayerModal && (
         <CreatePrayerModal
           onClose={() => setShowPrayerModal(false)}
-          onSubmit={handleCreatePrayer}
+          onSubmit={(payload) => persistedWrite(handleCreatePrayer(payload))}
           closeOnSuccess={false}
         />
       )}
@@ -407,7 +427,15 @@ function PanelTitle({
   );
 }
 
-function SermonsPanel({ sermons }: { sermons: SermonRow[] }) {
+function SermonsPanel({
+  sermons,
+  syncStatesById,
+  optimisticActions,
+}: {
+  sermons: SermonRow[];
+  syncStatesById: Record<string, DashboardSermonSyncState>;
+  optimisticActions: DashboardOptimisticActions;
+}) {
   const { t } = useTranslation();
 
   return (
@@ -425,7 +453,8 @@ function SermonsPanel({ sermons }: { sermons: SermonRow[] }) {
       ) : (
         <div className="divide-y divide-gray-100 px-2 pb-1 dark:divide-gray-800">
           {sermons.map((sermon) => (
-            <Link key={sermon.id} href={`/sermons/${sermon.id}`} className={`grid grid-cols-[40px_1fr_auto] gap-3 py-3 ${rowLink('blue')}`}>
+            <div key={sermon.id} className="py-1">
+            <Link href={`/sermons/${sermon.id}`} className={`grid grid-cols-[40px_1fr_auto] gap-3 py-3 ${rowLink('blue')}`}>
               <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses.blue.badge}`}>
                 <BookOpen className="h-5 w-5" />
               </div>
@@ -449,6 +478,18 @@ function SermonsPanel({ sermons }: { sermons: SermonRow[] }) {
                 {sermon.status}
               </span>
             </Link>
+            {/* A sermon created here can still be refused. Without this the person saw a
+                row that looked saved and no verdict at all — the write left no other
+                reporter, because the modal is silent by contract. */}
+            <div className="pb-2 pl-[52px]">
+              <SermonSyncBadge
+                sermonId={sermon.id}
+                syncState={syncStatesById[sermon.id]}
+                optimisticActions={optimisticActions}
+                t={t}
+              />
+            </div>
+            </div>
           ))}
         </div>
       )}
@@ -1043,4 +1084,3 @@ function parseDateOnly(date: string) {
 function startOfDay(date: Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
-

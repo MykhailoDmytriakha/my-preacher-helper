@@ -115,6 +115,22 @@ describe('series.service', () => {
     });
   });
 
+  it('keeps an HTTP refusal class when server delete cannot find the series', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: 'Series has already been deleted' }),
+    });
+
+    const service = await importServiceWithClientMocks();
+
+    await expect(service.deleteSeries('series-1')).rejects.toMatchObject({
+      message: 'Series has already been deleted',
+      code: 'not-found',
+      status: 404,
+    });
+  });
+
   it('no longer exposes membership operations (moved to the client playlist sweep)', async () => {
     const service = await importServiceWithClientMocks();
     // Add/remove/reorder of sermons & groups are now written by the client sweep

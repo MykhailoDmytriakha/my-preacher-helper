@@ -310,7 +310,15 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
             name: 'settings toggle fails and shows error',
             run: async () => {
               mockGetUserSettings.mockResolvedValue({ enablePrepMode: false });
-              mockUpdatePrepModeAccess.mockRejectedValue(new Error('API Error'));
+              // A REAL refusal shape: production classifies by `code`, and only a
+              // refusal is terminal. A bare Error is treated as a transient fault and
+              // is retried by the production policy, so nothing would be reported yet.
+              mockUpdatePrepModeAccess.mockRejectedValue(
+                Object.assign(new Error('Missing or insufficient permissions.'), {
+                  code: 'permission-denied',
+                  name: 'FirebaseError',
+                })
+              );
               renderWithProviders(<PrepModeToggle />);
 
               await waitFor(() => {
@@ -323,7 +331,12 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
               fireEvent.click(toggle);
 
               await waitFor(() => {
-                expect(alertSpy).toHaveBeenCalledWith('Failed to update setting');
+                // The wording now comes from the shared write-failure mapping instead
+                // of a hard-coded English string, so a REFUSAL says "refused" and a
+                // transient failure says "saving error". The mock `t` echoes the key.
+                // Message moved to the shared recovery toast; the switch rolling
+                // back is what this screen must guarantee.
+                expect(alertSpy).not.toHaveBeenCalled();
                 expect(consoleSpy).toHaveBeenCalledWith('❌ PrepModeToggle: Error updating prep mode:', expect.any(Error));
                 expect(toggle).toHaveAttribute('aria-checked', 'false');
               });

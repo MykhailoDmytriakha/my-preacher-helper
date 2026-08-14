@@ -84,6 +84,36 @@ describe('sermon.service', () => {
       category: 'crud',
     }));
   });
+
+  it('preserves a body refusal code over the HTTP status mapping', async () => {
+    mockApiClient.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      json: async () => ({ error: 'Payload is invalid', code: 'invalid-argument' }),
+    });
+
+    await expect(
+      createSermon({ title: 'Test', verse: 'John 3:16', date: '2024-01-01', userId: 'u1', thoughts: [] })
+    ).rejects.toMatchObject({
+      message: 'Payload is invalid',
+      code: 'invalid-argument',
+      status: 403,
+    });
+  });
+
+  it('keeps a delete refusal class when the sermon no longer exists', async () => {
+    mockApiClient.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      json: async () => ({ error: 'Sermon not found' }),
+    });
+
+    await expect(deleteSermon('s1')).rejects.toMatchObject({
+      message: 'Sermon not found',
+      code: 'not-found',
+      status: 404,
+    });
+  });
 });
 jest.mock('@/utils/authenticatedRequest', () => ({
   getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),

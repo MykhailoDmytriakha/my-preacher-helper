@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 
 import { SermonPoint, Thought } from '@/models/models';
 import KeyFragmentsModal from '@components/plan/KeyFragmentsModal';
+import { persistedWrite } from '@/utils/recoverableWrite';
 
 // --- Mocks --- //
 
@@ -85,13 +86,13 @@ describe('KeyFragmentsModal', () => {
       getRangeAt: jest.fn(),
       toString: jest.fn().mockReturnValue(''),
     } as unknown as Selection);
-    mockOnThoughtSave.mockImplementation(async (thought: Thought) => {
-      return {
+    mockOnThoughtSave.mockImplementation((thought: Thought) =>
+      persistedWrite(Promise.resolve({
         ...thought,
         id: thought.id,
         keyFragments: Array.isArray(thought.keyFragments) ? [...thought.keyFragments] : [],
-      };
-    });
+      }))
+    );
   });
 
   const renderModal = (isOpen = true, thoughts = mockThoughts) => {
@@ -204,7 +205,9 @@ describe('KeyFragmentsModal', () => {
 
    it('handles error when removing a fragment fails', async () => {
      const error = new Error('Update failed');
-     mockOnThoughtSave.mockRejectedValue(error);
+     mockOnThoughtSave.mockReturnValueOnce(persistedWrite(Promise.reject(Object.assign(
+       error, { code: 'permission-denied', name: 'FirebaseError' }
+     ))));
 
      renderModal();
      const removeButton = screen.getByRole('button', { name: /Trash/i });
@@ -212,13 +215,13 @@ describe('KeyFragmentsModal', () => {
 
      await waitFor(() => {
        expect(mockOnThoughtSave).toHaveBeenCalledTimes(1);
-       expect(toast.error).toHaveBeenCalledWith('errors.failedToRemoveFragment');
+       expect(toast.error).toHaveBeenCalledWith('writeRecovery.refused');
      });
      expect(screen.getByText('first fragment')).toBeInTheDocument(); // Fragment restored by rollback
    });
 
    it('keeps the optimistic local update when save returns no server payload', async () => {
-     mockOnThoughtSave.mockResolvedValueOnce(undefined);
+     mockOnThoughtSave.mockImplementationOnce((thought: Thought) => persistedWrite(Promise.resolve(thought)));
 
      renderModal();
      const removeButton = screen.getByRole('button', { name: /Trash/i });
@@ -315,11 +318,9 @@ describe('KeyFragmentsModal', () => {
 
      await waitFor(async () => {
        expect(mockOnThoughtSave).toHaveBeenCalledTimes(1);
-       const updatedThoughtResult = mockOnThoughtSave.mock.results[0].value;
-       const resolvedThought = await updatedThoughtResult;
-       expect(resolvedThought).toEqual(expect.objectContaining({
-         id: thoughtId,
-         keyFragments: [mockThoughts[1].text],
+       expect(mockOnThoughtSave.mock.results[0].value).toEqual(expect.objectContaining({
+         acceptance: expect.any(Promise),
+         persistence: expect.any(Promise),
        }));
      });
 
@@ -330,7 +331,9 @@ describe('KeyFragmentsModal', () => {
 
    it('handles error when adding a fragment fails', async () => {
      const error = new Error('Update failed');
-     mockOnThoughtSave.mockRejectedValue(error);
+     mockOnThoughtSave.mockReturnValueOnce(persistedWrite(Promise.reject(Object.assign(
+       error, { code: 'permission-denied', name: 'FirebaseError' }
+     ))));
 
      renderModal(true, [mockThoughts[1]]);
      const thoughtId = mockThoughts[1].id;
@@ -345,7 +348,7 @@ describe('KeyFragmentsModal', () => {
 
      await waitFor(() => {
        expect(mockOnThoughtSave).toHaveBeenCalledTimes(1);
-       expect(toast.error).toHaveBeenCalledWith('errors.failedToAddFragment');
+       expect(toast.error).toHaveBeenCalledWith('writeRecovery.refused');
      });
 
      expect(screen.getByText(mockThoughts[1].text)).toBeInTheDocument();

@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import AddUpdateModal from '@/components/prayer/AddUpdateModal';
+import { persistedWrite } from '@/utils/recoverableWrite';
 import { transcribeAudioWithRetry } from '@/utils/transcriptionRetryClient';
 import '@testing-library/jest-dom';
 
@@ -44,6 +45,7 @@ jest.mock('react-i18next', () => ({
         'prayer.update.dictate': 'Dictate',
         'prayer.update.dictationEmpty': 'No speech',
         'prayer.update.dictationError': 'Dictation failed',
+        'writeRecovery.refused': 'Save refused. Nothing was saved; your text is still here.',
       };
 
       return translations[key] || key;
@@ -60,7 +62,7 @@ describe('AddUpdateModal', () => {
 
   it('submits trimmed text and closes after success', async () => {
     const onClose = jest.fn();
-    const onSubmit = jest.fn().mockResolvedValue(undefined);
+    const onSubmit = jest.fn(() => persistedWrite(Promise.resolve()));
 
     render(<AddUpdateModal onClose={onClose} onSubmit={onSubmit} />);
 
@@ -75,14 +77,14 @@ describe('AddUpdateModal', () => {
     fireEvent.submit(enabledSubmitButton.closest('form') as HTMLFormElement);
 
     await waitFor(() => {
-      expect(onSubmit).toHaveBeenCalledWith('We prayed together');
+      expect(onSubmit).toHaveBeenCalledWith('We prayed together', '  We prayed together  ');
       expect(onClose).toHaveBeenCalledTimes(1);
     });
   });
 
-  it('shows submit errors and still allows manual cancel', async () => {
+  it('leaves the failure to the recovery descriptor and stays usable', async () => {
     const onClose = jest.fn();
-    const onSubmit = jest.fn().mockRejectedValue(new Error('Save failed'));
+    const onSubmit = jest.fn(() => persistedWrite(Promise.reject(new Error('Save failed'))));
 
     render(<AddUpdateModal onClose={onClose} onSubmit={onSubmit} />);
 
@@ -93,11 +95,34 @@ describe('AddUpdateModal', () => {
     expect(enabledSubmitButton).toBeEnabled();
     fireEvent.submit(enabledSubmitButton.closest('form') as HTMLFormElement);
 
-    expect(await screen.findByText('Save failed')).toBeInTheDocument();
+    // The descriptor in usePrayerRequests reports this write's failure, with the text and
+    // a retry. The modal repeating it — in raw technical wording — made one failed save
+    // arrive as two messages. Its duty is to stay open, hold the update, stay usable.
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
+
+    expect(screen.queryByText('Save failed')).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Share an update')).toHaveValue('Update text');
     expect(onClose).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the exact update in the textarea when the write is refused', async () => {
+    const refusal = Object.assign(new Error('Permission denied'), { code: 'permission-denied' });
+    const onClose = jest.fn();
+    const onSubmit = jest.fn(() => persistedWrite(Promise.reject(refusal)));
+
+    render(<AddUpdateModal onClose={onClose} onSubmit={onSubmit} />);
+
+    const textarea = screen.getByPlaceholderText('Share an update');
+    fireEvent.change(textarea, { target: { value: 'Господь ответил в среду' } });
+    fireEvent.submit(screen.getByRole('button', { name: 'Save Update' }).closest('form') as HTMLFormElement);
+    // The message belongs to this entity's recovery descriptor — one refusal, one
+    // reporter. The editor's duty, checked below, is to stay open with the text intact.
+    expect(textarea).toHaveValue('Господь ответил в среду');
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it('appends dictated text before submitting an update', async () => {
@@ -106,7 +131,7 @@ describe('AddUpdateModal', () => {
       originalText: 'voice update from prayer meeting',
     });
     const onClose = jest.fn();
-    const onSubmit = jest.fn().mockResolvedValue(undefined);
+    const onSubmit = jest.fn(() => persistedWrite(Promise.resolve()));
 
     render(<AddUpdateModal onClose={onClose} onSubmit={onSubmit} />);
 
@@ -127,7 +152,10 @@ describe('AddUpdateModal', () => {
     fireEvent.submit(screen.getByRole('button', { name: 'Save Update' }).closest('form') as HTMLFormElement);
 
     await waitFor(() => {
-      expect(onSubmit).toHaveBeenCalledWith('Manual note\n\nVoice update from prayer meeting');
+      expect(onSubmit).toHaveBeenCalledWith(
+        'Manual note\n\nVoice update from prayer meeting',
+        'Manual note\n\nVoice update from prayer meeting'
+      );
       expect(onClose).toHaveBeenCalledTimes(1);
     });
   });

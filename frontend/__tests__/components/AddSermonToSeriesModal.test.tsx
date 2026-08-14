@@ -5,6 +5,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import AddSermonToSeriesModal from '@/components/series/AddSermonToSeriesModal';
+import { queuedWrite } from '@/utils/recoverableWrite';
 
 const mockUseDashboardSermons = jest.fn();
 const mockMatchesSermonQuery = jest.fn((..._args: any[]) => true);
@@ -105,7 +106,7 @@ describe('AddSermonToSeriesModal', () => {
 const defaultProps = {
   onClose: jest.fn(),
   onCreateNewSermon: jest.fn(),
-  onAddSermons: jest.fn(),
+  onAddSermons: jest.fn(() => queuedWrite('test:membership:add', Promise.resolve())),
   currentSeriesSermonIds: [],
   seriesId: 'series-123',
 };
@@ -233,7 +234,7 @@ const defaultProps = {
 
   it('enables add button when a sermon is selected and calls onAddSermons', async () => {
     const user = userEvent.setup();
-    const onAddSermons = jest.fn().mockResolvedValue(undefined);
+    const onAddSermons = jest.fn(() => queuedWrite('test:membership:add', Promise.resolve()));
     const onClose = jest.fn();
 
     renderWithProviders(

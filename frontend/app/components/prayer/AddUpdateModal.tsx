@@ -8,12 +8,13 @@ import TextareaAutosize from 'react-textarea-autosize';
 
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
 import { FocusRecorderButton } from '@components/FocusRecorderButton';
 
 interface Props {
   onClose: () => void;
-  onSubmit: (text: string) => Promise<void>;
+  onSubmit: (text: string, recoveryDraft: string) => WriteSubmission;
 }
 
 export default function AddUpdateModal({ onClose, onSubmit }: Props) {
@@ -93,10 +94,18 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
     setError(null);
     setSaving(true);
     try {
-      await onSubmit(text.trim());
+      // usePrayerRequests' add-update recovery descriptor reports a late refusal while this screen is mounted.
+      await awaitAcceptance(onSubmit(text.trim(), text), () => undefined);
       onClose();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error');
+    } catch {
+      /**
+       * SILENT. Every prayer write has a recovery descriptor (`useWriteRecovery` in
+       * usePrayerRequests), and it reports terminal failures with the person's text and a
+       * retry. This editor showed its own message on top — sometimes the raw technical
+       * one — so a single failed save arrived as two messages, one of them untranslated.
+       * The editor's whole duty here is to stay open holding what was typed.
+       */
+      setError(null);
     } finally {
       setSaving(false);
     }
@@ -155,7 +164,7 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
             autoFocus
           />
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="text-sm text-red-500" role="alert">{error}</p>}
 
           <div className="flex justify-end gap-2">
             <button

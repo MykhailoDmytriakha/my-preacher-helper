@@ -1,13 +1,20 @@
 import { useQueryClient } from '@tanstack/react-query';
-import i18n from 'i18next';
 import { useCallback, useState } from 'react';
 import { toast } from 'sonner';
 
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
-import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { isOfflineQueuedError, isStaleWriteError, isWriteRefusedError } from '@/services/conflictSafeUpdate.client';
+import { skippedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
 import { normalizeSeriesItems } from '@/utils/seriesItems';
+import { recoveryText, showRecoverableWriteFailure } from '@/utils/writeRecovery';
+// The app runs on its OWN i18next instance (locales/i18n.ts `createInstance`), so
+// importing the package default gave an instance with NO resources: every t() call
+// below returned an empty string, and the refusal toast reached the person as a
+// bare item name with a button — not one word about what had happened.
+import { i18n } from '@locales/i18n';
+import { auth } from '@services/firebaseAuth.service';
 import { getGroupById } from '@services/groups.service';
 import { getSeriesById, SERIES_META_AGGREGATE, updateSeries } from '@services/series.service';
 import { getSermonById } from '@services/sermon.service';
@@ -41,6 +48,29 @@ const QUERY_KEYS = {
 const EMPTY_ITEMS: ResolvedSeriesItem[] = [];
 const EMPTY_SERMONS: Sermon[] = [];
 const EMPTY_GROUPS: Group[] = [];
+
+function seriesDetailSubmission(request: Promise<void>, receipt: string): WriteSubmission {
+  const acceptance = request.then(
+    () => ({ kind: 'persisted' as const }),
+    (error) => {
+      if (isOfflineQueuedError(error)) return { kind: 'queued' as const, receipt };
+      throw error;
+    }
+  );
+  // The durable conflict outbox owns an OfflineQueuedError, but does not expose a
+  // replay promise to this editor. Keep persistence pending rather than pretending
+  // its later server acknowledgement has already happened.
+  const persistence = request.then(
+    () => undefined,
+    (error) => {
+      if (isOfflineQueuedError(error)) return new Promise<void>(() => undefined);
+      throw error;
+    }
+  );
+  void acceptance.catch(() => undefined);
+  void persistence.catch(() => undefined);
+  return { acceptance, persistence };
+}
 
 const buildPayload = async (seriesData: Series): Promise<SeriesDetailPayload> => {
   const normalizedItems = normalizeSeriesItems(seriesData.items, seriesData.sermonIds || []);
@@ -80,7 +110,6 @@ const buildPayload = async (seriesData: Series): Promise<SeriesDetailPayload> =>
 
 export function useSeriesDetail(seriesId: string) {
   const queryClient = useQueryClient();
-  const [mutationError, setMutationError] = useState<Error | null>(null);
   const { addToSeries, addRefsToSeries, removeFromAllSeries, reorderSeries } = useSeriesMembership();
 
   const { data, isLoading, isFetching, error, refetch } = useServerFirstQuery<SeriesDetailPayload | null>({
@@ -103,19 +132,19 @@ export function useSeriesDetail(seriesId: string) {
   const groups = data?.groups ?? EMPTY_GROUPS;
 
   const refreshSeriesDetail = useCallback(async () => {
-    await refetch();
+    // Same as useSermon/useGroupDetail: `refetch()` resolves even when it fails, so
+    // returning normally told the page "synchronized" and let it dismiss the
+    // stale-data warning over data that had not moved.
+    const result = await refetch();
+    if (result.isError) throw result.error ?? new Error('Refresh failed');
   }, [refetch]);
 
   const withMutationGuard = useCallback(async (action: () => Promise<void>) => {
-    setMutationError(null);
-    try {
-      await action();
-      await refetch();
-    } catch (errorValue: unknown) {
-      const normalized = errorValue instanceof Error ? errorValue : new Error(String(errorValue));
-      setMutationError(normalized);
-      throw normalized;
-    }
+    // A mutation refusal belongs to the editor that still owns the exact draft.
+    // Promoting it to the query's page-fatal error unmounts that editor and destroys
+    // the only rendered copy of the rejected payload.
+    await action();
+    await refetch();
   }, [refetch]);
 
   // Membership writes go through the client playlist sweep (the SOLE writer of
@@ -124,17 +153,17 @@ export function useSeriesDetail(seriesId: string) {
   // offline and never hang awaiting the network.
   const addSermon = useCallback(
     (sermonId: string, position?: number) => {
-      if (!series) return;
-      addToSeries(series.id, { type: 'sermon', refId: sermonId }, position);
+      if (!series) return skippedWrite();
+      return addToSeries(series.id, { type: 'sermon', refId: sermonId }, position);
     },
     [series, addToSeries]
   );
 
   const addSermons = useCallback(
     (sermonIds: string[]) => {
-      if (!series) return;
+      if (!series) return skippedWrite();
       // ONE union-sweep batch (never N parallel sweeps that would clobber the target).
-      addRefsToSeries(
+      return addRefsToSeries(
         series.id,
         sermonIds.map((sermonId) => ({ type: 'sermon' as const, refId: sermonId }))
       );
@@ -144,17 +173,17 @@ export function useSeriesDetail(seriesId: string) {
 
   const addGroup = useCallback(
     (groupId: string, position?: number) => {
-      if (!series) return;
-      addToSeries(series.id, { type: 'group', refId: groupId }, position);
+      if (!series) return skippedWrite();
+      return addToSeries(series.id, { type: 'group', refId: groupId }, position);
     },
     [series, addToSeries]
   );
 
   const addGroups = useCallback(
     (groupIds: string[]) => {
-      if (!series) return;
+      if (!series) return skippedWrite();
       // ONE union-sweep batch — never N parallel sweeps (which clobber the target doc).
-      addRefsToSeries(
+      return addRefsToSeries(
         series.id,
         groupIds.map((groupId) => ({ type: 'group' as const, refId: groupId }))
       );
@@ -164,8 +193,8 @@ export function useSeriesDetail(seriesId: string) {
 
   const removeItem = useCallback(
     (type: 'sermon' | 'group', refId: string) => {
-      if (!series) return;
-      removeFromAllSeries({ type, refId });
+      if (!series) return skippedWrite();
+      return removeFromAllSeries({ type, refId });
     },
     [series, removeFromAllSeries]
   );
@@ -177,7 +206,7 @@ export function useSeriesDetail(seriesId: string) {
 
   const reorderSeriesSermons = useCallback(
     (sermonIds: string[]) => {
-      if (!series) return;
+      if (!series) return skippedWrite();
       const currentItems = normalizeSeriesItems(series.items, series.sermonIds || []);
       const orderedSermonItems = sermonIds
         .map((sermonId) => currentItems.find((item) => item.type === 'sermon' && item.refId === sermonId))
@@ -196,24 +225,20 @@ export function useSeriesDetail(seriesId: string) {
         return next?.id || item.id;
       });
 
-      reorderSeries(series.id, nextItemIds);
+      return reorderSeries(series.id, nextItemIds);
     },
     [series, reorderSeries]
   );
 
   const reorderMixedItems = useCallback(
     (itemIds: string[]) => {
-      if (!series) return;
-      reorderSeries(series.id, itemIds);
+      if (!series) return skippedWrite();
+      return reorderSeries(series.id, itemIds);
     },
     [series, reorderSeries]
   );
 
-  /**
-   * A refused edit, held so it can be re-offered instead of quietly dropped.
-   * The modal that submitted it has already closed, so this state is the ONLY
-   * remaining copy of what the person typed.
-   */
+  /** A stale edit is also held durably so it can be re-offered after a reload. */
   const [saveConflict, setSaveConflict] = usePersistedConflict<Partial<Series>>(
     series?.userId,
     seriesId,
@@ -246,8 +271,17 @@ export function useSeriesDetail(seriesId: string) {
             // REFUSED, not failed. Hold the text and hand the person the choice —
             // a generic save error would read as a glitch and hide a real conflict.
             setSaveConflict({ payload: updates, actualRevision: error.actualRevision });
-            toast.error(i18n.t('freshness.staleSaveToast'));
-            return;
+            /**
+             * NO TOAST. The banner set on the line above says the same thing, holds this
+             * exact text and offers the two choices; the toast only said the first half
+             * and could not act. While the editor stayed open the toast was the visible
+             * one — now that a conflict closes the editor, both were on screen at once,
+             * making one conflict look like two problems.
+             */
+            // The conflict banner is durable recovery for a reload, but the open
+            // editor is still the best recovery surface. Reject so its exact field
+            // values remain mounted instead of treating a refusal as success.
+            throw error;
           }
           throw error;
         }
@@ -266,18 +300,62 @@ export function useSeriesDetail(seriesId: string) {
      *   overwrite it exists to refuse. Omitting it falls back to the live value,
      *   which is only safe for writes built at this instant.
      */
-    async (
+    (
       updates: Partial<Series>,
       baseRevision?: number | null,
       /** The same fields as the form OPENED them — see `writeSeriesDetail`. */
       expectedBaseline?: Record<string, unknown> | null
-    ) => {
-      if (!series) return;
+    ): WriteSubmission => {
+      if (!series) return skippedWrite();
       const stated =
         baseRevision === undefined || baseRevision === null
           ? (series.rev?.[SERIES_META_AGGREGATE] ?? 0)
           : baseRevision;
-      await writeSeriesDetail(updates, stated, expectedBaseline ?? null);
+      const submission = seriesDetailSubmission(
+        writeSeriesDetail(updates, stated, expectedBaseline ?? null),
+        `series:metadata:${series.id}`
+      );
+      /**
+       * THIS SCREEN OWNS ITS REFUSALS, because nothing else can. The series LIST saves
+       * through a React Query mutation, so `useSeries`' recovery descriptor speaks for
+       * it; the detail page writes DIRECTLY, so no descriptor ever sees this write. The
+       * editor was written for the list and stays silent on a refusal — which left the
+       * production path saying nothing at all while the person's edit sat unsaved.
+       *
+       * Only a genuine refusal is reported here: a stale revision has its own choice
+       * ("keep mine / take theirs"), and a transient failure is explained by the open
+       * form, so speaking for either would make one event into two.
+       */
+      const author = series.userId;
+      void submission.acceptance.catch((error) => {
+        if (!isWriteRefusedError(error) || isStaleWriteError(error)) return;
+        /**
+         * WHOSE TEXT IS THIS. The refusal can land after sign-out — this closure outlives
+         * the component, and the sign-out sweep already ran before the message existed.
+         * `auth.currentUser` is a module singleton and stays current after unmount, so it
+         * is the only honest answer to "is the same person still here". Without it the
+         * next account to sign in on a shared computer would be read this series' title,
+         * description and colour, with a button to copy them.
+         */
+        if (!author || auth.currentUser?.uid !== author) return;
+        showRecoverableWriteFailure({
+          error,
+          title: i18n.t('writeRecovery.refused'),
+          description: recoveryText([
+            updates.title,
+            updates.theme,
+            updates.description,
+            updates.bookOrTopic,
+            updates.status,
+            updates.color,
+          ]),
+          retryLabel: '',
+          retry: () => undefined,
+          copyLabel: i18n.t('freshness.copyTextAction'),
+          id: `write-recovery:series-detail:metadata:${series.id}`,
+        });
+      });
+      return submission;
     },
     [series, writeSeriesDetail]
   );
@@ -320,7 +398,9 @@ export function useSeriesDetail(seriesId: string) {
     groups,
     loading: isLoading,
     isRefetching: isFetching,
-    error: (error as Error | null) ?? mutationError,
+    // Only a detail-query failure is page-fatal. Mutation failures reject back to
+    // their owning control so its rendered draft/retry surface remains mounted.
+    error: error as Error | null,
     refreshSeriesDetail,
     addSermon,
     addSermons,

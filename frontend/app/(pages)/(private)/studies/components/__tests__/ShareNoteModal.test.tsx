@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
+import { persistedWrite } from '@/utils/recoverableWrite';
 
 import ShareNoteModal from '../ShareNoteModal';
 
@@ -73,7 +74,7 @@ describe('ShareNoteModal', () => {
 
   it('creates a share link when the create button is clicked', async () => {
     const user = userEvent.setup();
-    const onCreate = jest.fn().mockResolvedValue(createShareLink());
+    const onCreate = jest.fn(() => persistedWrite(Promise.resolve()));
 
     render(
       <ShareNoteModal
@@ -110,7 +111,7 @@ describe('ShareNoteModal', () => {
 
   it('copies and revokes a link when active', async () => {
     const user = userEvent.setup();
-    const onDelete = jest.fn().mockResolvedValue(undefined);
+    const onDelete = jest.fn(() => persistedWrite(Promise.resolve()));
     const copyToClipboard = jest.fn().mockResolvedValue(true);
     const shareLink = createShareLink();
 

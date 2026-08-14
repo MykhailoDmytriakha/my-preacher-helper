@@ -781,7 +781,7 @@ describe('Column Component', () => {
               render(
                 <Column
                   {...focusScaffold}
-                  outlinePoints={[{ id: 'new-1777163841984', text: 'New outline point' }]}
+                  outlinePoints={[{ id: 'outline-point-1', text: 'New outline point' }]}
                 />
               );
               const sidebarPoint = screen

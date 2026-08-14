@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { resolveFirestoreWriteRefusal } from '@/api/errors/firestoreWriteRefusal.server';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -47,6 +48,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         if (errorMessage === "Sermon not found") {
             return NextResponse.json({ error: errorMessage }, { status: 404 });
+        }
+        const refusal = resolveFirestoreWriteRefusal(error);
+        if (refusal) {
+            return NextResponse.json(
+                { error: errorMessage, code: refusal.code },
+                { status: refusal.status }
+            );
         }
         return NextResponse.json({ error: 'Failed to add preach date' }, { status: 500 });
     }

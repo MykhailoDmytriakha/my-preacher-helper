@@ -1,10 +1,11 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import EditThoughtModal from '@/components/EditThoughtModal';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { SermonOutline } from '@/models/models';
 import { toast } from 'sonner';
+import { persistedWrite, queuedWrite } from '@/utils/recoverableWrite';
 import '@testing-library/jest-dom';
 
 // Mock react-dom createPortal
@@ -83,6 +84,7 @@ jest.mock('react-i18next', () => ({
           'buttons.cancel': 'Cancel',
           'buttons.save': 'Save',
           'buttons.saving': 'Saving',
+          'writeRecovery.refused': 'Save refused. Nothing was saved; your text is still here.',
           'outline.introduction': 'Introduction',
           'outline.mainPoints': 'Main Points',
           'outline.conclusion': 'Conclusion',
@@ -264,6 +266,79 @@ describe('EditThoughtModal Component', () => {
         null
       );
     });
+  });
+
+  test('keeps the exact edit open when persistence rejects before local acceptance', async () => {
+    const rejection = Object.assign(new Error('Permission denied'), { code: 'permission-denied' });
+    const persistence = Promise.reject(rejection);
+    void persistence.catch(() => undefined);
+    const onClose = jest.fn();
+    const onSave = jest.fn(() => persistedWrite(persistence));
+
+    render(<EditThoughtModal {...mockProps} onClose={onClose} onSave={onSave} />);
+    const editor = screen.getByTestId('mock-rich-editor');
+    fireEvent.change(editor, { target: { value: '  Exact rejected edit  ' } });
+    fireEvent.click(screen.getByText('Save'));
+
+    const dialog = screen.getByRole('dialog', { name: 'Edit Thought' });
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Save refused. Nothing was saved; your text is still here.'
+    );
+    expect(onClose).not.toHaveBeenCalled();
+    expect(editor).toHaveValue('  Exact rejected edit  ');
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  test('closes after exact local acceptance without reporting a queued write as failed', async () => {
+    const onClose = jest.fn();
+    const onSave = jest.fn(() => queuedWrite('thought:edit:queued', new Promise<void>(() => undefined)));
+
+    render(<EditThoughtModal {...mockProps} onClose={onClose} onSave={onSave} />);
+    fireEvent.change(screen.getByTestId('mock-rich-editor'), {
+      target: { value: 'Queued edit' },
+    });
+    fireEvent.click(screen.getByText('Save'));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  test('returns the exact submitted edit for recovery when accepted persistence later rejects', async () => {
+    let rejectPersistence!: (error: Error) => void;
+    const persistence = new Promise<void>((_resolve, reject) => {
+      rejectPersistence = reject;
+    });
+    void persistence.catch(() => undefined);
+    const onClose = jest.fn();
+    const onSubmissionRejected = jest.fn();
+    const onSave = jest.fn(() => queuedWrite('thought:edit:late-failure', persistence));
+
+    render(
+      <EditThoughtModal
+        {...mockProps}
+        onClose={onClose}
+        onSave={onSave}
+        onSubmissionRejected={onSubmissionRejected}
+      />
+    );
+    fireEvent.change(screen.getByTestId('mock-rich-editor'), {
+      target: { value: '  Rejected after local acceptance  ' },
+    });
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+
+    rejectPersistence(new Error('Permission denied after local apply'));
+
+    await waitFor(() => expect(onSubmissionRejected).toHaveBeenCalledWith({
+      text: '  Rejected after local acceptance  ',
+      tags: ['intro'],
+      outlinePointId: 'intro1',
+      subPointId: null,
+    }));
+    // The editor deliberately does NOT announce a late refusal any more: by then it is
+    // closed, so its message would be invisible, while its owner reports AND restores
+    // the draft. Two reporters told the person the same refusal twice.
+    expect(toast.error).not.toHaveBeenCalled();
   });
 
   test('disables save button when no changes are made', () => {

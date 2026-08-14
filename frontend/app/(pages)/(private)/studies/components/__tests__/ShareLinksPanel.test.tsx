@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
+import { persistedWrite } from '@/utils/recoverableWrite';
 
 import ShareLinksPanel from '../ShareLinksPanel';
 
@@ -82,7 +83,7 @@ describe('ShareLinksPanel', () => {
 
   it('creates a share link for the selected note and clears selection', async () => {
     const user = userEvent.setup();
-    const onCreate = jest.fn().mockResolvedValue(createShareLink({ id: 'link-2', noteId: 'note-2' }));
+    const onCreate = jest.fn(() => persistedWrite(Promise.resolve()));
     const notes = [createTestNote({ id: 'note-2', title: 'New note' })];
 
     render(
@@ -143,12 +144,12 @@ describe('ShareLinksPanel', () => {
   it('renders fallback title, copies link, and prevents double delete', async () => {
     const user = userEvent.setup();
     let resolveDelete!: () => void;
-    const onDelete = jest.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveDelete = resolve;
-        })
-    );
+    const onDelete = jest.fn(() => {
+      const request = new Promise<void>((resolve) => {
+        resolveDelete = resolve;
+      });
+      return persistedWrite(request);
+    });
     const link = createShareLink({ noteId: 'missing-note', token: 'token-456' });
     const copyToClipboard = jest.fn().mockResolvedValue(true);
 

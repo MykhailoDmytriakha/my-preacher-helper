@@ -47,11 +47,36 @@ export async function submitFeedback(
     body: serializedPayload
   });
 
-  const data = await response.json();
-
   if (!response.ok) {
-    throw new Error(data.error || 'Error submitting feedback');
+    // A proxy can return HTML for a 413. Parse best-effort so that malformed error
+    // bodies cannot erase the response class which tells recovery not to retry.
+    const body = await response.json().catch(() => null);
+    const data = body && typeof body === 'object' ? (body as { error?: unknown; code?: unknown }) : {};
+    const error = new Error(typeof data.error === 'string' ? data.error : 'Error submitting feedback');
+    // Preserve the server's refusal class. The UI must not turn a 403 into a
+    // guessed connectivity problem or invite a retry that cannot succeed.
+    const codeByStatus: Record<number, string> = {
+      400: 'invalid-argument',
+      401: 'unauthenticated',
+      403: 'permission-denied',
+      404: 'not-found',
+      // 413 is as final as a 403: the same letter will exceed the same ceiling every
+      // time. Left unclassified, it reached the person as "something went wrong,
+      // please try again" — advice that cannot work.
+      413: 'invalid-argument',
+    };
+    const responseCode = typeof data.code === 'string' ? data.code : undefined;
+    const code = responseCode || codeByStatus[response.status];
+    Object.assign(error, { status: response.status, ...(code ? { code } : {}) });
+    // 429 is neither transient nor final: it is a refusal WITH a known waiting time.
+    // Carry the status and Retry-After so the form can say how long, instead of
+    // inviting an immediate retry that is guaranteed to fail again.
+    if (response.status === 429) {
+      const retryAfterSeconds = Number(response.headers?.get('Retry-After')) || undefined;
+      Object.assign(error, { retryAfterSeconds });
+    }
+    throw error;
   }
 
-  return data;
+  return response.json();
 }

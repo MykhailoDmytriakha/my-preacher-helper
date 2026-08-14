@@ -5,11 +5,13 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+
 import UsageCapGlobalHandler from '@/components/usage/UsageCapGlobalHandler';
-import { isOfflineQueuedError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { isOfflineQueuedError, isStaleWriteError, isWriteRefusedError } from '@/services/conflictSafeUpdate.client';
 import { notifyUsageCapReached } from '@/services/usageCapClient';
 import { registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
 import { createIDBPersister } from '@/utils/queryPersister';
+import { i18n } from '@locales/i18n';
 
 const ONE_WEEK_MS = 1000 * 60 * 60 * 24 * 7;
 
@@ -36,12 +38,16 @@ export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
             // GLOBAL 401 GUARD (C2 Fix)
             const err = error as { status?: number; message?: string };
             if (err?.status === 401 || err?.message?.includes('401')) {
-              console.error('QueryProvider: Auth token expired. Pausing network mutations.');
-              
-              // We don't have a direct "pause", but we can use the onlineManager 
-              // to "trick" React Query into thinking it's offline for mutations only.
-              // For now, we show a persistent toast. 
-              toast.error('Your session has expired. Edits are saved locally but won\'t sync until you refresh and sign in.', {
+              console.error('QueryProvider: Auth token expired.');
+              /**
+               * SAYS THE CAUSE, NOT THE VERDICT ON THE TEXT. The write's own recovery
+               * descriptor already reports what happened to what was typed, and it holds
+               * that text; this one answers the question that descriptor cannot — WHY it
+               * keeps happening and what to do about it. The old wording claimed "edits are
+               * saved locally", which contradicted the descriptor saying nothing was saved,
+               * and sent the person to the wrong action. A fixed id keeps it to one.
+               */
+              toast.error(i18n.t('connection.sessionExpired'), {
                 duration: Infinity,
                 id: 'auth-expired-error',
               });
@@ -77,6 +83,11 @@ export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
              */
             retry: (failureCount, error) => {
               if (isStaleWriteError(error) || isOfflineQueuedError(error)) return false;
+              // A refusal — denied permission, a missing document, an invalid payload —
+              // answers the same way however often it is asked. Retrying it only delays
+              // the moment the person is told, and the screen keeps claiming success
+              // meanwhile.
+              if (isWriteRefusedError(error)) return false;
               return failureCount < 5; // transient failures: keep trying, offline work matters
             },
             // FULL JITTER (S2 Fix): random between 0 and delay

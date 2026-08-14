@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 
 import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
-import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { OfflineQueuedError, StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import {
   addGroupMeetingDate,
   deleteGroup,
@@ -86,7 +86,7 @@ describe('useGroupDetail', () => {
       isLoading: false,
       isFetching: false,
       error: null,
-      refetch: jest.fn().mockResolvedValue(undefined),
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
     } as any);
 
     mockUpdateGroup.mockResolvedValue({ id: 'g1', title: 'Updated' } as any);
@@ -119,8 +119,26 @@ describe('useGroupDetail', () => {
     expect(mockDeleteGroupMeetingDate).toHaveBeenCalledWith('g1', 'd1');
   });
 
+  it('reports a FAILED refresh instead of announcing fresh data', async () => {
+    // The lie this pins down: `refetch()` resolves even when it fails, so the wrapper
+    // returned normally and the screen said "Updated" over data that had not moved.
+    const refetch = jest.fn().mockResolvedValue({ isError: true, error: new Error('offline') });
+    mockUseServerFirstQuery.mockReturnValue({
+      data: null,
+      isLoading: false,
+      error: null,
+      refetch,
+    } as any);
+
+    const { result } = renderHook(() => useGroupDetail('group-1'), { wrapper: createWrapper() });
+
+    await expect(result.current.refreshGroupDetail()).rejects.toThrow('offline');
+  });
+
   it('deletes the group via the keyed mutation and refreshes via refetch', async () => {
-    const refetch = jest.fn().mockResolvedValue(undefined);
+    // Real `refetch` resolves to a result object; a bare undefined stub is a shape
+    // production never produces, and it is what hid the unchecked failure path.
+    const refetch = jest.fn().mockResolvedValue({ isError: false });
     mockUseServerFirstQuery.mockReturnValue({
       data: {
         id: 'g1',
@@ -153,7 +171,7 @@ describe('useGroupDetail', () => {
       isLoading: false,
       isFetching: false,
       error: null,
-      refetch: jest.fn().mockResolvedValue(undefined),
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
     } as any);
 
     const { result } = renderHook(() => useGroupDetail('missing'), { wrapper: createWrapper() });
@@ -172,7 +190,7 @@ describe('useGroupDetail', () => {
     expect(mockDeleteGroup).not.toHaveBeenCalled();
   });
 
-  it('surfaces a normalized error and toasts when an ONLINE write rejects (fire-and-forget, no throw)', async () => {
+  it('keeps a failed ONLINE write out of the page-fatal error state (fire-and-forget, no throw)', async () => {
     mockUpdateGroup.mockRejectedValue('not-an-error');
     const { result } = renderHook(() => useGroupDetail('g1'), { wrapper: createWrapper() });
 
@@ -181,8 +199,11 @@ describe('useGroupDetail', () => {
       await result.current.updateGroupDetail({ title: 'X' });
     });
 
-    await waitFor(() => expect(result.current.error?.message).toBe('not-an-error'));
-    expect(mockToastError).toHaveBeenCalledWith('Failed to update group');
+    // The failure is REPORTED (a message), but never promoted into the page-fatal
+    // `error` field — that one belongs to the query, and a page renders it by replacing
+    // the whole screen.
+    await waitFor(() => expect(mockToastError).toHaveBeenCalledWith('Failed to update group'));
+    expect(result.current.error).toBeNull();
   });
 
   it('toasts a delete failure via the mutation onError', async () => {
@@ -222,7 +243,7 @@ describe('useGroupDetail', () => {
         isLoading: false,
         isFetching: false,
         error: null,
-        refetch: jest.fn().mockResolvedValue(undefined),
+        refetch: jest.fn().mockResolvedValue({ isError: false }),
       } as any);
       return renderHook(() => useGroupDetail('g1'), { wrapper: createWrapper() });
     };
@@ -252,7 +273,28 @@ describe('useGroupDetail', () => {
         })
       );
       // NOT the generic "failed to update group" — that would read as a glitch.
-      expect(mockToastError).toHaveBeenCalledWith('freshness.staleSaveToast');
+      // NO toast — the conflict banner is the single reporter for this event; see the
+      // same change in useSeriesDetail.
+      expect(mockToastError).not.toHaveBeenCalled();
+    });
+
+    it('says NOTHING and keeps the edit when the write was QUEUED, not refused', async () => {
+      /**
+       * Nominally online, Firestore unreachable: the edit is stored in the durable outbox
+       * and comes back as `OfflineQueuedError`. It used to fall through to the generic
+       * reconcile path, which invalidated the caches and announced "failed to update
+       * group" — for a change that was safely kept and would replay by itself.
+       */
+      mockUpdateGroup.mockRejectedValueOnce(new OfflineQueuedError('content'));
+      const { result } = mountAtRev5();
+
+      await act(async () => {
+        await result.current.updateGroupDetail({ title: 'Typed while unreachable' });
+      });
+
+      await waitFor(() => expect(mockUpdateGroup).toHaveBeenCalled());
+      expect(mockToastError).not.toHaveBeenCalled();
+      expect(result.current.saveConflict).toBeNull();
     });
 
     it('re-sends with the server revision when "keep mine" is chosen', async () => {
@@ -382,8 +424,10 @@ describe('useGroupDetail', () => {
         await result.current.updateGroupDetail({ title: 'Updated' });
       });
 
-      await waitFor(() => expect(result.current.error).not.toBeNull());
-      expect(result.current.saveConflict).toBeNull();
+      // A generic failure does NOT become a conflict offer — and it is not promoted into
+      // the page-fatal `error` field either; that one belongs to the query.
+      await waitFor(() => expect(result.current.saveConflict).toBeNull());
+      expect(result.current.error).toBeNull();
     });
   });
 

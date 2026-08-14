@@ -6,13 +6,15 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
 import { SermonPoint, Thought } from "@/models/models";
+import { announceIfPersisted, awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
+import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
 interface KeyFragmentsModalProps {
   isOpen: boolean;
   onClose: () => void;
   outlinePoint: SermonPoint;
   thoughts: Thought[];
-  onThoughtSave: (updatedThought: Thought) => Promise<Thought | void>;
+  onThoughtSave: (updatedThought: Thought) => WriteSubmission;
 }
 
 interface ActiveSelection {
@@ -137,12 +139,12 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
     ];
 
     try {
-      await updateThoughtOnBackend(thoughtId, newKeyFragments);
+      const acceptance = await updateThoughtOnBackend(thoughtId, newKeyFragments);
       setActiveSelection(null);
-      toast.success(t("plan.fragmentAdded"));
+      announceIfPersisted(acceptance, () => toast.success(t("plan.fragmentAdded")));
     } catch (error) {
       console.error("Failed to add fragment:", error);
-      toast.error(t("errors.failedToAddFragment"));
+      toast.error(t(writeFailureTranslationKey(error, "errors.failedToAddFragment")));
     }
   };
 
@@ -158,22 +160,22 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
     const newKeyFragments = thought.keyFragments.filter((_, i) => i !== index);
 
     try {
-      await updateThoughtOnBackend(thoughtId, newKeyFragments);
-      toast.success(t("plan.fragmentRemoved"));
+      const acceptance = await updateThoughtOnBackend(thoughtId, newKeyFragments);
+      announceIfPersisted(acceptance, () => toast.success(t("plan.fragmentRemoved")));
     } catch (error) {
       console.error("Failed to remove fragment:", error);
-      toast.error(t("errors.failedToRemoveFragment"));
+      toast.error(t(writeFailureTranslationKey(error, "errors.failedToRemoveFragment")));
     }
   };
 
   // Remove all fragments from a thought
   const handleRemoveAllFragments = async (thoughtId: string) => {
     try {
-      await updateThoughtOnBackend(thoughtId, []);
-      toast.success(t("plan.allFragmentsRemoved"));
+      const acceptance = await updateThoughtOnBackend(thoughtId, []);
+      announceIfPersisted(acceptance, () => toast.success(t("plan.allFragmentsRemoved")));
     } catch (error) {
       console.error("Failed to remove all fragments:", error);
-      toast.error(t("errors.failedToRemoveFragments"));
+      toast.error(t(writeFailureTranslationKey(error, "errors.failedToRemoveFragments")));
     }
   };
 
@@ -181,7 +183,7 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
   const updateThoughtOnBackend = async (
     thoughtId: string,
     newKeyFragments: string[]
-  ) => {
+  ): Promise<Awaited<ReturnType<typeof awaitAcceptance>>> => {
     const thought = localThoughts.find((t) => t.id === thoughtId);
     
     if (!thought) {
@@ -197,14 +199,10 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
     applyLocalThought(updatedThought);
 
     try {
-      const result = await onThoughtSave(updatedThought);
-
-      if (result) {
-        applyLocalThought(result);
-        return result;
-      }
-
-      return updatedThought;
+      return await awaitAcceptance(
+        onThoughtSave(updatedThought),
+        (error) => toast.error(t(writeFailureTranslationKey(error, 'errors.failedToAddFragment')))
+      );
     } catch (error) {
       applyLocalThought(previousThought);
       throw error;

@@ -5,13 +5,26 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
+import { toast } from 'sonner';
 
 import { PrayerRequest } from '@/models/models';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
+import {
+  announceIfPersisted,
+  awaitAcceptance,
+  type WriteSubmission,
+} from '@/utils/recoverableWrite';
+import { recoveryText } from '@/utils/writeRecovery';
+
+export type PrayerFormPayload = Pick<PrayerRequest, 'title'> &
+  Partial<Pick<PrayerRequest, 'description' | 'tags'>> & {
+    /** Exact input before persistence normalises whitespace and tags. */
+    recoveryDraft: string;
+  };
 
 interface Props {
   onClose: () => void;
-  onSubmit: (payload: Pick<PrayerRequest, 'title'> & Partial<Pick<PrayerRequest, 'description' | 'tags'>>) => Promise<void>;
+  onSubmit: (payload: PrayerFormPayload) => WriteSubmission;
   initialValues?: Partial<PrayerRequest>;
   mode?: 'create' | 'edit';
   closeOnSuccess?: boolean;
@@ -41,11 +54,19 @@ export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mo
         .split(',')
         .map((t) => t.trim())
         .filter(Boolean);
-      await onSubmit({
-        title: title.trim(),
-        description: description.trim() || undefined,
-        tags: tags.length > 0 ? tags : undefined,
-      });
+      const acceptance = await awaitAcceptance(
+        onSubmit({
+          title: title.trim(),
+          description: description.trim() || undefined,
+          tags: tags.length > 0 ? tags : undefined,
+          recoveryDraft: recoveryText([title, description, tagsInput]),
+        }),
+        // usePrayerRequests' create/update recovery descriptor reports a late refusal while this screen is mounted.
+        () => undefined
+      );
+      // A server-persisted edit retains the pre-contract confirmation. Creates are
+      // queue-owned, so they intentionally stay silent even when accepted.
+      if (isEdit) announceIfPersisted(acceptance, () => toast.success(t('prayer.toast.updated')));
       if (closeOnSuccess) {
         onClose();
         setSaving(false);
@@ -55,13 +76,20 @@ export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mo
       // message ("Refused a stale write to \"core\": built from revision 0…") leaked
       // into this box during live validation: technically true, useless to read, and
       // in English on a Russian screen.
-      setError(
-        isStaleWriteError(err)
-          ? t('freshness.staleSaveToast')
-          : err instanceof Error
-            ? err.message
-            : 'Error'
-      );
+      if (isStaleWriteError(err)) {
+        // The page's conflict banner carries this text AND the two choices; this modal
+        // covers it, so it steps aside rather than describing a choice it cannot offer.
+        onClose();
+        return;
+      }
+      /**
+       * SILENT. Every prayer write has a recovery descriptor (`useWriteRecovery` in
+       * usePrayerRequests), and it reports terminal failures with the person's text and a
+       * retry. This editor showed its own message on top — sometimes the raw technical
+       * one — so a single failed save arrived as two messages, one of them untranslated.
+       * The editor's whole duty here is to stay open holding what was typed.
+       */
+      setError(null);
       setSaving(false);
     }
   };
@@ -132,7 +160,7 @@ export default function CreatePrayerModal({ onClose, onSubmit, initialValues, mo
             />
           </div>
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="text-sm text-red-500" role="alert">{error}</p>}
 
           <div className="flex justify-end gap-2 pt-2">
             <button

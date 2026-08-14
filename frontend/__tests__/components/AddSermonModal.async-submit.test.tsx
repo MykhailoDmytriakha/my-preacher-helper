@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import AddSermonModal from '@/components/AddSermonModal';
+import { persistedWrite } from '@/utils/recoverableWrite';
 import { createSermon } from '@/services/sermon.service';
 
 import { TestProviders } from '../../test-utils/test-providers';
@@ -144,7 +145,7 @@ describe('AddSermonModal async submit flow', () => {
   });
 
   it('keeps delegated create form open when the delegated request rejects', async () => {
-    const onCreateRequest = jest.fn().mockRejectedValue(new Error('optimistic-fail'));
+    const onCreateRequest = jest.fn(() => persistedWrite(Promise.reject(Object.assign(new Error('optimistic-fail'), { code: 'permission-denied', name: 'FirebaseError' }))));
     const onClose = jest.fn();
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
 

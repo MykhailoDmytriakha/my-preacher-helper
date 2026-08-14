@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import AddSermonModal from '@/components/AddSermonModal';
+import { persistedWrite } from '@/utils/recoverableWrite';
 import { auth } from '@/services/firebaseAuth.service';
 import { addPreachDate } from '@/services/preachDates.service';
 import { createSermon } from '@/services/sermon.service';
@@ -435,7 +436,7 @@ describe('AddSermonModal Component', () => {
   });
 
   test('delegates create flow to onCreateRequest when provided', async () => {
-    const onCreateRequest = jest.fn().mockResolvedValue(undefined);
+    const onCreateRequest = jest.fn(() => persistedWrite(Promise.resolve()));
     const onClose = jest.fn();
 
     render(
@@ -477,7 +478,7 @@ describe('AddSermonModal Component', () => {
   });
 
   test('logs optimistic create errors and keeps modal data intact', async () => {
-    const onCreateRequest = jest.fn().mockRejectedValue(new Error('optimistic-fail'));
+    const onCreateRequest = jest.fn(() => persistedWrite(Promise.reject(Object.assign(new Error('optimistic-fail'), { code: 'permission-denied', name: 'FirebaseError' }))));
     const onClose = jest.fn();
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
 

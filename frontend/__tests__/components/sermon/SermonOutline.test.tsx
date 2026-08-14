@@ -291,6 +291,36 @@ describe('SermonOutline Component', () => {
     });
   }, 40000); // Increased timeout to 40 seconds
 
+  test('mints distinct point ids when two points are added in the same millisecond', async () => {
+    render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
+    const introSection = await screen.findByTestId('outline-section-introduction');
+
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-08-11T12:00:00.000Z'));
+
+    try {
+      for (const text of ['First same-millisecond point', 'Second same-millisecond point']) {
+        await act(async () => {
+          fireEvent.click(within(introSection).getByLabelText('structure.addPointButton'));
+        });
+        const input = screen.getByPlaceholderText('structure.addPointPlaceholder');
+        fireEvent.change(input, { target: { value: text } });
+        await act(async () => {
+          fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
+        });
+      }
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(100);
+      });
+
+      const savedPoints = (mockUpdateSermonOutline as jest.Mock).mock.calls[0][1].introduction;
+      expect(savedPoints.at(-2).id).not.toBe(savedPoints.at(-1).id);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   test('cancels adding a new outline point without saving', async () => {
     render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
 

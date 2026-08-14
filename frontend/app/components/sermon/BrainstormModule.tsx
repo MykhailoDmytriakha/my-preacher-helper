@@ -54,10 +54,16 @@ export default function BrainstormModule({
 
   const handleCopySuggestion = () => {
     if (!currentSuggestion?.text) return;
-    navigator.clipboard.writeText(currentSuggestion.text);
-    toast.success(t('brainstorm.copiedToClipboard') || 'Suggestion copied to clipboard!');
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    // Confirm the copy only once the clipboard actually accepted it: the write can
+    // reject (permission, insecure context) and the old code claimed success anyway.
+    void navigator.clipboard
+      .writeText(currentSuggestion.text)
+      .then(() => {
+        toast.success(t('brainstorm.copiedToClipboard') || 'Suggestion copied to clipboard!');
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => toast.error(t('common.saveError')));
   };
 
   const getTypeIcon = (type: string) => {

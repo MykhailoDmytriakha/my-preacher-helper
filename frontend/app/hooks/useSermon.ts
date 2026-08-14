@@ -5,6 +5,7 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useServerFirstQuery } from "@/hooks/useServerFirstQuery";
 import { debugLog } from "@/utils/debugMode";
 import { resolveOwnerUid, sermonDetailKey, sermonListKey } from "@/utils/queryKeys";
+import { selectReadableCopy } from "@/utils/readFreshness";
 import { getSermonById } from "@services/sermon.service";
 
 import type { Sermon, Thought } from "@/models/models";
@@ -40,6 +41,8 @@ function useSermon(sermonId: string) {
     [cachedSermons, sermonId]
   );
 
+  const detailKey = useMemo(() => sermonDetailKey(uid, sermonId), [sermonId, uid]);
+
   const {
     data,
     isLoading: loading,
@@ -48,9 +51,14 @@ function useSermon(sermonId: string) {
     isFetched,
     failureReason,
   } = useServerFirstQuery({
-    queryKey: sermonDetailKey(uid, sermonId),
-    queryFn: () => getSermonById(sermonId),
+    queryKey: detailKey,
+    queryFn: async () => {
+      const server = await getSermonById(sermonId);
+      const stored = queryClient.getQueryData<Sermon>(detailKey) ?? cachedSermonFromList;
+      return selectReadableCopy(server, stored) ?? null;
+    },
     enabled: Boolean(sermonId),
+    mode: 'server-first',
     initialData: () => cachedSermonFromList ?? undefined,
     initialDataUpdatedAt: () => {
       if (!uid) return undefined;
@@ -62,11 +70,11 @@ function useSermon(sermonId: string) {
   useEffect(() => {
     if (isOnline) return;
     if (!sermonId || data || !cachedSermonFromList) return;
-    queryClient.setQueryData(sermonDetailKey(uid, sermonId), cachedSermonFromList);
+    queryClient.setQueryData(detailKey, cachedSermonFromList);
     debugLog("Sermon cache hydrated from list", { sermonId });
-  }, [cachedSermonFromList, data, isOnline, queryClient, sermonId, uid]);
+  }, [cachedSermonFromList, data, detailKey, isOnline, queryClient, sermonId]);
 
-  const sermon = data ?? cachedSermonFromList ?? null;
+  const sermon = selectReadableCopy(data, cachedSermonFromList) ?? null;
 
   /**
    * A REFUSAL never reaches the screen as an error, and that is what trapped this
@@ -95,13 +103,13 @@ function useSermon(sermonId: string) {
 
   const setSermon = useCallback(
     async (updater: SermonUpdater) => {
-      await queryClient.cancelQueries({ queryKey: sermonDetailKey(uid, sermonId) });
-      queryClient.setQueryData(sermonDetailKey(uid, sermonId), (previous?: Sermon) => {
+      await queryClient.cancelQueries({ queryKey: detailKey });
+      queryClient.setQueryData(detailKey, (previous?: Sermon) => {
         const resolved = updater instanceof Function ? updater(previous ?? null) : updater;
         return resolved ?? undefined;
       });
       // Invalidate to ensure persisted cache syncs without immediate refetch
-      queryClient.invalidateQueries({ queryKey: sermonDetailKey(uid, sermonId), refetchType: 'none' });
+      queryClient.invalidateQueries({ queryKey: detailKey, refetchType: 'none' });
 
       // Also invalidate the global list so the dashboard reflects updated timestamps (like updatedAt)
       const currentUid = resolveOwnerUid();
@@ -109,11 +117,14 @@ function useSermon(sermonId: string) {
         queryClient.invalidateQueries({ queryKey: sermonListKey(currentUid), refetchType: 'none' });
       }
     },
-    [queryClient, sermonId, uid]
+    [detailKey, queryClient]
   );
 
   const refreshSermon = useCallback(async () => {
-    await refetch();
+    // See useGroupDetail: a resolved `refetch()` is not proof of fresh data, so a
+    // failure must reach the caller instead of being announced as "updated".
+    const result = await refetch();
+    if (result.isError) throw result.error ?? new Error('Refresh failed');
   }, [refetch]);
 
   const getSortedThoughts = (): Thought[] => {

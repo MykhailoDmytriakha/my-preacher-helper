@@ -10,7 +10,6 @@ import {
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 
 import CreateGroupModal from '@/components/groups/CreateGroupModal';
 import GroupCard from '@/components/groups/GroupCard';
@@ -20,6 +19,7 @@ import { useSeries } from '@/hooks/useSeries';
 import { Group } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { hasGroupsAccess } from '@/services/userSettings.service';
+import { awaitAcceptance } from '@/utils/recoverableWrite';
 import '@locales/i18n';
 
 export default function GroupsPage() {
@@ -66,22 +66,21 @@ export default function GroupsPage() {
     return { total: groups.length, active, completed, drafts };
   }, [groups]);
 
-  const handleCreateGroup = async (payload: Omit<Group, 'id'>) => {
-    try {
-      await createNewGroup(payload);
-      toast.success(
-        t('workspaces.groups.messages.created', { defaultValue: 'Group created successfully' })
-      );
-      setShowCreateModal(false);
-    } catch (errorValue) {
-      console.error('Failed to create group:', errorValue);
-      toast.error(
-        t('workspaces.groups.errors.createFailed', {
-          defaultValue: 'Failed to create group',
-        })
-      );
-    }
-  };
+  /**
+   * CANONICAL: the page hands the submission straight to the editor and does not
+   * interpret it. Closing on acceptance and keeping the draft on refusal both live
+   * in the modal, which is the only place that still owns the typed text.
+   *
+   * There is deliberately NO success message: the write is accepted by a durable
+   * queue (`queued`), never `persisted`, and `announceIfPersisted` is the only way
+   * to announce a save — so this path CANNOT claim one. Before the contract it did,
+   * and against deny rules the person saw "Group created successfully" next to
+   * "Save refused" (measured live 2026-08-12).
+   */
+  // The page hands the submission over and does nothing else: CreateGroupModal awaits
+  // acceptance and calls `onClose` itself. Closing here TOO made the canonical example
+  // teach a duplicate mechanism — the first thing a newcomer would copy.
+  const handleCreateGroup = (payload: Omit<Group, 'id'>) => createNewGroup(payload);
 
   const handleDeleteGroupTrigger = (group: Group) => {
     setGroupToDelete(group);
@@ -92,18 +91,15 @@ export default function GroupsPage() {
 
     try {
       setDeletingGroupId(groupToDelete.id);
-      await deleteExistingGroup(groupToDelete.id);
-      toast.success(
-        t('workspaces.groups.messages.deleted', { defaultValue: 'Group deleted successfully' })
-      );
+      // Same reason as create: the row leaving the list is the acceptance signal, and a
+      // refusal restores it — so no success message here. Await ACCEPTANCE, not the
+      // call: `await` on the submission object would resolve instantly and swallow an
+      // early refusal, which is what the whole contract exists to prevent.
+      await awaitAcceptance(deleteExistingGroup(groupToDelete.id), () => undefined);
       setGroupToDelete(null);
     } catch (errorValue) {
+      // Reported by the delete descriptor in useGroups — one refusal, one reporter.
       console.error('Failed to delete group:', errorValue);
-      toast.error(
-        t('workspaces.groups.errors.deleteFailed', {
-          defaultValue: 'Failed to delete group',
-        })
-      );
     } finally {
       setDeletingGroupId(null);
     }

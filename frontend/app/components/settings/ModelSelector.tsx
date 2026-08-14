@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { aiFunctionIds, getFunctionCatalog } from '@/api/clients/ai/functionCatalog';
 import { useUserEntitlement } from '@/hooks/useUserEntitlement';
 import { useUserSettings } from '@/hooks/useUserSettings';
+import { awaitAcceptance } from '@/utils/recoverableWrite';
 
 import type { AiFunctionId, FunctionCatalogEntry } from '@/api/clients/ai/functionCatalog';
 import type { User } from 'firebase/auth';
@@ -90,16 +91,26 @@ export default function ModelSelector({ user }: ModelSelectorProps) {
 
   const isFree = entitlement.effectiveTier === 'free';
   const handleSelect = async (fn: AiFunctionId, model: FunctionCatalogEntry) => {
-    const current = entitlement.functions[fn].current;
+    const functionEntitlement = entitlement.functions[fn];
+    if (!functionEntitlement) return;
+    const current = functionEntitlement.current;
     if (isFree || sameTarget(current, model) || updatingFunctionModelPreference) return;
 
     setSaveError(null);
     try {
-      await updateFunctionModelPreference({
-        [preferenceField[fn]]: { providerId: model.providerId, modelId: model.modelId },
-      });
-    } catch {
-      setSaveError(t('settings.modelSelector.saveError'));
+      await awaitAcceptance(
+        updateFunctionModelPreference({
+          [preferenceField[fn]]: { providerId: model.providerId, modelId: model.modelId },
+        }),
+        // useUserSettings' function-model recovery descriptor reports a late refusal while this screen is mounted.
+        () => undefined
+      );
+    } catch (error) {
+      /**
+       * NO message here — the entity's recovery descriptor reports this refusal and
+       * carries the text. One refusal, one reporter (docs/recoverable-writes.md).
+       */
+      console.error('Model preference write refused:', error);
     }
   };
 
@@ -114,8 +125,12 @@ export default function ModelSelector({ user }: ModelSelectorProps) {
 
       <div className="mt-4 space-y-5">
         {aiFunctionIds.map((fn) => {
-          const current = entitlement.functions[fn].current;
-          const allowed = entitlement.functions[fn].available;
+          const functionEntitlement = entitlement.functions[fn];
+          // A cached entitlement can have `functions` but still miss one child key.
+          // Skip that row until a fresh entitlement arrives instead of crashing Settings.
+          if (!functionEntitlement) return null;
+          const current = functionEntitlement.current;
+          const allowed = functionEntitlement.available;
           const FunctionIcon = functionIcon[fn];
           return (
             <div key={fn}>

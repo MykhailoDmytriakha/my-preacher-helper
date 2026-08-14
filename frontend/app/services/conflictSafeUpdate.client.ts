@@ -90,6 +90,36 @@ export function isOfflineQueuedError(error: unknown): error is OfflineQueuedErro
   return Boolean((error as OfflineQueuedError | null)?.isOfflineQueued);
 }
 
+/**
+ * Firestore codes that mean the write was REFUSED, not merely delayed.
+ *
+ * Repeating a refusal cannot change its answer, and the cost of trying is not
+ * zero: the retry ladder runs for the better part of a minute, and for all that
+ * time the screen still shows the entry as if it had been stored, while nothing
+ * tells the person otherwise. Reproduced 2026-08-11 against an emulator whose
+ * rules deny every write — an added prayer update sat "saved" on screen with no
+ * message at all, and after a reload it was simply gone.
+ *
+ * The list is deliberately of REFUSALS rather than of transient faults: an
+ * unknown code should keep being retried, because treating a passing network
+ * glitch as final would throw away work that was about to succeed.
+ */
+const REFUSAL_CODES = new Set([
+  'permission-denied',
+  'unauthenticated',
+  'not-found',
+  'invalid-argument',
+  'failed-precondition',
+  'already-exists',
+  'out-of-range',
+  'unimplemented',
+]);
+
+export function isWriteRefusedError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === 'string' && REFUSAL_CODES.has(code.replace(/^firestore\//, ''));
+}
+
 export interface ConflictSafeUpdateOptions {
   /** Which independently edited part of the document this write touches. */
   aggregate: string;
@@ -296,7 +326,9 @@ export async function conflictSafeUpdate(
   try {
     await runTransaction(getClientDb(), async (tx) => {
     const snap = await tx.get(ref);
-    if (!snap.exists()) throw new Error(notFoundMessage);
+    if (!snap.exists()) {
+      throw Object.assign(new Error(notFoundMessage), { code: 'not-found' });
+    }
 
     const current = readRevision(snap.data() as Record<string, unknown>, aggregate);
 

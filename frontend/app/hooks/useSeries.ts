@@ -1,7 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { toast } from "sonner";
 
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useResolvedUid } from "@/hooks/useResolvedUid";
@@ -10,6 +8,15 @@ import { newClientId } from "@/utils/clientId";
 import { debugLog } from "@/utils/debugMode";
 import { SERIES_MUTATION_KEYS } from "@/utils/mutationDefaults";
 import { normalizeError } from "@/utils/normalizeError";
+import {
+  persistedWrite,
+  queuedMutation,
+  useWriteRecovery,
+  type WriteSubmission,
+} from "@/utils/recoverableWrite";
+import {
+  recoveryText,
+} from "@/utils/writeRecovery";
 import {
   createSeries,
   deleteSeries,
@@ -25,7 +32,6 @@ type SeriesDetailCache = {
 
 const SERIES_PREFIX = ["series"];
 const SAVE_ERROR_KEY = "common.saveError";
-const SAVE_ERROR_FALLBACK = "Failed to save. Please try again.";
 const buildQueryKey = (userId: string | null) => ["series", userId];
 
 // Query key constants
@@ -34,9 +40,13 @@ const QUERY_KEYS = {
 } as const;
 
 export function useSeries(userId?: string | null) {
-  const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [mutationError, setMutationError] = useState<Error | null>(null);
+  /**
+   * Kept as a write-side signal only. It is deliberately NOT returned as the hook's
+   * `error`: that field is the query's, and the page renders it as a fatal state — one
+   * refused write used to replace the whole screen.
+   */
+  const [, setMutationError] = useState<Error | null>(null);
   const isOnline = useOnlineStatus();
   const { uid: resolvedUid } = useResolvedUid();
   const effectiveUserId = userId ?? resolvedUid ?? null;
@@ -86,7 +96,6 @@ export function useSeries(userId?: string | null) {
         queryClient.setQueryData(buildQueryKey(effectiveUserId), ctx.previous);
       }
       setMutationError(normalizeError(err));
-      toast.error(t(SAVE_ERROR_KEY, { defaultValue: SAVE_ERROR_FALLBACK }));
     },
     onSuccess: (createdSeries, _payload, ctx) => {
       if (createdSeries?.id && ctx?.tempId) {
@@ -99,9 +108,22 @@ export function useSeries(userId?: string | null) {
     },
   });
 
+  useWriteRecovery<Omit<Series, "id"> & { id?: string }>(queryClient, {
+    mutationKey: SERIES_MUTATION_KEYS.create,
+    fallbackTitleKey: "writeRecovery.seriesCreateFailed",
+    titleParams: (payload) => ({ name: payload.title }),
+    recoveryText: (payload) =>
+      recoveryText([payload.title, payload.bookOrTopic, payload.description, payload.status, payload.color]),
+    toastId: (payload) => `write-recovery:series:create:${payload.id}`,
+    owns: (payload) => Boolean(effectiveUserId) && payload.userId === effectiveUserId,
+    retry: (payload) => createSeriesMutation.mutate(payload),
+  });
+
   const updateSeriesMutation = useMutation({
     mutationKey: SERIES_MUTATION_KEYS.update,
-    mutationFn: ({ seriesId, updates }: { seriesId: string; updates: Partial<Series> }) =>
+    // `userId` is carried but not sent: it says WHOSE write this is, so a refusal that
+    // arrives after this screen is gone can be reported to the right person only.
+    mutationFn: ({ seriesId, updates }: { seriesId: string; updates: Partial<Series>; userId?: string }) =>
       updateSeries(seriesId, updates),
     onMutate: async ({ seriesId, updates }) => {
       await queryClient.cancelQueries({ queryKey: buildQueryKey(effectiveUserId) });
@@ -129,7 +151,6 @@ export function useSeries(userId?: string | null) {
         queryClient.setQueryData([QUERY_KEYS.SERIES_DETAIL, ctx.seriesId], ctx.previousDetail);
       }
       setMutationError(normalizeError(err));
-      toast.error(t(SAVE_ERROR_KEY, { defaultValue: SAVE_ERROR_FALLBACK }));
     },
     onSuccess: (updated) => {
       if (updated?.id) {
@@ -141,6 +162,33 @@ export function useSeries(userId?: string | null) {
       queryClient.invalidateQueries({ queryKey: SERIES_PREFIX });
       setMutationError(null);
     },
+  });
+
+  /**
+   * A series is this person's only if it is in THEIR loaded list. Refused mutations
+   * outlive a sign-out in the shared IndexedDB cache, so an unguarded descriptor shows
+   * the previous account's series title and description to whoever signs in next.
+   */
+  const ownsSeries = (seriesId: string) =>
+    Boolean(effectiveUserId) && series.some((entry) => entry.id === seriesId);
+
+  useWriteRecovery<{ seriesId: string; updates: Partial<Series> }>(queryClient, {
+    mutationKey: SERIES_MUTATION_KEYS.update,
+    fallbackTitleKey: SAVE_ERROR_KEY,
+    recoveryText: ({ updates }) =>
+      recoveryText([
+        updates.title,
+        updates.theme,
+        updates.description,
+        updates.bookOrTopic,
+        updates.status,
+        updates.color,
+      ]),
+    toastId: ({ seriesId, updates }) =>
+      `write-recovery:series:update:${seriesId}:${JSON.stringify(updates)}`,
+    ownershipEpoch: `${effectiveUserId ?? ''}:${series.map((entry) => entry.id).join(',')}`,
+    owns: ({ seriesId }) => ownsSeries(seriesId),
+    retry: (variables) => updateSeriesMutation.mutate(variables),
   });
 
   const deleteSeriesMutation = useMutation({
@@ -159,7 +207,6 @@ export function useSeries(userId?: string | null) {
         queryClient.setQueryData(buildQueryKey(effectiveUserId), ctx.previous);
       }
       setMutationError(normalizeError(err));
-      toast.error(t(SAVE_ERROR_KEY, { defaultValue: SAVE_ERROR_FALLBACK }));
     },
     onSuccess: (_data, seriesId) => {
       queryClient.removeQueries({ queryKey: [QUERY_KEYS.SERIES_DETAIL, seriesId] });
@@ -168,27 +215,49 @@ export function useSeries(userId?: string | null) {
     },
   });
 
+  useWriteRecovery<string>(queryClient, {
+    mutationKey: SERIES_MUTATION_KEYS.delete,
+    fallbackTitleKey: SAVE_ERROR_KEY,
+    recoveryText: () => undefined,
+    toastId: (seriesId) => `write-recovery:series:delete:${seriesId}`,
+    ownershipEpoch: `${effectiveUserId ?? ''}:${series.map((entry) => entry.id).join(',')}`,
+    /**
+     * "Anyone signed in" is not ownership. Failed mutations outlive a sign-out in a
+     * shared cache, so that rule handed the PREVIOUS account's refused delete to
+     * whoever signed in next — with a retry aimed at their id. A delete is mine only
+     * if the series is (or was) in MY list.
+     */
+    owns: (seriesId) => Boolean(effectiveUserId) && series.some((entry) => entry.id === seriesId),
+    retry: (seriesId) => deleteSeriesMutation.mutate(seriesId),
+  });
+
   // Fire-and-forget + optimistic: resolve immediately so the UI does not hang
   // awaiting the network; offline the mutation pauses + persists and replays.
   const createNewSeries = useCallback(
-    async (seriesData: Omit<Series, "id"> & { id?: string }) => {
+    (seriesData: Omit<Series, "id"> & { id?: string }): WriteSubmission => {
       // Mint a stable client id so the create is idempotent (setDoc by this id) —
       // a buffered create that ever replays overwrites the same doc, no duplicate.
-      createSeriesMutation.mutate({ ...seriesData, id: seriesData.id ?? newClientId() });
+      const payload = { ...seriesData, id: seriesData.id ?? newClientId() };
+      return queuedMutation(`series:create:${payload.id}`, createSeriesMutation.mutateAsync(payload));
     },
     [createSeriesMutation]
   );
 
   const updateExistingSeries = useCallback(
-    async (seriesId: string, updates: Partial<Series>) => {
-      updateSeriesMutation.mutate({ seriesId, updates });
+    (seriesId: string, updates: Partial<Series>): WriteSubmission => {
+      return queuedMutation(
+        `series:update:${seriesId}:${JSON.stringify(updates)}`,
+        updateSeriesMutation.mutateAsync({ seriesId, updates, userId: effectiveUserId ?? undefined })
+      );
     },
     [updateSeriesMutation]
   );
 
   const deleteExistingSeries = useCallback(
-    async (seriesId: string) => {
-      deleteSeriesMutation.mutate(seriesId);
+    (seriesId: string): WriteSubmission => {
+      // DELETE is a plain fetch request, not a replayable client-SDK write. React
+      // Query does not retain an online pending request across a reload either.
+      return persistedWrite(deleteSeriesMutation.mutateAsync(seriesId));
     },
     [deleteSeriesMutation]
   );
@@ -210,7 +279,14 @@ export function useSeries(userId?: string | null) {
   return {
     series,
     loading: isLoading,
-    error: (error as Error | null) ?? mutationError,
+    /**
+     * ONLY the query's error. A refused WRITE used to travel through this same field,
+     * and the page renders that as a fatal state — the whole screen replaced, the open
+     * editor and the list gone — for something that is recoverable and already reported
+     * by the recovery descriptor. A write that fails must never cost the person the
+     * screen they are working on.
+     */
+    error: (error as Error | null) ?? null,
     refreshSeries,
     createNewSeries,
     updateExistingSeries,

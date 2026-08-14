@@ -2,12 +2,14 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import PrayerDetailPage from '@/(pages)/(private)/prayers/[id]/page';
+import { awaitAcceptance, persistedWrite } from '@/utils/recoverableWrite';
 import '@testing-library/jest-dom';
 
 const mockPush = jest.fn();
 const mockToastSuccess = jest.fn();
 const mockToastError = jest.fn();
 const mockUsePrayerRequests = jest.fn();
+const mockUsePrayerDetail = jest.fn();
 let mockSearchParams = new URLSearchParams();
 
 jest.mock('next/link', () => ({
@@ -42,8 +44,27 @@ jest.mock('@/providers/AuthProvider', () => ({
   }),
 }));
 
+// The freshness banner only shows when the record IS stale, so a test about "which banner
+// wins" has to put it there — otherwise it passes with neither on screen.
+const mockFreshness = jest.fn<
+  { state: string; remote: Record<string, unknown> | null; remotelyDeleted: boolean; markSynced: () => void },
+  []
+>(() => ({
+  state: 'fresh',
+  remote: null,
+  remotelyDeleted: false,
+  markSynced: jest.fn(),
+}));
+jest.mock('@/hooks/useDocumentFreshness', () => ({
+  useDocumentFreshness: () => mockFreshness(),
+}));
+
 jest.mock('@/hooks/usePrayerRequests', () => ({
   usePrayerRequests: () => mockUsePrayerRequests(),
+}));
+
+jest.mock('@/hooks/usePrayerDetail', () => ({
+  usePrayerDetail: () => mockUsePrayerDetail(),
 }));
 
 jest.mock('@/components/prayer/PrayerStatusBadge', () => ({
@@ -88,7 +109,7 @@ jest.mock('@/components/prayer/MarkAnsweredModal', () => ({
       <button
         onClick={async () => {
           try {
-            await onSubmit('Answer text');
+            await awaitAcceptance(onSubmit('Answer text'), () => undefined);
             // Reached ONLY on a fulfilled submit — which is precisely why a page that
             // swallows a refusal destroys the answer.
             answeredModalClosedAfterSubmit();
@@ -155,11 +176,28 @@ describe('PrayerDetailPage', () => {
     mockUsePrayerRequests.mockReturnValue({
       prayerRequests: [activePrayer],
       loading: false,
-      updatePrayer: jest.fn().mockResolvedValue(undefined),
-      deletePrayer: jest.fn().mockResolvedValue(undefined),
-      addUpdate: jest.fn().mockResolvedValue(undefined),
-      setStatus: jest.fn().mockResolvedValue(undefined),
+      updatePrayer: jest.fn(() => persistedWrite(Promise.resolve())),
+      deletePrayer: jest.fn(() => persistedWrite(Promise.resolve())),
+      addUpdate: jest.fn(() => persistedWrite(Promise.resolve())),
+      setStatus: jest.fn(() => persistedWrite(Promise.resolve())),
     });
+    mockUsePrayerDetail.mockReturnValue({ prayer: activePrayer, isLoading: false });
+  });
+
+  it('renders the single-document result when the cached list is empty', () => {
+    mockUsePrayerRequests.mockReturnValue({
+      prayerRequests: [],
+      loading: false,
+      updatePrayer: jest.fn(),
+      deletePrayer: jest.fn(),
+      addUpdate: jest.fn(),
+      setStatus: jest.fn(),
+    });
+
+    render(<PrayerDetailPage />);
+
+    expect(screen.getByText('Pray for family')).toBeInTheDocument();
+    expect(screen.queryByText('prayer.notFound')).not.toBeInTheDocument();
   });
 
   it('renders loading skeletons while the page is fetching', () => {
@@ -178,6 +216,7 @@ describe('PrayerDetailPage', () => {
   });
 
   it('renders the not-found state when the prayer is missing', () => {
+    mockUsePrayerDetail.mockReturnValue({ prayer: null, isLoading: false });
     mockUsePrayerRequests.mockReturnValue({
       prayerRequests: [],
       loading: false,
@@ -196,10 +235,10 @@ describe('PrayerDetailPage', () => {
   });
 
   it('handles edit, update, status, and delete flows for active prayers', async () => {
-    const updatePrayer = jest.fn().mockResolvedValue(undefined);
-    const deletePrayer = jest.fn().mockResolvedValue(undefined);
-    const addUpdate = jest.fn().mockResolvedValue(undefined);
-    const setStatus = jest.fn().mockResolvedValue(undefined);
+    const updatePrayer = jest.fn(() => persistedWrite(Promise.resolve()));
+    const deletePrayer = jest.fn(() => persistedWrite(Promise.resolve()));
+    const addUpdate = jest.fn(() => persistedWrite(Promise.resolve()));
+    const setStatus = jest.fn(() => persistedWrite(Promise.resolve()));
 
     mockUsePrayerRequests.mockReturnValue({
       prayerRequests: [activePrayer],
@@ -244,24 +283,27 @@ describe('PrayerDetailPage', () => {
         // Fourth argument = the VALUES the form opened with. Frozen at open, like
         // the revision: a value read at save time would agree with the server by
         // construction, and the check would protect nothing.
-        { title: 'Pray for family', description: 'Need wisdom', tags: ['family', 'hope'] }
+        { title: 'Pray for family', description: 'Need wisdom', tags: ['family', 'hope'] },
+        undefined
       );
-      expect(addUpdate).toHaveBeenCalledWith('p1', 'Fresh note');
+      expect(addUpdate).toHaveBeenCalledWith('p1', 'Fresh note', undefined);
       expect(setStatus).toHaveBeenCalledWith('p1', 'not_answered');
       // Fourth argument = the revision the answer was built from: the answer is
       // human text, so two devices answering must not overwrite each other.
       expect(setStatus).toHaveBeenCalledWith('p1', 'answered', 'Answer text', 0, {
         status: 'active',
         answerText: null,
-      });
+      }, undefined);
       expect(deletePrayer).toHaveBeenCalledWith('p1');
       expect(mockPush).toHaveBeenCalledWith('/prayers');
     });
 
-    expect(mockToastSuccess).toHaveBeenCalledWith('Prayer updated');
-    expect(mockToastSuccess).toHaveBeenCalledWith('Update added');
+    // Editor-owned messages belong to their modals. The page itself only announces
+    // a direct status change after a persisted acceptance.
+    expect(mockToastSuccess).not.toHaveBeenCalledWith('Prayer updated');
     expect(mockToastSuccess).toHaveBeenCalledWith('Prayer status changed');
-    expect(mockToastSuccess).toHaveBeenCalledWith('Prayer deleted');
+    expect(mockToastSuccess).not.toHaveBeenCalledWith('Update added');
+    expect(mockToastSuccess).not.toHaveBeenCalledWith('Prayer deleted');
   });
 
   it('a REFUSED answer keeps the modal open, so the typed text is not destroyed', async () => {
@@ -270,7 +312,7 @@ describe('PrayerDetailPage', () => {
     // a fulfilled submit closes the modal. The answer, which lives nowhere but that
     // modal, went with it while a toast said the save had failed.
     const staleError = Object.assign(new Error('refused'), { isStaleWrite: true, actualRevision: 7 });
-    const setStatus = jest.fn().mockRejectedValue(staleError);
+    const setStatus = jest.fn(() => persistedWrite(Promise.reject(staleError)));
 
     mockUsePrayerRequests.mockReturnValue({
       prayerRequests: [activePrayer],
@@ -300,17 +342,17 @@ describe('PrayerDetailPage', () => {
     Element.prototype.scrollIntoView = scrollIntoView;
     mockSearchParams = new URLSearchParams('q=Newer&focus=update&updateId=u2');
 
-    mockUsePrayerRequests.mockReturnValue({
-      prayerRequests: [
-        {
-          ...activePrayer,
-          status: 'answered',
-          updates: [
-            { id: 'u1', text: 'Older update', createdAt: '2026-03-02T00:00:00.000Z' },
-            { id: 'u2', text: 'Newer update', createdAt: '2026-03-04T00:00:00.000Z' },
-          ],
-        },
+    const prayerWithUpdates = {
+      ...activePrayer,
+      status: 'answered',
+      updates: [
+        { id: 'u1', text: 'Older update', createdAt: '2026-03-02T00:00:00.000Z' },
+        { id: 'u2', text: 'Newer update', createdAt: '2026-03-04T00:00:00.000Z' },
       ],
+    };
+    mockUsePrayerDetail.mockReturnValue({ prayer: prayerWithUpdates, isLoading: false });
+    mockUsePrayerRequests.mockReturnValue({
+      prayerRequests: [prayerWithUpdates],
       loading: false,
       updatePrayer: jest.fn().mockResolvedValue(undefined),
       deletePrayer: jest.fn().mockResolvedValue(undefined),
@@ -337,19 +379,19 @@ describe('PrayerDetailPage', () => {
   it('renders answered prayers, update timeline, and the restore action', async () => {
     const setStatus = jest.fn().mockResolvedValue(undefined);
 
-    mockUsePrayerRequests.mockReturnValue({
-      prayerRequests: [
-        {
-          ...activePrayer,
-          status: 'answered',
-          answeredAt: '2026-03-03T00:00:00.000Z',
-          answerText: 'God answered this prayer.',
-          updates: [
-            { id: 'u1', text: 'Older update', createdAt: '2026-03-02T00:00:00.000Z' },
-            { id: 'u2', text: 'Newer update', createdAt: '2026-03-04T00:00:00.000Z' },
-          ],
-        },
+    const answeredPrayer = {
+      ...activePrayer,
+      status: 'answered',
+      answeredAt: '2026-03-03T00:00:00.000Z',
+      answerText: 'God answered this prayer.',
+      updates: [
+        { id: 'u1', text: 'Older update', createdAt: '2026-03-02T00:00:00.000Z' },
+        { id: 'u2', text: 'Newer update', createdAt: '2026-03-04T00:00:00.000Z' },
       ],
+    };
+    mockUsePrayerDetail.mockReturnValue({ prayer: answeredPrayer, isLoading: false });
+    mockUsePrayerRequests.mockReturnValue({
+      prayerRequests: [answeredPrayer],
       loading: false,
       updatePrayer: jest.fn().mockResolvedValue(undefined),
       deletePrayer: jest.fn().mockResolvedValue(undefined),
@@ -395,5 +437,40 @@ describe('PrayerDetailPage', () => {
     render(<PrayerDetailPage />);
 
     expect(screen.getByText(/God provided a job/)).toBeInTheDocument();
+  });
+
+  it('lets the refused ANSWER own the screen — no second banner for the same event', () => {
+    /**
+     * This page has TWO conflict kinds: a refused edit and a refused answer/status change.
+     * The freshness banner was silenced for the first and not the second, so a refused
+     * answer showed two banners and four competing actions for one event. The conflict
+     * banner holds the person's text, so it is the one that stays.
+     */
+    mockFreshness.mockReturnValue({
+      state: 'stale',
+      remote: { status: 'answered', answerText: 'Другое устройство' },
+      remotelyDeleted: false,
+      markSynced: jest.fn(),
+    });
+    mockUsePrayerRequests.mockReturnValue({
+      prayerRequests: [activePrayer],
+      loading: false,
+      updatePrayer: jest.fn(),
+      deletePrayer: jest.fn(),
+      addUpdate: jest.fn(),
+      setStatus: jest.fn(),
+      saveConflict: null,
+      statusConflict: {
+        payload: { id: 'p1', status: 'answered', answerText: 'God provided a job' },
+        actualRevision: 4,
+      },
+      keepMineOnStatusConflict: jest.fn(),
+      takeTheirsOnStatusConflict: jest.fn(),
+    });
+
+    render(<PrayerDetailPage />);
+
+    expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
+    expect(screen.queryByText('freshness.title')).not.toBeInTheDocument();
   });
 });

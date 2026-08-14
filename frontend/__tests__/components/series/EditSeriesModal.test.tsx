@@ -1,7 +1,8 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import EditSeriesModal from '@/components/series/EditSeriesModal';
+import { persistedWrite, queuedWrite } from '@/utils/recoverableWrite';
 import '@testing-library/jest-dom';
 
 // Mock react-dom createPortal
@@ -19,6 +20,7 @@ jest.mock('react-i18next', () => ({
       const translations: Record<string, string> = {
         'workspaces.series.editSeries': 'Edit Series',
         'workspaces.series.form.title': 'Series Title',
+        'workspaces.series.form.customColor': 'Custom color',
         'workspaces.series.form.titlePlaceholder': 'Enter series title',
         'workspaces.series.form.description': 'Description',
         'workspaces.series.form.descriptionPlaceholder': 'Brief description...',
@@ -30,7 +32,8 @@ jest.mock('react-i18next', () => ({
         'workspaces.series.form.statuses.active': 'Active',
         'workspaces.series.form.statuses.completed': 'Completed',
         'workspaces.series.actions.saveChanges': 'Save Changes',
-        'workspaces.series.actions.cancel': 'Cancel'
+        'workspaces.series.actions.cancel': 'Cancel',
+        'writeRecovery.refused': 'Save refused. Nothing was saved; your text is still here.'
       };
       return translations[key] || key;
     }
@@ -88,6 +91,7 @@ describe('EditSeriesModal Component', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockOnUpdate.mockImplementation(() => queuedWrite('test:series:update', Promise.resolve()));
   });
 
   test('renders with correct initial values', () => {
@@ -296,6 +300,75 @@ describe('EditSeriesModal Component', () => {
         status: 'active'
       });
     });
+  });
+
+  test('keeps the exact series edit in the open editor when refused', async () => {
+    const refusal = Object.assign(new Error('Permission denied'), {
+      code: 'permission-denied',
+      name: 'FirebaseError',
+    });
+    mockOnUpdate.mockReturnValueOnce(persistedWrite(Promise.reject(refusal)));
+    render(
+      <EditSeriesModal
+        series={mockSeries}
+        onClose={mockOnClose}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    const title = screen.getByDisplayValue('Test Series');
+    const description = screen.getByTestId('mock-rich-editor');
+    const bookOrTopic = screen.getByDisplayValue('Romans');
+    const status = screen.getByRole('combobox');
+    const selectedColor = document.querySelector('button[title="#10B981"]')!;
+    fireEvent.change(title, { target: { value: 'Exact refused series title' } });
+    fireEvent.change(description, { target: { value: 'Exact refused series description' } });
+    fireEvent.change(bookOrTopic, { target: { value: 'Exact refused series topic' } });
+    fireEvent.change(status, { target: { value: 'active' } });
+    fireEvent.click(selectedColor);
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    // AWAITED first: these assertions used to run on the same tick as the click, before
+    // the rejected promise reached `catch` — so they would have stayed green even if the
+    // catch had started closing the editor and taking the only visible copy with it.
+    await waitFor(() => expect(mockOnUpdate).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
+
+    // The message belongs to this entity's recovery descriptor — one refusal, one
+    // reporter. The editor's duty, checked below, is to stay open with the text intact.
+    expect(title).toHaveValue('Exact refused series title');
+    expect(description).toHaveValue('Exact refused series description');
+    expect(bookOrTopic).toHaveValue('Exact refused series topic');
+    expect(status).toHaveValue('active');
+    expect(selectedColor).toHaveClass('scale-110');
+    expect(mockOnUpdate).toHaveBeenCalledWith('test-series-id', {
+      title: 'Exact refused series title',
+      theme: 'Exact refused series title',
+      description: 'Exact refused series description',
+      bookOrTopic: 'Exact refused series topic',
+      color: '#10B981',
+      status: 'active',
+    });
+    expect(mockOnClose).not.toHaveBeenCalled();
+  });
+
+  test('closes silently after the outbox accepts an offline series write', async () => {
+    mockOnUpdate.mockReturnValueOnce(queuedWrite('outbox:series:update', new Promise(() => undefined)));
+    render(
+      <EditSeriesModal
+        series={mockSeries}
+        onClose={mockOnClose}
+        onUpdate={mockOnUpdate}
+      />
+    );
+
+    fireEvent.change(screen.getByDisplayValue('Test Series'), {
+      target: { value: 'Queued offline series title' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    await waitFor(() => expect(mockOnClose).toHaveBeenCalledTimes(1));
+    expect(mockOnUpdate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   test('calls onClose when cancel button is clicked', () => {

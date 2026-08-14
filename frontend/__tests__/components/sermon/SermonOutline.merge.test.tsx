@@ -160,4 +160,29 @@ describe('the sermon plan panel keeps what another device added', () => {
     // phone's point as "deleted here".
     expect(mockServerOutline.introduction.map((point) => point.id)).toContain('p2');
   });
+
+  it('keeps both plan points created in the same millisecond through the real merge', async () => {
+    render(<SermonOutline sermon={sermon} />);
+    await waitFor(() => expect(screen.getByText('Grace')).toBeInTheDocument());
+
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-08-11T12:00:00.000Z'));
+
+    try {
+      await addPointHere('First same-millisecond point');
+      await addPointHere('Second same-millisecond point');
+
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(100);
+      });
+
+      expect(mockServerOutline.introduction.map((point) => point.text)).toEqual([
+        'Grace',
+        'First same-millisecond point',
+        'Second same-millisecond point',
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });

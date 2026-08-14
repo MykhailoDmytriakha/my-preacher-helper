@@ -1,7 +1,12 @@
 import { QueryClient } from '@tanstack/react-query';
 
+import { OfflineQueuedError } from '@/services/conflictSafeUpdate.client';
 import { createGroup, deleteGroup, updateGroup } from '@/services/groups.service';
-import { GROUP_MUTATION_KEYS, registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
+import {
+  DASHBOARD_SERMON_MUTATION_KEYS,
+  GROUP_MUTATION_KEYS,
+  registerOfflineMutationDefaults,
+} from '@/utils/mutationDefaults';
 
 jest.mock('@/services/groups.service', () => ({
   createGroup: jest.fn().mockResolvedValue({ id: 'g1' }),
@@ -52,5 +57,28 @@ describe('registerOfflineMutationDefaults', () => {
     expect(mockCreateGroup).toHaveBeenCalledWith({ userId: 'u', title: 'T' });
     expect(mockUpdateGroup).toHaveBeenCalledWith('g1', { title: 'X' });
     expect(mockDeleteGroup).toHaveBeenCalledWith('g1');
+  });
+
+  it('does NOT roll the sermon row back when the write was QUEUED, not refused', async () => {
+    /**
+     * Nominally online, Firestore unreachable: `conflictSafeUpdate` stores the edit in the
+     * durable outbox and throws `OfflineQueuedError`. That is a receipt. Rolling back here
+     * took the person's edit off the screen while it sat safely waiting to replay — the
+     * screen contradicting what was actually kept.
+     */
+    const queryClient = new QueryClient();
+    registerOfflineMutationDefaults(queryClient);
+    const setQueryData = jest.spyOn(queryClient, 'setQueryData');
+
+    const onError = queryClient.getMutationDefaults(DASHBOARD_SERMON_MUTATION_KEYS.update)
+      ?.onError as (error: unknown, vars: unknown, ctx: unknown) => Promise<void>;
+
+    await onError(
+      new OfflineQueuedError('core'),
+      { uid: 'user-1', sermonId: 's1', input: { sermon: { id: 's1', title: 'old' } } },
+      undefined
+    );
+
+    expect(setQueryData).not.toHaveBeenCalled();
   });
 });

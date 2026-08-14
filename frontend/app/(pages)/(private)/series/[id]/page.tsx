@@ -26,7 +26,6 @@ import { ArrowPathIcon, ClockIcon, SparklesIcon } from '@heroicons/react/24/soli
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 
 import AddSermonModal from '@/components/AddSermonModal';
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
@@ -46,6 +45,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { contentFingerprint } from '@/utils/contentFingerprint';
 import { debugLog } from '@/utils/debugMode';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
+import { awaitAcceptance, skippedWrite } from '@/utils/recoverableWrite';
 import { normalizeSeriesItems } from '@/utils/seriesItems';
 import { SERIES_META_AGGREGATE } from '@services/series.service';
 
@@ -243,11 +243,16 @@ export default function SeriesDetailPage() {
     const nextItemIds = nextItems.map((entry) => entry.item.id);
 
     try {
-      await reorderMixedItems(nextItemIds);
+      // useSeriesMembership's recovery descriptor reports a late refusal while this screen is mounted.
+      await awaitAcceptance(reorderMixedItems(nextItemIds), () => undefined);
     } catch (errorValue) {
+      /**
+       * NO message here. The membership descriptor in `useSeriesMembership` reports
+       * this refusal — with wording, the affected items and a working retry — and it
+       * keeps reporting after this page is gone. Announcing here too showed one refused
+       * action as two separate failures.
+       */
       console.error('Error reordering series items:', errorValue);
-      toast.error(t('workspaces.series.errors.reorderFailed'));
-      // Rollback on error
       setOptimisticItems(items);
     }
   };
@@ -255,52 +260,32 @@ export default function SeriesDetailPage() {
   const handleDeleteSeries = async () => {
     if (!series) return;
     try {
-      await deleteExistingSeries(series.id);
-      toast.success(t('workspaces.series.seriesDeleted'));
+      // useSeries' delete recovery descriptor reports a late refusal while this screen is mounted.
+      await awaitAcceptance(deleteExistingSeries(series.id), () => undefined);
       router.push('/series');
     } catch (errorValue) {
+      // Reported by the delete descriptor in `useSeries` — see the note above.
       console.error('Error deleting series:', errorValue);
-      toast.error(t('workspaces.series.errors.deleteFailed'));
     } finally {
       setShowDeleteConfirm(false);
     }
   };
 
-  const handleAddSermons = async (sermonIds: string[]) => {
-    try {
-      await addSermons(sermonIds);
-      toast.success(t('workspaces.series.sermonsAdded', { count: sermonIds.length }));
-    } catch (errorValue) {
-      console.error('Error adding sermons to series:', errorValue);
-      toast.error(t('workspaces.series.errors.addSermonFailed'));
-      throw errorValue;
-    }
-  };
+  const handleAddSermons = (sermonIds: string[]) => addSermons(sermonIds);
 
-  const handleAddGroups = async (groupIds: string[]) => {
-    if (!series) return;
-    // ONE union-sweep batch (fire-and-forget + optimistic), never N parallel adds.
-    addGroups(groupIds);
-    toast.success(
-      t('workspaces.series.groupsAdded', {
-        count: groupIds.length,
-        defaultValue: `${groupIds.length} groups added`,
-      })
-    );
+  const handleAddGroups = (groupIds: string[]) => {
+    return series ? addGroups(groupIds) : skippedWrite();
   };
 
   const handleConfirmRemove = async () => {
     if (!pendingRemoval) return;
     try {
-      await removeItem(pendingRemoval.type, pendingRemoval.refId);
+      // useSeriesMembership's recovery descriptor reports a late refusal while this screen is mounted.
+      await awaitAcceptance(removeItem(pendingRemoval.type, pendingRemoval.refId), () => undefined);
       setPendingRemoval(null);
     } catch (errorValue) {
+      // Reported by the membership descriptor — see the note above.
       console.error('Error removing item from series:', errorValue);
-      toast.error(
-        t('workspaces.series.errors.removeSermonFailed', {
-          defaultValue: 'Failed to remove item from series',
-        })
-      );
     }
   };
 
@@ -359,8 +344,13 @@ export default function SeriesDetailPage() {
         />
       )}
       {/* This SERIES changed elsewhere. Distinct from the app-update toast, and it
-          refreshes the record rather than reloading the application. */}
-      {(seriesFreshness.state === 'stale' || seriesFreshness.state === 'unknown') && !seriesFreshnessDismissed && (
+          refreshes the record rather than reloading the application.
+
+          NOT while a save conflict is on screen: that banner already says the record
+          changed elsewhere AND holds the person's text, and its "take theirs" does what
+          "load newer" would. Showing both gave one event two headlines and four buttons,
+          two of which meant the same thing — found in the browser, not by a test. */}
+      {!saveConflict && (seriesFreshness.state === 'stale' || seriesFreshness.state === 'unknown') && !seriesFreshnessDismissed && (
         <DataFreshnessBanner
           entityKey="entitySeries"
           dirty={false}
@@ -610,10 +600,7 @@ export default function SeriesDetailPage() {
         <EditSeriesModal
           series={series}
           onClose={() => setShowEditModal(false)}
-          onUpdate={async (_id, updates) => {
-            await updateSeriesDetail(updates, editBaseRevision, editBaseContent);
-            setShowEditModal(false);
-          }}
+          onUpdate={(_id, updates) => updateSeriesDetail(updates, editBaseRevision, editBaseContent)}
         />
       )}
 
@@ -713,11 +700,25 @@ export default function SeriesDetailPage() {
           onNewSermonCreated={async (newSermon) => {
             debugLog('New sermon created, starting to add to series:', newSermon.id);
             try {
+              // AWAIT ACCEPTANCE, not the submission object. `await`-ing the object
+              // itself resolved immediately to the object, so a refused membership
+              // never reached this catch: the modal closed reporting success while the
+              // freshly created sermon stayed outside the series the person chose.
               // The membership sweep reconciles the touched series-detail itself
               // (onSuccess, bound to the real commit ack) — no timer-guessed
               // invalidate needed here.
-              await handleAddSermons([newSermon.id]);
+              await awaitAcceptance(handleAddSermons([newSermon.id]), () => undefined);
             } catch (errorValue) {
+              /**
+               * DO NOT rethrow. The sermon itself was already created — only the series
+               * link was refused. Rethrowing made the creation form treat a successful
+               * create as a failure, so it stayed open with the fields populated and the
+               * person's obvious next move, pressing Save again, minted a SECOND sermon.
+               *
+               * The refusal is not swallowed: membership has its own recovery owner for
+               * every surface (useSeriesMembership), with an idempotent retry, and the
+               * screen; if it is gone, that is the tracked late-navigation debt.
+               */
               console.error('Error adding new sermon to series:', errorValue);
             }
           }}

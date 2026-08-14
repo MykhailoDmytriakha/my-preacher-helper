@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
@@ -7,6 +8,14 @@ import { addCustomTag, getTags, removeCustomTag, updateTag } from '@/services/ta
 import { newClientId } from '@/utils/clientId';
 import { debugLog } from '@/utils/debugMode';
 import { TAG_MUTATION_KEYS } from '@/utils/mutationDefaults';
+import {
+  persistedWrite,
+  queuedMutation,
+  refusedWrite,
+  useWriteRecovery,
+  type WriteSubmission,
+} from '@/utils/recoverableWrite';
+import { recoveryText } from '@/utils/writeRecovery';
 
 import type { Tag } from '@/models/models';
 
@@ -20,6 +29,7 @@ const EMPTY_TAGS: TagPayload = { requiredTags: [], customTags: [] };
 const buildQueryKey = (userId: string | null | undefined) => ['tags', userId ?? null];
 
 export function useTags(userId: string | null | undefined) {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const isOnline = useOnlineStatus();
 
@@ -122,6 +132,40 @@ export function useTags(userId: string | null | undefined) {
     onSuccess: invalidateTags,
   });
 
+  useWriteRecovery<Tag>(queryClient, {
+    mutationKey: TAG_MUTATION_KEYS.add,
+    fallbackTitleKey: 'errors.savingError',
+    recoveryText: (tag) => recoveryText([tag.name, tag.color]),
+    toastId: (tag) => `write-recovery:tag:add:${tag.id}`,
+    /**
+     * A reserved name is INPUT this app will not accept, not a write the server
+     * refused — and the form explains it precisely, next to the field. Reporting it
+     * here as well gave the person two messages for one action, one of which said
+     * something vaguer than the other.
+     */
+    owns: (tag) => tag.userId === userId,
+    ignore: (error) => (error as { message?: string } | null)?.message === 'Reserved tag name',
+    retry: (tag) => addTagMutation.mutate(tag),
+  });
+
+  useWriteRecovery<{ userId: string; tagName: string }>(queryClient, {
+    mutationKey: TAG_MUTATION_KEYS.remove,
+    fallbackTitleKey: 'errors.removingError',
+    recoveryText: (payload) => payload.tagName,
+    toastId: (payload) => `write-recovery:tag:remove:${payload.userId}:${payload.tagName}`,
+    owns: (payload) => payload.userId === userId,
+    retry: (payload) => removeTagMutation.mutate(payload),
+  });
+
+  useWriteRecovery<Tag>(queryClient, {
+    mutationKey: TAG_MUTATION_KEYS.update,
+    fallbackTitleKey: 'errors.savingError',
+    recoveryText: (tag) => recoveryText([tag.name, tag.color]),
+    toastId: (tag) => `write-recovery:tag:update:${tag.id}`,
+    owns: (tag) => tag.userId === userId,
+    retry: (tag) => updateTagMutation.mutate(tag),
+  });
+
   return {
     tags,
     requiredTags: tags.requiredTags ?? [],
@@ -130,11 +174,19 @@ export function useTags(userId: string | null | undefined) {
     loading: tagsQuery.isLoading,
     error: tagsQuery.error as Error | null,
     refreshTags: tagsQuery.refetch,
-    addCustomTag: addTagMutation.mutateAsync,
-    removeCustomTag: (tagName: string) => {
-      if (!userId) return Promise.reject(new Error('No user'));
-      return removeTagMutation.mutateAsync({ userId, tagName });
+    addCustomTag: (tag: Tag): WriteSubmission => {
+      const payload = { ...tag, id: tag.id || newClientId() };
+      return queuedMutation(`tag:add:${payload.id}`, addTagMutation.mutateAsync(payload));
     },
-    updateTag: updateTagMutation.mutateAsync,
+    removeCustomTag: (tagName: string): WriteSubmission => {
+      if (!userId) {
+        return refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
+      }
+      const payload = { userId, tagName };
+      // DELETE is a plain fetch request, so only a server response can accept it.
+      return persistedWrite(removeTagMutation.mutateAsync(payload));
+    },
+    updateTag: (tag: Tag): WriteSubmission =>
+      queuedMutation(`tag:update:${tag.id}`, updateTagMutation.mutateAsync(tag)),
   };
 }

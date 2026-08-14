@@ -8,7 +8,10 @@ import {
   getSermonOutline,
   updateSermonOutline,
 } from "@/services/outline.service";
+import { newClientId } from "@/utils/clientId";
+import { awaitAcceptance, persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from "@/utils/textNormalization";
+import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
 import { OUTLINE_SAVE_DEBOUNCE_MS } from "./constants";
 import { mapColumnIdToSectionType } from "./utils";
@@ -180,8 +183,14 @@ export function useColumnOutlineState({
 
         // `preferMine`: this view has nowhere to hold a refused plan, and a refusal here
         // would become an error toast with the edit lost at the next reload.
-        const saved = await updateSermonOutline(sermonId, outlineToSave, baseOutline, 'preferMine');
-        toast.success(t("structure.outlineSavedSuccess", { defaultValue: "SermonOutline saved" }));
+        const request = updateSermonOutline(sermonId, outlineToSave, baseOutline, 'preferMine');
+        const acceptance = await awaitAcceptance(
+          typeof navigator !== 'undefined' && navigator.onLine === false
+            ? queuedMutation(`outline:${sermonId}`, request)
+            : persistedWrite(request),
+          (error) => toast.error(t(writeFailureTranslationKey(error, 'errors.saveOutlineError')))
+        );
+        const saved = acceptance.kind === 'persisted' ? await request : outlineToSave;
 
         /**
          * THE BASE AND THE VISIBLE LIST MOVE TOGETHER — OR NOT AT ALL.
@@ -211,7 +220,7 @@ export function useColumnOutlineState({
         });
       } catch (error) {
         console.error("Error saving sermon outline:", error);
-        toast.error(t("errors.saveOutlineError", { defaultValue: "Failed to save outline" }));
+        toast.error(t(writeFailureTranslationKey(error, "errors.saveOutlineError")));
       } finally {
         // ONLY if no newer save has been scheduled since this one started.
         if (generation === saveGenerationRef.current) {
@@ -251,7 +260,7 @@ export function useColumnOutlineState({
     }
 
     const newPoint: SermonPoint = {
-      id: `new-${Date.now().toString()}`,
+      id: newClientId(),
       text: textToSave,
     };
 

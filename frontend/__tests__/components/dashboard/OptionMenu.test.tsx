@@ -3,6 +3,7 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import OptionMenu from '@/components/dashboard/OptionMenu';
+import { persistedWrite } from '@/utils/recoverableWrite';
 import { Sermon } from '@/models/models';
 import { deleteSermon, updateSermon } from '@services/sermon.service';
 import * as preachDatesService from '@services/preachDates.service';
@@ -148,12 +149,12 @@ describe('OptionMenu Component', () => {
   };
 
   const buildOptimisticActions = (overrides: Record<string, jest.Mock> = {}) => ({
-    createSermon: jest.fn().mockResolvedValue(undefined),
-    saveEditedSermon: jest.fn().mockResolvedValue(undefined),
-    deleteSermon: jest.fn().mockResolvedValue(undefined),
-    markAsPreachedFromPreferred: jest.fn().mockResolvedValue(undefined),
-    unmarkAsPreached: jest.fn().mockResolvedValue(undefined),
-    savePreachDate: jest.fn().mockResolvedValue(undefined),
+    createSermon: jest.fn(() => ({ ...persistedWrite(Promise.resolve()), sermonId: 'created-sermon' })),
+    saveEditedSermon: jest.fn(() => persistedWrite(Promise.resolve())),
+    deleteSermon: jest.fn(() => persistedWrite(Promise.resolve())),
+    markAsPreachedFromPreferred: jest.fn(() => persistedWrite(Promise.resolve())),
+    unmarkAsPreached: jest.fn(() => persistedWrite(Promise.resolve())),
+    savePreachDate: jest.fn(() => persistedWrite(Promise.resolve())),
     retrySync: jest.fn().mockResolvedValue(undefined),
     dismissSyncError: jest.fn(),
     ...overrides,
@@ -662,10 +663,15 @@ describe('OptionMenu Component', () => {
     expect(menuButton).toBeDisabled();
   });
 
-  it('handles optimistic mark errors and closes menu', async () => {
+  it('leaves an optimistic mark refusal to the row badge and only closes the menu', async () => {
+    /**
+     * The badge on the sermon row reads the same failed mutation and reports it with the
+     * operation, a retry and a dismiss. An `alert` on top of that was the same refusal
+     * told twice — and the second telling offered no recovery, just an interruption.
+     */
     const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
     const optimisticActions = buildOptimisticActions({
-      markAsPreachedFromPreferred: jest.fn().mockRejectedValue(new Error('mark failed')),
+      markAsPreachedFromPreferred: jest.fn(() => persistedWrite(Promise.reject(new Error('mark failed')))),
     });
     const plannedSermon: Sermon = {
       ...mockSermon,
@@ -691,10 +697,26 @@ describe('OptionMenu Component', () => {
     fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
 
     await waitFor(() => {
-      expect(alertSpy).toHaveBeenCalledWith('optionMenu.updateError');
+      expect(screen.queryByText('Delete')).not.toBeInTheDocument();
     });
 
-    expect(screen.queryByText('Delete')).not.toBeInTheDocument();
+    expect(alertSpy).not.toHaveBeenCalled();
+    alertSpy.mockRestore();
+  });
+
+  it('DOES speak when there is no optimistic row to speak for it', async () => {
+    // The fallback path writes straight through `updateSermon`: no mutation, no badge,
+    // nobody else. Silence here would be the original defect — a person pressing a menu
+    // item, nothing happening, and no reason given.
+    const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => {});
+    (updateSermon as jest.Mock).mockRejectedValueOnce(new Error('unmark failed'));
+
+    render(<OptionMenu {...defaultProps} sermon={{ ...mockSermon, isPreached: true }} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+    fireEvent.click(screen.getByText('optionMenu.markAsNotPreached'));
+
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('optionMenu.updateError'));
     alertSpy.mockRestore();
   });
 });

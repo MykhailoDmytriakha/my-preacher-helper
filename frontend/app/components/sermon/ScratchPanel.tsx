@@ -600,7 +600,6 @@ export default function ScratchPanel({
     if (handleAddManualNote(nextText)) {
       setManualDraft("");
       manualInputRef.current?.focus();
-      toast.success(t("scratch.capture.manualSuccess"), SCRATCH_TOAST_OPTIONS);
     } else {
       toast.error(t("scratch.capture.manualError"));
     }

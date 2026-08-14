@@ -22,12 +22,14 @@ import { TimerPhase } from "@/types/TimerState";
 import { debugLog } from "@/utils/debugMode";
 import { getExportContent as buildThoughtExportContent } from "@/utils/exportContent";
 import { normalizePlanArrows } from "@/utils/markdownUtils";
+import { persistedWrite, refusedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
 import {
   planFreshnessProjection,
   type PlanFreshnessProjection,
 } from '@/utils/sermonFreshnessProjection';
 import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrder";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
+import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { normalizeStructureTag, getTranslationKeyForTag } from "@utils/tagUtils";
 
 import { buildSectionOutlineMarkdown } from "./buildSectionOutlineMarkdown";
@@ -583,10 +585,13 @@ export default function PlanPage() {
     syncPairHeightsByPointId(outlinePointId);
   };
 
-  const handleThoughtSave = useCallback(async (updatedThought: Thought) => {
+  const handleThoughtSave = useCallback((updatedThought: Thought): WriteSubmission => {
     const currentSermon = sermonRef.current;
+    // Reporting `persisted` here announced a save that never happened — and with no
+    // sermon loaded there is nothing holding the edit either. Refuse, so the editor
+    // keeps the text instead of closing over it.
     if (!currentSermon) {
-      return updatedThought;
+      return refusedWrite('not-found', 'This sermon is no longer available', t('writeRecovery.refused'));
     }
 
     const thoughtId = updatedThought.id;
@@ -674,12 +679,12 @@ export default function PlanPage() {
               : prevSermon
           );
         }
-        toast.error(t("errors.failedToSaveThought"));
+        toast.error(t(writeFailureTranslationKey(error, "errors.failedToSaveThought")));
         throw error;
       }
     };
 
-    return executeSave(saveVersion);
+    return persistedWrite(executeSave(saveVersion));
   }, [setSermon, t]);
 
   // Find outline point by id

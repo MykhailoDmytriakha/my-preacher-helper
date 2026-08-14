@@ -7,10 +7,11 @@ import { useTranslation } from 'react-i18next';
 
 import { useGroups } from '@/hooks/useGroups';
 import { useAuth } from '@/providers/AuthProvider';
+import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 
 interface AddGroupToSeriesModalProps {
   onClose: () => void;
-  onAddGroups: (groupIds: string[]) => Promise<void>;
+  onAddGroups: (groupIds: string[]) => WriteSubmission;
   currentSeriesGroupIds: string[];
 }
 
@@ -24,6 +25,7 @@ export default function AddGroupToSeriesModal({
   const { groups, loading } = useGroups(user?.uid || null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
+  const [error, setError] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
 
   const availableGroups = useMemo(
@@ -52,10 +54,20 @@ export default function AddGroupToSeriesModal({
 
   const handleAddSelected = async () => {
     if (selectedGroupIds.size === 0) return;
+    setError(null);
     setIsAdding(true);
     try {
-      await onAddGroups(Array.from(selectedGroupIds));
+      // useSeriesMembership's recovery descriptor reports a late refusal while this screen is mounted.
+      await awaitAcceptance(onAddGroups(Array.from(selectedGroupIds)), () => undefined);
       onClose();
+    } catch (error) {
+        /**
+         * The refusal is reported by this entity's recovery descriptor, which carries
+         * the person's text and follows them off this screen. This editor's job is to
+         * stay open and keep what they typed — saying it here as well showed one
+         * refused action as two failures.
+         */
+      console.error('Failed to add groups to series:', error);
     } finally {
       setIsAdding(false);
     }
@@ -94,12 +106,13 @@ export default function AddGroupToSeriesModal({
               type="text"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder={t('common.search') || 'Search groups...'}
+              placeholder={t('common.search')}
               className="w-full rounded-xl border border-gray-200 bg-white pl-10 pr-4 py-3 text-sm shadow-sm ring-1 ring-transparent transition focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40"
             />
           </div>
 
           <div className="flex-1 overflow-y-auto pr-1">
+            {error && <p role="alert" className="mb-3 text-sm text-red-600 dark:text-red-300">{error}</p>}
             {loading ? (
               <div className="flex items-center justify-center py-10 text-gray-500 dark:text-gray-400">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-b-transparent border-blue-600 mr-3" />
@@ -165,7 +178,7 @@ export default function AddGroupToSeriesModal({
                 onClick={onClose}
                 className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
               >
-                {t('common.cancel') || 'Cancel'}
+                {t('common.cancel')}
               </button>
               <button
                 onClick={handleAddSelected}

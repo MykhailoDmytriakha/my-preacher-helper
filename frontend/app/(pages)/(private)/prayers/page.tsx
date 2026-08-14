@@ -15,14 +15,13 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import AddUpdateModal from '@/components/prayer/AddUpdateModal';
-import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
+import CreatePrayerModal, { type PrayerFormPayload } from '@/components/prayer/CreatePrayerModal';
 import MarkAnsweredModal from '@/components/prayer/MarkAnsweredModal';
 import PrayerRequestCard from '@/components/prayer/PrayerRequestCard';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
-import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import {
   PRAYER_CORE_AGGREGATE,
   PRAYER_STATUS_AGGREGATE,
@@ -37,6 +36,12 @@ import {
   PrayerSortKey,
   resolvePrayerSortKey,
 } from '@/utils/prayerFilters';
+import {
+  announceIfPersisted,
+  awaitAcceptance,
+  refusedWrite,
+  skippedWrite,
+} from '@/utils/recoverableWrite';
 import '@locales/i18n';
 
 const LS_SEARCH_UPDATES = 'prayers:searchInUpdates';
@@ -241,92 +246,75 @@ export default function PrayerPage() {
     ]
   );
 
-  const handleCreate = async (
-    payload: Pick<PrayerRequest, 'title'> &
-      Partial<Pick<PrayerRequest, 'description' | 'tags'>>
-  ) => {
-    if (!user?.uid) return;
-    await createPrayer({ userId: user.uid, ...payload });
-    toast.success(t('prayer.toast.created'));
+  const handleCreate = (payload: PrayerFormPayload) => {
+    // No signed-in user means NOTHING holds this text — closing the form as if the
+    // write were merely skipped erased what the person had just written. Refuse.
+    if (!user?.uid) return refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
+    // Create is accepted by the persisted mutation/outbox, not the server. The
+    // optimistic row is its signal, so this deliberately announces nothing.
+    return createPrayer({ userId: user.uid, ...payload });
   };
 
-  const handleEdit = async (
-    payload: Pick<PrayerRequest, 'title'> &
-      Partial<Pick<PrayerRequest, 'description' | 'tags'>>
-  ) => {
-    if (!editingPrayer) return;
+  const handleEdit = (payload: PrayerFormPayload) => {
+    if (!editingPrayer) return refusedWrite('not-found', 'The prayer being edited is gone', t('writeRecovery.refused'));
     // State what this modal opened with — revision AND values. Without them the
     // list screen was a hole straight through the protection: a laptop showing
     // yesterday's list could rename a prayer the phone had rewritten in the
     // morning, and nothing refused it.
-    try {
-      await updatePrayer(
-        editingPrayer.id,
-        payload,
-        editingPrayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0,
-        {
-          title: editingPrayer.title,
-          description: editingPrayer.description ?? null,
-          tags: editingPrayer.tags ?? [],
-        }
-      );
-    } catch (error) {
-      // Refused or failed: KEEP the modal open. The typed text lives only here.
-      toast.error(isStaleWriteError(error) ? t('freshness.staleSaveToast') : t('common.saveError'));
-      // RETHROW. Swallowing it made the promise FULFIL, and the modal closes on a
-      // fulfilled submit — so a refused answer was reported as saved and the typed
-      // text went with the modal. The comment here used to claim the modal stayed
-      // open; it did not.
-      throw error;
-    }
-    toast.success(t('prayer.toast.updated'));
-    setEditingPrayer(null);
+    const { recoveryDraft, ...updates } = payload;
+    return updatePrayer(
+      editingPrayer.id,
+      updates,
+      editingPrayer.rev?.[PRAYER_CORE_AGGREGATE] ?? 0,
+      {
+        title: editingPrayer.title,
+        description: editingPrayer.description ?? null,
+        tags: editingPrayer.tags ?? [],
+      },
+      recoveryDraft
+    );
   };
 
-  const handleDelete = async (id: string) => {
-    await deletePrayer(id);
-    toast.success(t('prayer.toast.deleted'));
+  const handleDelete = (id: string) => {
+    // Delete is queue-owned at launch; its disappearing row is the only immediate
+    // signal and must never be called a server-confirmed save.
+    return deletePrayer(id);
   };
 
-  const handleSetStatus = async (id: string, status: PrayerStatus) => {
+  const handleSetStatus = (id: string, status: PrayerStatus) => {
     if (status === 'answered') {
+      // Marking a prayer answered asks a question first; nothing is written until the
+      // person answers it. Saying `in-flight` here claimed a duplicate write existed.
       setMarkingAnswered(prayerRequests.find((candidate) => candidate.id === id) ?? null);
-      return;
+      return skippedWrite('awaiting-confirmation');
     }
 
-    await setStatus(id, status);
-    toast.success(t('prayer.toast.statusChanged'));
+    const submission = setStatus(id, status);
+    // usePrayerRequests' status recovery descriptor reports a late refusal while this screen is mounted.
+    void awaitAcceptance(submission, () => undefined)
+      .then((acceptance) => announceIfPersisted(acceptance, () => toast.success(t('prayer.toast.statusChanged'))))
+      .catch(() => undefined);
+    return submission;
   };
 
-  const handleMarkAnswered = async (answerText?: string) => {
-    if (!markingAnswered) return;
+  const handleMarkAnswered = (answerText?: string, recoveryDraft?: string) => {
+    if (!markingAnswered) return skippedWrite();
     // The answer is human text. State the revision and the values this modal
     // opened with, and keep the modal open on refusal — the words live nowhere else.
-    try {
-      await setStatus(
-        markingAnswered.id,
-        'answered',
-        answerText,
-        markingAnswered.rev?.[PRAYER_STATUS_AGGREGATE] ?? 0,
-        { status: markingAnswered.status, answerText: markingAnswered.answerText ?? null }
-      );
-    } catch (error) {
-      toast.error(isStaleWriteError(error) ? t('freshness.staleSaveToast') : t('common.saveError'));
-      // RETHROW. Swallowing it made the promise FULFIL, and the modal closes on a
-      // fulfilled submit — so a refused answer was reported as saved and the typed
-      // text went with the modal. The comment here used to claim the modal stayed
-      // open; it did not.
-      throw error;
-    }
-    toast.success(t('prayer.toast.statusChanged'));
-    setMarkingAnswered(null);
+    return setStatus(
+      markingAnswered.id,
+      'answered',
+      answerText,
+      markingAnswered.rev?.[PRAYER_STATUS_AGGREGATE] ?? 0,
+      { status: markingAnswered.status, answerText: markingAnswered.answerText ?? null },
+      recoveryDraft
+    );
   };
 
-  const handleAddUpdate = async (text: string) => {
-    if (!addingUpdateForId) return;
-    await addUpdate(addingUpdateForId, text);
-    toast.success(t('prayer.toast.updateAdded'));
-    setAddingUpdateForId(null);
+  const handleAddUpdate = (text: string, recoveryDraft: string) => {
+    if (!addingUpdateForId) return refusedWrite('not-found', 'The prayer for this update is gone', t('writeRecovery.refused'));
+    // This is queue-owned at launch; accept silently and let the modal close.
+    return addUpdate(addingUpdateForId, text, recoveryDraft);
   };
 
   const hasFilterChanges =

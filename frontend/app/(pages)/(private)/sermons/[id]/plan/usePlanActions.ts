@@ -5,6 +5,8 @@ import { PlanStyle } from "@/api/clients/openAI.client";
 import { Sermon, Plan } from "@/models/models";
 import { isUsageCapReachedError } from "@/services/usageLimits";
 import { debugLog } from "@/utils/debugMode";
+import { announceIfPersisted, awaitAcceptance, persistedWrite } from "@/utils/recoverableWrite";
+import { writeFailureTranslationKey } from "@/utils/writeRecovery";
 
 import { buildSectionOutlineMarkdown } from "./buildSectionOutlineMarkdown";
 import { generatePlanPointContent, saveSermonPlan } from "./planApi";
@@ -132,10 +134,13 @@ export default function usePlanActions({
       // ONE SECTION is what this save changed — state only it. Sending the whole
       // plan meant the two untouched sections travelled as this screen's hours-old
       // copy and replaced whatever another device had written into them.
-      await saveSermonPlan({
-        sermonId: sermon.id,
-        plan: { [section]: updatedPlan[section] },
-      });
+      const acceptance = await awaitAcceptance(
+        persistedWrite(saveSermonPlan({
+          sermonId: sermon.id,
+          plan: { [section]: updatedPlan[section] },
+        })),
+        (error) => toast.error(t(writeFailureTranslationKey(error, 'errors.failedToSavePoint')))
+      );
 
       await onSaved({
         outlinePointId,
@@ -144,13 +149,15 @@ export default function usePlanActions({
         updatedPlan,
       });
 
-      toast.success(t("plan.pointSaved"));
-      if (allPointsInSection.length > 1) {
-        toast.success(t("plan.sectionSaved", { section: t(`sections.${section}`) }));
-      }
+      announceIfPersisted(acceptance, () => {
+        toast.success(t("plan.pointSaved"));
+        if (allPointsInSection.length > 1) {
+          toast.success(t("plan.sectionSaved", { section: t(`sections.${section}`) }));
+        }
+      });
     } catch (error) {
       debugLog("Plan save failed", { sermonId: sermon.id, outlinePointId, section, error });
-      toast.error(t("errors.failedToSavePoint"));
+      toast.error(t(writeFailureTranslationKey(error, "errors.failedToSavePoint")));
     }
   }, [generatedContent, onSaved, outlineLookup.pointsBySection, sermon, t]);
 

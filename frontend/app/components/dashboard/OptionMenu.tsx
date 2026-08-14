@@ -13,6 +13,7 @@ import {
   getPreachDatesByStatus,
   getPreferredDateToMarkAsPreached
 } from "@/utils/preachDateStatus";
+import { awaitAcceptance, persistedWrite, type WriteSubmission } from "@/utils/recoverableWrite";
 import { getSeriesForRef } from "@/utils/seriesMembership";
 import PreachDateModal from "@components/calendar/PreachDateModal";
 import EditSermonModal from "@components/EditSermonModal";
@@ -30,6 +31,12 @@ interface OptionMenuProps {
   onUpdate?: (updatedSermon: Sermon) => void;
   optimisticActions?: DashboardOptimisticActions;
   syncState?: DashboardSermonSyncState;
+  /**
+   * Raised while one of this menu's editors is on screen. The editor covers the card,
+   * so the card's badge cannot be seen — and two visible reporters for one refusal is
+   * the defect this migration keeps closing. The open editor speaks; the badge waits.
+   */
+  onEditorOpenChange?: (isOpen: boolean) => void;
   /** When provided, the menu also offers series actions (add / move / remove). */
   series?: Series[];
 }
@@ -42,6 +49,7 @@ export default function OptionMenu({
   onUpdate,
   optimisticActions,
   syncState,
+  onEditorOpenChange,
   series
 }: OptionMenuProps) {
   const { t } = useTranslation();
@@ -62,6 +70,10 @@ export default function OptionMenu({
   // Which series this sermon is in — DERIVED from the loaded list (series.items
   // is the sole truth). Only meaningful when a `series` list is passed in.
   const currentSeries = getSeriesForRef(sermon.id, series);
+
+  useEffect(() => {
+    onEditorOpenChange?.(showEditModal || showPreachModal);
+  }, [showEditModal, showPreachModal, onEditorOpenChange]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -89,7 +101,13 @@ export default function OptionMenu({
     if (!confirmed) return;
 
     if (optimisticActions?.deleteSermon) {
-      await optimisticActions.deleteSermon(sermon);
+      await awaitAcceptance(
+        optimisticActions.deleteSermon(sermon) as unknown as WriteSubmission,
+        // The card badge reports these dashboard writes (useDashboardOptimisticSermons),
+        // with the operation and a retry attached to the row itself. A toast here as
+        // well gave one refused action two messages — one refusal, one reporter.
+        (error) => console.error('Dashboard sermon write refused:', error)
+      );
       setOpen(false);
       return;
     }
@@ -181,7 +199,13 @@ export default function OptionMenu({
     }
 
     if (optimisticActions?.markAsPreachedFromPreferred) {
-      await optimisticActions.markAsPreachedFromPreferred(sermon, preferredDate);
+      await awaitAcceptance(
+        optimisticActions.markAsPreachedFromPreferred(sermon, preferredDate) as unknown as WriteSubmission,
+        // The card badge reports these dashboard writes (useDashboardOptimisticSermons),
+        // with the operation and a retry attached to the row itself. A toast here as
+        // well gave one refused action two messages — one refusal, one reporter.
+        (error) => console.error('Dashboard sermon write refused:', error)
+      );
       closeMenu();
       return;
     }
@@ -194,7 +218,13 @@ export default function OptionMenu({
 
   const unmarkAsPreachedInPlace = async () => {
     if (optimisticActions?.unmarkAsPreached) {
-      await optimisticActions.unmarkAsPreached(sermon);
+      await awaitAcceptance(
+        optimisticActions.unmarkAsPreached(sermon) as unknown as WriteSubmission,
+        // The card badge reports these dashboard writes (useDashboardOptimisticSermons),
+        // with the operation and a retry attached to the row itself. A toast here as
+        // well gave one refused action two messages — one refusal, one reporter.
+        (error) => console.error('Dashboard sermon write refused:', error)
+      );
       closeMenu();
       return;
     }
@@ -218,6 +248,20 @@ export default function OptionMenu({
     e.stopPropagation();
     if (isSyncPending) return;
 
+    // Captured BEFORE the write: an optimistic update flips this while the request is in
+    // flight and rolls it back on refusal, so reading it inside `catch` asks about the
+    // wrong direction.
+    const wasPreached = effectiveIsPreached;
+    /**
+     * Does the row already speak for this? The optimistic path fails into the mutation
+     * cache, which the sermon's own badge reads — so an `alert` here made one refusal into
+     * two messages, the second of which invites the person to repeat an action that was
+     * refused. The fallback path has no such reporter, and there the alert IS the message.
+     */
+    const rowReportsRefusal = wasPreached
+      ? Boolean(optimisticActions?.unmarkAsPreached)
+      : Boolean(optimisticActions?.markAsPreachedFromPreferred);
+
     try {
       if (!effectiveIsPreached) {
         const preferredDate = getPreferredDateToMarkAsPreached(sermon);
@@ -233,50 +277,47 @@ export default function OptionMenu({
       await unmarkAsPreachedInPlace();
     } catch (error) {
       console.error("Error updating preached status:", error);
-      alert(t('optionMenu.updateError'));
+      if (!rowReportsRefusal) alert(t('optionMenu.updateError'));
       closeMenu();
     }
   };
 
-  const handleSavePreachDate = async (data: Omit<PreachDate, 'id' | 'createdAt'>) => {
+  const handleSavePreachDate = (data: Omit<PreachDate, 'id' | 'createdAt'>) => {
     if (optimisticActions?.savePreachDate) {
-      await optimisticActions.savePreachDate(sermon, data, preachDateToMark);
-      setPreachDateToMark(null);
-      setPreachModalInitialData(undefined);
-      setShowPreachModal(false);
-      return;
+      // Return the real recoverable submission to PreachDateModal. Awaiting this
+      // object here would turn it into an immediately fulfilled Promise and make
+      // the modal close before the persistence result exists.
+      return optimisticActions.savePreachDate(sermon, data, preachDateToMark) as unknown as WriteSubmission;
     }
 
-    try {
-      if (preachDateToMark) {
-        await preachDatesService.updatePreachDate(sermon.id, preachDateToMark.id, {
-          ...data,
-          status: 'preached'
-        });
-      } else {
-        await preachDatesService.addPreachDate(sermon.id, {
-          ...data,
-          status: data.status || 'preached'
-        });
+    return persistedWrite((async () => {
+      try {
+        if (preachDateToMark) {
+          await preachDatesService.updatePreachDate(sermon.id, preachDateToMark.id, {
+            ...data,
+            status: 'preached'
+          });
+        } else {
+          await preachDatesService.addPreachDate(sermon.id, {
+            ...data,
+            status: data.status || 'preached'
+          });
+        }
+
+        const updated = await updateSermon({ ...sermon, isPreached: true }, { isPreached: true });
+
+        invalidateCalendarCache();
+
+        if (updated && onUpdate) {
+          onUpdate(updated);
+        } else if (!onUpdate) {
+          router.refresh();
+        }
+      } catch (err) {
+        console.error("Failed to save preach date:", err);
+        throw err;
       }
-
-      const updated = await updateSermon({ ...sermon, isPreached: true }, { isPreached: true });
-
-      invalidateCalendarCache();
-
-      if (updated && onUpdate) {
-        onUpdate(updated);
-      } else if (!onUpdate) {
-        router.refresh();
-      }
-
-      setPreachDateToMark(null);
-      setPreachModalInitialData(undefined);
-      setShowPreachModal(false);
-    } catch (err) {
-      console.error("Failed to save preach date:", err);
-      throw err;
-    }
+    })());
   };
 
   // Series actions — only surfaced when a `series` list is passed (e.g. the sermon page).
@@ -399,7 +440,12 @@ export default function OptionMenu({
           sermon={sermon}
           onClose={handleCloseEditModal}
           onUpdate={handleUpdateSermon}
-          onSaveRequest={optimisticActions?.saveEditedSermon}
+          onSaveRequest={
+            optimisticActions?.saveEditedSermon
+              ? (input) => optimisticActions.saveEditedSermon(input) as unknown as WriteSubmission
+              : undefined
+          }
+          syncState={syncState}
         />
       )}
 
@@ -411,6 +457,7 @@ export default function OptionMenu({
           setShowPreachModal(false);
         }}
         onSave={handleSavePreachDate}
+        syncState={syncState}
         initialData={preachModalInitialData}
         defaultStatus="preached"
       />

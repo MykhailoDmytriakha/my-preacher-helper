@@ -99,6 +99,26 @@ describe('/api/sermons/[id]/preach-dates/[dateId] route', () => {
       expect(data.error).toBe('Preach date not found');
     });
 
+    it('preserves a named Firestore refusal across the HTTP boundary', async () => {
+      (sermonsRepository.updatePreachDate as jest.Mock).mockRejectedValueOnce(
+        Object.assign(new Error('Missing or insufficient permissions.'), {
+          code: 'firestore/permission-denied',
+        })
+      );
+
+      const response = await PUT(
+        { json: jest.fn().mockResolvedValue({ status: 'planned' }) } as any,
+        { params: Promise.resolve({ id: 's1', dateId: 'd1' }) }
+      );
+      const data = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(data).toEqual({
+        error: 'Missing or insufficient permissions.',
+        code: 'permission-denied',
+      });
+    });
+
     it('returns 500 on unexpected update error', async () => {
       (sermonsRepository.updatePreachDate as jest.Mock).mockRejectedValueOnce(new Error('boom'));
 

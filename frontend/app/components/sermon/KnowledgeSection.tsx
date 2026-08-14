@@ -1,7 +1,6 @@
 "use client";
 
 import { ChevronDownIcon } from '@heroicons/react/20/solid';
-import i18n from 'i18next';
 import React, { useState, useEffect } from "react";
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
@@ -21,6 +20,9 @@ import { isUsageCapReachedError } from '@/services/usageLimits';
 import { debugLog } from "@/utils/debugMode";
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 import { RefreshIcon } from '@components/Icons';
+// Same reason as useSeriesDetail: the package default instance holds no resources,
+// so these failure messages came out empty.
+import { i18n } from '@locales/i18n';
 
 // Translation key constants to avoid duplicate strings
 const TRANSLATION_KNOWLEDGE_REFRESH = 'knowledge.refresh';
@@ -226,7 +228,6 @@ const generateAllInsightsForSermon = async ({
     generateThoughtsBasedPlan: RegenerationFunction;
   };
 }) => {
-  console.log('🎯 START handleGenerateAllInsights');
 
   if (!sermonId) {
     console.error("Cannot generate insights: sermon or sermon.id is missing");
@@ -272,28 +273,21 @@ const generateAllInsightsForSermon = async ({
       }
     };
 
-    console.log('🎯 Starting topics generation...');
     const topicsResult = await attempt('topics', () => generators.generateTopics(sermonId));
     if (topicsResult?.topics) {
       insights.topics = topicsResult.topics;
-      console.log('✅ Topics generated:', topicsResult.topics.length);
     }
 
-    console.log('🎯 Starting verses generation...');
     const versesResult = await attempt('verses', () => generators.generateRelatedVerses(sermonId));
     if (versesResult?.relatedVerses) {
       insights.relatedVerses = versesResult.relatedVerses;
-      console.log('✅ Verses generated:', versesResult.relatedVerses.length);
     }
 
-    console.log('🎯 Starting directions generation...');
     const directionsResult = await attempt('directions', () => generators.generatePossibleDirections(sermonId));
     if (directionsResult?.possibleDirections) {
       insights.possibleDirections = directionsResult.possibleDirections;
-      console.log('✅ Directions generated:', directionsResult.possibleDirections.length);
     }
 
-    console.log('🎯 Starting thoughts plan generation...');
     const sectionHintsResult = await attempt('plan', () => generators.generateThoughtsBasedPlan(sermonId));
     if (sectionHintsResult?.sectionHints) {
       insights.sectionHints = sectionHintsResult.sectionHints;
@@ -314,7 +308,6 @@ const generateAllInsightsForSermon = async ({
     // "Generated!" over four failures is a lie the person can see through.
     if (anySucceeded) showSuccessNotification(setSuccessNotification);
 
-    console.log('🎉 COMPLETED handleGenerateAllInsights');
   } catch (error) {
     console.error("❌ FAILED to generate insights:", error);
     reportAiFailure(error);

@@ -403,7 +403,9 @@ describe('StructurePage handlers', () => {
       );
     });
 
-    expect(toast.success).toHaveBeenCalledWith('Thought locked');
+    // A lock write is offline-first (`queued`): the server may still refuse it, so
+    // this interaction must not announce that it was saved.
+    expect(toast.success).not.toHaveBeenCalledWith('Thought locked');
   });
 
   /**

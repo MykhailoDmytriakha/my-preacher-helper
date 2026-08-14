@@ -19,15 +19,17 @@ import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useDurableDraft } from '@/hooks/useDurableDraft';
 import { useRouteId } from '@/hooks/useRouteId';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
+import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
 import { ScriptureReference, StudyNote } from '@/models/models';
 import { readRevision } from '@/services/conflictSafeUpdate.client';
 import { auth } from '@/services/firebaseAuth.service';
 import { NOTE_AGGREGATE } from '@/services/studies.service';
-import { deleteStudyNoteShareLink } from '@/services/studyNoteShareLinks.service';
+import { getStudyNoteShareLinks } from '@/services/studyNoteShareLinks.service';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { apiClient } from '@/utils/apiClient';
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
+import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
 import HighlightedText from '@components/HighlightedText';
@@ -45,14 +47,6 @@ import { type NoteDraftPayload } from './noteDraft';
 import { useNoteAutoSave } from './useNoteAutoSave';
 
 const makeId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2);
-
-// Local helper until API has a specific noteId delete
-const deleteStudyNoteShareLinkByNoteId = async (userId: string, noteId: string, currentLinks: { noteId: string; id: string }[]) => {
-    const link = currentLinks.find(l => l.noteId === noteId);
-    if (link) {
-        await deleteStudyNoteShareLink(userId, link.id);
-    }
-};
 
 function useFilteredNotes(notes: StudyNote[], searchParams: URLSearchParams, bibleLocale: BibleLocale) {
     const noteId = useRouteId();
@@ -150,26 +144,36 @@ function useNoteInitialization({
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router }: any) {
+function useNoteDeletion({ t, noteId, isNew, uid, deleteNote, shareLinks, deleteShareLink, router }: any) {
     return async () => {
         if (window.confirm(t('studiesWorkspace.deleteConfirm'))) {
             if (noteId && !isNew && uid) {
                 try {
-                    await deleteNote(noteId);
-                } catch (e) {
-                    console.error('Error deleting note', e);
-                }
-                try {
-                    const token = await auth.currentUser?.getIdToken();
-                    const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE || ''}/api/studies/share-links?userId=${uid}`, {
-                        headers: token ? { Authorization: `Bearer ${token}` } : {},
-                    });
-                    if (res.ok) {
-                        const links = await res.json();
-                        await deleteStudyNoteShareLinkByNoteId(uid, noteId, links);
+                    // useStudyNotes' delete recovery descriptor reports a late refusal while this screen is mounted.
+                    await awaitAcceptance(deleteNote(noteId), () => undefined);
+                    // The link removal is a write too, so it must go back through the
+                    // share-link hook and its recovery descriptor — never directly to
+                    // the service. Prefer the live cache; a just-opened detail page
+                    // may not have it yet, so read once before deciding there is none.
+                    let link = shareLinks.find((entry: { noteId: string }) => entry.noteId === noteId);
+                    if (!link) {
+                        try {
+                            link = (await getStudyNoteShareLinks(uid)).find((entry) => entry.noteId === noteId);
+                        } catch (linkLookupError) {
+                            console.error('Error finding share link for deleted note', linkLookupError);
+                        }
                     }
+                    // useStudyNoteShareLinks' delete recovery descriptor reports a late refusal while this screen is mounted.
+                    if (link) await awaitAcceptance(deleteShareLink(link.id), () => undefined);
                 } catch (e) {
-                    console.error('Error deleting share link', e);
+                    /**
+                     * The note and share-link descriptors report this refusal — one
+                     * refusal, one reporter. Staying on the page is what this handler
+                     * owes the person: a refused delete must not navigate away as if it
+                     * had succeeded.
+                     */
+                    console.error('Error deleting note', e);
+                    return;
                 }
             }
             router.push('/studies');
@@ -369,13 +373,15 @@ function useNoteAIAssistant({
 
 function EditorHeader({
     handleBack, t, isEditing, filteredNotes, prevNoteId, nextNoteId, router, searchParams,
-    currentIndex, type, setType, isSaving, saveError, lastSaved, setIsEditing, handleDelete, handleCopy, isCopied
+    currentIndex, type, setType, isSaving, saveError, lastSaved, hasUnsavedEdits, setIsEditing, handleDelete, handleCopy, isCopied
 }: {
     handleBack: () => void; t: ReturnType<typeof useTranslation>['t']; isEditing: boolean;
     filteredNotes: StudyNote[]; prevNoteId: string | null; nextNoteId: string | null;
     router: ReturnType<typeof useRouter>; searchParams: ReturnType<typeof useSearchParams>;
     currentIndex: number; type: 'note' | 'question'; setType: (t: 'note' | 'question') => void;
     isSaving: boolean; saveError: string | null; lastSaved: Date | null;
+    /** The text on screen differs from what the server last confirmed. */
+    hasUnsavedEdits: boolean;
     setIsEditing: (b: boolean) => void; handleDelete: () => void; handleCopy: () => void; isCopied: boolean;
 }) {
     const [showMenu, setShowMenu] = useState(false);
@@ -445,8 +451,12 @@ function EditorHeader({
                     {isSaving ? (
                         <><ArrowPathIcon className="h-4 w-4 animate-spin" /> <span>{t('common.saving') || 'Saving...'}</span></>
                     ) : saveError ? (
-                        <span className="text-red-500">{saveError}</span>
-                    ) : lastSaved ? (
+                        <span className="text-red-500">{t(saveError)}</span>
+                    ) : lastSaved && !hasUnsavedEdits ? (
+                        /* "Saved" means THIS text is on the server — not "a save happened once".
+                           Found in the browser: the tick stayed up while newer keystrokes sat
+                           unsent, which is the one claim this whole migration exists to stop
+                           the app from making. */
                         <><CheckCircleIcon className="h-4 w-4 text-emerald-500" /> <span className="hidden sm:inline">{t('common.saved') || 'Saved'}</span></>
                     ) : null}
                 </div>
@@ -569,6 +579,7 @@ export default function StudyNoteEditorPage() {
     const isNew = noteId === 'new';
 
     const { uid, notes, createNote, updateNote, deleteNote, loading: notesLoading } = useStudyNotes();
+    const { shareLinks, deleteShareLink } = useStudyNoteShareLinks();
 
     const { tags: tagData } = useTags(uid);
     const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
@@ -652,10 +663,20 @@ export default function StudyNoteEditorPage() {
 
     const baselineRef = useRef<NoteDraftPayload | null>(null);
     const baselineNoteIdRef = useRef<string | null>(null);
+    /**
+     * The same baseline as `baselineRef`, but as STATE. A ref cannot drive what the screen
+     * says: the "saved" tick is derived from this comparison, and with a ref alone it never
+     * recomputed after a save landed — the tick went out and stayed out. Both exist because
+     * the autosave loop needs the ref (it reads it mid-flight, without re-rendering).
+     */
+    const [confirmedDraft, setConfirmedDraft] = useState<NoteDraftPayload | null>(null);
     if (isInitialized && baselineNoteIdRef.current !== noteId) {
         baselineNoteIdRef.current = noteId;
         baselineRef.current = { title, content, tags, scriptureRefs, type };
     }
+    useEffect(() => {
+        if (isInitialized) setConfirmedDraft(baselineRef.current);
+    }, [isInitialized, noteId]);
 
     // Everything the editor owns, in one value — this is what the durable draft
     // stores and what a successful save confirms.
@@ -680,7 +701,11 @@ export default function StudyNoteEditorPage() {
         resaveNonce,
         saveBlocked: saveConflict,
         onConflict: () => setSaveConflict(true),
-        onSaved: markSaved
+        onSaved: (saved) => {
+            markSaved(saved);
+            // This text IS the server's now, so the tick may come back.
+            setConfirmedDraft(saved);
+        }
     });
 
     // A draft is only worth surfacing when it actually differs from what the
@@ -739,8 +764,8 @@ export default function StudyNoteEditorPage() {
     }, [freshness.remote, freshness.state]);
 
     const editorIsDirty = useMemo(
-        () => (baselineRef.current ? !sameNoteDraft(baselineRef.current, draftPayload) : false),
-        [draftPayload]
+        () => (confirmedDraft ? !sameNoteDraft(confirmedDraft, draftPayload) : false),
+        [confirmedDraft, draftPayload]
     );
 
     const applyRemote = useCallback(() => {
@@ -752,6 +777,7 @@ export default function StudyNoteEditorPage() {
         setScriptureRefs(next.scriptureRefs);
         setType(next.type);
         baselineRef.current = next;
+        setConfirmedDraft(next);
         // Text and revision move together — that is the whole invariant.
         if (remoteRevisionRef.current !== null) serverRevisionRef.current = remoteRevisionRef.current;
         freshness.markSynced(next);
@@ -794,7 +820,16 @@ export default function StudyNoteEditorPage() {
         router.push(queryParams ? `/studies?${queryParams}` : '/studies');
     };
 
-    const handleDelete = useNoteDeletion({ t, noteId, isNew, uid, deleteNote, router });
+    const handleDelete = useNoteDeletion({
+        t,
+        noteId,
+        isNew,
+        uid,
+        deleteNote,
+        shareLinks,
+        deleteShareLink,
+        router,
+    });
     const handleCopy = useCallback(() => {
         void copyToClipboard(
             formatStudyNoteForCopy({
@@ -842,7 +877,7 @@ export default function StudyNoteEditorPage() {
                 handleBack={handleBack} t={t} isEditing={isEditing} filteredNotes={filteredNotes}
                 prevNoteId={prevNoteId} nextNoteId={nextNoteId} router={router} searchParams={searchParams}
                 currentIndex={currentIndex} type={type} setType={setType} isSaving={isSaving} saveError={saveError}
-                lastSaved={lastSaved} setIsEditing={setIsEditing} handleDelete={handleDelete}
+                lastSaved={lastSaved} hasUnsavedEdits={editorIsDirty} setIsEditing={setIsEditing} handleDelete={handleDelete}
                 handleCopy={handleCopy} isCopied={isCopied}
             />
 
@@ -889,7 +924,7 @@ export default function StudyNoteEditorPage() {
                 )}
                 {/* The RECORD changed elsewhere. Distinct from the app-update toast,
                     and it never replaces what is on screen without a decision. */}
-                {(freshness.state === 'stale' || freshness.state === 'unknown') && !freshnessDismissed && (
+                {!saveConflict && (freshness.state === 'stale' || freshness.state === 'unknown') && !freshnessDismissed && (
                     <DataFreshnessBanner
           entityKey="entityNote"
                         dirty={editorIsDirty}

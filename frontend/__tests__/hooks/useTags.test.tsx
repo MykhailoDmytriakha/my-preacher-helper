@@ -5,6 +5,7 @@ import React from 'react';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { useTags } from '@/hooks/useTags';
+import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { addCustomTag, getTags, removeCustomTag, updateTag } from '@/services/tag.service';
 
 import type { Tag } from '@/models/models';
@@ -106,9 +107,9 @@ describe('useTags', () => {
     expect(queryResult).toEqual(tagsResponse);
   });
 
-  it('does not reject writes when offline — buffers them (Stage 2)', async () => {
-    // Offline no longer short-circuits: the write attempts the fetch and, when it
-    // fails, React Query pauses + persists the mutation to replay on reconnect.
+  it('reports queued — the resumable tag mutation is what owns this write', async () => {
+    // The tag mutation is registered in mutationDefaults, so the durable queue owns
+    // it. A transport that answers instantly does not change that ownership.
     mockUseOnlineStatus.mockReturnValue(false);
     mockUseServerFirstQuery.mockReturnValue(buildServerFirstResult({ requiredTags: [], customTags: [] }));
     const tag = { id: '1', name: 'tag', color: '#000' } as Tag;
@@ -116,7 +117,10 @@ describe('useTags', () => {
 
     const { result } = renderHook(() => useTags('user-1'), { wrapper: createWrapper() });
 
-    await expect(result.current.addCustomTag(tag)).resolves.toEqual(tag);
+    await expect(awaitAcceptance(result.current.addCustomTag(tag), () => undefined)).resolves.toEqual({
+      kind: 'queued',
+      receipt: expect.stringContaining('tag:add:'),
+    });
   });
 
   it('throws when removing tags without a user id', async () => {
@@ -124,7 +128,7 @@ describe('useTags', () => {
 
     const { result } = renderHook(() => useTags(null), { wrapper: createWrapper() });
 
-    await expect(result.current.removeCustomTag('intro')).rejects.toThrow('No user');
+    await expect(awaitAcceptance(result.current.removeCustomTag('intro'), () => undefined)).rejects.toThrow('No signed-in user');
   });
 
   it('triggers mutation helpers when online', async () => {
@@ -138,9 +142,11 @@ describe('useTags', () => {
     const { result } = renderHook(() => useTags('user-1'), { wrapper: createWrapper() });
 
     await act(async () => {
-      await result.current.addCustomTag(newTag);
-      await result.current.removeCustomTag('new');
-      await result.current.updateTag(newTag);
+      await awaitAcceptance(result.current.addCustomTag(newTag), () => undefined);
+      await expect(awaitAcceptance(result.current.removeCustomTag('new'), () => undefined)).resolves.toEqual({
+        kind: 'persisted',
+      });
+      await awaitAcceptance(result.current.updateTag(newTag), () => undefined);
     });
 
     expect(mockAddCustomTag).toHaveBeenCalledWith(newTag);

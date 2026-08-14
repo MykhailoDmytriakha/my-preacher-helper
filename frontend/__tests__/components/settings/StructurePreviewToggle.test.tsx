@@ -4,6 +4,7 @@ import React from 'react';
 import '@testing-library/jest-dom';
 import StructurePreviewToggle from '@/components/settings/StructurePreviewToggle';
 import { useUserSettings } from '@/hooks/useUserSettings';
+import { persistedWrite } from '@/utils/recoverableWrite';
 
 let mockUser: { uid: string } | null = { uid: 'test-user-id' };
 
@@ -50,7 +51,7 @@ describe('StructurePreviewToggle', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUser = { uid: 'test-user-id' };
-    mockUpdateStructurePreviewAccess.mockResolvedValue(undefined);
+    mockUpdateStructurePreviewAccess.mockImplementation(() => persistedWrite(Promise.resolve(undefined)));
     mockUseUserSettings.mockReturnValue(defaultSettings);
   });
 
@@ -100,7 +101,9 @@ describe('StructurePreviewToggle', () => {
   });
 
   it('shows alert when toggle update fails', async () => {
-    mockUpdateStructurePreviewAccess.mockRejectedValueOnce(new Error('update failed'));
+    mockUpdateStructurePreviewAccess.mockReturnValueOnce(persistedWrite(Promise.reject(Object.assign(
+      new Error('update failed'), { code: 'permission-denied', name: 'FirebaseError' }
+    ))));
     const alertSpy = jest.spyOn(window, 'alert').mockImplementation(() => { });
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => { });
 
@@ -110,7 +113,12 @@ describe('StructurePreviewToggle', () => {
     fireEvent.click(toggle);
 
     await waitFor(() => {
-      expect(alertSpy).toHaveBeenCalledWith('Failed to update setting');
+      // The refusal MESSAGE now comes from the shared recovery toast registered in
+      // useUserSettings — one reporter per refusal, instead of a toast and an alert
+      // saying the same thing (seen live). What this component owes the person is the
+      // visual truth: the switch must go back to where it was.
+      expect(alertSpy).not.toHaveBeenCalled();
+      expect(toggle).toHaveAttribute('aria-checked', 'false');
     });
 
     alertSpy.mockRestore();

@@ -413,6 +413,12 @@ describe('ScratchPanel', () => {
     await user.click(screen.getByRole('button', { name: 'scratch.capture.add' }));
     expect(addScratchNote).toHaveBeenCalledWith('Manual scratch note\nwith a second line');
     expect(screen.getByRole('textbox', { name: 'scratch.capture.manualLabel' })).toHaveValue('');
+    // Scratch currently owns this write only in an in-memory serial queue. That
+    // queue vanishes on reload, so adding the local note must not claim it was saved.
+    expect(toastMock().success).not.toHaveBeenCalledWith(
+      'scratch.capture.manualSuccess',
+      expect.anything()
+    );
 
     await user.type(screen.getByRole('textbox', { name: 'scratch.capture.manualLabel' }), 'Second scratch note');
     await user.click(screen.getByRole('button', { name: 'scratch.capture.add' }));

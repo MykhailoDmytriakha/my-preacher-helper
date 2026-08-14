@@ -66,20 +66,21 @@ describe('useSermon', () => {
 
   it('returns server data when online and ignores cached list', () => {
     const { wrapper, queryClient } = createWrapper();
-    const cached = { ...baseSermon, id: 'sermon-1', title: 'Cached' };
+    const cached = { ...baseSermon, id: 'sermon-1', title: 'Cached', rev: { core: 1 } };
+    const server = { ...baseSermon, rev: { core: 2 } };
     queryClient.setQueryData(['sermons', 'user-1'], [cached]);
 
     mockUseOnlineStatus.mockReturnValue(true);
     mockUseServerFirstQuery.mockReturnValue({
-      data: baseSermon,
+      data: server,
       isLoading: false,
       error: null,
-      refetch: jest.fn(),
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
     } as any);
 
     const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
 
-    expect(result.current.sermon).toEqual(baseSermon);
+    expect(result.current.sermon).toEqual(server);
   });
 
   it('returns cached list data when online and detail data has not arrived yet', () => {
@@ -92,7 +93,7 @@ describe('useSermon', () => {
       data: undefined,
       isLoading: false,
       error: null,
-      refetch: jest.fn(),
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
     } as any);
 
     const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
@@ -110,7 +111,7 @@ describe('useSermon', () => {
       data: undefined,
       isLoading: false,
       error: null,
-      refetch: jest.fn(),
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
     } as any);
 
     const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
@@ -132,7 +133,7 @@ describe('useSermon', () => {
       isLoading: false,
       isSuccess: true,
       error: null,
-      refetch: jest.fn(),
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
     } as any);
 
     const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
@@ -155,7 +156,7 @@ describe('useSermon', () => {
       data: baseSermon,
       isLoading: false,
       error: null,
-      refetch: jest.fn(),
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
     } as any);
 
     const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
@@ -177,7 +178,7 @@ describe('useSermon', () => {
       data: baseSermon,
       isLoading: false,
       error: null,
-      refetch: jest.fn(),
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
     } as any);
 
     const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
@@ -203,7 +204,7 @@ describe('useSermon', () => {
       data: undefined,
       isLoading: false,
       error: null,
-      refetch: jest.fn(),
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
     } as any);
 
     const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
@@ -223,7 +224,7 @@ describe('useSermon', () => {
       data: undefined,
       isLoading: false,
       error: null,
-      refetch: jest.fn(),
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
     } as any);
 
     const { result } = renderHook(() => useSermon(''), { wrapper });
@@ -256,7 +257,7 @@ describe('useSermon', () => {
       isLoading: false,
       isSuccess: true,
       error: null,
-      refetch: jest.fn(),
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
     } as any);
 
     const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
@@ -279,7 +280,7 @@ describe('useSermon', () => {
       data: baseSermon,
       isLoading: false,
       error: null,
-      refetch: jest.fn(),
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
     } as any);
 
     const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
@@ -301,7 +302,7 @@ describe('useSermon', () => {
         error: null,
         isFetched: false,
         failureReason: reason,
-        refetch: jest.fn(),
+        refetch: jest.fn().mockResolvedValue({ isError: false }),
       } as any);
       const { wrapper } = createWrapper();
       return renderHook(() => useSermon('sermon-1'), { wrapper });

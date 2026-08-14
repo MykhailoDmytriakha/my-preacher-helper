@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 
 import { useUserSettings } from '@/hooks/useUserSettings';
+import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import {
@@ -82,7 +83,7 @@ describe('useUserSettings', () => {
     const { result } = renderHook(() => useUserSettings('user1'), { wrapper: makeWrapper() });
 
     await act(async () => {
-      await result.current.updateStructurePreviewAccess(true);
+      await awaitAcceptance(result.current.updateStructurePreviewAccess(true), () => undefined);
     });
 
     expect(mockUpdateStructurePreviewAccess).toHaveBeenCalledWith('user1', true);
@@ -92,7 +93,7 @@ describe('useUserSettings', () => {
     const { result } = renderHook(() => useUserSettings('user1'), { wrapper: makeWrapper() });
 
     await act(async () => {
-      await result.current.updateStructurePreviewAccess(false);
+      await awaitAcceptance(result.current.updateStructurePreviewAccess(false), () => undefined);
     });
 
     expect(mockUpdateStructurePreviewAccess).toHaveBeenCalledWith('user1', false);
@@ -102,7 +103,7 @@ describe('useUserSettings', () => {
     const { result } = renderHook(() => useUserSettings('user1'), { wrapper: makeWrapper() });
 
     await act(async () => {
-      await result.current.updatePrepModeAccess(true);
+      await awaitAcceptance(result.current.updatePrepModeAccess(true), () => undefined);
     });
 
     expect(mockUpdatePrepModeAccess).toHaveBeenCalledWith('user1', true);
@@ -112,7 +113,7 @@ describe('useUserSettings', () => {
     const { result } = renderHook(() => useUserSettings('user1'), { wrapper: makeWrapper() });
 
     await act(async () => {
-      await result.current.updateAudioGenerationAccess(true);
+      await awaitAcceptance(result.current.updateAudioGenerationAccess(true), () => undefined);
     });
 
     expect(mockUpdateAudioGenerationAccess).toHaveBeenCalledWith('user1', true);
@@ -122,7 +123,7 @@ describe('useUserSettings', () => {
     const { result } = renderHook(() => useUserSettings('user1'), { wrapper: makeWrapper() });
 
     await act(async () => {
-      await result.current.updateFirstDayOfWeek('monday');
+      await awaitAcceptance(result.current.updateFirstDayOfWeek('monday'), () => undefined);
     });
 
     expect(mockUpdateFirstDayOfWeek).toHaveBeenCalledWith('user1', 'monday');
@@ -133,7 +134,7 @@ describe('useUserSettings', () => {
     const preference = { preferredProviderId: 'gemini' as const, preferredModelId: 'gemini-2.5-flash-lite' };
 
     await act(async () => {
-      await result.current.updateModelPreference(preference);
+      await awaitAcceptance(result.current.updateModelPreference(preference), () => undefined);
     });
 
     expect(mockUpdateModelPreference).toHaveBeenCalledWith('user1', preference);
@@ -152,7 +153,7 @@ describe('useUserSettings', () => {
     };
 
     await act(async () => {
-      await result.current.updateFunctionModelPreference(preference);
+      await awaitAcceptance(result.current.updateFunctionModelPreference(preference), () => undefined);
     });
 
     expect(mockUpdateFunctionModelPreference).toHaveBeenCalledWith('user1', preference);
@@ -166,7 +167,9 @@ describe('useUserSettings', () => {
     const { result } = renderHook(() => useUserSettings('user1'), { wrapper: makeWrapper() });
 
     await act(async () => {
-      await expect(result.current.updateStructurePreviewAccess(true)).resolves.toBeUndefined();
+      await expect(awaitAcceptance(result.current.updateStructurePreviewAccess(true), () => undefined)).resolves.toEqual(
+        expect.objectContaining({ kind: 'queued' })
+      );
     });
   });
 
@@ -175,9 +178,9 @@ describe('useUserSettings', () => {
 
     await expect(
       act(async () => {
-        await result.current.updateStructurePreviewAccess(true);
+        await awaitAcceptance(result.current.updateStructurePreviewAccess(true), () => undefined);
       })
-    ).rejects.toThrow('No user');
+    ).rejects.toThrow('No signed-in user');
   });
 
   it('throws when userId is not provided for prepMode', async () => {
@@ -185,9 +188,9 @@ describe('useUserSettings', () => {
 
     await expect(
       act(async () => {
-        await result.current.updatePrepModeAccess(true);
+        await awaitAcceptance(result.current.updatePrepModeAccess(true), () => undefined);
       })
-    ).rejects.toThrow('No user');
+    ).rejects.toThrow('No signed-in user');
   });
 
   it('throws when userId is not provided for audioGeneration', async () => {
@@ -195,9 +198,9 @@ describe('useUserSettings', () => {
 
     await expect(
       act(async () => {
-        await result.current.updateAudioGenerationAccess(true);
+        await awaitAcceptance(result.current.updateAudioGenerationAccess(true), () => undefined);
       })
-    ).rejects.toThrow('No user');
+    ).rejects.toThrow('No signed-in user');
   });
 
   it('throws when userId is not provided for first day of week', async () => {
@@ -205,8 +208,8 @@ describe('useUserSettings', () => {
 
     await expect(
       act(async () => {
-        await result.current.updateFirstDayOfWeek('monday');
+        await awaitAcceptance(result.current.updateFirstDayOfWeek('monday'), () => undefined);
       })
-    ).rejects.toThrow('No user');
+    ).rejects.toThrow('No signed-in user');
   });
 });

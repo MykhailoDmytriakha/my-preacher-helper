@@ -111,7 +111,7 @@ jest.mock('@/components/plan/KeyFragmentsModal', () => {
               tags: ['introduction'],
               keyFragments: ['frag1'],
               date: '2024-01-01',
-            }).catch(() => undefined);
+            })?.persistence.catch(() => undefined);
           }}
         >
           Update thought
@@ -127,7 +127,7 @@ jest.mock('@/components/plan/KeyFragmentsModal', () => {
               tags: ['introduction'],
               keyFragments: ['frag1', 'saved-frag'],
               date: '2024-01-01',
-            }).catch(() => undefined);
+            })?.persistence.catch(() => undefined);
           }}
         >
           Save thought
@@ -143,7 +143,7 @@ jest.mock('@/components/plan/KeyFragmentsModal', () => {
               tags: ['introduction'],
               keyFragments: ['frag1', 'saved-frag', 'saved-frag-2'],
               date: '2024-01-01',
-            }).catch(() => undefined);
+            })?.persistence.catch(() => undefined);
           }}
         >
           Save thought next

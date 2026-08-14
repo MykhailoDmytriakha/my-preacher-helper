@@ -72,6 +72,34 @@ describe('feedback.service', () => {
         await expect(submitFeedback('test', 'bug')).rejects.toThrow('Error submitting feedback');
     });
 
+    test('preserves a 403 as a rules refusal for truthful UI copy', async () => {
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+            ok: false,
+            status: 403,
+            json: jest.fn().mockResolvedValue({ error: 'Forbidden' }),
+        });
+
+        await expect(submitFeedback('Exact refused feedback', 'bug')).rejects.toMatchObject({
+            message: 'Forbidden',
+            code: 'permission-denied',
+            status: 403,
+        });
+    });
+
+    test('keeps a 413 refusal class when a proxy returns HTML instead of JSON', async () => {
+        (global.fetch as jest.Mock).mockResolvedValueOnce({
+            ok: false,
+            status: 413,
+            json: jest.fn().mockRejectedValue(new SyntaxError('Unexpected token <')),
+        });
+
+        await expect(submitFeedback('Exact refused feedback', 'bug')).rejects.toMatchObject({
+            message: 'Error submitting feedback',
+            code: 'invalid-argument',
+            status: 413,
+        });
+    });
+
     test('submitFeedback rejects an oversized serialized payload before fetch', async () => {
         const twoMiBImage = `data:image/png;base64,${Buffer.alloc(2 * 1024 * 1024).toString('base64')}`;
 

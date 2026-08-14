@@ -102,11 +102,17 @@ describe('prayerRequests.service', () => {
   });
 
   it('throws when server create fails', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: false });
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      json: async () => ({ error: 'Session expired' }),
+    });
 
-    await expect(createPrayerRequest({ userId: 'user-1', title: 'x' } as any)).rejects.toThrow(
-      'Failed to create prayer request'
-    );
+    await expect(createPrayerRequest({ userId: 'user-1', title: 'x' } as any)).rejects.toMatchObject({
+      message: 'Session expired',
+      code: 'unauthenticated',
+      status: 401,
+    });
   });
 });
 jest.mock('@/utils/authenticatedRequest', () => ({

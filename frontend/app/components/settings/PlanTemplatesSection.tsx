@@ -15,6 +15,7 @@ import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { PLAN_TEMPLATE_AGGREGATE } from '@/services/planTemplates.client';
 import { newClientId } from '@/utils/clientId';
 import { findDraftDocIds } from '@/utils/durableDraft';
+import { awaitAcceptance } from '@/utils/recoverableWrite';
 
 import type { PlanTemplate, SermonOutline } from '@/models/models';
 
@@ -88,13 +89,51 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
     const name = newName.trim();
     if (!name || !user?.uid) return;
     try {
-      await createTemplate({ id: newClientId(), userId: user.uid, name, structure: emptyOutline() });
+      await awaitAcceptance(
+        createTemplate({ id: newClientId(), userId: user.uid, name, structure: emptyOutline() }),
+        // usePlanTemplates' create recovery descriptor reports a late refusal while this screen is mounted.
+        () => undefined
+      );
       setNewName('');
-      toast.success(t('planTemplates.created'));
     } catch (err) {
+      /**
+       * NO message here. `usePlanTemplates` declares a recovery descriptor for this
+       * write, and it reports the same refusal — with the template name and a copy
+       * action, from wherever the person has navigated to. Announcing here as well
+       * showed one refused action as two failures.
+       */
       console.error('Error creating plan template:', err);
-      toast.error(t('planTemplates.createError'));
     }
+  };
+
+  /**
+   * A stale revision is a CHOICE, not a failure — and it can arrive on either path.
+   *
+   * A template write is owned by the durable queue, so acceptance resolves a tick after
+   * launch and the transaction's verdict lands LATER, in the late-failure callback. That
+   * callback used to be a no-op here, so the conflict never reached this screen: the
+   * person got a generic refusal instead of "keep mine / take theirs", and a rename or
+   * a whole edited structure could leave the editor. Both paths now hand the same
+   * conflict to the same place.
+   *
+   * Returns true when it took ownership of the error.
+   */
+  const offerConflictChoice = (
+    tpl: PlanTemplate,
+    error: unknown,
+    updates: { name?: string; structure?: SermonOutline },
+    label: string
+  ): boolean => {
+    if (!isStaleWriteError(error)) return false;
+    setConflictTemplateId(tpl.id);
+    // Pass the id explicitly: the state above is not committed yet, so the key would
+    // otherwise be built from the PREVIOUS value.
+    setConflict(
+      { payload: { templateId: tpl.id, label, updates }, actualRevision: error.actualRevision },
+      tpl.id
+    );
+    toast.error(t('freshness.staleSaveToast'));
+    return true;
   };
 
   const handleRename = async (tpl: PlanTemplate) => {
@@ -104,23 +143,18 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
     try {
       // State the revision this edit was built from, so a rename from a tab that
       // never saw another device's change is refused rather than replacing it.
-      await updateTemplate(tpl.id, { name }, tpl.rev?.[PLAN_TEMPLATE_AGGREGATE] ?? 0);
+      await awaitAcceptance(
+        updateTemplate(tpl.id, { name }, tpl.rev?.[PLAN_TEMPLATE_AGGREGATE] ?? 0),
+        // The queue accepts first and the transaction answers later, so a conflict
+        // arrives HERE — the rename input is already closed, and its typed name would
+        // otherwise be gone.
+        (err) => offerConflictChoice(tpl, err, { name }, name)
+      );
     } catch (err) {
-      if (isStaleWriteError(err)) {
-        // The rename input is already closed, so the typed name would vanish with
-        // a bare toast. Hold it and hand over the choice.
-        setConflictTemplateId(tpl.id);
-        // Pass the id explicitly: the state above is not committed yet, so the key
-        // would otherwise be built from the PREVIOUS value.
-        setConflict(
-          { payload: { templateId: tpl.id, label: name, updates: { name } }, actualRevision: err.actualRevision },
-          tpl.id
-        );
-        toast.error(t('freshness.staleSaveToast'));
-        return;
-      }
+      if (offerConflictChoice(tpl, err, { name }, name)) return;
+      // Reported by the update descriptor — see the note above. The stale-revision
+      // branch above is different: it hands over a CHOICE, not a failure message.
       console.error('Error renaming plan template:', err);
-      toast.error(t('planTemplates.renameError'));
     }
   };
 
@@ -129,14 +163,15 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
     if (!tpl) return;
     setPendingDeleteTpl(null);
     try {
-      await deleteTemplate(tpl.id);
+      // usePlanTemplates' delete recovery descriptor reports a late refusal while this screen is mounted.
+      await awaitAcceptance(deleteTemplate(tpl.id), () => undefined);
       if (expandedId === tpl.id) {
         setExpandedId(null);
         setDraftStructure(null);
       }
     } catch (err) {
+      // Reported by the delete descriptor — see the note above.
       console.error('Error deleting plan template:', err);
-      toast.error(t('planTemplates.deleteError'));
     }
   };
 
@@ -146,27 +181,19 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
     setDraftStructure(structure);
     if (saveTimers.current[tpl.id]) clearTimeout(saveTimers.current[tpl.id]);
     saveTimers.current[tpl.id] = setTimeout(() => {
-      void updateTemplate(
+      const submission = updateTemplate(
         tpl.id,
         { structure },
         tpl.rev?.[PLAN_TEMPLATE_AGGREGATE] ?? 0
+      );
+      // The board still shows `draftStructure`, but only in memory — a reload would
+      // take it. A conflict on EITHER path must therefore reach the same offer.
+      void awaitAcceptance(submission, (err) =>
+        offerConflictChoice(tpl, err, { structure }, tpl.name)
       ).catch((err) => {
-        if (isStaleWriteError(err)) {
-          // The board still shows `draftStructure`, but only in memory — a reload
-          // would take it. Hold the structure itself and offer the choice.
-          setConflictTemplateId(tpl.id);
-          setConflict(
-            {
-              payload: { templateId: tpl.id, label: tpl.name, updates: { structure } },
-              actualRevision: err.actualRevision,
-            },
-            tpl.id
-          );
-          toast.error(t('freshness.staleSaveToast'));
-          return;
-        }
+        if (offerConflictChoice(tpl, err, { structure }, tpl.name)) return;
+        // Reported by the template update descriptor — see the note in handleRename.
         console.error('Error saving template structure:', err);
-        toast.error(t('planTemplates.saveStructureError'));
       });
     }, 400);
   };
@@ -189,26 +216,40 @@ const PlanTemplatesSection: React.FC<PlanTemplatesSectionProps> = ({ user }) => 
   const handleKeepMine = async () => {
     if (!conflict || resolvingConflict) return;
     setResolvingConflict(true);
+    /**
+     * Refused AGAIN — the template moved on between the first refusal and this click.
+     * Re-aim at what the server holds NOW: pressing the button again would otherwise
+     * resend the same outdated number forever. Used for BOTH timings, because a resend
+     * can be refused before acceptance or long after it, and the late one had nobody at
+     * all: this screen passed an empty callback, and the update descriptor deliberately
+     * ignores stale errors (they are a choice, not a message). The person's rename — or
+     * a whole plan structure — was left with no banner, no message and no way to copy it.
+     */
+    const refusedAgain = (error: unknown) => {
+      if (!isStaleWriteError(error)) return false;
+      setConflict(
+        { payload: conflict.payload, actualRevision: error.actualRevision },
+        conflict.payload.templateId
+      );
+      toast.error(t('freshness.staleSaveToast'));
+      return true;
+    };
     try {
       // Adopt the revision the server held AT REFUSAL — a deliberate overwrite.
-      await updateTemplate(conflict.payload.templateId, conflict.payload.updates, conflict.actualRevision);
+      await awaitAcceptance(
+        updateTemplate(conflict.payload.templateId, conflict.payload.updates, conflict.actualRevision),
+        refusedAgain
+      );
       // NAME the template this resolves: the slot is per template, and an unnamed
       // clear would empty whichever one the section is pointing at right now.
       setConflict(null, conflict.payload.templateId);
       advanceToNextStoredConflict();
     } catch (err) {
-      // Refused AGAIN: the template moved on between the first refusal and this
-      // click. Re-aim at what the server holds now, or every further press resends
-      // the same outdated number and the button never works.
-      if (isStaleWriteError(err)) {
-        setConflict(
-          { payload: conflict.payload, actualRevision: err.actualRevision },
-          conflict.payload.templateId
-        );
-        toast.error(t('freshness.staleSaveToast'));
+      if (refusedAgain(err)) {
+        // handled above — the choice is back on screen with the newer revision
       } else {
+        // Reported by the template update descriptor — see the note in handleRename.
         console.error('Error re-sending the refused template edit:', err);
-        toast.error(t('planTemplates.saveStructureError'));
       }
     } finally {
       setResolvingConflict(false);

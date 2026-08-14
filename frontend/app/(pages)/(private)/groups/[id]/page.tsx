@@ -526,12 +526,10 @@ export default function GroupDetailPage() {
 
     try {
       setDeletingGroup(true);
+      // No success message: the delete wrapper returns on LAUNCH, so this used to
+      // confirm a removal the server can still refuse. A refusal restores the row
+      // and reports itself through the hook's own error toast.
       await deleteGroupDetail();
-      toast.success(
-        t('workspaces.groups.messages.deleted', {
-          defaultValue: 'Group deleted successfully',
-        })
-      );
       router.push('/groups');
     } catch (errorValue) {
       console.error('Failed to delete group:', errorValue);
@@ -551,15 +549,16 @@ export default function GroupDetailPage() {
   // optimistic, so it works offline like every other membership op.
   const handleSeriesSelect = (seriesId: string) => {
     if (!group) return;
+    // Membership writes are fire-and-forget sweeps: the optimistic binding on
+    // screen is the acceptance signal, and a terminal refusal now speaks for
+    // itself from useSeriesMembership. Announcing success here contradicted it.
     addToSeries(seriesId, { type: 'group', refId: group.id });
-    toast.success(t('workspaces.groups.messages.seriesAssigned', { defaultValue: 'Assigned to series' }));
     setIsSeriesSelectorOpen(false);
   };
 
   const handleUnlinkSeries = () => {
     if (!group) return;
     removeFromAllSeries({ type: 'group', refId: group.id });
-    toast.success(t('workspaces.groups.messages.seriesUnlinked', { defaultValue: 'Unlinked from series' }));
   };
 
   if (accessLoading || (groupsEnabled && loading)) {
@@ -661,7 +660,7 @@ export default function GroupDetailPage() {
       )}
       {/* This GROUP changed elsewhere — distinct from the app-update toast. While
           the editor holds unsaved changes the action becomes "review". */}
-      {(groupFreshness.state === 'stale' || groupFreshness.state === 'unknown') && !groupFreshnessDismissed && (
+      {!saveConflict && (groupFreshness.state === 'stale' || groupFreshness.state === 'unknown') && !groupFreshnessDismissed && (
         <DataFreshnessBanner
           entityKey="entityRecord"
           dirty={groupHasUnsavedChanges}

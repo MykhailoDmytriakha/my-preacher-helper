@@ -16,13 +16,14 @@ import { useTranslation } from 'react-i18next';
 import HighlightedText from '@/components/HighlightedText';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { getPrayerSearchTarget, getPrayerUpdateSearchSnippet } from '@/utils/prayerFilters';
+import { type WriteSubmission } from '@/utils/recoverableWrite';
 
 import PrayerStatusBadge from './PrayerStatusBadge';
 
 interface Props {
   prayer: PrayerRequest;
-  onSetStatus: (id: string, status: PrayerStatus) => Promise<void>;
-  onDelete: (id: string) => Promise<void>;
+  onSetStatus: (id: string, status: PrayerStatus) => WriteSubmission;
+  onDelete: (id: string) => WriteSubmission;
   onAddUpdate: (id: string) => void;
   onEdit: (prayer: PrayerRequest) => void;
   searchQuery?: string;
@@ -64,9 +65,9 @@ export default function PrayerRequestCard({
   const matchedUpdateSnippet = getPrayerUpdateSearchSnippet(prayer, searchQuery);
   const detailHref = buildPrayerDetailHref(prayer, searchQuery);
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!confirming) { setConfirming(true); return; }
-    await onDelete(prayer.id);
+    void onDelete(prayer.id).acceptance.catch(() => undefined);
   };
 
   const isActive = prayer.status === 'active';

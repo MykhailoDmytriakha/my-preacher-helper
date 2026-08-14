@@ -8,7 +8,7 @@ import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { Group, GroupMeetingDate } from '@/models/models';
-import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { isOfflineQueuedError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { newClientId } from '@/utils/clientId';
 import { GROUP_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import {
@@ -29,7 +29,11 @@ const QUERY_KEYS = {
 export function useGroupDetail(groupId: string) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [mutationError, setMutationError] = useState<Error | null>(null);
+  /**
+   * Write-side signal only, deliberately NOT returned as the hook's `error`: that field
+   * belongs to the query, and a page renders it as a fatal state.
+   */
+  const [, setMutationError] = useState<Error | null>(null);
   const { uid } = useResolvedUid();
 
   // Read connectivity AT CATCH-TIME, not from a value closured into a callback:
@@ -57,7 +61,12 @@ export function useGroupDetail(groupId: string) {
   const group = data ?? null;
 
   const refreshGroupDetail = useCallback(async () => {
-    await refetch();
+    // REJECT on a failed refetch. `refetch()` resolves either way, so awaiting it and
+    // returning told the caller "refreshed" even when nothing new arrived — the screen
+    // kept stale data while the person was assured it was current, and decided to keep
+    // working on that basis.
+    const result = await refetch();
+    if (result.isError) throw result.error ?? new Error('Refresh failed');
   }, [refetch]);
 
   // Shared hard-error handler for the fire-and-forget own-doc writes below. A
@@ -200,10 +209,22 @@ export function useGroupDetail(groupId: string) {
         })
         .finally(() => setPendingWrites((n) => Math.max(0, n - 1)))
         .catch((errorValue: unknown) => {
+          /**
+           * QUEUED, not failed: the edit is in the durable outbox. Falling through to
+           * `reconcileWriteError` invalidated the caches and announced "failed to update
+           * group" for a change that was safely stored.
+           */
+          if (isOfflineQueuedError(errorValue)) return;
           if (isStaleWriteError(errorValue)) {
             // REFUSED, not failed. Deliberately NO refetch here — see above.
             setSaveConflict({ payload: updates, actualRevision: errorValue.actualRevision });
-            toast.error(t('freshness.staleSaveToast'));
+            /**
+             * NO TOAST. The banner set on the line above says the same thing, holds this
+             * exact text and offers the two choices; the toast only said the first half
+             * and could not act. While the editor stayed open the toast was the visible
+             * one — now that a conflict closes the editor, both were on screen at once,
+             * making one conflict look like two problems.
+             */
             return;
           }
           reconcileWriteError(errorValue);
@@ -349,7 +370,14 @@ export function useGroupDetail(groupId: string) {
   return {
     group,
     loading: isLoading,
-    error: (error as Error | null) ?? mutationError,
+    /**
+     * ONLY the query's error. A refused WRITE must not travel through this field: pages
+     * render it as a fatal state, and one refused write then replaces the whole screen
+     * — the editor and the list with it. Fixed in useGroups/useSeries after review
+     * round 10; these two carried the same wiring and are aligned here before anyone
+     * reads them.
+     */
+    error: (error as Error | null) ?? null,
     refreshGroupDetail,
     updateGroupDetail,
     addMeetingDate,

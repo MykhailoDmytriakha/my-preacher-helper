@@ -3,7 +3,9 @@ import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
+import { getAllGroups } from '@/services/groups.service';
 import { getAllSeries } from '@/services/series.service';
 import {
   applySeriesTransform,
@@ -12,12 +14,21 @@ import {
   type SeriesMembershipRef,
   type SeriesTransform,
 } from '@/services/seriesMembership.client';
+import { reconcileServerList, type VersionedCopy } from '@/utils/readFreshness';
+import {
+  persistedWrite,
+  queuedMutation,
+  skippedWrite,
+  useWriteRecovery,
+  type WriteSubmission,
+} from '@/utils/recoverableWrite';
 import {
   deriveSermonIdsFromItems,
   inferSeriesKind,
   normalizeSeriesItems,
 } from '@/utils/seriesItems';
 import { seriesContainsRef } from '@/utils/seriesMembership';
+import { getSermons } from '@services/sermon.service';
 
 import type { Group, Series, SeriesItem, Sermon } from '@/models/models';
 import type { QueryClient } from '@tanstack/react-query';
@@ -47,6 +58,52 @@ type SeriesDetailPayload = {
 
 const seriesListKey = (uid: string | undefined) => ['series', uid] as const;
 const seriesDetailKey = (seriesId: string) => ['series-detail', seriesId] as const;
+
+const sweepReceipt = (transforms: SeriesTransform[]) =>
+  transforms
+    .map((transform) =>
+      transform.op === 'reorder'
+        ? `${transform.seriesId}:reorder:${transform.itemIds.join(',')}`
+        : `${transform.seriesId}:${transform.op}:${transform.refs
+            .map((ref) => `${ref.type}-${ref.refId}`)
+            .join(',')}`
+    )
+    .join('|');
+
+/**
+ * The fresh owner snapshot is asynchronous, but `queued` is only honest once it
+ * has produced transforms and React Query owns the sweep. Compose the canonical
+ * submission instead of claiming acceptance while that snapshot is still loading.
+ */
+function afterSweepIsScheduled(start: Promise<WriteSubmission>): WriteSubmission {
+  const acceptance = start.then((submission) => submission.acceptance);
+  const persistence = start.then((submission) => submission.persistence);
+  void acceptance.catch(() => undefined);
+  void persistence.catch(() => undefined);
+  return { acceptance, persistence };
+}
+
+/**
+ * Refreshes one owner list without letting a failed read erase what the screen
+ * already has. The cache is read after the request resolves because an edit may
+ * land while the request is in flight, and that newest local state is the copy the
+ * freshness decision must protect.
+ */
+async function refreshCachedList<T extends VersionedCopy & { id: string }>(
+  queryClient: QueryClient,
+  queryKey: readonly unknown[],
+  fetchServer: () => Promise<T[]>
+): Promise<T[]> {
+  try {
+    const server = await fetchServer();
+    const stored = queryClient.getQueryData<T[]>(queryKey) ?? [];
+    const reconciled = reconcileServerList(server, stored);
+    queryClient.setQueryData(queryKey, reconciled);
+    return reconciled;
+  } catch {
+    return queryClient.getQueryData<T[]>(queryKey) ?? [];
+  }
+}
 
 // Minimal, filter-surviving stubs for a ref whose full object is not yet in the
 // client cache (e.g. a just-created sermon). buildPayload drops items whose
@@ -164,6 +221,45 @@ function writeOptimisticCaches(
   });
 }
 
+type MembershipCacheSnapshot = {
+  list?: Series[];
+  details: Map<string, SeriesDetailPayload | null | undefined>;
+};
+
+function snapshotMembershipCaches(
+  queryClient: QueryClient,
+  uid: string | undefined,
+  transforms: SeriesTransform[]
+): MembershipCacheSnapshot {
+  return {
+    list: queryClient.getQueryData<Series[]>(seriesListKey(uid)),
+    details: new Map(
+      transforms.map((transform) => [
+        transform.seriesId,
+        queryClient.getQueryData<SeriesDetailPayload | null | undefined>(
+          seriesDetailKey(transform.seriesId)
+        ),
+      ])
+    ),
+  };
+}
+
+function restoreMembershipCaches(
+  queryClient: QueryClient,
+  uid: string | undefined,
+  snapshot: MembershipCacheSnapshot | undefined
+): void {
+  if (!snapshot) return;
+  if (snapshot.list !== undefined) {
+    queryClient.setQueryData(seriesListKey(uid), snapshot.list);
+  }
+  snapshot.details.forEach((detail, seriesId) => {
+    if (detail !== undefined) {
+      queryClient.setQueryData(seriesDetailKey(seriesId), detail);
+    }
+  });
+}
+
 /**
  * Playlist membership operations — the single client-side writer of
  * `series.items[]`. Every op:
@@ -176,10 +272,16 @@ export function useSeriesMembership() {
   const queryClient = useQueryClient();
   const { uid } = useResolvedUid();
   const { t } = useTranslation();
+  const isOnline = useOnlineStatus();
 
-  const sweep = useMutation<void, Error, SeriesTransform[]>({
+  const sweep = useMutation<void, Error, SeriesTransform[], MembershipCacheSnapshot>({
     mutationKey: SERIES_MEMBERSHIP_MUTATION_KEY,
     mutationFn: (transforms) => commitSeriesBatch(transforms),
+    onMutate: (transforms) => {
+      const snapshot = snapshotMembershipCaches(queryClient, uid, transforms);
+      writeOptimisticCaches(queryClient, uid, transforms);
+      return snapshot;
+    },
     onSuccess: (_data, transforms) => {
       // Reconcile is bound to the real commit ack (not a guessed setTimeout): pull
       // the authoritative detail for every touched series, so a create-in-series
@@ -189,11 +291,19 @@ export function useSeriesMembership() {
         queryClient.invalidateQueries({ queryKey: seriesDetailKey(transform.seriesId) })
       );
     },
-    onError: (error, transforms) => {
+    onError: (error, transforms, snapshot) => {
       // A membership change that could NOT even be stored for later must be said
       // out loud. The queue used to swallow a storage refusal, so the screen kept
       // the new membership, the mutation resolved, and a reload showed it gone.
+      // ONE reporter per refusal. A terminal refusal of an ADD is reported by
+      // useSeriesDetail's recovery toast, which also carries the item names and a
+      // retry; duplicating it here would show the same refusal twice. What that
+      // subscription does NOT cover is a queue that could not even store the intent,
+      // so this stays.
       if (isMembershipQueueFullError(error)) toast.error(t('common.saveError'));
+      // Refetch can also be refused or unavailable. Restore our own snapshots
+      // first, so a rejected move never remains as an optimistic lie on screen.
+      restoreMembershipCaches(queryClient, uid, snapshot);
       // Online failure -> reconcile from the server (list + every touched detail).
       // Offline this is a no-op (useServerFirstQuery disables the query) and the
       // write stays queued.
@@ -209,69 +319,127 @@ export function useSeriesMembership() {
     [queryClient, uid]
   );
 
-  // Run `build` with the user's series list — the source of membership discovery.
-  // WARM path: the RQ list cache, synchronously (unchanged behaviour). COLD path
-  // (the ['series',uid] query hasn't resolved yet — a fast click before useSeries
-  // loads, or an offline session that never populated it): fall back to a FRESH
-  // client-SDK read. getAllSeries is a getDocs QUERY, so offline it resolves from
-  // persistentLocalCache (cached docs or []) and NEVER rejects — unlike getDoc on
-  // a missing doc. Seeding ['series',uid] with the result warms the cache so the
-  // optimistic writes in runSweep render. Without this, cold-cache add-paths
-  // generate NO source-removals and break the one-to-one invariant (a ref stays
-  // in its old series AND the target). The atomic batch re-reads each doc fresh,
-  // so integrity holds regardless; this fixes the DISCOVERY of what to remove.
+  // Run `build` with a reconciled owner snapshot. Online, all three lists are read
+  // because series membership decides both which series must change and which
+  // sermon/group objects the optimistic detail screen renders. Offline, the stored
+  // lists are the answer and no service is touched. A failed online read falls back
+  // to the stored list without blanking the existing screen.
   const withSeries = useCallback(
-    (build: (series: Series[]) => void) => {
-      const warm = loadedSeries();
-      if (warm.length > 0 || !uid) {
-        build(warm);
-        return;
+    (build: (series: Series[]) => WriteSubmission): Promise<WriteSubmission> => {
+      if (!isOnline || !uid) {
+        return Promise.resolve(build(loadedSeries()));
       }
-      void getAllSeries(uid)
-        .then((fresh) => {
-          if (fresh.length > 0) queryClient.setQueryData(seriesListKey(uid), fresh);
-          build(fresh);
-        })
-        .catch((error) => {
-          // getDocs never rejects OFFLINE (it resolves from persistentLocalCache);
-          // this fires only on an ONLINE discovery failure (e.g. a permission-denied
-          // cold-start race). We do NOT fall back to an add-only sweep — that would
-          // re-break one-to-one — so the op is dropped, but surface it (not silent)
-          // so the user can retry once the list has warmed.
-          console.warn('useSeriesMembership: fresh series discovery failed', error);
-          toast.error(
-            t('workspaces.series.errors.updateFailed', { defaultValue: 'Failed to update series' })
-          );
-        });
+
+      return Promise.all([
+        refreshCachedList(queryClient, seriesListKey(uid), () => getAllSeries(uid)),
+        refreshCachedList(queryClient, ['sermons', uid], () => getSermons(uid)),
+        refreshCachedList(queryClient, ['groups', uid], () => getAllGroups(uid)),
+      ]).then(([series]) => build(series));
     },
-    [loadedSeries, uid, queryClient, t]
+    [isOnline, loadedSeries, queryClient, uid]
   );
 
   const runSweep = useCallback(
+    (transforms: SeriesTransform[]): WriteSubmission => {
+      if (transforms.length === 0) return skippedWrite();
+      const request = sweep.mutateAsync(transforms);
+      // Offline, commitSeriesBatch stores an operation in the membership outbox (or
+      // Firestore's persistent write queue). Online it is a transaction, which is
+      // neither replayable nor retained by React Query after this tab closes.
+      const durableOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      return durableOffline
+        ? queuedMutation(`series:membership:${sweepReceipt(transforms)}`, request)
+        : persistedWrite(request);
+    },
+    [sweep]
+  );
+
+  const itemLabels = useCallback(
     (transforms: SeriesTransform[]) => {
-      if (transforms.length === 0) return;
-      writeOptimisticCaches(queryClient, uid, transforms);
-      // Fire-and-forget: the promise is intentionally not awaited.
+      const sermons = queryClient.getQueryData<Sermon[]>(['sermons', uid]) ?? [];
+      const groups = queryClient.getQueryData<Group[]>(['groups', uid]) ?? [];
+      const series = queryClient.getQueryData<Series[]>(seriesListKey(uid)) ?? [];
+      const labels: string[] = [];
+
+      transforms.forEach((transform) => {
+        if (transform.op === 'reorder') {
+          const owner = series.find((entry) => entry.id === transform.seriesId);
+          const byItemId = new Map(
+            normalizeSeriesItems(owner?.items, owner?.sermonIds || []).map((item) => [item.id, item])
+          );
+          transform.itemIds.forEach((itemId) => {
+            const item = byItemId.get(itemId);
+            if (!item) return;
+            const title =
+              item.type === 'sermon'
+                ? sermons.find((sermon) => sermon.id === item.refId)?.title
+                : groups.find((group) => group.id === item.refId)?.title;
+            if (title) labels.push(title);
+          });
+          return;
+        }
+
+        transform.refs.forEach((ref) => {
+          const title =
+            ref.type === 'sermon'
+              ? sermons.find((sermon) => sermon.id === ref.refId)?.title
+              : groups.find((group) => group.id === ref.refId)?.title;
+          if (title) labels.push(title);
+        });
+      });
+
+      return Array.from(new Set(labels)).join(', ');
+    },
+    [queryClient, uid]
+  );
+
+  // Membership has one writer, so it has one recovery owner. This covers adds
+  // from the series page, group page and dashboard, plus remove and reorder;
+  // a page-local subscription cannot see all of those surfaces reliably.
+  useWriteRecovery<SeriesTransform[]>(queryClient, {
+    mutationKey: SERIES_MEMBERSHIP_MUTATION_KEY,
+    fallbackTitleKey: 'common.saveError',
+    recoveryText: itemLabels,
+    toastId: (transforms) => `write-recovery:series:membership:${sweepReceipt(transforms)}`,
+    // The check below reads the series list, which may still be loading when a restored
+    // failure is first examined.
+    ownershipEpoch: `${uid ?? ''}:${(queryClient.getQueryData<Series[]>(seriesListKey(uid)) ?? [])
+      .map((entry) => entry.id)
+      .join(',')}`,
+    /**
+     * Every touched series must be in THIS person's list. Failed sweeps persist in the
+     * shared IndexedDB cache across sign-outs, and their recovery text is the titles of
+     * the moved items — so an unguarded descriptor reads the previous account's content
+     * aloud to the next one.
+     */
+    owns: (transforms) => {
+      if (!uid) return false;
+      const mine = queryClient.getQueryData<Series[]>(seriesListKey(uid)) ?? [];
+      if (mine.length === 0) return false;
+      return transforms.every((transform) => mine.some((entry) => entry.id === transform.seriesId));
+    },
+    retry: (transforms) => {
+      // A recovery action has no editor waiting on a submission. Re-run the same
+      // mutation directly so React Query owns the retry immediately.
       sweep.mutate(transforms);
     },
-    [queryClient, sweep, uid]
-  );
+  });
 
   /**
    * Add (or MOVE) a ref into `targetSeriesId`. One-to-one is enforced: the ref
    * is removed from every OTHER series it currently sits in — same atomic batch.
    */
   const addToSeries = useCallback(
-    (targetSeriesId: string, ref: SeriesMembershipRef, position?: number) => {
-      withSeries((series) => {
+    (targetSeriesId: string, ref: SeriesMembershipRef, position?: number): WriteSubmission => {
+      return afterSweepIsScheduled(withSeries((series) => {
         const sourceRemovals = series
           .filter((s) => s.id !== targetSeriesId && seriesContainsRef(s, ref.refId))
           .map((s): SeriesTransform => ({ seriesId: s.id, op: 'remove', refs: [ref] }));
-        runSweep([
+        return runSweep([
           { seriesId: targetSeriesId, op: 'add', refs: [ref], position },
           ...sourceRemovals,
         ]);
-      });
+      }));
     },
     [withSeries, runSweep]
   );
@@ -282,9 +450,9 @@ export function useSeriesMembership() {
    * drops only the refs it actually holds.
    */
   const addRefsToSeries = useCallback(
-    (targetSeriesId: string, refs: SeriesMembershipRef[]) => {
-      if (refs.length === 0) return;
-      withSeries((series) => {
+    (targetSeriesId: string, refs: SeriesMembershipRef[]): WriteSubmission => {
+      if (refs.length === 0) return skippedWrite();
+      return afterSweepIsScheduled(withSeries((series) => {
         const sourceRemovals = new Map<string, SeriesMembershipRef[]>();
         series.forEach((s) => {
           if (s.id === targetSeriesId) return;
@@ -294,7 +462,7 @@ export function useSeriesMembership() {
           }
         });
 
-        runSweep([
+        return runSweep([
           { seriesId: targetSeriesId, op: 'add', refs },
           ...Array.from(sourceRemovals.entries()).map(
             ([seriesId, removeRefs]): SeriesTransform => ({
@@ -304,32 +472,32 @@ export function useSeriesMembership() {
             })
           ),
         ]);
-      });
+      }));
     },
     [withSeries, runSweep]
   );
 
   /** Remove a ref from EVERY series that contains it (sweep-all). */
   const removeFromAllSeries = useCallback(
-    (ref: SeriesMembershipRef) => {
+    (ref: SeriesMembershipRef): WriteSubmission => {
       // withSeries falls back to a fresh SDK read when the list cache is cold, so a
       // remove-from-all issued before the list loads discovers memberships instead
       // of silently no-op'ing (the D3 warn is no longer needed — an empty fresh
       // read genuinely means the ref is in no series).
-      withSeries((series) => {
+      return afterSweepIsScheduled(withSeries((series) => {
         const transforms: SeriesTransform[] = series
           .filter((entry) => seriesContainsRef(entry, ref.refId))
           .map((entry): SeriesTransform => ({ seriesId: entry.id, op: 'remove', refs: [ref] }));
-        runSweep(transforms);
-      });
+        return runSweep(transforms);
+      }));
     },
     [withSeries, runSweep]
   );
 
   /** Reorder items within a single series (own-doc). */
   const reorderSeries = useCallback(
-    (seriesId: string, itemIds: string[]) => {
-      runSweep([{ seriesId, op: 'reorder', itemIds }]);
+    (seriesId: string, itemIds: string[]): WriteSubmission => {
+      return runSweep([{ seriesId, op: 'reorder', itemIds }]);
     },
     [runSweep]
   );

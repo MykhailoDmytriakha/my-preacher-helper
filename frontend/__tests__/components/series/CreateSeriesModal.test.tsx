@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import CreateSeriesModal from '@/components/series/CreateSeriesModal';
+import { queuedWrite } from '@/utils/recoverableWrite';
 import '@testing-library/jest-dom';
 
 // Mock the createPortal function
@@ -20,6 +21,7 @@ jest.mock('react-i18next', () => ({
         'workspaces.series.newSeries': 'New Series',
         'workspaces.series.description': 'Organize your sermon series',
         'workspaces.series.form.title': 'Series Title',
+        'workspaces.series.form.customColor': 'Custom color',
         'workspaces.series.form.titlePlaceholder': 'Enter series title',
         'workspaces.series.form.description': 'Description',
         'workspaces.series.form.descriptionPlaceholder': 'Brief description...',
@@ -61,6 +63,7 @@ describe('CreateSeriesModal Component', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockOnCreate.mockImplementation(() => queuedWrite('test:series:create', Promise.resolve()));
   });
 
   test('renders with correct initial values', () => {

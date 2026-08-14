@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 
 import { Item, SermonPoint, Sermon } from '@/models/models';
 import { sortItemsWithAI } from '@/services/sortAI.service';
+import { updateStructure } from '@/services/structure.service';
+import { updateThought } from '@/services/thought.service';
 import { UsageCapReachedError } from '@/services/usageLimits';
 import * as aiSortingUtils from '@/utils/aiSorting';
 import { runScenarios } from '@test-utils/scenarioRunner';
@@ -12,6 +14,8 @@ import { useAiSortingDiff } from '../useAiSortingDiff';
 
 // Mock services
 jest.mock('@/services/sortAI.service');
+jest.mock('@/services/structure.service');
+jest.mock('@/services/thought.service');
 jest.mock('sonner');
 jest.mock('@/hooks/useOnlineStatus', () => ({
   useOnlineStatus: () => true,
@@ -26,6 +30,8 @@ jest.mock('@/utils/aiSorting', () => {
 });
 
 const mockSortItemsWithAI = sortItemsWithAI as jest.MockedFunction<typeof sortItemsWithAI>;
+const mockUpdateStructure = updateStructure as jest.MockedFunction<typeof updateStructure>;
+const mockUpdateThought = updateThought as jest.MockedFunction<typeof updateThought>;
 const mockToast = toast as jest.Mocked<typeof toast>;
 const mockGetOutlinePointAiSortState = aiSortingUtils.getOutlinePointAiSortState as jest.MockedFunction<typeof aiSortingUtils.getOutlinePointAiSortState>;
 
@@ -81,6 +87,8 @@ describe('useAiSortingDiff', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSortItemsWithAI.mockResolvedValue([...mockContainers.introduction]);
+    mockUpdateStructure.mockResolvedValue({ message: 'saved' });
+    mockUpdateThought.mockImplementation(async (_sermonId, thought) => thought);
     mockGetOutlinePointAiSortState.mockImplementation((args) => {
       const actual = jest.requireActual('@/utils/aiSorting') as typeof import('@/utils/aiSorting');
       return actual.getOutlinePointAiSortState(args);
@@ -501,6 +509,37 @@ describe('useAiSortingDiff', () => {
   });
 
   describe('persistence edge cases', () => {
+    it('restores an accepted AI arrangement when its writer is later refused', async () => {
+      const refusal = Object.assign(new Error('Missing or insufficient permissions.'), {
+        code: 'permission-denied',
+        name: 'FirebaseError',
+      });
+      const changedItems = [{ ...mockContainers.introduction[0], outlinePointId: 'intro-1' }];
+      mockSortItemsWithAI.mockResolvedValueOnce(changedItems);
+      mockUpdateThought.mockRejectedValueOnce(refusal);
+
+      const hook = renderHook(() => {
+        const [containers, setContainers] = React.useState<Record<string, Item[]>>(mockContainers);
+        return { containers, sort: useAiSortingDiff({ ...defaultProps, containers, setContainers }) };
+      });
+
+      await act(async () => {
+        await hook.result.current.sort.handleAiSort('introduction');
+      });
+      expect(hook.result.current.sort.isDiffModeActive).toBe(true);
+
+      await act(async () => {
+        const submission = hook.result.current.sort.handleKeepAll();
+        // The refusal now lands BEFORE acceptance, so acceptance rejects instead of
+        // resolving and then reporting late. The arrangement must still roll back.
+        await expect(submission.acceptance).rejects.toMatchObject({ code: 'permission-denied' });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      expect(hook.result.current.containers.introduction[0]?.outlinePointId).toBeUndefined();
+      expect(mockToast.error).toHaveBeenCalledWith(expect.anything());
+    });
+
     it('filters local thoughts out of AI sort requests and persists keep/revert outline changes', async () => {
       const localContainers: Record<string, Item[]> = {
         ...mockContainers,
@@ -543,7 +582,7 @@ describe('useAiSortingDiff', () => {
         keepAllHook.result.current.handleKeepAll();
       });
 
-      expect(debouncedSaveThought).toHaveBeenCalledWith(
+      expect(mockUpdateThought).toHaveBeenCalledWith(
         'sermon-1',
         expect.objectContaining({
           id: 'thought-1',
@@ -554,7 +593,13 @@ describe('useAiSortingDiff', () => {
         // a rewrite made on another device survives.
         expect.objectContaining({ id: 'thought-1' })
       );
-      expect(debouncedSaveStructure).toHaveBeenCalled();
+      expect(mockUpdateStructure).toHaveBeenCalledWith(
+        'sermon-1',
+        // A local-only thought has no durable document yet and must never be
+        // placed into persisted structure ahead of its create submission.
+        expect.objectContaining({ introduction: ['thought-1'] }),
+        mockSermon.structure,
+      );
       expect(mockToast.success).toHaveBeenCalled();
 
       const revertSaveThought = jest.fn();

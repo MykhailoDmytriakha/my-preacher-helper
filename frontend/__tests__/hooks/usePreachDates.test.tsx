@@ -54,35 +54,47 @@ describe('usePreachDates', () => {
         expect(mockFetchPreachDates).toHaveBeenCalledWith(sermonId);
     });
 
-    it('calls addPreachDate and invalidates queries on success', async () => {
+    it('returns queued acceptance for a durable add mutation and keeps its client id for replay', async () => {
         const newDate = { date: '2023-11-01', church: { id: 'c1', name: 'Zion' } };
         mockAddPreachDate.mockResolvedValue({ id: 'd2', ...newDate, createdAt: '...' });
 
         const { result } = renderHook(() => usePreachDates(sermonId), { wrapper: createWrapper() });
 
-        await result.current.addDate(newDate);
+        const submission = result.current.addDate(newDate);
+        await expect(submission.acceptance).resolves.toMatchObject({ kind: 'queued' });
 
-        expect(mockAddPreachDate).toHaveBeenCalledWith(sermonId, newDate);
+        await waitFor(() => {
+            expect(mockAddPreachDate).toHaveBeenCalledWith(
+                sermonId,
+                expect.objectContaining({ ...newDate, id: expect.any(String) })
+            );
+        });
     });
 
-    it('calls updatePreachDate and invalidates queries on success', async () => {
+    it('returns queued acceptance for a durable update mutation', async () => {
         const updates = { audience: 'Everyone' };
         mockUpdatePreachDate.mockResolvedValue({ id: 'd1', ...updates });
 
         const { result } = renderHook(() => usePreachDates(sermonId), { wrapper: createWrapper() });
 
-        await result.current.updateDate({ dateId: 'd1', updates });
+        const submission = result.current.updateDate({ dateId: 'd1', updates });
+        await expect(submission.acceptance).resolves.toMatchObject({ kind: 'queued' });
 
-        expect(mockUpdatePreachDate).toHaveBeenCalledWith(sermonId, 'd1', updates);
+        await waitFor(() => {
+            expect(mockUpdatePreachDate).toHaveBeenCalledWith(sermonId, 'd1', updates);
+        });
     });
 
-    it('calls deletePreachDate and invalidates queries on success', async () => {
+    it('returns queued acceptance for a durable delete mutation', async () => {
         mockDeletePreachDate.mockResolvedValue(undefined);
 
         const { result } = renderHook(() => usePreachDates(sermonId), { wrapper: createWrapper() });
 
-        await result.current.deleteDate('d1');
+        const submission = result.current.deleteDate('d1');
+        await expect(submission.acceptance).resolves.toMatchObject({ kind: 'queued' });
 
-        expect(mockDeletePreachDate).toHaveBeenCalledWith(sermonId, 'd1');
+        await waitFor(() => {
+            expect(mockDeletePreachDate).toHaveBeenCalledWith(sermonId, 'd1');
+        });
     });
 });

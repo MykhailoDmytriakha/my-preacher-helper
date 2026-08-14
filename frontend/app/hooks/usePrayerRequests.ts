@@ -3,15 +3,24 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
-import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
+import { isOfflineQueuedError, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { PRAYER_CORE_AGGREGATE, PRAYER_STATUS_AGGREGATE } from '@/services/prayerRequests.client';
 import { newClientId } from '@/utils/clientId';
 import { PRAYER_MUTATION_KEYS } from '@/utils/mutationDefaults';
 import { normalizeError } from '@/utils/normalizeError';
+import {
+  persistedWrite,
+  queuedMutation,
+  skippedWrite,
+  useWriteRecovery,
+  type WriteSubmission,
+} from '@/utils/recoverableWrite';
+import { recoveryText } from '@/utils/writeRecovery';
 import {
   addPrayerUpdate,
   createPrayerRequest,
@@ -23,16 +32,31 @@ import {
 
 export const PRAYER_QUERY_KEY = (userId: string | null) => ['prayerRequests', userId];
 const PRAYER_PREFIX = ['prayerRequests'];
+const PRAYER_UPDATE_FAILED_KEY = 'writeRecovery.prayerUpdateFailed';
 const detailKey = (id: string) => ['prayerRequest', id];
 
 type CreatePrayerPayload = Pick<PrayerRequest, 'userId' | 'title'> &
-  Partial<Pick<PrayerRequest, 'description' | 'categoryId' | 'tags'>>;
+  Partial<Pick<PrayerRequest, 'description' | 'categoryId' | 'tags'>> & {
+    /** Verbatim form values, kept out of the persisted record but available for recovery. */
+    recoveryDraft?: string;
+  };
+
+type UpdatePrayerMutationVars = {
+  id: string;
+  updates: Partial<PrayerRequest>;
+  expectedRevision?: number | null;
+  expectedBaseline?: Record<string, unknown> | null;
+  /** Verbatim form values, never sent to Firestore. */
+  recoveryDraft?: string;
+};
 
 type AddUpdateMutationVars = {
   id: string;
   updateId: string;
   text: string;
   createdAt: string;
+  /** Verbatim textarea value before its persisted form is normalised. */
+  recoveryDraft?: string;
 };
 
 type StatusMutationVars = {
@@ -49,6 +73,8 @@ type StatusMutationVars = {
   updatedAt: string;
   answeredAt?: string;
   answerText?: string;
+  /** Verbatim answer before its persisted form is normalised. */
+  recoveryDraft?: string;
 };
 
 /**
@@ -60,7 +86,12 @@ type StatusMutationVars = {
 export function usePrayerRequests(userId?: string | null, activeDocId?: string | null) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const [mutationError, setMutationError] = useState<Error | null>(null);
+  const isOnline = useOnlineStatus();
+  /**
+   * Write-side signal only, deliberately NOT returned as the hook's `error`: that field
+   * belongs to the query, and a page renders it as a fatal state.
+   */
+  const [, setMutationError] = useState<Error | null>(null);
   /**
    * A refused edit, held so it can be re-offered instead of vanishing with the
    * optimistic rollback. Without this the person's words are gone from the screen
@@ -117,8 +148,9 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
   // the optimistic row for the persisted shape so server/client defaults are exact.
   const createMutation = useMutation({
     mutationKey: PRAYER_MUTATION_KEYS.create,
-    mutationFn: (payload: CreatePrayerPayload & { id: string }) => createPrayerRequest(payload),
-    onMutate: async (payload) => {
+    mutationFn: ({ recoveryDraft: _recoveryDraft, ...payload }: CreatePrayerPayload & { id: string }) =>
+      createPrayerRequest(payload),
+    onMutate: async ({ recoveryDraft: _recoveryDraft, ...payload }) => {
       await queryClient.cancelQueries({ queryKey: listKey });
       const previous = queryClient.getQueryData<PrayerRequest[]>(listKey);
       const now = new Date().toISOString();
@@ -140,7 +172,7 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
     },
     onError: (e: unknown, _payload, ctx) => {
       queryClient.setQueryData(listKey, ctx?.previous ?? []);
-      reportError(e);
+      setMutationError(normalizeError(e));
     },
     onSuccess: (created, _payload, ctx) => {
       if (created?.id && ctx?.tempId) {
@@ -163,12 +195,7 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
       updates,
       expectedRevision,
       expectedBaseline,
-    }: {
-      id: string;
-      updates: Partial<PrayerRequest>;
-      expectedRevision?: number | null;
-      expectedBaseline?: Record<string, unknown> | null;
-    }) => updatePrayerRequest(id, updates, expectedRevision ?? null, expectedBaseline ?? null),
+    }: UpdatePrayerMutationVars) => updatePrayerRequest(id, updates, expectedRevision ?? null, expectedBaseline ?? null),
     onMutate: async ({ id, updates }) => {
       await queryClient.cancelQueries({ queryKey: listKey });
       const previous = queryClient.getQueryData<PrayerRequest[]>(listKey);
@@ -183,16 +210,16 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
       return { previous: previous ?? [], previousDetail, id };
     },
     onError: (e: unknown, vars, ctx) => {
-      // The rollback is right either way — the server is the truth. What must NOT
-      // happen is the typed text disappearing with it, so a refusal hands it to
-      // the conflict panel instead of reporting a generic failure.
+      // The outbox owns this exact intent. Its optimistic mirror is accepted work,
+      // not a failed save, and must survive until replay resolves it.
+      if (isOfflineQueuedError(e)) return;
       queryClient.setQueryData(listKey, ctx?.previous ?? []);
       if (ctx?.id) queryClient.setQueryData(detailKey(ctx.id), ctx.previousDetail);
       if (isStaleWriteError(e)) {
         setSaveConflict({ payload: { id: vars.id, updates: vars.updates }, actualRevision: e.actualRevision });
         return;
       }
-      reportError(e);
+      setMutationError(normalizeError(e));
     },
     onSuccess: (updated, vars) => {
       if (updated?.id) replacePrayerInCaches(updated);
@@ -203,7 +230,8 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
       setSaveConflict(null, vars.id);
       setMutationError(null);
     },
-    onSettled: () => {
+    onSettled: (_data, error) => {
+      if (isOfflineQueuedError(error)) return;
       queryClient.invalidateQueries({ queryKey: PRAYER_PREFIX });
     },
   });
@@ -221,7 +249,7 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
     },
     onError: (e: unknown, _id, ctx) => {
       queryClient.setQueryData(listKey, ctx?.previous ?? []);
-      reportError(e);
+      setMutationError(normalizeError(e));
     },
     onSuccess: (_r, id) => {
       queryClient.removeQueries({ queryKey: detailKey(id) });
@@ -254,10 +282,10 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
       setMutationError(null);
       return { previous: previous ?? [], previousDetail, id };
     },
-    onError: (e: unknown, vars, ctx) => {
+    onError: (e: unknown, _vars, ctx) => {
       queryClient.setQueryData(listKey, ctx?.previous ?? []);
       if (ctx?.id) queryClient.setQueryData(detailKey(ctx.id), ctx.previousDetail);
-      reportError(e);
+      setMutationError(normalizeError(e));
     },
     onSuccess: (updated) => {
       if (updated?.id) replacePrayerInCaches(updated);
@@ -308,6 +336,9 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
       return { previous: previous ?? [], previousDetail, id };
     },
     onError: (e: unknown, vars, ctx) => {
+      // `OfflineQueuedError` means the durable outbox accepted the guarded intent.
+      // Do not roll its optimistic mirror back or refetch it away.
+      if (isOfflineQueuedError(e)) return;
       queryClient.setQueryData(listKey, ctx?.previous ?? []);
       if (ctx?.id) queryClient.setQueryData(detailKey(ctx.id), ctx.previousDetail);
       // A REFUSAL keeps the typed answer somewhere that survives the modal, the
@@ -320,8 +351,9 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
           },
           vars.id
         );
+        return;
       }
-      reportError(e);
+      setMutationError(normalizeError(e));
     },
     onSuccess: (updated, vars) => {
       if (updated?.id) replacePrayerInCaches(updated);
@@ -330,7 +362,8 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
       setStatusConflict(null, vars.id);
       setMutationError(null);
     },
-    onSettled: () => {
+    onSettled: (_data, error) => {
+      if (isOfflineQueuedError(error)) return;
       queryClient.invalidateQueries({ queryKey: PRAYER_PREFIX });
     },
   });
@@ -341,14 +374,22 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
     setResolvingConflict(true);
     try {
       const updatedAt = new Date().toISOString();
-      statusMutation.mutate({
+      /**
+       * AWAITED, so the button is actually busy while the overwrite is in flight.
+       * `mutate()` only STARTS the write, and `finally` then cleared the flag on the
+       * same tick — the guard above never saw it, so a second click sent a second
+       * deliberate overwrite, or raced "take theirs" and undid the choice the person
+       * made last. Rejection is expected here (that is what the conflict banner is for)
+       * and stays with the mutation's own handlers.
+       */
+      await statusMutation.mutateAsync({
         id: statusConflict.payload.id,
         status: statusConflict.payload.status,
         answerText: statusConflict.payload.answerText,
         updatedAt,
         expectedRevision: statusConflict.actualRevision,
         ...(statusConflict.payload.status === 'answered' ? { answeredAt: updatedAt } : {}),
-      });
+      }).catch(() => undefined);
     } finally {
       setResolvingConflict(false);
     }
@@ -369,11 +410,13 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
       // again and the button promises what it never performs.
       // NOT cleared here: `mutate` only starts the write. `onSuccess` clears the
       // conflict once it committed; a later refusal or failure keeps the text.
-      updateMutation.mutate({
+      // Awaited for the same reason as the status overwrite above: an unawaited
+      // `mutate` left the button clickable while its own write was still travelling.
+      await updateMutation.mutateAsync({
         id: saveConflict.payload.id,
         updates: saveConflict.payload.updates,
         expectedRevision: saveConflict.actualRevision,
-      });
+      }).catch(() => undefined);
     } finally {
       setResolvingConflict(false);
     }
@@ -402,6 +445,107 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
     }
   };
 
+  /**
+   * Whose prayer this is. The route id ALONE is not proof: opening an old `/prayer/<id>`
+   * URL after signing in as someone else made `activeDocId` match a document belonging
+   * to the previous account, and a refusal restored from the shared cache would then be
+   * read aloud — title, update, or answer — to the wrong person.
+   *
+   * The payload's OWN `userId` is the answer, because it was recorded when the write
+   * was made. The route is not: opening an old `/prayer/<id>` URL after signing in as
+   * someone else made the id "active", and a refusal restored from the shared cache
+   * was then read aloud — title, update or answer — to the wrong person. The loaded
+   * list is accepted as a second proof for older payloads that predate the owner field.
+   */
+  /**
+   * WHICH prayers are known, not how many. A list of the same LENGTH with different
+   * contents changes the ownership answer without changing a count, and the failure
+   * would then never be looked at again.
+   */
+  const prayerOwnershipEpoch = `${effectiveUserId ?? ''}:${prayerRequests
+    .map((prayer) => prayer.id)
+    .join(',')}`;
+
+  const ownsPrayerPayload = (payload: { userId?: string; id?: string } | undefined) => {
+    if (!effectiveUserId || !payload) return false;
+    if (payload.userId) return payload.userId === effectiveUserId;
+    // Legacy payload without an owner: fall back to "is it in MY list", never the URL.
+    return Boolean(payload.id) && prayerRequests.some((prayer) => prayer.id === payload.id);
+  };
+
+  useWriteRecovery<CreatePrayerPayload & { id: string }>(queryClient, {
+    mutationKey: PRAYER_MUTATION_KEYS.create,
+    fallbackTitleKey: 'writeRecovery.prayerCreateFailed',
+    titleParams: (payload) => ({ name: payload.title }),
+    recoveryText: (payload) => payload.recoveryDraft ?? recoveryText([payload.title, payload.description, payload.tags?.join(', ')]),
+    toastId: (payload) => `write-recovery:prayer:create:${payload.id}`,
+    owns: (payload) => Boolean(effectiveUserId) && payload.userId === effectiveUserId,
+    retry: (payload) => createMutation.mutate(payload),
+  });
+
+  useWriteRecovery<UpdatePrayerMutationVars>(queryClient, {
+    mutationKey: PRAYER_MUTATION_KEYS.update,
+    fallbackTitleKey: PRAYER_UPDATE_FAILED_KEY,
+    titleParams: (payload) => ({ name: payload.updates.title }),
+    recoveryText: (payload) => payload.recoveryDraft ?? recoveryText([
+      payload.updates.title,
+      payload.updates.description,
+      payload.updates.tags?.join(', '),
+    ]),
+    toastId: (payload) => `write-recovery:prayer:edit:${payload.id}`,
+    // A stale revision opens the version CHOICE on screen; a recovery message on top of
+    // it made one conflict look like two events with two different resolutions.
+    ignore: (error) => isStaleWriteError(error),
+    ownershipEpoch: prayerOwnershipEpoch,
+    owns: (payload) => ownsPrayerPayload(payload),
+    retry: (payload) => updateMutation.mutate(payload),
+  });
+
+  useWriteRecovery<AddUpdateMutationVars>(queryClient, {
+    mutationKey: PRAYER_MUTATION_KEYS.addUpdate,
+    fallbackTitleKey: PRAYER_UPDATE_FAILED_KEY,
+    recoveryText: (payload) => payload.recoveryDraft ?? payload.text,
+    toastId: (payload) => `write-recovery:prayer:update:${payload.updateId}`,
+    ownershipEpoch: prayerOwnershipEpoch,
+    owns: (payload) => ownsPrayerPayload(payload),
+    retry: (payload) => addUpdateMutation.mutate(payload),
+  });
+
+  useWriteRecovery<StatusMutationVars>(queryClient, {
+    mutationKey: PRAYER_MUTATION_KEYS.status,
+    fallbackTitleKey: PRAYER_UPDATE_FAILED_KEY,
+    recoveryText: (payload) => payload.recoveryDraft ?? payload.answerText,
+    toastId: (payload) => `write-recovery:prayer:status:${payload.id}`,
+    // A stale revision opens the version CHOICE on screen; a recovery message on top of
+    // it made one conflict look like two events with two different resolutions.
+    ignore: (error) => isStaleWriteError(error),
+    ownershipEpoch: prayerOwnershipEpoch,
+    owns: (payload) => ownsPrayerPayload(payload),
+    retry: (payload) => statusMutation.mutate(payload),
+  });
+
+  useWriteRecovery<string>(queryClient, {
+    mutationKey: PRAYER_MUTATION_KEYS.delete,
+    fallbackTitleKey: PRAYER_UPDATE_FAILED_KEY,
+    recoveryText: () => undefined,
+    toastId: (id) => `write-recovery:prayer:delete:${id}`,
+    ownershipEpoch: prayerOwnershipEpoch,
+    // A delete carries only an id and no text to hand back, so ownership reduces to
+    // "is this prayer in MY list" — and never to what the URL says.
+    owns: (id) => Boolean(effectiveUserId) && prayerRequests.some((prayer) => prayer.id === id),
+    retry: (id) => deleteMutation.mutate(id),
+  });
+
+  const hasPendingMutation = <TVars,>(
+    mutationKey: readonly unknown[],
+    matches: (variables: TVars) => boolean
+  ) =>
+    queryClient.getMutationCache().getAll().some((mutation) =>
+      JSON.stringify(mutation.options.mutationKey) === JSON.stringify(mutationKey) &&
+      mutation.state.status === 'pending' &&
+      matches(mutation.state.variables as TVars)
+    );
+
   // Fire-and-forget + optimistic: resolve immediately so UI never hangs awaiting
   // the network; offline the mutation pauses + persists and replays on reconnect.
   /**
@@ -423,14 +567,28 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
   return {
     prayerRequests,
     loading: isLoading,
-    error: (error as Error | null) ?? mutationError,
+    /**
+     * ONLY the query's error. A refused WRITE must not travel through this field: pages
+     * render it as a fatal state, and one refused write then replaces the whole screen
+     * — the editor and the list with it. Fixed in useGroups/useSeries after review
+     * round 10; these two carried the same wiring and are aligned here before anyone
+     * reads them.
+     */
+    error: (error as Error | null) ?? null,
     refreshPrayers,
-    createPrayer: async (payload: CreatePrayerPayload): Promise<string> => {
-      // Returns the client-generated id immediately so callers can navigate to
-      // the new prayer's detail route without awaiting the network round-trip.
+    /**
+     * Returns the new prayer's id ALONGSIDE the submission, the same shape dashboard
+     * sermon creation uses. Without it a caller that needs to navigate had nothing to
+     * navigate to: the dashboard awaited the submission object itself and pushed
+     * `/prayers/[object Object]`, so creating a prayer from the dashboard led nowhere.
+     */
+    createPrayer: (payload: CreatePrayerPayload): WriteSubmission & { prayerId: string } => {
       const id = newClientId();
-      createMutation.mutate({ ...payload, id });
-      return id;
+      const vars = { ...payload, id };
+      return {
+        ...queuedMutation(`prayer:create:${id}`, createMutation.mutateAsync(vars)),
+        prayerId: id,
+      };
     },
     /**
      * AWAITED on purpose. It used to call `mutate` and resolve immediately, so the
@@ -440,14 +598,33 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
      * offline the mutation pauses and this simply does not resolve, which is
      * honest rather than falsely cheerful.
      */
-    updatePrayer: async (
+    updatePrayer: (
       id: string,
       updates: Partial<PrayerRequest>,
       expectedRevision?: number | null,
       /** The edited fields as the form OPENED them — see the guard's baseline. */
-      expectedBaseline?: Record<string, unknown> | null
-    ) => {
-      await updateMutation.mutateAsync({ id, updates, expectedRevision, expectedBaseline });
+      expectedBaseline?: Record<string, unknown> | null,
+      recoveryDraft?: string
+    ): WriteSubmission => {
+      // The owner travels with the write, like create/addUpdate/status: without it a
+      // refusal arriving after this screen closed has no reporter that can tell whose
+      // words these are, and the person is told nothing.
+      const vars = {
+        id,
+        userId: effectiveUserId ?? undefined,
+        updates,
+        expectedRevision,
+        expectedBaseline,
+        recoveryDraft,
+      };
+      if (hasPendingMutation<UpdatePrayerMutationVars>(
+        PRAYER_MUTATION_KEYS.update,
+        (pending) => pending.id === id && JSON.stringify(pending.updates) === JSON.stringify(updates)
+      )) return skippedWrite();
+      const request = updateMutation.mutateAsync(vars);
+      return isOnline
+        ? persistedWrite(request)
+        : queuedMutation(`outbox:prayer:update:${id}`, request);
     },
     /** A refused save waiting for a decision — render the conflict choice. */
     saveConflict,
@@ -457,16 +634,25 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
     statusConflict,
     keepMineOnStatusConflict,
     takeTheirsOnStatusConflict,
-    deletePrayer: async (id: string) => {
-      deleteMutation.mutate(id);
+    deletePrayer: (id: string): WriteSubmission => {
+      if (hasPendingMutation<string>(PRAYER_MUTATION_KEYS.delete, (pending) => pending === id)) {
+        return skippedWrite();
+      }
+      return queuedMutation(`prayer:delete:${id}`, deleteMutation.mutateAsync(id));
     },
-    addUpdate: async (id: string, text: string) => {
-      addUpdateMutation.mutate({
+    addUpdate: (id: string, text: string, recoveryDraft?: string): WriteSubmission => {
+      const vars = {
         id,
+        // WHOSE write this is, carried in the payload itself. Without it a reporter
+        // cannot tell a refusal of THIS person's text from one left in a shared cache by
+        // a previous account — and these are the most valuable words in the app to lose.
+        userId: effectiveUserId ?? undefined,
         updateId: newClientId(),
         text,
         createdAt: new Date().toISOString(),
-      });
+        recoveryDraft,
+      };
+      return queuedMutation(`prayer:update:${vars.updateId}`, addUpdateMutation.mutateAsync(vars));
     },
     /**
      * AWAITED, like updatePrayer. Marking a prayer answered carries human text,
@@ -475,24 +661,38 @@ export function usePrayerRequests(userId?: string | null, activeDocId?: string |
      * and the typed answer — which lived only in that modal — was gone. Awaiting
      * the real outcome lets the caller keep the modal open and the words on screen.
      */
-    setStatus: async (
+    setStatus: (
       id: string,
       status: PrayerStatus,
       answerText?: string,
       expectedRevision?: number | null,
       /** Status/answer as the modal OPENED them — see the guard's baseline. */
-      expectedBaseline?: Record<string, unknown> | null
-    ) => {
+      expectedBaseline?: Record<string, unknown> | null,
+      recoveryDraft?: string
+    ): WriteSubmission => {
       const updatedAt = new Date().toISOString();
-      await statusMutation.mutateAsync({
+      const vars = {
         id,
+        // See addUpdate: the owner travels with the write, so a late refusal can be
+        // reported to the right person and to nobody else.
+        userId: effectiveUserId ?? undefined,
         status,
         answerText,
         updatedAt,
         expectedRevision,
         expectedBaseline,
+        recoveryDraft,
         ...(status === 'answered' ? { answeredAt: updatedAt } : {}),
-      });
+      };
+      if (hasPendingMutation<StatusMutationVars>(
+        PRAYER_MUTATION_KEYS.status,
+        (pending) =>
+          pending.id === id && pending.status === status && pending.answerText === answerText
+      )) return skippedWrite();
+      const request = statusMutation.mutateAsync(vars);
+      return isOnline
+        ? persistedWrite(request)
+        : queuedMutation(`outbox:prayer:status:${id}`, request);
     },
   };
 }

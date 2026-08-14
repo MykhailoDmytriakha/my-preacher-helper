@@ -1,5 +1,7 @@
 import type { PersistedClient } from '@tanstack/react-query-persist-client';
 
+import { isStaleWriteError, isWriteRefusedError, StaleWriteError } from '@/services/conflictSafeUpdate.client';
+
 import { createIDBPersister } from '../queryPersister';
 
 // Mock idb-keyval
@@ -129,6 +131,69 @@ describe('createIDBPersister', () => {
                 'ReactQuery cache restored',
                 { key: 'my-key', queries: 0 }
             );
+        });
+
+        it('round-trips refusal and stale-write classes without changing paused mutations', async () => {
+            let indexedDbValue: PersistedClient | undefined;
+            // idb-keyval uses structured clone. This test must model Error's clone
+            // behaviour, which retains name/message but drops own fields such as code.
+            mockSet.mockImplementation(async (_key, value) => {
+                indexedDbValue = JSON.parse(
+                    JSON.stringify(value, (_field, current) =>
+                        current instanceof Error
+                            ? { name: current.name, message: current.message }
+                            : current
+                    )
+                ) as PersistedClient;
+            });
+            mockGet.mockImplementation(async () => indexedDbValue);
+
+            const refusal = Object.assign(new Error('Forbidden'), {
+                code: 'permission-denied',
+                name: 'FirebaseError',
+                status: 403,
+            });
+            const stale = new StaleWriteError('sermon-core', 4, 7);
+            const pausedMutation = {
+                mutationKey: ['sermon', 'save'],
+                state: {
+                    error: null,
+                    isPaused: true,
+                    status: 'pending',
+                    variables: { sermonId: 's1', title: 'Typed while offline' },
+                },
+            };
+            const client = {
+                clientState: {
+                    queries: [],
+                    mutations: [
+                        { mutationKey: ['write', 'refusal'], state: { error: refusal } },
+                        { mutationKey: ['write', 'stale'], state: { error: stale } },
+                        pausedMutation,
+                    ],
+                },
+                timestamp: Date.now(),
+            } as unknown as PersistedClient;
+            const persister = createIDBPersister();
+
+            await persister.persistClient(client);
+            const restored = await persister.restoreClient();
+            const [restoredRefusal, restoredStale, restoredPaused] = restored!.clientState.mutations;
+
+            expect(isWriteRefusedError(restoredRefusal.state.error)).toBe(true);
+            expect(restoredRefusal.state.error).toMatchObject({
+                message: 'Forbidden',
+                code: 'permission-denied',
+                status: 403,
+                name: 'FirebaseError',
+            });
+            expect(isStaleWriteError(restoredStale.state.error)).toBe(true);
+            expect(restoredStale.state.error).toMatchObject({
+                aggregate: 'sermon-core',
+                expectedRevision: 4,
+                actualRevision: 7,
+            });
+            expect(restoredPaused).toEqual(pausedMutation);
         });
     });
 

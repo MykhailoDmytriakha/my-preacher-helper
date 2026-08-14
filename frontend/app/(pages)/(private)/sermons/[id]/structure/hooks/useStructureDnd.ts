@@ -12,7 +12,10 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { Item, Sermon, SermonPoint, Thought, ThoughtsBySection } from "@/models/models";
+import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
 import { updateStructure } from "@/services/structure.service";
+import { updateThought } from "@/services/thought.service";
+import { awaitAcceptance, queuedMutation, skippedWrite, type WriteSubmission } from "@/utils/recoverableWrite";
 
 
 import {
@@ -32,6 +35,17 @@ const dlog = (...a: unknown[]): void => {
     console.log('[DND]', ...a);
   }
 };
+
+/** A queued outbox intent is accepted; any other write rejection must roll back. */
+const settleDragWrites = (requests: Array<Promise<unknown> | null>): Promise<void> =>
+  Promise.allSettled(requests.filter((request): request is Promise<unknown> => request !== null))
+    .then((results) => {
+      const failed = results.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === 'rejected' && !isOfflineQueuedError(result.reason),
+      );
+      if (failed) throw failed.reason;
+    });
 
 // Find an item by id across all containers → its container, index, and the item itself.
 const locateItem = (
@@ -562,8 +576,7 @@ const persistThoughtChange = (
   finalSermonPointId: string | null | undefined,
   finalSubPointId: string | null | undefined,
   newPos: number,
-  debouncedSaveThought: (sermonId: string, thought: Thought, baseThought: Thought | null) => void
-): boolean => {
+): Promise<Thought> | null => {
   const thought = sermon.thoughts.find((t: Thought) => t.id === movedItem.id);
   if (thought) {
     const updatedThought: Thought = {
@@ -578,10 +591,9 @@ const persistThoughtChange = (
     };
     // The pre-drag thought IS the baseline: a move changes placement, so the write
     // must state placement only and leave the words alone.
-    debouncedSaveThought(sermon.id, updatedThought, thought);
-    return true;
+    return updateThought(sermon.id, updatedThought, thought);
   }
-  return false;
+  return null;
 };
 
 // Helper: Handle structure update
@@ -609,7 +621,8 @@ interface UseStructureDndProps {
   containersRef: React.MutableRefObject<Record<string, Item[]>>;
   sermon: Sermon | null;
   setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>;
-  debouncedSaveThought: (sermonId: string, thought: Thought, baseThought: Thought | null) => void;
+  /** Compatibility for existing callers; DnD writes now submit directly. */
+  debouncedSaveThought?: (sermonId: string, thought: Thought, baseThought: Thought | null) => void;
 }
 
 export const useStructureDnd = ({
@@ -618,7 +631,6 @@ export const useStructureDnd = ({
   containersRef,
   sermon,
   setSermon,
-  debouncedSaveThought,
 }: UseStructureDndProps) => {
   const { t } = useTranslation();
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -781,7 +793,7 @@ export const useStructureDnd = ({
   // state, live previews, and the same-container swap recovery. Splitting it risks the
   // drag-state-reversion class of bugs, so its complexity is accepted here on purpose.
   // eslint-disable-next-line sonarjs/cognitive-complexity
-  const handleDragEnd = useCallback(async (event: DragEndEvent) => {
+  const handleDragEnd = useCallback((event: DragEndEvent): WriteSubmission => {
     const { active, over } = event;
     dlog('dragEnd: over =', over ? String(over.id) : null, '| active =', String(active?.id));
 
@@ -809,7 +821,7 @@ export const useStructureDnd = ({
     // Early return if no valid drop target
     if (!over || !sermon) {
       resetDragState();
-      return;
+      return skippedWrite();
     }
 
     const activeContainer = originalContainer;
@@ -837,12 +849,22 @@ export const useStructureDnd = ({
     ) {
       dlog('  reason: invalid container (active/over not a section)');
       resetDragState();
-      return;
+      return skippedWrite();
     }
 
-    // Store the previous state for potential rollback (original pre-drag state)
     const previousContainers = { ...originalContainers };
     const previousSermon = { ...sermon };
+    let failureReported = false;
+    const rollback = () => {
+      if (failureReported) return;
+      failureReported = true;
+      setContainers(previousContainers);
+      containersRef.current = previousContainers;
+      setSermon(previousSermon);
+      toast.error(t('errors.dragDropUpdateFailed', {
+        defaultValue: 'Failed to update. Changes have been reverted.',
+      }));
+    };
 
     const explicitInsertIndex = resolveExplicitInsertIndex(
       originalContainers[overContainer] || [],
@@ -865,7 +887,7 @@ export const useStructureDnd = ({
     const movedIndex = updatedContainers[overContainer].findIndex(item => item.id === active.id);
     if (movedIndex === -1) {
       resetDragState();
-      return;
+      return skippedWrite();
     }
 
     const movedItem = updatedContainers[overContainer][movedIndex];
@@ -908,17 +930,17 @@ export const useStructureDnd = ({
     updatedContainers = removeIdFromOtherSections(updatedContainers, overContainer, String(active.id));
 
     if (!hasMeaningfulDropChange(previousContainers, updatedContainers, String(active.id))) {
-      // The snapshot-based recompute is a no-op. But the LIVE PREVIEW may already hold a real
+      // The snapshot-based recompute is a no-op, but the live preview may already hold a real
       // reorder: in a 2-card point the preview swaps the cards, they separate, so `over`
       // collapses onto the dragged card itself and the recompute sees nothing. Commit the
       // preview instead of discarding it. (Root proven via live [DND] logs.)
       const preview = containersRef.current;
       const before = locateItem(previousContainers, String(active.id));
       const now = locateItem(preview, String(active.id));
-      // Recovery is ONLY for a same-container reorder whose snapshot recompute came out a
+      // Recovery is only for a same-container reorder whose snapshot recompute came out a
       // no-op. Cross-section / assignment / zone drops keep going through the normal apply
       // path (which runs the full finalization); committing their raw preview metadata here
-      // could persist a stale outlinePointId. (Codex P1.)
+      // could persist a stale outlinePointId.
       const reordered = !!before && !!now && before.container === now.container && before.index !== now.index;
 
       if (reordered && now) {
@@ -930,33 +952,33 @@ export const useStructureDnd = ({
         setIsDragEnding(false);
         dragStartContainersRef.current = null;
 
-        try {
-          await handleStructureUpdate(sermon, buildStructureFromContainers(preview), setSermon);
-          // Persist the moved thought's position ONLY after structure persistence succeeds,
-          // so a failed structure save can't leave a half-applied move. (Codex P2.)
-          const movedThought = sermon.thoughts.find((th: Thought) => th.id === String(active.id));
-          if (movedThought) {
-            debouncedSaveThought(sermon.id, {
+        const structurePersistence = handleStructureUpdate(
+          sermon,
+          buildStructureFromContainers(preview),
+          setSermon
+        );
+        const movedThought = sermon.thoughts.find((thought) => thought.id === String(active.id));
+        const thoughtPersistence = movedThought
+          ? updateThought(sermon.id, {
               ...movedThought,
               position: typeof now.item.position === 'number' ? now.item.position : movedThought.position,
               outlinePointId: now.item.outlinePointId,
               subPointId: now.item.subPointId ?? null,
-            }, movedThought);
-          }
-        } catch (error) {
-          console.error('Error committing preview drag:', error);
-          setContainers(previousContainers);
-          containersRef.current = previousContainers;
-          setSermon(previousSermon);
-          toast.error(t('errors.dragDropUpdateFailed', { defaultValue: 'Failed to update. Changes have been reverted.' }));
-        }
+            }, movedThought)
+          : null;
+        const persistence = settleDragWrites([structurePersistence, thoughtPersistence]);
+        const submission = queuedMutation(
+          `structure:drag:${sermon.id}:${String(active.id)}`,
+          persistence
+        );
+        void awaitAcceptance(submission, rollback).catch(rollback);
         dlog('end: APPLIED (from preview) →', now.container, (preview[now.container] || []).map((i) => i.id));
-        return;
+        return submission;
       }
 
       dlog('  reason: hasMeaningfulDropChange=false (order/assignment identical)');
       resetDragState();
-      return;
+      return skippedWrite();
     }
 
     // Cancel any pending preview RAF before applying final state
@@ -979,83 +1001,70 @@ export const useStructureDnd = ({
     // Build newStructure for API update
     const newStructure = buildStructureFromContainers(updatedContainers);
 
-    // Make API calls in background with rollback on error
-    try {
-      // Update outline point assignment and required section tag if needed
-      let positionPersisted = false;
-      const positionHint = prevPosition !== undefined || nextPosition !== undefined
-        ? { prevPosition, nextPosition }
-        : undefined;
-      if (activeContainer !== overContainer || finalSermonPointId !== undefined || finalSubPointId !== undefined) {
-        const updatedMoved = updatedContainers[overContainer][movedIndex];
-        const updatedItem = {
-          ...buildUpdatedItem(
-            updatedMoved,
-            overContainer,
-            finalSermonPointId,
-            updatedContainers,
-            movedIndex,
-            positionHint
-          ),
-          subPointId: finalSubPointId,
-        };
+    let thoughtPersistence: Promise<Thought> | null = null;
+    const positionHint = prevPosition !== undefined || nextPosition !== undefined
+      ? { prevPosition, nextPosition }
+      : undefined;
+    if (activeContainer !== overContainer || finalSermonPointId !== undefined || finalSubPointId !== undefined) {
+      const updatedMoved = updatedContainers[overContainer][movedIndex];
+      const updatedItem = {
+        ...buildUpdatedItem(
+          updatedMoved,
+          overContainer,
+          finalSermonPointId,
+          updatedContainers,
+          movedIndex,
+          positionHint
+        ),
+        subPointId: finalSubPointId,
+      };
 
-        // Update UI with final item
-        updatedContainers[overContainer][movedIndex] = updatedItem;
-        setContainers(updatedContainers);
-        containersRef.current = updatedContainers;
+      updatedContainers[overContainer][movedIndex] = updatedItem;
+      setContainers(updatedContainers);
+      containersRef.current = updatedContainers;
 
-        // Persist the updated thought
-        positionPersisted = persistThoughtChange(
-          sermon,
-          updatedItem,
-          updatedItem.requiredTags || [],
-          updatedItem.outlinePointId,
-          updatedItem.subPointId,
-          updatedItem.position || 0,
-          debouncedSaveThought
-        );
-      }
+      thoughtPersistence = persistThoughtChange(
+        sermon,
+        updatedItem,
+        updatedItem.requiredTags || [],
+        updatedItem.outlinePointId,
+        updatedItem.subPointId,
+        updatedItem.position || 0,
+      );
+    }
 
-      // If only reordering within the same group (no container or outline change), still persist position
-      if (!positionPersisted) {
-        const currentMoved = updatedContainers[overContainer][movedIndex];
-        const groupKey = (currentMoved.outlinePointId || '__unassigned__');
-        const newPos = calculateGroupPosition(updatedContainers[overContainer], movedIndex, groupKey);
+    // A same-group reorder still needs its new position persisted.
+    if (!thoughtPersistence) {
+      const currentMoved = updatedContainers[overContainer][movedIndex];
+      const groupKey = (currentMoved.outlinePointId || '__unassigned__');
+      const newPos = calculateGroupPosition(updatedContainers[overContainer], movedIndex, groupKey);
 
-        // Update UI and persist
-        updatedContainers[overContainer][movedIndex] = {
-          ...currentMoved,
+      updatedContainers[overContainer][movedIndex] = {
+        ...currentMoved,
+        position: newPos,
+      };
+      setContainers(updatedContainers);
+      containersRef.current = updatedContainers;
+
+      const thought = sermon.thoughts.find((candidate: Thought) => candidate.id === currentMoved.id);
+      if (thought) {
+        const updatedThought: Thought = {
+          ...thought,
           position: newPos,
         };
-        setContainers(updatedContainers);
-        containersRef.current = updatedContainers;
-
-        const thought = sermon.thoughts.find((t: Thought) => t.id === currentMoved.id);
-        if (thought) {
-          const updatedThought: Thought = {
-            ...thought,
-            position: newPos,
-          };
-          // Reordering states position only; the baseline keeps the text out of it.
-          debouncedSaveThought(sermon.id, updatedThought, thought);
-        }
+        // Reordering states position only; the baseline keeps the text out of it.
+        thoughtPersistence = updateThought(sermon.id, updatedThought, thought);
       }
-
-      // Update structure if needed
-      await handleStructureUpdate(sermon, newStructure, setSermon);
-
-    } catch (error) {
-      console.error("Error updating drag and drop:", error);
-
-      // Rollback optimistic updates on error
-      setContainers(previousContainers);
-      containersRef.current = previousContainers;
-      setSermon(previousSermon);
-
-      // Show user-friendly error message
-      toast.error(t('errors.dragDropUpdateFailed', { defaultValue: 'Failed to update. Changes have been reverted.' }));
     }
+
+    const structurePersistence = handleStructureUpdate(sermon, newStructure, setSermon);
+    const persistence = settleDragWrites([structurePersistence, thoughtPersistence]);
+    const submission = queuedMutation(
+      `structure:drag:${sermon.id}:${String(active.id)}`,
+      persistence
+    );
+    void awaitAcceptance(submission, rollback).catch(rollback);
+    return submission;
   }, [
     sermon,
     originalContainer,
@@ -1065,7 +1074,6 @@ export const useStructureDnd = ({
     setActiveId,
     setOriginalContainer,
     setIsDragEnding,
-    debouncedSaveThought,
     setSermon,
     t
   ]);

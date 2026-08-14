@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useUserSettings } from '@/hooks/useUserSettings';
+import { awaitAcceptance } from '@/utils/recoverableWrite';
 
 export default function PrepModeToggle() {
   const { t } = useTranslation();
@@ -17,7 +18,6 @@ export default function PrepModeToggle() {
     let isActive = true;
 
     if (!user?.uid) {
-      console.log('❌ PrepModeToggle: no user.uid, skipping load');
       if (isActive) {
         setEnabled(false);
         setHasLoaded(true);
@@ -33,10 +33,7 @@ export default function PrepModeToggle() {
       };
     }
 
-    console.log('🔍 PrepModeToggle: loading settings for user:', user.uid);
-    console.log('📊 PrepModeToggle: loaded settings:', settings);
     const enabledValue = settings?.enablePrepMode || false;
-    console.log('✅ PrepModeToggle: setting enabled to:', enabledValue);
     if (isActive) {
       setEnabled(enabledValue);
       setHasLoaded(true);
@@ -49,19 +46,27 @@ export default function PrepModeToggle() {
 
   const handleToggle = async () => {
     if (!user?.uid) {
-      console.log('❌ PrepModeToggle: handleToggle - no user.uid');
       return;
     }
 
+    const previous = enabled;
+    // A settings write is owned by the durable queue, so acceptance arrives at once
+    // and a REFUSAL arrives late. Handing the late failure to a no-op would swallow
+    // it: the switch would stay flipped while the server refused the change, and the
+    // person would be told nothing at all.
+    const reportFailure = (error: unknown) => {
+      console.error('❌ PrepModeToggle: Error updating prep mode:', error);
+      // The refusal message comes from the shared recovery toast; here we only
+      // restore what the person sees, so the switch never lies about the server.
+      setEnabled(previous);
+    };
+
     try {
       const newValue = !enabled;
-      console.log('🔄 PrepModeToggle: toggling to:', newValue, 'for user:', user.uid);
-      await updatePrepModeAccess(newValue);
-      console.log('✅ PrepModeToggle: successfully updated setting');
+      await awaitAcceptance(updatePrepModeAccess(newValue), reportFailure);
       setEnabled(newValue);
     } catch (error) {
-      console.error('❌ PrepModeToggle: Error updating prep mode:', error);
-      alert('Failed to update setting');
+      reportFailure(error);
     }
   };
 

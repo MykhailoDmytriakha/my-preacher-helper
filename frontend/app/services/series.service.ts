@@ -9,6 +9,24 @@ import { timeOrZero, compareById } from '@/utils/sortHelpers';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
+const codeByStatus: Record<number, string> = {
+  400: 'invalid-argument',
+  401: 'unauthenticated',
+  403: 'permission-denied',
+  404: 'not-found',
+  413: 'invalid-argument',
+};
+
+async function writeResponseError(response: Response, fallbackMessage: string): Promise<Error> {
+  // A proxy can return HTML for a 413. Parse best-effort so that malformed error
+  // bodies cannot erase the response class which tells recovery not to retry.
+  const body = await response.json().catch(() => null);
+  const data = body && typeof body === 'object' ? (body as { error?: unknown; code?: unknown }) : {};
+  const message = typeof data.error === 'string' ? data.error : fallbackMessage;
+  const code = typeof data.code === 'string' ? data.code : codeByStatus[response.status];
+  return Object.assign(new Error(message), { status: response.status, ...(code ? { code } : {}) });
+}
+
 // Series use the client Firestore SDK for reads, create, and metadata-only
 // updates. Operations that cross into `sermons`/`groups` stay on the server:
 // DELETE and every membership op.
@@ -193,7 +211,7 @@ export const deleteSeries = async (seriesId: string): Promise<void> => {
 
     if (!response.ok) {
       console.error(`deleteSeries: Response not ok for id ${seriesId}, status:`, response.status);
-      throw new Error('Failed to delete series');
+      throw await writeResponseError(response, 'Failed to delete series');
     }
   } catch (error) {
     console.error(`deleteSeries: Error deleting series ${seriesId}:`, error);

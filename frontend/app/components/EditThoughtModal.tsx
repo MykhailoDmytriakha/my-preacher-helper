@@ -10,12 +10,25 @@ import { useScrollLock } from '@/hooks/useScrollLock';
 import { SermonPoint, SermonOutline } from '@/models/models';
 import { useConnection } from '@/providers/ConnectionProvider';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import {
+  awaitAcceptance,
+  type WriteSubmission,
+} from '@/utils/recoverableWrite';
 import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
+import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { FocusRecorderButton } from "@components/FocusRecorderButton";
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
 
 import { RichMarkdownEditor } from './ui/RichMarkdownEditor';
+
 import "@locales/i18n";
+
+export interface EditThoughtDraft {
+  text: string;
+  tags: string[];
+  outlinePointId?: string | null;
+  subPointId?: string | null;
+}
 
 interface EditThoughtModalProps {
   initialText: string;
@@ -25,7 +38,13 @@ interface EditThoughtModalProps {
   allowedTags: { name: string; color: string; translationKey?: string }[];
   sermonOutline?: SermonOutline;
   containerSection?: string;
-  onSave: (updatedText: string, updatedTags: string[], outlinePointId?: string | null, subPointId?: string | null) => void;
+  onSave: (
+    updatedText: string,
+    updatedTags: string[],
+    outlinePointId?: string | null,
+    subPointId?: string | null
+  ) => WriteSubmission;
+  onSubmissionRejected?: (draft: EditThoughtDraft) => void;
   onClose: () => void;
   allowOffline?: boolean;
 }
@@ -324,6 +343,7 @@ export default function EditThoughtModal({
   sermonOutline,
   containerSection,
   onSave,
+  onSubmissionRejected,
   onClose,
   allowOffline = false,
 }: EditThoughtModalProps) {
@@ -338,6 +358,7 @@ export default function EditThoughtModal({
   const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | null | undefined>(initialSermonPointId);
   const [selectedSubPointId, setSelectedSubPointId] = useState<string | null | undefined>(initialSubPointId);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   useScrollLock(true);
 
@@ -356,27 +377,57 @@ export default function EditThoughtModal({
     !areStringArraysEqual(tags, initialTags) ||
     selectedSermonPointId !== initialSermonPointId ||
     (selectedSubPointId ?? null) !== (initialSubPointId ?? null);
+  const getSaveErrorMessage = (error: unknown) =>
+    t(writeFailureTranslationKey(error, 'writeRecovery.thoughtEditFailed'));
 
   const handleAddTag = (tag: string) => {
     if (isReadOnly) return;
     if (!tags.includes(tag)) {
       setTags([...tags, tag]);
+      setSaveError('');
     }
   };
 
   const handleRemoveTag = (index: number) => {
     if (isReadOnly) return;
     setTags(tags.filter((_, i) => i !== index));
+    setSaveError('');
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (isReadOnly) return;
+    const submittedDraft: EditThoughtDraft = {
+      text,
+      tags: [...tags],
+      outlinePointId: selectedSermonPointId,
+      subPointId: selectedSubPointId ?? null,
+    };
+
     setIsSubmitting(true);
+    setSaveError('');
     try {
-      onSave(text, tags, selectedSermonPointId, selectedSubPointId ?? null);
+      const submission = onSave(text, tags, selectedSermonPointId, selectedSubPointId ?? null);
+
+      await awaitAcceptance(submission, (error) => {
+        /**
+         * ONE REFUSAL, ONE VOICE. A late rejection lands when this editor is already
+         * closed, so its own message would be invisible — which is why a toast was
+         * added here. But the owner of a closed editor ALSO reports (it restores the
+         * draft, or shows the recovery message when the page itself is gone), and the
+         * person then heard the same refusal twice in two different wordings.
+         *
+         * So this reporter is scoped to what it can actually show: the inline error
+         * while the editor is on screen. Anything after that belongs to
+         * `onSubmissionRejected`, whose owner knows where the person now is.
+         */
+        setSaveError(getSaveErrorMessage(error));
+        onSubmissionRejected?.(submittedDraft);
+      });
+
       onClose();
     } catch (error) {
       console.error("Error saving thought:", error);
+      setSaveError(getSaveErrorMessage(error));
     } finally {
       setIsSubmitting(false);
     }
@@ -457,6 +508,9 @@ export default function EditThoughtModal({
       {/* Mobile: full-screen scroll sheet */}
       <div
         ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-thought-modal-title"
         onClick={(e) => e.stopPropagation()}
         className={
           "absolute inset-0 overflow-y-auto bg-white dark:bg-gray-800 " +
@@ -473,7 +527,7 @@ export default function EditThoughtModal({
         >
           {/* Header */}
           <div ref={headerRef} className="flex justify-between items-center mb-4">
-            <h2 className="text-xl sm:text-2xl font-bold">{t('editThought.editTitle')}</h2>
+            <h2 id="edit-thought-modal-title" className="text-xl sm:text-2xl font-bold">{t('editThought.editTitle')}</h2>
           </div>
 
           {/* Body: on desktop scroll inside; on mobile the outer div scrolls */}
@@ -486,6 +540,7 @@ export default function EditThoughtModal({
                   onSelect={(outlinePointId, subPointId) => {
                     setSelectedSermonPointId(outlinePointId);
                     setSelectedSubPointId(subPointId);
+                    setSaveError('');
                   }}
                   filteredSermonPoints={filteredSermonPoints}
                   t={t}
@@ -539,7 +594,10 @@ export default function EditThoughtModal({
               ) : (
                 <RichMarkdownEditor
                   value={text}
-                  onChange={setText}
+                  onChange={(value) => {
+                    setText(value);
+                    setSaveError('');
+                  }}
                   placeholder={t('manualThought.placeholder')}
                 />
               )}
@@ -547,6 +605,11 @@ export default function EditThoughtModal({
           </div>
 
           {/* Footer */}
+          {saveError && (
+            <p role="alert" className="mt-4 text-sm text-red-600 dark:text-red-400">
+              {saveError}
+            </p>
+          )}
           <div ref={footerRef} className="flex justify-end gap-3 mt-4 pb-6 sm:pb-0 flex-shrink-0">
             <button
               type="button"

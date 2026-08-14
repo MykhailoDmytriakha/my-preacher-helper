@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown } from 'lucide-react';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
@@ -10,6 +10,8 @@ import { useSeries } from '@/hooks/useSeries';
 import { DashboardCreateSermonInput } from '@/models/dashboardOptimistic';
 import { Sermon, Church } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
+import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
+import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { PlusIcon } from "@components/Icons";
 import DatePickerField from '@components/ui/DatePickerField';
 import { auth } from '@services/firebaseAuth.service';
@@ -25,9 +27,12 @@ interface AddSermonModalProps {
   showTriggerButton?: boolean;
   allowPlannedDate?: boolean;
   closeOnSuccess?: boolean;
-  // May resolve to the created sermon's id (used by callers that navigate); the
-  // modal itself ignores the resolved value.
-  onCreateRequest?: (input: DashboardCreateSermonInput) => Promise<string | undefined | void>;
+  onCreateRequest?: (input: DashboardCreateSermonInput) => WriteSubmission;
+  /**
+   * Raised while this modal is on screen. It covers the page, so whoever renders the
+   * sermon rows can stop drawing verdicts nobody can see — the open form says them.
+   */
+  onOpenChange?: (isOpen: boolean) => void;
 }
 
 const NEW_SERMON_KEY = 'addSermon.newSermon';
@@ -41,7 +46,8 @@ export default function AddSermonModal({
   showTriggerButton = true,
   allowPlannedDate = false,
   closeOnSuccess = true,
-  onCreateRequest
+  onCreateRequest,
+  onOpenChange
 }: AddSermonModalProps) {
   // showTriggerButton is used to conditionally render the trigger button
   const { t } = useTranslation();
@@ -55,6 +61,13 @@ export default function AddSermonModal({
   const [selectedSeriesId, setSelectedSeriesId] = useState<string>(preSelectedSeriesId || '');
   const [plannedDate, setPlannedDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // What went wrong with the LAST attempt, shown inside the form the person is still
+  // looking at. Previously these failures went only to the console.
+  const [submitError, setSubmitError] = useState('');
+
+  useEffect(() => {
+    onOpenChange?.(open);
+  }, [open, onOpenChange]);
 
   const getUnspecifiedChurch = (): Church => ({
     id: 'church-unspecified',
@@ -74,14 +87,21 @@ export default function AddSermonModal({
     if (isSubmitting) return;
 
     if (onCreateRequest) {
+      setSubmitError('');
       setIsSubmitting(true);
       try {
-        await onCreateRequest({
+        await awaitAcceptance(onCreateRequest({
           title,
           verse,
           seriesId: selectedSeriesId || undefined,
           plannedDate: allowPlannedDate ? plannedDate || undefined : undefined,
           unspecifiedChurchName: getUnspecifiedChurch().name,
+        }), (error) => {
+          // A refusal that lands AFTER acceptance: if this form is still on screen it is
+          // still the only thing the person can see, so it says so here too. Once it has
+          // closed, the row badge is the reporter and this setState is a no-op.
+          console.error('Sermon create refused after acceptance:', error);
+          setSubmitError(t(writeFailureTranslationKey(error, 'errors.failedToSaveSermon')));
         });
         if (closeOnSuccess) {
           resetForm();
@@ -89,7 +109,15 @@ export default function AddSermonModal({
           handleClose();
         }
       } catch (error) {
+        /**
+         * THE FORM SPEAKS WHILE IT IS OPEN, and only while it is open. This modal covers
+         * the whole screen (`fixed inset-0`), so the row badge that owns this refusal is
+         * behind it and cannot be read: staying silent here meant the person pressed
+         * Save, kept their text, and was told nothing at all. The badge takes over the
+         * moment this closes — one message visible at any time, never two.
+         */
         console.error('Error creating sermon (optimistic request):', error);
+        setSubmitError(t(writeFailureTranslationKey(error, 'errors.failedToSaveSermon')));
         setIsSubmitting(false);
       }
       return;
@@ -97,11 +125,14 @@ export default function AddSermonModal({
 
     const user = auth.currentUser;
     if (!user) {
+      // Silence here meant the person pressed Save, nothing happened, and they pressed
+      // it again. Say it, and keep the form so the typed sermon is not lost.
       console.error("User is not authenticated");
+      setSubmitError(t('writeRecovery.refused'));
+      setIsSubmitting(false);
       return;
     }
     const currentDate = new Date().toISOString();
-    console.log('Creating sermon with date:', currentDate);
     const newSermon: Sermon = {
       id: '',
       title,
@@ -115,7 +146,6 @@ export default function AddSermonModal({
     setIsSubmitting(true);
     try {
       const createdSermon = await createSermon(newSermon as Omit<Sermon, 'id'>);
-      console.log('Created sermon returned from server:', createdSermon);
       let sermonForCallback = createdSermon;
 
       if (allowPlannedDate && plannedDate) {
@@ -130,8 +160,8 @@ export default function AddSermonModal({
             ...createdSermon,
             preachDates: [...(createdSermon.preachDates || []), createdPlannedDate]
           };
-        } catch (plannedDateError) {
-          console.error('Error creating planned preach date for new sermon:', plannedDateError);
+        } catch {
+          // A planned date is optional, so its failure does not undo the sermon creation.
         }
       }
 
@@ -148,7 +178,10 @@ export default function AddSermonModal({
         handleClose();
       }
     } catch (error) {
+      // The form stays open with everything in it, and now it also SAYS why: logging to
+      // a console the person cannot see is the same as saying nothing.
       console.error('Error creating sermon:', error);
+      setSubmitError(t(writeFailureTranslationKey(error, 'errors.failedToSaveSermon')));
       setIsSubmitting(false);
     }
   };
@@ -165,6 +198,14 @@ export default function AddSermonModal({
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-[600px] max-h-[85vh] my-8 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <h2 className="text-2xl font-bold mb-6">{t(NEW_SERMON_KEY)}</h2>
         <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
+          {submitError && (
+            <div
+              role="alert"
+              className="mb-4 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200"
+            >
+              {submitError}
+            </div>
+          )}
           <div className="mb-6">
             <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
               {t('addSermon.titleLabel')}

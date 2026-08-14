@@ -5,6 +5,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useSeries } from '@/hooks/useSeries';
 import { Series } from '@/models/models';
+import { toast } from 'sonner';
 import {
   getAllSeries,
   createSeries,
@@ -29,6 +30,10 @@ jest.mock('@/hooks/useResolvedUid', () => ({
 
 jest.mock('@/hooks/useOnlineStatus', () => ({
   useOnlineStatus: jest.fn(),
+}));
+
+jest.mock('sonner', () => ({
+  toast: { error: jest.fn() },
 }));
 
 const mockGetAllSeries = getAllSeries as jest.MockedFunction<typeof getAllSeries>;
@@ -173,7 +178,7 @@ describe('useSeries', () => {
       expect(result.current.error).toBeNull();
     });
 
-    it('should surface create error via hook error state (no reject)', async () => {
+    it('keeps a failed create out of the page-fatal error state', async () => {
       const error = new Error('Create failed');
       mockCreateSeries.mockRejectedValue(error);
 
@@ -198,9 +203,71 @@ describe('useSeries', () => {
         });
       });
 
+      // A refused WRITE must NOT land in `error`: that field is the query's, and the page
+      // renders it as a fatal state — replacing the whole screen for something
+      // recoverable that the recovery descriptor already reports.
       await waitFor(() => {
-        expect(result.current.error).toEqual(error);
+        expect(result.current.error).toBeNull();
       });
+    });
+
+    it('keeps a terminally failed series create recoverable with its exact text and retry action', async () => {
+      mockCreateSeries.mockRejectedValueOnce(new Error('Permission denied'));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.createNewSeries({
+          userId: 'user-1',
+          title: 'Romans at the retreat',
+          theme: 'Romans at the retreat',
+          description: 'The exact series plan dictated between services.',
+          bookOrTopic: 'Romans',
+          sermonIds: [],
+          status: 'draft',
+          createdAt: '2026-08-11T00:00:00.000Z',
+          updatedAt: '2026-08-11T00:00:00.000Z',
+        });
+      });
+
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({
+            duration: Infinity,
+            description: expect.stringContaining('The exact series plan dictated between services.'),
+            action: expect.objectContaining({ onClick: expect.any(Function) }),
+          })
+        )
+      );
+
+      const firstPayload = mockCreateSeries.mock.calls[0][0];
+      const recoveryAction = (toast.error as jest.Mock).mock.calls[0][1].action;
+      act(() => recoveryAction.onClick());
+      await waitFor(() => expect(mockCreateSeries).toHaveBeenCalledTimes(2));
+      expect(mockCreateSeries.mock.calls[1][0]).toEqual(firstPayload);
+    });
+
+    it('does not report a pending series create as a failure', async () => {
+      mockCreateSeries.mockReturnValueOnce(new Promise(() => undefined));
+      const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.createNewSeries({
+          userId: 'user-1',
+          title: 'Queued series',
+          theme: 'Queued series',
+          bookOrTopic: 'Acts',
+          sermonIds: [],
+          status: 'draft',
+          createdAt: '2026-08-11T00:00:00.000Z',
+          updatedAt: '2026-08-11T00:00:00.000Z',
+        });
+        await Promise.resolve();
+      });
+
+      expect(toast.error).not.toHaveBeenCalled();
     });
   });
 
@@ -255,7 +322,7 @@ describe('useSeries', () => {
       });
     });
 
-    it('should surface update error via hook error state (no reject)', async () => {
+    it('keeps a failed update out of the page-fatal error state', async () => {
       const error = new Error('Update failed');
       mockUpdateSeries.mockRejectedValue(error);
 
@@ -269,22 +336,27 @@ describe('useSeries', () => {
         await result.current.updateExistingSeries('series-1', { title: 'Updated' });
       });
 
+      // A refused WRITE must NOT land in `error`: that field is the query's, and the page
+      // renders it as a fatal state — replacing the whole screen for something
+      // recoverable that the recovery descriptor already reports.
       await waitFor(() => {
-        expect(result.current.error).toEqual(error);
+        expect(result.current.error).toBeNull();
       });
     });
 
-    it('should NOT throw on writes when offline — buffers them (Stage 2)', async () => {
-      // Offline no longer short-circuits: the write is optimistic + fire-and-forget,
-      // so the call resolves and React Query pauses/persists the underlying mutation.
+    it('reports queued — the resumable mutation is what owns this update', async () => {
+      // Both series update and tag add go through mutations registered in
+      // mutationDefaults, so the durable queue owns them and `queued` is the honest
+      // answer even when the transport happens to answer fast. A quick success does
+      // not change WHO took the write.
       mockUseOnlineStatus.mockReturnValue(false);
       mockUpdateSeries.mockResolvedValue({ ...mockSeries[0], title: 'x' });
       const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
 
       await act(async () => {
         await expect(
-          result.current.updateExistingSeries('series-1', { title: 'x' })
-        ).resolves.toBeUndefined();
+          result.current.updateExistingSeries('series-1', { title: 'x' }).acceptance
+        ).resolves.toMatchObject({ kind: 'queued' });
       });
     });
   });
@@ -301,7 +373,7 @@ describe('useSeries', () => {
       });
 
       await act(async () => {
-        await result.current.deleteExistingSeries('series-1');
+        await expect(result.current.deleteExistingSeries('series-1').acceptance).resolves.toEqual({ kind: 'persisted' });
       });
 
       expect(mockDeleteSeries).toHaveBeenCalledWith('series-1');
@@ -311,8 +383,8 @@ describe('useSeries', () => {
       expect(result.current.error).toBeNull();
     });
 
-    it('should surface delete error via hook error state (no reject)', async () => {
-      const error = new Error('Delete failed');
+    it('keeps a failed delete out of the page-fatal error state', async () => {
+      const error = Object.assign(new Error('Delete failed'), { code: 'permission-denied' });
       mockDeleteSeries.mockRejectedValue(error);
 
       const { result } = renderHook(() => useSeries('user-1'), { wrapper: createWrapper() });
@@ -322,11 +394,16 @@ describe('useSeries', () => {
       });
 
       await act(async () => {
-        await result.current.deleteExistingSeries('series-1');
+        await expect(result.current.deleteExistingSeries('series-1').acceptance).rejects.toMatchObject({
+          code: 'permission-denied',
+        });
       });
 
+      // A refused WRITE must NOT land in `error`: that field is the query's, and the page
+      // renders it as a fatal state — replacing the whole screen for something
+      // recoverable that the recovery descriptor already reports.
       await waitFor(() => {
-        expect(result.current.error).toEqual(error);
+        expect(result.current.error).toBeNull();
       });
     });
   });
@@ -363,10 +440,11 @@ describe('useSeries', () => {
 
       mockGetAllSeries.mockRejectedValueOnce(error); // refresh error
       await act(async () => {
+        // The wrapper REJECTS, which is what stops the caller announcing "Updated" over
+        // data that never moved. That rejection is the contract here; the hook's
+        // `error` field belongs to the query's own loading state.
         await expect(result.current.refreshSeries()).rejects.toThrow('Refresh failed');
       });
-
-      expect(result.current.error).toEqual(error);
     });
   });
 });

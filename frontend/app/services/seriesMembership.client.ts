@@ -363,7 +363,9 @@ export async function commitSeriesBatch(transforms: SeriesTransform[]): Promise<
             (transform) => transform.op === 'add'
           );
           if (addsHere) {
-            throw new Error(`Series ${seriesIds[index]} not found`);
+            throw Object.assign(new Error(`Series ${seriesIds[index]} not found`), {
+              code: 'not-found',
+            });
           }
           return;
         }

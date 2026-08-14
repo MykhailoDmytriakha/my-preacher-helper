@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import GroupsPage from '@/(pages)/(private)/groups/page';
 import { useGroups } from '@/hooks/useGroups';
 import { hasGroupsAccess } from '@/services/userSettings.service';
+import { persistedWrite, queuedWrite } from '@/utils/recoverableWrite';
 
 jest.mock('@/hooks/useGroups', () => ({
   useGroups: jest.fn(),
@@ -98,8 +99,14 @@ describe('GroupsPage', () => {
     jest.clearAllMocks();
     (window as any).confirm = jest.fn(() => true);
     mockHasGroupsAccess.mockResolvedValue(true);
-    createNewGroup.mockResolvedValue(undefined);
-    deleteExistingGroup.mockResolvedValue(undefined);
+    // The write contract: createNewGroup returns a WriteSubmission whose acceptance
+    // says WHY closing is safe. A group create is owned by the durable queue, so the
+    // honest outcome is `queued` — and `queued` may never be announced as saved.
+    createNewGroup.mockImplementation(() => queuedWrite('group:create:test', Promise.resolve()));
+    // A WriteSubmission, not a bare promise: `awaitAcceptance` reads `.acceptance`, so a
+    // resolved `undefined` threw a TypeError and the test silently exercised the FAILURE
+    // branch — passing while proving nothing about a successful delete.
+    deleteExistingGroup.mockReturnValue(persistedWrite(Promise.resolve(undefined)));
     refreshGroups.mockResolvedValue(undefined);
     mockUseGroups.mockReturnValue({
       groups: [
@@ -169,10 +176,23 @@ describe('GroupsPage', () => {
     fireEvent.click(screen.getByText('submit-create'));
     await waitFor(() => expect(createNewGroup).toHaveBeenCalledTimes(1));
 
-    createNewGroup.mockRejectedValueOnce(new Error('boom'));
+    // A REFUSED create: acceptance rejects, so the page must not close the modal and
+    // must not announce anything. Under the old shape this was a rejected bare
+    // promise, which the page could not tell from a write that had merely started.
+    createNewGroup.mockImplementationOnce(() =>
+      persistedWrite(
+        Promise.reject(
+          Object.assign(new Error('Missing or insufficient permissions.'), {
+            code: 'permission-denied',
+            name: 'FirebaseError',
+          })
+        )
+      )
+    );
     fireEvent.click(screen.getByRole('button', { name: 'New group' }));
     fireEvent.click(screen.getByText('submit-create'));
     await waitFor(() => expect(createNewGroup).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId('create-group-modal')).toBeInTheDocument();
   });
 
   it('deletes group only after confirmation', async () => {

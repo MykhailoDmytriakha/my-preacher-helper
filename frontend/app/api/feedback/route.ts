@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 
 import { getAuthenticatedIdentity } from '@/api/auth/getAuthenticatedIdentity.server';
+import { resolveFirestoreWriteRefusal } from '@/api/errors/firestoreWriteRefusal.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
 import {
   consumeSlidingWindowRateLimit,
@@ -400,6 +401,14 @@ export async function POST(request: NextRequest) {
         errorMessage: error.message,
         errorStack: error.stack
       });
+    }
+
+    const refusal = resolveFirestoreWriteRefusal(error);
+    if (refusal) {
+      return NextResponse.json(
+        { error: 'Feedback write was refused', code: refusal.code },
+        { status: refusal.status }
+      );
     }
 
     // Return error response

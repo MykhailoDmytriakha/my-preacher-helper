@@ -1,10 +1,12 @@
 "use client";
 
-import { List, MessageSquareText, CheckCircle2, Calendar, AlertCircle, Loader2, RefreshCw } from "lucide-react";
+import { List, MessageSquareText, CheckCircle2, Calendar, AlertCircle, RefreshCw } from "lucide-react";
 import Link from "next/link";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import OptionMenu from "@/components/dashboard/OptionMenu";
+import { SermonSyncBadge } from "@/components/dashboard/SermonSyncBadge";
 import { DashboardOptimisticActions, DashboardSermonSyncState } from "@/models/dashboardOptimistic";
 import { Sermon, Series } from "@/models/models";
 import { getExportContent } from "@/utils/exportContent";
@@ -84,84 +86,6 @@ interface SermonCardFooterProps {
   t: TFunction;
 }
 
-interface SermonSyncBadgeProps {
-  sermonId: string;
-  syncState?: DashboardSermonSyncState;
-  optimisticActions?: DashboardOptimisticActions;
-  t: TFunction;
-}
-
-function SermonSyncBadge({ sermonId, syncState, optimisticActions, t }: SermonSyncBadgeProps) {
-  if (!syncState) return null;
-
-  const operationLabel =
-    syncState.operation === 'create'
-      ? t('addSermon.newSermon', { defaultValue: 'New sermon' })
-      : syncState.operation === 'delete'
-        ? t('optionMenu.delete', { defaultValue: 'Delete' })
-        : syncState.operation === 'preach-status'
-          ? t('optionMenu.markAsPreached', { defaultValue: 'Preached status' })
-          : t('editSermon.editSermon', { defaultValue: 'Edit sermon' });
-
-  if (syncState.status === 'pending') {
-    return (
-      <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/25 dark:text-blue-300 px-2 py-0.5 text-xs font-medium">
-        <Loader2 className="w-3 h-3 animate-spin" />
-        <span className="uppercase tracking-wide text-[10px]">{t('buttons.saving', { defaultValue: 'Saving' })}</span>
-        <span className={TEXT_PRIMARY_CLASSES}>{operationLabel}</span>
-      </div>
-    );
-  }
-
-  /**
-   * A REFUSAL IS NOT AN ERROR TO REPEAT. The record changed on another device, so the
-   * two buttons are a choice — send mine anyway, or keep theirs — and the words have to
-   * say that. Worded as "Sync failed / Retry" the person presses Retry, gets refused
-   * again, and eventually presses Dismiss, which throws their own text away.
-   */
-  const isConflict = Boolean(syncState.conflict);
-
-  return (
-    <div className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${
-      isConflict
-        ? 'bg-amber-50 text-amber-800 dark:bg-amber-900/25 dark:text-amber-200'
-        : 'bg-red-50 text-red-700 dark:bg-red-900/25 dark:text-red-300'
-    }`}>
-      <AlertCircle className="w-3 h-3" />
-      <span className="uppercase tracking-wide text-[10px]">
-        {isConflict ? t('freshness.title') : t('errors.generic', { defaultValue: 'Error' })}
-      </span>
-      <span className="max-w-[160px] truncate">
-        {isConflict
-          ? t('freshness.staleSaveToast')
-          : syncState.message || t('errors.savingError', { defaultValue: 'Sync failed' })}
-      </span>
-      <button
-        type="button"
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          void optimisticActions?.retrySync(sermonId);
-        }}
-        className="ml-1 rounded px-1.5 py-0.5 text-[10px] font-semibold bg-red-100 hover:bg-red-200 dark:bg-red-800 dark:hover:bg-red-700"
-      >
-        {isConflict ? t('freshness.conflictKeepMine') : t('buttons.retry', { defaultValue: 'Retry' })}
-      </button>
-      <button
-        type="button"
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          optimisticActions?.dismissSyncError(sermonId);
-        }}
-        className="rounded px-1.5 py-0.5 text-[10px] font-semibold bg-white/70 hover:bg-white dark:bg-gray-800/70 dark:hover:bg-gray-700"
-      >
-        {isConflict ? t('freshness.conflictTakeTheirs') : t('buttons.dismiss', { defaultValue: 'Dismiss' })}
-      </button>
-    </div>
-  );
-}
-
 function SermonCardHeader({
   sermon,
   formattedCreatedDate,
@@ -174,6 +98,7 @@ function SermonCardHeader({
   optimisticActions,
   t,
 }: SermonCardHeaderProps) {
+  const [editorOpen, setEditorOpen] = useState(false);
   const hasPreachedDate = Boolean(formattedPreachedDate);
   const hasPlannedDate = !hasPreachedDate && Boolean(formattedPlannedDate);
   const hasStatusDate = hasPreachedDate || hasPlannedDate;
@@ -209,9 +134,14 @@ function SermonCardHeader({
             </span>
           </div>
         )}
+        {/*
+          Silent while one of this card's editors is open: the editor covers the card and
+          says the verdict itself, so rendering the badge underneath would be the same
+          refusal told twice — once where it cannot even be read.
+        */}
         <SermonSyncBadge
           sermonId={sermon.id}
-          syncState={syncState}
+          syncState={editorOpen ? undefined : syncState}
           optimisticActions={optimisticActions}
           t={t}
         />
@@ -224,6 +154,7 @@ function SermonCardHeader({
           onUpdate={onUpdate}
           optimisticActions={optimisticActions}
           syncState={syncState}
+          onEditorOpenChange={setEditorOpen}
         />
       </div>
     </div>

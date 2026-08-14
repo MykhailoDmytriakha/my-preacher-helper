@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import '@testing-library/jest-dom';
 
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
+import { persistedWrite } from '@/utils/recoverableWrite';
 
 const mockUseAuth = jest.fn();
 const mockUseDashboardSermons = jest.fn();
@@ -246,9 +247,14 @@ describe('Dashboard page', () => {
     const staleDate = dateKeyFromToday(-10);
 
     mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } });
-    // Dashboard now creates via the optimistic buffered path, whose createSermon
-    // resolves to the new client-generated id string (used to navigate).
-    mockCreateSermon.mockResolvedValue('created-sermon-id');
+    // The write contract: createSermon returns a WriteSubmission carrying the new
+    // client id. Navigation to the detail page is allowed ONLY for a `persisted`
+    // acceptance — a queued create has no server document yet, and pushing there
+    // used to land the person on a page for a sermon that was never created.
+    mockCreateSermon.mockImplementation(() => ({
+      ...persistedWrite(Promise.resolve()),
+      sermonId: 'created-sermon-id',
+    }));
     mockUseDashboardSermons.mockReturnValue({
       sermons: [
         {
@@ -482,8 +488,13 @@ describe('Dashboard page', () => {
   });
 
   it('keeps the prayer create modal visible while redirecting to the created prayer', async () => {
-    // createPrayer now returns the client-generated id string (for navigation).
-    mockCreatePrayer.mockResolvedValue('created-prayer-id');
+    // The hook returns a submission PLUS the client-generated id. Mocking a bare string
+    // is how the broken adapter stayed green: production pushed `/prayers/[object Object]`
+    // while this test navigated to a happy id that only existed inside the mock.
+    mockCreatePrayer.mockReturnValue({
+      ...persistedWrite(Promise.resolve(undefined)),
+      prayerId: 'created-prayer-id',
+    });
 
     render(<DashboardPage />);
 
