@@ -1,4 +1,4 @@
-import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
@@ -11,7 +11,15 @@ import { TestProviders } from '../../../test-utils/test-providers';
 jest.mock('@locales/i18n', () => ({}));
 
 // Mocks
-jest.mock('next/link', () => ({ __esModule: true, default: ({ children }: any) => <a>{children}</a> }));
+// Props are forwarded on purpose: the previous mock dropped href, aria-label and
+// title, so every link rendered nameless and any assertion about the navigation's
+// accessible names would have been testing the mock rather than the component.
+jest.mock('next/link', () => ({
+  __esModule: true,
+  default: ({ children, href, prefetch: _prefetch, ...rest }: any) => (
+    <a href={typeof href === 'string' ? href : '#'} {...rest}>{children}</a>
+  ),
+}));
 
 const replaceMock = jest.fn();
 const pushMock = jest.fn();
@@ -444,11 +452,39 @@ describe('Navigation button visibility', () => {
     });
   });
 
-  it('toggles dropdown based on route', async () => {
+  /**
+   * Sermon pages get the SAME navigation, shrunk — not a different one.
+   *
+   * They used to hide it behind a "Navigation" dropdown, so moving from a sermon
+   * to prayers took two clicks and one guess about where the sections went, while
+   * every other page kept them one click away. The mode toggle needs the middle of
+   * the bar, not the whole of it: dropping the labels frees enough room for the
+   * icons to stay out in the open.
+   *
+   * jsdom applies no CSS, so "labels are hidden" is asserted the only honest way
+   * here — the text node is not rendered at all in compact mode, while the
+   * accessible name still carries it.
+   */
+  it('shrinks the nav on sermon pages instead of hiding it in a dropdown', async () => {
+    const expectCompactNav = () => {
+      // Scoped to the primary nav: the bar also renders a mobile row.
+      const nav = within(screen.getByRole('list', { name: 'Основная навигация' }));
+      expect(screen.queryByText('Основная навигация')).not.toBeInTheDocument();
+      expect(nav.getByRole('link', { name: 'navigation.sermons' })).toBeInTheDocument();
+      expect(nav.queryByText('navigation.sermons')).not.toBeInTheDocument();
+      // The wordmark is gone too: it linked to the dashboard, and so does the
+      // first icon of this nav — one destination, one control. Counted within the
+      // desktop row only: the mobile row carries its own logo and jsdom, having no
+      // CSS, renders both.
+      const desktopRow = within(screen.getByRole('list', { name: 'Основная навигация' }).parentElement!);
+      expect(screen.queryByText('navigation.appName')).not.toBeInTheDocument();
+      expect(desktopRow.getAllByRole('link', { name: 'Dashboard' })).toHaveLength(1);
+    };
+
     await runScenarios(
       [
         {
-          name: 'structure page shows dropdown',
+          name: 'structure page shows the compact nav',
           run: () => {
             pathnameMock = '/structure';
             paramsMap = { sermonId: 'test-id' };
@@ -457,11 +493,11 @@ describe('Navigation button visibility', () => {
                 <DashboardNav />
               </TestProviders>
             );
-            expect(screen.getByText('Основная навигация')).toBeInTheDocument();
+            expectCompactNav();
           }
         },
         {
-          name: 'sermon main page shows dropdown',
+          name: 'sermon main page shows the compact nav',
           run: () => {
             pathnameMock = '/sermons/test-id';
             render(
@@ -469,11 +505,11 @@ describe('Navigation button visibility', () => {
                 <DashboardNav />
               </TestProviders>
             );
-            expect(screen.getByText('Основная навигация')).toBeInTheDocument();
+            expectCompactNav();
           }
         },
         {
-          name: 'sermon plan page shows dropdown',
+          name: 'sermon plan page shows the compact nav',
           run: () => {
             pathnameMock = '/sermons/test-id/plan';
             render(
@@ -481,11 +517,11 @@ describe('Navigation button visibility', () => {
                 <DashboardNav />
               </TestProviders>
             );
-            expect(screen.getByText('Основная навигация')).toBeInTheDocument();
+            expectCompactNav();
           }
         },
         {
-          name: 'dashboard hides dropdown',
+          name: 'dashboard keeps the labelled nav',
           run: () => {
             pathnameMock = '/dashboard';
             render(
@@ -493,11 +529,13 @@ describe('Navigation button visibility', () => {
                 <DashboardNav />
               </TestProviders>
             );
+            const labelled = within(screen.getByRole('list', { name: 'Основная навигация' }));
             expect(screen.queryByText('Основная навигация')).not.toBeInTheDocument();
+            expect(labelled.getByText('navigation.sermons')).toBeInTheDocument();
           }
         },
         {
-          name: 'series page hides dropdown',
+          name: 'series page keeps the labelled nav',
           run: () => {
             pathnameMock = '/series';
             render(
@@ -505,7 +543,9 @@ describe('Navigation button visibility', () => {
                 <DashboardNav />
               </TestProviders>
             );
+            const labelled = within(screen.getByRole('list', { name: 'Основная навигация' }));
             expect(screen.queryByText('Основная навигация')).not.toBeInTheDocument();
+            expect(labelled.getByText('navigation.sermons')).toBeInTheDocument();
           }
         }
       ],
@@ -563,17 +603,20 @@ describe('DashboardNav useEffects', () => {
     expect(screen.getByRole('button', { name: /Open menu/i })).toBeInTheDocument();
   });
 
-  it('closes nav dropdown when clicking outside', () => {
+  it('keeps every section reachable in one click on a sermon page', () => {
+    // Replaces the old "close the nav dropdown on outside click" test: there is no
+    // dropdown any more, so nothing to open, close or click away from. What has to
+    // hold instead is that the sections are all there, as links, without labels.
     pathnameMock = '/sermons/abc';
     render(
       <TestProviders>
         <DashboardNav />
       </TestProviders>
     );
-    
-    const navMenuBtn = screen.getByRole('button', { name: /Navigation menu/i });
-    fireEvent.click(navMenuBtn);
-    
-    fireEvent.click(document.body);
+
+    expect(screen.queryByRole('button', { name: /Navigation menu/i })).not.toBeInTheDocument();
+    const nav = within(screen.getByRole('list', { name: 'Основная навигация' }));
+    expect(nav.getAllByRole('link').length).toBeGreaterThan(1);
+    expect(nav.getByRole('link', { name: 'navigation.sermons' })).toBeInTheDocument();
   });
 });

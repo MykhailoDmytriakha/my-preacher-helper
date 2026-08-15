@@ -54,7 +54,6 @@ export default function DashboardNav() {
   const { hasAccess: showWizardButton, loading: prepModeLoading } = usePrepModeAccess();
   debugLog('🔧 DashboardNav: showWizardButton:', showWizardButton, 'prepModeLoading:', prepModeLoading);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [navDropdownOpen, setNavDropdownOpen] = useState(false);
   const [showGroupsNav, setShowGroupsNav] = useState(true);
   const pathname = useShellPathname();
   const router = useRouter();
@@ -108,10 +107,9 @@ export default function DashboardNav() {
     };
   }, []);
 
-  // Function to close mobile menu and nav dropdown when path changes
+  // Function to close mobile menu when path changes
   useEffect(() => {
     setMobileMenuOpen(false);
-    setNavDropdownOpen(false);
   }, [pathname]);
 
   // Mode toggle visibility and handlers (sermon detail only)
@@ -186,129 +184,89 @@ export default function DashboardNav() {
     />
   ) : null;
 
-  // Handle clicks outside of nav dropdown
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (navDropdownOpen && !(e.target as Element).closest('.nav-dropdown-container')) {
-        setNavDropdownOpen(false);
-      }
-    };
-
-    if (navDropdownOpen) {
-      document.addEventListener('click', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('click', handleClickOutside);
-    };
-  }, [navDropdownOpen]);
-
   const renderNavigation = (usageGrace: UsageGraceViewModel | null) => (
     <nav className="sticky top-0 z-40 border-b border-gray-200/80 bg-white/95 shadow-sm backdrop-blur dark:border-gray-700/70 dark:bg-gray-950/95">
       <div className="relative w-full px-4 sm:px-6 lg:px-8">
         {/* Desktop Layout */}
         <div className="hidden lg:flex h-16 items-center gap-4 relative">
-          {/* Left: Logo */}
-          <Link
-            href="/dashboard"
-            prefetch={isOnline}
-            className="group flex shrink-0 items-center gap-2 rounded-full pr-2 text-base font-semibold text-gray-950 transition hover:text-blue-700 dark:text-gray-100 dark:hover:text-blue-300"
-            aria-label={t('navigation.dashboard') as string}
+          {/*
+            Left: Logo — and NOT on sermon pages.
+            It is a link to the dashboard, which the very first icon of the nav
+            already is, so on the one screen where width is scarce it costs room
+            and gives a second way to do the same thing. The wordmark says what
+            the app is; a person editing a sermon inside it already knows.
+          */}
+          {!isSermonRelated && (
+            <Link
+              href="/dashboard"
+              prefetch={isOnline}
+              className="group flex shrink-0 items-center gap-2 rounded-full pr-2 text-base font-semibold text-gray-950 transition hover:text-blue-700 dark:text-gray-100 dark:hover:text-blue-300"
+              aria-label={t('navigation.dashboard') as string}
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-sm shadow-blue-950/10 transition group-hover:shadow-blue-500/20 dark:from-blue-500 dark:to-indigo-500">
+                <BookOpenIcon className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <span className="hidden whitespace-nowrap xl:inline">
+                {t('navigation.appName', { defaultValue: 'My Preacher Helper' })}
+              </span>
+            </Link>
+          )}
+
+          {/*
+            ONE NAVIGATION, TWO SIZES — never a different navigation.
+            Sermon pages used to hide the sections behind a "Navigation" dropdown,
+            so leaving a sermon cost two clicks and a guess, while every other page
+            kept them one click away. What is actually scarce there is width: the
+            mode toggle sits in the middle of the bar. So the labels go and the
+            icons stay out in the open — the accessible name still carries the
+            label, and `title` gives it back on hover.
+          */}
+          <ul
+            className="flex min-w-0 items-center gap-1 overflow-hidden rounded-full border border-gray-200/70 bg-gray-50/85 p-1 shadow-inner shadow-white/60 dark:border-gray-700/60 dark:bg-gray-900/70 dark:shadow-black/20"
+            aria-label={t('navigation.primary', { defaultValue: 'Primary navigation' }) ?? 'Primary navigation'}
           >
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-sm shadow-blue-950/10 transition group-hover:shadow-blue-500/20 dark:from-blue-500 dark:to-indigo-500">
-              <BookOpenIcon className="h-5 w-5" aria-hidden="true" />
-            </span>
-            <span className="hidden whitespace-nowrap xl:inline">
-              {t('navigation.appName', { defaultValue: 'My Preacher Helper' })}
-            </span>
-          </Link>
-
-          {/* Navigation */}
-          {isSermonRelated ? (
-            // Navigation dropdown for sermon pages
-            <div className="nav-dropdown-container relative">
-              <button
-                onClick={() => setNavDropdownOpen(!navDropdownOpen)}
-                className="inline-flex h-10 items-center gap-2 rounded-full border border-gray-200/80 bg-gray-50/90 px-3 text-sm font-medium text-gray-700 shadow-sm transition hover:border-blue-200 hover:bg-white hover:text-gray-950 dark:border-gray-700/70 dark:bg-gray-900/80 dark:text-gray-200 dark:hover:border-blue-500/40 dark:hover:bg-gray-900 dark:hover:text-white"
-                aria-label="Navigation menu"
-              >
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-                <span suppressHydrationWarning={true}>{t('navigation.primary', { defaultValue: 'Navigation' })}</span>
-                <svg className={`h-4 w-4 transition-transform ${navDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-
-              {navDropdownOpen && (
-                <div className="absolute left-0 top-12 z-50 w-60 rounded-xl border border-gray-200 bg-white p-1.5 shadow-xl shadow-gray-900/10 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/30">
-                  {workspaceNavItems.map((item) => {
-                    const active = isNavItemActive(pathname, item.matchers);
-                    const Icon = item.icon;
-                    const themeClasses = getNavItemTheme(item.theme);
-                    return (
-                      <Link
-                        key={item.key}
-                        href={item.href}
-                        prefetch={isOnline}
-                        aria-current={active ? 'page' : undefined}
-                        className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${active
-                          ? themeClasses.menu
-                          : `text-gray-700 dark:text-gray-300 ${themeClasses.hover}`
-                          }`}
-                        onClick={() => setNavDropdownOpen(false)}
-                      >
-                        <Icon className="h-4 w-4" aria-hidden="true" />
-                        <span suppressHydrationWarning={true}>{item.label}</span>
+            {workspaceNavItems.map((item) => {
+              const active = isNavItemActive(pathname, item.matchers);
+              const Icon = item.icon;
+              const themeClasses = getNavItemTheme(item.theme);
+              return (
+                <li key={item.key} className="shrink-0">
+                  <Link
+                    href={item.href}
+                    prefetch={isOnline}
+                    aria-current={active ? 'page' : undefined}
+                    aria-label={item.label}
+                    title={isSermonRelated ? item.label : undefined}
+                    className={`inline-flex items-center justify-center whitespace-nowrap rounded-full border text-sm font-medium transition ${isSermonRelated
+                      // Square targets sized so the capsule measures exactly as tall
+                      // as the controls cluster on the right (50px measured): two
+                      // objects on one line read as one bar, 4px apart read as a
+                      // mistake.
+                      ? 'h-10 w-10'
+                      : 'h-8 max-w-[9.75rem] gap-1.5 px-2.5'
+                      } ${active
+                        ? themeClasses.pill
+                        : `border-transparent text-gray-600 dark:text-gray-300 ${themeClasses.hover}`
+                      }`}
+                  >
+                    <Icon className={`shrink-0 ${isSermonRelated ? 'h-5 w-5' : 'h-4 w-4'}`} aria-hidden="true" />
+                    {!isSermonRelated && (
+                      <>
+                        <span className="hidden min-w-0 truncate xl:inline" suppressHydrationWarning={true}>
+                          {item.label}
+                        </span>
                         {item.isBeta && (
-                          <span className="ml-1 text-[10px] uppercase font-bold px-1 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded leading-tight">
+                          <span className="hidden rounded bg-blue-100 px-1 text-[10px] font-bold uppercase leading-tight text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 2xl:inline">
                             Beta
                           </span>
                         )}
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ) : (
-            // Regular navigation for other pages
-            <ul
-              className="flex min-w-0 items-center gap-1 overflow-hidden rounded-full border border-gray-200/70 bg-gray-50/85 p-1 shadow-inner shadow-white/60 dark:border-gray-700/60 dark:bg-gray-900/70 dark:shadow-black/20"
-              aria-label={t('navigation.primary', { defaultValue: 'Primary navigation' }) ?? 'Primary navigation'}
-            >
-              {workspaceNavItems.map((item) => {
-                const active = isNavItemActive(pathname, item.matchers);
-                const Icon = item.icon;
-                const themeClasses = getNavItemTheme(item.theme);
-                return (
-                  <li key={item.key} className="shrink-0">
-                    <Link
-                      href={item.href}
-                      prefetch={isOnline}
-                      aria-current={active ? 'page' : undefined}
-                      aria-label={item.label}
-                      className={`inline-flex h-8 max-w-[9.75rem] items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 text-sm font-medium transition ${active
-                        ? themeClasses.pill
-                        : `border-transparent text-gray-600 dark:text-gray-300 ${themeClasses.hover}`
-                        }`}
-                    >
-                      <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-                      <span className="hidden min-w-0 truncate xl:inline" suppressHydrationWarning={true}>
-                        {item.label}
-                      </span>
-                      {item.isBeta && (
-                        <span className="hidden rounded bg-blue-100 px-1 text-[10px] font-bold uppercase leading-tight text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 2xl:inline">
-                          Beta
-                        </span>
-                      )}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+                      </>
+                    )}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
 
           {/* Spacer to push controls right */}
           <div className="flex-1" />

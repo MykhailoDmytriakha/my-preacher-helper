@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
@@ -510,7 +510,9 @@ describe('DashboardNav Component', () => {
     });
   });
 
-  test('renders sermon dropdown and closes on outside click', async () => {
+  test('shows the sections on a sermon page without a dropdown to open', async () => {
+    // The sermon pages used to hide navigation behind a "Navigation menu" button;
+    // they now carry the same nav, shrunk to icons, so nothing has to be opened.
     mockUsePathname.mockReturnValue('/sermons/123');
     render(
       <TestProviders>
@@ -518,20 +520,11 @@ describe('DashboardNav Component', () => {
       </TestProviders>
     );
 
-    // Should show navigation dropdown button
-    const navButton = screen.getByLabelText('Navigation menu');
-    expect(navButton).toBeInTheDocument();
-
-    // Click to open dropdown
-    fireEvent.click(navButton);
-    expect(screen.getByText('Dashboard')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Navigation menu')).not.toBeInTheDocument();
+    // Scoped to the primary nav — the bar also renders a mobile row and a logo link.
+    const primaryNav = within(screen.getAllByRole('list')[0]);
+    expect(primaryNav.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
-
-    // Click outside to close (simulated by manual click event if needed, but let's try direct)
-    fireEvent.click(document.body);
-    await waitFor(() => {
-      expect(screen.queryByText('Dashboard')).not.toBeInTheDocument();
-    });
   });
 
   test('switches between modes in DashboardNav', async () => {
