@@ -94,8 +94,11 @@ export function useDocumentFreshness<T>({
    * would cry wolf on a cold start, and a person who learns to ignore the pill
    * will also ignore the one that matters.
    *
-   * Set on ANY listener event, including a cache-only snapshot and a terminal
-   * error: those are genuine "I cannot tell", and they must still be shown.
+   * Set when the SERVER speaks — a server-backed snapshot or a terminal listener
+   * error, which is a genuine "I cannot tell" and must be shown. NOT set by the
+   * cache-only emission Firestore serves from IndexedDB before every first server
+   * answer: that one is the silence of a page that has only just opened, and
+   * treating it as an answer made the amber pill flash on every reload.
    */
   const [everAnswered, setEverAnswered] = useState(false);
   /**
@@ -207,9 +210,6 @@ export function useDocumentFreshness<T>({
 
         // Our own write on the way out — not news from anywhere.
         if (snapshot.metadata.hasPendingWrites) return;
-        // The listener has spoken — from here on "unknown" is real news, not the
-        // silence of a page that has only just opened.
-        setEverAnswered(true);
         // A cached emission proves nothing about the server yet.
         if (snapshot.metadata.fromCache) {
           // A cached emission proves nothing about the server RIGHT NOW, even if a
@@ -220,9 +220,30 @@ export function useDocumentFreshness<T>({
           // it arrived with: a screen that later happens to match that old value would
           // otherwise be told "fresh" while we in fact know nothing.
           lastRemoteSerialisedRef.current = null;
+          /**
+           * BUT IT IS NOT AN ANSWER EITHER — AND THAT DISTINCTION IS THE WHOLE POINT.
+           *
+           * With local persistence Firestore ALWAYS serves its own IndexedDB copy
+           * first and the server snapshot a moment later, so this branch runs on
+           * every single page load. Counting it as "the listener has spoken" lifted
+           * the cold-start suppression below and put the amber pill on screen for the
+           * ~100–200 ms until the server answered — an unexplained warning flashing
+           * on every reload, on every screen using this hook. That is precisely the
+           * cry-wolf the suppression exists to prevent.
+           *
+           * Once the server HAS proved something in this session, a fall back to
+           * cache-only is real news — the connection went away — and it is reported
+           * immediately. Before that, silence is still silence: the 15 s grace timer
+           * and `navigator.onLine` remain the two honest ways out, so a genuinely
+           * unreachable server is still announced, just not in the first blink.
+           */
+          if (lastServerProofRef.current > 0) setEverAnswered(true);
           setState('unknown');
           return;
         }
+        // The server has spoken — from here on "unknown" is real news, not the
+        // silence of a page that has only just opened.
+        setEverAnswered(true);
 
         if (!snapshot.exists()) {
           // Nothing on the server to match against any more.

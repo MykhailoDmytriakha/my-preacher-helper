@@ -104,12 +104,54 @@ describe('useDocumentFreshness', () => {
     expect(result.current.remote).toBeNull();
   });
 
-  it('treats a cache-only snapshot as unknown, not as proof of freshness', () => {
+  /**
+   * BUG-20260814-freshness-pill-flashes-on-every-reload.
+   *
+   * With local persistence Firestore ALWAYS emits its own IndexedDB copy first and
+   * the server snapshot ~100 ms later, so this is what EVERY page load looks like.
+   * Counting the cached emission as "the listener answered" lifted the cold-start
+   * suppression and flashed the amber "freshness unknown" pill on every reload —
+   * measured on production at 1414 ms → 1595 ms, and locally 2343 ms → 2429 ms.
+   *
+   * Internally the state is still `unknown`; what must not happen is REPORTING it
+   * while the server has never yet spoken in this session.
+   */
+  it('stays SILENT on the cache-first emission every reload begins with', () => {
     const { result } = render({ title: 'what we know' });
 
     act(() => emit!(server({ title: 'anything' }, { fromCache: true })));
 
-    expect(result.current.state).toBe('unknown');
+    expect(result.current.state).toBe('fresh');
+  });
+
+  it('reports the server answer that follows the cached one, as usual', () => {
+    // Suppressing the cached emission must not swallow what comes right after it.
+    const { result } = render({ title: 'what we know' });
+
+    act(() => emit!(server({ title: 'what we know' }, { fromCache: true })));
+    act(() => emit!(server({ title: 'edited on the phone' })));
+
+    expect(result.current.state).toBe('stale');
+    expect(result.current.remote).toEqual({ title: 'edited on the phone' });
+  });
+
+  it('still admits "unknown" when the cached emission is ALL we ever get', () => {
+    // The suppression is a blink, not a blindfold: if the server never answers, the
+    // grace timer must still turn the silence into the honest warning.
+    jest.useFakeTimers();
+    try {
+      const { result } = render({ title: 'what we know' });
+      act(() => emit!(server({ title: 'anything' }, { fromCache: true })));
+      expect(result.current.state).toBe('fresh');
+
+      act(() => {
+        jest.advanceTimersByTime(20_000);
+      });
+
+      expect(result.current.state).toBe('unknown');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('flags a document deleted on another device', () => {
