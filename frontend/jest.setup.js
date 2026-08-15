@@ -328,6 +328,14 @@ jest.mock('react-i18next', () => ({
           'export.downloadTxt': 'Download as TXT',
           'export.prepareError': 'Error preparing export',
           'export.soonAvailable': 'Coming soon',
+          'textScale.title': 'Text size',
+          'textScale.hint': 'Pick the size that reads comfortably',
+          'textScale.decrease': 'Decrease text size',
+          'textScale.increase': 'Increase text size',
+          'textScale.reset': 'Reset to 100%',
+          'textScale.close': 'Close text size',
+          'textScale.open': 'Text size',
+          'textScale.slider': 'Text size slider',
         };
         return translations[key] || key;
       },

@@ -2873,5 +2873,15 @@
   "connection": {
     "offlineBanner": "Working offline. Your changes are saved on this device and will be sent when the connection returns.",
     "sessionExpired": "Your session has expired. Sign in again to keep saving — your text stays on screen until then."
+  },
+  "textScale": {
+    "title": "Text size",
+    "hint": "Pick the size that reads comfortably",
+    "decrease": "Decrease text size",
+    "increase": "Increase text size",
+    "reset": "Reset to 100%",
+    "close": "Close text size",
+    "open": "Text size",
+    "slider": "Text size slider"
   }
 }

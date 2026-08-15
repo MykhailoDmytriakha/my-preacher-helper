@@ -15,12 +15,17 @@ interface TextScaleContextType {
 const TextScaleContext = createContext<TextScaleContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'text-scale-preference';
-const MIN_SCALE = 1;
+/**
+ * The floor is BELOW the default on purpose: 100% is where the app starts, not
+ * the smallest a person may want. Someone who reads fine wants more text on
+ * screen at once, and before this the minus button was dead at 100%.
+ */
+const MIN_SCALE = 0.8;
 const MAX_SCALE = 2;
 const STEP = 0.1;
 const DEFAULT_SCALE = 1;
 
-// Generate available scales: 1, 1.1, 1.2, ... 2 (10% increments)
+// Generate available scales: 0.8, 0.9, 1, ... 2 (10% increments)
 // Iterate by integer step count so float drift never drops the final value (2).
 const generateAvailableScales = (): number[] => {
   const scales: number[] = [];

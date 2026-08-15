@@ -20,7 +20,7 @@ describe('FloatingTextScaleControls', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByLabelText('Text size controls')).toBeInTheDocument();
+      expect(screen.getByLabelText('Text size')).toBeInTheDocument();
     });
   });
 
@@ -33,16 +33,28 @@ describe('FloatingTextScaleControls', () => {
       </TextScaleProvider>
     );
 
-    const fabButton = await screen.findByLabelText('Text size controls');
+    const fabButton = await screen.findByLabelText('Text size');
     await user.click(fabButton);
 
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText('Text Size')).toBeInTheDocument();
+    // The island carries controls only — no heading and no hint to read mid-service.
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveAccessibleName('Text size');
     expect(screen.getByLabelText('Decrease text size')).toBeInTheDocument();
     expect(screen.getByLabelText('Increase text size')).toBeInTheDocument();
+    expect(screen.getByRole('slider')).toBeInTheDocument();
+    expect(screen.queryByText('Pick the size that reads comfortably')).not.toBeInTheDocument();
   });
 
-  it('closes modal when close button is clicked', async () => {
+  /**
+   * The button does not sit next to the island — it BECOMES it. While the island
+   * is open the button is gone from sight, from the tab order and from assistive
+   * technology; the way back is a click outside or Escape.
+   *
+   * Asserted on attributes, not on classes: jsdom applies no CSS, so a test that
+   * "clicks the hidden button" would pass against a button that is still there
+   * for real users. There is no close button to hunt for either.
+   */
+  it('hands the corner over to the island: the button leaves tab order and the a11y tree', async () => {
     const user = userEvent.setup();
 
     render(
@@ -51,17 +63,15 @@ describe('FloatingTextScaleControls', () => {
       </TextScaleProvider>
     );
 
-    const fabButton = await screen.findByLabelText('Text size controls');
+    const fabButton = await screen.findByLabelText('Text size');
+    expect(fabButton).toHaveAttribute('tabindex', '0');
+
     await user.click(fabButton);
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-
-    const closeButton = screen.getByLabelText('Close text size controls');
-    await user.click(closeButton);
-
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    });
+    expect(fabButton).toHaveAttribute('aria-hidden', 'true');
+    expect(fabButton).toHaveAttribute('tabindex', '-1');
+    expect(screen.queryByLabelText('Close text size')).not.toBeInTheDocument();
   });
 
   it('closes modal when clicking outside', async () => {
@@ -73,7 +83,7 @@ describe('FloatingTextScaleControls', () => {
       </TextScaleProvider>
     );
 
-    const fabButton = await screen.findByLabelText('Text size controls');
+    const fabButton = await screen.findByLabelText('Text size');
     await user.click(fabButton);
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -95,7 +105,7 @@ describe('FloatingTextScaleControls', () => {
       </TextScaleProvider>
     );
 
-    const fabButton = await screen.findByLabelText('Text size controls');
+    const fabButton = await screen.findByLabelText('Text size');
     await user.click(fabButton);
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -116,7 +126,7 @@ describe('FloatingTextScaleControls', () => {
       </TextScaleProvider>
     );
 
-    const fabButton = await screen.findByLabelText('Text size controls');
+    const fabButton = await screen.findByLabelText('Text size');
 
     // Open modal
     await user.click(fabButton);
@@ -136,11 +146,11 @@ describe('FloatingTextScaleControls', () => {
       </TextScaleProvider>
     );
 
-    const fabButton = await screen.findByLabelText('Text size controls');
+    const fabButton = await screen.findByLabelText('Text size');
 
     expect(fabButton).toHaveAttribute('aria-expanded', 'false');
     expect(fabButton).toHaveAttribute('aria-haspopup', 'dialog');
-    expect(fabButton).toHaveAttribute('title', 'Adjust text size (A/A+)');
+    expect(fabButton).toHaveAttribute('title', 'Text size');
   });
 
   it('updates aria-expanded when modal opens', async () => {
@@ -152,7 +162,7 @@ describe('FloatingTextScaleControls', () => {
       </TextScaleProvider>
     );
 
-    const fabButton = await screen.findByLabelText('Text size controls');
+    const fabButton = await screen.findByLabelText('Text size');
 
     expect(fabButton).toHaveAttribute('aria-expanded', 'false');
 
@@ -172,7 +182,7 @@ describe('FloatingTextScaleControls', () => {
       </TextScaleProvider>
     );
 
-    const fabButton = await screen.findByLabelText('Text size controls');
+    const fabButton = await screen.findByLabelText('Text size');
     await user.click(fabButton);
 
     // Check for backdrop
@@ -187,7 +197,7 @@ describe('FloatingTextScaleControls', () => {
       </TextScaleProvider>
     );
 
-    const container = await screen.findByLabelText('Text size controls');
+    const container = await screen.findByLabelText('Text size');
     expect(container.parentElement).toHaveClass('custom-class');
   });
 });

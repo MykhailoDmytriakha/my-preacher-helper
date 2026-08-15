@@ -140,7 +140,7 @@ describe('TextScaleProvider', () => {
     expect(screen.getByTestId('scale')).toHaveTextContent('200%');
 
     fireEvent.click(screen.getByTestId('set-low'));
-    expect(screen.getByTestId('scale')).toHaveTextContent('100%');
+    expect(screen.getByTestId('scale')).toHaveTextContent('80%');
 
     fireEvent.click(screen.getByTestId('set-valid'));
     expect(screen.getByTestId('scale')).toHaveTextContent('150%');
@@ -206,7 +206,10 @@ describe('TextScaleProvider', () => {
       </TextScaleProvider>
     );
 
-    expect(screen.getByTestId('scales')).toHaveTextContent('1,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2');
+    // The floor is 80%: reading small is a real preference, not a broken state.
+    expect(screen.getByTestId('scales')).toHaveTextContent(
+      '0.8,0.9,1,1.1,1.2,1.3,1.4,1.5,1.6,1.7,1.8,1.9,2'
+    );
   });
 
   it('throws error when useTextScale is used outside provider', () => {

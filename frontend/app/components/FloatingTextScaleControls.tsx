@@ -2,6 +2,7 @@
 
 import { Type } from 'lucide-react';
 import React, { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { TextScaleControls } from './TextScaleControls';
 
@@ -12,6 +13,7 @@ interface FloatingTextScaleControlsProps {
 const FloatingTextScaleControls: React.FC<FloatingTextScaleControlsProps> = ({
   className = ''
 }) => {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -68,11 +70,33 @@ const FloatingTextScaleControls: React.FC<FloatingTextScaleControlsProps> = ({
 
   return (
     <>
-      {/* Floating Action Button */}
-      <div className={`fixed bottom-6 right-6 z-50 ${className}`}>
+      {/* Modal Overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/20 z-40 animate-in fade-in duration-200"
+          aria-hidden="true"
+        />
+      )}
+
+      {/*
+        THE BUTTON *BECOMES* THE ISLAND — they share one anchor in the corner.
+        A panel floating above the button needs a gap, and any gap is a number
+        somebody has to justify. Unfolding in place removes the question: press
+        "T" and it opens into the capsule from its own right edge, press outside
+        and it folds back. One object, two states.
+
+        The island is a capsule, not a window: during a service there is nothing
+        here to read, only something to press — so no heading, no hint line, no
+        close button. Its width is fixed by construction (every child is
+        `shrink-0` with a set size, and the percentage is tabular so 80% and 200%
+        measure the same). See BUG-20260814-text-scale-panel-reflows.
+      */}
+      <div className={`fixed bottom-6 right-4 sm:right-6 z-50 flex justify-end ${className}`}>
         <button
           ref={buttonRef}
           onClick={toggleModal}
+          aria-hidden={isOpen}
+          tabIndex={isOpen ? -1 : 0}
           className={`
             w-14 h-14 rounded-full bg-violet-500/10 hover:bg-violet-600/15
             dark:bg-violet-400/8 dark:hover:bg-violet-500/12
@@ -82,66 +106,34 @@ const FloatingTextScaleControls: React.FC<FloatingTextScaleControlsProps> = ({
             focus:outline-none focus:ring-4 focus:ring-violet-300 dark:focus:ring-violet-800
             flex items-center justify-center group backdrop-blur-sm
             ${isVisible ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0'}
+            ${isOpen ? 'pointer-events-none scale-75 opacity-0' : ''}
           `}
-          aria-label="Text size controls"
+          aria-label={t('textScale.open')}
           aria-expanded={isOpen}
           aria-haspopup="dialog"
-          title="Adjust text size (A/A+)"
+          title={t('textScale.open')}
         >
           <Type className="w-6 h-6 transition-transform duration-200 group-hover:scale-110" />
         </button>
-      </div>
 
-      {/* Modal Overlay */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/20 z-40 animate-in fade-in duration-200"
-          aria-hidden="true"
-        />
-      )}
-
-      {/* Modal Content */}
-      {isOpen && (
-        <div
-          ref={modalRef}
-          className={`
-            fixed bottom-20 right-6 z-50 bg-white dark:bg-gray-800
-            border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl
-            p-4 min-w-48 animate-in slide-in-from-bottom-2 fade-in duration-200
-            ${className}
-          `}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="text-scale-title"
-        >
-          <div className="flex flex-col space-y-3">
-            <div className="flex items-center justify-between">
-              <h3
-                id="text-scale-title"
-                className="text-sm font-medium text-gray-900 dark:text-gray-100"
-              >
-                Text Size
-              </h3>
-              <button
-                onClick={toggleModal}
-                className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300
-                         transition-colors duration-200 rounded-full p-1 hover:bg-gray-100 dark:hover:bg-gray-700"
-                aria-label="Close text size controls"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
+        {isOpen && (
+          <div
+            ref={modalRef}
+            className="
+              absolute bottom-0 right-0 origin-bottom-right
+              rounded-full border border-gray-200/80 dark:border-white/10
+              bg-white/85 dark:bg-gray-900/80 backdrop-blur-xl
+              shadow-xl shadow-black/10 dark:shadow-black/50
+              p-1.5 animate-in zoom-in-90 fade-in duration-200 ease-out
+            "
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('textScale.title')}
+          >
             <TextScaleControls showPercentage={true} />
-
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-              Adjust text size for better readability
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </>
   );
 };
