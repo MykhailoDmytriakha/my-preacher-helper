@@ -7,6 +7,7 @@ import {
 } from '@/services/scratch.service';
 import { applyScratchToOutlineViaClient } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
+import { reorderWithinGroup } from '@/utils/scratchOrder';
 
 import type { ScratchNote, Sermon, SermonOutline } from '@/models/models';
 import type { MutableRefObject } from 'react';
@@ -285,6 +286,23 @@ export function useScratchNotes({
     [enqueueScratchMutation]
   );
 
+  /**
+   * Which of the notes sharing a row comes first.
+   *
+   * There is no per-row position to write: a row shows the notes filed there in
+   * the order of this one flat list, so the order lives here. `reorderWithinGroup`
+   * rearranges only the slots the group occupies, which is what keeps a note filed
+   * on another point from drifting when two of these swap.
+   */
+  const reorderScratchNotes = useCallback(
+    (groupIds: string[], movedId: string, targetIndex: number) => {
+      enqueueScratchMutation('update', (currentScratch) =>
+        reorderWithinGroup(currentScratch, groupIds, movedId, targetIndex)
+      );
+    },
+    [enqueueScratchMutation]
+  );
+
   const deleteScratchNote = useCallback(
     (noteId: string) => {
       enqueueScratchMutation('delete', (currentScratch) =>
@@ -350,6 +368,7 @@ export function useScratchNotes({
     updateScratchNote,
     deleteScratchNote,
     setScratchNoteSection,
+    reorderScratchNotes,
     applyOutlineAndConsume,
     isWritePending,
     scratchRevision: scratchVersionRef.current,

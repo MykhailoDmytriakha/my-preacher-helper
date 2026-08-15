@@ -7,11 +7,14 @@ import ScratchPanel from '@/components/sermon/ScratchPanel';
 import type { ComposedPlanOutline } from '@/config/schemas/zod';
 import type { ScratchNote, SermonOutline } from '@/models/models';
 
-let mockScratchOnDragEnd: ((result: {
-  draggableId: string;
-  type: string;
-  source: { droppableId: string; index: number };
-  destination: { droppableId: string; index: number } | null;
+/**
+ * The board runs on dnd-kit now, so a simulated drop is `{active, over}` — the
+ * only two things the handler reads. Ids carry their own meaning: `note:<id>`
+ * for what is dragged, and the drop target's own id for where it landed.
+ */
+let mockScratchOnDragEnd: ((event: {
+  active: { id: string };
+  over: { id: string } | null;
 }) => void) | undefined;
 let scratchRecordingComplete: ((audioBlob: Blob) => void | Promise<void>) | undefined;
 let scratchRetryVoice: (() => void) | undefined;
@@ -41,11 +44,11 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-jest.mock('@hello-pangea/dnd', () => {
+jest.mock('@dnd-kit/core', () => {
   const React = jest.requireActual('react') as typeof import('react');
 
   return {
-    DragDropContext: ({
+    DndContext: ({
       onDragEnd,
       children,
     }: {
@@ -55,56 +58,30 @@ jest.mock('@hello-pangea/dnd', () => {
       mockScratchOnDragEnd = onDragEnd;
       return <div data-testid="scratch-dnd-context">{children}</div>;
     },
-    Droppable: ({
-      droppableId,
-      children,
-    }: {
-      droppableId: string;
-      children: (
-        provided: {
-          innerRef: jest.Mock;
-          droppableProps: Record<string, string>;
-          placeholder: React.ReactNode;
-        },
-        snapshot: { isDraggingOver: boolean }
-      ) => React.ReactNode;
-    }) => (
-      <div data-testid={`droppable-${droppableId}`}>
-        {children(
-          {
-            innerRef: jest.fn(),
-            droppableProps: { 'data-droppable-id': droppableId },
-            placeholder: <div data-testid={`placeholder-${droppableId}`} />,
-          },
-          { isDraggingOver: false }
-        )}
-      </div>
-    ),
-    Draggable: ({
-      draggableId,
-      children,
-    }: {
-      draggableId: string;
-      children: (
-        provided: {
-          innerRef: jest.Mock;
-          draggableProps: { style: Record<string, never> };
-          dragHandleProps: Record<string, string>;
-        },
-        snapshot: { isDragging: boolean }
-      ) => React.ReactNode;
-    }) => (
-      <div data-testid={`draggable-${draggableId}`}>
-        {children(
-          {
-            innerRef: jest.fn(),
-            draggableProps: { style: {} },
-            dragHandleProps: { 'data-testid': `drag-handle-${draggableId}` },
-          },
-          { isDragging: false }
-        )}
-      </div>
-    ),
+    DragOverlay: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+    PointerSensor: function PointerSensor() {},
+    KeyboardSensor: function KeyboardSensor() {},
+    pointerWithin: jest.fn(() => []),
+    // The board asks dnd-kit to re-measure on every drag; the mock has to carry
+    // the enum it reads, or the component throws before it can render.
+    MeasuringStrategy: { Always: 'always', BeforeDragging: 'before', WhileDragging: 'while' },
+    useSensor: () => ({}),
+    useSensors: (...sensors: unknown[]) => sensors,
+    useDraggable: ({ id }: { id: string }) => ({
+      setNodeRef: jest.fn(),
+      attributes: {},
+      listeners: { 'data-drag-handle': id },
+      isDragging: false,
+    }),
+    useDroppable: ({ id }: { id: string }) => ({
+      setNodeRef: jest.fn(),
+      isOver: false,
+      node: { current: null },
+      rect: { current: null },
+      over: null,
+      active: null,
+      __dropId: id,
+    }),
   };
 });
 
@@ -315,8 +292,12 @@ function renderScratchPanel(overrides: Partial<React.ComponentProps<typeof Scrat
   };
 }
 
-async function openBoard(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: 'Работать над планом' }));
+/**
+ * The board IS the screen now — there is no capture view to leave, so this is a
+ * no-op kept for readability at the call sites that used to open it.
+ */
+async function openBoard(_user: ReturnType<typeof userEvent.setup>) {
+  await Promise.resolve();
 }
 
 function expectPlanEditorNoteVisual(container: HTMLElement, text: string) {
@@ -518,34 +499,31 @@ describe('ScratchPanel', () => {
       ],
       conclusion: [],
     };
-    const { user } = renderScratchPanel({ outline: existingOutline });
-    const planEditorButton = screen.getByRole('button', { name: 'Работать над планом' });
+    renderScratchPanel({ outline: existingOutline });
 
-    expect(planEditorButton).toHaveClass('bg-gradient-to-r', 'from-violet-600', 'to-fuchsia-600');
-    expect(planEditorButton).not.toHaveClass('bg-amber-600');
-    await user.click(planEditorButton);
-
+    // The board is the page: no button to press, no capture screen behind it.
+    expect(screen.queryByRole('button', { name: 'Работать над планом' })).not.toBeInTheDocument();
     expect(screen.getByTestId('scratch-note-pool-band')).toBeInTheDocument();
     expect(within(screen.getByTestId('scratch-note-pool-band')).getByText('First scratch note')).toBeInTheDocument();
     expect(within(screen.getByTestId('scratch-note-pool-band')).getByText('Second scratch note')).toBeInTheDocument();
     expect(screen.getByText('Existing intro point')).toBeInTheDocument();
     expect(screen.getByText('Existing main point')).toBeInTheDocument();
     expect(screen.getByText('Existing sub-point')).toBeInTheDocument();
-    expect(screen.getByTestId('scratch-point-drop-zone-existing-main')).toHaveTextContent('scratch.board.dropHerePoint');
-    expect(screen.getByTestId('scratch-subpoint-drop-zone-existing-sub')).toHaveTextContent(
-      'scratch.board.dropHereSubPoint'
-    );
+    // The "drag a note here" strips exist as targets but stay EMPTY until a note
+    // is actually in the air — an invitation shown at all times was the clutter
+    // the owner reported. Their presence is what matters here.
+    expect(screen.getByTestId('scratch-point-drop-zone-existing-main')).toBeInTheDocument();
+    expect(screen.getByTestId('scratch-subpoint-drop-zone-existing-sub')).toBeInTheDocument();
     expect(screen.getByTestId('outline-board-column-introduction')).toBeInTheDocument();
     expect(screen.getByTestId('outline-board-column-main')).toBeInTheDocument();
     expect(screen.getByTestId('outline-board-column-conclusion')).toBeInTheDocument();
-    expect(screen.getByTestId('droppable-introduction')).toBeInTheDocument();
-    expect(screen.getByTestId('droppable-main')).toBeInTheDocument();
-    expect(screen.getByTestId('droppable-conclusion')).toBeInTheDocument();
+    // Columns ARE the drop targets now — there is no wrapper element per section,
+    // so their own test ids above are what proves they render. The board still
+    // lives inside one drag context, and notes still carry a grab handle.
     expect(screen.getByTestId('scratch-dnd-context')).toBeInTheDocument();
-    expect(screen.getByTestId('drag-handle-n1')).toHaveAttribute('aria-label', 'Drag to reorder');
+    expect(screen.getAllByLabelText('Drag to reorder').length).toBeGreaterThan(0);
     expect(screen.getAllByText('structure.addPointButton')).toHaveLength(3);
     expect(screen.getAllByText('structure.addSubPoint')).toHaveLength(2);
-    expect(screen.getByRole('button', { name: 'Наброски' })).toHaveClass('border-gray-300');
   });
 
   it('persists manual outline edits through the silent outline-change handler', async () => {
@@ -626,10 +604,8 @@ describe('ScratchPanel', () => {
     expect(mockScratchOnDragEnd).toBeDefined();
     act(() => {
       mockScratchOnDragEnd?.({
-        draggableId: 'n1',
-        type: 'scratch-note',
-        source: { droppableId: 'scratch-note-pool', index: 0 },
-        destination: null,
+        active: { id: 'note:n1' },
+        over: null,
       });
     });
     expect(within(screen.getByTestId('scratch-note-pool-band')).getByText('First scratch note')).toBeInTheDocument();
@@ -637,10 +613,8 @@ describe('ScratchPanel', () => {
 
     act(() => {
       mockScratchOnDragEnd?.({
-        draggableId: 'n1',
-        type: 'scratch-note',
-        source: { droppableId: 'scratch-note-pool', index: 0 },
-        destination: { droppableId: 'scratch-point:existing-main', index: 0 },
+        active: { id: 'note:n1' },
+        over: { id: 'scratch-point:existing-main' },
       });
     });
     expect(within(screen.getByTestId('scratch-note-pool-band')).queryByText('First scratch note')).not.toBeInTheDocument();
@@ -650,10 +624,8 @@ describe('ScratchPanel', () => {
 
     act(() => {
       mockScratchOnDragEnd?.({
-        draggableId: 'n1',
-        type: 'scratch-note',
-        source: { droppableId: 'scratch-point:existing-main', index: 0 },
-        destination: { droppableId: 'scratch-note-pool', index: 0 },
+        active: { id: 'note:n1' },
+        over: { id: 'scratch-note-pool' },
       });
     });
     expect(within(screen.getByTestId('scratch-note-pool-band')).getByText('First scratch note')).toBeInTheDocument();
@@ -662,16 +634,12 @@ describe('ScratchPanel', () => {
 
     act(() => {
       mockScratchOnDragEnd?.({
-        draggableId: 'n1',
-        type: 'scratch-note',
-        source: { droppableId: 'scratch-note-pool', index: 0 },
-        destination: { droppableId: 'scratch-subpoint:existing-sub', index: 0 },
+        active: { id: 'note:n1' },
+        over: { id: 'scratch-subpoint:existing-sub' },
       });
       mockScratchOnDragEnd?.({
-        draggableId: 'n2',
-        type: 'scratch-note',
-        source: { droppableId: 'scratch-note-pool', index: 1 },
-        destination: { droppableId: 'scratch-point:existing-main', index: 0 },
+        active: { id: 'note:n2' },
+        over: { id: 'scratch-point:existing-main' },
       });
     });
 
@@ -727,10 +695,8 @@ describe('ScratchPanel', () => {
 
     act(() => {
       mockScratchOnDragEnd?.({
-        draggableId: 'n1',
-        type: 'scratch-note',
-        source: { droppableId: 'scratch-note-pool', index: 0 },
-        destination: { droppableId: 'scratch-point:existing-main', index: 0 },
+        active: { id: 'note:n1' },
+        over: { id: 'scratch-point:existing-main' },
       });
     });
 
@@ -765,10 +731,8 @@ describe('ScratchPanel', () => {
     await openBoard(user);
     act(() => {
       mockScratchOnDragEnd?.({
-        draggableId: 'n1',
-        type: 'scratch-note',
-        source: { droppableId: 'scratch-note-pool', index: 0 },
-        destination: { droppableId: 'scratch-point:existing-main', index: 0 },
+        active: { id: 'note:n1' },
+        over: { id: 'scratch-point:existing-main' },
       });
     });
 
@@ -802,33 +766,23 @@ describe('ScratchPanel', () => {
     await openBoard(user);
     act(() => {
       mockScratchOnDragEnd?.({
-        draggableId: 'n1',
-        type: 'scratch-note',
-        source: { droppableId: 'scratch-note-pool', index: 0 },
-        destination: { droppableId: 'scratch-point:existing-main', index: 0 },
+        active: { id: 'note:n1' },
+        over: { id: 'scratch-point:existing-main' },
       });
     });
     await user.click(screen.getByRole('button', { name: 'scratch.board.apply' }));
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'common.saving' })).toBeDisabled());
-    const backButton = screen.getByRole('button', { name: 'Наброски' });
-    expect(backButton).toBeDisabled();
+    // Nothing to navigate away to any more — the board is the page. What has to
+    // hold is that everything on it is frozen while the write is in flight.
     expect(screen.queryByText('structure.addPointButton')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeDisabled();
-    await user.click(backButton);
-    // Still on the board: the disabled "back" button did not navigate. Checked by
-    // what the board itself renders — recording is no longer proof of the capture
-    // screen, because capture controls now live in the board's pool too. And there
-    // they obey the same lock: nothing new gets recorded mid-apply.
-    expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'audio.newRecording' })).toBeDisabled();
 
     act(() => {
       mockScratchOnDragEnd?.({
-        draggableId: 'n2',
-        type: 'scratch-note',
-        source: { droppableId: 'scratch-note-pool', index: 0 },
-        destination: { droppableId: 'scratch-point:existing-main', index: 0 },
+        active: { id: 'note:n2' },
+        over: { id: 'scratch-point:existing-main' },
       });
     });
     expect(within(screen.getByTestId('scratch-point-drop-zone-existing-main')).queryByText('Second scratch note')).not.toBeInTheDocument();
@@ -863,10 +817,8 @@ describe('ScratchPanel', () => {
     await openBoard(user);
     act(() => {
       mockScratchOnDragEnd?.({
-        draggableId: 'n1',
-        type: 'scratch-note',
-        source: { droppableId: 'scratch-note-pool', index: 0 },
-        destination: { droppableId: 'scratch-point:existing-main', index: 0 },
+        active: { id: 'note:n1' },
+        over: { id: 'scratch-point:existing-main' },
       });
     });
     await user.click(screen.getByRole('button', { name: 'scratch.board.apply' }));
@@ -885,7 +837,6 @@ describe('ScratchPanel', () => {
     });
     await waitFor(() => expect(screen.queryByRole('button', { name: 'common.saving' })).not.toBeInTheDocument());
 
-    await user.click(screen.getByRole('button', { name: 'Наброски' }));
     expect(screen.getByText('audio.savedRecording')).toBeInTheDocument();
     expect(screen.getByText('scratch.voice.applyInProgress')).toBeInTheDocument();
     expect(screen.getByLabelText('audio.playRecording')).toHaveAttribute('src', 'blob:scratch-voice-recovery');
@@ -921,10 +872,8 @@ describe('ScratchPanel', () => {
     await openBoard(user);
     act(() => {
       mockScratchOnDragEnd?.({
-        draggableId: 'n1',
-        type: 'scratch-note',
-        source: { droppableId: 'scratch-note-pool', index: 0 },
-        destination: { droppableId: 'scratch-point:existing-main', index: 0 },
+        active: { id: 'note:n1' },
+        over: { id: 'scratch-point:existing-main' },
       });
     });
 
@@ -1035,10 +984,8 @@ describe('ScratchPanel', () => {
 
     act(() => {
       mockScratchOnDragEnd?.({
-        draggableId: 'n2',
-        type: 'scratch-note',
-        source: { droppableId: 'scratch-note-pool', index: 0 },
-        destination: { droppableId: 'scratch-point:ai-point', index: 0 },
+        active: { id: 'note:n2' },
+        over: { id: 'scratch-point:ai-point' },
       });
     });
     expect(within(screen.getByTestId('scratch-point-drop-zone-ai-point')).getByText('Second scratch note')).toBeInTheDocument();
@@ -1260,7 +1207,6 @@ describe('ScratchPanel', () => {
     composePlanFromScratchMock().mockReturnValueOnce(new Promise(() => undefined));
     renderScratchPanel();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Работать над планом' }));
     fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
     expect(screen.getByRole('button', { name: 'scratch.board.composing' })).toBeDisabled();
 
@@ -1282,7 +1228,6 @@ describe('ScratchPanel', () => {
     );
     renderScratchPanel();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Работать над планом' }));
     fireEvent.click(screen.getByRole('button', { name: 'scratch.board.compose' }));
 
     act(() => {

@@ -1,15 +1,20 @@
 'use client';
 
 import {
-  DragDropContext,
-  Draggable,
-  Droppable,
-  type DraggableProvided,
-  type DraggableProvidedDragHandleProps,
-  type DraggableStateSnapshot,
-  type DropResult,
-  type DroppableProvided,
-} from '@hello-pangea/dnd';
+  DndContext,
+  DragOverlay,
+  MeasuringStrategy,
+  PointerSensor,
+  KeyboardSensor,
+  pointerWithin,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
 import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
 import { Bars2Icon, Bars3Icon, CheckIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useState } from 'react';
@@ -17,7 +22,25 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
 import PointNote from '@/components/PointNote';
+import {
+  allowedCollisions,
+  isDropTargetEnabled,
+} from '@/utils/boardDnd';
 import { newClientId } from '@/utils/clientId';
+import {
+  findPointSection,
+  findSubPointParent,
+  movePoint,
+  moveSubPoint as moveSubPointInOutline,
+  nestPointUnderPoint,
+  nestPointUnderPointAt,
+  outdentSubPoint,
+} from '@/utils/outlineDnd';
+import {
+  remapAfterNest,
+  remapAfterOutdent,
+  remapAfterSubPointReparent,
+} from '@/utils/scratchPlacementRemap';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 import { getSectionStyling } from '@/utils/themeColors';
 import { getSectionLabel } from '@lib/sections';
@@ -35,14 +58,149 @@ const SECTIONS: { key: SectionKey; styleKey: 'introduction' | 'mainPart' | 'conc
 const CANCEL_KEY = 'common.cancel';
 const SAVE_KEY = 'common.save';
 const DELETE_KEY = 'common.delete';
-const DND_TYPE_POINT = 'POINT';
-const DND_TYPE_SUBPOINT = 'SUBPOINT';
-const DND_TYPE_SCRATCH = 'scratch-note';
-const SUBPOINT_DROPPABLE_PREFIX = 'subpoints:';
 const SCRATCH_NOTE_POOL_DROPPABLE_ID = 'scratch-note-pool';
 const SCRATCH_POINT_DROPPABLE_PREFIX = 'scratch-point:';
 const SCRATCH_SUBPOINT_DROPPABLE_PREFIX = 'scratch-subpoint:';
 const SCRATCH_DROP_OVER_CLASS = 'ring-1 ring-indigo-300 bg-indigo-50/60 dark:bg-indigo-900/20';
+
+/**
+ * WHY THIS BOARD IS ON dnd-kit AND NOT ON `@hello-pangea/dnd`.
+ *
+ * A plan needs one gesture the old library cannot express: dropping a POINT onto
+ * another point to make it a sub-point. There, a draggable may only enter a
+ * droppable of the same `type`, and nested droppables of the same type are not
+ * supported — so "inside a card" and "between cards" can never both be targets
+ * for the same drag. dnd-kit has no such rule: any element can be a drop target,
+ * and the drop is resolved by what the pointer is actually over.
+ *
+ * The vocabulary below is the whole interaction, and it is deliberately literal:
+ * a card means INSIDE, a gap means BESIDE. Everything the drag can mean is one
+ * of these ids, so `onDragEnd` reads as a list of sentences rather than a matrix
+ * of indices.
+ */
+const DRAG_POINT = 'point:';
+const DRAG_SUB = 'sub:';
+const DRAG_NOTE = 'note:';
+const DROP_INTO_POINT = 'into-point:';
+const DROP_GAP = 'gap:';
+const DROP_SUB_GAP = 'subgap:';
+const DROP_NOTE_GAP = 'notegap:';
+const DROP_SECTION = 'section:';
+
+/** Whatever the drag library needs on the grab handle — the note card only spreads it. */
+export type DragHandleProps = Record<string, unknown>;
+
+type DragKind = 'point' | 'sub' | 'note';
+type DragSubject = { kind: DragKind; id: string };
+
+const dragIdFor = (kind: DragKind, id: string) =>
+  `${kind === 'point' ? DRAG_POINT : kind === 'sub' ? DRAG_SUB : DRAG_NOTE}${id}`;
+
+const parseDragId = (raw: string): DragSubject | null => {
+  if (raw.startsWith(DRAG_POINT)) return { kind: 'point', id: raw.slice(DRAG_POINT.length) };
+  if (raw.startsWith(DRAG_SUB)) return { kind: 'sub', id: raw.slice(DRAG_SUB.length) };
+  if (raw.startsWith(DRAG_NOTE)) return { kind: 'note', id: raw.slice(DRAG_NOTE.length) };
+  return null;
+};
+
+const intoPointDropId = (pointId: string) => `${DROP_INTO_POINT}${pointId}`;
+const gapDropId = (section: SectionKey, index: number) => `${DROP_GAP}${section}:${index}`;
+const subGapDropId = (pointId: string, index: number) => `${DROP_SUB_GAP}${pointId}:${index}`;
+const sectionDropId = (section: SectionKey) => `${DROP_SECTION}${section}`;
+
+const parseGapDropId = (raw: string): { section: SectionKey; index: number } | null => {
+  if (!raw.startsWith(DROP_GAP)) return null;
+  const [section, index] = raw.slice(DROP_GAP.length).split(':');
+  return isSectionKey(section) ? { section, index: Number(index) } : null;
+};
+
+/**
+ * The seam between two notes filed on the same row.
+ *
+ * The container is itself an id with colons in it ('scratch-point:p1'), so the
+ * index is separated by a double colon — otherwise the parser has to guess where
+ * the container ends.
+ */
+const noteGapDropId = (containerId: string, index: number) => `${DROP_NOTE_GAP}${containerId}::${index}`;
+
+const parseNoteGapDropId = (raw: string): { containerId: string; index: number } | null => {
+  if (!raw.startsWith(DROP_NOTE_GAP)) return null;
+  const at = raw.lastIndexOf('::');
+  if (at < 0) return null;
+  return { containerId: raw.slice(DROP_NOTE_GAP.length, at), index: Number(raw.slice(at + 2)) };
+};
+
+const parseSubGapDropId = (raw: string): { pointId: string; index: number } | null => {
+  if (!raw.startsWith(DROP_SUB_GAP)) return null;
+  const rest = raw.slice(DROP_SUB_GAP.length);
+  const at = rest.lastIndexOf(':');
+  return at < 0 ? null : { pointId: rest.slice(0, at), index: Number(rest.slice(at + 1)) };
+};
+
+/**
+ * A card that can be picked up. The listeners go on the HANDLE, not the card, so
+ * double-clicking the text to rename still works and a drag never starts from a
+ * stray click inside an input.
+ */
+function DraggableCard({
+  dragId,
+  disabled,
+  children,
+}: {
+  dragId: string;
+  disabled?: boolean;
+  children: (state: {
+    setNodeRef: (node: HTMLElement | null) => void;
+    handleProps: Record<string, unknown>;
+    isDragging: boolean;
+  }) => React.ReactNode;
+}) {
+  const { setNodeRef, attributes, listeners, isDragging } = useDraggable({ id: dragId, disabled });
+  return (
+    <>
+      {children({
+        setNodeRef,
+        handleProps: disabled ? {} : { ...attributes, ...listeners },
+        isDragging,
+      })}
+    </>
+  );
+}
+
+/**
+ * A place a card can be dropped into.
+ *
+ * `activeKind` is what makes the board quiet: a target that cannot accept the
+ * thing currently in the air is disabled outright, so it never highlights and
+ * never competes for the pointer. Nothing is dragging → nothing is a target,
+ * which is why the resting board shows no drop zones at all.
+ */
+function DropZone({
+  dropId,
+  disabled,
+  activeKind,
+  render,
+}: {
+  dropId: string;
+  disabled?: boolean;
+  activeKind: DragKind | null;
+  render: (state: {
+    setNodeRef: (node: HTMLElement | null) => void;
+    isOver: boolean;
+    isCandidate: boolean;
+  }) => React.ReactNode;
+}) {
+  const isCandidate = activeKind !== null && isDropTargetEnabled(activeKind, dropId);
+  /*
+   * `disabled` here is ONLY about the board being read-only. It must never depend
+   * on what is currently being dragged: dnd-kit measures the targets as the drag
+   * begins, so a target that switches itself on at that same moment is measured
+   * as absent and never collides with anything for the rest of the gesture.
+   */
+  const off = Boolean(disabled);
+  const { setNodeRef, isOver } = useDroppable({ id: dropId, disabled: off });
+  return <>{render({ setNodeRef, isOver: isOver && !off && isCandidate, isCandidate })}</>;
+}
 
 const renderInBodyPortal = (
   node: React.ReactElement<HTMLElement>,
@@ -64,17 +222,6 @@ const toOutline = (outline: Record<SectionKey, OutlinePoint[]>): SermonOutline =
 
 const isSectionKey = (value: string): value is SectionKey =>
   value === 'introduction' || value === 'main' || value === 'conclusion';
-
-const getSubPointDroppableId = (outlinePointId: string) => `${SUBPOINT_DROPPABLE_PREFIX}${outlinePointId}`;
-
-const getOutlinePointIdFromSubPointDroppable = (droppableId: string): string | null =>
-  droppableId.startsWith(SUBPOINT_DROPPABLE_PREFIX)
-    ? droppableId.slice(SUBPOINT_DROPPABLE_PREFIX.length)
-    : null;
-
-const getSubPointDraggableId = (subPointId: string) => `subpoint:${subPointId}`;
-
-const getPointDraggableId = (outlinePointId: string) => `point:${outlinePointId}`;
 
 const getScratchPointDroppableId = (pointId: string) => `${SCRATCH_POINT_DROPPABLE_PREFIX}${pointId}`;
 
@@ -125,9 +272,11 @@ type ScratchLayerProps = {
   notesById: Map<string, ScratchNote>;
   placements: Record<string, { pointId: string; subPointId?: string }>;
   onPlace: (noteId: string, target: { pointId: string; subPointId?: string } | null) => void;
+  /** Reorder notes that share one row: which of them comes first. */
+  onReorder?: (noteId: string, groupIds: string[], targetIndex: number) => void;
   renderNote: (
     note: ScratchNote,
-    dragHandleProps: DraggableProvidedDragHandleProps | null | undefined
+    dragHandleProps: DragHandleProps
   ) => React.ReactNode;
   poolHeader?: React.ReactNode;
   poolEmptyLabel?: string;
@@ -187,6 +336,49 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
 }) => {
   const { t } = useTranslation();
   const points = withSection(value);
+
+  const [activeDrag, setActiveDrag] = useState<DragSubject | null>(null);
+  /** Which target the pointer is over right now — for feedback the zones cannot show themselves. */
+  const [hoveredDropId, setHoveredDropId] = useState<string | null>(null);
+  /**
+   * A drag starts only after the pointer has travelled a few pixels, so a tap on
+   * the handle still counts as a click and the card can be renamed or deleted
+   * without the board thinking a move began.
+   */
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor)
+  );
+  const onDragStart = (event: DragStartEvent) => {
+    setActiveDrag(parseDragId(String(event.active.id)));
+    setHoveredDropId(null);
+  };
+
+  const onDragOver = (event: DragOverEvent) => {
+    setHoveredDropId(event.over ? String(event.over.id) : null);
+  };
+
+  /** What the flying copy says — the card's own words, so the drag is recognisable. */
+  const activeDragLabel = (): string => {
+    if (!activeDrag) return '';
+    if (activeDrag.kind === 'note') {
+      return scratch?.notesById.get(activeDrag.id)?.text?.slice(0, 90) ?? '';
+    }
+    if (activeDrag.kind === 'point') {
+      for (const section of SECTIONS) {
+        const found = points[section.key].find((p) => p.id === activeDrag.id);
+        if (found) return found.text;
+      }
+      return '';
+    }
+    for (const section of SECTIONS) {
+      for (const point of points[section.key]) {
+        const sub = point.subPoints?.find((sp) => sp.id === activeDrag.id);
+        if (sub) return sub.text;
+      }
+    }
+    return '';
+  };
 
   const [editingPointId, setEditingPointId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
@@ -294,59 +486,6 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     onSubPointDeleted?.(outlinePointId, subPointId);
   };
 
-  const moveSubPoint = (
-    sourcePointId: string,
-    destinationPointId: string,
-    sourceIndex: number,
-    destinationIndex: number
-  ) => {
-    if (isReadOnly) return;
-    if (sourcePointId === destinationPointId && sourceIndex === destinationIndex) return;
-
-    const sourceLocation = findPointLocation(points, sourcePointId);
-    const destinationLocation = findPointLocation(points, destinationPointId);
-    if (!sourceLocation || !destinationLocation) return;
-
-    const sourceSubPoints = sortSubPoints(sourceLocation.point.subPoints ?? []);
-    const [moved] = sourceSubPoints.splice(sourceIndex, 1);
-    if (!moved) return;
-
-    const destinationSubPoints =
-      sourcePointId === destinationPointId
-        ? sourceSubPoints
-        : sortSubPoints(destinationLocation.point.subPoints ?? []);
-    destinationSubPoints.splice(destinationIndex, 0, moved);
-
-    const next = SECTIONS.reduce((acc, s) => {
-      acc[s.key] = points[s.key].map((p) => {
-        if (p.id === sourcePointId && p.id === destinationPointId) {
-          return { ...p, subPoints: withSubPointPositions(destinationSubPoints) };
-        }
-        if (p.id === sourcePointId) {
-          return { ...p, subPoints: withSubPointPositions(sourceSubPoints) };
-        }
-        if (p.id === destinationPointId) {
-          return { ...p, subPoints: withSubPointPositions(destinationSubPoints) };
-        }
-        return p;
-      });
-      return acc;
-    }, {} as Record<SectionKey, OutlinePoint[]>);
-
-    const updatedOutline = toOutline(next);
-    onChange(updatedOutline);
-
-    if (sourcePointId !== destinationPointId) {
-      onSubPointMoved?.(
-        moved.id,
-        sourcePointId,
-        destinationPointId,
-        destinationLocation.section,
-        updatedOutline
-      );
-    }
-  };
-
   const startAddingSubPoint = (outlinePointId: string) => {
     if (isReadOnly) return;
     setAddingSubPointTo(outlinePointId);
@@ -399,98 +538,235 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     setPendingSubPointDelete(null);
   };
 
-  const onDragEnd = (result: DropResult) => {
+  /**
+   * ONE DROP, READ AS A SENTENCE.
+   *
+   * Every drop target says what it means — a card means "inside me", a gap means
+   * "beside me here" — so this handler only has to name the pairing and hand it
+   * to the pure move in `outlineDnd`. All the index arithmetic and the two-level
+   * rule live there, where they are tested without a browser.
+   */
+  const onDragEnd = (event: DragEndEvent) => {
+    setActiveDrag(null);
+    setHoveredDropId(null);
     if (isReadOnly) return;
-    const { draggableId, source, destination, type } = result;
-    if (!destination) return;
+    const subject = parseDragId(String(event.active.id));
+    const overId = event.over ? String(event.over.id) : null;
+    if (!subject || !overId) return;
 
-    if (type === DND_TYPE_SCRATCH) {
+    // --- a scratch note is filed against a point, a sub-point, or back to the pool
+    if (subject.kind === 'note') {
       if (!scratch) return;
 
-      if (destination.droppableId === SCRATCH_NOTE_POOL_DROPPABLE_ID) {
-        scratch.onPlace(draggableId, null);
+      /*
+       * A SEAM BETWEEN TWO NOTES SAYS WHICH ONE COMES FIRST.
+       *
+       * Notes sharing a row had no seams at all, so the only target inside a row
+       * was the row itself — and dropping a note where it already lives means
+       * nothing changed. "Наброски не могу поменять местами внутри подпункта."
+       * The seam carries both halves of the intention: which row it belongs to,
+       * and where among its neighbours it sits.
+       */
+      const noteGap = parseNoteGapDropId(overId);
+      if (noteGap) {
+        const { containerId, index } = noteGap;
+        const target = containerId === SCRATCH_NOTE_POOL_DROPPABLE_ID
+          ? null
+          : (() => {
+              const pointId = getScratchPointIdFromDroppable(containerId);
+              if (pointId) return { pointId };
+              const subPointId = getScratchSubPointIdFromDroppable(containerId);
+              if (!subPointId) return undefined;
+              const parentPointId = findParentPointIdForSubPoint(points, subPointId);
+              return parentPointId ? { pointId: parentPointId, subPointId } : undefined;
+            })();
+        if (target === undefined) return;
+
+        const groupIds = notesInContainer(containerId).map((note) => note.id);
+        scratch.onPlace(subject.id, target);
+        scratch.onReorder?.(subject.id, groupIds, index);
         return;
       }
 
-      const pointId = getScratchPointIdFromDroppable(destination.droppableId);
+      if (overId === SCRATCH_NOTE_POOL_DROPPABLE_ID) {
+        scratch.onPlace(subject.id, null);
+        return;
+      }
+      const pointId = getScratchPointIdFromDroppable(overId) ?? (overId.startsWith(DROP_INTO_POINT)
+        ? overId.slice(DROP_INTO_POINT.length)
+        : null);
       if (pointId) {
-        scratch.onPlace(draggableId, { pointId });
+        scratch.onPlace(subject.id, { pointId });
         return;
       }
-
-      const subPointId = getScratchSubPointIdFromDroppable(destination.droppableId);
+      const subPointId = getScratchSubPointIdFromDroppable(overId);
       if (!subPointId) return;
       const parentPointId = findParentPointIdForSubPoint(points, subPointId);
       if (!parentPointId) return;
-      scratch.onPlace(draggableId, { pointId: parentPointId, subPointId });
+      scratch.onPlace(subject.id, { pointId: parentPointId, subPointId });
       return;
     }
 
-    if (type === DND_TYPE_SUBPOINT) {
-      const sourcePointId = getOutlinePointIdFromSubPointDroppable(source.droppableId);
-      const destinationPointId = getOutlinePointIdFromSubPointDroppable(destination.droppableId);
-      if (!sourcePointId || !destinationPointId) return;
-      moveSubPoint(sourcePointId, destinationPointId, source.index, destination.index);
-      return;
+    const outline = toOutline(points);
+    let next: SermonOutline | null = null;
+    let movedPointTo: SectionKey | null = null;
+    /*
+     * A structural move does not change any id, but it changes what an id MEANS —
+     * `pt-a` as a point and `pt-a` as a sub-point are addressed differently. Notes
+     * are found through those addresses, so a move that leaves them untranslated
+     * makes a note vanish from the screen while still sitting in the document.
+     * That is what the owner hit: "I attached a note to a point, moved the point,
+     * the note is gone."
+     */
+    let placementChanges: { noteId: string; placement: { pointId: string; subPointId?: string } }[] = [];
+
+    if (subject.kind === 'point') {
+      if (overId.startsWith(DROP_INTO_POINT)) {
+        // Dropped ON a card — the point becomes its sub-point (children follow).
+        const newParentId = overId.slice(DROP_INTO_POINT.length);
+        const formerChildren = (SECTIONS.flatMap((sec) => points[sec.key]).find((p) => p.id === subject.id)?.subPoints ?? []).map((sp) => sp.id);
+        next = nestPointUnderPoint(outline, subject.id, newParentId);
+        placementChanges = remapAfterNest(scratch?.placements ?? {}, subject.id, newParentId, formerChildren);
+      } else if (parseSubGapDropId(overId)) {
+        /*
+         * A seam BETWEEN sub-points is a real intention: "put this point under
+         * that one, right here". The board drew the line for it and then did
+         * nothing, because this branch only understood seams between points —
+         * so every drop above or below a sub-point silently did nothing.
+         */
+        const subGap = parseSubGapDropId(overId)!;
+        const formerChildren = (SECTIONS.flatMap((sec) => points[sec.key]).find((p) => p.id === subject.id)?.subPoints ?? []).map((sp) => sp.id);
+        next = nestPointUnderPointAt(outline, subject.id, subGap.pointId, subGap.index);
+        placementChanges = remapAfterNest(scratch?.placements ?? {}, subject.id, subGap.pointId, formerChildren);
+      } else {
+        const gap = parseGapDropId(overId);
+        const section = gap?.section ?? (overId.startsWith(DROP_SECTION) && isSectionKey(overId.slice(DROP_SECTION.length))
+          ? (overId.slice(DROP_SECTION.length) as SectionKey)
+          : null);
+        if (!section) return;
+        const index = gap ? gap.index : (points[section]?.length ?? 0);
+        if (findPointSection(outline, subject.id) !== section) movedPointTo = section;
+        next = movePoint(outline, subject.id, section, index);
+      }
     }
 
-    if (type !== DND_TYPE_POINT) return;
-
-    if (!isSectionKey(source.droppableId) || !isSectionKey(destination.droppableId)) return;
-    const from = source.droppableId;
-    const to = destination.droppableId;
-    if (from === to && source.index === destination.index) return;
-
-    const next = { ...points };
-    let moved: OutlinePoint | undefined;
-    if (from === to) {
-      const items = Array.from(next[from]);
-      [moved] = items.splice(source.index, 1);
-      if (!moved) return;
-      items.splice(destination.index, 0, moved);
-      next[from] = items;
-    } else {
-      const fromItems = Array.from(next[from]);
-      const toItems = Array.from(next[to]);
-      [moved] = fromItems.splice(source.index, 1);
-      if (!moved) return;
-      toItems.splice(destination.index, 0, moved);
-      next[from] = fromItems;
-      next[to] = toItems;
+    if (subject.kind === 'sub') {
+      if (overId.startsWith(DROP_INTO_POINT)) {
+        const targetPointId = overId.slice(DROP_INTO_POINT.length);
+        // Onto a card: land at the end of that card's children.
+        next = moveSubPointInOutline(outline, subject.id, targetPointId, Number.MAX_SAFE_INTEGER);
+        placementChanges = remapAfterSubPointReparent(scratch?.placements ?? {}, subject.id, targetPointId);
+      } else {
+        const subGap = parseSubGapDropId(overId);
+        if (subGap) {
+          next = moveSubPointInOutline(outline, subject.id, subGap.pointId, subGap.index);
+        } else {
+          // A gap between POINTS means "leave your parent" — the sub-point is promoted.
+          const gap = parseGapDropId(overId);
+          const section = gap?.section ?? (overId.startsWith(DROP_SECTION) && isSectionKey(overId.slice(DROP_SECTION.length))
+            ? (overId.slice(DROP_SECTION.length) as SectionKey)
+            : null);
+          if (!section) return;
+          const index = gap ? gap.index : (points[section]?.length ?? 0);
+          const formerParent = findSubPointParent(outline, subject.id)?.point.id;
+          next = outdentSubPoint(outline, subject.id, section, index);
+          movedPointTo = section;
+          if (formerParent) {
+            placementChanges = remapAfterOutdent(scratch?.placements ?? {}, subject.id, formerParent);
+          }
+        }
+      }
     }
-    const updatedOutline = toOutline(next);
-    onChange(updatedOutline);
 
-    if (from !== to && moved) {
-      onOutlinePointMoved?.(moved.id, to, updatedOutline);
+    if (!next) return;
+    if (JSON.stringify(next) === JSON.stringify(outline)) return;
+
+    onChange(next);
+    // Re-file the notes whose address the move invalidated (pure remap above).
+    placementChanges.forEach(({ noteId, placement }) => scratch?.onPlace(noteId, placement));
+
+    /*
+     * THOUGHTS FOLLOW THE THING THEY WERE ATTACHED TO.
+     *
+     * A point that changes section, or a sub-point that changes parent, leaves
+     * thoughts pointing at a place that no longer describes them. These two
+     * callbacks are how the sermon page re-syncs them, and they were wired into
+     * the old drag handler — losing them here would have been a silent regression
+     * that no type or test would catch, only a preacher finding his notes under
+     * the wrong heading.
+     */
+    if (subject.kind === 'point' && movedPointTo) {
+      onOutlinePointMoved?.(subject.id, movedPointTo, next);
+    }
+    if (subject.kind === 'sub') {
+      const before = findSubPointParent(outline, subject.id);
+      const after = findSubPointParent(next, subject.id);
+      if (before && after && before.point.id !== after.point.id) {
+        onSubPointMoved?.(subject.id, before.point.id, after.point.id, after.section, next);
+      }
+      // Promoted out of its parent: it is a point now, in whatever section it landed.
+      if (before && !after && movedPointTo) {
+        onOutlinePointMoved?.(subject.id, movedPointTo, next);
+      }
     }
   };
+
+  /**
+   * The space BETWEEN cards, and the whole of "beside, not inside".
+   *
+   * It stays invisible until a drag is over it, so the board is not a ladder of
+   * empty strips when nothing is being moved — the complaint about the old layout
+   * was exactly that, rectangles inviting an action nobody is taking yet.
+   */
+  const renderDropGap = (dropId: string, indented = false) => (
+    <DropZone
+      dropId={dropId}
+      disabled={isReadOnly}
+      activeKind={activeDrag?.kind ?? null}
+      render={({ setNodeRef, isOver, isCandidate }) => (
+        <div
+          ref={setNodeRef}
+          /*
+           * A 2px seam is honest geometry and a miserable target: aiming at it
+           * with a card under the cursor means missing. While a card is in the
+           * air the seam becomes a real landing strip and collapses again the
+           * moment the drag ends, so a board at rest keeps its density and shows
+           * no drop zones at all.
+           */
+          /*
+           * The seam always occupies the same height, so nothing reflows when a
+           * drag starts; only what is painted inside it changes. The line follows
+           * the documented shape: a 2px stroke with a round terminal on the left,
+           * shown only where a relative position actually exists.
+           */
+          className={`relative h-3 -my-1.5 ${indented ? 'ml-2' : ''}`}
+        >
+          <span
+            className={`pointer-events-none absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full transition-colors ${
+              isOver ? 'bg-indigo-500' : 'bg-transparent'
+            }`}
+          />
+          <span
+            className={`pointer-events-none absolute top-1/2 h-2 w-2 -translate-y-1/2 rounded-full transition-colors ${
+              indented ? 'left-0' : '-left-1'
+            } ${isOver ? 'bg-indigo-500' : 'bg-transparent'}`}
+          />
+        </div>
+      )}
+    />
+  );
 
   const renderScratchNote = (note: ScratchNote, index: number, testId?: string) => {
     if (!scratch) return null;
 
     return (
-      <Draggable
-        key={note.id}
-        draggableId={note.id}
-        index={index}
-        isDragDisabled={isReadOnly}
-      >
-        {(provided, snapshot) => {
-          const node = (
-            <div
-              ref={provided.innerRef}
-              {...provided.draggableProps}
-              style={provided.draggableProps.style}
-              data-testid={testId}
-            >
-              {scratch.renderNote(note, provided.dragHandleProps)}
-            </div>
-          );
-
-          return renderInBodyPortal(node, snapshot.isDragging);
-        }}
-      </Draggable>
+      <DraggableCard key={note.id} dragId={dragIdFor('note', note.id)} disabled={isReadOnly}>
+        {({ setNodeRef, handleProps, isDragging }) => (
+          <div ref={setNodeRef} data-testid={testId} className={isDragging ? 'opacity-50' : ''}>
+            {scratch.renderNote(note, handleProps as DragHandleProps)}
+          </div>
+        )}
+      </DraggableCard>
     );
   };
 
@@ -508,29 +784,80 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     if (!scratch) return null;
 
     return (
-      <Droppable droppableId={droppableId} type={DND_TYPE_SCRATCH} isDropDisabled={isReadOnly}>
-        {(provided, snapshot) => (
-          <div
-            ref={provided.innerRef}
-            {...provided.droppableProps}
-            data-testid={testId}
-            className={`mt-2 min-h-[44px] rounded-lg border border-dashed border-slate-200 px-2 py-2 transition-all duration-150 dark:border-gray-700 ${
-              snapshot.isDraggingOver ? SCRATCH_DROP_OVER_CLASS : ''
-            }`}
-          >
-            {notes.length === 0 ? (
-              <div className="flex min-h-[26px] items-center justify-center text-center text-xs italic text-slate-400 dark:text-gray-500">
-                {emptyLabel}
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                {notes.map((note, index) => renderScratchNote(note, index, `scratch-placed-note-${note.id}`))}
-              </div>
-            )}
-            {provided.placeholder}
-          </div>
-        )}
-      </Droppable>
+      <DropZone
+        dropId={droppableId}
+        disabled={isReadOnly}
+        activeKind={activeDrag?.kind ?? null}
+        render={({ setNodeRef, isOver, isCandidate }) => {
+          /*
+           * AN EMPTY INVITATION IS ONLY SHOWN WHEN IT CAN BE ACCEPTED.
+           *
+           * "Drag a note onto this point" used to sit under every point at all
+           * times — a dashed rectangle per card, taking more room than the plan
+           * itself and lighting up during drags that could never land there. It
+           * now appears only while a note is actually in the air; once notes are
+           * filed here it stays, because then it is content, not an invitation.
+           */
+          /*
+           * KEEP THE SPACE, CHANGE ONLY THE PAINT.
+           *
+           * Collapsing this strip when it is not a target made the whole card
+           * change height the instant a drag began — the "everything jumped"
+           * report. Atlassian's guidance is the opposite and it is right: while
+           * dragging, the layout must not move; the original stays put and only
+           * dims. So the strip keeps its box and merely goes quiet when empty.
+           */
+          if (notes.length === 0 && !isCandidate) {
+            return (
+              <div
+                ref={setNodeRef}
+                data-testid={testId}
+                className="mt-1.5 min-h-[32px] rounded-lg border border-dashed border-transparent px-2 py-1"
+              />
+            );
+          }
+
+          return (
+            <div
+              ref={setNodeRef}
+              data-testid={testId}
+              className={`mt-1.5 min-h-[32px] rounded-lg border border-dashed px-2 py-1 transition-all duration-150 ${
+                isOver
+                  ? SCRATCH_DROP_OVER_CLASS + ' border-indigo-400'
+                  : isCandidate
+                    ? 'border-indigo-300/70 dark:border-indigo-500/40'
+                    : 'border-slate-200 dark:border-gray-700'
+              }`}
+            >
+              {notes.length === 0 ? (
+                /*
+                 * ONE ZONE SPEAKS, THE REST STAY QUIET.
+                 *
+                 * Every point can accept a note, so lifting one used to put
+                 * "drop a note on this point" under all of them at once — five
+                 * sentences competing for the eye while the answer is wherever
+                 * the pointer is. The empty candidates keep only their dashed
+                 * outline; the words appear on the one being hovered, as
+                 * confirmation rather than instruction.
+                 */
+                <div className="flex min-h-[22px] items-center justify-center text-center text-xs italic text-slate-400 dark:text-gray-500">
+                  {isOver ? emptyLabel : ''}
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {notes.map((note, index) => (
+                    <React.Fragment key={note.id}>
+                      {renderDropGap(noteGapDropId(droppableId, index), true)}
+                      {renderScratchNote(note, index, `scratch-placed-note-${note.id}`)}
+                    </React.Fragment>
+                  ))}
+                  {renderDropGap(noteGapDropId(droppableId, notes.length), true)}
+                </div>
+              )}
+            </div>
+          );
+        }}
+      />
     );
   };
 
@@ -551,6 +878,54 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
         )
       : [];
 
+  /** The notes a given strip shows — the neighbours a reorder is measured against. */
+  const notesInContainer = (containerId: string) => {
+    if (containerId === SCRATCH_NOTE_POOL_DROPPABLE_ID) return getScratchPoolNotes();
+    const pointId = getScratchPointIdFromDroppable(containerId);
+    if (pointId) return getScratchPointNotes(pointId);
+    const subPointId = getScratchSubPointIdFromDroppable(containerId);
+    return subPointId ? getScratchSubPointNotes(subPointId) : [];
+  };
+
+  /**
+   * The pool's seam is VERTICAL, because the pool is a grid.
+   *
+   * A horizontal line between rows would lie about where the card lands when the
+   * cards flow left to right and wrap. So the seam stands at a card's leading
+   * edge and means "before this one"; the trailing edge of the last card means
+   * "at the end". Only one seam per card, or two neighbours would claim the same
+   * index and the library would see a duplicate id.
+   *
+   * It is `pointer-events-none` on purpose: collision is decided by geometry, so
+   * the strip can be invisible to clicks and still be a target — the edit and
+   * delete buttons underneath keep working.
+   */
+  const renderPoolSeam = (index: number, side: 'left' | 'right') => (
+    <DropZone
+      dropId={noteGapDropId(SCRATCH_NOTE_POOL_DROPPABLE_ID, index)}
+      disabled={isReadOnly}
+      activeKind={activeDrag?.kind ?? null}
+      render={({ setNodeRef, isOver }) => (
+        <div
+          ref={setNodeRef}
+          aria-hidden="true"
+          className={`pointer-events-none absolute inset-y-0 w-6 ${side === 'left' ? '-left-3' : '-right-3'}`}
+        >
+          <span
+            className={`absolute inset-y-2 left-1/2 w-0.5 -translate-x-1/2 rounded-full transition-colors ${
+              isOver ? 'bg-indigo-500' : 'bg-transparent'
+            }`}
+          />
+          <span
+            className={`absolute left-1/2 top-1 h-2 w-2 -translate-x-1/2 rounded-full transition-colors ${
+              isOver ? 'bg-indigo-500' : 'bg-transparent'
+            }`}
+          />
+        </div>
+      )}
+    />
+  );
+
   const renderScratchPool = () => {
     if (!scratch) return null;
     const poolNotes = getScratchPoolNotes();
@@ -561,30 +936,33 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
         className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm shadow-gray-900/5 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/20"
       >
         {scratch.poolHeader && <div className="mb-3">{scratch.poolHeader}</div>}
-        <Droppable
-          droppableId={SCRATCH_NOTE_POOL_DROPPABLE_ID}
-          type={DND_TYPE_SCRATCH}
-          isDropDisabled={isReadOnly}
-        >
-          {(provided, snapshot) => (
+        <DropZone
+          dropId={SCRATCH_NOTE_POOL_DROPPABLE_ID}
+          disabled={isReadOnly}
+          activeKind={activeDrag?.kind ?? null}
+          render={({ setNodeRef, isOver }) => (
             <div
-              ref={provided.innerRef}
-              {...provided.droppableProps}
+              ref={setNodeRef}
               className={`min-h-[88px] rounded-lg transition-all duration-150 ${
                 poolNotes.length > 0 ? 'grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3' : ''
-              } ${snapshot.isDraggingOver ? SCRATCH_DROP_OVER_CLASS : ''}`}
+              } ${isOver ? SCRATCH_DROP_OVER_CLASS : ''}`}
             >
               {poolNotes.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-gray-300 px-3 py-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
                   {scratch.poolEmptyLabel}
                 </div>
               ) : (
-                poolNotes.map((note, index) => renderScratchNote(note, index))
+                poolNotes.map((note, index) => (
+                  <div key={note.id} className="relative">
+                    {renderScratchNote(note, index)}
+                    {renderPoolSeam(index, 'left')}
+                    {index === poolNotes.length - 1 && renderPoolSeam(poolNotes.length, 'right')}
+                  </div>
+                ))
               )}
-              {provided.placeholder}
             </div>
           )}
-        </Droppable>
+        />
       </section>
     );
   };
@@ -670,43 +1048,32 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     if (!showWrapper) return null;
 
     return (
-      <Droppable
-        droppableId={getSubPointDroppableId(point.id)}
-        type={DND_TYPE_SUBPOINT}
-        isDropDisabled={isReadOnly}
-      >
-        {(provided, snapshot) => (
-          <div
-            ref={provided.innerRef}
-            {...provided.droppableProps}
-            className={`ml-7 mr-4 mt-2 mb-2 max-w-[calc(100%-2.75rem)] rounded-lg border-l border-slate-300/80 bg-white/30 py-1.5 pl-3 pr-2 dark:border-blue-100/35 dark:bg-white/[0.07] transition-all duration-150 ${
-              snapshot.isDraggingOver ? 'ring-1 ring-indigo-300 bg-indigo-50/60 dark:bg-indigo-900/20' : ''
-            }`}
-          >
-            <div className="min-h-[24px] space-y-0.5">
+      <div className="ml-7 mr-4 mt-2 mb-2 max-w-[calc(100%-2.75rem)] rounded-lg border-l border-slate-300/80 bg-white/20 py-1.5 pl-3 pr-2 dark:border-blue-100/35 dark:bg-white/[0.03] transition-all duration-150">
+            <div className="min-h-[24px] space-y-1.5">
               {sorted.map((sp, index) => (
-                <Draggable
-                  key={sp.id}
-                  draggableId={getSubPointDraggableId(sp.id)}
-                  index={index}
-                  isDragDisabled={isReadOnly}
-                >
-                  {(subProvided, subSnapshot) => {
-                    const node = (
-                      <div
-                        ref={subProvided.innerRef}
-                        {...subProvided.draggableProps}
-                        style={subProvided.draggableProps.style}
-                      >
+                <React.Fragment key={sp.id}>
+                  {renderDropGap(subGapDropId(point.id, index), true)}
+                  <DraggableCard dragId={dragIdFor('sub', sp.id)} disabled={isReadOnly}>
+                  {({ setNodeRef, handleProps, isDragging }) => (
+                      <div ref={setNodeRef}>
+                        {/*
+                          * A row must be readable as its own object WITHOUT being touched.
+                          * These rows used to be bare text on the parent's fill, with an
+                          * outline appearing only on hover — so at rest one could not tell
+                          * where one sub-point ended and the next began. The surface is
+                          * permanent now; hover only brightens what is already there.
+                          */}
                         <div
-                          className={`group/subpoint rounded-lg px-2 py-1.5 transition-colors hover:bg-slate-100/80 dark:hover:bg-white/10 ${
-                            subSnapshot.isDragging ? 'bg-white dark:bg-slate-800 shadow-lg ring-1 ring-blue-400/50' : ''
+                          className={`group/subpoint rounded-lg border px-2 py-1.5 transition-colors ${
+                            isDragging
+                              ? 'border-blue-400/50 bg-white shadow-lg ring-1 ring-blue-400/50 opacity-60 dark:bg-slate-800'
+                              : 'border-slate-200/90 bg-white shadow-sm hover:border-slate-300 dark:border-white/[0.14] dark:bg-white/[0.11] dark:hover:border-white/25 dark:hover:bg-white/[0.16]'
                           }`}
                         >
                           <div className="flex min-w-0 items-center gap-2">
-                            {!isReadOnly && subProvided.dragHandleProps ? (
+                            {!isReadOnly ? (
                               <div
-                                {...subProvided.dragHandleProps}
+                                {...handleProps}
                                 className="cursor-grab flex-shrink-0 w-4 flex items-center justify-center touch-manipulation"
                                 aria-label={t('common.dragToReorder')}
                               >
@@ -741,13 +1108,11 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                             })}
                         </div>
                       </div>
-                    );
-
-                    return renderInBodyPortal(node, subSnapshot.isDragging);
-                  }}
-                </Draggable>
+                  )}
+                  </DraggableCard>
+                </React.Fragment>
               ))}
-              {provided.placeholder}
+              {renderDropGap(subGapDropId(point.id, sorted.length), true)}
             </div>
 
             {pendingDeleteForPoint && (
@@ -823,14 +1188,15 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                 )}
               </div>
             )}
-          </div>
-        )}
-      </Droppable>
+      </div>
     );
   };
 
   const renderColumn = (section: SectionKey, styleKey: 'introduction' | 'mainPart' | 'conclusion') => {
     const colPoints = points[section];
+    // The seam of an empty column and the column itself mean the same thing to a
+    // person; treat a hover on either as a hover on the region.
+    const isColumnCandidateHovered = hoveredDropId === gapDropId(section, colPoints.length);
     const colors = getSectionStyling(styleKey);
     return (
       <section
@@ -845,26 +1211,72 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
           </span>
         </div>
 
-        <Droppable droppableId={section} type={DND_TYPE_POINT}>
-          {(provided: DroppableProvided) => (
+        <DropZone
+          dropId={sectionDropId(section)}
+          disabled={isReadOnly}
+          activeKind={activeDrag?.kind ?? null}
+          render={({ setNodeRef, isOver }) => (
             <ul
-              {...provided.droppableProps}
-              ref={provided.innerRef}
-              className="flex-1 overflow-y-auto p-2.5 space-y-2 min-h-[60px]"
+              ref={setNodeRef}
+              /*
+               * An empty column has nothing to place a card relative to, so the
+               * documented answer is a background wash on the whole region rather
+               * than a line. It also has to react while ANY of its own targets is
+               * under the pointer: the seam inside it wins the collision by
+               * design, and the column was staying blank the whole time — which is
+               * exactly the "I dragged into Conclusion and nothing lit up" report.
+               */
+              className={`flex-1 overflow-y-auto p-2.5 space-y-2 min-h-[60px] rounded-b-xl transition-colors ${
+                (isOver || isColumnCandidateHovered) && colPoints.length === 0
+                  ? 'bg-indigo-100/70 outline outline-2 outline-dashed outline-indigo-400 dark:bg-indigo-900/30'
+                  : ''
+              }`}
             >
               {colPoints.map((point, index) => (
-                <Draggable key={point.id} draggableId={getPointDraggableId(point.id)} index={index} isDragDisabled={isReadOnly}>
-                  {(dp: DraggableProvided, snapshot: DraggableStateSnapshot) => {
-                    const node = (
+                <React.Fragment key={point.id}>
+                  {renderDropGap(gapDropId(section, index))}
+                  <DraggableCard dragId={dragIdFor('point', point.id)} disabled={isReadOnly}>
+                  {({ setNodeRef: setCardRef, handleProps, isDragging }) => (
+                      <DropZone
+                        dropId={intoPointDropId(point.id)}
+                        disabled={isReadOnly || isDragging}
+                        activeKind={activeDrag?.kind ?? null}
+                        render={({ setNodeRef: setIntoRef, isOver: isIntoTarget }) => (
                       <li
-                        ref={dp.innerRef}
-                        {...dp.draggableProps}
-                        className={`group rounded-lg border border-slate-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm ${snapshot.isDragging ? 'ring-1 ring-indigo-300 shadow-lg' : ''}`}
-                        style={dp.draggableProps.style}
+                        ref={setCardRef}
+                        /*
+                         * The original never moves and never changes shape while it
+                         * is being dragged — it dims to 40%, which is the documented
+                         * convention and the only one that keeps the board still.
+                         * "Combine" targets say so with a filled background plus an
+                         * outline, not a hairline border nobody can see.
+                         */
+                        className={`group relative rounded-lg border bg-white dark:bg-gray-800 shadow-sm transition-colors ${
+                          isDragging ? 'opacity-40 border-slate-200 dark:border-gray-700' : 'border-slate-200 dark:border-gray-700'
+                        } ${
+                          isIntoTarget
+                            ? 'outline outline-2 outline-indigo-500 border-indigo-400 bg-indigo-50 dark:bg-indigo-950/40'
+                            : ''
+                        }`}
                       >
+                        {/*
+                          THE MIDDLE MEANS "INSIDE", THE EDGES MEAN "NEXT TO".
+
+                          The whole card used to be the nest target, so a drag
+                          aimed at the seam a few pixels away merged two points
+                          instead of reordering them — the owner's "they merged".
+                          Splitting the card the way file trees do makes the two
+                          intentions physically different places: the middle band
+                          nests, everything above and below belongs to the seams.
+                        */}
+                        <div
+                          ref={setIntoRef}
+                          aria-hidden="true"
+                          className="pointer-events-none absolute inset-x-0 top-1/4 h-1/2"
+                        />
                         <div className="flex items-start gap-1.5 p-2">
                           <div
-                            {...dp.dragHandleProps}
+                            {...handleProps}
                             className={`mt-0.5 text-gray-400 dark:text-gray-500 ${isReadOnly ? 'cursor-not-allowed opacity-50' : 'cursor-grab hover:text-gray-600 dark:hover:text-gray-300'}`}
                             aria-label={t('common.dragToReorder')}
                           >
@@ -968,16 +1380,16 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                           )}
                         </div>
                       </li>
-                    );
-
-                    return renderInBodyPortal(node, snapshot.isDragging);
-                  }}
-                </Draggable>
+                        )}
+                      />
+                  )}
+                  </DraggableCard>
+                </React.Fragment>
               ))}
-              {provided.placeholder}
+              {renderDropGap(gapDropId(section, colPoints.length))}
             </ul>
           )}
-        </Droppable>
+        />
 
         {!isReadOnly && (
           <div className="p-2.5 pt-0">
@@ -1068,7 +1480,42 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
 
   return (
     <>
-      <DragDropContext onDragEnd={onDragEnd}>
+      <DndContext
+        sensors={sensors}
+        /*
+         * `pointerWithin` and not the default: a card sits INSIDE a column, and a
+         * gap sits inside the same space again. Distance-to-centre would keep
+         * choosing the biggest box under the cursor, so "beside" would be
+         * unreachable. What the pointer is literally over is the only reading that
+         * matches what the person sees.
+         */
+        /*
+         * Targets here overlap by construction — a seam sits inside a card sits
+         * inside a column — so the raw list of hits is ordered by how precise the
+         * target is before the first one is taken. `pointerWithin` alone would
+         * hand back whichever it listed first, and the drop would mean something
+         * nobody aimed at. (Newer dnd-kit spells this as `collisionPriority`.)
+         */
+        collisionDetection={(args) => allowedCollisions(parseDragId(String(args.active.id))?.kind ?? null, pointerWithin(args))}
+        /*
+         * MEASURE ON EVERY DRAG, NOT ONCE.
+         *
+         * dnd-kit caches droppable geometry by default. This board rebuilds its
+         * lists after every drop — cards move between columns, gaps appear and
+         * vanish — so the cached rectangles describe a layout that no longer
+         * exists, and the second drag in a session lands on nothing. Measured
+         * live: the first drop worked, the next silently did nothing. The
+         * official tree example takes the same precaution.
+         */
+        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDragCancel={() => {
+          setActiveDrag(null);
+          setHoveredDropId(null);
+        }}
+        onDragEnd={onDragEnd}
+      >
         {scratch ? (
           <div className="space-y-4">
             {renderScratchPool()}
@@ -1077,7 +1524,29 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
         ) : (
           boardColumns
         )}
-      </DragDropContext>
+
+        {/*
+          THE CARD HAS TO BE VISIBLY IN THE AIR — AND RENDERED THROUGH A PORTAL.
+
+          Without an overlay the original just dims in place, which is what the
+          owner reported as "I don't see that the card is being dragged". And the
+          overlay has to leave this subtree: an ancestor carries a transform
+          (the panel animates), and a transformed ancestor becomes the containing
+          block for fixed positioning — the copy then renders relative to it and
+          lands off-screen. Measured: `left: -2345px`. The official tree example
+          portals it to the body for the same reason.
+        */}
+        {renderInBodyPortal(
+          <DragOverlay dropAnimation={null}>
+            {activeDrag ? (
+              <div className="pointer-events-none rounded-lg border border-indigo-400 bg-white px-3 py-2 text-sm text-gray-800 shadow-2xl shadow-indigo-900/30 dark:bg-gray-800 dark:text-gray-100">
+                {activeDragLabel()}
+              </div>
+            ) : null}
+          </DragOverlay>,
+          true
+        )}
+      </DndContext>
 
       {pendingDeleteOverlay && renderInBodyPortal(pendingDeleteOverlay, true)}
     </>

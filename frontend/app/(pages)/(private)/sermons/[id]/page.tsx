@@ -1543,6 +1543,7 @@ useEffect(() => {
       updateScratchNote={scratchNotes.updateScratchNote}
       deleteScratchNote={scratchNotes.deleteScratchNote}
       setScratchNoteSection={scratchNotes.setScratchNoteSection}
+      reorderScratchNotes={scratchNotes.reorderScratchNotes}
       isScratchWritePending={scratchNotes.isWritePending}
       scratchRevision={scratchNotes.scratchRevision}
       onApplyOutline={handleApplyScratchOutline}

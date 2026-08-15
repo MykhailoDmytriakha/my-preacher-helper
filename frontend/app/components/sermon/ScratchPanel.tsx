@@ -1,14 +1,9 @@
 "use client";
 
-import {
-  type DraggableProvidedDragHandleProps,
-} from "@hello-pangea/dnd";
 import { Bars3Icon } from "@heroicons/react/24/outline";
 import { motion } from "framer-motion";
 import {
-  ArrowLeft,
   Check,
-  LayoutGrid,
   Pencil,
   Sparkles,
   Trash2,
@@ -21,7 +16,7 @@ import { toast } from "sonner";
 
 import { AudioRecoveryPanel } from "@/components/audio-recorder/AudioRecorderControls";
 import { AudioRecorder } from "@/components/AudioRecorder";
-import OutlineBoard from "@/components/plan-editor/OutlineBoard";
+import OutlineBoard, { type DragHandleProps } from "@/components/plan-editor/OutlineBoard";
 import PointNote from "@/components/PointNote";
 import AudioRecorderPortalBridge from "@/components/sermon/AudioRecorderPortalBridge";
 import ConfirmModal from "@/components/ui/ConfirmModal";
@@ -36,7 +31,6 @@ import type { ComposedPlanOutline, ComposedPlanPoint } from "@/config/schemas/zo
 import type { OutlinePoint, ScratchNote, SermonOutline, SubPoint } from "@/models/models";
 
 type SectionKey = "introduction" | "main" | "conclusion";
-type ScratchView = "capture" | "board";
 type ScratchPatch = {
   text?: string;
   section?: SectionKey | null;
@@ -54,6 +48,7 @@ interface ScratchPanelProps {
   restoreScratchNote: (note: ScratchNote) => ScratchNote | null;
   updateScratchNote: (noteId: string, patch: ScratchPatch) => void;
   deleteScratchNote: (noteId: string) => void;
+  reorderScratchNotes?: (groupIds: string[], movedId: string, targetIndex: number) => void;
   setScratchNoteSection: (noteId: string, section: SectionKey | null) => void;
   isScratchWritePending: boolean;
   scratchRevision: number;
@@ -68,7 +63,7 @@ interface ScratchNoteCardProps {
   isReadOnly?: boolean;
   isDragging?: boolean;
   sectionLabel?: string;
-  dragHandleProps?: DraggableProvidedDragHandleProps | null;
+  dragHandleProps?: DragHandleProps | null;
   onSelect?: () => void;
   onEdit: (noteId: string, text: string) => void;
   onDelete: (noteId: string) => void;
@@ -411,6 +406,7 @@ export default function ScratchPanel({
   restoreScratchNote,
   updateScratchNote,
   deleteScratchNote,
+  reorderScratchNotes,
   isScratchWritePending,
   scratchRevision,
   onApplyOutline,
@@ -423,7 +419,6 @@ export default function ScratchPanel({
   const transcriptionUnavailableLabel = transcriptionBlocked
     ? t("settings.usage.transcriptionUsageExhausted")
     : undefined;
-  const [view, setView] = useState<ScratchView>("capture");
   const [capturePortal, setCapturePortal] = useState<HTMLDivElement | null>(null);
   const [isManualCaptureOpen, setIsManualCaptureOpen] = useState(false);
   const [manualDraft, setManualDraft] = useState("");
@@ -688,7 +683,6 @@ export default function ScratchPanel({
 
   const handleRecordVoiceAgain = useCallback(() => {
     handleClearVoiceError();
-    setView("capture");
   }, [handleClearVoiceError]);
 
   const handleDownloadVoiceRecovery = useCallback(() => {
@@ -786,6 +780,20 @@ export default function ScratchPanel({
       });
     },
     [isBoardLocked, markScratchChanged, notes, placements]
+  );
+
+  /**
+   * Which note comes first on a row. The arrangement of notes ACROSS points is a
+   * draft that lives until Apply, but their order is part of the notes themselves,
+   * so this one is written straight through.
+   */
+  const handleScratchReorder = useCallback(
+    (noteId: string, groupIds: string[], targetIndex: number) => {
+      if (isBoardLocked || !reorderScratchNotes) return;
+      markScratchChanged();
+      reorderScratchNotes(groupIds, noteId, targetIndex);
+    },
+    [isBoardLocked, markScratchChanged, reorderScratchNotes]
   );
 
   const handleManualOutlineChange = useCallback(
@@ -1147,58 +1155,9 @@ export default function ScratchPanel({
     </>
   );
 
-  const renderCapture = () => (
-    <div className="grid grid-cols-1 gap-4">
-      <section className="rounded-xl border border-gray-200 border-l-4 border-l-violet-400 bg-white p-4 shadow-sm shadow-gray-900/5 dark:border-gray-700 dark:border-l-violet-600 dark:bg-gray-900 dark:shadow-black/20 sm:p-5">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <h2 className="text-xl font-semibold text-gray-950 dark:text-gray-100">
-              {t("scratch.title")}
-            </h2>
-            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              {t("scratch.subtitle")}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (!isApplying) setView("board");
-            }}
-            disabled={!hasBoardContent || isApplying}
-            className={`${PLAN_EDITOR_BUTTON_CLASS} disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50 disabled:hover:scale-100 disabled:hover:shadow-sm`}
-          >
-            <LayoutGrid className="w-4 h-4 text-white/90" aria-hidden="true" />
-            {t("scratch.capture.toBoard")}
-          </button>
-        </div>
-
-        {renderCaptureControls()}
-
-        {notes.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-gray-300 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-            {t("scratch.capture.empty")}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-3">
-            {notes.map((note) => (
-              <ScratchNoteCard
-                key={note.id}
-                note={note}
-                isReadOnly={isCaptureLocked}
-                sectionLabel={note.section ? t(`scratch.sections.${note.section}`) : undefined}
-                onEdit={handleEditNote}
-                onDelete={requestDeleteNote}
-              />
-            ))}
-          </div>
-        )}
-      </section>
-    </div>
-  );
-
   const renderScratchNote = (
     note: ScratchNote,
-    dragHandleProps: DraggableProvidedDragHandleProps | null | undefined
+    dragHandleProps: DragHandleProps | null | undefined
   ) => {
     const currentNote = notesById.get(note.id) ?? note;
     return (
@@ -1267,17 +1226,6 @@ export default function ScratchPanel({
     <div className="space-y-4">
       <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm shadow-gray-900/5 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/20 sm:flex-row sm:items-start sm:justify-between sm:p-5">
         <div className="min-w-0">
-          <button
-            type="button"
-            onClick={() => {
-              if (!isApplying) setView("capture");
-            }}
-            disabled={isApplying}
-            className="mb-3 inline-flex items-center justify-center gap-1.5 rounded-full border border-gray-300 bg-transparent px-3.5 py-2 text-sm font-medium text-gray-600 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:pointer-events-none disabled:opacity-50 disabled:hover:bg-transparent dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800 dark:disabled:hover:bg-transparent"
-          >
-            <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-            {t("scratch.capture.back")}
-          </button>
           <h2 className="text-xl font-semibold text-gray-950 dark:text-gray-100">
             {t("scratch.board.title")}
           </h2>
@@ -1304,7 +1252,7 @@ export default function ScratchPanel({
         </span>
       </div>
 
-      {renderVoiceRecoveryPanel()}
+      {/* Recovery lives with the recorder, inside the pool — one instance only. */}
       <OutlineBoard
         value={boardOutline}
         onChange={handleManualOutlineChange}
@@ -1315,6 +1263,7 @@ export default function ScratchPanel({
           notesById,
           placements,
           onPlace: handleScratchPlace,
+          onReorder: handleScratchReorder,
           renderNote: renderScratchNote,
           poolHeader: renderPoolHeader(),
           poolEmptyLabel: t("scratch.board.poolEmpty"),
@@ -1325,7 +1274,13 @@ export default function ScratchPanel({
 
   return (
     <motion.div layout={false} className="space-y-4 sm:space-y-6" data-scratch-count={notes.length}>
-      {view === "capture" ? renderCapture() : renderBoard()}
+      {/*
+        ONE SCREEN, NOT TWO.
+        The capture screen showed the same notes the board's pool already shows,
+        so reaching the plan cost a trip through a screen that repeated itself.
+        Capture (recording, manual note) lives in the pool; the board is the page.
+      */}
+      {renderBoard()}
       <ConfirmModal
         isOpen={Boolean(pendingDeleteNote)}
         onClose={cancelDeleteNote}
