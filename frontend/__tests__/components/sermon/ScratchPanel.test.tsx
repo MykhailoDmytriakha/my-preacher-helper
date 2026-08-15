@@ -484,6 +484,28 @@ describe('ScratchPanel', () => {
     await waitFor(() => expect(addScratchNote).toHaveBeenCalledWith('Voice note that must survive'));
   });
 
+  /**
+   * A thought that arrives while the plan is being arranged used to cost a trip
+   * back to the capture screen and another one forward. Recording and the manual
+   * note now sit in the board's pool, so the plan never has to be left.
+   */
+  it('offers recording and the manual note without leaving the board', async () => {
+    const outline: SermonOutline = {
+      introduction: [{ id: 'existing-intro', text: 'Existing intro point' }],
+      main: [{ id: 'existing-main', text: 'Existing main point' }],
+      conclusion: [],
+    };
+    const { user } = renderScratchPanel({ outline });
+
+    await openBoard(user);
+
+    const pool = screen.getByTestId('board-capture-controls');
+    expect(within(pool).getByRole('button', { name: 'audio.newRecording' })).toBeEnabled();
+    expect(within(pool).getByRole('button', { name: 'scratch.capture.manualAdd' })).toBeEnabled();
+    // Still the board, not the capture screen behind it.
+    expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeInTheDocument();
+  });
+
   it('renders existing sermon outline in board columns with point and sub-point drop zones', async () => {
     const existingOutline: SermonOutline = {
       introduction: [{ id: 'existing-intro', text: 'Existing intro point' }],
@@ -794,7 +816,12 @@ describe('ScratchPanel', () => {
     expect(screen.queryByText('structure.addPointButton')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeDisabled();
     await user.click(backButton);
-    expect(screen.queryByRole('button', { name: 'audio.newRecording' })).not.toBeInTheDocument();
+    // Still on the board: the disabled "back" button did not navigate. Checked by
+    // what the board itself renders — recording is no longer proof of the capture
+    // screen, because capture controls now live in the board's pool too. And there
+    // they obey the same lock: nothing new gets recorded mid-apply.
+    expect(screen.getByRole('button', { name: 'scratch.board.compose' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'audio.newRecording' })).toBeDisabled();
 
     act(() => {
       mockScratchOnDragEnd?.({

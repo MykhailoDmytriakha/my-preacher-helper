@@ -83,6 +83,44 @@ describe('useSermon', () => {
     expect(result.current.sermon).toEqual(server);
   });
 
+  /**
+   * BUG-20260815-list-copy-hides-scratch.
+   *
+   * The list cache stores a TRIMMED sermon — no `scratch`, and nothing else this
+   * screen needs. It used to compete with the detail for what gets rendered, and
+   * a freshness tie (neither copy carrying `rev` or `updatedAt`, exactly what a
+   * just-created sermon looks like) was resolved "keep the local copy" — that is,
+   * in favour of the poorer one. On screen: notes saved on the server, and
+   * "Пока нет набросков" underneath them.
+   */
+  it('never lets the trimmed list copy hide fields the detail carries', () => {
+    const { wrapper, queryClient } = createWrapper();
+    const listCopy = { ...baseSermon, id: 'sermon-1', title: 'From list' };
+    delete (listCopy as { scratch?: unknown }).scratch;
+    delete (listCopy as { rev?: unknown }).rev;
+    delete (listCopy as { updatedAt?: unknown }).updatedAt;
+    const detail = {
+      ...baseSermon,
+      id: 'sermon-1',
+      scratch: [{ id: 'n1', text: 'Recorded thought', createdAt: '2026-08-15T00:00:00.000Z' }],
+    };
+    delete (detail as { rev?: unknown }).rev;
+    delete (detail as { updatedAt?: unknown }).updatedAt;
+    queryClient.setQueryData(['sermons', 'user-1'], [listCopy]);
+
+    mockUseOnlineStatus.mockReturnValue(true);
+    mockUseServerFirstQuery.mockReturnValue({
+      data: detail,
+      isLoading: false,
+      error: null,
+      refetch: jest.fn().mockResolvedValue({ isError: false }),
+    } as any);
+
+    const { result } = renderHook(() => useSermon('sermon-1'), { wrapper });
+
+    expect(result.current.sermon?.scratch).toHaveLength(1);
+  });
+
   it('returns cached list data when online and detail data has not arrived yet', () => {
     const { wrapper, queryClient } = createWrapper();
     const cached = { ...baseSermon, id: 'sermon-1', title: 'Cached' };

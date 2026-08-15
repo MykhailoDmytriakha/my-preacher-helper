@@ -74,7 +74,22 @@ function useSermon(sermonId: string) {
     debugLog("Sermon cache hydrated from list", { sermonId });
   }, [cachedSermonFromList, data, detailKey, isOnline, queryClient, sermonId]);
 
-  const sermon = selectReadableCopy(data, cachedSermonFromList) ?? null;
+  /**
+   * THE LIST COPY IS A FALLBACK, NOT A CANDIDATE — BUG-20260815-list-copy-hides-scratch.
+   *
+   * The two copies here are not comparable: the detail carries the whole document,
+   * while the list cache holds a trimmed sermon with no `scratch`. Running them
+   * through `selectReadableCopy` asked "which is fresher?" about copies that differ
+   * in COMPLETENESS, and a tie — neither side carrying `rev` or `updatedAt`, which
+   * is exactly what a just-created sermon looks like — resolves to "keep the local
+   * one", i.e. to the poorer one. Measured on a fresh sermon: the detail held one
+   * scratch note, the list copy held none, and the screen showed "no notes yet"
+   * over data that was sitting on the server.
+   *
+   * Freshness IS still compared where the copies are equals: inside `queryFn`
+   * above, server against the stored detail.
+   */
+  const sermon = data ?? cachedSermonFromList ?? null;
 
   /**
    * A REFUSAL never reaches the screen as an error, and that is what trapped this

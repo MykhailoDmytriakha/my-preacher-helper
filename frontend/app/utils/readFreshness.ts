@@ -16,6 +16,28 @@ export type VersionedCopy = {
 export function serverCopyIsNewer<T extends VersionedCopy>(server: T, stored: T): boolean {
   const there = server.rev;
   const here = stored.rev;
+
+  /**
+   * A COPY WITH NO EVIDENCE CANNOT OUTVOTE ONE THAT HAS SOME — BUG-20260815-list-copy-hides-scratch.
+   *
+   * "Neither signal answers, so keep the local copy" is the right instinct when
+   * BOTH sides are silent. When only the LOCAL side is silent it inverts into a
+   * trap: sermons created by the API route carry neither `rev` nor `updatedAt`,
+   * so a snapshot of one can never be beaten. Every later write raises the
+   * server's revision, the local copy still has nothing to compare, and the
+   * answer stays "not proven newer" forever. Measured live: server held four
+   * scratch notes with `rev.scratch = 4`, the local snapshot held one with no
+   * fields at all, and the screen showed the one — permanently.
+   *
+   * Unsaved local work is still safe: an optimistic copy is built from the
+   * document it edits, so it inherits whatever markers that document had. Having
+   * NOTHING means it descends from a document that never had them — an old
+   * snapshot, not fresh work.
+   */
+  const serverHasEvidence = Boolean(there) || !Number.isNaN(Date.parse(server.updatedAt ?? ''));
+  const storedHasEvidence = Boolean(here) || !Number.isNaN(Date.parse(stored.updatedAt ?? ''));
+  if (serverHasEvidence && !storedHasEvidence) return true;
+
   if (there && here) {
     let serverAhead = false;
     for (const aggregate of new Set([...Object.keys(there), ...Object.keys(here)])) {

@@ -52,7 +52,14 @@ export function usePrayerDetail(prayerId: string, userId?: string | null) {
     placeholderData: cachedFromList ?? undefined,
   });
 
-  const prayer = selectReadableCopy(detailQuery.data, cachedFromList) ?? null;
+  /**
+   * Same rule as `useSermon` — see BUG-20260815-list-copy-hides-scratch.
+   * The list entry is what this screen falls back to while the detail has not
+   * arrived; it does not compete with the detail once it has. Comparing the two
+   * by freshness lets a tie (neither copy carrying `rev` or `updatedAt`) hand the
+   * screen to the older list snapshot.
+   */
+  const prayer = detailQuery.data ?? cachedFromList ?? null;
   return {
     prayer,
     isLoading: Boolean(prayerId) && !prayer && detailQuery.isFetching,

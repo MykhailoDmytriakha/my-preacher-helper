@@ -89,6 +89,57 @@ describe('Sermons API Route', () => {
   });
 
   describe('POST handler', () => {
+    /**
+     * BUG-20260815-list-copy-hides-scratch, the cause behind the cause.
+     *
+     * Reads decide what to show by asking "has the server proved its copy is
+     * newer?", and the only proofs are `rev` and `updatedAt`. A sermon created
+     * without either could never be beaten by anything: every later write raised
+     * the server's revision, the cached copy still had nothing to compare, and
+     * the screen kept an old snapshot forever — four scratch notes on the server,
+     * one on screen. Prayers and series already stamp this on create; sermons did
+     * not, and this test is what keeps the invariant from rotting again.
+     */
+    test('stamps updatedAt so the document is comparable from birth', async () => {
+      mockRequest.json = jest.fn().mockResolvedValueOnce({
+        userId: 'user123',
+        title: 'New Sermon',
+        verse: 'Matthew 5:1-12',
+        date: '2023-02-01',
+        thoughts: [],
+      });
+
+      await sermonsRouteModule.POST(mockRequest as unknown as Request);
+
+      const written = mockAdd.mock.calls[0][0];
+      expect(typeof written.updatedAt).toBe('string');
+      expect(Number.isNaN(Date.parse(written.updatedAt))).toBe(false);
+    });
+
+    test('stamps updatedAt on the client-id (idempotent) create path too', async () => {
+      const setSpy = jest.fn().mockResolvedValue(undefined);
+      mockDoc.mockImplementation((id: string) => ({
+        id,
+        get: jest.fn().mockResolvedValue({ exists: false }),
+        set: setSpy,
+        delete: mockDelete,
+      }));
+      mockRequest.json = jest.fn().mockResolvedValueOnce({
+        id: 'client-made-id',
+        userId: 'user123',
+        title: 'Offline Sermon',
+        verse: 'Matthew 5:1-12',
+        date: '2023-02-01',
+        thoughts: [],
+      });
+
+      await sermonsRouteModule.POST(mockRequest as unknown as Request);
+
+      const written = setSpy.mock.calls[0][0];
+      expect(typeof written.updatedAt).toBe('string');
+      expect(Number.isNaN(Date.parse(written.updatedAt))).toBe(false);
+    });
+
     test('should create a sermon successfully', async () => {
       // Arrange
       const sermonData = {
@@ -111,7 +162,9 @@ describe('Sermons API Route', () => {
         title: 'New Sermon',
         verse: 'Matthew 5:1-12',
         date: '2023-02-01',
-        thoughts: []
+        thoughts: [],
+        // Stamped at birth so reads can ever prove the server is newer.
+        updatedAt: expect.any(String)
       });
       expect(response.status).toBe(200);
       expect(responseData).toHaveProperty('message', 'Sermon created successfully');
@@ -201,7 +254,8 @@ describe('Sermons API Route', () => {
         title: 'New Sermon',
         verse: 'Matthew 5:1-12',
         date: '2023-02-01',
-        thoughts: [] // Should default to empty array
+        thoughts: [], // Should default to empty array
+        updatedAt: expect.any(String)
       });
       expect(responseData.sermon.id).toBe('newSermonId123');
     });

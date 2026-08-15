@@ -30,7 +30,25 @@ export async function POST(request: Request) {
     // Playlist model: series membership is written EXCLUSIVELY by the client
     // sweep into series.items — the create no longer writes the deprecated
     // seriesId/seriesPosition back-ref nor links the sermon into a series.
-    const sermonData: Partial<Sermon> = { userId, title, verse, date, thoughts: sermon.thoughts || [] };
+    /**
+     * `updatedAt` IS WRITTEN AT BIRTH, NOT AT THE FIRST EDIT.
+     *
+     * Reads decide what to show by asking whether the server has proved its copy
+     * newer, and the only proofs are `rev` and `updatedAt`. A document created
+     * without either can never be beaten: later writes raise the server's
+     * revision, the cached copy still carries nothing to compare, and the screen
+     * keeps an old snapshot forever. That is what hid four scratch notes behind
+     * one — see BUG-20260815-list-copy-hides-scratch. Prayers and series already
+     * stamp this on create; sermons now do the same.
+     */
+    const sermonData: Partial<Sermon> = {
+      userId,
+      title,
+      verse,
+      date,
+      thoughts: sermon.thoughts || [],
+      updatedAt: new Date().toISOString(),
+    };
 
     // Idempotent create when the client supplies the id (offline buffer): a
     // replayed create reuses the same doc instead of duplicating. Ownership

@@ -1104,6 +1104,49 @@ export default function ScratchPanel({
     />
   );
 
+  /**
+   * Recording and the manual note — the two ways a thought gets in.
+   *
+   * They used to live only on the capture screen, so writing something down while
+   * arranging the plan meant leaving the board and coming back. The same controls
+   * now render inside the board's pool as well. Only ONE of them is mounted at a
+   * time (the view switch renders either capture or board), so the recorder keeps
+   * a single instance and `capturePortal` a single target.
+   */
+  const renderCaptureControls = () => (
+    <>
+      {/* No gap under the recorder row while the manual form is open — the button and
+          the panel below it have to read as one block, not two stacked cards. */}
+      <div className={isManualCaptureOpen ? "" : "mb-4"} ref={setCapturePortal} />
+      <AudioRecorderPortalBridge
+        RecorderComponent={AudioRecorder}
+        portalTarget={capturePortal}
+        onRecordingComplete={handleVoiceComplete}
+        isProcessing={isVoiceProcessing}
+        onRetry={handleRetryVoice}
+        retryCount={voiceRetryCount}
+        maxRetries={3}
+        transcriptionError={null}
+        onClearError={handleClearVoiceError}
+        hideKeyboardShortcuts
+        isReadOnly={isCaptureLocked}
+        isRecorderDisabled={!isMagicAvailable || isCaptureLocked || transcriptionBlocked}
+        recorderTitle={transcriptionUnavailableLabel}
+        isManualDisabled={isCaptureLocked}
+        onOpenCreateModal={() => {
+          if (!isCaptureLocked) setIsManualCaptureOpen(true);
+        }}
+        manualControl={renderManualCaptureControl()}
+        manualThoughtTitle={t("scratch.capture.manualAdd")}
+        manualButtonPlacement="right"
+        manualButtonSeparate
+        hideRecordButton={isManualCaptureOpen}
+      />
+      {renderManualCaptureForm()}
+      {renderVoiceRecoveryPanel()}
+    </>
+  );
+
   const renderCapture = () => (
     <div className="grid grid-cols-1 gap-4">
       <section className="rounded-xl border border-gray-200 border-l-4 border-l-violet-400 bg-white p-4 shadow-sm shadow-gray-900/5 dark:border-gray-700 dark:border-l-violet-600 dark:bg-gray-900 dark:shadow-black/20 sm:p-5">
@@ -1129,35 +1172,7 @@ export default function ScratchPanel({
           </button>
         </div>
 
-        {/* No gap under the recorder row while the manual form is open — the button and
-            the panel below it have to read as one block, not two stacked cards. */}
-        <div className={isManualCaptureOpen ? "" : "mb-4"} ref={setCapturePortal} />
-        <AudioRecorderPortalBridge
-          RecorderComponent={AudioRecorder}
-          portalTarget={capturePortal}
-          onRecordingComplete={handleVoiceComplete}
-          isProcessing={isVoiceProcessing}
-          onRetry={handleRetryVoice}
-          retryCount={voiceRetryCount}
-          maxRetries={3}
-          transcriptionError={null}
-          onClearError={handleClearVoiceError}
-          hideKeyboardShortcuts
-          isReadOnly={isCaptureLocked}
-          isRecorderDisabled={!isMagicAvailable || isCaptureLocked || transcriptionBlocked}
-          recorderTitle={transcriptionUnavailableLabel}
-          isManualDisabled={isCaptureLocked}
-          onOpenCreateModal={() => {
-            if (!isCaptureLocked) setIsManualCaptureOpen(true);
-          }}
-          manualControl={renderManualCaptureControl()}
-          manualThoughtTitle={t("scratch.capture.manualAdd")}
-          manualButtonPlacement="right"
-          manualButtonSeparate
-          hideRecordButton={isManualCaptureOpen}
-        />
-        {renderManualCaptureForm()}
-        {renderVoiceRecoveryPanel()}
+        {renderCaptureControls()}
 
         {notes.length === 0 ? (
           <div className="rounded-lg border border-dashed border-gray-300 py-8 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
@@ -1220,6 +1235,10 @@ export default function ScratchPanel({
           </button>
         </div>
       </div>
+
+      {/* Capture lives here too: a thought that arrives while the plan is being
+          arranged should not cost a trip back to another screen. */}
+      <div data-testid="board-capture-controls">{renderCaptureControls()}</div>
 
       {composeNoticeKey && (
         <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
