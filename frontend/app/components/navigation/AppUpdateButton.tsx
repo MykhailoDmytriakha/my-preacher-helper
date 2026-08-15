@@ -63,7 +63,7 @@ export function AppUpdateButton() {
            prompt's button had, so the thing being offered still looks like itself.
            An earlier attempt put a notification dot on a bare icon: it overlapped
            the arrow and read as a broken glyph rather than as a signal. */
-        className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition-all duration-300 hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+        className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition-all duration-300 hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
       >
         {/* Heroicons, the set the rest of the header already draws from, rather than
             a hand-rolled arc: its rotation glyph carries a proper gap between the

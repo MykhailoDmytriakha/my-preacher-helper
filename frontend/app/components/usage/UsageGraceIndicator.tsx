@@ -170,7 +170,7 @@ export function UsageGraceIndicator({ model, placement }: UsageGraceIndicatorPro
       <button
         type="button"
         aria-label={t('usageGrace.indicatorLabel')}
-        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full outline-none transition hover:bg-white focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 dark:hover:bg-slate-800 dark:focus-visible:ring-offset-slate-950"
+        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full outline-none transition hover:bg-white focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 dark:hover:bg-slate-800 dark:focus-visible:ring-offset-slate-950"
         data-testid={`usage-grace-indicator-${placement}`}
       >
         <span

@@ -52,7 +52,7 @@ export default function UserProfileDropdown({ user, onLogout }: UserProfileDropd
         className="flex items-center gap-2 focus:outline-none"
         data-testid="avatar-button"
       >
-        <div className="w-10 h-10 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white">
+        <div className="w-9 h-9 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white">
           {user?.photoURL && !imgError ? (
             <Image 
               src={user.photoURL} 
