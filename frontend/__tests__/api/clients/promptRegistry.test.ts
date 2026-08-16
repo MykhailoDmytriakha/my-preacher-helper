@@ -98,7 +98,7 @@ describe('prompt registry', () => {
   });
 
   it('shows a human name for old and new names alike', () => {
-    expect(promptDisplayName('plan_point_content')).toBe('Проповедь · Конспект · текст одного пункта');
+    expect(promptDisplayName('plan_point_content')).toBe('Проповедь · План · текст одного пункта');
     expect(promptDisplayName('sermon.export.part_links'))
       .toBe('Проповедь · Экспорт · вступление, связки между частями, концовка');
   });

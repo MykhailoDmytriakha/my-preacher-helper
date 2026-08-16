@@ -124,7 +124,7 @@ export function useColumnOutlineState({
   const triggerSaveOutline = (updatedPoints: SermonPoint[]) => {
     if (!sermonId) return;
     if (!isOnline) {
-      toast.error(t("errors.saveOutlineError", { defaultValue: "Failed to save outline" }));
+      toast.error(t("errors.saveOutlineError", { defaultValue: "Failed to save structure" }));
       return;
     }
 
@@ -369,7 +369,7 @@ export function useColumnOutlineState({
         cancelAddingNewPoint();
       }
     } catch {
-      toast.error(t("structure.saveError", { defaultValue: "Failed to save outline point" }));
+      toast.error(t("structure.saveError", { defaultValue: "Failed to save structure point" }));
     }
   };
 
@@ -404,7 +404,7 @@ export function useColumnOutlineState({
       if (newPoints.length === 0) {
         toast.error(
           t("structure.generateSermonPointsError", {
-            defaultValue: "Failed to generate outline points",
+            defaultValue: "Failed to generate structure points",
           })
         );
         return;
@@ -417,7 +417,7 @@ export function useColumnOutlineState({
 
       toast.success(
         t("structure.outlinePointsGenerated", {
-          defaultValue: "SermonOutline points generated successfully",
+          defaultValue: "Structure points generated successfully",
           count: newPoints.length,
         })
       );
@@ -425,7 +425,7 @@ export function useColumnOutlineState({
       console.error("Error generating outline points:", error);
       toast.error(
         t("structure.generateSermonPointsError", {
-          defaultValue: "Failed to generate outline points",
+          defaultValue: "Failed to generate structure points",
         })
       );
     } finally {

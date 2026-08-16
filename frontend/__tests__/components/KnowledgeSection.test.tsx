@@ -366,6 +366,43 @@ describe('KnowledgeSection Component', () => {
     expect(screen.getByText('Call to action: How will you respond to God\'s love today?')).toBeInTheDocument();
   });
 
+  /**
+   * A PLAN WITH ONE SECTION IS A LEGAL PLAN.
+   *
+   * Saving deliberately sends ONE section at a time, so a save from a laptop cannot erase
+   * what a phone wrote into the other two. The first section a sermon ever gets therefore
+   * lands alone, and this screen used to read all three unconditionally and crash the
+   * whole sermon page with "Cannot read properties of undefined (reading 'outline')".
+   */
+  it('renders a plan that holds only one section', async () => {
+    const sermonWithPartialPlan = {
+      ...mockSermonWithoutInsights,
+      plan: {
+        introduction: { outline: 'Only the introduction has been written so far' },
+      } as unknown as Plan,
+    };
+
+    render(
+      <TestProviders>
+        <KnowledgeSection sermon={sermonWithPartialPlan} updateSermon={mockUpdateSermon} />
+      </TestProviders>
+    );
+
+    await act(async () => {
+      jest.advanceTimersByTime(600);
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+    });
+
+    // The screen renders instead of throwing, and the one written section is on it.
+    expect(screen.getByText('Introduction')).toBeInTheDocument();
+    expect(screen.getByText('Only the introduction has been written so far')).toBeInTheDocument();
+    // The unwritten sections read as empty and are simply not shown — not a crash.
+    expect(screen.queryByText('Main Part')).not.toBeInTheDocument();
+  });
+
   it('generates section hints when the refresh button is clicked', async () => {
     // Mock the generateThoughtsBasedPlan function
     (insightsService.generateThoughtsBasedPlan as jest.Mock).mockResolvedValue({

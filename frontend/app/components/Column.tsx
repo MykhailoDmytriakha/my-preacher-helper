@@ -592,15 +592,15 @@ const SermonPointPlaceholder: React.FC<{
           });
         case "tooMany":
           return t("structure.aiSortPointDisabledTooMany", {
-            defaultValue: "AI sorting supports up to 25 thoughts in one outline point.",
+            defaultValue: "AI sorting supports up to 25 thoughts in one structure point.",
           });
         case "insufficientUnlocked":
           return t("structure.aiSortPointDisabledTooFewUnlocked", {
-            defaultValue: "Need at least 2 unlocked thoughts in this outline point.",
+            defaultValue: "Need at least 2 unlocked thoughts in this structure point.",
           });
         default:
           return t("structure.aiSortPoint", {
-            defaultValue: "Sort this outline point with AI. Locked thoughts stay fixed.",
+            defaultValue: "Sort this structure point with AI. Locked thoughts stay fixed.",
           });
       }
     })();
@@ -763,8 +763,8 @@ const SermonPointPlaceholder: React.FC<{
                   }}
                     disabled={isPointLocked}
                     className={`w-[30px] h-[30px] flex-shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:focus-visible:ring-green-300 flex items-center justify-center ${isPointLocked ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50' : 'bg-gray-400 hover:bg-green-500'}`}
-                    title={isPointLocked ? t('structure.pointLocked', { defaultValue: 'All thoughts in this outline point are locked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
-                    aria-label={isPointLocked ? t('structure.pointLocked', { defaultValue: 'All thoughts in this outline point are locked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
+                    title={isPointLocked ? t('structure.pointLocked', { defaultValue: 'All thoughts in this structure point are locked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
+                    aria-label={isPointLocked ? t('structure.pointLocked', { defaultValue: 'All thoughts in this structure point are locked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
                   >
                     <PlusIcon className="h-4 w-4 text-white" />
                   </button>
@@ -898,7 +898,7 @@ const UnassignedThoughtsDropTarget: React.FC<{
       >
         {items.length === 0 ? (
           <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
-            {t('structure.dropToUnassign', { defaultValue: 'Drop thoughts here to unassign them from outline points' })}
+            {t('structure.dropToUnassign', { defaultValue: 'Drop thoughts here to unassign them from structure points' })}
           </div>
         ) : (
           <SortableContext items={items} strategy={verticalListSortingStrategy}>
@@ -1298,10 +1298,10 @@ export default function Column({
             disabled={isGeneratingSermonPoints || localSermonPoints.length > 0 || aiBlocked}
             className={`flex items-center text-xs font-medium px-2 py-1 bg-white dark:bg-gray-200 bg-opacity-20 dark:bg-opacity-20 rounded transition-colors ${localSermonPoints.length > 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-opacity-30 dark:hover:bg-opacity-30'} text-white dark:text-gray-800`}
             title={localSermonPoints.length > 0
-              ? t('structure.outlinePointsExist', { defaultValue: 'SermonOutline points already exist' })
+              ? t('structure.outlinePointsExist', { defaultValue: 'Structure points already exist' })
               : aiBlocked
                 ? t('settings.usage.aiUsageExhausted')
-              : t('structure.generateSermonPoints', { defaultValue: 'Generate outline points' })}
+              : t('structure.generateSermonPoints', { defaultValue: 'Generate structure points' })}
           >
             {isGeneratingSermonPoints ? (
               <svg className="animate-spin h-3 w-3 mr-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -1770,7 +1770,7 @@ export default function Column({
 	            className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 bg-gray-50 hover:bg-gray-100 dark:bg-gray-800/50 dark:hover:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-700/50 hover:border-gray-400 dark:hover:border-gray-600 rounded-lg transition-colors min-w-[160px]"
 	          >
             <PlusIcon className="h-4 w-4" />
-            <span>{t('structure.addOutlinePoint', { defaultValue: 'Add outline point' })}</span>
+            <span>{t('structure.addOutlinePoint', { defaultValue: 'Add structure point' })}</span>
           </button>
         ) : (
           <div className={`w-full max-w-md p-4 rounded-lg border-2 border-dashed border-blue-400 bg-blue-50 dark:bg-blue-900/20 shadow-sm animate-in fade-in zoom-in duration-200`}>

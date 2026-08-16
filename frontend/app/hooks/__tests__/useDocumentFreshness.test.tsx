@@ -1,6 +1,10 @@
 import { act, renderHook } from '@testing-library/react';
 
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
+import {
+  planFreshnessProjection,
+  type PlanFreshnessProjection,
+} from '@/utils/sermonFreshnessProjection';
 
 type Snapshot = {
   metadata: { hasPendingWrites: boolean; fromCache: boolean };
@@ -456,6 +460,37 @@ describe('a new document starts from knowing nothing', () => {
 
       // The response came back and the screen updated — no mismatch left.
       rerender({ known: { title: 'own write, already on the server' } });
+
+      expect(result.current.state).toBe('fresh');
+      expect(result.current.remote).toBeNull();
+    });
+
+    it('raises and clears for a planText-only change', () => {
+      const base = {
+        outline: { introduction: [{ id: 'p1', text: 'Point' }], main: [], conclusion: [] },
+        thoughts: [],
+        plan: { introduction: { outline: '' }, main: { outline: '' }, conclusion: { outline: '' } },
+      };
+      const oldPlan = planFreshnessProjection({ ...base, planText: { p1: 'Old' } });
+      const newPlan = planFreshnessProjection({ ...base, planText: { p1: 'New' } });
+      const { result, rerender } = renderHook(
+        ({ known }: { known: PlanFreshnessProjection }) =>
+          useDocumentFreshness<PlanFreshnessProjection>({
+            collection: 'sermons',
+            docId: 'sermon-1',
+            uid: 'uid-1',
+            enabled: true,
+            known,
+            select: (data) => planFreshnessProjection(data),
+          }),
+        { initialProps: { known: oldPlan } }
+      );
+
+      act(() => emit?.(server({ ...base, planText: { p1: 'New' } })));
+      expect(result.current.state).toBe('stale');
+      expect(result.current.remote).toEqual(newPlan);
+
+      rerender({ known: newPlan });
 
       expect(result.current.state).toBe('fresh');
       expect(result.current.remote).toBeNull();

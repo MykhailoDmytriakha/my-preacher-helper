@@ -53,6 +53,46 @@ describe('sermonFreshnessProjection', () => {
     expect(reordered.outline).not.toBe(one.outline);
   });
 
+  it('notices a change made only to plan text', () => {
+    const before = sermonFreshnessProjection({ planText: { p1: 'First version' } });
+    const after = sermonFreshnessProjection({ planText: { p1: 'Edited elsewhere' } });
+
+    expect(after.planText).not.toBe(before.planText);
+  });
+
+  it('treats a storage-only plan-text migration as the same readable plan', () => {
+    const legacyPlan = {
+      introduction: { outline: '', outlinePoints: { p1: 'Same paragraph' } },
+      main: { outline: '' },
+      conclusion: { outline: '' },
+    };
+    const beforeMigration = sermonFreshnessProjection({ plan: legacyPlan });
+    const afterMigration = sermonFreshnessProjection({
+      plan: legacyPlan,
+      planText: { p1: 'Same paragraph' },
+    });
+
+    expect(afterMigration.planText).toBe(beforeMigration.planText);
+  });
+
+  it('treats a sparse server map and the screen\'s merged mirror as the same readable plan', () => {
+    const legacyPlan = {
+      introduction: { outline: '', outlinePoints: { p1: 'Moved', p2: 'Still legacy' } },
+      main: { outline: '' },
+      conclusion: { outline: '' },
+    };
+    const fromServer = sermonFreshnessProjection({
+      plan: legacyPlan,
+      planText: { p1: 'Moved' },
+    });
+    const fromScreen = sermonFreshnessProjection({
+      plan: legacyPlan,
+      planText: { p1: 'Moved', p2: 'Still legacy' },
+    });
+
+    expect(fromScreen.planText).toBe(fromServer.planText);
+  });
+
   it('is the single rule for both sides of the comparison', () => {
     // The screen holds a sermon entity, the listener hands over a raw document.
     // This used to be written twice, and the two copies could drift apart silently.
@@ -142,6 +182,13 @@ describe('sermonFreshnessProjection', () => {
       });
 
       expect(reordered.outline).not.toBe(one.outline);
+    });
+
+    it('notices a change made only to plan text', () => {
+      const before = planFreshnessProjection({ planText: { p1: 'First version' } });
+      const after = planFreshnessProjection({ planText: { p1: 'Edited elsewhere' } });
+
+      expect(after.planText).not.toBe(before.planText);
     });
   });
 });

@@ -196,8 +196,7 @@ export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModal
 
             <div className="rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900/60 dark:bg-blue-900/20 dark:text-blue-100">
               {t('workspaces.groups.form.bootstrapHint', {
-                defaultValue:
-                  'A starter flow with Main topic + Scripture will be created automatically. You can also schedule the first meeting now.',
+                defaultValue: 'A starter flow with Main topic + Scripture will be created automatically. You can also schedule the first meeting now.',
               })}
             </div>
 

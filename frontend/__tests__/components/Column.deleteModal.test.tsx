@@ -107,9 +107,9 @@ jest.mock('react-i18next', () => ({
         'common.edit': 'Edit',
         'common.save': 'Save',
         'common.confirm': 'Confirm',
-        'structure.deletePointConfirmTitle': 'Delete Outline Point',
+        'structure.deletePointConfirmTitle': 'Delete Structure Point',
         'structure.deletePointConfirmDesc': 'Type the name to confirm',
-        'structure.addPointButton': 'Add outline point',
+        'structure.addPointButton': 'Add structure point',
         'structure.addPointPlaceholder': 'Enter new outline point',
         'structure.editPointPlaceholder': 'Edit outline point',
       };
@@ -343,13 +343,13 @@ describe('Column — normal mode insert/edit flows', () => {
   it('opens add-point composer and closes it on Escape and Cancel', () => {
     render(<Column {...baseProps} onAddOutlinePoint={jest.fn().mockResolvedValue(undefined)} />);
 
-    fireEvent.click(screen.getByText('Add outline point'));
+    fireEvent.click(screen.getByText('Add structure point'));
     const addInput = screen.getByPlaceholderText('New point name...');
     fireEvent.change(addInput, { target: { value: 'New point via add CTA' } });
     fireEvent.keyDown(addInput, { key: 'Escape', code: 'Escape' });
     expect(screen.queryByPlaceholderText('New point name...')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Add outline point'));
+    fireEvent.click(screen.getByText('Add structure point'));
     fireEvent.change(screen.getByPlaceholderText('New point name...'), { target: { value: 'Another point' } });
     const composerCancel = screen
       .getAllByRole('button', { name: 'Cancel' })
@@ -395,14 +395,14 @@ describe('Column — normal mode insert/edit flows', () => {
     const onAddOutlinePoint = jest.fn().mockRejectedValue(new Error('save failed'));
     render(<Column {...baseProps} onAddOutlinePoint={onAddOutlinePoint} />);
 
-    fireEvent.click(screen.getByText('Add outline point'));
+    fireEvent.click(screen.getByText('Add structure point'));
     const addInput = screen.getByPlaceholderText('New point name...');
     fireEvent.change(addInput, { target: { value: 'Rejected point' } });
     fireEvent.keyDown(addInput, { key: 'Enter', code: 'Enter' });
 
     await waitFor(() => {
       expect(onAddOutlinePoint).toHaveBeenCalled();
-      expect(toast.error).toHaveBeenCalledWith('Failed to save outline point');
+      expect(toast.error).toHaveBeenCalledWith('Failed to save structure point');
     });
   });
 });

@@ -97,12 +97,12 @@ const notifyOutlinePointSortBlocked = (
       return true;
     case "tooMany":
       toast.warning(t("structure.aiSortPointDisabledTooMany", {
-        defaultValue: "AI sorting supports up to 25 thoughts in one outline point.",
+        defaultValue: "AI sorting supports up to 25 thoughts in one structure point.",
       }));
       return true;
     case "insufficientUnlocked":
       toast.info(t("structure.aiSortPointDisabledTooFewUnlocked", {
-        defaultValue: "Need at least 2 unlocked thoughts in this outline point.",
+        defaultValue: "Need at least 2 unlocked thoughts in this structure point.",
       }));
       return true;
     default:

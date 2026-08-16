@@ -1,18 +1,20 @@
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { toast } from "sonner";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
-import { Sermon, Plan } from "@/models/models";
+import { Sermon } from "@/models/models";
+import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
+import { planTextConflictValues, savePlanTextViaClient } from "@/services/sermons.client";
 import { isUsageCapReachedError } from "@/services/usageLimits";
 import { debugLog } from "@/utils/debugMode";
-import { announceIfPersisted, awaitAcceptance, persistedWrite } from "@/utils/recoverableWrite";
+import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrder";
 import { writeFailureTranslationKey } from "@/utils/writeRecovery";
 
-import { buildSectionOutlineMarkdown } from "./buildSectionOutlineMarkdown";
-import { generatePlanPointContent, saveSermonPlan } from "./planApi";
+import { generatePlanPointContent } from "./planApi";
 import { getPointFromLookup, getPointSectionFromLookup } from "./planOutlineLookup";
 
 import type { PlanOutlineLookup } from "./planOutlineLookup";
+import type { PlanTextBaseline } from "./planTextBaseline";
 import type { SermonSectionKey } from "./types";
 
 interface UsePlanActionsParams {
@@ -29,12 +31,20 @@ interface UsePlanActionsParams {
   }) => void;
   onSaved: (params: {
     outlinePointId: string;
+    /** Every cell this save wrote, so the screen can clear "modified" on all of them. */
+    savedNodeIds: string[];
     section: SermonSectionKey;
-    combinedText: string;
-    updatedPlan: Plan;
+    /** Exactly what this save wrote, so the screen can tell mid-flight edits apart. */
+    sentText?: Record<string, string>;
   }) => Promise<void> | void;
   onAiSuccess?: () => Promise<void> | void;
   aiBlocked?: boolean;
+  /**
+   * What the server held for each cell when this screen took it. Without it the write goes
+   * through unguarded — which is what this screen used to do, and how a paragraph saved on a
+   * phone was replaced by the laptop's older copy with nothing reported anywhere.
+   */
+  planTextBaseline?: PlanTextBaseline;
 }
 
 export default function usePlanActions({
@@ -48,7 +58,18 @@ export default function usePlanActions({
   onSaved,
   onAiSuccess,
   aiBlocked = false,
+  planTextBaseline,
 }: UsePlanActionsParams) {
+  /** Saves run one after another, so each states the baseline its predecessor confirmed. */
+  const writeChainRef = useRef<Promise<unknown>>(Promise.resolve());
+  /** The cells as they are RIGHT NOW, for actions taken long after a save was attempted. */
+  const generatedContentRef = useRef(generatedContent);
+  generatedContentRef.current = generatedContent;
+  /** Re-entry for the "keep mine" button, without a circular hook dependency. */
+  const saveSermonPointRef = useRef<
+    ((id: string, cells: Record<string, string>, section: SermonSectionKey) => Promise<void>) | null
+  >(null);
+
   const generateSermonPointContent = useCallback(async (outlinePointId: string) => {
     if (aiBlocked || !sermon) return;
 
@@ -63,6 +84,19 @@ export default function usePlanActions({
 
       if (!outlinePoint || !section) {
         toast.error(t("errors.outlinePointNotFound"));
+        return;
+      }
+
+      /**
+       * NOTHING TO GENERATE FROM IS NOT A FAILURE.
+       *
+       * The server answers a point with no thoughts with a 400, which arrived here as
+       * the generic "generation failed" — and that reads as a broken feature on exactly
+       * the screen where a plan gets written by hand. Answered before the request goes
+       * out: no AI call spent, and the message names the reason and the way forward.
+       */
+      if (getVisualOrderedThoughtsForOutlinePoint(sermon, outlinePointId).length === 0) {
+        toast.info(t("plan.noThoughtsToGenerate"));
         return;
       }
 
@@ -92,74 +126,116 @@ export default function usePlanActions({
     }
   }, [aiBlocked, onAiSuccess, onGenerated, outlineLookup, planStyle, sermon, setGeneratingIds, t]);
 
+  /**
+   * Saves one outline point — meaning ALL of its cells at once (`planNodes.ts`).
+   *
+   * `contentByNodeId` is keyed by the point's own id and by each sub-point's id. Sending a
+   * single string here, as this once did, stored the point's own text and silently dropped
+   * everything written under its sub-points.
+   *
+   * The write is now one key per node, straight through the client SDK. What it replaced
+   * rebuilt the WHOLE section — its markdown and every other point's text — and handed that
+   * to the server, so saving one point overwrote the rest of the section with this screen's
+   * copy of it. Nothing is assembled here any more either: the document is built when it is
+   * read (`utils/planText.ts`).
+   */
   const saveSermonPoint = useCallback(async (
     outlinePointId: string,
-    content: string,
+    contentByNodeId: Record<string, string>,
     section: SermonSectionKey
   ) => {
     if (!sermon) return;
 
     try {
-      const currentPlan: Plan = sermon.plan || {
-        introduction: { outline: "" },
-        main: { outline: "" },
-        conclusion: { outline: "" },
+      /**
+       * SAVES OF THE SAME POINT GO IN ORDER, like the hand-written screen's.
+       *
+       * Nothing disables the button while a save is in flight, so pressing it twice sent two
+       * writes built from the SAME baseline. Whichever answered last used to win; now the
+       * second is refused as stale against the first — and the newer text, which is the one
+       * the person can see, is the one that loses. Chaining makes each save state the baseline
+       * its predecessor confirmed.
+       */
+      const run = async () => {
+        await savePlanTextViaClient(sermon.id, contentByNodeId, [], {
+          userId: sermon.userId,
+          baselineByNodeId: planTextBaseline?.forNodes(Object.keys(contentByNodeId)),
+        });
+        planTextBaseline?.confirm(contentByNodeId);
       };
-
-      const sectionData = currentPlan[section] || { outline: "" };
-      const updatedOutlinePoints = {
-        ...(sectionData.outlinePoints || {}),
-        [outlinePointId]: content,
-      };
-
-      const allPointsInSection = outlineLookup.pointsBySection[section] || [];
-      const combinedText = buildSectionOutlineMarkdown({
-        orderedOutlinePoints: allPointsInSection,
-        outlinePointsContentById: {
-          ...generatedContent,
-          ...updatedOutlinePoints,
-          [outlinePointId]: content,
-        },
-      });
-
-      const updatedPlan: Plan = {
-        ...currentPlan,
-        [section]: {
-          ...sectionData,
-          outline: combinedText,
-          outlinePoints: updatedOutlinePoints,
-        },
-      };
-
-      // ONE SECTION is what this save changed — state only it. Sending the whole
-      // plan meant the two untouched sections travelled as this screen's hours-old
-      // copy and replaced whatever another device had written into them.
-      const acceptance = await awaitAcceptance(
-        persistedWrite(saveSermonPlan({
-          sermonId: sermon.id,
-          plan: { [section]: updatedPlan[section] },
-        })),
-        (error) => toast.error(t(writeFailureTranslationKey(error, 'errors.failedToSavePoint')))
-      );
+      const queued = writeChainRef.current.then(run, run);
+      writeChainRef.current = queued.catch(() => undefined);
+      await queued;
 
       await onSaved({
         outlinePointId,
+        savedNodeIds: Object.keys(contentByNodeId),
         section,
-        combinedText,
-        updatedPlan,
+        sentText: contentByNodeId,
       });
 
-      announceIfPersisted(acceptance, () => {
-        toast.success(t("plan.pointSaved"));
-        if (allPointsInSection.length > 1) {
-          toast.success(t("plan.sectionSaved", { section: t(`sections.${section}`) }));
-        }
-      });
+      toast.success(t("plan.pointSaved"));
     } catch (error) {
+      /**
+       * QUEUED IS NOT REFUSED — the durable outbox holds the text and replays it through the
+       * same guard on reconnect. The cells are settled so nothing keeps claiming to be
+       * unsaved, and no success is announced: the server has never seen it.
+       */
+      if (isOfflineQueuedError(error)) {
+        await onSaved({
+          outlinePointId,
+          savedNodeIds: Object.keys(contentByNodeId),
+          section,
+          sentText: contentByNodeId,
+        });
+        toast.info(t("connection.offlineBanner"));
+        return;
+      }
+      /**
+       * A REFUSAL IS AN ANSWER, NOT A WALL — and the way out is a button in the message, not
+       * the next press.
+       *
+       * Adopting the server's values on arrival made "press Save again means mine wins" true in
+       * a way nobody agreed to: two quick presses are both already queued, so the second ran
+       * with the freshly adopted baseline and replaced the other device before the warning had
+       * been read. Consent has to be an act taken AFTER the message.
+       */
+      const theirs = planTextConflictValues(error);
+      if (theirs) {
+        toast.error(t("plan.saveRefusedByOtherDevice"), {
+          id: "plan-save-refused",
+          duration: Infinity,
+          action: {
+            label: t("plan.saveRefusedKeepMine"),
+            onClick: () => {
+              planTextBaseline?.observe(theirs);
+              /**
+               * THE TEXT AS IT IS NOW, not as it was when the refusal arrived.
+               *
+               * The closure held the snapshot this attempt had sent. People keep writing while a
+               * conflict message sits on screen, so pressing "keep mine" re-sent the OLDER
+               * version — announced as saved, while everything typed since stayed unsaved. The
+               * hand-written screen reads its cells at write time for the same reason.
+               */
+              const now = Object.fromEntries(
+                Object.keys(contentByNodeId).map((nodeId) => [
+                  nodeId,
+                  generatedContentRef.current[nodeId] ?? contentByNodeId[nodeId],
+                ])
+              );
+              void saveSermonPointRef.current?.(outlinePointId, now, section);
+            },
+          },
+        });
+        return;
+      }
       debugLog("Plan save failed", { sermonId: sermon.id, outlinePointId, section, error });
       toast.error(t(writeFailureTranslationKey(error, "errors.failedToSavePoint")));
     }
-  }, [generatedContent, onSaved, outlineLookup.pointsBySection, sermon, t]);
+  }, [onSaved, planTextBaseline, sermon, t]);
+
+  // Wired after definition so the refusal message can re-enter it.
+  saveSermonPointRef.current = saveSermonPoint;
 
   return {
     generateSermonPointContent,

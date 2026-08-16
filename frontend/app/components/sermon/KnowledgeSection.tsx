@@ -121,10 +121,21 @@ const getSectionHintsFromInsightsOrContent = (
     debugLog('🎯 Getting thoughts plan from sermon content', content);
   }
   if (content) {
+    /**
+     * A STORED PLAN MAY HOLD ONLY THE SECTIONS SOMEONE HAS WRITTEN.
+     *
+     * Saving sends ONE section at a time on purpose — that is what keeps a save from a
+     * laptop from erasing what a phone wrote into the other two. The consequence is that
+     * `plan` legitimately arrives with a section missing, and reading all three as if
+     * they were always present crashed this whole screen the first time a sermon got its
+     * very first section: `Cannot read properties of undefined (reading 'outline')`.
+     *
+     * An unwritten section reads as empty, which is what it is.
+     */
     return {
-      introduction: content.introduction.outline,
-      main: content.main.outline,
-      conclusion: content.conclusion.outline
+      introduction: content.introduction?.outline ?? '',
+      main: content.main?.outline ?? '',
+      conclusion: content.conclusion?.outline ?? ''
     };
   }
 

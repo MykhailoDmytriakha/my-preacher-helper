@@ -2,25 +2,39 @@ import { act, renderHook } from "@testing-library/react";
 import { toast } from "sonner";
 
 import usePlanActions from "@/(pages)/(private)/sermons/[id]/plan/usePlanActions";
-import { generatePlanPointContent, saveSermonPlan } from "@/(pages)/(private)/sermons/[id]/plan/planApi";
+import { generatePlanPointContent } from "@/(pages)/(private)/sermons/[id]/plan/planApi";
+import { savePlanTextViaClient } from "@/services/sermons.client";
 import { UsageCapReachedError } from "@/services/usageLimits";
 
 jest.mock("sonner", () => ({
   toast: {
     success: jest.fn(),
     error: jest.fn(),
+    info: jest.fn(),
   },
+}));
+
+/**
+ * THE REAL MODULE, WITH ONLY THE WRITE REPLACED.
+ *
+ * Listing mocked exports by hand meant every new helper the screens started using arrived here
+ * as `undefined` — and `undefined` inside a catch block turns a handled refusal into an
+ * unhandled throw, so the tests failed for a reason that had nothing to do with the behaviour
+ * under test. Spreading the actual module keeps the seam exactly one function wide.
+ */
+jest.mock("@/services/sermons.client", () => ({
+  ...jest.requireActual("@/services/sermons.client"),
+  savePlanTextViaClient: jest.fn(),
 }));
 
 jest.mock("@/(pages)/(private)/sermons/[id]/plan/planApi", () => ({
   generatePlanPointContent: jest.fn(),
-  saveSermonPlan: jest.fn(),
 }));
 
 describe("usePlanActions", () => {
   const mockToast = toast as jest.Mocked<typeof toast>;
   const mockGeneratePlanPointContent = generatePlanPointContent as jest.MockedFunction<typeof generatePlanPointContent>;
-  const mockSaveSermonPlan = saveSermonPlan as jest.MockedFunction<typeof saveSermonPlan>;
+  const mockSavePlanText = savePlanTextViaClient as jest.MockedFunction<typeof savePlanTextViaClient>;
   type GeneratingIds = Record<string, boolean>;
 
   const sermon = {
@@ -29,7 +43,18 @@ describe("usePlanActions", () => {
     verse: "John 3:16",
     date: "2026-02-27",
     userId: "user-1",
-    thoughts: [],
+    /**
+     * THOUGHTS THAT ACTUALLY SIT ON THE POINTS.
+     *
+     * This fixture used to be `thoughts: []` — a shape the real server answers with
+     * 400 "no thoughts associated with this outline point". The generate tests were
+     * green while describing a sermon that could never generate anything; only the
+     * client-side guard added later made the mismatch visible.
+     */
+    thoughts: [
+      { id: "th1", text: "Thought on p1", tags: [], date: "2026-02-27", outlinePointId: "p1" },
+      { id: "th2", text: "Thought on p2", tags: [], date: "2026-02-27", outlinePointId: "p2" },
+    ],
     outline: {
       introduction: [
         { id: "p1", text: "Intro 1" },
@@ -284,8 +309,45 @@ describe("usePlanActions", () => {
     expect(getStates()).toEqual([{ "missing-point": true }, {}]);
   });
 
-  it("builds deterministic combined section text on save and calls onSaved", async () => {
-    mockSaveSermonPlan.mockResolvedValue(undefined);
+  /**
+   * AN EMPTY POINT IS NOT A BROKEN ONE.
+   *
+   * The server refuses a point with no thoughts (400), which used to reach the screen
+   * as the generic "generation failed" — the wrong story on a plan being written by
+   * hand. The hook answers first: an informational message, no request, no AI spent.
+   */
+  it("explains instead of failing when the point has no thoughts to generate from", async () => {
+    const { setGeneratingIds, getStates } = createGeneratingIdsHarness();
+    const onGenerated = jest.fn();
+    const onSaved = jest.fn();
+
+    const { result } = renderHook(() =>
+      usePlanActions({
+        sermon: { ...sermon, thoughts: [] } as typeof sermon,
+        planStyle: "memory",
+        outlineLookup,
+        generatedContent: {},
+        t,
+        setGeneratingIds,
+        onGenerated,
+        onSaved,
+      })
+    );
+
+    await act(async () => {
+      await result.current.generateSermonPointContent("p1");
+    });
+
+    expect(mockToast.info).toHaveBeenCalledWith("plan.noThoughtsToGenerate");
+    expect(mockToast.error).not.toHaveBeenCalled();
+    expect(mockGeneratePlanPointContent).not.toHaveBeenCalled();
+    expect(onGenerated).not.toHaveBeenCalled();
+    // The spinner still clears — an early return must not leave the button spinning.
+    expect(getStates()).toEqual([{ p1: true }, {}]);
+  });
+
+  it("writes the point's cells as text and calls onSaved", async () => {
+    mockSavePlanText.mockResolvedValue(undefined);
 
     const { setGeneratingIds } = createGeneratingIdsHarness();
     const onGenerated = jest.fn();
@@ -305,23 +367,31 @@ describe("usePlanActions", () => {
     );
 
     await act(async () => {
-      await result.current.saveSermonPoint("p1", "Updated intro 1", "introduction");
+      await result.current.saveSermonPoint("p1", { p1: "Updated intro 1" }, "introduction");
     });
 
-    expect(mockSaveSermonPlan).toHaveBeenCalled();
+    // The text goes out as node keys; the document is assembled when it is READ, so no
+    // section markdown is built here any more and none travels to storage.
+    expect(mockSavePlanText).toHaveBeenCalledWith(
+      "sermon-1",
+      { p1: "Updated intro 1" },
+      [],
+      expect.objectContaining({ userId: "user-1" })
+    );
     expect(onSaved).toHaveBeenCalledWith(
       expect.objectContaining({
         outlinePointId: "p1",
         section: "introduction",
-        combinedText: "## Intro 1\n\nUpdated intro 1\n\n## Intro 2\n\nOld intro 2",
+        // What was actually sent travels back, so the screen can tell whether the text on
+        // it still matches — a cell typed into mid-flight must NOT be marked saved.
+        sentText: { p1: "Updated intro 1" },
       })
     );
     expect(mockToast.success).toHaveBeenCalledWith("plan.pointSaved");
-    expect(mockToast.success).toHaveBeenCalledWith("Section saved: Introduction");
   });
 
   it("shows save error toast when API request fails", async () => {
-    mockSaveSermonPlan.mockRejectedValue(new Error("save fail"));
+    mockSavePlanText.mockRejectedValue(new Error("save fail"));
 
     const { setGeneratingIds } = createGeneratingIdsHarness();
     const onGenerated = jest.fn();
@@ -341,15 +411,15 @@ describe("usePlanActions", () => {
     );
 
     await act(async () => {
-      await result.current.saveSermonPoint("p1", "Updated intro 1", "introduction");
+      await result.current.saveSermonPoint("p1", { p1: "Updated intro 1" }, "introduction");
     });
 
     expect(mockToast.error).toHaveBeenCalledWith("errors.failedToSavePoint");
     expect(onSaved).not.toHaveBeenCalled();
   });
 
-  it("builds fallback empty plan object when sermon.plan is absent", async () => {
-    mockSaveSermonPlan.mockResolvedValue(undefined);
+  it("touches only the edited node, even when the sermon has no stored plan", async () => {
+    mockSavePlanText.mockResolvedValue(undefined);
     const onSaved = jest.fn();
 
     const sermonWithoutPlan = {
@@ -362,25 +432,11 @@ describe("usePlanActions", () => {
       },
     };
 
-    const outlineLookupSinglePoint = {
-      ...outlineLookup,
-      pointsBySection: {
-        introduction: [{ id: "p1", text: "Intro 1" }],
-        main: [],
-        conclusion: [],
-      },
-      pointIdsBySection: {
-        introduction: ["p1"],
-        main: [],
-        conclusion: [],
-      },
-    };
-
     const { result } = renderHook(() =>
       usePlanActions({
         sermon: sermonWithoutPlan,
         planStyle: "memory",
-        outlineLookup: outlineLookupSinglePoint,
+        outlineLookup,
         generatedContent: {},
         t,
         setGeneratingIds: createGeneratingIdsHarness().setGeneratingIds,
@@ -390,23 +446,21 @@ describe("usePlanActions", () => {
     );
 
     await act(async () => {
-      await result.current.saveSermonPoint("p1", "Fresh intro", "introduction");
+      await result.current.saveSermonPoint("p1", { p1: "Fresh intro" }, "introduction");
     });
 
-    // ONLY the edited section travels. Sending the untouched sections as well —
-    // here as invented empty outlines — is how a save of the introduction used to
-    // blank a conclusion written on another device.
-    expect(mockSaveSermonPlan).toHaveBeenCalledWith({
-      sermonId: "sermon-1",
-      plan: {
-        introduction: {
-          outline: "## Intro 1\n\nFresh intro",
-          outlinePoints: { p1: "Fresh intro" },
-        },
-      },
-    });
+    /**
+     * ONLY the edited node travels. The old shape rebuilt the whole section — its markdown
+     * and every other point's text — from this screen's copy, which is how saving the
+     * introduction could blank what another device had written into it.
+     */
+    expect(mockSavePlanText).toHaveBeenCalledWith(
+      "sermon-1",
+      { p1: "Fresh intro" },
+      [],
+      expect.objectContaining({ userId: "user-1" })
+    );
     expect(onSaved).toHaveBeenCalled();
     expect(mockToast.success).toHaveBeenCalledWith("plan.pointSaved");
-    expect(mockToast.success).not.toHaveBeenCalledWith("Section saved: Introduction");
   });
 });

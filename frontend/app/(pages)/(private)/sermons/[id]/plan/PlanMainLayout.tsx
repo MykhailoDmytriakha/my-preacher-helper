@@ -14,6 +14,7 @@ import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
 import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
 import { Plan, Sermon, SermonPoint, Thought } from "@/models/models";
 import { normalizePlanArrows, normalizePlanPointHeadings, sanitizeMarkdown } from "@/utils/markdownUtils";
+import { readPlanText } from "@/utils/planText";
 import { hasPlan } from "@/utils/sermonPlanAccess";
 import { buildSubPointRenderableEntries } from "@/utils/subPoints";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
@@ -30,7 +31,6 @@ import PlanMarkdownGlobalStyles from "./PlanMarkdownGlobalStyles";
 
 import type {
   CombinedPlan,
-  PlanSectionContent,
   RegisterPairedCardRef,
   SectionColors,
   SermonSectionKey,
@@ -135,8 +135,8 @@ const SectionHeader = ({ section, onSwitchPage }: { section: SermonSectionKey; o
           <button
             onClick={onSwitchPage}
             className="group p-1 bg-white/20 rounded-full border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300"
-            title={t("plan.switchToStructure", { defaultValue: "Switch to ThoughtsBySection view" })}
-            aria-label={t("plan.switchToStructure", { defaultValue: "Switch to ThoughtsBySection view" })}
+            title={t("plan.switchToStructure", { defaultValue: "Switch to Structure view" })}
+            aria-label={t("plan.switchToStructure", { defaultValue: "Switch to Structure view" })}
           >
             <SwitchViewIcon className={`h-4 w-4 ${sectionToneClasses.text} group-hover:text-gray-900 dark:group-hover:text-gray-100`} />
           </button>
@@ -175,6 +175,17 @@ const MarkdownRenderer = ({ markdown, section }: { markdown: string; section?: S
 
 interface PlanMainLayoutContextValue {
   sermon: Sermon;
+  /**
+   * HAND-WRITTEN CONSPECTUS — the whole screen, not a per-point decision.
+   *
+   * When a sermon has no thoughts at all there is nothing to show beside the text, and
+   * every AI affordance on this screen is dead weight: generation has no fuel, key
+   * fragments belong to thoughts, and plan length only steers generation. So the screen
+   * becomes one column of writing cells and drops all three.
+   *
+   * Deciding this per point instead made the layout jump between one and two columns
+   * down the page. Deciding it once, for the sermon, keeps the rhythm even.
+   */
   planStyle: PlanStyle;
   setPlanStyle: React.Dispatch<React.SetStateAction<PlanStyle>>;
   isLoading: boolean;
@@ -191,7 +202,13 @@ interface PlanMainLayoutContextValue {
   getThoughtsForSermonPoint: (outlinePointId: string) => Thought[];
   onGenerate: (outlinePointId: string) => Promise<void>;
   onOpenFragmentsModal: (outlinePointId: string) => void;
-  onSaveSermonPoint: (outlinePointId: string, content: string, section: keyof Plan) => Promise<void>;
+  /**
+   * Saves EVERY cell of one outline point at once — see `planNodes.ts`. The map is keyed
+   * by node id (the point's own id and each sub-point's id), because a preacher filling a
+   * skeleton edits several cells before pressing save, and sending only the point's own
+   * text would silently drop the rest.
+   */
+  onSaveSermonPoint: (outlinePointId: string, contentByNodeId: Record<string, string>, section: keyof Plan) => Promise<void>;
   onToggleEditMode: (outlinePointId: string) => void;
   onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
   onUpdateCombinedPlan: (outlinePointId: string, content: string, section: SermonSectionKey) => void;
@@ -334,14 +351,25 @@ interface PlanOutlinePointEditorProps {
   outlinePoint: SermonPoint;
   sectionKey: SermonSectionKey;
   sectionColors: SectionColors;
-  sermonPlanSection?: PlanSectionContent;
+  /** Saved text keyed by node id — read through `readPlanText`, not from a raw field. */
+  savedTextByNodeId?: Record<string, string>;
+  /** Position within its section — printed as "2." beside the title. */
+  pointIndex?: number;
 }
 
+/**
+ * The generated text of ONE outline point, beside the thoughts it was built from.
+ *
+ * Writing without thoughts lives on its own screen (`plan/manual`): it is a form over the
+ * skeleton, with a cell per sub-point and no generation at all. Keeping both here meant
+ * every change had to be reasoned about twice.
+ */
 const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePointEditorProps>(({
   outlinePoint,
   sectionKey,
   sectionColors,
-  sermonPlanSection,
+  savedTextByNodeId,
+  pointIndex = 0,
 }, ref) => {
   const {
     generatedContent,
@@ -358,14 +386,16 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
     setModifiedContent,
   } = usePlanMainLayoutContext();
 
-  const currentSavedContent = sermonPlanSection?.outlinePoints?.[outlinePoint.id] || "";
   const sectionToneClasses = SECTION_TONE_CLASSES[sectionKey];
-  const currentGeneratedContent = generatedContent[outlinePoint.id] || "";
   const isEditMode = Boolean(editModePoints[outlinePoint.id]);
+  const currentContent = generatedContent[outlinePoint.id] || "";
+  const currentSavedContent = savedTextByNodeId?.[outlinePoint.id] ?? "";
+  const isModified = Boolean(modifiedContent[outlinePoint.id]);
+  const isSaved = Boolean(savedSermonPoints[outlinePoint.id]);
 
   useEffect(() => {
     onSyncPairHeights(sectionKey, outlinePoint.id);
-  }, [currentGeneratedContent, isEditMode, onSyncPairHeights, outlinePoint.id, sectionKey]);
+  }, [currentContent, isEditMode, onSyncPairHeights, outlinePoint.id, sectionKey]);
 
   return (
     <div
@@ -373,85 +403,55 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
       key={outlinePoint.id}
       className="h-full bg-white dark:bg-gray-800 border rounded-lg p-4 shadow-sm"
     >
-      <h3 className={`font-semibold text-lg mb-2 ${sectionToneClasses.text} flex justify-between items-center`}>
-        {outlinePoint.text}
-        <div className="flex space-x-2">
+      <h3 className={`font-semibold text-lg mb-2 ${sectionToneClasses.text} flex justify-between items-center gap-2`}>
+        <span className="min-w-0">
+          <span className="mr-2 opacity-60">{pointIndex + 1}.</span>
+          {outlinePoint.text}
+        </span>
+        <div className="flex shrink-0 space-x-2">
           <Button
             className="text-sm px-2 py-1 h-8"
-            onClick={() => onSaveSermonPoint(
-              outlinePoint.id,
-              generatedContent[outlinePoint.id] || "",
-              sectionKey
-            )}
-            variant={modifiedContent[outlinePoint.id] ? "section" : "default"}
-            sectionColor={modifiedContent[outlinePoint.id] ? sectionColors : undefined}
-            disabled={
-              !generatedContent[outlinePoint.id] ||
-              generatedContent[outlinePoint.id].trim() === "" ||
-              (savedSermonPoints[outlinePoint.id] && !modifiedContent[outlinePoint.id])
-            }
+            onClick={() => onSaveSermonPoint(outlinePoint.id, { [outlinePoint.id]: currentContent }, sectionKey)}
+            variant={isModified ? "section" : "default"}
+            sectionColor={isModified ? sectionColors : undefined}
+            // Emptying the text is a legitimate edit — gating on "has content" left the
+            // stored text impossible to remove.
+            disabled={!isModified && isSaved}
             title={t("plan.save")}
           >
             <Save className="h-4 w-4" />
+          </Button>
+          <Button
+            className="text-sm px-2 py-1 h-8"
+            onClick={() => onToggleEditMode(outlinePoint.id)}
+            variant="default"
+            title={isEditMode ? t(TRANSLATION_KEYS.PLAN.VIEW_MODE) : t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
+          >
+            {isEditMode ? <FileText className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
           </Button>
         </div>
       </h3>
 
       <div>
         {isEditMode ? (
-          <>
-            <div className="flex justify-end mb-1">
-              <Button
-                className="text-sm px-2 py-1 h-8"
-                onClick={() => onToggleEditMode(outlinePoint.id)}
-                variant="default"
-                title={t(TRANSLATION_KEYS.PLAN.VIEW_MODE)}
-              >
-                <FileText className="h-4 w-4" />
-              </Button>
-            </div>
-            <RichMarkdownEditor
-              value={currentGeneratedContent}
-              placeholder={noContentText}
-              minHeight="150px"
-              onChange={(newContent) => {
-                const isModified = newContent !== currentSavedContent;
-
-                setGeneratedContent((prev) => ({
-                  ...prev,
-                  [outlinePoint.id]: newContent,
-                }));
-
-                setModifiedContent((prev) => ({
-                  ...prev,
-                  [outlinePoint.id]: isModified,
-                }));
-
-                onUpdateCombinedPlan(outlinePoint.id, newContent, sectionKey);
-                onSyncPairHeights(sectionKey, outlinePoint.id);
-              }}
-            />
-          </>
+          <RichMarkdownEditor
+            value={currentContent}
+            placeholder={noContentText}
+            minHeight="150px"
+            onChange={(newContent) => {
+              setGeneratedContent((prev) => ({ ...prev, [outlinePoint.id]: newContent }));
+              setModifiedContent((prev) => ({ ...prev, [outlinePoint.id]: newContent !== currentSavedContent }));
+              onUpdateCombinedPlan(outlinePoint.id, newContent, sectionKey);
+              onSyncPairHeights(sectionKey, outlinePoint.id);
+            }}
+          />
         ) : (
           <div
             data-testid="plan-point-preview-surface"
             className="relative min-h-[100px] overflow-visible rounded-md border border-gray-200 bg-gray-50/70 text-base dark:border-gray-700/70 dark:bg-gray-900/20"
           >
-            <div className="absolute top-3 right-3 z-10">
-              <Button
-                className="text-sm px-2 py-1 h-8"
-                onClick={() => onToggleEditMode(outlinePoint.id)}
-                variant="default"
-                title={t(TRANSLATION_KEYS.PLAN.EDIT_MODE)}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-            </div>
-            <div className="p-4 pr-14 md:p-5 md:pr-16">
-              <MarkdownRenderer
-                markdown={currentGeneratedContent || noContentText}
-                section={sectionKey}
-              />
+            <div className="p-4 md:p-5">
+              <MarkdownRenderer markdown={currentContent || noContentText} section={sectionKey} />
             </div>
           </div>
         )}
@@ -484,7 +484,16 @@ const PlanSectionColumns = ({
   } = usePlanMainLayoutContext();
 
   const points = outlinePoints ?? [];
-  const sermonPlanSection = sermon.plan?.[sectionKey];
+  /**
+   * The saved text, read the SAME way the editor reads it.
+   *
+   * This used to come from `sermon.plan.<section>.outlinePoints` — the old field. Once text
+   * moved to `planText`, that made the baseline lie in both directions: typing a value back
+   * to what the OLD field held marked the card unchanged and disabled Save, and on a sermon
+   * that has only the new shape the baseline was empty, so clearing a card could never be
+   * saved either. Both are silent: the person presses nothing and loses the edit on leaving.
+   */
+  const savedTextByNodeId = readPlanText(sermon);
   const sectionToneClasses = SECTION_TONE_CLASSES[sectionKey];
 
   return (
@@ -493,7 +502,7 @@ const PlanSectionColumns = ({
       className={`lg:col-span-2 rounded-lg overflow-hidden border ${sectionToneClasses.surface} p-3 mt-4`}
     >
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {points.map((outlinePoint) => (
+        {points.map((outlinePoint, pointIndex) => (
           <React.Fragment key={outlinePoint.id}>
             <div data-testid={leftTestId} className="h-full">
               <SermonPointCard
@@ -509,7 +518,8 @@ const PlanSectionColumns = ({
                 outlinePoint={outlinePoint}
                 sectionKey={sectionKey}
                 sectionColors={sectionColors}
-                sermonPlanSection={sermonPlanSection}
+                savedTextByNodeId={savedTextByNodeId}
+                pointIndex={pointIndex}
               />
             </div>
           </React.Fragment>
@@ -606,7 +616,13 @@ export interface PlanMainLayoutProps {
   onThoughtSave: (updatedThought: Thought) => WriteSubmission;
   getThoughtsForSermonPoint: (outlinePointId: string) => Thought[];
   onGenerate: (outlinePointId: string) => Promise<void>;
-  onSaveSermonPoint: (outlinePointId: string, content: string, section: keyof Plan) => Promise<void>;
+  /**
+   * Saves EVERY cell of one outline point at once — see `planNodes.ts`. The map is keyed
+   * by node id (the point's own id and each sub-point's id), because a preacher filling a
+   * skeleton edits several cells before pressing save, and sending only the point's own
+   * text would silently drop the rest.
+   */
+  onSaveSermonPoint: (outlinePointId: string, contentByNodeId: Record<string, string>, section: keyof Plan) => Promise<void>;
   onToggleEditMode: (outlinePointId: string) => void;
   onSyncPairHeights: (section: SermonSectionKey, pointId: string) => void;
   onUpdateCombinedPlan: (outlinePointId: string, content: string, section: SermonSectionKey) => void;

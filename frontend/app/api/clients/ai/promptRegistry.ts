@@ -26,7 +26,7 @@ export interface PromptDescriptor {
   area: PromptArea;
   /** «Проповедь» · «Диктовка» · «Изучение». */
   areaLabel: string;
-  /** «Мысли» · «Конспект» · «Экспорт». */
+  /** «Мысли» · «План» · «Экспорт». */
   stageLabel: string;
   /** Номер шага внутри области — по нему сортируется вывод. */
   step: string;
@@ -51,8 +51,8 @@ export const PROMPT_REGISTRY: Record<string, PromptDescriptor> = {
     areaLabel: "Проповедь",
     stageLabel: "Наброски",
     step: "1",
-    display: "Проповедь · Наброски · разложить наброски в план",
-    where: "режим «Наброски» → «Работать над планом»",
+    display: "Проповедь · Наброски · разложить наброски в структуру",
+    where: "режим «Наброски» → «Работать над структурой»",
     hasPrompt: true,
     legacyNames: ["compose_plan_from_scratch"],
   },
@@ -131,8 +131,8 @@ export const PROMPT_REGISTRY: Record<string, PromptDescriptor> = {
     areaLabel: "Проповедь",
     stageLabel: "Размышления",
     step: "3.5",
-    display: "Проповедь · Размышления · предположенный план",
-    where: "«Размышления над проповедью» → обновление у блока «Предположенный план»",
+    display: "Проповедь · Размышления · вариант плана",
+    where: "«Размышления над проповедью» → обновление у блока «Вариант плана»",
     hasPrompt: true,
     legacyNames: ["section_hints"],
   },
@@ -141,8 +141,8 @@ export const PROMPT_REGISTRY: Record<string, PromptDescriptor> = {
     areaLabel: "Проповедь",
     stageLabel: "Структура",
     step: "4",
-    display: "Проповедь · Структура · режим фокуса · создать пункты плана",
-    where: "страница структуры → режим фокуса → сайдбар «Пункты плана» → «Создать»",
+    display: "Проповедь · Структура · режим фокуса · создать пункты структуры",
+    where: "страница структуры → режим фокуса → сайдбар «Пункты структуры» → «Создать»",
     hasPrompt: true,
     legacyNames: ["sermon_points"],
   },
@@ -159,20 +159,20 @@ export const PROMPT_REGISTRY: Record<string, PromptDescriptor> = {
   "sermon.conspect.section": {
     area: "sermon",
     areaLabel: "Проповедь",
-    stageLabel: "Конспект",
+    stageLabel: "План",
     step: "6.1",
-    display: "Проповедь · Конспект · текст раздела",
-    where: "«Конспект проповеди» → «Сгенерировать» у раздела",
+    display: "Проповедь · План · текст раздела",
+    where: "«План проповеди» → «Сгенерировать» у раздела",
     hasPrompt: true,
     legacyNames: ["plan_for_section"],
   },
   "sermon.conspect.point": {
     area: "sermon",
     areaLabel: "Проповедь",
-    stageLabel: "Конспект",
+    stageLabel: "План",
     step: "6.2",
-    display: "Проповедь · Конспект · текст одного пункта",
-    where: "«Конспект проповеди» → «Сгенерировать» у пункта",
+    display: "Проповедь · План · текст одного пункта",
+    where: "«План проповеди» → «Сгенерировать» у пункта",
     hasPrompt: true,
     legacyNames: ["plan_point_content"],
   },

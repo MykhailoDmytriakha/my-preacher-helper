@@ -246,9 +246,9 @@ describe('/api/admin/telemetry Main Route', () => {
             // Один промпт — одна строка, иначе история разъедется надвое.
             expect(Object.keys(data)).toEqual(['sermon.conspect.point']);
             expect(data['sermon.conspect.point'].total).toBe(2);
-            expect(data['sermon.conspect.point'].display).toBe('Проповедь · Конспект · текст одного пункта');
+            expect(data['sermon.conspect.point'].display).toBe('Проповедь · План · текст одного пункта');
             expect(data['sermon.conspect.point'].area).toBe('Проповедь');
-            expect(data['sermon.conspect.point'].stage).toBe('Конспект');
+            expect(data['sermon.conspect.point'].stage).toBe('План');
         });
 
         it('counts unfinished calls apart and keeps them out of the success denominator', async () => {

@@ -39,7 +39,9 @@ jest.mock('@/services/sermon.service', () => ({
     id: 'test-sermon-id',
     title: 'T',
     verse: 'V',
-    thoughts: [],
+    // Whole enough to reach the paired screen at all — this test is about the container,
+    // and an unready sermon is met by the gate instead.
+    thoughts: [{ id: 't1', text: 'A thought', tags: [], date: '2024-01-01', outlinePointId: 'intro-1' }],
     outline: {
       introduction: [{ id: 'intro-1', text: 'Intro Point' }],
       main: [],

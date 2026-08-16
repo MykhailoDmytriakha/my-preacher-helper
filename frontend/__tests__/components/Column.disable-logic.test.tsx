@@ -4,9 +4,9 @@ import Column from '../../app/components/Column';
 import '@testing-library/jest-dom';
 
 // Constants matching Column.tsx to use in expectations
-const DEFAULT_ALL_POINTS_BLOCKED_TEXT = 'All outline points are locked';
+const DEFAULT_ALL_POINTS_BLOCKED_TEXT = 'All structure points are locked';
 const DEFAULT_RECORD_AUDIO_TEXT = 'Record voice note';
-const DEFAULT_POINT_BLOCKED_TEXT = 'All thoughts in this outline point are locked';
+const DEFAULT_POINT_BLOCKED_TEXT = 'All thoughts in this structure point are locked';
 
 // Mock dependencies
 jest.mock('@heroicons/react/24/outline', () => ({

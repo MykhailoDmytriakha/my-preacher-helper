@@ -743,7 +743,7 @@ function StructurePageContent() {
 
     } catch (error) {
       console.error('Error adding outline point:', error);
-      toast.error(t(TRANSLATION_KEYS.ERRORS.SAVE_OUTLINE_ERROR, { defaultValue: 'Error updating outline' }));
+      toast.error(t(TRANSLATION_KEYS.ERRORS.SAVE_OUTLINE_ERROR, { defaultValue: 'Failed to save structure' }));
     }
   };
 

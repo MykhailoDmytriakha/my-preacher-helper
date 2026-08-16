@@ -159,7 +159,7 @@ export const HighlightBadge = ({
       : "border-blue-300 text-blue-800"
       }`}>
       {highlightType === "assigned"
-        ? t("structure.aiAssigned", { defaultValue: "AI assigned to outline point" })
+        ? t("structure.aiAssigned", { defaultValue: "AI assigned to structure point" })
         : t("structure.aiMoved", { defaultValue: "AI moved this item" })}
       {icon}
     </div>
@@ -294,7 +294,7 @@ export const SortableItemActions = ({
               onDelete?.(item.id, containerId);
             }}
             className={`focus:outline-none border border-transparent bg-white hover:border-gray-200 hover:shadow-md dark:bg-gray-700 dark:hover:border-gray-600 ${ACTION_BUTTON_BASE_CLASS}`}
-            title={t("structure.removeFromStructure", { defaultValue: "Remove from ThoughtsBySection" })}
+            title={t("structure.removeFromStructure", { defaultValue: "Remove from structure" })}
             disabled={isDeleting || isOverlay}
           >
             <TrashIcon className="h-5 w-5 text-red-500 hover:text-red-600" />

@@ -8,7 +8,7 @@ export const TRANSLATION_COMMON_SAVE = "common.save";
 export const TRANSLATION_COMMON_CANCEL = "common.cancel";
 
 export const DEFAULT_UNASSIGNED_THOUGHTS_TEXT = "Unassigned Thoughts";
-export const DEFAULT_ALL_POINTS_BLOCKED_TEXT = "All outline points are locked";
+export const DEFAULT_ALL_POINTS_BLOCKED_TEXT = "All structure points are locked";
 export const DEFAULT_RECORD_AUDIO_TEXT = "Record voice note";
 
 export const BG_GRAY_LIGHT_DARK = "bg-gray-50 dark:bg-gray-800";

@@ -79,7 +79,7 @@ jest.mock('lodash/debounce', () =>
   })
 );
 
-describe('ThoughtsBySection Page - Integration Tests', () => {
+describe('Structure Page - Integration Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     searchParamsGetMock.mockImplementation((param: string) =>

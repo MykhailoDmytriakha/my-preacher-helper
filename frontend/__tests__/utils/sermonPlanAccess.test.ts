@@ -62,7 +62,10 @@ describe('sermonPlanAccess utilities', () => {
     expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/sermons/${sermon.id}/plan`);
   });
 
-  it('falls back to structure access when thoughts are not assigned', () => {
+  it('still opens the plan when some thoughts are left unassigned', () => {
+    // A loose thought used to divert this shortcut to the structure page, hiding a plan
+    // that already existed. Unsorted thoughts are now reported ON the plan screen; they
+    // are not grounds for routing someone away from it.
     const sermon: Sermon = {
       ...baseSermon,
       thoughts: [
@@ -75,8 +78,25 @@ describe('sermonPlanAccess utilities', () => {
       },
     };
 
-    expect(getSermonAccessType(sermon)).toBe('structure');
-    expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/sermons/${sermon.id}/structure`);
+    expect(getSermonAccessType(sermon)).toBe('plan');
+    expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/sermons/${sermon.id}/plan`);
+  });
+
+  it('opens the plan for a sermon that has a plan and no thoughts at all', () => {
+    // Building a plan by hand is a first-class path: no thoughts is not an unfinished
+    // state to be corrected, it is how some sermons are prepared.
+    const sermon: Sermon = {
+      ...baseSermon,
+      thoughts: [],
+      plan: {
+        introduction: { outline: 'Intro outline' },
+        main: { outline: '' },
+        conclusion: { outline: '' },
+      },
+    };
+
+    expect(getSermonAccessType(sermon)).toBe('plan');
+    expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/sermons/${sermon.id}/plan`);
   });
 
   it('defaults to structure access when neither plan nor structure exists', () => {
@@ -169,7 +189,8 @@ describe('sermonPlanAccess utilities', () => {
     };
 
     expect(isSermonReadyForPlan(sermon)).toBe(true);
-    expect(getSermonAccessType(sermon)).toBe('structure');
-    expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/sermons/${sermon.id}/structure`);
+    // One thought sorted, one not — the plan exists, so the plan is where this goes.
+    expect(getSermonAccessType(sermon)).toBe('plan');
+    expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/sermons/${sermon.id}/plan`);
   });
 });

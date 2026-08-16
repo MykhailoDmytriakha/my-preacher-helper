@@ -62,6 +62,16 @@ describe('readFreshness', () => {
     expect(selectReadableCopy(server, stored)).toBe(stored);
   });
 
+  it('keeps the cached copy when a storage migration adds a field without advancing evidence', () => {
+    const stored = { id: 'one', plan: { introduction: { outlinePoints: { p1: 'Same' } } }, rev: { plan: 1 } };
+    const server = { ...stored, planText: { p1: 'Same' } };
+
+    // The migration deliberately did not change `rev` or `updatedAt`, so the read layer
+    // cannot prove that replacing a possibly-unsaved local object is safe. Freshness must
+    // compare their EFFECTIVE content instead of assuming the active screen got replaced.
+    expect(selectReadableCopy(server, stored)).toBe(stored);
+  });
+
   it('falls back to updatedAt when revision counters are absent', () => {
     const stored = copy('one', 'stored', { updatedAt: '2026-08-01T00:00:00.000Z' });
     const server = copy('one', 'server', { updatedAt: '2026-08-05T00:00:00.000Z' });

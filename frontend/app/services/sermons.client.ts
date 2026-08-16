@@ -25,12 +25,14 @@ import {
 import { atomicUpdate } from '@/services/atomicUpdate.client';
 import {
   conflictSafeUpdate,
+  isStaleWriteError,
   isUnreachableWriteError,
   readRevision,
   revisionBump,
+  revisionedUpdate,
 } from '@/services/conflictSafeUpdate.client';
 import { auth } from '@/services/firebaseAuth.service';
-import { enqueueWrite, newIntentId, type OutboxEntry } from '@/services/writeOutbox.client';
+import { enqueueWrite, listOutbox, newIntentId, type OutboxEntry } from '@/services/writeOutbox.client';
 import { changedFields } from '@/utils/changedFields';
 import { newClientId } from '@/utils/clientId';
 import { toDateOnlyKey } from '@/utils/dateOnly';
@@ -208,6 +210,7 @@ export const SERMON_OUTLINE_AGGREGATE = 'outline';
 export const SERMON_SCRATCH_AGGREGATE = 'scratch';
 export const SERMON_PREACH_DATES_AGGREGATE = 'preachDates';
 export const SERMON_PREPARATION_AGGREGATE = 'preparation';
+export const SERMON_PLAN_AGGREGATE = 'plan';
 
 export async function updateSermonViaClient(
   updated: Sermon,
@@ -1169,3 +1172,150 @@ export async function deletePreachDateViaClient(sermonId: string, dateId: string
 // the explainer in sermon.service.ts (offline create is the dashboard
 // optimistic-retry layer + non-idempotent planned-date sub-step + series
 // cascade). All other own-doc sermon writes above go through the client SDK.
+
+
+/**
+ * WRITING THE PLAN'S TEXT — ONE KEY PER NODE, NEVER A WHOLE SECTION.
+ *
+ * The old path handed the server an entire `plan.<section>` object, so saving one card
+ * rewrote every other card in that section: whichever save answered last won, and the
+ * other paragraph was gone with nothing reported anywhere.
+ *
+ * Here each node's text is addressed on its own — `planText.<nodeId>` — exactly like
+ * `preparation.<step>` above, and for the same reason: Firestore merges nested paths into
+ * the stored map by itself, so keys this call does not mention keep whatever they hold.
+ * That property survives the offline queue too, which is what makes this safe without a
+ * transaction (transactions do not run offline at all) and without an outbox.
+ *
+ * `removedNodeIds` deletes keys outright rather than blanking them, so text left by a
+ * deleted node does not linger in storage. Assembly already ignores such text — it walks
+ * the structure — but debris that is never cleaned is debris that grows.
+ *
+ * SEPARATE KEYS ARE NOT A GUARD. Addressing one node cannot disturb its neighbours, and for
+ * a while that was mistaken for safety. It is not: two devices editing THE SAME node still
+ * race, and the later write wins with nothing reported. So the text goes through
+ * `conflictSafeUpdate` like every other own-document write, and the baseline it is judged
+ * against is stated PER NODE — the plan's counter moves whenever any point is saved, so
+ * judging by the counter would refuse an edit to point two because point one was saved on
+ * the phone. False conflicts teach people to click through the dialog, and then the real
+ * one is skipped too.
+ */
+export interface PlanTextWriteContext {
+  /** Owner of the document; an offline intent is queued under this uid and replayed later. */
+  userId?: string;
+  /**
+   * What `planText.<nodeId>` HELD ON THE SERVER when this screen took that cell, per node.
+   *
+   * NOT what the screen displays: until a sermon's first save the text on screen comes from
+   * the legacy per-section cells, which the `planText` map has never contained. Vouching for
+   * the displayed value would compare it against an absent key and refuse every first save.
+   *
+   * A node with no entry is stated as `null`, so a node created elsewhere meanwhile is still
+   * a difference rather than a match. Omit the whole map and the write proceeds unguarded,
+   * exactly as it did before — used by callers that cannot prove what they started from.
+   */
+  baselineByNodeId?: Record<string, string | null>;
+}
+
+/**
+ * What the server really held, read back off a refusal and keyed by NODE again.
+ *
+ * The guard reports field paths (`planText.<id>`) because that is what it compared; the screens
+ * think in nodes. Translating lives here, beside the writer that chose the field names, so the
+ * convention is stated once. Anything that is not this plan's text is ignored rather than
+ * guessed at.
+ */
+export function planTextConflictValues(error: unknown): Record<string, string | null> | null {
+  if (!isStaleWriteError(error)) return null;
+  const byNode: Record<string, string | null> = {};
+  Object.entries(error.serverValues).forEach(([field, value]) => {
+    if (!field.startsWith('planText.')) return;
+    byNode[field.slice('planText.'.length)] = typeof value === 'string' ? value : null;
+  });
+  return Object.keys(byNode).length > 0 ? byNode : null;
+}
+
+/**
+ * Which plan cells are STILL WAITING to reach the server, from the offline queue.
+ *
+ * Two different things need this same answer, which is why it is one function:
+ *
+ *   - the baseline must NOT adopt a queued value as "what the server holds", or the screen
+ *     starts vouching for text no server has seen — and if the replay is later refused, every
+ *     further save is judged against a value that never existed;
+ *   - the durable draft must KEEP such a cell, because "queued" is precisely "not confirmed",
+ *     and dropping it is how the words written on a train stop existing anywhere the person
+ *     can see.
+ *
+ * Reading the queue rather than tracking a flag is deliberate: the queue is the fact. A flag
+ * would have to be released correctly on drain, on refusal and on reload, and any one of those
+ * being wrong leaves a cell held for ever.
+ */
+export function pendingPlanTextNodeIds(
+  uid: string | null | undefined,
+  sermonId: string | null | undefined
+): Set<string> {
+  const waiting = new Set<string>();
+  if (!uid || !sermonId) return waiting;
+  listOutbox(uid)
+    .filter((entry) => entry.docId === sermonId && entry.aggregate === SERMON_PLAN_AGGREGATE)
+    .forEach((entry) => {
+      Object.keys(entry.patch ?? {}).forEach((field) => {
+        if (field.startsWith('planText.')) waiting.add(field.slice('planText.'.length));
+      });
+    });
+  return waiting;
+}
+
+export async function savePlanTextViaClient(
+  sermonId: string,
+  changedText: Record<string, string>,
+  removedNodeIds: string[] = [],
+  { userId, baselineByNodeId }: PlanTextWriteContext = {}
+): Promise<void> {
+  const ref = sermonRef(sermonId);
+  const writtenNodeIds = Object.keys(changedText);
+
+  if (writtenNodeIds.length > 0) {
+    const patch: { [field: string]: FieldValue | string | undefined } = { updatedAt: now() };
+    writtenNodeIds.forEach((nodeId) => {
+      // Node ids are UUIDs (`newClientId`), so they carry no dots and address cleanly.
+      patch[`planText.${nodeId}`] = changedText[nodeId];
+    });
+
+    await conflictSafeUpdate(ref, patch, SERMON_NOT_FOUND, {
+      aggregate: SERMON_PLAN_AGGREGATE,
+      // The per-node baseline below is the real check; the shared counter would only add
+      // refusals for points nobody touched. `null` here means "do not consult it".
+      expectedRevision: null,
+      expectedBaseline: baselineByNodeId
+        ? Object.fromEntries(
+            writtenNodeIds.map((nodeId) => [`planText.${nodeId}`, baselineByNodeId[nodeId] ?? null])
+          )
+        : undefined,
+      outboxRoute: userId
+        ? { uid: userId, collection: SERMONS_COLLECTION, docId: sermonId, savedAt: Date.now() }
+        : undefined,
+    });
+  }
+
+  if (removedNodeIds.length > 0) {
+    /**
+     * CLEANUP GOES THROUGH THE UNGUARDED DOOR, AND ON PURPOSE — TWICE OVER.
+     *
+     * Refusing it would be wrong: the node is already gone from the structure, nothing reads
+     * its text, and a refusal would report a failed deletion for something that cannot fail
+     * in any way that matters.
+     *
+     * It also must not ride with the guarded patch. An offline guarded write is stored in the
+     * outbox as JSON, and `deleteField()` is a sentinel OBJECT: it survives `JSON.stringify`
+     * as an ordinary map and would replay as "write this junk here" instead of "remove this".
+     * An ordinary write has no such problem — Firestore's own queue keeps the sentinel intact.
+     */
+    const removalPatch: { [field: string]: FieldValue } = {};
+    removedNodeIds.forEach((nodeId) => {
+      removalPatch[`planText.${nodeId}`] = deleteField();
+    });
+    await revisionedUpdate(ref, removalPatch, SERMON_PLAN_AGGREGATE);
+  }
+}

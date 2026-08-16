@@ -111,8 +111,8 @@ describe("column utils", () => {
     expect(setLocalEditText).toHaveBeenCalledWith("Editable");
     expect(setIsEditingLocally).toHaveBeenCalledWith(true);
 
-    expect(getReviewToggleLabel(true, t)).toBe("Unlock all thoughts in this outline point");
-    expect(getReviewToggleLabel(false, t)).toBe("Lock all thoughts in this outline point");
+    expect(getReviewToggleLabel(true, t)).toBe("Unlock all thoughts in this structure point");
+    expect(getReviewToggleLabel(false, t)).toBe("Lock all thoughts in this structure point");
 
     expect(mapColumnIdToSectionType("introduction")).toBe("introduction");
     expect(mapColumnIdToSectionType("main")).toBe("mainPart");

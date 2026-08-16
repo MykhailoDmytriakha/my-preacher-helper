@@ -16,40 +16,45 @@ import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useRouteId } from "@/hooks/useRouteId";
 import useSermon from "@/hooks/useSermon";
-import { SermonPoint, Sermon, Thought, Plan } from "@/models/models";
+import { SermonPoint, Sermon, Thought } from "@/models/models";
 import { updateThought } from "@/services/thought.service";
 import { TimerPhase } from "@/types/TimerState";
 import { debugLog } from "@/utils/debugMode";
 import { getExportContent as buildThoughtExportContent } from "@/utils/exportContent";
 import { normalizePlanArrows } from "@/utils/markdownUtils";
+import { liveNodeIds, readPlanText, renderPlanWithFallback } from "@/utils/planText";
 import { persistedWrite, refusedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
 import {
   planFreshnessProjection,
   type PlanFreshnessProjection,
 } from '@/utils/sermonFreshnessProjection';
+import { hasPlan } from "@/utils/sermonPlanAccess";
 import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrder";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
-import { normalizeStructureTag, getTranslationKeyForTag } from "@utils/tagUtils";
 
-import { buildSectionOutlineMarkdown } from "./buildSectionOutlineMarkdown";
 import {
   TRANSLATION_KEYS,
   TRANSLATION_SECTIONS_CONCLUSION,
   TRANSLATION_SECTIONS_MAIN,
 } from "./constants";
+import { copyFormattedFromElement } from "./copyFormattedFromElement";
+import { PlanDraftRecoveryBar } from "./PlanDraftRecoveryBar";
 import PlanImmersiveView from "./PlanImmersiveView";
 import PlanMainLayout from "./PlanMainLayout";
 import { buildPlanOutlineLookup, getPointFromLookup, getPointSectionFromLookup } from "./planOutlineLookup";
 import PlanOverlayPortal from "./PlanOverlayPortal";
 import PlanPreachingView from "./PlanPreachingView";
+import { assessPlanReadiness, type PlanReadinessIssue } from "./planReadiness";
+import { usePlanTextBaseline } from "./planTextBaseline";
 import useCopyFormattedContent from "./useCopyFormattedContent";
 import usePairedPlanCardHeights from "./usePairedPlanCardHeights";
+import { usePendingPlanCells } from "./usePendingPlanCells";
 import usePlanActions from "./usePlanActions";
+import usePlanTextDraft from "./usePlanTextDraft";
 import usePlanViewMode from "./usePlanViewMode";
 
 import type {
-  CombinedPlan,
   PlanTimerState,
   SermonSectionKey,
 } from "./types";
@@ -149,6 +154,8 @@ export default function PlanPage() {
   const isOnline = useOnlineStatus();
   const { aiBlocked, refresh: refreshAiUsage } = useAiUsage();
   const { sermon, setSermon, loading: isLoadingRaw, error: sermonError, refreshSermon } = useSermon(sermonId);
+  /** What the server held for each plan cell when this screen took it — see `planTextBaseline.ts`. */
+  const planTextBaseline = usePlanTextBaseline(sermon?.id);
 
   /**
    * Pull the newer plan in place, without a page reload.
@@ -216,6 +223,20 @@ export default function PlanPage() {
 
   // Generated content by outline point ID
   const [generatedContent, setGeneratedContent] = useState<Record<string, string>>({});
+
+  /**
+   * The text as it is RIGHT NOW.
+   *
+   * `handlePlanPointSaved` is a callback: it closes over `generatedContent` as it was when
+   * the callback was built. Comparing against that closure compared the sent text with
+   * ITSELF, so a cell typed into while the request was in flight was still declared saved —
+   * and the seeding effect then replaced what was on screen with the older, saved value.
+   * A ref is the only thing here that can answer "what does it say now".
+   */
+  const generatedContentRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    generatedContentRef.current = generatedContent;
+  }, [generatedContent]);
   // Currently generating outline point IDs. Multiple point generations can run in parallel.
   const [generatingIds, setGeneratingIds] = useState<Record<string, boolean>>({});
 
@@ -223,7 +244,13 @@ export default function PlanPage() {
   const [planStyle, setPlanStyle] = useState<PlanStyle>('memory');
 
   // State to hold the combined generated content for each section
-  const [combinedPlan, setCombinedPlan] = useState<CombinedPlan>({ introduction: '', main: '', conclusion: '' });
+  /**
+   * The document, DERIVED from the structure and whatever text is on screen right now.
+   *
+   * It used to be its own state, updated by hand after every edit and seeded from a stored
+   * string — three copies of one truth that had to be marched in step. Deriving it means
+   * "what is shown" and "what is stored" cannot disagree, because there is only one of them.
+   */
 
   const planOverlayContentRef = useRef<HTMLDivElement | null>(null);
   const immersiveContentRef = useRef<HTMLDivElement | null>(null);
@@ -243,6 +270,34 @@ export default function PlanPage() {
 
   // Track which content has been modified since last save
   const [modifiedContent, setModifiedContent] = useState<Record<string, boolean>>({});
+
+  /** Cells whose write sits in the offline queue — see `usePendingPlanCells`. */
+  const pendingPlanCells = usePendingPlanCells(sermon);
+  /** Nodes the outline still has — a recovered draft for anything else has nowhere to show. */
+  const livePlanNodes = useMemo(() => liveNodeIds(sermon?.outline), [sermon?.outline]);
+
+  /**
+   * Text that never reached the server survives a closed tab. The guard states this as its own
+   * precondition: refusing a stale save without it turns "overwrote someone else" into "lost
+   * your own", which is a move rather than a fix.
+   */
+  const planDraft = usePlanTextDraft({
+    uid: sermon?.userId,
+    sermonId: sermon?.id,
+    contentByNodeId: generatedContent,
+    modifiedNodeIds: modifiedContent,
+    pendingNodeIds: pendingPlanCells.nodeIds,
+    liveNodeIds: livePlanNodes,
+  });
+  const restorePlanCells = useCallback((cells: Record<string, string>) => {
+    // Recovered cells come back marked UNSAVED — they were never confirmed, so the screen must
+    // keep saying so until a save actually succeeds.
+    setGeneratedContent((prev) => ({ ...prev, ...cells }));
+    setModifiedContent((prev) => ({
+      ...prev,
+      ...Object.fromEntries(Object.keys(cells).map((nodeId) => [nodeId, true])),
+    }));
+  }, []);
 
   // Add state to track which outline points are in edit mode
   const [editModePoints, setEditModePoints] = useState<Record<string, boolean>>({});
@@ -268,6 +323,32 @@ export default function PlanPage() {
   const getSectionByPointId = useCallback((outlinePointId: string): SermonSectionKey | null => {
     return getPointSectionFromLookup(outlineLookup, outlinePointId);
   }, [outlineLookup]);
+
+  /**
+   * THOUGHTS THAT WILL NOT APPEAR ON THIS SCREEN.
+   *
+   * A thought with no outline point belongs to no card here, so writing the plan while
+   * some are still loose means quietly leaving them behind. That is a real hazard and it
+   * is what the old guard was protecting — but the guard protected it by refusing to open
+   * the screen at all, which also blocked the case it was never about: building a plan BY
+   * HAND, with few thoughts or none.
+   *
+   * So the wall became a notice. The loose thoughts are counted out loud with one way to
+   * go sort them, and the plan itself stays open and editable.
+   */
+  const unassignedThoughts = useMemo(
+    () => (sermon?.thoughts ?? []).filter((thought) => !thought.outlinePointId),
+    [sermon]
+  );
+  const [unassignedNoticeDismissed, setUnassignedNoticeDismissed] = useState(false);
+  /**
+   * A dismissal belongs to the sermon it was made on AND to the count it was made at.
+   * Sorting some thoughts and leaving others behind must not stay hidden under an old
+   * "got it" — the number on screen would then describe a state nobody acknowledged.
+   */
+  useEffect(() => {
+    setUnassignedNoticeDismissed(false);
+  }, [sermonId, unassignedThoughts.length]);
 
   useEffect(() => {
     sermonRef.current = sermon;
@@ -442,50 +523,52 @@ export default function PlanPage() {
     setError(null);
   }, [isLoading, sermon, sermonError, isOnline, t]);
 
+  /**
+   * Seed the editor from stored text — understanding BOTH shapes.
+   *
+   * `readPlanText` returns the new `planText` map when it is there and falls back to the
+   * old per-section cells otherwise, which is what lets this code ship while production and
+   * local still share one database and sermons are still in the old shape.
+   *
+   * The assembled document is no longer seeded from storage: it is rebuilt below from
+   * structure plus text, so it cannot be a stale copy of anything.
+   */
   useEffect(() => {
     if (!sermon) return;
 
-    if (sermon.plan) {
-      setCombinedPlan({
-        introduction: sermon.plan.introduction?.outline || "",
-        main: sermon.plan.main?.outline || "",
-        conclusion: sermon.plan.conclusion?.outline || "",
-      });
-
-      const savedContent: Record<string, string> = {};
-      const savedPoints: Record<string, boolean> = {};
-
-      ['introduction', 'main', 'conclusion'].forEach(sectionKey => {
-        const section = sermon.plan?.[sectionKey as keyof Plan];
-        const outlinePoints = section?.outlinePoints || {};
-
-        Object.entries(outlinePoints).forEach(([pointId, content]) => {
-          savedContent[pointId] = content;
-          savedPoints[pointId] = true;
-        });
-      });
-
-      if (Object.keys(savedContent).length > 0) {
-        setGeneratedContent(prev => ({ ...prev, ...savedContent }));
-      }
-
-      if (Object.keys(savedPoints).length > 0) {
-        setSavedSermonPoints(savedPoints);
-      }
-    }
-  }, [sermon]);
-
-  // Check if all thoughts are assigned to outline points
-  const areAllThoughtsAssigned = (currentSermon: Sermon | null): boolean => {
-    if (!currentSermon) return false;
-
-    // Count thoughts that aren't assigned to an outline point
-    const unassignedThoughts = currentSermon.thoughts.filter(
-      (thought) => !thought.outlinePointId
+    // Storage has spoken, so record what it holds for every cell nobody is typing into —
+    // that is what the next save is judged against (`planTextBaseline.ts`). A cell whose write
+    // is still QUEUED is skipped too: its text is mirrored into the sermon so the screen keeps
+    // showing it, and adopting that mirror would vouch for words no server has seen.
+    const queuedCells = pendingPlanCells.refresh();
+    planTextBaseline.adopt(
+      sermon,
+      (nodeId) => Boolean(modifiedContent[nodeId]) || queuedCells.has(nodeId)
     );
 
-    return unassignedThoughts.length === 0;
-  };
+    const storedText = readPlanText(sermon);
+    if (Object.keys(storedText).length === 0) return;
+
+    /**
+     * STORAGE WINS EXCEPT WHERE SOMETHING IS BEING TYPED.
+     *
+     * Laying the screen's value over storage unconditionally (`{...stored, ...prev}`) meant
+     * a refresh could never bring anything in: text saved on the phone arrived in `sermon`
+     * and was immediately covered by the laptop's older copy, including for cards nobody
+     * had touched. Only a cell with unsaved edits may outrank what storage holds.
+     */
+    setGeneratedContent((prev) => {
+      const next = { ...prev, ...storedText };
+      Object.keys(prev).forEach((nodeId) => {
+        if (modifiedContent[nodeId]) next[nodeId] = prev[nodeId];
+      });
+      return next;
+    });
+    setSavedSermonPoints((prev) => ({
+      ...Object.fromEntries(Object.keys(storedText).map((nodeId) => [nodeId, true])),
+      ...prev,
+    }));
+  }, [sermon, modifiedContent, pendingPlanCells, planTextBaseline]);
 
   // Get thoughts for a specific outline point
   const getThoughtsForSermonPoint = useCallback((outlinePointId: string): Thought[] => {
@@ -494,27 +577,20 @@ export default function PlanPage() {
   }, [sermon]);
 
   // Update section outline deterministically from ordered points + point-content map.
+  const combinedPlan = useMemo(
+    () => renderPlanWithFallback(sermon, generatedContent),
+    [sermon?.outline, generatedContent]
+  );
+
+  /**
+   * Kept as a no-op seam: the layout still announces an edit so heights can re-sync, but
+   * the document itself needs no updating — it is derived above.
+   */
   const updateCombinedPlan = useCallback((
-    outlinePointId: string,
-    content: string,
-    section: SermonSectionKey
-  ) => {
-    const orderedOutlinePoints = outlineLookup.pointsBySection[section] || [];
-    const nextOutlinePointsContentById = {
-      ...generatedContent,
-      [outlinePointId]: content,
-    };
-
-    const nextSectionOutline = buildSectionOutlineMarkdown({
-      orderedOutlinePoints,
-      outlinePointsContentById: nextOutlinePointsContentById,
-    });
-
-    setCombinedPlan((prev) => ({
-      ...prev,
-      [section]: nextSectionOutline,
-    }));
-  }, [generatedContent, outlineLookup.pointsBySection]);
+    _outlinePointId: string,
+    _content: string,
+    _section: SermonSectionKey
+  ) => undefined, []);
 
   const handlePlanPointGenerated = (params: {
     outlinePointId: string;
@@ -537,25 +613,72 @@ export default function PlanPage() {
 
   const handlePlanPointSaved = useCallback(async (params: {
     outlinePointId: string;
+    savedNodeIds: string[];
     section: SermonSectionKey;
-    combinedText: string;
-    updatedPlan: Plan;
+    /** Exactly what was written, so text typed mid-flight is not declared saved. */
+    sentText?: Record<string, string>;
   }) => {
-    const {
-      outlinePointId,
-      section,
-      combinedText,
-      updatedPlan,
-    } = params;
+    const { savedNodeIds, section: _section, sentText } = params;
 
-    setSavedSermonPoints((prev) => ({ ...prev, [outlinePointId]: true }));
-    setModifiedContent((prev) => ({ ...prev, [outlinePointId]: false }));
-    setCombinedPlan((prev) => ({
+    /**
+     * Only the cells whose text still matches what was SENT are settled.
+     *
+     * A save takes a moment and people keep typing while it flies. Marking a node saved on
+     * the answer alone declared text that never left the browser — and the next departure
+     * then left without it, because nothing looked unsaved. The hand-written screen already
+     * guards this in `settle`; this is the same guard on the generated path.
+     */
+    const settled = savedNodeIds.filter(
+      (nodeId) => (generatedContentRef.current[nodeId] ?? "") === (sentText?.[nodeId] ?? "")
+    );
+
+    setSavedSermonPoints((prev) => ({
       ...prev,
-      [section]: combinedText,
+      ...Object.fromEntries(settled.map((nodeId) => [nodeId, true])),
+    }));
+    setModifiedContent((prev) => ({
+      ...prev,
+      ...Object.fromEntries(settled.map((nodeId) => [nodeId, false])),
     }));
 
-    await setSermon((prevSermon) => (prevSermon ? { ...prevSermon, plan: updatedPlan } : null));
+    /**
+     * The saved text goes into `planText`, and the document on screen is rebuilt from it.
+     * Previously this also stored an assembled string per section — the copy that then had
+     * to be kept in step by hand, and drifted whenever anything else changed.
+     *
+     * A QUEUED WRITE IS MIRRORED TOO, and the baseline is what keeps that honest. Leaving it
+     * out meant that after reopening offline the screen showed the OLDER paragraph, so the
+     * person rewrote it blind and the replay buried the first version. Mirroring alone was also
+     * wrong, because `adopt` reads this map as "what the server holds". Both are answered by
+     * holding the baseline for cells whose write is still queued (`usePendingPlanCells`).
+     */
+    pendingPlanCells.refresh();
+
+    await setSermon((prevSermon) => (prevSermon
+      ? {
+          ...prevSermon,
+          planText: {
+            /**
+             * THE STORED MAP, NOT THE MERGED READ. `readPlanText` lays the new cells over the
+             * legacy ones so the screen has something to show; copying that result back into
+             * `planText` made every legacy cell look WRITTEN after any save at all. That flag
+             * is what `renderPlanWithFallback` consults before serving an old sermon's
+             * assembled section, so one save blanked every section nobody had touched yet.
+             */
+            ...(prevSermon.planText ?? {}),
+            /**
+             * Mirror EXACTLY what was written — `sentText` — not the editor's current value.
+             *
+             * Reading `generatedContent` here was the second stale closure: the callback
+             * holds the map as it was when it was built, so a successful save could put an
+             * OLD (often empty) value into the local sermon. The seeding effect then saw a
+             * clean cell and replaced the screen with it, and the next save wrote that back
+             * over the correct text on the server.
+             */
+            ...Object.fromEntries(savedNodeIds.map((nodeId) => [nodeId, sentText?.[nodeId] ?? ""])),
+          },
+        }
+      : null));
   }, [setSermon]);
 
   const {
@@ -572,6 +695,7 @@ export default function PlanPage() {
     onSaved: handlePlanPointSaved,
     onAiSuccess: refreshAiUsage,
     aiBlocked,
+    planTextBaseline,
   });
 
   // Toggle edit mode for an outline point
@@ -692,84 +816,6 @@ export default function PlanPage() {
     return getPointFromLookup(outlineLookup, outlinePointId);
   }, [outlineLookup]);
 
-  const copyFormattedFromElement = useCallback(async (element: HTMLDivElement | null) => {
-    if (!element) {
-      return false;
-    }
-
-    const plainText = element.innerText ?? '';
-    const htmlContent = element.innerHTML ?? '';
-
-    const advancedClipboardAvailable =
-      typeof window !== 'undefined' &&
-      typeof navigator !== 'undefined' &&
-      !!navigator.clipboard &&
-      typeof navigator.clipboard.write === 'function' &&
-      'ClipboardItem' in window;
-
-    try {
-      if (advancedClipboardAvailable) {
-        const clipboardWindow = window as typeof window & { ClipboardItem: typeof ClipboardItem };
-        const clipboardItem = new clipboardWindow.ClipboardItem({
-          'text/html': new Blob([htmlContent], { type: 'text/html' }),
-          'text/plain': new Blob([plainText], { type: 'text/plain' })
-        });
-        await navigator.clipboard.write([clipboardItem]);
-        return true;
-      }
-
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        await navigator.clipboard.writeText(plainText);
-        return true;
-      }
-    } catch (error) {
-      debugLog("Plan copy failed: ClipboardItem/write branch", { error });
-    }
-
-    const selection = typeof window !== 'undefined' && window.getSelection ? window.getSelection() : null;
-    const range = document.createRange();
-    const tempContainer = document.createElement('div');
-    tempContainer.style.position = 'fixed';
-    tempContainer.style.pointerEvents = 'none';
-    tempContainer.style.opacity = '0';
-    tempContainer.style.zIndex = '-1';
-    tempContainer.innerHTML = htmlContent || plainText;
-    document.body.appendChild(tempContainer);
-
-    try {
-      range.selectNodeContents(tempContainer);
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-      if (document.execCommand('copy')) {
-        selection?.removeAllRanges();
-        document.body.removeChild(tempContainer);
-        return true;
-      }
-    } catch (error) {
-      debugLog("Plan copy failed: execCommand(html) branch", { error });
-    } finally {
-      selection?.removeAllRanges();
-      document.body.removeChild(tempContainer);
-    }
-
-    try {
-      const textarea = document.createElement('textarea');
-      textarea.value = plainText;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      textarea.style.left = '-9999px';
-      document.body.appendChild(textarea);
-      textarea.focus({ preventScroll: true });
-      textarea.select();
-      const success = document.execCommand('copy');
-      document.body.removeChild(textarea);
-      return success;
-    } catch (error) {
-      debugLog("Plan copy failed: execCommand(text) branch", { error });
-    }
-
-    return false;
-  }, []);
 
   const handleSetTimerDuration = useCallback((durationSeconds: number) => {
     setPreachingDuration(durationSeconds);
@@ -916,122 +962,97 @@ export default function PlanPage() {
   }
 
   // Guard: no outline points defined at all — user must create structure first
-  const hasOutlinePoints = sermon.outline && (
-    (sermon.outline.introduction?.length ?? 0) > 0 ||
-    (sermon.outline.main?.length ?? 0) > 0 ||
-    (sermon.outline.conclusion?.length ?? 0) > 0
-  );
+  /**
+   * NO THOUGHTS — A FORK, NOT A WALL.
+   *
+   * Two wrong answers were tried here. The original screen REFUSED to open, which also
+   * blocked the person who never intended to use thoughts. Removing the refusal outright
+   * went too far the other way: someone who simply had not recorded their thoughts yet
+   * landed in an empty writing surface with no hint that dictation exists.
+   *
+   * So the screen states what is missing and offers all three real continuations —
+   * go record thoughts, go sort them, or write the conspectus by hand.
+   *
+   * "Write by hand" leads to a SCREEN OF ITS OWN (`plan/manual`), not to a flag on this
+   * one. A query parameter only skipped this gate while the layout still decided its shape
+   * from whether thoughts existed — so someone with one loose thought asked to write by
+   * hand and got the paired view anyway.
+   *
+   * Started text is deliberately NOT treated as an answer either. Whether the sermon is
+   * whole is the question; whether something was typed earlier does not answer it.
+   */
 
-  if (!hasOutlinePoints) {
+  /**
+   * WHOLE ENOUGH TO GENERATE FROM — the four conditions live in `planReadiness.ts`, with
+   * the reasons, so this screen only has to render them. The gate is not a refusal: it is
+   * the door into writing by hand, walked through knowingly and with the missing pieces
+   * named, because "not ready" with no explanation is a wall.
+   */
+  const readiness = assessPlanReadiness(sermon);
+
+  const describeIssue = (issue: PlanReadinessIssue): string => {
+    switch (issue.kind) {
+      case "noThoughts":
+        return t("plan.missingThoughts");
+      case "noPoints":
+        return t("plan.missingPoints");
+      case "unassignedThoughts":
+        return t("plan.missingUnassigned", { amount: issue.count });
+      case "orphanThoughts":
+        return t("plan.missingOrphans", { amount: issue.count });
+      case "emptyPoints": {
+        // "Intro Point, Intro Point" named two different points identically and helped
+        // nobody. Section and position are what actually find them on screen.
+        const named = (issue.points ?? [])
+          .map((point) => {
+            const where = `${t(`sections.${point.section}`)} ${point.position}`;
+            return point.title ? `${where} · ${point.title}` : where;
+          })
+          .join("; ");
+        const hidden = (issue.count ?? 0) - (issue.points?.length ?? 0);
+        return hidden > 0
+          ? t("plan.missingEmptyPointsMore", { names: named, amount: hidden })
+          : t("plan.missingEmptyPoints", { names: named });
+      }
+      default:
+        return "";
+    }
+  };
+
+  /**
+   * THE WARNING SCREEN STANDS WHERE THERE IS NOTHING TO SHOW, NEVER IN FRONT OF A WRITTEN PLAN.
+   *
+   * Readiness answers "is this whole enough to GENERATE from" — it was never meant to answer
+   * "may this person read what they already wrote". Gating the render on it alone meant one
+   * new thought, dropped in after the plan was finished, hid the document someone was about
+   * to preach from. That is the very failure `getSermonAccessType` stopped committing: it no
+   * longer routes people away over a loose thought, on the promise that this screen reports
+   * it in words. The unsorted banner below is that promise — and it is unreachable from here.
+   *
+   * So the gate applies only while the plan is still empty. Once there is text, the text wins
+   * and the banner does the telling.
+   */
+  if (!readiness.ready && !hasPlan(sermon)) {
     return (
       <div className="p-8 text-center max-w-2xl mx-auto">
         <div className="mb-8">
-          <div className="w-16 h-16 mx-auto mb-4 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
-            <svg className="w-8 h-8 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">{t("plan.noOutlineStructure")}</h1>
-          <p className="text-gray-600 dark:text-gray-300 text-lg">{t("plan.createStructureFirst")}</p>
-        </div>
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Button
-            onClick={() => router.push(`/sermons/${sermonId}/structure`)}
-            variant="structure"
-            className="px-6 py-3 text-base"
-          >
-            {t("plan.goToStructure")}
-          </Button>
-          <Button
-            onClick={() => router.push(`/sermons/${sermonId}`)}
-            variant="default"
-            className="px-6 py-3 text-base"
-          >
-            {t("actions.backToSermon")}
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  // Check if all thoughts are assigned to outline points
-  if (!areAllThoughtsAssigned(sermon)) {
-    const unassignedThoughts = (sermon).thoughts.filter(
-      (thought) => !thought.outlinePointId
-    );
-    const VISIBLE_CARD_LIMIT = 6;
-    const visibleThoughts = unassignedThoughts.slice(0, VISIBLE_CARD_LIMIT);
-    const hiddenCount = unassignedThoughts.length - VISIBLE_CARD_LIMIT;
-
-    return (
-      <div className="p-8 text-center max-w-3xl mx-auto">
-        <div className="mb-6">
           <div className="w-16 h-16 mx-auto mb-4 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center">
             <svg className="w-8 h-8 text-amber-600 dark:text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">{t("plan.thoughtsNotAssigned")}</h1>
-          <p className="text-gray-500 dark:text-gray-400">{t("plan.assignThoughtsFirst")}</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">{t("plan.notReadyTitle")}</h1>
+          <ul className="mb-3 inline-block text-left text-gray-700 dark:text-gray-200">
+            {readiness.issues.map((issue) => (
+              <li key={issue.kind} className="flex items-start gap-2">
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                {describeIssue(issue)}
+              </li>
+            ))}
+          </ul>
+          <p className="text-gray-600 dark:text-gray-300 text-lg">{t("plan.notReadyDescription")}</p>
         </div>
-
-        {unassignedThoughts.length > 0 && (
-          <div className="mb-7">
-            <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-3">
-              {t("plan.unassignedThoughtsList")}
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
-              {visibleThoughts.map((thought) => {
-                const dateStr = thought.date
-                  ? new Date(thought.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
-                  : null;
-                return (
-                  <div
-                    key={thought.id}
-                    className="relative p-4 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm"
-                  >
-                    <div className="flex flex-wrap items-center gap-2 mb-2">
-                      {dateStr && (
-                        <span className="text-xs text-gray-400 dark:text-gray-500 font-medium">{dateStr}</span>
-                      )}
-                      {(thought.tags ?? []).map((tag) => {
-                        const canonical = normalizeStructureTag(tag);
-                        const translationKey = getTranslationKeyForTag(tag);
-                        const label = translationKey ? t(translationKey) : tag;
-
-                        // Use section-specific colors for structural tags, default gray for others
-                        const colorClass =
-                          canonical === 'intro' ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200' :
-                            canonical === 'main' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200' :
-                              canonical === 'conclusion' ? 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200' :
-                                'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
-
-                        return (
-                          <span
-                            key={tag}
-                            className={`text-xs px-2 py-0.5 rounded-full font-medium ${colorClass}`}
-                          >
-                            {label}
-                          </span>
-                        );
-                      })}
-                    </div>
-                    <p className="text-sm text-gray-800 dark:text-gray-200 leading-snug line-clamp-3">
-                      {thought.text}
-                    </p>
-                  </div>
-                );
-              })}
-            </div>
-            {hiddenCount > 0 && (
-              <p className="mt-3 text-sm text-gray-400 dark:text-gray-500">
-                +{hiddenCount} {t("plan.unassignedThoughtsMore", "more")}
-              </p>
-            )}
-          </div>
-        )}
-
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <Button
             onClick={() => router.push(`/sermons/${sermonId}`)}
             variant="plan"
@@ -1040,19 +1061,34 @@ export default function PlanPage() {
             {t("plan.workOnSermon")}
           </Button>
           <Button
-            onClick={() => router.push(`/sermons/${sermonId}/structure`)}
+            onClick={handleSwitchToStructure}
             variant="structure"
             className="px-6 py-3 text-base"
           >
             {t("plan.workOnStructure")}
+          </Button>
+          <Button
+            onClick={() => router.push(`/sermons/${sermonId}/plan/manual`)}
+            variant="secondary"
+            className="px-6 py-3 text-base"
+          >
+            {t("plan.writeByHand")}
           </Button>
         </div>
       </div>
     );
   }
 
-
-
+  /**
+   * NO OUTLINE POINTS IS NOT A DEAD END ANY MORE.
+   *
+   * This used to send people to the structure screen, because points could only be
+   * created there. They can be created right here now, so the redirect became a detour:
+   * a sermon with a thought but no points landed on "no plan structure" with no way to
+   * make one, which is exactly where the owner got stuck.
+   *
+   * An empty plan simply renders its three sections, each offering to add the first point.
+   */
 
   if (isPlanImmersive) {
     return (
@@ -1094,13 +1130,26 @@ export default function PlanPage() {
 
   return (
     <>
+      {planDraft.recovered && (
+        <PlanDraftRecoveryBar
+          count={Object.keys(planDraft.recovered).length}
+          onRestore={() => {
+            restorePlanCells(planDraft.recovered ?? {});
+            planDraft.accept();
+          }}
+          onDiscard={planDraft.discard}
+        />
+      )}
+
       {/* Deliberately NOT shown in preaching or immersive view: someone standing in
           front of a congregation must not be handed a decision. */}
       {(planFreshness.state === 'stale' || planFreshness.state === 'unknown') &&
         !planFreshnessDismissed && (
           <DataFreshnessBanner
             entityKey="entitySermon"
-            dirty={false}
+            // Not a constant: this screen DOES hold unsaved cells, and claiming otherwise made
+            // the banner offer to replace text someone was in the middle of writing.
+            dirty={Object.values(modifiedContent).some(Boolean)}
             deleted={planFreshness.remotelyDeleted}
             unknown={planFreshness.state === 'unknown'}
             onRefresh={handleRefreshPlan}
@@ -1109,6 +1158,50 @@ export default function PlanPage() {
             className="mb-3"
           />
         )}
+      {/* EVERYTHING THE DOOR WOULD HAVE SAID, SAID BESIDE THE PLAN INSTEAD.
+          Once there is text, the warning screen steps aside — but the findings must not go
+          with it. Loose thoughts were only one of them; a thought left pointing at a deleted
+          point, or a point with nothing under it, are exactly the things nobody notices on
+          their own. Listing them here keeps the report without blocking the read.
+          Like the freshness banner above, it is absent from the preaching and immersive
+          views: those returned earlier, and nobody facing a congregation needs a chore. */}
+      {!readiness.ready && !unassignedNoticeDismissed && (
+        <div
+          role="status"
+          className="mb-3 flex flex-col gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="min-w-0">
+            <p className="font-medium text-amber-900 dark:text-amber-200">
+              {/* `amount`, not `count`: `count` would send i18next hunting for plural
+                  keys that do not exist. The wording carries any number as it is. */}
+              {unassignedThoughts.length > 0
+                ? t("plan.unassignedNotice.title", { amount: unassignedThoughts.length })
+                : t("plan.issuesNoticeTitle")}
+            </p>
+            <ul className="mt-0.5 text-amber-800/80 dark:text-amber-200/70">
+              {readiness.issues.map((issue) => (
+                <li key={issue.kind}>{describeIssue(issue)}</li>
+              ))}
+            </ul>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              onClick={handleSwitchToStructure}
+              className="rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-amber-700"
+            >
+              {t("plan.unassignedNotice.sortAction")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setUnassignedNoticeDismissed(true)}
+              className="rounded-lg border border-amber-300 px-3 py-1.5 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20"
+            >
+              {t("plan.unassignedNotice.dismissAction")}
+            </button>
+          </div>
+        </div>
+      )}
       <PlanOverlayPortal
         isPlanOverlay={isPlanOverlay}
         sermon={sermon}

@@ -64,7 +64,7 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByTestId('breadcrumbs')).not.toBeInTheDocument();
   });
 
-  it('should show Sermons > Sermon Title > ThoughtsBySection for sermon structure page', () => {
+  it('should show Sermons > Sermon Title > Structure for sermon structure page', () => {
     const mockSermon = { id: 'test-id', title: 'Test Sermon' };
     mockUsePathname.mockReturnValue('/sermons/test-id/structure');
     mockUseSearchParams.mockReturnValue({
@@ -79,7 +79,27 @@ describe('Breadcrumbs', () => {
 
     expect(screen.getByText('Sermons')).toBeInTheDocument();
     expect(screen.getByText('Test Sermon')).toBeInTheDocument();
-    expect(screen.getByText('ThoughtsBySection')).toBeInTheDocument();
+    // The fallback a person sees when i18n has not loaded must be a product word.
+    expect(screen.getByText('Structure')).toBeInTheDocument();
+  });
+
+  it('should label the hand-written plan segment instead of echoing the route', () => {
+    const mockSermon = { id: 'test-id', title: 'Test Sermon' };
+    mockUsePathname.mockReturnValue('/sermons/test-id/plan/manual');
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn().mockReturnValue(null),
+    });
+    mockUseSermon.mockReturnValue({ sermon: mockSermon });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
+
+    render(<Breadcrumbs />);
+
+    expect(screen.getByText('Plan')).toBeInTheDocument();
+    // Without an entry for it the segment was title-cased straight into the trail.
+    expect(screen.getByText('By hand')).toBeInTheDocument();
+    expect(screen.queryByText('Manual')).not.toBeInTheDocument();
   });
 
   it('should show Sermons > Sermon Title for sermons detail page', () => {

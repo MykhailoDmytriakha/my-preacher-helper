@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import SermonPlanPage from '@/(pages)/(private)/sermons/[id]/plan/page'; // Alias path
 import { getSermonById } from '@/services/sermon.service';
+import { savePlanTextViaClient } from '@/services/sermons.client';
 import { updateThought } from '@/services/thought.service';
 import '@testing-library/jest-dom';
 
@@ -28,6 +29,7 @@ const mockPush = jest.fn();
 const mockReplace = jest.fn();
 const mockToast = toast as jest.Mocked<typeof toast>;
 const mockUpdateThought = updateThought as jest.MockedFunction<typeof updateThought>;
+const mockSavePlanText = savePlanTextViaClient as jest.MockedFunction<typeof savePlanTextViaClient>;
 
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'test-sermon-id' }),
@@ -87,6 +89,13 @@ jest.mock('@/services/sermon.service', () => ({
     audience: 'Mock Audience',
     keyFragments: ['frag1'],
   }),
+}));
+
+// The real module with only the write replaced: listing exports by hand meant every new
+// helper the screen started using arrived here as `undefined`.
+jest.mock('@/services/sermons.client', () => ({
+  ...jest.requireActual('@/services/sermons.client'),
+  savePlanTextViaClient: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('@/services/thought.service', () => ({
@@ -284,20 +293,32 @@ jest.mock('react-textarea-autosize', () => {
 });
 
 // Mock i18n with the specific translations needed for this test
-const translate = (key: string, options?: { defaultValue?: string }) => {
+const translate = (key: string, options?: Record<string, unknown>) => {
   const translations: Record<string, string> = {
-    'plan.thoughtsNotAssigned': 'Thoughts not assigned',
-    'plan.assignThoughtsFirst': 'Please assign all thoughts to outline points first',
-    'plan.unassignedThoughtsList': 'Unassigned thoughts:',
-    'plan.workOnSermon': 'Work on Sermon',
-    'plan.workOnStructure': 'Work on ThoughtsBySection',
+    'plan.unassignedNotice.title': 'Unsorted thoughts: {{amount}}',
+    'plan.unassignedNotice.description': 'They will not appear in the plan.',
+    'plan.unassignedNotice.sortAction': 'Sort them',
+    'plan.unassignedNotice.dismissAction': 'Got it',
+    'plan.noThoughtsToGenerate': 'No thoughts to generate from',
+    'plan.addPoint': 'Add point',
+    'plan.addPointPlaceholder': 'Point title',
+    'plan.addConfirm': 'Add',
+    'plan.addCancel': 'Cancel',
+    'plan.notReadyTitle': 'The plan is not assembled yet',
+    'plan.notReadyDescription': 'Finish that, or write it by hand.',
+    'plan.missingThoughts': 'No thoughts have been recorded',
+    'plan.missingUnassigned': 'Thoughts not sorted onto points: {{amount}}',
+    'plan.missingPoints': 'The plan has no points',
+    'plan.writeByHand': 'Write by hand',
+    'plan.workOnSermon': 'Work on sermon',
+    'plan.workOnStructure': 'Sort the thoughts',
     'plan.markKeyFragments': 'Mark Key Fragments',
     'plan.generating': 'Generating...',
     'plan.regenerate': 'Regenerate',
     'plan.generate': 'Generate',
     'plan.noThoughts': 'No thoughts',
     'plan.noContent': 'No content',
-    'plan.noSermonPoints': 'No outline points',
+    'plan.noSermonPoints': 'No structure points',
     'plan.contentGenerated': 'Content generated',
     'plan.pointSaved': 'Point saved',
     'plan.sectionSaved': 'Section saved',
@@ -318,7 +339,12 @@ const translate = (key: string, options?: { defaultValue?: string }) => {
     'tags.mainPart': 'Main',
     'tags.conclusion': 'Conclusion',
   };
-  return translations[key] || options?.defaultValue || key;
+  const template = translations[key] || (options?.defaultValue as string | undefined) || key;
+  // Interpolate {{var}} so assertions can check the NUMBER the screen shows, not just
+  // that some banner appeared.
+  return template.replace(/\{\{(\w+)\}\}/g, (whole, name: string) =>
+    options && name in options ? String(options[name]) : whole
+  );
 };
 
 jest.mock('react-i18next', () => ({
@@ -448,191 +474,106 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     jest.clearAllMocks(); // Clear other mocks too
   });
 
-  it('renders without crashing when thoughts are not assigned', async () => {
-    // Mock sermon with outline but thoughts NOT assigned to any outline point
-    const mockSermonWithUnassignedThoughts = {
+  it('shows no notice when every thought is sorted', async () => {
+    mockGetSermonById.mockResolvedValue({
       id: 'test-sermon-id',
       title: 'Test Sermon',
       verse: 'Test Verse',
       date: new Date().toISOString(),
       userId: 'user-1',
       thoughts: [
-        { id: 't1', text: 'Thought 1', outlinePointId: null, tags: ['introduction'], date: '2024-01-01' },
-        { id: 't2', text: 'Thought 2', outlinePointId: null, tags: ['main'], date: '2024-01-01' },
-        { id: 't3', text: 'Thought 3', outlinePointId: null, tags: ['conclusion'], date: '2024-01-01' },
+        { id: 't1', text: 'Thought 1', outlinePointId: 'intro-p1', tags: ['introduction'], date: '2024-01-01' },
       ],
       plan: undefined,
-      // Outline points MUST exist for the "thoughts not assigned" guard to be reached
+      outline: {
+        introduction: [{ id: 'intro-p1', text: 'Intro Point 1' }],
+        main: [],
+        conclusion: [],
+      },
+      structure: undefined,
+    });
+
+    renderWithQueryClient(<SermonPlanPage />);
+
+    expect((await screen.findAllByText('Intro Point 1')).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Unsorted thoughts/)).not.toBeInTheDocument();
+  }, 15000);
+
+  /**
+   * NO THOUGHTS IS A FORK, NOT A WALL — and not an open door either.
+   *
+   * Someone who simply has not recorded their thoughts yet must not land silently on an
+   * empty writing surface; someone who never intended to use thoughts must not be barred.
+   * So the screen asks once, and offers all three continuations.
+   */
+  it('asks how to prepare when the sermon is not whole', async () => {
+    mockGetSermonById.mockResolvedValue({
+      id: 'test-sermon-id',
+      title: 'Test Sermon',
+      verse: 'Test Verse',
+      date: new Date().toISOString(),
+      userId: 'user-1',
+      thoughts: [],
+      plan: undefined,
+      outline: {
+        introduction: [],
+        main: [{ id: 'main-p1', text: 'Main Point 1' }],
+        conclusion: [{ id: 'con-p1', text: 'Conclusion Point 1' }],
+      },
+      structure: undefined,
+    });
+
+    renderWithQueryClient(<SermonPlanPage />);
+
+    expect(await screen.findByText('The plan is not assembled yet')).toBeInTheDocument();
+    expect(screen.getByText('No thoughts have been recorded')).toBeInTheDocument();
+    // All three ways out are offered — recording, sorting, writing by hand.
+    expect(screen.getByRole('button', { name: 'Work on sermon' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sort the thoughts' })).toBeInTheDocument();
+    // Writing by hand is a screen of its own — this one only offers the way there.
+    fireEvent.click(screen.getByRole('button', { name: 'Write by hand' }));
+    expect(mockPush).toHaveBeenCalledWith('/sermons/test-sermon-id/plan/manual');
+    expect(screen.queryByText('Main Point 1')).not.toBeInTheDocument();
+  }, 15000);
+
+  /**
+   * A WRITTEN PLAN IS NEVER HIDDEN BEHIND THE WARNING.
+   *
+   * Readiness answers "is this whole enough to generate from", and that question has nothing
+   * to say about reading a document someone already wrote. Gating the render on readiness
+   * alone meant a single thought dropped in afterwards replaced a finished plan with the
+   * amber screen — on the way to the pulpit, the text was simply gone.
+   */
+  it('shows an already written plan even while thoughts are unsorted', async () => {
+    mockGetSermonById.mockResolvedValue({
+      id: 'test-sermon-id',
+      title: 'Test Sermon',
+      verse: 'Test Verse',
+      date: new Date().toISOString(),
+      userId: 'user-1',
+      // Loose thought: attached to no outline point, so readiness says "not ready".
+      thoughts: [{ id: 't-loose', text: 'A thought nobody sorted yet', tags: [], date: new Date().toISOString() }],
       outline: {
         introduction: [{ id: 'intro-p1', text: 'Intro Point 1' }],
         main: [{ id: 'main-p1', text: 'Main Point 1' }],
         conclusion: [{ id: 'con-p1', text: 'Conclusion Point 1' }],
       },
-      structure: undefined,
-    };
-
-    // Set the mock to return unassigned thoughts
-    mockGetSermonById.mockResolvedValue(mockSermonWithUnassignedThoughts);
-
-    // Render with new mock data
-    renderWithQueryClient(<SermonPlanPage />);
-
-    expect(await screen.findByText('Thoughts not assigned')).toBeInTheDocument();
-    expect(screen.getByText('Please assign all thoughts to outline points first')).toBeInTheDocument();
-    // Unassigned thoughts shown as chips
-    expect(screen.getByText('Unassigned thoughts:')).toBeInTheDocument();
-    expect(screen.getByText('Thought 1')).toBeInTheDocument();
-    // Section tag badges rendered
-    expect(screen.getByText('Introduction')).toBeInTheDocument();
-    expect(screen.getByText('Main')).toBeInTheDocument();
-    expect(screen.getByText('Conclusion')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Work on Sermon' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Work on ThoughtsBySection' }));
-
-    expect(mockPush).toHaveBeenCalledWith('/sermons/test-sermon-id');
-    expect(mockPush).toHaveBeenCalledWith('/sermons/test-sermon-id/structure');
-  }, 15000);
-
-  it('renders thought cards without date or section badge when thought has no date and unknown tag', async () => {
-    // Covers: getSectionTagStyle → null branch (line 915) + dateStr = null branch (line 940)
-    mockGetSermonById.mockResolvedValue({
-      id: 'test-sermon-id',
-      title: 'Test Sermon',
-      verse: 'Test Verse',
-      date: new Date().toISOString(),
-      userId: 'user-1',
-      thoughts: [
-        // Empty date (falsy) + tag that does not match intro/main/conclusion
-        { id: 't1', text: 'Untagged thought', outlinePointId: null, tags: ['custom-tag'], date: '' },
-      ],
-      outline: {
-        introduction: [{ id: 'intro-p1', text: 'Intro Point 1' }],
-        main: [],
-        conclusion: [],
+      plan: {
+        introduction: { outline: '## Intro Point 1\n\nWhat I will actually say' },
+        main: { outline: '' },
+        conclusion: { outline: '' },
       },
       structure: undefined,
-      plan: undefined,
     });
 
     renderWithQueryClient(<SermonPlanPage />);
 
-    expect(await screen.findByText('Untagged thought')).toBeInTheDocument();
-    // No date and no section badge — just text content of the card
-    expect(screen.queryByText('Introduction')).not.toBeInTheDocument();
-    expect(screen.queryByText('Main')).not.toBeInTheDocument();
-    expect(screen.queryByText('Conclusion')).not.toBeInTheDocument();
+    // The plan itself renders (the point heads both its editor card and its plan column)...
+    expect((await screen.findAllByText('Intro Point 1')).length).toBeGreaterThan(0);
+    // ...and the warning screen does not stand in front of it.
+    expect(screen.queryByText('The plan is not assembled yet')).not.toBeInTheDocument();
   }, 15000);
 
-  it('shows "+N more" footer when there are more than 6 unassigned thoughts', async () => {
-    // Covers: hiddenCount > 0 branch
-    const manyThoughts = Array.from({ length: 7 }, (_, i) => ({
-      id: `t${i + 1}`,
-      text: `Thought ${i + 1}`,
-      outlinePointId: null,
-      tags: ['introduction'],
-      date: '2024-01-01',
-    }));
-
-    mockGetSermonById.mockResolvedValue({
-      id: 'test-sermon-id',
-      title: 'Test Sermon',
-      verse: 'Test Verse',
-      date: new Date().toISOString(),
-      userId: 'user-1',
-      thoughts: manyThoughts,
-      outline: {
-        introduction: [{ id: 'intro-p1', text: 'Intro Point 1' }],
-        main: [],
-        conclusion: [],
-      },
-      structure: undefined,
-      plan: undefined,
-    });
-
-    renderWithQueryClient(<SermonPlanPage />);
-
-    await screen.findByText('Thoughts not assigned');
-    // Only 6 visible → thought 7 is hidden → "+1 more not shown" footer
-    expect(screen.getByText('Thought 6')).toBeInTheDocument();
-    expect(screen.queryByText('Thought 7')).not.toBeInTheDocument();
-    expect(screen.getByText(/\+1/)).toBeInTheDocument();
-  }, 15000);
-
-  it('reaches unassigned-thoughts guard when outline has only main points (covers outline.main?.length branch)', async () => {
-    // outline.introduction is empty → short-circuits to main?.length (line 861)
-    mockGetSermonById.mockResolvedValue({
-      id: 'test-sermon-id',
-      title: 'Test Sermon',
-      verse: 'Test Verse',
-      date: new Date().toISOString(),
-      userId: 'user-1',
-      thoughts: [
-        { id: 't1', text: 'Main thought', outlinePointId: null, tags: ['main'], date: '2024-01-01' },
-      ],
-      outline: {
-        introduction: [],
-        main: [{ id: 'main-p1', text: 'Main Point 1' }],
-        conclusion: [],
-      },
-      structure: undefined,
-      plan: undefined,
-    });
-
-    renderWithQueryClient(<SermonPlanPage />);
-    expect(await screen.findByText('Thoughts not assigned')).toBeInTheDocument();
-  }, 15000);
-
-  it('reaches unassigned-thoughts guard when outline has only conclusion points (covers outline.conclusion?.length branch)', async () => {
-    // outline.introduction and main are empty → evaluates conclusion?.length (line 862)
-    mockGetSermonById.mockResolvedValue({
-      id: 'test-sermon-id',
-      title: 'Test Sermon',
-      verse: 'Test Verse',
-      date: new Date().toISOString(),
-      userId: 'user-1',
-      thoughts: [
-        { id: 't1', text: 'Conclusion thought', outlinePointId: null, tags: ['conclusion'], date: '2024-01-01' },
-      ],
-      outline: {
-        introduction: [],
-        main: [],
-        conclusion: [{ id: 'con-p1', text: 'Conclusion Point 1' }],
-      },
-      structure: undefined,
-      plan: undefined,
-    });
-
-    renderWithQueryClient(<SermonPlanPage />);
-    expect(await screen.findByText('Thoughts not assigned')).toBeInTheDocument();
-  }, 15000);
-
-  it('renders no-outline-structure guard when sermon has no outline points', async () => {
-    const mockSermonNoOutline = {
-      id: 'test-sermon-id',
-      title: 'Test Sermon',
-      verse: 'Test Verse',
-      date: new Date().toISOString(),
-      userId: 'user-1',
-      thoughts: [
-        { id: 't1', text: 'Thought 1', outlinePointId: null, tags: ['introduction'], date: '2024-01-01' },
-      ],
-      plan: undefined,
-      outline: undefined,
-      structure: undefined,
-    };
-
-    mockGetSermonById.mockResolvedValue(mockSermonNoOutline);
-    renderWithQueryClient(<SermonPlanPage />);
-
-    expect(await screen.findByText('plan.noOutlineStructure')).toBeInTheDocument();
-    expect(screen.getByText('plan.createStructureFirst')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'plan.goToStructure' }));
-    expect(mockPush).toHaveBeenCalledWith('/sermons/test-sermon-id/structure');
-  }, 15000);
-
-  // Add a simple test that just checks if the component can render at all
   it('can render without crashing', () => {
     // This test just checks if the component can be rendered without throwing an error
     expect(() => renderWithQueryClient(<SermonPlanPage />)).not.toThrow();
@@ -666,7 +607,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     renderWithQueryClient(<SermonPlanPage />);
 
     await screen.findByTestId('introduction-interleaved-section');
-    const switchButtons = screen.getAllByTitle('Switch to ThoughtsBySection view');
+    const switchButtons = screen.getAllByTitle('Switch to Structure view');
     fireEvent.click(switchButtons[0]);
 
     expect(mockPush).toHaveBeenCalledWith('/sermons/test-sermon-id/structure');
@@ -793,20 +734,18 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     expect(saveButtons[0]).toBeEnabled();
     fireEvent.click(saveButtons[0]);
 
+    // The save no longer travels through the server as a whole section: the text goes
+    // straight to storage under the node's own key, and the document is assembled on read.
     await waitFor(() => {
-      expect(global.fetch).toHaveBeenCalled();
+      expect(mockSavePlanText).toHaveBeenCalled();
     });
 
-    const putCall = (global.fetch as jest.Mock).mock.calls.find(([, options]) =>
-      options?.method === 'PUT'
-    );
-    expect(putCall).toBeDefined();
+    const [sermonId, changedText] = mockSavePlanText.mock.calls.at(-1)!;
+    expect(sermonId).toBe('test-sermon-id');
+    expect(changedText['intro-p1']).toBe('Updated Intro Content');
+    // Only the edited node travels — no other point's text rides along.
+    expect(Object.keys(changedText)).toEqual(['intro-p1']);
 
-    const requestBody = JSON.parse((putCall?.[1]?.body as string) || "{}");
-    const introOutline = requestBody?.introduction?.outline as string;
-
-    expect(introOutline).toContain('## Intro Point 1\n\nUpdated Intro Content');
-    expect((introOutline.match(/## Intro Point 1/g) || []).length).toBe(1);
     await waitFor(() => {
       expect(mockToast.success).toHaveBeenCalledWith('Point saved');
     });
@@ -839,23 +778,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
   });
 
   it('shows error toast when save request fails', async () => {
-    (global.fetch as jest.Mock).mockImplementation((url, options) => {
-      if (typeof url === 'string' && url.includes('/api/sermons/test-sermon-id/plan?outlinePointId=')) {
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: () => Promise.resolve({ content: 'Mock Generated Content' }),
-        });
-      }
-      if (options?.method === 'PUT') {
-        return Promise.resolve({
-          ok: false,
-          status: 500,
-          json: () => Promise.resolve({}),
-        });
-      }
-      return Promise.resolve({ ok: false, status: 404 });
-    });
+    mockSavePlanText.mockRejectedValueOnce(new Error('write refused'));
 
     renderWithQueryClient(<SermonPlanPage />);
     await screen.findByTestId('plan-introduction-right-section');
@@ -1212,7 +1135,9 @@ describe('Sermon Plan Page UI Smoke Test', () => {
 
     fireEvent.click(screen.getByTestId('export-plan'));
     await waitFor(() => {
-      expect(screen.getByTestId('export-result')).toHaveTextContent('Intro SermonOutline Mock');
+      // The stored assembled string ("Intro SermonOutline Mock") is no longer a source:
+      // the document is built from the cells, so the cell's text is what gets exported.
+      expect(screen.getByTestId('export-result')).toHaveTextContent('Generated Intro Content');
     });
     expect(screen.getByTestId('export-result')).not.toHaveTextContent('Thought 2');
   });

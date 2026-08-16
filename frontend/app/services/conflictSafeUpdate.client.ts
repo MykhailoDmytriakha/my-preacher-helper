@@ -1,4 +1,4 @@
-import { increment, runTransaction, type DocumentReference, type FieldValue } from 'firebase/firestore';
+import { increment, runTransaction, updateDoc, type DocumentReference, type FieldValue } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { auth } from '@/services/firebaseAuth.service';
@@ -40,7 +40,18 @@ export class StaleWriteError extends Error {
   constructor(
     readonly aggregate: string,
     readonly expectedRevision: number,
-    readonly actualRevision: number
+    readonly actualRevision: number,
+    /**
+     * WHAT THE SERVER ACTUALLY HELD, for exactly the fields that were compared.
+     *
+     * Without it a refusal is a dead end rather than a decision. The editor still vouches for
+     * the value it opened with, so pressing Save again recreates the same conflict, for ever —
+     * the person's only way out is to copy their text somewhere and reload. Reported here
+     * because this transaction is the only thing that ever saw the server: the caller can then
+     * adopt it as the new baseline (a second, deliberate press means "mine wins"), or show it
+     * beside the person's own text.
+     */
+    readonly serverValues: Record<string, unknown> = {}
   ) {
     super(
       `Refused a stale write to "${aggregate}": built from revision ${expectedRevision}, server is at ${actualRevision}`
@@ -75,6 +86,32 @@ export function readRevision(data: Record<string, unknown> | undefined, aggregat
  */
 export function revisionBump(aggregate: string): Record<string, FieldValue> {
   return { [`rev.${aggregate}`]: increment(1) };
+}
+
+/**
+ * THE OTHER DOOR: a write that is deliberately NOT guarded, but still honest.
+ *
+ * Some writes must never be refused. Deleting the text of a node that no longer exists is
+ * cleanup — refusing it would leave debris and tell the person their deletion failed. A
+ * refusal there costs something and protects nothing.
+ *
+ * It exists as a NAMED export rather than as a bare `updateDoc` at the call site so the
+ * choice is visible and countable. "Unguarded" then reads as a decision someone made and
+ * explained, instead of as a writer that never heard about the guard —
+ * `__tests__/architecture/writesGoThroughTheInterface.test.ts` counts every remaining bare
+ * write and refuses to let the number grow.
+ *
+ * The counter still advances: a writer that changes data while leaving the number alone
+ * makes a later stale save look current, and the guard then CONFIRMS the overwrite. And
+ * because this is an ordinary `updateDoc`, it keeps working offline, where transactions
+ * do not run at all.
+ */
+export async function revisionedUpdate(
+  ref: DocumentReference,
+  patch: { [field: string]: FieldValue | Partial<unknown> | null | undefined },
+  aggregate: string
+): Promise<void> {
+  await updateDoc(ref, { ...patch, ...revisionBump(aggregate) });
 }
 
 /** The write could not be attempted; it is queued and will replay through the guard. */
@@ -224,9 +261,35 @@ export function isUnreachableWriteError(error: unknown): boolean {
  * edited the verse — false conflicts teach people to click through the dialog,
  * and then the real one is skipped too.
  */
+/**
+ * Read a Firestore FIELD PATH, not an object key.
+ *
+ * A dot in an `updateDoc` field name means NESTING: `planText.<nodeId>` addresses one entry
+ * inside the `planText` map, and that is exactly what lets such a write merge instead of
+ * replacing the whole map — the property the plan's per-node saves are built on.
+ *
+ * The comparison has to speak the same language. `stored['planText.abc']` finds nothing, so
+ * every leaf write would be judged against `null`: on a document that already holds text the
+ * fingerprints could never match and the save would be refused forever, while on an empty one
+ * the check would pass no matter what the other device had stored. Neither is a guard.
+ *
+ * A missing segment answers `undefined`, which the caller turns into `null` — the same value
+ * an absent flat field yields, and the honest reading of "the server has nothing here".
+ */
+function readFieldPath(stored: Record<string, unknown>, path: string): unknown {
+  if (!path.includes('.')) return stored[path];
+  return path.split('.').reduce<unknown>(
+    (value, segment) =>
+      value !== null && typeof value === 'object'
+        ? (value as Record<string, unknown>)[segment]
+        : undefined,
+    stored
+  );
+}
+
 function fingerprintOfFields(stored: Record<string, unknown>, fields: string[]): string {
   return contentFingerprint(
-    [...fields].sort().map((name) => [name, stored[name] ?? null])
+    [...fields].sort().map((name) => [name, readFieldPath(stored, name) ?? null])
   );
 }
 
@@ -352,7 +415,17 @@ export async function conflictSafeUpdate(
 
     if (expectedContent !== undefined) {
       if (!fingerprintMatches) {
-        throw new StaleWriteError(aggregate, expectedRevision ?? current, current);
+        throw new StaleWriteError(
+          aggregate,
+          expectedRevision ?? current,
+          current,
+          Object.fromEntries(
+            expectedContent.fields.map((name) => [
+              name,
+              readFieldPath(snap.data() as Record<string, unknown>, name) ?? null,
+            ])
+          )
+        );
       }
     } else if (expectedRevision !== null && current !== expectedRevision) {
       // No content to compare — the counter is all we have.

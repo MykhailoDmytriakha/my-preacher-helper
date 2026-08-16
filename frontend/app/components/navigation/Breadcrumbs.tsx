@@ -46,8 +46,19 @@ const segmentLabels: Record<string, SegmentConfig> = {
     defaultLabel: 'Plan'
   },
   structure: {
+    // The fallback is what a person sees when i18n fails to load, so it must be a word
+    // from the product, not the component name this route used to be called after.
     labelKey: 'navigation.structure',
-    defaultLabel: 'ThoughtsBySection',
+    defaultLabel: 'Structure',
+  },
+  /**
+   * Without an entry here the segment is title-cased into the trail as-is, and the path
+   * read "… / План / Manual" — an English word nobody wrote, in the middle of a Russian
+   * breadcrumb. A route segment is not a label.
+   */
+  manual: {
+    labelKey: 'navigation.breadcrumb.manual',
+    defaultLabel: 'By hand',
   },
   series: {
     labelKey: 'navigation.series',

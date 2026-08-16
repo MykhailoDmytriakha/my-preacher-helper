@@ -319,7 +319,7 @@ describe("useColumnOutlineState", () => {
       await result.current.handleGenerateSermonPoints();
     });
 
-    expect(toast.error).toHaveBeenCalledWith("Failed to generate outline points");
+    expect(toast.error).toHaveBeenCalledWith("Failed to generate structure points");
 
     const offlineHook = renderState({ isOnline: false });
 
@@ -330,6 +330,6 @@ describe("useColumnOutlineState", () => {
       offlineHook.result.current.handleAddPoint();
     });
 
-    expect(toast.error).toHaveBeenCalledWith("Failed to save outline");
+    expect(toast.error).toHaveBeenCalledWith("Failed to save structure");
   });
 });

@@ -84,3 +84,6 @@ output/
 frontend/.emulator-*
 frontend/.probe-*
 frontend/.stand/
+
+# Migration rollback dumps contain real sermon text — never in the repo
+plan-text-backup-*.json

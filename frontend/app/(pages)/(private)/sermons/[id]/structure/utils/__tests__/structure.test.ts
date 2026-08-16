@@ -3,7 +3,7 @@ import { runScenarios } from '@test-utils/scenarioRunner';
 
 import { isStructureChanged, dedupeIds, ensureUniqueItems, removeIdFromOtherSections, calculateGroupPosition, findOutlinePoint, buildItemForUI } from '../structure';
 
-describe('ThoughtsBySection Utilities', () => {
+describe('Structure Utilities', () => {
   describe('isStructureChanged', () => {
     const baseStructure: ThoughtsBySection = {
       introduction: ['thought-1', 'thought-2'],

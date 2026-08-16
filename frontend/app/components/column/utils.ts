@@ -68,9 +68,9 @@ export const isPointAudioSection = (containerId: string): containerId is ColumnS
 
 export const getPointLockToggleLabel = (isLocked: boolean, t: Translate) => {
   if (isLocked) {
-    return t("structure.unlockPointThoughts", { defaultValue: "Unlock all thoughts in this outline point" });
+    return t("structure.unlockPointThoughts", { defaultValue: "Unlock all thoughts in this structure point" });
   }
-  return t("structure.lockPointThoughts", { defaultValue: "Lock all thoughts in this outline point" });
+  return t("structure.lockPointThoughts", { defaultValue: "Lock all thoughts in this structure point" });
 };
 
 /** @deprecated Backward-compatible alias for older test seams. */

@@ -129,6 +129,40 @@ describe('useSermon', () => {
     expect(result.current.sermon?.title).toBe('Still readable after a failed refresh');
   });
 
+  it('adopts a planText-only server edit once its plan revision is ahead', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const stored = makeSermon({
+      planText: { p1: 'What this screen opened with' },
+      rev: { plan: 1 },
+    });
+    const newer = makeSermon({
+      planText: { p1: 'Edited on the other device' },
+      rev: { plan: 2 },
+    });
+    mutableAuth.currentUser = { uid: 'user-1' };
+    mockUseOnlineStatus.mockReturnValue(true);
+    queryClient.setQueryData(sermonDetailKey('user-1', 'sermon-1'), stored);
+    mockGetSermonById
+      .mockResolvedValueOnce(stored)
+      .mockResolvedValueOnce(newer);
+
+    const { result } = renderHook(() => useSermon('sermon-1'), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => expect(mockGetSermonById).toHaveBeenCalledTimes(1));
+    expect(result.current.sermon?.planText?.p1).toBe('What this screen opened with');
+
+    await act(async () => {
+      await result.current.refreshSermon();
+    });
+
+    await waitFor(() =>
+      expect(result.current.sermon?.planText?.p1).toBe('Edited on the other device')
+    );
+    expect(queryClient.getQueryData<Sermon>(sermonDetailKey('user-1', 'sermon-1')))
+      .toMatchObject({ planText: { p1: 'Edited on the other device' }, rev: { plan: 2 } });
+  });
+
   /**
    * A REFUSED read must not read as "still loading".
    *

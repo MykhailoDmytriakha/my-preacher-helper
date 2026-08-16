@@ -52,6 +52,7 @@
 *   **Negative-Offset Clip:** Never place `overflow-hidden` on a flex/grid container that hosts components with absolute-positioned children using negative offsets (`-top-1`, `-left-1`, `-right-1`). Those offsets extend outside the component's own bounds and will be clipped.
 *   **Mobile Nested Scroll:** Avoid `overflow-y-auto` on small sub-containers inside mobile modals; let the main modal container scroll the whole page to prevent "touch-trapping."
 *   **useState Prop Snapshot:** Never rely solely on `useState(prop)` for data that arrives after mount. Pair with `useEffect` + dirty-ref guard.
+*   **Bypassing The Write Interface:** Never call `updateDoc`/`setDoc` directly for an own-document write. Go through `conflictSafeUpdate` (`services/conflictSafeUpdate.client.ts`) so the race check, the offline outbox and the typed errors come with it; a direct call silently opts out of all three. Standard behaviour on a detected race is the banner, not a silent overwrite.
 *   **In-Tree Modal Render:** Never render a modal directly inside-tree without `createPortal`. Even with `z-50`, ancestor stacking contexts (nav, cards, dropdowns) will sit on top. Always use `createPortal(content, document.body)` + `mounted` state guard for SSR. In tests, mock `createPortal: (node) => node`.
 
 ---
@@ -59,6 +60,21 @@
 ## 🆕 Lessons (Inbox) — Extracted Principles
 
 > One-line principles. History in git blame. Newest first.
+
+### 2026-08-15 A Migration Is A Writer, So It Must Move The Counter It Changes
+**Problem:** `migrate-plan-text.js` copied every sermon's plan text into `planText.<nodeId>` and touched nothing else — no `rev`, no `updatedAt`. Content changed, the version evidence did not, so `serverCopyIsNewer` cannot prove the migrated server copy beats a cache snapshotted before the move. The stale copy then keeps winning for ever, the screen still renders (legacy cells are merged on read, so it LOOKS fine), and only the write layer notices: the baseline is read from the raw `planText`, finds nothing, and the guard refuses a perfectly legitimate save against a value that is really there. A migration is the one writer nobody thinks of as a writer, and it broke the rule the codebase states in `revisionBump`'s own doc comment.
+**Solution:** Bump the aggregate's counter (and `updatedAt`) as part of the migration write itself, so every copy older than the move loses by construction. Retrofitting means touching the already-migrated documents once. Refusing a write and rendering a document read from DIFFERENT fields must be judged by the same canonical value, or the two layers disagree in exactly the way that looks like a foreign edit.
+**Principle:** Anything that changes stored content is a writer and owes the counter, scripts included — a version left behind does not merely fail to help, it actively teaches the guard to refuse the truth.
+
+### 2026-08-15 A Refusal Without A Way Forward Just Moves Where The Text Is Lost
+**Problem:** Compare-and-set stops one device overwriting another, and that is only half the story. The editor still vouched for the value it opened with, so every further press recreated the same conflict: the person had text they could not save, no "keep mine / take theirs", and nothing durable holding it — "silently overwrote someone else" had become "silently lost your own", which is a move, not a fix.
+**Solution:** The transaction is the only thing that saw the server, so it reports what it found (`StaleWriteError.serverValues`). The screen adopts that as the new baseline, keeps the text on screen and still marked unsaved, and says so — a second, deliberate press then means "mine wins". A durable draft is still owed (the guard's own precondition), but the dead end is gone.
+**Principle:** Any mechanism that can refuse must also answer "where is my text now, and what do I press next"; a guard with no exit is measured by what the person loses, not by what it protected.
+
+### 2026-08-15 Every Document Write Goes Through The Conflict-Safe Interface, Not Around It
+**Problem:** `conflictSafeUpdate` already owns the whole race story — revision per aggregate, an open-time content baseline, an offline outbox instead of a blind last-write-wins, and typed errors (`isStaleWriteError`, `OfflineQueuedError`) for the UI to turn into a banner. But using it is voluntary: nothing stops a new writer from calling `updateDoc` directly, and that is exactly what the new plan-text writer did (`savePlanTextViaClient`). The same trap has now been stepped in repeatedly, always the same way — a NEW feature is written, and the protection is simply not remembered.
+**Solution:** Route every own-document write through the conflict-safe interface and make bypassing it fail a gate rather than depend on memory: a guard test that scans for direct `updateDoc`/`setDoc` outside an explicit allowlist. Where writes are leaf-path per item (`planText.<nodeId>`), the check must be scoped to THAT item's baseline, not to the whole aggregate — otherwise editing two different points starts reporting a conflict that does not exist.
+**Principle:** A safety rule that each new writer must remember is a rule that will be forgotten; the interface has to be the only door, and the gate — not the author — is what keeps it shut.
 
 ### 2026-07-26 Free-Form Scratch Capture Must Use A Multiline Autosizing Control
 **Problem:** Manual sermon scratch capture used `input type="text"`, forcing one line and turning `Enter` into premature submission.

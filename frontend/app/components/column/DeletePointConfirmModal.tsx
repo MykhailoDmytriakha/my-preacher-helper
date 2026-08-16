@@ -36,10 +36,9 @@ export function DeletePointConfirmModal({
       isOpen={isOpen}
       onClose={onClose}
       onConfirm={onConfirm}
-      title={t("structure.deletePointConfirmTitle", { defaultValue: "Delete Outline Point" })}
+      title={t("structure.deletePointConfirmTitle", { defaultValue: "Delete Structure Point" })}
       description={t("structure.deletePointConfirmDesc", {
-        defaultValue:
-          "Are you sure you want to delete this point? This action cannot be undone. To confirm, type the name of the point:",
+        defaultValue: "Are you sure you want to delete this point? This action cannot be undone. To confirm, type the name of the point:",
       })}
       confirmText={t(TRANSLATION_COMMON_DELETE, { defaultValue: "Delete" })}
       isDestructive={true}

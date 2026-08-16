@@ -488,4 +488,51 @@ describe('an unrelated change in the same aggregate must not refuse the write', 
 
     expect(store['note-1'].title).toBe('rewritten on the phone');
   });
+
+  /**
+   * A DOT IN A FIELD NAME MEANS NESTING, AND THE COMPARISON HAS TO KNOW IT.
+   *
+   * `updateDoc({'planText.abc': …})` addresses one entry inside the `planText` map — the
+   * property leaf writes are built on, because it merges instead of replacing the map. Read
+   * that name as a plain object key and it finds nothing: on a document that already holds
+   * text the fingerprints can never match and every save is refused forever, and on an empty
+   * one the check passes whatever the other device stored. Neither is a guard.
+   */
+  describe('nested field paths', () => {
+    it('compares the value the path points AT, not a key with a dot in it', async () => {
+      store['note-1'] = { planText: { abc: 'as I found it' }, rev: { plan: 2 } };
+
+      await conflictSafeUpdate(ref, { 'planText.abc': 'my edit' }, 'missing', {
+        aggregate: 'plan',
+        expectedRevision: null,
+        expectedBaseline: { 'planText.abc': 'as I found it' },
+      });
+
+      expect(store['note-1']['planText.abc']).toBe('my edit');
+    });
+
+    it('refuses when the value at that path is not what the caller found', async () => {
+      store['note-1'] = { planText: { abc: 'written on the phone' }, rev: { plan: 2 } };
+
+      await expect(
+        conflictSafeUpdate(ref, { 'planText.abc': 'laptop copy' }, 'missing', {
+          aggregate: 'plan',
+          expectedRevision: null,
+          expectedBaseline: { 'planText.abc': 'as I found it' },
+        })
+      ).rejects.toBeInstanceOf(StaleWriteError);
+    });
+
+    it('reads an absent path as nothing rather than walking into it', async () => {
+      store['note-1'] = { title: 'no plan text at all' };
+
+      await conflictSafeUpdate(ref, { 'planText.abc': 'my first words' }, 'missing', {
+        aggregate: 'plan',
+        expectedRevision: null,
+        expectedBaseline: { 'planText.abc': null },
+      });
+
+      expect(store['note-1']['planText.abc']).toBe('my first words');
+    });
+  });
 });

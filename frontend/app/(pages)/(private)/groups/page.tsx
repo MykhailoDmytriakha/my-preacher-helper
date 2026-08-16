@@ -174,8 +174,7 @@ export default function GroupsPage() {
             </h1>
             <p className="text-base text-gray-600 dark:text-gray-300 max-w-2xl">
               {t('workspaces.groups.description', {
-                defaultValue:
-                  'Prepare modular group meetings with reusable templates, flexible flow, and calendar-ready sessions.',
+                defaultValue: 'Prepare modular group meetings with reusable templates, flexible flow, and calendar-ready sessions.',
               })}
             </p>
           </div>

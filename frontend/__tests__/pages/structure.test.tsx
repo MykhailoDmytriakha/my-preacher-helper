@@ -114,7 +114,7 @@ jest.mock('lodash/debounce', () =>
   })
 );
 
-describe('ThoughtsBySection Page', () => {
+describe('Structure Page', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseSearchParams.mockReturnValue({
@@ -237,7 +237,7 @@ describe('ThoughtsBySection Page', () => {
     );
 
       await waitFor(() => {
-        // Sermon title appears in the header as "ThoughtsBySection Test Sermon"
+        // Sermon title appears in the header as "Structure Test Sermon"
         expect(screen.getByText(/Test Sermon/)).toBeInTheDocument();
         // Find column headers by their specific styling
         const introHeaders = screen.getAllByText('Introduction');

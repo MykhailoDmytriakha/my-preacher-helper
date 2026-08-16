@@ -54,6 +54,9 @@ const LAZY_ROUTES: { test: (path: string) => boolean; Component: ComponentType }
   // Nested sermon routes (preaching plan + structure editor). useRouteId reads the
   // [id] from the 2nd path segment, so these self-resolve in the shell too.
   { test: (p) => /^\/sermons\/[^/]+\/plan$/.test(p), Component: lazy(() => import('@/(pages)/(private)/sermons/[id]/plan/page')) },
+  // The hand-written plan is its own route, and `plan$` above deliberately does not reach
+  // it — without an entry of its own an offline cold open landed on the generic card.
+  { test: (p) => /^\/sermons\/[^/]+\/plan\/manual$/.test(p), Component: lazy(() => import('@/(pages)/(private)/sermons/[id]/plan/manual/page')) },
   { test: (p) => /^\/sermons\/[^/]+\/structure$/.test(p), Component: lazy(() => import('@/(pages)/(private)/sermons/[id]/structure/page')) },
 ];
 

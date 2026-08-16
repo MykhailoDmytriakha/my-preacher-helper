@@ -1,4 +1,7 @@
 import { contentFingerprint } from '@/utils/contentFingerprint';
+import { readPlanText } from '@/utils/planText';
+
+import type { Sermon } from '@/models/models';
 
 /**
  * What is actually compared when deciding "this sermon was edited elsewhere".
@@ -15,6 +18,7 @@ export type SermonFreshnessProjection = {
   thoughts: string;
   outline: string;
   plan: string;
+  planText: string;
   preparation: string;
   scratch: string;
 };
@@ -53,6 +57,23 @@ function canonicalOrder(value: unknown): unknown {
   });
 }
 
+/**
+ * Compare the plan text the application READS, not the raw field that happens to store it.
+ *
+ * During the transition the same readable plan has several valid storage shapes:
+ * - before migration, text exists only in `plan.<section>.outlinePoints`;
+ * - migration copies it into `planText` but deliberately leaves the legacy backup in place;
+ * - a leaf save may leave Firestore with a sparse `planText`, while the screen mirrors the
+ *   fully merged old+new map into its sermon object.
+ *
+ * Fingerprinting raw `planText` calls those representation differences foreign edits. Both
+ * screens already render through `readPlanText`, so that merged map is the canonical value:
+ * storage-only moves compare equal, while changing a node's effective text still differs.
+ */
+function effectivePlanTextFingerprint(data: SermonLike): string {
+  return contentFingerprint(readPlanText(data as unknown as Sermon));
+}
+
 export function sermonFreshnessProjection(data: SermonLike): SermonFreshnessProjection {
   return {
     title: (data.title as string) || '',
@@ -60,6 +81,7 @@ export function sermonFreshnessProjection(data: SermonLike): SermonFreshnessProj
     thoughts: contentFingerprint(canonicalOrder(data.thoughts)),
     outline: contentFingerprint(data.outline ?? null),
     plan: contentFingerprint(data.plan ?? data.draft ?? null),
+    planText: effectivePlanTextFingerprint(data),
     preparation: contentFingerprint(data.preparation ?? null),
     scratch: contentFingerprint(canonicalOrder(data.scratch)),
   };
@@ -77,6 +99,7 @@ export function sermonFreshnessProjection(data: SermonLike): SermonFreshnessProj
 export type PlanFreshnessProjection = {
   outline: string;
   plan: string;
+  planText: string;
   thoughts: string;
 };
 
@@ -84,6 +107,7 @@ export function planFreshnessProjection(data: SermonLike): PlanFreshnessProjecti
   return {
     outline: contentFingerprint(data.outline ?? null),
     plan: contentFingerprint(data.plan ?? data.draft ?? null),
+    planText: effectivePlanTextFingerprint(data),
     thoughts: contentFingerprint(canonicalOrder(data.thoughts)),
   };
 }

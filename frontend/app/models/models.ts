@@ -157,6 +157,18 @@ export interface Sermon {
   draft?: SermonContent;
   /** Legacy alias kept for backward compatibility with stored documents */
   plan?: SermonContent;
+  /**
+   * THE PLAN'S TEXT, KEYED BY NODE ID — the single place it lives.
+   *
+   * Replaces `plan.<section>.outlinePoints` (text scattered per section) and
+   * `plan.<section>.outline` (the assembled document, which is no longer stored at all —
+   * see `utils/planText.ts`). A save writes ONE key, so saving one card cannot overwrite
+   * another, and the document is assembled at read time so it cannot go stale.
+   *
+   * `plan`/`draft` stay readable for sermons that have not been saved since; they are a
+   * fallback for READING only. Nothing writes them any more.
+   */
+  planText?: Record<string, string>;
   isPreached?: boolean;
   preparation?: Preparation;
 
