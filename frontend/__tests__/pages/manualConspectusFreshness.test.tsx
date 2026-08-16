@@ -4,6 +4,8 @@ import React from 'react';
 import ManualConspectusPage from '@/(pages)/(private)/sermons/[id]/plan/manual/page';
 import '@testing-library/jest-dom';
 
+import { draftKey, saveDraft } from '@/utils/durableDraft';
+
 import type { Sermon } from '@/models/models';
 
 /**
@@ -190,5 +192,46 @@ describe('the hand-written plan and a newer copy on the server', () => {
         (capturedFreshness?.known as { planText: string }).planText
       );
     });
+  });
+});
+
+/**
+ * THE SAVE BUTTON MUST SAY WHETHER THE WORK IS STORED — the same signal the paired screen
+ * gives. Two screens over one plan teaching different things about "is my work saved" is how
+ * a card gets left behind.
+ */
+describe('the save button on the hand-written screen', () => {
+  // Its own setup: this block sits outside the freshness describe and would otherwise render
+  // the "could not load" state, where there is no card and no button to judge.
+  beforeEach(() => {
+    jest.clearAllMocks();
+    freshnessState = 'fresh';
+    mockSermon = sermon({ p1: 'What this laptop has' });
+    window.localStorage.clear();
+  });
+
+  const saveButton = () => screen.getAllByRole('button', { name: 'plan.save' })[0];
+
+  it('is quiet and unavailable while nothing is unsaved', () => {
+    render(<ManualConspectusPage />);
+
+    expect(saveButton()).toBeDisabled();
+    expect(saveButton().className).toContain('bg-gray-200');
+  });
+
+  /**
+   * Driven through a REAL user action that leaves a cell unsaved — taking back a recovered
+   * draft. The rich editor does not expose a text box in jsdom, and reaching past it into the
+   * hook would prove the mock rather than the screen.
+   */
+  it('lights up in the section colour the moment something is unsaved', () => {
+    saveDraft(draftKey('user-1', 'sermon-1', 'plan:p1'), 'текст, который сервер не принял');
+
+    render(<ManualConspectusPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'plan.draftRecoveryRestore' }));
+
+    expect(saveButton()).toBeEnabled();
+    // Introduction's tone — literal classes, because Tailwind cannot see a computed one.
+    expect(saveButton().className).toContain('bg-amber-600');
   });
 });

@@ -169,6 +169,24 @@ export interface Sermon {
    * fallback for READING only. Nothing writes them any more.
    */
   planText?: Record<string, string>;
+  /**
+   * WHICH EDITOR THIS PLAN IS KEPT IN.
+   *
+   * Both editors write the same `planText`, so the data alone cannot say who wrote it — and
+   * with nothing recorded, every shortcut sent people to the paired AI screen. For a plan
+   * written by hand that is not merely the wrong room: that screen renders one cell per
+   * outline POINT, so text under sub-points is not shown at all and the preacher meets his
+   * own plan with half of it apparently missing.
+   *
+   * Set by the toggle on the plan screens, and recorded on the first save from an editor
+   * when it has never been set — so a plan started by hand goes on opening by hand without
+   * anyone having to know this field exists.
+   *
+   * ABSENT MEANS "NEVER RECORDED", NOT "AI". Every sermon written before this field existed
+   * answers `undefined`, and those keep the routing they already had; changing it would move
+   * people's plans out from under them on the day it ships.
+   */
+  planMode?: 'manual' | 'ai';
   isPreached?: boolean;
   preparation?: Preparation;
 

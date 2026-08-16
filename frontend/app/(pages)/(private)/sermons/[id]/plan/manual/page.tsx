@@ -24,6 +24,7 @@ import { SECTION_TONE_CLASSES } from "../constants";
 import { copyFormattedFromElement } from "../copyFormattedFromElement";
 import { PlanDraftRecoveryBar } from "../PlanDraftRecoveryBar";
 import PlanImmersiveView from "../PlanImmersiveView";
+import { PlanModeSwitch } from "../PlanModeSwitch";
 import { planNodesForPoint } from "../planNodes";
 import PlanOverlayPortal from "../PlanOverlayPortal";
 import PlanPreachingView from "../PlanPreachingView";
@@ -60,6 +61,70 @@ interface ManualPointCardProps {
   conspectus: ManualConspectus;
 }
 
+/**
+ * A HEADING THAT CAN BE REWRITTEN IN PLACE.
+ *
+ * The wording of a point is refined while its text is being written — that is when you find
+ * out what it is really about. Until now the only way to change it was to leave for the
+ * structure editor and come back, so plans here carried headings their author had outgrown.
+ *
+ * Enter and leaving the field commit; Escape restores what was there. An empty name is never
+ * committed: a nameless point is unreachable in every list, and clearing the field is never a
+ * request for that.
+ */
+const EditableTitle = ({
+  value,
+  onRename,
+  className,
+  ariaLabel,
+}: {
+  value: string;
+  onRename: (next: string) => void;
+  className?: string;
+  ariaLabel: string;
+}) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  const commit = () => {
+    setEditing(false);
+    const next = draft.trim();
+    if (!next || next === value) {
+      setDraft(value);
+      return;
+    }
+    onRename(next);
+  };
+
+  if (!editing) {
+    return (
+      <button
+        type="button"
+        onClick={() => { setDraft(value); setEditing(true); }}
+        aria-label={ariaLabel}
+        className={`min-w-0 truncate rounded px-1 text-left hover:bg-black/5 dark:hover:bg-white/10 ${className ?? ""}`}
+      >
+        {value}
+      </button>
+    );
+  }
+
+  return (
+    <input
+      autoFocus
+      value={draft}
+      aria-label={ariaLabel}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={commit}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") { event.preventDefault(); commit(); }
+        if (event.key === "Escape") { setDraft(value); setEditing(false); }
+      }}
+      className={`min-w-0 flex-1 rounded border border-gray-300 bg-white px-1 py-0.5 text-inherit dark:border-gray-600 dark:bg-gray-900 ${className ?? ""}`}
+    />
+  );
+};
+
 const ManualPointCard = ({ point, index, section, conspectus }: ManualPointCardProps) => {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
@@ -76,16 +141,29 @@ const ManualPointCard = ({ point, index, section, conspectus }: ManualPointCardP
   return (
     <div className="h-full rounded-lg border bg-white p-4 shadow-sm dark:bg-gray-800">
       <h3 className={`mb-2 flex items-center justify-between gap-2 text-lg font-semibold ${tone.text}`}>
-        <span className="min-w-0">
-          <span className="mr-2 opacity-60">{index + 1}.</span>
-          {point.text}
+        <span className="flex min-w-0 flex-1 items-baseline gap-1">
+          <span className="shrink-0 opacity-60">{index + 1}.</span>
+          <EditableTitle
+            value={point.text}
+            ariaLabel={t("plan.renamePoint")}
+            onRename={(next) => conspectus.renamePoint(point.id, next)}
+          />
         </span>
         <div className="flex shrink-0 gap-2">
           <button
             type="button"
             onClick={() => void conspectus.savePoint(point.id, section, nodeIds)}
             disabled={!isModified}
-            className="inline-flex h-8 items-center rounded-md px-2 py-1 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+            /**
+             * THE SAME SIGNAL AS THE PAIRED SCREEN: the button lights up in the section's
+             * colour while something is unsaved. Two screens over one plan teaching different
+             * things about "is my work stored" is how a card gets left behind.
+             */
+            className={`inline-flex h-8 items-center rounded-md px-2 py-1 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              isModified
+                ? `${tone.saveButton} text-white`
+                : "bg-gray-200 text-gray-800 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600"
+            }`}
             title={t("plan.save")}
             aria-label={t("plan.save")}
           >
@@ -118,7 +196,11 @@ const ManualPointCard = ({ point, index, section, conspectus }: ManualPointCardP
             {node.kind === "subPoint" && (
               <h4 className={`mb-1 flex items-baseline gap-2 text-base font-semibold ${tone.text}`}>
                 <span className="shrink-0 opacity-60">{node.label}</span>
-                <span className="min-w-0 flex-1">{node.heading}</span>
+                <EditableTitle
+                  value={node.heading}
+                  ariaLabel={t("plan.renameSubPoint")}
+                  onRename={(next) => conspectus.renameSubPoint(point.id, node.id, next)}
+                />
                 <DeleteNodeButton
                   compact
                   title={t("plan.deleteSubPoint")}
@@ -425,6 +507,12 @@ export default function ManualConspectusPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{sermon.title}</h1>
           <p className="text-gray-500 dark:text-gray-400">{t("plan.manualSubtitle")}</p>
         </div>
+
+        <PlanModeSwitch
+          sermon={sermon}
+          current="manual"
+          onSwitched={(planMode) => setSermon((previous) => (previous ? { ...previous, planMode } : previous))}
+        />
 
         <PlanViewActions
           sermon={sermon}

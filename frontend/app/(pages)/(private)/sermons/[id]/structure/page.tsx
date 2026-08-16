@@ -28,7 +28,7 @@ import {
 } from "@/utils/recoverableWrite";
 import { normalizeStructureTag } from "@/utils/tagUtils";
 import { getSectionLabel } from "@lib/sections";
-import { getSermonPlanData } from "@utils/sermonPlanAccess";
+import { getSermonPlanData, planEditorRoute } from "@utils/sermonPlanAccess";
 import { insertThoughtIdInStructure, resolveSectionFromOutline } from "@utils/thoughtOrdering";
 
 import { AmbiguousSection } from "./components/AmbiguousSection";
@@ -101,9 +101,11 @@ function StructurePageContent() {
   // Handle switching to plan view
   const handleSwitchToPlan = useCallback((sectionId?: string) => {
     if (sermonId) {
+      // The section shortcut belongs to the paired screen (it scrolls to a section there);
+      // without one, open whichever editor this plan is actually kept in.
       const url = sectionId
         ? `/sermons/${encodeURIComponent(sermonId)}/plan?section=${sectionId}`
-        : `/sermons/${encodeURIComponent(sermonId)}/plan`;
+        : planEditorRoute(encodeURIComponent(sermonId), sermon);
       router.push(url);
     }
   }, [sermonId, router]);

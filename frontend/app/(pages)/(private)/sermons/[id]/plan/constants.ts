@@ -48,22 +48,31 @@ export const SECTION_TONE_CLASSES: Record<
     border: string;
     surface: string;
     text: string;
+    /**
+     * The save button while something is UNSAVED — the section's own colour, matching the
+     * paired screen. Written as literals because Tailwind cannot see a class it has to
+     * compute: a template built from a section name compiles to nothing at all.
+     */
+    saveButton: string;
   }
 > = {
   introduction: {
     border: "border-amber-200 dark:border-amber-800",
     surface: "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/40",
     text: "text-amber-800 dark:text-amber-200",
+    saveButton: "bg-amber-600 hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-400",
   },
   main: {
     border: "border-blue-200 dark:border-blue-800",
     surface: "border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20",
     text: "text-blue-800 dark:text-blue-200",
+    saveButton: "bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-400",
   },
   conclusion: {
     border: "border-green-200 dark:border-green-800",
     surface: "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20",
     text: "text-green-800 dark:text-green-200",
+    saveButton: "bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-400",
   },
 };
 

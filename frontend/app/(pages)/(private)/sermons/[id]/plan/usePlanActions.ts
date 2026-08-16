@@ -4,7 +4,11 @@ import { toast } from "sonner";
 import { PlanStyle } from "@/api/clients/openAI.client";
 import { Sermon } from "@/models/models";
 import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
-import { planTextConflictValues, savePlanTextViaClient } from "@/services/sermons.client";
+import {
+  planTextConflictValues,
+  savePlanModeViaClient,
+  savePlanTextViaClient,
+} from "@/services/sermons.client";
 import { isUsageCapReachedError } from "@/services/usageLimits";
 import { debugLog } from "@/utils/debugMode";
 import { getVisualOrderedThoughtsForOutlinePoint } from "@/utils/sermonVisualOrder";
@@ -166,6 +170,13 @@ export default function usePlanActions({
       const queued = writeChainRef.current.then(run, run);
       writeChainRef.current = queued.catch(() => undefined);
       await queued;
+
+      // The first save from this editor records that the plan lives here — see the same note
+      // in `useManualConspectus`. Only when nothing is recorded; a deliberate choice stands.
+      if (!sermon.planMode) {
+        savePlanModeViaClient(sermon.id, 'ai')
+          .catch((error) => debugLog("Recording the plan editor failed — harmless", { error }));
+      }
 
       await onSaved({
         outlinePointId,

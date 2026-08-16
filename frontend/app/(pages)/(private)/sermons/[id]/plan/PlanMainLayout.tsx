@@ -28,6 +28,7 @@ import {
   TRANSLATION_KEYS,
 } from "./constants";
 import PlanMarkdownGlobalStyles from "./PlanMarkdownGlobalStyles";
+import { planNodesForPoint } from "./planNodes";
 
 import type {
   CombinedPlan,
@@ -388,10 +389,23 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
 
   const sectionToneClasses = SECTION_TONE_CLASSES[sectionKey];
   const isEditMode = Boolean(editModePoints[outlinePoint.id]);
+
+  /**
+   * THE CELLS OF THIS POINT — its own, then one per sub-point.
+   *
+   * This card used to hold exactly ONE cell, keyed by the point, while the document is
+   * assembled from every node (`utils/planText.ts`). Text written under a sub-point therefore
+   * appeared when preaching and NOWHERE on the screen where the plan is edited: the preacher
+   * met his own plan looking half empty, with no way to reach the missing half.
+   */
+  const nodes = planNodesForPoint(outlinePoint, pointIndex);
   const currentContent = generatedContent[outlinePoint.id] || "";
-  const currentSavedContent = savedTextByNodeId?.[outlinePoint.id] ?? "";
-  const isModified = Boolean(modifiedContent[outlinePoint.id]);
-  const isSaved = Boolean(savedSermonPoints[outlinePoint.id]);
+  const isModified = nodes.some((node) => Boolean(modifiedContent[node.id]));
+  const isSaved = nodes.some((node) => Boolean(savedSermonPoints[node.id]));
+  /** Everything this card holds — one save writes the point and its sub-points together. */
+  const cellsOfThisPoint = Object.fromEntries(
+    nodes.map((node) => [node.id, generatedContent[node.id] ?? ""])
+  );
 
   useEffect(() => {
     onSyncPairHeights(sectionKey, outlinePoint.id);
@@ -411,7 +425,7 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
         <div className="flex shrink-0 space-x-2">
           <Button
             className="text-sm px-2 py-1 h-8"
-            onClick={() => onSaveSermonPoint(outlinePoint.id, { [outlinePoint.id]: currentContent }, sectionKey)}
+            onClick={() => onSaveSermonPoint(outlinePoint.id, cellsOfThisPoint, sectionKey)}
             variant={isModified ? "section" : "default"}
             sectionColor={isModified ? sectionColors : undefined}
             // Emptying the text is a legitimate edit — gating on "has content" left the
@@ -432,29 +446,47 @@ const PlanOutlinePointEditor = React.forwardRef<HTMLDivElement, PlanOutlinePoint
         </div>
       </h3>
 
-      <div>
-        {isEditMode ? (
-          <RichMarkdownEditor
-            value={currentContent}
-            placeholder={noContentText}
-            minHeight="150px"
-            onChange={(newContent) => {
-              setGeneratedContent((prev) => ({ ...prev, [outlinePoint.id]: newContent }));
-              setModifiedContent((prev) => ({ ...prev, [outlinePoint.id]: newContent !== currentSavedContent }));
-              onUpdateCombinedPlan(outlinePoint.id, newContent, sectionKey);
-              onSyncPairHeights(sectionKey, outlinePoint.id);
-            }}
-          />
-        ) : (
-          <div
-            data-testid="plan-point-preview-surface"
-            className="relative min-h-[100px] overflow-visible rounded-md border border-gray-200 bg-gray-50/70 text-base dark:border-gray-700/70 dark:bg-gray-900/20"
-          >
-            <div className="p-4 md:p-5">
-              <MarkdownRenderer markdown={currentContent || noContentText} section={sectionKey} />
+      <div className="space-y-3">
+        {nodes.map((node) => {
+          const nodeContent = generatedContent[node.id] ?? "";
+          const nodeSaved = savedTextByNodeId?.[node.id] ?? "";
+
+          return (
+            <div
+              key={node.id}
+              className={node.kind === "subPoint" ? `ml-3 border-l-2 pl-4 ${sectionToneClasses.border}` : ""}
+            >
+              {node.kind === "subPoint" && (
+                <h4 className={`mb-1 flex items-baseline gap-2 text-base font-semibold ${sectionToneClasses.text}`}>
+                  <span className="shrink-0 opacity-60">{node.label}</span>
+                  <span className="min-w-0 flex-1">{node.heading}</span>
+                </h4>
+              )}
+              {isEditMode ? (
+                <RichMarkdownEditor
+                  value={nodeContent}
+                  placeholder={noContentText}
+                  minHeight={node.kind === "subPoint" ? "90px" : "150px"}
+                  onChange={(newContent) => {
+                    setGeneratedContent((prev) => ({ ...prev, [node.id]: newContent }));
+                    setModifiedContent((prev) => ({ ...prev, [node.id]: newContent !== nodeSaved }));
+                    onUpdateCombinedPlan(node.id, newContent, sectionKey);
+                    onSyncPairHeights(sectionKey, outlinePoint.id);
+                  }}
+                />
+              ) : (
+                <div
+                  data-testid="plan-point-preview-surface"
+                  className="relative min-h-[100px] overflow-visible rounded-md border border-gray-200 bg-gray-50/70 text-base dark:border-gray-700/70 dark:bg-gray-900/20"
+                >
+                  <div className="p-4 md:p-5">
+                    <MarkdownRenderer markdown={nodeContent || noContentText} section={sectionKey} />
+                  </div>
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })}
       </div>
     </div>
   );

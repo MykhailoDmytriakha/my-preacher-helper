@@ -86,9 +86,26 @@ export function isSermonReadyForPreaching(sermon: Sermon | null | undefined): bo
  * screen, not used to route people away from it.
  */
 export function getSermonPlanAccessRoute(sermonId: string, sermon: Sermon): string {
-  return hasPlan(sermon)
-    ? `/sermons/${sermonId}/plan`
-    : `/sermons/${sermonId}/structure`;
+  if (!hasPlan(sermon)) return `/sermons/${sermonId}/structure`;
+  return planEditorRoute(sermonId, sermon);
+}
+
+/**
+ * The plan screen this sermon's plan is kept in.
+ *
+ * ASKED OF THE RECORDED MODE, NOT OF THE DATA. Both editors write the same `planText`, so
+ * nothing in the content distinguishes them — which is why every shortcut used to open the
+ * paired AI screen. For a hand-written plan that screen shows one cell per outline POINT and
+ * omits the text under sub-points entirely, so the preacher met his own plan looking half
+ * empty (BUG-20260816-manual-plan-opens-in-ai-editor).
+ *
+ * An absent mode keeps the previous destination on purpose: it means "never recorded", not
+ * "AI", and every sermon written before the field existed answers that way.
+ */
+export function planEditorRoute(sermonId: string, sermon: Sermon | null | undefined): string {
+  return sermon?.planMode === 'manual'
+    ? `/sermons/${sermonId}/plan/manual`
+    : `/sermons/${sermonId}/plan`;
 }
 
 /**

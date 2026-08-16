@@ -194,3 +194,47 @@ describe('sermonPlanAccess utilities', () => {
     expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe(`/sermons/${sermon.id}/plan`);
   });
 });
+
+/**
+ * THE ROUTE MUST OPEN THE EDITOR THE PLAN IS KEPT IN — BUG-20260816-manual-plan-opens-in-ai-editor.
+ *
+ * The shortcut used to ask only "is there a plan" and always send people to the paired
+ * AI screen. For a plan written by hand that is the wrong room, and it is worse than a
+ * detour: that screen renders one cell per outline POINT, so the text under sub-points is
+ * not shown at all and the preacher sees his own plan as if half of it had gone missing.
+ */
+describe('getSermonPlanAccessRoute honours the editor the plan is kept in', () => {
+  const withPlan = (planMode?: 'manual' | 'ai'): Sermon => ({
+    id: 's1',
+    title: 'Град Божий',
+    verse: '',
+    date: '2026-08-16',
+    userId: 'u1',
+    thoughts: [],
+    outline: { introduction: [{ id: 'p1', text: 'Перепись' }], main: [], conclusion: [] },
+    planText: { p1: 'написано вручную' },
+    ...(planMode ? { planMode } : {}),
+  } as unknown as Sermon);
+
+  it('opens the hand-written editor for a plan kept by hand', () => {
+    expect(getSermonPlanAccessRoute('s1', withPlan('manual'))).toBe('/sermons/s1/plan/manual');
+  });
+
+  it('opens the paired editor for a plan kept there', () => {
+    expect(getSermonPlanAccessRoute('s1', withPlan('ai'))).toBe('/sermons/s1/plan');
+  });
+
+  /**
+   * Nothing recorded the mode before this existed, so every sermon written so far answers
+   * "unknown". Sending those to the paired screen keeps the behaviour they already have —
+   * changing it would move people's plans out from under them on the day this ships.
+   */
+  it('keeps the previous behaviour when no mode was ever recorded', () => {
+    expect(getSermonPlanAccessRoute('s1', withPlan())).toBe('/sermons/s1/plan');
+  });
+
+  it('still sends a sermon without a plan to structure, whatever the mode says', () => {
+    const noPlan = { ...withPlan('manual'), planText: {} } as unknown as Sermon;
+    expect(getSermonPlanAccessRoute('s1', noPlan)).toBe('/sermons/s1/structure');
+  });
+});

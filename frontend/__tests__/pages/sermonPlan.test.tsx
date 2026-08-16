@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { toast } from 'sonner';
 
@@ -1211,4 +1211,54 @@ describe('Sermon Plan Page UI Smoke Test', () => {
     expect(screen.getByTestId('export-result')).not.toHaveTextContent('> Test Verse');
   });
 
-}); 
+});
+
+/**
+ * THE PLAN SCREEN MUST SHOW THE WHOLE PLAN — BUG-20260816-ai-plan-screen-hides-subpoint-text.
+ *
+ * This screen built one editable cell per outline POINT while the document is assembled from
+ * all NODES, so text written under a sub-point appeared when preaching and nowhere on the
+ * screen where the plan is edited. The preacher met his own plan looking half empty and could
+ * not reach the missing half at all.
+ */
+describe('sub-point text on the paired plan screen', () => {
+  const withSubPoint = {
+    id: 'test-sermon-id',
+    title: 'Град Божий',
+    verse: 'Пс 86',
+    date: new Date().toISOString(),
+    userId: 'test-user',
+    thoughts: [],
+    outline: {
+      introduction: [
+        { id: 'p1', text: 'Перепись', subPoints: [{ id: 'sub-vz', text: 'Перепись в ВЗ', position: 1000 }] },
+      ],
+      main: [],
+      conclusion: [],
+    },
+    planText: { p1: 'Текст самого пункта', 'sub-vz': 'Родословие Адама — Быт 5:1' },
+  };
+
+  it('shows the text written under a sub-point', async () => {
+    (getSermonById as jest.Mock).mockResolvedValueOnce(withSubPoint);
+
+    renderWithQueryClient(<SermonPlanPage />);
+
+    expect(await screen.findByText('Текст самого пункта')).toBeInTheDocument();
+    expect(await screen.findByText('Родословие Адама — Быт 5:1')).toBeInTheDocument();
+  });
+
+  /**
+   * Scoped to the EDITOR column on purpose: the heading also appears beside the thoughts on
+   * the left, and an unscoped query would pass on that one while the cell stayed nameless.
+   */
+  it('names the sub-point above its own cell, so the text is not orphaned on screen', async () => {
+    (getSermonById as jest.Mock).mockResolvedValueOnce(withSubPoint);
+
+    renderWithQueryClient(<SermonPlanPage />);
+
+    const editorColumn = (await screen.findAllByTestId('plan-introduction-right-section'))[0];
+    expect(within(editorColumn).getByText('Перепись в ВЗ')).toBeInTheDocument();
+    expect(within(editorColumn).getByText('Родословие Адама — Быт 5:1')).toBeInTheDocument();
+  });
+});

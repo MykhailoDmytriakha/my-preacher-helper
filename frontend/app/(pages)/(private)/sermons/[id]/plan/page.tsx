@@ -42,6 +42,7 @@ import { copyFormattedFromElement } from "./copyFormattedFromElement";
 import { PlanDraftRecoveryBar } from "./PlanDraftRecoveryBar";
 import PlanImmersiveView from "./PlanImmersiveView";
 import PlanMainLayout from "./PlanMainLayout";
+import { PlanModeSwitch } from "./PlanModeSwitch";
 import { buildPlanOutlineLookup, getPointFromLookup, getPointSectionFromLookup } from "./planOutlineLookup";
 import PlanOverlayPortal from "./PlanOverlayPortal";
 import PlanPreachingView from "./PlanPreachingView";
@@ -1216,6 +1217,14 @@ export default function PlanPage() {
         onOpenPlanImmersive={handleOpenPlanImmersive}
         onClosePlanView={handleClosePlanView}
       />
+      <div className="mb-3 flex justify-end">
+        <PlanModeSwitch
+          sermon={sermon}
+          current="ai"
+          onSwitched={(planMode) => setSermon((previous) => (previous ? { ...previous, planMode } : previous))}
+        />
+      </div>
+
       <PlanMainLayout
         sermon={sermon}
         params={{ id: sermonId as string }}

@@ -1236,6 +1236,25 @@ export function planTextConflictValues(error: unknown): Record<string, string | 
 }
 
 /**
+ * WHICH EDITOR THIS PLAN IS KEPT IN.
+ *
+ * Deliberately through the UNGUARDED door. A mode is a preference, not text: refusing it
+ * because the other device saved a paragraph would tell the person their toggle failed while
+ * nothing was at stake. The counter still advances, so no later save is misled about whether
+ * the document changed.
+ */
+export async function savePlanModeViaClient(
+  sermonId: string,
+  planMode: 'manual' | 'ai'
+): Promise<void> {
+  await revisionedUpdate(
+    sermonRef(sermonId),
+    { planMode, updatedAt: now() },
+    SERMON_PLAN_AGGREGATE
+  );
+}
+
+/**
  * Which plan cells are STILL WAITING to reach the server, from the offline queue.
  *
  * Two different things need this same answer, which is why it is one function:

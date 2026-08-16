@@ -7,6 +7,7 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import "@locales/i18n";
 
+import { planEditorRoute } from '@/utils/sermonPlanAccess';
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { getFocusModeButtonColors } from "@/utils/themeColors";
 import { getFocusModeUrl } from "@/utils/urlUtils";
@@ -141,6 +142,7 @@ const StructureStats: React.FC<StructureStatsProps> = ({
       </div>
       <div className="mt-4 sm:mt-6 space-y-2">
         <StructurePlanToggle
+          sermon={sermon}
           sermonId={sermon.id}
           hasInconsistentThoughts={hasInconsistentThoughts}
           t={t}
@@ -162,10 +164,12 @@ const StructureStats: React.FC<StructureStatsProps> = ({
 
 // New component for structure/plan toggle
 const StructurePlanToggle: React.FC<{
+  /** The plan button must open the editor this plan is kept in, not always the paired one. */
+  sermon: Sermon;
   sermonId: string;
   hasInconsistentThoughts: boolean;
   t: (key: string, options?: Record<string, unknown>) => string;
-}> = ({ sermonId, hasInconsistentThoughts, t }) => {
+}> = ({ sermon, sermonId, hasInconsistentThoughts, t }) => {
   const router = useRouter();
 
   return (
@@ -199,7 +203,7 @@ const StructurePlanToggle: React.FC<{
       {/* Plan button */}
       <button
         type="button"
-        onClick={() => router.push(`/sermons/${sermonId}/plan`)}
+        onClick={() => router.push(planEditorRoute(sermonId, sermon))}
         className="relative z-10 px-4 py-2 text-sm font-medium transition-all duration-200 ease-in-out rounded-r-full text-white hover:scale-105 hover:shadow-lg active:scale-95 flex-1"
       >
         {t('plan.pageTitle')}

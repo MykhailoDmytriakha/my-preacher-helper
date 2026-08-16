@@ -5,7 +5,11 @@ import { toast } from "sonner";
 
 import { isOfflineQueuedError } from "@/services/conflictSafeUpdate.client";
 import { updateSermonOutline } from "@/services/outline.service";
-import { planTextConflictValues, savePlanTextViaClient } from "@/services/sermons.client";
+import {
+  planTextConflictValues,
+  savePlanModeViaClient,
+  savePlanTextViaClient,
+} from "@/services/sermons.client";
 import { updateThought } from "@/services/thought.service";
 import { newClientId } from "@/utils/clientId";
 import { debugLog } from "@/utils/debugMode";
@@ -53,6 +57,9 @@ export interface ManualConspectus {
   savePoint: (pointId: string, section: SermonSectionKey, nodeIds: string[]) => Promise<void>;
   addPoint: (section: SermonSectionKey, title: string) => void;
   addSubPoint: (pointId: string, title: string) => void;
+  /** Rename a point or sub-point where its text is written — empty names are refused. */
+  renamePoint: (pointId: string, title: string) => void;
+  renameSubPoint: (pointId: string, subPointId: string, title: string) => void;
   deletePoint: (pointId: string) => Promise<void>;
   deleteSubPoint: (pointId: string, subPointId: string) => Promise<void>;
   /** Persists every cell still holding unsaved text. False means something refused. */
@@ -270,6 +277,20 @@ export function useManualConspectus({
         await mirror();
       }
       throw error;
+    }
+
+    /**
+     * THE FIRST SAVE FROM THIS EDITOR RECORDS THAT THE PLAN LIVES HERE.
+     *
+     * Otherwise the toggle is the only way to say it, and nobody discovers a toggle they have
+     * no reason to look for: every shortcut kept opening the paired screen, where this plan's
+     * sub-point text is not shown at all. Only when NOTHING is recorded — an explicit choice is
+     * never overruled by merely typing.
+     */
+    if (!currentSermon.planMode) {
+      savePlanModeViaClient(currentSermon.id, 'manual')
+        .then(() => setSermon((previous) => (previous ? { ...previous, planMode: 'manual' } : previous)))
+        .catch((error) => debugLog("Recording the plan editor failed — harmless", { error }));
     }
 
     baseline.confirm(changedText);
@@ -547,6 +568,42 @@ export function useManualConspectus({
     });
   }, [persistOutline]);
 
+  /**
+   * RENAMING BELONGS WHERE THE TEXT IS WRITTEN.
+   *
+   * A point's wording is refined while filling it in — that is when you discover what it is
+   * actually about. Without this the only way to change a heading was to leave for the
+   * structure editor and come back, which is why plans here carried headings their author had
+   * already outgrown.
+   *
+   * An empty name is refused rather than stored: a nameless point is unreachable in every
+   * list, and "I cleared the field" is never a request for that.
+   */
+  const renamePoint = useCallback((pointId: string, title: string) => {
+    const text = normalizeCapitalizedTitle(title);
+    const outline = sermonRef.current?.outline;
+    if (!text || !outline) return;
+    void persistOutline(mapPoints(outline, (points) => points.map((point) => (
+      point.id === pointId ? { ...point, text } : point
+    ))));
+  }, [persistOutline]);
+
+  const renameSubPoint = useCallback((pointId: string, subPointId: string, title: string) => {
+    const text = normalizeCapitalizedTitle(title);
+    const outline = sermonRef.current?.outline;
+    if (!text || !outline) return;
+    void persistOutline(mapPoints(outline, (points) => points.map((point) => (
+      point.id === pointId
+        ? {
+            ...point,
+            subPoints: (point.subPoints ?? []).map((sub) => (
+              sub.id === subPointId ? { ...sub, text } : sub
+            )),
+          }
+        : point
+    ))));
+  }, [persistOutline]);
+
   const addSubPoint = useCallback((pointId: string, title: string) => {
     const text = normalizeCapitalizedTitle(title);
     if (!text) return;
@@ -708,6 +765,8 @@ export function useManualConspectus({
     savePoint,
     addPoint,
     addSubPoint,
+    renamePoint,
+    renameSubPoint,
     deletePoint,
     deleteSubPoint,
     saveModified,

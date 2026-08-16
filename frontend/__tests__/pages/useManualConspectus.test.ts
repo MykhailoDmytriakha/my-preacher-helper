@@ -726,3 +726,50 @@ describe('useManualConspectus when there is no connection', () => {
     expect(departure).toBe(true);
   });
 });
+
+/**
+ * RENAMING WHERE THE TEXT IS WRITTEN — BUG-20260816-manual-plan-cannot-rename-point.
+ *
+ * A point's wording is refined while filling it in; until this existed the only way to change
+ * a heading was to leave for the structure editor and come back, so plans carried headings
+ * their author had already outgrown.
+ */
+describe('useManualConspectus renaming', () => {
+  it('renames a point and leaves its sub-points and their text alone', async () => {
+    const { view } = renderConspectus(sermonWithText());
+
+    await act(async () => { view.result.current.renamePoint('point-1', 'Перепись народов'); });
+
+    const [, outline] = mockUpdateSermonOutline.mock.calls.at(-1)!;
+    const point = (outline as Sermon['outline'])!.introduction[0];
+    expect(point.text).toBe('Перепись народов');
+    expect(point.subPoints?.map((sub) => sub.id)).toEqual(['sub-1']);
+    // The text lives under the node id, so renaming cannot disturb it.
+    expect(view.result.current.contentByNodeId['sub-1']).toBe('Sub-point text');
+  });
+
+  it('renames a sub-point without touching its siblings', async () => {
+    const { view } = renderConspectus(sermonWithText());
+
+    await act(async () => {
+      view.result.current.renameSubPoint('point-1', 'sub-1', 'Перепись в ВЗ');
+    });
+
+    const [, outline] = mockUpdateSermonOutline.mock.calls.at(-1)!;
+    const point = (outline as Sermon['outline'])!.introduction[0];
+    expect(point.subPoints?.[0].text).toBe('Перепись в ВЗ');
+    expect(point.text).toBe('First point');
+  });
+
+  /**
+   * A NAMELESS POINT IS UNREACHABLE in every list, and clearing the field is never a request
+   * for that — so an empty name is refused rather than stored.
+   */
+  it('refuses an empty name instead of storing one', async () => {
+    const { view } = renderConspectus(sermonWithText());
+
+    await act(async () => { view.result.current.renamePoint('point-1', '   '); });
+
+    expect(mockUpdateSermonOutline).not.toHaveBeenCalled();
+  });
+});
