@@ -1502,7 +1502,7 @@
     "renameSubPoint": "Переименовать подпункт",
     "modeLabel": "Редактор",
     "modeManual": "Вручную",
-    "modeAi": "С ИИ",
+    "modeFromThoughts": "По мыслям",
     "modeSwitchFailed": "Не удалось переключить редактор. План не тронут — попробуйте ещё раз.",
     "saveRefusedByOtherDevice": "Этот пункт отредактировали в другом месте. Ничего не затёрто — ваш текст на месте.",
     "saveRefusedKeepMine": "Сохранить своё",

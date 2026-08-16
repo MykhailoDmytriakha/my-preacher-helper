@@ -76,7 +76,7 @@ export function PlanModeSwitch({
     <div className="inline-flex items-center gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-800">
       <span className="px-2 text-xs text-gray-500 dark:text-gray-400">{t("plan.modeLabel")}</span>
       {option('manual', t("plan.modeManual"))}
-      {option('ai', t("plan.modeAi"))}
+      {option('ai', t("plan.modeFromThoughts"))}
     </div>
   );
 }

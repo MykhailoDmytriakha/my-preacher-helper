@@ -1502,7 +1502,7 @@
     "renameSubPoint": "Перейменувати підпункт",
     "modeLabel": "Редактор",
     "modeManual": "Вручну",
-    "modeAi": "З ШІ",
+    "modeFromThoughts": "За думками",
     "modeSwitchFailed": "Не вдалося перемкнути редактор. План не зачеплено — спробуйте ще раз.",
     "saveRefusedByOtherDevice": "Цей пункт відредагували в іншому місці. Нічого не затерто — ваш текст на місці.",
     "saveRefusedKeepMine": "Зберегти своє",

@@ -1502,7 +1502,7 @@
     "renameSubPoint": "Rename this sub-point",
     "modeLabel": "Editor",
     "modeManual": "By hand",
-    "modeAi": "With AI",
+    "modeFromThoughts": "From thoughts",
     "modeSwitchFailed": "Could not switch the editor. Your plan is untouched — try again.",
     "saveRefusedByOtherDevice": "This point was edited somewhere else. Nothing was overwritten — your text is still here.",
     "saveRefusedKeepMine": "Keep mine",

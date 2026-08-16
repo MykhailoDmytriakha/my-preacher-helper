@@ -37,7 +37,7 @@ describe('the plan editor switch', () => {
     render(<PlanModeSwitch sermon={sermon} current="manual" />);
 
     expect(screen.getByRole('button', { name: 'plan.modeManual' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'plan.modeAi' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'plan.modeFromThoughts' })).toHaveAttribute('aria-pressed', 'false');
   });
 
   /**
@@ -51,7 +51,7 @@ describe('the plan editor switch', () => {
     mockPush.mockImplementation(() => { order.push('navigated'); });
 
     render(<PlanModeSwitch sermon={sermon} current="manual" />);
-    fireEvent.click(screen.getByRole('button', { name: 'plan.modeAi' }));
+    fireEvent.click(screen.getByRole('button', { name: 'plan.modeFromThoughts' }));
 
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/sermons/s1/plan'));
     expect(mockSave).toHaveBeenCalledWith('s1', 'ai');
@@ -82,7 +82,7 @@ describe('the plan editor switch', () => {
     mockSave.mockRejectedValue(new Error('offline'));
 
     render(<PlanModeSwitch sermon={sermon} current="manual" />);
-    fireEvent.click(screen.getByRole('button', { name: 'plan.modeAi' }));
+    fireEvent.click(screen.getByRole('button', { name: 'plan.modeFromThoughts' }));
 
     await waitFor(() => expect(mockToastError).toHaveBeenCalledWith('plan.modeSwitchFailed'));
     expect(mockPush).not.toHaveBeenCalled();
@@ -92,7 +92,7 @@ describe('the plan editor switch', () => {
     const onSwitched = jest.fn();
 
     render(<PlanModeSwitch sermon={sermon} current="manual" onSwitched={onSwitched} />);
-    fireEvent.click(screen.getByRole('button', { name: 'plan.modeAi' }));
+    fireEvent.click(screen.getByRole('button', { name: 'plan.modeFromThoughts' }));
 
     await waitFor(() => expect(onSwitched).toHaveBeenCalledWith('ai'));
   });
