@@ -41,6 +41,22 @@ function mockServiceWorker({ hasController }: { hasController: boolean }) {
 describe('AppUpdateButton', () => {
   const originalReload = window.location.reload;
 
+  /**
+   * A GENUINE update: the server serves a build this tab is not running. The changeover event
+   * alone no longer shows anything — see the version-comparison suite below for why.
+   */
+  const serverHasNewerBuild = () => {
+    process.env.NEXT_PUBLIC_APP_VERSION = '80ef473';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ version: 'beca201' }),
+    }) as unknown as typeof fetch;
+  };
+
+  afterEach(() => {
+    delete (global as { fetch?: unknown }).fetch;
+  });
+
   afterEach(() => {
     Object.defineProperty(window, 'location', {
       value: { ...window.location, reload: originalReload },
@@ -57,11 +73,12 @@ describe('AppUpdateButton', () => {
     expect(screen.queryByTestId('app-update-button')).not.toBeInTheDocument();
   });
 
-  it('appears once a newer version has taken over', () => {
+  it('appears once a newer version has taken over', async () => {
+    serverHasNewerBuild();
     const { fireControllerChange } = mockServiceWorker({ hasController: true });
 
     render(<AppUpdateButton />);
-    act(() => fireControllerChange());
+    await act(async () => { fireControllerChange(); });
 
     expect(screen.getByTestId('app-update-button')).toBeInTheDocument();
   });
@@ -79,7 +96,8 @@ describe('AppUpdateButton', () => {
     expect(screen.queryByTestId('app-update-button')).not.toBeInTheDocument();
   });
 
-  it('reloads only when the person presses it, never on its own', () => {
+  it('reloads only when the person presses it, never on its own', async () => {
+    serverHasNewerBuild();
     const reload = jest.fn();
     Object.defineProperty(window, 'location', {
       value: { ...window.location, reload },
@@ -89,7 +107,7 @@ describe('AppUpdateButton', () => {
     const { fireControllerChange } = mockServiceWorker({ hasController: true });
 
     render(<AppUpdateButton />);
-    act(() => fireControllerChange());
+    await act(async () => { fireControllerChange(); });
     expect(reload).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByTestId('app-update-button'));
@@ -97,15 +115,82 @@ describe('AppUpdateButton', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('says what it is for, so the icon is not a guess', () => {
+  it('says what it is for, so the icon is not a guess', async () => {
+    serverHasNewerBuild();
     const { fireControllerChange } = mockServiceWorker({ hasController: true });
 
     render(<AppUpdateButton />);
-    act(() => fireControllerChange());
+    await act(async () => { fireControllerChange(); });
 
     expect(screen.getByTestId('app-update-button')).toHaveAttribute(
       'aria-label',
       'pwa.updateAvailable.action'
     );
+  });
+});
+
+/**
+ * AN EVENT IS NOT AN ANSWER — BUG-20260816-update-button-after-fresh-load.
+ *
+ * `controllerchange` says a new worker took charge; it says nothing about which code is
+ * running in this tab. Measured live on production: the page loaded the NEW build at second
+ * one (its new labels were on screen), the changeover fired at 255s, and the button appeared
+ * at 256s — offering an update to what was already open. A button that sometimes cries wolf
+ * is a button people stop reading, and then the real one is missed too.
+ *
+ * So the question asked is the honest one: does the version running here differ from the
+ * version the server is serving now?
+ */
+describe('AppUpdateButton compares versions, not lifecycle events', () => {
+  const setRunningVersion = (version: string) => {
+    process.env.NEXT_PUBLIC_APP_VERSION = version;
+  };
+  const serverSays = (version: string | null, ok = true) => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok,
+      json: async () => (version === null ? {} : { version }),
+    }) as unknown as typeof fetch;
+  };
+
+  afterEach(() => {
+    delete (global as { fetch?: unknown }).fetch;
+  });
+
+  it('stays hidden when the page already runs what the server serves', async () => {
+    setRunningVersion('beca201');
+    serverSays('beca201');
+    const { fireControllerChange } = mockServiceWorker({ hasController: true });
+
+    render(<AppUpdateButton />);
+    await act(async () => { fireControllerChange(); });
+
+    expect(screen.queryByTestId('app-update-button')).not.toBeInTheDocument();
+  });
+
+  it('appears when the server is serving a different build', async () => {
+    setRunningVersion('80ef473');
+    serverSays('beca201');
+    const { fireControllerChange } = mockServiceWorker({ hasController: true });
+
+    render(<AppUpdateButton />);
+    await act(async () => { fireControllerChange(); });
+
+    expect(screen.getByTestId('app-update-button')).toBeInTheDocument();
+  });
+
+  /**
+   * COULD NOT ASK ⇒ SAY NOTHING. Guessing "probably newer" is how the false button came
+   * back; and missing one costs nothing, because the update arrives by itself the next time
+   * the app is opened from scratch.
+   */
+  it('stays hidden when the server cannot be asked', async () => {
+    setRunningVersion('beca201');
+    global.fetch = jest.fn().mockRejectedValue(new Error('offline')) as unknown as typeof fetch;
+    const { fireControllerChange } = mockServiceWorker({ hasController: true });
+
+    render(<AppUpdateButton />);
+    await act(async () => { fireControllerChange(); });
+
+    expect(screen.queryByTestId('app-update-button')).not.toBeInTheDocument();
   });
 });

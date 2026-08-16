@@ -29,6 +29,21 @@ import Tooltip from '@/components/ui/Tooltip';
  * Fires only on a genuine UPDATE: the very first service worker install also claims
  * the page, and prompting then would ask people to reload into what they already
  * have.
+ *
+ * ⚠️ AN EVENT IS NOT AN ANSWER, and this is the whole correction.
+ *
+ * `controllerchange` reports that a new worker took charge. It says NOTHING about which code
+ * this tab is running — and an ordinary reload fetches the new bundle over the network long
+ * before the worker gets around to swapping places. Measured on production: the page loaded
+ * the new build at second one (its new labels were on screen), the changeover fired at 255s,
+ * and the button appeared at 256s, offering an update to what was already open. A button that
+ * sometimes cries wolf is a button people stop reading, and then the real one is missed too.
+ *
+ * So the changeover is only the PROMPT to ask; the question itself is a comparison of
+ * versions: the one baked into this bundle against the one the server is serving right now
+ * (`/api/health`). Cannot ask ⇒ say nothing: guessing "probably newer" is exactly how the
+ * false button appeared, and a missed one costs nothing, because the update arrives by itself
+ * the next time the app is opened from scratch.
  */
 export function AppUpdateButton() {
   const { t } = useTranslation();
@@ -40,13 +55,30 @@ export function AppUpdateButton() {
     const container = navigator.serviceWorker;
     const hadControllerAtBoot = Boolean(container.controller);
 
-    const onControllerChange = () => {
+    let cancelled = false;
+
+    const onControllerChange = async () => {
       if (!hadControllerAtBoot) return;
-      setUpdateReady(true);
+
+      const running = process.env.NEXT_PUBLIC_APP_VERSION;
+      try {
+        const response = await fetch('/api/health', { cache: 'no-store' });
+        if (!response.ok) return;
+        const { version } = (await response.json()) as { version?: string };
+        // Both sides must be known AND different. An unknown version on either side is not
+        // evidence of staleness, and locally both read "dev" — which is correctly silent.
+        if (cancelled || !version || !running || version === running) return;
+        setUpdateReady(true);
+      } catch {
+        // Offline, or the server did not answer. Nothing is proven, so nothing is claimed.
+      }
     };
 
     container.addEventListener('controllerchange', onControllerChange);
-    return () => container.removeEventListener('controllerchange', onControllerChange);
+    return () => {
+      cancelled = true;
+      container.removeEventListener('controllerchange', onControllerChange);
+    };
   }, []);
 
   if (!updateReady) return null;
