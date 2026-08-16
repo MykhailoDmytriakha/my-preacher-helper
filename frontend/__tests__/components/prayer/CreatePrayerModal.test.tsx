@@ -109,12 +109,25 @@ describe('CreatePrayerModal', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Add Prayer' }));
 
     await waitFor(() => expect(onSubmit).toHaveBeenCalled());
-    await act(async () => { await Promise.resolve(); });
-
+    /**
+     * WAIT FOR THE EDITOR TO BE USABLE AGAIN, not for a guessed number of microtasks.
+     *
+     * Flushing one and asserting immediately assumed the refusal had already travelled
+     * `persistence` → `acceptance` → `awaitAcceptance` → catch → `setSaving(false)`. On the
+     * build machine it had not: the log shows this very modal still open with its button
+     * reading "Saving...", and the deploy failed on a difference that was never about the
+     * behaviour under test. Waiting for the condition asserts the same thing without
+     * depending on how much of the queue a particular machine happened to drain.
+     *
+     * ⚠️ The refusal below is a STALE WRITE, where this modal closes by design — waiting for
+     * a button there would wait for something that is correctly gone.
+     */
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Add Prayer' })).toBeEnabled()
+    );
     expect(screen.queryByText('Save failed')).not.toBeInTheDocument();
     expect(title).toHaveValue('Pray for family');
     expect(onClose).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Add Prayer' })).toBeEnabled();
   });
 
   it('keeps the exact prayer edit in the open editor when refused', async () => {
