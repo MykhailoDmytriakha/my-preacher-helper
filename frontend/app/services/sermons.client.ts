@@ -195,7 +195,9 @@ export async function fetchCalendarSermonsViaClient(
  * a verse silently reverted preparation edited meanwhile on another device.
  * Passing an explicit patch keeps the blast radius to what the user touched.
  */
-export type SermonCoreUpdate = Partial<Pick<Sermon, 'title' | 'verse' | 'isPreached' | 'preparation'>>;
+export type SermonCoreUpdate = Partial<
+  Pick<Sermon, 'title' | 'verse' | 'isPreached' | 'preparation' | 'sourceNoteIds'>
+>;
 
 /** Aggregate name for the sermon's own fields (title/verse/isPreached/preparation). */
 export const SERMON_CORE_AGGREGATE = 'core';
@@ -236,6 +238,15 @@ export async function updateSermonViaClient(
   if (!patch || 'preparation' in patch) {
     if (source.preparation && typeof source.preparation === 'object') {
       data.preparation = source.preparation;
+    }
+  }
+  // The fields above are skipped when falsy, which is right for text: an empty title is a
+  // mistake, not an intention. An EMPTY LIST is the opposite — it is how the last link is
+  // removed, so the test is "is it an array", never "is it truthy". Skipping `[]` here would
+  // make unlinking silently do nothing.
+  if (!patch || 'sourceNoteIds' in patch) {
+    if (Array.isArray(source.sourceNoteIds)) {
+      data.sourceNoteIds = source.sourceNoteIds;
     }
   }
   if (Object.keys(data).length === 0) return null; // server replies 400 -> service null

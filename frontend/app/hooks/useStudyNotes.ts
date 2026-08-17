@@ -8,6 +8,7 @@ import { StudyNote } from '@/models/models';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { newClientId } from '@/utils/clientId';
 import { STUDY_NOTE_MUTATION_KEYS } from '@/utils/mutationDefaults';
+import { studyNoteListKey } from '@/utils/queryKeys';
 import {
   persistedWrite,
   queuedMutation,
@@ -24,7 +25,8 @@ import {
   updateStudyNote,
 } from '@services/studies.service';
 
-const notesKey = (uid: string | undefined) => ['study-notes', uid];
+/** One spelling of this key, shared with the sermon side — see `studyNoteListKey`. */
+const notesKey = studyNoteListKey;
 const STUDY_NOTE_SAVE_ERROR_KEY = 'common.saveError';
 
 type CreateStudyNoteVars = Omit<StudyNote, 'id' | 'createdAt' | 'updatedAt' | 'isDraft'> & {

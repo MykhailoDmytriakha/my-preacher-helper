@@ -23,7 +23,7 @@ import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
 import { StudyNote } from '@/models/models';
 
-import { getBooksForDropdown, BibleLocale, getLocalizedBookName } from './bibleData';
+import { getBooksForDropdown, BibleLocale, getLocalizedBookName, resolveBibleLocale } from './bibleData';
 import ShareNoteModal from './components/ShareNoteModal';
 import StudyNoteCard from './StudyNoteCard';
 
@@ -46,12 +46,7 @@ export default function StudiesPage() {
 
 
   // Get current locale for Bible data
-  const bibleLocale: BibleLocale = useMemo(() => {
-    const lang = i18n.language?.toLowerCase() || 'en';
-    if (lang.startsWith('ru')) return 'ru';
-    if (lang.startsWith('uk')) return 'uk';
-    return 'en';
-  }, [i18n.language]);
+  const bibleLocale: BibleLocale = useMemo(() => resolveBibleLocale(i18n.language), [i18n.language]);
 
   // Get localized book list for dropdowns
   const bookList = useMemo(() => getBooksForDropdown(bibleLocale), [bibleLocale]);

@@ -77,6 +77,20 @@ jest.mock('@/components/dashboard/OptionMenu', () => {
   };
 });
 
+/**
+ * The source-note chips read the notes cache, which this suite has no provider for — and
+ * stubbing them keeps these tests about the header itself, as the other children already are.
+ * The stub still ECHOES the sermon it was handed, so the wiring stays under test here while
+ * the chips' own behaviour is proven in `app/components/sermon/__tests__`.
+ */
+jest.mock('@/components/sermon/SourceNoteChips', () => {
+  const MockSourceNoteChips = ({ sermon }: { sermon: { id: string } }) => (
+    <span data-testid="source-note-chips">{sermon.id}</span>
+  );
+  MockSourceNoteChips.displayName = 'MockSourceNoteChips';
+  return { __esModule: true, default: MockSourceNoteChips };
+});
+
 jest.mock('@/components/ExportButtons', () => ({
   __esModule: true,
   default: (props: any) => {
@@ -162,6 +176,14 @@ describe('SermonHeader Component', () => {
       expect(screen.getByRole('heading', { name: 'Test Sermon Title' })).toBeInTheDocument();
       expect(screen.getByText('John 3:16 - For God so loved the world that he gave his one and only Son')).toBeInTheDocument();
       expect(screen.getByTestId('export-buttons')).toBeInTheDocument();
+    });
+
+    it('hands the sermon to the source-note chips, in the identity row', () => {
+      render(<SermonHeader sermon={mockSermon} onUpdate={mockOnUpdate} />);
+
+      // Proves the wiring, not the chip: the header must mount it and give it THIS sermon,
+      // or provenance would silently stop appearing while every other assertion stayed green.
+      expect(screen.getByTestId('source-note-chips')).toHaveTextContent(mockSermon.id);
     });
 
     it('renders without verse when verse is empty', () => {

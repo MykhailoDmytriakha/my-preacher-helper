@@ -21,6 +21,16 @@ export type SermonFreshnessProjection = {
   planText: string;
   preparation: string;
   scratch: string;
+  /**
+   * Which study notes the sermon says it was built on.
+   *
+   * Included for the same reason as every other field here: a link added or removed on another
+   * device is a change the person should be told about, and without it the chips in the header
+   * would keep naming a note that is no longer linked until something unrelated refreshed the
+   * page. Own writes stay quiet as usual, because the screen's copy is updated with the same
+   * value the write committed.
+   */
+  sourceNotes: string;
 };
 
 type SermonLike = Record<string, unknown>;
@@ -84,6 +94,10 @@ export function sermonFreshnessProjection(data: SermonLike): SermonFreshnessProj
     planText: effectivePlanTextFingerprint(data),
     preparation: contentFingerprint(data.preparation ?? null),
     scratch: contentFingerprint(canonicalOrder(data.scratch)),
+    // Order carries no meaning for links, so compare them as a set-like canonical order — the
+    // same treatment thoughts get, and for the same reason: two devices may store them in a
+    // different order without anything having changed.
+    sourceNotes: contentFingerprint(canonicalOrder(data.sourceNoteIds)),
   };
 }
 

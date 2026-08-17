@@ -56,6 +56,9 @@ jest.mock('@/hooks/useTags', () => ({
 jest.mock('../bibleData', () => ({
   getBooksForDropdown: jest.fn().mockReturnValue([]),
   getLocalizedBookName: jest.fn().mockImplementation((book) => book),
+  // A partial mock silently removes whatever it forgets, so anything the page reaches for
+  // has to be listed here — the language→book-set mapping included.
+  resolveBibleLocale: jest.fn().mockReturnValue('en'),
 }));
 
 const mockUseStudyNotes = useStudyNotes as jest.MockedFunction<typeof useStudyNotes>;

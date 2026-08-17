@@ -6,6 +6,12 @@ import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useSeriesMembership } from "@/hooks/useSeriesMembership";
+import {
+  applySourceNoteLinkPatch,
+  openingContextOf,
+  useSourceNoteLink,
+  type SourceNoteOpeningContext,
+} from "@/hooks/useSermonNoteLinks";
 import { DashboardOptimisticActions, DashboardSermonSyncState } from "@/models/dashboardOptimistic";
 import { Sermon, PreachDate, Series } from "@/models/models";
 import {
@@ -19,6 +25,7 @@ import PreachDateModal from "@components/calendar/PreachDateModal";
 import EditSermonModal from "@components/EditSermonModal";
 import { DotsVerticalIcon } from "@components/Icons";
 import SeriesSelector from "@components/series/SeriesSelector";
+import SourceNotePickerModal from "@components/sermon/SourceNotePickerModal";
 import * as preachDatesService from "@services/preachDates.service";
 import { deleteSermon, updateSermon } from "@services/sermon.service";
 
@@ -58,11 +65,42 @@ export default function OptionMenu({
   const [showPreachModal, setShowPreachModal] = useState(false);
   const [preachModalInitialData, setPreachModalInitialData] = useState<PreachDate | undefined>(undefined);
   const [preachDateToMark, setPreachDateToMark] = useState<PreachDate | null>(null);
+  const [showSourceNotePicker, setShowSourceNotePicker] = useState(false);
+  /**
+   * WHAT THE PICKER OPENED WITH — frozen here, on purpose.
+   *
+   * The dialog keeps its checkboxes for as long as it is open while this component keeps
+   * re-rendering with a fresher sermon. Reading the revision and the previous list at SAVE time
+   * would pair an old selection with a new proof of freshness, and the guard would let that old
+   * selection overwrite whatever another device stored meanwhile. So both halves are captured
+   * together, at the moment the dialog opens, and travel together.
+   */
+  const [sourceNoteOpening, setSourceNoteOpening] = useState<SourceNoteOpeningContext | null>(null);
+  /**
+   * THE COPY THIS MENU WAS GIVEN — the one to merge a link patch into.
+   *
+   * Whoever renders this menu passes the copy their screen owns: the full document on the sermon
+   * page, the list entity on the dashboard. Applying the patch here means the writer never has to
+   * choose between two copies of a sermon — a choice that cost three review rounds, because the
+   * list copy deliberately omits parts of the document while the detail copy holds edits the list
+   * has never seen.
+   */
+  const sermonRef = useRef(sermon);
+  useEffect(() => {
+    sermonRef.current = sermon;
+  }, [sermon]);
+  const { saving: savingSourceNotes, setSourceNotes } = useSourceNoteLink(sermon, (patch) => {
+    const own = sermonRef.current;
+    if (!own || own.id !== patch.sermonId) return;
+    onUpdate?.(applySourceNoteLinkPatch(own, patch));
+  });
   const [showSeriesSelector, setShowSeriesSelector] = useState(false);
   const [seriesSelectorMode, setSeriesSelectorMode] = useState<'add' | 'change'>('add');
   const effectiveIsPreached = getEffectiveIsPreached(sermon);
   const isSyncPending = syncState?.status === 'pending';
   const menuRef = useRef<HTMLDivElement>(null);
+  /** Where keyboard focus returns after a dialog opened from this menu closes. */
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const router = useRouter();
   const queryClient = useQueryClient();
   const { addToSeries, removeFromAllSeries } = useSeriesMembership();
@@ -72,8 +110,8 @@ export default function OptionMenu({
   const currentSeries = getSeriesForRef(sermon.id, series);
 
   useEffect(() => {
-    onEditorOpenChange?.(showEditModal || showPreachModal);
-  }, [showEditModal, showPreachModal, onEditorOpenChange]);
+    onEditorOpenChange?.(showEditModal || showPreachModal || showSourceNotePicker);
+  }, [showEditModal, showPreachModal, showSourceNotePicker, onEditorOpenChange]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -337,6 +375,15 @@ export default function OptionMenu({
     closeMenu();
   };
 
+  /** Which study notes this sermon was built on — the same "link a thing" shape as series. */
+  const handleEditSourceNotes = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSourceNoteOpening(openingContextOf(sermon));
+    setShowSourceNotePicker(true);
+    closeMenu();
+  };
+
   const handleRemoveFromSeries = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
     e.preventDefault();
     e.stopPropagation();
@@ -361,6 +408,7 @@ export default function OptionMenu({
   return (
     <div ref={menuRef} className="relative">
       <button
+        ref={triggerRef}
         onClick={handleToggle}
         className="p-1.5 focus:outline-none hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors duration-200 disabled:opacity-60"
         aria-label={t('optionMenu.options')}
@@ -423,6 +471,20 @@ export default function OptionMenu({
                 </button>
               )
             )}
+            {/* Provenance sits with the other "what is this sermon connected to" actions, and
+                the label says which of the two things the click will do. */}
+            <button
+              onClick={handleEditSourceNotes}
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
+              role="menuitem"
+              disabled={isSyncPending}
+            >
+              <span>
+                {(sermon.sourceNoteIds?.length ?? 0) > 0
+                  ? t('sermon.sourceNotes.menuEdit')
+                  : t('sermon.sourceNotes.menuAdd')}
+              </span>
+            </button>
             <button
               onClick={handleDelete}
               className="w-full text-left px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700 flex justify-between items-center"
@@ -468,6 +530,37 @@ export default function OptionMenu({
           onSelect={handleSeriesSelected}
           currentSeriesId={currentSeries?.id}
           mode={seriesSelectorMode}
+        />
+      )}
+
+      {showSourceNotePicker && sourceNoteOpening && (
+        <SourceNotePickerModal
+          selectedNoteIds={sourceNoteOpening.noteIds ?? []}
+          saving={savingSourceNotes}
+          returnFocusTo={triggerRef}
+          onSave={async (noteIds) => {
+            // `force`: the dialog only asks when the person actually changed the ticks, so an
+            // identical-looking set is still a deliberate choice and must reach the server —
+            // it may differ from what the server now holds.
+            const result = await setSourceNotes(noteIds, sourceNoteOpening, { force: true });
+            if (result.outcome === 'stale') {
+              // RE-ARM THE PROOF, not just the checkboxes. The dialog adopts the server's list,
+              // but a second press still has to vouch for something the server recognises —
+              // keep the opening context from the refusal and "mine wins" becomes possible.
+              // Without this the same press is refused for ever, which is a dead end wearing
+              // the clothes of a safety feature.
+              setSourceNoteOpening({
+                sermonId: sourceNoteOpening.sermonId,
+                noteIds: result.serverNoteIds ?? [],
+                revision: result.serverRevision ?? sourceNoteOpening.revision,
+              });
+            }
+            return result;
+          }}
+          onClose={() => {
+            setShowSourceNotePicker(false);
+            setSourceNoteOpening(null);
+          }}
         />
       )}
     </div>

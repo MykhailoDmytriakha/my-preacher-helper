@@ -56,6 +56,18 @@ jest.mock('react-textarea-autosize', () => ({
     default: (props: any) => <textarea {...props} />,
 }));
 
+/**
+ * The "sermons built on this note" block reads the sermon cache, which this suite provides no
+ * QueryClient for. Stubbed like the editor above, and it ECHOES the note id it was handed, so
+ * the wiring stays visible here while its own rendering is proven in its component test.
+ */
+jest.mock('../../components/SermonsBuiltOnNote', () => ({
+    __esModule: true,
+    default: ({ noteId }: { noteId?: string }) => (
+        <div data-testid="sermons-built-on-note-stub">{noteId ?? ''}</div>
+    ),
+}));
+
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({
     __esModule: true,
     RichMarkdownEditor: ({ value, onChange, placeholder }: any) => (
@@ -151,6 +163,11 @@ describe('StudyNoteEditorPage Pagination', () => {
 
         // Check the counter (Note 2 of 3 -> "2 / 3")
         expect(screen.getByText('2 / 3')).toBeInTheDocument();
+
+        // The reverse side of the sermon↔note link must be MOUNTED with THIS note's id.
+        // Asserting it here is what stops the block being deleted from the page while its own
+        // component test keeps passing.
+        expect(screen.getByTestId('sermons-built-on-note-stub')).toHaveTextContent('note-1');
     });
 
     it('drops the "saved" tick as soon as the text differs from what the server has', async () => {

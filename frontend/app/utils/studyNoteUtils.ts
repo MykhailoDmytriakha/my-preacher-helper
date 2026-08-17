@@ -4,6 +4,27 @@ import { formatScriptureRef } from '../(pages)/(private)/studies/bookAbbreviatio
 import type { StudyNote } from '@/models/models';
 
 /**
+ * Does this note match a typed search?
+ *
+ * Searching by the words a preacher actually remembers: the title, the tags, the text, and
+ * the reference AS IT IS SHOWN (localized book names), so typing "Ин 2" finds the note whose
+ * badge reads `Ин.2:1-11`. Every token must match somewhere — the same "narrow as you type"
+ * behaviour the studies list already has, kept here so the note picker cannot drift from it.
+ */
+export function matchesStudyNoteQuery(
+  note: StudyNote,
+  tokens: string[],
+  bibleLocale: BibleLocale
+): boolean {
+  if (tokens.length === 0) return true;
+  const refs = (note.scriptureRefs ?? [])
+    .map((ref) => formatScriptureRef(ref, bibleLocale))
+    .join(' ');
+  const haystack = `${note.title ?? ''} ${note.content ?? ''} ${(note.tags ?? []).join(' ')} ${refs}`.toLowerCase();
+  return tokens.every((token) => haystack.includes(token));
+}
+
+/**
  * Formats a StudyNote into a Markdown string for copying to clipboard
  * Includes title, content, and localized scripture references
  */

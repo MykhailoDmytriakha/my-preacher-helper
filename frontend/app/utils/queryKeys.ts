@@ -20,7 +20,21 @@ import { auth } from '@services/firebaseAuth.service';
 export const sermonDetailKey = (uid: string | undefined, sermonId: string) =>
   ['sermon', uid ?? 'unresolved-owner', sermonId] as const;
 
-export const sermonListKey = (uid: string) => ['sermons', uid] as const;
+/**
+ * `uid` may be undefined while auth is still resolving: callers need a STABLE key for that
+ * state too, and spelling one inline is how two copies of a key start to drift.
+ */
+export const sermonListKey = (uid: string | undefined) => ['sermons', uid] as const;
+
+/**
+ * The study-note list, owner-scoped like the sermon list.
+ *
+ * It lives here rather than inside `useStudyNotes` because a SECOND reader now shares the
+ * same cache entry: the sermon screen resolves the titles of the notes it was built on, and
+ * the note screen derives which sermons point back at it. Two hooks holding two spellings of
+ * the same key would each fetch their own copy and then disagree about what is on the disk.
+ */
+export const studyNoteListKey = (uid: string | undefined) => ['study-notes', uid] as const;
 
 /**
  * The owner of whatever is on screen right now: the signed-in user, or the guest

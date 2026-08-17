@@ -18,8 +18,17 @@ const NOTES_COLLECTION = 'studyNotes';
 // Fields a client UPDATE may touch — the user-editable note content only. Never
 // userId/id/createdAt/materialIds (materialIds is kept in sync by the server-side
 // material<->note linking). updatedAt + isDraft are derived and set here.
+/**
+ * Fields a note update may carry.
+ *
+ * `relatedSermonIds` is NOT one of them, deliberately. Create has always stripped it as a
+ * derived field, so leaving it writable on update kept a second, half-alive place to store
+ * "this sermon was built on this note" — and two truths for one relationship is the defect
+ * the sermon side exists to avoid (`Sermon.sourceNoteIds` is the only copy; the reverse
+ * direction is derived). A future writer must not be able to revive it by accident.
+ */
 const STUDY_NOTE_UPDATE_FIELDS: (keyof StudyNote)[] = [
-  'title', 'content', 'scriptureRefs', 'tags', 'type', 'relatedSermonIds',
+  'title', 'content', 'scriptureRefs', 'tags', 'type',
 ];
 
 type NoteFilters = Partial<{

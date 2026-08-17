@@ -938,3 +938,85 @@ describe('updateThoughtViaClient — an untouched field must not travel', () => 
     expect(store.s1.thoughts[0].text).toBe('The old wording this screen opened with');
   });
 });
+
+/**
+ * THE LINK "THIS SERMON WAS BUILT ON THAT NOTE" — stored on the sermon, written like text.
+ *
+ * Two properties are easy to get wrong and expensive to discover later. An EMPTY list has to
+ * reach Firestore, because that is how the last link is removed — the other core fields are
+ * skipped when falsy, and copying that rule here would make "unlink" silently do nothing. And
+ * the write has to travel through the same guard as the title, so a list chosen on the laptop
+ * cannot replace the one chosen on the phone a minute earlier.
+ */
+describe('source notes — the provenance the sermon owns', () => {
+  const SERMON_ID = 's-source-notes';
+
+  const sermonArg = {
+    id: SERMON_ID,
+    userId: 'u1',
+    title: 'Old title',
+    verse: 'Old verse',
+    date: '2026-08-16',
+    thoughts: [],
+    rev: { core: 2 },
+  } as unknown as Parameters<typeof updateSermonViaClient>[0];
+
+  beforeEach(() => {
+    Object.keys(store).forEach((key) => delete store[key]);
+    store[SERMON_ID] = {
+      userId: 'u1',
+      thoughts: [],
+      // @ts-expect-error loose fixture shape — the store is untyped storage here
+      rev: { core: 2 },
+    };
+  });
+
+  it('writes the linked note ids and leaves every other field alone', async () => {
+    const result = await updateSermonViaClient(
+      { ...sermonArg, sourceNoteIds: ['note-a', 'note-b'] },
+      { sourceNoteIds: ['note-a', 'note-b'] },
+      2,
+      { sourceNoteIds: null } // never linked before: the server holds nothing here
+    );
+
+    const written = store[SERMON_ID] as unknown as Record<string, unknown>;
+    expect(written.sourceNoteIds).toEqual(['note-a', 'note-b']);
+    // The stale title this tab was rendered with must not ride along.
+    expect(written.title).toBeUndefined();
+    // The counter moves, or a later stale save would be handed permission to overwrite.
+    expect(result?.rev?.core).toBe(3);
+  });
+
+  it('accepts an EMPTY list, because that is how the last link is removed', async () => {
+    (store[SERMON_ID] as unknown as Record<string, unknown>).sourceNoteIds = ['note-a'];
+
+    await updateSermonViaClient(
+      { ...sermonArg, sourceNoteIds: [] },
+      { sourceNoteIds: [] },
+      2,
+      { sourceNoteIds: ['note-a'] }
+    );
+
+    expect((store[SERMON_ID] as unknown as Record<string, unknown>).sourceNoteIds).toEqual([]);
+  });
+
+  it('refuses a list built from an older view instead of replacing a newer one', async () => {
+    const stored = store[SERMON_ID] as unknown as Record<string, unknown>;
+    stored.sourceNoteIds = ['picked-on-the-phone'];
+    stored.rev = { core: 7 };
+
+    await expect(
+      updateSermonViaClient(
+        { ...sermonArg, sourceNoteIds: ['picked-on-the-laptop'] },
+        { sourceNoteIds: ['picked-on-the-laptop'] },
+        2,
+        { sourceNoteIds: [] } // what THIS tab saw when it opened: no links
+      )
+    ).rejects.toMatchObject({ isStaleWrite: true });
+
+    // Refused means nothing was written — the phone's choice survives.
+    expect((store[SERMON_ID] as unknown as Record<string, unknown>).sourceNoteIds).toEqual([
+      'picked-on-the-phone',
+    ]);
+  });
+});

@@ -130,3 +130,21 @@ describe('every writer advances the counter, even without a stated revision', ()
     expect(payload['rev.note']).toEqual({ __increment: 1 });
   });
 });
+
+describe('the note side cannot store a second copy of the sermon link', () => {
+  it('drops relatedSermonIds from an update instead of persisting a rival truth', async () => {
+    // The link belongs to the sermon (`Sermon.sourceNoteIds`) and the reverse direction is
+    // derived. This field was created-stripped but update-writable, which left a door open to
+    // a second, disagreeing copy — the exact failure the series feature already paid for.
+    await updateStudyNote('note-1', {
+      content: 'a real edit',
+      relatedSermonIds: ['sermon-1'],
+      userId: 'u1',
+    } as never);
+
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+    const payload = updateDoc.mock.calls[0][1];
+    expect(payload.content).toBe('a real edit');
+    expect(payload).not.toHaveProperty('relatedSermonIds');
+  });
+});

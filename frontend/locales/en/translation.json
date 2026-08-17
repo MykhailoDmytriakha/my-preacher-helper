@@ -906,6 +906,29 @@
     }
   },
   "sermon": {
+    "sourceNotes": {
+      "label": "Based on",
+      "chipTitle": "Built on the note: {{title}}",
+      "menuAdd": "Link a study note",
+      "menuEdit": "Change linked notes",
+      "saveError": "Could not save the link. Try again.",
+      "openNote": "Open the note: {{title}}",
+      "picker": {
+        "eyebrow": "Study notes",
+        "title": "Which notes is this sermon built on?",
+        "description": "Pick the notes this sermon grew out of — you can open them from the sermon afterwards.",
+        "searchPlaceholder": "Search by title, tag or reference",
+        "empty": "No notes yet. Write one in Studies first.",
+        "noMatches": "No notes match this search",
+        "deletedNote": "Note deleted",
+        "deletedNoteHint": "This note no longer exists. Untick it to drop the link.",
+        "selected_one": "{{count}} note selected",
+        "selected_other": "{{count}} notes selected",
+        "save": "Save",
+        "cancel": "Cancel",
+        "clear": "Unlink all"
+      }
+    },
     "notFound": "Sermon not found or unavailable",
     "unavailableOffline": "No connection and no local copy of this sermon",
     "backToList": "Back to list",
@@ -2600,6 +2623,10 @@
     "createdAt": "Created",
     "draft": "Draft",
     "usedInMaterials": "Used in {{count}} material(s)",
+    "builtSermons": {
+      "title": "Sermons built on this note",
+      "openSermon": "Open the sermon: {{title}}"
+    },
     "untitled": "Untitled note",
     "noTags": "No tags yet",
     "noRefs": "No scripture references yet",

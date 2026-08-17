@@ -174,6 +174,21 @@ export function getBookByName(name: string, locale?: BibleLocale): BookInfo | un
 }
 
 /**
+ * Which set of book names to use, from an i18n language tag.
+ *
+ * Bible data speaks three languages while `i18n.language` can be `ru-RU`, `uk`, `en-GB` or
+ * absent. The mapping lived inline on the studies list; a second screen now needs it (the
+ * sermon's note picker searches by the reference as displayed), and two copies of a fallback
+ * chain drift in exactly the way that makes one screen find a note the other cannot.
+ */
+export function resolveBibleLocale(language?: string): BibleLocale {
+  const lang = language?.toLowerCase() || 'en';
+  if (lang.startsWith('ru')) return 'ru';
+  if (lang.startsWith('uk')) return 'uk';
+  return 'en';
+}
+
+/**
  * Get localized book name.
  */
 export function getLocalizedBookName(bookId: string, locale: BibleLocale): string {

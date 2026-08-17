@@ -12,6 +12,7 @@ import ActionButton, { ACTION_BUTTON_SLOT_CLASS } from '@/components/common/Acti
 import OptionMenu from '@/components/dashboard/OptionMenu';
 import ExportButtons from '@/components/ExportButtons'; // Import ExportButtons
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import SourceNoteChips from '@/components/sermon/SourceNoteChips';
 import { useAuth } from '@/hooks/useAuth';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { useUserSettings } from '@/hooks/useUserSettings';
@@ -269,6 +270,10 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
               </Link>
             </div>
           )}
+
+          {/* Where this sermon came FROM. Same identity row as the series badge, quieter
+              styling, and each chip opens the note it names. */}
+          <SourceNoteChips sermon={sermon} />
         </div>
         <div className="mt-2 text-base md:text-lg">
           <EditableVerse

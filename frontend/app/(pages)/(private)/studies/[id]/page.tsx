@@ -37,6 +37,7 @@ import MarkdownDisplay from '@components/MarkdownDisplay';
 
 import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfirmationModal';
 import { BibleLocale, getLocalizedBookName } from '../bibleData';
+import SermonsBuiltOnNote from '../components/SermonsBuiltOnNote';
 import { STUDIES_INPUT_SHARED_CLASSES } from '../constants';
 import { parseReferenceText } from '../referenceParser';
 import ScriptureRefBadge from '../ScriptureRefBadge';
@@ -1230,6 +1231,10 @@ export default function StudyNoteEditorPage() {
                             </div>
                         )}
                     </div>
+
+                    {/* What was preached out of this note — derived from the sermons that name
+                        it, so there is nothing to keep in step. Renders only when there is one. */}
+                    <SermonsBuiltOnNote noteId={isNew ? undefined : noteId} />
                 </div>
 
             </div>

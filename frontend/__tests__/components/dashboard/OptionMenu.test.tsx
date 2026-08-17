@@ -28,6 +28,7 @@ jest.mock('next/navigation', () => ({
 }));
 
 const mockInvalidateQueries = jest.fn();
+const mockSetQueryData = jest.fn();
 jest.mock('@tanstack/react-query', () => ({
   useQuery: jest.fn(() => ({
     data: [],
@@ -36,11 +37,49 @@ jest.mock('@tanstack/react-query', () => ({
   })),
   useQueryClient: () => ({
     invalidateQueries: mockInvalidateQueries,
+    // The source-note writer merges its one field into the cached list and pairs that with an
+    // invalidate; without these the stub client throws the moment a link is saved.
+    setQueryData: mockSetQueryData,
+    cancelQueries: jest.fn().mockResolvedValue(undefined),
   }),
 }));
 
 // The playlist membership sweep hook (used for series add/move/remove) internally
 // calls useMutation — stub it so this test's partial react-query mock is enough.
+/**
+ * The picker's own list comes from the notes cache, which this suite has no QueryClient for.
+ * Only the READ is stubbed — the writer under test stays real, because it is the thing these
+ * tests are about.
+ */
+jest.mock('@/hooks/useSermonNoteLinks', () => {
+  const actual = jest.requireActual('@/hooks/useSermonNoteLinks');
+  return {
+    ...actual,
+    useStudyNoteDirectory: () => ({
+      notes: [
+        {
+          id: 'note-2',
+          userId: 'user-1',
+          title: 'A note to tick',
+          content: '',
+          tags: [],
+          scriptureRefs: [],
+          isDraft: false,
+          createdAt: '2026-08-01T00:00:00.000Z',
+          updatedAt: '2026-08-01T00:00:00.000Z',
+        },
+      ],
+      loading: false,
+      // A known-good list: only then may an unresolved link be shown as "deleted".
+      ready: true,
+    }),
+  };
+});
+
+jest.mock('@/providers/AuthProvider', () => ({
+  useAuth: () => ({ user: { uid: 'user-1' }, loading: false }),
+}));
+
 jest.mock('@/hooks/useSeriesMembership', () => ({
   useSeriesMembership: () => ({
     addToSeries: jest.fn(),
@@ -128,6 +167,8 @@ jest.mock('react-i18next', () => ({
       
       return translations[key] || key;
     },
+    // The source-note picker resolves Bible book names from the active language.
+    i18n: { language: 'en' },
   }),
 }));
 
@@ -167,6 +208,166 @@ describe('OptionMenu Component', () => {
     mockRouterRefresh.mockReset();
   });
   
+  /**
+   * THE WIRING, not the picker: these two assert that the menu really offers the source-note
+   * action and really mounts the dialog. Without them the whole feature could be deleted from
+   * this menu while every component and hook test stayed green — which is exactly what an
+   * adversarial review pointed out.
+   */
+  it('offers "link a note" when the sermon has none, and opens the picker', () => {
+    render(<OptionMenu {...defaultProps} />);
+    fireEvent.click(screen.getByTestId('dots-vertical-icon').closest('button') as HTMLElement);
+
+    const action = screen.getByText('sermon.sourceNotes.menuAdd');
+    fireEvent.click(action);
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('offers "change linked notes" once the sermon names one', () => {
+    render(<OptionMenu {...defaultProps} sermon={{ ...mockSermon, sourceNoteIds: ['note-1'] }} />);
+    fireEvent.click(screen.getByTestId('dots-vertical-icon').closest('button') as HTMLElement);
+
+    expect(screen.getByText('sermon.sourceNotes.menuEdit')).toBeInTheDocument();
+    expect(screen.queryByText('sermon.sourceNotes.menuAdd')).not.toBeInTheDocument();
+  });
+
+  it('re-arms the proof after a refusal, so a deliberate second press can win', async () => {
+    // Found in the browser, not by a unit test: adopting the server's LIST is only half the
+    // exit. The second press must also vouch for something the server recognises, or the same
+    // click is refused for ever — a dead end dressed as a safety feature.
+    const { StaleWriteError } = jest.requireActual('@/services/conflictSafeUpdate.client');
+    (updateSermon as jest.Mock)
+      .mockRejectedValueOnce(new StaleWriteError('core', 3, 9, { sourceNoteIds: ['from-phone'] }))
+      .mockResolvedValueOnce({ ...mockSermon, sourceNoteIds: ['from-phone', 'mine'] });
+
+    render(
+      <OptionMenu {...defaultProps} sermon={{ ...mockSermon, sourceNoteIds: ['mine'], rev: { core: 3 } }} />
+    );
+    fireEvent.click(screen.getByTestId('dots-vertical-icon').closest('button') as HTMLElement);
+    fireEvent.click(screen.getByText('sermon.sourceNotes.menuEdit'));
+
+    // Tick another note, or there is nothing to save and the writer is skipped by design.
+    fireEvent.click(
+      (screen.getByText('A note to tick').closest('label') as HTMLElement).querySelector('input') as HTMLElement
+    );
+    fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
+    await waitFor(() => expect(updateSermon).toHaveBeenCalledTimes(1));
+    // First press vouched for what the dialog opened with.
+    expect((updateSermon as jest.Mock).mock.calls[0][3]).toEqual({ sourceNoteIds: ['mine'] });
+
+    // The dialog now shows the server's list; tick one more and press again.
+    const deadRow = screen.getByTestId('missing-note-row');
+    expect(deadRow).toBeInTheDocument();
+    // The dialog stays LOCKED until the refusal has fully settled — that is the fix for
+    // "dismissable/editable mid-save", so the test has to wait for it rather than race it.
+    const box = () =>
+      (screen.getByText('A note to tick').closest('label') as HTMLElement).querySelector(
+        'input'
+      ) as HTMLInputElement;
+    await waitFor(() => expect(box()).toBeEnabled());
+
+    fireEvent.click(box());
+    fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
+
+    await waitFor(() => expect(updateSermon).toHaveBeenCalledTimes(2));
+    const second = (updateSermon as jest.Mock).mock.calls[1];
+    expect(second[2]).toBe(9); // the revision the refusal reported
+    expect(second[3]).toEqual({ sourceNoteIds: ['from-phone'] }); // what the server actually holds
+
+    // `mockClear` in beforeEach does not drop queued once-implementations, so restore the
+    // suite's default rather than leaving a rejection behind for the next test.
+    (updateSermon as jest.Mock).mockReset();
+    (updateSermon as jest.Mock).mockResolvedValue({});
+  });
+
+  it('keeps the opening proof even if the sermon underneath refreshes while the picker is open', async () => {
+    // The picker holds the ticks it opened with; if the proof were re-read from the refreshed
+    // prop, the guard would bless overwriting whatever the other device just stored. No test
+    // covered this seam before an adversarial review pointed it out.
+    (updateSermon as jest.Mock).mockResolvedValue({});
+    const opened = { ...mockSermon, sourceNoteIds: ['mine'], rev: { core: 3 } };
+
+    const { rerender } = render(<OptionMenu {...defaultProps} sermon={opened} />);
+    fireEvent.click(screen.getByTestId('dots-vertical-icon').closest('button') as HTMLElement);
+    fireEvent.click(screen.getByText('sermon.sourceNotes.menuEdit'));
+
+    // Another device's write arrives and the page re-renders underneath the open dialog.
+    rerender(
+      <OptionMenu
+        {...defaultProps}
+        sermon={{ ...mockSermon, sourceNoteIds: ['from-phone'], rev: { core: 9 } }}
+      />
+    );
+
+    fireEvent.click(
+      (screen.getByText('A note to tick').closest('label') as HTMLElement).querySelector('input') as HTMLElement
+    );
+    fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
+
+    await waitFor(() => expect(updateSermon).toHaveBeenCalledTimes(1));
+    const call = (updateSermon as jest.Mock).mock.calls[0];
+    expect(call[2]).toBe(3); // revision at OPEN, not the refreshed 9
+    expect(call[3]).toEqual({ sourceNoteIds: ['mine'] }); // list at OPEN
+    (updateSermon as jest.Mock).mockReset();
+    (updateSermon as jest.Mock).mockResolvedValue({});
+  });
+
+  it('still writes when the person toggles away and back to the same set', async () => {
+    // "Same as when I opened it" is not "nothing to do": the server may have moved meanwhile, so
+    // a deliberate choice must reach it. Without `force` this press would be swallowed.
+    (updateSermon as jest.Mock).mockResolvedValue({});
+    render(
+      <OptionMenu {...defaultProps} sermon={{ ...mockSermon, sourceNoteIds: ['note-2'], rev: { core: 3 } }} />
+    );
+    fireEvent.click(screen.getByTestId('dots-vertical-icon').closest('button') as HTMLElement);
+    fireEvent.click(screen.getByText('sermon.sourceNotes.menuEdit'));
+
+    const box = () =>
+      (screen.getByText('A note to tick').closest('label') as HTMLElement).querySelector(
+        'input'
+      ) as HTMLElement;
+    // Re-queried each time: the row re-renders between clicks, and a node captured once can be
+    // detached by then — a click on it silently does nothing.
+    fireEvent.click(box()); // untick
+    fireEvent.click(box()); // tick again — back to the opening set
+    fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
+
+    await waitFor(() => expect(updateSermon).toHaveBeenCalledTimes(1));
+    expect((updateSermon as jest.Mock).mock.calls[0][1]).toEqual({ sourceNoteIds: ['note-2'] });
+    (updateSermon as jest.Mock).mockReset();
+    (updateSermon as jest.Mock).mockResolvedValue({});
+  });
+
+  it('keeps the copy it was given whole — a link save must not drop detail-only fields', async () => {
+    // The last P1 of the review loop: a design that chose between a "newer" list copy and a
+    // fuller detail copy by one counter could drop `scratch`/`thoughts` from the screen. The menu
+    // now applies a PATCH to the copy its own screen handed it, so there is nothing to choose.
+    (updateSermon as jest.Mock).mockResolvedValue({ ...mockSermon, sourceNoteIds: ['note-2'] });
+    const onUpdate = jest.fn();
+    const fullCopy = {
+      ...mockSermon,
+      sourceNoteIds: [],
+      rev: { core: 3 },
+      scratch: [{ id: 'sc1', text: 'only the detail copy has this', createdAt: '2026-08-16' }],
+    } as Sermon;
+
+    render(<OptionMenu {...defaultProps} onUpdate={onUpdate} sermon={fullCopy} />);
+    fireEvent.click(screen.getByTestId('dots-vertical-icon').closest('button') as HTMLElement);
+    fireEvent.click(screen.getByText('sermon.sourceNotes.menuAdd'));
+    fireEvent.click(
+      (screen.getByText('A note to tick').closest('label') as HTMLElement).querySelector('input') as HTMLElement
+    );
+    fireEvent.click(screen.getByText('sermon.sourceNotes.picker.save'));
+
+    await waitFor(() => expect(onUpdate).toHaveBeenCalled());
+    const published = onUpdate.mock.calls[0][0] as Sermon;
+    expect(published.sourceNoteIds).toEqual(['note-2']);
+    expect(published.scratch).toHaveLength(1);
+    (updateSermon as jest.Mock).mockReset();
+    (updateSermon as jest.Mock).mockResolvedValue({});
+  });
+
   it('renders correctly with the menu button', () => {
     render(<OptionMenu {...defaultProps} />);
     

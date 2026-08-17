@@ -192,3 +192,29 @@ describe('sermonFreshnessProjection', () => {
     });
   });
 });
+
+describe('the notes a sermon was built on', () => {
+  it('reports a link changed on another device as news', () => {
+    // Without this field in the projection, the chips in the sermon header would keep naming a
+    // note that is no longer linked until something unrelated refreshed the page.
+    const here = sermonFreshnessProjection({ sourceNoteIds: ['n1'] });
+    const there = sermonFreshnessProjection({ sourceNoteIds: ['n1', 'n2'] });
+
+    expect(there.sourceNotes).not.toBe(here.sourceNotes);
+  });
+
+  it('does not call a different STORED ORDER a change', () => {
+    // Two devices may write the same links in a different order; order carries no meaning here,
+    // and calling that a foreign edit is the defect this projection already fixed for thoughts.
+    const here = sermonFreshnessProjection({ sourceNoteIds: ['n1', 'n2'] });
+    const there = sermonFreshnessProjection({ sourceNoteIds: ['n2', 'n1'] });
+
+    expect(there.sourceNotes).toBe(here.sourceNotes);
+  });
+
+  it('treats "never linked" and "linked to nothing" as the same on screen', () => {
+    expect(sermonFreshnessProjection({}).sourceNotes).toBe(
+      sermonFreshnessProjection({ sourceNoteIds: [] }).sourceNotes
+    );
+  });
+});

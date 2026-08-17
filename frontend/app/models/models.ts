@@ -194,6 +194,25 @@ export interface Sermon {
   seriesId?: string;              // Reference to series
   seriesPosition?: number;        // Order in series (1-indexed)
 
+  /**
+   * THE STUDY NOTES THIS SERMON WAS BUILT ON — and the sermon owns that fact.
+   *
+   * "This sermon grew out of that note" is a statement ABOUT THE SERMON, so it is stored
+   * here and nowhere else. The other direction — "which sermons were built on this note" —
+   * is DERIVED from the owner-scoped sermon list the app already caches (`sermonListKey`),
+   * exactly as series membership is derived instead of mirrored. One side writes, one side
+   * reads: there is no second copy that can disagree.
+   *
+   * `StudyNote.relatedSermonIds` is deliberately NOT used for this. Its own service strips
+   * it on create as a derived field, and note saves run under a revision + open-time
+   * baseline guard, so a link written from the sermon screen would surface there as a
+   * foreign edit and be refused.
+   *
+   * Absent means "never linked". Removing the last link writes `[]` rather than deleting
+   * the key, so the write guard's baseline comparison stays meaningful.
+   */
+  sourceNoteIds?: string[];
+
   preachDates?: PreachDate[];      // Array of preach dates
 
   // Audio Generation (Beta)
@@ -523,7 +542,12 @@ export interface StudyNote {
   isDraft: boolean;
   /** Materials (sermons / groups / studies) that use this note */
   materialIds?: string[];
-  /** Optional links to existing sermons */
+  /**
+   * @deprecated Never written, and no longer writable. The link "this sermon was built on
+   * this note" lives ONLY in `Sermon.sourceNoteIds`; the list of sermons for a note is
+   * derived from the cached sermon list (`useSermonsBuiltOnNote`). Kept on the type because
+   * documents written long ago may still carry the key.
+   */
   relatedSermonIds?: string[];
   /** Type of the note: standard note or a question to be answered later */
   type?: 'note' | 'question';

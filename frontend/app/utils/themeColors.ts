@@ -232,6 +232,33 @@ const NAV_ITEM_THEMES = {
   }
 } as const;
 
+/**
+ * Surfaces for the sermon↔study-note link, in the accent of the thing they LEAD TO.
+ *
+ * The chip on a sermon and the picker dialog are studies-green because they take you to a
+ * note; the rows on a note are sermons-blue because they take you to a sermon. Keeping the
+ * literals here rather than inside the components is the repository's rule — a palette or
+ * contrast change has to reach every surface, and a component that spelled its own emerald
+ * would quietly stay behind. Full class strings only: Tailwind's JIT does not see composed
+ * names.
+ */
+export const SOURCE_NOTE_COLORS = {
+  /** The picker dialog, which is about choosing a NOTE. */
+  dialogAccentBar: 'bg-gradient-to-r from-emerald-600 via-emerald-500 to-teal-400',
+  dialogEyebrow:
+    'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-100 dark:ring-emerald-800/60',
+  searchFocus:
+    'focus:border-emerald-400 focus:ring-2 focus:ring-emerald-200 dark:focus:border-emerald-500 dark:focus:ring-emerald-900',
+  rowSelected: 'border-emerald-400 bg-emerald-50/70 dark:border-emerald-500/60 dark:bg-emerald-900/20',
+  rowIdle:
+    'border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/40 dark:border-gray-700 dark:hover:border-emerald-500/40 dark:hover:bg-emerald-900/10',
+  checkbox: 'text-emerald-600 focus:ring-emerald-500',
+  refChip: 'bg-emerald-100/70 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-100',
+  primaryButton: 'bg-emerald-600 text-white hover:bg-emerald-700',
+  /** The reverse block on a note, which is about opening a SERMON. */
+  reverseHeading: 'text-blue-600 dark:text-blue-400',
+} as const;
+
 export type NavItemThemeKey = keyof typeof NAV_ITEM_THEMES;
 
 export const getNavItemTheme = (key?: NavItemThemeKey) => NAV_ITEM_THEMES[key ?? 'default'];

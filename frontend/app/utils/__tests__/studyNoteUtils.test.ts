@@ -1,4 +1,4 @@
-import { formatStudyNoteForCopy } from '../studyNoteUtils';
+import { formatStudyNoteForCopy, matchesStudyNoteQuery } from '../studyNoteUtils';
 import { formatScriptureRef } from '../../(pages)/(private)/studies/bookAbbreviations';
 import type { StudyNote } from '@/models/models';
 
@@ -211,5 +211,54 @@ describe('formatStudyNoteForCopy', () => {
     const result = formatStudyNoteForCopy(note, 'en');
 
     expect(result).toBe('# Verse Range Test\n\nContent\n\n**Scripture References:**\n- Matt.5:3-12');
+  });
+});
+
+/**
+ * SEARCH BY WHAT A PREACHER REMEMBERS — the note picker on a sermon and the studies list must
+ * narrow on the same words, so the matcher lives in one place and is asserted here directly.
+ */
+describe('matchesStudyNoteQuery', () => {
+  const note: StudyNote = {
+    id: 'n1',
+    userId: 'user1',
+    title: 'Wine and wineskins',
+    content: 'The old covenant cannot hold the new wine',
+    scriptureRefs: [{ id: 'r1', book: 'John', chapter: 2, fromVerse: 1, toVerse: 11 }],
+    tags: ['typology', 'grace'],
+    createdAt: '2026-08-01T00:00:00Z',
+    updatedAt: '2026-08-01T00:00:00Z',
+    isDraft: false,
+    type: 'note',
+  };
+
+  beforeEach(() => {
+    mockFormatScriptureRef.mockReturnValue('John.2:1-11');
+  });
+
+  it('matches nothing typed — an empty query keeps every note', () => {
+    expect(matchesStudyNoteQuery(note, [], 'en')).toBe(true);
+  });
+
+  it('matches the title, the text and a tag', () => {
+    expect(matchesStudyNoteQuery(note, ['wineskins'], 'en')).toBe(true);
+    expect(matchesStudyNoteQuery(note, ['covenant'], 'en')).toBe(true);
+    expect(matchesStudyNoteQuery(note, ['typology'], 'en')).toBe(true);
+  });
+
+  it('matches the reference AS DISPLAYED, so typing what the badge shows finds the note', () => {
+    expect(matchesStudyNoteQuery(note, ['john.2'], 'en')).toBe(true);
+    expect(mockFormatScriptureRef).toHaveBeenCalledWith(note.scriptureRefs[0], 'en');
+  });
+
+  it('requires EVERY token, so a second word narrows instead of widening', () => {
+    expect(matchesStudyNoteQuery(note, ['wine', 'typology'], 'en')).toBe(true);
+    expect(matchesStudyNoteQuery(note, ['wine', 'absent'], 'en')).toBe(false);
+  });
+
+  it('survives a note with no title, tags or refs', () => {
+    const bare = { ...note, title: undefined, tags: [], scriptureRefs: [], content: '' } as StudyNote;
+    expect(matchesStudyNoteQuery(bare, ['anything'], 'en')).toBe(false);
+    expect(matchesStudyNoteQuery(bare, [], 'en')).toBe(true);
   });
 });
