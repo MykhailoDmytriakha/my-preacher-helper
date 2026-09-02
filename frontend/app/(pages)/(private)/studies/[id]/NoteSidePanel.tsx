@@ -71,7 +71,7 @@ export function NoteSidePanel({
     if (collapsed) {
         return (
             <aside
-                className="sticky flex w-[52px] shrink-0 flex-col items-center gap-1 self-start border-r border-gray-200 bg-gray-50 py-3 dark:border-gray-800 dark:bg-gray-900/40"
+                className="sticky hidden w-[52px] shrink-0 flex-col items-center gap-1 self-start border-r border-gray-200 bg-gray-50 py-3 lg:flex dark:border-gray-800 dark:bg-gray-900/40"
                 style={{ top: stickyTop, height: `calc(100vh - ${stickyTop}px)` }}
             >
                 <button
@@ -106,7 +106,7 @@ export function NoteSidePanel({
 
     return (
         <aside
-            className="sticky flex w-[272px] shrink-0 flex-col gap-4 self-start overflow-y-auto border-r border-gray-200 bg-gray-50 px-3.5 py-4 dark:border-gray-800 dark:bg-gray-900/40"
+            className="sticky hidden w-[272px] shrink-0 flex-col gap-4 self-start overflow-y-auto border-r border-gray-200 bg-gray-50 px-3.5 py-4 lg:flex dark:border-gray-800 dark:bg-gray-900/40"
             style={{ top: stickyTop, height: `calc(100vh - ${stickyTop}px)` }}
         >
             <div className="flex items-start justify-between gap-2">

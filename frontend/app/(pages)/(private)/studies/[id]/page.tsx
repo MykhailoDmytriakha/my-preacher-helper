@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, XMarkIcon, ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, XMarkIcon, ChevronDownIcon, ListBulletIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -584,9 +584,11 @@ function EditorHeader({
     if (!roomy) {
         return (
             <header ref={headerRef} style={{ top: stickyTop }} className={`${shell} px-3 pb-1.5 pt-1.5`}>
+                {/* `inert` and not just `aria-hidden`: a zero-height row keeps its buttons in
+                    the tab order, so Tab used to land on an invisible Copy / Edit / More. */}
                 <div
                     className={`flex items-center justify-between gap-2 overflow-hidden transition-all duration-200 ${collapsed ? 'h-0 opacity-0' : 'h-11 opacity-100'}`}
-                    aria-hidden={collapsed}
+                    inert={collapsed}
                 >
                     <div className="flex items-center gap-1">
                         {pager}
@@ -611,9 +613,16 @@ function EditorHeader({
                                     {sectionLabel}
                                 </span>
                             ) : (
-                                <span className={`min-w-0 truncate font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 ${titleSizeClass(title)}`}>
-                                    {title || t('studiesWorkspace.untitled')}
-                                </span>
+                                /* Stays an <h1>: it is still the page's title for heading
+                                   navigation, and a title matching the search has to keep
+                                   showing the hit. */
+                                <h1 className={`min-w-0 truncate font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 ${titleSizeClass(title)}`}>
+                                    {title ? (
+                                        searchQuery ? <HighlightedText text={title} searchQuery={searchQuery} /> : title
+                                    ) : (
+                                        t('studiesWorkspace.untitled')
+                                    )}
+                                </h1>
                             )}
                             <ChevronDownIcon className={`h-4 w-4 shrink-0 ${sectionLabel ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`} />
                         </button>
@@ -636,6 +645,21 @@ function EditorHeader({
                     {pager}
                 </div>
                 {typeControl}
+                {/* Between `sm` and `lg` this row IS the header, and there is no side panel
+                    yet — without this button the outline, the tags, the references and the
+                    dates are mounted in the sheet with nothing able to open it. */}
+                {onOpenSheet && (
+                    <button
+                        type="button"
+                        onClick={onOpenSheet}
+                        aria-haspopup="dialog"
+                        title={t('notePanel.outline')}
+                        aria-label={t('notePanel.outline')}
+                        className="flex items-center justify-center rounded-lg p-2 text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+                    >
+                        <ListBulletIcon className="h-5 w-5" />
+                    </button>
+                )}
             </div>
 
             <div className="order-last w-full min-w-0 px-0 sm:order-none sm:absolute sm:left-1/2 sm:top-1/2 sm:w-[44%] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:px-0">
@@ -986,9 +1010,9 @@ export default function StudyNoteEditorPage() {
     // Deliberately NOT disabled while the sheet is open: turning the hook off resets it,
     // and the header sprang back open the moment the sheet came up — a jump the reader
     // did not ask for, on the layer they were not looking at.
-    const headerCollapsed = useCollapseOnScroll(!roomyHeader && !isEditing);
+    const headerCollapsed = useCollapseOnScroll(!roomyHeader && !isEditing, noteId);
 
-    const activeSectionId = useActiveSection(belowHeader + 16, !isEditing && (showPanel || !isWideViewport));
+    const activeSectionId = useActiveSection(belowHeader + 16, !isEditing && (showPanel || !isWideViewport), noteId);
     // Once reading has started the sticky line says which section you are in — the note's
     // title is the one thing the reader already knows.
     const activeSection = findSectionById(outlineControl.outline.sections, activeSectionId);
@@ -1470,8 +1494,11 @@ export default function StudyNoteEditorPage() {
                 currentScriptureRefs={scriptureRefs}
             />
 
-            {/* Reading-mode text size control — same floating violet FAB as preaching view. */}
-            {!isEditing && <FloatingTextScaleControls />}
+            {/* Reading-mode text size control — same floating violet FAB as preaching view.
+                It shares the sheet's stacking level and is rendered after it, so while the
+                sheet is up it would sit ON the outline rows. Nothing to size while the
+                text is covered anyway. */}
+            {!isEditing && !sheetOpen && <FloatingTextScaleControls />}
         </div>
     );
 }

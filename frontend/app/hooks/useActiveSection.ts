@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react';
  * are intersecting at once and "the innermost one above the fold" is the honest answer,
  * which observers make awkward to compute.
  */
-export function useActiveSection(offset: number, enabled: boolean): string | null {
+export function useActiveSection(offset: number, enabled: boolean, resetKey?: string): string | null {
     const [activeId, setActiveId] = useState<string | null>(null);
 
     useEffect(() => {
@@ -45,7 +45,10 @@ export function useActiveSection(offset: number, enabled: boolean): string | nul
             window.removeEventListener('scroll', onScroll);
             window.removeEventListener('resize', onScroll);
         };
-    }, [offset, enabled]);
+        // `resetKey` is the note being read: sections are found by scanning the DOM, and
+        // moving to another note at the same scroll position fires no scroll event — the
+        // old note's section id would stay highlighted.
+    }, [offset, enabled, resetKey]);
 
     return activeId;
 }

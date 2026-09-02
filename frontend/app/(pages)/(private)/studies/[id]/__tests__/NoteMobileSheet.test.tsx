@@ -127,6 +127,52 @@ describe('NoteMobileSheet', () => {
         expect(onClose).toHaveBeenCalled();
     });
 
+    it('a closed sheet is out of the tab order, not merely off-screen', () => {
+        const { container } = render(
+            <NoteMobileSheet {...props} open={false} outline={makeControl()} />
+        );
+
+        // `aria-hidden` alone lies only to screen readers: the outline rows, the tabs and
+        // "collapse all" stayed tabbable, and Enter would change fold state invisibly.
+        expect(container.firstChild).toHaveAttribute('inert');
+    });
+
+    it('an open sheet is reachable again', () => {
+        const { container } = render(<NoteMobileSheet {...props} outline={makeControl()} />);
+
+        expect(container.firstChild).not.toHaveAttribute('inert');
+    });
+
+    it('opening moves focus into the sheet, so a keyboard user is where the panel is', () => {
+        const { container } = render(
+            <NoteMobileSheet {...props} open={false} outline={makeControl()} />
+        );
+        const dialog = container.querySelector('[role="dialog"]') as HTMLElement;
+
+        render(<NoteMobileSheet {...props} open outline={makeControl()} />, {
+            container,
+        });
+
+        expect(document.activeElement).toBe(dialog);
+    });
+
+    it('closing gives focus back to whatever opened it', () => {
+        const opener = document.createElement('button');
+        document.body.appendChild(opener);
+        opener.focus();
+
+        const { container, rerender } = render(
+            <NoteMobileSheet {...props} open={false} outline={makeControl()} />
+        );
+        rerender(<NoteMobileSheet {...props} open outline={makeControl()} />);
+        expect(container.querySelector('[role="dialog"]')).toBe(document.activeElement);
+
+        rerender(<NoteMobileSheet {...props} open={false} outline={makeControl()} />);
+
+        expect(document.activeElement).toBe(opener);
+        opener.remove();
+    });
+
     it('stays out of the way while closed', () => {
         const onClose = jest.fn();
         const { container } = render(

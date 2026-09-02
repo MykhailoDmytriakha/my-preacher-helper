@@ -1,7 +1,7 @@
 'use client';
 
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { type MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
@@ -47,6 +47,9 @@ export function NoteMobileSheet({
 }: NoteMobileSheetProps) {
     const { t } = useTranslation();
     const [tab, setTab] = useState<SheetTab>('outline');
+    const panelRef = useRef<HTMLDivElement>(null);
+    /** Where the focus came from, so closing puts it back instead of dropping it. */
+    const openerRef = useRef<HTMLElement | null>(null);
 
     // A note with no headings has no table of contents to open on.
     useEffect(() => {
@@ -62,16 +65,35 @@ export function NoteMobileSheet({
         return () => document.removeEventListener('keydown', onKey);
     }, [open, onClose]);
 
+    // Opening moves focus into the sheet and closing gives it back to whatever opened it.
+    // Without this a keyboard user opens a panel they are not in, and closing it drops
+    // them at the top of the document.
+    useEffect(() => {
+        if (open) {
+            openerRef.current = document.activeElement as HTMLElement | null;
+            panelRef.current?.focus();
+            return;
+        }
+        const opener = openerRef.current;
+        openerRef.current = null;
+        // Only if focus is still inside the sheet: the person may have clicked elsewhere.
+        if (opener && panelRef.current?.contains(document.activeElement)) opener.focus();
+    }, [open]);
+
+    // `inert` on the whole thing while closed: the sheet stays mounted so it can slide, and
+    // every control inside it — outline rows, tabs, "collapse all" — would otherwise still
+    // be tabbable behind an `aria-hidden` that only lies to screen readers.
     return (
-        <div className="lg:hidden" aria-hidden={!open}>
+        <div className="lg:hidden" inert={!open}>
             <button
                 type="button"
-                tabIndex={open ? 0 : -1}
                 aria-label={t('common.close')}
                 onClick={onClose}
                 className={`fixed inset-0 z-40 bg-gray-900/40 transition-opacity duration-200 ${open ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
             />
             <div
+                ref={panelRef}
+                tabIndex={-1}
                 role="dialog"
                 aria-modal={open}
                 aria-label={t('notePanel.outline')}
@@ -93,7 +115,7 @@ export function NoteMobileSheet({
                             <button
                                 type="button"
                                 onClick={outline.toggleAll}
-                                className="rounded-lg px-2 py-1.5 text-xs text-emerald-600 dark:text-emerald-400"
+                                className="whitespace-nowrap rounded-lg px-2 py-1.5 text-xs text-emerald-600 dark:text-emerald-400"
                             >
                                 {outline.everythingCollapsed
                                     ? t('textOutline.expandAll')
@@ -104,7 +126,6 @@ export function NoteMobileSheet({
                             type="button"
                             onClick={onClose}
                             aria-label={t('common.close')}
-                            tabIndex={open ? 0 : -1}
                             className="flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800"
                         >
                             <XMarkIcon className="h-5 w-5" />

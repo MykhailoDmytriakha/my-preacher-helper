@@ -79,6 +79,34 @@ describe('useCollapseOnScroll', () => {
         expect(result.current).toBe(false);
     });
 
+    it('folds immediately when the page opens already scrolled — a restored position fires no scroll event', () => {
+        Object.defineProperty(window, 'scrollY', { value: 600, writable: true, configurable: true });
+
+        const { result } = renderHook(() => useCollapseOnScroll(true));
+
+        expect(result.current).toBe(true);
+    });
+
+    it('moving to another note re-decides from that note\'s own position', () => {
+        const { result, rerender } = renderHook(({ id }) => useCollapseOnScroll(true, id), {
+            initialProps: { id: 'note-a' },
+        });
+
+        scrollTo(400);
+        settle();
+        expect(result.current).toBe(true);
+
+        // The pager navigates between notes WITHOUT unmounting the page, and the router
+        // puts the new note at the top. Without `resetKey` the effect never re-runs and
+        // the new note inherits the previous one's folded controls.
+        act(() => {
+            Object.defineProperty(window, 'scrollY', { value: 0, writable: true, configurable: true });
+        });
+        rerender({ id: 'note-b' });
+
+        expect(result.current).toBe(false);
+    });
+
     it('does nothing when disabled — editing needs its controls', () => {
         const { result } = renderHook(() => useCollapseOnScroll(false));
 

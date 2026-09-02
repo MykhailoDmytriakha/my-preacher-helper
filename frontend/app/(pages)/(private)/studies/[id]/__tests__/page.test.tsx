@@ -33,6 +33,13 @@ jest.mock('@/hooks/useDocumentFreshness', () => ({
     markSynced: jest.fn(),
   }),
 }));
+// The page decides its layout in JS, not in CSS, so the breakpoint bands are testable.
+// `mock` prefix is required: jest hoists the factory above this declaration.
+const mockViewport = { wide: true, roomy: true };
+jest.mock('@/hooks/useWideViewport', () => ({
+    useWideViewport: () => mockViewport.wide,
+    useRoomyHeader: () => mockViewport.roomy,
+}));
 jest.mock('@/hooks/useStudyNotes');
 jest.mock('@/hooks/useTags');
 jest.mock('@/hooks/useStudyNoteShareLinks');
@@ -652,5 +659,65 @@ describe('StudyNoteEditorPage Pagination', () => {
             });
             jest.useRealTimers();
         });
+    });
+});
+
+/**
+ * Three viewport bands, three different places the note's outline and properties live.
+ * The band in the middle is the one that broke: the properties moved into the sheet
+ * below `lg`, but the button that opens the sheet only existed below `sm`, so between
+ * 640 and 1023px they were mounted with nothing able to reach them.
+ */
+describe('StudyNoteEditorPage — where the outline and properties are reachable from', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+        (useRouter as jest.Mock).mockReturnValue(mockRouter);
+        (useParams as jest.Mock).mockReturnValue(mockParams);
+        (useSearchParams as jest.Mock).mockReturnValue(mockSearchParams);
+        (useStudyNotes as jest.Mock).mockReturnValue({
+            uid: 'user-1', notes: mockNotes, loading: false,
+            createNote: jest.fn(), updateNote: jest.fn(), deleteNote: jest.fn(),
+        });
+        (useTags as jest.Mock).mockReturnValue({ tags: { requiredTags: [], customTags: [] } });
+        (useStudyNoteShareLinks as jest.Mock).mockReturnValue({
+            shareLinks: [], loading: false, deleteShareLink: jest.fn(),
+        });
+    });
+
+    afterEach(() => {
+        mockViewport.wide = true;
+        mockViewport.roomy = true;
+    });
+
+    it('tablet width (no side panel yet, header still on one row) can still open the sheet', () => {
+        mockViewport.wide = false;
+        mockViewport.roomy = true;
+
+        render(<StudyNoteEditorPage />);
+
+        const opener = screen.getByRole('button', { name: 'notePanel.outline' });
+        expect(opener).toHaveAttribute('aria-haspopup', 'dialog');
+        expect(screen.getByRole('dialog', { hidden: true })).toBeInTheDocument();
+    });
+
+    it('phone width opens the sheet from the sticky title line', () => {
+        mockViewport.wide = false;
+        mockViewport.roomy = false;
+
+        render(<StudyNoteEditorPage />);
+
+        const beacons = screen
+            .getAllByRole('button', { hidden: true })
+            .filter((b) => b.getAttribute('aria-haspopup') === 'dialog');
+        expect(beacons.length).toBeGreaterThan(0);
+    });
+
+    it('a wide screen has the panel and never mounts the sheet at all', () => {
+        mockViewport.wide = true;
+        mockViewport.roomy = true;
+
+        render(<StudyNoteEditorPage />);
+
+        expect(screen.queryByRole('dialog', { hidden: true })).not.toBeInTheDocument();
     });
 });
