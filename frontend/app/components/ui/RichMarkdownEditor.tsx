@@ -14,6 +14,8 @@ interface RichMarkdownEditorProps {
     placeholder?: string;
     minHeight?: string;
     autoFocus?: boolean;
+    /** Distance from the top of the window to keep the toolbar at while scrolling. */
+    stickyToolbarTop?: number;
 }
 
 export function RichMarkdownEditor({
@@ -22,6 +24,7 @@ export function RichMarkdownEditor({
     placeholder = 'Введите текст...',
     minHeight = '150px',
     autoFocus = false,
+    stickyToolbarTop,
 }: RichMarkdownEditorProps) {
     const editor = useEditor({
         extensions: [
@@ -75,7 +78,7 @@ export function RichMarkdownEditor({
 
     return (
         <div className="flex flex-col w-full flex-1 rounded-xl shadow-sm" style={{ minHeight }}>
-            <RichMarkdownToolbar editor={editor} />
+            <RichMarkdownToolbar editor={editor} stickyTop={stickyToolbarTop} />
             <div className="flex-1 cursor-text flex flex-col">
                 <EditorContent
                     editor={editor}

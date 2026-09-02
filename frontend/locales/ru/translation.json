@@ -1368,6 +1368,20 @@
     "mainPoints": "Основная часть",
     "conclusion": "Заключение"
   },
+  "textOutline": {
+    "collapseAll": "Свернуть всё",
+    "expandAll": "Развернуть всё",
+    "toggleSection": "Свернуть или развернуть раздел: {{title}}"
+  },
+  "notePanel": {
+    "outline": "Оглавление",
+    "outlineEmpty": "В этой заметке пока нет заголовков.",
+    "hide": "Скрыть панель",
+    "show": "Показать панель",
+    "sermons": "Проповеди на заметке",
+    "created": "Создана {{date}}",
+    "updated": "Изменена {{date}}"
+  },
   "feedback": {
     "button": "Обратная связь",
     "title": "Отправить отзыв",
@@ -2682,14 +2696,6 @@
       "selected": "Выбрано",
       "noneSelected": "Теги не выбраны",
       "done": "Готово"
-    },
-    "focusMode": {
-      "title": "Режим фокуса",
-      "exitFocus": "Выйти из фокуса",
-      "noteOf": "{{current}} из {{total}}",
-      "prevNote": "Предыдущая заметка",
-      "nextNote": "Следующая заметка",
-      "keyboardHint": "Используйте ← → для навигации, ESC для выхода"
     },
     "shareLinks": {
       "title": "Ссылки для доступа",

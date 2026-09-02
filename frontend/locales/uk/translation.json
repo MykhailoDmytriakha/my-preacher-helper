@@ -1368,6 +1368,20 @@
     "mainPoints": "Основна частина",
     "conclusion": "Висновок"
   },
+  "textOutline": {
+    "collapseAll": "Згорнути все",
+    "expandAll": "Розгорнути все",
+    "toggleSection": "Згорнути або розгорнути розділ: {{title}}"
+  },
+  "notePanel": {
+    "outline": "Зміст",
+    "outlineEmpty": "У цій нотатці ще немає заголовків.",
+    "hide": "Сховати панель",
+    "show": "Показати панель",
+    "sermons": "Проповіді на нотатці",
+    "created": "Створена {{date}}",
+    "updated": "Змінена {{date}}"
+  },
   "feedback": {
     "button": "Зворотний зв'язок",
     "title": "Надіслати відгук",
@@ -2682,14 +2696,6 @@
       "selected": "Вибрано",
       "noneSelected": "Теги не вибрано",
       "done": "Готово"
-    },
-    "focusMode": {
-      "title": "Режим фокусу",
-      "exitFocus": "Вийти з фокусу",
-      "noteOf": "{{current}} з {{total}}",
-      "prevNote": "Попередня нотатка",
-      "nextNote": "Наступна нотатка",
-      "keyboardHint": "Використовуйте ← → для навігації, ESC для виходу"
     },
     "shareLinks": {
       "title": "Посилання для доступу",

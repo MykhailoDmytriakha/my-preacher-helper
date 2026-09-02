@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import '@locales/i18n';
-import MarkdownDisplay from '@components/MarkdownDisplay';
+import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import ThemeModeToggle from '@components/navigation/ThemeModeToggle';
 
 const PAGE_CONTAINER_CLASS = 'min-h-screen bg-white text-gray-900 dark:bg-gray-900 dark:text-gray-100';
@@ -96,7 +96,7 @@ export default function SharedNotePage() {
 
         {status === 'ready' && (
           <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800">
-            <MarkdownDisplay content={content} />
+            <FoldableMarkdown content={content} />
           </div>
         )}
       </div>

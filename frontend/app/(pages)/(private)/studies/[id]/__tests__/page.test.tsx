@@ -36,6 +36,11 @@ jest.mock('@/hooks/useDocumentFreshness', () => ({
 jest.mock('@/hooks/useStudyNotes');
 jest.mock('@/hooks/useTags');
 jest.mock('@/hooks/useStudyNoteShareLinks');
+// The page asks this to decide whether the collapsed rail shows its "a sermon uses
+// this note" dot. It reaches React Query, which this suite does not stand up.
+jest.mock('@/hooks/useSermonNoteLinks', () => ({
+  useSermonsBuiltOnNote: () => ({ sermons: [] }),
+}));
 
 jest.mock('@/services/firebaseAuth.service', () => ({
     auth: {

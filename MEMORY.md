@@ -23,6 +23,7 @@
 | "How do I report a write to the screen and the cache?" | Publish a PATCH of what changed and let each side merge it into the copy it owns; never hand a whole entity across a boundary. The list copy and the detail copy are NOT comparable (they differ in completeness) — `useSermon.ts` and `BUG-20260815-list-copy-hides-scratch`. |
 | "How do I keep a write across reload / offline?" | `utils/recoverableWrite.ts` (`persistedWrite`, `queuedMutation`, `awaitAcceptance`, `useWriteRecovery`) + `utils/mutationDefaults.ts` for resumable mutations, `writeOutbox.client.ts` for queued intents. |
 | "How do I link two entities?" | `useSeriesMembership` + `seriesMembership.client.ts` (one writer, one truth, reverse side derived). For sermon ↔ study note: `Sermon.sourceNoteIds` + `useSermonNoteLinks` (`applySourceNoteLinkPatch`). |
+| "How do I show note markdown — heading hierarchy, indent, folding?" | `frontend/app/utils/markdownSections.ts` (`splitMarkdownSections` — fence-aware section tree, skipped levels nest under the nearest lower one) + `frontend/app/components/ui/FoldableMarkdown.tsx` (renders that tree: chevron per heading, guide line per level, search force-opens a folded hit). Presentation only — the stored markdown is never rewritten. Flat text with no headings falls back to `MarkdownDisplay` unchanged.
 | "Which colour / cache key do I use?" | `utils/themeColors.ts` (`getNavItemTheme`, per-feature groups) and `utils/queryKeys.ts` (owner-scoped keys — never invent a key inline). |
 
 ### 📐 Coding Conventions
@@ -42,6 +43,7 @@
 *   **Debug Logging:** `debugLog` is frontend-only. Backend must not use it.
 *   **AI Telemetry:** Structured AI calls go through `callWithStructuredOutput`, emit telemetry as non-blocking side effects.
 *   **Rich Editor:** TipTap headless + `tiptap-markdown` for WYSIWYG. Mock `RichMarkdownEditor` with `<textarea>` in Jest.
+*   **Testing rendered markdown:** `react-markdown` (plus remark/rehype) is stubbed GLOBALLY in `jest.setup.js` and prints markdown verbatim, so a normal component test can prove structure but NEVER appearance. To assert real rendered output, call `jest.unmock('react-markdown'/'remark-gfm'/'rehype-raw'/'rehype-sanitize')` at the top of that one file — see `app/components/ui/__tests__/FoldableMarkdown.rendered.test.tsx`. This works only because the markdown ESM chain is listed in the test-only `transpilePackages` of `next.config.mjs`: `jest.config.ts`'s own `transformIgnorePatterns` is dead config, because `next/jest` puts a blanket `/node_modules/` rule ahead of anything added there.
 *   **Entity-Series Sync:** `entity.seriesId` and `series.items[]` are separate stores. Any write to `seriesId` must pair with `seriesRepository.addXxxToSeries()`.
 *   **API Verification:** Always verify exact shape of API responses in frontend handlers.
 *   **Tabular Alignment:** Use `tabular-nums` + `font-mono` for numeric counters to prevent layout shifts.

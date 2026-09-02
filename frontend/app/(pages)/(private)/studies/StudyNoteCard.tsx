@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote } from '@/models/models';
 import { extractSearchSnippets } from '@/utils/searchUtils';
@@ -465,7 +466,7 @@ export default function StudyNoteCard({
           {/* Full content */}
           <div className="px-4 py-4 pl-4 sm:pl-12">
             <div className="text-sm text-gray-700 dark:text-gray-200">
-              <MarkdownDisplay content={note.content} searchQuery={searchQuery} />
+              <FoldableMarkdown content={note.content} searchQuery={searchQuery} />
             </div>
           </div>
 

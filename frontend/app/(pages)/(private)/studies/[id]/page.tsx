@@ -4,7 +4,6 @@ import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, B
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import TextareaAutosize from 'react-textarea-autosize';
 import { toast } from 'sonner';
 
 import RecordingDraftBanner from '@/components/audio-recorder/RecordingDraftBanner';
@@ -12,15 +11,21 @@ import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
+import { useActiveSection } from '@/hooks/useActiveSection';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useDurableDraft } from '@/hooks/useDurableDraft';
+import { useMarkdownOutline } from '@/hooks/useMarkdownOutline';
 import { useRouteId } from '@/hooks/useRouteId';
+import { useSermonsBuiltOnNote } from '@/hooks/useSermonNoteLinks';
+import { useStickyOffsets } from '@/hooks/useStickyOffsets';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
+import { useWideViewport } from '@/hooks/useWideViewport';
 import { ScriptureReference, StudyNote } from '@/models/models';
 import { readRevision } from '@/services/conflictSafeUpdate.client';
 import { auth } from '@/services/firebaseAuth.service';
@@ -33,7 +38,6 @@ import { awaitAcceptance } from '@/utils/recoverableWrite';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
 import HighlightedText from '@components/HighlightedText';
-import MarkdownDisplay from '@components/MarkdownDisplay';
 
 import AnalysisConfirmationModal, { AnalysisResultData } from '../AnalysisConfirmationModal';
 import { BibleLocale, getLocalizedBookName } from '../bibleData';
@@ -44,7 +48,9 @@ import ScriptureRefBadge from '../ScriptureRefBadge';
 import ScriptureRefPicker from '../ScriptureRefPicker';
 import TagCatalogModal from '../TagCatalogModal';
 
+import { NoteAiMenu } from './NoteAiMenu';
 import { type NoteDraftPayload } from './noteDraft';
+import { NoteSidePanel } from './NoteSidePanel';
 import { useNoteAutoSave } from './useNoteAutoSave';
 
 const makeId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2);
@@ -372,9 +378,24 @@ function useNoteAIAssistant({
     };
 }
 
+/**
+ * A short title should read like a title; a long one must still fit the bar on one or
+ * two lines. Stepping the size by length beats measuring: it is stable, has no layout
+ * pass, and never lands between two sizes on a resize.
+ */
+function titleSizeClass(title: string): string {
+    const length = (title || '').length;
+    if (length <= 24) return 'text-2xl';
+    if (length <= 40) return 'text-xl';
+    if (length <= 64) return 'text-lg';
+    if (length <= 100) return 'text-base';
+    return 'text-sm';
+}
+
 function EditorHeader({
     handleBack, t, isEditing, filteredNotes, prevNoteId, nextNoteId, router, searchParams,
-    currentIndex, type, setType, isSaving, saveError, lastSaved, hasUnsavedEdits, setIsEditing, handleDelete, handleCopy, isCopied
+    currentIndex, type, setType, isSaving, saveError, lastSaved, hasUnsavedEdits, setIsEditing, handleDelete, handleCopy, isCopied,
+    title, setTitle, searchQuery, justSaved, aiMenu, headerRef, stickyTop
 }: {
     handleBack: () => void; t: ReturnType<typeof useTranslation>['t']; isEditing: boolean;
     filteredNotes: StudyNote[]; prevNoteId: string | null; nextNoteId: string | null;
@@ -384,6 +405,13 @@ function EditorHeader({
     /** The text on screen differs from what the server last confirmed. */
     hasUnsavedEdits: boolean;
     setIsEditing: (b: boolean) => void; handleDelete: () => void; handleCopy: () => void; isCopied: boolean;
+    /** The note's title lives here now, not as a display-size heading above the text. */
+    title: string; setTitle: (v: string) => void; searchQuery: string;
+    /** Reading mode has nothing to save, so the status only shows while editing — plus a
+        short confirmation right after leaving the editor, which is the moment it matters. */
+    justSaved: boolean; aiMenu: React.ReactNode;
+    /** Measured, not assumed: the app nav is a different height on a phone. */
+    headerRef: (element: HTMLElement | null) => void; stickyTop: number;
 }) {
     const [showMenu, setShowMenu] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
@@ -401,7 +429,11 @@ function EditorHeader({
     }, [showMenu]);
 
     return (
-        <header className="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-y-2 border-b border-gray-200 bg-white/80 px-4 sm:px-6 py-3 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/80">
+        <header
+            ref={headerRef}
+            style={{ top: stickyTop }}
+            className="sticky z-30 relative flex flex-wrap items-center justify-between gap-y-2 border-b border-gray-200 bg-white/90 px-4 sm:px-6 py-3 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/90"
+        >
             <div className="flex items-center gap-1 sm:gap-2 lg:gap-4">
                 <div className="flex items-center gap-1">
                     <button
@@ -446,9 +478,36 @@ function EditorHeader({
                 />
             </div>
 
+            {/* The note's title. In reading mode it is a line of text; in editing it is the
+                field you type in. Either way it stays on this row instead of taking a
+                display-size block above the text. */}
+            <div className="order-last w-full min-w-0 px-0 sm:order-none sm:absolute sm:left-1/2 sm:top-1/2 sm:w-[44%] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:px-0">
+                {isEditing ? (
+                    <input
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder={t('studiesWorkspace.titlePlaceholder') || 'Note Title...'}
+                        aria-label={t('studiesWorkspace.titlePlaceholder') || 'Note Title...'}
+                        className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-center font-bold text-gray-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-50 dark:focus:border-emerald-500 dark:focus:ring-emerald-900 ${titleSizeClass(title)}`}
+                    />
+                ) : (
+                    <h1
+                        className={`line-clamp-2 text-center font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 ${titleSizeClass(title)}`}
+                        title={title || undefined}
+                    >
+                        {title ? (
+                            searchQuery ? <HighlightedText text={title} searchQuery={searchQuery} /> : title
+                        ) : (
+                            t('studiesWorkspace.untitled')
+                        )}
+                    </h1>
+                )}
+            </div>
+
             {/* Sync Status Info */}
             <div className="flex items-center gap-3">
-                <div className="text-sm flex items-center gap-1.5 text-gray-500 dark:text-gray-400">
+                {isEditing && aiMenu}
+                <div className={`text-sm flex items-center gap-1.5 text-gray-500 dark:text-gray-400 ${isEditing || justSaved ? '' : 'hidden'}`}>
                     {isSaving ? (
                         <><ArrowPathIcon className="h-4 w-4 animate-spin" /> <span>{t('common.saving') || 'Saving...'}</span></>
                     ) : saveError ? (
@@ -466,7 +525,7 @@ function EditorHeader({
                     <button
                         type="button"
                         onClick={handleCopy}
-                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${isCopied
+                        className={`inline-flex items-center justify-center rounded-lg p-2 text-sm font-medium transition-colors ${isCopied
                             ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
                             : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-gray-100'
                             }`}
@@ -474,7 +533,6 @@ function EditorHeader({
                         aria-label={copyLabel}
                     >
                         {isCopied ? <CheckIcon className="h-5 w-5" /> : <DocumentDuplicateIcon className="h-5 w-5" />}
-                        <span className="hidden sm:inline">{copyLabel}</span>
                     </button>
                 )}
 
@@ -570,6 +628,24 @@ function EditorHeaderTypeControl({
         </div>
     );
 }
+
+const NOTE_PANEL_STORAGE_KEY = 'studyNote.sidePanelCollapsed';
+
+/** Creation and last-edit dates. Metadata, so it sits with the rest of the metadata. */
+function NoteDates({ note, t }: { note: StudyNote; t: ReturnType<typeof useTranslation>['t'] }) {
+    const created = new Date(note.createdAt);
+    const updated = new Date(note.updatedAt);
+    const format = (d: Date) => (Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString());
+    return (
+        <>
+            <div>{t('notePanel.created', { date: format(created) })}</div>
+            {format(updated) !== format(created) && (
+                <div>{t('notePanel.updated', { date: format(updated) })}</div>
+            )}
+        </>
+    );
+}
+
 
 export default function StudyNoteEditorPage() {
     const { t, i18n } = useTranslation();
@@ -797,7 +873,51 @@ export default function StudyNoteEditorPage() {
         acceptRecovered();
     }, [unsavedRecovery, acceptRecovered]);
 
-    const [isAIPopoverOpen, setIsAIPopoverOpen] = useState(false);
+    const isWideViewport = useWideViewport();
+    // Remembered per device: hiding the panel is a deliberate choice about how you read,
+    // not a click to undo on every visit.
+    const [panelCollapsed, setPanelCollapsed] = useState(false);
+    useEffect(() => {
+        try {
+            setPanelCollapsed(window.localStorage.getItem(NOTE_PANEL_STORAGE_KEY) === '1');
+        } catch {
+            /* private mode / blocked storage: the panel simply starts open */
+        }
+    }, []);
+    const togglePanel = useCallback(() => {
+        setPanelCollapsed((collapsed) => {
+            const next = !collapsed;
+            try {
+                window.localStorage.setItem(NOTE_PANEL_STORAGE_KEY, next ? '1' : '0');
+            } catch {
+                /* not being able to remember is not a reason to refuse the toggle */
+            }
+            return next;
+        });
+    }, []);
+
+    // One tree of headings for both the text and the side panel, so folding a section
+    // in one folds it in the other.
+    const { setHeaderRef, navHeight, belowHeader } = useStickyOffsets();
+
+    const outlineControl = useMarkdownOutline(content, searchQuery);
+    const showPanel = isWideViewport && !panelCollapsed;
+    const activeSectionId = useActiveSection(belowHeader + 16, showPanel && !isEditing);
+    const { sermons: sermonsOnNote } = useSermonsBuiltOnNote(isNew ? undefined : noteId);
+
+    // Reading mode has nothing to save, so the save status is hidden there — except for
+    // a few seconds right after leaving the editor, which is exactly when the person
+    // wants to know the text landed.
+    const [justSaved, setJustSaved] = useState(false);
+    const wasEditingRef = useRef(false);
+    useEffect(() => {
+        const leftTheEditor = wasEditingRef.current && !isEditing;
+        wasEditingRef.current = isEditing;
+        if (!leftTheEditor) return;
+        setJustSaved(true);
+        const timer = setTimeout(() => setJustSaved(false), 2500);
+        return () => clearTimeout(timer);
+    }, [isEditing]);
 
     // AI assistant hook
     const {
@@ -861,6 +981,164 @@ export default function StudyNoteEditorPage() {
         setTags((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
     };
 
+    // The note's own properties. They are ONE instance, handed either to the side
+    // panel or to the narrow-screen tray below the text — never both, because each
+    // carries live inputs and pickers.
+    const scriptureRefsBlock = (
+        <>
+                    {/* References */}
+                    <div className="flex flex-col h-full space-y-4 group/refs">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-500" title={t('studiesWorkspace.scriptureRefs')}>
+                                <BookmarkIcon className="h-5 w-5" />
+                                <span className="text-sm font-medium">{t('studiesWorkspace.scriptureRefs')}</span>
+                            </div>
+                            {isEditing && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleAIAnalyze('scriptureRefs')}
+                                    disabled={isAnalyzing || !content.trim() || aiBlocked}
+                                    title={aiBlocked ? t('settings.usage.aiUsageExhausted') : t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
+                                    className="flex items-center justify-center rounded-lg p-1.5 opacity-0 transition-opacity group-hover/refs:opacity-100 focus-visible:opacity-100 text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
+                                >
+                                    <SparklesIcon className="h-5 w-5" />
+                                </button>
+                            )}
+                        </div>
+
+                        {scriptureRefs.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                                {scriptureRefs.map((ref, idx) => (
+                                    <ScriptureRefBadge
+                                        key={ref.id}
+                                        reference={ref}
+                                        isEditing={isEditing ? editingRefIndex === idx : false}
+                                        onClick={isEditing ? () => { setEditingRefIndex(idx); setShowRefPicker(false); } : undefined}
+                                        onRemove={isEditing ? () => setScriptureRefs(prev => prev.filter((_, i) => i !== idx)) : undefined}
+                                    />
+                                ))}
+                            </div>
+                        )}
+
+                        {isEditing && (
+                            <div className="flex items-center gap-2 mt-auto pt-2">
+                                <input
+                                    value={quickRefInput}
+                                    onChange={(e) => { setQuickRefInput(e.target.value); setQuickRefError(null); }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            const parsed = parseReferenceText(quickRefInput.trim(), bibleLocale);
+                                            if (!parsed) { setQuickRefError(t('studiesWorkspace.quickRefError') || 'Cannot parse'); return; }
+                                            setScriptureRefs(prev => [...prev, { ...parsed, id: makeId() }]);
+                                            setQuickRefInput('');
+                                        }
+                                    }}
+                                    placeholder={t('studiesWorkspace.quickRefPlaceholder')}
+                                    className={`flex-1 ${STUDIES_INPUT_SHARED_CLASSES} py-1.5`}
+                                />
+                                <button
+                                    onClick={() => setShowRefPicker(true)}
+                                    className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors dark:text-gray-400 dark:hover:bg-gray-800"
+                                    title={t('studiesWorkspace.browseBooks')}
+                                >
+                                    <BookOpenIcon className="h-5 w-5" />
+                                </button>
+                            </div>
+                        )}
+                        {isEditing && quickRefError && <p className="text-xs text-red-500 mt-1">{quickRefError}</p>}
+
+                        {showRefPicker && (
+                            <ScriptureRefPicker
+                                mode="add"
+                                onConfirm={(ref) => { setScriptureRefs(prev => [...prev, { ...ref, id: makeId() }]); setShowRefPicker(false); }}
+                                onCancel={() => setShowRefPicker(false)}
+                            />
+                        )}
+
+                        {editingRefIndex !== null && (
+                            <ScriptureRefPicker
+                                mode="edit"
+                                initialRef={scriptureRefs[editingRefIndex]}
+                                onConfirm={(ref) => {
+                                    setScriptureRefs(prev => {
+                                        const r = [...prev]; r[editingRefIndex] = { ...ref, id: r[editingRefIndex].id }; return r;
+                                    });
+                                    setEditingRefIndex(null);
+                                }}
+                                onCancel={() => setEditingRefIndex(null)}
+                            />
+                        )}
+                    </div>
+        </>
+    );
+
+    const tagsBlock = (
+        <>
+                    {/* Tags */}
+                    <div className="flex flex-col h-full space-y-4 group/tags">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-500" title={t('studiesWorkspace.tags')}>
+                                <TagIcon className="h-5 w-5" />
+                                <span className="text-sm font-medium">{t('studiesWorkspace.tags')}</span>
+                            </div>
+                            {isEditing && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleAIAnalyze('tags')}
+                                    disabled={isAnalyzing || !content.trim() || aiBlocked}
+                                    title={aiBlocked ? t('settings.usage.aiUsageExhausted') : t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
+                                    className="flex items-center justify-center rounded-lg p-1.5 opacity-0 transition-opacity group-hover/tags:opacity-100 focus-visible:opacity-100 text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
+                                >
+                                    <SparklesIcon className="h-5 w-5" />
+                                </button>
+                            )}
+                        </div>
+
+                        {tags.length > 0 && (
+                            <div className="flex flex-wrap gap-2">
+                                {tags.map(tag => (
+                                    <span key={tag} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800">
+                                        {tag}
+                                        {isEditing && (
+                                            <button onClick={() => toggleTag(tag)} className="hover:text-emerald-900 dark:hover:text-emerald-100 ml-1">
+                                                <XMarkIcon className="h-3.5 w-3.5" />
+                                            </button>
+                                        )}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+
+                        {isEditing && (
+                            <div className="flex items-center gap-2 mt-auto pt-2">
+                                <input
+                                    value={tagInput}
+                                    onChange={(e) => setTagInput(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+                                    placeholder={t('studiesWorkspace.addTag')}
+                                    className={`flex-1 ${STUDIES_INPUT_SHARED_CLASSES} py-1.5`}
+                                />
+                                <button onClick={addTag} className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors dark:text-gray-400 dark:hover:bg-gray-800">
+                                    <PlusIcon className="h-5 w-5" />
+                                </button>
+                                <button onClick={() => setShowTagCatalog(true)} className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors dark:text-gray-400 dark:hover:bg-gray-800" title={t('studiesWorkspace.browseTags', { defaultValue: 'Browse tags' })}>
+                                    <MagnifyingGlassIcon className="h-5 w-5" />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+        </>
+    );
+
+    const sermonsBlock = (
+        <>
+                    {/* What was preached out of this note — derived from the sermons that name
+                        it, so there is nothing to keep in step. Renders only when there is one. */}
+                    <SermonsBuiltOnNote noteId={isNew ? undefined : noteId} />
+        </>
+    );
+
     // ─── RENDER ─────────────────────────────────────────────────────────────
 
     if (notesLoading || (!isInitialized && !isNew)) {
@@ -880,10 +1158,44 @@ export default function StudyNoteEditorPage() {
                 currentIndex={currentIndex} type={type} setType={setType} isSaving={isSaving} saveError={saveError}
                 lastSaved={lastSaved} hasUnsavedEdits={editorIsDirty} setIsEditing={setIsEditing} handleDelete={handleDelete}
                 handleCopy={handleCopy} isCopied={isCopied}
+                headerRef={setHeaderRef} stickyTop={navHeight}
+                title={title} setTitle={setTitle} searchQuery={searchQuery} justSaved={justSaved}
+                aiMenu={
+                    <NoteAiMenu
+                        onAnalyze={handleAIAnalyze}
+                        isAnalyzing={isAnalyzing}
+                        disabled={isAnalyzing || !content.trim() || aiBlocked}
+                        blockedTitle={aiBlocked ? t('settings.usage.aiUsageExhausted') : undefined}
+                    />
+                }
             />
 
             {/* EDITOR CONTENT */}
-            <div className="flex-1 w-full max-w-full mx-auto px-4 py-8 md:px-12 md:py-16 space-y-8 pb-48 md:pb-32 transition-all duration-300">
+            <div className="flex flex-1 min-h-0">
+                {/* Everything about the note that is not its text. Rendered ONLY on wide
+                    screens — on a phone the same blocks stay where they are today, under
+                    the text, so nothing becomes unreachable. */}
+                {isWideViewport && (
+                    <NoteSidePanel
+                        outline={outlineControl}
+                        foldable={!isEditing}
+                        stickyTop={belowHeader}
+                        activeSectionId={activeSectionId}
+                        collapsed={panelCollapsed}
+                        onToggleCollapsed={togglePanel}
+                        hasSermons={sermonsOnNote.length > 0}
+                        meta={existingNote ? <NoteDates note={existingNote} t={t} /> : undefined}
+                        scriptureRefs={scriptureRefsBlock}
+                        tags={tagsBlock}
+                        sermons={sermonsBlock}
+                    />
+                )}
+
+                {/* No `overflow` here on purpose: it would become the scroll container that
+                    `position: sticky` measures against, and the editor toolbar would slide
+                    out of view instead of sticking. The window does the scrolling. */}
+                <div className="flex-1 min-w-0 px-4 py-8 md:px-8 md:py-10 pb-48 md:pb-32">
+                  <div className="mx-auto w-full space-y-8">
                 {/* A returning user's unfinished recording waits here — survives reload / tab close. */}
                 {isEditing && (
                     <RecordingDraftBanner
@@ -967,88 +1279,6 @@ export default function StudyNoteEditorPage() {
                         </div>
                     </div>
                 )}
-                {/* Title Area */}
-                <div className="relative group/title">
-                    {isEditing ? (
-                        <div className="flex items-start gap-4 w-full">
-                            <TextareaAutosize
-                                value={title}
-                                onChange={e => setTitle(e.target.value)}
-                                placeholder={t('studiesWorkspace.titlePlaceholder') || 'Note Title...'}
-                                className="flex-1 text-4xl md:text-5xl font-extrabold tracking-tight bg-transparent border-none outline-none resize-none placeholder:text-gray-200 dark:placeholder:text-gray-800 text-gray-900 dark:text-gray-50 transition-colors"
-                            />
-                            {/* AI action lives at the TITLE level — it acts on the whole note. */}
-                            <div className="relative shrink-0 mt-1">
-                                <button
-                                    type="button"
-                                    onClick={() => setIsAIPopoverOpen(!isAIPopoverOpen)}
-                                    disabled={isAnalyzing || !content.trim() || aiBlocked}
-                                    title={aiBlocked ? t('settings.usage.aiUsageExhausted') : t('studiesWorkspace.aiAnalyze.button')}
-                                    className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow-lg hover:from-purple-600 hover:to-indigo-600 hover:scale-105 disabled:opacity-50 transition-all border border-purple-400 dark:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 dark:focus:ring-offset-2 dark:focus:ring-offset-gray-900 relative z-20"
-                                >
-                                    <SparklesIcon className={`h-6 w-6 ${isAnalyzing ? 'animate-spin' : ''}`} />
-                                </button>
-
-                                {/* Popover opens DOWNWARD (button now sits at the top). */}
-                                {isAIPopoverOpen && (
-                                    <div className="absolute top-full right-0 mt-3 w-56 rounded-xl bg-white shadow-xl border border-gray-100 dark:bg-gray-800 dark:border-gray-700 py-2 z-30 origin-top-right animate-in slide-in-from-top-2 fade-in duration-200">
-                                        <div className="px-4 py-2 border-b border-gray-50 dark:border-gray-700/50 mb-1">
-                                            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                                {t('studiesWorkspace.aiAnalyze.popoverTitle', { defaultValue: 'AI Actions' })}
-                                            </p>
-                                        </div>
-                                        <button
-                                            type="button"
-                                            className="w-full text-left px-4 py-2.5 text-sm font-medium text-purple-700 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/30 transition-colors flex items-center justify-between group"
-                                            onClick={() => { handleAIAnalyze('all'); setIsAIPopoverOpen(false); }}
-                                        >
-                                            {t('studiesWorkspace.aiAnalyze.full', { defaultValue: 'Full Analysis' })}
-                                            <SparklesIcon className="h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
-                                            onClick={() => { handleAIAnalyze('title'); setIsAIPopoverOpen(false); }}
-                                        >
-                                            {t('studiesWorkspace.aiAnalyze.generateTitle', { defaultValue: 'Generate Title' })}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
-                                            onClick={() => { handleAIAnalyze('scriptureRefs'); setIsAIPopoverOpen(false); }}
-                                        >
-                                            {t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50 transition-colors"
-                                            onClick={() => { handleAIAnalyze('tags'); setIsAIPopoverOpen(false); }}
-                                        >
-                                            {t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
-                                        </button>
-                                    </div>
-                                )}
-
-                                {isAIPopoverOpen && (
-                                    <div
-                                        className="fixed inset-0 z-0"
-                                        onClick={() => setIsAIPopoverOpen(false)}
-                                        aria-hidden="true"
-                                    />
-                                )}
-                            </div>
-                        </div>
-                    ) : (
-                        <h1 className="w-full text-4xl md:text-5xl font-extrabold tracking-tight text-gray-900 dark:text-gray-50 leading-tight min-h-[1em]">
-                            {title ? (
-                                searchQuery ? <HighlightedText text={title} searchQuery={searchQuery} /> : title
-                            ) : (
-                                isNew ? '' : t('studiesWorkspace.untitled')
-                            )}
-                        </h1>
-                    )}
-                </div>
-
                 <div className="relative group">
                     {isEditing ? (
                         <div className="text-lg md:text-xl leading-relaxed">
@@ -1057,11 +1287,18 @@ export default function StudyNoteEditorPage() {
                                 onChange={setContent}
                                 placeholder={t('studiesWorkspace.contentPlaceholder') || 'Start typing your thoughts here...'}
                                 minHeight="300px"
+                                stickyToolbarTop={belowHeader}
                             />
                         </div>
                     ) : (
                         <div className="prose prose-emerald dark:prose-invert prose-headings:text-gray-900 dark:prose-headings:text-gray-50 prose-p:text-gray-800 dark:prose-p:text-gray-200 prose-p:leading-relaxed max-w-none text-lg md:text-xl prose-scaled">
-                            <MarkdownDisplay content={content} searchQuery={searchQuery} />
+                            <FoldableMarkdown
+                                content={content}
+                                searchQuery={searchQuery}
+                                control={outlineControl}
+                                showToggleAll={!isWideViewport || panelCollapsed}
+                                scrollMarginTop={belowHeader + 8}
+                            />
                         </div>
                     )}
 
@@ -1091,152 +1328,19 @@ export default function StudyNoteEditorPage() {
                 {/* AI ✨ moved to the title header (acts on the whole note); mic moved to the
                     editor's bottom-right corner (lives with the text it fills). */}
 
-                {/* Metadata Tray (Tags & Refs) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t border-gray-100 dark:border-gray-800">
-                    {/* References */}
-                    <div className="flex flex-col h-full space-y-4 group/refs">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-500" title={t('studiesWorkspace.scriptureRefs')}>
-                                <BookmarkIcon className="h-5 w-5" />
-                                <span className="text-sm font-medium">{t('studiesWorkspace.scriptureRefs')}</span>
-                            </div>
-                            {isEditing && (
-                                <button
-                                    type="button"
-                                    onClick={() => handleAIAnalyze('scriptureRefs')}
-                                    disabled={isAnalyzing || !content.trim() || aiBlocked}
-                                    title={aiBlocked ? t('settings.usage.aiUsageExhausted') : t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
-                                    className="hidden group-hover/refs:flex items-center justify-center p-1.5 rounded-lg text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
-                                >
-                                    <SparklesIcon className="h-5 w-5" />
-                                </button>
-                            )}
+
+                    {/* Narrow screens have no panel at all, so the properties stay under the
+                        text exactly where they are today. On a wide screen the collapsed rail
+                        leads back to them in one click. */}
+                    {!isWideViewport && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t border-gray-100 dark:border-gray-800">
+                            {scriptureRefsBlock}
+                            {tagsBlock}
+                            {sermonsBlock}
                         </div>
-
-                        {scriptureRefs.length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                                {scriptureRefs.map((ref, idx) => (
-                                    <ScriptureRefBadge
-                                        key={ref.id}
-                                        reference={ref}
-                                        isEditing={isEditing ? editingRefIndex === idx : false}
-                                        onClick={isEditing ? () => { setEditingRefIndex(idx); setShowRefPicker(false); } : undefined}
-                                        onRemove={isEditing ? () => setScriptureRefs(prev => prev.filter((_, i) => i !== idx)) : undefined}
-                                    />
-                                ))}
-                            </div>
-                        )}
-
-                        {isEditing && (
-                            <div className="flex items-center gap-2 mt-auto pt-2">
-                                <input
-                                    value={quickRefInput}
-                                    onChange={(e) => { setQuickRefInput(e.target.value); setQuickRefError(null); }}
-                                    onKeyDown={(e) => {
-                                        if (e.key === 'Enter') {
-                                            e.preventDefault();
-                                            const parsed = parseReferenceText(quickRefInput.trim(), bibleLocale);
-                                            if (!parsed) { setQuickRefError(t('studiesWorkspace.quickRefError') || 'Cannot parse'); return; }
-                                            setScriptureRefs(prev => [...prev, { ...parsed, id: makeId() }]);
-                                            setQuickRefInput('');
-                                        }
-                                    }}
-                                    placeholder={t('studiesWorkspace.quickRefPlaceholder')}
-                                    className={`flex-1 ${STUDIES_INPUT_SHARED_CLASSES} py-1.5`}
-                                />
-                                <button
-                                    onClick={() => setShowRefPicker(true)}
-                                    className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors dark:text-gray-400 dark:hover:bg-gray-800"
-                                    title={t('studiesWorkspace.browseBooks')}
-                                >
-                                    <BookOpenIcon className="h-5 w-5" />
-                                </button>
-                            </div>
-                        )}
-                        {isEditing && quickRefError && <p className="text-xs text-red-500 mt-1">{quickRefError}</p>}
-
-                        {showRefPicker && (
-                            <ScriptureRefPicker
-                                mode="add"
-                                onConfirm={(ref) => { setScriptureRefs(prev => [...prev, { ...ref, id: makeId() }]); setShowRefPicker(false); }}
-                                onCancel={() => setShowRefPicker(false)}
-                            />
-                        )}
-
-                        {editingRefIndex !== null && (
-                            <ScriptureRefPicker
-                                mode="edit"
-                                initialRef={scriptureRefs[editingRefIndex]}
-                                onConfirm={(ref) => {
-                                    setScriptureRefs(prev => {
-                                        const r = [...prev]; r[editingRefIndex] = { ...ref, id: r[editingRefIndex].id }; return r;
-                                    });
-                                    setEditingRefIndex(null);
-                                }}
-                                onCancel={() => setEditingRefIndex(null)}
-                            />
-                        )}
-                    </div>
-
-                    {/* Tags */}
-                    <div className="flex flex-col h-full space-y-4 group/tags">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-500" title={t('studiesWorkspace.tags')}>
-                                <TagIcon className="h-5 w-5" />
-                                <span className="text-sm font-medium">{t('studiesWorkspace.tags')}</span>
-                            </div>
-                            {isEditing && (
-                                <button
-                                    type="button"
-                                    onClick={() => handleAIAnalyze('tags')}
-                                    disabled={isAnalyzing || !content.trim() || aiBlocked}
-                                    title={aiBlocked ? t('settings.usage.aiUsageExhausted') : t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
-                                    className="hidden group-hover/tags:flex items-center justify-center p-1.5 rounded-lg text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
-                                >
-                                    <SparklesIcon className="h-5 w-5" />
-                                </button>
-                            )}
-                        </div>
-
-                        {tags.length > 0 && (
-                            <div className="flex flex-wrap gap-2">
-                                {tags.map(tag => (
-                                    <span key={tag} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800">
-                                        {tag}
-                                        {isEditing && (
-                                            <button onClick={() => toggleTag(tag)} className="hover:text-emerald-900 dark:hover:text-emerald-100 ml-1">
-                                                <XMarkIcon className="h-3.5 w-3.5" />
-                                            </button>
-                                        )}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
-
-                        {isEditing && (
-                            <div className="flex items-center gap-2 mt-auto pt-2">
-                                <input
-                                    value={tagInput}
-                                    onChange={(e) => setTagInput(e.target.value)}
-                                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
-                                    placeholder={t('studiesWorkspace.addTag')}
-                                    className={`flex-1 ${STUDIES_INPUT_SHARED_CLASSES} py-1.5`}
-                                />
-                                <button onClick={addTag} className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors dark:text-gray-400 dark:hover:bg-gray-800">
-                                    <PlusIcon className="h-5 w-5" />
-                                </button>
-                                <button onClick={() => setShowTagCatalog(true)} className="p-1.5 text-gray-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-md transition-colors dark:text-gray-400 dark:hover:bg-gray-800" title={t('studiesWorkspace.browseTags', { defaultValue: 'Browse tags' })}>
-                                    <MagnifyingGlassIcon className="h-5 w-5" />
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* What was preached out of this note — derived from the sermons that name
-                        it, so there is nothing to keep in step. Renders only when there is one. */}
-                    <SermonsBuiltOnNote noteId={isNew ? undefined : noteId} />
+                    )}
+                  </div>
                 </div>
-
             </div>
 
             <TagCatalogModal

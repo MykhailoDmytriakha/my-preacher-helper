@@ -14,9 +14,15 @@ import React from 'react';
 
 interface RichMarkdownToolbarProps {
     editor: Editor | null;
+    /**
+     * Keeps the formatting buttons in view while a long note scrolls past. Opt-in: the
+     * editor also lives inside modals, where sticking would fight their own scrolling.
+     * The number is the distance from the top of the window to stick at.
+     */
+    stickyTop?: number;
 }
 
-export function RichMarkdownToolbar({ editor }: RichMarkdownToolbarProps) {
+export function RichMarkdownToolbar({ editor, stickyTop }: RichMarkdownToolbarProps) {
     const toolbarState = useEditorState({
         editor,
         selector: ({ editor: currentEditor }) => ({
@@ -42,7 +48,9 @@ export function RichMarkdownToolbar({ editor }: RichMarkdownToolbarProps) {
     };
 
     return (
-        <div className="flex flex-wrap items-center gap-1 p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-t-xl border-b-0">
+        <div
+            className={`flex flex-wrap items-center gap-1 p-2 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-t-xl border-b-0${stickyTop === undefined ? '' : ' sticky z-20'}`}
+            style={stickyTop === undefined ? undefined : { top: stickyTop }}>
             <ToolbarButton
                 onClick={(e) => handleToggle(() => editor.chain().focus().toggleBold().run(), e)}
                 isActive={toolbarState.bold}

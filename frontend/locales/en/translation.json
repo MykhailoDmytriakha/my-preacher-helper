@@ -1366,6 +1366,20 @@
     "mainPoints": "Main Points",
     "conclusion": "Conclusion"
   },
+  "textOutline": {
+    "collapseAll": "Collapse all",
+    "expandAll": "Expand all",
+    "toggleSection": "Collapse or expand section: {{title}}"
+  },
+  "notePanel": {
+    "outline": "Outline",
+    "outlineEmpty": "This note has no headings yet.",
+    "hide": "Hide panel",
+    "show": "Show panel",
+    "sermons": "Sermons on this note",
+    "created": "Created {{date}}",
+    "updated": "Edited {{date}}"
+  },
   "feedback": {
     "button": "Feedback",
     "title": "Send Feedback",
@@ -2668,14 +2682,6 @@
       "selected": "Selected",
       "noneSelected": "No tags selected",
       "done": "Done"
-    },
-    "focusMode": {
-      "title": "Focus Mode",
-      "exitFocus": "Exit focus",
-      "noteOf": "{{current}} of {{total}}",
-      "prevNote": "Previous note",
-      "nextNote": "Next note",
-      "keyboardHint": "Use ← → arrows to navigate, ESC to exit"
     },
     "shareLinks": {
       "title": "Share links",
