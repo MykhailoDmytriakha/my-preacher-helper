@@ -113,17 +113,16 @@ describe('LanguageInitializer Component', () => {
     expect(mockChangeLanguage).not.toHaveBeenCalled();
   });
 
-  test('does nothing while authentication is loading', async () => {
+  test('does nothing while authentication is loading', () => {
     // Mock loading state
     mockAuthState.user = null;
     mockAuthState.loading = true;
     mockAuthState.isAuthenticated = false;
     
     render(<LanguageInitializer />);
-    
-    // Wait a bit to ensure no async operations start
-    await new Promise(resolve => setTimeout(resolve, 100));
-    
+
+    // The loading guard is synchronous inside the mounted effect; no wall-clock
+    // sleep is needed to prove that none of the initialization paths starts.
     expect(mockInitializeLanguageFromDB).not.toHaveBeenCalled();
     expect(mockGetCookieLanguage).not.toHaveBeenCalled();
     expect(mockChangeLanguage).not.toHaveBeenCalled();
@@ -153,4 +152,4 @@ describe('LanguageInitializer Component', () => {
     
     consoleSpy.mockRestore();
   });
-}); 
+});

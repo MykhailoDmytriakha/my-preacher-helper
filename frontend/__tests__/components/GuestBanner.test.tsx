@@ -120,16 +120,14 @@ describe('GuestBanner', () => {
     expect(container.firstChild).toBeNull();
   });
 
-   it('does not log out if user is anonymous but not expired', async () => {
+   it('does not log out if user is anonymous but not expired', () => {
      // Simulate an anonymous, non-expired user
      setupUser(true, true); // checkGuestExpiration returning true means NOT expired
 
      render(<GuestBanner />);
 
-     // Wait briefly to ensure async useEffect logic doesn't trigger incorrectly
-     await new Promise(resolve => setTimeout(resolve, 50));
-
+     // checkGuestExpiration and the effect guard are synchronous.
      expect(localStorageRemoveSpy).not.toHaveBeenCalled();
      expect(mockLogOut).not.toHaveBeenCalled();
    });
-}); 
+});

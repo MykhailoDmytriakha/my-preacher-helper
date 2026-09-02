@@ -1,4 +1,4 @@
-import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
@@ -396,9 +396,10 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
           {
             name: 'shows loading state during settings fetch',
             run: async () => {
-              mockGetUserSettings.mockImplementation(() => new Promise(resolve =>
-                setTimeout(() => resolve({ enablePrepMode: true }), 100)
-              ));
+              let resolveSettings!: (value: { enablePrepMode: boolean }) => void;
+              mockGetUserSettings.mockImplementation(() => new Promise(resolve => {
+                resolveSettings = resolve;
+              }));
 
               renderWithProviders(<PrepModeToggle />);
 
@@ -408,7 +409,10 @@ describe('Prep Mode Toggle - End-to-End Workflow', () => {
               // Wait for loading to complete
               await waitFor(() => {
                 expect(mockGetUserSettings).toHaveBeenCalledWith('test-user-id');
-              }, { timeout: 200 });
+              });
+              await act(async () => {
+                resolveSettings({ enablePrepMode: true });
+              });
 
               const heading = await screen.findByText('Preparation Mode (Beta)');
               expect(heading).toBeInTheDocument();

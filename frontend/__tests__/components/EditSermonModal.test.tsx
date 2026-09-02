@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import React from 'react';
 
 import EditSermonModal from '@/components/EditSermonModal';
@@ -274,10 +274,10 @@ describe('EditSermonModal Component', () => {
   });
 
   test('disables buttons during submission', async () => {
-    // Mock implementation with delay to check disabled state
+    let resolveUpdate!: (value: object) => void;
     (updateSermon as jest.Mock).mockImplementationOnce(() => {
       return new Promise(resolve => {
-        setTimeout(() => resolve({}), 100);
+        resolveUpdate = resolve;
       });
     });
     
@@ -294,8 +294,10 @@ describe('EditSermonModal Component', () => {
     // Both buttons should be disabled during submission
     expect(screen.getByText('Cancel')).toBeDisabled();
     expect(saveButton).toBeDisabled();
-    
-    // After the promise resolves, buttons should be enabled again
+
+    await act(async () => {
+      resolveUpdate({});
+    });
     await waitFor(() => {
       expect(screen.getByText('Cancel')).toBeEnabled();
     });

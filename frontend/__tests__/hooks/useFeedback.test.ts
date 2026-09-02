@@ -28,8 +28,13 @@ import { submitFeedback } from '@services/feedback.service';
 
 describe('useFeedback', () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.clearAllMocks();
     (submitFeedback as jest.Mock).mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   test('initial state: modal is closed', () => {
@@ -65,9 +70,11 @@ describe('useFeedback', () => {
 
     let returnValue: boolean | void = undefined;
     await act(async () => {
-      returnValue = await result.current.handleSubmitFeedback(
+      const submission = result.current.handleSubmitFeedback(
         'My feedback', 'suggestion', ['data:image/png;base64,abc'], 'user-123'
       );
+      await jest.runAllTimersAsync();
+      returnValue = await submission;
     });
 
     expect(submitFeedback).toHaveBeenCalledWith(
@@ -82,7 +89,9 @@ describe('useFeedback', () => {
     const { result } = renderHook(() => useFeedback());
 
     await act(async () => {
-      await result.current.handleSubmitFeedback('Minimal', 'bug');
+      const submission = result.current.handleSubmitFeedback('Minimal', 'bug');
+      await jest.runAllTimersAsync();
+      await submission;
     });
 
     expect(submitFeedback).toHaveBeenCalledWith('Minimal', 'bug', [], 'anonymous');
@@ -96,7 +105,9 @@ describe('useFeedback', () => {
 
     let returnValue: boolean | void = undefined;
     await act(async () => {
-      returnValue = await result.current.handleSubmitFeedback('text', 'type', [], 'user1');
+      const submission = result.current.handleSubmitFeedback('text', 'type', [], 'user1');
+      await jest.runAllTimersAsync();
+      returnValue = await submission;
     });
 
     expect(toast.error).toHaveBeenCalledWith('feedback.errorMessage');
@@ -113,11 +124,13 @@ describe('useFeedback', () => {
 
     let refusal: unknown;
     await act(async () => {
-      try {
-        await result.current.handleSubmitFeedback('Exact refused feedback', 'bug');
-      } catch (error) {
-        refusal = error;
-      }
+      const submission = result.current
+        .handleSubmitFeedback('Exact refused feedback', 'bug')
+        .catch((error) => {
+          refusal = error;
+        });
+      await jest.runAllTimersAsync();
+      await submission;
     });
 
     expect(refusal).toMatchObject({ code: 'permission-denied' });
@@ -144,6 +157,7 @@ describe('useFeedback', () => {
 
     await act(async () => {
       resolveSubmission();
+      await jest.runAllTimersAsync();
       await submission;
     });
   });

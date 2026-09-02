@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 import PlanEditorModal from '@/components/plan-editor/PlanEditorModal';
 import { updateSermonOutline } from '@/services/outline.service';
@@ -86,6 +86,12 @@ const openEditor = () =>
     <PlanEditorModal isOpen sermon={sermon} onClose={() => undefined} onOutlineUpdate={jest.fn()} />
   );
 
+const flushSaveDebounce = async () => {
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(120);
+  });
+};
+
 beforeAll(() => {
   const root = document.createElement('div');
   root.id = 'portal-root';
@@ -94,6 +100,7 @@ beforeAll(() => {
 
 describe('the plan editor saves with what it opened with', () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     // A refused plan is now stored DURABLY, so it survives between tests exactly as
     // it survives a closed modal — which is the point, and which means each test
     // must start from an empty store or it inherits the previous refusal.
@@ -103,12 +110,17 @@ describe('the plan editor saves with what it opened with', () => {
     mockSave.mockResolvedValue(null);
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('passes the OPENING plan so the write can merge instead of replace', async () => {
     openEditor();
 
     fireEvent.click(screen.getByText('edit-a-point'));
 
-    await waitFor(() => expect(mockSave).toHaveBeenCalled());
+    await flushSaveDebounce();
+    expect(mockSave).toHaveBeenCalled();
     const [, , baseOutline] = mockSave.mock.calls[0];
     // NOT undefined: undefined means "replace the whole field", which is the
     // behaviour that erased the other device's point.
@@ -127,7 +139,8 @@ describe('the plan editor saves with what it opened with', () => {
 
     fireEvent.click(screen.getByText('edit-a-point'));
 
-    expect(await screen.findByText('freshness.conflictTitle')).toBeInTheDocument();
+    await flushSaveDebounce();
+    expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
     expect(screen.getByText('freshness.conflictKeepMine')).toBeInTheDocument();
     expect(screen.getByText('freshness.conflictTakeTheirs')).toBeInTheDocument();
   });
@@ -143,9 +156,11 @@ describe('the plan editor saves with what it opened with', () => {
     openEditor();
 
     fireEvent.click(screen.getByText('edit-a-point'));
-    fireEvent.click(await screen.findByText('freshness.conflictKeepMine'));
+    await flushSaveDebounce();
+    fireEvent.click(screen.getByText('freshness.conflictKeepMine'));
 
-    await waitFor(() => expect(mockSave.mock.calls.length).toBeGreaterThan(1));
+    await flushSaveDebounce();
+    expect(mockSave.mock.calls.length).toBeGreaterThan(1);
     // And it states the SERVER's plan as the base: the person has seen the other
     // version and chose theirs, so there is nothing left to collide with.
     const [, , baseOutline] = mockSave.mock.calls[mockSave.mock.calls.length - 1];
@@ -170,13 +185,15 @@ describe('the plan editor saves with what it opened with', () => {
     openEditor();
 
     fireEvent.click(screen.getByText('edit-a-point')); // first edit -> request starts
-    await waitFor(() => expect(mockSave).toHaveBeenCalledTimes(1));
+    await flushSaveDebounce();
+    expect(mockSave).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByText('edit-a-point')); // types more meanwhile
 
     resolveFirst?.({ introduction: [], main: [{ id: 'p1', text: 'THE OLD ANSWER' }], conclusion: [] });
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await flushSaveDebounce();
 
     // The board still holds what the person typed LAST, not the stale answer.
+    expect(mockSave).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId('board-text')).toHaveTextContent('edit 2');
   });
 
@@ -187,14 +204,15 @@ describe('the plan editor saves with what it opened with', () => {
     openEditor();
 
     fireEvent.click(screen.getByText('edit-a-point'));
-    await screen.findByText('freshness.conflictTitle');
+    await flushSaveDebounce();
+    expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
     const callsAtRefusal = mockSave.mock.calls.length;
 
     // Keep editing: not one more write may go out, or one of them would land and
     // silently answer the question being asked of the person.
     fireEvent.click(screen.getByText('edit-a-point'));
     fireEvent.click(screen.getByText('edit-a-point'));
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await act(async () => Promise.resolve());
 
     expect(mockSave.mock.calls).toHaveLength(callsAtRefusal);
   });
@@ -208,6 +226,7 @@ describe('the plan editor saves with what it opened with', () => {
  */
 describe('a refusal keeps the LATEST text durable, not the first snapshot', () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     localStorage.clear();
     editCount = 0;
     mockSave.mockReset();
@@ -216,16 +235,21 @@ describe('a refusal keeps the LATEST text durable, not the first snapshot', () =
     );
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('stores what is on the board now, and does not write again', async () => {
     openEditor();
 
     fireEvent.click(screen.getByText('edit-a-point')); // -> refusal for "edit 1"
-    await screen.findByText('freshness.conflictTitle');
+    await flushSaveDebounce();
+    expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
     const callsAtRefusal = mockSave.mock.calls.length;
 
     // Keep typing while the question is up.
     fireEvent.click(screen.getByText('edit-a-point')); // "edit 2"
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await act(async () => Promise.resolve());
 
     // No further write went out…
     expect(mockSave.mock.calls).toHaveLength(callsAtRefusal);

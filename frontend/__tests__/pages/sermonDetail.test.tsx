@@ -997,9 +997,8 @@ describe('Sermon Detail Page', () => {
     });
   });
   describe('Prep Mode Interactions', () => {
-    it('triggers save callbacks when steps are updated', async () => {
+    it('triggers save callbacks when steps are updated', () => {
       mockUseSearchParams.mockReturnValue({ get: (param: string) => (param === 'mode' ? 'prep' : null) });
-      const user = userEvent.setup();
 
       render(
         <TestProviders>
@@ -1046,7 +1045,7 @@ describe('Sermon Detail Page', () => {
 
       for (const btnId of knownButtons) {
         if (screen.queryByTestId(btnId)) {
-          await user.click(screen.getByTestId(btnId));
+          fireEvent.click(screen.getByTestId(btnId));
         }
       }
 

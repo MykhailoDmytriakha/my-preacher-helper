@@ -193,10 +193,12 @@ describe('audioConcat', () => {
     describe('audioBufferToWavBlob', () => {
         it('should encode audio buffer to wav blob', () => {
             const ctx = new AudioContext();
-            const buffer = ctx.createBuffer(1, 44100, 44100);
+            // A short buffer exercises every encoder/header branch without spending
+            // build time encoding a full second of identical zero samples.
+            const buffer = ctx.createBuffer(1, 1024, 44100);
             const blob = audioBufferToWavBlob(buffer);
             expect(blob.type).toBe('audio/wav');
-            expect(blob.size).toBe(44 + 44100 * 2);
+            expect(blob.size).toBe(44 + 1024 * 2);
         });
     });
 });
