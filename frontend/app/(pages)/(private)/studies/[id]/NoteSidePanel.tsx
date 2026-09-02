@@ -4,8 +4,6 @@ import {
     BookmarkIcon,
     ChevronDoubleLeftIcon,
     ChevronDoubleRightIcon,
-    ChevronDownIcon,
-    ChevronRightIcon,
     DocumentTextIcon,
     ListBulletIcon,
     TagIcon,
@@ -14,7 +12,8 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { type MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
-import { type MarkdownSection } from '@/utils/markdownSections';
+
+import { NoteOutlineTree } from './NoteOutlineTree';
 
 interface NoteSidePanelProps {
     /** Shared with the note text, so folding here folds there. */
@@ -141,18 +140,11 @@ export function NoteSidePanel({
                 </div>
 
                 {outline.hasSections ? (
-                    <div className="flex flex-col gap-px">
-                        {outline.outline.sections.map((section) => (
-                            <OutlineRow
-                                key={section.id}
-                                section={section}
-                                outline={outline}
-                                depth={0}
-                                foldable={foldable}
-                                activeSectionId={activeSectionId}
-                            />
-                        ))}
-                    </div>
+                    <NoteOutlineTree
+                        outline={outline}
+                        foldable={foldable}
+                        activeSectionId={activeSectionId}
+                    />
                 ) : (
                     <p className="px-2 text-xs leading-4 text-gray-400 dark:text-gray-500">
                         {t('notePanel.outlineEmpty')}
@@ -174,92 +166,6 @@ export function NoteSidePanel({
                 {sermons}
             </div>
         </aside>
-    );
-}
-
-/**
- * Brings a heading into view. The section is opened first (with its ancestors) so the
- * jump never lands inside folded text.
- */
-function jumpToSection(outline: MarkdownOutlineControl, id: string) {
-    outline.revealSection(id);
-    // After the reveal has rendered, or the target may still be unmounted.
-    requestAnimationFrame(() => {
-        document
-            .querySelector(`[data-section-id="${id}"]`)
-            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-}
-
-function OutlineRow({
-    section,
-    outline,
-    depth,
-    foldable,
-    activeSectionId,
-}: {
-    section: MarkdownSection;
-    outline: MarkdownOutlineControl;
-    depth: number;
-    foldable: boolean;
-    activeSectionId?: string | null;
-}) {
-    const { t } = useTranslation();
-    const collapsed = foldable && outline.isCollapsed(section.id);
-    const canFold = foldable && (section.children.length > 0 || Boolean(section.body));
-    const isActive = activeSectionId === section.id;
-
-    return (
-        <>
-            <div
-                className={`flex items-start gap-1.5 rounded-md py-1 pr-1 transition-colors ${isActive ? 'bg-emerald-50 dark:bg-emerald-900/25' : 'hover:bg-gray-200/60 dark:hover:bg-gray-800'}`}
-                style={{ paddingLeft: `${4 + depth * 12}px` }}
-            >
-                {canFold ? (
-                    <button
-                        type="button"
-                        onClick={() => outline.toggleSection(section.id)}
-                        aria-expanded={!collapsed}
-                        aria-label={t('textOutline.toggleSection', { title: section.headingText })}
-                        className="mt-0.5 shrink-0 rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-300/60 hover:text-gray-800 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-                    >
-                        {collapsed ? (
-                            <ChevronRightIcon className="h-3.5 w-3.5" />
-                        ) : (
-                            <ChevronDownIcon className="h-3.5 w-3.5" />
-                        )}
-                    </button>
-                ) : (
-                    <span className="w-[19px] shrink-0" />
-                )}
-                {/* The whole label is the jump target — a heading in a 272px column has to
-                    wrap, so truncating it would hide exactly what you are aiming at. */}
-                <button
-                    type="button"
-                    onClick={() => jumpToSection(outline, section.id)}
-                    title={section.headingText}
-                    className={`min-w-0 flex-1 break-words text-left text-[13px] leading-5 transition-colors hover:text-emerald-700 dark:hover:text-emerald-300 ${isActive ? 'text-emerald-800 dark:text-emerald-200' : depth === 0 ? 'text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'} ${depth === 0 ? 'font-bold' : ''}`}
-                >
-                    {section.headingText}
-                </button>
-                {collapsed && section.children.length > 0 && (
-                    <span className="mt-0.5 shrink-0 text-[11px] text-gray-400 dark:text-gray-600">
-                        {section.children.length}
-                    </span>
-                )}
-            </div>
-            {!collapsed &&
-                section.children.map((child) => (
-                    <OutlineRow
-                        key={child.id}
-                        section={child}
-                        outline={outline}
-                        depth={depth + 1}
-                        foldable={foldable}
-                        activeSectionId={activeSectionId}
-                    />
-                ))}
-        </>
     );
 }
 

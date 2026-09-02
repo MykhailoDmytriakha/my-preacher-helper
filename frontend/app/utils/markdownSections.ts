@@ -135,3 +135,17 @@ export const findSectionIdsMatching = (sections: MarkdownSection[], query: strin
     walk(sections, []);
     return Array.from(new Set(hits));
 };
+
+/** The section with this id, at any depth — used to name the section being read. */
+export const findSectionById = (
+    sections: MarkdownSection[],
+    id: string | null | undefined
+): MarkdownSection | null => {
+    if (!id) return null;
+    for (const section of sections) {
+        if (section.id === id) return section;
+        const found = findSectionById(section.children, id);
+        if (found) return found;
+    }
+    return null;
+};

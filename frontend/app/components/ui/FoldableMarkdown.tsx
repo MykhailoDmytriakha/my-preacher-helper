@@ -72,7 +72,7 @@ export function FoldableMarkdown({
                         onClick={() => toggleSection(section.id)}
                         aria-expanded={!collapsed}
                         aria-label={t('textOutline.toggleSection', { title: section.headingText })}
-                        className="mt-1 shrink-0 rounded p-0.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                        className="mt-0.5 shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:mt-1 sm:p-0.5 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200"
                     >
                         <ChevronRightIcon
                             className={`h-4 w-4 transition-transform ${collapsed ? '' : 'rotate-90'}`}
@@ -103,8 +103,11 @@ export function FoldableMarkdown({
                     </div>
                 </div>
 
+                {/* A phone has ~390px of width, and every level used to spend 24 of them:
+                    three levels deep and a quarter of the line was gutter. The guide line
+                    still says "this belongs to the heading above" at a third of the cost. */}
                 {!collapsed && hasContent && (
-                    <div className="ml-2 border-l border-gray-200 pl-4 dark:border-gray-700">
+                    <div className="ml-0 border-l border-gray-200 pl-2.5 sm:ml-2 sm:pl-4 dark:border-gray-700">
                         {section.body && (
                             <MarkdownDisplay
                                 content={section.body}

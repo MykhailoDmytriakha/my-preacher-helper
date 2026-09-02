@@ -1373,6 +1373,7 @@
   },
   "notePanel": {
     "outline": "Outline",
+    "properties": "Properties",
     "outlineEmpty": "This note has no headings yet.",
     "hide": "Hide panel",
     "show": "Show panel",

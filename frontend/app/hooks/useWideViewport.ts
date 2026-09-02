@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 /** Tailwind's `lg` breakpoint — where the note page has room for a side panel. */
 const WIDE_QUERY = '(min-width: 1024px)';
+/** Tailwind's `sm` breakpoint — below it the note's action bar needs its own two rows. */
+const ROOMY_HEADER_QUERY = '(min-width: 640px)';
 
 /**
  * True when the viewport is wide enough for the note's side panel.
@@ -16,23 +18,15 @@ const WIDE_QUERY = '(min-width: 1024px)';
  * the first effect.
  */
 export function useWideViewport(): boolean {
-    const [isWide, setIsWide] = useState(true);
+    return useMediaQuery(WIDE_QUERY);
+}
 
-    useEffect(() => {
-        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
-
-        const mediaQuery = window.matchMedia(WIDE_QUERY);
-        setIsWide(mediaQuery.matches);
-
-        const listener = (event: MediaQueryListEvent) => setIsWide(event.matches);
-        if (typeof mediaQuery.addEventListener === 'function') {
-            mediaQuery.addEventListener('change', listener);
-            return () => mediaQuery.removeEventListener('change', listener);
-        }
-
-        mediaQuery.addListener(listener);
-        return () => mediaQuery.removeListener(listener);
-    }, []);
-
-    return isWide;
+/**
+ * True when the action bar can lay out on one row with the title centred over it.
+ *
+ * Below it the same controls need two rows, and the second row is the one that stays
+ * while reading — so which layout is mounted is a decision, not a set of hidden copies.
+ */
+export function useRoomyHeader(): boolean {
+    return useMediaQuery(ROOMY_HEADER_QUERY);
 }
