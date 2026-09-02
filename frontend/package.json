@@ -6,7 +6,7 @@
     "dev": "cross-env NEXT_PUBLIC_ENABLE_SERVICE_WORKER=true next dev",
     "dev:no-pwa": "next dev",
     "dev:pwa": "cross-env NEXT_PUBLIC_ENABLE_SERVICE_WORKER=true next dev",
-    "build": "npm run debug:directory && npm run test:build && node scripts/build-production.js",
+    "build": "npm run debug:directory && node scripts/build-production.js",
     "preview:pwa": "next build && next start",
     "start": "next start",
     "lint": "eslint .",

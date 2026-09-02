@@ -7,6 +7,7 @@ const formatSeconds = milliseconds => `${(milliseconds / 1000).toFixed(2)}s`
 const createBuildCommands = ({
   cwd = process.cwd(),
   env = process.env,
+  jestCli = require.resolve('jest/bin/jest'),
   nextCli = require.resolve('next/dist/bin/next'),
   nodeExecutable = process.execPath,
   tscCli = require.resolve('typescript/bin/tsc'),
@@ -24,6 +25,13 @@ const createBuildCommands = ({
     env: { ...env, NEXT_EXTERNAL_TYPECHECK: 'true' },
     executable: nodeExecutable,
     label: 'Next.js production build',
+  },
+  test: {
+    args: [jestCli, '--passWithNoTests', '--maxWorkers=100%'],
+    cwd,
+    env: { ...env, JEST_SHOW_LOGS: 'false', NODE_ENV: 'test' },
+    executable: nodeExecutable,
+    label: 'Jest test suite',
   },
   typecheck: {
     args: [
@@ -75,6 +83,7 @@ const runProductionBuild = async ({
   await execute(commands.typegen)
 
   const parallelResults = await Promise.allSettled([
+    execute(commands.test),
     execute(commands.build),
     execute(commands.typecheck),
   ])
