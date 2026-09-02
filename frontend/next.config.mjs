@@ -13,6 +13,13 @@ const swDisabled =
 // shell (the git SHA changes every prod build; falls back to a constant in dev).
 const swRevision = process.env.VERCEL_GIT_COMMIT_SHA || "dev";
 
+// The production build wrapper runs route type generation in an isolated
+// directory before starting Next.js and the strict TypeScript check in
+// parallel. Keeping these switches opt-in means a direct `next build` retains
+// Next.js's built-in type check.
+const externalTypecheck = process.env.NEXT_EXTERNAL_TYPECHECK === "true";
+const typegenDistDir = process.env.NEXT_TYPEGEN_DIST_DIR;
+
 const withSerwist = withSerwistInit({
   swSrc: "app/sw.ts",
   swDest: "public/sw.js",
@@ -132,6 +139,12 @@ const MARKDOWN_TEST_PACKAGES = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true, // Enable Strict Mode to surface issues early
+  ...(typegenDistDir ? { distDir: typegenDistDir } : {}),
+
+  typescript: {
+    ignoreBuildErrors: externalTypecheck,
+    ...(typegenDistDir ? { tsconfigPath: "tsconfig.build.json" } : {}),
+  },
 
   // next/jest only transforms ESM dependencies listed here. Keep this test-only
   // so parser integration tests can unmock music-metadata and execute its real

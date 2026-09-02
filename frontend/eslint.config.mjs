@@ -19,6 +19,7 @@ const eslintConfig = [
   {
     ignores: [
       "**/.next/**",
+      "**/.next-typecheck/**",
       "**/node_modules/**",
       "**/coverage/**",
       "**/dist/**",

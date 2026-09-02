@@ -111,6 +111,16 @@ const config: Config = {
   ],
   // Optional: Add more reporters for different output formats
   coverageReporters: ['text', 'text-summary', 'json-summary', 'lcov', 'html'],
+  // Preserve the measured pre-optimization floor. Build/test acceleration must
+  // not silently trade away application coverage in a later change.
+  coverageThreshold: {
+    global: {
+      branches: 77.54,
+      functions: 81.17,
+      lines: 89.57,
+      statements: 89.57,
+    },
+  },
 }
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async
