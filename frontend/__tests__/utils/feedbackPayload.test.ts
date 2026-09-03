@@ -94,8 +94,11 @@ describe('feedbackPayload', () => {
   it.each([
     ['ASCII', 'abc', 3],
     ['two-byte code points', 'Пр', 4],
+    ['a three-byte BMP code point', '€', 3],
     ['a surrogate pair', '🙂', 4],
     ['a lone surrogate replacement', '\ud800', 3],
+    ['a lone low surrogate replacement', '\udc00', 3],
+    ['a high surrogate followed by ASCII', '\ud800a', 4],
   ])('counts UTF-8 bytes for %s', (_label, value, expected) => {
     expect(getUtf8ByteLength(value)).toBe(expected);
   });

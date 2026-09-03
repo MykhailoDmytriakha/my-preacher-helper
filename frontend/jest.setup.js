@@ -1,6 +1,7 @@
 // Performance optimization: Only load heavy mocks when needed
 import 'openai/shims/node';
 import '@testing-library/jest-dom';
+
 import 'jest-environment-jsdom';
 import fetchMock from 'jest-fetch-mock';
 import React from 'react';
