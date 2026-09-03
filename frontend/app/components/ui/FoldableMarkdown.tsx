@@ -77,20 +77,26 @@ export function FoldableMarkdown({
                 style={{ scrollMarginTop }}
             >
                 <div className="flex items-start gap-1">
-                    <button
-                        type="button"
-                        onClick={() => toggleSection(section.id)}
-                        aria-expanded={!collapsed}
-                        aria-label={t('textOutline.toggleSection', { title: section.headingText })}
-                        className={`mt-0.5 shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:mt-1 sm:p-0.5 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200 ${FOLD_ARROW_TONE}`}
-                    >
-                        <ChevronRightIcon
-                            className={`h-4 w-4 transition-transform ${collapsed ? '' : 'rotate-90'}`}
-                        />
-                    </button>
+                    {/* An empty heading — no text of its own, no headings under it — has
+                        nothing to fold, so it keeps the indent and loses the control. */}
+                    {hasContent ? (
+                        <button
+                            type="button"
+                            onClick={() => toggleSection(section.id)}
+                            aria-expanded={!collapsed}
+                            aria-label={t('textOutline.toggleSection', { title: section.headingText })}
+                            className={`mt-0.5 shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:mt-1 sm:p-0.5 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200 ${FOLD_ARROW_TONE}`}
+                        >
+                            <ChevronRightIcon
+                                className={`h-4 w-4 transition-transform ${collapsed ? '' : 'rotate-90'}`}
+                            />
+                        </button>
+                    ) : (
+                        <span className="shrink-0 w-7 sm:w-5" />
+                    )}
                     <div
-                        onClick={() => toggleSection(section.id)}
-                        className="flex min-w-0 flex-1 cursor-pointer items-start gap-2"
+                        onClick={hasContent ? () => toggleSection(section.id) : undefined}
+                        className={`flex min-w-0 flex-1 items-start gap-2 ${hasContent ? 'cursor-pointer' : ''}`}
                     >
                         <div className={`min-w-0 ${HEADING_RESET} ${headingTone(section.level)}`}>
                             <MarkdownDisplay

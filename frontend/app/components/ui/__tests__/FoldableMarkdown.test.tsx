@@ -44,6 +44,16 @@ describe('FoldableMarkdown', () => {
         expect(screen.queryByRole('button')).not.toBeInTheDocument();
     });
 
+    // BUG-20260903-fold-arrow-where-nothing-folds: the arrow was drawn for every heading,
+    // including one with no text of its own and no headings under it, where pressing it
+    // hides nothing.
+    it('offers no fold arrow on a heading with nothing under it', () => {
+        render(<FoldableMarkdown content={['# Bare heading', '# Filled heading', 'Some text.'].join('\n')} />);
+
+        expect(screen.queryByRole('button', { name: 'Toggle Bare heading' })).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Toggle Filled heading' })).toBeInTheDocument();
+    });
+
     it('shows the text before the first heading and every level below it', () => {
         render(<FoldableMarkdown content={NOTE} />);
 

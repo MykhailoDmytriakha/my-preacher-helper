@@ -65,8 +65,10 @@ describe('NoteSidePanel', () => {
         const toggleSection = jest.fn();
         render(<NoteSidePanel {...props} outline={makeControl({ toggleSection })} />);
 
-        fireEvent.click(screen.getByRole('button', { name: 'Toggle Inner' }));
-        expect(toggleSection).toHaveBeenCalledWith('0.0');
+        // "Outer" is the only row with headings under it, so it is the only one the tree
+        // offers an arrow for — see BUG-20260903-fold-arrow-where-nothing-folds.
+        fireEvent.click(screen.getByRole('button', { name: 'Toggle Outer' }));
+        expect(toggleSection).toHaveBeenCalledWith('0');
     });
 
     it('opens a section before jumping to it, so the jump never lands in folded text', () => {

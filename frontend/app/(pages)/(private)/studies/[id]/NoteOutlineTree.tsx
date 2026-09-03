@@ -66,6 +66,61 @@ export function jumpToSection(outline: MarkdownOutlineControl, id: string) {
     });
 }
 
+/**
+ * What stands at the head of an outline row: an arrow when there are headings to hide
+ * under it, a bullet when the row is a leaf, and bare space for a parent while the note
+ * is being edited — there nothing folds, but the row is not a leaf either.
+ */
+function RowMarker({
+    canFold,
+    hasChildren,
+    collapsed,
+    touch,
+    label,
+    onToggle,
+}: {
+    canFold: boolean;
+    hasChildren: boolean;
+    collapsed: boolean;
+    touch: boolean;
+    label: string;
+    onToggle: () => void;
+}) {
+    if (canFold) {
+        return (
+            <button
+                type="button"
+                onClick={onToggle}
+                aria-expanded={!collapsed}
+                aria-label={label}
+                className={`shrink-0 rounded text-gray-400 transition-colors hover:bg-gray-300/60 hover:text-gray-800 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200 ${touch ? 'mt-px p-1.5' : 'mt-0.5 p-0.5'}`}
+            >
+                {collapsed ? (
+                    <ChevronRightIcon className="h-3.5 w-3.5" />
+                ) : (
+                    <ChevronDownIcon className="h-3.5 w-3.5" />
+                )}
+            </button>
+        );
+    }
+
+    if (hasChildren) {
+        return <span className={touch ? 'w-[27px] shrink-0' : 'w-[19px] shrink-0'} />;
+    }
+
+    return (
+        <span
+            data-testid="outline-leaf-marker"
+            aria-hidden
+            className={`flex shrink-0 items-center justify-center ${touch ? 'mt-px h-[26px] w-[27px]' : 'mt-0.5 h-[18px] w-[19px]'}`}
+        >
+            <span
+                className={`rounded-full bg-gray-400 dark:bg-gray-500 ${touch ? 'h-1.5 w-1.5' : 'h-1 w-1'}`}
+            />
+        </span>
+    );
+}
+
 function OutlineRow({
     section,
     outline,
@@ -85,7 +140,11 @@ function OutlineRow({
 }) {
     const { t } = useTranslation();
     const collapsed = foldable && outline.isCollapsed(section.id);
-    const canFold = foldable && (section.children.length > 0 || Boolean(section.body));
+    // A tree of headings can only hide headings. Body text under a leaf is folded from
+    // the document itself, where that text is visible — offering it here drew an arrow
+    // that changed nothing on the surface it was drawn on.
+    const hasChildren = section.children.length > 0;
+    const canFold = foldable && hasChildren;
     const isActive = activeSectionId === section.id;
 
     return (
@@ -94,23 +153,14 @@ function OutlineRow({
                 className={`flex items-start gap-1.5 rounded-md pr-1 transition-colors ${touch ? 'py-2' : 'py-1'} ${isActive ? 'bg-emerald-50 dark:bg-emerald-900/25' : 'hover:bg-gray-200/60 dark:hover:bg-gray-800'}`}
                 style={{ paddingLeft: `${4 + depth * 12}px` }}
             >
-                {canFold ? (
-                    <button
-                        type="button"
-                        onClick={() => outline.toggleSection(section.id)}
-                        aria-expanded={!collapsed}
-                        aria-label={t('textOutline.toggleSection', { title: section.headingText })}
-                        className={`shrink-0 rounded text-gray-400 transition-colors hover:bg-gray-300/60 hover:text-gray-800 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200 ${touch ? 'mt-px p-1.5' : 'mt-0.5 p-0.5'}`}
-                    >
-                        {collapsed ? (
-                            <ChevronRightIcon className="h-3.5 w-3.5" />
-                        ) : (
-                            <ChevronDownIcon className="h-3.5 w-3.5" />
-                        )}
-                    </button>
-                ) : (
-                    <span className={touch ? 'w-[27px] shrink-0' : 'w-[19px] shrink-0'} />
-                )}
+                <RowMarker
+                    canFold={canFold}
+                    hasChildren={hasChildren}
+                    collapsed={collapsed}
+                    touch={touch}
+                    label={t('textOutline.toggleSection', { title: section.headingText })}
+                    onToggle={() => outline.toggleSection(section.id)}
+                />
                 {/* The whole label is the jump target — a heading in a narrow column has to
                     wrap, so truncating it would hide exactly what you are aiming at. */}
                 <button
