@@ -8,6 +8,8 @@ import { useMarkdownOutline, type MarkdownOutlineControl } from '@/hooks/useMark
 import { type MarkdownSection } from '@/utils/markdownSections';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
+import { FOLD_ARROW_TONE, headingTone, sectionAir } from './foldableHeadingStyle';
+
 interface FoldableMarkdownProps {
     content: string;
     /** Active in-note search. Sections holding a match are force-opened so nothing hides. */
@@ -65,14 +67,22 @@ export function FoldableMarkdown({
         const hasContent = Boolean(section.body) || section.children.length > 0;
 
         return (
-            <section key={section.id} data-section-id={section.id} style={{ scrollMarginTop }}>
+            <section
+                key={section.id}
+                data-section-id={section.id}
+                // The air belongs to the section, not the heading: the heading's own margins
+                // are reset so it can sit on the toggle row. `first:mt-0` keeps the very
+                // first block flush with whatever container it opens.
+                className={`${sectionAir(section.level)} first:mt-0`}
+                style={{ scrollMarginTop }}
+            >
                 <div className="flex items-start gap-1">
                     <button
                         type="button"
                         onClick={() => toggleSection(section.id)}
                         aria-expanded={!collapsed}
                         aria-label={t('textOutline.toggleSection', { title: section.headingText })}
-                        className="mt-0.5 shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:mt-1 sm:p-0.5 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                        className={`mt-0.5 shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:mt-1 sm:p-0.5 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200 ${FOLD_ARROW_TONE}`}
                     >
                         <ChevronRightIcon
                             className={`h-4 w-4 transition-transform ${collapsed ? '' : 'rotate-90'}`}
@@ -82,7 +92,7 @@ export function FoldableMarkdown({
                         onClick={() => toggleSection(section.id)}
                         className="flex min-w-0 flex-1 cursor-pointer items-start gap-2"
                     >
-                        <div className={`min-w-0 ${HEADING_RESET}`}>
+                        <div className={`min-w-0 ${HEADING_RESET} ${headingTone(section.level)}`}>
                             <MarkdownDisplay
                                 content={section.headingMarkdown}
                                 searchQuery={searchQuery}
