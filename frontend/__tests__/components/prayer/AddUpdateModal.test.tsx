@@ -105,6 +105,9 @@ describe('AddUpdateModal', () => {
     expect(screen.getByPlaceholderText('Share an update')).toHaveValue('Update text');
     expect(onClose).not.toHaveBeenCalled();
 
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
