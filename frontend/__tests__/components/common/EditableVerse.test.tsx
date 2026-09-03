@@ -130,7 +130,7 @@ describe('EditableVerse Component', () => {
           {
             name: 'shows loading and error states',
             run: async () => {
-              mockOnSave.mockImplementationOnce(() => new Promise(resolve => setTimeout(resolve, 100)));
+              mockOnSave.mockImplementationOnce(() => new Promise(() => undefined));
               render(<EditableVerse {...defaultProps} />);
               fireEvent.click(screen.getByTitle('Edit'));
               const textarea = screen.getByDisplayValue(defaultProps.initialVerse);

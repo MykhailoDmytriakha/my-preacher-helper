@@ -157,7 +157,7 @@ describe('EditableTitle Component', () => {
           {
             name: 'shows loading state during commit',
             run: async () => {
-              mockOnSave.mockImplementationOnce(() => new Promise(resolve => setTimeout(resolve, 100)));
+              mockOnSave.mockImplementationOnce(() => new Promise(() => undefined));
               render(<EditableTitle {...defaultProps} />);
               fireEvent.click(screen.getByTitle('Edit'));
               const input = screen.getByDisplayValue(defaultProps.initialTitle);
@@ -360,7 +360,7 @@ describe('EditableTitle Component', () => {
           {
             name: 'shows loading state during commit',
             run: async () => {
-              mockOnSave.mockImplementationOnce(() => new Promise(resolve => setTimeout(resolve, 100)));
+              mockOnSave.mockImplementationOnce(() => new Promise(() => undefined));
               render(<EditableTitle {...defaultProps} />);
               fireEvent.click(screen.getByTitle('Edit'));
               const input = screen.getByDisplayValue(defaultProps.initialTitle);

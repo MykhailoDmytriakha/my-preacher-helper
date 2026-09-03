@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor, act } from '@testing-library/react';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useTags } from '@/hooks/useTags';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
@@ -201,6 +201,7 @@ describe('StudyNoteEditorPage Pagination', () => {
     });
 
     it('brings the tick back once the save lands, instead of hiding it forever', async () => {
+        jest.useFakeTimers();
         // The first cut of the fix compared against a REF, which never re-renders: the tick
         // went out on the first keystroke and never returned, even after the server had the
         // text. Saying nothing is not better than saying it wrong.
@@ -224,12 +225,15 @@ describe('StudyNoteEditorPage Pagination', () => {
         fireEvent.change(screen.getByTestId('rich-markdown-editor'), {
             target: { value: 'Текст, который сервер принял' },
         });
-        await waitFor(() => expect(screen.queryByText('common.saved')).not.toBeInTheDocument());
+        expect(screen.queryByText('common.saved')).not.toBeInTheDocument();
 
-        await waitFor(() => expect(updateNote).toHaveBeenCalled(), { timeout: 5000 });
-        await waitFor(() => expect(screen.getByText('common.saved')).toBeInTheDocument(), {
-            timeout: 5000,
+        // Exercise the real 1.5 s debounce without making every build sleep for it.
+        await act(async () => {
+            await jest.advanceTimersByTimeAsync(1500);
         });
+        expect(updateNote).toHaveBeenCalled();
+        expect(screen.getByText('common.saved')).toBeInTheDocument();
+        jest.useRealTimers();
     });
 
     it('navigates to the previous note when the left chevron is clicked', () => {

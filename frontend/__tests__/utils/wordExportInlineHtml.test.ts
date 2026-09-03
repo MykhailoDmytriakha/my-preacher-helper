@@ -31,12 +31,27 @@ describe('wordExport inline HTML formatting (matches the plan UI)', () => {
   });
 
   it('maps the inline HTML formatting tags the UI allows', async () => {
-    expect(await docXml('<b>x</b>')).toContain('<w:b/>');
-    expect(await docXml('<strong>x</strong>')).toContain('<w:b/>');
-    expect(await docXml('<i>x</i>')).toContain('<w:i/>');
-    expect(await docXml('<em>x</em>')).toContain('<w:i/>');
-    expect(await docXml('<s>x</s>')).toContain('<w:strike/>');
-    expect(await docXml('<mark>x</mark>')).toContain('<w:highlight w:val="yellow"/>');
+    const xml = await docXml([
+      '<b>bold-b</b>',
+      '<strong>bold-strong</strong>',
+      '<i>italic-i</i>',
+      '<em>italic-em</em>',
+      '<s>struck</s>',
+      '<mark>highlighted</mark>',
+    ].join(' '));
+    const document = new DOMParser().parseFromString(xml, 'application/xml');
+    const runs = Array.from(document.getElementsByTagName('w:r'));
+    const formattedRun = (text: string) =>
+      runs.find((run) => run.textContent === text);
+
+    expect(formattedRun('bold-b')?.getElementsByTagName('w:b')).toHaveLength(1);
+    expect(formattedRun('bold-strong')?.getElementsByTagName('w:b')).toHaveLength(1);
+    expect(formattedRun('italic-i')?.getElementsByTagName('w:i')).toHaveLength(1);
+    expect(formattedRun('italic-em')?.getElementsByTagName('w:i')).toHaveLength(1);
+    expect(formattedRun('struck')?.getElementsByTagName('w:strike')).toHaveLength(1);
+    expect(
+      formattedRun('highlighted')?.getElementsByTagName('w:highlight')[0]?.getAttribute('w:val')
+    ).toBe('yellow');
   });
 
   it('strips unknown tags (<a>, <span>) but keeps their text', async () => {

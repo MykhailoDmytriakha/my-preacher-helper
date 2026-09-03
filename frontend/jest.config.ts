@@ -16,6 +16,9 @@ const config: Config = {
   // Performance optimizations
   maxWorkers: '50%', // Use 50% of available cores for better performance
   cache: true, // Enable caching for faster subsequent runs
+  // Vercel restores .next/cache between deployments. Jest's own cache keys
+  // include source/config/transform state, so reuse is fast but still fail-safe.
+  cacheDirectory: '<rootDir>/.next/cache/jest',
   detectOpenHandles: false, // Disable open handle detection for faster tests
   forceExit: false, // Don't force exit to allow proper cleanup
   clearMocks: true, // Clear mocks between tests for consistency

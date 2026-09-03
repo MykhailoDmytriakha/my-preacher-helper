@@ -26,6 +26,13 @@ jest.mock('@clients/openAIHelpers', () => ({
 }));
 
 describe('generateThoughtStructured', () => {
+  const runRetryingThought = async <T,>(operation: () => Promise<T>): Promise<T> => {
+    jest.useFakeTimers();
+    const result = operation();
+    await jest.runAllTimersAsync();
+    return result;
+  };
+
   const mockSermon: Sermon = {
     id: 'sermon-123',
     title: 'Test Sermon',
@@ -46,6 +53,10 @@ describe('generateThoughtStructured', () => {
 
   afterAll(() => {
     delete process.env.DEBUG_MODE;
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it('should log debug info when DEBUG_MODE is true', async () => {
@@ -291,11 +302,13 @@ describe('generateThoughtStructured', () => {
       userId: 'user-123',
       resources: ['ai'] as const,
     };
-    const result = await generateThoughtStructured(
-      dictatedText,
-      sermonWithMainVerse,
-      availableTags,
-      { usageAdmission }
+    const result = await runRetryingThought(() =>
+      generateThoughtStructured(
+        dictatedText,
+        sermonWithMainVerse,
+        availableTags,
+        { usageAdmission }
+      )
     );
 
     expect(structuredOutput.callWithStructuredOutput).toHaveBeenCalledTimes(2);
@@ -497,11 +510,13 @@ describe('generateThoughtStructured', () => {
       });
 
     // Act
-    const result = await generateThoughtStructured(
-      'Test',
-      mockSermon,
-      availableTags,
-      { maxRetries: 3 }
+    const result = await runRetryingThought(() =>
+      generateThoughtStructured(
+        'Test',
+        mockSermon,
+        availableTags,
+        { maxRetries: 3 }
+      )
     );
 
     // Assert
@@ -527,11 +542,13 @@ describe('generateThoughtStructured', () => {
     });
 
     // Act
-    const result = await generateThoughtStructured(
-      'Test',
-      mockSermon,
-      availableTags,
-      { maxRetries: 2 }
+    const result = await runRetryingThought(() =>
+      generateThoughtStructured(
+        'Test',
+        mockSermon,
+        availableTags,
+        { maxRetries: 2 }
+      )
     );
 
     // Assert

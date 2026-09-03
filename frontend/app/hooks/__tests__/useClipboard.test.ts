@@ -61,6 +61,7 @@ describe('useClipboard', () => {
   });
 
   it('resets copied state after success duration', async () => {
+    jest.useFakeTimers();
     const { result } = renderHook(() => useClipboard({ successDuration: 100 }));
 
     await act(async () => {
@@ -69,12 +70,12 @@ describe('useClipboard', () => {
 
     expect(result.current.isCopied).toBe(true);
 
-    // Wait for reset
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 150));
+      await jest.advanceTimersByTimeAsync(100);
     });
 
     expect(result.current.isCopied).toBe(false);
+    jest.useRealTimers();
   });
 
   it('uses fallback copy when clipboard API is not available', async () => {

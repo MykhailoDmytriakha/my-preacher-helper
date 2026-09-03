@@ -50,13 +50,10 @@ describe('audioFormatUtils', () => {
       expect(result.valid).toBe(true);
       expect(result.error).toBeUndefined();
 
-      const size = 26 * 1024 * 1024;
-      const chunkSize = 1024 * 1024;
-      const chunks: string[] = [];
-      for (let i = 0; i < Math.ceil(size / chunkSize); i++) {
-        chunks.push('a'.repeat(chunkSize));
-      }
-      const oversizedBlob = new Blob(chunks, { type: 'audio/webm' });
+      // validateAudioBlob is intentionally a metadata guard: it reads Blob.size
+      // and never consumes the bytes. Model that exact browser contract without
+      // allocating and copying 26 MiB on every CI build.
+      const oversizedBlob = { size: 26 * 1024 * 1024 } as Blob;
       result = validateAudioBlob(oversizedBlob);
       expect(result.valid).toBe(false);
       expect(result.error).toContain('too large');

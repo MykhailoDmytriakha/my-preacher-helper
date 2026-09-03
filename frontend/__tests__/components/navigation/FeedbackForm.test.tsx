@@ -3,6 +3,23 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 import FeedbackForm from '@/components/navigation/FeedbackForm';
+import * as feedbackPayload from '@/utils/feedbackPayload';
+
+let mockFeedbackPayloadSizer: jest.Mock | undefined;
+jest.mock('@/utils/feedbackPayload', () => {
+  const actual = jest.requireActual<typeof import('@/utils/feedbackPayload')>(
+    '@/utils/feedbackPayload'
+  );
+  return {
+    ...actual,
+    getFeedbackPayloadByteLength: (
+      payload: Parameters<typeof actual.getFeedbackPayloadByteLength>[0]
+    ) =>
+      mockFeedbackPayloadSizer
+        ? mockFeedbackPayloadSizer(payload)
+        : actual.getFeedbackPayloadByteLength(payload),
+  };
+});
 
 // Mock dependencies
 jest.mock('react-i18next', () => ({
@@ -70,6 +87,7 @@ describe('FeedbackForm Component', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockFeedbackPayloadSizer = undefined;
   });
 
   test('renders form with all elements including attachment button', () => {
@@ -242,10 +260,9 @@ describe('FeedbackForm Component', () => {
   });
 
   test('shows loading state during submission', async () => {
-    // Mock a submission that doesn't resolve immediately
-    const slowMockSubmit = jest.fn().mockImplementation(() => {
-      return new Promise(resolve => setTimeout(() => resolve(true), 100));
-    });
+    // Keep the submission pending: the assertion is about the in-flight state,
+    // so sleeping for an arbitrary wall-clock interval only makes builds flaky.
+    const slowMockSubmit = jest.fn(() => new Promise<boolean>(() => undefined));
 
     render(<FeedbackForm onSubmit={slowMockSubmit} onCancel={mockOnCancel} />);
 
@@ -264,9 +281,7 @@ describe('FeedbackForm Component', () => {
   });
 
   test('disables form controls during submission', async () => {
-    const slowMockSubmit = jest.fn().mockImplementation(() => {
-      return new Promise(resolve => setTimeout(() => resolve(true), 100));
-    });
+    const slowMockSubmit = jest.fn(() => new Promise<boolean>(() => undefined));
 
     render(<FeedbackForm onSubmit={slowMockSubmit} onCancel={mockOnCancel} />);
 
@@ -406,8 +421,15 @@ describe('FeedbackForm Component', () => {
   });
 
   test('rejects an image when cumulative serialized attachments would exceed the payload budget', async () => {
-    const dataUrl = `data:image/png;base64,${'A'.repeat(1_800_000)}`;
+    const dataUrl = 'data:image/png;base64,c21hbGw=';
     const restore = mockFileReader(dataUrl);
+    mockFeedbackPayloadSizer = jest
+      .fn()
+      .mockImplementation(({ images }) =>
+        images.length > 1
+          ? feedbackPayload.MAX_FEEDBACK_ATTACHMENT_PAYLOAD_BYTES + 1
+          : 1_000
+      );
 
     render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
 
@@ -428,13 +450,23 @@ describe('FeedbackForm Component', () => {
       'Feedback is too large for one request. Shorten the message or remove an attachment.'
     );
     expect(screen.getByTestId('attachment-budget').textContent).toBe(remainingAfterFirst);
+    expect(mockFeedbackPayloadSizer).toHaveBeenCalledWith(
+      expect.objectContaining({ images: [dataUrl, dataUrl] })
+    );
 
     restore();
   });
 
   test('prevents serialized text expansion from invalidating accepted attachments at submit', async () => {
-    const dataUrl = `data:image/png;base64,${'A'.repeat(3_300_000)}`;
+    const dataUrl = 'data:image/png;base64,c21hbGw=';
     const restore = mockFileReader(dataUrl);
+    mockFeedbackPayloadSizer = jest
+      .fn()
+      .mockImplementation(({ feedbackText }) =>
+        feedbackText.includes('\\')
+          ? feedbackPayload.MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES + 1
+          : 1_000
+      );
 
     render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
 
@@ -446,11 +478,14 @@ describe('FeedbackForm Component', () => {
     expect(screen.getAllByAltText(/^attachment-/)).toHaveLength(1);
 
     const textarea = screen.getByPlaceholderText('Please tell us what you think...');
-    fireEvent.change(textarea, { target: { value: '\\'.repeat(700_000) } });
+    fireEvent.change(textarea, { target: { value: '\\'.repeat(100) } });
 
     expect(textarea).toHaveValue('');
     expect(screen.getByTestId('payload-error')).toHaveTextContent(
       'Feedback is too large for one request. Shorten the message or remove an attachment.'
+    );
+    expect(mockFeedbackPayloadSizer).toHaveBeenCalledWith(
+      expect.objectContaining({ feedbackText: '\\'.repeat(100), images: [dataUrl] })
     );
 
     fireEvent.change(textarea, { target: { value: 'Fits with the accepted attachment' } });

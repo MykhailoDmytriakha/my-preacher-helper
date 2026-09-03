@@ -67,11 +67,38 @@ describe('feedbackPayload', () => {
     );
   });
 
+  it('enforces cumulative attachments and escaped text at the real production limits', () => {
+    const attachment = `data:image/png;base64,${'A'.repeat(1_800_000)}`;
+    expect(getFeedbackPayloadByteLength({
+      feedbackText: '',
+      feedbackType: 'suggestion',
+      images: [attachment, attachment],
+      userId: '',
+    })).toBeGreaterThan(MAX_FEEDBACK_ATTACHMENT_PAYLOAD_BYTES);
+
+    const nearBudgetAttachment = `data:image/png;base64,${'A'.repeat(3_300_000)}`;
+    expect(getFeedbackPayloadByteLength({
+      feedbackText: '\\'.repeat(700_000),
+      feedbackType: 'suggestion',
+      images: [nearBudgetAttachment],
+      userId: '',
+    })).toBeGreaterThan(MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES);
+    expect(getFeedbackPayloadByteLength({
+      feedbackText: 'Fits with the accepted attachment',
+      feedbackType: 'suggestion',
+      images: [nearBudgetAttachment],
+      userId: '',
+    })).toBeLessThan(MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES);
+  });
+
   it.each([
     ['ASCII', 'abc', 3],
     ['two-byte code points', 'Пр', 4],
+    ['a three-byte BMP code point', '€', 3],
     ['a surrogate pair', '🙂', 4],
     ['a lone surrogate replacement', '\ud800', 3],
+    ['a lone low surrogate replacement', '\udc00', 3],
+    ['a high surrogate followed by ASCII', '\ud800a', 4],
   ])('counts UTF-8 bytes for %s', (_label, value, expected) => {
     expect(getUtf8ByteLength(value)).toBe(expected);
   });

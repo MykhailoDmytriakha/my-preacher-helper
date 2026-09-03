@@ -285,9 +285,20 @@ function renderScratchPanel(overrides: Partial<React.ComponentProps<typeof Scrat
     ...overrides,
   };
 
+  const user = userEvent.setup();
+
   return {
     props,
-    user: userEvent.setup(),
+    // These cases exercise React click handlers, not pointer geometry. Keep the
+    // full user-event keyboard/type paths below, but avoid synthesizing a complete
+    // pointer sequence for every state-transition click in this large suite.
+    user: {
+      ...user,
+      click: async (element: Element) => {
+        fireEvent.click(element);
+        await Promise.resolve();
+      },
+    },
     ...render(<ScratchPanel {...props} />),
   };
 }
@@ -386,7 +397,9 @@ describe('ScratchPanel', () => {
     const input = screen.getByRole('textbox', { name: 'scratch.capture.manualLabel' });
     expect(input.tagName).toBe('TEXTAREA');
     expect(screen.getByRole('button', { name: 'scratch.capture.add' })).toBeVisible();
-    await user.type(input, 'Manual scratch note{enter}with a second line');
+    fireEvent.change(input, {
+      target: { value: 'Manual scratch note\nwith a second line' },
+    });
 
     expect(addScratchNote).not.toHaveBeenCalled();
     expect(input).toHaveValue('Manual scratch note\nwith a second line');
@@ -401,7 +414,9 @@ describe('ScratchPanel', () => {
       expect.anything()
     );
 
-    await user.type(screen.getByRole('textbox', { name: 'scratch.capture.manualLabel' }), 'Second scratch note');
+    fireEvent.change(screen.getByRole('textbox', { name: 'scratch.capture.manualLabel' }), {
+      target: { value: 'Second scratch note' },
+    });
     await user.click(screen.getByRole('button', { name: 'scratch.capture.add' }));
     expect(addScratchNote).toHaveBeenCalledWith('Second scratch note');
     expect(screen.getByRole('textbox', { name: 'scratch.capture.manualLabel' })).toBeInTheDocument();
