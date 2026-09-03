@@ -127,6 +127,62 @@ describe('StudiesPage', () => {
     expect(screen.getByRole('button', { name: 'studiesWorkspace.newNote' })).toBeInTheDocument();
   });
 
+  // BUG-20260902-note-card-chevron-navigates-instead-of-expanding: folding one card was
+  // not wired at all — the only way to see a note without leaving the list was to unfold
+  // every card at once.
+  describe('Folding cards', () => {
+    const seedTwoNotes = () => {
+      mockUseStudyNotes.mockReturnValue({
+        ...baseUseStudyNotesValue(),
+        notes: [
+          createMockNote({ id: 'n1', title: 'First note' }),
+          createMockNote({ id: 'n2', title: 'Second note' }),
+        ],
+      });
+    };
+
+    it('folds a single card open and shut, leaving the other one alone', async () => {
+      seedTwoNotes();
+      render(<StudiesPage />);
+
+      const [firstToggle, secondToggle] = screen.getAllByRole('button', {
+        name: 'common.expand',
+      });
+
+      await userEvent.click(firstToggle);
+
+      expect(
+        screen.getByRole('button', { name: 'common.collapse' })
+      ).toBeInTheDocument();
+      expect(secondToggle).toHaveAttribute('aria-expanded', 'false');
+
+      await userEvent.click(screen.getByRole('button', { name: 'common.collapse' }));
+
+      expect(
+        screen.queryByRole('button', { name: 'common.collapse' })
+      ).not.toBeInTheDocument();
+    });
+
+    it('stops offering "collapse all" as soon as one card is folded shut', async () => {
+      seedTwoNotes();
+      render(<StudiesPage />);
+
+      await userEvent.click(
+        screen.getByRole('button', { name: /studiesWorkspace.expandAll/ })
+      );
+      expect(
+        screen.getByRole('button', { name: /studiesWorkspace.collapseAll/ })
+      ).toBeInTheDocument();
+
+      // Fold one card shut by hand: the bulk button must stop claiming everything is open.
+      await userEvent.click(screen.getAllByRole('button', { name: 'common.collapse' })[0]);
+
+      expect(
+        screen.getByRole('button', { name: /studiesWorkspace.expandAll/ })
+      ).toBeInTheDocument();
+    });
+  });
+
   describe('Type Tabs', () => {
     it('renders all three tabs', () => {
       render(<StudiesPage />);

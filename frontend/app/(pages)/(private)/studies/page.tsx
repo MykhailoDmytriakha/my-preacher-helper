@@ -103,7 +103,6 @@ export default function StudiesPage() {
 
   // Expand state
   const [expandedNoteIds, setExpandedNoteIds] = useState<Set<string>>(new Set());
-  const [allExpanded, setAllExpanded] = useState(false);
 
 
   // Merge available tags with tags from notes
@@ -208,7 +207,6 @@ export default function StudiesPage() {
     if (!searchQuery) {
       // Collapse all when search is cleared to reset view
       setExpandedNoteIds(new Set());
-      setAllExpanded(false);
     }
   }, [searchQuery]);
 
@@ -233,15 +231,22 @@ export default function StudiesPage() {
 
 
 
+  // Derived, never stored: with a separate flag the button kept offering "collapse all"
+  // over a list the reader had already folded shut card by card.
+  const allExpanded =
+    visibleNotes.length > 0 && visibleNotes.every((note) => expandedNoteIds.has(note.id));
+
   const handleExpandAll = () => {
-    if (allExpanded) {
-      setExpandedNoteIds(new Set());
-      setAllExpanded(false);
-    } else {
-      setExpandedNoteIds(new Set(visibleNotes.map((n) => n.id)));
-      setAllExpanded(true);
-    }
+    setExpandedNoteIds(allExpanded ? new Set() : new Set(visibleNotes.map((n) => n.id)));
   };
+
+  const handleToggleNoteExpanded = useCallback((noteId: string) => {
+    setExpandedNoteIds((previous) => {
+      const next = new Set(previous);
+      if (!next.delete(noteId)) next.add(noteId);
+      return next;
+    });
+  }, []);
 
   const handleAddNote = () => {
     router.push('/studies/new');
@@ -496,6 +501,7 @@ export default function StudiesPage() {
               note={note}
               bibleLocale={bibleLocale}
               isExpanded={expandedNoteIds.has(note.id)}
+              onToggleExpand={handleToggleNoteExpanded}
               onEdit={(n) => router.push(`/studies/${n.id}${window.location.search}`)}
               searchQuery={searchQuery}
               onShare={handleShareNote}

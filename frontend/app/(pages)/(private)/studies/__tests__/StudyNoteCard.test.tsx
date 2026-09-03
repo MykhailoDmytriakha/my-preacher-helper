@@ -41,6 +41,79 @@ const createTestNote = (overrides: Partial<StudyNote> = {}): StudyNote => {
 };
 
 describe('StudyNoteCard', () => {
+  // mockPush lives at module scope, so a stale call from an earlier test would make
+  // "did not navigate" pass or fail for the wrong reason.
+  beforeEach(() => {
+    mockPush.mockClear();
+  });
+
+  // BUG-20260902-note-card-chevron-navigates-instead-of-expanding: the chevron drew the
+  // expanded state but had no handler of its own, so the click fell through to the row
+  // and navigated away from the list instead of unfolding the card.
+  describe('fold toggle', () => {
+    it('folds this card open in place instead of leaving the list', async () => {
+      const onToggleExpand = jest.fn();
+      const note = createTestNote({ id: 'note-toggle', title: 'Toggle Note' });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={false}
+          onToggleExpand={onToggleExpand}
+          onEdit={jest.fn()}
+        />
+      );
+
+      await userEvent.click(screen.getByRole('button', { name: 'common.expand' }));
+
+      expect(onToggleExpand).toHaveBeenCalledWith('note-toggle');
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it('folds an open card shut again', async () => {
+      const onToggleExpand = jest.fn();
+      const note = createTestNote({ id: 'note-toggle', title: 'Toggle Note' });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded
+          onToggleExpand={onToggleExpand}
+          onEdit={jest.fn()}
+        />
+      );
+
+      await userEvent.click(screen.getByRole('button', { name: 'common.collapse' }));
+
+      expect(onToggleExpand).toHaveBeenCalledWith('note-toggle');
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it('promises folding only on the control that folds, not on the row that navigates', () => {
+      const note = createTestNote({ id: 'note-aria', title: 'Aria Note' });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={false}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+        />
+      );
+
+      expect(screen.getByRole('button', { name: 'common.expand' })).toHaveAttribute(
+        'aria-expanded',
+        'false'
+      );
+      expect(screen.getByRole('button', { name: /Aria Note/i })).not.toHaveAttribute(
+        'aria-expanded'
+      );
+    });
+  });
+
   it('navigates to the dedicated note page when the card body is clicked', async () => {
     const noteWithTitle = createTestNote({ id: 'note-redirect', title: 'Route Note' });
 
@@ -49,6 +122,7 @@ describe('StudyNoteCard', () => {
         note={noteWithTitle}
         bibleLocale="en"
         isExpanded={false}
+        onToggleExpand={jest.fn()}
         onEdit={jest.fn()}
       />
     );
@@ -67,6 +141,7 @@ describe('StudyNoteCard', () => {
         note={note}
         bibleLocale="en"
         isExpanded={false}
+        onToggleExpand={jest.fn()}
         onEdit={jest.fn()}
       />
     );
@@ -91,6 +166,7 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false}
+          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           searchQuery="Bible"
         />
@@ -113,6 +189,7 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false}
+          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           searchQuery=""
         />
@@ -133,6 +210,7 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={true}
+          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           searchQuery="Bible"
         />
@@ -156,6 +234,7 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="ru"
           isExpanded={false}
+          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           searchQuery="Библия"
         />
@@ -179,6 +258,7 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={true}
+          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           searchQuery="faith"
         />
@@ -204,6 +284,7 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={true}
+          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           searchQuery="Genesis"
         />
@@ -231,6 +312,7 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false} // Collapsed!
+          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           searchQuery="uniqueTag"
         />
@@ -248,6 +330,7 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false} // Collapsed!
+          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           searchQuery="Exodus"
         />
@@ -272,6 +355,7 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false}
+          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           searchQuery="Genesis"
         />
@@ -295,6 +379,7 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false}
+          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           searchQuery="Unique"
         />
@@ -315,6 +400,7 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false}
+          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           searchQuery="missing"
         />
@@ -338,6 +424,7 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false}
+          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
         />
       );
@@ -360,6 +447,7 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={true}
+          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
         />
       );
@@ -385,6 +473,7 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false}
+          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onShare={onShare}
           hasShareLink={false}
@@ -411,6 +500,7 @@ describe('StudyNoteCard', () => {
           note={note}
           bibleLocale="en"
           isExpanded={false}
+          onToggleExpand={jest.fn()}
           onEdit={jest.fn()}
           onShare={onShare}
           hasShareLink={true}

@@ -31,6 +31,8 @@ interface StudyNoteCardProps {
   note: StudyNote;
   bibleLocale: BibleLocale;
   isExpanded: boolean;
+  /** Folds this one card open or shut, without leaving the list. */
+  onToggleExpand: (noteId: string) => void;
   onEdit: (note: StudyNote) => void;
   searchQuery?: string;
   onShare?: (note: StudyNote) => void;
@@ -111,6 +113,7 @@ export default function StudyNoteCard({
   note,
   bibleLocale,
   isExpanded,
+  onToggleExpand,
   onEdit,
   searchQuery = '',
   onShare,
@@ -265,8 +268,26 @@ export default function StudyNoteCard({
         }
       `}
     >
-      {/* Header row: main content is clickable, actions live beside title */}
+      {/* Header row: the chevron folds the card open, the rest of the row opens the note */}
       <div className="flex w-full items-start gap-3 p-4">
+        {/* Deliberately a sibling of the navigating row, not a child of it. As a plain
+            div inside that row it drew the folded state while the click fell through to
+            the row and carried the reader off the list — the arrow promised one thing
+            and did another. */}
+        <button
+          type="button"
+          onClick={() => onToggleExpand(note.id)}
+          aria-expanded={isExpanded}
+          aria-label={isExpanded ? t('common.collapse') : t('common.expand')}
+          title={isExpanded ? t('common.collapse') : t('common.expand')}
+          className="mt-0.5 flex-shrink-0 rounded text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+        >
+          {isExpanded ? (
+            <ChevronDownIcon className="h-5 w-5" />
+          ) : (
+            <ChevronRightIcon className="h-5 w-5" />
+          )}
+        </button>
         <div
           role="button"
           tabIndex={0}
@@ -282,17 +303,7 @@ export default function StudyNoteCard({
             router.push(`/studies/${note.id}${window.location.search}`);
           }}
           className="flex flex-1 items-start gap-3 text-left cursor-pointer"
-          aria-expanded={isExpanded}
         >
-          {/* Chevron */}
-          <div className="mt-0.5 flex-shrink-0 text-gray-400 dark:text-gray-500">
-            {isExpanded ? (
-              <ChevronDownIcon className="h-5 w-5" />
-            ) : (
-              <ChevronRightIcon className="h-5 w-5" />
-            )}
-          </div>
-
           {/* Content preview */}
           <div className="min-w-0 flex-1">
             {/* Title */}
