@@ -28,7 +28,10 @@ export const metadata: Metadata = {
   title: 'My Preacher Helper',
   description: "Записывайте мысли, преобразуйте речь в текст и автоматически улучшайте проповеди с помощью искусственного интеллекта",
   icons: {
-    icon: '/favicon.ico',
+    icon: [
+      { url: '/icons/app-icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: 'any' },
+    ],
     apple: '/icons/apple-touch-icon.png',
   },
   appleWebApp: {

@@ -1,5 +1,6 @@
 /** @jest-environment node */
 
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import sharp from 'sharp';
@@ -47,29 +48,61 @@ describe('PWA manifest', () => {
     expect(await asset.metadata()).toMatchObject({
       format: 'png', width: size, height: size, hasAlpha: false,
     });
-    const { channels } = await asset.stats();
-    expect(channels.every(channel => channel.min === 0 && channel.max === 255)).toBe(true);
+
+    const { data, info } = await asset.removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    const pixelAt = (x: number, y: number) => {
+      const offset = (y * info.width + x) * info.channels;
+      return [data[offset], data[offset + 1], data[offset + 2]];
+    };
+
+    const [backgroundRed, , backgroundBlue] = pixelAt(2, 2);
+    expect(backgroundRed).toBeLessThan(90);
+    expect(backgroundBlue).toBeGreaterThan(200);
+    expect(pixelAt(Math.round(0.35 * info.width), Math.round(0.5 * info.height))
+      .every(channel => channel >= 240)).toBe(true);
+    expect(pixelAt(Math.round(0.65 * info.width), Math.round(0.5 * info.height))
+      .every(channel => channel >= 200)).toBe(true);
   });
 
-  it('keeps every visible maskable emblem pixel inside the central safe circle', async () => {
+  it('keeps every maskable page pixel inside the central safe circle', async () => {
     const { data, info } = await sharp(path.join(__dirname, '../public/icons/icon-maskable-512.png'))
       .removeAlpha().raw().toBuffer({ resolveWithObject: true });
     const center = (info.width - 1) / 2;
     const safeRadiusSquared = (info.width * 0.4) ** 2;
-    let visiblePixels = 0;
+    let pagePixels = 0;
     let pixelsOutsideSafeCircle = 0;
     for (let y = 0; y < info.height; y += 1) {
       for (let x = 0; x < info.width; x += 1) {
         const offset = (y * info.width + x) * info.channels;
-        if (data[offset] < 250 || data[offset + 1] < 250 || data[offset + 2] < 250) {
-          visiblePixels += 1;
+        if (Math.min(data[offset], data[offset + 1], data[offset + 2]) >= 200) {
+          pagePixels += 1;
           if ((x - center) ** 2 + (y - center) ** 2 > safeRadiusSquared) {
             pixelsOutsideSafeCircle += 1;
           }
         }
       }
     }
-    expect(visiblePixels).toBeGreaterThan(1000);
+    expect(pagePixels).toBeGreaterThan(1000);
     expect(pixelsOutsideSafeCircle).toBe(0);
+  });
+
+  it('ships a PNG-compressed favicon with 16, 32, and 48 pixel entries', async () => {
+    const favicon = await readFile(path.join(__dirname, '../app/favicon.ico'));
+    expect([...favicon.subarray(0, 6)]).toEqual([0, 0, 1, 0, 3, 0]);
+
+    const pngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+    [16, 32, 48].forEach((width, index) => {
+      const entryOffset = 6 + index * 16;
+      const imageOffset = favicon.readUInt32LE(entryOffset + 12);
+      expect(favicon[entryOffset]).toBe(width);
+      expect([...favicon.subarray(imageOffset, imageOffset + 8)]).toEqual(pngSignature);
+    });
+  });
+
+  it('keeps the vector source branded as the blue open-book icon', async () => {
+    const svg = await readFile(path.join(__dirname, '../public/icons/app-icon.svg'), 'utf8');
+    expect(svg).toContain('#3b82f6');
+    expect(svg).toContain('#1d4ed8');
+    expect(svg).toContain('#ffffff');
   });
 });
