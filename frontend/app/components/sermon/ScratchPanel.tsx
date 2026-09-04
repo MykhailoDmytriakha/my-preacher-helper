@@ -84,8 +84,6 @@ const EMPTY_OUTLINE: SermonOutline = {
 
 const NOTE_CARD_CLASS =
   "group rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-all duration-150 dark:border-gray-700 dark:bg-gray-800";
-const PLAN_EDITOR_BUTTON_CLASS =
-  "w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 dark:from-violet-500 dark:to-fuchsia-500 px-4 py-2 text-sm font-medium text-white shadow-sm hover:shadow-lg hover:scale-[1.01] active:scale-95 transition-all duration-200";
 const COMPOSE_TIMEOUT_MS = 55_000;
 const APPLY_SETTLE_TIMEOUT_MS = 8_000;
 const SCRATCH_TOAST_OPTIONS = { position: "bottom-right" as const };
@@ -111,11 +109,6 @@ function allComposedPoints(outline: ComposedPlanOutline | null): ComposedPlanPoi
 
 function getScratchSignature(notes: ScratchNote[]) {
   return notes.map((note) => [note.id, note.text, note.section ?? ""].join("\u0000")).join("\u0001");
-}
-
-function isOutlineEmpty(outline?: SermonOutline) {
-  if (!outline) return true;
-  return SECTION_CONFIGS.every(({ key }) => (outline[key] ?? []).length === 0);
 }
 
 function getOutlineSignature(outline?: SermonOutline | null) {
@@ -476,8 +469,6 @@ export default function ScratchPanel({
     return () => revokeVoiceRecoveryUrl(voiceRecoveryUrlRef.current);
   }, []);
 
-  const hasExistingOutline = !isOutlineEmpty(outline);
-  const hasBoardContent = notes.length > 0 || hasExistingOutline;
   const currentOutline = manualOutline ?? outline;
   const incomingOutlineSignature = useMemo(() => getOutlineSignature(outline), [outline]);
   const boardOutline = useMemo(

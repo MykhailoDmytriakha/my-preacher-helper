@@ -1,4 +1,5 @@
 import {
+  APP_THEME_COLORS,
   FLAT_RECORDER_COLORS,
   SERMON_SECTION_COLORS,
   UI_COLORS,
@@ -9,6 +10,10 @@ import {
 import { runScenarios } from '../../test-utils/scenarioRunner';
 
 describe('themeColors', () => {
+  it('defines stable browser and installed-app chrome colors', () => {
+    expect(APP_THEME_COLORS).toEqual({ theme: '#2563eb', background: '#ffffff' });
+  });
+
   describe('SERMON_SECTION_COLORS', () => {
     it('defines expected palette values', async () => {
       await runScenarios(

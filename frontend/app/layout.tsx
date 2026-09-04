@@ -1,5 +1,5 @@
 /* eslint import/order: off */
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, Roboto_Mono } from "next/font/google";
 
 import { OfflineBanner } from "./components/OfflineBanner";
@@ -9,6 +9,7 @@ import { AuthProvider } from "./providers/AuthProvider";
 import { ConnectionProvider } from "./providers/ConnectionProvider";
 import { QueryProvider } from "./providers/QueryProvider";
 import { TextScaleProvider } from "./providers/TextScaleProvider";
+import { APP_THEME_COLORS } from "./utils/themeColors";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { Toaster } from "sonner";
 import "./globals.css";
@@ -24,11 +25,21 @@ const robotoMono = Roboto_Mono({
 });
 
 export const metadata: Metadata = {
+  title: 'My Preacher Helper',
   description: "Записывайте мысли, преобразуйте речь в текст и автоматически улучшайте проповеди с помощью искусственного интеллекта",
   icons: {
     icon: '/favicon.ico',
-    apple: '/apple-touch-icon.png',
+    apple: '/icons/apple-touch-icon.png',
   },
+  appleWebApp: {
+    capable: true,
+    title: 'My Preacher Helper',
+    statusBarStyle: 'default',
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: APP_THEME_COLORS.theme,
 };
 
 // Inline script to prevent Flash of Incorrect Theme (FOIT)

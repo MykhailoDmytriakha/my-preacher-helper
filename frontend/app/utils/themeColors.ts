@@ -11,6 +11,12 @@
 // Constants for repeated strings
 const TEXT_WHITE = "text-white";
 
+// Browser/app chrome uses the existing blue identity and a light launch surface.
+export const APP_THEME_COLORS = {
+  theme: '#2563eb',
+  background: '#ffffff',
+} as const;
+
 export const SERMON_SECTION_COLORS = {
   introduction: {
     base: "#d97706",       // Amber-600

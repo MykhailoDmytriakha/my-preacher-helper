@@ -81,7 +81,7 @@ export function useManualConspectus({
   const baseline = usePlanTextBaseline(sermon?.id);
 
   /** Cells whose write sits in the offline queue — see `usePendingPlanCells`. */
-  const { nodeIds: pendingNodeIds, ref: pendingRef, refresh: refreshPending } =
+  const { nodeIds: pendingNodeIds, refresh: refreshPending } =
     usePendingPlanCells(sermon);
 
   const sermonRef = useRef<Sermon | null>(sermon);
