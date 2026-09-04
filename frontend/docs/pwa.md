@@ -34,6 +34,13 @@ Merely receiving an update must not discard the text currently being typed.
 ## Developer contract
 
 - `app/manifest.ts`: stable ID `/`, start `/`, scope `/`, standalone display.
+- Install identity is brand-only and deliberately not localized: `My Preacher Helper`,
+  `Preacher Helper` (manifest `name`/`short_name`, `metadata.title`, Apple web-app
+  title). A manifest is one build-time file per origin and an installed app keeps its
+  identity, so the three-locale rule cannot apply to it; the product already writes the
+  brand in Latin in all three locales (the landing title in
+  `locales/{en,ru,uk}/translation.json`). Do not add translatable copy such as a
+  `description` to the manifest.
 - `app/layout.tsx`: Apple web-app metadata and browser theme; zoom remains enabled.
 - `public/icons/`: square PNGs for Chromium and Apple, plus a separately padded
   maskable PNG. Generated from the existing emblem with

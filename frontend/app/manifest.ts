@@ -2,13 +2,16 @@ import { APP_THEME_COLORS } from '@/utils/themeColors';
 
 import type { MetadataRoute } from 'next';
 
-/** Install identity is independent of the existing offline and data stores. */
+/**
+ * Install identity is independent of the existing offline and data stores.
+ * Only brand names live here: a manifest is one build-time file per origin, so it
+ * cannot follow the user's locale (see docs/pwa.md, Developer contract).
+ */
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: '/',
     name: 'My Preacher Helper',
     short_name: 'Preacher Helper',
-    description: 'Capture thoughts, prepare sermons, and keep your work close at hand.',
     lang: 'en',
     start_url: '/',
     scope: '/',

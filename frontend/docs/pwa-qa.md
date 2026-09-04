@@ -1,6 +1,7 @@
 # PWA QA record — 2026-09-04
 
-Branch: `codex/pwa-installability`. Local work only; no commit, push or deployment.
+Branch: `codex/pwa-installability`, merged into `main` on 2026-09-04 after the release
+check recorded at the end of this document.
 Status: implementation and currently feasible QA complete under the owner's
 updated “test as far as possible” scope. Cross-platform acceptance remains
 **conditional**; the limitations and failed supplemental checks below are not passes.
@@ -189,3 +190,46 @@ An upstream [WebKit automation issue](https://github.com/microsoft/playwright/is
 describes a service-worker/CacheStorage reload hang on macOS WebKit 26.0. It is a
 diagnostic lead only, not proof that this run has the same cause. No production
 workaround, service-worker removal or weakened security setting was introduced.
+
+## Release check — 2026-09-04
+
+Performed on branch commit `c2a92b6b` before merging into `main`; the earlier QA
+above was done on the same working tree before it was committed. The pre-merge
+follow-up commit adds the `sharp` pin, removes the manifest `description` and
+updates these documents; its gates are listed at the end of this section.
+
+- Gates on branch HEAD from `frontend/`: `npx tsc --noEmit` clean; `npx eslint .`
+  0 errors / 71 pre-existing warnings; `npm run test:fast` 529 suites / 4875 tests.
+- Clean-install build: `git archive` of the commit into an empty directory, `npm ci`,
+  `NEXT_PUBLIC_API_BASE='' npx next build` exit 0, `/manifest.webmanifest` emitted as a
+  static route.
+- Served over HTTP (`next start`, no cookies): `/manifest.webmanifest` 200
+  `application/manifest+json`; `/icons/icon-192.png`, `/icons/icon-512.png`,
+  `/icons/icon-maskable-512.png`, `/icons/apple-touch-icon.png` 200 `image/png`;
+  `/sw.js` 200 with `/~offline` precached; `/~offline` 200; `/` and `/dashboard` carry
+  exactly one `rel="manifest"` link, `theme-color`, the Apple touch icon and web-app
+  metadata; the old `/apple-touch-icon.png` path (linked on `main` at the time) is 404.
+- Chromium (system Chrome, persistent profile, CDP): `Page.getAppManifest` errors `[]`;
+  `Page.getInstallabilityErrors` `[]` before and after reload; service-worker controller
+  present after reload. An incognito context reports only `in-incognito`, which is a
+  harness artifact.
+- `sharp` was only a transitive optional dependency of `next` while
+  `__tests__/manifest.test.ts` imports it and Vercel runs Jest before the build; hiding
+  `node_modules/sharp` reproduced `Cannot find module 'sharp'`. It is now an explicit
+  exact devDependency (`sharp@0.34.5`, deduplicated with Next's copy), so the package
+  itself no longer depends on Next's optional dependency graph. Sharp's platform
+  binaries (`@img/sharp-*`) stay optional by sharp's own design; if one were missing,
+  `npm ci` would still succeed and the icon test would fail at import time, which
+  also blocks the Vercel build.
+- The manifest `description` (English only) was removed before merge: the manifest is
+  one build-time file and cannot follow the user's locale, so it carries brand names
+  only (see `pwa.md`, Developer contract). `manifest.test.ts` does not assert it.
+- Gates after the follow-up changes, from `frontend/`: `npx tsc --noEmit` clean;
+  `npm run test:fast` 529 suites / 4875 tests.
+- The built `sw.js` does not precache `/icons/*`; browsers fetch icons at install time,
+  so this does not affect installability.
+
+After the production deploy, repeat the HTTP checks against `https://my-preacher-helper.com`
+(the manifest and icon URLs returned 404 there before this change) and install from a
+real Android phone and a real iPhone. The open acceptance items listed under
+"Remaining acceptance work" above are unchanged by this release check.
