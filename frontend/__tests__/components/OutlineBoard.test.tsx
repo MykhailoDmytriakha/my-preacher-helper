@@ -110,6 +110,73 @@ describe('OutlineBoard', () => {
     expect(screen.queryByText('structure.addPointButton')).not.toBeInTheDocument();
   });
 
+  it('appends a normalized sub-point after the highest existing position', () => {
+    const existing = { id: 's1', text: 'Existing', position: 4000 };
+    const value: SermonOutline = {
+      introduction: [],
+      main: [{ id: 'p1', text: 'Point', subPoints: [existing] }],
+      conclusion: [],
+    };
+    const onChange = jest.fn();
+    render(<OutlineBoard value={value} onChange={onChange} />);
+    fireEvent.click(screen.getByText('structure.addSubPoint'));
+    const input = screen.getByPlaceholderText('structure.subPointPlaceholder');
+    fireEvent.change(input, { target: { value: '  new supporting idea  ' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0][0].main[0].subPoints).toEqual([
+      existing,
+      { id: expect.any(String), text: 'New supporting idea', position: 5000 },
+    ]);
+    expect(value.main[0].subPoints).toEqual([existing]);
+    expect(screen.queryByPlaceholderText('structure.subPointPlaceholder')).not.toBeInTheDocument();
+  });
+
+  it('edits a sub-point while preserving its identity, position and siblings', () => {
+    const first = { id: 's1', text: 'First', position: 1000, note: 'Keep this note' };
+    const second = { id: 's2', text: 'Second', position: 2000 };
+    const value: SermonOutline = {
+      introduction: [],
+      main: [{ id: 'p1', text: 'Point', subPoints: [first, second] }],
+      conclusion: [],
+    };
+    const onChange = jest.fn();
+    render(<OutlineBoard value={value} onChange={onChange} />);
+    fireEvent.doubleClick(screen.getByText('First'));
+    fireEvent.change(screen.getByDisplayValue('First'), { target: { value: '  revised first  ' } });
+    fireEvent.click(screen.getByLabelText('common.save'));
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange.mock.calls[0][0].main[0].subPoints).toEqual([
+      { ...first, text: 'Revised first' },
+      second,
+    ]);
+    expect(value.main[0].subPoints).toEqual([first, second]);
+  });
+
+  it('confirms sub-point deletion before detaching its thoughts', () => {
+    const value: SermonOutline = {
+      introduction: [],
+      main: [{ id: 'p1', text: 'Point', subPoints: [{ id: 's1', text: 'Child', position: 1000 }] }],
+      conclusion: [],
+    };
+    const onChange = jest.fn();
+    const onSubPointDeleted = jest.fn();
+    render(
+      <OutlineBoard value={value} onChange={onChange}
+        onSubPointDeleted={onSubPointDeleted} getSubPointThoughtCount={() => 2} />
+    );
+    const childRow = screen.getByText('Child').parentElement!;
+    fireEvent.click(within(childRow).getByLabelText('common.delete'));
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onSubPointDeleted).not.toHaveBeenCalled();
+    expect(screen.getByText('structure.subPointDeleteConfirm')).toBeInTheDocument();
+    fireEvent.click(screen.getByText('common.delete'));
+    expect(onChange.mock.calls[0][0].main[0].subPoints).toEqual([]);
+    expect(onSubPointDeleted).toHaveBeenCalledWith('p1', 's1');
+  });
+
   it('renders the optional scratch pool and point/sub-point strips only when scratch is provided', () => {
     const value: SermonOutline = {
       introduction: [],

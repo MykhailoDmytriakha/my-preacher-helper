@@ -240,20 +240,6 @@ const getScratchSubPointIdFromDroppable = (droppableId: string): string | null =
 const sortSubPoints = (subPoints: SubPoint[]): SubPoint[] =>
   [...subPoints].sort((a, b) => a.position - b.position);
 
-const withSubPointPositions = (subPoints: SubPoint[]): SubPoint[] =>
-  subPoints.map((sp, idx) => ({ ...sp, position: (idx + 1) * 1000 }));
-
-const findPointLocation = (
-  outline: Record<SectionKey, OutlinePoint[]>,
-  outlinePointId: string
-): { section: SectionKey; point: OutlinePoint } | null => {
-  for (const section of SECTIONS) {
-    const point = outline[section.key].find((item) => item.id === outlinePointId);
-    if (point) return { section: section.key, point };
-  }
-  return null;
-};
-
 const findParentPointIdForSubPoint = (
   outline: Record<SectionKey, OutlinePoint[]>,
   subPointId: string
