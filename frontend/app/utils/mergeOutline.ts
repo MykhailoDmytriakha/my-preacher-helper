@@ -234,27 +234,7 @@ export function mergeOutline(
       return;
     }
 
-    // --- PLACEMENT: whoever moved it decides; both moving differently is a question.
-    const movedHere = Boolean(startedIn) && hereSection !== startedIn;
-    const movedThere = Boolean(startedIn) && thereSection !== startedIn;
-    if (movedHere && movedThere && hereSection !== thereSection) {
-      collisions.push(id);
-      placement.set(id, hereSection as Section);
-    } else if (movedThere && !movedHere) {
-      placement.set(id, thereSection as Section);
-    } else {
-      placement.set(id, hereSection as Section);
-    }
-
-    // --- CONTENT, decided independently of where the point now sits.
-    const changedHere = !start || !samePoint(start, here);
-    const changedThere = !start || !samePoint(start, there);
-    if (changedHere && changedThere && !samePoint(here, there)) {
-      if (!collisions.includes(id)) collisions.push(id);
-      content.set(id, here);
-    } else {
-      content.set(id, changedThere ? there : here);
-    }
+    reconcileExistingPoint({ id, startedIn, hereSection, thereSection, start, here, there }, placement, content, collisions);
   });
 
   const emitted = new Set<string>();
@@ -310,4 +290,41 @@ export function mergeOutline(
   });
 
   return { outline: merged, collisions };
+}
+
+function reconcileExistingPoint(
+  { id, startedIn, hereSection, thereSection, start, here, there }: {
+    id: string;
+    startedIn: Section | undefined;
+    hereSection: Section | undefined;
+    thereSection: Section | undefined;
+    start: OutlinePoint | undefined;
+    here: OutlinePoint;
+    there: OutlinePoint;
+  },
+  placement: Map<string, Section>,
+  content: Map<string, OutlinePoint>,
+  collisions: string[]
+): void {
+  // --- PLACEMENT: whoever moved it decides; both moving differently is a question.
+  const movedHere = Boolean(startedIn) && hereSection !== startedIn;
+  const movedThere = Boolean(startedIn) && thereSection !== startedIn;
+  if (movedHere && movedThere && hereSection !== thereSection) {
+    collisions.push(id);
+    placement.set(id, hereSection as Section);
+  } else if (movedThere && !movedHere) {
+    placement.set(id, thereSection as Section);
+  } else {
+    placement.set(id, hereSection as Section);
+  }
+
+  // --- CONTENT, decided independently of where the point now sits.
+  const changedHere = !start || !samePoint(start, here);
+  const changedThere = !start || !samePoint(start, there);
+  if (changedHere && changedThere && !samePoint(here, there)) {
+    if (!collisions.includes(id)) collisions.push(id);
+    content.set(id, here);
+  } else {
+    content.set(id, changedThere ? there : here);
+  }
 }

@@ -7,6 +7,8 @@ import { sermonsRepository } from '@repositories/sermons.repository';
 
 import type { PreachDate } from '@/models/models';
 
+const SERMON_NOT_FOUND_ERROR = 'Sermon not found';
+
 // PUT /api/sermons/[id]/preach-dates/[dateId]
 export async function PUT(
     request: Request,
@@ -21,7 +23,7 @@ export async function PUT(
         const { id, dateId } = await params;
         const sermon = await sermonsRepository.fetchSermonById(id);
         if (!sermon) {
-            return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+            return NextResponse.json({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
         }
         if (sermon.userId !== uid) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -53,7 +55,7 @@ export async function PUT(
         const { id, dateId } = await params;
         console.error(`Error updating preach date ${dateId} in sermon ${id}:`, error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        if (errorMessage === "Sermon not found" || errorMessage === "Preach date not found") {
+        if (errorMessage === SERMON_NOT_FOUND_ERROR || errorMessage === "Preach date not found") {
             return NextResponse.json({ error: errorMessage }, { status: 404 });
         }
         const refusal = resolveFirestoreWriteRefusal(error);
@@ -81,7 +83,7 @@ export async function DELETE(
         const { id, dateId } = await params;
         const sermon = await sermonsRepository.fetchSermonById(id);
         if (!sermon) {
-            return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+            return NextResponse.json({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
         }
         if (sermon.userId !== uid) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -93,7 +95,7 @@ export async function DELETE(
         const { id, dateId } = await params;
         console.error(`Error deleting preach date ${dateId} from sermon ${id}:`, error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        if (errorMessage === "Sermon not found") {
+        if (errorMessage === SERMON_NOT_FOUND_ERROR) {
             return NextResponse.json({ error: errorMessage }, { status: 404 });
         }
         const refusal = resolveFirestoreWriteRefusal(error);

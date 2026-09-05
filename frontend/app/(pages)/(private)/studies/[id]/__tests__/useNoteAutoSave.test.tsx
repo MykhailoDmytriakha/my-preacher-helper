@@ -141,6 +141,66 @@ describe('creating a note keeps the durable draft at all times', () => {
     expect(readDraft(draftKey('u1', 'real-id', 'note'))).toBeNull();
   });
 
+  it('cancels and resumes autosave when only the conflict block changes', async () => {
+    const baselineRef = { current: payload as NoteDraftPayload | null };
+    const savedNote: StudyNote & { revision: number } = {
+      ...payload,
+      id: 'n1',
+      userId: 'u1',
+      content: 'Updated text',
+      revision: 2,
+      createdAt: '2026-09-05T12:00:00.000Z',
+      updatedAt: '2026-09-05T12:00:01.000Z',
+      isDraft: false,
+    };
+    const updateNote = jest.fn(() => ({
+      ...persistedWrite(Promise.resolve()),
+      result: Promise.resolve(savedNote),
+    }));
+    // Keep every other input stable so unrelated callback changes cannot hide a
+    // stale closure over saveBlocked.
+    const options = {
+      noteId: 'n1',
+      isNew: false,
+      isInitialized: true,
+      ...payload,
+      content: savedNote.content,
+      updateNote,
+      createNote: jest.fn(),
+      uid: 'u1',
+      setCreatedNoteId: jest.fn(),
+      t: ((key: string) => key) as never,
+      baselineRef,
+      revisionRef: { current: 1 as number | null },
+      deliberateOverwriteRef: { current: false },
+      resaveNonce: 0,
+      onConflict: jest.fn(),
+      onSaved: jest.fn(),
+    };
+    const { result, rerender } = renderHook(
+      ({ saveBlocked }) => useNoteAutoSave({ ...options, saveBlocked }),
+      { initialProps: { saveBlocked: false } },
+    );
+
+    await act(async () => { jest.advanceTimersByTime(1000); });
+    rerender({ saveBlocked: true });
+    await act(async () => { jest.advanceTimersByTime(2000); });
+    expect(updateNote).not.toHaveBeenCalled();
+    expect(result.current.lastSaved).toBeNull();
+
+    rerender({ saveBlocked: false });
+    await act(async () => { jest.advanceTimersByTime(1500); });
+    expect(updateNote).toHaveBeenCalledTimes(1);
+    expect(updateNote).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'n1',
+      updates: { content: 'Updated text' },
+      expectedRevision: 1,
+      expectedBaseline: payload,
+    }));
+    expect(result.current.lastSaved).not.toBeNull();
+    expect(options.revisionRef.current).toBe(2);
+  });
+
   it('moves the baseline on a QUEUED update, so the same note is not enqueued forever', async () => {
     /**
      * Nominally online, Firestore unreachable: the update goes to the durable outbox and
@@ -188,5 +248,7 @@ describe('creating a note keeps the durable draft at all times', () => {
     // The autosave is debounced (~1.5s), so both waits get room.
     await waitFor(() => expect(updateNote).toHaveBeenCalledTimes(1), { timeout: 4000 });
     await waitFor(() => expect(baselineRef.current).toEqual(updated), { timeout: 4000 });
+    await act(async () => { jest.advanceTimersByTime(6000); });
+    expect(updateNote).toHaveBeenCalledTimes(1);
   });
 });

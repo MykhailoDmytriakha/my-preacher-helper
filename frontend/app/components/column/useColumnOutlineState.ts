@@ -19,6 +19,8 @@ import { mapColumnIdToSectionType } from "./utils";
 import type { SectionType, Translate } from "./types";
 import type { SermonOutline, SermonPoint, SubPoint } from "@/models/models";
 
+const SAVE_OUTLINE_ERROR_KEY = "errors.saveOutlineError";
+
 /**
  * Section types and plan fields do NOT share a name: the middle one is `mainPart`
  * in the UI and `main` in the stored plan. Reading the committed section back needs
@@ -124,7 +126,7 @@ export function useColumnOutlineState({
   const triggerSaveOutline = (updatedPoints: SermonPoint[]) => {
     if (!sermonId) return;
     if (!isOnline) {
-      toast.error(t("errors.saveOutlineError", { defaultValue: "Failed to save structure" }));
+      toast.error(t(SAVE_OUTLINE_ERROR_KEY, { defaultValue: "Failed to save structure" }));
       return;
     }
 
@@ -188,7 +190,7 @@ export function useColumnOutlineState({
           typeof navigator !== 'undefined' && navigator.onLine === false
             ? queuedMutation(`outline:${sermonId}`, request)
             : persistedWrite(request),
-          (error) => toast.error(t(writeFailureTranslationKey(error, 'errors.saveOutlineError')))
+          (error) => toast.error(t(writeFailureTranslationKey(error, SAVE_OUTLINE_ERROR_KEY)))
         );
         const saved = acceptance.kind === 'persisted' ? await request : outlineToSave;
 
@@ -220,7 +222,7 @@ export function useColumnOutlineState({
         });
       } catch (error) {
         console.error("Error saving sermon outline:", error);
-        toast.error(t(writeFailureTranslationKey(error, "errors.saveOutlineError")));
+        toast.error(t(writeFailureTranslationKey(error, SAVE_OUTLINE_ERROR_KEY)));
       } finally {
         // ONLY if no newer save has been scheduled since this one started.
         if (generation === saveGenerationRef.current) {

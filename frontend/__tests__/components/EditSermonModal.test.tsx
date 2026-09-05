@@ -240,7 +240,7 @@ describe('EditSermonModal Component', () => {
     fireEvent.change(verse, { target: { value: 'Exact refused sermon verse' } });
     fireEvent.click(screen.getByText('Save'));
 
-    const dialog = screen.getByRole('dialog', { name: 'Edit Sermon' });
+    expect(screen.getByRole('dialog', { name: 'Edit Sermon' })).toBeInTheDocument();
     // The MESSAGE belongs to the dashboard's card badge — one refusal, one reporter.
     // The editor's duty is what is checked above: it stays open with the exact text.
     expect(title).toHaveValue('Exact refused sermon title');

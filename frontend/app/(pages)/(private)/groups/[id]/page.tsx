@@ -683,17 +683,7 @@ export default function GroupDetailPage() {
           </button>
 
           <div className="flex items-center gap-2">
-            {saveStatus === 'saving' && (
-              <span className="text-xs text-gray-400 dark:text-gray-500">
-                {t('common.saving', { defaultValue: 'Saving...' })}
-              </span>
-            )}
-            {saveStatus === 'saved' && (
-              <span className="text-xs text-emerald-600 dark:text-emerald-400">
-                <CheckCircleIcon className="mr-1 inline h-3.5 w-3.5" />
-                {t('common.saved', { defaultValue: 'Saved' })}
-              </span>
-            )}
+            <GroupSaveStatus status={saveStatus} t={t} />
             <button
               onClick={() => setShowDeleteConfirm(true)}
               disabled={deletingGroup}
@@ -940,18 +930,30 @@ export default function GroupDetailPage() {
           handleDeleteGroup();
         }}
         title={t('workspaces.groups.actions.deleteConfirmTitle', { defaultValue: 'Delete Group' })}
-        description={
-          group
-            ? `${t('workspaces.groups.actions.deleteConfirm', {
-              defaultValue: 'Delete this group permanently?',
-            })} "${group.title}"`
-            : t('workspaces.groups.actions.deleteConfirm', {
-              defaultValue: 'Delete this group permanently?',
-            })
-        }
+        description={`${t('workspaces.groups.actions.deleteConfirm', {
+          defaultValue: 'Delete this group permanently?',
+        })} "${group.title}"`}
         confirmText={t('workspaces.groups.actions.delete', { defaultValue: 'Delete' })}
         isDeleting={deletingGroup}
       />
     </section>
+  );
+}
+
+function GroupSaveStatus({ status, t }: { status: string; t: ReturnType<typeof useTranslation>['t'] }) {
+  return (
+    <>
+      {status === 'saving' && (
+        <span className="text-xs text-gray-400 dark:text-gray-500">
+          {t('common.saving', { defaultValue: 'Saving...' })}
+        </span>
+      )}
+      {status === 'saved' && (
+        <span className="text-xs text-emerald-600 dark:text-emerald-400">
+          <CheckCircleIcon className="mr-1 inline h-3.5 w-3.5" />
+          {t('common.saved', { defaultValue: 'Saved' })}
+        </span>
+      )}
+    </>
   );
 }

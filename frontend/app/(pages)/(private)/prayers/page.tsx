@@ -44,6 +44,8 @@ import {
 } from '@/utils/recoverableWrite';
 import '@locales/i18n';
 
+const WRITE_REFUSED_KEY = 'writeRecovery.refused';
+
 const LS_SEARCH_UPDATES = 'prayers:searchInUpdates';
 const LS_SEARCH_TAGS = 'prayers:searchInTags';
 const LS_SEARCH_ANSWERS = 'prayers:searchInAnswers';
@@ -249,14 +251,14 @@ export default function PrayerPage() {
   const handleCreate = (payload: PrayerFormPayload) => {
     // No signed-in user means NOTHING holds this text — closing the form as if the
     // write were merely skipped erased what the person had just written. Refuse.
-    if (!user?.uid) return refusedWrite('unauthenticated', 'No signed-in user for this write', t('writeRecovery.refused'));
+    if (!user?.uid) return refusedWrite('unauthenticated', 'No signed-in user for this write', t(WRITE_REFUSED_KEY));
     // Create is accepted by the persisted mutation/outbox, not the server. The
     // optimistic row is its signal, so this deliberately announces nothing.
     return createPrayer({ userId: user.uid, ...payload });
   };
 
   const handleEdit = (payload: PrayerFormPayload) => {
-    if (!editingPrayer) return refusedWrite('not-found', 'The prayer being edited is gone', t('writeRecovery.refused'));
+    if (!editingPrayer) return refusedWrite('not-found', 'The prayer being edited is gone', t(WRITE_REFUSED_KEY));
     // State what this modal opened with — revision AND values. Without them the
     // list screen was a hole straight through the protection: a laptop showing
     // yesterday's list could rename a prayer the phone had rewritten in the
@@ -312,7 +314,7 @@ export default function PrayerPage() {
   };
 
   const handleAddUpdate = (text: string, recoveryDraft: string) => {
-    if (!addingUpdateForId) return refusedWrite('not-found', 'The prayer for this update is gone', t('writeRecovery.refused'));
+    if (!addingUpdateForId) return refusedWrite('not-found', 'The prayer for this update is gone', t(WRITE_REFUSED_KEY));
     // This is queue-owned at launch; accept silently and let the modal close.
     return addUpdate(addingUpdateForId, text, recoveryDraft);
   };

@@ -15,6 +15,8 @@ import { type MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
 
 import { NoteOutlineTree } from './NoteOutlineTree';
 
+const OUTLINE_LABEL_KEY = 'notePanel.outline';
+
 interface NoteSidePanelProps {
     /** Shared with the note text, so folding here folds there. */
     outline: MarkdownOutlineControl;
@@ -87,7 +89,7 @@ export function NoteSidePanel({
                 <div className="my-2 h-px w-6 bg-gray-200 dark:bg-gray-700" />
                 {/* Says what is behind the rail, so a hidden panel still advertises what it
                     holds — and each icon is the way back in. */}
-                <button type="button" onClick={onToggleCollapsed} title={t('notePanel.outline')} aria-label={t('notePanel.outline')} className={RAIL_BUTTON}>
+                <button type="button" onClick={onToggleCollapsed} title={t(OUTLINE_LABEL_KEY)} aria-label={t(OUTLINE_LABEL_KEY)} className={RAIL_BUTTON}>
                     <ListBulletIcon className="h-[17px] w-[17px]" />
                 </button>
                 <button type="button" onClick={onToggleCollapsed} title={t('studiesWorkspace.scriptureRefs')} aria-label={t('studiesWorkspace.scriptureRefs')} className={RAIL_BUTTON}>
@@ -125,7 +127,7 @@ export function NoteSidePanel({
 
             <div className="flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
-                    <span className={SECTION_LABEL}>{t('notePanel.outline')}</span>
+                    <span className={SECTION_LABEL}>{t(OUTLINE_LABEL_KEY)}</span>
                     {foldable && outline.sectionIds.length > 1 && (
                         <button
                             type="button"

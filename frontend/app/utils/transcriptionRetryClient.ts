@@ -189,11 +189,7 @@ export async function transcribeAudioWithRetry(
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     const isLast = attempt === maxRetries;
 
-    const formData = new FormData();
-    formData.append('audio', blob, 'recording.webm');
-    for (const [key, value] of Object.entries(options.fields ?? {})) {
-      formData.append(key, value);
-    }
+    const formData = buildTranscriptionFormData(blob, options.fields);
 
     let response: Response;
     try {
@@ -278,4 +274,13 @@ export function buildTranscriptionErrorMessage(
     parts.push(t('audio.transcribeError.billingHint'));
   }
   return Array.from(new Set(parts)).join(' ');
+}
+
+function buildTranscriptionFormData(blob: Blob, fields: TranscribeWithRetryOptions['fields']): FormData {
+  const formData = new FormData();
+  formData.append('audio', blob, 'recording.webm');
+  for (const [key, value] of Object.entries(fields ?? {})) {
+    formData.append(key, value);
+  }
+  return formData;
 }

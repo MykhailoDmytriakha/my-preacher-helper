@@ -19,6 +19,8 @@
  * список выводится из кода, а не поддерживается руками.
  */
 
+const REFLECTION_STAGE_LABEL = "Размышления";
+
 export type PromptArea = "sermon" | "dictation" | "studies";
 
 export interface PromptDescriptor {
@@ -89,7 +91,7 @@ export const PROMPT_REGISTRY: Record<string, PromptDescriptor> = {
   "sermon.insights.all": {
     area: "sermon",
     areaLabel: "Проповедь",
-    stageLabel: "Размышления",
+    stageLabel: REFLECTION_STAGE_LABEL,
     step: "3.1",
     display: "Проповедь · Размышления · всё сразу",
     where: "Классический → «Размышления над проповедью» → «Сгенерировать»",
@@ -99,7 +101,7 @@ export const PROMPT_REGISTRY: Record<string, PromptDescriptor> = {
   "sermon.insights.topics": {
     area: "sermon",
     areaLabel: "Проповедь",
-    stageLabel: "Размышления",
+    stageLabel: REFLECTION_STAGE_LABEL,
     step: "3.2",
     display: "Проповедь · Размышления · темы",
     where: "«Размышления над проповедью» → обновление у блока «Темы»",
@@ -109,7 +111,7 @@ export const PROMPT_REGISTRY: Record<string, PromptDescriptor> = {
   "sermon.insights.verses": {
     area: "sermon",
     areaLabel: "Проповедь",
-    stageLabel: "Размышления",
+    stageLabel: REFLECTION_STAGE_LABEL,
     step: "3.3",
     display: "Проповедь · Размышления · стихи",
     where: "«Размышления над проповедью» → обновление у блока «Стихи»",
@@ -119,7 +121,7 @@ export const PROMPT_REGISTRY: Record<string, PromptDescriptor> = {
   "sermon.insights.directions": {
     area: "sermon",
     areaLabel: "Проповедь",
-    stageLabel: "Размышления",
+    stageLabel: REFLECTION_STAGE_LABEL,
     step: "3.4",
     display: "Проповедь · Размышления · направления",
     where: "«Размышления над проповедью» → обновление у блока «Направления»",
@@ -129,7 +131,7 @@ export const PROMPT_REGISTRY: Record<string, PromptDescriptor> = {
   "sermon.insights.section_hints": {
     area: "sermon",
     areaLabel: "Проповедь",
-    stageLabel: "Размышления",
+    stageLabel: REFLECTION_STAGE_LABEL,
     step: "3.5",
     display: "Проповедь · Размышления · вариант плана",
     where: "«Размышления над проповедью» → обновление у блока «Вариант плана»",

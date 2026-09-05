@@ -5,6 +5,8 @@ import { resolveFirestoreWriteRefusal } from '@/api/errors/firestoreWriteRefusal
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
+const SERMON_NOT_FOUND_ERROR = 'Sermon not found';
+
 // POST /api/sermons/[id]/preach-dates
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
     try {
@@ -16,7 +18,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         const { id } = await params;
         const sermon = await sermonsRepository.fetchSermonById(id);
         if (!sermon) {
-            return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+            return NextResponse.json({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
         }
         if (sermon.userId !== uid) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -46,7 +48,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         const { id } = await params;
         console.error(`Error adding preach date to sermon ${id}:`, error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        if (errorMessage === "Sermon not found") {
+        if (errorMessage === SERMON_NOT_FOUND_ERROR) {
             return NextResponse.json({ error: errorMessage }, { status: 404 });
         }
         const refusal = resolveFirestoreWriteRefusal(error);
@@ -71,7 +73,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         const { id } = await params;
         const sermon = await sermonsRepository.fetchSermonById(id);
         if (!sermon) {
-            return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+            return NextResponse.json({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
         }
         if (sermon.userId !== uid) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -81,7 +83,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         const { id } = await params;
         console.error(`Error fetching preach dates for sermon ${id}:`, error);
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        if (errorMessage === "Sermon not found") {
+        if (errorMessage === SERMON_NOT_FOUND_ERROR) {
             return NextResponse.json({ error: errorMessage }, { status: 404 });
         }
         return NextResponse.json({ error: 'Failed to fetch preach dates' }, { status: 500 });

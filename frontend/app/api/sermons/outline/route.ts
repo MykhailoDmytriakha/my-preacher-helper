@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
+const SERMON_NOT_FOUND_ERROR = 'Sermon not found';
+
 
 // GET /api/sermons/outline?sermonId=<id>
 export async function GET(request: Request) {
@@ -20,7 +22,7 @@ export async function GET(request: Request) {
     }
     const sermon = await sermonsRepository.fetchSermonById(sermonId);
     if (!sermon) {
-      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+      return NextResponse.json({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
     }
     if (sermon.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -29,7 +31,7 @@ export async function GET(request: Request) {
     const outline = await sermonsRepository.fetchSermonOutlineBySermonId(sermonId);
     return NextResponse.json(outline);
   } catch (error: unknown) {
-    if ((error as Error).message === "Sermon not found") {
+    if ((error as Error).message === SERMON_NOT_FOUND_ERROR) {
       return NextResponse.json({ error: (error as Error).message }, { status: 404 });
     }
     return NextResponse.json({ error: 'Failed to fetch sermon outline' }, { status: 500 });
@@ -52,7 +54,7 @@ export async function PUT(request: Request) {
     }
     const sermon = await sermonsRepository.fetchSermonById(sermonId);
     if (!sermon) {
-      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+      return NextResponse.json({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
     }
     if (sermon.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -71,7 +73,7 @@ export async function PUT(request: Request) {
     
     return NextResponse.json(updatedOutline);
   } catch (error: unknown) {
-    if ((error as Error).message === "Sermon not found") {
+    if ((error as Error).message === SERMON_NOT_FOUND_ERROR) {
       return NextResponse.json({ error: (error as Error).message }, { status: 404 });
     }
     console.error("Error updating sermon outline:", error);

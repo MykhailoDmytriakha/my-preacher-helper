@@ -14,6 +14,9 @@ import { conflictSafeUpdate, isStaleWriteError } from '@/services/conflictSafeUp
 import { pendingOutboxConflicts } from '@/services/outboxReplay.client';
 import { listOutbox, markOutboxConflicted, removeFromOutbox, type OutboxEntry } from '@/services/writeOutbox.client';
 
+const SAVE_ERROR_KEY = 'common.saveError';
+const CONFLICT_PENDING_LABEL_KEY = 'freshness.conflictPendingLabel';
+
 /**
  * An edit made offline that the server REFUSED when it was replayed.
  *
@@ -111,7 +114,7 @@ export function OutboxConflictBanner() {
       removeFromOutbox(entry.id);
     } catch (error) {
       console.error('outbox: could not load the other version', error);
-      toast.error(t('common.saveError'));
+      toast.error(t(SAVE_ERROR_KEY));
     } finally {
       setBusy(false);
       refresh();
@@ -147,7 +150,7 @@ export function OutboxConflictBanner() {
             {t('freshness.deletedElsewhereBody')}
           </p>
           <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-lg bg-white/70 px-3 py-2 text-gray-900 dark:bg-gray-900/40 dark:text-gray-100">
-            {recoverableText || t('freshness.conflictPendingLabel')}
+            {recoverableText || t(CONFLICT_PENDING_LABEL_KEY)}
           </pre>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -156,7 +159,7 @@ export function OutboxConflictBanner() {
                 void navigator.clipboard
                   ?.writeText(recoverableText)
                   .then(() => toast.success(t('freshness.copiedToast')))
-                  .catch(() => toast.error(t('common.saveError')));
+                  .catch(() => toast.error(t(SAVE_ERROR_KEY)));
               }}
               className="rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-amber-700"
             >
@@ -207,7 +210,7 @@ export function OutboxConflictBanner() {
     <div>
       <SaveConflictBanner
         entityKey="entityRecord"
-        pendingText={previewText || t('freshness.conflictPendingLabel')}
+        pendingText={previewText || t(CONFLICT_PENDING_LABEL_KEY)}
         onKeepMine={keepMine}
         onTakeTheirs={takeTheirs}
         busy={busy}
@@ -219,7 +222,7 @@ export function OutboxConflictBanner() {
           "mine" and "theirs" without being able to see what "mine" was. */}
       <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/5">
         <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-gray-900 dark:text-gray-100">
-          {recoverableText || t('freshness.conflictPendingLabel')}
+          {recoverableText || t(CONFLICT_PENDING_LABEL_KEY)}
         </pre>
         <button
           type="button"
@@ -227,7 +230,7 @@ export function OutboxConflictBanner() {
             void navigator.clipboard
               ?.writeText(recoverableText)
               .then(() => toast.success(t('freshness.copiedToast')))
-              .catch(() => toast.error(t('common.saveError')));
+              .catch(() => toast.error(t(SAVE_ERROR_KEY)));
           }}
           className="mt-2 rounded-lg border border-amber-300 px-3 py-1.5 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20"
         >

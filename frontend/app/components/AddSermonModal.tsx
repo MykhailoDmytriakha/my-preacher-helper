@@ -18,6 +18,8 @@ import { auth } from '@services/firebaseAuth.service';
 import { addPreachDate } from '@services/preachDates.service';
 import { createSermon } from '@services/sermon.service';
 
+const SAVE_SERMON_ERROR_KEY = 'errors.failedToSaveSermon';
+
 interface AddSermonModalProps {
   onNewSermonCreated?: (newSermon: Sermon) => Promise<void> | void;
   onCancel?: () => void;
@@ -101,7 +103,7 @@ export default function AddSermonModal({
           // still the only thing the person can see, so it says so here too. Once it has
           // closed, the row badge is the reporter and this setState is a no-op.
           console.error('Sermon create refused after acceptance:', error);
-          setSubmitError(t(writeFailureTranslationKey(error, 'errors.failedToSaveSermon')));
+          setSubmitError(t(writeFailureTranslationKey(error, SAVE_SERMON_ERROR_KEY)));
         });
         if (closeOnSuccess) {
           resetForm();
@@ -117,7 +119,7 @@ export default function AddSermonModal({
          * moment this closes — one message visible at any time, never two.
          */
         console.error('Error creating sermon (optimistic request):', error);
-        setSubmitError(t(writeFailureTranslationKey(error, 'errors.failedToSaveSermon')));
+        setSubmitError(t(writeFailureTranslationKey(error, SAVE_SERMON_ERROR_KEY)));
         setIsSubmitting(false);
       }
       return;
@@ -181,7 +183,7 @@ export default function AddSermonModal({
       // The form stays open with everything in it, and now it also SAYS why: logging to
       // a console the person cannot see is the same as saying nothing.
       console.error('Error creating sermon:', error);
-      setSubmitError(t(writeFailureTranslationKey(error, 'errors.failedToSaveSermon')));
+      setSubmitError(t(writeFailureTranslationKey(error, SAVE_SERMON_ERROR_KEY)));
       setIsSubmitting(false);
     }
   };

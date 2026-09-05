@@ -30,6 +30,11 @@ import { newClientId } from "@/utils/clientId";
 import type { ComposedPlanOutline, ComposedPlanPoint } from "@/config/schemas/zod";
 import type { OutlinePoint, ScratchNote, SermonOutline, SubPoint } from "@/models/models";
 
+const VOICE_ERROR_KEY = "scratch.voice.error";
+const BOARD_APPLY_ERROR_KEY = "scratch.board.applyError";
+const MANUAL_ADD_LABEL_KEY = "scratch.capture.manualAdd";
+const MANUAL_INPUT_LABEL_KEY = "scratch.capture.manualLabel";
+
 type SectionKey = "introduction" | "main" | "conclusion";
 type ScratchPatch = {
   text?: string;
@@ -648,7 +653,7 @@ export default function ScratchPanel({
 
         const note = addScratchNote(polishedText);
         if (!note) {
-          const message = t("scratch.voice.error");
+          const message = t(VOICE_ERROR_KEY);
           setVoiceError(message);
           toast.error(message);
           return;
@@ -660,9 +665,9 @@ export default function ScratchPanel({
         clearComposition();
         toast.success(t("scratch.voice.success"), SCRATCH_TOAST_OPTIONS);
       } catch (error) {
-        const message = error instanceof Error ? error.message : t("scratch.voice.error");
+        const message = error instanceof Error ? error.message : t(VOICE_ERROR_KEY);
         setVoiceError(message);
-        toast.error(t("scratch.voice.error"));
+        toast.error(t(VOICE_ERROR_KEY));
       } finally {
         setIsVoiceProcessing(false);
       }
@@ -827,8 +832,8 @@ export default function ScratchPanel({
       pendingManualOutlineSignatureRef.current = getOutlineSignature(cleanOutline);
       setManualOutline(cleanOutline);
       void Promise.resolve(onOutlineChange(cleanOutline)).catch((error) => {
-        const message = error instanceof Error ? error.message : t("scratch.board.applyError");
-        toast.error(message || t("scratch.board.applyError"));
+        const message = error instanceof Error ? error.message : t(BOARD_APPLY_ERROR_KEY);
+        toast.error(message || t(BOARD_APPLY_ERROR_KEY));
       });
     },
     [composedOutline, isBoardLocked, onOutlineChange, t]
@@ -924,8 +929,8 @@ export default function ScratchPanel({
     const reportApplyError = (error: unknown) => {
       if (didReportApplyError) return;
       didReportApplyError = true;
-      const message = error instanceof Error ? error.message : t("scratch.board.applyError");
-      toast.error(message || t("scratch.board.applyError"));
+      const message = error instanceof Error ? error.message : t(BOARD_APPLY_ERROR_KEY);
+      toast.error(message || t(BOARD_APPLY_ERROR_KEY));
     };
 
     try {
@@ -990,15 +995,8 @@ export default function ScratchPanel({
     void applyOutline();
   };
 
-  const composeDisabledTitle = isScratchWritePending
-    ? t("scratch.board.composePendingWrites")
-    : !isMagicAvailable
-      ? t("scratch.board.composeOffline")
-      : aiBlocked
-        ? t("settings.usage.aiUsageExhausted")
-      : pooledNotes.length === 0
-        ? t("scratch.board.composeEmpty")
-        : undefined;
+  const composeDisabledKey = getComposeDisabledKey(isScratchWritePending, isMagicAvailable, aiBlocked, pooledNotes.length);
+  const composeDisabledTitle = composeDisabledKey ? t(composeDisabledKey) : undefined;
 
   const hasApplicableOutlineChanges = Boolean(cleanProposedOutline) || hasPlacements;
   const applyDisabledTitle = isReadOnly
@@ -1033,8 +1031,8 @@ export default function ScratchPanel({
             : "rounded-xl border-gray-300 bg-gray-100 text-gray-700 shadow-sm hover:bg-gray-200 focus:ring-gray-400 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700",
         ].join(" ")}
         disabled={isCaptureLocked}
-        title={t("scratch.capture.manualAdd")}
-        aria-label={t("scratch.capture.manualAdd")}
+        title={t(MANUAL_ADD_LABEL_KEY)}
+        aria-label={t(MANUAL_ADD_LABEL_KEY)}
         aria-expanded={isManualCaptureOpen}
       >
         <Pencil
@@ -1046,7 +1044,7 @@ export default function ScratchPanel({
           ].join(" ")}
           aria-hidden="true"
         />
-        <span className="min-w-0 text-center leading-tight">{t("scratch.capture.manualAdd")}</span>
+        <span className="min-w-0 text-center leading-tight">{t(MANUAL_ADD_LABEL_KEY)}</span>
       </button>
     );
   };
@@ -1066,7 +1064,7 @@ export default function ScratchPanel({
       >
         {/* The head above already names the mode — no second title here. */}
         <label htmlFor="scratch-manual-note-input" className="sr-only">
-          {t("scratch.capture.manualLabel")}
+          {t(MANUAL_INPUT_LABEL_KEY)}
         </label>
         <div className="flex flex-col gap-2 sm:flex-row">
           <TextareaAutosize
@@ -1083,8 +1081,8 @@ export default function ScratchPanel({
                 collapseManualCapture();
               }
             }}
-            placeholder={t("scratch.capture.manualLabel")}
-            aria-label={t("scratch.capture.manualLabel")}
+            placeholder={t(MANUAL_INPUT_LABEL_KEY)}
+            aria-label={t(MANUAL_INPUT_LABEL_KEY)}
             className="min-w-0 flex-1 resize-none rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder-violet-400/70 outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-200 dark:border-violet-800 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-violet-300/40 dark:focus:ring-violet-900/40"
             disabled={isCaptureLocked}
           />
@@ -1161,7 +1159,7 @@ export default function ScratchPanel({
           if (!isCaptureLocked) setIsManualCaptureOpen(true);
         }}
         manualControl={renderManualCaptureControl()}
-        manualThoughtTitle={t("scratch.capture.manualAdd")}
+        manualThoughtTitle={t(MANUAL_ADD_LABEL_KEY)}
         manualButtonPlacement="right"
         manualButtonSeparate
         hideRecordButton={isManualCaptureOpen}
@@ -1310,4 +1308,12 @@ export default function ScratchPanel({
       />
     </motion.div>
   );
+}
+
+function getComposeDisabledKey(pending: boolean, online: boolean, aiBlocked: boolean, noteCount: number): string | undefined {
+  if (pending) return "scratch.board.composePendingWrites";
+  if (!online) return "scratch.board.composeOffline";
+  if (aiBlocked) return "settings.usage.aiUsageExhausted";
+  if (noteCount === 0) return "scratch.board.composeEmpty";
+  return undefined;
 }

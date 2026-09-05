@@ -4,6 +4,8 @@ import { adminDb, FieldValue } from '@/config/firebaseAdminConfig';
 import { Sermon, SermonOutline, SermonContent, SermonPoint, PreachDate } from '@/models/models';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 
+const INVALID_PREACH_DATE_ERROR = "Invalid preach date format";
+
 /**
  * REPLAY MEMORY FOR PREACH-DATE WRITES.
  *
@@ -346,7 +348,7 @@ export class SermonsRepository {
     try {
       const normalizedDate = toDateOnlyKey(preachDate.date);
       if (!normalizedDate) {
-        throw new Error("Invalid preach date format");
+        throw new Error(INVALID_PREACH_DATE_ERROR);
       }
 
       // Idempotent by client-supplied id: a replayed add (offline retry / the
@@ -375,7 +377,7 @@ export class SermonsRepository {
 
           const freshNormalizedDate = toDateOnlyKey(preachDate.date);
           if (!freshNormalizedDate) {
-            throw new Error("Invalid preach date format");
+            throw new Error(INVALID_PREACH_DATE_ERROR);
           }
           const existing = existingDates.find(pd => pd.id === clientId);
           if (existing) {
@@ -455,7 +457,7 @@ export class SermonsRepository {
 
         const normalizedDate = updates.date === undefined ? undefined : toDateOnlyKey(updates.date);
         if (updates.date !== undefined && !normalizedDate) {
-          throw new Error("Invalid preach date format");
+          throw new Error(INVALID_PREACH_DATE_ERROR);
         }
 
         const result: PreachDate = {

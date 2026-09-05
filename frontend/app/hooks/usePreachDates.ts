@@ -13,6 +13,8 @@ import {
 import { recoveryText } from '@/utils/writeRecovery';
 import * as preachDatesService from '@services/preachDates.service';
 
+const PREACH_DATE_FAILED_KEY = 'writeRecovery.preachDateFailed';
+
 type AddPreachDateVariables = {
     sermonId: string;
     // WHOSE write this is. Not sent to the server — it lets a refusal that arrives
@@ -116,7 +118,7 @@ export function usePreachDates(sermonId: string) {
     // intentionally not an error.
     useWriteRecovery<AddPreachDateVariables>(queryClient, {
         mutationKey: PREACH_DATE_MUTATION_KEYS.add,
-        fallbackTitleKey: 'writeRecovery.preachDateFailed',
+        fallbackTitleKey: PREACH_DATE_FAILED_KEY,
         titleParams: ({ data }) => ({ name: data.church.name }),
         recoveryText: ({ data }) =>
             recoveryText([data.date, data.church.name, data.church.city, data.audience, data.notes]),
@@ -136,7 +138,7 @@ export function usePreachDates(sermonId: string) {
 
     useWriteRecovery<UpdatePreachDateVariables>(queryClient, {
         mutationKey: PREACH_DATE_MUTATION_KEYS.update,
-        fallbackTitleKey: 'writeRecovery.preachDateFailed',
+        fallbackTitleKey: PREACH_DATE_FAILED_KEY,
         titleParams: ({ updates }) => ({ name: updates.church?.name ?? '' }),
         recoveryText: ({ updates }) => recoveryText([
             updates.date,
@@ -155,7 +157,7 @@ export function usePreachDates(sermonId: string) {
 
     useWriteRecovery<DeletePreachDateVariables>(queryClient, {
         mutationKey: PREACH_DATE_MUTATION_KEYS.delete,
-        fallbackTitleKey: 'writeRecovery.preachDateFailed',
+        fallbackTitleKey: PREACH_DATE_FAILED_KEY,
         recoveryText: () => undefined,
         toastId: ({ sermonId: sid, dateId }) => `write-recovery:preach-date:delete:${sid}:${dateId}`,
         owns: (variables) =>

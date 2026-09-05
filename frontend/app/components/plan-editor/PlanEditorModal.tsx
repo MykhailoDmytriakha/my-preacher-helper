@@ -288,7 +288,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
         }
       }, 120);
     },
-    [isReadOnly, sermon.id, onOutlineUpdate, t]
+    [isReadOnly, sermon.id, onOutlineUpdate, setCollision, setStoredCollision, t]
   );
 
   // Read inside the debounced callback, so a refusal that arrives mid-typing stops

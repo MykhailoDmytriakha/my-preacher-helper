@@ -580,7 +580,7 @@ export default function PlanPage() {
   // Update section outline deterministically from ordered points + point-content map.
   const combinedPlan = useMemo(
     () => renderPlanWithFallback(sermon, generatedContent),
-    [sermon?.outline, generatedContent]
+    [sermon, generatedContent]
   );
 
   /**
@@ -680,7 +680,7 @@ export default function PlanPage() {
           },
         }
       : null));
-  }, [setSermon]);
+  }, [setSermon, pendingPlanCells]);
 
   const {
     generateSermonPointContent,

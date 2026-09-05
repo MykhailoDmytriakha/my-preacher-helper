@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 interface TooltipProps {
   children: React.ReactNode;
@@ -26,19 +26,19 @@ export default function Tooltip({ children, content, hoverDelay = 500 }: Tooltip
 
   const isOpen = clickMode === 'open' || (clickMode === 'none' && (isHovered || isFocused));
 
-  const clearHoverTimeout = () => {
+  const clearHoverTimeout = useCallback(() => {
     if (hoverTimeoutRef.current) {
       clearTimeout(hoverTimeoutRef.current);
       hoverTimeoutRef.current = null;
     }
-  };
+  }, []);
 
-  const closeTooltip = () => {
+  const closeTooltip = useCallback(() => {
     clearHoverTimeout();
     setIsHovered(false);
     setIsFocused(false);
     setClickMode('closed');
-  };
+  }, [clearHoverTimeout]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -55,7 +55,7 @@ export default function Tooltip({ children, content, hoverDelay = 500 }: Tooltip
       document.removeEventListener('keydown', handleKeyDown);
       clearHoverTimeout();
     };
-  }, []);
+  }, [clearHoverTimeout, closeTooltip]);
 
   useLayoutEffect(() => {
     if (!isOpen || !wrapperRef.current || !tooltipRef.current) return;

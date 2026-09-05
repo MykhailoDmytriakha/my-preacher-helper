@@ -251,29 +251,14 @@ export async function POST(
             entitlement.preferredTts,
             usageNow
         );
-        const provider: TTSProvider | null = body.provider === 'google'
-            ? 'google'
-            : body.provider === 'openai'
-                ? 'openai'
-                : null;
-        const requestedTarget = provider && typeof body.model === 'string'
-            ? {
-                providerId: provider === 'google' ? 'gemini' as const : 'openai' as const,
-                modelId: body.model,
-            }
-            : null;
-        const targetAllowed = requestedTarget && (
-            resolveEffectiveTier(entitlement, usageNow) === 'free'
-                ? requestedTarget.providerId === resolvedTarget.providerId
-                    && requestedTarget.modelId === resolvedTarget.modelId
-                : isFunctionCatalogTarget('tts', requestedTarget)
-        );
-        if (!provider || !requestedTarget || !targetAllowed) {
+        const selection = getAllowedTtsSelection(body, entitlement, resolvedTarget, usageNow);
+        if (!selection) {
             return NextResponse.json(
                 { error: 'Requested TTS provider/model is not allowed for this plan' },
                 { status: 400 }
             );
         }
+        const { provider, requestedTarget } = selection;
 
         const voice = getValidatedVoice(provider, body.voice);
         if (!voice) {
@@ -331,19 +316,8 @@ export async function POST(
         // offset/limit → whole set (back-compat). Google participates only while
         // the reversible small-chunk rollout is enabled; flag OFF preserves its
         // legacy whole-section, single-request behavior exactly.
-        const { offset: batchOffset, limit: batchLimit } = resolveBatchWindow(body);
-        const isBatched = batchLimit !== undefined && (
-            provider !== 'google' || GOOGLE_SMALL_CHUNKING
-        );
-        const chunksForGeneration = isBatched
-            ? baseChunksForGeneration.slice(batchOffset, batchOffset + batchLimit)
-            : baseChunksForGeneration;
-        const batchEndOffset = isBatched
-            ? Math.min(baseChunksForGeneration.length, batchOffset + (batchLimit as number))
-            : baseChunksForGeneration.length;
-        const nextChunkAfterBatch = isBatched
-            ? baseChunksForGeneration[batchEndOffset]
-            : undefined;
+        const { batchOffset, batchLimit, isBatched, chunksForGeneration, nextChunkAfterBatch } =
+            selectGenerationBatch(body, provider, baseChunksForGeneration);
 
         if (chunksForGeneration.length === 0) {
             return NextResponse.json(
@@ -360,14 +334,7 @@ export async function POST(
             // tokens/replay protection; crafted offset>0 can bypass start admission.
         }
 
-        if (provider === 'google') {
-            const chunkingMode = GOOGLE_SMALL_CHUNKING ? 'even quality chunks' : `legacy max ${GOOGLE_TTS_MAX_CHUNK_SIZE} chars/request`;
-            console.log(`[TTS] Google grouping: ${chunks.length} prepared chunks → ${baseChunksForGeneration.length} request chunks (${chunkingMode})`);
-        }
-        if (isBatched) {
-            console.log(`[TTS] Batch slice: offset=${batchOffset}, limit=${batchLimit} → ${chunksForGeneration.length}/${baseChunksForGeneration.length} chunks`);
-        }
-        console.log(`[TTS] Processing ${chunksForGeneration.length} ${provider === 'google' ? 'Google request chunks' : 'chunks'}`);
+        logGenerationBatch(provider, chunks, baseChunksForGeneration, chunksForGeneration, batchOffset, batchLimit, isBatched);
 
         // 3. Create streaming response
         const stream = new ReadableStream({
@@ -590,4 +557,67 @@ export async function POST(
             { status: 500 }
         );
     }
+}
+
+function getAllowedTtsSelection(
+    body: { provider?: unknown; model?: unknown },
+    entitlement: Awaited<ReturnType<typeof getUserEntitlementServerSide>>,
+    resolvedTarget: Awaited<ReturnType<typeof resolveUserTtsTarget>>,
+    usageNow: Date
+) {
+    const provider: TTSProvider | null = body.provider === 'google'
+        ? 'google'
+        : body.provider === 'openai'
+            ? 'openai'
+            : null;
+    const requestedTarget = provider && typeof body.model === 'string'
+        ? {
+            providerId: provider === 'google' ? 'gemini' as const : 'openai' as const,
+            modelId: body.model,
+        }
+        : null;
+    const targetAllowed = requestedTarget && (
+        resolveEffectiveTier(entitlement, usageNow) === 'free'
+            ? requestedTarget.providerId === resolvedTarget.providerId
+                && requestedTarget.modelId === resolvedTarget.modelId
+            : isFunctionCatalogTarget('tts', requestedTarget)
+    );
+    if (!provider || !requestedTarget || !targetAllowed) return null;
+    return { provider, requestedTarget };
+}
+
+function selectGenerationBatch(body: { offset?: unknown; limit?: unknown }, provider: TTSProvider, baseChunksForGeneration: AudioChunk[]) {
+    const { offset: batchOffset, limit: batchLimit } = resolveBatchWindow(body);
+    const isBatched = batchLimit !== undefined && (
+        provider !== 'google' || GOOGLE_SMALL_CHUNKING
+    );
+    const chunksForGeneration = isBatched
+        ? baseChunksForGeneration.slice(batchOffset, batchOffset + batchLimit)
+        : baseChunksForGeneration;
+    const batchEndOffset = isBatched
+        ? Math.min(baseChunksForGeneration.length, batchOffset + (batchLimit as number))
+        : baseChunksForGeneration.length;
+    const nextChunkAfterBatch = isBatched
+        ? baseChunksForGeneration[batchEndOffset]
+        : undefined;
+    return { batchOffset, batchLimit, isBatched, chunksForGeneration, nextChunkAfterBatch };
+}
+
+function logGenerationBatch(
+    provider: TTSProvider,
+    chunks: AudioChunk[],
+    baseChunksForGeneration: AudioChunk[],
+    chunksForGeneration: AudioChunk[],
+    batchOffset: number,
+    batchLimit: number | undefined,
+    isBatched: boolean
+): void {
+    if (provider === 'google') {
+        const chunkingMode = GOOGLE_SMALL_CHUNKING ? 'even quality chunks' : `legacy max ${GOOGLE_TTS_MAX_CHUNK_SIZE} chars/request`;
+        console.log(`[TTS] Google grouping: ${chunks.length} prepared chunks → ${baseChunksForGeneration.length} request chunks (${chunkingMode})`);
+    }
+    if (isBatched) {
+        console.log(`[TTS] Batch slice: offset=${batchOffset}, limit=${batchLimit} → ${chunksForGeneration.length}/${baseChunksForGeneration.length} chunks`);
+    }
+    console.log(`[TTS] Processing ${chunksForGeneration.length} ${provider === 'google' ? 'Google request chunks' : 'chunks'}`);
 }

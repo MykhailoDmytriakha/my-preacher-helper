@@ -364,7 +364,7 @@ export function useDashboardOptimisticSermons(): UseDashboardOptimisticSermonsRe
 
       return { ...createSubmission, sermonId };
     },
-    [createMutation, addToSeries, removeFromAllSeries]
+    [createMutation, addToSeries, removeFromAllSeries, t]
   );
 
   const saveEditedSermon = useCallback(

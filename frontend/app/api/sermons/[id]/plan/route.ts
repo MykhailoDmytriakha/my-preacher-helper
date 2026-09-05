@@ -104,21 +104,7 @@ export async function GET(
       );
     }
 
-    // Validate and normalize the plan structure
-    const normalizedPlan = {
-      introduction: { outline: '' },
-      main: { outline: '' },
-      conclusion: { outline: '' }
-    };
-
-    // Update only the section that was generated, ensuring all sections exist
-    if (section.toLowerCase() === 'introduction') {
-      normalizedPlan.introduction = result.plan.introduction || { outline: '' };
-    } else if (section.toLowerCase() === 'main') {
-      normalizedPlan.main = result.plan.main || { outline: '' };
-    } else if (section.toLowerCase() === 'conclusion') {
-      normalizedPlan.conclusion = result.plan.conclusion || { outline: '' };
-    }
+    const normalizedPlan = normalizeGeneratedSection(section, result.plan);
 
     // Store the updated plan in the database
     try {
@@ -332,4 +318,24 @@ export async function PUT(
       { status: 500 }
     );
   }
+}
+
+function normalizeGeneratedSection(section: string, plan: SermonContent): SermonContent {
+  // Validate and normalize the plan structure
+  const normalizedPlan = {
+    introduction: { outline: '' },
+    main: { outline: '' },
+    conclusion: { outline: '' }
+  };
+
+  // Update only the section that was generated, ensuring all sections exist
+  if (section.toLowerCase() === 'introduction') {
+    normalizedPlan.introduction = plan.introduction || { outline: '' };
+  } else if (section.toLowerCase() === 'main') {
+    normalizedPlan.main = plan.main || { outline: '' };
+  } else if (section.toLowerCase() === 'conclusion') {
+    normalizedPlan.conclusion = plan.conclusion || { outline: '' };
+  }
+
+  return normalizedPlan;
 }

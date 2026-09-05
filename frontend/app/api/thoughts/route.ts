@@ -21,6 +21,8 @@ import {
 } from '@clients/transcriptionRetry';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
+const SERMON_NOT_FOUND_ERROR = 'Sermon not found';
+
 // Error messages
 const ERROR_MESSAGES = {
   SERMON_ID_AND_THOUGHT_REQUIRED: 'sermonId and thought are required',
@@ -86,7 +88,7 @@ async function handleManualPost(request: Request, uid: string) {
     }
     const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon | null;
     if (!sermon) {
-      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+      return NextResponse.json({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
     }
     if (sermon.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -161,7 +163,7 @@ async function handleAutoPost(request: Request, uid: string) {
     );
     if (!sermon) {
       console.error("Thoughts route: Sermon not found.");
-      return errorResponse('Sermon not found', 404);
+      return errorResponse(SERMON_NOT_FOUND_ERROR, 404);
     }
     if (sermon.userId !== uid) {
       return errorResponse('Forbidden', 403);
@@ -370,7 +372,7 @@ export async function DELETE(request: Request) {
     }
     const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon | null;
     if (!sermon) {
-      return NextResponse.json({ error: 'Sermon not found' }, { status: 404 });
+      return NextResponse.json({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
     }
     if (sermon.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
@@ -413,7 +415,7 @@ export async function PUT(request: Request) {
     const sermon = await sermonsRepository.fetchSermonById(sermonId) as Sermon;
     if (!sermon) {
       console.error("Thoughts route: Sermon not found");
-      return NextResponse.json({ error: "Sermon not found" }, { status: 404 });
+      return NextResponse.json({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
     }
     if (sermon.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

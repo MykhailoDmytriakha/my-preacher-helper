@@ -39,6 +39,8 @@ import { useManualConspectus, type ManualConspectus } from "./useManualConspectu
 import type { SermonSectionKey } from "../types";
 import type { SermonPoint } from "@/models/models";
 
+const NO_PLAN_CONTENT_KEY = "plan.noContent";
+
 /**
  * THE HAND-WRITTEN CONSPECTUS — a screen of its own, not a mode of the other one.
  *
@@ -213,13 +215,13 @@ const ManualPointCard = ({ point, index, section, conspectus }: ManualPointCardP
             {isEditing ? (
               <RichMarkdownEditor
                 value={conspectus.contentByNodeId[node.id] ?? ""}
-                placeholder={t("plan.noContent")}
+                placeholder={t(NO_PLAN_CONTENT_KEY)}
                 minHeight={node.kind === "subPoint" ? "90px" : "120px"}
                 onChange={(text) => conspectus.setNodeContent(node.id, text)}
               />
             ) : (
               <div className="rounded-md border border-gray-200 bg-gray-50/70 p-4 dark:border-gray-700/70 dark:bg-gray-900/20">
-                <MarkdownDisplay content={conspectus.contentByNodeId[node.id] || t("plan.noContent")} />
+                <MarkdownDisplay content={conspectus.contentByNodeId[node.id] || t(NO_PLAN_CONTENT_KEY)} />
               </div>
             )}
           </div>
@@ -337,9 +339,9 @@ export default function ManualConspectusPage() {
    */
   const combinedPlan = useMemo(
     () => renderPlanWithFallback(sermon, conspectus.contentByNodeId),
-    [sermon?.outline, conspectus.contentByNodeId]
+    [sermon, conspectus.contentByNodeId]
   );
-  const noContentText = t("plan.noContent");
+  const noContentText = t(NO_PLAN_CONTENT_KEY);
 
   /**
    * Copying belongs to the document, not to the editor that produced it. This screen used

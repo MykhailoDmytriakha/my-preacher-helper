@@ -23,6 +23,8 @@ import { usePendingPlanCells } from "../usePendingPlanCells";
 import type { SermonSectionKey } from "../types";
 import type { Sermon, SermonOutline, SermonPoint } from "@/models/models";
 
+const SAVE_POINT_ERROR_KEY = "errors.failedToSavePoint";
+
 /**
  * EVERY WRITE THE HAND-WRITTEN PLAN MAKES — and there are only two kinds now.
  *
@@ -385,9 +387,9 @@ export function useManualConspectus({
         return;
       }
       debugLog("Manual plan save failed", { pointId, error });
-      toast.error(t(writeFailureTranslationKey(error, "errors.failedToSavePoint")));
+      toast.error(t(writeFailureTranslationKey(error, SAVE_POINT_ERROR_KEY)));
     }
-  }, [announceRefusal, contentByNodeId, isConflict, modifiedNodeIds, settle, t, writeText]);
+  }, [announceRefusal, isConflict, modifiedNodeIds, settle, t, writeText]);
 
   const saveModified = useCallback(async (): Promise<boolean> => {
     const dirty = Object.entries(modifiedNodeIds).filter(([, isDirty]) => isDirty).map(([id]) => id);
@@ -460,14 +462,14 @@ export function useManualConspectus({
 
     if (outcome.failed !== undefined) {
       debugLog("Saving before leaving failed", { error: outcome.failed });
-      toast.error(t(writeFailureTranslationKey(outcome.failed, "errors.failedToSavePoint")));
+      toast.error(t(writeFailureTranslationKey(outcome.failed, SAVE_POINT_ERROR_KEY)));
       return false;
     }
     // One message for the whole departure, not one per cell.
     if (outcome.queued) toast.info(t("connection.offlineBanner"));
     if (outcome.refused) announceRefusal();
     return outcome.saved;
-  }, [announceRefusal, contentByNodeId, isConflict, modifiedNodeIds, settle, t, writeText]);
+  }, [announceRefusal, isConflict, modifiedNodeIds, settle, t, writeText]);
 
   // Wired after definition so the refusal message can re-enter it without a circular hook.
   saveModifiedRef.current = saveModified;
@@ -673,7 +675,7 @@ export function useManualConspectus({
     } catch (error) {
       if (!isOfflineQueuedError(error)) {
         debugLog("Sub-point delete: text rescue failed, skeleton left intact", { subPointId, error });
-        toast.error(t(writeFailureTranslationKey(error, "errors.failedToSavePoint")));
+        toast.error(t(writeFailureTranslationKey(error, SAVE_POINT_ERROR_KEY)));
         return;
       }
       /**

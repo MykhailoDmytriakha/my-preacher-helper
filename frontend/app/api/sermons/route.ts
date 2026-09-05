@@ -28,6 +28,10 @@ function readScratchSource(candidate: Record<string, unknown>, allowedNoteIds: S
   return { noteId: source.noteId, heading: typeof source.heading === 'string' ? source.heading : '' };
 }
 
+function scratchCreatedAt(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value ? value : fallback;
+}
+
 /**
  * SCRATCH NOTES A SERMON IS BORN WITH — the atoms cut from a study note.
  *
@@ -51,7 +55,7 @@ function sanitizeScratchAtBirth(input: unknown, now: string, allowedNoteIds: Set
     const note: ScratchNote = {
       id,
       text,
-      createdAt: typeof candidate.createdAt === 'string' && candidate.createdAt ? candidate.createdAt : now,
+      createdAt: scratchCreatedAt(candidate.createdAt, now),
     };
     if (typeof candidate.section === 'string' && SCRATCH_SECTIONS.has(candidate.section)) {
       note.section = candidate.section as ScratchNote['section'];
@@ -96,13 +100,7 @@ export async function POST(request: Request) {
     }
 
     const sermon = await request.json();
-    // The payload may carry the atoms cut from a private study note: log shape, never text.
-    console.log("Parsed sermon data:", {
-      hasClientId: typeof sermon?.id === 'string' && sermon.id.length > 0,
-      sourceNotes: Array.isArray(sermon?.sourceNoteIds) ? sermon.sourceNoteIds.length : 0,
-      scratch: Array.isArray(sermon?.scratch) ? sermon.scratch.length : 0,
-      thoughts: Array.isArray(sermon?.thoughts) ? sermon.thoughts.length : 0,
-    });
+    logSermonCreateShape(sermon);
 
     const userId = uid;
     const title = sermon.title;
@@ -192,9 +190,7 @@ export async function POST(request: Request) {
      * differs from the document would be a second truth. Fields the route does not store
      * are still echoed, as they always were, for callers that read them back.
      */
-    const newSermon: Record<string, unknown> = { ...sermon, ...sermonData, userId, id: docRef.id };
-    if (!sermonData.scratch) delete newSermon.scratch;
-    if (!sermonData.sourceNoteIds) delete newSermon.sourceNoteIds;
+    const newSermon = createdSermonResponse(sermon, sermonData, userId, docRef.id);
     console.log("New sermon written:", { id: docRef.id, scratch: scratchAtBirth.length, sourceNotes: sourceNoteIds.length });
 
     console.log("Returning success response for created sermon");
@@ -203,4 +199,21 @@ export async function POST(request: Request) {
     console.error("Error occurred while creating sermon:", error);
     return NextResponse.json({ error: 'Failed to create sermon' }, { status: 500 });
   }
+}
+
+function logSermonCreateShape(sermon: Record<string, unknown> | null): void {
+  // The payload may carry the atoms cut from a private study note: log shape, never text.
+  console.log("Parsed sermon data:", {
+    hasClientId: typeof sermon?.id === 'string' && sermon.id.length > 0,
+    sourceNotes: Array.isArray(sermon?.sourceNoteIds) ? sermon.sourceNoteIds.length : 0,
+    scratch: Array.isArray(sermon?.scratch) ? sermon.scratch.length : 0,
+    thoughts: Array.isArray(sermon?.thoughts) ? sermon.thoughts.length : 0,
+  });
+}
+
+function createdSermonResponse(sermon: Record<string, unknown>, sermonData: Partial<Sermon>, userId: string, id: string): Record<string, unknown> {
+  const newSermon: Record<string, unknown> = { ...sermon, ...sermonData, userId, id };
+  if (!sermonData.scratch) delete newSermon.scratch;
+  if (!sermonData.sourceNoteIds) delete newSermon.sourceNoteIds;
+  return newSermon;
 }

@@ -47,6 +47,9 @@ import { getSectionLabel } from '@lib/sections';
 
 import type { OutlinePoint, ScratchNote, SermonOutline, SubPoint } from '@/models/models';
 
+const ACTIVE_DROP_INDICATOR_CLASS = 'bg-indigo-500';
+const INACTIVE_DROP_INDICATOR_CLASS = 'bg-transparent';
+
 type SectionKey = 'introduction' | 'main' | 'conclusion';
 
 const SECTIONS: { key: SectionKey; styleKey: 'introduction' | 'mainPart' | 'conclusion' }[] = [
@@ -89,6 +92,17 @@ const DROP_SECTION = 'section:';
 
 /** Whatever the drag library needs on the grab handle — the note card only spreads it. */
 export type DragHandleProps = Record<string, unknown>;
+
+/**
+ * A structural move does not change an id, but it changes what the id means:
+ * a point and a sub-point are addressed differently. Carry the translated note
+ * addresses with the move so attached notes keep their place on the screen.
+ */
+type OutlineDropResult = {
+  next: SermonOutline | null;
+  movedPointTo: SectionKey | null;
+  placementChanges: { noteId: string; placement: { pointId: string; subPointId?: string } }[];
+};
 
 type DragKind = 'point' | 'sub' | 'note';
 type DragSubject = { kind: DragKind; id: string };
@@ -531,6 +545,120 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     setPendingSubPointDelete(null);
   };
 
+  const handleNoteDrop = (subject: DragSubject, overId: string) => {
+    if (!scratch) return;
+
+    /*
+     * A SEAM BETWEEN TWO NOTES SAYS WHICH ONE COMES FIRST.
+     *
+     * Notes sharing a row had no seams at all, so the only target inside a row
+     * was the row itself — and dropping a note where it already lives means
+     * nothing changed. "Наброски не могу поменять местами внутри подпункта."
+     * The seam carries both halves of the intention: which row it belongs to,
+     * and where among its neighbours it sits.
+     */
+    const noteGap = parseNoteGapDropId(overId);
+    if (noteGap) {
+      const { containerId, index } = noteGap;
+      const target = containerId === SCRATCH_NOTE_POOL_DROPPABLE_ID
+        ? null
+        : (() => {
+            const pointId = getScratchPointIdFromDroppable(containerId);
+            if (pointId) return { pointId };
+            const subPointId = getScratchSubPointIdFromDroppable(containerId);
+            if (!subPointId) return undefined;
+            const parentPointId = findParentPointIdForSubPoint(points, subPointId);
+            return parentPointId ? { pointId: parentPointId, subPointId } : undefined;
+          })();
+      if (target === undefined) return;
+
+      const groupIds = notesInContainer(containerId).map((note) => note.id);
+      scratch.onPlace(subject.id, target);
+      scratch.onReorder?.(subject.id, groupIds, index);
+      return;
+    }
+
+    if (overId === SCRATCH_NOTE_POOL_DROPPABLE_ID) {
+      scratch.onPlace(subject.id, null);
+      return;
+    }
+    const pointId = getScratchPointIdFromDroppable(overId) ?? (overId.startsWith(DROP_INTO_POINT)
+      ? overId.slice(DROP_INTO_POINT.length)
+      : null);
+    if (pointId) {
+      scratch.onPlace(subject.id, { pointId });
+      return;
+    }
+    const subPointId = getScratchSubPointIdFromDroppable(overId);
+    if (!subPointId) return;
+    const parentPointId = findParentPointIdForSubPoint(points, subPointId);
+    if (!parentPointId) return;
+    scratch.onPlace(subject.id, { pointId: parentPointId, subPointId });
+    return;
+  };
+
+  const handlePointDrop = (subject: DragSubject, overId: string, outline: SermonOutline): OutlineDropResult => {
+    const result: OutlineDropResult = { next: null, movedPointTo: null, placementChanges: [] };
+    if (overId.startsWith(DROP_INTO_POINT)) {
+      // Dropped ON a card — the point becomes its sub-point (children follow).
+      const newParentId = overId.slice(DROP_INTO_POINT.length);
+      const formerChildren = (SECTIONS.flatMap((sec) => points[sec.key]).find((p) => p.id === subject.id)?.subPoints ?? []).map((sp) => sp.id);
+      result.next = nestPointUnderPoint(outline, subject.id, newParentId);
+      result.placementChanges = remapAfterNest(scratch?.placements ?? {}, subject.id, newParentId, formerChildren);
+    } else if (parseSubGapDropId(overId)) {
+      /*
+       * A seam BETWEEN sub-points is a real intention: "put this point under
+       * that one, right here". The board drew the line for it and then did
+       * nothing, because this branch only understood seams between points —
+       * so every drop above or below a sub-point silently did nothing.
+       */
+      const subGap = parseSubGapDropId(overId)!;
+      const formerChildren = (SECTIONS.flatMap((sec) => points[sec.key]).find((p) => p.id === subject.id)?.subPoints ?? []).map((sp) => sp.id);
+      result.next = nestPointUnderPointAt(outline, subject.id, subGap.pointId, subGap.index);
+      result.placementChanges = remapAfterNest(scratch?.placements ?? {}, subject.id, subGap.pointId, formerChildren);
+    } else {
+      const gap = parseGapDropId(overId);
+      const section = gap?.section ?? (overId.startsWith(DROP_SECTION) && isSectionKey(overId.slice(DROP_SECTION.length))
+        ? (overId.slice(DROP_SECTION.length) as SectionKey)
+        : null);
+      if (!section) return result;
+      const index = gap ? gap.index : (points[section]?.length ?? 0);
+      if (findPointSection(outline, subject.id) !== section) result.movedPointTo = section;
+      result.next = movePoint(outline, subject.id, section, index);
+    }
+    return result;
+  };
+
+  const handleSubPointDrop = (subject: DragSubject, overId: string, outline: SermonOutline): OutlineDropResult => {
+    const result: OutlineDropResult = { next: null, movedPointTo: null, placementChanges: [] };
+    if (overId.startsWith(DROP_INTO_POINT)) {
+      const targetPointId = overId.slice(DROP_INTO_POINT.length);
+      // Onto a card: land at the end of that card's children.
+      result.next = moveSubPointInOutline(outline, subject.id, targetPointId, Number.MAX_SAFE_INTEGER);
+      result.placementChanges = remapAfterSubPointReparent(scratch?.placements ?? {}, subject.id, targetPointId);
+    } else {
+      const subGap = parseSubGapDropId(overId);
+      if (subGap) {
+        result.next = moveSubPointInOutline(outline, subject.id, subGap.pointId, subGap.index);
+      } else {
+        // A gap between POINTS means "leave your parent" — the sub-point is promoted.
+        const gap = parseGapDropId(overId);
+        const section = gap?.section ?? (overId.startsWith(DROP_SECTION) && isSectionKey(overId.slice(DROP_SECTION.length))
+          ? (overId.slice(DROP_SECTION.length) as SectionKey)
+          : null);
+        if (!section) return result;
+        const index = gap ? gap.index : (points[section]?.length ?? 0);
+        const formerParent = findSubPointParent(outline, subject.id)?.point.id;
+        result.next = outdentSubPoint(outline, subject.id, section, index);
+        result.movedPointTo = section;
+        if (formerParent) {
+          result.placementChanges = remapAfterOutdent(scratch?.placements ?? {}, subject.id, formerParent);
+        }
+      }
+    }
+    return result;
+  };
+
   /**
    * ONE DROP, READ AS A SENTENCE.
    *
@@ -547,129 +675,15 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     const overId = event.over ? String(event.over.id) : null;
     if (!subject || !overId) return;
 
-    // --- a scratch note is filed against a point, a sub-point, or back to the pool
     if (subject.kind === 'note') {
-      if (!scratch) return;
-
-      /*
-       * A SEAM BETWEEN TWO NOTES SAYS WHICH ONE COMES FIRST.
-       *
-       * Notes sharing a row had no seams at all, so the only target inside a row
-       * was the row itself — and dropping a note where it already lives means
-       * nothing changed. "Наброски не могу поменять местами внутри подпункта."
-       * The seam carries both halves of the intention: which row it belongs to,
-       * and where among its neighbours it sits.
-       */
-      const noteGap = parseNoteGapDropId(overId);
-      if (noteGap) {
-        const { containerId, index } = noteGap;
-        const target = containerId === SCRATCH_NOTE_POOL_DROPPABLE_ID
-          ? null
-          : (() => {
-              const pointId = getScratchPointIdFromDroppable(containerId);
-              if (pointId) return { pointId };
-              const subPointId = getScratchSubPointIdFromDroppable(containerId);
-              if (!subPointId) return undefined;
-              const parentPointId = findParentPointIdForSubPoint(points, subPointId);
-              return parentPointId ? { pointId: parentPointId, subPointId } : undefined;
-            })();
-        if (target === undefined) return;
-
-        const groupIds = notesInContainer(containerId).map((note) => note.id);
-        scratch.onPlace(subject.id, target);
-        scratch.onReorder?.(subject.id, groupIds, index);
-        return;
-      }
-
-      if (overId === SCRATCH_NOTE_POOL_DROPPABLE_ID) {
-        scratch.onPlace(subject.id, null);
-        return;
-      }
-      const pointId = getScratchPointIdFromDroppable(overId) ?? (overId.startsWith(DROP_INTO_POINT)
-        ? overId.slice(DROP_INTO_POINT.length)
-        : null);
-      if (pointId) {
-        scratch.onPlace(subject.id, { pointId });
-        return;
-      }
-      const subPointId = getScratchSubPointIdFromDroppable(overId);
-      if (!subPointId) return;
-      const parentPointId = findParentPointIdForSubPoint(points, subPointId);
-      if (!parentPointId) return;
-      scratch.onPlace(subject.id, { pointId: parentPointId, subPointId });
+      handleNoteDrop(subject, overId);
       return;
     }
 
     const outline = toOutline(points);
-    let next: SermonOutline | null = null;
-    let movedPointTo: SectionKey | null = null;
-    /*
-     * A structural move does not change any id, but it changes what an id MEANS —
-     * `pt-a` as a point and `pt-a` as a sub-point are addressed differently. Notes
-     * are found through those addresses, so a move that leaves them untranslated
-     * makes a note vanish from the screen while still sitting in the document.
-     * That is what the owner hit: "I attached a note to a point, moved the point,
-     * the note is gone."
-     */
-    let placementChanges: { noteId: string; placement: { pointId: string; subPointId?: string } }[] = [];
-
-    if (subject.kind === 'point') {
-      if (overId.startsWith(DROP_INTO_POINT)) {
-        // Dropped ON a card — the point becomes its sub-point (children follow).
-        const newParentId = overId.slice(DROP_INTO_POINT.length);
-        const formerChildren = (SECTIONS.flatMap((sec) => points[sec.key]).find((p) => p.id === subject.id)?.subPoints ?? []).map((sp) => sp.id);
-        next = nestPointUnderPoint(outline, subject.id, newParentId);
-        placementChanges = remapAfterNest(scratch?.placements ?? {}, subject.id, newParentId, formerChildren);
-      } else if (parseSubGapDropId(overId)) {
-        /*
-         * A seam BETWEEN sub-points is a real intention: "put this point under
-         * that one, right here". The board drew the line for it and then did
-         * nothing, because this branch only understood seams between points —
-         * so every drop above or below a sub-point silently did nothing.
-         */
-        const subGap = parseSubGapDropId(overId)!;
-        const formerChildren = (SECTIONS.flatMap((sec) => points[sec.key]).find((p) => p.id === subject.id)?.subPoints ?? []).map((sp) => sp.id);
-        next = nestPointUnderPointAt(outline, subject.id, subGap.pointId, subGap.index);
-        placementChanges = remapAfterNest(scratch?.placements ?? {}, subject.id, subGap.pointId, formerChildren);
-      } else {
-        const gap = parseGapDropId(overId);
-        const section = gap?.section ?? (overId.startsWith(DROP_SECTION) && isSectionKey(overId.slice(DROP_SECTION.length))
-          ? (overId.slice(DROP_SECTION.length) as SectionKey)
-          : null);
-        if (!section) return;
-        const index = gap ? gap.index : (points[section]?.length ?? 0);
-        if (findPointSection(outline, subject.id) !== section) movedPointTo = section;
-        next = movePoint(outline, subject.id, section, index);
-      }
-    }
-
-    if (subject.kind === 'sub') {
-      if (overId.startsWith(DROP_INTO_POINT)) {
-        const targetPointId = overId.slice(DROP_INTO_POINT.length);
-        // Onto a card: land at the end of that card's children.
-        next = moveSubPointInOutline(outline, subject.id, targetPointId, Number.MAX_SAFE_INTEGER);
-        placementChanges = remapAfterSubPointReparent(scratch?.placements ?? {}, subject.id, targetPointId);
-      } else {
-        const subGap = parseSubGapDropId(overId);
-        if (subGap) {
-          next = moveSubPointInOutline(outline, subject.id, subGap.pointId, subGap.index);
-        } else {
-          // A gap between POINTS means "leave your parent" — the sub-point is promoted.
-          const gap = parseGapDropId(overId);
-          const section = gap?.section ?? (overId.startsWith(DROP_SECTION) && isSectionKey(overId.slice(DROP_SECTION.length))
-            ? (overId.slice(DROP_SECTION.length) as SectionKey)
-            : null);
-          if (!section) return;
-          const index = gap ? gap.index : (points[section]?.length ?? 0);
-          const formerParent = findSubPointParent(outline, subject.id)?.point.id;
-          next = outdentSubPoint(outline, subject.id, section, index);
-          movedPointTo = section;
-          if (formerParent) {
-            placementChanges = remapAfterOutdent(scratch?.placements ?? {}, subject.id, formerParent);
-          }
-        }
-      }
-    }
+    const { next, movedPointTo, placementChanges } = subject.kind === 'point'
+      ? handlePointDrop(subject, overId, outline)
+      : handleSubPointDrop(subject, overId, outline);
 
     if (!next) return;
     if (JSON.stringify(next) === JSON.stringify(outline)) return;
@@ -716,7 +730,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
       dropId={dropId}
       disabled={isReadOnly}
       activeKind={activeDrag?.kind ?? null}
-      render={({ setNodeRef, isOver, isCandidate }) => (
+      render={({ setNodeRef, isOver }) => (
         <div
           ref={setNodeRef}
           /*
@@ -736,13 +750,13 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
         >
           <span
             className={`pointer-events-none absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 rounded-full transition-colors ${
-              isOver ? 'bg-indigo-500' : 'bg-transparent'
+              isOver ? ACTIVE_DROP_INDICATOR_CLASS : INACTIVE_DROP_INDICATOR_CLASS
             }`}
           />
           <span
             className={`pointer-events-none absolute top-1/2 h-2 w-2 -translate-y-1/2 rounded-full transition-colors ${
               indented ? 'left-0' : '-left-1'
-            } ${isOver ? 'bg-indigo-500' : 'bg-transparent'}`}
+            } ${isOver ? ACTIVE_DROP_INDICATOR_CLASS : INACTIVE_DROP_INDICATOR_CLASS}`}
           />
         </div>
       )}
@@ -906,12 +920,12 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
         >
           <span
             className={`absolute inset-y-2 left-1/2 w-0.5 -translate-x-1/2 rounded-full transition-colors ${
-              isOver ? 'bg-indigo-500' : 'bg-transparent'
+              isOver ? ACTIVE_DROP_INDICATOR_CLASS : INACTIVE_DROP_INDICATOR_CLASS
             }`}
           />
           <span
             className={`absolute left-1/2 top-1 h-2 w-2 -translate-x-1/2 rounded-full transition-colors ${
-              isOver ? 'bg-indigo-500' : 'bg-transparent'
+              isOver ? ACTIVE_DROP_INDICATOR_CLASS : INACTIVE_DROP_INDICATOR_CLASS
             }`}
           />
         </div>

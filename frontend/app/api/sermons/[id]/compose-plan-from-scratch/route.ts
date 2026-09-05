@@ -9,6 +9,8 @@ import { isUsageCapReachedError } from '@/services/usageLimits';
 import { composePlanFromScratch } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
+const SERMON_NOT_FOUND_ERROR = 'Sermon not found';
+
 export const dynamic = 'force-dynamic';
 
 const NO_STORE_HEADERS = {
@@ -124,7 +126,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const sermon = await sermonsRepository.fetchSermonById(sermonId);
     if (!sermon) {
-      return jsonNoStore({ error: 'Sermon not found' }, { status: 404 });
+      return jsonNoStore({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
     }
 
     if (sermon.userId !== uid) {
@@ -189,8 +191,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   } catch (error: unknown) {
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
     const message = error instanceof Error ? error.message : 'Unknown error occurred';
-    if (message === 'Sermon not found') {
-      return jsonNoStore({ error: 'Sermon not found' }, { status: 404 });
+    if (message === SERMON_NOT_FOUND_ERROR) {
+      return jsonNoStore({ error: SERMON_NOT_FOUND_ERROR }, { status: 404 });
     }
 
     console.error('Error composing plan from scratch:', error);

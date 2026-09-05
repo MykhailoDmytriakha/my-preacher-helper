@@ -46,7 +46,7 @@ jest.mock('@/services/outline.service', () => ({
       }
       // The real merge, not an imitation, so a broken caller is caught here rather
       // than in production.
-      const { outline, collisions } = mergeOutline(
+      const { outline } = mergeOutline(
         base,
         mine,
         mockServerOutline,

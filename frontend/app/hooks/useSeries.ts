@@ -250,7 +250,7 @@ export function useSeries(userId?: string | null) {
         updateSeriesMutation.mutateAsync({ seriesId, updates, userId: effectiveUserId ?? undefined })
       );
     },
-    [updateSeriesMutation]
+    [updateSeriesMutation, effectiveUserId]
   );
 
   const deleteExistingSeries = useCallback(

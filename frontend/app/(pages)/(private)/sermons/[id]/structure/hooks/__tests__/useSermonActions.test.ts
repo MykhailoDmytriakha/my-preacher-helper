@@ -6,20 +6,11 @@ import { updateThought, createManualThought, deleteThought } from '@/services/th
 import { Sermon, Item } from '@/models/models';
 import type { WriteSubmission } from '@/utils/recoverableWrite';
 
-let mockSnapshotNext: ((snapshot: {
-    exists: () => boolean;
-    // Whatever the document holds — the test feeds real Thought objects here, and a
-    // plain index signature does not accept an interface with declared fields.
-    data: () => { thoughts: unknown[] };
-}) => void) | null = null;
 const mockUnsubscribe = jest.fn();
 
 jest.mock('firebase/firestore', () => ({
     doc: jest.fn((_db: unknown, collectionName: string, id: string) => ({ collectionName, id })),
-    onSnapshot: jest.fn((_ref: unknown, _options: unknown, next: typeof mockSnapshotNext) => {
-        mockSnapshotNext = next;
-        return mockUnsubscribe;
-    }),
+    onSnapshot: jest.fn(() => mockUnsubscribe),
 }));
 jest.mock('@/config/firebaseClientDb', () => ({ getClientDb: () => ({}) }));
 
@@ -82,7 +73,6 @@ describe('useSermonActions', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
-        mockSnapshotNext = null;
     });
 
     it('handles edit and close edit', () => {

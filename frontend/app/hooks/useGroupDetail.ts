@@ -230,7 +230,7 @@ export function useGroupDetail(groupId: string) {
           reconcileWriteError(errorValue);
         });
     },
-    [group, queryClient, uid, reconcileWriteError, setSaveConflict, t]
+    [group, queryClient, uid, reconcileWriteError, setSaveConflict]
   );
 
   /** Save the refused edit on top of the newer version — a deliberate overwrite. */

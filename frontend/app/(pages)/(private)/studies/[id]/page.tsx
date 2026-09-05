@@ -56,6 +56,8 @@ import { NoteMobileSheet } from './NoteMobileSheet';
 import { NoteSidePanel } from './NoteSidePanel';
 import { useNoteAutoSave } from './useNoteAutoSave';
 
+const AI_USAGE_EXHAUSTED_KEY = 'settings.usage.aiUsageExhausted';
+
 const makeId = () => typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 
 function useFilteredNotes(notes: StudyNote[], searchParams: URLSearchParams, bibleLocale: BibleLocale) {
@@ -396,12 +398,7 @@ function titleSizeClass(title: string): string {
     return 'text-sm';
 }
 
-function EditorHeader({
-    handleBack, t, isEditing, filteredNotes, prevNoteId, nextNoteId, router, searchParams,
-    currentIndex, type, setType, isSaving, saveError, lastSaved, hasUnsavedEdits, setIsEditing, handleDelete, handleCopy, isCopied,
-    title, setTitle, searchQuery, justSaved, aiMenu, headerRef, stickyTop,
-    roomy, collapsed, sectionLabel, onOpenSheet
-}: {
+type EditorHeaderProps = {
     handleBack: () => void; t: ReturnType<typeof useTranslation>['t']; isEditing: boolean;
     filteredNotes: StudyNote[]; prevNoteId: string | null; nextNoteId: string | null;
     router: ReturnType<typeof useRouter>; searchParams: ReturnType<typeof useSearchParams>;
@@ -428,21 +425,14 @@ function EditorHeader({
     sectionLabel?: string | null;
     /** Opens the bottom sheet holding the outline and the note's properties. */
     onOpenSheet?: () => void;
-}) {
-    const [showMenu, setShowMenu] = useState(false);
-    const menuRef = useRef<HTMLDivElement>(null);
-    const copyLabel = isCopied ? t('common.copied') || 'Copied!' : t('common.copy') || 'Copy';
+};
 
-    useEffect(() => {
-        if (!showMenu) return;
-        const handleClickOutside = (e: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-                setShowMenu(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [showMenu]);
+function EditorHeader({
+    handleBack, t, isEditing, filteredNotes, prevNoteId, nextNoteId, router, searchParams,
+    currentIndex, type, setType, isSaving, saveError, lastSaved, hasUnsavedEdits, setIsEditing, handleDelete, handleCopy, isCopied,
+    title, setTitle, searchQuery, justSaved, aiMenu, headerRef, stickyTop,
+    roomy, collapsed, sectionLabel, onOpenSheet
+}: EditorHeaderProps) {
 
     const backButton = (
         <button
@@ -485,97 +475,9 @@ function EditorHeader({
 
     /* The note's title. In reading mode on a narrow screen it doubles as the way into the
        outline and says which section is being read — see NoteMobileSheet. */
-    const titleField = isEditing ? (
-        <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder={t('studiesWorkspace.titlePlaceholder') || 'Note Title...'}
-            aria-label={t('studiesWorkspace.titlePlaceholder') || 'Note Title...'}
-            className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-center font-bold text-gray-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-50 dark:focus:border-emerald-500 dark:focus:ring-emerald-900 ${titleSizeClass(title)}`}
-        />
-    ) : (
-        <h1
-            className={`line-clamp-2 text-center font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 ${titleSizeClass(title)}`}
-            title={title || undefined}
-        >
-            {title ? (
-                searchQuery ? <HighlightedText text={title} searchQuery={searchQuery} /> : title
-            ) : (
-                t('studiesWorkspace.untitled')
-            )}
-        </h1>
-    );
+    const titleField = <EditorTitleField isEditing={isEditing} title={title} setTitle={setTitle} t={t} searchQuery={searchQuery} />;
 
-    const actions = (
-        <>
-            {isEditing && aiMenu}
-            <div className={`text-sm flex items-center gap-1.5 text-gray-500 dark:text-gray-400 ${isEditing || justSaved ? '' : 'hidden'}`}>
-                {isSaving ? (
-                    <><ArrowPathIcon className="h-4 w-4 animate-spin" /> <span>{t('common.saving') || 'Saving...'}</span></>
-                ) : saveError ? (
-                    <span className="text-red-500">{t(saveError)}</span>
-                ) : lastSaved && !hasUnsavedEdits ? (
-                    /* "Saved" means THIS text is on the server — not "a save happened once".
-                       Found in the browser: the tick stayed up while newer keystrokes sat
-                       unsent, which is the one claim this whole migration exists to stop
-                       the app from making. */
-                    <><CheckCircleIcon className="h-4 w-4 text-emerald-500" /> <span className="hidden sm:inline">{t('common.saved') || 'Saved'}</span></>
-                ) : null}
-            </div>
-
-            {!isEditing && (
-                <button
-                    type="button"
-                    onClick={handleCopy}
-                    className={`inline-flex items-center justify-center rounded-lg p-2 text-sm font-medium transition-colors ${isCopied
-                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-gray-100'
-                        }`}
-                    title={copyLabel}
-                    aria-label={copyLabel}
-                >
-                    {isCopied ? <CheckIcon className="h-5 w-5" /> : <DocumentDuplicateIcon className="h-5 w-5" />}
-                </button>
-            )}
-
-            <button
-                onClick={() => setIsEditing(!isEditing)}
-                className={`p-2 rounded-lg transition-colors ${isEditing
-                    ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300'
-                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-100'
-                    }`}
-                title={isEditing ? t('common.done') || 'Done' : t('common.edit') || 'Edit'}
-                aria-label={isEditing ? t('common.done') || 'Done' : t('common.edit') || 'Edit'}
-            >
-                {isEditing ? <CheckIcon className="h-5 w-5" /> : <PencilIcon className="h-5 w-5" />}
-            </button>
-
-            <div className="relative" ref={menuRef}>
-                <button
-                    onClick={() => setShowMenu(!showMenu)}
-                    className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
-                    title={t('common.more') || 'More'}
-                    aria-label={t('common.more') || 'More'}
-                >
-                    <EllipsisVerticalIcon className="h-5 w-5" />
-                </button>
-                {showMenu && (
-                    <div className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800 z-50">
-                        <button
-                            onClick={() => {
-                                setShowMenu(false);
-                                setTimeout(() => handleDelete(), 10);
-                            }}
-                            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
-                        >
-                            <TrashIcon className="h-4 w-4" />
-                            {t('common.delete')}
-                        </button>
-                    </div>
-                )}
-            </div>
-        </>
-    );
+    const actions = <EditorHeaderActions t={t} isEditing={isEditing} justSaved={justSaved} isSaving={isSaving} saveError={saveError} lastSaved={lastSaved} hasUnsavedEdits={hasUnsavedEdits} handleCopy={handleCopy} isCopied={isCopied} setIsEditing={setIsEditing} handleDelete={handleDelete} aiMenu={aiMenu} />;
 
     const shell = 'sticky z-30 border-b border-gray-200 bg-white/90 backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/90';
 
@@ -618,11 +520,7 @@ function EditorHeader({
                                    navigation, and a title matching the search has to keep
                                    showing the hit. */
                                 <h1 className={`min-w-0 truncate font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 ${titleSizeClass(title)}`}>
-                                    {title ? (
-                                        searchQuery ? <HighlightedText text={title} searchQuery={searchQuery} /> : title
-                                    ) : (
-                                        t('studiesWorkspace.untitled')
-                                    )}
+                                    {renderEditorTitle(title, searchQuery, t)}
                                 </h1>
                             )}
                             <ChevronDownIcon className={`h-4 w-4 shrink-0 ${sectionLabel ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`} />
@@ -1099,7 +997,7 @@ export default function StudyNoteEditorPage() {
     // The note's own properties. They are ONE instance, handed either to the side
     // panel or to the narrow-screen tray below the text — never both, because each
     // carries live inputs and pickers.
-    const scriptureRefsBlock = (
+    const renderScriptureRefs = () => (
         <>
                     {/* References */}
                     <div className="flex flex-col h-full space-y-4 group/refs">
@@ -1113,7 +1011,7 @@ export default function StudyNoteEditorPage() {
                                     type="button"
                                     onClick={() => handleAIAnalyze('scriptureRefs')}
                                     disabled={isAnalyzing || !content.trim() || aiBlocked}
-                                    title={aiBlocked ? t('settings.usage.aiUsageExhausted') : t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
+                                    title={aiBlocked ? t(AI_USAGE_EXHAUSTED_KEY) : t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
                                     className="flex items-center justify-center rounded-lg p-1.5 opacity-0 transition-opacity group-hover/refs:opacity-100 focus-visible:opacity-100 text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
                                 >
                                     <SparklesIcon className="h-5 w-5" />
@@ -1187,6 +1085,7 @@ export default function StudyNoteEditorPage() {
                     </div>
         </>
     );
+    const scriptureRefsBlock = renderScriptureRefs();
 
     const tagsBlock = (
         <>
@@ -1202,7 +1101,7 @@ export default function StudyNoteEditorPage() {
                                     type="button"
                                     onClick={() => handleAIAnalyze('tags')}
                                     disabled={isAnalyzing || !content.trim() || aiBlocked}
-                                    title={aiBlocked ? t('settings.usage.aiUsageExhausted') : t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
+                                    title={aiBlocked ? t(AI_USAGE_EXHAUSTED_KEY) : t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
                                     className="flex items-center justify-center rounded-lg p-1.5 opacity-0 transition-opacity group-hover/tags:opacity-100 focus-visible:opacity-100 text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
                                 >
                                     <SparklesIcon className="h-5 w-5" />
@@ -1260,65 +1159,8 @@ export default function StudyNoteEditorPage() {
         </>
     );
 
-    // ─── RENDER ─────────────────────────────────────────────────────────────
-
-    if (notesLoading || (!isInitialized && !isNew)) {
-        return (
-            <div className="flex items-center justify-center p-12">
-                <ArrowPathIcon className="h-6 w-6 animate-spin text-emerald-600" />
-            </div>
-        );
-    }
-
-    return (
-        <div className="min-h-screen bg-white dark:bg-gray-900 flex flex-col -m-4 md:-m-6 lg:-m-8 relative">
-            {/* HEADER TRAY */}
-            <EditorHeader
-                handleBack={handleBack} t={t} isEditing={isEditing} filteredNotes={filteredNotes}
-                prevNoteId={prevNoteId} nextNoteId={nextNoteId} router={router} searchParams={searchParams}
-                currentIndex={currentIndex} type={type} setType={setType} isSaving={isSaving} saveError={saveError}
-                lastSaved={lastSaved} hasUnsavedEdits={editorIsDirty} setIsEditing={setIsEditing} handleDelete={handleDelete}
-                handleCopy={handleCopy} isCopied={isCopied}
-                headerRef={setHeaderRef} stickyTop={navHeight}
-                roomy={roomyHeader} collapsed={headerCollapsed} sectionLabel={sectionLabel}
-                onOpenSheet={propertiesInSheet ? openSheet : undefined}
-                title={title} setTitle={setTitle} searchQuery={searchQuery} justSaved={justSaved}
-                aiMenu={
-                    <NoteAiMenu
-                        onAnalyze={handleAIAnalyze}
-                        isAnalyzing={isAnalyzing}
-                        disabled={isAnalyzing || !content.trim() || aiBlocked}
-                        blockedTitle={aiBlocked ? t('settings.usage.aiUsageExhausted') : undefined}
-                    />
-                }
-            />
-
-            {/* EDITOR CONTENT */}
-            <div className="flex flex-1 min-h-0">
-                {/* Everything about the note that is not its text. Rendered ONLY on wide
-                    screens — on a phone the same blocks stay where they are today, under
-                    the text, so nothing becomes unreachable. */}
-                {isWideViewport && (
-                    <NoteSidePanel
-                        outline={outlineControl}
-                        foldable={!isEditing}
-                        stickyTop={belowHeader}
-                        activeSectionId={activeSectionId}
-                        collapsed={panelCollapsed}
-                        onToggleCollapsed={togglePanel}
-                        hasSermons={sermonsOnNote.length > 0}
-                        meta={existingNote ? <NoteDates note={existingNote} t={t} /> : undefined}
-                        scriptureRefs={scriptureRefsBlock}
-                        tags={tagsBlock}
-                        sermons={sermonsBlock}
-                    />
-                )}
-
-                {/* No `overflow` here on purpose: it would become the scroll container that
-                    `position: sticky` measures against, and the editor toolbar would slide
-                    out of view instead of sticking. The window does the scrolling. */}
-                <div className="flex-1 min-w-0 px-4 py-8 md:px-8 md:py-10 pb-48 md:pb-32">
-                  <div className="mx-auto w-full space-y-8">
+    const renderRecoveryBanners = () => (
+        <>
                 {/* A returning user's unfinished recording waits here — survives reload / tab close. */}
                 {isEditing && (
                     <RecordingDraftBanner
@@ -1402,6 +1244,73 @@ export default function StudyNoteEditorPage() {
                         </div>
                     </div>
                 )}
+        </>
+    );
+
+    const renderHeader = () => (
+            <EditorHeader
+                handleBack={handleBack} t={t} isEditing={isEditing} filteredNotes={filteredNotes}
+                prevNoteId={prevNoteId} nextNoteId={nextNoteId} router={router} searchParams={searchParams}
+                currentIndex={currentIndex} type={type} setType={setType} isSaving={isSaving} saveError={saveError}
+                lastSaved={lastSaved} hasUnsavedEdits={editorIsDirty} setIsEditing={setIsEditing} handleDelete={handleDelete}
+                handleCopy={handleCopy} isCopied={isCopied}
+                headerRef={setHeaderRef} stickyTop={navHeight}
+                roomy={roomyHeader} collapsed={headerCollapsed} sectionLabel={sectionLabel}
+                onOpenSheet={propertiesInSheet ? openSheet : undefined}
+                title={title} setTitle={setTitle} searchQuery={searchQuery} justSaved={justSaved}
+                aiMenu={
+                    <NoteAiMenu
+                        onAnalyze={handleAIAnalyze}
+                        isAnalyzing={isAnalyzing}
+                        disabled={isAnalyzing || !content.trim() || aiBlocked}
+                        blockedTitle={aiBlocked ? t(AI_USAGE_EXHAUSTED_KEY) : undefined}
+                    />
+                }
+            />
+    );
+
+    // ─── RENDER ─────────────────────────────────────────────────────────────
+
+    if (notesLoading || (!isInitialized && !isNew)) {
+        return (
+            <div className="flex items-center justify-center p-12">
+                <ArrowPathIcon className="h-6 w-6 animate-spin text-emerald-600" />
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-white dark:bg-gray-900 flex flex-col -m-4 md:-m-6 lg:-m-8 relative">
+            {/* HEADER TRAY */}
+            {renderHeader()}
+
+            {/* EDITOR CONTENT */}
+            <div className="flex flex-1 min-h-0">
+                {/* Everything about the note that is not its text. Rendered ONLY on wide
+                    screens — on a phone the same blocks stay where they are today, under
+                    the text, so nothing becomes unreachable. */}
+                {isWideViewport && (
+                    <NoteSidePanel
+                        outline={outlineControl}
+                        foldable={!isEditing}
+                        stickyTop={belowHeader}
+                        activeSectionId={activeSectionId}
+                        collapsed={panelCollapsed}
+                        onToggleCollapsed={togglePanel}
+                        hasSermons={sermonsOnNote.length > 0}
+                        meta={existingNote ? <NoteDates note={existingNote} t={t} /> : undefined}
+                        scriptureRefs={scriptureRefsBlock}
+                        tags={tagsBlock}
+                        sermons={sermonsBlock}
+                    />
+                )}
+
+                {/* No `overflow` here on purpose: it would become the scroll container that
+                    `position: sticky` measures against, and the editor toolbar would slide
+                    out of view instead of sticking. The window does the scrolling. */}
+                <div className="flex-1 min-w-0 px-4 py-8 md:px-8 md:py-10 pb-48 md:pb-32">
+                  <div className="mx-auto w-full space-y-8">
+                {renderRecoveryBanners()}
                 <div className="relative group">
                     {isEditing ? (
                         <div className="text-lg md:text-xl leading-relaxed">
@@ -1508,4 +1417,116 @@ export default function StudyNoteEditorPage() {
             {!isEditing && !sheetOpen && <FloatingTextScaleControls />}
         </div>
     );
+}
+
+function EditorHeaderActions({ t, isEditing, justSaved, isSaving, saveError, lastSaved, hasUnsavedEdits, handleCopy, isCopied, setIsEditing, handleDelete, aiMenu }: Pick<EditorHeaderProps, 't' | 'isEditing' | 'justSaved' | 'isSaving' | 'saveError' | 'lastSaved' | 'hasUnsavedEdits' | 'handleCopy' | 'isCopied' | 'setIsEditing' | 'handleDelete' | 'aiMenu'>) {
+    const [showMenu, setShowMenu] = useState(false);
+    const menuRef = useRef<HTMLDivElement>(null);
+    const copyLabel = isCopied ? t('common.copied') || 'Copied!' : t('common.copy') || 'Copy';
+
+    useEffect(() => {
+        if (!showMenu) return;
+        const handleClickOutside = (e: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+                setShowMenu(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [showMenu]);
+
+    return (
+        <>
+            {isEditing && aiMenu}
+            <div className={`text-sm flex items-center gap-1.5 text-gray-500 dark:text-gray-400 ${isEditing || justSaved ? '' : 'hidden'}`}>
+                {isSaving ? (
+                    <><ArrowPathIcon className="h-4 w-4 animate-spin" /> <span>{t('common.saving') || 'Saving...'}</span></>
+                ) : saveError ? (
+                    <span className="text-red-500">{t(saveError)}</span>
+                ) : lastSaved && !hasUnsavedEdits ? (
+                    /* "Saved" means THIS text is on the server — not "a save happened once".
+                       Found in the browser: the tick stayed up while newer keystrokes sat
+                       unsent, which is the one claim this whole migration exists to stop
+                       the app from making. */
+                    <><CheckCircleIcon className="h-4 w-4 text-emerald-500" /> <span className="hidden sm:inline">{t('common.saved') || 'Saved'}</span></>
+                ) : null}
+            </div>
+
+            {!isEditing && (
+                <button
+                    type="button"
+                    onClick={handleCopy}
+                    className={`inline-flex items-center justify-center rounded-lg p-2 text-sm font-medium transition-colors ${isCopied
+                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-300 dark:hover:text-gray-100'
+                        }`}
+                    title={copyLabel}
+                    aria-label={copyLabel}
+                >
+                    {isCopied ? <CheckIcon className="h-5 w-5" /> : <DocumentDuplicateIcon className="h-5 w-5" />}
+                </button>
+            )}
+
+            <button
+                onClick={() => setIsEditing(!isEditing)}
+                className={`p-2 rounded-lg transition-colors ${isEditing
+                    ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/40 dark:text-emerald-300'
+                    : 'bg-gray-100 text-gray-500 hover:bg-gray-200 hover:text-gray-900 dark:bg-gray-800 dark:text-gray-400 dark:hover:text-gray-100'
+                    }`}
+                title={isEditing ? t('common.done') || 'Done' : t('common.edit') || 'Edit'}
+                aria-label={isEditing ? t('common.done') || 'Done' : t('common.edit') || 'Edit'}
+            >
+                {isEditing ? <CheckIcon className="h-5 w-5" /> : <PencilIcon className="h-5 w-5" />}
+            </button>
+
+            <div className="relative" ref={menuRef}>
+                <button
+                    onClick={() => setShowMenu(!showMenu)}
+                    className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-100"
+                    title={t('common.more') || 'More'}
+                    aria-label={t('common.more') || 'More'}
+                >
+                    <EllipsisVerticalIcon className="h-5 w-5" />
+                </button>
+                {showMenu && (
+                    <div className="absolute right-0 top-full mt-1 w-40 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800 z-50">
+                        <button
+                            onClick={() => {
+                                setShowMenu(false);
+                                setTimeout(() => handleDelete(), 10);
+                            }}
+                            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/30 transition-colors"
+                        >
+                            <TrashIcon className="h-4 w-4" />
+                            {t('common.delete')}
+                        </button>
+                    </div>
+                )}
+            </div>
+        </>
+    );
+}
+
+function EditorTitleField({ isEditing, title, setTitle, t, searchQuery }: Pick<EditorHeaderProps, 'isEditing' | 'title' | 'setTitle' | 't' | 'searchQuery'>) {
+    return isEditing ? (
+        <input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder={t('studiesWorkspace.titlePlaceholder') || 'Note Title...'}
+            aria-label={t('studiesWorkspace.titlePlaceholder') || 'Note Title...'}
+            className={`w-full rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-center font-bold text-gray-900 outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-200 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-50 dark:focus:border-emerald-500 dark:focus:ring-emerald-900 ${titleSizeClass(title)}`}
+        />
+    ) : (
+        <h1
+            className={`line-clamp-2 text-center font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 ${titleSizeClass(title)}`}
+            title={title || undefined}
+        >
+            {renderEditorTitle(title, searchQuery, t)}
+        </h1>
+    );
+}
+
+function renderEditorTitle(title: string, searchQuery: string, t: EditorHeaderProps['t']) {
+    if (!title) return t('studiesWorkspace.untitled');
+    return searchQuery ? <HighlightedText text={title} searchQuery={searchQuery} /> : title;
 }

@@ -22,7 +22,7 @@ import type { NoteDraftPayload } from './noteDraft';
 import type { ScriptureReference, StudyNote } from '@/models/models';
 
 export function useNoteAutoSave({
-    noteId, isNew, isInitialized, existingNote, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, t, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved
+    noteId, isNew, isInitialized, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, baselineRef, revisionRef, deliberateOverwriteRef, resaveNonce, saveBlocked, onConflict, onSaved
 }: {
     noteId: string; isNew: boolean; isInitialized: boolean; existingNote?: StudyNote; title: string;
     content: string; tags: string[]; scriptureRefs: ScriptureReference[]; type: 'note' | 'question';
@@ -65,6 +65,70 @@ export function useNoteAutoSave({
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
 
+    const saveNewNote = useCallback(async () => {
+        if (!title.trim() && !content.trim() && tags.length === 0 && scriptureRefs.length === 0) return;
+
+        setIsSaving(true);
+        setSaveError(null);
+        setLastSaved(null);
+        try {
+            const submission = createNote({
+                title, content, tags, scriptureRefs, type,
+                userId: uid ?? '', materialIds: [], relatedSermonIds: []
+            });
+            const newNote = submission.note;
+            // CARRY THE DRAFT FIRST, THEN report the save.
+            //
+            // The note was drafted under the placeholder id "new" and now has a
+            // real id. The record is carried, not deleted: the id arrived before
+            // the server may have confirmed anything, and a plain clear would leave
+            // the text with no durable home until the next keystroke. Reporting the
+            // save BEFORE the move broke exactly that —
+            // `markSaved` retires the draft under the key the hook still holds
+            // ("new"), so the move found nothing left to carry and the safety net
+            // was gone while the write was still in flight.
+            if (uid) moveDraft(draftKey(uid, 'new', 'note'), draftKey(uid, newNote.id, 'note'));
+            window.history.replaceState(null, '', `/studies/${newNote.id}`);
+            setCreatedNoteId(newNote.id);
+
+            // The stable id prevents a second create while an online request is
+            // awaiting `persisted` acceptance. On a refusal the editor remains on
+            // screen with this same text and with its draft carried to this id.
+            // useStudyNotes' create recovery descriptor reports a late refusal while this screen is mounted.
+            const acceptance = await awaitAcceptance(submission, () => undefined);
+
+            const confirmedPayload = { title, content, tags, scriptureRefs, type };
+            const retirePersistedCreateDraft = () => {
+                // The draft was moved to the real id before the route changed. Never
+                // retire it from the old hook's moving key; remove only this exact,
+                // server-confirmed payload at its stable destination.
+                if (uid) clearDraftIfMatches(draftKey(uid, newNote.id, 'note'), confirmedPayload);
+            };
+            if (acceptance.kind === 'persisted') {
+                retirePersistedCreateDraft();
+                announceIfPersisted(acceptance, () => {
+                    baselineRef.current = confirmedPayload;
+                    setLastSaved(new Date());
+                });
+            } else if (acceptance.kind === 'queued') {
+                // A queued write stays silent forever as a *queued* submission.
+                // Once persistence really lands we may retire its exact durable
+                // copy, but still do not set Saved: `queued` is not `persisted`.
+                void submission.persistence.then(retirePersistedCreateDraft).catch(() => undefined);
+            }
+        } catch (e) {
+            /**
+             * A STATUS, not a second explanation. The refusal itself is announced by
+             * the note's recovery descriptor (and a version conflict opens the choice
+             * instead); this flag only tells the person that the last auto-save did
+             * not go through. It holds a translation KEY — the screen translates it.
+             */
+            console.error('Auto-create error', e);
+            setSaveError('common.saveError');
+        } finally {
+            setIsSaving(false);
+        }
+    }, [title, content, tags, scriptureRefs, type, createNote, uid, setCreatedNoteId, baselineRef]);
 
     const saveChanges = useCallback(async () => {
         if (!noteId || !isInitialized) return;
@@ -77,76 +141,14 @@ export function useNoteAutoSave({
         if (saveBlocked) return;
 
         if (isNew) {
-            if (!title.trim() && !content.trim() && tags.length === 0 && scriptureRefs.length === 0) return;
-
-            setIsSaving(true);
-            setSaveError(null);
-            setLastSaved(null);
-            try {
-                const submission = createNote({
-                    title, content, tags, scriptureRefs, type,
-                    userId: uid ?? '', materialIds: [], relatedSermonIds: []
-                });
-                const newNote = submission.note;
-                // CARRY THE DRAFT FIRST, THEN report the save.
-                //
-                // The note was drafted under the placeholder id "new" and now has a
-                // real id. The record is carried, not deleted: the id arrived before
-                // the server may have confirmed anything, and a plain clear would leave
-                // the text with no durable home until the next keystroke. Reporting the
-                // save BEFORE the move broke exactly that —
-                // `markSaved` retires the draft under the key the hook still holds
-                // ("new"), so the move found nothing left to carry and the safety net
-                // was gone while the write was still in flight.
-                if (uid) moveDraft(draftKey(uid, 'new', 'note'), draftKey(uid, newNote.id, 'note'));
-                window.history.replaceState(null, '', `/studies/${newNote.id}`);
-                setCreatedNoteId(newNote.id);
-
-                // The stable id prevents a second create while an online request is
-                // awaiting `persisted` acceptance. On a refusal the editor remains on
-                // screen with this same text and with its draft carried to this id.
-                // useStudyNotes' create recovery descriptor reports a late refusal while this screen is mounted.
-                const acceptance = await awaitAcceptance(submission, () => undefined);
-
-                const confirmedPayload = { title, content, tags, scriptureRefs, type };
-                const retirePersistedCreateDraft = () => {
-                    // The draft was moved to the real id before the route changed. Never
-                    // retire it from the old hook's moving key; remove only this exact,
-                    // server-confirmed payload at its stable destination.
-                    if (uid) clearDraftIfMatches(draftKey(uid, newNote.id, 'note'), confirmedPayload);
-                };
-                if (acceptance.kind === 'persisted') {
-                    retirePersistedCreateDraft();
-                    announceIfPersisted(acceptance, () => {
-                        baselineRef.current = confirmedPayload;
-                        setLastSaved(new Date());
-                    });
-                } else if (acceptance.kind === 'queued') {
-                    // A queued write stays silent forever as a *queued* submission.
-                    // Once persistence really lands we may retire its exact durable
-                    // copy, but still do not set Saved: `queued` is not `persisted`.
-                    void submission.persistence.then(retirePersistedCreateDraft).catch(() => undefined);
-                }
-            } catch (e) {
-                /**
-                 * A STATUS, not a second explanation. The refusal itself is announced by
-                 * the note's recovery descriptor (and a version conflict opens the choice
-                 * instead); this flag only tells the person that the last auto-save did
-                 * not go through. It holds a translation KEY — the screen translates it.
-                 */
-                console.error('Auto-create error', e);
-                setSaveError('common.saveError');
-            } finally {
-                setIsSaving(false);
-            }
+            await saveNewNote();
             return;
         }
 
         // Send ONLY the fields this editor actually changed. Sending all five means
         // an untouched field is written back from the snapshot this tab loaded, so
-        // a stale tab silently reverts text edited elsewhere. `existingNote` is the
-        // live cache entry, so a failed write (rolled back) shows up as changed
-        // again on the next pass and is re-sent.
+        // a stale tab silently reverts text edited elsewhere. The baseline advances
+        // only after acceptance, so a failed write remains changed on the next pass.
         const updates: Partial<StudyNote> = changedFields(baselineRef.current, {
             title, content, tags, scriptureRefs, type,
         });
@@ -236,7 +238,7 @@ export function useNoteAutoSave({
         } finally {
             setIsSaving(false);
         }
-    }, [noteId, isNew, isInitialized, isSaving, existingNote, title, content, tags, scriptureRefs, type, updateNote, createNote, uid, setCreatedNoteId, t, baselineRef, revisionRef, onConflict, onSaved]);
+    }, [noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, onConflict, onSaved]);
 
     useEffect(() => {
         if (!isInitialized) return;

@@ -98,18 +98,6 @@ function StructurePageContent() {
     });
   }, []);
 
-  // Handle switching to plan view
-  const handleSwitchToPlan = useCallback((sectionId?: string) => {
-    if (sermonId) {
-      // The section shortcut belongs to the paired screen (it scrolls to a section there);
-      // without one, open whichever editor this plan is actually kept in.
-      const url = sectionId
-        ? `/sermons/${encodeURIComponent(sermonId)}/plan?section=${sectionId}`
-        : planEditorRoute(encodeURIComponent(sermonId), sermon);
-      router.push(url);
-    }
-  }, [sermonId, router]);
-
   // Use effect to mark when component is mounted on client
   useEffect(() => {
     setIsClient(true);
@@ -129,6 +117,18 @@ function StructurePageContent() {
     isAmbiguousVisible,
     setIsAmbiguousVisible
   }: UseSermonStructureDataReturn = useSermonStructureData(sermonId, t);
+
+  // Handle switching to plan view
+  const handleSwitchToPlan = useCallback((sectionId?: string) => {
+    if (sermonId) {
+      // The section shortcut belongs to the paired screen (it scrolls to a section there);
+      // without one, open whichever editor this plan is actually kept in.
+      const url = sectionId
+        ? `/sermons/${encodeURIComponent(sermonId)}/plan?section=${sectionId}`
+        : planEditorRoute(encodeURIComponent(sermonId), sermon);
+      router.push(url);
+    }
+  }, [sermonId, router, sermon]);
 
   // Ref to hold the latest containers state
   const containersRef = useRef(containers);

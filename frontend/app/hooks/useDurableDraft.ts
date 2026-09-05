@@ -158,7 +158,7 @@ export function useDurableDraft<T>({
     if (!enabled || !key) return;
     const timeoutId = setTimeout(() => persist(key, value), WRITE_DELAY_MS);
     return () => clearTimeout(timeoutId);
-  }, [enabled, key, value]);
+  }, [enabled, key, value, persist]);
 
   // The page may go away before the debounce fires — write immediately then.
   useEffect(() => {

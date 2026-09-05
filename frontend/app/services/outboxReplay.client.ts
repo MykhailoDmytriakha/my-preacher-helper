@@ -85,36 +85,7 @@ export async function replayOutbox(uid: string): Promise<{
        * it does online: the intent is kept and marked, never silently applied.
        */
       if (entry.merge) {
-        const writers = await import('@/services/sermons.client');
-        if (entry.merge.kind === 'outline') {
-          await writers.updateSermonOutlineViaClient(
-            entry.docId,
-            (entry.patch as { outline: SermonOutline }).outline,
-            { baseOutline: entry.merge.base as SermonOutline | null }
-          );
-        } else if (entry.merge.kind === 'scratch') {
-          await writers.addScratchNoteViaClient(
-            entry.docId,
-            (entry.patch as { scratch: ScratchNote[] }).scratch,
-            entry.merge.base as ScratchNote[] | null
-          );
-        } else if (entry.merge.kind === 'structure') {
-          await writers.updateStructureViaClient(
-            entry.docId,
-            (entry.patch as { structure: ThoughtsBySection }).structure,
-            // The arrangement the screen started from travels with the intent, so the
-            // replay can tell a move made HERE from one made on the other device.
-            entry.merge.base as ThoughtsBySection | null
-          );
-        } else {
-          const payload = entry.patch as { outline: SermonOutline; scratch: ScratchNote[] };
-          await writers.applyScratchToOutlineViaClient(
-            entry.docId,
-            payload.outline,
-            payload.scratch,
-            entry.merge.base as { outline?: SermonOutline | null; scratch?: ScratchNote[] | null }
-          );
-        }
+        await replayMergeIntent({ ...entry, merge: entry.merge });
         removeFromOutbox(entry.id);
         touched.push({ collection: entry.collection, docId: entry.docId });
         replayed += 1;
@@ -143,31 +114,8 @@ export async function replayOutbox(uid: string): Promise<{
       touched.push({ collection: entry.collection, docId: entry.docId });
       replayed += 1;
     } catch (error) {
-      if (isStaleWriteError(error)) {
-        // Count it as CONFLICTED only if the transition was really recorded. When
-        // storage refuses it, the entry stays pending and would be refused again on
-        // every heartbeat — reporting it as failed is the honest answer and keeps the
-        // count truthful for the banner.
-        if (markOutboxConflicted(entry.id, error.actualRevision)) conflicted += 1;
-        else failed += 1;
-        continue;
-      }
-      // The document is GONE — deleted from another device while this edit waited.
-      // Retrying forever would hammer a dead target every minute and the text would
-      // stay invisible. Surface it as a conflict instead: the person sees their
-      // words and decides, and nothing retries behind their back.
-      if (/not found/i.test((error as { message?: string })?.message ?? '')) {
-        // Flagged as MISSING, not merely refused: there is nothing to overwrite, so
-        // the UI must not offer "keep mine" — an update against a deleted document
-        // can never succeed, and a button that promises what it cannot do is worse
-        // than no button.
-        if (markOutboxConflicted(entry.id, entry.baseRevision, true)) conflicted += 1;
-        else failed += 1;
-        continue;
-      }
-      // Still unreachable, or a real error: KEEP the entry. Dropping it here
-      // would be the silent loss the outbox exists to prevent.
-      failed += 1;
+      if (recordReplayConflict(entry, error)) conflicted += 1;
+      else failed += 1;
     }
   }
 
@@ -198,4 +146,61 @@ function narrowedBaseline(
     if (!rewritten.has(name)) remaining[name] = baseline[name];
   });
   return Object.keys(remaining).length > 0 ? remaining : undefined;
+}
+
+async function replayMergeIntent(entry: OutboxEntry & { merge: NonNullable<OutboxEntry['merge']> }): Promise<void> {
+  const writers = await import('@/services/sermons.client');
+  if (entry.merge.kind === 'outline') {
+    await writers.updateSermonOutlineViaClient(
+      entry.docId,
+      (entry.patch as { outline: SermonOutline }).outline,
+      { baseOutline: entry.merge.base as SermonOutline | null }
+    );
+  } else if (entry.merge.kind === 'scratch') {
+    await writers.addScratchNoteViaClient(
+      entry.docId,
+      (entry.patch as { scratch: ScratchNote[] }).scratch,
+      entry.merge.base as ScratchNote[] | null
+    );
+  } else if (entry.merge.kind === 'structure') {
+    await writers.updateStructureViaClient(
+      entry.docId,
+      (entry.patch as { structure: ThoughtsBySection }).structure,
+      // The arrangement the screen started from travels with the intent, so the
+      // replay can tell a move made HERE from one made on the other device.
+      entry.merge.base as ThoughtsBySection | null
+    );
+  } else {
+    const payload = entry.patch as { outline: SermonOutline; scratch: ScratchNote[] };
+    await writers.applyScratchToOutlineViaClient(
+      entry.docId,
+      payload.outline,
+      payload.scratch,
+      entry.merge.base as { outline?: SermonOutline | null; scratch?: ScratchNote[] | null }
+    );
+  }
+}
+
+function recordReplayConflict(entry: OutboxEntry, error: unknown): boolean {
+  if (isStaleWriteError(error)) {
+    // Count it as CONFLICTED only if the transition was really recorded. When
+    // storage refuses it, the entry stays pending and would be refused again on
+    // every heartbeat — reporting it as failed is the honest answer and keeps the
+    // count truthful for the banner.
+    return markOutboxConflicted(entry.id, error.actualRevision);
+  }
+  // The document is GONE — deleted from another device while this edit waited.
+  // Retrying forever would hammer a dead target every minute and the text would
+  // stay invisible. Surface it as a conflict instead: the person sees their
+  // words and decides, and nothing retries behind their back.
+  if (/not found/i.test((error as { message?: string })?.message ?? '')) {
+    // Flagged as MISSING, not merely refused: there is nothing to overwrite, so
+    // the UI must not offer "keep mine" — an update against a deleted document
+    // can never succeed, and a button that promises what it cannot do is worse
+    // than no button.
+    return markOutboxConflicted(entry.id, entry.baseRevision, true);
+  }
+  // Still unreachable, or a real error: KEEP the entry. Dropping it here
+  // would be the silent loss the outbox exists to prevent.
+  return false;
 }

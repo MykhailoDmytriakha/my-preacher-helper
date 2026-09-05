@@ -80,6 +80,11 @@ import type { Sermon, Thought, SermonOutline as SermonOutlineType, Preparation, 
 import type { StructureSectionId } from '@utils/tagUtils';
 import type { ReactNode } from "react";
 
+const WRITE_REFUSED_KEY = 'writeRecovery.refused';
+const RETRY_LABEL_KEY = 'buttons.retry';
+const COPY_TEXT_LABEL_KEY = 'freshness.copyTextAction';
+const THOUGHT_UPDATE_ERROR_KEY = 'errors.thoughtUpdateError';
+
 export const dynamic = "force-dynamic";
 
 // Defensive structure-hygiene backstop: thought ids are now minted real up front
@@ -742,7 +747,7 @@ useEffect(() => {
     const currentSermon = sermonRef.current ?? sermon;
     // No sermon means nothing holds this edit — `skipped` would close the editor and
     // clear the fields as if the write were safe elsewhere. It is not.
-    if (!currentSermon) return refusedWrite('not-found', 'This sermon is no longer available', t('writeRecovery.refused'));
+    if (!currentSermon) return refusedWrite('not-found', 'This sermon is no longer available', t(WRITE_REFUSED_KEY));
 
     const baseSermon: Sermon = options.outlineOverride
       ? { ...currentSermon, outline: options.outlineOverride }
@@ -901,7 +906,7 @@ useEffect(() => {
   const handleCreateManualThought = useCallback((draftThought: Omit<Thought, "id">): WriteSubmission => {
     // The sermon is gone, so nothing holds this dictated text. Closing the editor as
     // a mere skip erased it without a word; refuse instead and keep the draft.
-    if (!sermon) return refusedWrite('not-found', 'This sermon is no longer available', t('writeRecovery.refused'));
+    if (!sermon) return refusedWrite('not-found', 'This sermon is no longer available', t(WRITE_REFUSED_KEY));
 
     // Did this create reach acceptance before it failed? Until then the modal owns the
     // message; afterwards it may already be closed and only this page can speak.
@@ -1010,9 +1015,9 @@ useEffect(() => {
           error: createError,
           title: t(writeFailureTranslationKey(createError, 'errors.failedToSaveThought')),
           description: recoveryText([newThought.text, (newThought.tags ?? []).join(', ')]),
-          retryLabel: t('buttons.retry'),
+          retryLabel: t(RETRY_LABEL_KEY),
           retry: () => undefined,
-          copyLabel: t('freshness.copyTextAction'),
+          copyLabel: t(COPY_TEXT_LABEL_KEY),
           id: `write-recovery:thought-create:${newThought.id}`,
         });
         throw createError;
@@ -1063,11 +1068,11 @@ useEffect(() => {
       if (!stillTheSamePerson()) return;
       showRecoverableWriteFailure({
         error,
-        title: t(writeFailureTranslationKey(error, 'errors.thoughtUpdateError')),
+        title: t(writeFailureTranslationKey(error, THOUGHT_UPDATE_ERROR_KEY)),
         description: '',
-        retryLabel: t('buttons.retry'),
+        retryLabel: t(RETRY_LABEL_KEY),
         retry: () => undefined,
-        copyLabel: t('freshness.copyTextAction'),
+        copyLabel: t(COPY_TEXT_LABEL_KEY),
         id: `write-recovery:thought-move:${thought.id}`,
       });
     };
@@ -1149,7 +1154,7 @@ useEffect(() => {
 
   const handleSaveEditedThought = (updatedText: string, updatedTags: string[], outlinePointId?: string | null, subPointId?: string | null): WriteSubmission => {
     // No target owns the draft, so keep the editor open with a refusal.
-    if (!editingModalData) return refusedWrite('not-found', 'The thought being edited is gone', t('writeRecovery.refused'));
+    if (!editingModalData) return refusedWrite('not-found', 'The thought being edited is gone', t(WRITE_REFUSED_KEY));
     const currentSermon = sermon;
     if (!currentSermon) return skippedWrite();
     const originalThoughtId = editingModalData.thought.id;
@@ -1178,15 +1183,15 @@ useEffect(() => {
             queueRejectedEdit({ thought: rejectedThought, index: originalIndex, session: nextEditSession() }),
           toast: {
             error: rejectionError,
-            title: t(writeFailureTranslationKey(rejectionError, 'errors.thoughtUpdateError')),
+            title: t(writeFailureTranslationKey(rejectionError, THOUGHT_UPDATE_ERROR_KEY)),
             description: recoveryText([
               rejectedThought.text,
               (rejectedThought.tags ?? []).join(', '),
             ]),
-            retryLabel: t('buttons.retry'),
+            retryLabel: t(RETRY_LABEL_KEY),
             // The editor that owned this retry is gone; the text itself is the recovery.
             retry: () => undefined,
-            copyLabel: t('freshness.copyTextAction'),
+            copyLabel: t(COPY_TEXT_LABEL_KEY),
             id: `write-recovery:thought:${rejectedThought.id}`,
           },
         });
@@ -1334,11 +1339,11 @@ useEffect(() => {
         alreadyReported = true;
         showRecoverableWriteFailure({
           error,
-          title: t(writeFailureTranslationKey(error, 'errors.thoughtUpdateError')),
+          title: t(writeFailureTranslationKey(error, THOUGHT_UPDATE_ERROR_KEY)),
           description: '',
-          retryLabel: t('buttons.retry'),
+          retryLabel: t(RETRY_LABEL_KEY),
           retry: () => undefined,
-          copyLabel: t('freshness.copyTextAction'),
+          copyLabel: t(COPY_TEXT_LABEL_KEY),
           id: 'write-recovery:thought-bulk-move',
         });
       };

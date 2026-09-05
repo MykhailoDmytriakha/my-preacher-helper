@@ -32,6 +32,8 @@ import { deleteSermon, updateSermon } from "@services/sermon.service";
 
 import "@locales/i18n";
 
+const SERMON_WRITE_REFUSED_LOG = 'Dashboard sermon write refused:';
+
 
 interface OptionMenuProps {
   sermon: Sermon;
@@ -145,7 +147,7 @@ export default function OptionMenu({
         // The card badge reports these dashboard writes (useDashboardOptimisticSermons),
         // with the operation and a retry attached to the row itself. A toast here as
         // well gave one refused action two messages — one refusal, one reporter.
-        (error) => console.error('Dashboard sermon write refused:', error)
+        (error) => console.error(SERMON_WRITE_REFUSED_LOG, error)
       );
       setOpen(false);
       return;
@@ -257,7 +259,7 @@ export default function OptionMenu({
         // The card badge reports these dashboard writes (useDashboardOptimisticSermons),
         // with the operation and a retry attached to the row itself. A toast here as
         // well gave one refused action two messages — one refusal, one reporter.
-        (error) => console.error('Dashboard sermon write refused:', error)
+        (error) => console.error(SERMON_WRITE_REFUSED_LOG, error)
       );
       closeMenu();
       return;
@@ -276,7 +278,7 @@ export default function OptionMenu({
         // The card badge reports these dashboard writes (useDashboardOptimisticSermons),
         // with the operation and a retry attached to the row itself. A toast here as
         // well gave one refused action two messages — one refusal, one reporter.
-        (error) => console.error('Dashboard sermon write refused:', error)
+        (error) => console.error(SERMON_WRITE_REFUSED_LOG, error)
       );
       closeMenu();
       return;

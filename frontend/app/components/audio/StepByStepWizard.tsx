@@ -25,7 +25,7 @@ import {
     ArrowRight, ArrowLeft, Loader2, FileText, Play, Square, Sparkles,
     AlertTriangle, Check, Download, AudioLines, Pencil, Mic, Cpu, Clock, Eye, Layers,
 } from 'lucide-react';
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -225,7 +225,10 @@ export default function StepByStepWizard({
         isError: entitlementError,
     } = useUserEntitlement(user);
 
-    const availableTtsTargets = userEntitlement?.functions?.tts.available ?? [];
+    const availableTtsTargets = useMemo(
+        () => userEntitlement?.functions?.tts.available ?? [],
+        [userEntitlement?.functions?.tts.available],
+    );
     const entitlementSeeded = useRef(false);
     useEffect(() => {
         if (entitlementSeeded.current || !userEntitlement?.functions?.tts) return;
@@ -510,6 +513,75 @@ export default function StepByStepWizard({
     // ------------------------------------------------------------------
     // Generate audio (TTS)
     // ------------------------------------------------------------------
+    const generateAudioBatches = useCallback(async (
+        baseBody: Record<string, unknown>,
+        signal: AbortSignal,
+        isGoogle: boolean,
+        totalChunks: number,
+    ) => {
+        const parts: Uint8Array[] = [];
+        let filename: string | undefined;
+        let mimeType: string | undefined;
+
+        if (isGoogle && !GOOGLE_SMALL_CHUNKING) {
+            // Reversible legacy path: one server request containing section pieces.
+            const res = await fetchBatchBytes(baseBody, signal, (current, total) =>
+                setGenProgress({ current, total, percent: Math.round((current / (total || 1)) * 100) }),
+            );
+            parts.push(res.bytes);
+            filename = res.filename;
+            mimeType = res.mimeType;
+        } else if (isGoogle) {
+            // Google runs serially server-side, so one ~1750-char quality chunk per
+            // request keeps every function invocation safely below 60 seconds.
+            let offset = 0;
+            let serverTotal = Math.max(1, totalChunks);
+            while (offset < serverTotal) {
+                const res = await fetchBatchBytes(
+                    { ...baseBody, offset, limit: GOOGLE_GENERATION_BATCH_SIZE },
+                    signal,
+                    (current) => {
+                        const overall = Math.min(serverTotal, offset + current);
+                        setGenProgress({ current: overall, total: serverTotal, percent: Math.round((overall / serverTotal) * 100) });
+                    },
+                );
+                if (typeof res.totalChunks === 'number' && res.totalChunks > 0) {
+                    serverTotal = res.totalChunks;
+                }
+                parts.push(res.bytes);
+                filename = res.filename ?? filename;
+                mimeType = res.mimeType ?? mimeType;
+                offset += GOOGLE_GENERATION_BATCH_SIZE;
+                const completed = Math.min(offset, serverTotal);
+                setGenProgress({ current: completed, total: serverTotal, percent: Math.round((completed / serverTotal) * 100) });
+            }
+        } else {
+            // OpenAI: drive batches of GENERATION_BATCH_SIZE chunks, each its own
+            // sub-60s request, then byte-concatenate the returned MP3 streams.
+            const numBatches = Math.max(1, Math.ceil(totalChunks / GENERATION_BATCH_SIZE));
+            let completedBefore = 0;
+            for (let b = 0; b < numBatches; b++) {
+                const offset = b * GENERATION_BATCH_SIZE;
+                const sizeThisBatch = Math.min(GENERATION_BATCH_SIZE, totalChunks - offset);
+                const res = await fetchBatchBytes(
+                    { ...baseBody, offset, limit: GENERATION_BATCH_SIZE },
+                    signal,
+                    (current) => {
+                        const overall = Math.min(totalChunks, completedBefore + current);
+                        setGenProgress({ current: overall, total: totalChunks, percent: Math.round((overall / totalChunks) * 100) });
+                    },
+                );
+                parts.push(res.bytes);
+                filename = res.filename ?? filename;
+                mimeType = res.mimeType ?? mimeType;
+                completedBefore += sizeThisBatch;
+                setGenProgress({ current: completedBefore, total: totalChunks, percent: Math.round((completedBefore / totalChunks) * 100) });
+            }
+        }
+
+        return { parts, filename, mimeType };
+    }, [fetchBatchBytes]);
+
     const handleGenerate = useCallback(async () => {
         if (aiBlocked) return;
         const isGoogle = ttsProvider === 'google';
@@ -530,65 +602,9 @@ export default function StepByStepWizard({
         };
 
         try {
-            const parts: Uint8Array[] = [];
-            let filename: string | undefined;
-            let mimeType: string | undefined;
-
-            if (isGoogle && !GOOGLE_SMALL_CHUNKING) {
-                // Reversible legacy path: one server request containing section pieces.
-                const res = await fetchBatchBytes(baseBody, controller.signal, (current, total) =>
-                    setGenProgress({ current, total, percent: Math.round((current / (total || 1)) * 100) }),
-                );
-                parts.push(res.bytes);
-                filename = res.filename;
-                mimeType = res.mimeType;
-            } else if (isGoogle) {
-                // Google runs serially server-side, so one ~1750-char quality chunk per
-                // request keeps every function invocation safely below 60 seconds.
-                let offset = 0;
-                let serverTotal = Math.max(1, totalChunks);
-                while (offset < serverTotal) {
-                    const res = await fetchBatchBytes(
-                        { ...baseBody, offset, limit: GOOGLE_GENERATION_BATCH_SIZE },
-                        controller.signal,
-                        (current) => {
-                            const overall = Math.min(serverTotal, offset + current);
-                            setGenProgress({ current: overall, total: serverTotal, percent: Math.round((overall / serverTotal) * 100) });
-                        },
-                    );
-                    if (typeof res.totalChunks === 'number' && res.totalChunks > 0) {
-                        serverTotal = res.totalChunks;
-                    }
-                    parts.push(res.bytes);
-                    filename = res.filename ?? filename;
-                    mimeType = res.mimeType ?? mimeType;
-                    offset += GOOGLE_GENERATION_BATCH_SIZE;
-                    const completed = Math.min(offset, serverTotal);
-                    setGenProgress({ current: completed, total: serverTotal, percent: Math.round((completed / serverTotal) * 100) });
-                }
-            } else {
-                // OpenAI: drive batches of GENERATION_BATCH_SIZE chunks, each its own
-                // sub-60s request, then byte-concatenate the returned MP3 streams.
-                const numBatches = Math.max(1, Math.ceil(totalChunks / GENERATION_BATCH_SIZE));
-                let completedBefore = 0;
-                for (let b = 0; b < numBatches; b++) {
-                    const offset = b * GENERATION_BATCH_SIZE;
-                    const sizeThisBatch = Math.min(GENERATION_BATCH_SIZE, totalChunks - offset);
-                    const res = await fetchBatchBytes(
-                        { ...baseBody, offset, limit: GENERATION_BATCH_SIZE },
-                        controller.signal,
-                        (current) => {
-                            const overall = Math.min(totalChunks, completedBefore + current);
-                            setGenProgress({ current: overall, total: totalChunks, percent: Math.round((overall / totalChunks) * 100) });
-                        },
-                    );
-                    parts.push(res.bytes);
-                    filename = res.filename ?? filename;
-                    mimeType = res.mimeType ?? mimeType;
-                    completedBefore += sizeThisBatch;
-                    setGenProgress({ current: completedBefore, total: totalChunks, percent: Math.round((completedBefore / totalChunks) * 100) });
-                }
-            }
+            const { parts, filename, mimeType } = await generateAudioBatches(
+                baseBody, controller.signal, isGoogle, totalChunks,
+            );
 
             const finalMime = mimeType || (isGoogle ? 'audio/wav' : 'audio/mpeg');
             const finalName = filename || (isGoogle ? 'sermon_audio.wav' : 'sermon_audio.mp3');
@@ -618,7 +634,7 @@ export default function StepByStepWizard({
         } finally {
             setAbortController(null);
         }
-    }, [aiBlocked, ttsProvider, googleVoice, voice, quality, googleModel, sections, chunks, fetchBatchBytes, refreshAiUsage, t]);
+    }, [aiBlocked, ttsProvider, googleVoice, voice, quality, googleModel, sections, chunks, generateAudioBatches, refreshAiUsage, t]);
 
     const handleCancelGeneration = useCallback(() => abortController?.abort(), [abortController]);
 

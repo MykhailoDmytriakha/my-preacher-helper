@@ -564,7 +564,7 @@ export function useSermonActions({
         } else {
             return handleUpdateExistingThought(trimmedText, updatedTags, outlinePointId, subPointId);
         }
-    }, [addingThoughtToSection, editingItem, handleCloseEdit, handleCreateNewThought, handleDeleteThought, handleUpdateExistingThought]);
+    }, [addingThoughtToSection, editingItem, handleCloseEdit, handleCreateNewThought, handleDeleteThought, handleUpdateExistingThought, t]);
 
     // Retained for the offline replay path: a debounced thought save that failed
     // can be re-fired. Thought create/edit/delete now ride the native Firestore
