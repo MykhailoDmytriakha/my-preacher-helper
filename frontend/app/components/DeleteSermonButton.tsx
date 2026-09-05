@@ -26,8 +26,10 @@ export default function DeleteSermonButton({ sermonId, iconOnly, noAction }: Del
       console.log(`DeleteSermonButton: calling deleteSermon for sermonId: ${sermonId}`);
       await deleteSermon(sermonId);
       console.log(`DeleteSermonButton: deleteSermon call completed for sermonId: ${sermonId}`);
-      // Redirect to dashboard immediately after deletion
-      window.location.href = '/sermons';
+      // Redirect to the list immediately after deletion. `replace`, not `href`: an
+      // assignment pushes a history entry and leaves the deleted sermon's page one Back
+      // away, where it used to re-open as a live editor — BUG-20260905.
+      window.location.replace('/sermons');
     } catch (error) {
       console.error('DeleteSermonButton: Error deleting sermon:', error);
       alert('Не удалось удалить проповедь');

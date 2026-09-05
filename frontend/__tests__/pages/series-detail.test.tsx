@@ -13,6 +13,7 @@ const mockInvalidateQueries = jest.fn();
 
 // Mock Next.js router
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
 const mockBack = jest.fn();
 const mockUseParams = jest.fn(() => ({ id: 'test-series-id' }));
 
@@ -52,6 +53,7 @@ jest.mock('next/navigation', () => ({
   useParams: () => mockUseParams(),
   useRouter: () => ({
     push: mockPush,
+    replace: mockReplace,
     back: mockBack,
   }),
 }));
@@ -376,6 +378,34 @@ describe('SeriesDetailPage', () => {
     );
 
     expect(screen.getByText('workspaces.series.form.statuses.completed')).toBeInTheDocument();
+  });
+
+  /**
+   * BUG-20260905 — the delete branch had no test at all, and the router mock did not even
+   * provide `replace`, so a deletion test would have thrown rather than checked anything.
+   *
+   * `replace`, not `push`: the page being left IS the series that was just deleted, and a
+   * pushed entry leaves it one Back away, where it opens as a page for something that no
+   * longer exists.
+   */
+  it('replaces its own page in history after the series is deleted', async () => {
+    // The hook hands back a WriteSubmission, and the page awaits its ACCEPTANCE — a bare
+    // resolved promise never gets accepted, so the navigation would never run.
+    const deleteExistingSeries = jest.fn(() => persistedWrite(Promise.resolve(undefined)));
+    mockUseSeries.mockReturnValue({ deleteExistingSeries });
+
+    render(
+      <TestProviders>
+        <SeriesDetailPage />
+      </TestProviders>
+    );
+
+    fireEvent.click(screen.getAllByText('workspaces.series.deleteSeries')[0]);
+    fireEvent.click(screen.getAllByText('workspaces.series.deleteSeries').slice(-1)[0]);
+
+    await waitFor(() => expect(deleteExistingSeries).toHaveBeenCalledWith('test-series-id'));
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/series'));
+    expect(mockPush).not.toHaveBeenCalledWith('/series');
   });
 
   it('navigates to /series when Back to Series button is clicked', () => {

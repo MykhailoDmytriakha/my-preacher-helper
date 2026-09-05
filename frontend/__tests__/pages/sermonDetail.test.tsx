@@ -162,6 +162,9 @@ jest.mock('@services/firebaseAuth.service', () => ({
 }));
 
 jest.mock('@/hooks/useSermon', () => ({
+  // The RULE that decides "there is no sermon here" stays REAL — only the answer it is
+  // given is stubbed. A stubbed rule would keep passing while the screens drift apart.
+  sermonIsMissing: jest.requireActual('@/hooks/useSermon').sermonIsMissing,
   __esModule: true,
   default: jest.fn().mockReturnValue({
     sermon: {
@@ -901,7 +904,7 @@ describe('Sermon Detail Page', () => {
       });
 
       const backLink = screen.getByRole('link', { name: 'Back to list' });
-      expect(backLink).toHaveAttribute('href', '/dashboard');
+      expect(backLink).toHaveAttribute('href', '/sermons');
     });
 
     it('handles sermon with null thoughts array', async () => {

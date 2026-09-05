@@ -186,7 +186,8 @@ function useNoteDeletion({ t, noteId, isNew, uid, deleteNote, shareLinks, delete
                     return;
                 }
             }
-            router.push('/studies');
+            // replace, not push: we are ON the page of the thing being deleted, so pushing leaves a dead entry in history and Back re-opens it.
+            router.replace('/studies');
         }
     };
 }
@@ -1249,7 +1250,13 @@ export default function StudyNoteEditorPage() {
         <>
                     {/* What was preached out of this note — derived from the sermons that name
                         it, so there is nothing to keep in step. Renders only when there is one. */}
-                    <SermonsBuiltOnNote noteId={isNew ? undefined : noteId} />
+                    <SermonsBuiltOnNote
+                        noteId={isNew ? undefined : noteId}
+                        noteTitle={title}
+                        scriptureRefs={scriptureRefs}
+                        noteContent={content}
+                        noteBusy={isSaving || editorIsDirty}
+                    />
         </>
     );
 

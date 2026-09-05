@@ -27,12 +27,19 @@ const mockSermonImpl = () => ({
   error: null
 });
 
+// The RULE that decides "there is no sermon here" stays REAL in both aliases — only the
+// answer it is given is stubbed. A stubbed rule would keep passing while the screens drift.
+const actualSermonIsMissing = () =>
+  (jest.requireActual('@/hooks/useSermon') as typeof import('@/hooks/useSermon')).sermonIsMissing;
+
 jest.mock('@/hooks/useSermon', () => ({
+  sermonIsMissing: actualSermonIsMissing(),
   __esModule: true,
   default: mockSermonImpl,
 }));
 
 jest.mock('@hooks/useSermon', () => ({
+  sermonIsMissing: actualSermonIsMissing(),
   __esModule: true,
   default: mockSermonImpl,
 }));

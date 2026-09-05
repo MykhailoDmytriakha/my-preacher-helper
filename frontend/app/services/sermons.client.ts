@@ -724,6 +724,15 @@ function sanitizeScratchNotes(scratch: ScratchNote[]): ScratchNote[] {
       createdAt: note.createdAt,
     };
     if (note.section) cleanNote.section = note.section;
+    // The origin of an atom cut from a study note is part of the note, not decoration:
+    // dropping it here would make every later edit of the pool forget where the atoms
+    // came from, and a second cut would duplicate them.
+    if (note.source && typeof note.source.noteId === 'string' && note.source.noteId) {
+      cleanNote.source = {
+        noteId: note.source.noteId,
+        heading: typeof note.source.heading === 'string' ? note.source.heading : '',
+      };
+    }
     return deepCleanUndefined(cleanNote);
   });
 }

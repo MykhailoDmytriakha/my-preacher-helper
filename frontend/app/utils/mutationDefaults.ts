@@ -35,6 +35,7 @@ import {
   updateStructurePreviewAccess,
 } from '@/services/userSettings.service';
 import { getNextPlannedDate, getPreachDatesByStatus } from '@/utils/preachDateStatus';
+import { sermonDetailKey } from '@/utils/queryKeys';
 
 import type {
   DashboardCreateSermonInput,
@@ -669,6 +670,12 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
     // mechanism — a failed delete must not make the sermon vanish).
     onSuccess: async (_data: void, vars: DashboardSermonDeleteVars) => {
       await writeSermons(vars.uid, (old) => old.filter((s) => s.id !== vars.sermonId));
+      // Dropping the row from the LIST is not enough: the detail entry is a separate,
+      // persisted cache key, and leaving it behind keeps a deleted sermon readable from
+      // IndexedDB across reloads and offline. Groups, series and prayers already evict
+      // their detail key here (`useGroupDetail`, `useSeries`, `usePrayerRequests`);
+      // sermons were the one entity that did not.
+      queryClient.removeQueries({ queryKey: sermonDetailKey(vars.uid, vars.sermonId) });
     },
   });
 

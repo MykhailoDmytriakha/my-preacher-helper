@@ -12,6 +12,8 @@ const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 
 const source = path.join(scriptDirectory, '../public/icons/app-icon.svg');
 const destination = path.join(scriptDirectory, '../public/icons');
+// Installed icons stay full-bleed squares: Android masks the maskable export itself and
+// iOS turns transparency black, so only the browser tab gets pre-rounded corners.
 const exportsToGenerate = [
   { name: 'icon-192.png', size: 192 },
   { name: 'icon-512.png', size: 512 },
@@ -19,12 +21,24 @@ const exportsToGenerate = [
   { name: 'apple-touch-icon.png', size: 180 },
 ];
 
-async function renderPng(svg, size) {
-  return sharp(svg, { density: 300 })
-    .resize(size, size)
-    .removeAlpha()
-    .png()
-    .toBuffer();
+// The header tile is a 36px square with a 12px radius, so the tab keeps the same third.
+const cornerRadius = Math.round(512 / 3);
+const squareBackground = '<rect width="512" height="512" fill="url(#bg)"/>';
+
+function roundCorners(svg) {
+  const markup = svg.toString();
+  if (!markup.includes(squareBackground)) {
+    throw new Error('app-icon.svg no longer opens with the full-bleed background rectangle');
+  }
+  return Buffer.from(markup.replace(
+    squareBackground,
+    `<rect width="512" height="512" rx="${cornerRadius}" ry="${cornerRadius}" fill="url(#bg)"/>`,
+  ));
+}
+
+async function renderPng(svg, size, { rounded = false } = {}) {
+  const image = sharp(svg, { density: 300 }).resize(size, size);
+  return rounded ? image.png().toBuffer() : image.removeAlpha().png().toBuffer();
 }
 
 function createIco(pngs) {
@@ -57,15 +71,19 @@ function createIco(pngs) {
 
 async function main() {
   const svg = await fs.readFile(source);
+  const roundedSvg = roundCorners(svg);
   await fs.mkdir(destination, { recursive: true });
   for (const { name, size } of exportsToGenerate) {
     await fs.writeFile(path.join(destination, name), await renderPng(svg, size));
     console.log(`${name}: ${size}x${size}`);
   }
 
+  await fs.writeFile(path.join(destination, 'favicon.svg'), roundedSvg);
+  console.log(`favicon.svg: rounded, r=${cornerRadius}`);
+
   const faviconPngs = await Promise.all([16, 32, 48].map(async size => ({
     size,
-    png: await renderPng(svg, size),
+    png: await renderPng(roundedSvg, size, { rounded: true }),
   })));
   await fs.writeFile(path.join(scriptDirectory, '../app/favicon.ico'), createIco(faviconPngs));
   console.log('app/favicon.ico: 16x16, 32x32, 48x48');

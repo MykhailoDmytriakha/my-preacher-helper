@@ -106,7 +106,7 @@ export function NoteSidePanel({
 
     return (
         <aside
-            className="sticky hidden w-[272px] shrink-0 flex-col gap-4 self-start overflow-y-auto border-r border-gray-200 bg-gray-50 px-3.5 py-4 lg:flex dark:border-gray-800 dark:bg-gray-900/40"
+            className="sticky hidden w-[272px] shrink-0 flex-col gap-4 self-start overflow-y-auto border-r border-gray-200 bg-gray-50 px-3.5 pb-24 pt-4 lg:flex dark:border-gray-800 dark:bg-gray-900/40"
             style={{ top: stickyTop, height: `calc(100vh - ${stickyTop}px)` }}
         >
             <div className="flex items-start justify-between gap-2">
@@ -160,9 +160,17 @@ export function NoteSidePanel({
                 {tags}
             </div>
 
-            {/* `empty:hidden`: SermonsBuiltOnNote renders nothing when no sermon names this
-                note, and a divider around emptiness reads as a bug. */}
-            <div className="flex flex-col gap-2 border-t border-gray-200 pt-3.5 empty:hidden dark:border-gray-800">
+            {/* The tail below the last block (`pb-24`) is not decoration. The panel sizes itself
+                as `100vh - stickyTop`, and `stickyTop` is where it lands once the page header
+                has STUCK — before the first scroll the panel starts ~40px lower, so that much
+                of it hangs below the fold. A short tail put the last block's edge 8px from the
+                bottom of the screen with nowhere left to scroll; this one keeps it clear of the
+                edge in both states. */}
+            {/* `empty:hidden`: SermonsBuiltOnNote renders nothing for a note that is not saved
+                yet (there is nothing on the server to preach from), and a divider around
+                emptiness reads as a bug. On a saved note the block always renders — heading,
+                list or its empty line, and the door to a new sermon. */}
+            <div className="flex flex-col gap-2 border-t border-gray-200 pb-2 pt-3.5 empty:hidden dark:border-gray-800">
                 {sermons}
             </div>
         </aside>

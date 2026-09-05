@@ -36,7 +36,7 @@ import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useRouteId } from "@/hooks/useRouteId";
 import { useSeries } from "@/hooks/useSeries";
-import useSermon from "@/hooks/useSermon";
+import useSermon, { sermonIsMissing } from "@/hooks/useSermon";
 import { useTags } from "@/hooks/useTags";
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { useAuth } from "@/providers/AuthProvider";
@@ -1867,14 +1867,17 @@ useEffect(() => {
     return <SermonDetailSkeleton />;
   }
 
-  if (!sermon) {
+  // Same rule the app nav reads to hide the sermon mode switcher — see `sermonIsMissing`.
+  if (sermonIsMissing(sermon, { loading, awaitingFirstAnswer })) {
     return (
       <div className="py-8">
         <div className="p-6 bg-white dark:bg-gray-800 rounded-lg shadow border border-gray-200 dark:border-gray-700 text-center">
           <h2 className="text-xl font-semibold mb-2">
             {isOnline ? t('sermon.notFound') : t('sermon.unavailableOffline')}
           </h2>
-          <Link href="/dashboard" className="text-blue-600 dark:text-blue-400 hover:underline">
+          {/* The label says "back to the list", so it has to lead to the list of sermons
+              — it pointed at the dashboard, which is a different screen entirely. */}
+          <Link href="/sermons" className="text-blue-600 dark:text-blue-400 hover:underline">
             {t('sermon.backToList')}
           </Link>
         </div>

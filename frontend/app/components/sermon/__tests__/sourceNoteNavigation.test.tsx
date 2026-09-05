@@ -12,8 +12,9 @@ import type { Sermon, StudyNote } from '@/models/models';
  * press the sermon on the note and you are in the sermon. These assertions are about the two
  * destinations, because a chip that renders but goes nowhere would still look finished.
  *
- * They also hold down the quiet half of the design: with nothing linked, neither side draws a
- * heading, a placeholder or an empty list.
+ * They also hold down the quiet half of the design: with nothing linked, the sermon draws no
+ * chip at all, while the note keeps its section — heading, an honest empty line and the door
+ * to a new sermon — so the tray reads the same on every saved note.
  */
 jest.mock('next/link', () => {
   const MockLink = ({ children, href, ...rest }: { children: React.ReactNode; href: string }) => (
@@ -100,10 +101,21 @@ describe('note → sermon', () => {
     expect(links[0]).toHaveTextContent('New wine');
   });
 
-  it('draws nothing while no sermon points at the note', () => {
+  it('keeps only the door open while no sermon points at the note', () => {
     mockUseSermonsBuiltOnNote.mockReturnValue({ sermons: [], loading: false });
 
-    const { container } = render(<SermonsBuiltOnNote noteId="n1" />);
+    render(<SermonsBuiltOnNote noteId="n1" />);
+
+    // The section reads the same on every saved note: heading, empty line, and the door.
+    expect(screen.getByText('studiesWorkspace.builtSermons.title')).toBeInTheDocument();
+    expect(screen.queryAllByTestId('built-sermon-link')).toHaveLength(0);
+    expect(screen.getByTestId('create-sermon-from-note')).toHaveTextContent('studiesWorkspace.builtSermons.create');
+  });
+
+  it('draws nothing at all for a note that is not saved yet', () => {
+    mockUseSermonsBuiltOnNote.mockReturnValue({ sermons: [], loading: false });
+
+    const { container } = render(<SermonsBuiltOnNote noteId={undefined} />);
 
     expect(container).toBeEmptyDOMElement();
   });

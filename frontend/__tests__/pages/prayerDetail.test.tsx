@@ -6,6 +6,7 @@ import { awaitAcceptance, persistedWrite } from '@/utils/recoverableWrite';
 import '@testing-library/jest-dom';
 
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
 const mockToastSuccess = jest.fn();
 const mockToastError = jest.fn();
 const mockUsePrayerRequests = jest.fn();
@@ -23,7 +24,7 @@ jest.mock('next/link', () => ({
 
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'p1' }),
-  useRouter: () => ({ push: mockPush }),
+  useRouter: () => ({ push: mockPush, replace: mockReplace }),
   useSearchParams: () => mockSearchParams,
 }));
 
@@ -295,7 +296,8 @@ describe('PrayerDetailPage', () => {
         answerText: null,
       }, undefined);
       expect(deletePrayer).toHaveBeenCalledWith('p1');
-      expect(mockPush).toHaveBeenCalledWith('/prayers');
+      // replace, not push — the deleted prayer must not stay one Back away (BUG-20260905).
+      expect(mockReplace).toHaveBeenCalledWith('/prayers');
     });
 
     // Editor-owned messages belong to their modals. The page itself only announces

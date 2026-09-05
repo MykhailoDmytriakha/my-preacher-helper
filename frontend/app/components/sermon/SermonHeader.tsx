@@ -312,12 +312,14 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
         />
         {/* Sermon-level actions (mark preached / edit date & church / delete) — reuses the
             dashboard OptionMenu so the lifecycle logic lives in ONE place. Delete navigates
-            away (we're ON the sermon being deleted), rather than refreshing a dead page. */}
+            away (we're ON the sermon being deleted), rather than refreshing a dead page.
+            REPLACE, not push: pushing left this very page in history, so a swipe back
+            re-opened a full editor over a sermon that no longer exists — BUG-20260905. */}
         <OptionMenu
           sermon={sermon}
           series={series}
           onUpdate={onUpdate}
-          onDelete={() => router.push('/sermons')}
+          onDelete={() => router.replace('/sermons')}
         />
         {/* Mode toggle moved to global DashboardNav */}
       </div>

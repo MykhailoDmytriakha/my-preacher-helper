@@ -129,6 +129,60 @@ describe('useSermon', () => {
     expect(result.current.sermon?.title).toBe('Still readable after a failed refresh');
   });
 
+  /**
+   * BUG-20260905-deleted-sermon-back-shows-corpse — A REFUSAL IS AN ANSWER, AND IT IS
+   * NEWER THAN THE LOCAL COPY.
+   *
+   * Deleting a sermon leaves its detail entry in the cache under the SAME owner key, so
+   * pressing Back re-opened a full editor over a document the server no longer has: the
+   * recorder accepted dictation, the plan buttons worked, and a freshness banner offered
+   * to write the local copy back. Rules answer a missing document with
+   * `permission-denied` (`resource` is null), which is the same answer they give for
+   * someone else's sermon — and in both cases the local copy must lose.
+   */
+  it('drops a cached copy once the server has refused it', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const deleted = makeSermon({ userId: 'user-1', title: 'Deleted a moment ago' });
+    queryClient.setQueryData(sermonDetailKey('user-1', 'sermon-1'), deleted);
+    queryClient.setQueryData(['sermons', 'user-1'], [deleted]);
+    mutableAuth.currentUser = { uid: 'user-1' };
+    mockUseOnlineStatus.mockReturnValue(true);
+    mockGetSermonById.mockRejectedValue(
+      Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' })
+    );
+
+    const { result } = renderHook(() => useSermon('sermon-1'), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.sermon).toBeNull());
+    expect(result.current.awaitingFirstAnswer).toBe(false);
+  });
+
+  /**
+   * THE OTHER HALF, and the one that makes the rule safe: an unreachable server is NOT
+   * an answer. Firestore reports that as `unavailable`, and the copy on this machine is
+   * all the person has — hiding it would turn a flaky minute into "your sermon is gone".
+   */
+  it('keeps the cached copy when the server could not be reached at all', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const stored = makeSermon({ userId: 'user-1', title: 'Still mine while the wifi sulks' });
+    queryClient.setQueryData(sermonDetailKey('user-1', 'sermon-1'), stored);
+    mutableAuth.currentUser = { uid: 'user-1' };
+    mockUseOnlineStatus.mockReturnValue(true);
+    mockGetSermonById.mockRejectedValue(
+      Object.assign(new Error('The service is currently unavailable.'), { code: 'unavailable' })
+    );
+
+    const { result } = renderHook(() => useSermon('sermon-1'), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => expect(mockGetSermonById).toHaveBeenCalledWith('sermon-1'));
+    expect(result.current.sermon?.title).toBe('Still mine while the wifi sulks');
+  });
+
   it('adopts a planText-only server edit once its plan revision is ahead', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const stored = makeSermon({

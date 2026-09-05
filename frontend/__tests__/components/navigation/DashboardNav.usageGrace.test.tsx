@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import React from 'react';
 
 import DashboardNav from '@/components/navigation/DashboardNav';
+import { TestProviders } from '../../../test-utils/test-providers';
 
 const mockControllerMount = jest.fn();
 const mockIndicatorMount = jest.fn();
@@ -59,7 +60,11 @@ describe('DashboardNav usage grace integration', () => {
   });
 
   it('mounts one controller and renders desktop plus mobile passive points from it', () => {
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     expect(mockControllerMount).toHaveBeenCalledTimes(1);
     expect(mockIndicatorMount).toHaveBeenCalledTimes(2);
@@ -70,7 +75,11 @@ describe('DashboardNav usage grace integration', () => {
   it('mounts neither controller nor indicators on the exact conduct route', () => {
     mockUseShellPathname.mockReturnValue('/groups/group-1/conduct');
 
-    render(<DashboardNav />);
+    render(
+      <TestProviders>
+        <DashboardNav />
+      </TestProviders>
+    );
 
     expect(mockControllerMount).not.toHaveBeenCalled();
     expect(mockIndicatorMount).not.toHaveBeenCalled();

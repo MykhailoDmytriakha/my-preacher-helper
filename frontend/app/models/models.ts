@@ -12,11 +12,25 @@ export interface Thought {
   keyFragments?: string[]; // Store important text fragments for AI generation
 }
 
+/**
+ * WHERE A SCRATCH NOTE WAS CUT FROM, when it came out of a study note.
+ *
+ * Absent on notes the preacher dictated or typed. Present on atoms the cutter produced,
+ * so a second "take from the note" can recognise its own earlier atoms instead of
+ * duplicating them, and a card can point back at the section it was cut from.
+ */
+export interface ScratchNoteSource {
+  noteId: string;
+  /** The section heading the atom was cut from; empty for text before the first heading. */
+  heading: string;
+}
+
 export interface ScratchNote {
   id: string;
   text: string;
   createdAt: string;
   section?: 'introduction' | 'main' | 'conclusion';
+  source?: ScratchNoteSource;
 }
 
 /**

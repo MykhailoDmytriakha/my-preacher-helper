@@ -20,6 +20,7 @@ import { zodResponseFormat } from 'openai/helpers/zod';
 
 import { BrainstormSuggestionSchema } from '@/config/schemas/zod/brainstorm.zod';
 import { ComposePlanResponseSchema } from '@/config/schemas/zod/composePlan.zod';
+import { CutNoteResponseSchema } from '@/config/schemas/zod/cutNote.zod';
 import { InsightsResponseSchema } from '@/config/schemas/zod/insights.zod';
 import { PolishTranscriptionSchema } from '@/config/schemas/zod/polishTranscription.zod';
 import { SectionHintsResponseSchema } from '@/config/schemas/zod/sectionHints.zod';
@@ -46,6 +47,7 @@ const STRUCTURED_OUTPUT_SCHEMAS: Array<[string, z.ZodType]> = [
   ['sorting', SortingResponseSchema],
   ['speech_optimization', SpeechOptimizationResponseSchema],
   ['studyNoteAnalysis', StudyNoteAnalysisSchema],
+  ['cutNote', CutNoteResponseSchema],
 ];
 
 type GeneratedSchema = { json_schema: { schema: Record<string, unknown> } };

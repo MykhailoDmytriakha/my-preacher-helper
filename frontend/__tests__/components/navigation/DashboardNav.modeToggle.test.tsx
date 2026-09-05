@@ -26,6 +26,14 @@ const pushMock = jest.fn();
 let pathnameMock = '/sermons/abc';
 let paramsMap: Record<string, string | undefined> = {};
 let mockPrepModeAccessState = { hasAccess: true, loading: false };
+// The nav asks whether there IS a sermon before drawing its mode switcher. Left to the real
+// hook these cases would depend on how fast a network read settles, which is not what they
+// are about — and on a missing sermon the switcher is meant to disappear.
+let mockSermonState: { sermon: unknown; loading: boolean; awaitingFirstAnswer: boolean } = {
+  sermon: { id: 'abc', title: 'A sermon that exists' },
+  loading: false,
+  awaitingFirstAnswer: false,
+};
 
 const OLD_ENV = process.env;
 const resetScenario = () => {
@@ -36,8 +44,24 @@ const resetScenario = () => {
   pathnameMock = '/sermons/abc';
   paramsMap = {};
   mockPrepModeAccessState = { hasAccess: true, loading: false };
+  mockSermonState = {
+    sermon: { id: 'abc', title: 'A sermon that exists' },
+    loading: false,
+    awaitingFirstAnswer: false,
+  };
   mockHasGroupsAccess.mockResolvedValue(true);
 };
+
+jest.mock('@/hooks/useSermon', () => {
+  const actual = jest.requireActual('@/hooks/useSermon');
+  return {
+    __esModule: true,
+    // The RULE stays real — only the answer it is given is stubbed, so this suite still
+    // breaks if `sermonIsMissing` starts meaning something else.
+    sermonIsMissing: actual.sermonIsMissing,
+    default: () => mockSermonState,
+  };
+});
 
 jest.mock('next/navigation', () => ({
   usePathname: () => pathnameMock,
@@ -132,6 +156,34 @@ describe('DashboardNav mode toggle', () => {
               </TestProviders>
             );
             expect(screen.queryByText('Classic Mode')).not.toBeInTheDocument();
+          }
+        },
+        {
+          // BUG-20260905: on "sermon not found or unavailable" the three mode buttons stayed
+          // on the bar and switched modes of nothing.
+          name: 'hidden when the sermon does not exist',
+          run: () => {
+            mockSermonState = { sermon: null, loading: false, awaitingFirstAnswer: false };
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
+            expect(screen.queryByText('Classic Mode')).not.toBeInTheDocument();
+          }
+        },
+        {
+          // The other half: while the read can still arrive, nothing is concluded and the
+          // switcher stays — otherwise it would blink away on every sermon that opens.
+          name: 'still shown while the sermon read is in flight',
+          run: () => {
+            mockSermonState = { sermon: null, loading: true, awaitingFirstAnswer: true };
+            render(
+              <TestProviders>
+                <DashboardNav />
+              </TestProviders>
+            );
+            expect(screen.getByText('Classic Mode')).toBeInTheDocument();
           }
         },
         {

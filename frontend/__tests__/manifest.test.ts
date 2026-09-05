@@ -99,10 +99,31 @@ describe('PWA manifest', () => {
     });
   });
 
-  it('keeps the vector source branded as the blue open-book icon', async () => {
+  it('keeps the vector source branded as the blue open-book icon on a full-bleed square', async () => {
     const svg = await readFile(path.join(__dirname, '../public/icons/app-icon.svg'), 'utf8');
     expect(svg).toContain('#3b82f6');
     expect(svg).toContain('#1d4ed8');
     expect(svg).toContain('#ffffff');
+    // Android masks the maskable export and iOS blackens transparency, so the source stays square.
+    expect(svg).not.toContain('rx=');
+  });
+
+  it('rounds the browser tab icons to the same third of a side as the header tile', async () => {
+    const svg = await readFile(path.join(__dirname, '../public/icons/favicon.svg'), 'utf8');
+    expect(svg).toContain(`rx="${Math.round(512 / 3)}"`);
+
+    const favicon = await readFile(path.join(__dirname, '../app/favicon.ico'));
+    const thirtyTwoPixelEntry = 6 + 16;
+    const imageOffset = favicon.readUInt32LE(thirtyTwoPixelEntry + 12);
+    const imageLength = favicon.readUInt32LE(thirtyTwoPixelEntry + 8);
+    const { data, info } = await sharp(favicon.subarray(imageOffset, imageOffset + imageLength))
+      .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const alphaAt = (x: number, y: number) => data[(y * info.width + x) * info.channels + 3];
+
+    expect(alphaAt(0, 0)).toBe(0);
+    expect(alphaAt(info.width - 1, 0)).toBe(0);
+    expect(alphaAt(0, info.height - 1)).toBe(0);
+    expect(alphaAt(info.width - 1, info.height - 1)).toBe(0);
+    expect(alphaAt(info.width / 2, info.height / 2)).toBe(255);
   });
 });

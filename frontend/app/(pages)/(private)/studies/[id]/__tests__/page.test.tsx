@@ -568,7 +568,9 @@ describe('StudyNoteEditorPage Pagination', () => {
             await waitFor(() => {
                 expect(mockDeleteNote).toHaveBeenCalledWith('note-1');
                 expect(mockDeleteShareLink).toHaveBeenCalledWith('link-1');
-                expect(mockRouter.push).toHaveBeenCalledWith('/studies');
+                // replace, not push: the note we are leaving has just been deleted, so it
+                // must not stay one Back away — BUG-20260905.
+                expect(mockRouter.replace).toHaveBeenCalledWith('/studies');
             });
         });
 

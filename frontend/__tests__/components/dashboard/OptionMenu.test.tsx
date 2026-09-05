@@ -7,6 +7,8 @@ import { persistedWrite } from '@/utils/recoverableWrite';
 import { Sermon } from '@/models/models';
 import { deleteSermon, updateSermon } from '@services/sermon.service';
 import * as preachDatesService from '@services/preachDates.service';
+import { sermonDetailKey, sermonListKey } from '@/utils/queryKeys';
+import { auth } from '@services/firebaseAuth.service';
 
 // Mock dependencies
 jest.mock('@services/sermon.service', () => ({
@@ -28,6 +30,8 @@ jest.mock('next/navigation', () => ({
 }));
 
 const mockInvalidateQueries = jest.fn();
+const mockRemoveQueries = jest.fn();
+const TEST_OWNER_UID = 'owner-under-test';
 const mockSetQueryData = jest.fn();
 jest.mock('@tanstack/react-query', () => ({
   useQuery: jest.fn(() => ({
@@ -37,6 +41,9 @@ jest.mock('@tanstack/react-query', () => ({
   })),
   useQueryClient: () => ({
     invalidateQueries: mockInvalidateQueries,
+    // Deleting a sermon must EVICT its detail cache entry, or the deleted sermon stays
+    // readable from the persisted cache and Back re-opens a live editor over it.
+    removeQueries: mockRemoveQueries,
     // The source-note writer merges its one field into the cached list and pairs that with an
     // invalidate; without these the stub client throws the moment a link is saved.
     setQueryData: mockSetQueryData,
@@ -460,6 +467,12 @@ describe('OptionMenu Component', () => {
   });
   
   it('calls onDelete with sermon ID when Delete is clicked and confirmed', async () => {
+    // `resolveOwnerUid()` reads the live auth module, and the cache key it builds is what the
+    // assertions below check — so the owner has to be a real, named value here.
+    const mutableAuth = auth as { currentUser: unknown };
+    const previousUser = mutableAuth.currentUser;
+    mutableAuth.currentUser = { uid: TEST_OWNER_UID };
+    try {
     // Mock deleteSermon to resolve immediately so we can await it
     (deleteSermon as jest.Mock).mockImplementation(async () => {
       return Promise.resolve({});
@@ -484,6 +497,19 @@ describe('OptionMenu Component', () => {
     
     // Check onDelete was called
     expect(defaultProps.onDelete).toHaveBeenCalledWith('sermon-1');
+    // BUG-20260905: the sermon page deletes through this branch, so the detail cache has
+    // to be dropped here too — the dashboard's delete mutation does it on its own path.
+    // The EXACT key, owner included: `arrayContaining` would have passed just as happily on
+    // ['sermon', 'somebody-else', 'sermon-1'], which clears a stranger's cache and leaves
+    // this owner's deleted sermon readable.
+    expect(mockRemoveQueries).toHaveBeenCalledWith({
+      queryKey: sermonDetailKey(TEST_OWNER_UID, 'sermon-1'),
+    });
+    // The persisted LIST has to lose the row too, or a cold start offers the deleted sermon again.
+    expect(mockSetQueryData).toHaveBeenCalledWith(sermonListKey(TEST_OWNER_UID), expect.any(Function));
+    } finally {
+      mutableAuth.currentUser = previousUser;
+    }
   });
   
   it('keeps dates but downgrades them to planned when unmarking preached sermon', async () => {

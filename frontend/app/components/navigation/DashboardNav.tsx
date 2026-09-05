@@ -21,6 +21,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useFeedback } from "@/hooks/useFeedback";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrepModeAccess } from "@/hooks/usePrepModeAccess";
+import useSermon, { sermonIsMissing } from '@/hooks/useSermon';
 import { useShellPathname } from "@/hooks/useShellPathname";
 import { hasGroupsAccess } from "@/services/userSettings.service";
 import { debugLog } from "@/utils/debugMode";
@@ -170,7 +171,20 @@ export default function DashboardNav() {
     return handleSubmitFeedback(text, type, images, user?.uid || 'anonymous');
   };
 
-  const modeToggle = isSermonRoot && !prepModeLoading ? (
+  /**
+   * THE MODE SWITCHER BELONGS TO A SERMON, so it disappears when there is none.
+   *
+   * On the "sermon not found or unavailable" screen — a deleted sermon opened from a link, a
+   * stale bookmark, someone else's id — the three buttons stayed on the bar and switched
+   * modes of nothing. The answer comes from the SAME query the page reads (React Query
+   * dedupes: two observers, one fetch), so the bar and the screen can never disagree.
+   *
+   * `''` on every other route keeps the read disabled: the hook does nothing for an empty id.
+   */
+  const sermonForNav = useSermon(isSermonRoot ? (sermonIdForMode ?? '') : '');
+  const sermonMissing = isSermonRoot && sermonIsMissing(sermonForNav.sermon, sermonForNav);
+
+  const modeToggle = isSermonRoot && !prepModeLoading && !sermonMissing ? (
     <ModeToggle
       currentMode={currentMode}
       onSetMode={setMode}

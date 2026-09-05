@@ -530,7 +530,8 @@ export default function GroupDetailPage() {
       // confirm a removal the server can still refuse. A refusal restores the row
       // and reports itself through the hook's own error toast.
       await deleteGroupDetail();
-      router.push('/groups');
+      // replace, not push: we are ON the page of the thing being deleted, so pushing leaves a dead entry in history and Back re-opens it.
+      router.replace('/groups');
     } catch (errorValue) {
       console.error('Failed to delete group:', errorValue);
       toast.error(

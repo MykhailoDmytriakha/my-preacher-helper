@@ -19,6 +19,9 @@ jest.mock('react-i18next', () => ({
 
 // Mock hooks/services and heavy child components
 jest.mock('@/hooks/useSermon', () => ({
+  // The RULE that decides "there is no sermon here" stays REAL — only the answer it is
+  // given is stubbed. A stubbed rule would keep passing while the screens drift apart.
+  sermonIsMissing: jest.requireActual('@/hooks/useSermon').sermonIsMissing,
   __esModule: true,
   default: jest.fn(() => ({
     sermon: {

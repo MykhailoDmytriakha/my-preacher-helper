@@ -98,3 +98,11 @@ export {
   type SortingResponse,
   type SortedItemResponse
 } from './sorting.zod';
+export {
+  CutNoteResponseSchema,
+  CutNoteSectionSchema,
+  CutNoteClaimSchema,
+  type CutNoteResponse,
+  type CutNoteSection,
+  type CutNoteClaim
+} from './cutNote.zod';

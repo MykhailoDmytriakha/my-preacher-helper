@@ -267,7 +267,8 @@ export default function PrayerDetailPage() {
     try {
       // usePrayerRequests' delete recovery descriptor reports a late refusal while this screen is mounted.
       await awaitAcceptance(submission, () => undefined);
-      router.push('/prayers');
+      // replace, not push: we are ON the page of the thing being deleted, so pushing leaves a dead entry in history and Back re-opens it.
+      router.replace('/prayers');
     } catch {
       // Recovery owns the terminal error; stay on the prayer that was not deleted.
     }

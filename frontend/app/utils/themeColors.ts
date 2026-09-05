@@ -265,6 +265,52 @@ export const SOURCE_NOTE_COLORS = {
   reverseHeading: 'text-blue-600 dark:text-blue-400',
 } as const;
 
+/**
+ * BIRTH OF A SERMON FROM A NOTE — the dialog on the note page that creates one.
+ *
+ * Same shell as the picker above, opposite accent: the picker chooses a NOTE and wears
+ * green; this one produces a SERMON and wears blue, so the colour says where you end up
+ * before you read a word. Literals on purpose — Tailwind only compiles what it can see.
+ */
+export const NOTE_TO_SERMON_COLORS = {
+  dialogAccentBar: 'bg-gradient-to-r from-blue-600 via-blue-500 to-sky-400',
+  dialogEyebrow:
+    'bg-blue-50 text-blue-700 ring-1 ring-blue-100 dark:bg-blue-900/30 dark:text-blue-100 dark:ring-blue-800/60',
+  inputFocus:
+    'focus:border-blue-400 focus:ring-2 focus:ring-blue-200 dark:focus:border-blue-500 dark:focus:ring-blue-900',
+  primaryButton: 'bg-blue-600 text-white hover:bg-blue-700',
+  /**
+   * A SERMON ALREADY GROWN OUT OF THIS NOTE, listed in the note's own side panel.
+   *
+   * Two steps lighter than the nav pill it replaced. The column is 232px wide, so two
+   * saturated blue plates stacked on top of each other read as a wall, and — worse — the
+   * saturated border left hover nowhere to go. Here the resting row is a SURFACE and the
+   * strong blue belongs to hover and focus, so pointing at a row visibly does something.
+   */
+  builtRow:
+    'border-blue-200 bg-blue-50 hover:border-blue-500 hover:bg-blue-100 dark:border-blue-500/40 dark:bg-blue-950/40 dark:hover:border-blue-400 dark:hover:bg-blue-900/40',
+  /** The sermon's name — the row's whole point, so it gets the full width and two lines. */
+  builtRowTitle: 'text-blue-700 dark:text-blue-200',
+  /** Verse and date, one step back: they identify the row, they are not what you read. */
+  builtRowMeta: 'text-gray-500 dark:text-gray-400',
+  /** How many, next to the heading — so the count is legible without counting rows. */
+  builtCount: 'bg-blue-100 text-blue-700 dark:bg-blue-900/60 dark:text-blue-200',
+  /** The opener on the note: a dashed pill reads as "add one here". */
+  openerButton:
+    'border-dashed border-blue-300 text-blue-700 hover:border-blue-400 hover:bg-blue-50 dark:border-blue-500/50 dark:text-blue-200 dark:hover:bg-blue-900/20',
+  stepDone: 'text-blue-600 dark:text-blue-400',
+  stepRunning: 'text-blue-600 dark:text-blue-300',
+  stepPending: 'text-gray-300 dark:text-gray-600',
+  stepError: 'text-red-600 dark:text-red-400',
+  expectation: 'bg-blue-50/70 text-blue-800 dark:bg-blue-900/20 dark:text-blue-100',
+  /**
+   * The rule above the folded-open explanation. Not `border-current`: the block's text is
+   * dark blue in light and near-white in dark, so one opacity gives a whisper on one
+   * theme and a bright bar on the other.
+   */
+  expectationDivider: 'border-blue-200/80 dark:border-blue-400/20',
+} as const;
+
 export type NavItemThemeKey = keyof typeof NAV_ITEM_THEMES;
 
 export const getNavItemTheme = (key?: NavItemThemeKey) => NAV_ITEM_THEMES[key ?? 'default'];

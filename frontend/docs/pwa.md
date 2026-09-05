@@ -42,10 +42,13 @@ Merely receiving an update must not discard the text currently being typed.
   `locales/{en,ru,uk}/translation.json`). Do not add translatable copy such as a
   `description` to the manifest.
 - `app/layout.tsx`: Apple web-app metadata and browser theme; zoom remains enabled.
-- `public/icons/`: square PNGs for Chromium and Apple, plus a maskable PNG; these and
-  `app/favicon.ico` are rendered from the vector source `public/icons/app-icon.svg` by
-  `node scripts/generate-pwa-icons.mjs` from `frontend`. Edit the vector source when the
-  mark changes.
+- `public/icons/`: square PNGs for Chromium and Apple, plus a maskable PNG; these,
+  `public/icons/favicon.svg` and `app/favicon.ico` are rendered from the vector source
+  `public/icons/app-icon.svg` by `node scripts/generate-pwa-icons.mjs` from `frontend`.
+  Edit the vector source when the mark changes; never round it there. The installed
+  icons must stay full-bleed squares because Android applies its own mask and iOS turns
+  transparency black, so the generator rounds only the browser-tab pair to the same
+  third of a side that the header tile uses.
 - `app/sw.ts` and `next.config.mjs`: existing Serwist registration/caching owners.
 
 Use a production build for offline QA, not hot-reloading development assets:

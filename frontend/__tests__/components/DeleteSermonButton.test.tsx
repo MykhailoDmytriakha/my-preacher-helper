@@ -97,7 +97,9 @@ describe('DeleteSermonButton', () => {
 
     // Check redirection
     await waitFor(() => {
-       expect(window.location.href).toBe('/sermons');
+       // replace, not an href assignment: assigning pushes a history entry and leaves the
+    // deleted sermon's page one Back away — BUG-20260905.
+    expect(window.location.replace).toHaveBeenCalledWith('/sermons');
     });
 
      // Check button state reverts (though it redirects immediately)
@@ -124,7 +126,9 @@ describe('DeleteSermonButton', () => {
     expect(deleteSermon).toHaveBeenCalledWith(sermonId);
 
     await waitFor(() => {
-       expect(window.location.href).toBe('/sermons');
+       // replace, not an href assignment: assigning pushes a history entry and leaves the
+    // deleted sermon's page one Back away — BUG-20260905.
+    expect(window.location.replace).toHaveBeenCalledWith('/sermons');
     });
 
      await waitFor(() => {

@@ -39,12 +39,18 @@ Object.defineProperty(window, 'localStorage', {
 });
 
 // Minimal mocks for hooks/services used by page
-jest.mock('@/hooks/useSermon', () => () => ({
-  sermon: { id: 'abc', userId: 'u1', date: '2024-01-01', title: 'T', verse: '', thoughts: [], outline: { introduction: [], main: [], conclusion: [] } },
-  setSermon: jest.fn(),
-  loading: false,
-  refreshSermon: jest.fn(),
-}));
+jest.mock('@/hooks/useSermon', () => {
+  const useSermonMock = () => ({
+    sermon: { id: 'abc', userId: 'u1', date: '2024-01-01', title: 'T', verse: '', thoughts: [], outline: { introduction: [], main: [], conclusion: [] } },
+    setSermon: jest.fn(),
+    loading: false,
+    refreshSermon: jest.fn(),
+  });
+  // The module is mocked AS a function here (CJS default interop), so the named rule has to
+  // hang off it. It stays REAL: a stubbed rule would pass while the screens drift apart.
+  useSermonMock.sermonIsMissing = jest.requireActual('@/hooks/useSermon').sermonIsMissing;
+  return useSermonMock;
+});
 
 jest.mock('@/hooks/useTags', () => ({
   useTags: () => ({ allTags: [] }),

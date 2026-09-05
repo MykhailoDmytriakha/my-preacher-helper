@@ -1,6 +1,9 @@
 {
   "version": 2,
   "functions": {
+    "app/api/studies/notes/[id]/cut/route.ts": {
+      "maxDuration": 60
+    },
     "app/api/insights/route.ts": {
       "maxDuration": 60
     },

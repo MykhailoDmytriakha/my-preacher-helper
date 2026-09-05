@@ -262,7 +262,8 @@ export default function SeriesDetailPage() {
     try {
       // useSeries' delete recovery descriptor reports a late refusal while this screen is mounted.
       await awaitAcceptance(deleteExistingSeries(series.id), () => undefined);
-      router.push('/series');
+      // replace, not push: we are ON the page of the thing being deleted, so pushing leaves a dead entry in history and Back re-opens it.
+      router.replace('/series');
     } catch (errorValue) {
       // Reported by the delete descriptor in `useSeries` — see the note above.
       console.error('Error deleting series:', errorValue);

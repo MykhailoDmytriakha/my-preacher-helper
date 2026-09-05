@@ -7,6 +7,7 @@ import { useSeries } from '@/hooks/useSeries';
 import { hasGroupsAccess } from '@/services/userSettings.service';
 
 const mockPush = jest.fn();
+const mockReplace = jest.fn();
 const mockUseParams = jest.fn(() => ({ id: 'group-1' }));
 const mockArrayMove = jest.fn((items: any[], from: number, to: number) => {
   const next = [...items];
@@ -20,6 +21,7 @@ jest.mock('next/navigation', () => ({
   useParams: () => mockUseParams(),
   useRouter: () => ({
     push: mockPush,
+    replace: mockReplace,
   }),
 }));
 
@@ -302,7 +304,9 @@ describe('GroupDetailPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
 
     await waitFor(() => expect(deleteGroupDetail).toHaveBeenCalledTimes(1));
-    expect(mockPush).toHaveBeenCalledWith('/groups');
+    // replace, not push: the page we are leaving is the group that was just deleted,
+    // so it must not stay one Back away — BUG-20260905.
+    expect(mockReplace).toHaveBeenCalledWith('/groups');
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete group' }));
 

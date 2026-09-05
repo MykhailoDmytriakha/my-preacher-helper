@@ -19,6 +19,7 @@ import {
   getPreachDatesByStatus,
   getPreferredDateToMarkAsPreached
 } from "@/utils/preachDateStatus";
+import { resolveOwnerUid, sermonDetailKey, sermonListKey } from "@/utils/queryKeys";
 import { awaitAcceptance, persistedWrite, type WriteSubmission } from "@/utils/recoverableWrite";
 import { getSeriesForRef } from "@/utils/seriesMembership";
 import PreachDateModal from "@components/calendar/PreachDateModal";
@@ -150,8 +151,22 @@ export default function OptionMenu({
       return;
     }
 
+    // WHOSE cache this is, read BEFORE the await: a sign-out or an account switch while the
+    // request is in flight would make `resolveOwnerUid()` answer with somebody else, and the
+    // eviction would then clear a stranger's key and leave this owner's corpse in place.
+    const ownerUid = resolveOwnerUid();
     try {
       await deleteSermon(sermon.id);
+      // The sermon page reaches delete through THIS branch (it passes no optimistic
+      // actions), so the eviction that the dashboard gets from the delete mutation has
+      // to happen here too — otherwise the detail cache keeps serving the deleted
+      // sermon and Back re-opens a live editor over it.
+      queryClient.removeQueries({ queryKey: sermonDetailKey(ownerUid, sermon.id) });
+      // And the LIST, for the same reason: it is persisted too, so a deleted sermon left in
+      // it comes back on the next cold start and offers itself for opening.
+      queryClient.setQueryData<Sermon[]>(sermonListKey(ownerUid), (old) =>
+        old ? old.filter((item) => item.id !== sermon.id) : old
+      );
       if (onDelete) {
         onDelete(sermon.id);
       } else {

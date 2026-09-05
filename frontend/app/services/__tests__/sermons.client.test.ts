@@ -175,6 +175,46 @@ describe('scratch note client writes', () => {
     expect(store.s1.scratch).toEqual([]);
   });
 
+  it('keeps the origin of atoms cut from a study note through add, edit and the fields it drops', async () => {
+    await addScratchNoteViaClient('s1', [
+      {
+        id: 'a1',
+        text: 'Мысль. (1 Пар 4:10)',
+        createdAt: '2026-09-05T00:00:00.000Z',
+        source: { noteId: 'note-1', heading: 'Раздел' },
+        bogus: 'dropped',
+      },
+    ] as never);
+    expect(store.s1.scratch).toEqual([
+      {
+        id: 'a1',
+        text: 'Мысль. (1 Пар 4:10)',
+        createdAt: '2026-09-05T00:00:00.000Z',
+        source: { noteId: 'note-1', heading: 'Раздел' },
+      },
+    ]);
+
+    await updateScratchNoteViaClient('s1', [
+      {
+        id: 'a1',
+        text: 'Мысль, поправленная. (1 Пар 4:10)',
+        createdAt: '2026-09-05T00:00:00.000Z',
+        section: 'main',
+        source: { noteId: 'note-1', heading: 'Раздел' },
+      },
+    ] as never);
+    expect(store.s1.scratch?.[0]).toMatchObject({
+      section: 'main',
+      source: { noteId: 'note-1', heading: 'Раздел' },
+    });
+
+    // A source without a note id is not an origin — it is not written.
+    await updateScratchNoteViaClient('s1', [
+      { id: 'a1', text: 'x', createdAt: '2026-09-05T00:00:00.000Z', source: { heading: 'only' } },
+    ] as never);
+    expect(store.s1.scratch?.[0]).not.toHaveProperty('source');
+  });
+
   it('applies scratch to outline with one sermon-doc update containing outline and remaining scratch', async () => {
     await applyScratchToOutlineViaClient(
       's1',

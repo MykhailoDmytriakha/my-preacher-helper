@@ -12,6 +12,27 @@ import type { Sermon, Thought } from "@/models/models";
 
 type SermonUpdater = Sermon | null | ((previous: Sermon | null) => Sermon | null);
 
+/**
+ * THERE IS NO SERMON TO SHOW HERE — one definition, because two screens ask.
+ *
+ * The detail page renders its "not found" panel from this, and the app nav decides from the
+ * same answer whether to draw the sermon mode switcher (prep / classic / raw). Those modes
+ * belong to a sermon; over an empty screen they are three buttons that lead nowhere. Spelling
+ * the rule twice is how they would drift apart — one of them would keep showing the switcher
+ * long after the other stopped showing the sermon.
+ *
+ * "Missing" is deliberately narrower than "no sermon in hand": while the read can still
+ * arrive, the answer is not in yet and nothing may be concluded from the silence.
+ *
+ * It is a TYPE PREDICATE so the caller keeps the narrowing the plain `!sermon` check used
+ * to give it — otherwise sharing the rule would cost every caller a second, dead null
+ * check just to satisfy the compiler.
+ */
+export const sermonIsMissing = (
+  sermon: Sermon | null,
+  state: { loading: boolean; awaitingFirstAnswer: boolean }
+): sermon is null => !state.loading && !state.awaitingFirstAnswer && !sermon;
+
 function useSermon(sermonId: string) {
   const queryClient = useQueryClient();
   const isOnline = useOnlineStatus();
@@ -89,7 +110,31 @@ function useSermon(sermonId: string) {
    * Freshness IS still compared where the copies are equals: inside `queryFn`
    * above, server against the stored detail.
    */
-  const sermon = data ?? cachedSermonFromList ?? null;
+  /**
+   * A REFUSAL IS AN ANSWER, AND IT OUTRANKS EVERY LOCAL COPY — BUG-20260905-deleted-sermon-back-shows-corpse.
+   *
+   * Rules answer a MISSING document exactly as they answer someone else's: `resource` is
+   * null, so `ownsExisting` is false and the read comes back `permission-denied`
+   * (`firestore.rules`, `match /sermons/{id}`). The client does not need to tell the two
+   * apart, because the response means the same thing either way: whatever is on this
+   * machine may no longer be shown.
+   *
+   * Without this, deleting a sermon and pressing Back re-opened a full editor over a
+   * document the server no longer had — the recorder took dictation, the plan buttons
+   * worked, and the freshness banner offered to write the local copy back. The page's own
+   * "not found" branch was unreachable, because the cache answered first.
+   *
+   * The line between an ANSWER and SILENCE is the whole safety of this rule. `unavailable`,
+   * a dropped connection, a timeout — those are silence, `refused` stays false, and the
+   * local copy keeps the screen alive exactly as before. Offline the query never runs at
+   * all, so nothing here can fire.
+   */
+  const refusalCode =
+    (failureReason as { code?: string } | null | undefined)?.code ??
+    (error as { code?: string } | null | undefined)?.code;
+  const refused = refusalCode === 'permission-denied' || refusalCode === 'not-found';
+
+  const sermon = refused ? null : (data ?? cachedSermonFromList ?? null);
 
   /**
    * A REFUSAL never reaches the screen as an error, and that is what trapped this
@@ -110,8 +155,6 @@ function useSermon(sermonId: string) {
    * timeout, a dropped connection — is still on its way, and the page keeps waiting
    * exactly as it did before.
    */
-  const refusalCode = (failureReason as { code?: string } | null | undefined)?.code;
-  const refused = refusalCode === 'permission-denied' || refusalCode === 'not-found';
 
   const awaitingFirstAnswer =
     Boolean(sermonId) && !sermon && !error && isOnline && !isFetched && !refused;
