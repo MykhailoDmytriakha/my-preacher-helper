@@ -83,7 +83,7 @@ export default function BibleBookSermonsModal({
                             {t('calendar.analytics.bookModalEmpty', { defaultValue: 'No sermons for this book yet' })}
                         </div>
                     ) : (
-                        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-200 dark:scrollbar-thumb-gray-700">
+                        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                             {entries.map(({ sermon, preachDate }) => {
                                 const parsedDate = parseISO(preachDate.date);
                                 const formattedDate = isValid(parsedDate)

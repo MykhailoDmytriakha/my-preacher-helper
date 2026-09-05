@@ -179,7 +179,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                         <UserGroupIcon className="w-5 h-5 text-blue-500" />
                         {t('calendar.analytics.topChurches')}
                     </h3>
-                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-200 dark:scrollbar-thumb-gray-700">
+                    <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2">
                         {stats.topChurches.map(([name, count]) => (
                             <div key={name} className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">

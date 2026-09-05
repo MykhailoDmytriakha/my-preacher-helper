@@ -81,7 +81,7 @@ export default function MonthlySermonsModal({
                             {t('calendar.analytics.monthModalEmpty', { defaultValue: 'No sermons for this month yet' })}
                         </div>
                     ) : (
-                        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-200 dark:scrollbar-thumb-gray-700">
+                        <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
                             {entries.map(({ sermon, preachDate }) => {
                                 const parsedDate = parseISO(preachDate.date);
                                 const formattedDate = isValid(parsedDate)
