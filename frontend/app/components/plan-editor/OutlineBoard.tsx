@@ -266,6 +266,13 @@ type ScratchLayerProps = {
   ) => React.ReactNode;
   poolHeader?: React.ReactNode;
   poolEmptyLabel?: string;
+  /**
+   * Wording for the per-point notes while the scratch layer is on. On this board a
+   * point's note is the very slot a placed scratch note lands in, so calling it a
+   * "reminder note" here drags the plan-editor vocabulary onto a screen that is
+   * about scratch notes. Omitted -> the plan-editor wording.
+   */
+  noteLabels?: React.ComponentProps<typeof PointNote>['labels'];
 };
 
 interface OutlineBoardProps {
@@ -1083,6 +1090,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                               indentClass="ml-5"
                               addRevealClass="opacity-100 lg:opacity-0 lg:group-hover/subpoint:opacity-100"
                               tone={scratch ? 'neutral' : 'note'}
+                              labels={scratch?.noteLabels}
                             />
                           )}
                           {scratch &&
@@ -1333,6 +1341,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                                   indentClass="ml-6"
                                   addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
                                   tone={scratch ? 'neutral' : 'note'}
+                                  labels={scratch?.noteLabels}
                                 />
                               )}
                               {scratch &&

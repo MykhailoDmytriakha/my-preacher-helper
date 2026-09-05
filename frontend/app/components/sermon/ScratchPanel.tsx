@@ -279,6 +279,26 @@ function getComposeNoticeKey(outline: ComposedPlanOutline) {
   return "scratch.board.composeSuccessHybrid";
 }
 
+/**
+ * The scratch board edits scratch notes with the plan editor's `PointNote`. Left alone,
+ * that shared component labels everything "reminder note" — a DIFFERENT entity in this
+ * app (a hint pinned to a finished plan point), which made the whole screen read as if
+ * it were about notes rather than scratch. Same wording for the pool cards and for the
+ * point notes, because on this board they hold the same thing: a placed scratch note.
+ */
+function useScratchNoteLabels() {
+  const { t } = useTranslation();
+  return useMemo(
+    () => ({
+      label: t("scratch.card.label"),
+      placeholder: t("scratch.card.placeholder"),
+      clear: t("scratch.card.delete"),
+      add: t("scratch.card.add"),
+    }),
+    [t]
+  );
+}
+
 function ScratchNoteCard({
   note,
   isSelected = false,
@@ -292,6 +312,7 @@ function ScratchNoteCard({
   onUnplace,
 }: ScratchNoteCardProps) {
   const { t } = useTranslation();
+  const scratchNoteLabels = useScratchNoteLabels();
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (!onSelect) return;
@@ -375,6 +396,8 @@ function ScratchNoteCard({
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => event.stopPropagation()}
           >
+            {/* This card holds a SCRATCH note, not a plan point's reminder note — the
+                editor is shared, so its wording has to be overridden here. */}
             <PointNote
               note={note.text}
               onChange={handleNoteChange}
@@ -382,6 +405,7 @@ function ScratchNoteCard({
               addRevealClass="opacity-100"
               hideClearButton
               tone="neutral"
+              labels={scratchNoteLabels}
             />
           </div>
         </div>
@@ -407,6 +431,7 @@ export default function ScratchPanel({
   isReadOnly = false,
 }: ScratchPanelProps) {
   const { t } = useTranslation();
+  const boardNoteLabels = useScratchNoteLabels();
   const { isMagicAvailable } = useConnection();
   const { aiBlocked, transcriptionBlocked, refresh: refreshAiUsage } = useAiUsage();
   const transcriptionUnavailableLabel = transcriptionBlocked
@@ -1258,6 +1283,7 @@ export default function ScratchPanel({
           renderNote: renderScratchNote,
           poolHeader: renderPoolHeader(),
           poolEmptyLabel: t("scratch.board.poolEmpty"),
+          noteLabels: boardNoteLabels,
         }}
       />
     </div>

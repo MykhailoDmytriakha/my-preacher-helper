@@ -25,6 +25,22 @@ interface PointNoteProps {
    * used where amber would collide (e.g. the scratch capture screen).
    */
   tone?: 'note' | 'neutral';
+  /**
+   * Wording overrides for hosts where "reminder note" is the wrong noun. The scratch
+   * board edits a *scratch note* with this same editor, and the plan-editor labels
+   * leaking in there make the screen read as if it were about a different entity.
+   * Anything omitted falls back to the plan-editor wording.
+   */
+  labels?: {
+    /** Tooltip on the filled note / aria-label on the empty affordance. */
+    label?: string;
+    /** Placeholder of the edit field. */
+    placeholder?: string;
+    /** aria-label of the inline clear button. */
+    clear?: string;
+    /** Text of the empty "+ note" affordance. */
+    add?: string;
+  };
 }
 
 /**
@@ -42,8 +58,13 @@ const PointNote: React.FC<PointNoteProps> = ({
   addRevealClass = 'opacity-100',
   hideClearButton = false,
   tone = 'note',
+  labels,
 }) => {
   const { t } = useTranslation();
+  const labelText = labels?.label ?? t('planEditor.note.label');
+  const placeholderText = labels?.placeholder ?? t('planEditor.note.placeholder');
+  const clearText = labels?.clear ?? t('planEditor.note.delete');
+  const addText = labels?.add ?? t('planEditor.note.add');
   const [editing, setEditing] = useState(false);
   const [text, setText] = useState('');
   // Distinguishes a real blur-save from an Escape-cancel (Escape also blurs the field).
@@ -104,7 +125,7 @@ const PointNote: React.FC<PointNoteProps> = ({
               commit();
             }
           }}
-          placeholder={t('planEditor.note.placeholder')}
+          placeholder={placeholderText}
           rows={2}
           className={`w-full resize-none px-2 py-1 text-xs rounded border focus:outline-none focus:ring-1 ${editFieldClass}`}
           autoFocus
@@ -120,7 +141,7 @@ const PointNote: React.FC<PointNoteProps> = ({
           isReadOnly ? '' : 'cursor-text hover:text-slate-700 dark:hover:text-gray-300'
         }`}
         onClick={isReadOnly ? undefined : startEdit}
-        title={isReadOnly ? undefined : t('planEditor.note.label')}
+        title={isReadOnly ? undefined : labelText}
       >
         <LightBulbIcon className={`mt-px h-3 w-3 flex-shrink-0 not-italic ${bulbClass}`} />
         <span className="min-w-0 flex-1 break-words whitespace-pre-wrap">{note}</span>
@@ -131,7 +152,7 @@ const PointNote: React.FC<PointNoteProps> = ({
               onChange(undefined);
             }}
             className="not-italic flex-shrink-0 rounded p-0.5 text-slate-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 focus:outline-none focus-visible:ring-1 focus-visible:ring-red-400/50"
-            aria-label={t('planEditor.note.delete')}
+            aria-label={clearText}
           >
             <XMarkIcon className="h-3 w-3" />
           </button>
@@ -146,10 +167,10 @@ const PointNote: React.FC<PointNoteProps> = ({
     <button
       onClick={startEdit}
       className={`${indentClass} mt-1 inline-flex items-center gap-1 rounded text-xs text-slate-400 dark:text-gray-500 transition-colors focus:outline-none focus-visible:ring-1 ${addHoverClass} ${addRevealClass}`}
-      aria-label={t('planEditor.note.label')}
+      aria-label={labelText}
     >
       <LightBulbIcon className="h-3 w-3" />
-      <span>{t('planEditor.note.add')}</span>
+      <span>{addText}</span>
     </button>
   );
 };
