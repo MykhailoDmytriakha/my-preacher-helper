@@ -95,9 +95,15 @@ jest.mock('@/components/ExportButtons', () => ({
   __esModule: true,
   default: () => <div data-testid="plan-header-export" />,
 }));
+// Records what the screen HANDS the selector: a stub that merely renders would be
+// satisfied by a screen that forgot the preference entirely.
+const styleSelectorProps: { value?: string; onChange?: (style: string) => void }[] = [];
 jest.mock('@/components/plan/PlanStyleSelector', () => ({
   __esModule: true,
-  default: () => <div data-testid="plan-style-selector" />,
+  default: (props: { value?: string; onChange?: (style: string) => void }) => {
+    styleSelectorProps.push(props);
+    return <div data-testid="plan-style-selector" data-value={props.value} />;
+  },
 }));
 jest.mock('@components/ui/RichMarkdownEditor', () => ({
   RichMarkdownEditor: () => <div data-testid="rich-editor" />,
@@ -150,6 +156,59 @@ const headerOrder = () => {
     .map((element) => element.getAttribute('testid') ?? element.getAttribute('data-testid'))
     .filter((name): name is string => Boolean(name) && name !== 'plan-page-header');
 };
+
+/**
+ * THE CHOSEN PLAN VOLUME IS REMEMBERED, AND BOTH EDITORS AGREE ON IT.
+ *
+ * It was `useState('memory')` in each screen separately, and the from-a-note workspace
+ * remounts by key — so every entry silently reset the setting to Short, and the two editors
+ * could sit on different volumes at the same time. A preacher who picked Detailed, walked
+ * away and came back got a short plan and no clue why.
+ */
+describe('the plan volume the preacher picked', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    styleSelectorProps.length = 0;
+    mockSearchParams = new URLSearchParams();
+    mockSermon = sermonFixture();
+    window.localStorage.clear();
+  });
+
+  it('comes back after the screen is left and reopened', () => {
+    mockSearchParams = new URLSearchParams('source=note');
+    renderPage(<ManualConspectusPage />);
+
+    const handed = styleSelectorProps.at(-1);
+    handed?.onChange?.('exegetical');
+
+    document.body.innerHTML = '';
+    styleSelectorProps.length = 0;
+    renderPage(<ManualConspectusPage />);
+
+    expect(styleSelectorProps.at(-1)?.value).toBe('exegetical');
+  });
+
+  /** Switching editor must not silently change how much the next generation writes. */
+  it('is the same setting on the paired editor', () => {
+    mockSearchParams = new URLSearchParams('source=note');
+    renderPage(<ManualConspectusPage />);
+    styleSelectorProps.at(-1)?.onChange?.('narrative');
+
+    document.body.innerHTML = '';
+    styleSelectorProps.length = 0;
+    mockSearchParams = new URLSearchParams();
+    renderPage(<AiPlanPage />);
+
+    expect(styleSelectorProps.at(-1)?.value).toBe('narrative');
+  });
+
+  it('falls back to the short plan when nothing was ever chosen', () => {
+    mockSearchParams = new URLSearchParams('source=note');
+    renderPage(<ManualConspectusPage />);
+
+    expect(styleSelectorProps.at(-1)?.value).toBe('memory');
+  });
+});
 
 describe('the plan header is the same in every mode', () => {
   beforeEach(() => {

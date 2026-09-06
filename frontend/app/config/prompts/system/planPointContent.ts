@@ -28,7 +28,7 @@ The outline point title and the sub-point titles ALREADY exist in the sermon str
 - groups: cue groups. Each group bundles its cues AND its refs together.
   - If the user message includes SUB-POINTS STRUCTURE: one group per sub-point, heading = that sub-point's EXACT text copied verbatim (it labels that sub-point's filling — do NOT paraphrase or restyle it).
   - Otherwise: exactly ONE group with heading = null.
-- cues: 2-5 short recall triggers per group, in the AUTHOR'S OWN words. Fragments, contrasts, arrows, punch lines, images — not explanatory sentences. Merge two thoughts that say the same move. Preserve explicit numbered sequences as ordered cues.
+- cues: short recall triggers per group, in the AUTHOR'S OWN words (HOW MANY is set by the PLAN LENGTH block, not here). Fragments, contrasts, arrows, punch lines, images — not explanatory sentences. Merge two thoughts that say the same move. Preserve explicit numbered sequences as ordered cues.
 - refs: put EACH reference INSIDE the group whose cues it supports (it renders inline right under that group's cues, never as one detached block at the end). EVERY reference MUST carry recognizable text — NEVER a bare reference. Each entry = the reference + at least 5-7 key words of that verse (a recognizable fragment), OR the whole verse if it is short or very key. Format: "Ис. 66:2: на смиренного и сокрушённого духом". Take the text from the author's thought when the author quoted it; otherwise supply the key words of that actual verse. The preacher scans the refs under each group and must grasp what each is about WITHOUT opening a Bible. Leave refs = [] for a group that has none. Do NOT invent NON-existent references; for a broad ref like (Евр. 11) give its theme in a few words rather than inventing a specific verse the author never cited.
 
 // 4. LANGUAGE & CONTENT
@@ -38,6 +38,7 @@ The outline point title and the sub-point titles ALREADY exist in the sermon str
 // 5. DENSITY
 - Volume-specific PLAN LENGTH instructions (SHORT / MEDIUM / DETAILED) control how many cues per group.
 - A long source thought can yield few cues if the route is simple. A short thought must not be inflated.
+- The EXAMPLES below show field SHAPE, not volume: do not copy their cue count.
 
 // 6. EXAMPLES (target field shape — note: NO heading/title field; headings come from structure)
 

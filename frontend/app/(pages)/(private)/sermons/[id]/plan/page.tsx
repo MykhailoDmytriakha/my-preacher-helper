@@ -6,7 +6,6 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
-import { PlanStyle } from "@/api/clients/openAI.client";
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
 import { useAiUsage } from "@/hooks/useAiUsage";
@@ -53,6 +52,7 @@ import useCopyFormattedContent from "./useCopyFormattedContent";
 import usePairedPlanCardHeights from "./usePairedPlanCardHeights";
 import { usePendingPlanCells } from "./usePendingPlanCells";
 import usePlanActions from "./usePlanActions";
+import { usePlanStylePreference } from "./usePlanStylePreference";
 import usePlanTextDraft from "./usePlanTextDraft";
 import usePlanViewMode from "./usePlanViewMode";
 
@@ -243,7 +243,7 @@ export default function PlanPage() {
   const [generatingIds, setGeneratingIds] = useState<Record<string, boolean>>({});
 
   // Style for plan generation
-  const [planStyle, setPlanStyle] = useState<PlanStyle>('memory');
+  const [planStyle, setPlanStyle] = usePlanStylePreference();
 
   // State to hold the combined generated content for each section
   /**

@@ -130,6 +130,21 @@ describe('the fullness map on the hand-written plan', () => {
     expect(markers()).toHaveLength(3);
   });
 
+  it.each(['p2', 'p2-a'])('folds only the reminder belonging to the filled cell %s', (filledId) => {
+    mockSearchParams = new URLSearchParams('source=note');
+    mockSermon = sermonWithPlan({ [filledId]: 'Current plan', p3: '  \n ' });
+    mockSermon.outline!.main[0].note = 'Parent scratch';
+    mockSermon.outline!.main[0].subPoints![0].note = 'Child scratch';
+    mockSermon.outline!.conclusion[0].note = 'Empty plan scratch';
+    renderPage();
+
+    const folded = screen.getByText(filledId === 'p2' ? 'Parent scratch' : 'Child scratch');
+    const expanded = screen.getByText(filledId === 'p2' ? 'Child scratch' : 'Parent scratch');
+    expect(folded).not.toBeVisible();
+    expect(expanded).toBeVisible();
+    expect(screen.getByText('Empty plan scratch')).toBeVisible();
+  });
+
   it('paints a written point in the colour of its section', () => {
     renderPage();
 

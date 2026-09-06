@@ -216,7 +216,10 @@ const ManualPointCard = ({ point, index, section, conspectus, noteMode }: Manual
                 />
               </h4>
             )}
-            {noteMode && <NoteNodeReminder text={node.kind === 'point' ? point.note : point.subPoints?.find((sub) => sub.id === node.id)?.note} />}
+            {noteMode && <NoteNodeReminder
+              text={node.kind === 'point' ? point.note : point.subPoints?.find((sub) => sub.id === node.id)?.note}
+              hasPlan={Boolean(conspectus.contentByNodeId[node.id]?.trim())}
+            />}
             {isEditing ? (
               <RichMarkdownEditor
                 value={conspectus.contentByNodeId[node.id] ?? ""}

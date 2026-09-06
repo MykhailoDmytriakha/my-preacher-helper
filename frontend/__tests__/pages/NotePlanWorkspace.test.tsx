@@ -97,3 +97,62 @@ it('keeps other point buttons available while one or both requests are running',
   expect(second).toHaveAttribute('aria-busy', 'true');
   expect(generateNotePlanContent).toHaveBeenCalledTimes(2);
 });
+
+describe('scratch reminder disclosure', () => {
+  it('starts open without a plan and supports manual folding in either direction', () => {
+    render(<NoteNodeReminder text={'First line\nSecond line'} />);
+    const toggle = screen.getByRole('button', { name: 'scratch.card.label' });
+    const content = document.getElementById(toggle.getAttribute('aria-controls')!);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(content).toBeVisible();
+    expect(content).toHaveTextContent('First line Second line');
+    expect(content).toHaveClass('whitespace-pre-wrap', 'italic');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(content).not.toBeVisible();
+    fireEvent.click(toggle);
+    expect(content).toBeVisible();
+  });
+
+  it('starts folded with a plan and preserves manual expansion across unrelated rerenders', () => {
+    const { rerender } = render(<NoteNodeReminder text="Original reminder" hasPlan />);
+    const toggle = screen.getByRole('button', { name: 'scratch.card.label' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByText('Original reminder')).not.toBeVisible();
+    fireEvent.click(toggle);
+    rerender(<NoteNodeReminder text="Updated reminder" hasPlan />);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Updated reminder')).toBeVisible();
+  });
+
+  it('folds when current content is first applied and reopens when the plan is cleared', () => {
+    const { rerender } = render(<NoteNodeReminder text="Source material" hasPlan={false} />);
+    expect(screen.getByText('Source material')).toBeVisible();
+    rerender(<NoteNodeReminder text="Source material" hasPlan />);
+    expect(screen.getByText('Source material')).not.toBeVisible();
+    rerender(<NoteNodeReminder text="Source material" hasPlan={false} />);
+    expect(screen.getByText('Source material')).toBeVisible();
+  });
+
+  it('keeps sibling disclosures independent and gives them distinct accessible targets', () => {
+    const { rerender } = render(<>
+      <NoteNodeReminder text="Parent reminder" hasPlan />
+      <NoteNodeReminder text="Child reminder" hasPlan={false} />
+    </>);
+    const [parent, child] = screen.getAllByRole('button', { name: 'scratch.card.label' });
+    expect(parent.getAttribute('aria-controls')).not.toBe(child.getAttribute('aria-controls'));
+    fireEvent.click(parent);
+    rerender(<>
+      <NoteNodeReminder text="Parent reminder" hasPlan />
+      <NoteNodeReminder text="Child reminder" hasPlan />
+    </>);
+    expect(screen.getByText('Parent reminder')).toBeVisible();
+    expect(screen.getByText('Child reminder')).not.toBeVisible();
+  });
+
+  it.each([undefined, '', '  \n '])('shows guidance without an empty toggle for %p', (text) => {
+    render(<NoteNodeReminder text={text} hasPlan />);
+    expect(screen.getByText('plan.fromNote.noReminder')).toBeVisible();
+    expect(screen.queryByRole('button', { name: 'scratch.card.label' })).not.toBeInTheDocument();
+  });
+});

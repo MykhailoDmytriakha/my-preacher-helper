@@ -27,7 +27,8 @@ export function createNotePlanUserMessage(input: NotePlanInput): string {
 }
 
 export const notePlanSystemPrompt = `You build a preacher CUE CARD for ONE already chosen outline point and its sub-points.
-The preacher glances at the result on stage: short concrete memory anchors, not an essay.
+The preacher glances at the result on stage: concrete memory anchors in the author's words, never flowing prose.
+HOW MANY anchors, and how much supporting detail, is set by the PLAN LENGTH block appended below — nothing here caps it.
 
 INPUT ROLES
 - targetNodes: the preacher's chosen titles and placed scratch reminders. They determine WHAT to say and WHERE.

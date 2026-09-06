@@ -7,9 +7,9 @@ import { notePlanContextKey, type NotePlanResult } from '@/utils/notePlan';
 
 import { generateNotePlanContent } from '../planApi';
 import { planNodesForPoint } from '../planNodes';
+import { usePlanStylePreference } from '../usePlanStylePreference';
 
 import type { ManualConspectus } from './useManualConspectus';
-import type { PlanStyle } from '@/api/clients/planTypes';
 import type { Sermon, SermonPoint } from '@/models/models';
 
 interface Proposal extends NotePlanResult {
@@ -38,7 +38,7 @@ function generationErrorCode(error: unknown): string {
 }
 
 export function useNotePlanGeneration(options: Options) {
-  const [style, setStyle] = useState<PlanStyle>('memory');
+  const [style, setStyle] = usePlanStylePreference();
   const [generatingIds, setGeneratingIds] = useState<Record<string, boolean>>({});
   const [proposals, setProposals] = useState<Record<string, Proposal>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});

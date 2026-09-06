@@ -11,6 +11,12 @@
 // Constants for repeated strings
 const TEXT_WHITE = "text-white";
 
+// Scratch material keeps the lightbulb accent used by outline reminders.
+export const SCRATCH_REMINDER_COLORS = {
+  toggle: 'text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300 focus-visible:ring-amber-400/50',
+  text: 'text-slate-500 dark:text-gray-400',
+} as const;
+
 // Browser/app chrome uses the existing blue identity and a light launch surface.
 export const APP_THEME_COLORS = {
   theme: '#2563eb',

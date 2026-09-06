@@ -1,6 +1,7 @@
 'use client';
 
-import { createContext, useContext, type ReactNode } from 'react';
+import { ChevronRightIcon, LightBulbIcon } from '@heroicons/react/24/outline';
+import { createContext, useContext, useEffect, useId, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import MarkdownDisplay from '@/components/MarkdownDisplay';
@@ -10,7 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useSourceNotes } from '@/hooks/useSermonNoteLinks';
-import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
+import { SCRATCH_REMINDER_COLORS, SERMON_SECTION_COLORS } from '@/utils/themeColors';
 
 import { planNodesForPoint } from '../planNodes';
 
@@ -117,13 +118,30 @@ export function NotePointActions({ point }: { point: SermonPoint }) {
   );
 }
 
-export function NoteNodeReminder({ text }: { text?: string }) {
+export function NoteNodeReminder({ text, hasPlan = false }: { text?: string; hasPlan?: boolean }) {
   const { t } = useTranslation();
+  const contentId = useId();
+  const [expanded, setExpanded] = useState(!hasPlan);
+
+  useEffect(() => {
+    setExpanded(!hasPlan);
+  }, [hasPlan]);
+
+  if (!text?.trim()) {
+    return <p className={`mb-3 text-sm ${SCRATCH_REMINDER_COLORS.text}`}>{t('plan.fromNote.noReminder')}</p>;
+  }
+
   return (
-    <div className="mb-3 rounded-lg border-l-2 border-gray-300 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-900/30">
-      <p className="mb-1 text-xs font-medium text-gray-500 dark:text-gray-400">{t('scratch.card.label')}</p>
-      {text?.trim() ? <div className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">{text}</div>
-        : <p className="text-sm text-gray-500 dark:text-gray-400">{t('plan.fromNote.noReminder')}</p>}
+    <div className="mb-3 min-w-0">
+      <button type="button" aria-expanded={expanded} aria-controls={contentId}
+        onClick={() => setExpanded((previous) => !previous)}
+        className={`flex min-h-11 items-center gap-2 rounded text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 ${SCRATCH_REMINDER_COLORS.toggle}`}>
+        <ChevronRightIcon aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform motion-reduce:transition-none ${expanded ? 'rotate-90' : ''}`} />
+        <LightBulbIcon aria-hidden="true" className="h-4 w-4 shrink-0" />
+        <span>{t('scratch.card.label')}</span>
+      </button>
+      <div id={contentId} hidden={!expanded}
+        className={`whitespace-pre-wrap break-words pb-2 pl-6 text-sm italic ${SCRATCH_REMINDER_COLORS.text}`}>{text}</div>
     </div>
   );
 }

@@ -165,7 +165,8 @@ interface PlanMainLayoutContextValue {
    * down the page. Deciding it once, for the sermon, keeps the rhythm even.
    */
   planStyle: PlanStyle;
-  setPlanStyle: React.Dispatch<React.SetStateAction<PlanStyle>>;
+  /** Plain setter: the volume is a remembered preference, never derived from the previous one. */
+  setPlanStyle: (style: PlanStyle) => void;
   isLoading: boolean;
   generatingIds: Record<string, boolean>;
   aiBlocked: boolean;
@@ -599,7 +600,7 @@ export interface PlanMainLayoutProps {
   t: (key: string, options?: Record<string, unknown>) => string;
   noContentText: string;
   planStyle: PlanStyle;
-  setPlanStyle: React.Dispatch<React.SetStateAction<PlanStyle>>;
+  setPlanStyle: (style: PlanStyle) => void;
   isLoading: boolean;
   generatingIds: Record<string, boolean>;
   aiBlocked: boolean;
