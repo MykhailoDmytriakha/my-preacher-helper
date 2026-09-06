@@ -8,6 +8,7 @@ import {
   planSystemPrompt, createPlanUserMessage,
   planPointContentSystemPrompt, createPlanPointContentUserMessage
 } from "@/config/prompts";
+import { createNotePlanUserMessage, notePlanSystemPrompt, type NotePlanInput } from '@/config/prompts/user/notePlanTemplate';
 import {
   DirectionsResponseSchema,
   PlanPointContentResponseSchema,
@@ -15,6 +16,7 @@ import {
   PlanSectionResponseSchema,
   SortingResponseSchema,
 } from "@/config/schemas/zod";
+import { NotePlanResponseSchema } from '@/config/schemas/zod/notePlan.zod';
 import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, DirectionSuggestion, SermonContent, BrainstormSuggestion, SectionHints, SubPoint, SermonOutline } from "@/models/models";
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { validateAudioBlob, createAudioFile, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
@@ -35,6 +37,7 @@ import { callWithStructuredOutput } from "./structuredOutput";
 import { generateThoughtStructured, type GenerateThoughtResult } from "./thought.structured";
 
 import type { PlanContext, PlanStyle } from "./planTypes";
+import type { NotePlanResult } from '@/utils/notePlan';
 
 export type { PlanContext, PlanStyle } from "./planTypes";
 
@@ -1195,12 +1198,37 @@ export async function generatePlanPointContent(
   }
 }
 
-/**
- * Generate outline points for a section based on sermon content
- * @param sermon The sermon to analyze
- * @param section The section to generate outline points for (introduction, main, conclusion)
- * @returns Array of generated outline points and success status
- */
+/** Generate editable cue cards from the full study and the preacher's placed reminders. */
+export async function generateNotePlanPoint(input: NotePlanInput, style: PlanStyle, userId: string): Promise<NotePlanResult> {
+  const userMessage = createNotePlanUserMessage(input);
+  const systemPrompt = `${notePlanSystemPrompt}\n${getStyleInstructions(style)}`;
+  const promptBlueprint = buildSimplePromptBlueprint({
+    promptName: 'sermon.conspect.note_point',
+    promptVersion: 'v2',
+    systemPrompt,
+    userMessage,
+    context: { outlinePointId: input.point.id, sourceCount: input.notes.length, style },
+  });
+  const result = await callWithStructuredOutput(systemPrompt, userMessage, NotePlanResponseSchema, {
+    formatName: 'note_plan_point', userId, promptBlueprint,
+  });
+  if (!result.success || !result.data) throw new Error('Note plan generation failed');
+  const allowed = new Set([input.point.id, ...(input.point.subPoints ?? []).map((sub) => sub.id)]);
+  const seen = new Set(result.data.nodes.map((node) => node.nodeId));
+  if (seen.size !== allowed.size || result.data.nodes.length !== allowed.size || [...seen].some((id) => !allowed.has(id))) {
+    throw new Error('Generated plan does not match the requested nodes');
+  }
+  const contentByNodeId: Record<string, string> = {};
+  const missingMaterial: Record<string, string> = {};
+  for (const node of result.data.nodes) {
+    contentByNodeId[node.nodeId] = assemblePlanPointMarkdown({
+      turn: node.turn, groups: [{ heading: null, cues: node.cues, refs: node.refs }],
+    });
+    if (node.missingMaterial) missingMaterial[node.nodeId] = node.missingMaterial;
+  }
+  return { contentByNodeId, missingMaterial };
+}
+
 export async function generateSermonPoints(
   sermon: Sermon,
   section: string,

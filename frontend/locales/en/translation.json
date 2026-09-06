@@ -1500,6 +1500,32 @@
     "pointsLabel": "points"
   },
   "plan": {
+    "fromNote": {
+      "mode": "From note",
+      "entry": "Based on note",
+      "source": "Source material",
+      "sourceHelp": "The full linked study supplies the details. Each point’s scratch material guides what to include. Sources open in a new tab.",
+      "subtitle": "Build the plan from your placed scratch material and the linked study. Review, edit and save each point.",
+      "readyTitle": "Build your plan from the note",
+      "readyDescription": "Your structure and scratch material are ready. Use the linked study to fill the points, or write by hand.",
+      "fillEmpty": "Fill empty points ({{count}})",
+      "filling": "Filling empty points…",
+      "saveAll": "Save changes",
+      "draftHelp": "Generated text stays editable. Save when you are ready.",
+      "generatePoint": "Generate point",
+      "generating": "Generating…",
+      "proposal": "Review the proposed content",
+      "current": "Current text",
+      "suggested": "From the note",
+      "empty": "No text yet",
+      "apply": "Use this version",
+      "noReminder": "No scratch material here. The point title will guide selection from the study.",
+      "contextChanged": "The structure or text changed. Your work is preserved. Refresh the source if needed, then generate this point again.",
+      "sourceUnavailable": "A linked note is empty or unavailable. Check the sources on the sermon page. You can still write by hand.",
+      "sourceTooLarge": "The linked material is too large to read in full in one request. Use a smaller study or fewer source notes; nothing has been truncated.",
+      "generationFailed": "This point could not be generated. Your text is unchanged. Try again.",
+      "usageBlocked": "The AI allowance is used up. You can still edit and save the plan."
+    },
     "pageTitle": "Sermon plan",
     "style": {
       "label": "Plan Length",

@@ -43,6 +43,7 @@ const SAVE_POINT_ERROR_KEY = "errors.failedToSavePoint";
 
 interface UseManualConspectusParams {
   sermon: Sermon | null;
+  mode?: 'manual' | 'note';
   setSermon: (updater: (previous: Sermon | null) => Sermon | null) => unknown;
   t: (key: string, options?: Record<string, unknown>) => string;
 }
@@ -74,6 +75,7 @@ export function useManualConspectus({
   sermon,
   setSermon,
   t,
+  mode = 'manual',
 }: UseManualConspectusParams): ManualConspectus {
   const [contentByNodeId, setContentByNodeId] = useState<Record<string, string>>({});
   const [savedNodeIds, setSavedNodeIds] = useState<Record<string, boolean>>({});
@@ -290,8 +292,8 @@ export function useManualConspectus({
      * never overruled by merely typing.
      */
     if (!currentSermon.planMode) {
-      savePlanModeViaClient(currentSermon.id, 'manual')
-        .then(() => setSermon((previous) => (previous ? { ...previous, planMode: 'manual' } : previous)))
+      savePlanModeViaClient(currentSermon.id, mode)
+        .then(() => setSermon((previous) => (previous ? { ...previous, planMode: mode } : previous)))
         .catch((error) => debugLog("Recording the plan editor failed — harmless", { error }));
     }
 
@@ -306,7 +308,7 @@ export function useManualConspectus({
     Object.keys(changedText).forEach((nodeId) => { delete contestedRef.current[nodeId]; });
     refreshPending();
     await mirror();
-  }, [baseline, refreshPending, setSermon]);
+  }, [baseline, mode, refreshPending, setSermon]);
 
   /**
    * Marks as saved only the nodes whose text still matches what was actually sent, and

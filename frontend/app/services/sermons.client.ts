@@ -1265,7 +1265,7 @@ export function planTextConflictValues(error: unknown): Record<string, string | 
  */
 export async function savePlanModeViaClient(
   sermonId: string,
-  planMode: 'manual' | 'ai'
+  planMode: 'manual' | 'ai' | 'note'
 ): Promise<void> {
   await revisionedUpdate(
     sermonRef(sermonId),

@@ -200,7 +200,7 @@ export interface Sermon {
    * answers `undefined`, and those keep the routing they already had; changing it would move
    * people's plans out from under them on the day it ships.
    */
-  planMode?: 'manual' | 'ai';
+  planMode?: 'manual' | 'ai' | 'note';
   isPreached?: boolean;
   preparation?: Preparation;
 

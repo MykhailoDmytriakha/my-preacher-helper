@@ -10,6 +10,14 @@ import {
 import type { Sermon } from '@/models/models';
 
 describe('sermonPlanAccess utilities', () => {
+  it('opens an empty note-backed plan without requiring thoughts and respects a manual choice', () => {
+    const sermon = { id: 'note-sermon', sourceNoteIds: ['n'], thoughts: [] } as unknown as Sermon;
+    expect(getSermonAccessType(sermon)).toBe('plan');
+    expect(getSermonPlanAccessRoute(sermon.id, sermon)).toBe('/sermons/note-sermon/plan/manual?source=note');
+    expect(getSermonPlanAccessRoute(sermon.id, { ...sermon, planMode: 'manual' })).toBe('/sermons/note-sermon/plan/manual');
+    expect(getSermonPlanAccessRoute(sermon.id, { ...sermon, planMode: 'ai' })).toBe('/sermons/note-sermon/plan');
+    expect(getSermonPlanAccessRoute(sermon.id, { ...sermon, planMode: 'note' })).toBe('/sermons/note-sermon/plan/manual?source=note');
+  });
   const baseSermon: Sermon = {
     id: 'sermon-1',
     title: 'Test Sermon',

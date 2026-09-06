@@ -327,6 +327,10 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
       crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series, group, prayer }));
     });
 
+    if (segments.at(-1) === 'manual' && searchParams?.get('source') === 'note' && crumbs.length) {
+      crumbs[crumbs.length - 1].label = t('plan.fromNote.mode');
+    }
+
     // Handle "Preaching" mode overlay
     if (searchParams?.get('planView') === 'preaching' && crumbs.length > 0) {
       // Modify the last existing crumb (Plan) to be a link

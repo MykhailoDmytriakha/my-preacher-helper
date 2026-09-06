@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
@@ -26,21 +26,30 @@ export function PlanModeSwitch({
   sermon,
   current,
   onSwitched,
+  beforeSwitch,
 }: {
   sermon: Sermon | null | undefined;
   /** Which screen is rendering this switch. */
-  current: 'manual' | 'ai';
+  current: 'manual' | 'ai' | 'note';
+  beforeSwitch?: () => Promise<boolean>;
   /** The sermon in memory should carry the new mode without waiting for a refetch. */
-  onSwitched?: (mode: 'manual' | 'ai') => void;
+  onSwitched?: (mode: 'manual' | 'ai' | 'note') => void;
 }) {
   const { t } = useTranslation();
   const router = useRouter();
   const [switching, setSwitching] = useState(false);
 
-  const go = async (mode: 'manual' | 'ai') => {
+  // Manual and note modes share a route, so navigation preserves this component.
+  // Keep the guard until the destination renders, then allow another switch.
+  useEffect(() => {
+    setSwitching(false);
+  }, [current, sermon?.id]);
+
+  const go = async (mode: 'manual' | 'ai' | 'note') => {
     if (mode === current || switching || !sermon) return;
     setSwitching(true);
     try {
+      if (beforeSwitch && !await beforeSwitch()) { setSwitching(false); return; }
       /**
        * RECORD FIRST, TRAVEL SECOND. Navigating first would leave the other screen deciding
        * what it is from a sermon that still says the old thing — and on a slow connection the
@@ -48,7 +57,7 @@ export function PlanModeSwitch({
        */
       await savePlanModeViaClient(sermon.id, mode);
       onSwitched?.(mode);
-      router.push(mode === 'manual' ? `/sermons/${sermon.id}/plan/manual` : `/sermons/${sermon.id}/plan`);
+      router.push(mode === 'note' ? `/sermons/${sermon.id}/plan/manual?source=note` : mode === 'manual' ? `/sermons/${sermon.id}/plan/manual` : `/sermons/${sermon.id}/plan`);
     } catch (error) {
       debugLog("Switching the plan editor failed", { sermonId: sermon.id, mode, error });
       toast.error(t("plan.modeSwitchFailed"));
@@ -56,7 +65,7 @@ export function PlanModeSwitch({
     }
   };
 
-  const option = (mode: 'manual' | 'ai', label: string) => (
+  const option = (mode: 'manual' | 'ai' | 'note', label: string) => (
     <button
       type="button"
       onClick={() => void go(mode)}
@@ -73,10 +82,11 @@ export function PlanModeSwitch({
   );
 
   return (
-    <div className="inline-flex items-center gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-800">
+    <div className="inline-flex flex-wrap items-center gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-800">
       <span className="px-2 text-xs text-gray-500 dark:text-gray-400">{t("plan.modeLabel")}</span>
       {option('manual', t("plan.modeManual"))}
       {option('ai', t("plan.modeFromThoughts"))}
+      {(sermon?.sourceNoteIds?.length || current === 'note') ? option('note', t('plan.fromNote.mode')) : null}
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { FileText, Pencil, Save } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -34,6 +34,7 @@ import usePlanTextDraft from "../usePlanTextDraft";
 import usePlanViewMode from "../usePlanViewMode";
 
 import { AddNodeButton, DeleteNodeButton } from "./NodeControls";
+import { NotePlanWorkspace, NotePointActions, NoteNodeReminder } from "./NotePlanWorkspace";
 import { useManualConspectus, type ManualConspectus } from "./useManualConspectus";
 
 import type { SermonSectionKey } from "../types";
@@ -61,6 +62,7 @@ interface ManualPointCardProps {
   index: number;
   section: SermonSectionKey;
   conspectus: ManualConspectus;
+  noteMode?: boolean;
 }
 
 /**
@@ -127,7 +129,7 @@ const EditableTitle = ({
   );
 };
 
-const ManualPointCard = ({ point, index, section, conspectus }: ManualPointCardProps) => {
+const ManualPointCard = ({ point, index, section, conspectus, noteMode }: ManualPointCardProps) => {
   const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const tone = SECTION_TONE_CLASSES[section];
@@ -189,6 +191,7 @@ const ManualPointCard = ({ point, index, section, conspectus }: ManualPointCardP
         </div>
       </h3>
 
+      {noteMode && <NotePointActions point={point} />}
       <div className="space-y-3">
         {nodes.map((node) => (
           <div
@@ -212,6 +215,7 @@ const ManualPointCard = ({ point, index, section, conspectus }: ManualPointCardP
                 />
               </h4>
             )}
+            {noteMode && <NoteNodeReminder text={node.kind === 'point' ? point.note : point.subPoints?.find((sub) => sub.id === node.id)?.note} />}
             {isEditing ? (
               <RichMarkdownEditor
                 value={conspectus.contentByNodeId[node.id] ?? ""}
@@ -245,7 +249,9 @@ export default function ManualConspectusPage() {
   const sermonId = useRouteId();
   const router = useRouter();
   const { sermon, setSermon, loading, error, refreshSermon } = useSermon(sermonId);
-  const conspectus = useManualConspectus({ sermon, setSermon, t });
+  const searchParams = useSearchParams();
+  const noteMode = searchParams.get('source') === 'note';
+  const conspectus = useManualConspectus({ sermon, setSermon, t, mode: noteMode ? 'note' : 'manual' });
   /** Nodes the outline still has — a recovered draft for anything else has nowhere to show. */
   const livePlanNodes = useMemo(() => liveNodeIds(sermon?.outline), [sermon?.outline]);
   const hasUnsavedCells = Object.values(conspectus.modifiedNodeIds).some(Boolean);
@@ -511,12 +517,13 @@ export default function ManualConspectusPage() {
       <div className="space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{sermon.title}</h1>
-          <p className="text-gray-500 dark:text-gray-400">{t("plan.manualSubtitle")}</p>
+          <p className="text-gray-500 dark:text-gray-400">{t(noteMode ? "plan.fromNote.subtitle" : "plan.manualSubtitle")}</p>
         </div>
 
         <PlanModeSwitch
           sermon={sermon}
-          current="manual"
+          current={noteMode ? "note" : "manual"}
+          beforeSwitch={conspectus.saveModified}
           onSwitched={(planMode) => setSermon((previous) => (previous ? { ...previous, planMode } : previous))}
         />
 
@@ -531,6 +538,7 @@ export default function ManualConspectusPage() {
         />
       </div>
 
+      <NotePlanWorkspace key={`${sermon.id}:${noteMode}`} enabled={noteMode} sermon={sermon} conspectus={conspectus}>
       {SECTIONS.map((section) => {
         const points = sermon.outline?.[section] ?? [];
         const tone = SECTION_TONE_CLASSES[section];
@@ -547,6 +555,7 @@ export default function ManualConspectusPage() {
                   index={index}
                   section={section}
                   conspectus={conspectus}
+                  noteMode={noteMode}
                 />
               ))}
             </div>
@@ -562,6 +571,7 @@ export default function ManualConspectusPage() {
           </section>
         );
       })}
+      </NotePlanWorkspace>
     </div>
   );
 }

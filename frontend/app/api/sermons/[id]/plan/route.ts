@@ -4,11 +4,14 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
+import { studiesRepository } from '@/api/repositories/studies.repository';
+import { createNotePlanUserMessage, type NotePlanInput } from '@/config/prompts/user/notePlanTemplate';
 import { SermonContent, ThoughtInStructure } from '@/models/models';
 import { isUsageCapReachedError } from '@/services/usageLimits';
+import { NotePlanRequestSchema, notePlanContextKey } from '@/utils/notePlan';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 import { buildSubPointRenderableEntries, flattenSubPointRenderableEntries, normalizeSubPointId } from '@/utils/subPoints';
-import { generatePlanForSection, generatePlanPointContent, PlanStyle } from '@clients/openAI.client';
+import { generateNotePlanPoint, generatePlanForSection, generatePlanPointContent, PlanStyle } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 export const dynamic = 'force-dynamic';
@@ -251,6 +254,70 @@ async function generateSermonPointContent(
       { error: 'Failed to generate content', details: (error as Error).message },
       { status: 500 }
     );
+  }
+}
+
+/** Generate a note-backed proposal. Only the editor can accept and save the text. */
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const uid = await getRequiredAuthenticatedUid(request);
+  if (!uid) return jsonNoStore({ error: 'Unauthorized' }, { status: 401 });
+  try {
+    const parsed = NotePlanRequestSchema.safeParse(await request.json());
+    if (!parsed.success) return jsonNoStore({ error: 'Invalid request' }, { status: 400 });
+    const { id } = await params;
+    const sermon = await sermonsRepository.fetchSermonById(id);
+    if (!sermon) return jsonNoStore({ error: 'Sermon not found' }, { status: 404 });
+    if (sermon.userId !== uid) return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
+    const { outlinePointId, style, expectedContext } = parsed.data;
+    const sections = ['introduction', 'main', 'conclusion'] as const;
+    const section = sections.find((key) => sermon.outline?.[key]?.some((point) => point.id === outlinePointId));
+    const point = section && sermon.outline?.[section]?.find((candidate) => candidate.id === outlinePointId);
+    if (!point || !section) return jsonNoStore({ error: 'Point not found' }, { status: 404 });
+    if (expectedContext !== notePlanContextKey(sermon, outlinePointId)) {
+      return jsonNoStore({ error: 'contextChanged' }, { status: 409 });
+    }
+    const sourceIds = [...new Set(sermon.sourceNoteIds ?? [])];
+    if (!sourceIds.length) return jsonNoStore({ error: 'sourceUnavailable' }, { status: 422 });
+    const notes = await Promise.all(sourceIds.map((noteId) => studiesRepository.getNote(noteId)));
+    if (notes.some((note) => !note || note.userId !== uid || !note.content?.trim())) {
+      return jsonNoStore({ error: 'sourceUnavailable' }, { status: 422 });
+    }
+    const input: NotePlanInput = {
+      title: sermon.title, verse: sermon.verse, section, point,
+      outline: sections.flatMap((key) => (sermon.outline?.[key] ?? []).map((item) => ({
+        section: key, title: item.text,
+        subPoints: [...(item.subPoints ?? [])].sort((a, b) => a.position - b.position).map((sub) => sub.text),
+      }))),
+      notes: notes.map((note) => ({
+        id: note!.id, title: note!.title ?? '', content: note!.content,
+        scriptureRefs: (note!.scriptureRefs ?? []).map((ref) => JSON.stringify(ref)),
+      })),
+      thoughts: getVisualOrderedThoughtsForOutlinePoint(sermon, outlinePointId).map((thought) => ({
+        text: thought.text, subPointId: thought.subPointId, keyFragments: thought.keyFragments,
+      })),
+    };
+    // Keep the entire study or refuse explicitly; never silently feed a truncated source.
+    if (createNotePlanUserMessage(input).length > 200_000) {
+      return jsonNoStore({ error: 'sourceTooLarge' }, { status: 413 });
+    }
+    const result = await generateNotePlanPoint(input, style, uid);
+    const [latestSermon, latestNotes] = await Promise.all([
+      sermonsRepository.fetchSermonById(id),
+      Promise.all(sourceIds.map((noteId) => studiesRepository.getNote(noteId))),
+    ]);
+    const sourceChanged = latestNotes.some((note, index) => !note || note.userId !== uid
+      || note.content !== notes[index]!.content
+      || JSON.stringify(note.scriptureRefs) !== JSON.stringify(notes[index]!.scriptureRefs));
+    if (!latestSermon || latestSermon.userId !== uid || sourceChanged
+      || notePlanContextKey(latestSermon, outlinePointId) !== expectedContext) {
+      return jsonNoStore({ error: 'contextChanged' }, { status: 409 });
+    }
+    return jsonNoStore(result);
+  } catch (error) {
+    if (isUsageCapReachedError(error)) return usageCapResponse(error);
+    if (error instanceof SyntaxError) return jsonNoStore({ error: 'Invalid request' }, { status: 400 });
+    console.error('Note plan generation failed', error);
+    return jsonNoStore({ error: 'generationFailed' }, { status: 500 });
   }
 }
 

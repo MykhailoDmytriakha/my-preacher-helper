@@ -33,6 +33,40 @@ beforeEach(() => {
 });
 
 describe('the plan editor switch', () => {
+  it('allows repeated note/manual round trips when navigation reuses the mounted switch', async () => {
+    const linked = { ...sermon, sourceNoteIds: ['n'] };
+    const view = render(<PlanModeSwitch sermon={linked} current="note" />);
+
+    for (const mode of ['manual', 'note', 'manual', 'note'] as const) {
+      const label = mode === 'manual' ? 'plan.modeManual' : 'plan.fromNote.mode';
+      await waitFor(() => expect(screen.getByRole('button', { name: label })).toBeEnabled());
+      fireEvent.click(screen.getByRole('button', { name: label }));
+      await waitFor(() => expect(mockSave).toHaveBeenLastCalledWith('s1', mode));
+      await waitFor(() => expect(mockPush).toHaveBeenLastCalledWith(
+        mode === 'note' ? '/sermons/s1/plan/manual?source=note' : '/sermons/s1/plan/manual'
+      ));
+      // Saving has finished, but navigation has not committed the new current prop yet.
+      expect(screen.getByRole('button', { name: label })).toBeDisabled();
+      view.rerender(<PlanModeSwitch sermon={{ ...linked, planMode: mode }} current={mode} />);
+      await waitFor(() => expect(screen.getByRole('button', { name: label })).toBeEnabled());
+    }
+    expect(mockSave).toHaveBeenCalledTimes(4);
+  });
+
+  it('offers the note mode only with a source and guards unsaved text before switching', async () => {
+    const guard = jest.fn().mockResolvedValue(false);
+    const view = render(<PlanModeSwitch sermon={{ ...sermon, sourceNoteIds: ['n'] }} current="manual" beforeSwitch={guard} />);
+    fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.mode' }));
+    await waitFor(() => expect(guard).toHaveBeenCalled());
+    expect(mockSave).not.toHaveBeenCalled();
+    guard.mockResolvedValue(true);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'plan.fromNote.mode' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.mode' }));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/sermons/s1/plan/manual?source=note'));
+    expect(mockSave).toHaveBeenCalledWith('s1', 'note');
+    view.rerender(<PlanModeSwitch sermon={sermon} current="manual" />);
+    expect(screen.queryByRole('button', { name: 'plan.fromNote.mode' })).not.toBeInTheDocument();
+  });
   it('shows which editor this plan is kept in', () => {
     render(<PlanModeSwitch sermon={sermon} current="manual" />);
 

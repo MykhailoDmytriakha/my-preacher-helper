@@ -47,6 +47,11 @@ export interface PromptDescriptor {
 }
 
 export const PROMPT_REGISTRY: Record<string, PromptDescriptor> = {
+  'sermon.conspect.note_point': {
+    area: 'sermon', areaLabel: 'Sermon', stageLabel: 'Plan', step: '4.2',
+    display: 'Sermon plan from a study note',
+    where: 'Plan → From note → Generate point', hasPrompt: true, legacyNames: [],
+  },
   // ── Проповедь ───────────────────────────────────────────────────────────
   "sermon.scratch.to_outline": {
     area: "sermon",

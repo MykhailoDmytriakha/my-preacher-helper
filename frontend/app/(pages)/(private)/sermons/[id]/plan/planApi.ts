@@ -1,6 +1,7 @@
 import { PlanStyle } from "@/api/clients/openAI.client";
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
+import { NotePlanResultSchema, type NotePlanResult } from '@/utils/notePlan';
 
 import type { Plan } from "@/models/models";
 
@@ -23,6 +24,25 @@ interface SaveSermonPlanParams {
    * made on another device.
    */
   plan: Partial<Plan>;
+}
+
+export async function generateNotePlanContent(
+  params: GeneratePlanPointContentParams & { expectedContext: string },
+  signal?: AbortSignal,
+): Promise<NotePlanResult> {
+  const { sermonId, ...body } = params;
+  const response = await apiClient(`/api/sermons/${sermonId}/plan`, {
+    method: 'POST', category: 'ai', cache: 'no-store', signal,
+    headers: { ...await getAuthenticatedRequestHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const code = response.status === 409 ? 'contextChanged'
+      : response.status === 422 ? 'sourceUnavailable'
+      : response.status === 413 ? 'sourceTooLarge' : 'generationFailed';
+    throw new Error(code);
+  }
+  return NotePlanResultSchema.parse(await response.json());
 }
 
 function createPlanGenerationRequestId(): string {

@@ -53,7 +53,7 @@ export function isSermonReadyForPlan(sermon: Sermon | null | undefined): boolean
 export function getSermonAccessType(sermon: Sermon | null | undefined): 'plan' | 'structure' {
   if (!sermon) return 'structure';
 
-  return hasPlan(sermon) ? 'plan' : 'structure';
+  return hasPlan(sermon) || sermon.sourceNoteIds?.length ? 'plan' : 'structure';
 }
 
 /**
@@ -86,7 +86,7 @@ export function isSermonReadyForPreaching(sermon: Sermon | null | undefined): bo
  * screen, not used to route people away from it.
  */
 export function getSermonPlanAccessRoute(sermonId: string, sermon: Sermon): string {
-  if (!hasPlan(sermon)) return `/sermons/${sermonId}/structure`;
+  if (!hasPlan(sermon) && !sermon.sourceNoteIds?.length) return `/sermons/${sermonId}/structure`;
   return planEditorRoute(sermonId, sermon);
 }
 
@@ -103,6 +103,9 @@ export function getSermonPlanAccessRoute(sermonId: string, sermon: Sermon): stri
  * "AI", and every sermon written before the field existed answers that way.
  */
 export function planEditorRoute(sermonId: string, sermon: Sermon | null | undefined): string {
+  if (sermon?.planMode === 'note' || (!sermon?.planMode && sermon?.sourceNoteIds?.length)) {
+    return `/sermons/${sermonId}/plan/manual?source=note`;
+  }
   return sermon?.planMode === 'manual'
     ? `/sermons/${sermonId}/plan/manual`
     : `/sermons/${sermonId}/plan`;

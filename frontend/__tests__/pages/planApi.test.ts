@@ -1,4 +1,4 @@
-import { generatePlanPointContent, saveSermonPlan } from "@/(pages)/(private)/sermons/[id]/plan/planApi";
+import { generateNotePlanContent, generatePlanPointContent, saveSermonPlan } from "@/(pages)/(private)/sermons/[id]/plan/planApi";
 import { apiClient } from '@/utils/apiClient';
 import type { Plan } from "@/models/models";
 
@@ -8,6 +8,21 @@ jest.mock('@/utils/authenticatedRequest', () => ({
 }));
 
 describe("planApi", () => {
+  it('posts a note proposal request with authentication and validates the returned node map', async () => {
+    const payload = { contentByNodeId: { p: '- Cue' }, missingMaterial: {} };
+    jest.mocked(apiClient).mockResolvedValue({ ok: true, json: async () => payload } as Response);
+    const result = await generateNotePlanContent({ sermonId: 's', outlinePointId: 'p', style: 'memory', expectedContext: 'context' });
+    expect(result).toEqual(payload);
+    expect(apiClient).toHaveBeenCalledWith('/api/sermons/s/plan', expect.objectContaining({
+      method: 'POST', cache: 'no-store', headers: { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ outlinePointId: 'p', style: 'memory', expectedContext: 'context' }),
+    }));
+  });
+
+  it.each([[409, 'contextChanged'], [422, 'sourceUnavailable'], [413, 'sourceTooLarge'], [500, 'generationFailed']])('explains a note-generation HTTP %s refusal', async (status, message) => {
+    jest.mocked(apiClient).mockResolvedValue({ ok: false, status } as Response);
+    await expect(generateNotePlanContent({ sermonId: 's', outlinePointId: 'p', style: 'memory', expectedContext: 'context' })).rejects.toThrow(String(message));
+  });
   const mockedApiClient = apiClient as jest.MockedFunction<typeof apiClient>;
 
   beforeEach(() => {
