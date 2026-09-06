@@ -752,7 +752,7 @@ export default function PlanMainLayout({
       >
         <ProgressSidebar
           outline={sermon.outline || { introduction: [], main: [], conclusion: [] }}
-          savedSermonPoints={savedSermonPoints}
+          filledPointIds={savedSermonPoints}
         />
         <PlanMarkdownGlobalStyles variant="main" />
         <div className="w-full">

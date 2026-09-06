@@ -1691,7 +1691,11 @@
     "manualSubtitle": "Writing by hand: fill in the structure points. Adding or deleting here changes the structure itself.",
     "assignThoughtsFirst": "Please assign all thoughts to structure points first",
     "issuesNoticeTitle": "Worth finishing before you preach",
-    "unsavedWarning": "You have unsaved text. Leave without saving?"
+    "unsavedWarning": "You have unsaved text. Leave without saving?",
+    "progressMap": {
+      "filled": "filled in",
+      "empty": "still empty"
+    }
   },
   "calendar": {
     "title": "Preaching Calendar",

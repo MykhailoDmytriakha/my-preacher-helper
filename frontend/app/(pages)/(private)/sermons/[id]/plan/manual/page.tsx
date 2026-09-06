@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { DataFreshnessBanner } from "@/components/DataFreshnessBanner";
 import MarkdownDisplay from "@/components/MarkdownDisplay";
+import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
 import { useDocumentFreshness } from "@/hooks/useDocumentFreshness";
 import { useFreshnessUid } from "@/hooks/useFreshnessUid";
 import { useRouteId } from "@/hooks/useRouteId";
@@ -25,7 +26,7 @@ import { copyFormattedFromElement } from "../copyFormattedFromElement";
 import { PlanDraftRecoveryBar } from "../PlanDraftRecoveryBar";
 import PlanImmersiveView from "../PlanImmersiveView";
 import { PlanModeSwitch } from "../PlanModeSwitch";
-import { planNodesForPoint } from "../planNodes";
+import { planNodesForPoint, pointHasContent } from "../planNodes";
 import PlanOverlayPortal from "../PlanOverlayPortal";
 import PlanPreachingView from "../PlanPreachingView";
 import PlanViewActions from "../PlanViewActions";
@@ -257,6 +258,24 @@ export default function ManualConspectusPage() {
   const hasUnsavedCells = Object.values(conspectus.modifiedNodeIds).some(Boolean);
 
   /**
+   * WHICH POINTS THE FULLNESS MAP SHOULD LIGHT UP.
+   *
+   * Written, not saved: the map is read while typing, and a cell whose text is still on its
+   * way to the server is work already done as far as the person looking at the strip is
+   * concerned. Sub-point cells count for their point — `pointHasContent` is the rule the
+   * cards themselves are built from, so the strip cannot disagree with what is on screen.
+   */
+  const filledPointIds = useMemo(() => {
+    const filled: Record<string, boolean> = {};
+    SECTIONS.forEach((section) => {
+      (sermon?.outline?.[section] ?? []).forEach((point) => {
+        filled[point.id] = pointHasContent(point, conspectus.contentByNodeId);
+      });
+    });
+    return filled;
+  }, [sermon?.outline, conspectus.contentByNodeId]);
+
+  /**
    * Text that never reached the server survives a closed tab — the precondition the write
    * guard states about itself. Without it, refusing a stale save would merely move the loss
    * from "someone else's paragraph" to "your own".
@@ -452,6 +471,13 @@ export default function ManualConspectusPage() {
 
   return (
     <div className="space-y-6 p-4">
+      {/* The immersive and preaching views return above, so the strip stays out of them —
+          nobody standing in front of a congregation needs a progress readout. */}
+      <ProgressSidebar
+        outline={sermon.outline || { introduction: [], main: [], conclusion: [] }}
+        filledPointIds={filledPointIds}
+      />
+
       <PlanOverlayPortal
         isPlanOverlay={isOverlay}
         sermon={sermon}

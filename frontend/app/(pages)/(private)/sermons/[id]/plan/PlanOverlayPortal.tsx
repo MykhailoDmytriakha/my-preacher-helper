@@ -6,6 +6,7 @@ import { Sermon } from "@/models/models";
 
 import FullPlanContent from "./FullPlanContent";
 import PlanCopyButton from "./PlanCopyButton";
+import PlanMarkdownGlobalStyles from "./PlanMarkdownGlobalStyles";
 
 import type { CombinedPlan, CopyStatus, PlanTimerState } from "./types";
 
@@ -44,6 +45,10 @@ export default function PlanOverlayPortal({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm" data-testid="sermon-plan-overlay">
+      {/* CARRIES ITS OWN MARKDOWN RULES, like the fullscreen and preaching views do. Relying
+          on the host page to have mounted them meant the same plan read differently depending
+          on which editor the person opened this from. */}
+      <PlanMarkdownGlobalStyles variant="overlay" />
       <div className="flex flex-1 justify-center p-4 overflow-y-auto">
         <div className="flex w-full flex-1 max-w-5xl flex-col overflow-hidden rounded-lg bg-white shadow-xl dark:bg-gray-900 max-h-[calc(100vh-2rem)] min-h-0">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-900">

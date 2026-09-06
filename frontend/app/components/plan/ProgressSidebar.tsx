@@ -1,90 +1,73 @@
 "use client";
 
 import React from "react";
+import { useTranslation } from "react-i18next";
 
 import { OutlinePoint } from "@/models/models";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 
+/**
+ * HOW MUCH OF THE PLAN IS STILL EMPTY, AT A GLANCE.
+ *
+ * One marker per outline point, grouped by section and coloured like it. The strip answers a
+ * question that otherwise costs a full scroll of the page, which is why it belongs on EVERY
+ * plan editor and not just the one it was first written into.
+ *
+ * WHAT COUNTS AS FILLED IS THE CALLER'S CALL, on purpose. The paired screen knows a point by
+ * the text saved for it; the hand-written one stores text per NODE, so a point is filled when
+ * its own cell or any of its sub-point cells holds something (`pointHasContent`). Baking
+ * either notion in here would quietly make the strip lie on the other screen.
+ */
 interface ProgressSidebarProps {
   outline: {
     introduction: OutlinePoint[];
     main: OutlinePoint[];
     conclusion: OutlinePoint[];
   };
-  savedSermonPoints: Record<string, boolean>;
+  /** Point id → does this point already hold plan text. See the note above. */
+  filledPointIds: Record<string, boolean>;
 }
 
 export const ProgressSidebar: React.FC<ProgressSidebarProps> = ({
   outline,
-  savedSermonPoints,
+  filledPointIds,
 }) => {
-  // Check if dark mode is active
-  const [isDark, setIsDark] = React.useState(false);
+  const { t } = useTranslation();
 
-  React.useEffect(() => {
-    const checkDarkMode = () => {
-      setIsDark(document.documentElement.classList.contains('dark'));
-    };
-
-    checkDarkMode();
-    // Listen for theme changes
-    const observer = new MutationObserver(checkDarkMode);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-
-    return () => observer.disconnect();
-  }, []);
-
-  // Calculate total points
-  const introPoints = outline.introduction.length;
-  const mainPoints = outline.main.length;
-  const conclusionPoints = outline.conclusion.length;
-  const totalPoints = introPoints + mainPoints + conclusionPoints;
-
-  if (totalPoints === 0) return null;
-
-  // Create section blocks with spacing - using actual section colors from theme
   const sections = [
-    {
-      name: 'introduction',
-      points: outline.introduction,
-      savedColor: SERMON_SECTION_COLORS.introduction.light,
-      unsavedColor: isDark ? '#374151' : '#e5e7eb' // gray-700 dark : gray-200 light
-    },
-    {
-      name: 'main',
-      points: outline.main,
-      savedColor: SERMON_SECTION_COLORS.mainPart.light,
-      unsavedColor: isDark ? '#374151' : '#e5e7eb' // gray-700 dark : gray-200 light
-    },
-    {
-      name: 'conclusion',
-      points: outline.conclusion,
-      savedColor: SERMON_SECTION_COLORS.conclusion.light,
-      unsavedColor: isDark ? '#374151' : '#e5e7eb' // gray-700 dark : gray-200 light
-    }
-  ].filter(section => section.points.length > 0);
+    { name: "introduction", points: outline.introduction, color: SERMON_SECTION_COLORS.introduction.light },
+    { name: "main", points: outline.main, color: SERMON_SECTION_COLORS.mainPart.light },
+    { name: "conclusion", points: outline.conclusion, color: SERMON_SECTION_COLORS.conclusion.light },
+  ].filter((section) => section.points.length > 0);
+
+  if (sections.length === 0) return null;
 
   return (
-    <div className="fixed left-4 top-1/2 z-50 flex flex-col gap-4 transform -translate-y-1/2">
-      {sections.map((section, _sectionIndex) => (
+    <div
+      className="fixed left-4 top-1/2 z-50 flex flex-col gap-4 transform -translate-y-1/2"
+      data-testid="plan-progress-map"
+    >
+      {sections.map((section) => (
         <div key={section.name} className="flex flex-col gap-0.5">
-            {section.points.map((point, _pointIndex) => (
+          {section.points.map((point) => {
+            const filled = Boolean(filledPointIds[point.id]);
+
+            return (
               <div
                 key={point.id}
-                className={`
-                  w-3 h-3 rounded-sm transition-all duration-300 border
-                  ${savedSermonPoints[point.id]
-                    ? 'shadow-sm'
-                    : 'border-gray-300 dark:border-gray-600'
-                  }
-                `}
-                style={{
-                  backgroundColor: savedSermonPoints[point.id] ? section.savedColor : section.unsavedColor,
-                  borderColor: savedSermonPoints[point.id] ? 'transparent' : undefined
-                }}
-                title={`${point.text} - ${savedSermonPoints[point.id] ? 'Сохранено' : 'Не сохранено'}`}
+                data-testid="plan-progress-point"
+                className={`w-3 h-3 rounded-sm border transition-all duration-300 ${
+                  filled
+                    ? "border-transparent shadow-sm"
+                    : "border-gray-300 bg-gray-200 dark:border-gray-600 dark:bg-gray-700"
+                }`}
+                // The section colour is a theme value, not a utility class: Tailwind cannot
+                // generate a class from it, so the filled state paints itself inline.
+                style={filled ? { backgroundColor: section.color } : undefined}
+                title={`${point.text} — ${t(filled ? "plan.progressMap.filled" : "plan.progressMap.empty")}`}
               />
-            ))}
+            );
+          })}
         </div>
       ))}
     </div>
