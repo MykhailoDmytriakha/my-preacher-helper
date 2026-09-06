@@ -41,6 +41,9 @@ export function useNoteScrollIsolation(root: HTMLElement | null, enabled: boolea
             if (!hit || !root.contains(hit) || hit.closest('input, select, [role="listbox"], [role="menu"], [role="slider"]')) return;
             const region = hit.closest<HTMLElement>(REGION_SELECTOR);
             if (!region || !root.contains(region)) return;
+            // Programmatic scrollBy bypasses overflow:hidden. Honor the modal lock
+            // even for wheel transactions that started before the dialog opened.
+            if (getComputedStyle(region).overflowY === 'hidden') return;
             const owner = scrollOwner(hit, region);
 
             // Also cancel at a boundary: neither pane may scroll its sibling or the document.

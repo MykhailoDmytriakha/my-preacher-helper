@@ -172,10 +172,32 @@ input[type="search"]::-webkit-search-results-decoration {
   animation: fadeIn 150ms ease-out;
 }
 
+/* A portalled modal must lock every background scroll owner, not just body.
+   Keep offsets intact and release only after the last active modal closes.
+   The mobile outline sheet sets aria-modal=false while mounted but closed. */
+html:has([data-study-workspace]):has([aria-modal="true"]),
+body:has([data-study-workspace]):has([aria-modal="true"]),
+body:has([aria-modal="true"]) [data-study-workspace] [data-note-scroll-region] {
+  overflow: hidden;
+}
+
+/* The properties sheet is also background when it opens another dialog. */
+body:has([aria-modal="true"]:not([data-note-sheet])) [data-note-sheet-scroll] {
+  overflow: hidden;
+}
+
+[data-note-scroll-region] {
+  --note-pane-scroll: 0;
+}
+
 /* A study on a wide screen has sibling native scrollers, never a panel nested
    inside an inertially scrolling document. Flex sizing includes offline, guest
    and outbox notices, so those messages remain visible above the workspace. */
 @media (min-width: 1024px) {
+  [data-note-scroll-region] {
+    --note-pane-scroll: 1;
+  }
+
   #app-shell:has([data-study-workspace]) {
     height: 100dvh;
     min-height: 0;

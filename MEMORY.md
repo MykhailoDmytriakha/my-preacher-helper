@@ -28,6 +28,10 @@
 | "How do I style a scrollbar / a native control?" | `frontend/app/globals.css` — `color-scheme` on `:root` / `:root.dark` (this is what makes the browser draw scrollbars, form controls and select popups in the theme) plus one inherited `scrollbar-color` + `scrollbar-width: thin` rule that covers every scroll container in the app. There is NO `tailwind-scrollbar` plugin: `scrollbar-thin` / `scrollbar-thumb-*` classes generate nothing and are dead on arrival. Opt a container out with `.scrollbar-hide` (`app/time-picker.css`). |
 | "Which colour / cache key do I use?" | `utils/themeColors.ts` (`getNavItemTheme`, per-feature groups) and `utils/queryKeys.ts` (owner-scoped keys — never invent a key inline). |
 
+### Study modal scroll ownership (2026-09-05)
+
+`globals.css` locks the document and study panes while any `aria-modal="true"` dialog is open. `data-note-sheet` distinguishes the mobile sheet; its `data-note-sheet-scroll` also locks beneath another modal. Keep modal content scrollable. `useNoteScrollIsolation` must honor overflow locks before calling `scrollBy`. `useNoteScrollPosition` reads the responsive `--note-pane-scroll` flag, not overflow: a modal changes overflow without changing the owner. Regression: repeated rotations while locked must retain the reading anchor.
+
 ### 📐 Coding Conventions
 *   **AI Metering Completeness:** Treat every provider path as the chain `server-trusted uid → assert before provider → provider success → consume`. Required-auth audio routes must reject missing/invalid Firebase bearer tokens before parsing/processing, and every structured-output call must pass an explicit trusted `userId`; a shared AI client with an optional unmetered branch is not sufficient by itself.
 *   **Headless UI Mocking:** Always mock `@headlessui/react` in JSDOM unit tests to prevent focus-management and ref errors. Ensure mocks match the exact import style (named vs default) of the version being used.

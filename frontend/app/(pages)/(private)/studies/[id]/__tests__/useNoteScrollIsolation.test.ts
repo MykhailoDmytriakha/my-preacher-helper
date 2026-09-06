@@ -88,6 +88,20 @@ describe('useNoteScrollIsolation', () => {
         expect(panelScroll).not.toHaveBeenCalled();
     });
 
+    it('does not bypass a modal lock and resumes when the lock is released', () => {
+        renderHook(() => useNoteScrollIsolation(root, true));
+        for (const region of [panel, text]) {
+            region.style.overflowY = 'hidden';
+            hit = region;
+            expect(wheel(text).defaultPrevented).toBe(false);
+        }
+        expect(panelScroll).not.toHaveBeenCalled();
+        expect(textScroll).not.toHaveBeenCalled();
+        text.style.overflowY = 'auto';
+        expect(wheel(text).defaultPrevented).toBe(true);
+        expect(textScroll).toHaveBeenCalledWith({ top: 80, behavior: 'instant' });
+    });
+
     it('disables handling on narrow screens and removes listeners on cleanup', () => {
         const { rerender, unmount } = renderHook(({ enabled }) => useNoteScrollIsolation(root, enabled), { initialProps: { enabled: false } });
         expect(wheel(text).defaultPrevented).toBe(false);

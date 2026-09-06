@@ -24,7 +24,8 @@ export function useNoteScrollPosition(pane: HTMLElement | null, wide: boolean, n
         const remember = () => {
             // CSS responds to rotation before matchMedia's React update. Ignore the
             // old owner's scroll reset during that gap rather than saving the top.
-            if ((getComputedStyle(pane).overflowY === 'auto') !== wide) return;
+            // Modal locks also change overflow, without changing the scroll owner.
+            if ((getComputedStyle(pane).getPropertyValue('--note-pane-scroll').trim() === '1') !== wide) return;
             const top = visibleTop();
             const headings = Array.from(pane.querySelectorAll<HTMLElement>('[data-section-id]'));
             let anchor = headings[0] ?? null;

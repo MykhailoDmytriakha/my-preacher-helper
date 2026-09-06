@@ -18,6 +18,7 @@ describe('note reading position across scroll owners', () => {
         header.getBoundingClientRect = () => ({ bottom: 80 }) as DOMRect;
         pane = document.createElement('div');
         pane.style.overflowY = 'auto';
+        pane.style.setProperty('--note-pane-scroll', '1');
         heading = document.createElement('div');
         heading.dataset.sectionId = 'section';
         pane.append(heading);
@@ -49,6 +50,7 @@ describe('note reading position across scroll owners', () => {
         });
         expect(paneScroll).not.toHaveBeenCalled();
         pane.style.overflowY = 'visible';
+        pane.style.setProperty('--note-pane-scroll', '0');
         pane.scrollTop = 0;
         paneTop = -700;
         headingTop = -200;
@@ -57,11 +59,34 @@ describe('note reading position across scroll owners', () => {
         expect(headingTop - 80).toBe(-50);
 
         pane.style.overflowY = 'auto';
+        pane.style.setProperty('--note-pane-scroll', '1');
         paneTop = 100;
         headingTop = 800;
         rerender({ wide: true });
         expect(paneScroll).toHaveBeenLastCalledWith({ top: 750, behavior: 'instant' });
         expect(headingTop - paneTop).toBe(-50);
+    });
+
+    it('preserves the reading anchor through repeated rotations while a modal locks overflow', () => {
+        pane.style.overflowY = 'hidden';
+        const { rerender } = renderHook(({ wide }) => useNoteScrollPosition(pane, wide, 'note'), {
+            initialProps: { wide: true },
+        });
+        for (let rotation = 0; rotation < 2; rotation += 1) {
+            pane.style.setProperty('--note-pane-scroll', '0');
+            pane.scrollTop = 0;
+            paneTop = -700;
+            headingTop = -200;
+            rerender({ wide: false });
+            expect(headingTop - 80).toBe(-50);
+            pane.style.setProperty('--note-pane-scroll', '1');
+            paneTop = 100;
+            headingTop = 800;
+            rerender({ wide: true });
+            expect(headingTop - paneTop).toBe(-50);
+        }
+        expect(windowScroll).toHaveBeenCalledTimes(2);
+        expect(paneScroll).toHaveBeenCalledTimes(2);
     });
 
     it('ignores the old scroll reset between CSS rotation and React updating', () => {
@@ -71,6 +96,7 @@ describe('note reading position across scroll owners', () => {
         headingTop = -400;
         act(() => pane.dispatchEvent(new Event('scroll')));
         pane.style.overflowY = 'visible';
+        pane.style.setProperty('--note-pane-scroll', '0');
         pane.scrollTop = 0;
         headingTop = 1000;
         act(() => pane.dispatchEvent(new Event('scroll')));
@@ -84,6 +110,7 @@ describe('note reading position across scroll owners', () => {
         });
         heading.remove();
         pane.style.overflowY = 'visible';
+        pane.style.setProperty('--note-pane-scroll', '0');
         pane.scrollTop = 0;
         rerender({ wide: false });
         expect(windowScroll).toHaveBeenLastCalledWith({ top: 500, behavior: 'instant' });
@@ -96,6 +123,7 @@ describe('note reading position across scroll owners', () => {
             initialProps: { wide: true },
         });
         pane.style.overflowY = 'visible';
+        pane.style.setProperty('--note-pane-scroll', '0');
         pane.scrollTop = 0;
         rerender({ wide: false });
         expect(windowScroll).toHaveBeenLastCalledWith({ top: 500, behavior: 'instant' });

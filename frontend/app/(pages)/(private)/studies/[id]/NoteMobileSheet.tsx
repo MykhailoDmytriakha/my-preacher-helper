@@ -96,6 +96,7 @@ export function NoteMobileSheet({
                 tabIndex={-1}
                 role="dialog"
                 aria-modal={open}
+                data-note-sheet
                 aria-label={t('notePanel.outline')}
                 className={`fixed inset-x-0 bottom-0 z-50 flex max-h-[76vh] flex-col rounded-t-2xl border-t border-gray-200 bg-white shadow-[0_-8px_30px_rgba(15,23,42,0.18)] transition-transform duration-200 ease-out dark:border-gray-700 dark:bg-gray-900 ${open ? 'translate-y-0' : 'pointer-events-none translate-y-full'}`}
             >
@@ -133,7 +134,7 @@ export function NoteMobileSheet({
                     </div>
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
+                <div data-note-sheet-scroll className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
                     {tab === 'outline' ? (
                         outline.hasSections ? (
                             <NoteOutlineTree
