@@ -398,6 +398,7 @@ export default function DashboardNav() {
       <MobileMenu
         isOpen={mobileMenuOpen}
         onLogout={handleLogout}
+        user={user}
         pathname={pathname || ''}
         showGroups={showGroupsNav}
         onNavigate={() => setMobileMenuOpen(false)}

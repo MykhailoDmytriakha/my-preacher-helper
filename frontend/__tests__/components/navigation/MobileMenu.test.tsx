@@ -56,6 +56,40 @@ describe('MobileMenu Component', () => {
     expect(screen.getByTestId('theme-mode-toggle')).toBeInTheDocument();
   });
 
+  /**
+   * On a phone the avatar has nowhere to live: the bar is full and everything the desktop
+   * dropdown offers — theme, language, logout — already sits in this menu. The one thing
+   * missing was the answer to "which account am I in", so it goes on the same row as the
+   * switchers, on the left.
+   */
+  test('says who is signed in, on the switcher row', () => {
+    const user = {
+      displayName: 'Mykhailo',
+      email: 'mykhailo@example.com',
+      photoURL: null,
+    } as unknown as import('firebase/auth').User;
+
+    render(<MobileMenu isOpen={true} onLogout={mockLogout} user={user} />);
+
+    expect(screen.getByText('Mykhailo')).toBeInTheDocument();
+    expect(screen.getByText('mykhailo@example.com')).toBeInTheDocument();
+  });
+
+  test('promotes the email when the account has no display name', () => {
+    // Signing in with an email and password leaves `displayName` empty, and that is the
+    // common case here — a row reading "Guest" over a real account would be a lie.
+    const user = {
+      displayName: null,
+      email: 'mykhailo@example.com',
+      photoURL: null,
+    } as unknown as import('firebase/auth').User;
+
+    render(<MobileMenu isOpen={true} onLogout={mockLogout} user={user} />);
+
+    expect(screen.getByText('mykhailo@example.com')).toBeInTheDocument();
+    expect(screen.queryByText('navigation.guest')).not.toBeInTheDocument();
+  });
+
   test('calls onLogout when logout button is clicked', () => {
     render(<MobileMenu isOpen={true} onLogout={mockLogout} />);
 

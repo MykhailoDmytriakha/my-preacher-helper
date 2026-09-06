@@ -1,12 +1,12 @@
 'use client';
 
 import { User } from "firebase/auth";
-import Image from "next/image";
 import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ChevronIcon } from "@components/Icons";
 import ThemeModeToggle from "@components/navigation/ThemeModeToggle";
+import UserAvatar from "@components/navigation/UserAvatar";
 import "@locales/i18n";
 
 interface UserProfileDropdownProps {
@@ -17,15 +17,7 @@ interface UserProfileDropdownProps {
 export default function UserProfileDropdown({ user, onLogout }: UserProfileDropdownProps) {
   const { t } = useTranslation();
   const [showDropdown, setShowDropdown] = useState(false);
-  const [imgError, setImgError] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);
-
-  // Reset image error state when photo URL changes
-  useEffect(() => {
-    if (user?.photoURL) {
-      setImgError(false);
-    }
-  }, [user?.photoURL]);
 
   // Handle clicks outside of dropdown
   useEffect(() => {
@@ -52,25 +44,7 @@ export default function UserProfileDropdown({ user, onLogout }: UserProfileDropd
         className="flex items-center gap-2 focus:outline-none"
         data-testid="avatar-button"
       >
-        <div className="w-9 h-9 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 flex items-center justify-center text-white">
-          {user?.photoURL && !imgError ? (
-            <Image 
-              src={user.photoURL} 
-              alt="Avatar" 
-              width={40}
-              height={40}
-              className="w-full h-full rounded-full"
-              onError={() => setImgError(true)}
-            />
-          ) : (
-            <span suppressHydrationWarning={true}>
-              {typeof window !== 'undefined' 
-                ? (user?.email?.[0]?.toUpperCase() || t('navigation.guest')[0])
-                : 'G' // Always show English letter on server
-              }
-            </span>
-          )}
-        </div>
+        <UserAvatar user={user} />
         <ChevronIcon className={`hidden sm:block ${showDropdown ? 'rotate-180' : ''}`} />
       </button>
 
