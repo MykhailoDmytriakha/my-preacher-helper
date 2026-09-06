@@ -108,7 +108,8 @@ export function NoteSidePanel({
 
     return (
         <aside
-            className="sticky hidden w-[272px] shrink-0 flex-col gap-4 self-start overflow-y-auto border-r border-gray-200 bg-gray-50 px-3.5 pb-24 pt-4 lg:flex dark:border-gray-800 dark:bg-gray-900/40"
+            data-note-scroll-region="panel"
+            className="sticky hidden w-[272px] shrink-0 flex-col gap-4 self-start overflow-y-auto overscroll-y-contain border-r border-gray-200 bg-gray-50 px-3.5 pb-24 pt-4 lg:flex dark:border-gray-800 dark:bg-gray-900/40"
             style={{ top: stickyTop, height: `calc(100vh - ${stickyTop}px)` }}
         >
             <div className="flex items-start justify-between gap-2">

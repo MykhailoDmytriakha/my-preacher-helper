@@ -228,9 +228,9 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
           busy={resolvingConflict}
         />
       )}
-      <div className="flex flex-col lg:flex-row lg:justify-between lg:items-start gap-4">
-      {/* Left side: Title, Date, Series Badge, Verse */}
-      <div className="flex-grow min-w-0">
+      <div className="grid grid-cols-1 gap-x-4 gap-y-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+      {/* Title and identity share the top row with the actions on wide screens. */}
+      <div className="min-w-0">
         <EditableTitle
           initialTitle={sermon.title}
           onSave={handleSaveSermonTitle}
@@ -275,17 +275,19 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
               styling, and each chip opens the note it names. */}
           <SourceNoteChips sermon={sermon} />
         </div>
-        <div className="mt-2 text-base md:text-lg">
+      </div>
+
+      {/* Scripture uses both columns; on small screens it stays before the actions. */}
+      <div className="order-1 min-w-0 text-base md:text-lg lg:order-2 lg:col-span-2">
           <EditableVerse
             initialVerse={sermon.verse || ''}
             onSave={handleSaveSermonVerse}
             disabled={isReadOnly}
           />
-        </div>
       </div>
 
       {/* Right side: Preach Button and Export Buttons */}
-      <div className="flex flex-wrap items-center gap-2 mt-4 lg:mt-0 flex-shrink-0 w-full lg:w-auto">
+      <div className="order-2 flex w-full flex-wrap items-center gap-2 mt-4 lg:order-1 lg:mt-0 lg:w-auto">
         <ExportButtons
           sermonId={sermon.id}
           getExportContent={generateExportContent}

@@ -12,15 +12,6 @@
 
 ## 🟠 P2 — открыто
 
-### BUG-20260905-note-scroll-isolation — wheel gestures couple note text and outline
-
-- **Severity:** P2; switching from the reading pane to the outline during momentum continues moving the wrong area.
-- **Anchor:** `frontend/app/(pages)/(private)/studies/[id]/page.tsx` (window scrolling for note content), `NoteSidePanel.tsx` (nested native scroll container).
-- **Reproduction:** on a desktop with a long note and outline, start scrolling the text, move the pointer to the outline before momentum stops, then scroll again. The owner reports that the text keeps responding until the first gesture settles.
-- **Expected / actual:** the area under the pointer owns new wheel input; currently native wheel gesture targeting and scroll chaining can retain the previous scrolling area.
-- **User contract:** wheel input over the outline changes only its position, including at its ends; input over text changes only the reading position. Zoom gestures, nested controls, mobile touch scrolling, and deliberate outline-link navigation retain their own behavior.
-- **Class audit:** both directions between desktop text and expanded panel are affected; mobile has no side-by-side panel; collapsed rail has no independent scroll area.
-
 ### BUG-20260905-dashboard-panel-dead-space · Карточка дашборда растянута соседкой, а список в ней обрезан константой — снизу пустота
 
 **Severity.** P2 — данные целы, но дашборд врёт о плотности: на широком экране треть карточки «Последние заметки» пустая, хотя заметок 14. Человек видит три записи и решает, что у него их три.

@@ -55,6 +55,7 @@ import { type NoteDraftPayload } from './noteDraft';
 import { NoteMobileSheet } from './NoteMobileSheet';
 import { NoteSidePanel } from './NoteSidePanel';
 import { useNoteAutoSave } from './useNoteAutoSave';
+import { useNoteScrollIsolation } from './useNoteScrollIsolation';
 
 const AI_USAGE_EXHAUSTED_KEY = 'settings.usage.aiUsageExhausted';
 
@@ -895,6 +896,8 @@ export default function StudyNoteEditorPage() {
 
     const outlineControl = useMarkdownOutline(content, searchQuery);
     const showPanel = isWideViewport && !panelCollapsed;
+    const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
+    useNoteScrollIsolation(scrollRoot, showPanel);
 
     // Narrow screens get the same content from the bottom instead of the side: the outline,
     // the properties and the dates, on request, so the text never gives up width for them.
@@ -1285,7 +1288,7 @@ export default function StudyNoteEditorPage() {
             {renderHeader()}
 
             {/* EDITOR CONTENT */}
-            <div className="flex flex-1 min-h-0">
+            <div ref={setScrollRoot} className="flex flex-1 min-h-0">
                 {/* Everything about the note that is not its text. Rendered ONLY on wide
                     screens — on a phone the same blocks stay where they are today, under
                     the text, so nothing becomes unreachable. */}
@@ -1308,7 +1311,7 @@ export default function StudyNoteEditorPage() {
                 {/* No `overflow` here on purpose: it would become the scroll container that
                     `position: sticky` measures against, and the editor toolbar would slide
                     out of view instead of sticking. The window does the scrolling. */}
-                <div className="flex-1 min-w-0 px-4 py-8 md:px-8 md:py-10 pb-48 md:pb-32">
+                <div data-note-scroll-region="text" className="flex-1 min-w-0 px-4 py-8 md:px-8 md:py-10 pb-48 md:pb-32">
                   <div className="mx-auto w-full space-y-8">
                 {renderRecoveryBanners()}
                 <div className="relative group">

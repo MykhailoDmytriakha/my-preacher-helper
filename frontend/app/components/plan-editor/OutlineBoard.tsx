@@ -1346,26 +1346,6 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                                   {point.text}
                                 </span>
                               </div>
-
-                              {showNotes && (
-                                <PointNote
-                                  note={point.note}
-                                  onChange={(n) => mutatePoint(point.id, (p) => ({ ...p, note: n }))}
-                                  isReadOnly={isReadOnly}
-                                  indentClass="ml-6"
-                                  addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
-                                  tone={scratch ? 'neutral' : 'note'}
-                                  labels={scratch?.noteLabels}
-                                />
-                              )}
-                              {scratch &&
-                                renderScratchDropStrip({
-                                  droppableId: getScratchPointDroppableId(point.id),
-                                  testId: `scratch-point-drop-zone-${point.id}`,
-                                  notes: getScratchPointNotes(point.id),
-                                  emptyLabel: t('scratch.board.dropHerePoint'),
-                                })}
-                              {!collapsedPoints[point.id] && renderSubPoints(point)}
                             </div>
                           )}
 
@@ -1388,6 +1368,29 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                             </div>
                           )}
                         </div>
+                        {editingPointId !== point.id && (
+                          <div className="min-w-0 px-2 pb-2">
+                            {showNotes && (
+                              <PointNote
+                                note={point.note}
+                                onChange={(n) => mutatePoint(point.id, (p) => ({ ...p, note: n }))}
+                                isReadOnly={isReadOnly}
+                                indentClass="ml-6"
+                                addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+                                tone={scratch ? 'neutral' : 'note'}
+                                labels={scratch?.noteLabels}
+                              />
+                            )}
+                            {scratch &&
+                              renderScratchDropStrip({
+                                droppableId: getScratchPointDroppableId(point.id),
+                                testId: `scratch-point-drop-zone-${point.id}`,
+                                notes: getScratchPointNotes(point.id),
+                                emptyLabel: t('scratch.board.dropHerePoint'),
+                              })}
+                            {!collapsedPoints[point.id] && renderSubPoints(point)}
+                          </div>
+                        )}
                       </li>
                         )}
                       />

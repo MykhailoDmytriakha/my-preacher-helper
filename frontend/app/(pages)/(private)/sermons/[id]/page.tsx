@@ -1951,7 +1951,8 @@ useEffect(() => {
             transition={{ type: 'spring', stiffness: 220, damping: 26, mass: 0.9 }}
             style={{ width: '300%', willChange: 'transform' }}
           >
-          <div className="basis-1/3 shrink-0">
+          {/* Clip each pane horizontally so offscreen card shadows cannot bleed into its neighbor. */}
+          <div className="basis-1/3 shrink-0 overflow-x-clip">
             <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8`}>
               <div className="order-2 lg:order-1 lg:col-span-2">
                 {renderPrepContent()}
@@ -1962,7 +1963,7 @@ useEffect(() => {
             </div>
           </div>
 
-          <div className="basis-1/3 shrink-0">
+          <div className="basis-1/3 shrink-0 overflow-x-clip">
             <div className={`grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8`}>
               <div className="order-2 lg:order-1 lg:col-span-2">
                 {renderClassicContent({ portalRef: setClassicPortal })}
@@ -1992,7 +1993,7 @@ useEffect(() => {
             </div>
           </div>
 
-          <div className="basis-1/3 shrink-0">
+          <div className="basis-1/3 shrink-0 overflow-x-clip">
             {renderRawContent()}
           </div>
           </motion.div>

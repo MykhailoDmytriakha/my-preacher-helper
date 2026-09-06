@@ -377,19 +377,8 @@ function ScratchNoteCard({
       onClick={onSelect}
       onKeyDown={handleKeyDown}
     >
-      <div className="flex items-center gap-2">
-        {!isReadOnly && dragHandleProps && (
-          <button
-            type="button"
-            {...dragHandleProps}
-            className="flex shrink-0 cursor-grab touch-manipulation items-center justify-center rounded p-0.5 text-gray-400 transition hover:text-gray-600 active:cursor-grabbing dark:text-gray-500 dark:hover:text-gray-300"
-            aria-label={t("common.dragToReorder")}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <Bars3Icon className="h-5 w-5" aria-hidden="true" />
-          </button>
-        )}
-        <div className="min-w-0 flex-1">
+      <div className="min-w-0">
+        <div className="min-w-0">
           {sectionLabel && (
             <span className="mb-1.5 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-300">
               {t("scratch.card.placedIn", { section: sectionLabel })}
@@ -414,7 +403,22 @@ function ScratchNoteCard({
             />
           </div>
         </div>
-        {actionControls}
+        {!isReadOnly && (
+          <div className="mt-2 flex items-center justify-between gap-2 border-t border-gray-100 pt-2 dark:border-gray-700/60">
+            {dragHandleProps && (
+              <button
+                type="button"
+                {...dragHandleProps}
+                className="flex shrink-0 cursor-grab touch-manipulation items-center justify-center rounded p-0.5 text-gray-400 transition hover:text-gray-600 active:cursor-grabbing dark:text-gray-500 dark:hover:text-gray-300"
+                aria-label={t("common.dragToReorder")}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <Bars3Icon className="h-5 w-5" aria-hidden="true" />
+              </button>
+            )}
+            <div className="ml-auto">{actionControls}</div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1268,6 +1272,7 @@ export default function ScratchPanel({
 
       {/* Recovery lives with the recorder, inside the pool — one instance only. */}
       <OutlineBoard
+        className="grid grid-cols-1 items-start gap-3 sm:gap-4 lg:grid-cols-3"
         value={boardOutline}
         onChange={handleManualOutlineChange}
         showNotes
