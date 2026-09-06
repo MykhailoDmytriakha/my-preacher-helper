@@ -28,6 +28,9 @@ connection. A cache is not a backup; do not clear site data while edits are pend
 App updates and record synchronization are separate. The existing update button
 offers a restart after a proven version difference; reconnecting must not reload
 the page. No new storage, push subscription or automatic reload is added here.
+On iPad standalone PWA, native WebKit pull-to-refresh is disabled and no address bar
+is available; the reload button is permanently accessible in the header for manual
+refreshes, displaying an update badge when a genuine newer build is available.
 Finish and save open manual-entry forms before choosing the restart/update action.
 Merely receiving an update must not discard the text currently being typed.
 

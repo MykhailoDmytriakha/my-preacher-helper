@@ -5,10 +5,12 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import Tooltip from '@/components/ui/Tooltip';
+import { isIPadStandalonePwa } from '@utils/pwaEnv';
 
 /**
- * "A NEWER VERSION OF THE APP IS READY" — as an available action, not an alarm.
+ * "A NEWER VERSION OF THE APP IS READY" / "RELOAD PAGE ON IPAD PWA"
  *
+ * In general:
  * This replaces a toast that sat over the interface with `duration: Infinity` and
  * said "this updates THE PROGRAM ITSELF, not your records. Reload?". The words
  * frightened people more than the event does: "reload" reads as "something is about
@@ -30,6 +32,13 @@ import Tooltip from '@/components/ui/Tooltip';
  * the page, and prompting then would ask people to reload into what they already
  * have.
  *
+ * ⚠️ IPAD STANDALONE PWA SUPPORT:
+ * In iPadOS Standalone PWA mode, WebKit deliberately disables native pull-to-refresh
+ * gestures, and there is no Safari address bar reload button. Therefore, on iPad PWA,
+ * this reload button remains accessible so users can refresh the page without needing
+ * a physical keyboard (⌘+R) or force-quitting the app from App Switcher.
+ * When a genuine new app build is ready on iPad PWA, a notification badge signals the update.
+ *
  * ⚠️ AN EVENT IS NOT AN ANSWER, and this is the whole correction.
  *
  * `controllerchange` reports that a new worker took charge. It says NOTHING about which code
@@ -48,6 +57,11 @@ import Tooltip from '@/components/ui/Tooltip';
 export function AppUpdateButton() {
   const { t } = useTranslation();
   const [updateReady, setUpdateReady] = useState(false);
+  const [isIPadPwa, setIsIPadPwa] = useState(false);
+
+  useEffect(() => {
+    setIsIPadPwa(isIPadStandalonePwa());
+  }, []);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
@@ -81,27 +95,40 @@ export function AppUpdateButton() {
     };
   }, []);
 
-  if (!updateReady) return null;
+  if (!updateReady && !isIPadPwa) return null;
+
+  const tooltipText = updateReady
+    ? t('pwa.updateAvailable.hint')
+    : t('pwa.reload.hint');
+  const actionLabel = updateReady
+    ? t('pwa.updateAvailable.action')
+    : t('pwa.reload.action');
 
   return (
-    <Tooltip content={t('pwa.updateAvailable.hint')}>
+    <Tooltip content={tooltipText}>
       <button
         type="button"
         onClick={() => window.location.reload()}
-        aria-label={t('pwa.updateAvailable.action')}
+        aria-label={actionLabel}
         data-testid="app-update-button"
         /* Same round pad as the offline indicator beside it, in the dark-on-light
            pairing the app already uses for tooltips — and the one the old update
            prompt's button had, so the thing being offered still looks like itself.
            An earlier attempt put a notification dot on a bare icon: it overlapped
            the arrow and read as a broken glyph rather than as a signal. */
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition-all duration-300 hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
+        className="relative flex h-9 w-9 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition-all duration-300 hover:bg-slate-700 active:scale-95 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
       >
         {/* Heroicons, the set the rest of the header already draws from, rather than
             a hand-rolled arc: its rotation glyph carries a proper gap between the
             arrowhead and the start of the stroke, where the previous one nearly
             closed the circle and read as a smudge at this size. */}
         <ArrowPathIcon className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+        {updateReady && isIPadPwa && (
+          <span
+            data-testid="app-update-badge"
+            className="absolute top-0 right-0 h-2.5 w-2.5 rounded-full bg-blue-500 ring-2 ring-white dark:ring-slate-900"
+          />
+        )}
       </button>
     </Tooltip>
   );

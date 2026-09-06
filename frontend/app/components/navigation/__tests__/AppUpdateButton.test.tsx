@@ -1,7 +1,12 @@
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 import { AppUpdateButton } from '../AppUpdateButton';
+import { isIPadStandalonePwa } from '@utils/pwaEnv';
 import '@testing-library/jest-dom';
+
+jest.mock('@utils/pwaEnv', () => ({
+  isIPadStandalonePwa: jest.fn(() => false),
+}));
 
 /**
  * BUG-20260810-app-update-prompt-is-intrusive
@@ -194,3 +199,42 @@ describe('AppUpdateButton compares versions, not lifecycle events', () => {
     expect(screen.queryByTestId('app-update-button')).not.toBeInTheDocument();
   });
 });
+
+describe('AppUpdateButton on iPad standalone PWA', () => {
+  afterEach(() => {
+    (isIPadStandalonePwa as jest.Mock).mockReturnValue(false);
+    delete (global as { fetch?: unknown }).fetch;
+  });
+
+  it('shows reload button on iPad PWA even when there is no version update', () => {
+    (isIPadStandalonePwa as jest.Mock).mockReturnValue(true);
+    mockServiceWorker({ hasController: true });
+
+    render(<AppUpdateButton />);
+
+    const button = screen.getByTestId('app-update-button');
+    expect(button).toBeInTheDocument();
+    expect(button).toHaveAttribute('aria-label', 'pwa.reload.action');
+    expect(screen.queryByTestId('app-update-badge')).not.toBeInTheDocument();
+  });
+
+  it('shows update badge and update label when on iPad PWA and an update is ready', async () => {
+    (isIPadStandalonePwa as jest.Mock).mockReturnValue(true);
+    process.env.NEXT_PUBLIC_APP_VERSION = '80ef473';
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ version: 'beca201' }),
+    }) as unknown as typeof fetch;
+
+    const { fireControllerChange } = mockServiceWorker({ hasController: true });
+
+    render(<AppUpdateButton />);
+    await act(async () => { fireControllerChange(); });
+
+    const button = screen.getByTestId('app-update-button');
+    expect(button).toBeInTheDocument();
+    expect(button).toHaveAttribute('aria-label', 'pwa.updateAvailable.action');
+    expect(screen.getByTestId('app-update-badge')).toBeInTheDocument();
+  });
+});
+

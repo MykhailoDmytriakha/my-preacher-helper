@@ -3068,6 +3068,10 @@
     "updateAvailable": {
       "action": "Update the app",
       "hint": "The app has an update ready. Press to restart it on the newer version — your records stay where they are."
+    },
+    "reload": {
+      "action": "Reload page",
+      "hint": "Reload page"
     }
   },
   "connection": {
