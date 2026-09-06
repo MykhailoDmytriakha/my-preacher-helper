@@ -10,18 +10,19 @@ import DashboardPage from '@/(pages)/(private)/dashboard/page';
  * three of their fourteen notes above a third of a card of white space.
  *
  * The contract pinned here is what the owner asked for in his own words: fill the list to
- * the end if there is anything to fill it with. Whole rows only — a half-drawn note at the
- * bottom edge is worse than the gap.
+ * the end if there is anything to fill it with. Every row is the same height, so the count
+ * is a plain division — that uniformity is what lets neighbouring panels agree without
+ * anything being stretched to hide a remainder.
  *
- * The geometry has to be stubbed because jsdom does no layout at all: every rect it
- * reports is zero, so a panel measuring itself would always see "no room" and the test
- * would pass on a dead feature. The numbers below are the ones measured in Chrome on the
- * screen the owner reported: card 581px, header 53px, note row 74px.
+ * The geometry has to be stubbed because jsdom does no layout at all: every rect it reports
+ * is zero, so a panel measuring itself would always see "no room" and the test would pass on
+ * a dead feature. The numbers are the ones measured in Chrome: card 581px, header 53px, and
+ * the row height the panels now share.
  */
 
 const PANEL_HEIGHT = 581;
 const HEADER_HEIGHT = 53;
-const ROW_HEIGHT = 74;
+const ROW_HEIGHT = 104;
 
 const notes = Array.from({ length: 14 }, (_, index) => ({
   id: `note-${index + 1}`,
@@ -133,15 +134,14 @@ describe('dashboard panels fill the height the grid row hands them', () => {
   it('shows as many recent notes as fit, not the first three', async () => {
     render(<DashboardPage />);
 
-    // 581px of card, 53px of header, 74px per row: seven whole rows fit, an eighth does not.
-    // Newest first, so the seventh row is "Note 8" and "Note 7" is the one left out.
-    expect(await screen.findByText('Note 8')).toBeInTheDocument();
-    expect(screen.queryByText('Note 7')).not.toBeInTheDocument();
+    // 581px of card less a 53px header leaves 528px, and 528 divided by a 104px row is five.
+    expect(await screen.findByText('Note 10')).toBeInTheDocument();
+    expect(screen.queryByText('Note 9')).not.toBeInTheDocument();
 
     // The order the panel promises is still newest first — filling must not reshuffle.
     const noteLinks = screen.getAllByRole('link', { name: /^Note \d+/ });
     expect(noteLinks.map((link) => link.textContent?.match(/^Note \d+/)?.[0])).toEqual([
-      'Note 14', 'Note 13', 'Note 12', 'Note 11', 'Note 10', 'Note 9', 'Note 8',
+      'Note 14', 'Note 13', 'Note 12', 'Note 11', 'Note 10',
     ]);
   });
 
@@ -150,7 +150,7 @@ describe('dashboard panels fill the height the grid row hands them', () => {
 
     render(<DashboardPage />);
 
-    // Room for seven, only four exist: the card keeps the gap, because the alternative is
+    // Room for five, only four exist: the card keeps the gap, because the alternative is
     // showing something that is not there. "If there is anything to fill it with."
     expect(await screen.findByText('Note 1')).toBeInTheDocument();
     expect(screen.getAllByRole('link', { name: /^Note \d+/ })).toHaveLength(4);
