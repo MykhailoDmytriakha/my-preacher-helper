@@ -4,15 +4,13 @@ import { useEffect } from 'react';
 
 const REGION_SELECTOR = '[data-note-scroll-region]';
 
-function scrollOwner(hit: Element, region: HTMLElement): HTMLElement | null {
+function scrollOwner(hit: Element, region: HTMLElement): HTMLElement {
     // Keep editor textareas and other nested scrollers usable in their own right.
     for (let node = hit; node !== region; node = node.parentElement!) {
         if (node instanceof HTMLElement && node.scrollHeight > node.clientHeight
             && /^(auto|scroll)$/.test(getComputedStyle(node).overflowY)) return node;
     }
-    return region.dataset.noteScrollRegion === 'panel'
-        ? region
-        : document.scrollingElement as HTMLElement | null;
+    return region;
 }
 
 function wheelDistance(event: WheelEvent, owner: HTMLElement): number {
@@ -44,9 +42,8 @@ export function useNoteScrollIsolation(root: HTMLElement | null, enabled: boolea
             const region = hit.closest<HTMLElement>(REGION_SELECTOR);
             if (!region || !root.contains(region)) return;
             const owner = scrollOwner(hit, region);
-            if (!owner) return;
 
-            // Also cancel at a boundary: the outline must never scroll the document.
+            // Also cancel at a boundary: neither pane may scroll its sibling or the document.
             event.preventDefault();
             owner.scrollBy({ top: wheelDistance(event, owner), behavior: 'instant' });
         };

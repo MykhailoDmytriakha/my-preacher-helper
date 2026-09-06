@@ -9,6 +9,7 @@ describe('useNoteScrollIsolation', () => {
     let hit: Element;
     let pageScroll: jest.Mock;
     let panelScroll: jest.Mock;
+    let textScroll: jest.Mock;
 
     beforeEach(() => {
         root = document.createElement('div');
@@ -21,6 +22,8 @@ describe('useNoteScrollIsolation', () => {
         Object.defineProperty(document, 'scrollingElement', { configurable: true, value: document.documentElement });
         pageScroll = jest.fn();
         panelScroll = jest.fn();
+        textScroll = jest.fn();
+        text.scrollBy = textScroll;
         document.documentElement.scrollBy = pageScroll;
         panel.scrollBy = panelScroll;
     });
@@ -44,7 +47,8 @@ describe('useNoteScrollIsolation', () => {
         renderHook(() => useNoteScrollIsolation(root, true));
         hit = text;
         expect(wheel(panel).defaultPrevented).toBe(true);
-        expect(pageScroll).toHaveBeenCalledWith({ top: 80, behavior: 'instant' });
+        expect(textScroll).toHaveBeenCalledWith({ top: 80, behavior: 'instant' });
+        expect(pageScroll).not.toHaveBeenCalled();
         expect(panelScroll).not.toHaveBeenCalled();
     });
 

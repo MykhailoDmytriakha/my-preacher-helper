@@ -26,8 +26,6 @@ interface NoteSidePanelProps {
      * of the note.
      */
     foldable: boolean;
-    /** Distance from the top of the window the panel sticks at, in px. */
-    stickyTop: number;
     /** The section currently being read, highlighted so the map says where you are. */
     activeSectionId?: string | null;
     collapsed: boolean;
@@ -52,13 +50,12 @@ const SECTION_LABEL =
  * scripture references, tags and the sermons built on it. Previously these sat in a
  * tray under the text and had to be scrolled to.
  *
- * It sticks and scrolls on its own: the outline is a map you consult WHILE reading, so
+ * It fills its workspace and scrolls on its own: the outline is a map you consult WHILE reading, so
  * it must not travel away with the text it describes.
  */
 export function NoteSidePanel({
     outline,
     foldable,
-    stickyTop,
     activeSectionId,
     collapsed,
     onToggleCollapsed,
@@ -73,8 +70,7 @@ export function NoteSidePanel({
     if (collapsed) {
         return (
             <aside
-                className="sticky hidden w-[52px] shrink-0 flex-col items-center gap-1 self-start border-r border-gray-200 bg-gray-50 py-3 lg:flex dark:border-gray-800 dark:bg-gray-900/40"
-                style={{ top: stickyTop, height: `calc(100vh - ${stickyTop}px)` }}
+                className="hidden h-full min-h-0 w-[52px] shrink-0 flex-col items-center gap-1 self-start border-r border-gray-200 bg-gray-50 py-3 lg:flex dark:border-gray-800 dark:bg-gray-900/40"
             >
                 <button
                     type="button"
@@ -109,8 +105,7 @@ export function NoteSidePanel({
     return (
         <aside
             data-note-scroll-region="panel"
-            className="sticky hidden w-[272px] shrink-0 flex-col gap-4 self-start overflow-y-auto overscroll-y-contain border-r border-gray-200 bg-gray-50 px-3.5 pb-24 pt-4 lg:flex dark:border-gray-800 dark:bg-gray-900/40"
-            style={{ top: stickyTop, height: `calc(100vh - ${stickyTop}px)` }}
+            className="hidden h-full min-h-0 w-[272px] shrink-0 flex-col gap-4 self-start overflow-y-auto overscroll-y-contain border-r border-gray-200 bg-gray-50 px-3.5 pb-24 pt-4 lg:flex dark:border-gray-800 dark:bg-gray-900/40"
         >
             <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 text-xs leading-[17px] text-gray-400 dark:text-gray-500">{meta}</div>
@@ -163,12 +158,6 @@ export function NoteSidePanel({
                 {tags}
             </div>
 
-            {/* The tail below the last block (`pb-24`) is not decoration. The panel sizes itself
-                as `100vh - stickyTop`, and `stickyTop` is where it lands once the page header
-                has STUCK — before the first scroll the panel starts ~40px lower, so that much
-                of it hangs below the fold. A short tail put the last block's edge 8px from the
-                bottom of the screen with nowhere left to scroll; this one keeps it clear of the
-                edge in both states. */}
             {/* `empty:hidden`: SermonsBuiltOnNote renders nothing for a note that is not saved
                 yet (there is nothing on the server to preach from), and a divider around
                 emptiness reads as a bug. On a saved note the block always renders — heading,

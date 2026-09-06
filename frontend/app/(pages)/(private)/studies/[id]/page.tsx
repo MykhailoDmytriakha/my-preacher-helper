@@ -56,6 +56,7 @@ import { NoteMobileSheet } from './NoteMobileSheet';
 import { NoteSidePanel } from './NoteSidePanel';
 import { useNoteAutoSave } from './useNoteAutoSave';
 import { useNoteScrollIsolation } from './useNoteScrollIsolation';
+import { useNoteScrollPosition } from './useNoteScrollPosition';
 
 const AI_USAGE_EXHAUSTED_KEY = 'settings.usage.aiUsageExhausted';
 
@@ -642,6 +643,12 @@ function NoteDates({ note, t }: { note: StudyNote; t: ReturnType<typeof useTrans
 }
 
 
+function noteScrollLayout(wide: boolean, navHeight: number, belowHeader: number, textRoot: HTMLDivElement | null) {
+    return wide
+        ? { headerTop: 0, toolbarTop: 0, sectionMargin: 8, activeOffset: 16, activeRoot: textRoot }
+        : { headerTop: navHeight, toolbarTop: belowHeader, sectionMargin: belowHeader + 8, activeOffset: belowHeader + 16, activeRoot: null };
+}
+
 export default function StudyNoteEditorPage() {
     const { t, i18n } = useTranslation();
     const router = useRouter();
@@ -898,7 +905,10 @@ export default function StudyNoteEditorPage() {
     const outlineControl = useMarkdownOutline(content, searchQuery);
     const showPanel = isWideViewport && !panelCollapsed;
     const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
+    const [textScrollRoot, setTextScrollRoot] = useState<HTMLDivElement | null>(null);
+    const scrollLayout = noteScrollLayout(isWideViewport, navHeight, belowHeader, textScrollRoot);
     useNoteScrollIsolation(scrollRoot, showPanel);
+    useNoteScrollPosition(textScrollRoot, isWideViewport, noteId, createdNoteId);
 
     // Narrow screens get the same content from the bottom instead of the side: the outline,
     // the properties and the dates, on request, so the text never gives up width for them.
@@ -915,7 +925,7 @@ export default function StudyNoteEditorPage() {
     // did not ask for, on the layer they were not looking at.
     const headerCollapsed = useCollapseOnScroll(!roomyHeader && !isEditing, noteId);
 
-    const activeSectionId = useActiveSection(belowHeader + 16, !isEditing && (showPanel || !isWideViewport), noteId);
+    const activeSectionId = useActiveSection(scrollLayout.activeOffset, !isEditing && (showPanel || !isWideViewport), noteId, scrollLayout.activeRoot);
     // Once reading has started the sticky line says which section you are in — the note's
     // title is the one thing the reader already knows.
     const activeSection = findSectionById(outlineControl.outline.sections, activeSectionId);
@@ -1262,7 +1272,7 @@ export default function StudyNoteEditorPage() {
                 currentIndex={currentIndex} type={type} setType={setType} isSaving={isSaving} saveError={saveError}
                 lastSaved={lastSaved} hasUnsavedEdits={editorIsDirty} setIsEditing={setIsEditing} handleDelete={handleDelete}
                 handleCopy={handleCopy} isCopied={isCopied}
-                headerRef={setHeaderRef} stickyTop={navHeight}
+                headerRef={setHeaderRef} stickyTop={scrollLayout.headerTop}
                 roomy={roomyHeader} collapsed={headerCollapsed} sectionLabel={sectionLabel}
                 onOpenSheet={propertiesInSheet ? openSheet : undefined}
                 title={title} setTitle={setTitle} searchQuery={searchQuery} justSaved={justSaved}
@@ -1288,7 +1298,7 @@ export default function StudyNoteEditorPage() {
     }
 
     return (
-        <div className="min-h-screen bg-white dark:bg-gray-900 flex flex-col -m-4 md:-m-6 lg:-m-8 relative">
+        <div data-note-workspace className="min-h-screen bg-white dark:bg-gray-900 flex flex-col -m-4 md:-m-6 lg:-m-8 relative">
             {/* HEADER TRAY */}
             {renderHeader()}
 
@@ -1301,7 +1311,6 @@ export default function StudyNoteEditorPage() {
                     <NoteSidePanel
                         outline={outlineControl}
                         foldable={!isEditing}
-                        stickyTop={belowHeader}
                         activeSectionId={activeSectionId}
                         collapsed={panelCollapsed}
                         onToggleCollapsed={togglePanel}
@@ -1313,10 +1322,9 @@ export default function StudyNoteEditorPage() {
                     />
                 )}
 
-                {/* No `overflow` here on purpose: it would become the scroll container that
-                    `position: sticky` measures against, and the editor toolbar would slide
-                    out of view instead of sticking. The window does the scrolling. */}
-                <div data-note-scroll-region="text" className="flex-1 min-w-0 px-4 py-8 md:px-8 md:py-10 pb-48 md:pb-32">
+                {/* On wide screens both panes own native scrolling. The editor toolbar
+                    and heading margins use this pane's coordinates, not the window's. */}
+                <div ref={setTextScrollRoot} tabIndex={0} data-note-scroll-region="text" className="flex-1 min-h-0 min-w-0 px-4 py-8 md:px-8 md:py-10 pb-48 md:pb-32 lg:overflow-y-auto lg:overscroll-y-contain">
                   <div className="mx-auto w-full space-y-8">
                 {renderRecoveryBanners()}
                 <div className="relative group">
@@ -1327,7 +1335,7 @@ export default function StudyNoteEditorPage() {
                                 onChange={setContent}
                                 placeholder={t('studiesWorkspace.contentPlaceholder') || 'Start typing your thoughts here...'}
                                 minHeight="300px"
-                                stickyToolbarTop={belowHeader}
+                                stickyToolbarTop={scrollLayout.toolbarTop}
                             />
                         </div>
                     ) : (
@@ -1337,7 +1345,7 @@ export default function StudyNoteEditorPage() {
                                 searchQuery={searchQuery}
                                 control={outlineControl}
                                 showToggleAll={isWideViewport && panelCollapsed}
-                                scrollMarginTop={belowHeader + 8}
+                                scrollMarginTop={scrollLayout.sectionMargin}
                             />
                         </div>
                     )}

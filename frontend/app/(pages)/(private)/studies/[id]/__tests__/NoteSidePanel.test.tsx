@@ -45,7 +45,6 @@ function makeControl(overrides: Partial<MarkdownOutlineControl> = {}): MarkdownO
 
 const props = {
     foldable: true,
-    stickyTop: 123,
     collapsed: false,
     onToggleCollapsed: jest.fn(),
     scriptureRefs: <div>refs slot</div>,
@@ -102,14 +101,13 @@ describe('NoteSidePanel', () => {
         expect(screen.getByRole('button', { name: 'Outer' })).toBeInTheDocument();
     });
 
-    it('sticks below the header instead of scrolling away with the text', () => {
+    it('fills the bounded workspace and owns its native scroll region', () => {
         const { container } = render(<NoteSidePanel {...props} outline={makeControl()} />);
         const aside = container.querySelector('aside');
 
-        expect(aside).toHaveClass('sticky');
-        expect(aside).toHaveStyle({ top: '123px' });
-        // Full height, so the divider does not stop in mid-air.
-        expect(aside).toHaveStyle({ height: 'calc(100vh - 123px)' });
+        expect(aside).toHaveClass('h-full', 'min-h-0', 'overflow-y-auto', 'overscroll-y-contain');
+        expect(aside).toHaveAttribute('data-note-scroll-region', 'panel');
+        expect(aside).not.toHaveClass('sticky');
     });
 
     it('marks the section being read, so the map says where you are', () => {

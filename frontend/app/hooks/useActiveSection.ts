@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react';
  * are intersecting at once and "the innermost one above the fold" is the honest answer,
  * which observers make awkward to compute.
  */
-export function useActiveSection(offset: number, enabled: boolean, resetKey?: string): string | null {
+export function useActiveSection(offset: number, enabled: boolean, resetKey?: string, scrollRoot?: HTMLElement | null): string | null {
     const [activeId, setActiveId] = useState<string | null>(null);
 
     useEffect(() => {
@@ -23,9 +23,10 @@ export function useActiveSection(offset: number, enabled: boolean, resetKey?: st
         let frame = 0;
         const measure = () => {
             frame = 0;
+            const threshold = (scrollRoot?.getBoundingClientRect().top ?? 0) + offset + 1;
             let current: string | null = null;
-            document.querySelectorAll<HTMLElement>('[data-section-id]').forEach((element) => {
-                if (element.getBoundingClientRect().top <= offset + 1) {
+            (scrollRoot ?? document).querySelectorAll<HTMLElement>('[data-section-id]').forEach((element) => {
+                if (element.getBoundingClientRect().top <= threshold) {
                     current = element.getAttribute('data-section-id');
                 }
             });
@@ -38,17 +39,18 @@ export function useActiveSection(offset: number, enabled: boolean, resetKey?: st
         };
 
         measure();
-        window.addEventListener('scroll', onScroll, { passive: true });
+        const scrollTarget = scrollRoot ?? window;
+        scrollTarget.addEventListener('scroll', onScroll, { passive: true });
         window.addEventListener('resize', onScroll);
         return () => {
             if (frame) window.cancelAnimationFrame(frame);
-            window.removeEventListener('scroll', onScroll);
+            scrollTarget.removeEventListener('scroll', onScroll);
             window.removeEventListener('resize', onScroll);
         };
         // `resetKey` is the note being read: sections are found by scanning the DOM, and
         // moving to another note at the same scroll position fires no scroll event — the
         // old note's section id would stay highlighted.
-    }, [offset, enabled, resetKey]);
+    }, [offset, enabled, resetKey, scrollRoot]);
 
     return activeId;
 }

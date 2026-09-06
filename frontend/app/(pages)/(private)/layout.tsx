@@ -24,6 +24,7 @@ export default function PrivateLayout({ children }: { children: ReactNode }) {
 function PrivateLayoutContent({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const isStudyDetail = /^\/studies\/(?!share-links(?:\/|$))[^/]+\/?$/.test(pathname ?? '');
   const isPreachingPlan = Boolean(
     pathname?.startsWith('/sermons/') &&
       pathname?.includes('/plan') &&
@@ -31,7 +32,7 @@ function PrivateLayoutContent({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900">
+    <div data-study-workspace={isStudyDetail ? '' : undefined} className="min-h-screen bg-white dark:bg-gray-900">
       {/* Mounted OUTSIDE the conditional on purpose: the preaching-plan screen hides
           the chrome, and while the queue worker lived inside the banner that screen
           — the one a preacher keeps open for an hour — drained nothing at all. */}
