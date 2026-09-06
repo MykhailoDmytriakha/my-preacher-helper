@@ -1,6 +1,6 @@
 "use client";
 
-import { SquareX } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -391,6 +391,8 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
     setShowSectionPicker(false);
   }, [actions, onSetDuration]);
 
+  const exitButtonLabel = t('plan.exitPreachingMode', { defaultValue: 'Exit Preaching Mode' });
+
   return (
     <TimerErrorBoundary>
       <nav
@@ -406,11 +408,12 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
               <button
                 type="button"
                 onClick={handleExitPreaching}
-                className="flex items-center justify-center p-2 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors shrink-0"
-                aria-label={t('plan.exitPreachingMode', { defaultValue: 'Exit Preaching Mode' })}
+                className="control-button stop-button shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400"
+                title={exitButtonLabel}
+                aria-label={exitButtonLabel}
                 data-testid="exit-preaching"
               >
-                <SquareX className="h-5 w-5 shrink-0" />
+                <X className="control-icon" aria-hidden="true" />
               </button>
             </div>
 
@@ -444,16 +447,17 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
           </div>
 
           {/* Tablet/Mobile Layout - Single compact row: [exit] [timer] [controls] */}
-          <div className="lg:hidden flex flex-row items-center justify-between gap-1 py-1 px-1">
+          <div className="compact-controls-row lg:hidden flex flex-row items-center justify-between gap-1 py-1 px-1">
             {/* Exit button */}
             <button
               type="button"
               onClick={handleExitPreaching}
-              className="flex items-center justify-center p-1.5 text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors shrink-0"
-              aria-label={t('plan.exitPreachingMode', { defaultValue: 'Exit Preaching Mode' })}
+              className="control-button stop-button shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-400"
+              title={exitButtonLabel}
+              aria-label={exitButtonLabel}
               data-testid="exit-preaching"
             >
-              <SquareX className="h-4 w-4 shrink-0" />
+              <X className="control-icon" aria-hidden="true" />
             </button>
             {/* Timer Display */}
             <div className="flex items-center justify-center flex-1 min-w-0">
@@ -468,7 +472,7 @@ const PreachingTimer: React.FC<PreachingTimerProps> = ({
               />
             </div>
             {/* Controls */}
-            <div className="compact-controls-row shrink-0">
+            <div className="shrink-0">
               <TimerControls
                 isPaused={timerState.isPaused}
                 status={timerState.status}

@@ -1132,7 +1132,7 @@ describe('Column Component', () => {
       expect(screen.queryByPlaceholderText('Sub-point name...')).not.toBeInTheDocument();
     });
 
-    it('renders and persists point and sub-point reminder notes from normal outline cards', async () => {
+    it.each([false, true])('keeps editable reminder notes inside their own cards (focus mode: %s)', async (isFocusMode) => {
       (updateSermonOutline as jest.Mock).mockClear();
 
       render(
@@ -1140,6 +1140,7 @@ describe('Column Component', () => {
           id="introduction"
           title="Introduction"
           sermonId="sermon-1"
+          isFocusMode={isFocusMode}
           items={[
             { id: '1', content: 'Item 1', customTagNames: [], outlinePointId: 'point1' }
           ]}
@@ -1148,7 +1149,10 @@ describe('Column Component', () => {
               id: 'point1',
               text: 'Introduction Point 1',
               note: 'Point reminder',
-              subPoints: [{ id: 'sub-1', text: 'Sub-point A', note: 'Sub reminder', position: 1000 }]
+              subPoints: [
+                { id: 'sub-1', text: 'Sub-point A', note: 'Sub reminder', position: 1000 },
+                { id: 'sub-2', text: 'Sub-point B', note: 'Other sub reminder', position: 2000 },
+              ]
             }
           ]}
           thoughtsPerSermonPoint={{ point1: 1 }}
@@ -1159,6 +1163,14 @@ describe('Column Component', () => {
 
       expect(screen.getByText('Point reminder')).toBeInTheDocument();
       expect(screen.getByText('Sub reminder')).toBeInTheDocument();
+      const firstSubPoint = screen.getByTestId('sub-point-drop-sub-1');
+      const secondSubPoint = screen.getByTestId('sub-point-drop-sub-2');
+      expect(within(firstSubPoint).getByText('Sub reminder')).toBeInTheDocument();
+      expect(within(firstSubPoint).queryByText('Other sub reminder')).not.toBeInTheDocument();
+      expect(within(secondSubPoint).getByText('Other sub reminder')).toBeInTheDocument();
+      expect(within(secondSubPoint).queryByText('Sub reminder')).not.toBeInTheDocument();
+      expect(screen.getAllByText('Sub reminder')).toHaveLength(1);
+      expect(screen.getAllByText('Other sub reminder')).toHaveLength(1);
 
       const pointNoteHeader = screen.getByText('Point reminder').closest('.rounded-t-lg');
       expect(pointNoteHeader).toBeInTheDocument();
@@ -1203,6 +1215,7 @@ describe('Column Component', () => {
                 id: 'point1',
                 subPoints: expect.arrayContaining([
                   expect.objectContaining({ id: 'sub-1', note: 'Sub reminder updated' }),
+                  expect.objectContaining({ id: 'sub-2', note: 'Other sub reminder' }),
                 ]),
               }),
             ]),

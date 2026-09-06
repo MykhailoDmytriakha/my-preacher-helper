@@ -824,8 +824,6 @@ const SermonPointPlaceholder: React.FC<{
               onEdit={onEditSubPoint ?? (() => undefined)}
               onDelete={onDeleteSubPoint ?? (() => undefined)}
               onReorder={onReorderSubPoints}
-              onEditNote={onSetSubPointNote}
-              showNotes={showNotes}
               getAffectedThoughtCount={(spId) => pointItems.filter((it) => it.subPointId === spId).length}
               t={t}
             />
@@ -849,7 +847,7 @@ const SermonPointPlaceholder: React.FC<{
             onMoveToAmbiguous={onMoveToAmbiguous}
             onToggleThoughtLock={onToggleThoughtLock}
             renderSubPointRecorder={renderSubPointRecorder}
-            showNotes={showNotes && isFocusMode}
+            showNotes={showNotes}
             isPointLocked={isPointLocked}
             onSetSubPointNote={onSetSubPointNote}
             t={t}

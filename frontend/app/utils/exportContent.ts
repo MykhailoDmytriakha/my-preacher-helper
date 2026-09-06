@@ -1,3 +1,4 @@
+import { planMarkdownToPlainText } from "@/utils/planHierarchy";
 import {
   getVisualOrderedThoughtsBySection,
   getVisualSectionOutlinePoints,
@@ -203,7 +204,7 @@ function formatPlanPlainText(
     const sectionData = plan[key as keyof typeof plan];
     if (sectionData && sectionData.outline && sectionData.outline.trim()) {
       content += `${title}:\n\n`;
-      content += `${sectionData.outline}\n\n`;
+      content += `${planMarkdownToPlainText(sectionData.outline)}\n\n`;
       content += '---------------------\n\n';
     }
   });

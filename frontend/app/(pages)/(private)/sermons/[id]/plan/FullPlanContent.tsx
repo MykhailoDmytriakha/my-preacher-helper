@@ -1,9 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
+import PlanMarkdown from "@/components/plan/PlanMarkdown";
 import { TimerPhase } from "@/types/TimerState";
-import { normalizePlanArrows, normalizePlanPointHeadings, sanitizeMarkdown } from "@/utils/markdownUtils";
 
 import {
   MARKDOWN_SECTION_VARIANT_CLASSES,
@@ -24,14 +22,9 @@ const MarkdownRenderer = ({
   section?: SermonSectionKey;
 }) => {
   const sectionVariantClass = section ? MARKDOWN_SECTION_VARIANT_CLASSES[section] : "";
-  const sanitizedMarkdown = normalizePlanArrows(normalizePlanPointHeadings(sanitizeMarkdown(markdown)));
 
   return (
-    <div className={`prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content prose-scaled ${sectionVariantClass}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-        {sanitizedMarkdown}
-      </ReactMarkdown>
-    </div>
+    <PlanMarkdown markdown={markdown} className={`prose prose-sm md:prose-base dark:prose-invert max-w-none prose-scaled ${sectionVariantClass}`} />
   );
 };
 

@@ -1,0 +1,4 @@
+.content > [data-plan-heading-level] > :is(h1, h2, h3, h4, h5, h6),
+.content > [data-plan-body-level] > * {
+  margin-left: 0;
+}

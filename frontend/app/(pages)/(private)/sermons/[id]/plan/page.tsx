@@ -4,12 +4,11 @@ import { useIsRestoring } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
+import PlanMarkdown from "@/components/plan/PlanMarkdown";
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
@@ -23,6 +22,7 @@ import { TimerPhase } from "@/types/TimerState";
 import { debugLog } from "@/utils/debugMode";
 import { getExportContent as buildThoughtExportContent } from "@/utils/exportContent";
 import { normalizePlanArrows } from "@/utils/markdownUtils";
+import { planMarkdownToPlainText } from "@/utils/planHierarchy";
 import { liveNodeIds, readPlanText, renderPlanWithFallback } from "@/utils/planText";
 import { persistedWrite, refusedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
 import {
@@ -865,15 +865,7 @@ export default function PlanPage() {
 
     // For plain text, we need to strip markdown formatting
     if (format === 'plain') {
-      // A very simple markdown to plain text conversion - for a proper conversion, use a library
-      return markdown
-        .replace(/#{1,6}\s(.*)/g, '$1\n') // headers
-        .replace(/\*\*(.*?)\*\*/g, '$1') // bold
-        .replace(/\*(.*?)\*/g, '$1') // italic
-        .replace(/\[(.*?)\]\((.*?)\)/g, '$1 ($2)') // links
-        .replace(/\n>/g, '\n') // blockquotes
-        .replace(/>/g, '') // blockquotes at start
-        .replace(/\n\n+/g, '\n\n'); // multiple line breaks
+      return planMarkdownToPlainText(markdown);
     }
 
     return markdown;
@@ -904,9 +896,7 @@ export default function PlanPage() {
           </h2>
           <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.introduction.border.split(' ')[0]}`}>
             <div className="prose max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {normalizePlanArrows(combinedPlan.introduction || noContentText)}
-              </ReactMarkdown>
+              <PlanMarkdown markdown={combinedPlan.introduction || noContentText} />
             </div>
           </div>
         </div>
@@ -917,9 +907,7 @@ export default function PlanPage() {
           </h2>
           <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.mainPart.border.split(' ')[0]}`}>
             <div className="prose max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {normalizePlanArrows(combinedPlan.main || noContentText)}
-              </ReactMarkdown>
+              <PlanMarkdown markdown={combinedPlan.main || noContentText} />
             </div>
           </div>
         </div>
@@ -930,9 +918,7 @@ export default function PlanPage() {
           </h2>
           <div className={`pl-2 border-l-4 ${SERMON_SECTION_COLORS.conclusion.border.split(' ')[0]}`}>
             <div className="prose max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {normalizePlanArrows(combinedPlan.conclusion || noContentText)}
-              </ReactMarkdown>
+              <PlanMarkdown markdown={combinedPlan.conclusion || noContentText} />
             </div>
           </div>
         </div>

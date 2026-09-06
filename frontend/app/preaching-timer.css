@@ -389,13 +389,13 @@ nav .digital-timer-display .time-display,
   padding: 2px 0;
 }
 
-.compact-controls-row .timer-controls-card .control-button {
+.compact-controls-row .control-button {
   min-width: 38px;
   min-height: 32px;
   border-radius: 10px;
 }
 
-.compact-controls-row .timer-controls-card .control-icon {
+.compact-controls-row .control-icon {
   width: 14px;
   height: 14px;
 }

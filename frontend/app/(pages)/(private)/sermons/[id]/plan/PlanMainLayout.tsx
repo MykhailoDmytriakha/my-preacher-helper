@@ -1,16 +1,14 @@
 import { FileText, Key, Lightbulb, List, Pencil, Save, Sparkles } from "lucide-react";
 import React, { createContext, useContext, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
 import { SwitchViewIcon } from "@/components/Icons";
 import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
+import PlanMarkdown from "@/components/plan/PlanMarkdown";
 import PlanStyleSelector from "@/components/plan/PlanStyleSelector";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
 import { Plan, Sermon, SermonPoint, Thought } from "@/models/models";
-import { normalizePlanArrows, normalizePlanPointHeadings, sanitizeMarkdown } from "@/utils/markdownUtils";
 import { readPlanText } from "@/utils/planText";
 import { buildSubPointRenderableEntries } from "@/utils/subPoints";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
@@ -158,14 +156,9 @@ const SectionHeader = ({ section, onSwitchPage }: { section: SermonSectionKey; o
 
 const MarkdownRenderer = ({ markdown, section }: { markdown: string; section?: SermonSectionKey }) => {
   const sectionVariantClass = section ? MARKDOWN_SECTION_VARIANT_CLASSES[section] : "";
-  const sanitizedMarkdown = normalizePlanArrows(normalizePlanPointHeadings(sanitizeMarkdown(markdown)));
 
   return (
-    <div className={`prose prose-sm md:prose-base dark:prose-invert max-w-none markdown-content prose-scaled ${sectionVariantClass}`}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-        {sanitizedMarkdown}
-      </ReactMarkdown>
-    </div>
+    <PlanMarkdown markdown={markdown} className={`prose prose-sm md:prose-base dark:prose-invert max-w-none prose-scaled ${sectionVariantClass}`} />
   );
 };
 

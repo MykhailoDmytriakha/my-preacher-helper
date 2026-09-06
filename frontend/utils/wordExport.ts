@@ -2,7 +2,8 @@ import { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Bord
 import { saveAs } from 'file-saver';
 
 import { PlanData } from '@/models/models';
-import { normalizePlanArrows } from '@/utils/markdownUtils';
+import { splitMarkdownSections, type MarkdownSection } from '@/utils/markdownSections';
+import { planBodyIndent, planHeadingIndent, preparePlanMarkdown } from '@/utils/planHierarchy';
 import { getSectionBaseColor } from '@lib/sections';
 import i18n from '@locales/i18n';
 
@@ -90,25 +91,13 @@ const createHeadingParagraph = (text: string, level: number, sectionColor?: stri
           }),
         ],
         heading: HeadingLevel.HEADING_3,
-        indent: { left: 360 },
+        indent: { left: planHeadingIndent(level) * 360 },
       });
   }
 };
 
-// Helper function to parse headings
-const parseHeading = (trimmedLine: string, sectionColor?: string): Paragraph => {
-  if (trimmedLine.startsWith('### ')) {
-    return createHeadingParagraph(trimmedLine.replace('### ', ''), 3, sectionColor);
-  } else if (trimmedLine.startsWith('## ')) {
-    return createHeadingParagraph(trimmedLine.replace('## ', ''), 2, sectionColor);
-  } else if (trimmedLine.startsWith('# ')) {
-    return createHeadingParagraph(trimmedLine.replace('# ', ''), 1, sectionColor);
-  }
-  throw new Error('Invalid heading format');
-};
-
 // Helper function to parse bullet points
-const parseBulletPoint = (trimmedLine: string): Paragraph => {
+const parseBulletPoint = (trimmedLine: string, indent: number): Paragraph => {
   const bulletContent = trimmedLine.replace(/^[-*] /, '');
   const bulletChildren = parseInlineMarkdown(bulletContent);
   return new Paragraph({
@@ -117,12 +106,12 @@ const parseBulletPoint = (trimmedLine: string): Paragraph => {
       ...bulletChildren,
     ],
     spacing: { after: 0 },
-    indent: { left: 720 },
+    indent: { left: indent },
   });
 };
 
 // Helper function to parse numbered lists
-const parseNumberedList = (trimmedLine: string): Paragraph => {
+const parseNumberedList = (trimmedLine: string, indent: number): Paragraph => {
   const number = trimmedLine.match(/^(\d+)\. (.*)$/);
   if (!number) throw new Error('Invalid numbered list format');
 
@@ -134,18 +123,18 @@ const parseNumberedList = (trimmedLine: string): Paragraph => {
       ...listChildren,
     ],
     spacing: { after: 0 },
-    indent: { left: 720 },
+    indent: { left: indent },
   });
 };
 
 // Helper function to parse blockquotes
-const parseBlockquote = (trimmedLine: string): Paragraph => {
+const parseBlockquote = (trimmedLine: string, indent: number): Paragraph => {
   const quoteContent = trimmedLine.replace('> ', '');
   const quoteChildren = parseInlineMarkdown(quoteContent);
   return new Paragraph({
     children: quoteChildren,
     spacing: { after: 0 },
-    indent: { left: 720 },
+    indent: { left: indent },
     border: {
       left: {
         color: 'auto',
@@ -172,7 +161,7 @@ const parseHorizontalRule = (): Paragraph => {
 };
 
 // Helper function to parse regular paragraphs
-const parseRegularParagraph = (trimmedLine: string): Paragraph => {
+const parseRegularParagraph = (trimmedLine: string, indent?: number): Paragraph => {
   const children = parseInlineMarkdown(trimmedLine);
 
   // Check if this looks like a Bible-verse ref line so it can be indented to align with
@@ -187,12 +176,12 @@ const parseRegularParagraph = (trimmedLine: string): Paragraph => {
     spacing: { after: 0 },
     alignment: AlignmentType.JUSTIFIED,
     // Indent verse refs to align with the bulleted cues of their sub-point.
-    indent: isBibleVerse ? { left: 720 } : undefined,
+    indent: indent !== undefined ? { left: indent } : isBibleVerse ? { left: 720 } : undefined,
   });
 };
 
 // Helper function to collect and parse table lines
-const parseTableLines = (lines: string[], startIndex: number): { table: Table | null; newIndex: number } => {
+const parseTableLines = (lines: string[], startIndex: number, indent: number): { table: Table | null; newIndex: number } => {
   const tableLines = [];
   let j = startIndex;
 
@@ -202,11 +191,11 @@ const parseTableLines = (lines: string[], startIndex: number): { table: Table | 
     j++;
   }
 
-  const table = tableLines.length > 0 ? parseTable(tableLines) : null;
+  const table = tableLines.length > 0 ? parseTable(tableLines, indent) : null;
   return { table, newIndex: j };
 };
 
-export const parseMarkdownToParagraphs = (content: string, sectionColor?: string): (Paragraph | Table)[] => {
+const parseMarkdownBody = (content: string, bodyIndent?: number): (Paragraph | Table)[] => {
   if (!content || content.trim() === '') {
     const placeholderText = t('export.planEmptyContent', 'Content will be added later...');
     return [
@@ -226,19 +215,32 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
   // Match the plan UI: decode HTML entities the model may have emitted ("&gt;"),
   // canonicalize arrows to "→", and turn inline "<br>" into a real line break.
   // Otherwise "-&gt;" renders as a literal "-&gt;" and "<br>" leaks as literal text.
-  const lines = normalizePlanArrows(content)
+  const lines = content
     .replace(/<br\s*\/?>/gi, '\n')
     .split('\n')
     .filter(line => line.trim() !== '');
   const elements: (Paragraph | Table)[] = [];
   let i = 0;
+  let inFence = false;
 
   while (i < lines.length) {
     const trimmedLine = lines[i].trim();
 
+    if (/^(```|~~~)/.test(trimmedLine)) {
+      inFence = !inFence;
+      i++;
+      continue;
+    }
+    if (inFence) {
+      elements.push(parseRegularParagraph(lines[i], bodyIndent));
+      i++;
+      continue;
+    }
+    const listIndent = (bodyIndent ?? 360) + 360 + Math.floor((lines[i].length - lines[i].trimStart().length) / 2) * 360;
+
     // Check for table
     if (trimmedLine.includes('|')) {
-      const { table, newIndex } = parseTableLines(lines, i);
+      const { table, newIndex } = parseTableLines(lines, i, bodyIndent ?? 0);
       if (table) {
         elements.push(table);
         i = newIndex;
@@ -248,22 +250,20 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
 
     // Handle different markdown elements using helper functions
     try {
-      if (trimmedLine.startsWith('#')) {
-        elements.push(parseHeading(trimmedLine, sectionColor));
-      } else if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
-        elements.push(parseBulletPoint(trimmedLine));
+      if (trimmedLine.startsWith('- ') || trimmedLine.startsWith('* ')) {
+        elements.push(parseBulletPoint(trimmedLine, listIndent));
       } else if (trimmedLine.match(/^\d+\. /)) {
-        elements.push(parseNumberedList(trimmedLine));
+        elements.push(parseNumberedList(trimmedLine, listIndent));
       } else if (trimmedLine.startsWith('> ')) {
-        elements.push(parseBlockquote(trimmedLine));
+        elements.push(parseBlockquote(trimmedLine, bodyIndent ?? 720));
       } else if (trimmedLine === '---' || trimmedLine === '***') {
         elements.push(parseHorizontalRule());
       } else {
-        elements.push(parseRegularParagraph(trimmedLine));
+        elements.push(parseRegularParagraph(trimmedLine, bodyIndent));
       }
     } catch {
       // Fallback to regular paragraph if parsing fails
-      elements.push(parseRegularParagraph(trimmedLine));
+      elements.push(parseRegularParagraph(trimmedLine, bodyIndent));
     }
 
     i++;
@@ -272,7 +272,21 @@ export const parseMarkdownToParagraphs = (content: string, sectionColor?: string
   return elements;
 };
 
-export const parseTable = (tableLines: string[]): Table | null => {
+export const parseMarkdownToParagraphs = (content: string, sectionColor?: string): (Paragraph | Table)[] => {
+  const outline = splitMarkdownSections(preparePlanMarkdown(content));
+  if (!outline.sections.length) return parseMarkdownBody(outline.intro);
+  const renderSection = (section: MarkdownSection): (Paragraph | Table)[] => [
+    createHeadingParagraph(section.headingText, section.level, sectionColor),
+    ...(section.body ? parseMarkdownBody(section.body, planBodyIndent(section.level) * 360) : []),
+    ...section.children.flatMap(renderSection),
+  ];
+  return [
+    ...(outline.intro ? parseMarkdownBody(outline.intro) : []),
+    ...outline.sections.flatMap(renderSection),
+  ];
+};
+
+export const parseTable = (tableLines: string[], indent = 0): Table | null => {
   if (tableLines.length < 2) return null;
 
   // Parse table rows
@@ -314,6 +328,7 @@ export const parseTable = (tableLines: string[]): Table | null => {
 
   return new Table({
     rows: tableRows,
+    indent: { size: indent, type: WidthType.DXA },
     width: { size: 100, type: WidthType.PERCENTAGE },
     margins: {
       top: 100,

@@ -6,6 +6,7 @@ import React, { useRef, useState } from "react";
 import ExportButtons from "@/components/ExportButtons";
 import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
 import { normalizePlanArrows } from "@/utils/markdownUtils";
+import { planMarkdownToPlainText } from "@/utils/planHierarchy";
 import { hasPlan } from "@/utils/sermonPlanAccess";
 
 import { PlanModeSwitch } from "./PlanModeSwitch";
@@ -115,14 +116,7 @@ export default function PlanPageHeader({
       const markdown = planAsMarkdown(sermon, combinedPlan, t, noContentText);
       if (format === "markdown") return markdown;
 
-      return markdown
-        .replace(/#{1,6}\s(.*)/g, "$1\n")
-        .replace(/\*\*(.*?)\*\*/g, "$1")
-        .replace(/\*(.*?)\*/g, "$1")
-        .replace(/\[(.*?)\]\((.*?)\)/g, "$1 ($2)")
-        .replace(/\n>/g, "\n")
-        .replace(/>/g, "")
-        .replace(/\n\n+/g, "\n\n");
+      return planMarkdownToPlainText(markdown);
     });
 
   return (
