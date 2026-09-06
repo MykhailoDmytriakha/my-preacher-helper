@@ -3,16 +3,16 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { isUsageCapReachedError } from '@/services/usageLimits';
-import { notePlanContextKey, type NotePlanResult } from '@/utils/notePlan';
+import { notePlanContextKey, notePlanTargetNodes, type NotePlanResult } from '@/utils/notePlan';
 
 import { generateNotePlanContent } from '../planApi';
-import { planNodesForPoint } from '../planNodes';
 import { usePlanStylePreference } from '../usePlanStylePreference';
 
 import type { ManualConspectus } from './useManualConspectus';
 import type { Sermon, SermonPoint } from '@/models/models';
 
 interface Proposal extends NotePlanResult {
+  pointId: string;
   before: Record<string, string>;
   context: string;
   sermonId: string;
@@ -57,15 +57,15 @@ export function useNotePlanGeneration(options: Options) {
     };
   }, []);
 
-  const unchanged = (pointId: string, proposal: Proposal) => {
+  const unchanged = (proposal: Proposal) => {
     const current = latest.current;
     return current.sermon.id === proposal.sermonId
-      && notePlanContextKey(current.sermon, pointId) === proposal.context
+      && notePlanContextKey(current.sermon, proposal.pointId) === proposal.context
       && Object.entries(proposal.before).every(([id, text]) => (current.conspectus.contentByNodeId[id] ?? '') === text);
   };
 
   const accept = (pointId: string, proposal = proposals[pointId]) => {
-    if (!proposal || !unchanged(pointId, proposal)) {
+    if (!proposal || !unchanged(proposal)) {
       setErrors((previous) => ({ ...previous, [pointId]: 'contextChanged' }));
       return false;
     }
@@ -81,52 +81,64 @@ export function useNotePlanGeneration(options: Options) {
     return true;
   };
 
-  const runPoint = async (point: SermonPoint, controller: AbortController) => {
+  const runPoint = async (point: SermonPoint, controller: AbortController, targetNodeId?: string) => {
     const current = latest.current;
+    const requestId = targetNodeId ?? point.id;
     if (current.blocked || !mounted.current) return;
     const currentPoint = allPoints(current.sermon).find((candidate) => candidate.id === point.id);
     if (!currentPoint) return;
-    const nodeIds = planNodesForPoint(currentPoint).map((node) => node.id);
+    const nodeIds = notePlanTargetNodes(currentPoint, targetNodeId).map((node) => node.nodeId);
+    if (!nodeIds.length) return;
     if (nodeIds.some((id) => current.conspectus.pendingNodeIds.has(id))) return;
     const before = Object.fromEntries(nodeIds.map((id) => [id, current.conspectus.contentByNodeId[id] ?? '']));
     const context = notePlanContextKey(current.sermon, point.id);
     const sermonId = current.sermon.id;
-    setErrors((previous) => { const next = { ...previous }; delete next[point.id]; return next; });
+    setErrors((previous) => { const next = { ...previous }; delete next[requestId]; return next; });
+    // A new request supersedes only proposals that could write the same cells.
+    setProposals((previous) => Object.fromEntries(Object.entries(previous)
+      .filter(([, proposal]) => !nodeIds.some((id) => id in proposal.before))));
     try {
-      const result = await generateNotePlanContent({ sermonId, outlinePointId: point.id, style, expectedContext: context }, controller.signal);
+      const result = await generateNotePlanContent({ sermonId, outlinePointId: point.id, targetNodeId, style, expectedContext: context }, controller.signal);
       if (!mounted.current || controller.signal.aborted) return;
       if (Object.keys(result.contentByNodeId).length !== nodeIds.length
-        || Object.keys(result.contentByNodeId).some((id) => !nodeIds.includes(id))) {
+        || Object.keys(result.contentByNodeId).some((id) => !nodeIds.includes(id))
+        || Object.keys(result.missingMaterial).some((id) => !nodeIds.includes(id))) {
         throw new Error('Invalid generated node map');
       }
-      const proposal = { ...result, before, context, sermonId };
-      if (!unchanged(point.id, proposal)) {
-        setErrors((previous) => ({ ...previous, [point.id]: 'contextChanged' }));
+      const proposal = { ...result, before, context, sermonId, pointId: point.id };
+      if (!unchanged(proposal)) {
+        setErrors((previous) => ({ ...previous, [requestId]: 'contextChanged' }));
         return;
       }
-      setProposals((previous) => ({ ...previous, [point.id]: proposal }));
+      setProposals((previous) => ({ ...previous, [requestId]: proposal }));
       void current.onSuccess?.().catch(() => undefined);
     } catch (error) {
       if (!mounted.current || controller.signal.aborted) return;
       const code = generationErrorCode(error);
-      setErrors((previous) => ({ ...previous, [point.id]: code }));
+      setErrors((previous) => ({ ...previous, [requestId]: code }));
       if (code === 'usageBlocked') void current.onSuccess?.().catch(() => undefined);
     }
   };
 
-  const generate = async (point: SermonPoint) => {
-    if (requests.current.has(point.id) || latest.current.blocked || !mounted.current) return;
+  const generate = async (point: SermonPoint, targetNodeId?: string) => {
+    const requestId = targetNodeId ?? point.id;
+    const currentPoint = allPoints(latest.current.sermon).find((candidate) => candidate.id === point.id);
+    if (!currentPoint) return;
+    const scope = notePlanTargetNodes(currentPoint, targetNodeId);
+    if (!scope.length || requests.current.has(point.id)
+      || scope.some((node) => requests.current.has(node.nodeId))
+      || latest.current.blocked || !mounted.current) return;
     const controller = new AbortController();
-    requests.current.set(point.id, controller);
-    setGeneratingIds((previous) => ({ ...previous, [point.id]: true }));
-    try { await runPoint(point, controller); }
+    requests.current.set(requestId, controller);
+    setGeneratingIds((previous) => ({ ...previous, [requestId]: true }));
+    try { await runPoint(point, controller, targetNodeId); }
     finally {
       // An old completion must not clear a newer request after effect cleanup/remount.
-      if (requests.current.get(point.id) === controller) {
-        requests.current.delete(point.id);
+      if (requests.current.get(requestId) === controller) {
+        requests.current.delete(requestId);
         if (mounted.current) setGeneratingIds((previous) => {
           const next = { ...previous };
-          delete next[point.id];
+          delete next[requestId];
           return next;
         });
       }

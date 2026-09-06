@@ -1513,6 +1513,8 @@
       "saveAll": "Save changes",
       "draftHelp": "Generated text stays editable. Save when you are ready.",
       "generatePoint": "Generate point",
+      "generateSubPoint": "Generate only this subpoint",
+      "generatePointWithSubPoints": "Generate point and all subpoints",
       "generating": "Generating…",
       "proposal": "Review the proposed content",
       "current": "Current text",

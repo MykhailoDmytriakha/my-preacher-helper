@@ -2,10 +2,11 @@ import { z } from 'zod';
 
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 
-import type { Sermon } from '@/models/models';
+import type { Sermon, SermonPoint } from '@/models/models';
 
 export const NotePlanRequestSchema = z.object({
   outlinePointId: z.string().min(1),
+  targetNodeId: z.string().min(1).optional(),
   style: z.enum(['memory', 'narrative', 'exegetical']),
   expectedContext: z.string().min(1),
 });
@@ -16,6 +17,17 @@ export const NotePlanResultSchema = z.object({
 });
 
 export type NotePlanResult = z.infer<typeof NotePlanResultSchema>;
+
+/** One explicit cell, or the existing whole-point scope when no target is supplied. */
+export function notePlanTargetNodes(point: SermonPoint, targetNodeId?: string) {
+  const nodes = [
+    { nodeId: point.id, title: point.text, reminder: point.note ?? '', kind: 'point' },
+    [...(point.subPoints ?? [])].sort((a, b) => a.position - b.position).map((sub) => ({
+      nodeId: sub.id, title: sub.text, reminder: sub.note ?? '', kind: 'subPoint',
+    })),
+  ].flat();
+  return targetNodeId === undefined ? nodes : nodes.filter((node) => node.nodeId === targetNodeId);
+}
 
 /** Compare the actual generation inputs, not unrelated changes to saved plan text. */
 export function notePlanContextKey(sermon: Sermon, pointId: string): string {

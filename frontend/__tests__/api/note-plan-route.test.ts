@@ -79,3 +79,17 @@ it('reports provider failure and malformed JSON', async () => {
   expect((await POST(request(), params)).status).toBe(500);
   expect((await POST({ json: async () => { throw new SyntaxError(); } } as unknown as NextRequest, params)).status).toBe(400);
 });
+
+it('passes an owned subpoint target through without widening its scope', async () => {
+  jest.mocked(generateNotePlanPoint).mockResolvedValue({ contentByNodeId: { sub: '- Selected detail' }, missingMaterial: {} });
+  const response = await POST(request({ outlinePointId: 'p', targetNodeId: 'sub', style: 'memory', expectedContext: notePlanContextKey(sermon, 'p') }), params);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ contentByNodeId: { sub: '- Selected detail' }, missingMaterial: {} });
+  expect(generateNotePlanPoint).toHaveBeenCalledWith(expect.objectContaining({ targetNodeId: 'sub', point: sermon.outline!.main[0] }), 'memory', 'u');
+});
+
+it.each(['foreign', ''])('rejects an invalid subpoint target %p before AI', async (targetNodeId) => {
+  const response = await POST(request({ outlinePointId: 'p', targetNodeId, style: 'memory', expectedContext: notePlanContextKey(sermon, 'p') }), params);
+  expect(response.status).toBe(targetNodeId ? 404 : 400);
+  expect(generateNotePlanPoint).not.toHaveBeenCalled();
+});

@@ -27,7 +27,7 @@ interface SaveSermonPlanParams {
 }
 
 export async function generateNotePlanContent(
-  params: GeneratePlanPointContentParams & { expectedContext: string },
+  params: GeneratePlanPointContentParams & { expectedContext: string; targetNodeId?: string },
   signal?: AbortSignal,
 ): Promise<NotePlanResult> {
   const { sermonId, ...body } = params;

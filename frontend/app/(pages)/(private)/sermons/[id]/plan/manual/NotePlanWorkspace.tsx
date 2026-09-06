@@ -65,29 +65,37 @@ export function NotePlanWorkspace({ enabled, ...props }: {
   return enabled ? <ActiveWorkspace {...props} /> : <>{props.children}</>;
 }
 
-export function NotePointGenerateButton({ point, section }: { point: SermonPoint; section: SermonSectionKey }) {
+export function NotePointGenerateButton({ point, section, targetNodeId }: {
+  point: SermonPoint; section: SermonSectionKey; targetNodeId?: string;
+}) {
   const state = useContext(NotePlanContext);
   const { t } = useTranslation();
   if (!state) return null;
-  const generating = Boolean(state.generatingIds[point.id]);
-  const pending = planNodesForPoint(point).some((node) => state.conspectus.pendingNodeIds.has(node.id));
+  const requestId = targetNodeId ?? point.id;
+  const generating = Boolean(state.generatingIds[requestId]);
+  const nodes = planNodesForPoint(point).filter((node) => !targetNodeId || node.id === targetNodeId);
+  const overlapping = Boolean(state.generatingIds[point.id]) || nodes.some((node) => state.generatingIds[node.id]);
+  const pending = nodes.some((node) => state.conspectus.pendingNodeIds.has(node.id));
+  const label = targetNodeId ? 'plan.fromNote.generateSubPoint'
+    : point.subPoints?.length ? 'plan.fromNote.generatePointWithSubPoints' : 'plan.fromNote.generatePoint';
   const colors = SERMON_SECTION_COLORS[section === 'main' ? 'mainPart' : section];
   return (
     <PlanGenerationButton colors={colors} generating={generating}
-      disabled={state.blocked || generating || pending} onClick={() => void state.generate(point)}
-      label={t(generating ? 'plan.fromNote.generating' : 'plan.fromNote.generatePoint')} />
+      disabled={state.blocked || overlapping || pending} onClick={() => void state.generate(point, targetNodeId)}
+      label={t(generating ? 'plan.fromNote.generating' : label)} />
   );
 }
 
-export function NotePointActions({ point }: { point: SermonPoint }) {
+export function NotePointActions({ point, targetNodeId }: { point: SermonPoint; targetNodeId?: string }) {
   const state = useContext(NotePlanContext);
   const { t } = useTranslation();
   if (!state) return null;
-  const nodes = planNodesForPoint(point);
-  const proposal = state.proposals[point.id];
+  const requestId = targetNodeId ?? point.id;
+  const nodes = planNodesForPoint(point).filter((node) => !targetNodeId || node.id === targetNodeId);
+  const proposal = state.proposals[requestId];
   return (
     <div className="mb-4 space-y-3">
-      {state.errors[point.id] && <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">{t(`plan.fromNote.${state.errors[point.id]}`)}</p>}
+      {state.errors[requestId] && <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">{t(`plan.fromNote.${state.errors[requestId]}`)}</p>}
       {proposal && (
         <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-900 dark:bg-blue-950/20">
           <p className="font-medium">{t('plan.fromNote.proposal')}</p>
@@ -108,12 +116,12 @@ export function NotePointActions({ point }: { point: SermonPoint }) {
             </div>
           ))}
           <div className="flex flex-wrap gap-2">
-            <Button variant="primary" onClick={() => state.accept(point.id)}>{t('plan.fromNote.apply')}</Button>
-            <Button variant="secondary" onClick={() => state.discard(point.id)}>{t('common.cancel')}</Button>
+            <Button variant="primary" onClick={() => state.accept(requestId)}>{t('plan.fromNote.apply')}</Button>
+            <Button variant="secondary" onClick={() => state.discard(requestId)}>{t('common.cancel')}</Button>
           </div>
         </div>
       )}
-      {nodes.map((node) => state.missing[node.id] ? <p key={node.id} role="status" className="text-sm text-amber-700 dark:text-amber-300">{node.heading || point.text}: {state.missing[node.id]}</p> : null)}
+      {state.missing[requestId] && <p role="status" className="text-sm text-amber-700 dark:text-amber-300">{state.missing[requestId]}</p>}
     </div>
   );
 }

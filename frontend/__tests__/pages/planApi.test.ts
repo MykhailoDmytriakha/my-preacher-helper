@@ -8,6 +8,13 @@ jest.mock('@/utils/authenticatedRequest', () => ({
 }));
 
 describe("planApi", () => {
+  it('includes the selected child in the authenticated request body', async () => {
+    const payload = { contentByNodeId: { sub: '- Child' }, missingMaterial: {} };
+    jest.mocked(apiClient).mockResolvedValue({ ok: true, json: async () => payload } as Response);
+    await generateNotePlanContent({ sermonId: 's', outlinePointId: 'p', targetNodeId: 'sub', style: 'memory', expectedContext: 'context' });
+    const options = jest.mocked(apiClient).mock.calls[0][1];
+    expect(JSON.parse(options!.body as string)).toEqual({ outlinePointId: 'p', targetNodeId: 'sub', style: 'memory', expectedContext: 'context' });
+  });
   it('posts a note proposal request with authentication and validates the returned node map', async () => {
     const payload = { contentByNodeId: { p: '- Cue' }, missingMaterial: {} };
     jest.mocked(apiClient).mockResolvedValue({ ok: true, json: async () => payload } as Response);

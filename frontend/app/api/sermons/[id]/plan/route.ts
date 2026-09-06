@@ -8,7 +8,7 @@ import { studiesRepository } from '@/api/repositories/studies.repository';
 import { createNotePlanUserMessage, type NotePlanInput } from '@/config/prompts/user/notePlanTemplate';
 import { SermonContent, ThoughtInStructure } from '@/models/models';
 import { isUsageCapReachedError } from '@/services/usageLimits';
-import { NotePlanRequestSchema, notePlanContextKey } from '@/utils/notePlan';
+import { NotePlanRequestSchema, notePlanContextKey, notePlanTargetNodes } from '@/utils/notePlan';
 import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrder';
 import { buildSubPointRenderableEntries, flattenSubPointRenderableEntries, normalizeSubPointId } from '@/utils/subPoints';
 import { generateNotePlanPoint, generatePlanForSection, generatePlanPointContent, PlanStyle } from '@clients/openAI.client';
@@ -268,11 +268,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const sermon = await sermonsRepository.fetchSermonById(id);
     if (!sermon) return jsonNoStore({ error: 'Sermon not found' }, { status: 404 });
     if (sermon.userId !== uid) return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
-    const { outlinePointId, style, expectedContext } = parsed.data;
+    const { outlinePointId, targetNodeId, style, expectedContext } = parsed.data;
     const sections = ['introduction', 'main', 'conclusion'] as const;
     const section = sections.find((key) => sermon.outline?.[key]?.some((point) => point.id === outlinePointId));
     const point = section && sermon.outline?.[section]?.find((candidate) => candidate.id === outlinePointId);
     if (!point || !section) return jsonNoStore({ error: 'Point not found' }, { status: 404 });
+    if (!notePlanTargetNodes(point, targetNodeId).length) return jsonNoStore({ error: 'Target node not found' }, { status: 404 });
     if (expectedContext !== notePlanContextKey(sermon, outlinePointId)) {
       return jsonNoStore({ error: 'contextChanged' }, { status: 409 });
     }
@@ -283,7 +284,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return jsonNoStore({ error: 'sourceUnavailable' }, { status: 422 });
     }
     const input: NotePlanInput = {
-      title: sermon.title, verse: sermon.verse, section, point,
+      title: sermon.title, verse: sermon.verse, section, point, targetNodeId,
       outline: sections.flatMap((key) => (sermon.outline?.[key] ?? []).map((item) => ({
         section: key, title: item.text,
         subPoints: [...(item.subPoints ?? [])].sort((a, b) => a.position - b.position).map((sub) => sub.text),

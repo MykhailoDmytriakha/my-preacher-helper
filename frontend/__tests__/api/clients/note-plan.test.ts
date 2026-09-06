@@ -45,3 +45,27 @@ it('rejects a provider refusal', async () => {
   jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: false, data: null } as never);
   await expect(generateNotePlanPoint(input, 'memory', 'owner')).rejects.toThrow('generation failed');
 });
+
+it('requests and returns only the selected child while retaining the full study and parent context', async () => {
+  const selected = { ...input, targetNodeId: 'a' };
+  const message = JSON.parse(createNotePlanUserMessage(selected));
+  expect(message.targetNodes).toEqual([{ nodeId: 'a', title: 'Same title', reminder: '', kind: 'subPoint' }]);
+  expect(message.parentContext).toEqual({ title: input.point.text, reminder: input.point.note });
+  expect(message.sourceNotes).toEqual(input.notes);
+  jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: [
+    { nodeId: 'a', turn: null, cues: ['Only this child'], refs: [], missingMaterial: null },
+  ] } } as never);
+  expect(await generateNotePlanPoint(selected, 'memory', 'owner')).toEqual({ contentByNodeId: { a: '- Only this child' }, missingMaterial: {} });
+});
+
+it('rejects extra parent content from a single-child generation', async () => {
+  jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: ['a', 'p'].map((nodeId) => ({
+    nodeId, turn: null, cues: ['Unexpected expansion'], refs: [], missingMaterial: null,
+  })) } } as never);
+  await expect(generateNotePlanPoint({ ...input, targetNodeId: 'a' }, 'memory', 'owner')).rejects.toThrow('requested nodes');
+});
+
+it('refuses an unknown target before calling the provider', async () => {
+  await expect(generateNotePlanPoint({ ...input, targetNodeId: 'foreign' }, 'memory', 'owner')).rejects.toThrow('requested nodes');
+  expect(callWithStructuredOutput).not.toHaveBeenCalled();
+});

@@ -182,3 +182,89 @@ it('does not request a removed point or accept a missing proposal', async () => 
   act(() => { expect(view.result.current.accept('gone')).toBe(false); });
   expect(view.restoreCells).not.toHaveBeenCalled();
 });
+
+it('regenerates only the selected child and preserves concurrent writing in its parent', async () => {
+  const view = setup({ p: 'Parent draft', sub: 'Child draft' });
+  jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { sub: '- New child' }, missingMaterial: {} });
+  await act(async () => { await view.result.current.generate(point, 'sub'); });
+  expect(generateNotePlanContent).toHaveBeenCalledWith(expect.objectContaining({ outlinePointId: 'p', targetNodeId: 'sub' }), expect.any(AbortSignal));
+  expect(view.cells).toEqual({ p: 'Parent draft', sub: 'Child draft' });
+  view.cells.p = 'Parent edited during review';
+  act(() => { expect(view.result.current.accept('sub')).toBe(true); });
+  expect(view.restoreCells).toHaveBeenCalledWith({ sub: '- New child' });
+  expect(view.cells).toEqual({ p: 'Parent edited during review', sub: '- New child' });
+});
+
+it('does not overwrite a child edited after its targeted proposal arrived', async () => {
+  const view = setup({ sub: 'Original' });
+  jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { sub: '- New' }, missingMaterial: {} });
+  await act(async () => { await view.result.current.generate(point, 'sub'); });
+  view.cells.sub = 'Manual correction';
+  act(() => { expect(view.result.current.accept('sub')).toBe(false); });
+  expect(view.result.current.errors.sub).toBe('contextChanged');
+  expect(view.restoreCells).not.toHaveBeenCalled();
+});
+
+it('runs sibling targets concurrently, blocks overlapping whole-point requests and accepts out of order', async () => {
+  const view = setup({ p: 'Parent', sub: 'First', sibling: 'Second' });
+  const parent = { ...point, subPoints: [...point.subPoints, { id: 'sibling', text: 'Another detail', position: 1 }] };
+  view.options.sermon = { ...sermon, outline: { introduction: [], main: [parent], conclusion: [] } };
+  view.rerender();
+  const resolve: Record<string, (result: NotePlanResult) => void> = {};
+  jest.mocked(generateNotePlanContent).mockImplementation(({ targetNodeId }) => new Promise((done) => { resolve[targetNodeId!] = done; }));
+  let first!: Promise<void>; let second!: Promise<void>;
+  act(() => {
+    first = view.result.current.generate(parent, 'sub');
+    second = view.result.current.generate(parent, 'sibling');
+    void view.result.current.generate(parent);
+    void view.result.current.generate(parent, 'sub');
+  });
+  expect(generateNotePlanContent).toHaveBeenCalledTimes(2);
+  expect(view.result.current.generatingIds).toEqual({ sub: true, sibling: true });
+  await act(async () => { resolve.sibling({ contentByNodeId: { sibling: '- Second' }, missingMaterial: {} }); await second; });
+  act(() => { view.result.current.accept('sibling'); });
+  await act(async () => { resolve.sub({ contentByNodeId: { sub: '- First' }, missingMaterial: {} }); await first; });
+  act(() => { view.result.current.accept('sub'); });
+  expect(view.cells).toEqual({ p: 'Parent', sub: '- First', sibling: '- Second' });
+});
+
+it('blocks a child request while its whole point is generating', () => {
+  const view = setup();
+  jest.mocked(generateNotePlanContent).mockReturnValue(new Promise(() => undefined));
+  act(() => { void view.result.current.generate(point); void view.result.current.generate(point, 'sub'); });
+  expect(generateNotePlanContent).toHaveBeenCalledTimes(1);
+});
+
+it('supersedes an overlapping whole-point proposal when requesting one child', async () => {
+  const view = setup();
+  await act(async () => { await view.result.current.generate(point); });
+  expect(view.result.current.proposals.p).toBeDefined();
+  jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { sub: '- Child only' }, missingMaterial: {} });
+  await act(async () => { await view.result.current.generate(point, 'sub'); });
+  expect(view.result.current.proposals.p).toBeUndefined();
+  expect(view.result.current.proposals.sub).toBeDefined();
+  jest.mocked(generateNotePlanContent).mockResolvedValue(generated);
+  await act(async () => { await view.result.current.generate(point); });
+  expect(view.result.current.proposals.sub).toBeUndefined();
+  expect(view.result.current.proposals.p).toBeDefined();
+});
+
+it('rejects a widened child response and foreign missing-material keys', async () => {
+  const view = setup();
+  await act(async () => { await view.result.current.generate(point, 'sub'); });
+  expect(view.result.current.errors.sub).toBe('generationFailed');
+  jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { sub: '- Valid' }, missingMaterial: { p: 'Outside scope' } });
+  await act(async () => { await view.result.current.generate(point, 'sub'); });
+  expect(view.result.current.proposals.sub).toBeUndefined();
+  expect(view.restoreCells).not.toHaveBeenCalled();
+});
+
+it('skips removed subpoints and ignores queued sibling writes for a targeted request', async () => {
+  const view = setup();
+  await act(async () => { await view.result.current.generate(point, 'gone'); });
+  expect(generateNotePlanContent).not.toHaveBeenCalled();
+  view.options.conspectus.pendingNodeIds.add('p');
+  jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { sub: '- Only child' }, missingMaterial: {} });
+  await act(async () => { await view.result.current.generate(point, 'sub'); });
+  expect(generateNotePlanContent).toHaveBeenCalledTimes(1);
+});

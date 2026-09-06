@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import { NotePlanWorkspace, NotePointActions, NotePointGenerateButton, NoteNodeReminder } from '@/(pages)/(private)/sermons/[id]/plan/manual/NotePlanWorkspace';
 import { generateNotePlanContent } from '@/(pages)/(private)/sermons/[id]/plan/planApi';
@@ -37,7 +37,7 @@ it('shows source, placed reminder, and the review before accepting a replacement
   expect(screen.getByRole('link', { name: 'Study source' })).toHaveAttribute('target', '_blank');
   expect(screen.getByText('List the people')).toBeInTheDocument();
   expect(screen.getByText('plan.fromNote.noReminder')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.generatePoint' }));
+  fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.generatePointWithSubPoints' }));
   await screen.findByText('- Extracted people');
   expect(screen.getByText('Original words')).toBeInTheDocument();
   expect(screen.getByText('No detail in source')).toBeInTheDocument();
@@ -49,22 +49,22 @@ it('shows source, placed reminder, and the review before accepting a replacement
 
 it('keeps the existing editor free of source controls when the mode is manual', () => {
   view(false);
-  expect(screen.queryByRole('button', { name: 'plan.fromNote.generatePoint' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'plan.fromNote.generatePointWithSubPoints' })).not.toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Study source' })).not.toBeInTheDocument();
 });
 
 it.each(['offline', 'usage', 'missing', 'loading'])('explains %s and disables generation', (reason) => {
   mockOnline = reason !== 'offline'; mockBlocked = reason === 'usage'; mockLoading = reason === 'loading'; mockMissing = reason === 'missing' ? ['gone'] : [];
   view();
-  expect(screen.getByRole('button', { name: 'plan.fromNote.generatePoint' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'plan.fromNote.generatePointWithSubPoints' })).toBeDisabled();
 });
 
 it('shows request errors and allows dismissing a proposed replacement', async () => {
   jest.mocked(generateNotePlanContent).mockRejectedValueOnce(new Error('sourceTooLarge'));
   view();
-  fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.generatePoint' }));
+  fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.generatePointWithSubPoints' }));
   await screen.findByText('plan.fromNote.sourceTooLarge');
-  fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.generatePoint' }));
+  fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.generatePointWithSubPoints' }));
   await screen.findByText('- Extracted people');
   fireEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
   await waitFor(() => expect(screen.queryByText('- Extracted people')).not.toBeInTheDocument());
@@ -84,7 +84,7 @@ it('keeps other point buttons available while one or both requests are running',
     <h3 data-testid="first-heading"><NotePointGenerateButton point={point} section="introduction" /></h3>
     <h3 data-testid="next-heading"><NotePointGenerateButton point={next} section="main" /></h3>
   </NotePlanWorkspace>);
-  const [first, second] = screen.getAllByRole('button', { name: 'plan.fromNote.generatePoint' });
+  const [first, second] = screen.getAllByRole('button', { name: /plan.fromNote.generatePoint/ });
   expect(first).toHaveStyle({ backgroundColor: '#f59e0b' });
   expect(second).toHaveStyle({ backgroundColor: '#3b82f6' });
   expect(first).toHaveClass('section-button', 'h-8');
@@ -155,4 +155,34 @@ describe('scratch reminder disclosure', () => {
     expect(screen.getByText('plan.fromNote.noReminder')).toBeVisible();
     expect(screen.queryByRole('button', { name: 'scratch.card.label' })).not.toBeInTheDocument();
   });
+});
+
+it('reviews a targeted proposal inside its child and applies only that child', async () => {
+  jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { sub: '- Selected child' }, missingMaterial: {} });
+  render(<NotePlanWorkspace enabled sermon={sermon} conspectus={conspectus}>
+    <div data-testid="parent-actions"><NotePointGenerateButton point={point} section="main" /><NotePointActions point={point} /></div>
+    <div data-testid="child-actions"><NotePointGenerateButton point={point} section="main" targetNodeId="sub" /><NotePointActions point={point} targetNodeId="sub" /></div>
+  </NotePlanWorkspace>);
+  fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.generateSubPoint' }));
+  expect(await within(screen.getByTestId('child-actions')).findByText('- Selected child')).toBeVisible();
+  expect(within(screen.getByTestId('parent-actions')).queryByText('plan.fromNote.proposal')).not.toBeInTheDocument();
+  expect(generateNotePlanContent).toHaveBeenCalledWith(expect.objectContaining({ targetNodeId: 'sub' }), expect.any(AbortSignal));
+  fireEvent.click(within(screen.getByTestId('child-actions')).getByRole('button', { name: 'plan.fromNote.apply' }));
+  expect(conspectus.restoreCells).toHaveBeenCalledWith({ sub: '- Selected child' });
+});
+
+it('disables the parent while allowing another sibling button during child generation', () => {
+  const parent = { ...point, subPoints: [...point.subPoints, { id: 'sibling', text: 'Other child', position: 1 }] };
+  jest.mocked(generateNotePlanContent).mockReturnValue(new Promise(() => undefined));
+  render(<NotePlanWorkspace enabled sermon={{ ...sermon, outline: { introduction: [], main: [parent], conclusion: [] } }} conspectus={conspectus}>
+    <NotePointGenerateButton point={parent} section="main" />
+    <NotePointGenerateButton point={parent} section="main" targetNodeId="sub" />
+    <NotePointGenerateButton point={parent} section="main" targetNodeId="sibling" />
+  </NotePlanWorkspace>);
+  const [first, second] = screen.getAllByRole('button', { name: 'plan.fromNote.generateSubPoint' });
+  fireEvent.click(first);
+  expect(first).toBeDisabled();
+  expect(first).toHaveAttribute('aria-busy', 'true');
+  expect(second).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'plan.fromNote.generatePointWithSubPoints' })).toBeDisabled();
 });

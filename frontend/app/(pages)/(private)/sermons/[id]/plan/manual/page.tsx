@@ -207,6 +207,9 @@ const ManualPointCard = ({ point, index, section, conspectus, noteMode }: Manual
                   ariaLabel={t("plan.renameSubPoint")}
                   onRename={(next) => conspectus.renameSubPoint(point.id, node.id, next)}
                 />
+                {noteMode && <span className="ml-auto inline-flex shrink-0 self-center">
+                  <NotePointGenerateButton point={point} section={section} targetNodeId={node.id} />
+                </span>}
                 <DeleteNodeButton
                   compact
                   title={t("plan.deleteSubPoint")}
@@ -216,6 +219,7 @@ const ManualPointCard = ({ point, index, section, conspectus, noteMode }: Manual
                 />
               </h4>
             )}
+            {noteMode && node.kind === 'subPoint' && <NotePointActions point={point} targetNodeId={node.id} />}
             {noteMode && <NoteNodeReminder
               text={node.kind === 'point' ? point.note : point.subPoints?.find((sub) => sub.id === node.id)?.note}
               hasPlan={Boolean(conspectus.contentByNodeId[node.id]?.trim())}

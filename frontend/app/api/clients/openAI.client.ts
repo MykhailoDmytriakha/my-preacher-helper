@@ -20,6 +20,7 @@ import { NotePlanResponseSchema } from '@/config/schemas/zod/notePlan.zod';
 import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, DirectionSuggestion, SermonContent, BrainstormSuggestion, SectionHints, SubPoint, SermonOutline } from "@/models/models";
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { validateAudioBlob, createAudioFile, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
+import { notePlanTargetNodes, type NotePlanResult } from '@/utils/notePlan';
 import { normalizeSubPointId } from "@/utils/subPoints";
 
 import { extractSermonContent, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
@@ -37,7 +38,6 @@ import { callWithStructuredOutput } from "./structuredOutput";
 import { generateThoughtStructured, type GenerateThoughtResult } from "./thought.structured";
 
 import type { PlanContext, PlanStyle } from "./planTypes";
-import type { NotePlanResult } from '@/utils/notePlan';
 
 export type { PlanContext, PlanStyle } from "./planTypes";
 
@@ -1200,20 +1200,21 @@ export async function generatePlanPointContent(
 
 /** Generate editable cue cards from the full study and the preacher's placed reminders. */
 export async function generateNotePlanPoint(input: NotePlanInput, style: PlanStyle, userId: string): Promise<NotePlanResult> {
+  const allowed = new Set(notePlanTargetNodes(input.point, input.targetNodeId).map((node) => node.nodeId));
+  if (!allowed.size) throw new Error('No requested nodes');
   const userMessage = createNotePlanUserMessage(input);
   const systemPrompt = `${notePlanSystemPrompt}\n${getStyleInstructions(style)}`;
   const promptBlueprint = buildSimplePromptBlueprint({
     promptName: 'sermon.conspect.note_point',
-    promptVersion: 'v2',
+    promptVersion: 'v3',
     systemPrompt,
     userMessage,
-    context: { outlinePointId: input.point.id, sourceCount: input.notes.length, style },
+    context: { outlinePointId: input.point.id, targetNodeId: input.targetNodeId, sourceCount: input.notes.length, style },
   });
   const result = await callWithStructuredOutput(systemPrompt, userMessage, NotePlanResponseSchema, {
     formatName: 'note_plan_point', userId, promptBlueprint,
   });
   if (!result.success || !result.data) throw new Error('Note plan generation failed');
-  const allowed = new Set([input.point.id, ...(input.point.subPoints ?? []).map((sub) => sub.id)]);
   const seen = new Set(result.data.nodes.map((node) => node.nodeId));
   if (seen.size !== allowed.size || result.data.nodes.length !== allowed.size || [...seen].some((id) => !allowed.has(id))) {
     throw new Error('Generated plan does not match the requested nodes');
