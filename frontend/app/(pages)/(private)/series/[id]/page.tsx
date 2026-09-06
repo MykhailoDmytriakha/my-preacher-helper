@@ -357,6 +357,10 @@ export default function SeriesDetailPage() {
           dirty={false}
           deleted={seriesFreshness.remotelyDeleted}
           unknown={seriesFreshness.state === 'unknown'}
+          diagnostics={seriesFreshness.diagnostics}
+          checking={seriesFreshness.checking}
+          canCheck={seriesFreshness.canCheck}
+          onCheckAgain={seriesFreshness.checkAgain}
           onRefresh={async () => {
             // Only declare it refreshed once the refetch actually succeeded.
             // Dismissing first left the screen stale with no warning when the

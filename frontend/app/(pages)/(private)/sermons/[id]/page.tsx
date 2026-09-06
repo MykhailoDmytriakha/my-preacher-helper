@@ -1908,6 +1908,10 @@ useEffect(() => {
           dirty={false}
           deleted={sermonFreshness.remotelyDeleted}
           unknown={sermonFreshness.state === 'unknown'}
+          diagnostics={sermonFreshness.diagnostics}
+          checking={sermonFreshness.checking}
+          canCheck={sermonFreshness.canCheck}
+          onCheckAgain={sermonFreshness.checkAgain}
           onRefresh={handleRefreshSermon}
           refreshing={isRefreshingSermon}
           onDismiss={() => setSermonFreshnessDismissed(true)}

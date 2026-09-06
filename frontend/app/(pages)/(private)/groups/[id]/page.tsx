@@ -667,6 +667,10 @@ export default function GroupDetailPage() {
           dirty={groupHasUnsavedChanges}
           deleted={groupFreshness.remotelyDeleted}
           unknown={groupFreshness.state === 'unknown'}
+          diagnostics={groupFreshness.diagnostics}
+          checking={groupFreshness.checking}
+          canCheck={groupFreshness.canCheck}
+          onCheckAgain={groupFreshness.checkAgain}
           onRefresh={groupHasUnsavedChanges ? undefined : handleRefreshGroup}
           refreshing={isRefreshingGroup}
           onDismiss={() => setGroupFreshnessDismissed(true)}

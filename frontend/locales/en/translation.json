@@ -1,5 +1,32 @@
 {
   "freshness": {
+    "checkOnlyHint": "Checking does not replace the text on this screen.",
+    "previouslyDifferent": "The last check found differences from the server version.",
+    "since": "Since",
+    "lastServerResponse": "Last successful check:",
+    "noServerResponse": "No successful check since opening.",
+    "whatHappened": "What happened",
+    "checkAgainAction": "Check again",
+    "checkingAction": "Checking…",
+    "reasons": {
+      "pendingChanges": "The server has not acknowledged the current changes yet",
+      "initialCheck": "The first check has not finished yet",
+      "cached": "The version on this device has not been confirmed as current",
+      "offline": "The device reports no internet connection",
+      "listenerStopped": "Automatic checking for updates stopped",
+      "accessDenied": "The server did not allow this check",
+      "accountRequired": "Sign-in could not be confirmed for this check",
+      "checkFailed": "The repeat check failed",
+      "checkTimeout": "The repeat check did not finish in time",
+      "checking": "Checking again"
+    },
+    "sources": {
+      "opening": "on opening",
+      "listener": "automatic check",
+      "device": "device connection status",
+      "return": "page became active",
+      "manual": "Check again button"
+    },
     "entitySettings": "settings page",
     "copyTextAction": "Copy my text",
     "copiedToast": "Copied",
@@ -18,7 +45,7 @@
     "refreshedToast": "Data updated",
     "refreshFailedToast": "Could not update — please try again",
     "reviewAction": "Review changes",
-    "dismissAction": "Keep mine",
+    "dismissAction": "Hide message",
     "entityNote": "note",
     "entitySermon": "sermon",
     "entitySeries": "series",

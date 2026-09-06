@@ -2,6 +2,8 @@
 
 import { useTranslation } from 'react-i18next';
 
+import type { FreshnessDiagnostics, FreshnessReason } from '@/hooks/useDocumentFreshness';
+
 /**
  * "This document changed on another device."
  *
@@ -31,6 +33,11 @@ export interface DataFreshnessBannerProps {
    * editing what may already be someone else's yesterday. Same pill, honest words.
    */
   unknown?: boolean;
+  diagnostics?: FreshnessDiagnostics;
+  checking?: boolean;
+  canCheck?: boolean;
+  /** Checks server state without loading it into the editor. */
+  onCheckAgain?: () => void | Promise<void>;
   /**
    * Take the newer server version. OMIT IT when no safe refresh exists here — the
    * button then disappears and the banner is a pure notification.
@@ -57,40 +64,27 @@ export function DataFreshnessBanner({
   entityKey = 'entityRecord',
   deleted = false,
   unknown = false,
+  diagnostics,
+  checking = false,
+  canCheck = true,
+  onCheckAgain,
   onRefresh,
   refreshing = false,
   onDismiss,
   className = '',
 }: DataFreshnessBannerProps) {
   const { t } = useTranslation();
+  const incident = diagnostics?.incident;
+
 
   const entity = t(`freshness.${entityKey}`);
-  /**
-   * NEVER ASK A QUESTION THE BANNER CANNOT ANSWER.
-   *
-   * The default wording ends in "load the newer version?" — but the button that
-   * does exactly that only appears when `onRefresh` was passed, and callers
-   * deliberately omit it wherever refreshing would destroy unsaved work (see the
-   * prop docs above). The result on screen was a question with no way to say yes:
-   * the owner hit it on production and read it as a broken interface.
-   *
-   * Without an action the banner states the situation and names what the person can
-   * do themselves, instead of promising a button that is not there.
-   */
-  const description = deleted
-    ? t('freshness.deletedDescription')
-    : unknown
-      ? t('freshness.unknownDescription', { entity })
-      : dirty
-        ? t('freshness.dirtyDescription', { entity })
-        : onRefresh
-          ? t('freshness.description', { entity })
-          : t('freshness.descriptionNoAction', { entity });
+  const copy = messageKeys({ deleted, unknown, dirty, hasRefresh: Boolean(onRefresh), reason: incident?.origin.reason });
+  const description = t(copy.description, copy.namesEntity ? { entity } : undefined);
 
   return (
     <div
       role="status"
-      className={`flex flex-col gap-3 rounded-xl border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between ${
+      className={`flex flex-col gap-3 rounded-xl border px-4 py-3 text-sm xl:flex-row xl:items-center xl:justify-between ${
         unknown
           ? 'border-amber-300 bg-amber-50 dark:border-amber-500/40 dark:bg-amber-500/10'
           : 'border-sky-300 bg-sky-50 dark:border-sky-500/40 dark:bg-sky-500/10'
@@ -98,15 +92,23 @@ export function DataFreshnessBanner({
     >
       <div className="min-w-0">
         <p className={`font-medium ${unknown ? 'text-amber-900 dark:text-amber-200' : 'text-sky-900 dark:text-sky-200'}`}>
-          {deleted
-            ? t('freshness.deletedTitle')
-            : unknown
-              ? t('freshness.unknownTitle')
-              : t('freshness.title')}
+          {t(copy.title)}
         </p>
         <p className={`mt-0.5 ${unknown ? 'text-amber-800/80 dark:text-amber-200/70' : 'text-sky-800/80 dark:text-sky-200/70'}`}>{description}</p>
+        {diagnostics && <FreshnessHistory diagnostics={diagnostics} unknown={unknown} deleted={deleted} />}
       </div>
-      <div className="flex shrink-0 gap-2">
+      <div className="flex shrink-0 flex-wrap gap-2 sm:max-w-xs">
+        {unknown && canCheck && onCheckAgain && (
+          <button
+            type="button"
+            onClick={() => { void onCheckAgain(); }}
+            disabled={checking}
+            aria-busy={checking}
+            className="rounded-lg bg-slate-800 px-3 py-1.5 font-medium text-white transition-colors hover:bg-slate-700 disabled:opacity-70 dark:bg-slate-100 dark:text-slate-900"
+          >
+            {t(checking ? 'freshness.checkingAction' : 'freshness.checkAgainAction')}
+          </button>
+        )}
         {!deleted && !unknown && onRefresh && (
           <button
             type="button"
@@ -138,4 +140,67 @@ export function DataFreshnessBanner({
       </div>
     </div>
   );
+}
+
+
+function FreshnessHistory({ diagnostics, unknown, deleted }: {
+  diagnostics: FreshnessDiagnostics; unknown: boolean; deleted: boolean;
+}) {
+  const { t, i18n } = useTranslation();
+  const incident = diagnostics.incident;
+  const latest = incident?.events.at(-1);
+  const formatTime = (at: number) => new Intl.DateTimeFormat(i18n?.resolvedLanguage || 'en', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).format(new Date(at));
+  const time = (at: number) => <time dateTime={new Date(at).toISOString()}>{formatTime(at)}</time>;
+  if (!incident) return null;
+  return (
+    <div className="mt-2 space-y-1 text-xs text-slate-600 dark:text-slate-300">
+      {unknown && diagnostics?.lastServerResult === 'different' && (
+        <p className="font-medium">{t('freshness.previouslyDifferent')}</p>
+      )}
+      {deleted && <p>{t(`freshness.reasons.${incident.origin.reason}`)}</p>}
+      <p className="flex flex-wrap gap-x-3 gap-y-1">
+        <span>{t(`freshness.sources.${incident.origin.source}`)}</span>
+        <span>{t('freshness.since')} {time(incident.origin.at)}</span>
+        <span>{diagnostics?.lastServerResponseAt != null
+          ? <>{t('freshness.lastServerResponse')} {time(diagnostics.lastServerResponseAt)}</>
+          : t('freshness.noServerResponse')}</span>
+      </p>
+      {latest && latest !== incident.origin && (
+        <p>{time(latest.at)} · {t(`freshness.reasons.${latest.reason}`)} ({t(`freshness.sources.${latest.source}`)})</p>
+      )}
+      <details className="pt-1">
+        <summary className="cursor-pointer font-medium text-slate-700 dark:text-slate-200">
+          {t('freshness.whatHappened')}
+        </summary>
+        <ol className="mt-2 space-y-1 border-l border-current/20 pl-3">
+          {[incident.origin, ...incident.events.filter((event) => event !== incident.origin)].map((event, index) => (
+            <li key={index}>
+              {time(event.at)} · {t(`freshness.reasons.${event.reason}`)}
+              <span className="ml-1">({t(`freshness.sources.${event.source}`)})</span>
+            </li>
+          ))}
+        </ol>
+      </details>
+    </div>
+  );
+}
+
+
+function messageKeys({ deleted, unknown, dirty, hasRefresh, reason }: {
+  deleted: boolean; unknown: boolean; dirty: boolean; hasRefresh: boolean; reason?: FreshnessReason;
+}) {
+  if (deleted) return { title: 'freshness.deletedTitle', description: 'freshness.deletedDescription', namesEntity: false };
+  if (unknown) return {
+    title: reason ? `freshness.reasons.${reason}` : 'freshness.unknownTitle',
+    description: reason ? 'freshness.checkOnlyHint' : 'freshness.unknownDescription',
+    namesEntity: !reason,
+  };
+  // Offer replacement only where the caller supplies a safe action.
+  return {
+    title: 'freshness.title',
+    description: dirty ? 'freshness.dirtyDescription' : hasRefresh ? 'freshness.description' : 'freshness.descriptionNoAction',
+    namesEntity: true,
+  };
 }

@@ -1212,6 +1212,10 @@ export default function StudyNoteEditorPage() {
                         dirty={editorIsDirty}
                         deleted={freshness.remotelyDeleted}
           unknown={freshness.state === 'unknown'}
+          diagnostics={freshness.diagnostics}
+          checking={freshness.checking}
+          canCheck={freshness.canCheck}
+          onCheckAgain={freshness.checkAgain}
                         onRefresh={editorIsDirty ? undefined : applyRemote}
                         onDismiss={() => setFreshnessDismissed(true)}
                         className="mb-2"

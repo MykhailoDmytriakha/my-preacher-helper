@@ -197,8 +197,10 @@ describe('CreateThoughtModal', () => {
 
         fireEvent.click(screen.getByRole('button', { name: /buttons\.save/i }));
 
-        await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-        expect(screen.getByTestId('mock-rich-editor')).toHaveValue('');
+        await waitFor(() => {
+            expect(onClose).toHaveBeenCalledTimes(1);
+            expect(screen.getByTestId('mock-rich-editor')).toHaveValue('');
+        });
         // Queue ownership is not server persistence, so this outcome must stay silent.
         expect(toast.success).not.toHaveBeenCalledWith('manualThought.addedSuccess');
     });
@@ -228,8 +230,10 @@ describe('CreateThoughtModal', () => {
 
         rejectPersistence(new Error('Permission denied after local apply'));
 
-        await waitFor(() => expect(onSubmissionRejected).toHaveBeenCalledTimes(1));
-        expect(screen.getByTestId('mock-rich-editor')).toHaveValue('  Rejected after local acceptance  ');
+        await waitFor(() => {
+            expect(onSubmissionRejected).toHaveBeenCalledTimes(1);
+            expect(screen.getByTestId('mock-rich-editor')).toHaveValue('  Rejected after local acceptance  ');
+        });
         // Deliberately silent: by the time a LATE refusal arrives this modal has closed,
         // so its message would be invisible while the page reports the same refusal with
         // the dictated text. Restoring the fields stays here; announcing does not.

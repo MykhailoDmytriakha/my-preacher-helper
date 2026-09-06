@@ -481,6 +481,10 @@ export default function ManualConspectusPage() {
             dirty={hasUnsavedCells}
             deleted={planFreshness.remotelyDeleted}
             unknown={planFreshness.state === "unknown"}
+            diagnostics={planFreshness.diagnostics}
+            checking={planFreshness.checking}
+            canCheck={planFreshness.canCheck}
+            onCheckAgain={planFreshness.checkAgain}
             onRefresh={handleRefresh}
             refreshing={isRefreshing}
             onDismiss={() => setFreshnessDismissed(true)}

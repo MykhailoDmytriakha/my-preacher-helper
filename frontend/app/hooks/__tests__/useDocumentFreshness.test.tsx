@@ -565,3 +565,152 @@ describe('a new document starts from knowing nothing', () => {
     });
   });
 });
+
+describe('diagnostic incidents and read-only retry', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-09-05T17:00:00Z'));
+    getDocFromServer.mockReset();
+    unsubscribe.mockClear();
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+  });
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('distinguishes initial silence from later cache-only data without an idle alarm', () => {
+    const { result } = render({ title: 'same' });
+    act(() => emit!(server({ title: 'same' }, { fromCache: true })));
+    expect(result.current.diagnostics.incident).toBeNull();
+    act(() => jest.advanceTimersByTime(15_000));
+    expect(result.current.diagnostics.incident?.origin).toMatchObject({ reason: 'initialCheck', source: 'opening' });
+    expect(result.current.diagnostics.lastServerResponseAt).toBeNull();
+    act(() => emit!(server({ title: 'same' })));
+    const at = Date.now();
+    act(() => jest.advanceTimersByTime(180_000));
+    expect(result.current.state).toBe('fresh');
+    act(() => emit!(server({ title: 'same' }, { fromCache: true })));
+    act(() => emit!(server({ title: 'same' }, { fromCache: true })));
+    expect(result.current.diagnostics.incident?.origin).toEqual({ reason: 'cached', source: 'listener', at: Date.now() });
+    expect(result.current.diagnostics.incident?.events).toHaveLength(1);
+    expect(result.current.diagnostics.lastServerResponseAt).toBe(at);
+  });
+
+  it.each([['permission-denied', 'accessDenied'], ['firestore/unauthenticated', 'accountRequired'],
+    ['unavailable', 'listenerStopped'], ['private text!', 'listenerStopped']])(
+    'classifies %s without retaining private text', (code, reason) => {
+      const { result } = render({ title: 'private text' });
+      act(() => fail!({ code, message: 'private error content' }));
+      expect(result.current.diagnostics.incident?.origin.reason).toBe(reason);
+      expect(JSON.stringify(result.current.diagnostics)).not.toContain('private');
+      act(() => jest.advanceTimersByTime(20_000));
+      expect(result.current.diagnostics.incident?.events).toHaveLength(1);
+    });
+
+  it('preserves the first trigger through retries and bounded history', async () => {
+    const { result } = render({ title: 'same' });
+    act(() => emit!(server({ title: 'same' })));
+    act(() => window.dispatchEvent(new Event('offline')));
+    const origin = result.current.diagnostics.incident!.origin;
+    getDocFromServer.mockRejectedValue({ code: 'unavailable' });
+    for (let i = 0; i < 5; i += 1) await act(async () => { await result.current.checkAgain(); });
+    expect(result.current.diagnostics.incident?.origin).toBe(origin);
+    expect(result.current.diagnostics.incident?.events).toHaveLength(6);
+    expect(result.current.diagnostics.incident?.events.at(-1)).toMatchObject({ reason: 'checkFailed', source: 'manual' });
+    expect(result.current.checking).toBe(false);
+  });
+
+  it('coalesces return and manual checks without inventing a user action', async () => {
+    const { result } = render({ title: 'same' });
+    act(() => emit!(server({ title: 'same' })));
+    act(() => jest.advanceTimersByTime(180_000));
+    let reject!: (error: unknown) => void;
+    getDocFromServer.mockReturnValue(new Promise((_, no) => { reject = no; }));
+    act(() => { window.dispatchEvent(new Event('focus')); document.dispatchEvent(new Event('visibilitychange')); void result.current.checkAgain(); });
+    expect(getDocFromServer).toHaveBeenCalledTimes(1);
+    expect(result.current.checking).toBe(true);
+    await act(async () => { reject({ code: 'unavailable' }); });
+    expect(result.current.diagnostics.incident?.origin).toMatchObject({ reason: 'checkFailed', source: 'return' });
+  });
+
+  it('rejects pending local overlays as server proof', async () => {
+    const { result } = render({ title: 'known' });
+    act(() => emit!(server({ title: 'known' })));
+    const proof = result.current.diagnostics.lastServerResponseAt;
+    act(() => window.dispatchEvent(new Event('offline')));
+    act(() => jest.advanceTimersByTime(1_000));
+    getDocFromServer.mockResolvedValue(server({ title: 'pending edit' }, { hasPendingWrites: true }));
+    await act(async () => { await result.current.checkAgain(); });
+    expect(result.current.state).toBe('unknown');
+    expect(result.current.remote).toBeNull();
+    expect(result.current.diagnostics.lastServerResponseAt).toBe(proof);
+    expect(result.current.diagnostics.incident?.events.at(-1)?.reason).toBe('pendingChanges');
+  });
+
+  it('times out a silent check and ignores its late answer', async () => {
+    const { result } = render({ title: 'same' });
+    act(() => emit!(server({ title: 'same' })));
+    let resolve!: (value: Snapshot) => void;
+    getDocFromServer.mockReturnValue(new Promise((yes) => { resolve = yes; }));
+    act(() => { void result.current.checkAgain(); });
+    act(() => jest.advanceTimersByTime(15_000));
+    expect(result.current.checking).toBe(false);
+    expect(result.current.diagnostics.incident?.origin.reason).toBe('checkTimeout');
+    await act(async () => { resolve(server({ title: 'too late' })); });
+    expect(result.current.state).toBe('unknown');
+    expect(result.current.remote).toBeNull();
+  });
+
+  it('keeps a newer server answer when an older read fails', async () => {
+    const { result } = render({ title: 'same' });
+    let reject!: (error: Error) => void;
+    getDocFromServer.mockReturnValue(new Promise((_, no) => { reject = no; }));
+    act(() => { void result.current.checkAgain(); });
+    act(() => emit!(server({ title: 'same' })));
+    await act(async () => { reject(new Error('late failure')); });
+    expect(result.current.state).toBe('fresh');
+    expect(result.current.checking).toBe(false);
+    expect(result.current.diagnostics.incident).toBeNull();
+  });
+
+  it('restarts a terminal listener and recovers through a read', async () => {
+    const { result } = render({ title: 'same' });
+    act(() => fail!({ code: 'unavailable' }));
+    const old = emit;
+    getDocFromServer.mockResolvedValue(server({ title: 'same' }));
+    await act(async () => { await result.current.checkAgain(); });
+    expect(emit).not.toBe(old);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(result.current.diagnostics.incident).toBeNull();
+    expect(result.current.diagnostics.lastServerResult).toBe('matching');
+  });
+
+  it('retains previously detected differences after a failure', () => {
+    const { result } = render({ title: 'old' });
+    act(() => emit!(server({ title: 'new' })));
+    act(() => fail!({ code: 'unavailable' }));
+    expect(result.current.state).toBe('unknown');
+    expect(result.current.diagnostics.lastServerResult).toBe('different');
+  });
+
+  it('isolates old responses and history after navigation', async () => {
+    const { result, rerender } = renderHook(({ docId }) => useDocumentFreshness({
+      collection: 'sermons', docId, uid: 'u', enabled: true, known: { title: 'same' }, select: (data) => ({ title: data.title }),
+    }), { initialProps: { docId: 'a' } });
+    let resolve!: (value: Snapshot) => void;
+    getDocFromServer.mockReturnValue(new Promise((yes) => { resolve = yes; }));
+    act(() => fail!({ code: 'permission-denied' }));
+    act(() => { void result.current.checkAgain(); });
+    const old = emit;
+    rerender({ docId: 'b' });
+    await act(async () => { old!(server({ title: 'wrong document' })); resolve(server({ title: 'wrong document' })); });
+    expect(result.current.diagnostics).toEqual({ lastServerResponseAt: null, lastServerResult: null, incident: null });
+    expect(result.current.remote).toBeNull();
+    expect(result.current.checking).toBe(false);
+  });
+
+  it('does not check without an enabled document and owner', async () => {
+    const { result } = render({ title: 'same' }, false);
+    await act(async () => { await result.current.checkAgain(); });
+    expect(result.current.canCheck).toBe(false);
+    expect(getDocFromServer).not.toHaveBeenCalled();
+  });
+});

@@ -28,6 +28,29 @@ import { getClientDb } from '@/config/firebaseClientDb';
  */
 export type FreshnessState = 'fresh' | 'stale' | 'unknown';
 
+export type FreshnessReason =
+  | 'initialCheck' | 'cached' | 'offline' | 'listenerStopped'
+  | 'accessDenied' | 'accountRequired' | 'checkFailed' | 'checkTimeout' | 'checking' | 'pendingChanges';
+
+export interface FreshnessEvent {
+  reason: FreshnessReason;
+  at: number;
+  source: 'opening' | 'listener' | 'device' | 'return' | 'manual';
+  /** Only a structured error code, never document content or raw error messages. */
+  errorCode?: string;
+}
+
+export interface FreshnessDiagnostics {
+  lastServerResponseAt: number | null;
+  lastServerResult: 'matching' | 'different' | 'deleted' | 'uncompared' | null;
+  incident: { origin: FreshnessEvent; events: FreshnessEvent[] } | null;
+}
+
+const emptyDiagnostics = (): FreshnessDiagnostics => ({
+  lastServerResponseAt: null, lastServerResult: null, incident: null,
+});
+
+
 /**
  * How old a server proof may be before a RETURN to the tab re-checks it.
  *
@@ -74,6 +97,11 @@ export interface UseDocumentFreshnessResult<T> {
   remotelyDeleted: boolean;
   /** Caller confirmed it now holds this value — stop reporting it as newer. */
   markSynced: (value: T) => void;
+  diagnostics: FreshnessDiagnostics;
+  checking: boolean;
+  canCheck: boolean;
+  /** Read-only verification: never replaces the editor or writes a document. */
+  checkAgain: () => Promise<void>;
 }
 
 export function useDocumentFreshness<T>({
@@ -113,6 +141,10 @@ export function useDocumentFreshness<T>({
   const [silenceIsNews, setSilenceIsNews] = useState(false);
   const [remote, setRemote] = useState<T | null>(null);
   const [remotelyDeleted, setRemotelyDeleted] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<FreshnessDiagnostics>(emptyDiagnostics);
+  const [checking, setChecking] = useState(false);
+  const checkRef = useRef<(() => Promise<void>) | null>(null);
+  const checkAgain = useCallback(() => checkRef.current?.() ?? Promise.resolve(), []);
 
   // Serialised value the editor already accounts for. Kept in a ref so a new
   // keystroke never re-subscribes the listener.
@@ -174,192 +206,171 @@ export function useDocumentFreshness<T>({
   }, [serialisedKnown]);
 
   useEffect(() => {
-    if (!enabled || !docId || !uid) {
-      setState('unknown');
-      setRemote(null);
-      setRemotelyDeleted(false);
-      return;
-    }
-
-    let active = true;
-    // A NEW DOCUMENT KNOWS NOTHING YET.
-    //
-    // Navigating from one document to another re-runs this effect but used to leave
-    // `state`, `everAnswered`, `remote` and the last server proof exactly as the
-    // PREVIOUS document left them. So document B inherited A's "fresh" — the screen
-    // asserted freshness about a document nothing had ever said anything about — and
-    // the return-to-tab check was skipped because A's proof looked recent.
     setState('unknown');
     setEverAnswered(false);
     setRemote(null);
     setRemotelyDeleted(false);
-    lastServerProofRef.current = 0;
-    adoptedKnownRef.current = null;
-    lastRemoteSerialisedRef.current = null;
     setSilenceIsNews(false);
-    const graceTimer = window.setTimeout(() => {
-      if (active) setSilenceIsNews(true);
-    }, 15_000);
+    setDiagnostics(emptyDiagnostics());
+    setChecking(false);
+    lastServerProofRef.current = 0;
+    lastRemoteSerialisedRef.current = null;
+    adoptedKnownRef.current = null;
+    checkRef.current = null;
+    if (!enabled || !docId || !uid) return;
+
+    let active = true;
+    let listenerStopped = false;
+    let unsubscribe = () => {};
+    let requestId = 0;
+    let inFlight: Promise<void> | null = null;
+    let finishRead: (() => void) | null = null;
     const ref = doc(getClientDb(), collection, docId);
 
-    const unsubscribe = onSnapshot(
-      ref,
-      { includeMetadataChanges: true },
-      (snapshot) => {
-        if (!active) return;
-
-        // Our own write on the way out — not news from anywhere.
-        if (snapshot.metadata.hasPendingWrites) return;
-        // A cached emission proves nothing about the server yet.
-        if (snapshot.metadata.fromCache) {
-          // A cached emission proves nothing about the server RIGHT NOW, even if a
-          // server snapshot arrived earlier: the connection may since have dropped.
-          // Keeping a stale "fresh" here is the lie this state exists to prevent.
-          //
-          // The remembered server value goes with it. It must never outlive the proof
-          // it arrived with: a screen that later happens to match that old value would
-          // otherwise be told "fresh" while we in fact know nothing.
-          lastRemoteSerialisedRef.current = null;
-          /**
-           * BUT IT IS NOT AN ANSWER EITHER — AND THAT DISTINCTION IS THE WHOLE POINT.
-           *
-           * With local persistence Firestore ALWAYS serves its own IndexedDB copy
-           * first and the server snapshot a moment later, so this branch runs on
-           * every single page load. Counting it as "the listener has spoken" lifted
-           * the cold-start suppression below and put the amber pill on screen for the
-           * ~100–200 ms until the server answered — an unexplained warning flashing
-           * on every reload, on every screen using this hook. That is precisely the
-           * cry-wolf the suppression exists to prevent.
-           *
-           * Once the server HAS proved something in this session, a fall back to
-           * cache-only is real news — the connection went away — and it is reported
-           * immediately. Before that, silence is still silence: the 15 s grace timer
-           * and `navigator.onLine` remain the two honest ways out, so a genuinely
-           * unreachable server is still announced, just not in the first blink.
-           */
-          if (lastServerProofRef.current > 0) setEverAnswered(true);
-          setState('unknown');
-          return;
-        }
-        // The server has spoken — from here on "unknown" is real news, not the
-        // silence of a page that has only just opened.
-        setEverAnswered(true);
-
-        if (!snapshot.exists()) {
-          // Nothing on the server to match against any more.
-          lastRemoteSerialisedRef.current = null;
-          setRemotelyDeleted(true);
-          setState('stale');
-          setRemote(null);
-          return;
-        }
-
-        // A server-backed snapshot IS the proof; remember when it arrived.
-        lastServerProofRef.current = Date.now();
-        setRemotelyDeleted(false);
-        const value = selectRef.current(snapshot.data());
-        const serialised = JSON.stringify(value);
-
-        const base = baseline();
-        if (base === null) {
-          // Nothing to compare against yet. With adoption on, THIS is what the
-          // screen opened with; without it, we simply cannot tell and stay quiet.
-          if (adoptRef.current) adoptedKnownRef.current = serialised;
-          setState('fresh');
-          setRemote(null);
-          return;
-        }
-        if (serialised === base) {
-          setState('fresh');
-          setRemote(null);
-          return;
-        }
-
-        lastRemoteSerialisedRef.current = serialised;
-        setState('stale');
-        setRemote(value);
-      },
-      () => {
-        if (!active) return;
-        setEverAnswered(true);
-        // A listener error is terminal — Firestore sends nothing more. Saying
-        // "fresh" here would claim knowledge we no longer have, and so would letting
-        // the remembered server value survive to be matched later.
+    const record = (event: FreshnessEvent, onlyExisting = false) => {
+      setDiagnostics((current) => {
+        if (onlyExisting && !current.incident) return current;
+        const previous = current.incident?.events.at(-1);
+        // Repeated metadata notifications are not new incidents. Manual attempts are.
+        if (previous?.reason === event.reason && previous.source === event.source &&
+            previous.errorCode === event.errorCode && event.source !== 'manual') return current;
+        return {
+          ...current,
+          incident: {
+            origin: current.incident?.origin ?? event,
+            // The origin is retained separately even when the bounded history rolls over.
+            events: [...(current.incident?.events ?? []).slice(-5), event],
+          },
+        };
+      });
+    };
+    const unavailable = (reason: FreshnessReason, source: FreshnessEvent['source'], error?: unknown) => {
+      if (!active) return;
+      const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+        ? error.code.replace(/^firestore\//, '') : undefined;
+      const errorCode = code && /^[a-z-]{1,40}$/.test(code) ? code : undefined;
+      const observed = errorCode === 'permission-denied' ? 'accessDenied'
+        : errorCode === 'unauthenticated' ? 'accountRequired' : reason;
+      record({ reason: observed, source, at: Date.now(), ...(errorCode ? { errorCode } : {}) });
+      lastRemoteSerialisedRef.current = null;
+      setEverAnswered(true);
+      setState('unknown');
+    };
+    const serverAnswer = (snapshot: { exists: () => boolean; data: () => DocumentData | undefined }) => {
+      if (!active) return;
+      // A newer server snapshot supersedes any older outstanding one-shot read.
+      requestId += 1;
+      finishRead?.();
+      const at = Date.now();
+      lastServerProofRef.current = at;
+      setEverAnswered(true);
+      const exists = snapshot.exists();
+      setRemotelyDeleted(!exists);
+      if (!exists) {
         lastRemoteSerialisedRef.current = null;
-        setState('unknown');
         setRemote(null);
+        setState('stale');
+        setDiagnostics({ lastServerResponseAt: at, lastServerResult: 'deleted', incident: null });
+        return;
       }
-    );
-
-    /**
-     * WHEN THE SERVER LAST PROVED ANYTHING, and what to do when that gets old.
-     *
-     * A healthy idle listener is SILENT: with no changes there are no snapshots for
-     * hours, so "silence for N minutes" cannot mean staleness on its own — a timer
-     * alone would cry wolf all day. But silence is also what a dead connection
-     * looks like: the laptop slept, or the wifi turned into a captive portal that
-     * accepts packets and routes nothing, and the screen kept saying "fresh" while
-     * the phone rewrote the document hours ago.
-     *
-     * The honest signal is the moment the PERSON comes back to this tab. That is
-     * exactly when they continue work started on another device. If the last server
-     * proof is older than a couple of minutes, we ask the server directly — one
-     * read, only on a real return — and if it cannot answer, we say so.
-     */
-    const onWentOffline = () => {
-      if (active) setState('unknown');
+      const value = selectRef.current(snapshot.data()!);
+      const serialised = JSON.stringify(value);
+      const base = baseline();
+      if (base === null && adoptRef.current) adoptedKnownRef.current = serialised;
+      const different = base !== null && serialised !== base;
+      lastRemoteSerialisedRef.current = different ? serialised : null;
+      setRemote(different ? value : null);
+      setState(different ? 'stale' : 'fresh');
+      setDiagnostics({
+        lastServerResponseAt: at,
+        lastServerResult: base === null ? 'uncompared' : different ? 'different' : 'matching',
+        incident: null,
+      });
     };
+    const subscribe = () => {
+      listenerStopped = false;
+      unsubscribe = onSnapshot(ref, { includeMetadataChanges: true }, (snapshot) => {
+        if (!active || snapshot.metadata.hasPendingWrites) return;
+        if (snapshot.metadata.fromCache) {
+          lastRemoteSerialisedRef.current = null;
+          setState('unknown');
+          // Cache-first startup is routine. Do not raise an incident until the grace
+          // period expires or a previously confirmed session becomes unconfirmed.
+          if (lastServerProofRef.current > 0) unavailable('cached', 'listener');
+          return;
+        }
+        serverAnswer(snapshot);
+      }, (error) => {
+        listenerStopped = true;
+        unavailable('listenerStopped', 'listener', error);
+      });
+    };
+    subscribe();
+    const graceTimer = window.setTimeout(() => {
+      if (!active || lastServerProofRef.current > 0) return;
+      setSilenceIsNews(true);
+      // A terminal failure already has a more specific explanation.
+      if (!listenerStopped) unavailable('initialCheck', 'opening');
+    }, 15_000);
+    if (navigator.onLine === false) unavailable('offline', 'device');
+
+    const checkServer = (source: 'manual' | 'return'): Promise<void> => {
+      if (!active) return Promise.resolve();
+      if (inFlight) return inFlight;
+      const id = ++requestId;
+      setChecking(true);
+      record({ reason: 'checking', source, at: Date.now() }, true);
+      let resolveRead!: () => void;
+      const pending = new Promise<void>((resolve) => { resolveRead = resolve; });
+      inFlight = pending;
+      const timer = window.setTimeout(() => {
+        if (active && requestId === id) {
+          requestId += 1;
+          unavailable('checkTimeout', source);
+        }
+        finish();
+      }, 15_000);
+      const finish = () => {
+        window.clearTimeout(timer);
+        if (inFlight === pending) {
+          inFlight = null;
+          finishRead = null;
+          if (active) setChecking(false);
+        }
+        resolveRead();
+      };
+      finishRead = finish;
+      // Firestore does not resume a terminally failed listener on its own.
+      if (listenerStopped) {
+        unsubscribe();
+        subscribe();
+      }
+      getDocFromServer(ref).then((snapshot) => {
+        if (!active || requestId !== id) return;
+        // Server-source reads can still contain latency-compensated local writes.
+        if (snapshot.metadata?.hasPendingWrites) unavailable('pendingChanges', source);
+        else if (snapshot.metadata?.fromCache) unavailable('cached', source);
+        else serverAnswer(snapshot);
+      }).catch((error: unknown) => {
+        if (active && requestId === id) unavailable('checkFailed', source, error);
+      }).finally(finish);
+      return pending;
+    };
+    checkRef.current = () => checkServer('manual');
+    const onWentOffline = () => unavailable('offline', 'device');
     const onReturned = () => {
-      if (!active || document.visibilityState !== 'visible') return;
+      if (document.visibilityState !== 'visible') return;
       if (Date.now() - lastServerProofRef.current < STALE_PROOF_MS) return;
-      getDocFromServer(ref)
-        .then((snapshot) => {
-          if (!active) return;
-          lastServerProofRef.current = Date.now();
-          setEverAnswered(true);
-          if (!snapshot.exists()) {
-            lastRemoteSerialisedRef.current = null;
-            setRemotelyDeleted(true);
-            setState('stale');
-            setRemote(null);
-            return;
-          }
-          const value = selectRef.current(snapshot.data());
-          const serialised = JSON.stringify(value);
-          const base = baseline();
-          if (base === null) {
-            if (adoptRef.current) adoptedKnownRef.current = serialised;
-            setState('fresh');
-            setRemote(null);
-            return;
-          }
-          if (serialised === base) {
-            setState('fresh');
-            setRemote(null);
-            return;
-          }
-          // Remember it here too, or a warning raised by this path could never be
-          // cleared by the screen catching up — only by another snapshot arriving.
-          lastRemoteSerialisedRef.current = serialised;
-          setState('stale');
-          setRemote(value);
-        })
-        .catch(() => {
-          // Could not reach the server on a deliberate ask — that is a real "cannot
-          // tell", not silence to be papered over with a comforting "fresh".
-          if (active) {
-            lastRemoteSerialisedRef.current = null;
-            setState('unknown');
-          }
-        });
+      void checkServer('return');
     };
-
     window.addEventListener('offline', onWentOffline);
     document.addEventListener('visibilitychange', onReturned);
     window.addEventListener('focus', onReturned);
-
     return () => {
       active = false;
+      requestId += 1;
+      checkRef.current = null;
+      finishRead?.();
       window.clearTimeout(graceTimer);
       window.removeEventListener('offline', onWentOffline);
       document.removeEventListener('visibilitychange', onReturned);
@@ -407,5 +418,9 @@ export function useDocumentFreshness<T>({
     remote,
     remotelyDeleted,
     markSynced,
+    diagnostics,
+    checking,
+    canCheck: Boolean(enabled && docId && uid),
+    checkAgain,
   };
 }

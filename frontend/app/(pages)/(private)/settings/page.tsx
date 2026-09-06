@@ -225,6 +225,10 @@ export default function SettingsPage() {
               entityKey="entitySettings"
               dirty={false}
               unknown={settingsFreshness.state === 'unknown'}
+              diagnostics={settingsFreshness.diagnostics}
+              checking={settingsFreshness.checking}
+              canCheck={settingsFreshness.canCheck}
+              onCheckAgain={settingsFreshness.checkAgain}
               onRefresh={() => {
                 // Adopt what the server holds: nothing here is half-typed text, so
                 // loading the newer values cannot destroy anything.

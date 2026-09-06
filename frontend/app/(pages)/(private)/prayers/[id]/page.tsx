@@ -346,6 +346,10 @@ export default function PrayerDetailPage() {
           dirty={false}
           deleted={prayerFreshness.remotelyDeleted}
           unknown={prayerFreshness.state === 'unknown'}
+          diagnostics={prayerFreshness.diagnostics}
+          checking={prayerFreshness.checking}
+          canCheck={prayerFreshness.canCheck}
+          onCheckAgain={prayerFreshness.checkAgain}
           onRefresh={handleRefreshPrayer}
           refreshing={isRefreshingPrayer}
           onDismiss={() => setPrayerFreshnessDismissed(true)}

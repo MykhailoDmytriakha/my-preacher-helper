@@ -1153,6 +1153,10 @@ export default function PlanPage() {
             dirty={Object.values(modifiedContent).some(Boolean)}
             deleted={planFreshness.remotelyDeleted}
             unknown={planFreshness.state === 'unknown'}
+            diagnostics={planFreshness.diagnostics}
+            checking={planFreshness.checking}
+            canCheck={planFreshness.canCheck}
+            onCheckAgain={planFreshness.checkAgain}
             onRefresh={handleRefreshPlan}
             refreshing={isRefreshingPlan}
             onDismiss={() => setPlanFreshnessDismissed(true)}
