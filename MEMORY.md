@@ -135,6 +135,7 @@ Use `TechnicalDetailsButton` for unclear states; its `TechnicalDetailsDialog` ow
 **Problem:** Manual sermon scratch capture used `input type="text"`, forcing one line and turning `Enter` into premature submission.
 **Solution:** Use the repository-standard `react-textarea-autosize` with `minRows={2}` and no `maxRows`, preserve explicit-button submission, and validate both line breaks and content-driven height in a real browser.
 **Principle:** A free-form note field must express multiline intent in its native control; autosize is UX behavior, not a cosmetic CSS patch.
+**2026-09-05 extension:** `PointNote` also uses autosize with `minRows={2}` and no height cap, covering scratch cards and outline point/subpoint notes. Keep `overflow-hidden`: a native scrollbar can narrow wrapped text during viewport resizing and invalidate the measured height. Check open, type, shrink, resize and Escape in the browser; preserve its existing blur/Enter save contract.
 
 ### 2026-07-25 Freshness Proof Must Follow The Editor, Not The Cache
 **Problem:** A listener can compare the server with a live query cache that already refreshed while the editor still shows its open-time value; reduced selectors, hidden unknown states, and destructive “load newer” actions then turn a safety banner into either silence or data loss.

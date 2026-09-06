@@ -3,6 +3,7 @@
 import { LightBulbIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import TextareaAutosize from 'react-textarea-autosize';
 
 interface PointNoteProps {
   /** Current note text (undefined/empty = no note). */
@@ -112,7 +113,7 @@ const PointNote: React.FC<PointNoteProps> = ({
   if (editing) {
     return (
       <div className={`${indentClass} mt-1`}>
-        <textarea
+        <TextareaAutosize
           value={text}
           onChange={(e) => setText(e.target.value)}
           onBlur={commitFromBlur}
@@ -126,8 +127,8 @@ const PointNote: React.FC<PointNoteProps> = ({
             }
           }}
           placeholder={placeholderText}
-          rows={2}
-          className={`w-full resize-none px-2 py-1 text-xs rounded border focus:outline-none focus:ring-1 ${editFieldClass}`}
+          minRows={2}
+          className={`w-full resize-none overflow-hidden px-2 py-1 text-xs rounded border focus:outline-none focus:ring-1 ${editFieldClass}`}
           autoFocus
         />
       </div>
