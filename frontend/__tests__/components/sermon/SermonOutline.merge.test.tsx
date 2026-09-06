@@ -117,6 +117,7 @@ describe('the sermon plan panel keeps what another device added', () => {
       main: [],
       conclusion: [],
     };
+    sermon.outline = JSON.parse(JSON.stringify(mockServerOutline));
   });
 
   it('shows the point the merge kept instead of leaving it off the screen', async () => {

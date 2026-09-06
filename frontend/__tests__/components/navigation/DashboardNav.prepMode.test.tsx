@@ -171,7 +171,7 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
       await runScenarios(
         [
           {
-            name: 'hides mode toggle while access is loading',
+            name: 'keeps mode toggle visible while access is loading',
             run: () => {
               prepModeAccessState = { hasAccess: false, loading: true };
               pathnameMock = '/sermons/test-sermon-id';
@@ -181,7 +181,7 @@ describe('DashboardNav - Prep Mode Access Integration', () => {
               </TestProviders>
             );
 
-              expect(screen.queryByTestId('mode-toggle')).not.toBeInTheDocument();
+              expect(screen.getByTestId('mode-toggle')).toBeInTheDocument();
             }
           }
         ],

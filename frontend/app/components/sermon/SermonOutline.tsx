@@ -7,8 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { SubPointList } from '@/components/column/SubPointList';
-import { useConnection } from '@/providers/ConnectionProvider';
-import { getSermonOutline, updateSermonOutline } from '@/services/outline.service';
+import { updateSermonOutline } from '@/services/outline.service';
 import { newClientId } from '@/utils/clientId';
 import { awaitAcceptance, persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
@@ -41,7 +40,26 @@ const SECTION_TO_SERMON_KEY: Record<SectionType, 'introduction' | 'main' | 'conc
   conclusion: 'conclusion',
 };
 
-const SermonOutline: React.FC<SermonOutlineProps> = ({
+const mapOutline = (outline?: SermonOutline): Record<SectionType, SermonPoint[]> => ({
+  introduction: outline?.introduction ?? [],
+  mainPart: outline?.main ?? [],
+  conclusion: outline?.conclusion ?? [],
+});
+
+const expandedOutline = (outline?: SermonOutline): Record<SectionType, boolean> => {
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
+  return {
+    introduction: !isMobile && Boolean(outline?.introduction?.length),
+    mainPart: !isMobile && Boolean(outline?.main?.length),
+    conclusion: !isMobile && Boolean(outline?.conclusion?.length),
+  };
+};
+
+const SermonOutline: React.FC<SermonOutlineProps> = (props) => (
+  <SermonOutlineEditor key={`${props.sermon.userId}:${props.sermon.id}`} {...props} />
+);
+
+const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   sermon,
   thoughtsPerSermonPoint = {},
   onOutlineUpdate,
@@ -50,25 +68,12 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
   isReadOnly = false,
 }) => {
   const { t } = useTranslation();
-  const { isOnline } = useConnection();
 
   // --- All useState hooks at the top ---
-  const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [sectionPoints, setSectionPoints] = useState<Record<SectionType, SermonPoint[]>>({
-    introduction: [],
-    mainPart: [],
-    conclusion: [],
-  });
-  const [expandedSections, setExpandedSections] = useState<Record<SectionType, boolean>>(() => {
-    const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
-    return {
-      introduction: !isMobile,
-      mainPart: !isMobile,
-      conclusion: !isMobile,
-    };
-  });
+  const [sectionPoints, setSectionPoints] = useState(() => mapOutline(sermon.outline));
+  const [expandedSections, setExpandedSections] = useState(() => expandedOutline(sermon.outline));
   const [editingPointId, setEditingPointId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>("");
   const [addingNewToSection, setAddingNewToSection] = useState<SectionType | null>(null);
@@ -85,14 +90,15 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
    *
    * Without it every save replaced the whole field, so a point added on another
    * device disappeared the moment anything was edited here. It must come from the
-   * load below and never from a read taken just before writing: that would compare
+   * supplied document and never from a read taken just before writing: that would compare
    * the server with itself and agree every time.
    */
-  const baseOutlineRef = useRef<SermonOutline | null>(null);
+  const baseOutlineRef = useRef<SermonOutline | null>(sermon.outline ?? null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   /**
-   * Counts EDITS made here, so a response that arrives after the person has changed
-   * something else is not applied over them. Attempts of the same save do not count.
+   * Counts edits and newly opened draft fields, including nested subpoint inputs.
+   * A response from before that draft must not replace its list or merge baseline.
+   * Attempts of the same save do not count.
    */
   const saveGenerationRef = useRef(0);
   const addInputRef = useRef<HTMLInputElement>(null);
@@ -112,81 +118,22 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
     }
   }, [editingPointId]);
 
-  // Fetch outline data when the component mounts or sermon ID changes
+  // The parent already selected the readable full document (including IndexedDB
+  // and HTTP recovery). Never re-read a fragment through a second transport here.
+  // Once this editor has changed, keep its visible list and merge baseline paired;
+  // only its own accepted save can advance them. External editors remount this panel.
   useEffect(() => {
-    const fetchOutline = async () => {
-      if (!sermon || !sermon.id) return;
+    if (saveGenerationRef.current > 0 || editingPointId || addingNewToSection) return;
+    setSectionPoints(mapOutline(sermon.outline));
+    baseOutlineRef.current = sermon.outline ?? null;
+    setExpandedSections(expandedOutline(sermon.outline));
+  }, [sermon.outline, editingPointId, addingNewToSection]);
 
-      setLoading(true);
-      setError(null);
-
-      try {
-        if (!isOnline) {
-          const outline = sermon.outline;
-          if (outline) {
-            const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
-            const mappedOutline = {
-              introduction: outline.introduction || [],
-              mainPart: outline.main || [],
-              conclusion: outline.conclusion || [],
-            };
-            setSectionPoints(mappedOutline);
-            baseOutlineRef.current = outline;
-            setExpandedSections({
-              introduction: !isMobile && mappedOutline.introduction.length > 0,
-              mainPart: !isMobile && mappedOutline.mainPart.length > 0,
-              conclusion: !isMobile && mappedOutline.conclusion.length > 0,
-            });
-          }
-          setLoading(false);
-          return;
-        }
-        const outlineData = await getSermonOutline(sermon.id);
-
-        if (outlineData) {
-          // Map the API response to our component state structure
-          const mappedOutline = {
-            introduction: outlineData.introduction || [],
-            mainPart: outlineData.main || [], // Note the field name difference
-            conclusion: outlineData.conclusion || [],
-          };
-
-          setSectionPoints(mappedOutline);
-          baseOutlineRef.current = outlineData;
-
-          const isMobile = typeof window !== 'undefined' && window.innerWidth < 640;
-          // Auto-expand sections that have content (desktop only)
-          setExpandedSections({
-            introduction: !isMobile && mappedOutline.introduction.length > 0,
-            mainPart: !isMobile && mappedOutline.mainPart.length > 0,
-            conclusion: !isMobile && mappedOutline.conclusion.length > 0,
-          });
-        } else {
-          // Initialize with empty arrays if no data is returned
-          setSectionPoints({
-            introduction: [],
-            mainPart: [],
-            conclusion: [],
-          });
-
-          // Keep all sections collapsed if empty
-          setExpandedSections({
-            introduction: false,
-            mainPart: false,
-            conclusion: false,
-          });
-        }
-      } catch (err) {
-        console.error("Error fetching sermon outline:", err);
-        setError(t('errors.fetchOutlineError'));
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchOutline();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sermon?.id, isOnline]);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // Handlers for managing points
   const addPoint = async (section: SectionType) => {
@@ -296,7 +243,7 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
          * delete the unseen point on the next save. Keeping the older base lets the
          * merge re-add it. (Same reasoning as `PlanEditorModal`.)
          */
-        if (generationAtRequest !== saveGenerationRef.current) return;
+        if (!mountedRef.current || generationAtRequest !== saveGenerationRef.current) return;
         // Section by section, so a writer that answers with a partial object cannot
         // blank the board.
         const committed: SermonOutline = {
@@ -492,10 +439,6 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
   };
 
   // Main component return
-  if (loading) {
-    return <div className="text-center p-4">{t('common.loading')}</div>;
-  }
-
   if (error) {
     return <div className="text-center p-4 text-red-500">{error}</div>;
   }
@@ -793,7 +736,16 @@ const SermonOutline: React.FC<SermonOutlineProps> = ({
 
   return (
     <DragDropContext onDragEnd={onDragEnd}>
-      <div className="mt-4">
+      <div
+        className="mt-4"
+        onFocusCapture={(event) => {
+          // Nested editors own their input state. Capture draft ownership here
+          // before a background prop refresh can remove their point or subpoint.
+          if (event.target.matches('input, textarea, [contenteditable="true"]')) {
+            saveGenerationRef.current += 1;
+          }
+        }}
+      >
         {renderSection('introduction')}
         {renderSection('mainPart')}
         {renderSection('conclusion')}

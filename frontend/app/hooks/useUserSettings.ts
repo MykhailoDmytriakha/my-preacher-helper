@@ -23,15 +23,20 @@ import type { FirstDayOfWeek } from '@/utils/weekStart';
 const SETTINGS_PREFIX = ['user-settings'];
 const buildQueryKey = (userId: string | null | undefined) => ['user-settings', userId ?? null];
 
-export function useUserSettings(userId: string | null | undefined) {
-  const { t } = useTranslation();
-  const queryClient = useQueryClient();
-
-  const settingsQuery = useServerFirstQuery<UserSettings | null>({
+/** Shared persisted settings read for both feature access and the settings editor. */
+export function useUserSettingsQuery(userId: string | null | undefined) {
+  return useServerFirstQuery<UserSettings | null>({
     queryKey: buildQueryKey(userId),
     queryFn: () => (userId ? getUserSettings(userId) : Promise.resolve(null)),
     enabled: Boolean(userId),
   });
+}
+
+export function useUserSettings(userId: string | null | undefined) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+
+  const settingsQuery = useUserSettingsQuery(userId);
 
   // Each toggle is offline-buffered: mutationKey ties it to its resumable default
   // (mutationDefaults.ts) so a toggle flipped offline survives reload + replays on

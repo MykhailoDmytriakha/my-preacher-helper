@@ -81,9 +81,9 @@ describe('SermonOutline Component', () => {
     date: new Date().toISOString(),
     thoughts: [],
     outline: {
-      introduction: [],
-      main: [],
-      conclusion: []
+      introduction: [{ id: 'intro1', text: 'Introduction point 1' }],
+      main: [{ id: 'main1', text: 'Main point 1' }],
+      conclusion: [{ id: 'concl1', text: 'Conclusion point 1' }]
     }
   };
 
@@ -111,10 +111,20 @@ describe('SermonOutline Component', () => {
     mockUseConnection.mockReturnValue({ isOnline: true, isMagicAvailable: true, checkConnection: jest.fn() });
   });
 
-  test('renders with initial data fetched from service', async () => {
+  test('shows the supplied outline immediately even when the SDK read never settles', () => {
+    mockGetSermonOutline.mockImplementation(() => new Promise(() => {}));
+    render(<SermonOutline sermon={{ ...mockSermon, outline: {
+      introduction: [{ id: 'cached', text: 'Already restored point' }], main: [], conclusion: [],
+    } }} />);
+    expect(screen.getByText('Already restored point')).toBeInTheDocument();
+    expect(screen.queryByText('common.loading')).not.toBeInTheDocument();
+    expect(mockGetSermonOutline).not.toHaveBeenCalled();
+  });
+
+  test('renders with the outline from the supplied sermon', async () => {
     render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
     await waitFor(() => {
-      expect(mockGetSermonOutline).toHaveBeenCalledWith(mockSermon.id);
+      expect(mockGetSermonOutline).not.toHaveBeenCalled();
       expect(screen.getByText('Introduction point 1')).toBeInTheDocument();
     });
   });
@@ -344,25 +354,53 @@ describe('SermonOutline Component', () => {
     expect(mockOnOutlineUpdate).not.toHaveBeenCalled();
   });
 
-  test('dependency array uses sermon.id instead of sermon object', async () => {
-    const { rerender } = render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
-    await waitFor(() => expect(mockGetSermonOutline).toHaveBeenCalledTimes(1));
+  test('updates a pristine outline from the parent and resets when the sermon changes', () => {
+    const { rerender } = render(<SermonOutline sermon={mockSermon} />);
+    const changed = { ...mockSermon, outline: { introduction: [{ id: 'new', text: 'Updated outline' }], main: [], conclusion: [] } };
+    rerender(<SermonOutline sermon={changed} />);
+    expect(screen.getByText('Updated outline')).toBeInTheDocument();
+    expect(screen.queryByText('Introduction point 1')).not.toBeInTheDocument();
+    rerender(<SermonOutline sermon={{ ...mockSermon, id: 'another', outline: undefined }} />);
+    expect(screen.queryByText('Updated outline')).not.toBeInTheDocument();
+    expect(mockGetSermonOutline).not.toHaveBeenCalled();
+  });
 
-    const updatedSermonSameId = { ...mockSermon, title: 'Updated Title' };
-    rerender(<SermonOutline sermon={updatedSermonSameId} onOutlineUpdate={mockOnOutlineUpdate} />);
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); }); // Allow potential effects to run
-    expect(mockGetSermonOutline).toHaveBeenCalledTimes(1);
+  test('preserves typing and its opening merge baseline when the parent refreshes', async () => {
+    const { rerender } = render(<SermonOutline sermon={mockSermon} />);
+    fireEvent.doubleClick(screen.getByText('Introduction point 1'));
+    fireEvent.change(screen.getByPlaceholderText('structure.editPointPlaceholder'), { target: { value: 'Local draft' } });
+    rerender(<SermonOutline sermon={{ ...mockSermon, outline: { introduction: [{ id: 'remote', text: 'Remote point' }], main: [], conclusion: [] } }} />);
+    expect(screen.getByPlaceholderText('structure.editPointPlaceholder')).toHaveValue('Local draft');
+    fireEvent.keyDown(screen.getByPlaceholderText('structure.editPointPlaceholder'), { key: 'Enter' });
+    await waitFor(() => expect(mockUpdateSermonOutline).toHaveBeenCalled());
+    expect(mockUpdateSermonOutline.mock.calls[0][2]).toEqual(mockSermon.outline);
+    expect(screen.getByText('Local draft')).toBeInTheDocument();
+  });
 
-    const newSermonDifferentId = { ...mockSermon, id: 'sermon-456' };
-    (mockGetSermonOutline as jest.Mock).mockResolvedValueOnce({ introduction: [], main: [], conclusion: [] });
-    rerender(<SermonOutline sermon={newSermonDifferentId} onOutlineUpdate={mockOnOutlineUpdate} />);
+  test('preserves an unsaved subpoint draft when the parent refreshes', () => {
+    const original = { ...mockSermon, outline: {
+      introduction: [{ id: 'intro1', text: 'Parent', subPoints: [{ id: 's1', text: 'Original subpoint', position: 0 }] }],
+      main: [], conclusion: [],
+    } };
+    const { rerender } = render(<SermonOutline sermon={original} />);
+    fireEvent.doubleClick(screen.getByText('Original subpoint'));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Unsent subpoint draft' } });
+    rerender(<SermonOutline sermon={{ ...original, outline: {
+      introduction: [{ id: 'intro1', text: 'Parent', subPoints: [] }], main: [], conclusion: [],
+    } }} />);
+    expect(screen.getByRole('textbox')).toHaveValue('Unsent subpoint draft');
+  });
 
-    // Wait longer for the second fetch triggered by ID change
-    await waitFor(() => {
-      expect(mockGetSermonOutline).toHaveBeenCalledTimes(2);
-      expect(mockGetSermonOutline).toHaveBeenLastCalledWith('sermon-456');
-    }, { timeout: 15000 }); // Increased timeout to 15s for this specific wait
-  }, 15000); // Increase Jest timeout for this test as well, as it involves waiting
+  test('preserves an unsaved point while the parent refreshes and the write is pending', async () => {
+    mockUpdateSermonOutline.mockImplementation(() => new Promise(() => {}));
+    const { rerender } = render(<SermonOutline sermon={mockSermon} />);
+    fireEvent.doubleClick(screen.getByText('Introduction point 1'));
+    fireEvent.change(screen.getByPlaceholderText('structure.editPointPlaceholder'), { target: { value: 'Pending draft' } });
+    fireEvent.keyDown(screen.getByPlaceholderText('structure.editPointPlaceholder'), { key: 'Enter' });
+    await waitFor(() => expect(mockUpdateSermonOutline).toHaveBeenCalled());
+    rerender(<SermonOutline sermon={{ ...mockSermon, outline: undefined }} />);
+    expect(screen.getByText('Pending draft')).toBeInTheDocument();
+  });
 
   test('toggles section expansion when header is clicked', async () => {
     render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
@@ -550,18 +588,6 @@ describe('SermonOutline Component', () => {
     expect(within(introSection).queryByPlaceholderText('structure.editPointPlaceholder')).not.toBeInTheDocument();
   });
 
-  test('handles error when fetching outline fails', async () => {
-    // Mock the service to throw an error
-    mockGetSermonOutline.mockRejectedValueOnce(new Error('Failed to fetch'));
-
-    render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
-
-    // Wait for the error message to appear
-    await waitFor(() => {
-      expect(screen.getByText('errors.fetchOutlineError')).toBeInTheDocument();
-    });
-  });
-
   test('renders focus-mode link in each section header with correct URL', async () => {
     render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
 
@@ -617,10 +643,10 @@ describe('SermonOutline Component', () => {
     }
   });
 
-  test('renders empty sections when backend returns no outline data', async () => {
+  test('renders empty sections when the supplied sermon has no outline', async () => {
     mockGetSermonOutline.mockResolvedValueOnce(null);
 
-    render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
+    render(<SermonOutline sermon={{ ...mockSermon, outline: undefined }} onOutlineUpdate={mockOnOutlineUpdate} />);
 
     await waitFor(() => {
       expect(screen.getByTestId('outline-section-introduction')).toBeInTheDocument();

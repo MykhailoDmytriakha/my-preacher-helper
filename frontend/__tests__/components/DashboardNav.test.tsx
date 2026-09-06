@@ -118,9 +118,10 @@ jest.mock('@/hooks/useFeedback', () => ({
   useFeedback: () => mockFeedbackState
 }));
 
+const mockPrepAccess = { hasAccess: true, loading: false };
 // Mock usePrepModeAccess hook
 jest.mock('@/hooks/usePrepModeAccess', () => ({
-  usePrepModeAccess: () => ({ hasAccess: true, loading: false })
+  usePrepModeAccess: () => mockPrepAccess
 }));
 
 // Mock hasGroupsAccess service
@@ -525,6 +526,23 @@ describe('DashboardNav Component', () => {
     const primaryNav = within(screen.getAllByRole('list')[0]);
     expect(primaryNav.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Settings' })).toBeInTheDocument();
+  });
+
+  test('keeps classic and scratch modes available while access settings are pending', () => {
+    mockPrepAccess.hasAccess = false;
+    mockPrepAccess.loading = true;
+    mockUsePathname.mockReturnValue('/sermons/123');
+    try {
+      render(<TestProviders><DashboardNav /></TestProviders>);
+      expect(screen.getByTestId('toggle-classic')).toBeEnabled();
+      expect(screen.getByTestId('toggle-raw')).toBeEnabled();
+      expect(screen.getByTestId('toggle-prep')).toBeDisabled();
+      fireEvent.click(screen.getByTestId('toggle-raw'));
+      expect(require('next/navigation').useRouter().push).toHaveBeenCalled();
+    } finally {
+      mockPrepAccess.hasAccess = true;
+      mockPrepAccess.loading = false;
+    }
   });
 
   test('switches between modes in DashboardNav', async () => {

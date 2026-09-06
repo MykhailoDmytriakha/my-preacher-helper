@@ -184,11 +184,11 @@ export default function DashboardNav() {
   const sermonForNav = useSermon(isSermonRoot ? (sermonIdForMode ?? '') : '');
   const sermonMissing = isSermonRoot && sermonIsMissing(sermonForNav.sermon, sermonForNav);
 
-  const modeToggle = isSermonRoot && !prepModeLoading && !sermonMissing ? (
+  const modeToggle = isSermonRoot && !sermonMissing ? (
     <ModeToggle
       currentMode={currentMode}
       onSetMode={setMode}
-      canUsePrep={showWizardButton}
+      canUsePrep={!prepModeLoading && showWizardButton}
       tSwitchToClassic={t('wizard.switchToClassic') as string}
       tSwitchToPrep={t('wizard.switchToPrepBeta') as string}
       tSwitchToRaw={t('wizard.switchToRaw') as string}
