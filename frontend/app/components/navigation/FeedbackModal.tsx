@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
+import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
 import FeedbackForm from "@/components/navigation/FeedbackForm";
 import "@locales/i18n";
 
@@ -49,6 +50,7 @@ export default function FeedbackModal({ isOpen, onClose, onSubmit }: FeedbackMod
           </div>
 
           <FeedbackForm onSubmit={onSubmit} onCancel={onClose} />
+          <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700"><TechnicalDetailsButton /></div>
         </div>
       </div>
     </div>

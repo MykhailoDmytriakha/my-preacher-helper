@@ -3,6 +3,8 @@
 import { usePathname, useSearchParams } from 'next/navigation';
 import { ReactNode, Suspense } from 'react';
 
+import { DiagnosticsRecorder } from '@/components/diagnostics/DiagnosticsRecorder';
+import { TechnicalDetailsDialog } from '@/components/diagnostics/TechnicalDetailsButton';
 import { GuestBanner } from '@/components/GuestBanner';
 import Breadcrumbs from '@/components/navigation/Breadcrumbs';
 import DashboardNav from '@/components/navigation/DashboardNav';
@@ -14,6 +16,7 @@ import ProtectedRoute from '@/components/ProtectedRoute';
 export default function PrivateLayout({ children }: { children: ReactNode }) {
   return (
     <ProtectedRoute>
+      <TechnicalDetailsDialog />
       <Suspense fallback={null}>
         <PrivateLayoutContent>{children}</PrivateLayoutContent>
       </Suspense>
@@ -36,6 +39,7 @@ function PrivateLayoutContent({ children }: { children: ReactNode }) {
       {/* Mounted OUTSIDE the conditional on purpose: the preaching-plan screen hides
           the chrome, and while the queue worker lived inside the banner that screen
           — the one a preacher keeps open for an hour — drained nothing at all. */}
+      <DiagnosticsRecorder pathname={pathname ?? '/'} />
       <OutboxDrain />
       {!isPreachingPlan && (
         <>

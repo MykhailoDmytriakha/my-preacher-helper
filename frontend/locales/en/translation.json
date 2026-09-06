@@ -1,4 +1,15 @@
 {
+  "diagnostics": {
+    "collecting": "Collecting technical information…",
+    "open": "Technical information for developers",
+    "title": "Technical information for developers",
+    "description": "Copy this report and send it to the developer with a description of the problem. It contains app state and recent events, without note contents, passwords or tokens.",
+    "report": "Technical report",
+    "copy": "Copy technical information",
+    "copied": "Copied. Paste the report into your message to the developer.",
+    "copyFailed": "Automatic copying failed. Select the report text and copy it manually.",
+    "localOnly": "The report stays on this device and is not sent automatically. History contains up to 80 events from the last 24 hours."
+  },
   "freshness": {
     "checkOnlyHint": "Checking does not replace the text on this screen.",
     "previouslyDifferent": "The last check found differences from the server version.",

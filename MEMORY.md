@@ -32,6 +32,10 @@
 
 `globals.css` locks the document and study panes while any `aria-modal="true"` dialog is open. `data-note-sheet` distinguishes the mobile sheet; its `data-note-sheet-scroll` also locks beneath another modal. Keep modal content scrollable. `useNoteScrollIsolation` must honor overflow locks before calling `scrollBy`. `useNoteScrollPosition` reads the responsive `--note-pane-scroll` flag, not overflow: a modal changes overflow without changing the owner. Regression: repeated rotations while locked must retain the reading anchor.
 
+### Developer diagnostic reports (2026-09-05)
+
+Use `TechnicalDetailsButton` for unclear states; its `TechnicalDetailsDialog` owner lives in the private layout so recovery/unmounting a warning cannot close the report. `appDiagnostics.ts` keeps best-effort device history (80 events /24h), whitelists metadata and redacts route IDs/query strings. Never record documents, raw errors, account IDs or credentials. All server snapshots retain timestamps; only short duplicate cache/pending events coalesce. `DiagnosticsRecorder` captures lifecycle/auth/route changes; freshness hook records snapshot kinds and late outcomes. Report copy is manual, no feedback submission. `/api/health` report read uses a unique query and timeout to avoid cached PWA responses being mistaken for current app version.
+
 ### 📐 Coding Conventions
 *   **AI Metering Completeness:** Treat every provider path as the chain `server-trusted uid → assert before provider → provider success → consume`. Required-auth audio routes must reject missing/invalid Firebase bearer tokens before parsing/processing, and every structured-output call must pass an explicit trusted `userId`; a shared AI client with an optional unmetered branch is not sufficient by itself.
 *   **Headless UI Mocking:** Always mock `@headlessui/react` in JSDOM unit tests to prevent focus-management and ref errors. Ensure mocks match the exact import style (named vs default) of the version being used.

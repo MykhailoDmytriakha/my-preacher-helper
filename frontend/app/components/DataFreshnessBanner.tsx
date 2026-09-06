@@ -2,6 +2,8 @@
 
 import { useTranslation } from 'react-i18next';
 
+import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
+
 import type { FreshnessDiagnostics, FreshnessReason } from '@/hooks/useDocumentFreshness';
 
 /**
@@ -98,6 +100,7 @@ export function DataFreshnessBanner({
         {diagnostics && <FreshnessHistory diagnostics={diagnostics} unknown={unknown} deleted={deleted} />}
       </div>
       <div className="flex shrink-0 flex-wrap gap-2 sm:max-w-xs">
+        <TechnicalDetailsButton />
         {unknown && canCheck && onCheckAgain && (
           <button
             type="button"

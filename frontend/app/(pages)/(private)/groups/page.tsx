@@ -11,6 +11,7 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
 import CreateGroupModal from '@/components/groups/CreateGroupModal';
 import GroupCard from '@/components/groups/GroupCard';
 import ConfirmModal from '@/components/ui/ConfirmModal';
@@ -19,6 +20,7 @@ import { useSeries } from '@/hooks/useSeries';
 import { Group } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { hasGroupsAccess } from '@/services/userSettings.service';
+import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 import '@locales/i18n';
 
@@ -36,6 +38,7 @@ export default function GroupsPage() {
 
   useEffect(() => {
     let isActive = true;
+    recordDiagnostic('route-check', { source: 'groups', result: 'started' });
 
     async function checkAccess() {
       if (!user?.uid) {
@@ -47,6 +50,7 @@ export default function GroupsPage() {
       }
 
       const access = await hasGroupsAccess(user.uid);
+      recordDiagnostic('route-check', { source: 'groups', result: access ? 'allowed' : 'not-enabled-or-unavailable' });
       if (isActive) {
         setGroupsEnabled(access);
         setAccessLoading(false);
@@ -115,6 +119,7 @@ export default function GroupsPage() {
         </header>
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
           {t('workspaces.groups.errors.loadFailed', { defaultValue: 'Failed to load groups' })}
+          <div className="mt-3"><TechnicalDetailsButton /></div>
         </div>
       </div>
     );
@@ -122,6 +127,8 @@ export default function GroupsPage() {
 
   if (accessLoading) {
     return (
+      <div className="space-y-4">
+        <TechnicalDetailsButton />
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {[1, 2, 3].map((index) => (
           <div
@@ -129,6 +136,7 @@ export default function GroupsPage() {
             className="h-36 animate-pulse rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
           />
         ))}
+      </div>
       </div>
     );
   }

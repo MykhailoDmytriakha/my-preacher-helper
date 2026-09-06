@@ -4,6 +4,7 @@ import { doc, getDocFromServer, onSnapshot, type DocumentData } from 'firebase/f
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getClientDb } from '@/config/firebaseClientDb';
+import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 
 /**
  * Is the document open in this editor still the newest one?
@@ -226,6 +227,7 @@ export function useDocumentFreshness<T>({
     let inFlight: Promise<void> | null = null;
     let finishRead: (() => void) | null = null;
     const ref = doc(getClientDb(), collection, docId);
+    recordDiagnostic('freshness-start', { collection });
 
     const record = (event: FreshnessEvent, onlyExisting = false) => {
       setDiagnostics((current) => {
@@ -251,6 +253,7 @@ export function useDocumentFreshness<T>({
       const errorCode = code && /^[a-z-]{1,40}$/.test(code) ? code : undefined;
       const observed = errorCode === 'permission-denied' ? 'accessDenied'
         : errorCode === 'unauthenticated' ? 'accountRequired' : reason;
+      recordDiagnostic(reason === 'checkTimeout' ? 'freshness-timeout' : 'freshness-error', { collection, source, code: errorCode, result: observed });
       record({ reason: observed, source, at: Date.now(), ...(errorCode ? { errorCode } : {}) });
       lastRemoteSerialisedRef.current = null;
       setEverAnswered(true);
@@ -267,6 +270,7 @@ export function useDocumentFreshness<T>({
       const exists = snapshot.exists();
       setRemotelyDeleted(!exists);
       if (!exists) {
+        recordDiagnostic('snapshot-server', { collection, result: 'deleted' });
         lastRemoteSerialisedRef.current = null;
         setRemote(null);
         setState('stale');
@@ -278,6 +282,7 @@ export function useDocumentFreshness<T>({
       const base = baseline();
       if (base === null && adoptRef.current) adoptedKnownRef.current = serialised;
       const different = base !== null && serialised !== base;
+      recordDiagnostic('snapshot-server', { collection, result: base === null ? 'uncompared' : different ? 'different' : 'matching' });
       lastRemoteSerialisedRef.current = different ? serialised : null;
       setRemote(different ? value : null);
       setState(different ? 'stale' : 'fresh');
@@ -290,8 +295,13 @@ export function useDocumentFreshness<T>({
     const subscribe = () => {
       listenerStopped = false;
       unsubscribe = onSnapshot(ref, { includeMetadataChanges: true }, (snapshot) => {
-        if (!active || snapshot.metadata.hasPendingWrites) return;
+        if (!active) return;
+        if (snapshot.metadata.hasPendingWrites) {
+          recordDiagnostic('snapshot-pending', { collection });
+          return;
+        }
         if (snapshot.metadata.fromCache) {
+          recordDiagnostic('snapshot-cache', { collection });
           lastRemoteSerialisedRef.current = null;
           setState('unknown');
           // Cache-first startup is routine. Do not raise an incident until the grace
@@ -318,6 +328,8 @@ export function useDocumentFreshness<T>({
       if (!active) return Promise.resolve();
       if (inFlight) return inFlight;
       const id = ++requestId;
+      const startedAt = Date.now();
+      recordDiagnostic('freshness-check', { collection, source });
       setChecking(true);
       record({ reason: 'checking', source, at: Date.now() }, true);
       let resolveRead!: () => void;
@@ -346,13 +358,17 @@ export function useDocumentFreshness<T>({
         subscribe();
       }
       getDocFromServer(ref).then((snapshot) => {
-        if (!active || requestId !== id) return;
+        if (!active || requestId !== id) {
+          recordDiagnostic('freshness-late-response', { collection, source, elapsedMs: Date.now() - startedAt });
+          return;
+        }
         // Server-source reads can still contain latency-compensated local writes.
         if (snapshot.metadata?.hasPendingWrites) unavailable('pendingChanges', source);
         else if (snapshot.metadata?.fromCache) unavailable('cached', source);
         else serverAnswer(snapshot);
       }).catch((error: unknown) => {
         if (active && requestId === id) unavailable('checkFailed', source, error);
+        else recordDiagnostic('freshness-late-error', { collection, source, code: diagnosticErrorCode(error), elapsedMs: Date.now() - startedAt });
       }).finally(finish);
       return pending;
     };
@@ -368,6 +384,7 @@ export function useDocumentFreshness<T>({
     window.addEventListener('focus', onReturned);
     return () => {
       active = false;
+      recordDiagnostic('freshness-stop', { collection });
       requestId += 1;
       checkRef.current = null;
       finishRead?.();
