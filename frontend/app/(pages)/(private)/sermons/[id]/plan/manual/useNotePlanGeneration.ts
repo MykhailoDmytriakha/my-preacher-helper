@@ -39,19 +39,22 @@ function generationErrorCode(error: unknown): string {
 
 export function useNotePlanGeneration(options: Options) {
   const [style, setStyle] = useState<PlanStyle>('memory');
-  const [activeId, setActiveId] = useState<string | null>(null);
-  const [batch, setBatch] = useState(false);
+  const [generatingIds, setGeneratingIds] = useState<Record<string, boolean>>({});
   const [proposals, setProposals] = useState<Record<string, Proposal>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [missing, setMissing] = useState<Record<string, string>>({});
   const latest = useRef(options);
   latest.current = options;
-  const running = useRef(false);
-  const abort = useRef<AbortController | null>(null);
+  const requests = useRef(new Map<string, AbortController>());
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
-    return () => { mounted.current = false; abort.current?.abort(); };
+    const activeRequests = requests.current;
+    return () => {
+      mounted.current = false;
+      activeRequests.forEach((controller) => controller.abort());
+      activeRequests.clear();
+    };
   }, []);
 
   const unchanged = (pointId: string, proposal: Proposal) => {
@@ -78,7 +81,7 @@ export function useNotePlanGeneration(options: Options) {
     return true;
   };
 
-  const runPoint = async (point: SermonPoint, autoApply: boolean) => {
+  const runPoint = async (point: SermonPoint, controller: AbortController) => {
     const current = latest.current;
     if (current.blocked || !mounted.current) return;
     const currentPoint = allPoints(current.sermon).find((candidate) => candidate.id === point.id);
@@ -86,15 +89,12 @@ export function useNotePlanGeneration(options: Options) {
     const nodeIds = planNodesForPoint(currentPoint).map((node) => node.id);
     if (nodeIds.some((id) => current.conspectus.pendingNodeIds.has(id))) return;
     const before = Object.fromEntries(nodeIds.map((id) => [id, current.conspectus.contentByNodeId[id] ?? '']));
-    if (autoApply && Object.values(before).some((text) => text.trim())) return;
     const context = notePlanContextKey(current.sermon, point.id);
     const sermonId = current.sermon.id;
-    setActiveId(point.id);
     setErrors((previous) => { const next = { ...previous }; delete next[point.id]; return next; });
-    abort.current = new AbortController();
     try {
-      const result = await generateNotePlanContent({ sermonId, outlinePointId: point.id, style, expectedContext: context }, abort.current.signal);
-      if (!mounted.current) return;
+      const result = await generateNotePlanContent({ sermonId, outlinePointId: point.id, style, expectedContext: context }, controller.signal);
+      if (!mounted.current || controller.signal.aborted) return;
       if (Object.keys(result.contentByNodeId).length !== nodeIds.length
         || Object.keys(result.contentByNodeId).some((id) => !nodeIds.includes(id))) {
         throw new Error('Invalid generated node map');
@@ -104,47 +104,38 @@ export function useNotePlanGeneration(options: Options) {
         setErrors((previous) => ({ ...previous, [point.id]: 'contextChanged' }));
         return;
       }
-      if (autoApply) accept(point.id, proposal);
-      else setProposals((previous) => ({ ...previous, [point.id]: proposal }));
+      setProposals((previous) => ({ ...previous, [point.id]: proposal }));
       void current.onSuccess?.().catch(() => undefined);
     } catch (error) {
-      if (!mounted.current || abort.current.signal.aborted) return;
+      if (!mounted.current || controller.signal.aborted) return;
       const code = generationErrorCode(error);
       setErrors((previous) => ({ ...previous, [point.id]: code }));
-      // A batch cannot keep spending requests after an account or source refusal.
-      if (code !== 'generationFailed') throw error;
+      if (code === 'usageBlocked') void current.onSuccess?.().catch(() => undefined);
     }
   };
 
   const generate = async (point: SermonPoint) => {
-    if (running.current || latest.current.blocked) return;
-    running.current = true;
-    try { await runPoint(point, false); } catch { /* The point carries the error. */ }
-    finally { running.current = false; if (mounted.current) setActiveId(null); }
-  };
-
-  const fillEmpty = async () => {
-    if (running.current || latest.current.blocked) return;
-    running.current = true;
-    setBatch(true);
-    const sermonId = latest.current.sermon.id;
-    try {
-      for (const point of allPoints(latest.current.sermon)) {
-        if (!mounted.current || latest.current.sermon.id !== sermonId) break;
-        if (proposals[point.id]) continue;
-        await runPoint(point, true);
+    if (requests.current.has(point.id) || latest.current.blocked || !mounted.current) return;
+    const controller = new AbortController();
+    requests.current.set(point.id, controller);
+    setGeneratingIds((previous) => ({ ...previous, [point.id]: true }));
+    try { await runPoint(point, controller); }
+    finally {
+      // An old completion must not clear a newer request after effect cleanup/remount.
+      if (requests.current.get(point.id) === controller) {
+        requests.current.delete(point.id);
+        if (mounted.current) setGeneratingIds((previous) => {
+          const next = { ...previous };
+          delete next[point.id];
+          return next;
+        });
       }
-    } catch { /* Stop on a source, context or allowance refusal; completed drafts remain. */ }
-    finally { running.current = false; if (mounted.current) { setBatch(false); setActiveId(null); } }
+    }
   };
-
-  const emptyCount = allPoints(options.sermon).filter((point) => !proposals[point.id]
-    && planNodesForPoint(point).every((node) => !options.conspectus.contentByNodeId[node.id]?.trim()
-      && !options.conspectus.pendingNodeIds.has(node.id))).length;
 
   return {
-    style, setStyle, activeId, batch, busy: batch || activeId !== null,
-    proposals, errors, missing, generate, fillEmpty, accept, emptyCount,
+    style, setStyle, generatingIds, busy: Object.values(generatingIds).some(Boolean),
+    proposals, errors, missing, generate, accept,
     discard: (pointId: string) => setProposals((previous) => { const next = { ...previous }; delete next[pointId]; return next; }),
   };
 }

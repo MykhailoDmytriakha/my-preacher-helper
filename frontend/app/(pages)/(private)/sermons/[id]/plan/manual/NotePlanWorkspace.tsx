@@ -4,16 +4,19 @@ import { createContext, useContext, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import MarkdownDisplay from '@/components/MarkdownDisplay';
+import PlanGenerationButton from '@/components/plan/PlanGenerationButton';
 import PlanStyleSelector from '@/components/plan/PlanStyleSelector';
 import { Button } from '@/components/ui/Button';
 import { useAiUsage } from '@/hooks/useAiUsage';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useSourceNotes } from '@/hooks/useSermonNoteLinks';
+import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 
 import { planNodesForPoint } from '../planNodes';
 
 import { useNotePlanGeneration } from './useNotePlanGeneration';
 
+import type { SermonSectionKey } from '../types';
 import type { ManualConspectus } from './useManualConspectus';
 import type { Sermon, SermonPoint } from '@/models/models';
 
@@ -48,15 +51,7 @@ function ActiveWorkspace({ sermon, conspectus, children }: { sermon: Sermon; con
           {aiBlocked && <p role="status" className="mt-2 text-sm">{t('plan.fromNote.usageBlocked')}</p>}
         </div>
         <PlanStyleSelector value={generation.style} onChange={generation.setStyle} disabled={generation.busy} />
-        <div className="flex flex-wrap items-center gap-3">
-          <Button variant="primary" disabled={blocked || generation.busy || generation.emptyCount === 0}
-            onClick={() => void generation.fillEmpty()}>
-            {t(generation.batch ? 'plan.fromNote.filling' : 'plan.fromNote.fillEmpty', { count: generation.emptyCount })}
-          </Button>
-          <Button variant="secondary" onClick={() => void conspectus.saveModified()}
-            disabled={!Object.values(conspectus.modifiedNodeIds).some(Boolean)}>{t('plan.fromNote.saveAll')}</Button>
-          <span className="text-sm text-gray-500 dark:text-gray-400">{t('plan.fromNote.draftHelp')}</span>
-        </div>
+
       </div>
       {children}
     </NotePlanContext.Provider>
@@ -69,18 +64,28 @@ export function NotePlanWorkspace({ enabled, ...props }: {
   return enabled ? <ActiveWorkspace {...props} /> : <>{props.children}</>;
 }
 
+export function NotePointGenerateButton({ point, section }: { point: SermonPoint; section: SermonSectionKey }) {
+  const state = useContext(NotePlanContext);
+  const { t } = useTranslation();
+  if (!state) return null;
+  const generating = Boolean(state.generatingIds[point.id]);
+  const pending = planNodesForPoint(point).some((node) => state.conspectus.pendingNodeIds.has(node.id));
+  const colors = SERMON_SECTION_COLORS[section === 'main' ? 'mainPart' : section];
+  return (
+    <PlanGenerationButton colors={colors} generating={generating}
+      disabled={state.blocked || generating || pending} onClick={() => void state.generate(point)}
+      label={t(generating ? 'plan.fromNote.generating' : 'plan.fromNote.generatePoint')} />
+  );
+}
+
 export function NotePointActions({ point }: { point: SermonPoint }) {
   const state = useContext(NotePlanContext);
   const { t } = useTranslation();
   if (!state) return null;
   const nodes = planNodesForPoint(point);
   const proposal = state.proposals[point.id];
-  const pending = nodes.some((node) => state.conspectus.pendingNodeIds.has(node.id));
   return (
     <div className="mb-4 space-y-3">
-      <Button variant="primary" disabled={state.blocked || state.busy || pending} onClick={() => void state.generate(point)}>
-        {t(state.activeId === point.id ? 'plan.fromNote.generating' : 'plan.fromNote.generatePoint')}
-      </Button>
       {state.errors[point.id] && <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">{t(`plan.fromNote.${state.errors[point.id]}`)}</p>}
       {proposal && (
         <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-900 dark:bg-blue-950/20">

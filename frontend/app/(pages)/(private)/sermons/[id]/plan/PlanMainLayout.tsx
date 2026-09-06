@@ -1,10 +1,11 @@
-import { FileText, Key, Lightbulb, List, Pencil, Save, Sparkles } from "lucide-react";
+import { FileText, Key, Lightbulb, List, Pencil, Save } from "lucide-react";
 import React, { createContext, useContext, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
 import { SwitchViewIcon } from "@/components/Icons";
 import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
+import PlanGenerationButton from "@/components/plan/PlanGenerationButton";
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
 import PlanStyleSelector from "@/components/plan/PlanStyleSelector";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
@@ -93,18 +94,6 @@ const Button = ({
     >
       {children}
     </button>
-  );
-};
-
-const LoadingSpinner = ({ size = "medium", className = "" }: { size?: "small" | "medium" | "large"; className?: string }) => {
-  const sizeClasses = {
-    small: "w-4 h-4",
-    medium: "w-6 h-6",
-    large: "w-10 h-10",
-  };
-
-  return (
-    <div className={`inline-block animate-spin rounded-full border-2 border-solid border-gray-300 border-t-blue-600 ${sizeClasses[size]} ${className}`} />
   );
 };
 
@@ -264,16 +253,13 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
               </span>
             )}
           </Button>
-          <Button
-            onClick={() => onGenerate(outlinePoint.id)}
-            variant="section"
-            sectionColor={sectionColors}
-            className="text-sm px-2 py-1 h-8"
+          <PlanGenerationButton
+            onClick={() => void onGenerate(outlinePoint.id)}
+            colors={sectionColors}
+            generating={isGenerating}
             disabled={isGenerating || aiBlocked}
-            title={aiBlocked ? t("settings.usage.aiUsageExhausted") : isGenerating ? t("plan.generating") : currentGeneratedContent ? t("plan.regenerate") : t("plan.generate")}
-          >
-            {isGenerating ? <LoadingSpinner size="small" /> : <Sparkles className="h-4 w-4" />}
-          </Button>
+            label={aiBlocked ? t("settings.usage.aiUsageExhausted") : isGenerating ? t("plan.generating") : currentGeneratedContent ? t("plan.regenerate") : t("plan.generate")}
+          />
         </div>
       </h3>
 

@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
-import { NotePlanWorkspace, NotePointActions, NoteNodeReminder } from '@/(pages)/(private)/sermons/[id]/plan/manual/NotePlanWorkspace';
+import { NotePlanWorkspace, NotePointActions, NotePointGenerateButton, NoteNodeReminder } from '@/(pages)/(private)/sermons/[id]/plan/manual/NotePlanWorkspace';
 import { generateNotePlanContent } from '@/(pages)/(private)/sermons/[id]/plan/planApi';
 
 import type { ManualConspectus } from '@/(pages)/(private)/sermons/[id]/plan/manual/useManualConspectus';
@@ -24,7 +24,7 @@ const conspectus = { contentByNodeId: { p: 'Original words' }, modifiedNodeIds: 
   restoreCells: jest.fn(), saveModified: jest.fn() } as unknown as ManualConspectus;
 
 const view = (enabled = true) => render(<NotePlanWorkspace enabled={enabled} sermon={sermon} conspectus={conspectus}>
-  <NotePointActions point={point} /><NoteNodeReminder text={point.note} /><NoteNodeReminder />
+  <h3><NotePointGenerateButton point={point} section="main" /></h3><NotePointActions point={point} /><NoteNodeReminder text={point.note} /><NoteNodeReminder />
 </NotePlanWorkspace>);
 
 beforeEach(() => {
@@ -44,8 +44,7 @@ it('shows source, placed reminder, and the review before accepting a replacement
   expect(conspectus.restoreCells).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.apply' }));
   expect(conspectus.restoreCells).toHaveBeenCalledWith({ p: '- Extracted people' });
-  fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.saveAll' }));
-  expect(conspectus.saveModified).toHaveBeenCalled();
+  expect(conspectus.saveModified).not.toHaveBeenCalled();
 });
 
 it('keeps the existing editor free of source controls when the mode is manual', () => {
@@ -69,4 +68,32 @@ it('shows request errors and allows dismissing a proposed replacement', async ()
   await screen.findByText('- Extracted people');
   fireEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
   await waitFor(() => expect(screen.queryByText('- Extracted people')).not.toBeInTheDocument());
+});
+
+it('removes the bulk generation, bulk save and draft-help row', () => {
+  view();
+  expect(screen.queryByRole('button', { name: /plan.fromNote.fillEmpty/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'plan.fromNote.saveAll' })).not.toBeInTheDocument();
+  expect(screen.queryByText('plan.fromNote.draftHelp')).not.toBeInTheDocument();
+});
+
+it('keeps other point buttons available while one or both requests are running', async () => {
+  const next = { id: 'q', text: 'Next' };
+  jest.mocked(generateNotePlanContent).mockReturnValue(new Promise(() => undefined));
+  render(<NotePlanWorkspace enabled sermon={{ ...sermon, outline: { introduction: [point], main: [next], conclusion: [] } }} conspectus={conspectus}>
+    <h3 data-testid="first-heading"><NotePointGenerateButton point={point} section="introduction" /></h3>
+    <h3 data-testid="next-heading"><NotePointGenerateButton point={next} section="main" /></h3>
+  </NotePlanWorkspace>);
+  const [first, second] = screen.getAllByRole('button', { name: 'plan.fromNote.generatePoint' });
+  expect(first).toHaveStyle({ backgroundColor: '#f59e0b' });
+  expect(second).toHaveStyle({ backgroundColor: '#3b82f6' });
+  expect(first).toHaveClass('section-button', 'h-8');
+  fireEvent.click(first);
+  expect(first).toBeDisabled();
+  expect(first).toHaveAttribute('aria-busy', 'true');
+  expect(second).toBeEnabled();
+  fireEvent.click(second);
+  expect(second).toBeDisabled();
+  expect(second).toHaveAttribute('aria-busy', 'true');
+  expect(generateNotePlanContent).toHaveBeenCalledTimes(2);
 });

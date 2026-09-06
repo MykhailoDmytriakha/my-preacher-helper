@@ -34,7 +34,7 @@ import usePlanTextDraft from "../usePlanTextDraft";
 import usePlanViewMode from "../usePlanViewMode";
 
 import { AddNodeButton, DeleteNodeButton } from "./NodeControls";
-import { NotePlanWorkspace, NotePointActions, NoteNodeReminder } from "./NotePlanWorkspace";
+import { NotePlanWorkspace, NotePointActions, NotePointGenerateButton, NoteNodeReminder } from "./NotePlanWorkspace";
 import { useManualConspectus, type ManualConspectus } from "./useManualConspectus";
 
 import type { SermonSectionKey } from "../types";
@@ -154,6 +154,7 @@ const ManualPointCard = ({ point, index, section, conspectus, noteMode }: Manual
           />
         </span>
         <div className="flex shrink-0 gap-2">
+          {noteMode && <NotePointGenerateButton point={point} section={section} />}
           <button
             type="button"
             onClick={() => void conspectus.savePoint(point.id, section, nodeIds)}
