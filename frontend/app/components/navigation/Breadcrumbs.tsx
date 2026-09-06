@@ -95,10 +95,6 @@ const detailParents: Record<string, SegmentConfig> = {
     labelKey: 'navigation.groupDetail',
     defaultLabel: 'Group'
   },
-  studies: {
-    labelKey: 'navigation.studyDetail',
-    defaultLabel: 'Study'
-  },
   prayers: {
     labelKey: 'navigation.prayerDetail',
     defaultLabel: 'Prayer'
@@ -280,6 +276,19 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
       .filter((segment) => !segment.startsWith('(') && !segment.endsWith(')'));
 
     if (segments.length === 0) {
+      return [];
+    }
+
+    /**
+     * Studies pages carry their own way back, and a better one, so the trail is pure noise
+     * there. The note page's arrow returns to the list WITH the current search and filter
+     * still applied (`studies/[id]/page.tsx`), while a crumb link goes to a bare `/studies`
+     * and drops them; the share links page has its own "back" too. What the trail added on
+     * top was a word that named nothing: studies has no title resolver, so the path read
+     * "Studies / Study", and the share links route was title-cased into an English
+     * "Share Links" in the middle of a Russian interface.
+     */
+    if (segments[0] === 'studies' && segments.length > 1) {
       return [];
     }
 

@@ -152,6 +152,46 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByTestId('breadcrumbs')).not.toBeInTheDocument();
   });
 
+  /**
+   * Studies is the one section where the trail could not name what you opened: every other
+   * detail route resolves the real title, this one fell back to the category word ("Study"),
+   * so the path read "Studies / Study". And its only link went to a bare `/studies`, while
+   * the note page's own back arrow returns to the list WITH the search and filter still
+   * applied. A duplicate of a button that does the job better is not navigation, it is
+   * 48px of noise above every note.
+   */
+  it('does not render on a study note — the page carries a better way back', () => {
+    mockUsePathname.mockReturnValue('/studies/note-123');
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn().mockReturnValue(null),
+    });
+    mockUseSermon.mockReturnValue({ sermon: null });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
+
+    render(<Breadcrumbs />);
+
+    expect(screen.queryByTestId('breadcrumbs')).not.toBeInTheDocument();
+  });
+
+  it('does not render on the studies share links page either', () => {
+    // This one was worse still: with no label configured, the route segment was title-cased
+    // into the trail, so a Russian interface read "Изучения / Share Links".
+    mockUsePathname.mockReturnValue('/studies/share-links');
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn().mockReturnValue(null),
+    });
+    mockUseSermon.mockReturnValue({ sermon: null });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
+
+    render(<Breadcrumbs />);
+
+    expect(screen.queryByTestId('breadcrumbs')).not.toBeInTheDocument();
+  });
+
   it('should show Settings as root for settings page', () => {
     mockUsePathname.mockReturnValue('/settings');
     mockUseSearchParams.mockReturnValue({
