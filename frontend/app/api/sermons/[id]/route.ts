@@ -4,6 +4,24 @@ import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.
 import { seriesRepository } from '@repositories/series.repository';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
+/** Read recovery bypasses the browser transport, never the owner's access boundary. */
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const headers = { 'Cache-Control': 'private, no-store', Vary: 'Authorization' };
+  try {
+    const uid = await getRequiredAuthenticatedUid(request);
+    if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers });
+    const { adminDb } = await import('@/config/firebaseAdminConfig');
+    const { id } = await params;
+    const snapshot = await adminDb.collection('sermons').doc(id).get();
+    if (!snapshot.exists) return NextResponse.json({ error: 'Not found' }, { status: 404, headers });
+    const sermon = snapshot.data()!;
+    if (sermon.userId !== uid) return NextResponse.json({ error: 'Forbidden' }, { status: 403, headers });
+    return NextResponse.json({ ...sermon, id: snapshot.id }, { headers });
+  } catch {
+    return NextResponse.json({ error: 'Sermon read unavailable' }, { status: 503, headers });
+  }
+}
+
 // DELETE /api/sermons/:id - Delete a sermon
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {

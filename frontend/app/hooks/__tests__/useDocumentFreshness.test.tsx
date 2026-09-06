@@ -1,5 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 
+import { readSermonFromServer } from '@/services/sermonReadFallback.client';
+
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import {
   planFreshnessProjection,
@@ -15,6 +17,8 @@ type Snapshot = {
 let emit: ((snap: Snapshot) => void) | null = null;
 let fail: ((error: unknown) => void) | null = null;
 const unsubscribe = jest.fn();
+
+jest.mock('@/services/sermonReadFallback.client', () => ({ readSermonFromServer: jest.fn() }));
 
 jest.mock('@/config/firebaseClientDb', () => ({ getClientDb: () => ({}) }));
 const getDocFromServer = jest.fn();
@@ -695,13 +699,13 @@ describe('diagnostic incidents and read-only retry', () => {
     const { result, rerender } = renderHook(({ docId }) => useDocumentFreshness({
       collection: 'sermons', docId, uid: 'u', enabled: true, known: { title: 'same' }, select: (data) => ({ title: data.title }),
     }), { initialProps: { docId: 'a' } });
-    let resolve!: (value: Snapshot) => void;
-    getDocFromServer.mockReturnValue(new Promise((yes) => { resolve = yes; }));
+    let resolve!: (value: { title: string }) => void;
+    (readSermonFromServer as jest.Mock).mockReturnValue(new Promise((yes) => { resolve = yes; }));
     act(() => fail!({ code: 'permission-denied' }));
     act(() => { void result.current.checkAgain(); });
     const old = emit;
     rerender({ docId: 'b' });
-    await act(async () => { old!(server({ title: 'wrong document' })); resolve(server({ title: 'wrong document' })); });
+    await act(async () => { old!(server({ title: 'wrong document' })); resolve({ title: 'wrong document' }); });
     expect(result.current.diagnostics).toEqual({ lastServerResponseAt: null, lastServerResult: null, incident: null });
     expect(result.current.remote).toBeNull();
     expect(result.current.checking).toBe(false);
@@ -712,5 +716,70 @@ describe('diagnostic incidents and read-only retry', () => {
     await act(async () => { await result.current.checkAgain(); });
     expect(result.current.canCheck).toBe(false);
     expect(getDocFromServer).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('sermon freshness recovery', () => {
+  const open = () => renderHook(() => useDocumentFreshness({
+    collection: 'sermons', docId: 'sermon', uid: 'owner', enabled: true,
+    known: { title: 'Local' }, select: data => ({ title: data.title as string }),
+  }));
+  beforeEach(() => {
+    jest.useFakeTimers();
+    (readSermonFromServer as jest.Mock).mockReset();
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('automatically checks a cache-only startup and reports the newer copy without applying it', async () => {
+    (readSermonFromServer as jest.Mock).mockResolvedValue({ title: 'Remote' });
+    const { result } = open();
+    act(() => emit!(server({ title: 'Local' }, { fromCache: true })));
+    await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
+    expect(readSermonFromServer).toHaveBeenCalledWith('sermon');
+    expect(result.current.state).toBe('stale');
+    expect(result.current.remote).toEqual({ title: 'Remote' });
+    expect(result.current.diagnostics.lastServerResult).toBe('different');
+  });
+
+  it('does not issue recovery traffic after the listener has already confirmed the document', async () => {
+    open();
+    act(() => emit!(server({ title: 'Local' })));
+    await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
+    expect(readSermonFromServer).not.toHaveBeenCalled();
+  });
+
+  it('keeps failed verification unknown and recovers on a manual retry', async () => {
+    (readSermonFromServer as jest.Mock).mockRejectedValueOnce({ code: 'unavailable' });
+    const { result } = open();
+    await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
+    expect(result.current.state).toBe('unknown');
+    (readSermonFromServer as jest.Mock).mockResolvedValue({ title: 'Local' });
+    await act(async () => { await result.current.checkAgain(); });
+    expect(result.current.state).toBe('fresh');
+    expect(result.current.diagnostics.incident).toBeNull();
+  });
+
+  it('does not call a committed HTTP version newer while this device has pending writes', async () => {
+    (readSermonFromServer as jest.Mock).mockResolvedValue({ title: 'Old server value' });
+    const { result } = open();
+    act(() => emit!(server({ title: 'Local' }, { hasPendingWrites: true })));
+    await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
+    expect(result.current.state).toBe('unknown');
+    expect(result.current.remote).toBeNull();
+    expect(result.current.diagnostics.incident?.origin.reason).toBe('pendingChanges');
+    act(() => emit!(server({ title: 'Local' })));
+    expect(result.current.state).toBe('fresh');
+  });
+
+  it('ignores a late recovery answer superseded by a server snapshot', async () => {
+    let finish!: (value: unknown) => void;
+    (readSermonFromServer as jest.Mock).mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const { result } = open();
+    await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
+    act(() => emit!(server({ title: 'Local' })));
+    await act(async () => { finish({ title: 'Old' }); });
+    expect(result.current.state).toBe('fresh');
+    expect(result.current.remote).toBeNull();
   });
 });

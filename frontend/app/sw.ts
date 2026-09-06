@@ -16,11 +16,11 @@ declare global {
 declare const self: ServiceWorkerGlobalScope;
 
 const runtimeCaching: RuntimeCaching[] = [
-  // AI sermon-plan generation must always hit the network — never serve a cached
-  // generation. Placed before defaultCache (which has a NetworkFirst /api rule).
+  // Plan generation and recovery reads must hit the network. A cached recovery
+  // response would be false proof of freshness. This precedes the default /api rule.
   {
     matcher: ({ url }) =>
-      self.origin === url.origin && /^\/api\/sermons\/[^/]+\/plan$/.test(url.pathname),
+      self.origin === url.origin && /^\/api\/sermons\/[^/]+(?:\/plan)?$/.test(url.pathname),
     handler: new NetworkOnly(),
   },
   ...defaultCache,

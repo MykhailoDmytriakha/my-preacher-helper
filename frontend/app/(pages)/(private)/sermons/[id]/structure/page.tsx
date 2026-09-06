@@ -8,10 +8,14 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import Column from "@/components/Column";
+import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
+import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
 import EditThoughtModal from "@/components/EditThoughtModal";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
 import { SortableItemPreview } from "@/components/SortableItem";
 import { useAiUsage } from "@/hooks/useAiUsage";
+import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
+import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useRouteId } from "@/hooks/useRouteId";
 import { useSermonStructureData } from "@/hooks/useSermonStructureData";
 import { Item, Sermon, SermonPoint, Thought, SermonOutline } from "@/models/models";
@@ -26,6 +30,7 @@ import {
   skippedWrite,
   type WriteSubmission,
 } from "@/utils/recoverableWrite";
+import { sermonFreshnessProjection } from '@/utils/sermonFreshnessProjection';
 import { normalizeStructureTag } from "@/utils/tagUtils";
 import { getSectionLabel } from "@lib/sections";
 import { getSermonPlanData, planEditorRoute } from "@utils/sermonPlanAccess";
@@ -61,6 +66,7 @@ interface UseSermonStructureDataReturn {
   allowedTags: { name: string; color: string }[];
   loading: boolean;
   error: string | null;
+  retry: () => void;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   isAmbiguousVisible: boolean;
   setIsAmbiguousVisible: React.Dispatch<React.SetStateAction<boolean>>;
@@ -114,9 +120,20 @@ function StructurePageContent() {
     allowedTags,
     loading,
     error,
+    retry,
     isAmbiguousVisible,
     setIsAmbiguousVisible
   }: UseSermonStructureDataReturn = useSermonStructureData(sermonId, t);
+
+  const freshnessUid = useFreshnessUid(sermon?.userId);
+  const freshness = useDocumentFreshness({
+    collection: 'sermons', docId: sermonId, uid: freshnessUid,
+    enabled: Boolean(sermon),
+    known: sermon ? sermonFreshnessProjection(sermon as unknown as Record<string, unknown>) : null,
+    select: sermonFreshnessProjection,
+  });
+  const [freshnessDismissed, setFreshnessDismissed] = useState(false);
+  useEffect(() => { setFreshnessDismissed(false); }, [sermonId, freshness.state, freshness.remote]);
 
   // Handle switching to plan view
   const handleSwitchToPlan = useCallback((sectionId?: string) => {
@@ -772,8 +789,13 @@ function StructurePageContent() {
   }
 
   if (error) {
-    // Display error message from hook, potentially already handled by toast in hook
-    return <div className="text-red-500 p-4">{isClient ? t('errors.fetchSermonStructureError') : "Error"}: {error}</div>;
+    return <div role="alert" className="space-y-3 p-4">
+      <p className="text-red-500">{t('errors.fetchSermonStructureError')}</p>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" onClick={retry} className="rounded-lg bg-blue-600 px-4 py-2 text-white">{t('buttons.retry')}</button>
+        <TechnicalDetailsButton />
+      </div>
+    </div>;
   }
 
   if (!sermon) {
@@ -782,6 +804,13 @@ function StructurePageContent() {
 
   return (
     <div className="p-4">
+      {freshness.state !== 'fresh' && !freshnessDismissed && <DataFreshnessBanner
+        entityKey="entitySermon" dirty={false}
+        unknown={freshness.state === 'unknown'} deleted={freshness.remotelyDeleted}
+        diagnostics={freshness.diagnostics} checking={freshness.checking}
+        canCheck={freshness.canCheck} onCheckAgain={freshness.checkAgain}
+        onDismiss={() => setFreshnessDismissed(true)} className="mb-4"
+      />}
       <div className={`w-full`}>
         {/* One calm toolbar: back + quiet title (left), section toggles + layout (right).
             The big gradient title was dropped — breadcrumbs already carry the sermon path. */}

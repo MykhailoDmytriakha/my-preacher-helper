@@ -32,6 +32,7 @@ import {
   revisionedUpdate,
 } from '@/services/conflictSafeUpdate.client';
 import { auth } from '@/services/firebaseAuth.service';
+import { readSermonFromServer } from '@/services/sermonReadFallback.client';
 import { enqueueWrite, listOutbox, newIntentId, type OutboxEntry } from '@/services/writeOutbox.client';
 import { changedFields } from '@/utils/changedFields';
 import { newClientId } from '@/utils/clientId';
@@ -39,11 +40,12 @@ import { toDateOnlyKey } from '@/utils/dateOnly';
 import { mergeOutline } from '@/utils/mergeOutline';
 import { mergeScratch } from '@/utils/mergeScratch';
 import { mergeSections } from '@/utils/mergeSections';
+import { readWithDeadline } from '@/utils/readWithDeadline';
 import { compareById, timeOrZero } from '@/utils/sortHelpers';
 import { stripStructureTags } from '@/utils/thoughtTagSanitizer';
 
 // Sermon READS + own-doc WRITES (update fields, structure, outline, thoughts[],
-// preachDates[]) go through the client Firestore SDK unconditionally (offline
+// preachDates[]) normally go through the client Firestore SDK (offline
 // replica + deployed Security Rules). Operations that need secrets (AI:
 // transcription/insights/plan/brainstorm/TTS) or cascade into OTHER collections
 // (delete -> series delete-cleanup) stay on the server. Series MEMBERSHIP is not
@@ -133,9 +135,35 @@ export async function getSermonsViaClient(userId: string): Promise<Sermon[]> {
 }
 
 export async function getSermonByIdViaClient(id: string): Promise<Sermon | undefined> {
-  const snap = await getDoc(sermonRef(id));
-  if (!snap.exists()) return undefined;
-  return hydrateSermon({ ...(snap.data() as Sermon), id: snap.id });
+  const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+  const owner = auth.currentUser?.uid;
+  let cached: Sermon | undefined;
+  const assertOwner = () => {
+    if (auth.currentUser?.uid !== owner) throw Object.assign(new Error('Account changed'), { code: 'unauthenticated' });
+  };
+  try {
+    const snap = await readWithDeadline(getDoc(sermonRef(id)), online ? 4000 : 8000);
+    assertOwner();
+    // Pending writes belong to this device. Recovery must not replace them with
+    // an older committed version. A cache-only answer is not a server proof.
+    if (!online || !snap.metadata?.fromCache || snap.metadata?.hasPendingWrites) {
+      return snap.exists() ? hydrateSermon({ ...(snap.data() as Sermon), id: snap.id }) : undefined;
+    }
+    if (snap.exists()) cached = hydrateSermon({ ...(snap.data() as Sermon), id: snap.id });
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (!online || !['unavailable', 'deadline-exceeded', 'internal', 'unknown', 'cancelled'].includes(code ?? '')) throw error;
+  }
+  try {
+    const sermon = await readSermonFromServer(id);
+    assertOwner();
+    return sermon ? hydrateSermon(sermon) : undefined;
+  } catch (error) {
+    assertOwner();
+    const code = (error as { code?: string }).code;
+    if (cached && code !== 'permission-denied' && code !== 'unauthenticated') return cached;
+    throw error;
+  }
 }
 
 export async function getSermonOutlineViaClient(

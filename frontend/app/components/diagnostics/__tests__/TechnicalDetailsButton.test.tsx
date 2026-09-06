@@ -58,3 +58,20 @@ it('keeps the report open when the warning that supplied the button recovers', a
   fireEvent.click(screen.getByRole('button', { name: 'diagnostics.copy' }));
   await screen.findByText('diagnostics.copied');
 });
+
+
+it('confirms copying inside the same button and resets after three seconds', async () => {
+  jest.useFakeTimers();
+  try {
+    render(<><TechnicalDetailsDialog /><TechnicalDetailsButton /></>);
+    fireEvent.click(screen.getByRole('button', { name: 'diagnostics.open' }));
+    await act(async () => {});
+    const button = screen.getByRole('button', { name: 'diagnostics.copy' });
+    await act(async () => { fireEvent.click(button); });
+    expect(screen.getByRole('button', { name: 'diagnostics.copied' })).toBe(button);
+    expect(button).toHaveClass('bg-green-600');
+    await act(async () => { jest.advanceTimersByTime(3000); });
+    expect(screen.getByRole('button', { name: 'diagnostics.copy' })).toBe(button);
+    expect(button).not.toHaveClass('bg-green-600');
+  } finally { jest.useRealTimers(); }
+});

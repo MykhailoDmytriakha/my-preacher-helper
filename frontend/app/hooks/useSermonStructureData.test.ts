@@ -129,6 +129,92 @@ describe('useSermonStructureData Hook', () => {
     mockedGetSermonOutline.mockResolvedValue(mockOutlineData);
   });
 
+  it('stops loading and offers retry when the sermon read never settles', async () => {
+    jest.useFakeTimers();
+    try {
+      mockedGetSermonById.mockReturnValue(new Promise(() => {}));
+      const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), { wrapper: createWrapper() });
+      await act(async () => { jest.advanceTimersByTime(15000); });
+      expect(result.current.loading).toBe(false);
+      expect(result.current.error).toBeTruthy();
+      mockedGetSermonById.mockResolvedValue(mockSermon);
+      await act(async () => { result.current.retry(); });
+      expect(result.current.sermon?.id).toBe(mockSermon.id);
+      expect(result.current.error).toBeNull();
+    } finally { jest.useRealTimers(); }
+  });
+
+  it('opens cached content even when all three reads remain pending', async () => {
+    jest.useFakeTimers();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['sermon', 'test-user-id', 'sermon123'], mockSermon);
+    try {
+      mockedGetSermonById.mockReturnValue(new Promise(() => {}));
+      mockedGetTags.mockReturnValue(new Promise(() => {}));
+      mockedGetSermonOutline.mockReturnValue(new Promise(() => {}));
+      const wrapper = ({ children }: { children: React.ReactNode }) => React.createElement(QueryClientProvider, { client }, children);
+      const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), { wrapper });
+      await act(async () => { await jest.advanceTimersByTimeAsync(7000); });
+      expect(result.current.loading).toBe(false);
+      expect(result.current.sermon).toEqual(mockSermon);
+      expect(result.current.outlinePoints).toEqual(mockOutline);
+      expect(result.current.error).toBeNull();
+    } finally { client.clear(); jest.useRealTimers(); }
+  });
+
+  it('keeps edits published to the cache while the opening read was pending', async () => {
+    jest.useFakeTimers();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const key = ['sermon', 'test-user-id', 'sermon123'];
+    client.setQueryData(key, mockSermon);
+    try {
+      mockedGetSermonById.mockReturnValue(new Promise(() => {}));
+      const wrapper = ({ children }: { children: React.ReactNode }) => React.createElement(QueryClientProvider, { client }, children);
+      const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), { wrapper });
+      client.setQueryData(key, { ...mockSermon, title: 'Edited while opening' });
+      await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
+      expect(result.current.sermon?.title).toBe('Edited while opening');
+    } finally { client.clear(); jest.useRealTimers(); }
+  });
+
+  it('ignores a late initialization after navigating to another sermon', async () => {
+    let finish!: (value: Sermon) => void;
+    mockedGetSermonById.mockImplementation((id: string) => id === 'old'
+      ? new Promise(resolve => { finish = resolve; })
+      : Promise.resolve({ ...mockSermon, id: 'new', title: 'New' }));
+    const { result, rerender } = renderHook(({ id }) => useSermonStructureData(id, mockT as MockTFunction), {
+      initialProps: { id: 'old' }, wrapper: createWrapper(),
+    });
+    rerender({ id: 'new' });
+    await waitFor(() => expect(result.current.sermon?.id).toBe('new'));
+    await act(async () => { finish({ ...mockSermon, id: 'old' }); });
+    expect(result.current.sermon?.id).toBe('new');
+    expect(result.current.loading).toBe(false);
+  });
+
+  it('does not restore an absent outline from a stale secondary read', async () => {
+    mockedGetSermonById.mockResolvedValue({ ...mockSermon, outline: undefined });
+    mockedGetSermonOutline.mockResolvedValue(mockOutline);
+    const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.outlinePoints).toEqual({ introduction: [], main: [], conclusion: [] });
+    expect(mockedGetSermonOutline).not.toHaveBeenCalled();
+  });
+
+  it('does not reinitialize an open editor on connectivity changes', async () => {
+    const { result, rerender } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => { await result.current.setSermon(prev => ({ ...prev!, title: 'My pending edit' })); });
+    mockedGetSermonById.mockClear();
+    mockedUseOnlineStatus.mockReturnValue(false);
+    rerender();
+    mockedUseOnlineStatus.mockReturnValue(true);
+    rerender();
+    await act(async () => {});
+    expect(mockedGetSermonById).not.toHaveBeenCalled();
+    expect(result.current.sermon?.title).toBe('My pending edit');
+  });
+
   it('should initialize with loading state true and default values', () => {
     const { result } = renderHook(() => useSermonStructureData('sermon123', mockT as MockTFunction), {
       wrapper: createWrapper(),
@@ -152,7 +238,7 @@ describe('useSermonStructureData Hook', () => {
     // Verify service calls
     expect(mockedGetSermonById).toHaveBeenCalledWith('sermon123');
     expect(mockedGetTags).toHaveBeenCalledWith(mockSermon.userId);
-    expect(mockedGetSermonOutline).toHaveBeenCalledWith('sermon123');
+    expect(mockedGetSermonOutline).not.toHaveBeenCalled();
 
     // Verify final state
     expect(result.current.sermon).toEqual(mockSermon);
@@ -231,9 +317,9 @@ describe('useSermonStructureData Hook', () => {
 
     expect(result.current.loading).toBe(false);
     expect(result.current.sermon).toBeNull();
-    expect(result.current.error).toBe('Sermon fetch failed');
+    expect(result.current.error).toBe('Failed to fetch sermon structure');
     expect(result.current.containers).toEqual({ introduction: [], main: [], conclusion: [], ambiguous: [] }); // State reset
-    expect(mockedToastError).toHaveBeenCalledWith('Sermon fetch failed');
+    expect(mockedToastError).toHaveBeenCalledWith('Failed to fetch sermon structure');
 
     // Other services should not be called
     expect(mockedGetTags).not.toHaveBeenCalled();
@@ -258,8 +344,8 @@ describe('useSermonStructureData Hook', () => {
     // Allowed tags should be empty as fetch failed
     expect(result.current.allowedTags).toEqual([]);
 
-    // SermonOutline should still be fetched
-    expect(mockedGetSermonOutline).toHaveBeenCalledWith('sermon123');
+    // Outline stays on the selected sermon copy
+    expect(mockedGetSermonOutline).not.toHaveBeenCalled();
     expect(result.current.outlinePoints).toEqual(mockOutlineData);
 
     // Items should be processed without tag enrichment from fetched tags,
@@ -270,7 +356,7 @@ describe('useSermonStructureData Hook', () => {
     expect(t2Item?.customTagNames).toEqual([{ name: 'grace', color: '#4c51bf' }]);
   });
 
-  it('should handle error during getSermonOutline but continue processing', async () => {
+  it('does not depend on a separate outline service when the full sermon is available', async () => {
     const outlineError = new Error('Failed to fetch outline');
     mockedGetSermonOutline.mockRejectedValue(outlineError);
 
@@ -283,13 +369,13 @@ describe('useSermonStructureData Hook', () => {
     expect(result.current.loading).toBe(false);
     expect(result.current.sermon).toEqual(mockSermon); // Sermon fetch succeeded
     expect(result.current.error).toBeNull(); // Error handled, not set at hook level
-    expect(mockedToastError).toHaveBeenCalledWith('Failed to fetch outline'); // Check translated error
+    expect(mockedGetSermonOutline).not.toHaveBeenCalled();
 
     // Tags should be processed correctly
     expect(mockedGetTags).toHaveBeenCalledWith(mockSermon.userId);
     expect(result.current.allowedTags.length).toBeGreaterThan(0);
 
-    // SermonOutline points should be synced with sermon.outline when getSermonOutline fails
+    // Outline points use the exact selected sermon revision
     expect(result.current.outlinePoints).toEqual(mockOutline);
   });
 

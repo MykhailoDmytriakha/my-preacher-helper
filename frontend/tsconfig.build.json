@@ -1,13 +1,23 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "plugins": [{ "name": "next" }]
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ]
   },
   "include": [
-    "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next-typecheck/types/**/*.ts"
+    ".next-typecheck/types/**/*.ts",
+    "next-env.d.ts",
+    ".next-note-plan/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "test-utils", ".next", "public/sw.js"]
+  "exclude": [
+    "node_modules",
+    "test-utils",
+    ".next",
+    "public/sw.js"
+  ]
 }

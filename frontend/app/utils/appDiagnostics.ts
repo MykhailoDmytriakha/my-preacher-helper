@@ -4,6 +4,7 @@ const MAX_EVENTS = 80;
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const SESSION = Date.now();
 const EVENTS = [
+  'sermon-read', 'structure-load',
   'boot', 'route', 'route-check', 'visibility', 'focus', 'online', 'offline', 'pageshow', 'pagehide',
   'worker-change', 'runtime-error', 'unhandled-rejection', 'auth',
   'freshness-start', 'freshness-stop', 'snapshot-cache', 'snapshot-pending', 'snapshot-server',
@@ -34,7 +35,7 @@ let memory: DiagnosticEvent[] = [];
 
 
 export function diagnosticRoute(path: string): string {
-  const fixed = new Set(['dashboard', 'sermons', 'studies', 'groups', 'prayers', 'series', 'settings', 'calendar', 'plan', 'new', 'share-links']);
+  const fixed = new Set(['dashboard', 'sermons', 'studies', 'groups', 'prayers', 'series', 'settings', 'calendar', 'plan', 'structure', 'manual', 'new', 'share-links']);
   return '/' + path.split(/[?#]/)[0].split('/').filter(Boolean)
     .map(part => fixed.has(part) ? part : ':id').join('/');
 }

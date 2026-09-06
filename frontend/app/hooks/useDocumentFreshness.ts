@@ -4,6 +4,7 @@ import { doc, getDocFromServer, onSnapshot, type DocumentData } from 'firebase/f
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getClientDb } from '@/config/firebaseClientDb';
+import { readSermonFromServer } from '@/services/sermonReadFallback.client';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 
 /**
@@ -222,6 +223,7 @@ export function useDocumentFreshness<T>({
 
     let active = true;
     let listenerStopped = false;
+    let hasPendingWrites = false;
     let unsubscribe = () => {};
     let requestId = 0;
     let inFlight: Promise<void> | null = null;
@@ -296,6 +298,7 @@ export function useDocumentFreshness<T>({
       listenerStopped = false;
       unsubscribe = onSnapshot(ref, { includeMetadataChanges: true }, (snapshot) => {
         if (!active) return;
+        hasPendingWrites = snapshot.metadata.hasPendingWrites;
         if (snapshot.metadata.hasPendingWrites) {
           recordDiagnostic('snapshot-pending', { collection });
           return;
@@ -324,7 +327,7 @@ export function useDocumentFreshness<T>({
     }, 15_000);
     if (navigator.onLine === false) unavailable('offline', 'device');
 
-    const checkServer = (source: 'manual' | 'return'): Promise<void> => {
+    const checkServer = (source: 'manual' | 'return' | 'opening'): Promise<void> => {
       if (!active) return Promise.resolve();
       if (inFlight) return inFlight;
       const id = ++requestId;
@@ -357,13 +360,22 @@ export function useDocumentFreshness<T>({
         unsubscribe();
         subscribe();
       }
-      getDocFromServer(ref).then((snapshot) => {
+      // A stalled SDK listener and getDocFromServer share a transport. Sermons
+      // recover through an independent authenticated read of the same document.
+      const read = collection === 'sermons'
+        ? readSermonFromServer(docId).then(data => ({
+          exists: () => Boolean(data),
+          data: () => data as DocumentData | undefined,
+          metadata: { fromCache: false, hasPendingWrites: false },
+        }))
+        : getDocFromServer(ref);
+      read.then((snapshot) => {
         if (!active || requestId !== id) {
           recordDiagnostic('freshness-late-response', { collection, source, elapsedMs: Date.now() - startedAt });
           return;
         }
         // Server-source reads can still contain latency-compensated local writes.
-        if (snapshot.metadata?.hasPendingWrites) unavailable('pendingChanges', source);
+        if (snapshot.metadata?.hasPendingWrites || hasPendingWrites) unavailable('pendingChanges', source);
         else if (snapshot.metadata?.fromCache) unavailable('cached', source);
         else serverAnswer(snapshot);
       }).catch((error: unknown) => {
@@ -373,6 +385,11 @@ export function useDocumentFreshness<T>({
       return pending;
     };
     checkRef.current = () => checkServer('manual');
+    const recoveryTimer = window.setTimeout(() => {
+      if (collection === 'sermons' && !lastServerProofRef.current && navigator.onLine !== false) {
+        void checkServer('opening');
+      }
+    }, 4000);
     const onWentOffline = () => unavailable('offline', 'device');
     const onReturned = () => {
       if (document.visibilityState !== 'visible') return;
@@ -380,6 +397,7 @@ export function useDocumentFreshness<T>({
       void checkServer('return');
     };
     window.addEventListener('offline', onWentOffline);
+    window.addEventListener('online', onReturned);
     document.addEventListener('visibilitychange', onReturned);
     window.addEventListener('focus', onReturned);
     return () => {
@@ -389,7 +407,9 @@ export function useDocumentFreshness<T>({
       checkRef.current = null;
       finishRead?.();
       window.clearTimeout(graceTimer);
+      window.clearTimeout(recoveryTimer);
       window.removeEventListener('offline', onWentOffline);
+      window.removeEventListener('online', onReturned);
       document.removeEventListener('visibilitychange', onReturned);
       window.removeEventListener('focus', onReturned);
       unsubscribe();

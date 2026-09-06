@@ -4,19 +4,22 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
-import { Item, Sermon, SermonOutline, SermonPoint, Tag, Thought, ThoughtsBySection } from '@/models/models';
-import { getSermonOutline } from '@/services/outline.service';
+import { Item, Sermon, SermonPoint, Tag, Thought, ThoughtsBySection } from '@/models/models';
 import { getSermonById } from '@/services/sermon.service';
 import { getTags } from '@/services/tag.service';
+import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { resolveOwnerUid, sermonDetailKey } from '@/utils/queryKeys';
 // ONE definition of "has the server proved its copy is newer" for the whole app: this
 // hook used to carry a byte-identical private copy, and two copies of a rule that
 // decides whether someone's unsaved words may be discarded is one copy too many.
-import { serverCopyIsNewer } from '@/utils/readFreshness';
+import { selectReadableCopy, serverCopyIsNewer } from '@/utils/readFreshness';
+import { readWithDeadline } from '@/utils/readWithDeadline';
 import { normalizeStructureTag } from '@/utils/tagUtils';
 import { canonicalizeStructure } from '@/utils/thoughtOrdering';
 import { getSectionBaseColor } from '@lib/sections';
 
+
+const STRUCTURE_LOAD_EVENT = 'structure-load';
 
 /**
  * Fetch the sermon, and decide which copy the screen should show.
@@ -31,7 +34,7 @@ async function fetchSermonData(
   sermonId: string,
   queryClient: ReturnType<typeof useQueryClient>,
   isOnlineResolved: boolean
-): Promise<{ sermon: Sermon | null; adoptedFromServer: boolean }> {
+): Promise<{ sermon: Sermon | null }> {
   /**
    * The owner is fixed HERE, when the work starts, and not read again when it
    * finishes. Sign-out and sign-in can happen while a fetch is in flight, and
@@ -45,15 +48,17 @@ async function fetchSermonData(
 
   // Without a connection the stored copy is not a stale second-best, it is the only
   // thing there is — and it is why this sermon opens at all on a phone in a hall.
-  if (!isOnlineResolved) return { sermon: stored, adoptedFromServer: false };
+  if (!isOnlineResolved) return { sermon: stored };
 
   let fetched: Sermon | null;
   try {
-    fetched = (await getSermonById(sermonId)) ?? null;
+    fetched = (await readWithDeadline(getSermonById(sermonId), stored ? 4000 : 13000)) ?? null;
   } catch (error) {
     // A refused or dropped request must never blank a sermon the preacher can
     // already see. Losing the screen is worse than showing a copy a few minutes old.
-    if (stored) return { sermon: stored, adoptedFromServer: false };
+    if (resolveOwnerUid() !== startedAsUid) return { sermon: null };
+    const currentStored = queryClient.getQueryData<Sermon>(key) ?? stored;
+    if (currentStored) return { sermon: currentStored };
     throw error;
   }
 
@@ -62,15 +67,16 @@ async function fetchSermonData(
   // pins the owner AGAIN — now the new one — and files the first account's sermon
   // under the second account's key, then builds the visible columns from it. A
   // late answer for a signed-out account is dropped entirely.
-  if (resolveOwnerUid() !== startedAsUid) return { sermon: null, adoptedFromServer: false };
+  if (resolveOwnerUid() !== startedAsUid) return { sermon: null };
 
-  if (!fetched) return { sermon: stored, adoptedFromServer: false };
-  if (stored && !serverCopyIsNewer(fetched, stored)) {
-    return { sermon: stored, adoptedFromServer: false };
+  const currentStored = queryClient.getQueryData<Sermon>(key) ?? stored;
+  if (!fetched) return { sermon: currentStored };
+  if (currentStored && !serverCopyIsNewer(fetched, currentStored)) {
+    return { sermon: currentStored };
   }
 
   queryClient.setQueryData(key, fetched);
-  return { sermon: fetched, adoptedFromServer: Boolean(stored) };
+  return { sermon: fetched };
 }
 
 // Helper: Fetch and process tags
@@ -92,7 +98,7 @@ async function fetchTagsData(
     if (cachedTags) {
       tagsData = cachedTags;
     } else if (isOnlineResolved) {
-      tagsData = await getTags(fetchedSermon.userId);
+      tagsData = await readWithDeadline(getTags(fetchedSermon.userId), 3000);
       queryClient.setQueryData(tagsQueryKey, tagsData);
     } else {
       tagsData = { requiredTags: [], customTags: [] };
@@ -205,40 +211,6 @@ function buildContainersFromCanonicalStructure(
   };
 }
 
-// Helper: Fetch outline data
-async function fetchOutlineData(
-  sermonId: string,
-  fetchedSermon: Sermon,
-  queryClient: ReturnType<typeof useQueryClient>,
-  isOnlineResolved: boolean,
-  t: TFunction,
-  /**
-   * The sermon itself turned out to be behind and was replaced by the server's
-   * version. The plan is stored under its own key, so trusting it now would refresh
-   * the thoughts and leave the plan a week old — which is exactly what was seen on
-   * production: a deleted plan point still on screen beside up-to-date text.
-   */
-  sermonWasBehind = false
-): Promise<SermonOutline | undefined> {
-  let outlineData: SermonOutline | undefined;
-  const cachedOutline = queryClient.getQueryData<SermonOutline>(["sermon-outline", sermonId]);
-
-  if (cachedOutline && !sermonWasBehind) {
-    outlineData = cachedOutline;
-  } else if (isOnlineResolved) {
-    try {
-      outlineData = await getSermonOutline(sermonId);
-      queryClient.setQueryData(["sermon-outline", sermonId], outlineData ?? undefined);
-    } catch (outlineError) {
-      console.error("Error fetching sermon outline:", outlineError);
-      toast.error(t('errors.fetchOutlineError'));
-      outlineData = undefined;
-    }
-  }
-
-  return outlineData ?? fetchedSermon.outline;
-}
-
 // Helper: Seed positions for items
 function seedPositions(items: Item[]): Item[] {
   const anyPos = items.some(i => typeof i.position === 'number');
@@ -262,6 +234,9 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
   const [sermon, setSermonState] = useState<Sermon | null>(null);
   const lastSermonIdRef = useRef<string | null>(null);
   const hasLoadedRef = useRef(false);
+  const loadGenerationRef = useRef(0);
+  const [retryCount, setRetryCount] = useState(0);
+  const retry = useCallback(() => setRetryCount(count => count + 1), []);
   const [containers, setContainers] = useState<Record<string, Item[]>>({
     introduction: [],
     main: [],
@@ -293,9 +268,10 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     // Owner pinned before the await, for the same reason as in fetchSermonData:
     // an account switch mid-flight must not redirect this write to the new owner.
     const startedAsUid = resolveOwnerUid();
+    const generation = loadGenerationRef.current;
     const key = sermonDetailKey(startedAsUid, sermonId);
     await queryClient.cancelQueries({ queryKey: key });
-    if (resolveOwnerUid() !== startedAsUid) return;
+    if (resolveOwnerUid() !== startedAsUid || generation !== loadGenerationRef.current) return;
 
     let nextSermon: Sermon | null = null;
     queryClient.setQueryData(key, (prev: Sermon | undefined) => {
@@ -317,29 +293,36 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
   }, [queryClient, sermonId]);
 
   useEffect(() => {
+    const generation = ++loadGenerationRef.current;
+    const owner = resolveOwnerUid();
+    const isCurrent = () => generation === loadGenerationRef.current && resolveOwnerUid() === owner;
     async function initializeSermon() {
       if (!sermonId) {
         setLoading(false);
         setError(null);
-        setSermon(null);
+        setSermonState(null);
         setContainers({ introduction: [], main: [], conclusion: [], ambiguous: [] });
         return;
       }
 
       const isNewSermon = lastSermonIdRef.current !== sermonId;
       const isInitialLoad = !hasLoadedRef.current || isNewSermon;
-      if (isInitialLoad) {
-        setLoading(true);
-      }
+      // Connectivity changes must not rebuild an editor underneath pending work.
+      // The page's freshness observer independently offers server verification.
+      if (!isInitialLoad) return;
+      setLoading(true);
+      setSermonState(null);
       setError(null);
 
+      recordDiagnostic(STRUCTURE_LOAD_EVENT, { result: 'started' });
       try {
         // Fetch sermon
-        const { sermon: fetchedSermon, adoptedFromServer } = await fetchSermonData(
+        let { sermon: fetchedSermon } = await fetchSermonData(
           sermonId,
           queryClient,
           isOnlineResolved
         );
+        if (!isCurrent()) return;
         if (!fetchedSermon) {
           setSermon(null);
           setContainers({ introduction: [], main: [], conclusion: [], ambiguous: [] });
@@ -349,15 +332,15 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
           setLoading(false);
           return;
         }
-        setSermon(fetchedSermon);
-
-        // Fetch and process tags
-        const { allTags, requiredTags: _requiredTags, customTags: _customTags } = await fetchTagsData(
-          fetchedSermon,
-          queryClient,
-          isOnlineResolved,
-          t
-        );
+        const { allTags } = await fetchTagsData(fetchedSermon, queryClient, isOnlineResolved, t);
+        if (!isCurrent()) return;
+        fetchedSermon = selectReadableCopy(fetchedSermon,
+          queryClient.getQueryData<Sermon>(sermonDetailKey(owner, sermonId))) ?? fetchedSermon;
+        // The outline belongs to this exact sermon copy. A second SDK read could
+        // resurrect deleted points from its cache after HTTP recovered the document.
+        const outlineData = fetchedSermon.outline;
+        await setSermon(fetchedSermon);
+        if (!isCurrent()) return;
 
         setRequiredTagColors({
           introduction: getSectionBaseColor('introduction'),
@@ -378,16 +361,6 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
 
         // Process thoughts into items
         const allThoughtItems = processThoughtsIntoItems(fetchedSermon, allTags);
-
-        // Fetch outline
-        const outlineData = await fetchOutlineData(
-          sermonId,
-          fetchedSermon,
-          queryClient,
-          isOnlineResolved,
-          t,
-          adoptedFromServer
-        );
 
         if (outlineData) {
           setSermonPoints({
@@ -424,8 +397,10 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         lastSermonIdRef.current = sermonId;
 
       } catch (err) {
+        if (!isCurrent()) return;
+        recordDiagnostic(STRUCTURE_LOAD_EVENT, { result: 'failed' });
         console.error("Error initializing sermon data:", err);
-        const errorMessage = err instanceof Error ? err.message : t('errors.fetchSermonStructureError');
+        const errorMessage = t('errors.fetchSermonStructureError');
         setError(errorMessage);
         toast.error(errorMessage);
         // Reset state on error
@@ -435,12 +410,16 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
         setAllowedTags([]);
         setRequiredTagColors({});
       } finally {
-        setLoading(false);
+        if (isCurrent()) {
+          setLoading(false);
+          recordDiagnostic(STRUCTURE_LOAD_EVENT, { result: 'settled' });
+        }
       }
     }
 
-    initializeSermon();
-  }, [sermonId, t, isOnlineResolved, queryClient, setSermon]);
+    void initializeSermon();
+    return () => { loadGenerationRef.current += 1; };
+  }, [sermonId, t, isOnlineResolved, queryClient, setSermon, retryCount]);
 
   // Sync outlinePoints state with sermon.outline when it changes
   useEffect(() => {
@@ -464,6 +443,7 @@ export function useSermonStructureData(sermonId: string | null | undefined, t: T
     allowedTags,
     loading,
     error,
+    retry,
     setLoading,
     isAmbiguousVisible,
     setIsAmbiguousVisible
