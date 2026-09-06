@@ -25,11 +25,10 @@ import { SECTION_TONE_CLASSES } from "../constants";
 import { copyFormattedFromElement } from "../copyFormattedFromElement";
 import { PlanDraftRecoveryBar } from "../PlanDraftRecoveryBar";
 import PlanImmersiveView from "../PlanImmersiveView";
-import { PlanModeSwitch } from "../PlanModeSwitch";
 import { planNodesForPoint, pointHasContent } from "../planNodes";
 import PlanOverlayPortal from "../PlanOverlayPortal";
+import PlanPageHeader from "../PlanPageHeader";
 import PlanPreachingView from "../PlanPreachingView";
-import PlanViewActions from "../PlanViewActions";
 import useCopyFormattedContent from "../useCopyFormattedContent";
 import usePlanTextDraft from "../usePlanTextDraft";
 import usePlanViewMode from "../usePlanViewMode";
@@ -343,7 +342,7 @@ export default function ManualConspectusPage() {
 
   /**
    * Reading and preaching from the conspectus belong to BOTH editors — see
-   * `PlanViewActions`. The assembled text comes from what was stored, so this screen
+   * `PlanPageHeader`. The assembled text comes from what was stored, so this screen
    * shows exactly the document the pulpit view will show.
    */
   const {
@@ -471,13 +470,6 @@ export default function ManualConspectusPage() {
 
   return (
     <div className="space-y-6 p-4">
-      {/* The immersive and preaching views return above, so the strip stays out of them —
-          nobody standing in front of a congregation needs a progress readout. */}
-      <ProgressSidebar
-        outline={sermon.outline || { introduction: [], main: [], conclusion: [] }}
-        filledPointIds={filledPointIds}
-      />
-
       <PlanOverlayPortal
         isPlanOverlay={isOverlay}
         sermon={sermon}
@@ -491,6 +483,23 @@ export default function ManualConspectusPage() {
         onCopy={() => runOverlayCopy(() => copyFormattedFromElement(overlayContentRef.current))}
         onOpenPlanImmersive={openImmersive}
         onClosePlanView={closePlanView}
+      />
+
+      {/* The shared header — see `PlanPageHeader`. The link to the assembled plan that used
+          to sit up here is gone: the mode switch inside the header leads to the same screen,
+          and two doors to one place is what made the row ahead of it uneven. */}
+      <PlanPageHeader
+        sermon={sermon}
+        sermonId={sermonId}
+        mode={noteMode ? "note" : "manual"}
+        combinedPlan={combinedPlan}
+        t={t}
+        onLeave={guardUnsavedNavigation}
+        beforeSwitch={conspectus.saveModified}
+        onSwitched={(planMode) => setSermon((previous) => (previous ? { ...previous, planMode } : previous))}
+        onRequestPlanOverlay={openOverlay}
+        onRequestPreachingMode={openPreaching}
+        onStartPreachingMode={openPreaching}
       />
 
       {draft.recovered && (
@@ -522,47 +531,6 @@ export default function ManualConspectusPage() {
             onDismiss={() => setFreshnessDismissed(true)}
           />
         )}
-
-      <div className="flex items-center justify-between gap-4">
-        <Link
-          href={`/sermons/${sermonId}`}
-          onClick={guardUnsavedNavigation}
-          className="text-blue-600 hover:underline dark:text-blue-400"
-        >
-          {t("actions.backToSermon")}
-        </Link>
-        <Link
-          href={`/sermons/${sermonId}/plan`}
-          onClick={guardUnsavedNavigation}
-          className="text-sm text-gray-500 hover:underline dark:text-gray-400"
-        >
-          {t("plan.backToAssembled")}
-        </Link>
-      </div>
-
-      <div className="space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{sermon.title}</h1>
-          <p className="text-gray-500 dark:text-gray-400">{t(noteMode ? "plan.fromNote.subtitle" : "plan.manualSubtitle")}</p>
-        </div>
-
-        <PlanModeSwitch
-          sermon={sermon}
-          current={noteMode ? "note" : "manual"}
-          beforeSwitch={conspectus.saveModified}
-          onSwitched={(planMode) => setSermon((previous) => (previous ? { ...previous, planMode } : previous))}
-        />
-
-        <PlanViewActions
-          sermon={sermon}
-          sermonId={sermonId}
-          combinedPlan={combinedPlan}
-          t={t}
-          onRequestPlanOverlay={openOverlay}
-          onRequestPreachingMode={openPreaching}
-          onStartPreachingMode={openPreaching}
-        />
-      </div>
 
       <NotePlanWorkspace key={`${sermon.id}:${noteMode}`} enabled={noteMode} sermon={sermon} conspectus={conspectus}>
       {SECTIONS.map((section) => {
@@ -598,6 +566,12 @@ export default function ManualConspectusPage() {
         );
       })}
       </NotePlanWorkspace>
+      {/* The immersive and preaching views return above, so the strip stays out of them —
+          nobody standing in front of a congregation needs a progress readout. */}
+      <ProgressSidebar
+        outline={sermon.outline || { introduction: [], main: [], conclusion: [] }}
+        filledPointIds={filledPointIds}
+      />
     </div>
   );
 }

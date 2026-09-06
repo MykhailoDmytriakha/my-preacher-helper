@@ -1689,6 +1689,7 @@
     "missingEmptyPointsMore": "Points with no thoughts: {{names}} and {{amount}} more",
     "backToAssembled": "Assembled plan",
     "manualSubtitle": "Writing by hand: fill in the structure points. Adding or deleting here changes the structure itself.",
+    "fromThoughtsSubtitle": "The AI fills each point from the thoughts you assigned to it.",
     "assignThoughtsFirst": "Please assign all thoughts to structure points first",
     "issuesNoticeTitle": "Worth finishing before you preach",
     "unsavedWarning": "You have unsaved text. Leave without saving?",

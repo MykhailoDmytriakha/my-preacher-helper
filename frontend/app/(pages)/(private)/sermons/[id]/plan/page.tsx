@@ -43,9 +43,9 @@ import { copyFormattedFromElement } from "./copyFormattedFromElement";
 import { PlanDraftRecoveryBar } from "./PlanDraftRecoveryBar";
 import PlanImmersiveView from "./PlanImmersiveView";
 import PlanMainLayout from "./PlanMainLayout";
-import { PlanModeSwitch } from "./PlanModeSwitch";
 import { buildPlanOutlineLookup, getPointFromLookup, getPointSectionFromLookup } from "./planOutlineLookup";
 import PlanOverlayPortal from "./PlanOverlayPortal";
+import PlanPageHeader from "./PlanPageHeader";
 import PlanPreachingView from "./PlanPreachingView";
 import { assessPlanReadiness, type PlanReadinessIssue } from "./planReadiness";
 import { usePlanTextBaseline } from "./planTextBaseline";
@@ -1141,7 +1141,26 @@ export default function PlanPage() {
   }
 
   return (
-    <>
+    <div className="space-y-6 p-4">
+      {/* THE HEADER GOES FIRST, NOTICES UNDER IT.
+          Banners come and go — a stale copy appears, a draft is recovered, a point has no
+          thoughts — and while any of them sat ABOVE this block the header moved down with
+          them. Measured live: dismissing one notice only revealed another and shifted the
+          whole header by 90px. A header that moves is not a header. */}
+      <PlanPageHeader
+        sermon={sermon}
+        sermonId={sermonId as string}
+        mode="ai"
+        combinedPlan={combinedPlan}
+        t={t}
+        onSwitched={(planMode) => setSermon((previous) => (previous ? { ...previous, planMode } : previous))}
+        onRequestPlanOverlay={handleOpenPlanOverlay}
+        onRequestPreachingMode={handleOpenTimePicker}
+        onStartPreachingMode={handleStartPreachingMode}
+        getExportContent={getExportContent}
+        getPdfContent={getPdfContent}
+      />
+
       {planDraft.recovered && (
         <PlanDraftRecoveryBar
           count={Object.keys(planDraft.recovered).length}
@@ -1232,29 +1251,16 @@ export default function PlanPage() {
         onOpenPlanImmersive={handleOpenPlanImmersive}
         onClosePlanView={handleClosePlanView}
       />
-      <div className="mb-3 flex justify-end">
-        <PlanModeSwitch
-          sermon={sermon}
-          current="ai"
-          onSwitched={(planMode) => setSermon((previous) => (previous ? { ...previous, planMode } : previous))}
-        />
-      </div>
-
       <PlanMainLayout
         sermon={sermon}
-        params={{ id: sermonId as string }}
         sermonId={sermonId}
         t={t}
-        combinedPlan={combinedPlan}
         noContentText={noContentText}
         planStyle={planStyle}
         setPlanStyle={setPlanStyle}
         isLoading={isLoading}
         generatingIds={generatingIds}
         aiBlocked={aiBlocked}
-        sectionMenuRef={sectionMenuRef}
-        showSectionMenu={showSectionMenu}
-        setShowSectionMenu={setShowSectionMenu}
         registerPairRef={registerPairRef}
         introductionSectionRef={introductionSectionRef}
         mainSectionRef={mainSectionRef}
@@ -1276,12 +1282,7 @@ export default function PlanPage() {
         setGeneratedContent={setGeneratedContent}
         setModifiedContent={setModifiedContent}
         onSwitchToStructure={handleSwitchToStructure}
-        onRequestPlanOverlay={handleOpenPlanOverlay}
-        onRequestPreachingMode={handleOpenTimePicker}
-        onStartPreachingMode={handleStartPreachingMode}
-        getExportContent={getExportContent}
-        getPdfContent={getPdfContent}
       />
-    </>
+    </div>
   );
 }

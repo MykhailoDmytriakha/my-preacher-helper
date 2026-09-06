@@ -102,6 +102,48 @@ describe('Breadcrumbs', () => {
     expect(screen.queryByText('Manual')).not.toBeInTheDocument();
   });
 
+  /**
+   * THE TRAIL NAMES THE MODE ON EVERY PLAN ROUTE.
+   *
+   * The hand-written editor has a route segment of its own, so its trail read
+   * "Plan / By hand". The paired editor lives at `/plan` itself, so the trail stopped at
+   * "Plan" and never said which of the three editors was open — the same screen naming its
+   * mode on two routes out of three.
+   */
+  it('names the paired editor in the trail, like the other two modes', () => {
+    const mockSermon = { id: 'test-id', title: 'Test Sermon' };
+    mockUsePathname.mockReturnValue('/sermons/test-id/plan');
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn().mockReturnValue(null),
+    });
+    mockUseSermon.mockReturnValue({ sermon: mockSermon });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
+
+    render(<Breadcrumbs />);
+
+    expect(screen.getByText('Plan')).toBeInTheDocument();
+    expect(screen.getByText('From thoughts')).toBeInTheDocument();
+  });
+
+  it('names the from-a-note editor in the trail with a product word', () => {
+    const mockSermon = { id: 'test-id', title: 'Test Sermon' };
+    mockUsePathname.mockReturnValue('/sermons/test-id/plan/manual');
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn().mockImplementation((key: string) => (key === 'source' ? 'note' : null)),
+    });
+    mockUseSermon.mockReturnValue({ sermon: mockSermon });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
+
+    render(<Breadcrumbs />);
+
+    expect(screen.getByText('From note')).toBeInTheDocument();
+    expect(screen.queryByText('plan.fromNote.mode')).not.toBeInTheDocument();
+  });
+
   it('should show Sermons > Sermon Title for sermons detail page', () => {
     const mockSermon = { id: 'test-id', title: 'Test Sermon' };
     mockUsePathname.mockReturnValue('/sermons/test-id');

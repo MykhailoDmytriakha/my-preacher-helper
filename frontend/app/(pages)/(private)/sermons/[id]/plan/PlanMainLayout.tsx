@@ -1,21 +1,17 @@
 import { FileText, Key, Lightbulb, List, Pencil, Save, Sparkles } from "lucide-react";
-import Link from "next/link";
 import React, { createContext, useContext, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { PlanStyle } from "@/api/clients/openAI.client";
-import ExportButtons from "@/components/ExportButtons";
 import { SwitchViewIcon } from "@/components/Icons";
 import KeyFragmentsModal from "@/components/plan/KeyFragmentsModal";
 import PlanStyleSelector from "@/components/plan/PlanStyleSelector";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
-import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
 import { Plan, Sermon, SermonPoint, Thought } from "@/models/models";
 import { normalizePlanArrows, normalizePlanPointHeadings, sanitizeMarkdown } from "@/utils/markdownUtils";
 import { readPlanText } from "@/utils/planText";
-import { hasPlan } from "@/utils/sermonPlanAccess";
 import { buildSubPointRenderableEntries } from "@/utils/subPoints";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import MarkdownDisplay from "@components/MarkdownDisplay";
@@ -31,7 +27,6 @@ import PlanMarkdownGlobalStyles from "./PlanMarkdownGlobalStyles";
 import { planNodesForPoint } from "./planNodes";
 
 import type {
-  CombinedPlan,
   RegisterPairedCardRef,
   SectionColors,
   SermonSectionKey,
@@ -621,19 +616,14 @@ const PlanSectionBlock = ({
 
 export interface PlanMainLayoutProps {
   sermon: Sermon;
-  params: { id: string };
   sermonId: string;
   t: (key: string, options?: Record<string, unknown>) => string;
-  combinedPlan: CombinedPlan;
   noContentText: string;
   planStyle: PlanStyle;
   setPlanStyle: React.Dispatch<React.SetStateAction<PlanStyle>>;
   isLoading: boolean;
   generatingIds: Record<string, boolean>;
   aiBlocked: boolean;
-  sectionMenuRef: React.RefObject<HTMLDivElement | null>;
-  showSectionMenu: boolean;
-  setShowSectionMenu: React.Dispatch<React.SetStateAction<boolean>>;
   registerPairRef: RegisterPairedCardRef;
   introductionSectionRef: React.RefObject<HTMLDivElement | null>;
   mainSectionRef: React.RefObject<HTMLDivElement | null>;
@@ -661,31 +651,18 @@ export interface PlanMainLayoutProps {
   setGeneratedContent: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setModifiedContent: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   onSwitchToStructure: () => void;
-  onRequestPlanOverlay: () => void;
-  onRequestPreachingMode: () => void;
-  onStartPreachingMode: () => void;
-  getExportContent: (
-    format: "plain" | "markdown",
-    options?: { includeTags?: boolean; type?: "thoughts" | "plan" },
-  ) => Promise<string>;
-  getPdfContent: () => Promise<React.ReactNode>;
 }
 
 export default function PlanMainLayout({
   sermon,
-  params,
   sermonId,
   t,
-  combinedPlan,
   noContentText,
   planStyle,
   setPlanStyle,
   isLoading,
   generatingIds,
   aiBlocked,
-  sectionMenuRef,
-  showSectionMenu,
-  setShowSectionMenu,
   registerPairRef,
   introductionSectionRef,
   mainSectionRef,
@@ -707,11 +684,6 @@ export default function PlanMainLayout({
   setGeneratedContent,
   setModifiedContent,
   onSwitchToStructure,
-  onRequestPlanOverlay,
-  onRequestPreachingMode,
-  onStartPreachingMode,
-  getExportContent,
-  getPdfContent,
 }: PlanMainLayoutProps) {
   const introOutline = sermon.outline?.introduction;
   const mainOutline = sermon.outline?.main;
@@ -746,74 +718,13 @@ export default function PlanMainLayout({
 
   return (
     <PlanMainLayoutContext.Provider value={contextValue}>
-      <div
-        className="p-4"
-        data-testid="sermon-plan-page-container"
-      >
+      <div data-testid="sermon-plan-page-container">
         <ProgressSidebar
           outline={sermon.outline || { introduction: [], main: [], conclusion: [] }}
           filledPointIds={savedSermonPoints}
         />
         <PlanMarkdownGlobalStyles variant="main" />
         <div className="w-full">
-          <div className="mb-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              <div className="flex items-center">
-                <Link
-                  href={`/sermons/${params.id}`}
-                  className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 flex items-center mr-3"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                  {t("actions.backToSermon")}
-                </Link>
-              </div>
-            </div>
-
-            {sermon && (
-              <div className="mt-6 mb-8 bg-white dark:bg-gray-800 rounded-lg shadow-sm p-6 border border-gray-200 dark:border-gray-700">
-                <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white mb-4">
-                  {sermon.title}
-                </h1>
-                {sermon.verse && (
-                  <div className="pl-4 border-l-4 border-blue-500 dark:border-blue-400">
-                    <p className="text-gray-700 dark:text-gray-300 whitespace-pre-line text-lg italic">
-                      {sermon.verse}
-                    </p>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                      {t(TRANSLATION_KEYS.COMMON.SCRIPTURE)}
-                    </p>
-                  </div>
-                )}
-
-                <div className="flex flex-wrap items-center gap-3 mt-6">
-                  <ViewPlanMenu
-                    sermonId={sermonId}
-                    combinedPlan={combinedPlan}
-                    sectionMenuRef={sectionMenuRef}
-                    showSectionMenu={showSectionMenu}
-                    setShowSectionMenu={setShowSectionMenu}
-                    onRequestPlanOverlay={onRequestPlanOverlay}
-                    onRequestPreachingMode={onRequestPreachingMode}
-                    onStartPreachingMode={onStartPreachingMode}
-                  />
-
-                  <ExportButtons
-                    sermonId={sermonId}
-                    getExportContent={getExportContent}
-                    getPdfContent={getPdfContent}
-                    title={sermon.title || "Sermon Plan"}
-                    className="w-full sm:w-auto sm:ml-auto"
-                    disabledFormats={["pdf"]}
-                    planData={hasPlan(sermon) ? { ...combinedPlan, sermonTitle: sermon.title, sermonVerse: sermon.verse } : undefined}
-                    sermonTitle={sermon.title}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <PlanSectionBlock
               sectionKey={SECTION_NAMES.INTRODUCTION}

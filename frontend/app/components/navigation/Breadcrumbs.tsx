@@ -327,8 +327,34 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
       crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series, group, prayer }));
     });
 
+    /**
+     * THE TRAIL ENDS WITH THE MODE THE PLAN IS BEING WRITTEN IN — on all three routes.
+     *
+     * The hand-written editor has a route segment of its own, so its trail read
+     * "Plan / By hand" and the from-a-note one "Plan / From note". The paired editor lives at
+     * `/plan` itself, so the trail stopped at "Plan" and never said which of the three was
+     * open. Same defect as the header above it: the mode was named on two screens out of
+     * three, and the one place a person looks to know where they are stayed silent.
+     */
+    const isPairedPlanRoute =
+      segments[0] === 'sermons' && segments.length === 3 && segments[2] === 'plan';
+
+    if (isPairedPlanRoute && crumbs.length) {
+      // "Plan" stops being the current page and stops linking to it — the mode crumb is now
+      // the page, and a crumb pointing at the screen you are already on is noise.
+      const planCrumb = crumbs[crumbs.length - 1];
+      planCrumb.isCurrent = false;
+      planCrumb.href = undefined;
+      crumbs.push({
+        label: t('plan.modeFromThoughts', { defaultValue: 'From thoughts' }),
+        href: undefined,
+        isCurrent: true,
+      });
+    }
+
     if (segments.at(-1) === 'manual' && searchParams?.get('source') === 'note' && crumbs.length) {
-      crumbs[crumbs.length - 1].label = t('plan.fromNote.mode');
+      // The default matters: until i18n loads, a person reads this word, not a key.
+      crumbs[crumbs.length - 1].label = t('plan.fromNote.mode', { defaultValue: 'From note' });
     }
 
     // Handle "Preaching" mode overlay
