@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
@@ -68,6 +68,13 @@ jest.mock('@/hooks/useAuth', () => ({
 }));
 jest.mock('@/hooks/useAiUsage', () => ({
   useAiUsage: () => ({ aiBlocked: false, refresh: jest.fn().mockResolvedValue(undefined) }),
+}));
+// Empty by default so the order assertion below sees the header a plain sermon draws; the
+// provenance test fills it in.
+let mockSourceNotes: { id: string; title: string }[] = [];
+jest.mock('@/hooks/useSermonNoteLinks', () => ({
+  ...jest.requireActual('@/hooks/useSermonNoteLinks'),
+  useSourceNotes: () => ({ notes: mockSourceNotes, missingIds: [], loading: false }),
 }));
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
@@ -215,6 +222,7 @@ describe('the plan header is the same in every mode', () => {
     jest.clearAllMocks();
     mockSearchParams = new URLSearchParams();
     mockSermon = sermonFixture();
+    mockSourceNotes = [];
   });
 
   it('is mounted by the paired editor', () => {
@@ -247,6 +255,7 @@ describe('the plan header is the same in every mode', () => {
     expect(paired).toEqual([
       'plan-header-back',
       'plan-header-title',
+      'plan-header-source',
       'plan-header-verse',
       'plan-header-subtitle',
       'plan-header-mode-switch',
@@ -265,6 +274,60 @@ describe('the plan header is the same in every mode', () => {
 
     renderPage(<ManualConspectusPage />);
     expect(screen.getByTestId('plan-header-subtitle')).toHaveTextContent('plan.manualSubtitle');
+  });
+
+  /**
+   * WHERE THIS PLAN'S MATERIAL CAME FROM, said the way the sermon says it.
+   *
+   * It used to be a titled card below the export row — a heading, the links and a paragraph of
+   * explanation — and it pushed the plan itself off the first screen. The sermon header had
+   * already answered this with one chip under the title, so the plan borrows that chip instead
+   * of keeping a second, louder answer to the same question. Provenance belongs to the document,
+   * so it shows in every mode; and it opens in a NEW tab, because this screen holds unsaved cells.
+   */
+  it('names the note it was built on, as a chip under the title, on every route', () => {
+    mockSourceNotes = [{ id: 'note-1', title: 'Jabez, a study' }];
+
+    renderPage(<AiPlanPage />);
+    const paired = screen.getByTestId('plan-page-header');
+    const pairedChip = within(paired).getByTestId('source-note-chip');
+    expect(pairedChip).toHaveTextContent('Jabez, a study');
+    expect(pairedChip).toHaveAttribute('target', '_blank');
+    expect(pairedChip).toHaveAttribute('href', '/studies/note-1');
+
+    document.body.innerHTML = '';
+
+    renderPage(<ManualConspectusPage />);
+    expect(
+      within(screen.getByTestId('plan-page-header')).getByTestId('source-note-chip')
+    ).toHaveTextContent('Jabez, a study');
+  });
+
+  /**
+   * Not just "no chip" — no ROW either. An always-present wrapper draws nothing yet still takes
+   * a gap under the title of every sermon that was never built on a note, which is the opposite
+   * of what shrinking this was for.
+   */
+  it('draws nothing about provenance when the sermon was not built on a note', () => {
+    mockSourceNotes = [];
+    mockSermon = { ...sermonFixture(), sourceNoteIds: [] } as Sermon;
+    renderPage(<AiPlanPage />);
+
+    expect(screen.queryByTestId('source-note-chip')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('plan-header-source')).not.toBeInTheDocument();
+  });
+
+  /**
+   * The row is reserved from `sourceNoteIds` alone, before the note titles are read, so the
+   * verse, the mode switch and the buttons below do not jump once the titles arrive.
+   */
+  it('holds the row open while the note titles are still being read', () => {
+    mockSourceNotes = [];
+    renderPage(<AiPlanPage />);
+
+    const row = screen.getByTestId('plan-header-source');
+    expect(row).toBeInTheDocument();
+    expect(row.className).toContain('min-h-[26px]');
   });
 
   it('offers no second door to the assembled plan now that the switch is there', () => {

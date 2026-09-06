@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render as rtlRender, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import ManualConspectusPage from '@/(pages)/(private)/sermons/[id]/plan/manual/page';
@@ -98,6 +99,18 @@ const sermon = (planText: Record<string, string>): Sermon => ({
   },
   planText,
 } as unknown as Sermon);
+
+/**
+ * The page is mounted the way the app mounts it — inside the query cache. The header asks
+ * react-query for the study this sermon was built on, so a bare `render` here would fail on
+ * plumbing rather than on anything this file is about.
+ */
+const render = (page: React.ReactElement) =>
+  rtlRender(
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      {page}
+    </QueryClientProvider>
+  );
 
 describe('the hand-written plan and a newer copy on the server', () => {
   beforeEach(() => {

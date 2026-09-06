@@ -26,9 +26,15 @@ import type { Sermon } from '@/models/models';
  */
 interface SourceNoteChipsProps {
   sermon: Sermon;
+  /**
+   * Open the note in a NEW tab. Off by default, because on the sermon screen there is nothing
+   * to lose by navigating. The plan editor is the exception: it holds unsaved cells, and
+   * walking out of it to read the study would cost the person the text they were typing.
+   */
+  openInNewTab?: boolean;
 }
 
-const SourceNoteChips: React.FC<SourceNoteChipsProps> = ({ sermon }) => {
+const SourceNoteChips: React.FC<SourceNoteChipsProps> = ({ sermon, openInNewTab = false }) => {
   const { t } = useTranslation();
   const { notes } = useSourceNotes(sermon);
 
@@ -44,6 +50,8 @@ const SourceNoteChips: React.FC<SourceNoteChipsProps> = ({ sermon }) => {
           <Link
             key={note.id}
             href={`/studies/${note.id}`}
+            target={openInNewTab ? '_blank' : undefined}
+            rel={openInNewTab ? 'noopener noreferrer' : undefined}
             data-testid="source-note-chip"
             title={t('sermon.sourceNotes.chipTitle', { title })}
             aria-label={t('sermon.sourceNotes.openNote', { title })}

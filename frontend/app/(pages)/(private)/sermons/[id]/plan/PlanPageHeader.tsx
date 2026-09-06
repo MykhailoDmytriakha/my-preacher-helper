@@ -5,6 +5,7 @@ import React, { useRef, useState } from "react";
 
 import ExportButtons from "@/components/ExportButtons";
 import ViewPlanMenu from "@/components/plan/ViewPlanMenu";
+import SourceNoteChips from "@/components/sermon/SourceNoteChips";
 import { normalizePlanArrows } from "@/utils/markdownUtils";
 import { planMarkdownToPlainText } from "@/utils/planHierarchy";
 import { hasPlan } from "@/utils/sermonPlanAccess";
@@ -140,6 +141,23 @@ export default function PlanPageHeader({
         >
           {sermon.title}
         </h1>
+
+        {/* Where this plan's material came FROM — the same chip the sermon header carries, in
+            the same place under the title. Provenance belongs to the DOCUMENT, not to the editor
+            it is open in, so it shows in all three modes. It opens in a new tab here, unlike on
+            the sermon: this screen holds unsaved cells.
+            The row exists only when the sermon NAMES a note — a wrapper that is always there
+            costs a gap under the title of every other sermon — and it reserves the chip's height
+            while the note titles are still being read, so nothing under it jumps once they
+            arrive. Both facts come from the sermon itself, before any fetch answers. */}
+        {!!sermon.sourceNoteIds?.length && (
+          <div
+            data-testid="plan-header-source"
+            className="flex min-h-[26px] flex-wrap items-center gap-2"
+          >
+            <SourceNoteChips sermon={sermon} openInNewTab />
+          </div>
+        )}
 
         {sermon.verse && (
           <div

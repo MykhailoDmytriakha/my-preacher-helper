@@ -36,24 +36,19 @@ function ActiveWorkspace({ sermon, conspectus, children }: { sermon: Sermon; con
   return (
     <NotePlanContext.Provider value={{ ...generation, blocked, conspectus }}>
       <div className="space-y-4">
-        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-          <p className="mb-2 text-sm font-medium text-gray-700 dark:text-gray-200">{t('plan.fromNote.source')}</p>
-          <div className="flex flex-wrap gap-2">
-            {sources.notes.map((note) => (
-              <a key={note.id} href={`/studies/${note.id}`} target="_blank" rel="noopener noreferrer"
-                className="text-sm text-blue-600 underline decoration-blue-300 underline-offset-4 dark:text-blue-300">
-                {note.title || t('studiesWorkspace.untitled')}
-              </a>
-            ))}
+        {/* WHAT STOPS THE WORK, and nothing else. The link to the study used to live here inside
+            a titled card with a paragraph of explanation; it now sits in the page header as the
+            same chip the sermon carries, so this block draws nothing at all while everything is
+            fine and only speaks when generation is actually held back. */}
+        {(sources.loading || sourceUnavailable || !online || aiBlocked) && (
+          <div className="space-y-1 text-sm">
+            {sources.loading && <p role="status" className="text-gray-500 dark:text-gray-400">{t('common.loading')}</p>}
+            {sourceUnavailable && <p role="alert" className="text-amber-700 dark:text-amber-300">{t('plan.fromNote.sourceUnavailable')}</p>}
+            {!online && <p role="status" className="text-gray-500 dark:text-gray-400">{t('connection.offlineBanner')}</p>}
+            {aiBlocked && <p role="status" className="text-gray-500 dark:text-gray-400">{t('plan.fromNote.usageBlocked')}</p>}
           </div>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{t('plan.fromNote.sourceHelp')}</p>
-          {sources.loading && <p role="status">{t('common.loading')}</p>}
-          {sourceUnavailable && <p role="alert" className="mt-2 text-sm text-amber-700 dark:text-amber-300">{t('plan.fromNote.sourceUnavailable')}</p>}
-          {!online && <p role="status" className="mt-2 text-sm">{t('connection.offlineBanner')}</p>}
-          {aiBlocked && <p role="status" className="mt-2 text-sm">{t('plan.fromNote.usageBlocked')}</p>}
-        </div>
+        )}
         <PlanStyleSelector value={generation.style} onChange={generation.setStyle} disabled={generation.busy} />
-
       </div>
       {children}
     </NotePlanContext.Provider>

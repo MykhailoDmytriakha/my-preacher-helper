@@ -38,9 +38,12 @@ beforeEach(() => {
   jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { p: '- Extracted people', sub: '' }, missingMaterial: { sub: 'No detail in source' } });
 });
 
-it('shows source, placed reminder, and the review before accepting a replacement', async () => {
+it('shows the placed reminder and the review before accepting a replacement', async () => {
   view();
-  expect(screen.getByRole('link', { name: 'Study source' })).toHaveAttribute('target', '_blank');
+  // The way INTO the study is a chip in the page header now, next to the title, exactly as the
+  // sermon carries it. Nothing about the source is drawn here while the work can proceed.
+  expect(screen.queryByRole('link', { name: 'Study source' })).not.toBeInTheDocument();
+  expect(screen.queryByText('plan.fromNote.sourceUnavailable')).not.toBeInTheDocument();
   expect(screen.getByText('List the people')).toBeInTheDocument();
   expect(screen.getByText('plan.fromNote.noReminder')).toBeInTheDocument();
   requestRefinement();
@@ -59,9 +62,16 @@ it('keeps the existing editor free of source controls when the mode is manual', 
   expect(screen.queryByRole('link', { name: 'Study source' })).not.toBeInTheDocument();
 });
 
+const REASON_MESSAGE: Record<string, string> = {
+  offline: 'connection.offlineBanner', usage: 'plan.fromNote.usageBlocked',
+  missing: 'plan.fromNote.sourceUnavailable', loading: 'common.loading',
+};
+
 it.each(['offline', 'usage', 'missing', 'loading'])('explains %s and disables generation', (reason) => {
   mockOnline = reason !== 'offline'; mockBlocked = reason === 'usage'; mockLoading = reason === 'loading'; mockMissing = reason === 'missing' ? ['gone'] : [];
   view();
+  // Held back — and it SAYS so: the block is silent only while generation is actually possible.
+  expect(screen.getByText(REASON_MESSAGE[reason])).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'plan.refine.open' })).toBeEnabled();
   fireEvent.click(screen.getByRole('button', { name: 'plan.refine.open' }));
   fireEvent.click(screen.getByRole('button', { name: 'plan.refine.presets.rewrite' }));

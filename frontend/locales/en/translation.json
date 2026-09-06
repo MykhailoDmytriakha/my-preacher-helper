@@ -1529,8 +1529,6 @@
     "fromNote": {
       "mode": "From note",
       "entry": "Based on note",
-      "source": "Source material",
-      "sourceHelp": "The full linked study supplies the details. Each point’s scratch material guides what to include. Sources open in a new tab.",
       "subtitle": "Build the plan from your placed scratch material and the linked study. Review, edit and save each point.",
       "readyTitle": "Build your plan from the note",
       "readyDescription": "Your structure and scratch material are ready. Use the linked study to fill the points, or write by hand.",
