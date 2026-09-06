@@ -26,6 +26,7 @@ import { composePlanFromScratch } from "@/services/scratch.service";
 import { transcribeThoughtAudio } from "@/services/thought.service";
 import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioFormatUtils";
 import { newClientId } from "@/utils/clientId";
+import { getSectionLabel } from "@lib/sections";
 
 import type { ComposedPlanOutline, ComposedPlanPoint } from "@/config/schemas/zod";
 import type { OutlinePoint, ScratchNote, SermonOutline, SubPoint } from "@/models/models";
@@ -44,6 +45,16 @@ type ScratchPlacement = {
   pointId: string;
   subPointId?: string;
 };
+/** One entry of the "place into…" menu — the path without dragging: a finger, a keyboard, a long way. */
+type ScratchPlaceTarget = {
+  key: string;
+  label: string;
+  depth: 0 | 1;
+  target: ScratchPlacement | null;
+};
+
+const placementKey = (placement: ScratchPlacement | null | undefined): string =>
+  !placement ? "pool" : placement.subPointId ? `sub:${placement.subPointId}` : `point:${placement.pointId}`;
 
 interface ScratchPanelProps {
   sermonId: string;
@@ -53,7 +64,8 @@ interface ScratchPanelProps {
   restoreScratchNote: (note: ScratchNote) => ScratchNote | null;
   updateScratchNote: (noteId: string, patch: ScratchPatch) => void;
   deleteScratchNote: (noteId: string) => void;
-  reorderScratchNotes?: (groupIds: string[], movedId: string, targetIndex: number) => void;
+  /** Put a note among the notes of one container: `neighbourIds` as displayed, without it; `index` among them. */
+  moveScratchNote?: (noteId: string, neighbourIds: string[], index: number) => void;
   setScratchNoteSection: (noteId: string, section: SectionKey | null) => void;
   isScratchWritePending: boolean;
   scratchRevision: number;
@@ -67,12 +79,18 @@ interface ScratchNoteCardProps {
   isSelected?: boolean;
   isReadOnly?: boolean;
   isDragging?: boolean;
+  /** The copy that flies under the finger: the text to recognise it by and the handle, nothing to press. */
+  isOverlay?: boolean;
   sectionLabel?: string;
   dragHandleProps?: DragHandleProps | null;
   onSelect?: () => void;
   onEdit: (noteId: string, text: string) => void;
   onDelete: (noteId: string) => void;
   onUnplace?: (noteId: string) => void;
+  /** Where the note can be filed without dragging; the entry it is in now is left out. */
+  placeTargets?: ScratchPlaceTarget[];
+  currentTargetKey?: string;
+  onPlaceInto?: (noteId: string, target: ScratchPlacement | null) => void;
 }
 
 const SECTION_CONFIGS: { key: SectionKey; styleKey: "introduction" | "mainPart" | "conclusion" }[] = [
@@ -309,15 +327,95 @@ function ScratchNoteCard({
   isSelected = false,
   isReadOnly = false,
   isDragging = false,
+  isOverlay = false,
   sectionLabel,
   dragHandleProps,
   onSelect,
   onEdit,
   onDelete,
   onUnplace,
+  placeTargets,
+  currentTargetKey,
+  onPlaceInto,
 }: ScratchNoteCardProps) {
   const { t } = useTranslation();
   const scratchNoteLabels = useScratchNoteLabels();
+  const [isPlaceMenuOpen, setIsPlaceMenuOpen] = useState(false);
+  const placeMenuRef = useRef<HTMLDivElement | null>(null);
+  const placeMenuListRef = useRef<HTMLDivElement | null>(null);
+  const placeMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  /** Close, and hand focus back to the button that opened it — a menu must not swallow focus. */
+  const closePlaceMenu = useCallback((restoreFocus: boolean) => {
+    setIsPlaceMenuOpen(false);
+    if (restoreFocus) placeMenuTriggerRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!isPlaceMenuOpen) return;
+    // Focus lands on the first choice, so arrows and Enter work at once.
+    placeMenuListRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    const onPointerDown = (event: PointerEvent) => {
+      if (!placeMenuRef.current?.contains(event.target as Node)) setIsPlaceMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [isPlaceMenuOpen]);
+
+  const onPlaceMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(placeMenuListRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    const focusAt = (index: number) => items[(index + items.length) % items.length]?.focus();
+    switch (event.key) {
+      case "ArrowDown":
+        event.preventDefault();
+        focusAt(current + 1);
+        break;
+      case "ArrowUp":
+        event.preventDefault();
+        focusAt(current - 1);
+        break;
+      case "Home":
+        event.preventDefault();
+        focusAt(0);
+        break;
+      case "End":
+        event.preventDefault();
+        focusAt(items.length - 1);
+        break;
+      case "Escape":
+      case "Tab":
+        event.preventDefault();
+        closePlaceMenu(true);
+        break;
+      default:
+        break;
+    }
+  };
+
+  if (isOverlay) {
+    /*
+     * A tall note in the air is clipped to a few lines — the eye needs to recognise
+     * it, not read it — and the handle row stays at the bottom, where the finger
+     * picked the card up. No editor, no buttons: nothing here can be pressed.
+     */
+    return (
+      <div
+        className={[NOTE_CARD_CLASS, "pointer-events-none border-indigo-300 shadow-2xl shadow-indigo-900/30 dark:border-indigo-500/60"].join(" ")}
+        data-testid={`scratch-note-overlay-${note.id}`}
+      >
+        <div className="line-clamp-4 whitespace-pre-wrap break-words text-sm italic text-gray-700 dark:text-gray-200">
+          {note.text}
+        </div>
+        <div className="mt-2 flex items-center border-t border-gray-100 pt-2 dark:border-gray-700/60">
+          <span className="flex h-10 w-11 items-center justify-center text-gray-400 dark:text-gray-500">
+            <Bars3Icon className="h-5 w-5" aria-hidden="true" />
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (!onSelect) return;
@@ -334,8 +432,60 @@ function ScratchNoteCard({
     onDelete(note.id);
   };
 
+  const placeChoices = (placeTargets ?? []).filter((choice) => choice.key !== currentTargetKey);
   const actionControls = !isReadOnly ? (
     <div className="flex shrink-0 items-center gap-1">
+      {onPlaceInto && placeChoices.length > 0 && (
+        /*
+         * THE PATH WITHOUT DRAGGING. On a phone the pool is a screen above the
+         * plan, and a keyboard cannot drag at all; the same outcome as a drop —
+         * "this note goes there" — has to be reachable with one tap. The note
+         * lands at the end of the chosen container.
+         */
+        <div ref={placeMenuRef} className="relative" onKeyDown={isPlaceMenuOpen ? onPlaceMenuKeyDown : undefined}>
+          <button
+            ref={placeMenuTriggerRef}
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setIsPlaceMenuOpen((open) => !open);
+            }}
+            aria-haspopup="menu"
+            aria-expanded={isPlaceMenuOpen}
+            className="rounded-md px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+          >
+            {t("scratch.card.placeInto")}
+          </button>
+          {isPlaceMenuOpen && (
+            <div
+              ref={placeMenuListRef}
+              role="menu"
+              aria-label={t("scratch.card.placeIntoMenu")}
+              className="absolute right-0 z-20 mt-1 max-h-72 w-64 overflow-y-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800"
+            >
+              {placeChoices.map((choice) => (
+                <button
+                  key={choice.key}
+                  type="button"
+                  role="menuitem"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    closePlaceMenu(true);
+                    onPlaceInto(note.id, choice.target);
+                  }}
+                  className={`block w-full truncate px-3 py-1.5 text-left text-sm transition-colors hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:hover:bg-gray-700 dark:focus:bg-gray-700 ${
+                    choice.depth === 1 ? "pl-7 text-gray-600 dark:text-gray-300" : "text-gray-800 dark:text-gray-100"
+                  }`}
+                  title={choice.label}
+                >
+                  {choice.depth === 1 ? "↳ " : ""}
+                  {choice.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
       {onUnplace && (
         <button
           type="button"
@@ -409,7 +559,11 @@ function ScratchNoteCard({
               <button
                 type="button"
                 {...dragHandleProps}
-                className="flex shrink-0 cursor-grab touch-manipulation items-center justify-center rounded p-0.5 text-gray-400 transition hover:text-gray-600 active:cursor-grabbing dark:text-gray-500 dark:hover:text-gray-300"
+                /*
+                 * 44px, and `touch-none`: on a phone the handle must own the gesture,
+                 * otherwise the page scrolls out from under the finger and cancels it.
+                 */
+                className="flex h-10 w-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300"
                 aria-label={t("common.dragToReorder")}
                 onClick={(event) => event.stopPropagation()}
               >
@@ -432,7 +586,7 @@ export default function ScratchPanel({
   restoreScratchNote,
   updateScratchNote,
   deleteScratchNote,
-  reorderScratchNotes,
+  moveScratchNote,
   isScratchWritePending,
   scratchRevision,
   onApplyOutline,
@@ -808,17 +962,54 @@ export default function ScratchPanel({
   );
 
   /**
-   * Which note comes first on a row. The arrangement of notes ACROSS points is a
-   * draft that lives until Apply, but their order is part of the notes themselves,
-   * so this one is written straight through.
+   * One drop, one operation: WHICH container the note goes to and WHERE among its
+   * notes. The container is a draft that lives until Apply; the order is part of
+   * the notes themselves and is written straight through — the same split as
+   * before, done in one call so the two halves can never disagree.
    */
-  const handleScratchReorder = useCallback(
-    (noteId: string, groupIds: string[], targetIndex: number) => {
-      if (isBoardLocked || !reorderScratchNotes) return;
+  const handleScratchMove = useCallback(
+    (noteId: string, target: ScratchPlacement | null, neighbourIds: string[], index: number) => {
+      if (isBoardLocked || !notes.some((note) => note.id === noteId)) return;
       markScratchChanged();
-      reorderScratchNotes(groupIds, noteId, targetIndex);
+      setPlacements((current) => {
+        if (target === null) {
+          if (!current[noteId]) return current;
+          const next = { ...current };
+          delete next[noteId];
+          return next;
+        }
+        return { ...current, [noteId]: target };
+      });
+      moveScratchNote?.(noteId, neighbourIds, index);
     },
-    [isBoardLocked, markScratchChanged, reorderScratchNotes]
+    [isBoardLocked, markScratchChanged, moveScratchNote, notes]
+  );
+
+  /** Every container a note can be filed into, in reading order: pool, then section → point → sub-point. */
+  const placeTargets = useMemo<ScratchPlaceTarget[]>(() => {
+    const targets: ScratchPlaceTarget[] = [{ key: "pool", label: t("scratch.card.placeIntoPool"), depth: 0, target: null }];
+    SECTION_CONFIGS.forEach(({ key, styleKey }) => {
+      const sectionLabel = getSectionLabel(t, styleKey);
+      (boardOutline[key] ?? []).forEach((point) => {
+        targets.push({ key: `point:${point.id}`, label: `${sectionLabel}: ${point.text}`, depth: 0, target: { pointId: point.id } });
+        (point.subPoints ?? []).forEach((subPoint) => {
+          targets.push({ key: `sub:${subPoint.id}`, label: subPoint.text, depth: 1, target: { pointId: point.id, subPointId: subPoint.id } });
+        });
+      });
+    });
+    return targets;
+  }, [boardOutline, t]);
+
+  /** The menu's outcome is a drop at the END of the chosen container — same operation, no gesture. */
+  const handlePlaceInto = useCallback(
+    (noteId: string, target: ScratchPlacement | null) => {
+      const targetKey = placementKey(target);
+      const neighbourIds = notes
+        .filter((note) => note.id !== noteId && placementKey(placements[note.id]) === targetKey)
+        .map((note) => note.id);
+      handleScratchMove(noteId, target, neighbourIds, neighbourIds.length);
+    },
+    [handleScratchMove, notes, placements]
   );
 
   const handleManualOutlineChange = useCallback(
@@ -1175,9 +1366,13 @@ export default function ScratchPanel({
 
   const renderScratchNote = (
     note: ScratchNote,
-    dragHandleProps: DragHandleProps | null | undefined
+    dragHandleProps: DragHandleProps | null | undefined,
+    options?: { overlay?: boolean }
   ) => {
     const currentNote = notesById.get(note.id) ?? note;
+    if (options?.overlay) {
+      return <ScratchNoteCard note={currentNote} isOverlay onEdit={() => {}} onDelete={() => {}} />;
+    }
     return (
       <ScratchNoteCard
         note={currentNote}
@@ -1186,6 +1381,9 @@ export default function ScratchPanel({
         onEdit={handleEditNote}
         onDelete={requestDeleteNote}
         onUnplace={placements[currentNote.id] ? (noteId) => handleScratchPlace(noteId, null) : undefined}
+        placeTargets={placeTargets}
+        currentTargetKey={placementKey(placements[currentNote.id])}
+        onPlaceInto={handlePlaceInto}
       />
     );
   };
@@ -1282,7 +1480,7 @@ export default function ScratchPanel({
           notesById,
           placements,
           onPlace: handleScratchPlace,
-          onReorder: handleScratchReorder,
+          onMove: handleScratchMove,
           renderNote: renderScratchNote,
           poolHeader: renderPoolHeader(),
           poolEmptyLabel: t("scratch.board.poolEmpty"),

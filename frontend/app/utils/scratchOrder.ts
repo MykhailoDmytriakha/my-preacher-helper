@@ -1,55 +1,46 @@
 import type { ScratchNote } from '@/models/models';
 
 /**
- * Reordering notes that share a plan point, without disturbing anyone else.
+ * Move one note to a place among the notes of one container.
  *
- * Notes have no per-point position field: what a point shows is simply the notes
- * filed there, in the order they sit in the sermon's one flat list. So "swap
- * these two" is a statement about that list — but only about the slots those two
- * occupy. Everything between them belongs to other points and must not shift.
+ * The sermon keeps ONE flat list of scratch notes; what a container (the pool, a
+ * point, a sub-point) shows is that list filtered, in that order. So "put this
+ * note before that one" is a statement about the flat list: take the note out,
+ * put it back right before its new neighbour. Nothing else changes place, so every
+ * other container keeps its order untouched.
  *
- * The trick is to treat the group's positions in the list as fixed SLOTS and
- * rearrange only which note sits in which slot. Move the second of two notes
- * above the first and exactly two entries change places; a note filed on another
- * point that happens to live between them in the list does not move at all.
+ * `neighbourIds` — the target container's notes as the person SEES them, without
+ * the moved note. `index` — where among them it lands: 0 is first, `length` is
+ * last. An empty container has no neighbour to stand next to; the note then goes
+ * to the end of the flat list, which is also the end of that container.
+ *
+ * Returns the same array when nothing would change, so callers can skip a write.
  */
-export function reorderWithinGroup(
+export function moveNoteTo(
   notes: ScratchNote[],
-  groupIds: string[],
-  movedId: string,
-  targetIndex: number
+  noteId: string,
+  neighbourIds: string[],
+  index: number
 ): ScratchNote[] {
-  const group = new Set(groupIds);
-  const slots: number[] = [];
-  const order: string[] = [];
+  const moved = notes.find((note) => note.id === noteId);
+  if (!moved) return notes;
 
-  notes.forEach((note, index) => {
-    if (!group.has(note.id)) return;
-    slots.push(index);
-    order.push(note.id);
-  });
+  const rest = notes.filter((note) => note.id !== noteId);
+  const restIndex = new Map(rest.map((note, i) => [note.id, i]));
+  const neighbours = neighbourIds.filter((id) => id !== noteId && restIndex.has(id));
 
-  const from = order.indexOf(movedId);
-  if (from < 0) return notes;
+  let flatIndex: number;
+  if (neighbours.length === 0) {
+    flatIndex = rest.length;
+  } else {
+    const at = Math.max(0, Math.min(index, neighbours.length));
+    flatIndex =
+      at < neighbours.length
+        ? (restIndex.get(neighbours[at]) as number)
+        : (restIndex.get(neighbours[neighbours.length - 1]) as number) + 1;
+  }
 
-  /*
-   * `targetIndex` counts the seams as the person SEES them, with the dragged note
-   * still in place. Dropping a note below itself therefore names a slot that is
-   * one too far once the note is lifted out — the same correction the plan's own
-   * movers make.
-   */
-  const to = Math.max(0, Math.min(targetIndex > from ? targetIndex - 1 : targetIndex, order.length - 1));
-  if (to === from) return notes;
-
-  order.splice(from, 1);
-  order.splice(to, 0, movedId);
-
-  const byId = new Map(notes.map((note) => [note.id, note]));
-  const next = [...notes];
-  slots.forEach((slot, i) => {
-    const note = byId.get(order[i]);
-    if (note) next[slot] = note;
-  });
-
-  return next;
+  const next = [...rest];
+  next.splice(flatIndex, 0, moved);
+  return next.every((note, i) => note === notes[i]) ? notes : next;
 }

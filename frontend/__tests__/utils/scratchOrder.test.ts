@@ -1,59 +1,79 @@
-import { reorderWithinGroup } from '@/utils/scratchOrder';
+import { moveNoteTo } from '@/utils/scratchOrder';
 
 import type { ScratchNote } from '@/models/models';
 
+const note = (id: string): ScratchNote => ({ id, text: id, createdAt: '2026-09-05T00:00:00.000Z' });
+const list = (...ids: string[]) => ids.map(note);
+const ids = (notes: ScratchNote[]) => notes.map((n) => n.id);
+
 /**
- * The owner's report: "наброски не могу поменять местами внутри подпункта."
+ * THE BUG THIS GUARDS, IN THE OWNER'S WORDS: "ставлю после самой последней,
+ * отпускаю — она становится предпоследней; снизу вверх работает, сверху вниз нет."
  *
- * Two notes filed on the same point, and no way to say which comes first. Their
- * order is the order of the sermon's flat note list, so the swap has to happen
- * there — while leaving every note that belongs to a DIFFERENT point exactly
- * where it was, even when one of them sits between the two being swapped.
+ * The index a drop names is counted in the list WITHOUT the lifted note — that
+ * is the list the person sees while the note is in the air. Any second correction
+ * for "moving down" lands the note one slot short. The demo had that bug; the
+ * cases below are the ones it failed.
  */
-const notes = (...ids: string[]): ScratchNote[] =>
-  ids.map((id) => ({ id, text: id, createdAt: '2026-08-15T00:00:00.000Z' }));
+describe('moveNoteTo — one note, one destination, one index', () => {
+  describe('inside one container', () => {
+    it('moves the first note after the last one', () => {
+      expect(ids(moveNoteTo(list('a', 'b', 'c'), 'a', ['b', 'c'], 2))).toEqual(['b', 'c', 'a']);
+    });
 
-const ids = (list: ScratchNote[]) => list.map((n) => n.id);
+    it('moves the last note to the top', () => {
+      expect(ids(moveNoteTo(list('a', 'b', 'c'), 'c', ['a', 'b'], 0))).toEqual(['c', 'a', 'b']);
+    });
 
-describe('reorderWithinGroup', () => {
-  it('swaps two neighbours filed on the same point', () => {
-    const list = notes('a', 'b');
-    expect(ids(reorderWithinGroup(list, ['a', 'b'], 'b', 0))).toEqual(['b', 'a']);
+    it('moves the first note between the other two', () => {
+      expect(ids(moveNoteTo(list('a', 'b', 'c'), 'a', ['b', 'c'], 1))).toEqual(['b', 'a', 'c']);
+    });
+
+    it('returns the same list when the note is dropped where it already is', () => {
+      const notes = list('a', 'b', 'c');
+      expect(moveNoteTo(notes, 'b', ['a', 'c'], 1)).toBe(notes);
+    });
   });
 
-  it('leaves notes belonging to other points untouched, even in between', () => {
-    // 'x' is filed elsewhere and simply happens to sit between the two. Its
-    // position in the list must survive the swap.
-    const list = notes('a', 'x', 'b');
-    expect(ids(reorderWithinGroup(list, ['a', 'b'], 'b', 0))).toEqual(['b', 'x', 'a']);
+  describe('across containers, with other notes lying between in the flat list', () => {
+    // Flat list: x is in the pool, a and b are filed on a point, y is in the pool.
+    it('puts a pool note before the first note of a point', () => {
+      expect(ids(moveNoteTo(list('x', 'a', 'b', 'y'), 'y', ['a', 'b'], 0))).toEqual(['x', 'y', 'a', 'b']);
+    });
+
+    it('puts a pool note after the last note of a point', () => {
+      expect(ids(moveNoteTo(list('x', 'a', 'b', 'y'), 'x', ['a', 'b'], 2))).toEqual(['a', 'b', 'x', 'y']);
+    });
+
+    it('keeps the other container\'s order when a note leaves it', () => {
+      const next = moveNoteTo(list('x', 'a', 'b', 'y'), 'a', ['x', 'y'], 1);
+      expect(ids(next)).toEqual(['x', 'a', 'b', 'y'].filter((id) => id !== 'a').flatMap((id) => (id === 'y' ? ['a', 'y'] : [id])));
+      expect(ids(next).filter((id) => id === 'b' || id === 'x' || id === 'y')).toEqual(['x', 'b', 'y']);
+    });
   });
 
-  it('accounts for the gap the note leaves behind when moving down', () => {
-    // Seams are counted with the note still in place: sending the first note to
-    // seam 2 lands it after the second note, not past the third.
-    const list = notes('a', 'b', 'c');
-    expect(ids(reorderWithinGroup(list, ['a', 'b', 'c'], 'a', 2))).toEqual(['b', 'a', 'c']);
-  });
+  describe('edges', () => {
+    it('appends to the end of the flat list when the container is empty', () => {
+      expect(ids(moveNoteTo(list('a', 'b', 'c'), 'a', [], 0))).toEqual(['b', 'c', 'a']);
+    });
 
-  it('can send a note to the end of its group', () => {
-    const list = notes('a', 'b', 'c');
-    expect(ids(reorderWithinGroup(list, ['a', 'b', 'c'], 'a', 3))).toEqual(['b', 'c', 'a']);
-  });
+    it('clamps an index past the end to "last"', () => {
+      expect(ids(moveNoteTo(list('a', 'b', 'c'), 'a', ['b', 'c'], 99))).toEqual(['b', 'c', 'a']);
+    });
 
-  it('returns the same list when the note would not move', () => {
-    const list = notes('a', 'b');
-    expect(reorderWithinGroup(list, ['a', 'b'], 'a', 0)).toBe(list);
-  });
+    it('ignores neighbours that are not in the list, and the moved note itself', () => {
+      expect(ids(moveNoteTo(list('a', 'b'), 'a', ['a', 'ghost', 'b'], 1))).toEqual(['b', 'a']);
+    });
 
-  it('returns the same list for a note outside the group', () => {
-    const list = notes('a', 'b');
-    expect(reorderWithinGroup(list, ['a', 'b'], 'ghost', 0)).toBe(list);
-  });
+    it('returns the same list for an unknown note', () => {
+      const notes = list('a', 'b');
+      expect(moveNoteTo(notes, 'ghost', ['a'], 0)).toBe(notes);
+    });
 
-  it('never mutates the list it was given', () => {
-    const list = notes('a', 'x', 'b');
-    const snapshot = ids(list).join();
-    reorderWithinGroup(list, ['a', 'b'], 'b', 0);
-    expect(ids(list).join()).toBe(snapshot);
+    it('does not mutate its input', () => {
+      const notes = list('a', 'b', 'c');
+      moveNoteTo(notes, 'a', ['b', 'c'], 2);
+      expect(ids(notes)).toEqual(['a', 'b', 'c']);
+    });
   });
 });

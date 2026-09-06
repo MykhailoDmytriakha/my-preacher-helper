@@ -7,7 +7,7 @@ import {
 } from '@/services/scratch.service';
 import { applyScratchToOutlineViaClient } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
-import { reorderWithinGroup } from '@/utils/scratchOrder';
+import { moveNoteTo } from '@/utils/scratchOrder';
 
 import type { ScratchNote, Sermon, SermonOutline } from '@/models/models';
 import type { MutableRefObject } from 'react';
@@ -287,17 +287,18 @@ export function useScratchNotes({
   );
 
   /**
-   * Which of the notes sharing a row comes first.
+   * Where a note stands among the notes of one container.
    *
-   * There is no per-row position to write: a row shows the notes filed there in
-   * the order of this one flat list, so the order lives here. `reorderWithinGroup`
-   * rearranges only the slots the group occupies, which is what keeps a note filed
-   * on another point from drifting when two of these swap.
+   * There is no per-container position to write: a container shows the notes filed
+   * there in the order of this one flat list, so the order lives here. `moveNoteTo`
+   * takes the note out and puts it back beside its new neighbour; every other
+   * container keeps its order. `neighbourIds` are the target's notes as the person
+   * sees them, without the moved one; `index` counts among them.
    */
-  const reorderScratchNotes = useCallback(
-    (groupIds: string[], movedId: string, targetIndex: number) => {
+  const moveScratchNote = useCallback(
+    (noteId: string, neighbourIds: string[], index: number) => {
       enqueueScratchMutation('update', (currentScratch) =>
-        reorderWithinGroup(currentScratch, groupIds, movedId, targetIndex)
+        moveNoteTo(currentScratch, noteId, neighbourIds, index)
       );
     },
     [enqueueScratchMutation]
@@ -368,7 +369,7 @@ export function useScratchNotes({
     updateScratchNote,
     deleteScratchNote,
     setScratchNoteSection,
-    reorderScratchNotes,
+    moveScratchNote,
     applyOutlineAndConsume,
     isWritePending,
     scratchRevision: scratchVersionRef.current,

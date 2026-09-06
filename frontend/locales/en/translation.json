@@ -1911,7 +1911,10 @@
       "placedIn": "In {{section}}",
       "label": "Scratch note",
       "placeholder": "Write a scratch note…",
-      "add": "scratch note"
+      "add": "scratch note",
+      "placeInto": "Place into…",
+      "placeIntoPool": "Into the pool",
+      "placeIntoMenu": "Where to file the scratch note"
     },
     "sections": {
       "introduction": "Introduction",
@@ -1923,8 +1926,6 @@
       "subtitle": "Review the current structure, place scratch notes manually, compose with AI, then apply the additions.",
       "pool": "Scratch pool",
       "poolEmpty": "No scratch notes yet.",
-      "dropHerePoint": "Drop a scratch note on this point",
-      "dropHereSubPoint": "Drop a scratch note on this sub-point",
       "compose": "Compose structure",
       "composing": "Composing...",
       "composePendingWrites": "Wait until scratch notes finish saving.",

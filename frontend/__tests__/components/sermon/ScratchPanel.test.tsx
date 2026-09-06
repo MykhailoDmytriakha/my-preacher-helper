@@ -589,6 +589,64 @@ describe('ScratchPanel', () => {
     expect(screen.queryByText('First edit')).not.toBeInTheDocument();
   });
 
+  it('files a note through the «place into…» menu — the path without dragging', async () => {
+    const moveScratchNote = jest.fn();
+    const { user } = renderScratchPanel({
+      outline: {
+        introduction: [{ id: 'existing-intro', text: 'Existing intro point' }],
+        main: [
+          {
+            id: 'existing-main',
+            text: 'Existing main point',
+            subPoints: [{ id: 'existing-sub', text: 'Existing sub-point', position: 1000 }],
+          },
+        ],
+        conclusion: [],
+      },
+      moveScratchNote,
+    });
+
+    const firstCard = screen.getByTestId('scratch-note-card-n1');
+    await user.click(within(firstCard).getByRole('button', { name: 'scratch.card.placeInto' }));
+    const menu = within(firstCard).getByRole('menu');
+    // Every OTHER container is offered — the note is in the pool, so the pool is not;
+    // points carry their section, sub-points sit under their point.
+    const offered = within(menu).getAllByRole('menuitem').map((item) => item.textContent);
+    expect(offered).toEqual([
+      expect.stringContaining('Existing intro point'),
+      expect.stringContaining('Existing main point'),
+      expect.stringContaining('Existing sub-point'),
+    ]);
+    expect(offered).not.toContain('scratch.card.placeIntoPool');
+
+    await user.click(within(menu).getByRole('menuitem', { name: /Existing sub-point/ }));
+
+    expect(within(screen.getByTestId('scratch-subpoint-drop-zone-existing-sub')).getByText('First scratch note')).toBeInTheDocument();
+    expect(within(screen.getByTestId('scratch-note-pool-band')).queryByText('First scratch note')).not.toBeInTheDocument();
+    // Same operation as a drop: the note goes to the END of that container.
+    expect(moveScratchNote).toHaveBeenCalledWith('n1', [], 0);
+    expect(within(firstCard).queryByRole('menu')).not.toBeInTheDocument();
+
+    // Filed on the sub-point, the menu now offers the pool and leaves the sub-point out.
+    const placedCard = screen.getByTestId('scratch-note-card-n1');
+    await user.click(within(placedCard).getByRole('button', { name: 'scratch.card.placeInto' }));
+    const placedOffered = within(within(placedCard).getByRole('menu')).getAllByRole('menuitem').map((item) => item.textContent);
+    expect(placedOffered).toContain('scratch.card.placeIntoPool');
+    expect(placedOffered).not.toEqual(expect.arrayContaining([expect.stringContaining('Existing sub-point')]));
+
+    // Escape closes it and hands focus back to the button that opened it.
+    const placedTrigger = within(placedCard).getByRole('button', { name: 'scratch.card.placeInto' });
+    fireEvent.keyDown(within(placedCard).getByRole('menu'), { key: 'Escape' });
+    expect(within(placedCard).queryByRole('menu')).not.toBeInTheDocument();
+    expect(placedTrigger).toHaveFocus();
+
+    // A second note sent to the same sub-point lands AFTER the first: same operation as a drop.
+    const secondCard = screen.getByTestId('scratch-note-card-n2');
+    await user.click(within(secondCard).getByRole('button', { name: 'scratch.card.placeInto' }));
+    await user.click(within(within(secondCard).getByRole('menu')).getByRole('menuitem', { name: /Existing sub-point/ }));
+    expect(moveScratchNote).toHaveBeenLastCalledWith('n2', ['n1'], 1);
+  });
+
   it('places notes on point and sub-point drop zones, supports pool round-trip, and applies notes additively', async () => {
     const existingOutline: SermonOutline = {
       introduction: [],
@@ -629,7 +687,7 @@ describe('ScratchPanel', () => {
     act(() => {
       mockScratchOnDragEnd?.({
         active: { id: 'note:n1' },
-        over: { id: 'scratch-point:existing-main' },
+        over: { id: 'note-point:existing-main' },
       });
     });
     expect(within(screen.getByTestId('scratch-note-pool-band')).queryByText('First scratch note')).not.toBeInTheDocument();
@@ -650,11 +708,11 @@ describe('ScratchPanel', () => {
     act(() => {
       mockScratchOnDragEnd?.({
         active: { id: 'note:n1' },
-        over: { id: 'scratch-subpoint:existing-sub' },
+        over: { id: 'note-sub:existing-sub' },
       });
       mockScratchOnDragEnd?.({
         active: { id: 'note:n2' },
-        over: { id: 'scratch-point:existing-main' },
+        over: { id: 'note-point:existing-main' },
       });
     });
 
@@ -711,7 +769,7 @@ describe('ScratchPanel', () => {
     act(() => {
       mockScratchOnDragEnd?.({
         active: { id: 'note:n1' },
-        over: { id: 'scratch-point:existing-main' },
+        over: { id: 'note-point:existing-main' },
       });
     });
 
@@ -747,7 +805,7 @@ describe('ScratchPanel', () => {
     act(() => {
       mockScratchOnDragEnd?.({
         active: { id: 'note:n1' },
-        over: { id: 'scratch-point:existing-main' },
+        over: { id: 'note-point:existing-main' },
       });
     });
 
@@ -782,7 +840,7 @@ describe('ScratchPanel', () => {
     act(() => {
       mockScratchOnDragEnd?.({
         active: { id: 'note:n1' },
-        over: { id: 'scratch-point:existing-main' },
+        over: { id: 'note-point:existing-main' },
       });
     });
     await user.click(screen.getByRole('button', { name: 'scratch.board.apply' }));
@@ -797,7 +855,7 @@ describe('ScratchPanel', () => {
     act(() => {
       mockScratchOnDragEnd?.({
         active: { id: 'note:n2' },
-        over: { id: 'scratch-point:existing-main' },
+        over: { id: 'note-point:existing-main' },
       });
     });
     expect(within(screen.getByTestId('scratch-point-drop-zone-existing-main')).queryByText('Second scratch note')).not.toBeInTheDocument();
@@ -833,7 +891,7 @@ describe('ScratchPanel', () => {
     act(() => {
       mockScratchOnDragEnd?.({
         active: { id: 'note:n1' },
-        over: { id: 'scratch-point:existing-main' },
+        over: { id: 'note-point:existing-main' },
       });
     });
     await user.click(screen.getByRole('button', { name: 'scratch.board.apply' }));
@@ -888,7 +946,7 @@ describe('ScratchPanel', () => {
     act(() => {
       mockScratchOnDragEnd?.({
         active: { id: 'note:n1' },
-        over: { id: 'scratch-point:existing-main' },
+        over: { id: 'note-point:existing-main' },
       });
     });
 
@@ -1000,7 +1058,7 @@ describe('ScratchPanel', () => {
     act(() => {
       mockScratchOnDragEnd?.({
         active: { id: 'note:n2' },
-        over: { id: 'scratch-point:ai-point' },
+        over: { id: 'note-point:ai-point' },
       });
     });
     expect(within(screen.getByTestId('scratch-point-drop-zone-ai-point')).getByText('Second scratch note')).toBeInTheDocument();
