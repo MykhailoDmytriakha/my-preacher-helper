@@ -4,7 +4,7 @@ import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 /** Tailwind's `lg` breakpoint — where the note page has room for a side panel. */
 const WIDE_QUERY = '(min-width: 1024px)';
-/** Tailwind's `sm` breakpoint — below it the note's action bar needs its own two rows. */
+/** Tailwind's `sm` breakpoint — below it the note uses collapsible phone controls. */
 const ROOMY_HEADER_QUERY = '(min-width: 640px)';
 
 /**
@@ -22,7 +22,7 @@ export function useWideViewport(): boolean {
 }
 
 /**
- * True when the action bar can lay out on one row with the title centred over it.
+ * True when the action controls fit one row. The title gets its own row until xl.
  *
  * Below it the same controls need two rows, and the second row is the one that stays
  * while reading — so which layout is mounted is a decision, not a set of hidden copies.

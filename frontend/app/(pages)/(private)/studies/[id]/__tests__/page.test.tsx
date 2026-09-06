@@ -695,7 +695,7 @@ describe('StudyNoteEditorPage — where the outline and properties are reachable
         mockViewport.roomy = true;
     });
 
-    it('tablet width (no side panel yet, header still on one row) can still open the sheet', () => {
+    it('tablet width without a side panel can still open the sheet', () => {
         mockViewport.wide = false;
         mockViewport.roomy = true;
 

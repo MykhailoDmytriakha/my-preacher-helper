@@ -520,7 +520,7 @@ function EditorHeader({
                                 /* Stays an <h1>: it is still the page's title for heading
                                    navigation, and a title matching the search has to keep
                                    showing the hit. */
-                                <h1 className={`min-w-0 truncate font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 ${titleSizeClass(title)}`}>
+                                <h1 className={`min-w-0 break-words font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 ${titleSizeClass(title)}`}>
                                     {renderEditorTitle(title, searchQuery, t)}
                                 </h1>
                             )}
@@ -537,9 +537,9 @@ function EditorHeader({
         <header
             ref={headerRef}
             style={{ top: stickyTop }}
-            className={`${shell} relative flex flex-wrap items-center justify-between gap-y-2 px-4 sm:px-6 py-3`}
+            className={`${shell} grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-3 px-4 py-3 sm:px-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)]`}
         >
-            <div className="flex items-center gap-1 sm:gap-2 lg:gap-4">
+            <div className="min-w-0 flex flex-wrap items-center gap-1 sm:gap-2 lg:gap-4">
                 <div className="flex items-center gap-1">
                     {backButton}
                     {pager}
@@ -562,11 +562,12 @@ function EditorHeader({
                 )}
             </div>
 
-            <div className="order-last w-full min-w-0 px-0 sm:order-none sm:absolute sm:left-1/2 sm:top-1/2 sm:w-[44%] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:px-0">
+            {/* Keep the title in layout flow: overlay centering collides with controls on foldables. */}
+            <div className="col-span-2 row-start-2 min-w-0 xl:col-span-1 xl:col-start-2 xl:row-start-1">
                 {titleField}
             </div>
 
-            <div className="flex items-center gap-3">{actions}</div>
+            <div className="col-start-2 row-start-1 flex items-center justify-end gap-3 xl:col-start-3">{actions}</div>
         </header>
     );
 }
@@ -1521,7 +1522,7 @@ function EditorTitleField({ isEditing, title, setTitle, t, searchQuery }: Pick<E
         />
     ) : (
         <h1
-            className={`line-clamp-2 text-center font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 ${titleSizeClass(title)}`}
+            className={`break-words text-center font-bold leading-tight tracking-tight text-gray-900 dark:text-gray-50 ${titleSizeClass(title)}`}
             title={title || undefined}
         >
             {renderEditorTitle(title, searchQuery, t)}
