@@ -469,8 +469,8 @@ function SermonsPanel({
         <div ref={setListRef} className={`divide-y divide-gray-100 p-2 dark:divide-gray-800`}>
           {sermons.slice(0, visibleCount).map((sermon) => (
             <div key={sermon.id} className={`flex flex-col ${panelRowClass}`}>
-            <Link href={`/sermons/${sermon.id}`} className={`grid flex-1 grid-cols-[40px_1fr_auto] gap-3 content-center ${rowLink('blue')}`}>
-              <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses.blue.badge}`}>
+            <Link href={`/sermons/${sermon.id}`} className={`grid flex-1 grid-cols-[1fr_auto] gap-3 content-center sm:grid-cols-[40px_1fr_auto] ${rowLink('blue')}`}>
+              <div className={`hidden h-9 w-9 items-center justify-center rounded-lg sm:flex ${toneClasses.blue.badge}`}>
                 <BookOpen className="h-5 w-5" />
               </div>
               <div className="min-w-0">
@@ -586,8 +586,8 @@ function PrayerFocusPanel({ prayers }: { prayers: PrayerItem[] }) {
       ) : (
         <div ref={setListRef} className={`divide-y divide-gray-100 p-2 dark:divide-gray-800`}>
           {prayers.slice(0, visibleCount).map((prayer) => (
-            <Link key={prayer.id} href={prayer.href} className={`grid grid-cols-[36px_1fr_18px] gap-3 content-center ${panelRowClass} ${rowLink('rose')}`}>
-              <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses.rose.badge}`}>
+            <Link key={prayer.id} href={prayer.href} className={`grid grid-cols-[1fr_18px] gap-3 content-center sm:grid-cols-[36px_1fr_18px] ${panelRowClass} ${rowLink('rose')}`}>
+              <div className={`hidden h-9 w-9 items-center justify-center rounded-lg sm:flex ${toneClasses.rose.badge}`}>
                 <Heart className="h-4 w-4" />
               </div>
               <div className="min-w-0">
@@ -724,8 +724,8 @@ function LatestGroupsPanel({ groups }: { groups: GroupItem[] }) {
       ) : (
         <div ref={setListRef} className={`divide-y divide-gray-100 p-2 dark:divide-gray-800`}>
           {groups.slice(0, visibleCount).map((group) => (
-            <Link key={group.id} href={`/groups/${group.id}`} className={`grid grid-cols-[40px_1fr_auto] gap-3 content-center ${panelRowClass} ${rowLink('amber')}`}>
-              <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses.amber.icon}`}>
+            <Link key={group.id} href={`/groups/${group.id}`} className={`grid grid-cols-[1fr_auto] gap-3 content-center sm:grid-cols-[40px_1fr_auto] ${panelRowClass} ${rowLink('amber')}`}>
+              <div className={`hidden h-9 w-9 items-center justify-center rounded-lg sm:flex ${toneClasses.amber.icon}`}>
                 <UsersRound className="h-5 w-5" />
               </div>
               <div className="min-w-0">
