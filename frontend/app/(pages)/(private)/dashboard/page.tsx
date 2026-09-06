@@ -23,6 +23,7 @@ import { SermonSyncBadge } from '@/components/dashboard/SermonSyncBadge';
 import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
 import { useDashboardOptimisticSermons } from '@/hooks/useDashboardOptimisticSermons';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
+import { useFittingRows } from '@/hooks/useFittingRows';
 import { useGroups } from '@/hooks/useGroups';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { useSeries } from '@/hooks/useSeries';
@@ -179,6 +180,11 @@ const toneClasses = {
     link: 'text-gray-600 hover:border-gray-300 hover:bg-gray-100 dark:text-gray-300 dark:hover:border-gray-700 dark:hover:bg-gray-800/40',
   },
 } as const;
+
+// How many items a builder hands a panel. The panel shows as many of them as fit into the
+// height its grid row handed it (`useFittingRows`), so this is a reservoir, not a display
+// count: big enough to fill a tall card, small enough that nobody maps a whole collection.
+const PANEL_ITEM_POOL = 12;
 
 // Category-colored card: neutral rounded panel with a tinted fill + vivid border per tone.
 const panelBaseClass = 'rounded-lg border shadow-sm';
@@ -437,9 +443,10 @@ function SermonsPanel({
   optimisticActions: DashboardOptimisticActions;
 }) {
   const { t } = useTranslation();
+  const { setPanelRef, setListRef, visibleCount } = useFittingRows(5, sermons.length);
 
   return (
-    <section className={`${tonedCardClass('blue')} xl:col-span-2`} aria-labelledby="sermons-overview-title">
+    <section ref={setPanelRef} className={`${tonedCardClass('blue')} xl:col-span-2`} aria-labelledby="sermons-overview-title">
       <div className={panelHeaderClass}>
         <PanelTitle icon={BookOpen} id="sermons-overview-title" title={t('dashboardHome.sections.sermons.title')} />
         <Link href="/sermons" className={panelLinkClass('blue')}>
@@ -451,8 +458,8 @@ function SermonsPanel({
       {sermons.length === 0 ? (
         <EmptyPanel icon={BookOpen} text={t('dashboardHome.sections.sermons.empty')} />
       ) : (
-        <div className="divide-y divide-gray-100 px-2 pb-1 dark:divide-gray-800">
-          {sermons.map((sermon) => (
+        <div ref={setListRef} className="divide-y divide-gray-100 px-2 pb-1 dark:divide-gray-800">
+          {sermons.slice(0, visibleCount).map((sermon) => (
             <div key={sermon.id} className="py-1">
             <Link href={`/sermons/${sermon.id}`} className={`grid grid-cols-[40px_1fr_auto] gap-3 py-3 ${rowLink('blue')}`}>
               <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses.blue.badge}`}>
@@ -499,9 +506,11 @@ function SermonsPanel({
 
 function AgendaPanel({ agendaItems }: { agendaItems: AgendaItem[] }) {
   const { t } = useTranslation();
+  const { setPanelRef, setListRef, visibleCount } = useFittingRows(5, agendaItems.length);
+  const visibleItems = agendaItems.slice(0, visibleCount);
 
   return (
-    <section className={`${tonedCardClass('cyan')} xl:col-span-2`} aria-labelledby="agenda-title">
+    <section ref={setPanelRef} className={`${tonedCardClass('cyan')} xl:col-span-2`} aria-labelledby="agenda-title">
       <div className={panelHeaderClass}>
         <PanelTitle icon={CalendarDays} id="agenda-title" title={t('dashboardHome.sections.week.title')} />
         <Link href="/calendar" className={panelLinkClass('cyan')}>
@@ -514,13 +523,13 @@ function AgendaPanel({ agendaItems }: { agendaItems: AgendaItem[] }) {
         <EmptyPanel icon={CalendarDays} text={t('dashboardHome.sections.week.empty')} />
       ) : (
         <div className="p-2">
-          <div className="space-y-0">
-            {agendaItems.map((item, index) => (
+          <div ref={setListRef} className="space-y-0">
+            {visibleItems.map((item, index) => (
               <Link key={item.id} href={item.href} className={`grid grid-cols-[70px_1fr_auto_18px] gap-3 py-1 ${rowLink('cyan')}`}>
                 <div className="flex gap-2">
                   <div className="flex flex-col items-center">
                     <span className="mt-1 h-2.5 w-2.5 rounded-full bg-cyan-500" />
-                    {index < agendaItems.length - 1 && <span className="mt-1 h-full min-h-[44px] w-px bg-gray-200 dark:bg-gray-800" />}
+                    {index < visibleItems.length - 1 && <span className="mt-1 h-full min-h-[44px] w-px bg-gray-200 dark:bg-gray-800" />}
                   </div>
                   <div className="text-xs">
                     <p className="font-semibold text-gray-500 dark:text-gray-400">{item.day}</p>
@@ -548,9 +557,10 @@ function AgendaPanel({ agendaItems }: { agendaItems: AgendaItem[] }) {
 
 function PrayerFocusPanel({ prayers }: { prayers: PrayerItem[] }) {
   const { t } = useTranslation();
+  const { setPanelRef, setListRef, visibleCount } = useFittingRows(4, prayers.length);
 
   return (
-    <section className={`${tonedCardClass('rose')} xl:col-span-2`} aria-labelledby="prayer-focus-title">
+    <section ref={setPanelRef} className={`${tonedCardClass('rose')} xl:col-span-2`} aria-labelledby="prayer-focus-title">
       <div className={panelHeaderClass}>
         <PanelTitle icon={Heart} id="prayer-focus-title" title={t('dashboardHome.sections.prayer.title')} />
         <Link href="/prayers" className={panelLinkClass('rose')}>
@@ -562,8 +572,8 @@ function PrayerFocusPanel({ prayers }: { prayers: PrayerItem[] }) {
       {prayers.length === 0 ? (
         <EmptyPanel icon={Heart} text={t('dashboardHome.sections.prayer.empty')} />
       ) : (
-        <div className="divide-y divide-gray-100 px-2 dark:divide-gray-800">
-          {prayers.map((prayer) => (
+        <div ref={setListRef} className="divide-y divide-gray-100 px-2 dark:divide-gray-800">
+          {prayers.slice(0, visibleCount).map((prayer) => (
             <Link key={prayer.id} href={prayer.href} className={`grid grid-cols-[36px_1fr_18px] gap-3 py-3 ${rowLink('rose')}`}>
               <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses.rose.badge}`}>
                 <Heart className="h-4 w-4" />
@@ -591,9 +601,10 @@ function PrayerFocusPanel({ prayers }: { prayers: PrayerItem[] }) {
 
 function ActiveSeriesPanel({ seriesItems }: { seriesItems: SeriesItem[] }) {
   const { t } = useTranslation();
+  const { setPanelRef, setListRef, visibleCount } = useFittingRows(3, seriesItems.length);
 
   return (
-    <section className={`${tonedCardClass('violet')} xl:col-span-2`} aria-labelledby="active-series-title">
+    <section ref={setPanelRef} className={`${tonedCardClass('violet')} xl:col-span-2`} aria-labelledby="active-series-title">
       <div className={panelHeaderClass}>
         <PanelTitle icon={NotebookTabs} id="active-series-title" title={t('dashboardHome.sections.series.title')} />
         <Link href="/series" className={panelLinkClass('violet')}>
@@ -605,8 +616,8 @@ function ActiveSeriesPanel({ seriesItems }: { seriesItems: SeriesItem[] }) {
       {seriesItems.length === 0 ? (
         <EmptyPanel icon={NotebookTabs} text={t('dashboardHome.sections.series.empty')} />
       ) : (
-        <div className="divide-y divide-gray-100 px-2 dark:divide-gray-800">
-          {seriesItems.map((seriesItem) => (
+        <div ref={setListRef} className="divide-y divide-gray-100 px-2 dark:divide-gray-800">
+          {seriesItems.slice(0, visibleCount).map((seriesItem) => (
             <Link key={seriesItem.id} href={`/series/${seriesItem.id}`} className={`relative grid grid-cols-[44px_1fr_auto] gap-3 py-3 ${rowLink('violet')}`}>
               <span
                 className="absolute left-0 top-3 bottom-3 w-1 rounded-full"
@@ -640,9 +651,10 @@ function ActiveSeriesPanel({ seriesItems }: { seriesItems: SeriesItem[] }) {
 
 function RecentStudiesPanel({ studies }: { studies: StudyItem[] }) {
   const { t } = useTranslation();
+  const { setPanelRef, setListRef, visibleCount } = useFittingRows(3, studies.length);
 
   return (
-    <section className={`${tonedCardClass('emerald')} xl:col-span-2`} aria-labelledby="recent-studies-title">
+    <section ref={setPanelRef} className={`${tonedCardClass('emerald')} xl:col-span-2`} aria-labelledby="recent-studies-title">
       <div className={panelHeaderClass}>
         <PanelTitle icon={StickyNote} id="recent-studies-title" title={t('dashboardHome.sections.studies.title')} />
         <Link href="/studies" className={panelLinkClass('emerald')}>
@@ -654,8 +666,8 @@ function RecentStudiesPanel({ studies }: { studies: StudyItem[] }) {
       {studies.length === 0 ? (
         <EmptyPanel icon={StickyNote} text={t('dashboardHome.sections.studies.empty')} />
       ) : (
-        <div className="divide-y divide-gray-100 px-2 dark:divide-gray-800">
-          {studies.map((study) => (
+        <div ref={setListRef} className="divide-y divide-gray-100 px-2 dark:divide-gray-800">
+          {studies.slice(0, visibleCount).map((study) => (
             <Link key={study.id} href={study.href} className={`grid grid-cols-[1fr_18px] gap-3 py-3 ${rowLink('emerald')}`}>
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-gray-950 dark:text-white">{study.passage}</p>
@@ -683,9 +695,10 @@ function RecentStudiesPanel({ studies }: { studies: StudyItem[] }) {
 
 function LatestGroupsPanel({ groups }: { groups: GroupItem[] }) {
   const { t } = useTranslation();
+  const { setPanelRef, setListRef, visibleCount } = useFittingRows(3, groups.length);
 
   return (
-    <section className={`${tonedCardClass('amber')} xl:col-span-2`} aria-labelledby="latest-groups-title">
+    <section ref={setPanelRef} className={`${tonedCardClass('amber')} xl:col-span-2`} aria-labelledby="latest-groups-title">
       <div className={panelHeaderClass}>
         <PanelTitle icon={UsersRound} id="latest-groups-title" title={t('dashboardHome.sections.groups.title')} />
         <Link href="/groups" className={panelLinkClass('amber')}>
@@ -697,8 +710,8 @@ function LatestGroupsPanel({ groups }: { groups: GroupItem[] }) {
       {groups.length === 0 ? (
         <EmptyPanel icon={UsersRound} text={t('dashboardHome.sections.groups.empty')} />
       ) : (
-        <div className="divide-y divide-gray-100 px-2 dark:divide-gray-800">
-          {groups.map((group) => (
+        <div ref={setListRef} className="divide-y divide-gray-100 px-2 dark:divide-gray-800">
+          {groups.slice(0, visibleCount).map((group) => (
             <Link key={group.id} href={`/groups/${group.id}`} className={`grid grid-cols-[40px_1fr_auto] gap-3 py-3 ${rowLink('amber')}`}>
               <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${toneClasses.amber.icon}`}>
                 <UsersRound className="h-5 w-5" />
@@ -795,7 +808,7 @@ function buildDashboardData({
     activePrayersCount: activePrayers.length,
     activeGroupsCount: activeGroups.length,
     sermonRows: buildSermonRows(sermons, t, locale),
-    agendaItems: agendaEvents.slice(0, 5),
+    agendaItems: agendaEvents.slice(0, PANEL_ITEM_POOL),
     prayerItems: buildPrayerItems(prayerRequests, t, locale),
     seriesItems: buildSeriesItems(series, sermons, t),
     studyItems: buildStudyItems(notes, t),
@@ -806,7 +819,7 @@ function buildDashboardData({
 function buildSermonRows(sermons: Sermon[], t: TFunction, locale: string): SermonRow[] {
   return [...sermons]
     .sort((a, b) => getTime(b.updatedAt || b.date) - getTime(a.updatedAt || a.date))
-    .slice(0, 5)
+    .slice(0, PANEL_ITEM_POOL)
     .map((sermon) => {
       const isPreached = getEffectiveIsPreached(sermon);
       const plannedDate = getUpcomingPreachDate(sermon);
@@ -893,7 +906,7 @@ function buildPrayerItems(prayerRequests: PrayerRequest[], t: TFunction, locale:
       if (b.status === 'active' && a.status !== 'active') return 1;
       return getTime(b.updatedAt) - getTime(a.updatedAt);
     })
-    .slice(0, 4)
+    .slice(0, PANEL_ITEM_POOL)
     .map((prayer) => ({
       id: prayer.id,
       title: prayer.title,
@@ -913,7 +926,7 @@ function buildSeriesItems(series: Series[], sermons: Sermon[], t: TFunction): Se
       const statusWeight = { active: 0, draft: 1, completed: 2 };
       return statusWeight[a.status] - statusWeight[b.status] || getTime(b.updatedAt) - getTime(a.updatedAt);
     })
-    .slice(0, 3)
+    .slice(0, PANEL_ITEM_POOL)
     .map((item) => {
       const itemIds = item.items?.filter((seriesItem) => seriesItem.type === 'sermon').map((seriesItem) => seriesItem.refId) ?? item.sermonIds ?? [];
       const total = itemIds.length;
@@ -944,7 +957,7 @@ function buildSeriesItems(series: Series[], sermons: Sermon[], t: TFunction): Se
 function buildStudyItems(notes: StudyNote[], t: TFunction): StudyItem[] {
   return [...notes]
     .sort((a, b) => getTime(b.updatedAt) - getTime(a.updatedAt))
-    .slice(0, 3)
+    .slice(0, PANEL_ITEM_POOL)
     .map((note) => ({
       id: note.id,
       passage: getStudyDisplayTitle(note, t),
@@ -958,7 +971,7 @@ function buildGroupItems(groups: Group[], t: TFunction, locale: string): GroupIt
   return [...groups]
     .filter((group) => group.status === 'active' || group.status === 'completed')
     .sort((a, b) => getTime(b.updatedAt) - getTime(a.updatedAt))
-    .slice(0, 3)
+    .slice(0, PANEL_ITEM_POOL)
     .map((group) => {
       const templates = group.templates || [];
       const total = templates.length;
