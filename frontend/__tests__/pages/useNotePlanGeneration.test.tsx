@@ -268,3 +268,20 @@ it('skips removed subpoints and ignores queued sibling writes for a targeted req
   await act(async () => { await view.result.current.generate(point, 'sub'); });
   expect(generateNotePlanContent).toHaveBeenCalledTimes(1);
 });
+
+it('captures current selected draft content with a revision and closes the composer only on success', async () => {
+  const view = setup({ p: 'Parent', sub: 'Unsaved child' });
+  act(() => { view.result.current.setRefining('sub', true); });
+  jest.mocked(generateNotePlanContent).mockRejectedValueOnce(new Error('network'));
+  const intent = { instruction: 'Keep the cue, update references', mode: 'references' as const };
+  await act(async () => { await view.result.current.generate(point, 'sub', intent); });
+  expect(view.result.current.refiningIds.sub).toBe(true);
+  expect(view.cells.sub).toBe('Unsaved child');
+  jest.mocked(generateNotePlanContent).mockResolvedValue({ contentByNodeId: { sub: '- Refined' }, missingMaterial: {} });
+  await act(async () => { await view.result.current.generate(point, 'sub', intent); });
+  expect(generateNotePlanContent).toHaveBeenLastCalledWith(expect.objectContaining({ revision: { ...intent, currentContentByNodeId: { sub: 'Unsaved child' } } }), expect.any(AbortSignal));
+  expect(view.result.current.refiningIds.sub).toBe(false);
+  expect(view.cells.sub).toBe('Unsaved child');
+  act(() => { view.result.current.accept('sub'); });
+  expect(view.cells).toEqual({ p: 'Parent', sub: '- Refined' });
+});

@@ -268,12 +268,19 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const sermon = await sermonsRepository.fetchSermonById(id);
     if (!sermon) return jsonNoStore({ error: 'Sermon not found' }, { status: 404 });
     if (sermon.userId !== uid) return jsonNoStore({ error: 'Forbidden' }, { status: 403 });
-    const { outlinePointId, targetNodeId, style, expectedContext } = parsed.data;
+    const { outlinePointId, targetNodeId, style, expectedContext, revision } = parsed.data;
     const sections = ['introduction', 'main', 'conclusion'] as const;
     const section = sections.find((key) => sermon.outline?.[key]?.some((point) => point.id === outlinePointId));
     const point = section && sermon.outline?.[section]?.find((candidate) => candidate.id === outlinePointId);
     if (!point || !section) return jsonNoStore({ error: 'Point not found' }, { status: 404 });
     if (!notePlanTargetNodes(point, targetNodeId).length) return jsonNoStore({ error: 'Target node not found' }, { status: 404 });
+    if (revision) {
+      const selectedIds = notePlanTargetNodes(point, targetNodeId).map((node) => node.nodeId);
+      const draftIds = Object.keys(revision.currentContentByNodeId);
+      if (draftIds.length !== selectedIds.length || draftIds.some((nodeId) => !selectedIds.includes(nodeId))) {
+        return jsonNoStore({ error: 'Revision draft must match selected nodes' }, { status: 400 });
+      }
+    }
     if (expectedContext !== notePlanContextKey(sermon, outlinePointId)) {
       return jsonNoStore({ error: 'contextChanged' }, { status: 409 });
     }
@@ -284,7 +291,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return jsonNoStore({ error: 'sourceUnavailable' }, { status: 422 });
     }
     const input: NotePlanInput = {
-      title: sermon.title, verse: sermon.verse, section, point, targetNodeId,
+      title: sermon.title, verse: sermon.verse, section, point, targetNodeId, revision,
       outline: sections.flatMap((key) => (sermon.outline?.[key] ?? []).map((item) => ({
         section: key, title: item.text,
         subPoints: [...(item.subPoints ?? [])].sort((a, b) => a.position - b.position).map((sub) => sub.text),

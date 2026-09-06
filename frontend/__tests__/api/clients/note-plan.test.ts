@@ -69,3 +69,31 @@ it('refuses an unknown target before calling the provider', async () => {
   await expect(generateNotePlanPoint({ ...input, targetNodeId: 'foreign' }, 'memory', 'owner')).rejects.toThrow('requested nodes');
   expect(callWithStructuredOutput).not.toHaveBeenCalled();
 });
+
+it('includes current unsaved text and the requested edit in the prompt', () => {
+  const revision = { instruction: 'Keep the opening, add examples', mode: 'edit' as const, currentContentByNodeId: { a: 'Unsaved draft' } };
+  const message = JSON.parse(createNotePlanUserMessage({ ...input, targetNodeId: 'a', revision }));
+  expect(message.revision).toEqual(revision);
+  expect(message.targetNodes.map((node: { nodeId: string }) => node.nodeId)).toEqual(['a']);
+});
+
+it('mechanically preserves the main text for references-only requests even if the model rewrites it', async () => {
+  jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: [
+    { nodeId: 'a', turn: 'Unwanted rewrite', cues: ['Unwanted new cue'], refs: ['John 10:2: supplied verse'], missingMaterial: null },
+  ] } } as never);
+  const result = await generateNotePlanPoint({ ...input, targetNodeId: 'a', revision: {
+    mode: 'references', instruction: 'Improve references', currentContentByNodeId: { a: '**→ Original turn**\n\n- Exact original cue\n\n*John 10:1: old*' },
+  } }, 'memory', 'owner');
+  expect(result.contentByNodeId.a).toBe('**→ Original turn**\n\n- Exact original cue\n\n*John 10:2: supplied verse*');
+});
+
+it('keeps existing references when the study cannot supply a replacement', async () => {
+  jest.mocked(callWithStructuredOutput).mockResolvedValue({ success: true, data: { nodes: [
+    { nodeId: 'a', turn: null, cues: [], refs: [], missingMaterial: 'No evidence' },
+  ] } } as never);
+  const result = await generateNotePlanPoint({ ...input, targetNodeId: 'a', revision: {
+    mode: 'references', instruction: 'Improve references', currentContentByNodeId: { a: 'Existing text and references' },
+  } }, 'memory', 'owner');
+  expect(result.contentByNodeId.a).toBe('Existing text and references');
+  expect(result.missingMaterial.a).toBe('No evidence');
+});

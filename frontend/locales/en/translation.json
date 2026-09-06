@@ -1500,6 +1500,32 @@
     "pointsLabel": "points"
   },
   "plan": {
+    "refine": {
+      "open": "Refine text",
+      "title": "What would you like to change?",
+      "placeholder": "For example: keep the main idea, add two concrete examples and shorten the ending.",
+      "scopeSubPoint": "Only this subpoint: {{title}}",
+      "scopePoint": "Only this point: {{title}}",
+      "scopeWholePoint": "This point and its subpoints: {{title}}",
+      "quickRequests": "Quick requests",
+      "submit": "Suggest changes",
+      "working": "Preparing a suggestion…",
+      "reviewHint": "Review the result before replacing your text.",
+      "referencesHint": "Only reference paragraphs will change. Your main text stays intact.",
+      "adjustRequest": "Adjust request",
+      "presets": {
+        "references": "References only",
+        "more": "More cues",
+        "shorter": "Make shorter",
+        "rewrite": "Start afresh"
+      },
+      "requests": {
+        "references": "Improve only the Scripture references using the source study. Keep the main text unchanged.",
+        "more": "Add more concrete recall cues from the study. Keep the existing wording and references.",
+        "shorter": "Shorten the text while preserving the main idea, key images, uncertainty and Scripture references.",
+        "rewrite": "Rewrite this content from scratch using the study and scratch material."
+      }
+    },
     "fromNote": {
       "mode": "From note",
       "entry": "Based on note",

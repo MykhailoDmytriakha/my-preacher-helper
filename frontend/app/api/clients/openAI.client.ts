@@ -21,6 +21,7 @@ import { Insights, ThoughtInStructure, SermonPoint, Sermon, VerseWithRelevance, 
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { validateAudioBlob, createAudioFile, logAudioInfo, hasKnownIssues } from "@/utils/audioFormatUtils";
 import { notePlanTargetNodes, type NotePlanResult } from '@/utils/notePlan';
+import { replacePlanReferenceParagraphs } from '@/utils/planReferenceRevision';
 import { normalizeSubPointId } from "@/utils/subPoints";
 
 import { extractSermonContent, formatDuration, logger, extractSectionContent } from "./openAIHelpers";
@@ -1206,7 +1207,7 @@ export async function generateNotePlanPoint(input: NotePlanInput, style: PlanSty
   const systemPrompt = `${notePlanSystemPrompt}\n${getStyleInstructions(style)}`;
   const promptBlueprint = buildSimplePromptBlueprint({
     promptName: 'sermon.conspect.note_point',
-    promptVersion: 'v3',
+    promptVersion: 'v4',
     systemPrompt,
     userMessage,
     context: { outlinePointId: input.point.id, targetNodeId: input.targetNodeId, sourceCount: input.notes.length, style },
@@ -1222,7 +1223,10 @@ export async function generateNotePlanPoint(input: NotePlanInput, style: PlanSty
   const contentByNodeId: Record<string, string> = {};
   const missingMaterial: Record<string, string> = {};
   for (const node of result.data.nodes) {
-    contentByNodeId[node.nodeId] = assemblePlanPointMarkdown({
+    const current = input.revision?.currentContentByNodeId[node.nodeId] ?? '';
+    contentByNodeId[node.nodeId] = input.revision?.mode === 'references'
+      ? node.missingMaterial && !node.refs.length ? current : replacePlanReferenceParagraphs(current, node.refs)
+      : assemblePlanPointMarkdown({
       turn: node.turn, groups: [{ heading: null, cues: node.cues, refs: node.refs }],
     });
     if (node.missingMaterial) missingMaterial[node.nodeId] = node.missingMaterial;

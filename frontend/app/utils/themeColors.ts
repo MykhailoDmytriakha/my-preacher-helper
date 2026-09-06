@@ -10,11 +10,24 @@
 
 // Constants for repeated strings
 const TEXT_WHITE = "text-white";
+const TEXT_BLUE_ACCENT = 'text-blue-600 dark:text-blue-400';
 
 // Scratch material keeps the lightbulb accent used by outline reminders.
 export const SCRATCH_REMINDER_COLORS = {
   toggle: 'text-amber-700 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-300 focus-visible:ring-amber-400/50',
   text: 'text-slate-500 dark:text-gray-400',
+} as const;
+
+export const PLAN_REFINEMENT_COLORS = {
+  panel: 'border-blue-200 bg-blue-50/40 dark:border-blue-800/60 dark:bg-blue-950/20',
+  heading: 'text-gray-900 dark:text-gray-100',
+  muted: 'text-gray-500 dark:text-gray-400',
+  icon: TEXT_BLUE_ACCENT,
+  field: 'border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-blue-500/20 dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-100',
+  chip: 'border-gray-200 bg-white text-gray-600 hover:border-blue-300 hover:text-blue-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:border-blue-500',
+  selected: 'border-blue-400 bg-blue-50 text-blue-700 dark:border-blue-500 dark:bg-blue-900/40 dark:text-blue-200',
+  primary: 'bg-blue-600 text-white hover:bg-blue-700 focus-visible:ring-blue-400',
+  close: 'text-gray-400 hover:bg-gray-200/60 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-100',
 } as const;
 
 // Browser/app chrome uses the existing blue identity and a light launch surface.
@@ -268,7 +281,7 @@ export const SOURCE_NOTE_COLORS = {
   refChip: 'bg-emerald-100/70 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-100',
   primaryButton: 'bg-emerald-600 text-white hover:bg-emerald-700',
   /** The reverse block on a note, which is about opening a SERMON. */
-  reverseHeading: 'text-blue-600 dark:text-blue-400',
+  reverseHeading: TEXT_BLUE_ACCENT,
 } as const;
 
 /**
@@ -304,7 +317,7 @@ export const NOTE_TO_SERMON_COLORS = {
   /** The opener on the note: a dashed pill reads as "add one here". */
   openerButton:
     'border-dashed border-blue-300 text-blue-700 hover:border-blue-400 hover:bg-blue-50 dark:border-blue-500/50 dark:text-blue-200 dark:hover:bg-blue-900/20',
-  stepDone: 'text-blue-600 dark:text-blue-400',
+  stepDone: TEXT_BLUE_ACCENT,
   stepRunning: 'text-blue-600 dark:text-blue-300',
   stepPending: 'text-gray-300 dark:text-gray-600',
   stepError: 'text-red-600 dark:text-red-400',

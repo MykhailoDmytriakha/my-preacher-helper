@@ -23,6 +23,12 @@ const sermon = { id: 's', title: 'Title', verse: '', date: '', thoughts: [], use
 const conspectus = { contentByNodeId: { p: 'Original words' }, modifiedNodeIds: { p: true }, pendingNodeIds: new Set(),
   restoreCells: jest.fn(), saveModified: jest.fn() } as unknown as ManualConspectus;
 
+const requestRefinement = () => {
+  fireEvent.click(screen.getByRole('button', { name: 'plan.refine.open' }));
+  fireEvent.click(screen.getByRole('button', { name: 'plan.refine.presets.rewrite' }));
+  fireEvent.click(screen.getByRole('button', { name: 'plan.refine.submit' }));
+};
+
 const view = (enabled = true) => render(<NotePlanWorkspace enabled={enabled} sermon={sermon} conspectus={conspectus}>
   <h3><NotePointGenerateButton point={point} section="main" /></h3><NotePointActions point={point} /><NoteNodeReminder text={point.note} /><NoteNodeReminder />
 </NotePlanWorkspace>);
@@ -37,7 +43,7 @@ it('shows source, placed reminder, and the review before accepting a replacement
   expect(screen.getByRole('link', { name: 'Study source' })).toHaveAttribute('target', '_blank');
   expect(screen.getByText('List the people')).toBeInTheDocument();
   expect(screen.getByText('plan.fromNote.noReminder')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.generatePointWithSubPoints' }));
+  requestRefinement();
   await screen.findByText('- Extracted people');
   expect(screen.getByText('Original words')).toBeInTheDocument();
   expect(screen.getByText('No detail in source')).toBeInTheDocument();
@@ -56,15 +62,18 @@ it('keeps the existing editor free of source controls when the mode is manual', 
 it.each(['offline', 'usage', 'missing', 'loading'])('explains %s and disables generation', (reason) => {
   mockOnline = reason !== 'offline'; mockBlocked = reason === 'usage'; mockLoading = reason === 'loading'; mockMissing = reason === 'missing' ? ['gone'] : [];
   view();
-  expect(screen.getByRole('button', { name: 'plan.fromNote.generatePointWithSubPoints' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'plan.refine.open' })).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', { name: 'plan.refine.open' }));
+  fireEvent.click(screen.getByRole('button', { name: 'plan.refine.presets.rewrite' }));
+  expect(screen.getByRole('button', { name: 'plan.refine.submit' })).toBeDisabled();
 });
 
 it('shows request errors and allows dismissing a proposed replacement', async () => {
   jest.mocked(generateNotePlanContent).mockRejectedValueOnce(new Error('sourceTooLarge'));
   view();
-  fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.generatePointWithSubPoints' }));
+  requestRefinement();
   await screen.findByText('plan.fromNote.sourceTooLarge');
-  fireEvent.click(screen.getByRole('button', { name: 'plan.fromNote.generatePointWithSubPoints' }));
+  fireEvent.click(screen.getByRole('button', { name: 'plan.refine.submit' }));
   await screen.findByText('- Extracted people');
   fireEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
   await waitFor(() => expect(screen.queryByText('- Extracted people')).not.toBeInTheDocument());
@@ -80,7 +89,7 @@ it('removes the bulk generation, bulk save and draft-help row', () => {
 it('keeps other point buttons available while one or both requests are running', async () => {
   const next = { id: 'q', text: 'Next' };
   jest.mocked(generateNotePlanContent).mockReturnValue(new Promise(() => undefined));
-  render(<NotePlanWorkspace enabled sermon={{ ...sermon, outline: { introduction: [point], main: [next], conclusion: [] } }} conspectus={conspectus}>
+  render(<NotePlanWorkspace enabled sermon={{ ...sermon, outline: { introduction: [point], main: [next], conclusion: [] } }} conspectus={{ ...conspectus, contentByNodeId: {} }}>
     <h3 data-testid="first-heading"><NotePointGenerateButton point={point} section="introduction" /></h3>
     <h3 data-testid="next-heading"><NotePointGenerateButton point={next} section="main" /></h3>
   </NotePlanWorkspace>);
@@ -184,5 +193,19 @@ it('disables the parent while allowing another sibling button during child gener
   expect(first).toBeDisabled();
   expect(first).toHaveAttribute('aria-busy', 'true');
   expect(second).toBeEnabled();
-  expect(screen.getByRole('button', { name: 'plan.fromNote.generatePointWithSubPoints' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'plan.refine.open' })).toBeDisabled();
+});
+
+it('opens refinement for existing text without contacting AI and restores focus on close', () => {
+  view();
+  const opener = screen.getByRole('button', { name: 'plan.refine.open' });
+  expect(opener).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(opener);
+  expect(opener).toHaveAttribute('aria-expanded', 'true');
+  expect(document.getElementById(opener.getAttribute('aria-controls')!)).toBeVisible();
+  expect(screen.getByRole('textbox', { name: 'plan.refine.title' })).toHaveFocus();
+  expect(generateNotePlanContent).not.toHaveBeenCalled();
+  fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+  expect(opener).toHaveFocus();
+  expect(opener).toHaveAttribute('aria-expanded', 'false');
 });

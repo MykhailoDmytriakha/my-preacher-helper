@@ -4,11 +4,21 @@ import { getVisualOrderedThoughtsForOutlinePoint } from '@/utils/sermonVisualOrd
 
 import type { Sermon, SermonPoint } from '@/models/models';
 
+export const NOTE_PLAN_INSTRUCTION_LIMIT = 2000;
+export const NotePlanRevisionSchema = z.object({
+  instruction: z.string().trim().min(1).max(NOTE_PLAN_INSTRUCTION_LIMIT),
+  mode: z.enum(['edit', 'references', 'rewrite']),
+  currentContentByNodeId: z.record(z.string().max(50_000)),
+});
+export type NotePlanRevision = z.infer<typeof NotePlanRevisionSchema>;
+export type NotePlanRevisionIntent = Pick<NotePlanRevision, 'instruction' | 'mode'>;
+
 export const NotePlanRequestSchema = z.object({
   outlinePointId: z.string().min(1),
   targetNodeId: z.string().min(1).optional(),
   style: z.enum(['memory', 'narrative', 'exegetical']),
   expectedContext: z.string().min(1),
+  revision: NotePlanRevisionSchema.optional(),
 });
 
 export const NotePlanResultSchema = z.object({

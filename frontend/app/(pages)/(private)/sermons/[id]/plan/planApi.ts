@@ -1,7 +1,7 @@
 import { PlanStyle } from "@/api/clients/openAI.client";
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
-import { NotePlanResultSchema, type NotePlanResult } from '@/utils/notePlan';
+import { NotePlanResultSchema, type NotePlanResult, type NotePlanRevision } from '@/utils/notePlan';
 
 import type { Plan } from "@/models/models";
 
@@ -27,7 +27,7 @@ interface SaveSermonPlanParams {
 }
 
 export async function generateNotePlanContent(
-  params: GeneratePlanPointContentParams & { expectedContext: string; targetNodeId?: string },
+  params: GeneratePlanPointContentParams & { expectedContext: string; targetNodeId?: string; revision?: NotePlanRevision },
   signal?: AbortSignal,
 ): Promise<NotePlanResult> {
   const { sermonId, ...body } = params;

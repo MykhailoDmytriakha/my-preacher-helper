@@ -15,6 +15,7 @@ import { SCRATCH_REMINDER_COLORS, SERMON_SECTION_COLORS } from '@/utils/themeCol
 
 import { planNodesForPoint } from '../planNodes';
 
+import NotePlanRefinement, { refinementPanelId } from './NotePlanRefinement';
 import { useNotePlanGeneration } from './useNotePlanGeneration';
 
 import type { SermonSectionKey } from '../types';
@@ -76,13 +77,20 @@ export function NotePointGenerateButton({ point, section, targetNodeId }: {
   const nodes = planNodesForPoint(point).filter((node) => !targetNodeId || node.id === targetNodeId);
   const overlapping = Boolean(state.generatingIds[point.id]) || nodes.some((node) => state.generatingIds[node.id]);
   const pending = nodes.some((node) => state.conspectus.pendingNodeIds.has(node.id));
+  const hasContent = nodes.some((node) => state.conspectus.contentByNodeId[node.id]?.trim());
   const label = targetNodeId ? 'plan.fromNote.generateSubPoint'
     : point.subPoints?.length ? 'plan.fromNote.generatePointWithSubPoints' : 'plan.fromNote.generatePoint';
   const colors = SERMON_SECTION_COLORS[section === 'main' ? 'mainPart' : section];
   return (
     <PlanGenerationButton colors={colors} generating={generating}
-      disabled={state.blocked || overlapping || pending} onClick={() => void state.generate(point, targetNodeId)}
-      label={t(generating ? 'plan.fromNote.generating' : label)} />
+      id={`${refinementPanelId(requestId)}-trigger`}
+      expanded={hasContent ? Boolean(state.refiningIds[requestId]) : undefined}
+      controls={hasContent ? refinementPanelId(requestId) : undefined}
+      disabled={overlapping || pending || (!hasContent && state.blocked)} onClick={() => {
+        if (hasContent) state.setRefining(requestId, !state.refiningIds[requestId]);
+        else void state.generate(point, targetNodeId);
+      }}
+      label={t(generating ? 'plan.fromNote.generating' : hasContent ? 'plan.refine.open' : label)} />
   );
 }
 
@@ -93,8 +101,20 @@ export function NotePointActions({ point, targetNodeId }: { point: SermonPoint; 
   const requestId = targetNodeId ?? point.id;
   const nodes = planNodesForPoint(point).filter((node) => !targetNodeId || node.id === targetNodeId);
   const proposal = state.proposals[requestId];
+  const busy = Boolean(state.generatingIds[requestId]);
+  const disabled = state.blocked || Boolean(state.generatingIds[point.id])
+    || nodes.some((node) => state.generatingIds[node.id] || state.conspectus.pendingNodeIds.has(node.id));
+  const scope = targetNodeId
+    ? t('plan.refine.scopeSubPoint', { title: nodes[0]?.heading })
+    : t(point.subPoints?.length ? 'plan.refine.scopeWholePoint' : 'plan.refine.scopePoint', { title: point.text });
   return (
     <div className="mb-4 space-y-3">
+      <NotePlanRefinement id={requestId} open={Boolean(state.refiningIds[requestId])} scope={scope}
+        busy={busy} disabled={disabled} onClose={() => {
+          state.setRefining(requestId, false);
+          document.getElementById(`${refinementPanelId(requestId)}-trigger`)?.focus();
+        }}
+        onGenerate={(intent) => void state.generate(point, targetNodeId, intent)} />
       {state.errors[requestId] && <p role="alert" className="text-sm text-amber-700 dark:text-amber-300">{t(`plan.fromNote.${state.errors[requestId]}`)}</p>}
       {proposal && (
         <div className="space-y-4 rounded-lg border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-900 dark:bg-blue-950/20">
@@ -118,6 +138,7 @@ export function NotePointActions({ point, targetNodeId }: { point: SermonPoint; 
           <div className="flex flex-wrap gap-2">
             <Button variant="primary" onClick={() => state.accept(requestId)}>{t('plan.fromNote.apply')}</Button>
             <Button variant="secondary" onClick={() => state.discard(requestId)}>{t('common.cancel')}</Button>
+            <Button onClick={() => state.setRefining(requestId, true)}>{t('plan.refine.adjustRequest')}</Button>
           </div>
         </div>
       )}

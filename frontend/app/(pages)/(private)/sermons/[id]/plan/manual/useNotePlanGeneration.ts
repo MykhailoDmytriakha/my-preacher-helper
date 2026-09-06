@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { isUsageCapReachedError } from '@/services/usageLimits';
-import { notePlanContextKey, notePlanTargetNodes, type NotePlanResult } from '@/utils/notePlan';
+import { notePlanContextKey, notePlanTargetNodes, type NotePlanResult, type NotePlanRevisionIntent } from '@/utils/notePlan';
 
 import { generateNotePlanContent } from '../planApi';
 import { usePlanStylePreference } from '../usePlanStylePreference';
@@ -43,6 +43,8 @@ export function useNotePlanGeneration(options: Options) {
   const [proposals, setProposals] = useState<Record<string, Proposal>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [missing, setMissing] = useState<Record<string, string>>({});
+  const [refiningIds, setRefiningIds] = useState<Record<string, boolean>>({});
+  const setRefining = (id: string, open: boolean) => setRefiningIds((previous) => ({ ...previous, [id]: open }));
   const latest = useRef(options);
   latest.current = options;
   const requests = useRef(new Map<string, AbortController>());
@@ -81,7 +83,7 @@ export function useNotePlanGeneration(options: Options) {
     return true;
   };
 
-  const runPoint = async (point: SermonPoint, controller: AbortController, targetNodeId?: string) => {
+  const runPoint = async (point: SermonPoint, controller: AbortController, targetNodeId?: string, intent?: NotePlanRevisionIntent) => {
     const current = latest.current;
     const requestId = targetNodeId ?? point.id;
     if (current.blocked || !mounted.current) return;
@@ -98,7 +100,10 @@ export function useNotePlanGeneration(options: Options) {
     setProposals((previous) => Object.fromEntries(Object.entries(previous)
       .filter(([, proposal]) => !nodeIds.some((id) => id in proposal.before))));
     try {
-      const result = await generateNotePlanContent({ sermonId, outlinePointId: point.id, targetNodeId, style, expectedContext: context }, controller.signal);
+      const result = await generateNotePlanContent({
+        sermonId, outlinePointId: point.id, targetNodeId, style, expectedContext: context,
+        ...(intent && { revision: { ...intent, currentContentByNodeId: before } }),
+      }, controller.signal);
       if (!mounted.current || controller.signal.aborted) return;
       if (Object.keys(result.contentByNodeId).length !== nodeIds.length
         || Object.keys(result.contentByNodeId).some((id) => !nodeIds.includes(id))
@@ -111,6 +116,7 @@ export function useNotePlanGeneration(options: Options) {
         return;
       }
       setProposals((previous) => ({ ...previous, [requestId]: proposal }));
+      setRefining(requestId, false);
       void current.onSuccess?.().catch(() => undefined);
     } catch (error) {
       if (!mounted.current || controller.signal.aborted) return;
@@ -120,7 +126,7 @@ export function useNotePlanGeneration(options: Options) {
     }
   };
 
-  const generate = async (point: SermonPoint, targetNodeId?: string) => {
+  const generate = async (point: SermonPoint, targetNodeId?: string, intent?: NotePlanRevisionIntent) => {
     const requestId = targetNodeId ?? point.id;
     const currentPoint = allPoints(latest.current.sermon).find((candidate) => candidate.id === point.id);
     if (!currentPoint) return;
@@ -131,7 +137,7 @@ export function useNotePlanGeneration(options: Options) {
     const controller = new AbortController();
     requests.current.set(requestId, controller);
     setGeneratingIds((previous) => ({ ...previous, [requestId]: true }));
-    try { await runPoint(point, controller, targetNodeId); }
+    try { await runPoint(point, controller, targetNodeId, intent); }
     finally {
       // An old completion must not clear a newer request after effect cleanup/remount.
       if (requests.current.get(requestId) === controller) {
@@ -147,7 +153,7 @@ export function useNotePlanGeneration(options: Options) {
 
   return {
     style, setStyle, generatingIds, busy: Object.values(generatingIds).some(Boolean),
-    proposals, errors, missing, generate, accept,
+    proposals, errors, missing, generate, accept, refiningIds, setRefining,
     discard: (pointId: string) => setProposals((previous) => { const next = { ...previous }; delete next[pointId]; return next; }),
   };
 }

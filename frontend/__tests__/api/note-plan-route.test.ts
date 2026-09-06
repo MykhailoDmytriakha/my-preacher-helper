@@ -93,3 +93,23 @@ it.each(['foreign', ''])('rejects an invalid subpoint target %p before AI', asyn
   expect(response.status).toBe(targetNodeId ? 404 : 400);
   expect(generateNotePlanPoint).not.toHaveBeenCalled();
 });
+
+it('accepts scoped unsaved draft text and passes the refinement to the generator', async () => {
+  const revision = { instruction: 'Only references', mode: 'references', currentContentByNodeId: { sub: 'Unsaved current content' } };
+  const response = await POST(request({ outlinePointId: 'p', targetNodeId: 'sub', style: 'memory', expectedContext: notePlanContextKey(sermon, 'p'), revision }), params);
+  expect(response.status).toBe(200);
+  expect(generateNotePlanPoint).toHaveBeenCalledWith(expect.objectContaining({ revision }), 'memory', 'u');
+});
+
+it.each([
+  { instruction: ' ', mode: 'edit', currentContentByNodeId: { sub: 'Draft' } },
+  { instruction: 'x'.repeat(2001), mode: 'edit', currentContentByNodeId: { sub: 'Draft' } },
+  { instruction: 'Edit', mode: 'unknown', currentContentByNodeId: { sub: 'Draft' } },
+  { instruction: 'Edit', mode: 'edit', currentContentByNodeId: { p: 'Wrong cell' } },
+  { instruction: 'Edit', mode: 'edit', currentContentByNodeId: { sub: 'Draft', foreign: 'Extra' } },
+  { instruction: 'Edit', mode: 'edit', currentContentByNodeId: {} },
+])('refuses an invalid or out-of-scope revision before AI', async (revision) => {
+  const response = await POST(request({ outlinePointId: 'p', targetNodeId: 'sub', style: 'memory', expectedContext: notePlanContextKey(sermon, 'p'), revision }), params);
+  expect(response.status).toBe(400);
+  expect(generateNotePlanPoint).not.toHaveBeenCalled();
+});
