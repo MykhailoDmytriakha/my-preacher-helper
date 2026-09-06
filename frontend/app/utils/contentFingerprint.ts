@@ -32,3 +32,18 @@ function stableStringify(value: unknown): string {
   }
   return String(value);
 }
+
+/**
+ * Collision-safe equality for JSON document content. Preserve array order and
+ * primitive types, normalize object key order, and omit undefined object fields.
+ * The legacy fingerprint above is persisted in outbox entries; changing its wire
+ * format would invalidate pending writes, so comparisons use this separate form.
+ */
+export function serializeContent(value: unknown): string {
+  return JSON.stringify(value, (_key, entry: unknown) => {
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+      return Object.fromEntries(Object.entries(entry).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
+    }
+    return entry;
+  }) ?? '';
+}

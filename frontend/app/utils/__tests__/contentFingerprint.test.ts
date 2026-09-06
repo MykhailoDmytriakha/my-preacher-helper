@@ -1,4 +1,4 @@
-import { contentFingerprint } from '@/utils/contentFingerprint';
+import { contentFingerprint, serializeContent } from '@/utils/contentFingerprint';
 import { normalizeSeriesItems } from '@/utils/seriesItems';
 
 /**
@@ -53,5 +53,19 @@ describe('contentFingerprint', () => {
     expect(contentFingerprint(normalizeSeriesItems(rawLegacyDoc.items, rawLegacyDoc.sermonIds))).toBe(
       contentFingerprint(whatThePageHolds)
     );
+  });
+});
+
+
+describe('serializeContent', () => {
+  it('normalizes nested maps without normalizing array order or content', () => {
+    expect(serializeContent({ refs: [{ id: 'r', book: 'Psalms', omitted: undefined }] }))
+      .toBe(serializeContent({ refs: [{ book: 'Psalms', id: 'r' }] }));
+    expect(serializeContent(['a', 'b'])).not.toBe(serializeContent(['b', 'a']));
+    expect(serializeContent({ text: 'a,b' })).not.toBe(serializeContent({ text: 'a', b: '' }));
+  });
+  it('preserves primitive types and escapes delimiter-looking text', () => {
+    const values = [undefined, null, '', 'null', 1, '1', true, 'true', ['a,b'], ['a', 'b'], { 'a:b': 'c' }, { a: 'b:c' }];
+    expect(new Set(values.map(serializeContent)).size).toBe(values.length);
   });
 });

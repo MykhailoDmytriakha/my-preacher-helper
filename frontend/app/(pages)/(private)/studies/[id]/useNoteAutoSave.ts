@@ -108,9 +108,11 @@ export function useNoteAutoSave({
                 retirePersistedCreateDraft();
                 announceIfPersisted(acceptance, () => {
                     baselineRef.current = confirmedPayload;
+                    onSaved?.(confirmedPayload);
                     setLastSaved(new Date());
                 });
             } else if (acceptance.kind === 'queued') {
+                baselineRef.current = confirmedPayload;
                 // A queued write stays silent forever as a *queued* submission.
                 // Once persistence really lands we may retire its exact durable
                 // copy, but still do not set Saved: `queued` is not `persisted`.
@@ -128,7 +130,7 @@ export function useNoteAutoSave({
         } finally {
             setIsSaving(false);
         }
-    }, [title, content, tags, scriptureRefs, type, createNote, uid, setCreatedNoteId, baselineRef]);
+    }, [title, content, tags, scriptureRefs, type, createNote, uid, setCreatedNoteId, baselineRef, onSaved]);
 
     const saveChanges = useCallback(async () => {
         if (!noteId || !isInitialized) return;
@@ -201,14 +203,26 @@ export function useNoteAutoSave({
                  */
                 if (acceptance.kind === 'queued') {
                     baselineRef.current = { title, content, tags, scriptureRefs, type };
-                    onSaved?.({ title, content, tags, scriptureRefs, type });
+                    // A paused mutation can later become persisted. Retire its exact
+                    // payload then, never merely because the queue accepted it.
+                    void submission.persistence.then(async () => {
+                        const saved = await submission.result;
+                        if (!saved) return;
+                        if (typeof saved.revision === 'number') {
+                            if (saved.revision < (revisionRef.current ?? 0)) return;
+                            revisionRef.current = saved.revision;
+                        }
+                        onSaved?.({ title, content, tags, scriptureRefs, type });
+                    }).catch(() => undefined);
                 }
                 return;
             }
             const saved = await submission.result;
             // The server accepted it, so this is now what our text is built from.
-            if (typeof (saved as { revision?: number })?.revision === 'number') {
-                revisionRef.current = (saved as { revision?: number }).revision as number;
+            if (typeof saved?.revision === 'number') {
+                // A newer server proof may have arrived before this write response.
+                if (saved.revision < (revisionRef.current ?? 0)) return;
+                revisionRef.current = saved.revision;
             }
             // Confirmed by the server, so it becomes the new baseline: these fields
             // are no longer "changed by the user" and must not be re-sent.

@@ -1,3 +1,5 @@
+import { serializeContent } from '@/utils/contentFingerprint';
+
 /**
  * Which fields did the USER change?
  *
@@ -26,7 +28,7 @@ export function changedFields<T extends object>(base: T | null | undefined, next
   (Object.keys(next) as (keyof T)[]).forEach((key) => {
     // No baseline yet (document not loaded) means we cannot tell what the user
     // touched, so nothing is claimed as unchanged — send it all, as before.
-    if (!base || JSON.stringify(base[key]) !== JSON.stringify(next[key])) {
+    if (!base || serializeContent(base[key]) !== serializeContent(next[key])) {
       changed[key] = next[key];
     }
   });

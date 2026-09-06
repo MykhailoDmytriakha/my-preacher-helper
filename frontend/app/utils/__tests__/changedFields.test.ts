@@ -60,3 +60,11 @@ describe('changedFields', () => {
     expect(changedFields(base, { title: 'original' })).toEqual({});
   });
 });
+
+
+it('ignores reordered reference keys but preserves real reference changes', () => {
+  const base = { refs: [{ book: 'Psalms', fromVerse: 5, id: 'r' }] };
+  expect(changedFields(base, { refs: [{ id: 'r', fromVerse: 5, book: 'Psalms' }] })).toEqual({});
+  const next = { refs: [{ id: 'r', fromVerse: 6, book: 'Psalms' }] };
+  expect(changedFields(base, next)).toEqual(next);
+});

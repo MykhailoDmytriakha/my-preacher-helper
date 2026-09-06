@@ -34,6 +34,7 @@ import { NOTE_AGGREGATE } from '@/services/studies.service';
 import { getStudyNoteShareLinks } from '@/services/studyNoteShareLinks.service';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { apiClient } from '@/utils/apiClient';
+import { serializeContent } from '@/utils/contentFingerprint';
 import { findSectionById } from '@/utils/markdownSections';
 import { deleteRecordingDraft, saveRecordingDraft } from '@/utils/recordingDraftStore';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
@@ -119,13 +120,7 @@ function useNoteKeyboardNavigation({
 
 /** Value equality for draft-vs-editor comparison; field order is fixed by construction. */
 function sameNoteDraft(a: NoteDraftPayload, b: NoteDraftPayload): boolean {
-    return (
-        a.title === b.title &&
-        a.content === b.content &&
-        a.type === b.type &&
-        JSON.stringify(a.tags) === JSON.stringify(b.tags) &&
-        JSON.stringify(a.scriptureRefs) === JSON.stringify(b.scriptureRefs)
-    );
+    return serializeContent(a) === serializeContent(b);
 }
 
 function useNoteInitialization({
@@ -723,6 +718,8 @@ export default function StudyNoteEditorPage() {
     const serverRevisionRef = useRef<number | null>(null);
     /** Latest revision the SERVER holds. Adopted only when the text is adopted. */
     const remoteRevisionRef = useRef<number | null>(null);
+    // Keep a revision attached to the exact snapshot object, not a later emission.
+    const remoteRevisionsRef = useRef(new WeakMap<NoteDraftPayload, number>());
     const [saveConflict, setSaveConflict] = useState(false);
     /**
      * Bumped when the person insists on their text after a refusal. Without it the
@@ -750,12 +747,14 @@ export default function StudyNoteEditorPage() {
      */
     const [confirmedDraft, setConfirmedDraft] = useState<NoteDraftPayload | null>(null);
     if (isInitialized && baselineNoteIdRef.current !== noteId) {
+        // Assigning an optimistic id does not confirm text typed during create.
+        const adoptingCreatedId = baselineNoteIdRef.current === 'new' && createdNoteId === noteId;
         baselineNoteIdRef.current = noteId;
-        baselineRef.current = { title, content, tags, scriptureRefs, type };
+        if (!adoptingCreatedId) baselineRef.current = { title, content, tags, scriptureRefs, type };
     }
     useEffect(() => {
-        if (isInitialized) setConfirmedDraft(baselineRef.current);
-    }, [isInitialized, noteId]);
+        if (isInitialized && !createdNoteId) setConfirmedDraft(baselineRef.current);
+    }, [isInitialized, noteId, createdNoteId]);
 
     // Everything the editor owns, in one value — this is what the durable draft
     // stores and what a successful save confirms.
@@ -770,6 +769,7 @@ export default function StudyNoteEditorPage() {
         aggregate: 'note',
         value: draftPayload,
         enabled: isInitialized,
+        confirmedValue: confirmedDraft,
     });
 
     const { isSaving, lastSaved, saveError, setLastSaved } = useNoteAutoSave({
@@ -795,28 +795,14 @@ export default function StudyNoteEditorPage() {
         [recovered, draftPayload]
     );
 
-    // Does the server hold something newer than what this editor is showing? The
-    // baseline is what we last knew to be stored, so our own saves do not trip it.
-    const knownServerValue = useMemo<NoteDraftPayload | null>(
-        () =>
-            existingNote
-                ? {
-                      title: existingNote.title || '',
-                      content: existingNote.content || '',
-                      tags: existingNote.tags || [],
-                      scriptureRefs: existingNote.scriptureRefs || [],
-                      type: existingNote.type || 'note',
-                  }
-                : null,
-        [existingNote]
-    );
-
+    // Compare against what this editor accepted, never the independently refreshed
+    // query cache: a cache refresh must neither hide a remote edit nor undo adoption.
     const freshness = useDocumentFreshness<NoteDraftPayload>({
         collection: 'studyNotes',
         docId: isNew ? null : noteId,
         uid,
         enabled: isInitialized && !isNew,
-        known: knownServerValue,
+        known: confirmedDraft,
         select: (data) => {
             // ⚠️ This is the REMOTE revision, deliberately kept apart from the one a
             // save states. Letting a snapshot advance the save revision was a hole:
@@ -826,13 +812,15 @@ export default function StudyNoteEditorPage() {
             // protect. The save revision only advances when the displayed text
             // advances with it (applyRemote) or when a save is confirmed.
             remoteRevisionRef.current = readRevision(data as Record<string, unknown>, NOTE_AGGREGATE);
-            return {
+            const value: NoteDraftPayload = {
                 title: (data.title as string) || '',
                 content: (data.content as string) || '',
                 tags: (data.tags as string[]) || [],
                 scriptureRefs: (data.scriptureRefs as ScriptureReference[]) || [],
                 type: (data.type as 'note' | 'question') || 'note',
             };
+            remoteRevisionsRef.current.set(value, remoteRevisionRef.current);
+            return value;
         },
     });
 
@@ -850,6 +838,8 @@ export default function StudyNoteEditorPage() {
     const applyRemote = useCallback(() => {
         const next = freshness.remote;
         if (!next) return;
+        const revision = remoteRevisionsRef.current.get(next);
+        if (revision === undefined || revision < (serverRevisionRef.current ?? 0)) return;
         setTitle(next.title);
         setContent(next.content);
         setTags(next.tags);
@@ -857,10 +847,22 @@ export default function StudyNoteEditorPage() {
         setType(next.type);
         baselineRef.current = next;
         setConfirmedDraft(next);
+        markSaved(next);
         // Text and revision move together — that is the whole invariant.
-        if (remoteRevisionRef.current !== null) serverRevisionRef.current = remoteRevisionRef.current;
+        serverRevisionRef.current = revision;
         freshness.markSynced(next);
-    }, [freshness]);
+    }, [freshness, markSaved]);
+
+    // Server proof can retire an old recovery copy, including an outbox replay
+    // whose original mutation is gone. Only acknowledge the exact displayed text;
+    // a different server version remains an explicit choice, never an overwrite.
+    useEffect(() => {
+        if (freshness.state === 'stale' && freshness.remote && sameNoteDraft(freshness.remote, draftPayload)) {
+            applyRemote();
+        } else if (confirmedDraft && freshness.state === 'fresh' && freshness.diagnostics?.lastServerResult === 'matching') {
+            markSaved(confirmedDraft);
+        }
+    }, [applyRemote, confirmedDraft, draftPayload, freshness.state, freshness.remote, freshness.diagnostics?.lastServerResponseAt, freshness.diagnostics?.lastServerResult, markSaved]);
 
     const applyRecovered = useCallback(() => {
         if (!unsavedRecovery) return;

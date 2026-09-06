@@ -1,11 +1,11 @@
 import { act, renderHook } from '@testing-library/react';
 
-import { useDurableDraft } from '@/hooks/useDurableDraft';
+import { useDurableDraft, type UseDurableDraftOptions } from '@/hooks/useDurableDraft';
 import { draftKey, readDraft, saveDraft } from '@/utils/durableDraft';
 
 const KEY = draftKey('uid-1', 'note-1', 'note');
 
-function render(value: string, overrides: Partial<Parameters<typeof useDurableDraft>[0]> = {}) {
+function render(value: string, overrides: Partial<UseDurableDraftOptions<string>> = {}) {
   return renderHook(
     (props: { value: string }) =>
       useDurableDraft<string>({
@@ -138,6 +138,41 @@ describe('useDurableDraft', () => {
     });
 
     expect(readDraft(KEY)).toBeNull();
+  });
+
+  it('retires a matching recovered offer after confirmation, including reordered fields', () => {
+    const original = { text: 'saved text', refs: [{ book: 'Psalms', verse: 5 }] };
+    saveDraft(KEY, original);
+    const { result, rerender } = renderHook(({ value }) => useDurableDraft({
+      uid: 'uid-1', docId: 'note-1', aggregate: 'note', enabled: true, value,
+    }), { initialProps: { value: original } });
+    expect(result.current.recovered).toEqual(original);
+    act(() => result.current.markSaved({ refs: [{ verse: 5, book: 'Psalms' }], text: 'saved text' }));
+    rerender({ value: { ...original, text: 'next edit' } });
+    act(() => jest.advanceTimersByTime(300));
+    expect(result.current.recovered).toBeNull();
+    expect(readDraft(KEY)?.value).toEqual({ ...original, text: 'next edit' });
+  });
+
+  it('keeps a different recovered offer when another value is confirmed', () => {
+    saveDraft(KEY, 'unconfirmed recovery');
+    const { result } = render('server text');
+    act(() => result.current.markSaved('server text'));
+    expect(result.current.recovered).toBe('unconfirmed recovery');
+    expect(readDraft(KEY)?.value).toBe('unconfirmed recovery');
+  });
+
+  it('keeps later typing durable while an optimistic create receives its real id', () => {
+    const { result, rerender } = renderHook(({ docId, value, confirmedValue }) => useDurableDraft({
+      uid: 'uid-1', docId, aggregate: 'note', enabled: true, value, confirmedValue,
+    }), { initialProps: { docId: 'new', value: 'create A', confirmedValue: '' } });
+    rerender({ docId: 'note-1', value: 'later B', confirmedValue: '' });
+    act(() => jest.advanceTimersByTime(300));
+    expect(readDraft(KEY)?.value).toBe('later B');
+    act(() => result.current.markSaved('create A'));
+    rerender({ docId: 'note-1', value: 'later B', confirmedValue: 'create A' });
+    act(() => window.dispatchEvent(new Event('pagehide')));
+    expect(readDraft(KEY)?.value).toBe('later B');
   });
 
   it('keeps a draft the server never confirmed', () => {

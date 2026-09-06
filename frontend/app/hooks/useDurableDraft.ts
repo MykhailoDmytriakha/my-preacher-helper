@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { serializeContent } from '@/utils/contentFingerprint';
 import {
   clearDraftIfMatches,
   draftKey,
@@ -23,6 +24,9 @@ export interface UseDurableDraftOptions<T> {
   value: T;
   /** False while the editor is still initialising, so we never persist a blank. */
   enabled: boolean;
+  /** Explicit editor baseline; null means no confirmed value yet. Used when a
+   * temporary document id changes before its create has been acknowledged. */
+  confirmedValue?: T | null;
 }
 
 export interface UseDurableDraftResult<T> {
@@ -66,6 +70,7 @@ export function useDurableDraft<T>({
   aggregate,
   value,
   enabled,
+  confirmedValue,
 }: UseDurableDraftOptions<T>): UseDurableDraftResult<T> {
   const key = uid && docId ? draftKey(uid, docId, aggregate) : null;
 
@@ -97,10 +102,13 @@ export function useDurableDraft<T>({
   const confirmedRef = useRef<string | null>(null);
   const confirmedKeyRef = useRef<string | null>(null);
 
-  // The value an editor opens with IS the server's value, so it starts confirmed.
-  if (enabled && key && confirmedKeyRef.current !== key) {
+  // Callers with an explicit baseline retain its provenance across id adoption.
+  // Legacy callers establish their opening value once per key.
+  if (confirmedValue !== undefined) {
+    confirmedRef.current = confirmedValue === null ? null : serializeContent(confirmedValue);
+  } else if (enabled && key && confirmedKeyRef.current !== key) {
     confirmedKeyRef.current = key;
-    confirmedRef.current = JSON.stringify(value);
+    confirmedRef.current = serializeContent(value);
   }
 
   /**
@@ -119,7 +127,7 @@ export function useDurableDraft<T>({
    * which compares before removing. Both failures are locked by tests.
    */
   const persist = useCallback((targetKey: string, next: T) => {
-    const serialised = JSON.stringify(next);
+    const serialised = serializeContent(next);
     if (serialised === confirmedRef.current) {
       // Back to the server's value by hand. Retire OUR draft so it stops being
       // offered — but only if the stored one is still the one we wrote. If another
@@ -213,7 +221,8 @@ export function useDurableDraft<T>({
 
   const markSaved = useCallback((confirmed: T) => {
     // Record it even without a key so a later flush cannot re-store saved text.
-    confirmedRef.current = JSON.stringify(confirmed);
+    confirmedRef.current = serializeContent(confirmed);
+    setRecovered((current) => current !== null && serializeContent(current) === serializeContent(confirmed) ? null : current);
     if (!keyRef.current) return;
     clearDraftIfMatches(keyRef.current, confirmed);
   }, []);

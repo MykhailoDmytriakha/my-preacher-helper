@@ -1,11 +1,13 @@
 'use client';
 
+
 import { doc, getDocFromServer, onSnapshot, type DocumentData } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { readSermonFromServer } from '@/services/sermonReadFallback.client';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
+import { serializeContent } from '@/utils/contentFingerprint';
 
 /**
  * Is the document open in this editor still the newest one?
@@ -151,7 +153,7 @@ export function useDocumentFreshness<T>({
   // Serialised value the editor already accounts for. Kept in a ref so a new
   // keystroke never re-subscribes the listener.
   const knownRef = useRef<string | null>(null);
-  const serialisedKnown = known === null || known === undefined ? null : JSON.stringify(known);
+  const serialisedKnown = known === null || known === undefined ? null : serializeContent(known);
   knownRef.current = serialisedKnown;
 
   /**
@@ -280,7 +282,7 @@ export function useDocumentFreshness<T>({
         return;
       }
       const value = selectRef.current(snapshot.data()!);
-      const serialised = JSON.stringify(value);
+      const serialised = serializeContent(value);
       const base = baseline();
       if (base === null && adoptRef.current) adoptedKnownRef.current = serialised;
       const different = base !== null && serialised !== base;
@@ -431,10 +433,10 @@ export function useDocumentFreshness<T>({
   remoteRef.current = remote;
   const markSynced = useCallback((value: T) => {
     const current = remoteRef.current;
-    if (current === null || JSON.stringify(current) !== JSON.stringify(value)) return;
+    if (current === null || serializeContent(current) !== serializeContent(value)) return;
     // The adopted baseline MOVES with what the screen took, or the very next
     // snapshot would report the value just adopted as newer, forever.
-    if (adoptedKnownRef.current !== null) adoptedKnownRef.current = JSON.stringify(value);
+    if (adoptedKnownRef.current !== null) adoptedKnownRef.current = serializeContent(value);
     setRemote(null);
     setState((currentState) => (currentState === 'stale' ? 'fresh' : currentState));
   }, []);

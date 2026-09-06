@@ -132,11 +132,13 @@ describe('creating a note keeps the durable draft at all times', () => {
       note: { id: 'real-id' } as StudyNote,
     }));
 
-    const { result } = renderHook(() => useHarness(createNote, jest.fn()));
+    const onSaved = jest.fn();
+    const { result } = renderHook(() => useHarness(createNote, onSaved));
     await act(async () => {
       jest.advanceTimersByTime(1600);
     });
 
+    expect(onSaved).toHaveBeenCalledWith(payload);
     await waitFor(() => expect(result.current.lastSaved).not.toBeNull());
     expect(readDraft(draftKey('u1', 'real-id', 'note'))).toBeNull();
   });
@@ -218,6 +220,7 @@ describe('creating a note keeps the durable draft at all times', () => {
     });
 
     const updated: NoteDraftPayload = { ...payload, content: 'typed while unreachable' };
+    const onSaved = jest.fn();
 
     renderHook(() =>
       useNoteAutoSave({
@@ -241,14 +244,36 @@ describe('creating a note keeps the durable draft at all times', () => {
         resaveNonce: 0,
         saveBlocked: false,
         onConflict: jest.fn(),
-        onSaved: jest.fn(),
+        onSaved,
       })
     );
 
     // The autosave is debounced (~1.5s), so both waits get room.
     await waitFor(() => expect(updateNote).toHaveBeenCalledTimes(1), { timeout: 4000 });
     await waitFor(() => expect(baselineRef.current).toEqual(updated), { timeout: 4000 });
+    expect(onSaved).not.toHaveBeenCalled();
     await act(async () => { jest.advanceTimersByTime(6000); });
     expect(updateNote).toHaveBeenCalledTimes(1);
   });
+  it.each([2, 1])('acknowledges a queued update only after actual persistence at revision %s', async (savedRevision) => {
+    let finish!: () => void;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    const saved = { ...payload, content: 'Queued text', id: 'n1', revision: savedRevision } as StudyNote & { revision: number };
+    const onSaved = jest.fn();
+    const revisionRef = { current: 2 as number | null };
+    const updateNote = jest.fn(() => ({ ...queuedMutation('q', pending), result: pending.then(() => saved) }));
+    renderHook(() => useNoteAutoSave({
+      noteId: 'n1', isNew: false, isInitialized: true, ...payload, content: saved.content,
+      updateNote, createNote: jest.fn(), uid: 'u1', setCreatedNoteId: jest.fn(), t: ((key: string) => key) as never,
+      baselineRef: { current: payload }, revisionRef, deliberateOverwriteRef: { current: false },
+      resaveNonce: 0, saveBlocked: false, onConflict: jest.fn(), onSaved,
+    }));
+    await act(async () => jest.advanceTimersByTime(1600));
+    expect(onSaved).not.toHaveBeenCalled();
+    await act(async () => { finish(); await pending; });
+    if (savedRevision === 2) expect(onSaved).toHaveBeenCalledWith({ ...payload, content: saved.content });
+    else expect(onSaved).not.toHaveBeenCalled();
+    expect(revisionRef.current).toBe(2);
+  });
+
 });

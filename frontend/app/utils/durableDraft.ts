@@ -1,3 +1,5 @@
+import { serializeContent } from '@/utils/contentFingerprint';
+
 /**
  * Durable drafts — the user's text must survive a closed tab, a crash, a reload
  * and a failed write.
@@ -133,7 +135,7 @@ export function clearDraft(key: string): void {
 export function clearDraftIfMatches<T>(key: string, confirmed: T): void {
   const stored = readDraft<T>(key);
   if (!stored) return;
-  if (JSON.stringify(stored.value) !== JSON.stringify(confirmed)) return;
+  if (serializeContent(stored.value) !== serializeContent(confirmed)) return;
   clearDraft(key);
 }
 
@@ -163,7 +165,7 @@ export function moveDraft(fromKey: string, toKey: string): void {
   // gives up — so clearing the source on faith would leave the text with no durable
   // copy at all, which is worse than not moving it.
   const carried = readDraft<unknown>(toKey);
-  if (!carried || JSON.stringify(carried.value) !== JSON.stringify(stored.value)) return;
+  if (!carried || serializeContent(carried.value) !== serializeContent(stored.value)) return;
   clearDraft(fromKey);
 }
 

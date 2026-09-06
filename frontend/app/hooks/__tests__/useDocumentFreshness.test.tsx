@@ -783,3 +783,21 @@ describe('sermon freshness recovery', () => {
     expect(result.current.remote).toBeNull();
   });
 });
+
+
+describe('semantic snapshot comparison', () => {
+  it('keeps identical nested maps fresh and still detects a real reference change', () => {
+    const local = { scriptureRefs: [{ book: 'Psalms', chapter: 5, fromVerse: 5, toVerse: 5, id: 'r' }] };
+    const remote = { scriptureRefs: [{ id: 'r', toVerse: 5, fromVerse: 5, chapter: 5, book: 'Psalms' }] };
+    const { result, rerender } = renderHook(({ known }) => useDocumentFreshness({
+      collection: 'studyNotes', docId: 'n', uid: 'u', enabled: true, known,
+      select: (data) => ({ scriptureRefs: data.scriptureRefs }),
+    }), { initialProps: { known: local } });
+    act(() => emit!(server(remote)));
+    expect(result.current.state).toBe('fresh');
+    act(() => emit!(server({ scriptureRefs: [{ ...remote.scriptureRefs[0], fromVerse: 4 }] })));
+    expect(result.current.state).toBe('stale');
+    rerender({ known: { scriptureRefs: [{ ...local.scriptureRefs[0], fromVerse: 4 }] } });
+    expect(result.current.state).toBe('fresh');
+  });
+});
