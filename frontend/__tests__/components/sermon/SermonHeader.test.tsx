@@ -580,8 +580,11 @@ describe('SermonHeader Component', () => {
       const sermonWithSeries = { ...mockSermon, seriesId: 'series-1' };
       render(<SermonHeader sermon={sermonWithSeries} series={seriesWithoutColor} onUpdate={mockOnUpdate} />);
 
+      // A series with no colour of its own falls back to the shared blue chip token, so the
+      // dark plate is the token's `dark:bg-blue-900/50` rather than a local `dark:bg-blue-900`.
       const seriesBadge = screen.getByText('Test Series').closest('a');
-      expect(seriesBadge).toHaveClass('bg-blue-100', 'dark:bg-blue-900', 'text-blue-800', 'dark:text-blue-200');
+      expect(seriesBadge).toHaveClass('bg-blue-100', 'dark:bg-blue-900/50', 'text-blue-800', 'dark:text-blue-200');
+      expect(seriesBadge).toHaveClass('rounded-full');
     });
   });
 

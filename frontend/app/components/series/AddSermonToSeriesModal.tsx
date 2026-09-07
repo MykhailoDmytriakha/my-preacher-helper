@@ -5,6 +5,7 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
+import { Chip } from '@/components/ui/Chip';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
@@ -168,9 +169,9 @@ export default function AddSermonToSeriesModal({
                               {sermon.title}
                             </h3>
                             {getEffectiveIsPreached(sermon) && (
-                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
+                              <Chip tone="emerald" size="sm">
                                 {t('dashboard.preached')}
-                              </span>
+                              </Chip>
                             )}
                           </div>
                           <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-1 italic">

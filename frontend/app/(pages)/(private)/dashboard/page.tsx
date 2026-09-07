@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  BookMarked,
   BookOpen,
   CalendarDays,
   ChevronRight,
@@ -21,6 +22,7 @@ import '@locales/i18n';
 import AddSermonModal from '@/components/AddSermonModal';
 import { SermonSyncBadge } from '@/components/dashboard/SermonSyncBadge';
 import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
+import { Chip } from '@/components/ui/Chip';
 import { useDashboardOptimisticSermons } from '@/hooks/useDashboardOptimisticSermons';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useFittingRows } from '@/hooks/useFittingRows';
@@ -485,13 +487,13 @@ function SermonsPanel({
               </div>
               {/* Both statuses stay blue (sermon category); distinguished by intensity:
                   preparing = solid (active work), preached = soft (done). */}
-              <span className={`self-start rounded-md px-2 py-1 text-xs font-medium ${
-                sermon.tone === 'emerald'
-                  ? 'bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-300'
-                  : 'bg-blue-600 text-white dark:bg-blue-500'
-              }`}>
+              <Chip
+                tone={sermon.tone === 'emerald' ? 'blue' : 'custom'}
+                size="sm"
+                className={`self-start ${sermon.tone === 'emerald' ? '' : 'bg-blue-600 text-white dark:bg-blue-500'}`}
+              >
                 {sermon.status}
-              </span>
+              </Chip>
             </Link>
             {/* A sermon created here can still be refused. Without this the person saw a
                 row that looked saved and no verdict at all — the write left no other
@@ -553,9 +555,9 @@ function AgendaPanel({ agendaItems }: { agendaItems: AgendaItem[] }) {
                   <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">{item.title}</p>
                 </div>
                 <div className="pb-4">
-                  <span className={`rounded-md px-2 py-1 text-xs font-medium ${toneClasses.cyan.badge}`}>
+                  <Chip tone="cyan" size="sm">
                     {item.type}
-                  </span>
+                  </Chip>
                 </div>
                 <ChevronRight className="mt-1 h-4 w-4 text-gray-400" />
               </Link>
@@ -593,9 +595,9 @@ function PrayerFocusPanel({ prayers }: { prayers: PrayerItem[] }) {
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="truncate text-sm font-semibold text-gray-950 dark:text-white">{prayer.title}</p>
-                  <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${toneClasses.rose.badge}`}>
+                  <Chip tone="rose" size="sm">
                     {prayer.status}
-                  </span>
+                  </Chip>
                 </div>
                 <p className="mt-1 line-clamp-2 text-xs leading-5 text-gray-500 dark:text-gray-400">
                   {prayer.description}
@@ -650,9 +652,9 @@ function ActiveSeriesPanel({ seriesItems }: { seriesItems: SeriesItem[] }) {
                 </div>
                 <p className="mt-2 truncate text-xs text-gray-500 dark:text-gray-400">{seriesItem.next}</p>
               </div>
-              <span className={`self-start rounded-md px-2 py-1 text-xs font-medium ${toneClasses.violet.badge}`}>
+              <Chip tone="violet" size="sm" className="self-start">
                 {seriesItem.status}
-              </span>
+              </Chip>
             </Link>
           ))}
         </div>
@@ -685,14 +687,19 @@ function RecentStudiesPanel({ studies }: { studies: StudyItem[] }) {
                 <p className="truncate text-sm font-semibold text-gray-950 dark:text-white">{study.passage}</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {study.references.map((reference, index) => (
-                    <span key={`reference-${reference}-${index}`} className="rounded-md border border-emerald-300 bg-emerald-50/60 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:border-emerald-700/60 dark:bg-emerald-950/30 dark:text-emerald-200">
+                    <Chip
+                      key={`reference-${reference}-${index}`}
+                      tone="emerald"
+                      size="sm"
+                      icon={<BookMarked className="h-3 w-3 shrink-0" />}
+                    >
                       {reference}
-                    </span>
+                    </Chip>
                   ))}
                   {study.tags.map((tag, index) => (
-                    <span key={`tag-${tag}-${index}`} className="rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
+                    <Chip key={`tag-${tag}-${index}`} tone="emerald" size="sm">
                       {tag}
-                    </span>
+                    </Chip>
                   ))}
                 </div>
               </div>
@@ -736,13 +743,13 @@ function LatestGroupsPanel({ groups }: { groups: GroupItem[] }) {
                 )}
               </div>
               {/* Status on the right (like sermons/series); amber category, active=solid / completed=soft */}
-              <span className={`self-start rounded-md px-2 py-0.5 text-xs font-medium ${
-                group.tone === 'emerald'
-                  ? 'bg-amber-500 text-white dark:bg-amber-500'
-                  : 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300'
-              }`}>
+              <Chip
+                tone={group.tone === 'emerald' ? 'custom' : 'amber'}
+                size="sm"
+                className={`self-start ${group.tone === 'emerald' ? 'bg-amber-500 text-white dark:bg-amber-500' : ''}`}
+              >
                 {group.status}
-              </span>
+              </Chip>
             </Link>
           ))}
         </div>

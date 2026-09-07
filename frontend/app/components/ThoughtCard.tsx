@@ -313,17 +313,13 @@ const TagsDisplay = memo(({ tags, allowedTags, compact = false }: TagsDisplayPro
         else if (canonical === 'main') displayName = t('tags.mainPart');
         else if (canonical === 'conclusion') displayName = t('tags.conclusion');
 
-        // Get styling from our utilities
-        const { className: baseClassName, style } = getTagStyle(tag, tagInfo?.color);
+        // Colour comes from the tag utilities; the SHAPE is the app's chip, and the card
+        // only chooses how much air it gets. It used to re-spell the padding here and win
+        // by class order, which meant a thought tag was the one chip in the app that did
+        // not match the rest.
+        const { className: baseClassName, style } = getTagStyle(tag, tagInfo?.color, compact ? 'sm' : 'md');
 
-        // Enhanced tag styling without hover scale
-        const className = `
-          ${baseClassName} 
-          ${compact ? 'text-xs px-2 py-0.5' : 'text-sm px-2.5 py-1'} 
-          rounded-full font-medium
-          transition-shadow duration-200
-          hover:shadow-sm
-        `;
+        const className = `${baseClassName} transition-shadow duration-200 hover:shadow-sm`;
 
         const iconInfo = structureTagStatus ? getStructureIcon(tag) : null;
 

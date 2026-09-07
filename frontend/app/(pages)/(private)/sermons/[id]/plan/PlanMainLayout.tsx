@@ -9,6 +9,7 @@ import PlanGenerationButton from "@/components/plan/PlanGenerationButton";
 import PlanMarkdown from "@/components/plan/PlanMarkdown";
 import PlanStyleSelector from "@/components/plan/PlanStyleSelector";
 import { ProgressSidebar } from "@/components/plan/ProgressSidebar";
+import { Chip } from "@/components/ui/Chip";
 import { Plan, Sermon, SermonPoint, Thought } from "@/models/models";
 import { readPlanText } from "@/utils/planText";
 import { buildSubPointRenderableEntries } from "@/utils/subPoints";
@@ -277,13 +278,14 @@ const SermonPointCard = React.forwardRef<HTMLDivElement, SermonPointCardProps>((
                 {thought.keyFragments && thought.keyFragments.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {thought.keyFragments.map((fragment, index) => (
-                      <span
+                      <Chip
                         key={index}
-                        className="inline-block px-2 py-0.5 text-xs rounded-full"
+                        tone="custom"
+                        size="sm"
                         style={{ backgroundColor: sectionColors.light, color: sectionColors.dark }}
                       >
                         &quot;{fragment}&quot;
-                      </span>
+                      </Chip>
                     ))}
                   </div>
                 )}

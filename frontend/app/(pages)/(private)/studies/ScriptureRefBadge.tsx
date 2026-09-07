@@ -1,9 +1,9 @@
 'use client';
 
-import { XMarkIcon } from '@heroicons/react/20/solid';
 import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { Chip } from '@/components/ui/Chip';
 import { ScriptureReference } from '@/models/models';
 
 import { BibleLocale } from './bibleData';
@@ -17,10 +17,12 @@ interface ScriptureRefBadgeProps {
 }
 
 /**
- * Compact badge/tag display for a Scripture reference.
- * Shows localized abbreviated format based on current language.
- * Example: "Ис.4:5-8" (RU), "Isa.4:5-8" (EN), "Іс.4:5-8" (UK)
- * Click to edit, X button to remove.
+ * A Scripture reference as a chip.
+ *
+ * The shell — shape, size, hover, the ✕ and its keyboard contract — belongs to `Chip`, the
+ * app's one pill. What stays here is what only a reference knows: how to abbreviate itself
+ * for the reading language ("Ис.4:5-8" / "Isa.4:5-8" / "Іс.4:5-8") and how to say itself in
+ * full to a screen reader, because the abbreviation is unreadable aloud.
  */
 const ScriptureRefBadge = memo(function ScriptureRefBadge({
   reference,
@@ -28,7 +30,7 @@ const ScriptureRefBadge = memo(function ScriptureRefBadge({
   onRemove,
   isEditing = false,
 }: ScriptureRefBadgeProps) {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   // Get current locale for Bible data
   const bibleLocale: BibleLocale = useMemo(() => {
@@ -40,56 +42,36 @@ const ScriptureRefBadge = memo(function ScriptureRefBadge({
 
   const displayText = formatScriptureRef(reference, bibleLocale);
 
+  // Spoken form of the reference: the visible text is an abbreviation, which a screen
+  // reader would read as letters.
+  const spokenReference = useMemo(() => {
+    let label = reference.book;
+    if (reference.chapter !== undefined) {
+      label += ` ${reference.chapter}`;
+      if (reference.toChapter !== undefined) {
+        label += `-${reference.toChapter}`;
+      } else if (reference.fromVerse !== undefined) {
+        label += `:${reference.fromVerse}`;
+        if (reference.toVerse !== undefined) {
+          label += `-${reference.toVerse}`;
+        }
+      }
+    }
+    return label;
+  }, [reference]);
+
   return (
-    <span
-      className={`
-        inline-flex items-center gap-1 rounded-full 
-        px-3 py-1 text-xs font-medium
-        transition-all duration-150
-        ${isEditing
-          ? 'bg-emerald-200 text-emerald-900 ring-2 ring-emerald-500 dark:bg-emerald-800 dark:text-emerald-100'
-          : 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200 dark:bg-emerald-900/50 dark:text-emerald-200 dark:hover:bg-emerald-800/60'
-        }
-        ${onClick ? 'cursor-pointer' : ''}
-      `}
+    <Chip
+      tone="emerald"
+      selected={isEditing}
       onClick={onClick}
-      role={onClick ? 'button' : undefined}
-      tabIndex={onClick ? 0 : undefined}
-      onKeyDown={onClick ? (e) => e.key === 'Enter' && onClick() : undefined}
-      aria-label={(() => {
-        // Build accessible label based on reference type
-        let label = reference.book;
-        if (reference.chapter !== undefined) {
-          label += ` ${reference.chapter}`;
-          if (reference.toChapter !== undefined) {
-            label += `-${reference.toChapter}`;
-          } else if (reference.fromVerse !== undefined) {
-            label += `:${reference.fromVerse}`;
-            if (reference.toVerse !== undefined) {
-              label += `-${reference.toVerse}`;
-            }
-          }
-        }
-        return label;
-      })()}
+      onRemove={onRemove}
+      removeLabel={t('studiesWorkspace.removeReference', { reference: spokenReference })}
+      ariaLabel={spokenReference}
     >
-      <span>{displayText}</span>
-      {onRemove && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemove();
-          }}
-          className="ml-0.5 rounded-full p-0.5 hover:bg-emerald-300 dark:hover:bg-emerald-700 transition-colors"
-          aria-label="Remove reference"
-        >
-          <XMarkIcon className="h-3.5 w-3.5" />
-        </button>
-      )}
-    </span>
+      {displayText}
+    </Chip>
   );
 });
 
 export default ScriptureRefBadge;
-

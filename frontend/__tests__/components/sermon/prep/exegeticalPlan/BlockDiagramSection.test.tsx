@@ -112,9 +112,12 @@ describe('BlockDiagramSection', () => {
     it('displays coming soon badge with proper contrast', () => {
       render(<BlockDiagramSection />);
       
-      const badge = screen.getByText('Coming Soon');
-      expect(badge).toHaveClass('bg-amber-200', 'dark:bg-amber-800');
-      expect(badge).toHaveClass('text-amber-800', 'dark:text-amber-200');
+      // A chip carries its plate on the chip, not on the label span inside it.
+      const badge = screen.getByText('Coming Soon').closest('span.rounded-full');
+      expect(badge?.className).toMatch(/bg-amber-\d+/);
+      expect(badge?.className).toMatch(/dark:bg-amber-\d+/);
+      expect(badge?.className).toMatch(/text-amber-\d+/);
+      expect(badge?.className).toMatch(/dark:text-amber-\d+/);
     });
   });
 

@@ -5,6 +5,7 @@ import React, { useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
+import { Chip } from '@/components/ui/Chip';
 import { useSeries } from '@/hooks/useSeries';
 import { useAuth } from '@/providers/AuthProvider';
 
@@ -162,10 +163,14 @@ export default function SeriesSelector({
                         </div>
                       </div>
                       {isPendingSelection && (
-                        <span className="ml-3 inline-flex shrink-0 items-center gap-2 rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/70 dark:text-blue-100">
-                          <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-700 border-b-transparent dark:border-blue-100 dark:border-b-transparent" />
+                        <Chip
+                          tone="blue"
+                          size="sm"
+                          className="ml-3 shrink-0 gap-2"
+                          icon={<span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-700 border-b-transparent dark:border-blue-100 dark:border-b-transparent" />}
+                        >
                           {pendingActionLabel}
-                        </span>
+                        </Chip>
                       )}
                     </div>
                   </button>

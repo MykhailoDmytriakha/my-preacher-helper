@@ -6,6 +6,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useSourceNotes } from '@/hooks/useSermonNoteLinks';
+import { buildChipClasses } from '@/utils/chipClasses';
 import { getNavItemTheme } from '@/utils/themeColors';
 
 import type { Sermon } from '@/models/models';
@@ -55,7 +56,7 @@ const SourceNoteChips: React.FC<SourceNoteChipsProps> = ({ sermon, openInNewTab 
             data-testid="source-note-chip"
             title={t('sermon.sourceNotes.chipTitle', { title })}
             aria-label={t('sermon.sourceNotes.openNote', { title })}
-            className={`inline-flex max-w-[15rem] items-center gap-1.5 whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${theme.pill}`}
+            className={`${buildChipClasses({ tone: 'custom', size: 'sm' })} max-w-[15rem] gap-1.5 whitespace-nowrap border transition-colors ${theme.pill}`}
           >
             <RectangleStackIcon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             {/* The prefix is said ONCE, on the first chip. Seen live with two notes linked, "На

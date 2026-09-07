@@ -11,6 +11,7 @@ import {
   isFunctionCatalogTarget,
 } from '@/api/clients/ai/functionCatalog';
 import LanguageInitializer from '@/components/navigation/LanguageInitializer';
+import { Chip } from '@/components/ui/Chip';
 import UsageBar from '@/components/usage/UsageBar';
 import { TIER_VALUES, Tier, UserEntitlement } from '@/models/models';
 import { auth } from '@/services/firebaseAuth.service';
@@ -22,6 +23,7 @@ import type {
   FunctionModelTarget,
 } from '@/api/clients/ai/functionCatalog';
 import type { UsageState } from '@/services/usageLimits';
+import type { ChipTone } from '@/utils/chipClasses';
 
 const NO_EMAIL_KEY = 'admin.users.noEmail';
 
@@ -72,19 +74,21 @@ type AdminModelDefaultsResponse = {
   effective: AiModelDefaults;
 };
 
-const TIER_TONE: Record<Tier, string> = {
-  free: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-  tier1: 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
-  tier2: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
-  tier3: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300',
-  tier4: 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
+// The paid ladder climbs through the cool end of the palette, so a higher tier reads as a
+// step further along without anybody having to know the numbers.
+const TIER_TONE: Record<Tier, ChipTone> = {
+  free: 'neutral',
+  tier1: 'cyan',
+  tier2: 'blue',
+  tier3: 'indigo',
+  tier4: 'violet',
 };
 
 const STATUS_TONE = {
-  active: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-  unverified: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
-  disabled: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
-} as const;
+  active: 'emerald',
+  unverified: 'amber',
+  disabled: 'rose',
+} as const satisfies Record<string, ChipTone>;
 
 // Mirrors the current server usage policy. The admin response intentionally returns only usage,
 // so the effective tier is the authoritative client-side source for the display limit.
@@ -312,17 +316,20 @@ function Avatar({ user, large = false }: { user: AdminUser; large?: boolean }) {
 
 function TierBadge({ tier }: { tier: Tier }) {
   const { t } = useTranslation();
-  return <span className={`${TIER_TONE[tier]} inline-flex rounded-md px-2.5 py-1 text-xs font-bold`}>{t(`admin.users.tiers.${tier}`)}</span>;
+  return <Chip weight="bold" tone={TIER_TONE[tier]} className="">{t(`admin.users.tiers.${tier}`)}</Chip>;
 }
 
 function StatusBadge({ user }: { user: AdminUser }) {
   const { t } = useTranslation();
   const status = userStatus(user);
   return (
-    <span className={`${STATUS_TONE[status]} inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold`}>
-      <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />
+    <Chip weight="bold"
+      tone={STATUS_TONE[status]}
+      className="gap-1.5"
+      icon={<span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />}
+    >
       {t(`admin.users.status.${status}`)}
-    </span>
+    </Chip>
   );
 }
 

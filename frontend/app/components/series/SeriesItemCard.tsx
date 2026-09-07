@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 
 import MarkdownDisplay from '@/components/MarkdownDisplay';
+import { Chip } from '@/components/ui/Chip';
 import { formatDate } from '@utils/dateFormatter';
 import { getEffectiveIsPreached } from '@utils/preachDateStatus';
 
@@ -83,24 +84,22 @@ export default function SeriesItemCard({
 
       <div className="flex-1 min-w-0">
         <div className="mb-1 flex flex-wrap items-center gap-2">
-          <span
-            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${isSermon
-              ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200'
-              : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-200'
-              }`}
+          <Chip
+            tone={isSermon ? 'blue' : 'emerald'}
+            size="sm"
+            icon={isSermon ? <BookOpenIcon className="h-3.5 w-3.5" /> : <UserGroupIcon className="h-3.5 w-3.5" />}
           >
-            {isSermon ? <BookOpenIcon className="h-3.5 w-3.5" /> : <UserGroupIcon className="h-3.5 w-3.5" />}
             {isSermon ? t('navigation.sermons', { defaultValue: 'Sermons' }) : t('navigation.groups', { defaultValue: 'Groups' })}
-          </span>
+          </Chip>
           {isSermon && sermonIsPreached && (
-            <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200">
+            <Chip tone="emerald" size="sm">
               {t('dashboard.preached')}
-            </span>
+            </Chip>
           )}
           {!isSermon && (group?.meetingDates || []).length > 0 && (
-            <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-900/40 dark:text-amber-200">
+            <Chip tone="amber" size="sm">
               {t('calendar.analytics.totalPreachings', { defaultValue: 'Meetings' })}: {(group?.meetingDates || []).length}
-            </span>
+            </Chip>
           )}
         </div>
 
@@ -123,18 +122,18 @@ export default function SeriesItemCard({
         )}
 
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 dark:bg-gray-800">
+          <Chip tone="neutral" size="sm">
             {isSermon ? formatDate(sermon?.date || '') : formatDate(group?.updatedAt || '')}
-          </span>
+          </Chip>
           {isSermon && (
-            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-blue-700 dark:bg-blue-900/30 dark:text-blue-200">
+            <Chip tone="blue" size="sm">
               {sermon?.thoughts?.length || 0} {t('dashboard.thoughts')}
-            </span>
+            </Chip>
           )}
           {!isSermon && (
-            <span className="rounded-full bg-purple-50 px-2 py-0.5 text-purple-700 dark:bg-purple-900/30 dark:text-purple-200">
+            <Chip tone="violet" size="sm">
               {(group?.flow || []).length} {t('workspaces.groups.itemsLabel.flowSteps', { defaultValue: 'flow steps' })}
-            </span>
+            </Chip>
           )}
         </div>
       </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, XMarkIcon, ChevronDownIcon, ListBulletIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, ArrowPathIcon, CheckCircleIcon, SparklesIcon, TagIcon, BookmarkIcon, PlusIcon, BookOpenIcon, ChevronDownIcon, ListBulletIcon, ChevronLeftIcon, ChevronRightIcon, MagnifyingGlassIcon, QuestionMarkCircleIcon, PencilIcon, TrashIcon, CheckIcon, EllipsisVerticalIcon, DocumentDuplicateIcon } from '@heroicons/react/24/outline';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -11,6 +11,7 @@ import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import { Chip } from '@/components/ui/Chip';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { useActiveSection } from '@/hooks/useActiveSection';
@@ -606,14 +607,13 @@ function EditorHeaderTypeControl({
         <div className="flex flex-col">
             <div className="flex items-center gap-2">
                 {type === 'question' ? (
-                    <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-500/30">
-                        <QuestionMarkCircleIcon className="mr-1 h-3.5 w-3.5" />
+                    <Chip tone="amber" size="sm" icon={<QuestionMarkCircleIcon className="h-3.5 w-3.5" />}>
                         {t('studiesWorkspace.type.question') || 'Question'}
-                    </span>
+                    </Chip>
                 ) : (
-                    <span className="inline-flex items-center rounded-md bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/10 dark:bg-gray-800/50 dark:text-gray-400 dark:ring-gray-700/50">
+                    <Chip tone="neutral" size="sm">
                         {t('studiesWorkspace.type.note') || 'Note'}
-                    </span>
+                    </Chip>
                 )}
             </div>
         </div>
@@ -1128,14 +1128,14 @@ export default function StudyNoteEditorPage() {
                         {tags.length > 0 && (
                             <div className="flex flex-wrap gap-2">
                                 {tags.map(tag => (
-                                    <span key={tag} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-sm font-medium text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200 border border-emerald-200 dark:border-emerald-800">
+                                    <Chip
+                                        key={tag}
+                                        tone="emerald"
+                                        onRemove={isEditing ? () => toggleTag(tag) : undefined}
+                                        removeLabel={t('studiesWorkspace.removeTag', { tag })}
+                                    >
                                         {tag}
-                                        {isEditing && (
-                                            <button onClick={() => toggleTag(tag)} className="hover:text-emerald-900 dark:hover:text-emerald-100 ml-1">
-                                                <XMarkIcon className="h-3.5 w-3.5" />
-                                            </button>
-                                        )}
-                                    </span>
+                                    </Chip>
                                 ))}
                             </div>
                         )}

@@ -17,7 +17,12 @@ jest.mock('@hello-pangea/dnd', () => ({
 }));
 
 // Mock themeColors
+// Keep the real module underneath: this fake overrides only the tokens the test
+// cares about, and everything else the tree reads — the chip palette included —
+// still resolves. A blanket replacement makes any token added later come back
+// `undefined` and crashes a render that has nothing to do with this suite.
 jest.mock('@/utils/themeColors', () => ({
+  ...jest.requireActual('@/utils/themeColors'),
   getSectionStyling: (section: string) => {
     if (section === 'introduction') {
       return {

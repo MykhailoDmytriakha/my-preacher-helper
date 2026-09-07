@@ -1010,7 +1010,8 @@
     "sortByStructure": "By Structure (Intro → Main → Conclusion)",
     "sortByStructureShort": "By structure",
     "noStructureTagsPresent": "No structure tags present",
-    "requiresStructureTags": "Requires structure tags"
+    "requiresStructureTags": "Requires structure tags",
+    "removeFilter": "Remove filter: {{filter}}"
   },
   "audio": {
     "newRecording": "New Recording",
@@ -2905,7 +2906,9 @@
       "modeEdit": "Edit",
       "modePreview": "Preview",
       "dragToResize": "Drag to resize"
-    }
+    },
+    "removeReference": "Remove reference {{reference}}",
+    "removeTag": "Remove tag {{tag}}"
   },
   "groupFlow": {
     "title": "Group Flow",

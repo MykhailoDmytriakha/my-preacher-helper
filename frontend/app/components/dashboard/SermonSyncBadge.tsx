@@ -2,6 +2,7 @@
 
 import { AlertCircle, Loader2 } from "lucide-react";
 
+import { Chip } from '@/components/ui/Chip';
 import { DashboardOptimisticActions, DashboardSermonSyncState } from "@/models/dashboardOptimistic";
 import { copyRecoveryText } from "@/utils/writeRecovery";
 
@@ -40,11 +41,10 @@ export function SermonSyncBadge({ sermonId, syncState, optimisticActions, t }: S
 
   if (syncState.status === 'pending') {
     return (
-      <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/25 dark:text-blue-300 px-2 py-0.5 text-xs font-medium">
-        <Loader2 className="w-3 h-3 animate-spin" />
+      <Chip tone="blue" size="sm" className="gap-1.5" icon={<Loader2 className="w-3 h-3 animate-spin" />}>
         <span className="uppercase tracking-wide text-[10px]">{t('buttons.saving', { defaultValue: 'Saving' })}</span>
         <span className={TEXT_PRIMARY_CLASSES}>{operationLabel}</span>
-      </div>
+      </Chip>
     );
   }
 

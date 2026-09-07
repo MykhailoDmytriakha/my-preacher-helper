@@ -11,6 +11,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
+import { Chip } from '@/components/ui/Chip';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
@@ -129,10 +130,9 @@ export default function ShareNoteModal({
 
         <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-200">
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-gray-700 shadow-sm dark:bg-gray-900 dark:text-gray-200">
-              <LinkIcon className="h-3.5 w-3.5" />
+            <Chip tone="neutral" size="sm" icon={<LinkIcon className="h-3.5 w-3.5" />}>
               {statusTitle}
-            </span>
+            </Chip>
             {loading && (
               <span className="text-xs text-gray-500 dark:text-gray-400">
                 {t('studiesWorkspace.shareLinks.loadingLink')}

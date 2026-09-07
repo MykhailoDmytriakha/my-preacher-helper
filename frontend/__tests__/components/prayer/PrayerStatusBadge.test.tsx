@@ -10,16 +10,30 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
+const STATUSES = ['active', 'answered', 'not_answered'] as const;
+
+/** The badge is a chip, so the plate lives on the chip, not on the label inside it. */
+const chipFor = (status: (typeof STATUSES)[number]) =>
+  screen.getByText(`prayer.status.${status}`).closest('span.rounded-full') as HTMLElement;
+
 describe('PrayerStatusBadge', () => {
-  it.each([
-    ['active', 'bg-blue-100 text-blue-700'],
-    ['answered', 'bg-green-100 text-green-700'],
-    ['not_answered', 'bg-gray-100 text-gray-600'],
-  ] as const)('renders %s with the expected styling contract', (status, styleClass) => {
+  it.each(STATUSES)('names the %s status and keeps the caller\'s class', (status) => {
     render(<PrayerStatusBadge status={status} className="extra-class" />);
 
-    const badge = screen.getByText(`prayer.status.${status}`);
-    expect(badge).toHaveClass('extra-class');
-    expect(badge.className).toContain(styleClass);
+    const chip = chipFor(status);
+    expect(chip).toHaveClass('extra-class');
+    expect(chip).toHaveClass('rounded-full', 'inline-flex', 'items-center');
+  });
+
+  it('gives each status a plate of its own', () => {
+    const plates = STATUSES.map((status) => {
+      const { unmount } = render(<PrayerStatusBadge status={status} />);
+      const plate = (chipFor(status).className.match(/bg-[a-z]+-\d+/) ?? [])[0];
+      unmount();
+      return plate;
+    });
+
+    expect(plates.every(Boolean)).toBe(true);
+    expect(new Set(plates).size).toBe(STATUSES.length);
   });
 });

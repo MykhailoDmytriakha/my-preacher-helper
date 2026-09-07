@@ -21,6 +21,7 @@ import { getSermonById, updateSermon } from '@/services/sermon.service'; // Impo
 import { SERMON_CORE_AGGREGATE } from "@/services/sermons.client";
 import EditableTitle from '@components/common/EditableTitle'; // Import the new component
 import EditableVerse from '@components/common/EditableVerse'; // Import the new verse component
+import { buildChipClasses } from '@utils/chipClasses';
 import { getContrastColor } from '@utils/color';
 import { formatDate } from '@utils/dateFormatter';
 import { getExportContent } from '@utils/exportContent';
@@ -244,8 +245,7 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
             <div className="flex items-center gap-1">
               <Link
                 href={`/series/${sermonSeries.id}`}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all hover:opacity-80 inline-flex items-center gap-1.5 ${sermonSeries.color ? '' : 'bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200'
-                  }`}
+                className={`${buildChipClasses({ tone: sermonSeries.color ? 'custom' : 'blue', size: 'sm' })} gap-1.5 hover:opacity-80`}
                 style={sermonSeries.color ? {
                   backgroundColor: sermonSeries.color,
                   color: sermonSeriesTextColor,

@@ -10,32 +10,20 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 
 import MarkdownDisplay from "@/components/MarkdownDisplay";
+import { Chip } from "@/components/ui/Chip";
 import { Series } from "@/models/models";
+
+import type { ChipTone } from "@/utils/chipClasses";
 
 interface SeriesCardProps {
   series: Series;
   onUpdate?: () => void;
 }
 
-const statusStyles: Record<
-  Series["status"],
-  { bg: string; text: string; ring: string }
-> = {
-  draft: {
-    bg: "bg-slate-100 dark:bg-slate-800/70",
-    text: "text-slate-700 dark:text-slate-200",
-    ring: "ring-slate-200/60 dark:ring-slate-700/80",
-  },
-  active: {
-    bg: "bg-blue-100 dark:bg-blue-900/60",
-    text: "text-blue-800 dark:text-blue-100",
-    ring: "ring-blue-200/70 dark:ring-blue-800/70",
-  },
-  completed: {
-    bg: "bg-emerald-100 dark:bg-emerald-900/60",
-    text: "text-emerald-800 dark:text-emerald-100",
-    ring: "ring-emerald-200/70 dark:ring-emerald-800/70",
-  },
+const statusTones: Record<Series["status"], ChipTone> = {
+  draft: "neutral",
+  active: "blue",
+  completed: "emerald",
 };
 
 /** Parse a #rrggbb or #rgb hex string into {r, g, b} or null */
@@ -65,7 +53,7 @@ export default function SeriesCard({ series }: SeriesCardProps) {
   // read threw, which React turns into a blank "Application error" page — one such
   // document took down the WHOLE series list, not just its own card.
   const status: Series["status"] = series.status ?? "draft";
-  const statusStyle = statusStyles[status] ?? statusStyles.draft;
+  const statusTone = statusTones[status] ?? statusTones.draft;
   const sermonCount = series.items
     ? series.items.filter((i) => i.type === "sermon").length
     : series.sermonIds?.length || 0;
@@ -118,21 +106,18 @@ export default function SeriesCard({ series }: SeriesCardProps) {
               {series.theme || t("workspaces.series.description")}
             </p>
           </div>
-          <span
-            className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${statusStyle.bg} ${statusStyle.text} ${statusStyle.ring}`}
-          >
+          <Chip tone={statusTone} className="shrink-0">
             {t(`workspaces.series.form.statuses.${status}`)}
-          </span>
+          </Chip>
         </div>
 
         {/* Book / topic chip and description */}
         <div className="mt-4 space-y-2">
-          <div className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/60 px-3 py-1 text-xs font-semibold text-gray-700 shadow-sm dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-100">
-            <BookOpenIcon className="h-4 w-4" />
-            <span className="truncate max-w-[180px]">
+          <Chip tone="neutral" className="gap-2" icon={<BookOpenIcon className="h-4 w-4" />}>
+            <span className="block truncate max-w-[180px]">
               {series.bookOrTopic || t("workspaces.series.form.bookOrTopic")}
             </span>
-          </div>
+          </Chip>
           {series.description && (
             <div className="line-clamp-3 text-sm text-gray-500 dark:text-gray-300">
               <MarkdownDisplay content={series.description} compact className="!text-sm !text-gray-500 dark:!text-gray-300 prose-p:my-1 prose-headings:my-1" />

@@ -10,6 +10,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { Chip } from '@/components/ui/Chip';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserSettings } from '@/hooks/useUserSettings';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
@@ -88,9 +89,7 @@ export default function AudioGenerationToggle() {
                 <div>
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                         {t('settings.audioGeneration.title', { defaultValue: 'Sermon Audio Generation (Beta)' })}
-                        <span className="px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 rounded-full">
-                            Beta
-                        </span>
+                        <Chip tone="amber" size="sm">Beta</Chip>
                     </h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                         {t('settings.audioGeneration.description', {

@@ -4,6 +4,7 @@ import { XMarkIcon, CheckIcon, CheckCircleIcon } from '@heroicons/react/24/outli
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { Chip } from '@/components/ui/Chip';
 import { ScriptureReference } from '@/models/models';
 
 import { getLocalizedBookName, BibleLocale } from './bibleData';
@@ -202,26 +203,26 @@ export default function AnalysisConfirmationModal({
                                         {t('studiesWorkspace.tags', { defaultValue: 'Tags' })}
                                     </span>
                                     {addedTags.length > 0 && (
-                                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900/50 dark:text-green-300">
+                                        <Chip tone="emerald" size="sm">
                                             +{addedTags.length} {t('studiesWorkspace.aiAnalyze.newLabel', { defaultValue: 'new' })}
-                                        </span>
+                                        </Chip>
                                     )}
                                     {keptTags.length > 0 && addedTags.length === 0 && (
-                                        <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                                        <Chip tone="neutral" size="sm">
                                             {t('studiesWorkspace.aiAnalyze.allAlreadyIn', { defaultValue: 'already in note' })}
-                                        </span>
+                                        </Chip>
                                     )}
                                 </div>
                                 <div className="flex flex-wrap gap-1.5 mt-2">
                                     {keptTags.map((tag, idx) => (
-                                        <span key={`kept-${idx}`} className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-600">
+                                        <Chip key={`kept-${idx}`} tone="neutral" size="sm">
                                             {tag}
-                                        </span>
+                                        </Chip>
                                     ))}
                                     {addedTags.map((tag, idx) => (
-                                        <span key={`added-${idx}`} className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/50 dark:text-green-200 border border-green-200 dark:border-green-800">
-                                            <span className="mr-1 opacity-60">+</span>{tag}
-                                        </span>
+                                        <Chip key={`added-${idx}`} tone="emerald" size="sm" icon={<span className="opacity-60">+</span>}>
+                                            {tag}
+                                        </Chip>
                                     ))}
                                     {!keptTags.length && !addedTags.length && (
                                         <span className="text-sm text-gray-400 italic">
@@ -248,26 +249,26 @@ export default function AnalysisConfirmationModal({
                                         {t('studiesWorkspace.scriptureRefs', { defaultValue: 'Scripture References' })}
                                     </span>
                                     {addedRefs.length > 0 && (
-                                        <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900/50 dark:text-green-300">
+                                        <Chip tone="emerald" size="sm">
                                             +{addedRefs.length} {t('studiesWorkspace.aiAnalyze.newLabel', { defaultValue: 'new' })}
-                                        </span>
+                                        </Chip>
                                     )}
                                     {keptRefs.length > 0 && addedRefs.length === 0 && (
-                                        <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                                        <Chip tone="neutral" size="sm">
                                             {t('studiesWorkspace.aiAnalyze.allAlreadyIn', { defaultValue: 'already in note' })}
-                                        </span>
+                                        </Chip>
                                     )}
                                 </div>
                                 <div className="flex flex-wrap gap-1.5 mt-2">
                                     {keptRefs.map((ref, idx) => (
-                                        <span key={`kept-${idx}`} className="inline-flex items-center rounded bg-gray-200 px-2 py-1 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                                        <Chip key={`kept-${idx}`} tone="neutral" size="sm">
                                             {formatRef(ref)}
-                                        </span>
+                                        </Chip>
                                     ))}
                                     {addedRefs.map((ref, idx) => (
-                                        <span key={`added-${idx}`} className="inline-flex items-center rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-800 dark:bg-green-900/50 dark:text-green-200 border border-green-200 dark:border-green-800">
-                                            <span className="mr-1 opacity-60">+</span>{formatRef(ref)}
-                                        </span>
+                                        <Chip key={`added-${idx}`} tone="emerald" size="sm" icon={<span className="opacity-60">+</span>}>
+                                            {formatRef(ref)}
+                                        </Chip>
                                     ))}
                                     {!keptRefs.length && !addedRefs.length && (
                                         <span className="text-sm text-gray-400 italic">

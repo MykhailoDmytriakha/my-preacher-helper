@@ -12,9 +12,12 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { Chip } from '@/components/ui/Chip';
 import { Group, Series } from '@/models/models';
 import { getContrastColor } from '@/utils/color';
 import { getSeriesForRef } from '@/utils/seriesMembership';
+
+import type { ChipTone } from '@/utils/chipClasses';
 
 interface GroupCardProps {
   group: Group;
@@ -23,10 +26,10 @@ interface GroupCardProps {
   deleting?: boolean;
 }
 
-const statusClasses: Record<Group['status'], string> = {
-  draft: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
-  active: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  completed: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200',
+const statusTones: Record<Group['status'], ChipTone> = {
+  draft: 'neutral',
+  active: 'blue',
+  completed: 'emerald',
 };
 
 const ISO_DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -184,9 +187,9 @@ export default function GroupCard({ group, series = [], onDelete, deleting = fal
           <h3 className="text-lg font-semibold text-gray-900 transition-colors group-hover:text-blue-600 dark:text-gray-50 dark:group-hover:text-blue-400">
             {group.title}
           </h3>
-          <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${statusClasses[group.status]}`}>
+          <Chip tone={statusTones[group.status]} size="sm" className="shrink-0">
             {t(`workspaces.series.form.statuses.${group.status}`, { defaultValue: group.status })}
-          </span>
+          </Chip>
         </div>
 
         {group.description && (
@@ -225,8 +228,10 @@ export default function GroupCard({ group, series = [], onDelete, deleting = fal
       <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
         <div className="flex items-center gap-2">
           {groupSeries && (
-            <span
-              className="flex items-center px-2 py-0.5 rounded-full font-medium transition-opacity hover:opacity-80 max-w-[150px] cursor-pointer"
+            <Chip
+              tone="custom"
+              size="sm"
+              className="max-w-[150px] hover:opacity-80"
               style={groupSeries.color ? {
                 backgroundColor: groupSeries.color,
                 color: getContrastColor(groupSeries.color),
@@ -238,8 +243,8 @@ export default function GroupCard({ group, series = [], onDelete, deleting = fal
               }}
               title={groupSeries.title}
             >
-              <span className="truncate">{groupSeries.title}</span>
-            </span>
+              <span className="block truncate">{groupSeries.title}</span>
+            </Chip>
           )}
         </div>
         {totalBlocks > 0 && (

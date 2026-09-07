@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import BrainstormModule from "@/components/sermon/BrainstormModule";
 import ThoughtFilterControls from "@/components/sermon/ThoughtFilterControls";
 import ThoughtList from "@/components/sermon/ThoughtList";
+import { Chip } from "@/components/ui/Chip";
 import { getSectionLabel } from "@/lib/sections";
 import { useConnection } from "@/providers/ConnectionProvider";
 import { getContrastColor } from "@utils/color";
@@ -65,9 +66,9 @@ const StructureFilterBadge = ({ structureFilter }: { structureFilter: string }) 
         : structureFilter;
 
   return (
-    <span className="px-2 py-1 text-xs bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 rounded-full">
+    <Chip tone="violet" size="sm">
       {label}
-    </span>
+    </Chip>
   );
 };
 
@@ -103,32 +104,33 @@ const ActiveFilters = ({
       </span>
 
       {viewFilter === "missingTags" && (
-        <span className="px-2 py-1 text-xs bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 rounded-full">
+        <Chip tone="rose" size="sm">
           {t("filters.missingTags")}
-        </span>
+        </Chip>
       )}
 
       <StructureFilterBadge structureFilter={structureFilter} />
 
       {sortOrder === "structure" && (
-        <span className="px-2 py-1 text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 rounded-full">
+        <Chip tone="emerald" size="sm">
           {t("filters.sortByStructure") || "Sorted by ThoughtsBySection"}
-        </span>
+        </Chip>
       )}
 
       {tagFilters.map((tag) => {
         const tagInfo = allowedTags.find((tagItem) => tagItem.name === tag);
         return (
-          <span
+          <Chip
             key={tag}
-            className="px-2 py-1 text-xs rounded-full"
+            tone="custom"
+            size="sm"
             style={{
               backgroundColor: tagInfo ? tagInfo.color : "#e0e0e0",
               color: tagInfo ? getContrastColor(tagInfo.color) : "#000000",
             }}
           >
             {tag}
-          </span>
+          </Chip>
         );
       })}
 

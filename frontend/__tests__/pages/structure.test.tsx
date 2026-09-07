@@ -51,7 +51,12 @@ jest.mock('@/services/sortAI.service', () => ({
   sortItemsWithAI: jest.fn().mockResolvedValue([]),
 }));
 
+// Keep the real module underneath: this fake overrides only the tokens the test
+// cares about, and everything else the tree reads — the chip palette included —
+// still resolves. A blanket replacement makes any token added later come back
+// `undefined` and crashes a render that has nothing to do with this suite.
 jest.mock('@/utils/themeColors', () => ({
+  ...jest.requireActual('@/utils/themeColors'),
   SERMON_SECTION_COLORS: {
     introduction: { base: '#3b82f6', bg: 'bg-blue-50', darkBg: 'bg-blue-900/20', text: 'text-blue-900', darkText: 'text-blue-100', border: 'border-blue-200', darkBorder: 'border-blue-800', hover: 'hover:bg-blue-100', darkHover: 'hover:bg-blue-800/30' },
     mainPart: { base: '#8b5cf6', bg: 'bg-purple-50', darkBg: 'bg-purple-900/20', text: 'text-purple-900', darkText: 'text-purple-100', border: 'border-purple-200', darkBorder: 'border-purple-800', hover: 'hover:bg-purple-100', darkHover: 'hover:bg-purple-800/30' },

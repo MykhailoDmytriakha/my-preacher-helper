@@ -3,6 +3,7 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 
+import { Chip } from "@/components/ui/Chip";
 import { Item } from "@/models/models";
 import { getTagStyle } from "@/utils/tagUtils";
 import MarkdownDisplay from '@components/MarkdownDisplay';
@@ -31,13 +32,15 @@ export default function CardContent({ item, className = "", locationContext }: C
       {(subPointBadgeText || hasTags) && (
         <div className={`mt-3 flex flex-wrap items-end gap-2 ${subPointBadgeText ? "justify-between" : "justify-end"}`}>
           {subPointBadgeText && (
-            <span
+            <Chip
               data-testid="thought-location-chip"
-              className="inline-flex max-w-full items-center gap-1 rounded-full border border-slate-200 bg-slate-50/90 px-2 py-0.5 text-[10px] font-semibold leading-4 text-slate-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-300"
+              tone="neutral"
+              size="sm"
+              className="max-w-full"
+              icon={<span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-slate-400 dark:bg-slate-500" />}
             >
-              <span className="h-1.5 w-1.5 flex-shrink-0 rounded-full bg-slate-400 dark:bg-slate-500" />
-              <span className="truncate">{subPointBadgeText}</span>
-            </span>
+              <span className="block truncate">{subPointBadgeText}</span>
+            </Chip>
           )}
 
           {hasTags && (

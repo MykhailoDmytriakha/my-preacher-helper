@@ -12,6 +12,7 @@ import { enUS, ru, uk } from 'date-fns/locale';
 import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 
+import { Chip } from '@/components/ui/Chip';
 import { Group, GroupMeetingDate, PreachDate, Sermon, Series } from '@/models/models';
 import { getContrastColor } from '@/utils/color';
 import { toDateOnlyKey } from '@/utils/dateOnly';
@@ -191,35 +192,36 @@ export default function DateEventList({ month, sermons, groups = [], series = []
                               </h4>
                             </div>
                             {outcome && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 flex-shrink-0 whitespace-nowrap">
+                              <Chip weight="bold" tone="blue" size="xs" className="uppercase tracking-wider flex-shrink-0 whitespace-nowrap">
                                 {t(`calendar.outcomes.${outcome}`)}
-                              </span>
+                              </Chip>
                             )}
                             {isSermon && (
-                              <span
-                                className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider flex-shrink-0 whitespace-nowrap ${isPlannedSermon
-                                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-                                  : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                                  }`}
+                              <Chip weight="bold"
+                                tone={isPlannedSermon ? 'amber' : 'emerald'}
+                                size="xs"
+                                className="uppercase tracking-wider flex-shrink-0 whitespace-nowrap"
                               >
                                 {isPlannedSermon
                                   ? t('calendar.status.planned', { defaultValue: 'Planned' })
                                   : t('calendar.status.preached', { defaultValue: 'Preached' })}
-                              </span>
+                              </Chip>
                             )}
                           </div>
 
                           {linkedSeries && (
                             <div>
-                              <span
-                                className="inline-flex items-center px-2 py-0.5 rounded-full font-medium text-xs max-w-[120px]"
+                              <Chip
+                                tone="custom"
+                                size="sm"
+                                className="max-w-[120px]"
                                 style={{
                                   backgroundColor: linkedSeries.color || '#3B82F6',
                                   color: getContrastColor(linkedSeries.color || '#3B82F6'),
                                 }}
                               >
-                                <span className="truncate">{linkedSeries.title}</span>
-                              </span>
+                                <span className="block truncate">{linkedSeries.title}</span>
+                              </Chip>
                             </div>
                           )}
 

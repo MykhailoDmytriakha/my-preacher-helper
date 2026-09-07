@@ -1012,7 +1012,8 @@
     "sortByStructure": "За структурою (вступ → основна частина → висновок)",
     "sortByStructureShort": "За структурою",
     "noStructureTagsPresent": "Немає тегів структури",
-    "requiresStructureTags": "Потрібні теги структури"
+    "requiresStructureTags": "Потрібні теги структури",
+    "removeFilter": "Прибрати фільтр: {{filter}}"
   },
   "audio": {
     "newRecording": "Новий запис",
@@ -2931,7 +2932,9 @@
       "modeEdit": "Редактор",
       "modePreview": "Перегляд",
       "dragToResize": "Перетягніть для зміни розміру"
-    }
+    },
+    "removeReference": "Прибрати посилання {{reference}}",
+    "removeTag": "Прибрати тег {{tag}}"
   },
   "groupFlow": {
     "title": "Flow групи",

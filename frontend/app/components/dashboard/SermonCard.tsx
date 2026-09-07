@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 
 import OptionMenu from "@/components/dashboard/OptionMenu";
 import { SermonSyncBadge } from "@/components/dashboard/SermonSyncBadge";
+import { Chip } from "@/components/ui/Chip";
 import { DashboardOptimisticActions, DashboardSermonSyncState } from "@/models/dashboardOptimistic";
 import { Sermon, Series } from "@/models/models";
 import { getExportContent } from "@/utils/exportContent";
@@ -28,6 +29,7 @@ import HighlightedText from "../HighlightedText";
 
 import { QuickPlanAccessButton } from "./QuickPlanAccessButton";
 
+import type { ChipTone } from "@/utils/chipClasses";
 import type { TFunction } from "i18next";
 
 const TEXT_PRIMARY_CLASSES = "text-gray-800 dark:text-gray-100";
@@ -106,33 +108,29 @@ function SermonCardHeader({
   const statusLabel = hasPreachedDate
     ? t(DASHBOARD_PREACHED_KEY)
     : t(CALENDAR_STATUS_PLANNED_KEY, { defaultValue: 'Planned' });
-  const statusClasses = hasPreachedDate
-    ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-300'
-    : 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300';
+  // Preached is the app's green, still-to-come is amber — the same pair the calendar uses.
+  const statusTone: ChipTone = hasPreachedDate ? 'emerald' : 'amber';
 
   return (
     <div className="flex items-start justify-between mb-2">
       <div className="flex flex-col gap-1.5">
-        <div className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300 px-2 py-0.5 text-xs font-medium">
-          <Calendar className="w-3 h-3" />
+        <Chip tone="neutral" size="sm" className="gap-1.5" icon={<Calendar className="w-3 h-3" />}>
           <span className="uppercase tracking-wide text-[10px]">{t('dashboard.created')}</span>
           <span className={TEXT_PRIMARY_CLASSES}>{formattedCreatedDate}</span>
-        </div>
+        </Chip>
         {formattedUpdatedDate && (
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300 px-2 py-0.5 text-xs font-medium">
-            <RefreshCw className="w-3 h-3" />
+          <Chip tone="blue" size="sm" className="gap-1.5" icon={<RefreshCw className="w-3 h-3" />}>
             <span className="uppercase tracking-wide text-[10px]">{t('dashboard.updated')}</span>
             <span className={TEXT_PRIMARY_CLASSES}>{formattedUpdatedDate}</span>
-          </div>
+          </Chip>
         )}
         {hasStatusDate && (
-          <div className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${statusClasses}`}>
-            <CheckCircle2 className="w-3 h-3" />
+          <Chip tone={statusTone} size="sm" className="gap-1.5" icon={<CheckCircle2 className="w-3 h-3" />}>
             <span className="uppercase tracking-wide text-[10px]">{statusLabel}</span>
             <span className={TEXT_PRIMARY_CLASSES}>
               {statusDateText}
             </span>
-          </div>
+          </Chip>
         )}
         {/*
           Silent while one of this card's editors is open: the editor covers the card and
@@ -244,8 +242,10 @@ function SermonCardBadges({
     <div className="flex flex-wrap items-center gap-2 mt-auto text-xs">
       {/* Series Badge */}
       {sermonSeries && (
-        <span
-          className="flex items-center px-2 py-0.5 rounded-full font-medium transition-opacity hover:opacity-80 max-w-[150px] cursor-pointer"
+        <Chip
+          tone="custom"
+          size="sm"
+          className="max-w-[150px] hover:opacity-80"
           style={sermonSeries.color ? {
             backgroundColor: sermonSeries.color,
             color: getContrastColor(sermonSeries.color),
@@ -256,8 +256,8 @@ function SermonCardBadges({
           }}
           title={sermonSeries.title}
         >
-          <span className="truncate">{sermonSeries.title}</span>
-        </span>
+          <span className="block truncate">{sermonSeries.title}</span>
+        </Chip>
       )}
 
       {/* Thoughts Count */}
@@ -268,20 +268,18 @@ function SermonCardBadges({
 
       {/* SermonOutline Status */}
       {hasOutline && (
-        <div className="flex items-center text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-md border border-blue-100 dark:border-blue-800/30" title={t('dashboard.hasOutline')}>
-          <List className="w-3 h-3 mr-1.5" />
-          <span>{t('dashboard.hasOutline')}</span>
-        </div>
+        <Chip tone="blue" size="sm" className="gap-1.5" title={t('dashboard.hasOutline')} icon={<List className="w-3 h-3" />}>
+          {t('dashboard.hasOutline')}
+        </Chip>
       )}
 
 
 
       {/* Missing Preach Dates Warning */}
       {effectiveIsPreached && preachedDatesCount === 0 && (
-        <div className="flex items-center text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 rounded-md border border-amber-100 dark:border-amber-800/30 animate-pulse" title={t('calendar.noPreachDatesWarning')}>
-          <AlertCircle className="w-3 h-3 mr-1.5" />
-          <span>{t('calendar.noPreachDatesWarning')}</span>
-        </div>
+        <Chip tone="amber" size="sm" className="gap-1.5 animate-pulse" title={t('calendar.noPreachDatesWarning')} icon={<AlertCircle className="w-3 h-3" />}>
+          {t('calendar.noPreachDatesWarning')}
+        </Chip>
       )}
     </div>
   );

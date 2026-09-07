@@ -9,6 +9,7 @@ import LanguageSwitcher from "@/components/navigation/LanguageSwitcher";
 import { primaryNavItems, isNavItemActive } from '@/components/navigation/navConfig';
 import ThemeModeToggle from "@/components/navigation/ThemeModeToggle";
 import UserAvatar from "@/components/navigation/UserAvatar";
+import { Chip } from "@/components/ui/Chip";
 import { getNavItemTheme } from '@/utils/themeColors';
 import "@locales/i18n";
 
@@ -86,9 +87,9 @@ export default function MobileMenu({ isOpen, onLogout, pathname, showGroups = tr
                   <Icon className="h-5 w-5" aria-hidden="true" />
                   {item.label}
                   {item.isBeta && (
-                    <span className="text-[10px] uppercase font-bold px-1 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded leading-tight">
+                    <Chip weight="bold" tone="blue" size="xs" className="uppercase leading-tight">
                       Beta
-                    </span>
+                    </Chip>
                   )}
                 </span>
                 {active && (

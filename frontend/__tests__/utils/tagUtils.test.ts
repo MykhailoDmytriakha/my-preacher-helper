@@ -9,7 +9,11 @@ jest.mock("../../app/utils/color", () => ({
   getContrastColor: jest.fn(),
 }));
 
+// Only `getTagStyling` is faked here. The rest of the module stays real, because
+// `getTagStyle` now borrows the app's chip shape, and that shape reads the real
+// `CHIP_TONES` — a blanket mock would hand it `undefined` and the helper would throw.
 jest.mock("../../app/utils/themeColors", () => ({
+  ...jest.requireActual("../../app/utils/themeColors"),
   getTagStyling: jest.fn(),
 }));
 
@@ -197,7 +201,10 @@ describe("tagUtils", () => {
           name: "structure tag ignores color",
           run: () => {
             const { className, style } = getTagStyle("intro", "#FF0000");
-            expect(className).toContain("font-medium");
+            // A structure tag is set apart by its raised plate, not by its weight:
+            // every chip in the app is `font-medium` now.
+            expect(className).toContain("shadow-sm");
+            expect(className).toContain("border-current");
             expect(style).toEqual({});
           },
         },
@@ -205,7 +212,7 @@ describe("tagUtils", () => {
           name: "custom tag with color",
           run: () => {
             const { className, style } = getTagStyle("example", "#00FF00");
-            expect(className).not.toContain("font-medium");
+            expect(className).not.toContain("shadow-sm");
             expect(style.backgroundColor).toBe("#00FF00");
           },
         },

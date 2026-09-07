@@ -36,6 +36,7 @@ import AddSermonToSeriesModal from '@/components/series/AddSermonToSeriesModal';
 import EditSeriesModal from '@/components/series/EditSeriesModal';
 import SeriesItemCard from '@/components/series/SeriesItemCard';
 import { SeriesDetailSkeleton } from '@/components/skeletons/SeriesDetailSkeleton';
+import { Chip } from '@/components/ui/Chip';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useRouteId } from '@/hooks/useRouteId';
@@ -50,6 +51,14 @@ import { normalizeSeriesItems } from '@/utils/seriesItems';
 import { SERIES_META_AGGREGATE } from '@services/series.service';
 
 import type { SeriesItem } from '@/models/models';
+import type { ChipTone } from '@/utils/chipClasses';
+
+/** The same three tones the series card wears, so a series looks the same in both places. */
+const SERIES_STATUS_TONES: Record<string, ChipTone> = {
+  draft: 'neutral',
+  active: 'blue',
+  completed: 'emerald',
+};
 
 type ModalState = 'add-sermon' | 'add-group' | 'create-new-sermon' | null;
 
@@ -325,11 +334,6 @@ export default function SeriesDetailPage() {
     );
   }
 
-  const statusColors = {
-    draft: 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200',
-    active: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-    completed: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  };
 
   return (
     <div className="space-y-7">
@@ -396,19 +400,18 @@ export default function SeriesDetailPage() {
                 <div className="flex flex-wrap items-center gap-3">
                   <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">{series.title}</h1>
                   <div className="flex flex-wrap gap-2">
-                    <span className={`rounded-full px-3 py-1 text-sm font-medium ${statusColors[series.status]}`}>
+                    <Chip tone={SERIES_STATUS_TONES[series.status] ?? 'neutral'}>
                       {t(`workspaces.series.form.statuses.${series.status}`)}
-                    </span>
-                    <span className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-gray-600 ring-1 ring-gray-200 dark:bg-gray-900/70 dark:text-gray-200 dark:ring-gray-800">
-                      <SparklesIcon className="h-4 w-4 text-amber-500" />
+                    </Chip>
+                    <Chip tone="neutral" className="gap-2 uppercase tracking-wide" icon={<SparklesIcon className="h-4 w-4 text-amber-500" />}>
                       {series.bookOrTopic}
-                    </span>
+                    </Chip>
                     {series.seriesKind && (
-                      <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-200 dark:ring-emerald-800/60">
+                      <Chip tone="emerald">
                         {t(`workspaces.series.kind.${series.seriesKind}`, {
                           defaultValue: series.seriesKind,
                         })}
-                      </span>
+                      </Chip>
                     )}
                   </div>
                 </div>

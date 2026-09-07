@@ -4,6 +4,8 @@ import { XMarkIcon, MagnifyingGlassIcon, CheckIcon } from '@heroicons/react/24/o
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { Chip } from '@/components/ui/Chip';
+
 import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
 
 interface TagCatalogModalProps {
@@ -161,24 +163,15 @@ export default function TagCatalogModal({
               {filteredTags.map((tag) => {
                 const selected = isSelected(tag);
                 return (
-                  <button
+                  <Chip
                     key={tag}
-                    type="button"
+                    tone={selected ? 'emerald' : 'neutral'}
+                    selected={selected}
                     onClick={() => onToggleTag(tag)}
-                    className={`
-                      inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium
-                      transition-all duration-150 ease-in-out
-                      ${
-                        selected
-                          ? 'bg-emerald-600 text-white shadow-sm hover:bg-emerald-700'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600'
-                      }
-                    `}
-                    aria-pressed={selected}
+                    icon={selected ? <CheckIcon className="h-3.5 w-3.5" /> : undefined}
                   >
-                    {selected && <CheckIcon className="h-4 w-4" />}
                     {tag}
-                  </button>
+                  </Chip>
                 );
               })}
             </div>
@@ -215,12 +208,9 @@ export default function TagCatalogModal({
           {selectedTags.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {selectedTags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200"
-                >
+                <Chip key={tag} tone="emerald" size="sm">
                   {tag}
-                </span>
+                </Chip>
               ))}
             </div>
           )}

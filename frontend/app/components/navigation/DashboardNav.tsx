@@ -12,6 +12,7 @@ import LanguageSwitcher from "@/components/navigation/LanguageSwitcher";
 import MobileMenu from "@/components/navigation/MobileMenu";
 import { primaryNavItems, isNavItemActive } from "@/components/navigation/navConfig";
 import UserProfileDropdown from "@/components/navigation/UserProfileDropdown";
+import { Chip } from "@/components/ui/Chip";
 import {
   UsageGraceController,
   UsageGraceIndicator,
@@ -275,9 +276,9 @@ export default function DashboardNav() {
                           {item.label}
                         </span>
                         {item.isBeta && (
-                          <span className="hidden rounded bg-blue-100 px-1 text-[10px] font-bold uppercase leading-tight text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 2xl:inline">
+                          <Chip weight="bold" tone="blue" size="xs" className="hidden uppercase leading-tight 2xl:inline-flex">
                             Beta
-                          </span>
+                          </Chip>
                         )}
                       </>
                     )}

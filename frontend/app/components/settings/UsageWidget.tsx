@@ -3,6 +3,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { Chip } from '@/components/ui/Chip';
 import Tooltip from '@/components/ui/Tooltip';
 import UsageBar from '@/components/usage/UsageBar';
 import { UsageHardCapNotice } from '@/components/usage/UsageGraceIndicator';
@@ -62,9 +63,9 @@ export default function UsageWidget({ user }: UsageWidgetProps) {
         <h2 id="usage-widget-title" className="text-lg font-semibold text-gray-900 dark:text-white">
           {t('settings.usage.title')}
         </h2>
-        <span className="rounded-md bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+        <Chip weight="bold" tone="emerald" className="">
           {tierLabel}
-        </span>
+        </Chip>
       </div>
       <dl className="mt-4 space-y-4">
         <div>

@@ -1,3 +1,4 @@
+import { buildChipClasses, type ChipSize } from '@/utils/chipClasses';
 import {
   isStructureTag,
   normalizeStructureTag,
@@ -20,7 +21,8 @@ export {
 } from '@/utils/structureTags';
 
 // Constants for repeated strings
-const ICON_CLASS_NAME = "w-3.5 h-3.5 mr-1";
+// No margin: the chip shape spaces its own children with `gap`.
+const ICON_CLASS_NAME = "w-3.5 h-3.5";
 
 /**
  * Get default styling for tags without custom colors
@@ -64,17 +66,23 @@ export const getStructureIcon = (tag: string) => {
 };
 
 /**
- * Generate CSS styles for a tag
+ * Generate CSS styles for a tag.
+ *
+ * The SHAPE is borrowed from the app's one chip (`buildChipClasses`) rather than spelled
+ * here, so a thought tag and a Scripture reference are the same object on screen. Only the
+ * COLOUR stays local, because a thought tag has two colour sources this component owns and
+ * a token cannot: the canonical section palette for structure tags, and whatever the
+ * preacher picked by hand for the rest, which arrives as an inline `style`.
  */
-export const getTagStyle = (tag: string, color?: string) => {
+export const getTagStyle = (tag: string, color?: string, size: ChipSize = 'sm') => {
   const structureTagStatus = isStructureTag(tag);
 
-  // Base class for all tags
-  let className = "px-2 py-0.5 rounded-full flex items-center";
+  // `custom` contributes no plate of its own — the colour is appended just below.
+  let className = buildChipClasses({ tone: 'custom', size });
 
   // Enhanced styling for structure tags
   if (structureTagStatus) {
-    className += " font-medium shadow-sm pl-1.5";
+    className += " shadow-sm pl-1.5";
   }
 
   // Always compute default class-based styling first to stabilize class tokens

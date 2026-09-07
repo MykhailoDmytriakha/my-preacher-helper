@@ -5,6 +5,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import '@locales/i18n';
+import { Chip } from '@/components/ui/Chip';
 
 const BlockDiagramSection: React.FC = () => {
   const { t } = useTranslation();
@@ -17,9 +18,9 @@ const BlockDiagramSection: React.FC = () => {
         <h4 className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">
           {t('wizard.steps.exegeticalPlan.blockDiagram.title')}
         </h4>
-        <span className="px-1.5 py-0.5 text-[10px] font-medium bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200 rounded">
+        <Chip tone="amber" size="xs">
           {t('wizard.steps.exegeticalPlan.blockDiagram.comingSoon')}
-        </span>
+        </Chip>
         <button
           type="button"
           onClick={() => setShowInfo(!showInfo)}

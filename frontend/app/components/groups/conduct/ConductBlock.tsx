@@ -5,6 +5,7 @@ import { ChevronDownIcon } from '@heroicons/react/24/solid';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { Chip } from '@/components/ui/Chip';
 import { formatTime, useConductTimer } from '@/hooks/useConductTimer';
 import { GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 
@@ -131,9 +132,9 @@ export default function ConductBlock({
         {template.scriptureRefs && template.scriptureRefs.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-2">
             {template.scriptureRefs.map((ref) => (
-              <span key={ref} className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800 dark:bg-blue-900/40 dark:text-blue-200">
+              <Chip key={ref} tone="blue">
                 {ref}
-              </span>
+              </Chip>
             ))}
           </div>
         )}

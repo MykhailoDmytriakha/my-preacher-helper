@@ -19,6 +19,7 @@ import CreatePrayerModal, { type PrayerFormPayload } from '@/components/prayer/C
 import MarkAnsweredModal from '@/components/prayer/MarkAnsweredModal';
 import PrayerRequestCard from '@/components/prayer/PrayerRequestCard';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import { Chip } from '@/components/ui/Chip';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
@@ -43,6 +44,14 @@ import {
   skippedWrite,
 } from '@/utils/recoverableWrite';
 import '@locales/i18n';
+
+/** Named once: four active-filter chips reach for the same label. */
+const REMOVE_FILTER_KEY = 'filters.removeFilter';
+/** Keys the filter popover and its active-filter chips both name. */
+const SEARCH_IN_UPDATES_KEY = 'prayer.search.inUpdates';
+const SEARCH_IN_TAGS_KEY = 'prayer.search.inTags';
+const SEARCH_IN_ANSWERS_KEY = 'prayer.search.inAnswers';
+const SORT_LABEL_KEY = 'prayer.sort.label';
 
 const WRITE_REFUSED_KEY = 'writeRecovery.refused';
 
@@ -547,7 +556,7 @@ export default function PrayerPage() {
                                   className={CHECKBOX_CLASSES}
                                 />
                                 <span className="text-sm font-medium text-gray-700 transition-colors group-hover:text-gray-900 dark:text-gray-300 dark:group-hover:text-gray-100">
-                                  {t('prayer.search.inUpdates')}
+                                  {t(SEARCH_IN_UPDATES_KEY)}
                                 </span>
                               </label>
                               <label className="group flex cursor-pointer items-center gap-3">
@@ -558,7 +567,7 @@ export default function PrayerPage() {
                                   className={CHECKBOX_CLASSES}
                                 />
                                 <span className="text-sm font-medium text-gray-700 transition-colors group-hover:text-gray-900 dark:text-gray-300 dark:group-hover:text-gray-100">
-                                  {t('prayer.search.inTags')}
+                                  {t(SEARCH_IN_TAGS_KEY)}
                                 </span>
                               </label>
                               <label className="group flex cursor-pointer items-center gap-3">
@@ -569,7 +578,7 @@ export default function PrayerPage() {
                                   className={CHECKBOX_CLASSES}
                                 />
                                 <span className="text-sm font-medium text-gray-700 transition-colors group-hover:text-gray-900 dark:text-gray-300 dark:group-hover:text-gray-100">
-                                  {t('prayer.search.inAnswers')}
+                                  {t(SEARCH_IN_ANSWERS_KEY)}
                                 </span>
                               </label>
                             </div>
@@ -614,7 +623,7 @@ export default function PrayerPage() {
                       <div className="space-y-5 p-4">
                         <div className="space-y-2">
                           <label className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                            {t('prayer.sort.label')}
+                            {t(SORT_LABEL_KEY)}
                           </label>
                           <select
                             value={effectiveSortKey}
@@ -654,57 +663,43 @@ export default function PrayerPage() {
         {hasFilterChanges && (
           <div className="flex flex-wrap items-center gap-2 px-1">
             {effectiveSortKey !== defaultSortKey && (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-[13px] font-medium text-rose-700 shadow-sm dark:border-rose-500/30 dark:bg-rose-900/30 dark:text-rose-300">
-                <span>
-                  {t('prayer.sort.label')}: {sortLabels[effectiveSortKey]}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void setSortKey(defaultSortKey)}
-                  className="rounded-full p-0.5 transition-colors hover:bg-rose-200 dark:hover:bg-rose-800"
-                >
-                  <XMarkIcon className="h-3.5 w-3.5" />
-                </button>
-              </span>
+              <Chip
+                tone="rose"
+                onRemove={() => void setSortKey(defaultSortKey)}
+                removeLabel={t(REMOVE_FILTER_KEY, { filter: t(SORT_LABEL_KEY) })}
+              >
+                {t(SORT_LABEL_KEY)}: {sortLabels[effectiveSortKey]}
+              </Chip>
             )}
 
             {!searchInUpdates && (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-[13px] font-medium text-gray-700 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                <span className="line-through opacity-70">{t('prayer.search.inUpdates')}</span>
-                <button
-                  type="button"
-                  onClick={() => setSearchInUpdates(true)}
-                  className="rounded-full p-0.5 transition-colors hover:bg-gray-200 dark:hover:bg-gray-700"
-                >
-                  <XMarkIcon className="h-3.5 w-3.5" />
-                </button>
-              </span>
+              <Chip
+                tone="neutral"
+                onRemove={() => setSearchInUpdates(true)}
+                removeLabel={t(REMOVE_FILTER_KEY, { filter: t(SEARCH_IN_UPDATES_KEY) })}
+              >
+                <span className="line-through opacity-70">{t(SEARCH_IN_UPDATES_KEY)}</span>
+              </Chip>
             )}
 
             {!searchInTags && (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-[13px] font-medium text-gray-700 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                <span className="line-through opacity-70">{t('prayer.search.inTags')}</span>
-                <button
-                  type="button"
-                  onClick={() => setSearchInTags(true)}
-                  className="rounded-full p-0.5 transition-colors hover:bg-gray-200 dark:hover:bg-gray-700"
-                >
-                  <XMarkIcon className="h-3.5 w-3.5" />
-                </button>
-              </span>
+              <Chip
+                tone="neutral"
+                onRemove={() => setSearchInTags(true)}
+                removeLabel={t(REMOVE_FILTER_KEY, { filter: t(SEARCH_IN_TAGS_KEY) })}
+              >
+                <span className="line-through opacity-70">{t(SEARCH_IN_TAGS_KEY)}</span>
+              </Chip>
             )}
 
             {!searchInAnswerText && (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-[13px] font-medium text-gray-700 shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                <span className="line-through opacity-70">{t('prayer.search.inAnswers')}</span>
-                <button
-                  type="button"
-                  onClick={() => setSearchInAnswerText(true)}
-                  className="rounded-full p-0.5 transition-colors hover:bg-gray-200 dark:hover:bg-gray-700"
-                >
-                  <XMarkIcon className="h-3.5 w-3.5" />
-                </button>
-              </span>
+              <Chip
+                tone="neutral"
+                onRemove={() => setSearchInAnswerText(true)}
+                removeLabel={t(REMOVE_FILTER_KEY, { filter: t(SEARCH_IN_ANSWERS_KEY) })}
+              >
+                <span className="line-through opacity-70">{t(SEARCH_IN_ANSWERS_KEY)}</span>
+              </Chip>
             )}
 
             {activeFilterCount > 1 && (

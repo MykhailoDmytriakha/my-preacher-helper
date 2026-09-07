@@ -13,6 +13,7 @@ import { enUS, ru, uk } from "date-fns/locale";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
+import { Chip } from "@/components/ui/Chip";
 import { usePreachDates } from "@/hooks/usePreachDates";
 import { PreachDate } from "@/models/models";
 import { parseDateOnlyAsLocalDate } from "@/utils/dateOnly";
@@ -20,6 +21,16 @@ import { getEffectivePreachDateStatus } from "@/utils/preachDateStatus";
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 
 import PreachDateModal from "./PreachDateModal";
+
+import type { ChipTone } from "@/utils/chipClasses";
+
+/** How a past preaching went, said in colour: green best, then blue, amber, rose. */
+const OUTCOME_TONES: Record<string, ChipTone> = {
+  excellent: 'emerald',
+  good: 'blue',
+  average: 'amber',
+  poor: 'rose',
+};
 
 
 interface PreachDateListProps {
@@ -106,9 +117,7 @@ export default function PreachDateList({ sermonId }: PreachDateListProps) {
                     {preachDates.sort((a, b) => b.date.localeCompare(a.date)).map((pd) => {
                         const status = getEffectivePreachDateStatus(pd, false);
                         const isPreached = status === 'preached';
-                        const statusClasses = isPreached
-                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
+                        const statusTone: ChipTone = isPreached ? 'emerald' : 'amber';
 
                         return (
                         <div
@@ -126,19 +135,15 @@ export default function PreachDateList({ sermonId }: PreachDateListProps) {
                                             return format(parsedDate, 'PP', { locale: getDateLocale() });
                                         })()}
                                     </span>
-                                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${statusClasses}`}>
+                                    <Chip weight="bold" tone={statusTone} size="xs" className="uppercase tracking-wider">
                                         {isPreached
                                             ? t('calendar.status.preached', { defaultValue: 'Preached' })
                                             : t('calendar.status.planned', { defaultValue: 'Planned' })}
-                                    </span>
+                                    </Chip>
                                     {pd.outcome && (
-                                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase ${pd.outcome === 'excellent' ? 'bg-green-100 text-green-700 dark:bg-green-900/30' :
-                                                pd.outcome === 'good' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30' :
-                                                    pd.outcome === 'average' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30' :
-                                                        'bg-red-100 text-red-700 dark:bg-red-900/30'
-                                            }`}>
+                                        <Chip weight="bold" tone={OUTCOME_TONES[pd.outcome] ?? 'rose'} size="xs" className="uppercase">
                                             {t(`calendar.outcomes.${pd.outcome}`)}
-                                        </span>
+                                        </Chip>
                                     )}
                                 </div>
                                 <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">

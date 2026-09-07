@@ -19,6 +19,7 @@ import { AudioRecorder } from "@/components/AudioRecorder";
 import OutlineBoard, { type DragHandleProps } from "@/components/plan-editor/OutlineBoard";
 import PointNote from "@/components/PointNote";
 import AudioRecorderPortalBridge from "@/components/sermon/AudioRecorderPortalBridge";
+import { Chip } from "@/components/ui/Chip";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useConnection } from "@/providers/ConnectionProvider";
@@ -530,9 +531,9 @@ function ScratchNoteCard({
       <div className="min-w-0">
         <div className="min-w-0">
           {sectionLabel && (
-            <span className="mb-1.5 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-300">
+            <Chip tone="neutral" size="sm" className="mb-1.5">
               {t("scratch.card.placedIn", { section: sectionLabel })}
-            </span>
+            </Chip>
           )}
           <div
             className="-mt-1"

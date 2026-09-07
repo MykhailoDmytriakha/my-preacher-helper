@@ -1012,7 +1012,8 @@
     "sortByStructure": "По структуре (вступление → основная часть → заключение)",
     "sortByStructureShort": "По структуре",
     "noStructureTagsPresent": "Нет тегов структуры",
-    "requiresStructureTags": "Требуются теги структуры"
+    "requiresStructureTags": "Требуются теги структуры",
+    "removeFilter": "Убрать фильтр: {{filter}}"
   },
   "audio": {
     "newRecording": "Новая запись",
@@ -2931,7 +2932,9 @@
       "modeEdit": "Редактор",
       "modePreview": "Просмотр",
       "dragToResize": "Перетащите для изменения размера"
-    }
+    },
+    "removeReference": "Убрать ссылку {{reference}}",
+    "removeTag": "Убрать тег {{tag}}"
   },
   "groupFlow": {
     "title": "Flow группы",

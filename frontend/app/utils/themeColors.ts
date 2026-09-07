@@ -376,3 +376,85 @@ export function getFocusModeButtonColors(section: 'introduction' | 'mainPart' | 
     text: TEXT_WHITE
   };
 } 
+
+/**
+ * THE CHIP — one pill, every screen.
+ *
+ * A chip is a short label sitting on a soft plate: a Scripture reference, a tag, a
+ * filter, a count. Before this table every screen spelled its own — the Scripture badge
+ * on a study note was `text-xs` with no border, the tag beside it `text-sm` with one, and
+ * the two sat in the same column looking like two different controls. The shape now lives
+ * in `components/ui/Chip.tsx` and the colour lives here, so a palette change reaches
+ * every pill at once instead of leaving the forgotten ones behind.
+ *
+ * Tones follow the app's category colours (see the dashboard system): sermons are blue,
+ * series violet, studies emerald, groups amber, prayer rose, calendar cyan. `neutral` is
+ * for chips that carry no category — counts, generic labels — and `custom` exists for the
+ * one family that cannot be a token at all: thought tags the preacher colours by hand,
+ * which arrive as an inline `style` and only borrow the shell.
+ *
+ * FULL CLASS STRINGS ONLY. Tailwind's JIT reads source text; `bg-${name}-100` compiles to
+ * nothing, and the chip silently loses its plate.
+ */
+export const CHIP_TONES = {
+  emerald: {
+    base: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200',
+    hover: 'hover:bg-emerald-200 dark:hover:bg-emerald-800/60',
+    selected: 'bg-emerald-200 text-emerald-900 ring-2 ring-emerald-500 dark:bg-emerald-800 dark:text-emerald-100',
+    remove: 'hover:bg-emerald-300 dark:hover:bg-emerald-700',
+  },
+  blue: {
+    base: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200',
+    hover: 'hover:bg-blue-200 dark:hover:bg-blue-800/60',
+    selected: 'bg-blue-200 text-blue-900 ring-2 ring-blue-500 dark:bg-blue-800 dark:text-blue-100',
+    remove: 'hover:bg-blue-300 dark:hover:bg-blue-700',
+  },
+  violet: {
+    base: 'bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-200',
+    hover: 'hover:bg-violet-200 dark:hover:bg-violet-800/60',
+    selected: 'bg-violet-200 text-violet-900 ring-2 ring-violet-500 dark:bg-violet-800 dark:text-violet-100',
+    remove: 'hover:bg-violet-300 dark:hover:bg-violet-700',
+  },
+  amber: {
+    base: 'bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-200',
+    hover: 'hover:bg-amber-200 dark:hover:bg-amber-800/60',
+    selected: 'bg-amber-200 text-amber-900 ring-2 ring-amber-500 dark:bg-amber-800 dark:text-amber-100',
+    remove: 'hover:bg-amber-300 dark:hover:bg-amber-700',
+  },
+  rose: {
+    base: 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-200',
+    hover: 'hover:bg-rose-200 dark:hover:bg-rose-800/60',
+    selected: 'bg-rose-200 text-rose-900 ring-2 ring-rose-500 dark:bg-rose-800 dark:text-rose-100',
+    remove: 'hover:bg-rose-300 dark:hover:bg-rose-700',
+  },
+  cyan: {
+    base: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/50 dark:text-cyan-200',
+    hover: 'hover:bg-cyan-200 dark:hover:bg-cyan-800/60',
+    selected: 'bg-cyan-200 text-cyan-900 ring-2 ring-cyan-500 dark:bg-cyan-800 dark:text-cyan-100',
+    remove: 'hover:bg-cyan-300 dark:hover:bg-cyan-700',
+  },
+  indigo: {
+    base: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/50 dark:text-indigo-200',
+    hover: 'hover:bg-indigo-200 dark:hover:bg-indigo-800/60',
+    selected: 'bg-indigo-200 text-indigo-900 ring-2 ring-indigo-500 dark:bg-indigo-800 dark:text-indigo-100',
+    remove: 'hover:bg-indigo-300 dark:hover:bg-indigo-700',
+  },
+  neutral: {
+    base: 'bg-gray-100 text-gray-700 dark:bg-gray-700/60 dark:text-gray-200',
+    hover: 'hover:bg-gray-200 dark:hover:bg-gray-600/60',
+    selected: 'bg-gray-200 text-gray-900 ring-2 ring-gray-400 dark:bg-gray-600 dark:text-gray-50',
+    remove: 'hover:bg-gray-300 dark:hover:bg-gray-500',
+  },
+  /**
+   * The plate comes from an inline `style`, so the tone contributes no colour of its own —
+   * only the states that must still be visible on an arbitrary background.
+   */
+  custom: {
+    base: '',
+    hover: 'hover:brightness-95 dark:hover:brightness-110',
+    selected: 'ring-2 ring-gray-900/30 dark:ring-white/40',
+    remove: 'hover:bg-black/10 dark:hover:bg-white/20',
+  },
+} as const;
+
+export type ChipTone = keyof typeof CHIP_TONES;

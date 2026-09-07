@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import DashboardContent from "@/components/dashboard/DashboardContent";
 import DashboardStats from "@/components/dashboard/DashboardStats";
 import { DashboardStatsSkeleton } from "@/components/skeletons/DashboardStatsSkeleton";
+import { Chip } from "@/components/ui/Chip";
 import { useDashboardOptimisticSermons } from "@/hooks/useDashboardOptimisticSermons";
 import { useDashboardSermons, useSermonMutations } from "@/hooks/useDashboardSermons";
 import { useFilteredSermons } from "@/hooks/useFilteredSermons";
@@ -21,6 +22,18 @@ import { buildInSeriesRefIds } from "@/utils/seriesMembership";
 import AddSermonModal from "@components/AddSermonModal";
 
 import type { DashboardSermonSyncState } from "@/models/dashboardOptimistic";
+
+/** Keys the filter popover and its active-filter chips both name. */
+const SEARCH_IN_THOUGHTS_KEY = 'dashboard.searchInThoughts';
+const SEARCH_IN_TAGS_KEY = 'dashboard.searchInTags';
+const SORT_ORDER_KEY = 'filters.sortOrder';
+/**
+ * What the sort is when nobody has touched it. Spelled once because the chip below drifted
+ * to "newest" while every other reader kept this value: picking "newest" then counted as an
+ * active filter that no chip named, and the chip's ✕ set a value that left the count at one.
+ */
+const DEFAULT_SORT_OPTION = 'recentlyUpdated';
+const REMOVE_FILTER_KEY = 'filters.removeFilter';
 
 // localStorage keys for user preferences
 /** Stable identity, so hiding covered verdicts does not remount the list each render. */
@@ -70,7 +83,7 @@ export default function SermonsPage() {
   type SeriesFilter = "all" | "inSeries" | "standalone";
 
   const [sortOption, setSortOption] = useState<SortOption>(() => {
-    try { return (localStorage.getItem(LS_SORT) as SortOption) || "recentlyUpdated"; } catch { return "recentlyUpdated"; }
+    try { return (localStorage.getItem(LS_SORT) as SortOption) || DEFAULT_SORT_OPTION; } catch { return DEFAULT_SORT_OPTION; }
   });
   const [seriesFilter, setSeriesFilter] = useState<SeriesFilter>(() => {
     try { return (localStorage.getItem(LS_SERIES) as SeriesFilter) || "all"; } catch { return "all"; }
@@ -114,19 +127,19 @@ export default function SermonsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchQuery]);
   const hasFilterChanges =
-    sortOption !== "recentlyUpdated" ||
+    sortOption !== DEFAULT_SORT_OPTION ||
     seriesFilter !== "all" ||
     !searchInThoughts ||
     !searchInTags;
 
   const activeFilterCount =
-    (sortOption !== "recentlyUpdated" ? 1 : 0) +
+    (sortOption !== DEFAULT_SORT_OPTION ? 1 : 0) +
     (seriesFilter !== "all" ? 1 : 0) +
     (!searchInThoughts ? 1 : 0) +
     (!searchInTags ? 1 : 0);
 
   const handleResetFilters = () => {
-    setSortOption("recentlyUpdated");
+    setSortOption(DEFAULT_SORT_OPTION);
     setSeriesFilter("all");
     setSearchInThoughts(true);
     setSearchInTags(true);
@@ -349,7 +362,7 @@ export default function SermonsPage() {
                                   className={CHECKBOX_CLASSES}
                                 />
                                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100 transition-colors">
-                                  {t('dashboard.searchInThoughts')}
+                                  {t(SEARCH_IN_THOUGHTS_KEY)}
                                 </span>
                               </label>
                               <label className="flex items-center gap-3 cursor-pointer group">
@@ -360,7 +373,7 @@ export default function SermonsPage() {
                                   className={CHECKBOX_CLASSES}
                                 />
                                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100 transition-colors">
-                                  {t('dashboard.searchInTags')}
+                                  {t(SEARCH_IN_TAGS_KEY)}
                                 </span>
                               </label>
                             </div>
@@ -408,7 +421,7 @@ export default function SermonsPage() {
                         {/* Sort Options */}
                         <div className="space-y-2">
                           <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                            {t('filters.sortOrder')}
+                            {t(SORT_ORDER_KEY)}
                           </label>
                           <select
                             value={sortOption}
@@ -464,56 +477,44 @@ export default function SermonsPage() {
         {/* Active Filter Pills (Chips) */}
         {hasFilterChanges && (
           <div className="flex flex-wrap items-center gap-2 px-1">
-            {sortOption !== "newest" && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-500/30 shadow-sm">
-                <span>{t('filters.sortOrder')}: {t(`dashboard.${sortOption}`)}</span>
-                <button
-                  type="button"
-                  onClick={() => setSortOption("newest")}
-                  className="p-0.5 rounded-full hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
-                >
-                  <XMarkIcon className="w-3.5 h-3.5" />
-                </button>
-              </span>
+            {sortOption !== DEFAULT_SORT_OPTION && (
+              <Chip
+                tone="blue"
+                onRemove={() => setSortOption(DEFAULT_SORT_OPTION)}
+                removeLabel={t(REMOVE_FILTER_KEY, { filter: t(SORT_ORDER_KEY) })}
+              >
+                {t(SORT_ORDER_KEY)}: {t(`dashboard.${sortOption}`)}
+              </Chip>
             )}
 
             {seriesFilter !== "all" && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-500/30 shadow-sm">
-                <span>Серии: {t(`workspaces.series.filters.${seriesFilter}`)}</span>
-                <button
-                  type="button"
-                  onClick={() => setSeriesFilter("all")}
-                  className="p-0.5 rounded-full hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors"
-                >
-                  <XMarkIcon className="w-3.5 h-3.5" />
-                </button>
-              </span>
+              <Chip
+                tone="blue"
+                onRemove={() => setSeriesFilter("all")}
+                removeLabel={t(REMOVE_FILTER_KEY, { filter: t('navigation.series') })}
+              >
+                {t('navigation.series')}: {t(`workspaces.series.filters.${seriesFilter}`)}
+              </Chip>
             )}
 
             {!searchInThoughts && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium bg-gray-50 text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700 shadow-sm">
-                <span className="line-through opacity-70">{t('dashboard.searchInThoughts')}</span>
-                <button
-                  type="button"
-                  onClick={() => setSearchInThoughts(true)}
-                  className="p-0.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                >
-                  <XMarkIcon className="w-3.5 h-3.5" />
-                </button>
-              </span>
+              <Chip
+                tone="neutral"
+                onRemove={() => setSearchInThoughts(true)}
+                removeLabel={t(REMOVE_FILTER_KEY, { filter: t(SEARCH_IN_THOUGHTS_KEY) })}
+              >
+                <span className="line-through opacity-70">{t(SEARCH_IN_THOUGHTS_KEY)}</span>
+              </Chip>
             )}
 
             {!searchInTags && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[13px] font-medium bg-gray-50 text-gray-700 border border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700 shadow-sm">
-                <span className="line-through opacity-70">{t('dashboard.searchInTags')}</span>
-                <button
-                  type="button"
-                  onClick={() => setSearchInTags(true)}
-                  className="p-0.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-                >
-                  <XMarkIcon className="w-3.5 h-3.5" />
-                </button>
-              </span>
+              <Chip
+                tone="neutral"
+                onRemove={() => setSearchInTags(true)}
+                removeLabel={t(REMOVE_FILTER_KEY, { filter: t(SEARCH_IN_TAGS_KEY) })}
+              >
+                <span className="line-through opacity-70">{t(SEARCH_IN_TAGS_KEY)}</span>
+              </Chip>
             )}
 
             {activeFilterCount > 1 && (

@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import HighlightedText from '@/components/HighlightedText';
+import { Chip } from '@/components/ui/Chip';
 import { PrayerRequest, PrayerStatus } from '@/models/models';
 import { getPrayerSearchTarget, getPrayerUpdateSearchSnippet } from '@/utils/prayerFilters';
 import { type WriteSubmission } from '@/utils/recoverableWrite';
@@ -89,9 +90,9 @@ export default function PrayerRequestCard({
             {prayer.tags && prayer.tags.length > 0 && (
               <div className="flex gap-1 flex-wrap">
                 {prayer.tags.map((tag) => (
-                  <span key={tag} className="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded">
+                  <Chip key={tag} tone="neutral" size="sm">
                     <HighlightedText text={tag} searchQuery={searchQuery} />
-                  </span>
+                  </Chip>
                 ))}
               </div>
             )}

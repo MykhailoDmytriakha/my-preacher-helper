@@ -128,7 +128,12 @@ jest.mock('@/services/outline.service', () => ({
   generateSermonPointsForSection: jest.fn(() => Promise.resolve([])),
 }));
 
+// Keep the real module underneath: this fake overrides only the tokens the test
+// cares about, and everything else the tree reads — the chip palette included —
+// still resolves. A blanket replacement makes any token added later come back
+// `undefined` and crashes a render that has nothing to do with this suite.
 jest.mock('@/utils/themeColors', () => ({
+  ...jest.requireActual('@/utils/themeColors'),
   SERMON_SECTION_COLORS: {
     introduction: {
       base: '#d97706', light: '#f59e0b', dark: '#b45309',

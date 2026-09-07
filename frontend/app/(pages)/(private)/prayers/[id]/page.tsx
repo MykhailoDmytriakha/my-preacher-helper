@@ -22,6 +22,7 @@ import CreatePrayerModal, { type PrayerFormPayload } from '@/components/prayer/C
 import MarkAnsweredModal from '@/components/prayer/MarkAnsweredModal';
 import PrayerStatusBadge from '@/components/prayer/PrayerStatusBadge';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import { Chip } from '@/components/ui/Chip';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
@@ -383,9 +384,9 @@ export default function PrayerDetailPage() {
             {prayer.tags && prayer.tags.length > 0 && (
               <div id="prayer-focus-tags" className="flex flex-wrap gap-1 rounded-md transition-shadow">
                 {prayer.tags.map((tag) => (
-                  <span key={tag} className="text-xs px-2 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded">
+                  <Chip key={tag} tone="neutral" size="sm">
                     <HighlightedText text={tag} searchQuery={highlightQuery} />
-                  </span>
+                  </Chip>
                 ))}
               </div>
             )}

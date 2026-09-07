@@ -11,6 +11,7 @@ import { CheckIcon, ArrowUturnLeftIcon } from "@heroicons/react/24/outline";
 import React from "react";
 import { useTranslation } from "react-i18next";
 
+import { Chip } from '@/components/ui/Chip';
 import { Item } from "@/models/models";
 import { SERMON_SECTION_COLORS } from "@/utils/themeColors";
 import { EditIcon, TrashIcon } from "@components/Icons";
@@ -154,15 +155,12 @@ export const HighlightBadge = ({
     : <span className="ml-1 text-blue-500">➡️</span>;
 
   return (
-    <div className={`inline-flex max-w-full items-center rounded-md border bg-white px-2 py-1 text-xs font-medium shadow-sm ${highlightType === "assigned"
-      ? "border-yellow-300 text-yellow-800"
-      : "border-blue-300 text-blue-800"
-      }`}>
+    <Chip tone={highlightType === "assigned" ? "amber" : "blue"} size="sm" className="max-w-full shadow-sm">
       {highlightType === "assigned"
         ? t("structure.aiAssigned", { defaultValue: "AI assigned to structure point" })
         : t("structure.aiMoved", { defaultValue: "AI moved this item" })}
       {icon}
-    </div>
+    </Chip>
   );
 };
 

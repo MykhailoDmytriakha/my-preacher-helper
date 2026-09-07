@@ -558,7 +558,7 @@ Second paragraph with indentation.
 
     const badge = screen.getByText('structure.aiAssigned');
     expect(badge).toBeInTheDocument();
-    expect(badge).toHaveClass('text-yellow-800');
+    expect(badge.closest('span.rounded-full')?.className).toMatch(/text-amber-\d+/);
   });
 
   test('applies moved highlight badge class variant', () => {
@@ -574,7 +574,7 @@ Second paragraph with indentation.
 
     const badge = screen.getByText('structure.aiMoved');
     expect(badge).toBeInTheDocument();
-    expect(badge).toHaveClass('text-blue-800');
+    expect(badge.closest('span.rounded-full')?.className).toMatch(/text-blue-\d+/);
 
     const container = screen.getByText('Test content for the item').closest('div[role="button"]') as HTMLElement | null;
     expect(container).toHaveStyle({ borderColor: 'rgb(59, 130, 246)', backgroundColor: 'rgb(219, 234, 254)' });
@@ -625,7 +625,9 @@ Second paragraph with indentation.
       />
     );
 
-    expect(screen.getByText('structure.aiAssigned')).toHaveClass('text-yellow-800');
+    // The badge is a chip now, so the plate is on the chip around the label.
+    const assignedChip = screen.getByText('structure.aiAssigned').closest('span.rounded-full');
+    expect(assignedChip?.className).toMatch(/text-amber-\d+/);
 
     rerender(
       <HighlightBadge
@@ -635,7 +637,8 @@ Second paragraph with indentation.
       />
     );
 
-    expect(screen.getByText('structure.aiMoved')).toHaveClass('text-blue-800');
+    const movedChip = screen.getByText('structure.aiMoved').closest('span.rounded-full');
+    expect(movedChip?.className).toMatch(/text-blue-\d+/);
   });
 
   test('renders exported actions branches for locked and unlocked lock controls', () => {

@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 
 import { resolveBibleLocale } from '@/(pages)/(private)/studies/bibleData';
 import { formatScriptureRef } from '@/(pages)/(private)/studies/bookAbbreviations';
+import { Chip } from '@/components/ui/Chip';
 import { useStudyNoteDirectory } from '@/hooks/useSermonNoteLinks';
 import { formatDateOnly } from '@/utils/dateFormatter';
 import { compareById, timeOrZero } from '@/utils/sortHelpers';
@@ -348,17 +349,14 @@ export default function SourceNotePickerModal({
                           </span>
                           <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                             {(note.scriptureRefs ?? []).slice(0, 3).map((ref) => (
-                              <span
-                                key={ref.id}
-                                className={`rounded-md px-1.5 py-0.5 ${SOURCE_NOTE_COLORS.refChip}`}
-                              >
+                              <Chip key={ref.id} tone="emerald" size="sm">
                                 {formatScriptureRef(ref, bibleLocale)}
-                              </span>
+                              </Chip>
                             ))}
                             {(note.tags ?? []).slice(0, 3).map((tag) => (
-                              <span key={tag} className="rounded-md bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
+                              <Chip key={tag} tone="neutral" size="sm">
                                 {tag}
-                              </span>
+                              </Chip>
                             ))}
                             <span className="ml-auto shrink-0">{formatDateOnly(note.updatedAt)}</span>
                           </span>

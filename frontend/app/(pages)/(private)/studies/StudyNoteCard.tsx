@@ -15,6 +15,7 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { Chip } from '@/components/ui/Chip';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote } from '@/models/models';
@@ -77,26 +78,6 @@ const METADATA_CARD_CLASS = [
   `dark:${UI_COLORS.neutral.darkBg}`,
   UI_COLORS.neutral.border,
   `dark:${UI_COLORS.neutral.darkBorder}`,
-].join(' ');
-
-const TAG_CHIP_CLASS = [
-  'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium border',
-  UI_COLORS.neutral.bg,
-  `dark:${UI_COLORS.neutral.darkBg}`,
-  UI_COLORS.neutral.text,
-  `dark:${UI_COLORS.neutral.darkText}`,
-  UI_COLORS.neutral.border,
-  `dark:${UI_COLORS.neutral.darkBorder}`,
-].join(' ');
-
-const REF_CHIP_CLASS = [
-  'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold border',
-  UI_COLORS.success.bg,
-  `dark:${UI_COLORS.success.darkBg}`,
-  UI_COLORS.success.text,
-  `dark:${UI_COLORS.success.darkText}`,
-  UI_COLORS.success.border,
-  `dark:${UI_COLORS.success.darkBorder}`,
 ].join(' ');
 
 const ALERT_CLASS = [
@@ -309,10 +290,9 @@ export default function StudyNoteCard({
             {/* Title */}
             <div className="flex items-start gap-2">
               {note.type === 'question' && (
-                <span className="mt-0.5 shrink-0 inline-flex items-center rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/40 dark:text-amber-300 dark:ring-amber-500/30">
-                  <QuestionMarkCircleIcon className="mr-1 h-3.5 w-3.5" />
+                <Chip tone="amber" size="sm" className="mt-0.5 shrink-0" icon={<QuestionMarkCircleIcon className="h-3.5 w-3.5" />}>
                   {t('studiesWorkspace.type.question') || 'Question'}
-                </span>
+                </Chip>
               )}
               <h4 className="flex-1 text-base font-semibold text-gray-900 dark:text-gray-50 line-clamp-3 leading-tight">
                 {searchQuery ? (
@@ -399,10 +379,9 @@ export default function StudyNoteCard({
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 {matchingTags.map((tag) => (
-                                  <span key={tag} className={TAG_CHIP_CLASS}>
-                                    <span className="opacity-60">#</span>
+                                  <Chip key={tag} tone="emerald" size="sm" icon={<span className="opacity-60">#</span>}>
                                     <HighlightedText text={tag} searchQuery={searchQuery} />
-                                  </span>
+                                  </Chip>
                                 ))}
                               </div>
                             </div>
@@ -419,10 +398,9 @@ export default function StudyNoteCard({
                               </div>
                               <div className="flex flex-wrap gap-2">
                                 {matchingRefs.map((ref) => (
-                                  <span key={ref.id} className={REF_CHIP_CLASS}>
-                                    <BookmarkIcon className="mr-1 h-3 w-3" />
+                                  <Chip key={ref.id} tone="emerald" size="sm" icon={<BookmarkIcon className="h-3 w-3" />}>
                                     <HighlightedText text={formatRef(ref)} searchQuery={searchQuery} />
-                                  </span>
+                                  </Chip>
                                 ))}
                               </div>
                             </div>
@@ -490,16 +468,13 @@ export default function StudyNoteCard({
               </div>
               <div className="flex flex-wrap gap-2">
                 {note.scriptureRefs.map((ref) => (
-                  <span
-                    key={ref.id}
-                    className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
-                  >
+                  <Chip key={ref.id} tone="emerald">
                     {searchQuery ? (
                       <HighlightedText text={formatRef(ref)} searchQuery={searchQuery} />
                     ) : (
                       formatRef(ref)
                     )}
-                  </span>
+                  </Chip>
                 ))}
               </div>
             </div>
@@ -513,16 +488,13 @@ export default function StudyNoteCard({
               </div>
               <div className="flex flex-wrap gap-2">
                 {note.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-700 dark:bg-gray-700 dark:text-gray-200"
-                  >
+                  <Chip key={tag} tone="emerald">
                     {searchQuery ? (
                       <HighlightedText text={tag} searchQuery={searchQuery} />
                     ) : (
                       tag
                     )}
-                  </span>
+                  </Chip>
                 ))}
               </div>
             </div>

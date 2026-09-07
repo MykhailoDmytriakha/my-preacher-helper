@@ -332,16 +332,19 @@ describe('StudyNoteEditorPage Pagination', () => {
         it('displays badges for Note and Question type in read-only mode', () => {
             render(<StudyNoteEditorPage />);
 
-            // By default, it's a note. In read-only mode, check if note badge is shown
-            expect(screen.getByText('studiesWorkspace.type.note')).toHaveClass('bg-gray-50');
+            // By default, it's a note. In read-only mode, check if note badge is shown.
+            // The badge is a chip, so the plate is on the chip, not on the label inside it.
+            const noteChip = screen.getByText('studiesWorkspace.type.note').closest('span.rounded-full');
+            expect(noteChip?.className).toMatch(/bg-gray-\d+/);
 
             // Switch to edit mode, change to question, then switch back to read-only
             fireEvent.click(screen.getByTitle('common.edit'));
             fireEvent.click(screen.getByRole('button', { name: 'studiesWorkspace.type.question' }));
             fireEvent.click(screen.getByTitle('common.done')); // exit edit mode
 
-            // Check if question badge is shown with amber text
-            expect(screen.getByText('studiesWorkspace.type.question')).toHaveClass('text-amber-700');
+            // Check if question badge is shown in amber
+            const questionChip = screen.getByText('studiesWorkspace.type.question').closest('span.rounded-full');
+            expect(questionChip?.className).toMatch(/text-amber-\d+/);
         });
     });
 
