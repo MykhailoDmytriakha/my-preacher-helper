@@ -187,3 +187,18 @@
 
 
 Текущее состояние после UI-этапа: 564 набора / 5349 тестов, 90,94% строк; `test:coverage` и `lint:full` прошли. Светлая/тёмная темы, мобильная/настольная раскладки и сохранение настройки тестового аккаунта проверены в локальном приложении. Подробности, карта замены тестов и расхождение общего/точечного покрытия групп — в отчёте пилотов. Полный рефакторинг крупных экранов и проверка clipboard ещё впереди; изменений на production нет.
+
+## 10. Extended implementation pass — 2026-09-07
+
+Owner delegated final design choices and requested a substantial continuous pass, followed by one integrated review. Local commits are authorized; push is deferred.
+
+- [x] Preserve the first verified packet in `3cfee878` on `codex/codebase-simplification`.
+- [x] Complete the entire settings switch family and share the native switch with export controls.
+- [x] Consolidate series create/edit fields, color selection and dialog presentation; reuse the frame for group creation.
+- [ ] Audit export dialogs and clipboard consumers, preserving plain/rich clipboard distinctions.
+- [ ] Simplify large screen state/operations using the existing canonical data mechanisms.
+- [ ] Consolidate overlapping tests with an explicit contract crosswalk and regression checks.
+- [ ] Run final coverage/lint/type gates and inspect actual desktop/mobile light/dark flows.
+- [ ] Deliver saved screenshots and an integrated review guide with known limits.
+
+A frozen original source instance runs separately for comparable screenshots. Progress is judged by removed duplicate rules and preserved behavior, not by files touched or elapsed time alone.

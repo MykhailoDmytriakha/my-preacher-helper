@@ -1,0 +1,71 @@
+'use client';
+
+import { XMarkIcon } from '@heroicons/react/24/outline';
+import { useId, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
+
+import { FORM_COLORS } from '@/utils/themeColors';
+
+import Chip from './Chip';
+
+type FormTone = 'blue' | 'emerald';
+interface FormDialogProps {
+  title: ReactNode;
+  eyebrow: string;
+  description?: string;
+  tone?: FormTone;
+  onClose: () => void;
+  children: ReactNode;
+}
+
+/** Presentation only: submission, draft retention and dismissal belong to the caller. */
+export default function FormDialog({ title, eyebrow, description, tone = 'blue', onClose, children }: FormDialogProps) {
+  const { t } = useTranslation();
+  const titleId = useId();
+  const descriptionId = useId();
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm sm:px-4">
+      <div role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined}
+        className="flex h-[100dvh] w-full flex-col overflow-hidden border border-gray-200/70 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900 sm:h-auto sm:max-h-[85vh] sm:max-w-2xl sm:rounded-2xl">
+        <div className={`h-1 w-full shrink-0 bg-gradient-to-r ${FORM_COLORS[tone].gradient}`} />
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-7">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <Chip tone={tone} size="sm">{eyebrow}</Chip>
+              <h2 id={titleId} className="mt-2 break-words text-2xl font-bold text-gray-900 dark:text-gray-100">{title}</h2>
+              {description && <p id={descriptionId} className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</p>}
+            </div>
+            <button type="button" onClick={onClose} aria-label={t('common.close')}
+              className="shrink-0 rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800">
+              <XMarkIcon className="h-6 w-6" />
+            </button>
+          </div>
+          {children}
+        </div>
+      </div>
+    </div>, document.body,
+  );
+}
+
+interface FormActionsProps {
+  onCancel: () => void;
+  cancelLabel: string;
+  submitLabel: string;
+  saving: boolean;
+  tone?: FormTone;
+}
+
+export function FormActions({ onCancel, cancelLabel, submitLabel, saving, tone = 'blue' }: FormActionsProps) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-end">
+      <button type="button" onClick={onCancel} className="rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
+        {cancelLabel}
+      </button>
+      <button type="submit" disabled={saving} className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-sm transition disabled:opacity-60 ${FORM_COLORS[tone].action}`}>
+        {saving ? t('common.saving') : submitLabel}
+      </button>
+    </div>
+  );
+}

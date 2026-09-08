@@ -1,17 +1,15 @@
 "use client";
 
-import { XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import TextareaAutosize from 'react-textarea-autosize';
 
-import ColorPickerModal from '@/components/ColorPickerModal';
-import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
+import FormDialog, { FormActions } from '@/components/ui/FormDialog';
 import { Series } from '@/models/models';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
+
+import SeriesFormFields, { seriesFormPatch, seriesFormValues, type SeriesFormValues } from './SeriesFormFields';
 
 interface EditSeriesModalProps {
   series: Series;
@@ -21,26 +19,19 @@ interface EditSeriesModalProps {
 
 export default function EditSeriesModal({ series, onClose, onUpdate }: EditSeriesModalProps) {
   const { t } = useTranslation();
-  const [title, setTitle] = useState(series.title);
-  const [description, setDescription] = useState(series.description || '');
-  const [bookOrTopic, setBookOrTopic] = useState(series.bookOrTopic);
-  const [color, setColor] = useState(series.color || '#3B82F6');
-  const [status, setStatus] = useState(series.status);
-  // Track whether user has started editing any field.
-  // If not, sync all fields from series prop (handles stale React Query cache on modal open).
+  const [values, setValues] = useState(() => seriesFormValues(series));
   const formEditedRef = useRef(false);
+  // Fresh cache data may replace an untouched form, never a person's draft.
   useEffect(() => {
-    if (!formEditedRef.current) {
-      setTitle(series.title);
-      setDescription(series.description || '');
-      setBookOrTopic(series.bookOrTopic);
-      setColor(series.color || '#3B82F6');
-      setStatus(series.status);
-    }
+    if (!formEditedRef.current) setValues(seriesFormValues(series));
   }, [series]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
+  const changeFields = (patch: Partial<SeriesFormValues>) => {
+    formEditedRef.current = true;
+    setValues(previous => ({ ...previous, ...patch }));
+    if ('title' in patch || 'description' in patch || 'bookOrTopic' in patch) setError(null);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,12 +40,7 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
     try {
       setSaving(true);
       await awaitAcceptance(onUpdate(series.id, {
-        title: title!.trim(),
-        theme: title!.trim(), // Use title as theme for simplicity
-        description: description.trim() || undefined,
-        bookOrTopic: bookOrTopic.trim(),
-        color: color || undefined,
-        status
+        ...seriesFormPatch(values)
       // useSeries' update recovery descriptor reports a late refusal while this screen is mounted.
       }), () => undefined);
 
@@ -85,207 +71,13 @@ export default function EditSeriesModal({ series, onClose, onUpdate }: EditSerie
     }
   };
 
-  const clearError = () => setError(null);
-
-  const handleColorSelect = (newColor: string) => {
-    formEditedRef.current = true;
-    setColor(newColor);
-    setIsColorPickerOpen(false);
-  };
-
-  const handleCancelColorSelect = () => {
-    setIsColorPickerOpen(false);
-  };
-
-  const colorOptions = [
-    '#3B82F6', // Blue
-    '#10B981', // Emerald
-    '#F59E0B', // Amber
-    '#EF4444', // Red
-    '#8B5CF6', // Violet
-    '#EC4899', // Pink
-    '#6B7280', // Gray
-    '#000000'  // Black
-  ];
-
-  const statusOptions = [
-    { value: 'draft', label: t('workspaces.series.form.statuses.draft') },
-    { value: 'active', label: t('workspaces.series.form.statuses.active') },
-    { value: 'completed', label: t('workspaces.series.form.statuses.completed') }
-  ];
-
-  const modalContent = (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
-      <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200/70 bg-white shadow-2xl ring-1 ring-gray-100/80 dark:border-gray-800 dark:bg-gray-900 dark:ring-gray-800">
-        <div className="h-1 w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-sky-500" />
-        <div className="p-6 sm:p-7 max-h-[85vh] overflow-y-auto">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 ring-1 ring-blue-100 dark:bg-blue-900/30 dark:text-blue-100 dark:ring-blue-800/60">
-                {t('workspaces.series.editSeries')}
-              </p>
-              <h2 className="mt-2 text-2xl font-bold text-gray-900 dark:text-gray-100">{series.title}</h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                {t('workspaces.series.form.editHint')}
-              </p>
-            </div>
-            <button
-              onClick={onClose}
-              className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-            >
-              <XMarkIcon className="h-6 w-6" />
-            </button>
-          </div>
-
-          {error && (
-            <div role="alert" className="mt-4 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="space-y-2">
-                <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                  {t('workspaces.series.form.title')} *
-                </span>
-                <TextareaAutosize
-                  value={title}
-                  onChange={(e) => {
-                    formEditedRef.current = true;
-                    setTitle(e.target.value);
-                    clearError();
-                  }}
-                  placeholder={t('workspaces.series.form.titlePlaceholder')}
-                  className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-transparent transition focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40"
-                  minRows={1}
-                  maxRows={3}
-                  required
-                />
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                  {t('workspaces.series.form.bookOrTopic')} *
-                </span>
-                <input
-                  type="text"
-                  value={bookOrTopic}
-                  onChange={(e) => {
-                    formEditedRef.current = true;
-                    setBookOrTopic(e.target.value);
-                    clearError();
-                  }}
-                  placeholder={t('workspaces.series.form.bookOrTopicPlaceholder')}
-                  className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-transparent transition focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40"
-                  required
-                />
-              </label>
-            </div>
-
-            <label className="block space-y-2">
-              <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                {t('workspaces.series.form.description')}
-              </span>
-              <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-                <RichMarkdownEditor
-                  value={description}
-                  onChange={(val) => {
-                    formEditedRef.current = true;
-                    setDescription(val);
-                    clearError();
-                  }}
-                  placeholder={t('workspaces.series.form.descriptionPlaceholder')}
-                  minHeight="120px"
-                />
-              </div>
-            </label>
-
-            <div className="grid gap-4 md:grid-cols-2">
-              <label className="space-y-2">
-                <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                  {t('workspaces.series.form.status')}
-                </span>
-                <select
-                  value={status}
-                  onChange={(e) => { formEditedRef.current = true; setStatus(e.target.value as Series['status']); }}
-                  className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-transparent transition focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40"
-                >
-                  {statusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <div className="space-y-2">
-                <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                  {t('workspaces.series.form.color')}
-                </span>
-                <div className="flex flex-wrap gap-2">
-                  {colorOptions.map((colorOption) => (
-                    <button
-                      key={colorOption}
-                      type="button"
-                      onClick={() => { formEditedRef.current = true; setColor(colorOption); }}
-                      className={`h-9 w-9 rounded-full border-2 transition-all ${color === colorOption
-                          ? 'border-blue-600 ring-2 ring-blue-600/20 dark:border-blue-400 dark:ring-blue-400/30 scale-110'
-                          : 'border-gray-200 hover:scale-105 dark:border-gray-700'
-                        }`}
-                      style={{ backgroundColor: colorOption }}
-                      title={colorOption}
-                    />
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setIsColorPickerOpen(true)}
-                    className={`flex h-9 w-9 items-center justify-center rounded-full border-2 bg-gradient-to-br from-indigo-500 via-pink-500 to-amber-400 text-white shadow-sm transition hover:scale-105 ${!colorOptions.includes(color) ? 'ring-2 ring-white/60 dark:ring-gray-900' : ''
-                      }`}
-                    title={t('workspaces.series.form.customColor')}
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-              >
-                {t('workspaces.series.actions.cancel')}
-              </button>
-              <button
-                type="submit"
-                disabled={saving}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:opacity-60"
-              >
-                {saving ? t('common.saving') : t('workspaces.series.actions.saveChanges')}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-  );
-
-  return createPortal(
-    <>
-      {modalContent}
-
-      {/* Color Picker Modal */}
-      {isColorPickerOpen && (
-        <ColorPickerModal
-          tagName={t('workspaces.series.editSeries')}
-          initialColor={color}
-          onOk={handleColorSelect}
-          onCancel={handleCancelColorSelect}
-        />
-      )}
-    </>,
-    document.body
+  return (
+    <FormDialog title={t('workspaces.series.editSeries')} eyebrow={t('navigation.series')} description={t('workspaces.series.form.editHint')} onClose={onClose}>
+      {error && <div role="alert" className="mt-4 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
+      <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+        <SeriesFormFields values={values} onChange={changeFields} colorPickerTitle={t('workspaces.series.editSeries')} />
+        <FormActions onCancel={onClose} cancelLabel={t('workspaces.series.actions.cancel')} submitLabel={t('workspaces.series.actions.saveChanges')} saving={saving} />
+      </form>
+    </FormDialog>
   );
 }

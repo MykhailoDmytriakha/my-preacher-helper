@@ -458,3 +458,12 @@ export const CHIP_TONES = {
 } as const;
 
 export type ChipTone = keyof typeof CHIP_TONES;
+
+/** Shared presentation for entity forms; callers retain their own write contracts. */
+export const FORM_COLORS = {
+  field: 'border-gray-200 bg-white focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40',
+  blue: { gradient: 'from-blue-600 via-indigo-600 to-sky-500', action: 'bg-blue-600 hover:bg-blue-700' },
+  emerald: { gradient: 'from-emerald-600 via-cyan-600 to-blue-600', action: 'bg-emerald-600 hover:bg-emerald-700' },
+} as const;
+
+export const SERIES_COLOR_PRESETS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#6B7280', '#000000'] as const;

@@ -1,12 +1,12 @@
 "use client";
 
-import { XMarkIcon } from '@heroicons/react/24/outline';
 import React, { useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
 import DatePickerField from '@/components/ui/DatePickerField';
+import FormDialog, { FormActions } from '@/components/ui/FormDialog';
+import { FORM_INPUT_CLASS } from '@/components/ui/FormField';
 import { Group } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { createFlowItem, createTemplate } from '@/utils/groupFlow';
@@ -46,11 +46,9 @@ export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModal
   const [description, setDescription] = useState('');
   const [firstMeetingDate, setFirstMeetingDate] = useState('');
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
-    setError(null);
 
     try {
       setSaving(true);
@@ -118,34 +116,9 @@ export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModal
     }
   };
 
-  const modalContent = (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
-      <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200/70 bg-white shadow-2xl ring-1 ring-gray-100/80 dark:border-gray-800 dark:bg-gray-900 dark:ring-gray-800">
-        <div className="h-1 w-full bg-gradient-to-r from-emerald-600 via-cyan-600 to-blue-600" />
-        <div className="p-6 sm:p-7 max-h-[85vh] overflow-y-auto">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="inline-flex items-center gap-2 rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-100 dark:ring-emerald-800/60">
-                {t('navigation.groups', { defaultValue: 'Groups' })}
-              </p>
-              <h2 className="mt-2 text-2xl font-bold text-gray-900 dark:text-gray-100">
-                {t('workspaces.groups.actions.newGroup', { defaultValue: 'New group' })}
-              </h2>
-            </div>
-            <button
-              onClick={onClose}
-              className="rounded-xl p-2 text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-            >
-              <XMarkIcon className="h-6 w-6" />
-            </button>
-          </div>
-
-          {error && (
-            <div className="mt-4 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200">
-              {error}
-            </div>
-          )}
-
+  return (
+    <FormDialog title={t('workspaces.groups.actions.newGroup', { defaultValue: 'New group' })}
+      eyebrow={t('navigation.groups', { defaultValue: 'Groups' })} tone="emerald" onClose={onClose}>
           <form onSubmit={handleSubmit} className="mt-6 space-y-5">
             <label className="space-y-2 block">
               <span className="text-sm font-semibold text-gray-800 dark:text-gray-200">
@@ -157,7 +130,7 @@ export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModal
                 placeholder={t('workspaces.groups.form.titlePlaceholder', {
                   defaultValue: 'Family group - Week 1',
                 })}
-                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-transparent transition focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40"
+                className={FORM_INPUT_CLASS}
                 minRows={1}
                 maxRows={3}
                 required
@@ -174,7 +147,7 @@ export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModal
                 placeholder={t('workspaces.groups.form.descriptionPlaceholder', {
                   defaultValue: 'Optional context for this group meeting',
                 })}
-                className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm shadow-sm ring-1 ring-transparent transition focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40"
+                className={FORM_INPUT_CLASS}
                 minRows={3}
                 maxRows={5}
               />
@@ -190,7 +163,7 @@ export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModal
               <DatePickerField
                 value={firstMeetingDate}
                 onChange={setFirstMeetingDate}
-                inputClassName="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 pr-12 text-sm shadow-sm ring-1 ring-transparent transition focus:border-blue-400 focus:ring-blue-100 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:focus:border-blue-500 dark:focus:ring-blue-900/40"
+                inputClassName={`${FORM_INPUT_CLASS} pr-12`}
               />
             </label>
 
@@ -200,29 +173,10 @@ export default function CreateGroupModal({ onClose, onCreate }: CreateGroupModal
               })}
             </div>
 
-            <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-end">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-              >
-                {t('common.cancel', { defaultValue: 'Cancel' })}
-              </button>
-              <button
-                type="submit"
-                disabled={saving}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-60"
-              >
-                {saving
-                  ? t('common.saving', { defaultValue: 'Saving...' })
-                  : t('workspaces.groups.actions.create', { defaultValue: 'Create group' })}
-              </button>
-            </div>
+            <FormActions onCancel={onClose} saving={saving} tone="emerald"
+              cancelLabel={t('common.cancel', { defaultValue: 'Cancel' })}
+              submitLabel={t('workspaces.groups.actions.create', { defaultValue: 'Create group' })} />
           </form>
-        </div>
-      </div>
-    </div>
+    </FormDialog>
   );
-
-  return createPortal(modalContent, document.body);
 }
