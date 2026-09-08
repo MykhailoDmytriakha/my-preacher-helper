@@ -159,9 +159,9 @@ export default function SettingsPage() {
               <AudioGenerationToggle />
               <StructurePreviewToggle />
               <GroupsFeatureToggle />
+              <DebugModeToggle />
+              <ShowVersionToggle />
             </div>
-            <DebugModeToggle />
-            <ShowVersionToggle />
           </div>
         );
       case 'tags':

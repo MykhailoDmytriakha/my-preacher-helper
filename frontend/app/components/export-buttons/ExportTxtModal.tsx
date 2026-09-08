@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import Switch from "@/components/ui/Switch";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
 
 import { ACTIVE_BUTTON_CLASS, INACTIVE_BUTTON_CLASS } from "./constants";
@@ -167,19 +168,12 @@ export function ExportTxtModal({
             {exportType === "thoughts" && (
               <div className="flex items-center ml-auto">
                 <span className="mr-2">{t("export.includeTags", "Include tags")}:</span>
-                <button
+                <Switch
                   onClick={() => setShowTags((current) => !current)}
-                  className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-                  role="switch"
-                  aria-checked={showTags}
+                  checked={showTags}
                   aria-label={showTags ? t("export.hideTags") : t("export.showTags")}
-                  style={{ backgroundColor: showTags ? "#3b82f6" : "#e5e7eb" }}
                   disabled={isLoading}
-                >
-                  <span
-                    className={`${showTags ? "translate-x-6" : "translate-x-1"} inline-block h-4 w-4 transform rounded-full bg-white transition-transform`}
-                  />
-                </button>
+                />
               </div>
             )}
           </div>

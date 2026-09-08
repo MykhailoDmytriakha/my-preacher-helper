@@ -1,6 +1,8 @@
 'use client';
 
-import { useId } from 'react';
+import { useId, type ReactNode } from 'react';
+
+import Switch from '@/components/ui/Switch';
 
 interface SettingsToggleRowProps {
   title: string;
@@ -10,11 +12,12 @@ interface SettingsToggleRowProps {
   loading: boolean;
   testId: string;
   disabled?: boolean;
+  children?: ReactNode;
 }
 
 /** Shared presentation only; each setting retains its own persistence contract. */
 export default function SettingsToggleRow({
-  title, description, enabled, onToggle, loading, testId, disabled = false,
+  title, description, enabled, onToggle, loading, testId, disabled = false, children,
 }: SettingsToggleRowProps) {
   const id = useId();
   return (
@@ -30,21 +33,17 @@ export default function SettingsToggleRow({
             <h3 id={`${id}-title`} className="font-semibold text-gray-900 dark:text-white">{title}</h3>
             <p id={`${id}-description`} className="mt-1 text-sm text-gray-600 dark:text-gray-400">{description}</p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={enabled}
+          <Switch
+            checked={enabled}
             aria-labelledby={`${id}-title`}
             aria-describedby={`${id}-description`}
             disabled={disabled}
             onClick={onToggle}
             data-testid={`${testId}-toggle`}
-            className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-60 ${enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-600'}`}
-          >
-            <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${enabled ? 'translate-x-5' : 'translate-x-0'}`} />
-          </button>
+          />
         </div>
       )}
+      {!loading && children}
     </div>
   );
 }

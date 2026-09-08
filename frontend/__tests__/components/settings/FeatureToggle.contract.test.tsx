@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import AudioGenerationToggle from '@/components/settings/AudioGenerationToggle';
 import PrepModeToggle from '@/components/settings/PrepModeToggle';
+import ShowVersionToggle from '@/components/settings/ShowVersionToggle';
 import StructurePreviewToggle from '@/components/settings/StructurePreviewToggle';
 import { persistedWrite, queuedWrite } from '@/utils/recoverableWrite';
 
@@ -9,6 +10,7 @@ let mockUser: { uid: string } | null;
 const mockWrite = jest.fn();
 let mockSettings: Record<string, boolean> | null;
 let mockLoading: boolean;
+let mockUpdating: boolean;
 jest.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: mockUser }) }));
 jest.mock('@/hooks/useUserSettings', () => ({
   useUserSettings: () => ({
@@ -16,6 +18,8 @@ jest.mock('@/hooks/useUserSettings', () => ({
     updatePrepModeAccess: mockWrite,
     updateAudioGenerationAccess: mockWrite,
     updateStructurePreviewAccess: mockWrite,
+    updateShowAppVersion: mockWrite,
+    updatingShowAppVersion: mockUpdating,
   }),
 }));
 jest.mock('react-i18next', () => ({
@@ -26,6 +30,7 @@ beforeEach(() => {
   mockUser = { uid: 'owner' };
   mockSettings = null;
   mockLoading = false;
+  mockUpdating = false;
   mockWrite.mockReset().mockImplementation(() => persistedWrite(Promise.resolve()));
 });
 
@@ -36,6 +41,8 @@ describe.each([
     errorLabel: 'AudioGenerationToggle: Error updating setting:' },
   { name: 'structure', Component: StructurePreviewToggle, field: 'enableStructurePreview', id: 'structure-preview', key: 'structurePreview',
     errorLabel: '❌ StructurePreviewToggle: Error updating setting:' },
+  { name: 'version', Component: ShowVersionToggle, field: 'showAppVersion', id: 'show-version', key: 'showVersion',
+    errorLabel: 'ShowVersionToggle: Error updating setting:' },
 ])('$name settings contract', ({ Component, field, id, key, errorLabel }) => {
   it('loads once, retains the last value during refresh, then adopts refreshed settings', () => {
     mockLoading = true;
@@ -102,4 +109,14 @@ describe.each([
       alert.mockRestore();
     }
   });
+});
+
+it('keeps version details visible and ignores repeat clicks while the write is pending', () => {
+  mockSettings = { showAppVersion: true };
+  mockUpdating = true;
+  render(<ShowVersionToggle />);
+  expect(screen.getByText('settings.showVersion.versionLabel')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('switch'));
+  expect(mockWrite).not.toHaveBeenCalled();
+  expect(screen.getByRole('switch')).toBeChecked();
 });

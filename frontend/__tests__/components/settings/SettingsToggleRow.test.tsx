@@ -37,3 +37,10 @@ it('shows a skeleton without an interactive control until loaded', () => {
   expect(screen.queryByTestId('preparation-loading')).not.toBeInTheDocument();
   expect(screen.getByRole('switch')).toBeEnabled();
 });
+
+it('shows optional setting details only after loading', () => {
+  const { rerender } = render(<SettingsToggleRow {...props} loading><p>Build details</p></SettingsToggleRow>);
+  expect(screen.queryByText('Build details')).not.toBeInTheDocument();
+  rerender(<SettingsToggleRow {...props}><p>Build details</p></SettingsToggleRow>);
+  expect(screen.getByText('Build details')).toBeInTheDocument();
+});
