@@ -1547,7 +1547,6 @@ useEffect(() => {
       restoreScratchNote={scratchNotes.restoreScratchNote}
       updateScratchNote={scratchNotes.updateScratchNote}
       deleteScratchNote={scratchNotes.deleteScratchNote}
-      setScratchNoteSection={scratchNotes.setScratchNoteSection}
       moveScratchNote={scratchNotes.moveScratchNote}
       isScratchWritePending={scratchNotes.isWritePending}
       scratchRevision={scratchNotes.scratchRevision}

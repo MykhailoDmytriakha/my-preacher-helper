@@ -9,6 +9,7 @@ This is an ongoing implementation, not a claim that every area is complete. The 
 | Settings | All six settings share one row and one native Switch; TXT export uses that Switch too | Owner checks, persistence paths, acceptance/refusal handling, version details and local debug preference | FeatureToggle contracts, GroupsFeatureToggle, DebugModeToggle, Switch tests; desktop/mobile screenshots |
 | Series forms | One values model, payload conversion, field set and color selector for create/edit | Exact normalized payload, initial sermons, queued vs remote acceptance, refusal keeps draft, stale-write handoff, untouched refresh vs dirty draft | SeriesModal.contract passed nine scenarios before extraction; same scenarios plus additional error cases after |
 | Entity dialogs | Shared FormDialog, FormActions and field styling for series and group creation | Caller retains submission and dismissal; group bootstrap/date data untouched | FormDialog/FormField direct tests, existing group contracts, browser form interaction |
+| Scratch board | Separate note-card UI and pure placement/outline model; one outline clone, canonical sections and placement type; remove unused card/section props and duplicate Apply guard | Fresh IDs only for consumed scratch nodes, additive notes, remote/draft identity, capture/apply locks, delete confirmation and undo | 41 focused tests; direct model/card coverage; real draft collapse/reopen |
 | Test renderer | Native React roots and portals; cleanup unmounts before deleting manual fixtures | Provider context, draft identity, nested dialogs, actual body placement | Dedicated red/green portal regressions; entire test suite |
 
 ## Design choices
@@ -45,6 +46,10 @@ A former icon assertion accidentally matched the header close icon. Portal-relat
 
 Live candidate: development server with PWA disabled, authenticated existing test account. A mobile series draft retained both its title and actual rich-editor text through custom color confirmation. No horizontal overflow; the submit action remained reachable after scrolling. The draft was cancelled without creating a series. Dark-mode verification for the newly unified forms is still pending.
 
+2026-09-07 18:30 PDT: the scratch packet passed root `npm run test:coverage && npm run lint:full`: 571 suites / 5368 tests, 90.88% aggregate lines. The extracted card and model have 100% line coverage; ScratchPanel has 90.67%. Aggregate coverage also varies in untouched modules across full runs, so that percentage is not used as functional equivalence proof. Existing behavior assertions all passed. The page now has 1040 lines versus 1523; the reduction includes actual duplicate/dead rules, not just moved code.
+
+In the authenticated browser, the existing DnD stand retained a two-line manual draft through Escape/reopen, restored focus, and reported textarea clientHeight = scrollHeight = 56 with no horizontal overflow. The draft was cleared without submission. Before/after desktop screenshots show unchanged layout. This fixture had no scratch pool cards; direct card tests exercise editing, focus retention, placement keyboard actions, read-only state and drag preview.
+
 ## Saved visual evidence
 
 Files are under `output/playwright/refactoring/` (local artifacts):
@@ -54,6 +59,7 @@ Files are under `output/playwright/refactoring/` (local artifacts):
 - `series-create-before-mobile.png`, `series-create-after-mobile.png`, `series-create-after-mobile-actions.png`.
 - `group-create-before-desktop.png`, `group-create-after-desktop.png`.
 - `color-picker-mobile-inspection.png`.
+- `scratch-before-desktop.png`, `scratch-after-desktop.png`.
 
 Series/group before shots were captured from the still-unchanged respective components before their edits. An isolated archive of original `814461fd` was also booted, but its separate-origin authentication remained loading; it was not used as proof of an authenticated before/after comparison.
 

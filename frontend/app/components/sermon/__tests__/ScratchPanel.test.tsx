@@ -138,7 +138,6 @@ function renderScratchPanel(overrides: Partial<ComponentProps<typeof ScratchPane
     restoreScratchNote: jest.fn((note: ScratchNote) => note),
     updateScratchNote: jest.fn(),
     deleteScratchNote: jest.fn(),
-    setScratchNoteSection: jest.fn(),
     isScratchWritePending: false,
     scratchRevision: 0,
     onApplyOutline: jest.fn(),

@@ -277,7 +277,6 @@ function renderScratchPanel(overrides: Partial<React.ComponentProps<typeof Scrat
     restoreScratchNote: jest.fn(),
     updateScratchNote: jest.fn(),
     deleteScratchNote: jest.fn(),
-    setScratchNoteSection: jest.fn(),
     isScratchWritePending: false,
     scratchRevision: 0,
     onApplyOutline: jest.fn().mockResolvedValue(undefined),
@@ -662,12 +661,10 @@ describe('ScratchPanel', () => {
     };
     const onApplyOutline = jest.fn().mockResolvedValue(undefined);
     const deleteScratchNote = jest.fn();
-    const setScratchNoteSection = jest.fn();
     const { user, props } = renderScratchPanel({
       outline: existingOutline,
       onApplyOutline,
       deleteScratchNote,
-      setScratchNoteSection,
     });
 
     await openBoard(user);
@@ -718,7 +715,7 @@ describe('ScratchPanel', () => {
 
     expect(within(screen.getByTestId('scratch-subpoint-drop-zone-existing-sub')).getByText('First scratch note')).toBeInTheDocument();
     expect(within(screen.getByTestId('scratch-point-drop-zone-existing-main')).getByText('Second scratch note')).toBeInTheDocument();
-    expect(props.setScratchNoteSection).not.toHaveBeenCalled();
+    expect(props.updateScratchNote).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: 'scratch.board.apply' }));
 

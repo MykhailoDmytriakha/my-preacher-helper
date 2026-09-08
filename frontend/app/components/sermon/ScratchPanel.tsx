@@ -1,12 +1,10 @@
 "use client";
 
-import { Bars3Icon } from "@heroicons/react/24/outline";
 import { motion } from "framer-motion";
 import {
   Check,
   Pencil,
   Sparkles,
-  Trash2,
   X,
 } from "lucide-react";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -17,46 +15,36 @@ import { toast } from "sonner";
 import { AudioRecoveryPanel } from "@/components/audio-recorder/AudioRecorderControls";
 import { AudioRecorder } from "@/components/AudioRecorder";
 import OutlineBoard, { type DragHandleProps } from "@/components/plan-editor/OutlineBoard";
-import PointNote from "@/components/PointNote";
 import AudioRecorderPortalBridge from "@/components/sermon/AudioRecorderPortalBridge";
-import { Chip } from "@/components/ui/Chip";
 import ConfirmModal from "@/components/ui/ConfirmModal";
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useConnection } from "@/providers/ConnectionProvider";
 import { composePlanFromScratch } from "@/services/scratch.service";
 import { transcribeThoughtAudio } from "@/services/thought.service";
 import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioFormatUtils";
-import { newClientId } from "@/utils/clientId";
+import { SECTION_KEYS, type SectionKey } from '@/utils/outlineDnd';
 import { getSectionLabel } from "@lib/sections";
 
-import type { ComposedPlanOutline, ComposedPlanPoint } from "@/config/schemas/zod";
-import type { OutlinePoint, ScratchNote, SermonOutline, SubPoint } from "@/models/models";
+import {
+  placementKey, getScratchSignature, getOutlineSignature,
+  stripScratchMetadataWithIdMap, stripScratchMetadata, collectComposedScratchNoteIds,
+  remapPlacement, cloneSermonOutline, appendScratchPlacementToOutline, getComposeNoticeKey,
+} from './scratch/scratchBoardModel';
+import ScratchNoteCard, { useScratchNoteLabels, type ScratchPlaceTarget } from './scratch/ScratchNoteCard';
+
+import type { ComposedPlanOutline } from "@/config/schemas/zod";
+import type { ScratchNote, SermonOutline } from "@/models/models";
+import type { ScratchPlacement } from '@/utils/scratchPlacementRemap';
 
 const VOICE_ERROR_KEY = "scratch.voice.error";
 const BOARD_APPLY_ERROR_KEY = "scratch.board.applyError";
 const MANUAL_ADD_LABEL_KEY = "scratch.capture.manualAdd";
 const MANUAL_INPUT_LABEL_KEY = "scratch.capture.manualLabel";
 
-type SectionKey = "introduction" | "main" | "conclusion";
 type ScratchPatch = {
   text?: string;
   section?: SectionKey | null;
 };
-type ScratchPlacement = {
-  pointId: string;
-  subPointId?: string;
-};
-/** One entry of the "place into…" menu — the path without dragging: a finger, a keyboard, a long way. */
-type ScratchPlaceTarget = {
-  key: string;
-  label: string;
-  depth: 0 | 1;
-  target: ScratchPlacement | null;
-};
-
-const placementKey = (placement: ScratchPlacement | null | undefined): string =>
-  !placement ? "pool" : placement.subPointId ? `sub:${placement.subPointId}` : `point:${placement.pointId}`;
-
 interface ScratchPanelProps {
   sermonId: string;
   notes: ScratchNote[];
@@ -67,7 +55,6 @@ interface ScratchPanelProps {
   deleteScratchNote: (noteId: string) => void;
   /** Put a note among the notes of one container: `neighbourIds` as displayed, without it; `index` among them. */
   moveScratchNote?: (noteId: string, neighbourIds: string[], index: number) => void;
-  setScratchNoteSection: (noteId: string, section: SectionKey | null) => void;
   isScratchWritePending: boolean;
   scratchRevision: number;
   onApplyOutline: (outline: SermonOutline, consumedNoteIds: string[]) => void | Promise<void>;
@@ -75,39 +62,6 @@ interface ScratchPanelProps {
   isReadOnly?: boolean;
 }
 
-interface ScratchNoteCardProps {
-  note: ScratchNote;
-  isSelected?: boolean;
-  isReadOnly?: boolean;
-  isDragging?: boolean;
-  /** The copy that flies under the finger: the text to recognise it by and the handle, nothing to press. */
-  isOverlay?: boolean;
-  sectionLabel?: string;
-  dragHandleProps?: DragHandleProps | null;
-  onSelect?: () => void;
-  onEdit: (noteId: string, text: string) => void;
-  onDelete: (noteId: string) => void;
-  onUnplace?: (noteId: string) => void;
-  /** Where the note can be filed without dragging; the entry it is in now is left out. */
-  placeTargets?: ScratchPlaceTarget[];
-  currentTargetKey?: string;
-  onPlaceInto?: (noteId: string, target: ScratchPlacement | null) => void;
-}
-
-const SECTION_CONFIGS: { key: SectionKey; styleKey: "introduction" | "mainPart" | "conclusion" }[] = [
-  { key: "introduction", styleKey: "introduction" },
-  { key: "main", styleKey: "mainPart" },
-  { key: "conclusion", styleKey: "conclusion" },
-];
-
-const EMPTY_OUTLINE: SermonOutline = {
-  introduction: [],
-  main: [],
-  conclusion: [],
-};
-
-const NOTE_CARD_CLASS =
-  "group rounded-lg border border-gray-200 bg-white p-3 shadow-sm transition-all duration-150 dark:border-gray-700 dark:bg-gray-800";
 const COMPOSE_TIMEOUT_MS = 55_000;
 const APPLY_SETTLE_TIMEOUT_MS = 8_000;
 const SCRATCH_TOAST_OPTIONS = { position: "bottom-right" as const };
@@ -119,89 +73,6 @@ function truncateForConfirm(text: string) {
   return clean.length > CONFIRM_PREVIEW_LIMIT
     ? `${clean.slice(0, CONFIRM_PREVIEW_LIMIT)}…`
     : clean;
-}
-
-type StripScratchMetadataResult = {
-  outline: SermonOutline;
-  idMap: Map<string, string>;
-};
-
-function allComposedPoints(outline: ComposedPlanOutline | null): ComposedPlanPoint[] {
-  if (!outline) return [];
-  return [...outline.introduction, ...outline.main, ...outline.conclusion];
-}
-
-function getScratchSignature(notes: ScratchNote[]) {
-  return notes.map((note) => [note.id, note.text, note.section ?? ""].join("\u0000")).join("\u0001");
-}
-
-function getOutlineSignature(outline?: SermonOutline | null) {
-  return JSON.stringify(outline ?? EMPTY_OUTLINE);
-}
-
-function stripScratchMetadataWithIdMap(outline: ComposedPlanOutline): StripScratchMetadataResult {
-  const idMap = new Map<string, string>();
-  const cleanOutline = SECTION_CONFIGS.reduce<SermonOutline>((next, { key }) => {
-    next[key] = outline[key].map(({ id, text, note, isReviewed, subPoints, scratchNoteId }) => {
-      const pointId = scratchNoteId ? newClientId() : id;
-      idMap.set(id, pointId);
-      const cleanSubPoints = (subPoints ?? []).map((subPoint): SubPoint => {
-        const subPointId = subPoint.scratchNoteId ? newClientId() : subPoint.id;
-        idMap.set(subPoint.id, subPointId);
-        const cleanSubPoint: SubPoint = {
-          id: subPointId,
-          text: subPoint.text,
-          position: subPoint.position,
-        };
-        const cleanSubPointNote = subPoint.note?.trim();
-        if (cleanSubPointNote) cleanSubPoint.note = cleanSubPointNote;
-        return cleanSubPoint;
-      });
-
-      const point: OutlinePoint = {
-        id: pointId,
-        text,
-      };
-      const cleanNote = note?.trim();
-      if (cleanNote) point.note = cleanNote;
-      if (typeof isReviewed === "boolean") point.isReviewed = isReviewed;
-      if (cleanSubPoints.length > 0) point.subPoints = cleanSubPoints;
-      return point;
-    });
-    return next;
-  }, { introduction: [], main: [], conclusion: [] });
-
-  return { outline: cleanOutline, idMap };
-}
-
-function stripScratchMetadata(outline: ComposedPlanOutline): SermonOutline {
-  return stripScratchMetadataWithIdMap(outline).outline;
-}
-
-function collectComposedScratchNoteIds(outline: ComposedPlanOutline | null): Set<string> {
-  const noteIds = new Set<string>();
-  if (!outline) return noteIds;
-
-  allComposedPoints(outline).forEach((point) => {
-    if (point.scratchNoteId) noteIds.add(point.scratchNoteId);
-    (point.subPoints ?? []).forEach((subPoint) => {
-      if (subPoint.scratchNoteId) noteIds.add(subPoint.scratchNoteId);
-    });
-  });
-
-  return noteIds;
-}
-
-function remapPlacement(
-  placement: ScratchPlacement,
-  idMap?: Map<string, string> | null
-): ScratchPlacement {
-  const pointId = idMap?.get(placement.pointId) ?? placement.pointId;
-  const subPointId = placement.subPointId
-    ? idMap?.get(placement.subPointId) ?? placement.subPointId
-    : undefined;
-
-  return subPointId ? { pointId, subPointId } : { pointId };
 }
 
 function isBrowserOffline() {
@@ -234,349 +105,6 @@ function revokeVoiceRecoveryUrl(audioUrl: string | null) {
     return;
   }
   URL.revokeObjectURL(audioUrl);
-}
-
-function toComposedOutline(outline?: SermonOutline): ComposedPlanOutline {
-  const current = outline ?? EMPTY_OUTLINE;
-  return SECTION_CONFIGS.reduce<ComposedPlanOutline>((next, { key }) => {
-    next[key] = (current[key] ?? []).map((point) => ({
-      ...point,
-      subPoints: point.subPoints?.map((subPoint) => ({ ...subPoint })),
-    }));
-    return next;
-  }, { introduction: [], main: [], conclusion: [] });
-}
-
-function cloneSermonOutline(outline?: SermonOutline): SermonOutline {
-  const current = outline ?? EMPTY_OUTLINE;
-  return SECTION_CONFIGS.reduce<SermonOutline>((next, { key }) => {
-    next[key] = (current[key] ?? []).map((point) => ({
-      ...point,
-      subPoints: point.subPoints?.map((subPoint) => ({ ...subPoint })),
-    }));
-    return next;
-  }, { introduction: [], main: [], conclusion: [] });
-}
-
-function appendNoteText(existingNote: string | undefined, scratchText: string) {
-  return [existingNote, scratchText]
-    .map((value) => value?.trim())
-    .filter((value): value is string => Boolean(value))
-    .join("\n");
-}
-
-function appendScratchPlacementToOutline(
-  outline: SermonOutline,
-  placement: ScratchPlacement,
-  scratchText: string
-) {
-  const cleanText = scratchText.trim();
-  if (!cleanText) return false;
-
-  for (const { key } of SECTION_CONFIGS) {
-    const point = (outline[key] ?? []).find((item) => item.id === placement.pointId);
-    if (!point) continue;
-
-    if (placement.subPointId) {
-      const subPoint = (point.subPoints ?? []).find((item) => item.id === placement.subPointId);
-      if (!subPoint) return false;
-      subPoint.note = appendNoteText(subPoint.note, cleanText);
-      return true;
-    }
-
-    point.note = appendNoteText(point.note, cleanText);
-    return true;
-  }
-
-  return false;
-}
-
-function getComposeNoticeKey(outline: ComposedPlanOutline) {
-  const points = allComposedPoints(outline);
-  const subPoints = points.flatMap((point) => point.subPoints ?? []);
-  const composeItems = [...points, ...subPoints].filter((item) => item.source === "ai" || item.source === "manual");
-  const aiCount = composeItems.filter((item) => item.source === "ai").length;
-  const manualCount = composeItems.filter((item) => item.source === "manual").length;
-
-  if (composeItems.length > 0 && aiCount === 0) return "scratch.board.composeSuccessAllManual";
-  if (composeItems.length > 0 && manualCount === 0) return "scratch.board.composeSuccessAllAi";
-  return "scratch.board.composeSuccessHybrid";
-}
-
-/**
- * The scratch board edits scratch notes with the plan editor's `PointNote`. Left alone,
- * that shared component labels everything "reminder note" — a DIFFERENT entity in this
- * app (a hint pinned to a finished plan point), which made the whole screen read as if
- * it were about notes rather than scratch. Same wording for the pool cards and for the
- * point notes, because on this board they hold the same thing: a placed scratch note.
- */
-function useScratchNoteLabels() {
-  const { t } = useTranslation();
-  return useMemo(
-    () => ({
-      label: t("scratch.card.label"),
-      placeholder: t("scratch.card.placeholder"),
-      clear: t("scratch.card.delete"),
-      add: t("scratch.card.add"),
-    }),
-    [t]
-  );
-}
-
-function ScratchNoteCard({
-  note,
-  isSelected = false,
-  isReadOnly = false,
-  isDragging = false,
-  isOverlay = false,
-  sectionLabel,
-  dragHandleProps,
-  onSelect,
-  onEdit,
-  onDelete,
-  onUnplace,
-  placeTargets,
-  currentTargetKey,
-  onPlaceInto,
-}: ScratchNoteCardProps) {
-  const { t } = useTranslation();
-  const scratchNoteLabels = useScratchNoteLabels();
-  const [isPlaceMenuOpen, setIsPlaceMenuOpen] = useState(false);
-  const placeMenuRef = useRef<HTMLDivElement | null>(null);
-  const placeMenuListRef = useRef<HTMLDivElement | null>(null);
-  const placeMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
-
-  /** Close, and hand focus back to the button that opened it — a menu must not swallow focus. */
-  const closePlaceMenu = useCallback((restoreFocus: boolean) => {
-    setIsPlaceMenuOpen(false);
-    if (restoreFocus) placeMenuTriggerRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    if (!isPlaceMenuOpen) return;
-    // Focus lands on the first choice, so arrows and Enter work at once.
-    placeMenuListRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
-    const onPointerDown = (event: PointerEvent) => {
-      if (!placeMenuRef.current?.contains(event.target as Node)) setIsPlaceMenuOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [isPlaceMenuOpen]);
-
-  const onPlaceMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const items = Array.from(placeMenuListRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
-    if (items.length === 0) return;
-    const current = items.indexOf(document.activeElement as HTMLButtonElement);
-    const focusAt = (index: number) => items[(index + items.length) % items.length]?.focus();
-    switch (event.key) {
-      case "ArrowDown":
-        event.preventDefault();
-        focusAt(current + 1);
-        break;
-      case "ArrowUp":
-        event.preventDefault();
-        focusAt(current - 1);
-        break;
-      case "Home":
-        event.preventDefault();
-        focusAt(0);
-        break;
-      case "End":
-        event.preventDefault();
-        focusAt(items.length - 1);
-        break;
-      case "Escape":
-      case "Tab":
-        event.preventDefault();
-        closePlaceMenu(true);
-        break;
-      default:
-        break;
-    }
-  };
-
-  if (isOverlay) {
-    /*
-     * A tall note in the air is clipped to a few lines — the eye needs to recognise
-     * it, not read it — and the handle row stays at the bottom, where the finger
-     * picked the card up. No editor, no buttons: nothing here can be pressed.
-     */
-    return (
-      <div
-        className={[NOTE_CARD_CLASS, "pointer-events-none border-indigo-300 shadow-2xl shadow-indigo-900/30 dark:border-indigo-500/60"].join(" ")}
-        data-testid={`scratch-note-overlay-${note.id}`}
-      >
-        <div className="line-clamp-4 whitespace-pre-wrap break-words text-sm italic text-gray-700 dark:text-gray-200">
-          {note.text}
-        </div>
-        <div className="mt-2 flex items-center border-t border-gray-100 pt-2 dark:border-gray-700/60">
-          <span className="flex h-10 w-11 items-center justify-center text-gray-400 dark:text-gray-500">
-            <Bars3Icon className="h-5 w-5" aria-hidden="true" />
-          </span>
-        </div>
-      </div>
-    );
-  }
-
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!onSelect) return;
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    onSelect();
-  };
-
-  const handleNoteChange = (nextNote: string | undefined) => {
-    if (nextNote) {
-      onEdit(note.id, nextNote);
-      return;
-    }
-    onDelete(note.id);
-  };
-
-  const placeChoices = (placeTargets ?? []).filter((choice) => choice.key !== currentTargetKey);
-  const actionControls = !isReadOnly ? (
-    <div className="flex shrink-0 items-center gap-1">
-      {onPlaceInto && placeChoices.length > 0 && (
-        /*
-         * THE PATH WITHOUT DRAGGING. On a phone the pool is a screen above the
-         * plan, and a keyboard cannot drag at all; the same outcome as a drop —
-         * "this note goes there" — has to be reachable with one tap. The note
-         * lands at the end of the chosen container.
-         */
-        <div ref={placeMenuRef} className="relative" onKeyDown={isPlaceMenuOpen ? onPlaceMenuKeyDown : undefined}>
-          <button
-            ref={placeMenuTriggerRef}
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              setIsPlaceMenuOpen((open) => !open);
-            }}
-            aria-haspopup="menu"
-            aria-expanded={isPlaceMenuOpen}
-            className="rounded-md px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-          >
-            {t("scratch.card.placeInto")}
-          </button>
-          {isPlaceMenuOpen && (
-            <div
-              ref={placeMenuListRef}
-              role="menu"
-              aria-label={t("scratch.card.placeIntoMenu")}
-              className="absolute right-0 z-20 mt-1 max-h-72 w-64 overflow-y-auto rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800"
-            >
-              {placeChoices.map((choice) => (
-                <button
-                  key={choice.key}
-                  type="button"
-                  role="menuitem"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    closePlaceMenu(true);
-                    onPlaceInto(note.id, choice.target);
-                  }}
-                  className={`block w-full truncate px-3 py-1.5 text-left text-sm transition-colors hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:hover:bg-gray-700 dark:focus:bg-gray-700 ${
-                    choice.depth === 1 ? "pl-7 text-gray-600 dark:text-gray-300" : "text-gray-800 dark:text-gray-100"
-                  }`}
-                  title={choice.label}
-                >
-                  {choice.depth === 1 ? "↳ " : ""}
-                  {choice.label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      {onUnplace && (
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onUnplace(note.id);
-          }}
-          className="rounded-md px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-        >
-          {t("scratch.board.unplace")}
-        </button>
-      )}
-      <button
-        type="button"
-        onClick={(event) => {
-          event.stopPropagation();
-          onDelete(note.id);
-        }}
-        className="rounded-md p-1.5 text-gray-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30 dark:hover:text-red-300"
-        aria-label={t("scratch.card.delete")}
-      >
-        <Trash2 className="h-4 w-4" aria-hidden="true" />
-      </button>
-    </div>
-  ) : null;
-
-  return (
-    <div
-      className={[
-        NOTE_CARD_CLASS,
-        onSelect ? "cursor-pointer" : "",
-        isSelected ? "border-indigo-300 ring-2 ring-indigo-300/70 dark:border-indigo-400 dark:ring-indigo-500/50" : "",
-        isDragging ? "shadow-lg ring-1 ring-indigo-300 dark:ring-indigo-500/60" : "",
-      ].join(" ")}
-      role={onSelect ? "button" : undefined}
-      tabIndex={onSelect ? 0 : undefined}
-      data-testid={`scratch-note-card-${note.id}`}
-      aria-pressed={onSelect ? isSelected : undefined}
-      onClick={onSelect}
-      onKeyDown={handleKeyDown}
-    >
-      <div className="min-w-0">
-        <div className="min-w-0">
-          {sectionLabel && (
-            <Chip tone="neutral" size="sm" className="mb-1.5">
-              {t("scratch.card.placedIn", { section: sectionLabel })}
-            </Chip>
-          )}
-          <div
-            className="-mt-1"
-            data-testid={`scratch-note-point-note-${note.id}`}
-            onClick={(event) => event.stopPropagation()}
-            onKeyDown={(event) => event.stopPropagation()}
-          >
-            {/* This card holds a SCRATCH note, not a plan point's reminder note — the
-                editor is shared, so its wording has to be overridden here. */}
-            <PointNote
-              note={note.text}
-              onChange={handleNoteChange}
-              isReadOnly={isReadOnly}
-              addRevealClass="opacity-100"
-              hideClearButton
-              tone="neutral"
-              labels={scratchNoteLabels}
-            />
-          </div>
-        </div>
-        {!isReadOnly && (
-          <div className="mt-2 flex items-center justify-between gap-2 border-t border-gray-100 pt-2 dark:border-gray-700/60">
-            {dragHandleProps && (
-              <button
-                type="button"
-                {...dragHandleProps}
-                /*
-                 * 44px, and `touch-none`: on a phone the handle must own the gesture,
-                 * otherwise the page scrolls out from under the finger and cancels it.
-                 */
-                className="flex h-10 w-11 shrink-0 cursor-grab touch-none items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 active:cursor-grabbing dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-300"
-                aria-label={t("common.dragToReorder")}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <Bars3Icon className="h-5 w-5" aria-hidden="true" />
-              </button>
-            )}
-            <div className="ml-auto">{actionControls}</div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 export default function ScratchPanel({
@@ -661,7 +189,7 @@ export default function ScratchPanel({
   const currentOutline = manualOutline ?? outline;
   const incomingOutlineSignature = useMemo(() => getOutlineSignature(outline), [outline]);
   const boardOutline = useMemo(
-    () => composedOutline ?? toComposedOutline(currentOutline),
+    () => composedOutline ?? cloneSermonOutline(currentOutline),
     [composedOutline, currentOutline]
   );
   const strippedProposedOutline = useMemo(
@@ -673,7 +201,7 @@ export default function ScratchPanel({
     const pointIds = new Set<string>();
     const subPointParentById = new Map<string, string>();
 
-    SECTION_CONFIGS.forEach(({ key }) => {
+    SECTION_KEYS.forEach((key) => {
       (boardOutline[key] ?? []).forEach((point) => {
         pointIds.add(point.id);
         (point.subPoints ?? []).forEach((subPoint) => {
@@ -989,8 +517,8 @@ export default function ScratchPanel({
   /** Every container a note can be filed into, in reading order: pool, then section → point → sub-point. */
   const placeTargets = useMemo<ScratchPlaceTarget[]>(() => {
     const targets: ScratchPlaceTarget[] = [{ key: "pool", label: t("scratch.card.placeIntoPool"), depth: 0, target: null }];
-    SECTION_CONFIGS.forEach(({ key, styleKey }) => {
-      const sectionLabel = getSectionLabel(t, styleKey);
+    SECTION_KEYS.forEach((key) => {
+      const sectionLabel = getSectionLabel(t, key);
       (boardOutline[key] ?? []).forEach((point) => {
         targets.push({ key: `point:${point.id}`, label: `${sectionLabel}: ${point.text}`, depth: 0, target: { pointId: point.id } });
         (point.subPoints ?? []).forEach((subPoint) => {
@@ -1018,7 +546,7 @@ export default function ScratchPanel({
       if (isBoardLocked) return;
 
       if (composedOutline) {
-        setComposedOutline(toComposedOutline(nextOutline));
+        setComposedOutline(cloneSermonOutline(nextOutline));
         setComposeError(null);
         return;
       }
@@ -1178,17 +706,6 @@ export default function ScratchPanel({
     } finally {
       setIsApplying(false);
     }
-  };
-
-  const handleApplyClick = () => {
-    if (
-      (!cleanProposedOutline && !hasPlacements) ||
-      isScratchWritePending ||
-      isVoiceProcessing ||
-      isReadOnly ||
-      isApplying
-    ) return;
-    void applyOutline();
   };
 
   const composeDisabledKey = getComposeDisabledKey(isScratchWritePending, isMagicAvailable, aiBlocked, pooledNotes.length);
@@ -1453,7 +970,7 @@ export default function ScratchPanel({
         <span title={applyDisabledTitle}>
           <button
             type="button"
-            onClick={handleApplyClick}
+            onClick={applyOutline}
             disabled={
               !hasApplicableOutlineChanges ||
               isApplying ||
