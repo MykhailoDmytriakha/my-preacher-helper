@@ -57,9 +57,6 @@ if (typeof globalThis.setImmediate === 'undefined') {
   globalThis.setImmediate = (callback, ...args) => setTimeout(callback, 0, ...args);
 }
 
-// Constants for duplicate strings to satisfy SonarJS
-const REACT_DOM_CLIENT = 'react-dom/client';
-
 // Polyfill Web Fetch API primitives for Next route tests (Node/Jest)
 import('undici')
   .then((undici) => {
@@ -81,14 +78,6 @@ if (typeof globalThis.ResizeObserver === 'undefined') {
     unobserve() { }
     disconnect() { }
   };
-}
-
-// Create a portal root element where portal content will be rendered
-if (typeof document !== 'undefined') {
-  const portalRoot = document.createElement('div');
-  portalRoot.setAttribute('id', 'portal-root');
-  document.body.appendChild(portalRoot);
-  global.portalRoot = portalRoot; // Store for cleanup
 }
 
 // Store original console methods
@@ -159,120 +148,15 @@ afterAll(() => {
   console.debug = originalConsole.debug;
 });
 
-// Mock for React 18's createRoot API
-jest.mock('react-dom/client', () => {
-  // Store created roots to avoid recreating them
-  const rootsMap = new Map();
-
-  return {
-    createRoot: (container) => {
-      // Ensure we have a valid container for createRoot
-      let validContainer = container;
-      if (!container || typeof container.appendChild !== 'function') {
-        // If container is invalid, create a new div to use as container
-        console.warn('Invalid container provided to createRoot, creating a fallback container');
-        validContainer = document.createElement('div');
-        document.body.appendChild(validContainer);
-      }
-
-      // Check if a root already exists for this container
-      if (rootsMap.has(validContainer)) {
-        return rootsMap.get(validContainer);
-      }
-
-      // Use React 18's ReactDOM to create an actual root
-      const ReactDOMClient = jest.requireActual(REACT_DOM_CLIENT);
-      const root = ReactDOMClient.createRoot(validContainer);
-
-      // Store the root for reuse
-      const mockRoot = {
-        render: (element) => {
-          root.render(element);
-        },
-        unmount: () => {
-          root.unmount();
-          // Remove from roots map after unmounting
-          rootsMap.delete(validContainer);
-        }
-      };
-
-      rootsMap.set(validContainer, mockRoot);
-      return mockRoot;
-    }
-  };
-});
-
-// Mock for React's createPortal - helps testing-library find portal content
-jest.mock('react-dom', () => {
-  const originalModule = jest.requireActual('react-dom');
-  const clientModule = jest.requireActual(REACT_DOM_CLIENT);
-
-  // Reuse a single portal root per container to avoid duplicate content on re-renders
-  const rootsMap = new Map(); // container -> { root, portalElement }
-
-  function ensureRoot(targetContainer) {
-    let record = rootsMap.get(targetContainer);
-    if (!record || !record.portalElement || !record.portalElement.isConnected) {
-      const portalElement = document.createElement('div');
-      portalElement.setAttribute('data-testid', 'portal-content');
-      targetContainer.appendChild(portalElement);
-      const root = clientModule.createRoot(portalElement);
-      record = { root, portalElement };
-      rootsMap.set(targetContainer, record);
-    }
-    return record;
-  }
-
-  const PortalWrapper = ({ children, container }) => {
-    const targetContainer = container || portalRoot;
-
-    React.useEffect(() => {
-      const record = ensureRoot(targetContainer);
-      record.root.render(children);
-      return () => {
-        const rec = rootsMap.get(targetContainer);
-        if (rec) {
-          try { rec.root.unmount(); } catch { }
-          if (rec.portalElement && rec.portalElement.parentNode) {
-            rec.portalElement.parentNode.removeChild(rec.portalElement);
-          }
-          rootsMap.delete(targetContainer);
-        }
-      };
-    }, [children, targetContainer]);
-
-    // Render a lightweight marker into the normal tree
-    return React.createElement('div', { 'data-testid': 'portal-wrapper', className: 'portal-wrapper' }, null);
-  };
-
-  const mockCreatePortal = (children, container) => React.createElement(PortalWrapper, { children, container });
-
-  return {
-    ...originalModule,
-    createPortal: mockCreatePortal,
-    render: (element, container) => {
-      const root = clientModule.createRoot(container);
-      root.render(element);
-      return {
-        unmount: () => root.unmount()
-      };
-    }
-  };
-});
-
-// Clean up after each test
+// Use React's actual roots and portals. A separate mock root loses provider context
+// and recreates children on rerender; nested portals then compete for document.body.
+// Unmount before removing manually appended fixtures, so React still owns its nodes.
 afterEach(() => {
-  // Clear mocks
-  jest.clearAllMocks();
-
-  // Reset the body but keep the portal root if in JSDOM
   if (typeof document !== 'undefined') {
-    document.body.innerHTML = '';
-    const portalRoot = global.portalRoot || document.getElementById('portal-root');
-    if (portalRoot) {
-      document.body.appendChild(portalRoot);
-    }
+    require('@testing-library/react/pure').cleanup();
+    document.body.replaceChildren();
   }
+  jest.clearAllMocks();
 });
 
 // Mock Next.js router

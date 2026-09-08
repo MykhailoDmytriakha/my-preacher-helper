@@ -57,15 +57,14 @@ describe('AddSermonModal portal + centering (regression)', () => {
     // Open the modal
     fireEvent.click(screen.getByText('New Sermon'));
 
-    const portalContent = screen.getByTestId('portal-content');
     const heading = await screen.findByRole('heading', { name: 'New Sermon' });
 
     // Dialog content must render under portal content (body), not under wrapper
-    expect(portalContent.contains(heading)).toBe(true);
+    expect(document.body.contains(heading)).toBe(true);
     expect(wrapper.contains(heading)).toBe(false);
 
     // Overlay div must include fixed + centered flex classes
-    const overlay = portalContent.querySelector('div');
+    const overlay = heading.closest('.fixed');
     expect(overlay).toBeTruthy();
     const classList = (overlay as HTMLElement).className.split(' ');
     expect(classList).toEqual(expect.arrayContaining(['fixed', 'inset-0', 'flex', 'items-center', 'justify-center']));

@@ -173,14 +173,13 @@ describe('AddThoughtManual', () => {
 
     // Dialog should be present and rendered inside the portal content container (document.body)
     const dialog = await screen.findByRole('dialog');
-    const portalContent = screen.getByTestId('portal-content');
-    expect(portalContent.contains(dialog)).toBe(true);
+    expect(document.body.contains(dialog)).toBe(true);
 
     // Ensure it is NOT rendered under the wrapper (prevents transform-offset issues)
     expect(wrapper.contains(dialog)).toBe(false);
 
     // Overlay div should use fixed + centered flex classes
-    const overlay = portalContent.querySelector('div');
+    const overlay = dialog.closest('.fixed');
     expect(overlay).toBeTruthy();
     const classList = (overlay as HTMLElement).className.split(' ');
     expect(classList).toEqual(expect.arrayContaining(['fixed', 'inset-0', 'flex', 'items-center', 'justify-center']));
@@ -496,6 +495,8 @@ describe('AddThoughtManual', () => {
     fireEvent.change(screen.getByTestId('mock-rich-editor'), {
       target: { value: 'Translated tag thought' },
     });
+    expect(tagUtilsMock.getStructureIcon).toHaveBeenCalledWith('Introduction');
+    expect(document.querySelector('.icon-intro')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /buttons\.save/ }));
 
     await waitFor(() => {
@@ -506,7 +507,6 @@ describe('AddThoughtManual', () => {
         })
       );
     });
-    expect(tagUtilsMock.getStructureIcon).toHaveBeenCalledWith('Introduction');
-    expect(document.querySelector('.icon-intro')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
