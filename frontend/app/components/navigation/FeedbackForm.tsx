@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import "@locales/i18n";
+import { buildDiagnosticReport } from '@/utils/appDiagnostics';
 import { clipboardHasText, extractClipboardImageFiles } from '@/utils/clipboardImages';
 import {
   getFeedbackPayloadByteLength,
@@ -17,6 +18,23 @@ import {
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp']);
+
+/**
+ * The report is appended to the message rather than sent as its own field.
+ *
+ * It used to be reachable only through a viewer: open a dialog, read a wall of JSON, press
+ * copy, then find the message box again and paste it in beside your own words. People did
+ * that by hand — including the owner — and what arrived was one field holding a paragraph
+ * of human sentences and eight kilobytes of machine detail, with the sentences buried. The
+ * work of getting the two into one message belonged to the app all along.
+ *
+ * Appending keeps every part of the existing path intact: the size checks, the mail
+ * template, what is stored. The marker below is what separates the person's words from the
+ * machine's, so whoever reads the message can tell at a glance where one ends.
+ */
+const DIAGNOSTICS_MARKER = '--- technical details (attached by the app) ---';
+/** Said in the message rather than swallowed: a missing report is itself worth knowing. */
+const DIAGNOSTICS_UNAVAILABLE = '(this browser did not let the app collect them)';
 const FEEDBACK_TYPE_PAYLOAD_PLACEHOLDER = 'suggestion';
 const PAYLOAD_TOO_LARGE_KEY = 'feedback.payloadTooLarge';
 
@@ -31,6 +49,13 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
   const [feedbackType, setFeedbackType] = useState('suggestion');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [images, setImages] = useState<string[]>([]);
+  /**
+   * On by default, because the person reaching for this form has already hit something.
+   * Off by default would keep the old friction in a new shape: the data would be one
+   * click away and forgotten exactly when it is needed. The label says plainly what
+   * travels, and one click removes it.
+   */
+  const [attachDiagnostics, setAttachDiagnostics] = useState(true);
   const [imageError, setImageError] = useState('');
   const [payloadError, setPayloadError] = useState('');
   const [submissionError, setSubmissionError] = useState('');
@@ -159,6 +184,32 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
     setSubmissionError('');
   };
 
+  /**
+   * The person's words first, the machine's afterwards, with a line between them.
+   *
+   * ⚠️ NO NETWORK CALL HERE, DELIBERATELY. The viewer asks the server for its version, and
+   * that is fine when someone is sitting reading a dialog. On the send path it is a round
+   * trip between pressing the button and anything happening — and offline it is the full
+   * five-second timeout before giving up, at exactly the moment people write about
+   * something being broken. The version that settles "were we looking at the same code" is
+   * the one this browser is running, and the report carries it without asking anyone.
+   */
+  const withDiagnostics = (message: string): string => {
+    /**
+     * An optional attachment must never cost someone their message. The report reads a
+     * dozen browser APIs, and any one of them can be missing or refused — a privacy mode,
+     * an unusual engine, an embedded webview. Letting that throw would turn "I ticked a box"
+     * into "the send button does nothing", which is the worst possible failure on a form
+     * whose entire purpose is telling us something is wrong.
+     */
+    try {
+      const report = JSON.stringify(buildDiagnosticReport(), null, 2);
+      return `${message}\n\n${DIAGNOSTICS_MARKER}\n${report}`;
+    } catch {
+      return `${message}\n\n${DIAGNOSTICS_MARKER}\n${DIAGNOSTICS_UNAVAILABLE}`;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (feedbackText.trim()) {
@@ -176,7 +227,13 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
       try {
         setIsSubmitting(true);
         setSubmissionError('');
-        const accepted = await onSubmit(feedbackText, feedbackType, images);
+        /**
+         * Collected at SEND time, not when the box was ticked: the last events before the
+         * person pressed the button are the ones worth having, and the server check needs
+         * a round trip we should not make them wait through earlier.
+         */
+        const message = attachDiagnostics ? withDiagnostics(feedbackText) : feedbackText;
+        const accepted = await onSubmit(message, feedbackType, images);
         if (accepted === false) {
           setSubmissionError(t('feedback.errorMessage'));
         }
@@ -327,6 +384,29 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
             amount: (remainingAttachmentBytes / 1_000_000).toFixed(1),
           })}
         </p>
+
+        {/*
+          Sits with the other attachments, because that is what it is. It used to be a
+          button under the form that opened a viewer full of JSON and a copy action — so
+          getting the data to the developer meant reading it, copying it, and pasting it
+          back into your own message by hand.
+        */}
+        <label className="mt-3 flex cursor-pointer items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <input
+            type="checkbox"
+            checked={attachDiagnostics}
+            onChange={(e) => setAttachDiagnostics(e.target.checked)}
+            disabled={isSubmitting}
+            data-testid="attach-diagnostics"
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600"
+          />
+          <span>
+            <span suppressHydrationWarning={true}>{t('feedback.attachDiagnostics')}</span>
+            <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400" suppressHydrationWarning={true}>
+              {t('feedback.attachDiagnosticsNote')}
+            </span>
+          </span>
+        </label>
 
         {imageError && (
           <p className="mt-1 text-xs text-red-500" role="alert" data-testid="image-error">

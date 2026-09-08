@@ -1448,7 +1448,9 @@
     "attachmentBudgetRemaining": "{{amount}} MB attachment budget remaining",
     "removeImage": "Remove image",
     "imagesNote": "Up to 3 images, max 3 MB each and 4.4 MB total",
-    "pasteHint": "Or paste a screenshot straight from the clipboard — Ctrl+V / ⌘V"
+    "pasteHint": "Or paste a screenshot straight from the clipboard — Ctrl+V / ⌘V",
+    "attachDiagnostics": "Attach technical details for the developer",
+    "attachDiagnosticsNote": "App state and recent events. No note text, passwords or tokens."
   },
   "planEditor": {
     "title": "Structure editor",

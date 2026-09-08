@@ -5,6 +5,17 @@ import '@testing-library/jest-dom';
 import FeedbackForm from '@/components/navigation/FeedbackForm';
 import * as feedbackPayload from '@/utils/feedbackPayload';
 
+/**
+ * These cases are about the MESSAGE, the images and the failure paths. The technical
+ * report the form now attaches has its own suite
+ * (`FeedbackDiagnosticsAttachment.test.tsx`); here it is silenced so the assertions stay
+ * about what the person typed. Silenced by returning nothing to append, not by leaving the
+ * real collector in: it reads a dozen browser APIs that jsdom does not have.
+ */
+jest.mock('@/utils/appDiagnostics', () => ({
+  buildDiagnosticReport: jest.fn(() => ({ schema: 1 })),
+}));
+
 let mockFeedbackPayloadSizer: jest.Mock | undefined;
 jest.mock('@/utils/feedbackPayload', () => {
   const actual = jest.requireActual<typeof import('@/utils/feedbackPayload')>(
@@ -129,6 +140,7 @@ describe('FeedbackForm Component', () => {
     render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
 
     // Try to submit with empty feedback text
+    fireEvent.click(screen.getByTestId('attach-diagnostics'));
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
 
     // Form shouldn't submit with empty text
@@ -171,6 +183,7 @@ describe('FeedbackForm Component', () => {
     const select = screen.getByRole('combobox');
     fireEvent.change(select, { target: { value: 'bug' } });
 
+    fireEvent.click(screen.getByTestId('attach-diagnostics'));
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
 
     await waitFor(() => {
@@ -196,6 +209,7 @@ describe('FeedbackForm Component', () => {
     // Fill text and submit
     const textarea = screen.getByPlaceholderText('Please tell us what you think...');
     fireEvent.change(textarea, { target: { value: 'Feedback with image' } });
+    fireEvent.click(screen.getByTestId('attach-diagnostics'));
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
 
     await waitFor(() => {
@@ -269,6 +283,7 @@ describe('FeedbackForm Component', () => {
     const textarea = screen.getByPlaceholderText('Please tell us what you think...');
     fireEvent.change(textarea, { target: { value: 'Test feedback message' } });
 
+    fireEvent.click(screen.getByTestId('attach-diagnostics'));
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
 
     await waitFor(() => {
@@ -292,6 +307,7 @@ describe('FeedbackForm Component', () => {
     const cancelButton = screen.getByRole('button', { name: 'Cancel' });
     const submitButton = screen.getByRole('button', { name: 'Submit' });
 
+    fireEvent.click(screen.getByTestId('attach-diagnostics'));
     fireEvent.click(submitButton);
 
     await waitFor(() => {
@@ -310,6 +326,7 @@ describe('FeedbackForm Component', () => {
     const textarea = screen.getByPlaceholderText('Please tell us what you think...');
     fireEvent.change(textarea, { target: { value: 'Test feedback message' } });
 
+    fireEvent.click(screen.getByTestId('attach-diagnostics'));
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
 
     await waitFor(() => {
@@ -343,6 +360,7 @@ describe('FeedbackForm Component', () => {
     fireEvent.change(type, { target: { value: 'bug' } });
     fireEvent.change(textarea, { target: { value: 'Exact feedback that failed' } });
 
+    fireEvent.click(screen.getByTestId('attach-diagnostics'));
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
@@ -366,6 +384,7 @@ describe('FeedbackForm Component', () => {
       target: { value: 'Still sending' },
     });
 
+    fireEvent.click(screen.getByTestId('attach-diagnostics'));
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
 
     await waitFor(() => expect(pendingSubmit).toHaveBeenCalledTimes(1));
@@ -378,6 +397,7 @@ describe('FeedbackForm Component', () => {
     const textarea = screen.getByPlaceholderText('Please tell us what you think...');
     fireEvent.change(textarea, { target: { value: '  Test feedback with whitespace  ' } });
 
+    fireEvent.click(screen.getByTestId('attach-diagnostics'));
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
 
     await waitFor(() => {
@@ -489,6 +509,7 @@ describe('FeedbackForm Component', () => {
     );
 
     fireEvent.change(textarea, { target: { value: 'Fits with the accepted attachment' } });
+    fireEvent.click(screen.getByTestId('attach-diagnostics'));
     fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
 
     await waitFor(() => {
@@ -507,6 +528,8 @@ describe('FeedbackForm Component', () => {
 
     const textarea = screen.getByPlaceholderText('Please tell us what you think...');
     fireEvent.change(textarea, { target: { value: 'Test feedback message' } });
+
+    fireEvent.click(screen.getByTestId('attach-diagnostics'));
 
     const form = screen.getByRole('textbox').closest('form');
     expect(form).toBeInTheDocument();
@@ -558,7 +581,8 @@ describe('FeedbackForm Component', () => {
         await Promise.resolve();
       });
       fireEvent.change(textarea, { target: { value: 'Here is what I see' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+      fireEvent.click(screen.getByTestId('attach-diagnostics'));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
 
       await waitFor(() => {
         expect(mockOnSubmit).toHaveBeenCalledWith('Here is what I see', 'suggestion', [dataUrl]);

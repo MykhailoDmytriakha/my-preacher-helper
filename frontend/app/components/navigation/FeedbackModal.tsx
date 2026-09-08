@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
-import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
 import FeedbackForm from "@/components/navigation/FeedbackForm";
 import "@locales/i18n";
 
@@ -49,8 +48,14 @@ export default function FeedbackModal({ isOpen, onClose, onSubmit }: FeedbackMod
             </button>
           </div>
 
+          {/*
+            The viewer button used to live here. It promised an action on the feedback and
+            delivered a wall of JSON to copy by hand; the form now attaches that report
+            itself, through a checkbox beside the other attachments. The viewer remains
+            where it is genuinely a viewer — next to a freshness warning someone is
+            looking at.
+          */}
           <FeedbackForm onSubmit={onSubmit} onCancel={onClose} />
-          <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700"><TechnicalDetailsButton /></div>
         </div>
       </div>
     </div>
