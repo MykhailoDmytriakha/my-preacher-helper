@@ -13,6 +13,7 @@ import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars2Icon } from
 import React, { useEffect, useRef, useState } from "react";
 
 import PointNote from "@/components/PointNote";
+import { sortSubPointsByPosition } from "@/utils/subPoints";
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from "@/utils/textNormalization";
 
 import type { SubPoint } from "@/models/models";
@@ -165,7 +166,7 @@ export const SubPointList: React.FC<SubPointListProps> = ({
     onReorder?.(outlinePointId, result.source.index, result.destination.index);
   };
 
-  const sorted = [...subPoints].sort((a, b) => a.position - b.position);
+  const sorted = sortSubPointsByPosition(subPoints);
 
   if (sorted.length === 0 && isPointLocked) return null;
 

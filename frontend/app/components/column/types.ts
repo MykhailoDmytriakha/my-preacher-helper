@@ -70,3 +70,6 @@ export interface OpenPointEditorArgs {
   setIsEditingLocally: React.Dispatch<React.SetStateAction<boolean>>;
   onEditPoint?: (point: SermonPoint) => void;
 }
+
+/** One thought card contract shared by assigned, subpoint and unassigned lanes. */
+export type ThoughtItemRenderer = (item: Item, subPointText?: string | null) => React.ReactNode;

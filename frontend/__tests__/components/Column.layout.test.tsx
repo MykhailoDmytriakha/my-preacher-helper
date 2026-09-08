@@ -109,3 +109,17 @@ describe('Column layout', () => {
     expect(draggableRoots[1]?.className).toMatch(/\bpb-4\b/);
   });
 });
+
+it('orders displayed subpoints without mutating the parent-owned outline', () => {
+  const subPoints = [
+    { id: 'later', text: 'Later', position: 2 },
+    { id: 'earlier', text: 'Earlier', position: 1 },
+  ];
+  Object.freeze(subPoints);
+  const point = Object.freeze({ id: 'point', text: 'Point', isReviewed: false, subPoints });
+  render(<Column id="main" title="Main" items={[]} outlinePoints={[point]} />);
+  expect(subPoints.map(subPoint => subPoint.id)).toEqual(['later', 'earlier']);
+  const earlier = screen.getByTestId('sub-point-drop-earlier');
+  const later = screen.getByTestId('sub-point-drop-later');
+  expect(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});

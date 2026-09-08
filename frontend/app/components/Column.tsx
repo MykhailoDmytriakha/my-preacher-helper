@@ -3,932 +3,54 @@
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { DragDropContext, Draggable, Droppable } from "@hello-pangea/dnd";
-import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon } from "@heroicons/react/24/outline";
+import { PlusIcon, PencilIcon, CheckIcon, XMarkIcon, TrashIcon, Bars3Icon, ArrowUturnLeftIcon, SparklesIcon, ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "@locales/i18n";
 
 import { MicrophoneIcon, SwitchViewIcon } from "@/components/Icons";
-import PointNote from "@/components/PointNote";
 import { useAiUsage } from "@/hooks/useAiUsage";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { getSectionLabel } from "@/lib/sections";
-import { Item, SermonPoint, SubPoint } from "@/models/models";
-import { getOutlinePointAiSortState } from "@/utils/aiSorting";
+import { Item, SermonPoint } from "@/models/models";
 import { debugLog } from "@/utils/debugMode";
-import { buildSubPointRenderableEntries } from "@/utils/subPoints";
-import { capitalizeFirstLetter, normalizeCapitalizedTitle } from "@/utils/textNormalization";
+import { sortSubPointsByPosition } from "@/utils/subPoints";
 import { UI_COLORS } from "@/utils/themeColors";
 
 import { AudioRecorder } from "./AudioRecorder";
 import { recordAudioThought } from "./column/audio";
+import { buildColumnItemIndex } from "./column/columnItemModel";
 import {
-  BG_GRAY_LIGHT_DARK,
-  BG_GRAY_LIGHTER_DARK,
   DEFAULT_ALL_POINTS_BLOCKED_TEXT,
   DEFAULT_RECORD_AUDIO_TEXT,
   DEFAULT_UNASSIGNED_THOUGHTS_TEXT,
-  INLINE_EDIT_ACTION_BUTTON_BASE_CLASS,
   TRANSLATION_COMMON_CANCEL,
-  TRANSLATION_COMMON_DELETE,
   TRANSLATION_COMMON_SAVE,
-  TRANSLATION_STRUCTURE_ADD_THOUGHT,
   TRANSLATION_STRUCTURE_ALL_POINTS_BLOCKED,
   TRANSLATION_STRUCTURE_RECORD_AUDIO,
   TRANSLATION_STRUCTURE_UNASSIGNED_THOUGHTS,
 } from "./column/constants";
 import { DeletePointConfirmModal } from "./column/DeletePointConfirmModal";
+import { OutlinePointCard } from "./column/OutlinePointCard";
 import { SubPointList } from "./column/SubPointList";
+import { UnassignedThoughtLane } from "./column/ThoughtLanes";
 import { useColumnOutlineState } from "./column/useColumnOutlineState";
 import {
   getAdjacentSectionIds,
   getOutlineInsertAccent,
-  getPlaceholderColors,
-  getPointLockToggleLabel,
   getSectionBorderColor,
   getSectionHeaderBgStyle,
   isPointAudioSection,
-  openPointEditor,
 } from "./column/utils";
 import ExportButtons from "./ExportButtons";
-import { FlatRecorderButton } from "./FlatRecorderButton";
 import FocusModeLayout from "./FocusModeLayout";
-import { FocusRecorderButton } from "./FocusRecorderButton";
 import FocusSidebar from "./FocusSidebar";
-import { OutlinePointGuidanceTooltip, SermonSectionGuidanceTooltip } from "./SermonGuidanceTooltips";
+import { SermonSectionGuidanceTooltip } from "./SermonGuidanceTooltips";
 import SortableItem from "./SortableItem";
 
-import type { ColumnProps, OnAudioThoughtCreated, Translate } from "./column/types";
+import type { ColumnProps, ThoughtItemRenderer } from "./column/types";
 
-type SubPointRenderableEntry = ReturnType<typeof buildSubPointRenderableEntries<Item>>[number];
-
-type ColumnComponentProps = ColumnProps & {
-  showNotes?: boolean;
-};
-
-const getRenderableEntryPosition = (entry: SubPointRenderableEntry | null | undefined): number | undefined => {
-  if (!entry) return undefined;
-
-  if (entry.type === "item") {
-    return typeof entry.item.position === "number" ? entry.item.position : undefined;
-  }
-
-  return typeof entry.subPoint.position === "number" ? entry.subPoint.position : undefined;
-};
-
-const getRenderableEntryFirstItemId = (entry: SubPointRenderableEntry | null | undefined): string | null => {
-  if (!entry) return null;
-  if (entry.type === "item") return entry.item.id;
-  return entry.items[0]?.id ?? null;
-};
-
-const getRenderableEntryLastItemId = (entry: SubPointRenderableEntry | null | undefined): string | null => {
-  if (!entry) return null;
-  if (entry.type === "item") return entry.item.id;
-  return entry.items[entry.items.length - 1]?.id ?? null;
-};
-
-const findPreviousRenderableItemId = (
-  entries: SubPointRenderableEntry[],
-  boundaryIndex: number,
-): string | null => {
-  for (let index = boundaryIndex - 1; index >= 0; index -= 1) {
-    const itemId = getRenderableEntryLastItemId(entries[index]);
-    if (itemId) return itemId;
-  }
-  return null;
-};
-
-const findNextRenderableItemId = (
-  entries: SubPointRenderableEntry[],
-  boundaryIndex: number,
-): string | null => {
-  for (let index = boundaryIndex; index < entries.length; index += 1) {
-    const itemId = getRenderableEntryFirstItemId(entries[index]);
-    if (itemId) return itemId;
-  }
-  return null;
-};
-
-const OutlinePointDropSlot: React.FC<{
-  slotId: string;
-  containerId: string;
-  outlinePointId: string;
-  beforeItemId?: string | null;
-  afterItemId?: string | null;
-  prevPosition?: number;
-  nextPosition?: number;
-  activeId?: string | null;
-  t: Translate;
-}> = ({
-  slotId,
-  containerId,
-  outlinePointId,
-  beforeItemId,
-  afterItemId,
-  prevPosition,
-  nextPosition,
-  activeId,
-}) => {
-  const { setNodeRef } = useDroppable({
-    id: `outline-gap-${slotId}`,
-    data: {
-      container: containerId,
-      outlinePointId,
-      subPointId: null,
-      beforeItemId: beforeItemId ?? undefined,
-      afterItemId: afterItemId ?? undefined,
-      prevPosition,
-      nextPosition,
-    },
-  });
-  const hasActiveDrag = Boolean(activeId);
-
-  // Invisible droppable — collision detection only, no visual chrome.
-  // Items rearrange in real-time via live preview state updates.
-  // Larger hit area during drag so users can target the gap between subpoints.
-  return (
-    <div
-      ref={setNodeRef}
-      data-testid={`outline-gap-${slotId}`}
-      className={`transition-all duration-150 ${hasActiveDrag ? "min-h-[24px]" : "min-h-[4px]"}`}
-    />
-  );
-};
-
-// Drop zone with sub-point grouping (visual headers only, no nested drop targets)
-const SubPointDropTarget: React.FC<{
-  subPoint: SubPoint;
-  items: Item[];
-  containerId: string;
-  outlinePointId: string;
-  renderItem: (item: Item) => React.ReactNode;
-  activeId?: string | null;
-  t: Translate;
-  renderRecorder?: (subPoint: SubPoint) => React.ReactNode;
-  showNotes?: boolean;
-  isReadOnly?: boolean;
-  onEditNote?: (note?: string) => void;
-}> = ({ subPoint, items, containerId, outlinePointId, renderItem, activeId, t, renderRecorder, showNotes = false, isReadOnly = false, onEditNote }) => {
-  const { setNodeRef, isOver } = useDroppable({
-    id: `sub-point-${subPoint.id}`,
-    data: {
-      container: containerId,
-      outlinePointId,
-      subPointId: subPoint.id,
-    },
-  });
-  const hasActiveDrag = Boolean(activeId);
-  const isHovered = isOver && hasActiveDrag;
-
-  return (
-    <div
-      ref={setNodeRef}
-      data-testid={`sub-point-drop-${subPoint.id}`}
-      className={`relative ml-3 rounded-2xl border px-3 py-3 shadow-sm transition-all duration-200 ${
-        isHovered
-          ? "border-blue-300 bg-blue-50/50 ring-1 ring-blue-200/50 dark:border-blue-600 dark:bg-blue-900/15 dark:ring-blue-700/30"
-          : "border-slate-200/90 bg-slate-50/90 dark:border-slate-700/70 dark:bg-slate-900/30"
-      }`}
-    >
-      <div
-        aria-hidden="true"
-        className={`pointer-events-none absolute bottom-3 left-3 top-3 w-px rounded-full ${
-          isHovered ? "bg-blue-300 dark:bg-blue-500" : "bg-slate-300/90 dark:bg-slate-600/90"
-        }`}
-      />
-      <div
-        aria-hidden="true"
-        className={`pointer-events-none absolute bottom-3 left-3 h-1.5 w-1.5 -translate-x-1/2 rounded-full ${
-          isHovered ? "bg-blue-400 dark:bg-blue-400" : "bg-slate-400 dark:bg-slate-500"
-        }`}
-      />
-      <div className="relative flex items-center justify-between gap-2 pl-4 pr-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <span
-            aria-hidden="true"
-            className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${
-              isHovered ? "bg-blue-400 dark:bg-blue-400" : "bg-slate-400 dark:bg-slate-500"
-            }`}
-          />
-          <span className="min-w-0 truncate text-xs font-semibold text-slate-600 dark:text-slate-300" title={subPoint.text}>
-            {subPoint.text}
-          </span>
-        </div>
-        {renderRecorder ? (
-          <div className="shrink-0">
-            {renderRecorder(subPoint)}
-          </div>
-        ) : null}
-      </div>
-      {showNotes && (
-        <div className="mt-1 pl-4 pr-1">
-          <PointNote
-            note={subPoint.note}
-            onChange={(note) => onEditNote?.(note)}
-            isReadOnly={isReadOnly}
-            addRevealClass="opacity-100"
-          />
-        </div>
-      )}
-      <div
-        data-testid={`sub-point-lane-${subPoint.id}`}
-        className="relative mt-3 space-y-4 pl-4 pr-1"
-      >
-        {items.length > 0 && items.map(renderItem)}
-        {items.length === 0 && (
-          <div className={`min-h-[40px] rounded border border-dashed px-4 py-2 text-center text-sm ${
-            isHovered
-              ? "border-blue-300 text-blue-400 dark:border-blue-600 dark:text-blue-400"
-              : "border-gray-300 text-gray-400 dark:border-gray-600 dark:text-gray-500"
-          }`}>
-            {t("structure.dropThoughtsHere")}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const SubPointAwareDropZone: React.FC<{
-  setNodeRef: (node: HTMLElement | null) => void;
-  isOver: boolean;
-  pointItems: Item[];
-  subPoints: SubPoint[];
-  containerId: string;
-  outlinePointId: string;
-  hasItems: boolean;
-  onEdit?: (item: Item) => void;
-  isHighlighted: (itemId: string) => boolean;
-  getHighlightType: (itemId: string) => 'assigned' | 'moved' | undefined;
-  onKeepItem?: (itemId: string, columnId: string) => void;
-  onRevertItem?: (itemId: string, columnId: string) => void;
-  activeId?: string | null;
-  onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
-  onToggleThoughtLock?: (thoughtId: string, isLocked: boolean) => Promise<void> | void;
-  renderSubPointRecorder?: (subPoint: SubPoint) => React.ReactNode;
-  showNotes?: boolean;
-  isPointLocked?: boolean;
-  onSetSubPointNote?: (outlinePointId: string, subPointId: string, note?: string) => void;
-  t: Translate;
-}> = ({
-  setNodeRef, isOver, pointItems, subPoints, containerId, outlinePointId, hasItems,
-  onEdit, isHighlighted, getHighlightType, onKeepItem, onRevertItem, activeId, onMoveToAmbiguous,
-  onToggleThoughtLock, renderSubPointRecorder, showNotes = false, isPointLocked = false, onSetSubPointNote, t
-}) => {
-  const hasSubPoints = subPoints.length > 0;
-
-  const renderItem = (item: Item, subPointText?: string | null) => (
-    <SortableItem
-      key={item.id}
-      item={item}
-      containerId={containerId}
-      locationContext={{
-        subPointText: subPointText ?? null,
-      }}
-      onEdit={onEdit}
-      isHighlighted={isHighlighted(item.id)}
-      highlightType={getHighlightType(item.id)}
-      onKeep={onKeepItem}
-      onRevert={onRevertItem}
-      activeId={activeId}
-      onMoveToAmbiguous={onMoveToAmbiguous}
-      onToggleLock={onToggleThoughtLock}
-      isLocked={Boolean(item.isLocked)}
-    />
-  );
-
-  // Interleave items and sub-point headers sorted by position
-  const renderOrder = buildSubPointRenderableEntries(pointItems, subPoints);
-
-  return (
-    <div
-      ref={setNodeRef}
-      className={`min-h-[80px] p-4 transition-all ${isOver ? 'ring-1 ring-blue-300/40 dark:ring-blue-500/30' : ''}`}
-    >
-      {!hasItems && !hasSubPoints ? (
-        <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
-          {t('structure.dropThoughtsHere')}
-        </div>
-      ) : (
-        <SortableContext items={pointItems} strategy={verticalListSortingStrategy}>
-          <div className="space-y-3">
-            {renderOrder.map((entry, entryIndex) => {
-              const nextEntry = entryIndex < renderOrder.length - 1 ? renderOrder[entryIndex + 1] : null;
-              const gapSlot = hasSubPoints && nextEntry ? (
-                <OutlinePointDropSlot
-                  key={`gap-${outlinePointId}-${entryIndex + 1}`}
-                  slotId={`${outlinePointId}-${entryIndex + 1}`}
-                  containerId={containerId}
-                  outlinePointId={outlinePointId}
-                  afterItemId={findPreviousRenderableItemId(renderOrder, entryIndex + 1)}
-                  beforeItemId={findNextRenderableItemId(renderOrder, entryIndex + 1)}
-                  prevPosition={getRenderableEntryPosition(entry)}
-                  nextPosition={getRenderableEntryPosition(nextEntry)}
-                  activeId={activeId}
-                  t={t}
-                />
-              ) : null;
-
-              if (entry.type === 'item') {
-                return (
-                  <React.Fragment key={`item-${entry.item.id}`}>
-                    {renderItem(entry.item, null)}
-                    {gapSlot}
-                  </React.Fragment>
-                );
-              }
-              const { subPoint: sp, items: spItems } = entry;
-              return (
-                <React.Fragment key={`spg-${sp.id}`}>
-                  <SubPointDropTarget
-                    subPoint={sp}
-                    items={spItems}
-                    containerId={containerId}
-                    outlinePointId={outlinePointId}
-                    renderItem={(item) => renderItem(item, sp.text)}
-                    activeId={activeId}
-                    t={t}
-                    renderRecorder={renderSubPointRecorder}
-                    showNotes={showNotes}
-                    isReadOnly={isPointLocked}
-                    onEditNote={(note) => onSetSubPointNote?.(outlinePointId, sp.id, note)}
-                  />
-                  {gapSlot}
-                </React.Fragment>
-              );
-            })}
-
-            {/* Minimal spacer at bottom for collision detection */}
-          </div>
-        </SortableContext>
-      )}
-    </div>
-  );
-};
-
-// Component for rendering outline point placeholder with thoughts
-const SermonPointPlaceholder: React.FC<{
-  point: SermonPoint;
-  items: Item[];
-  containerId: string;
-  onEdit?: (item: Item) => void;
-  isHighlighted: (itemId: string) => boolean;
-  getHighlightType: (itemId: string) => 'assigned' | 'moved' | undefined;
-  onKeepItem?: (itemId: string, columnId: string) => void;
-  onRevertItem?: (itemId: string, columnId: string) => void;
-  onTogglePointLock?: (outlinePointId: string, isLocked: boolean) => Promise<void> | void;
-  onToggleThoughtLock?: (thoughtId: string, isLocked: boolean) => Promise<void> | void;
-  onToggleReviewed?: (outlinePointId: string, isReviewed: boolean) => Promise<void> | void;
-  headerColor?: string;
-  t: Translate;
-  activeId?: string | null;
-  onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
-  sermonId?: string;
-  onAudioThoughtCreated?: OnAudioThoughtCreated;
-  isFocusMode?: boolean;
-  onAddThought?: (sectionId: string, outlinePointId?: string) => void;
-  sectionTitle?: string;
-  audioError?: string | null;
-  setAudioError: (error: string | null) => void;
-  onClearAudioError: () => void;
-  onAiSortPoint?: (outlinePointId: string) => void;
-  isOnline: boolean;
-  aiBlocked?: boolean;
-  transcriptionBlocked?: boolean;
-  transcriptionUnavailableLabel?: string;
-  isSorting?: boolean;
-  isSortReviewPending?: boolean;
-  sortingOutlinePointId?: string | null;
-  // Drag handle props for normal mode reordering
-  dragHandleProps?: React.HTMLAttributes<HTMLElement> | null;
-  onEditPoint?: (point: SermonPoint) => void;
-  onDeletePoint?: (pointId: string) => void;
-  // For inline edit in normal mode
-  onSaveEdit?: (pointId: string, newText: string) => void;
-  // Sub-point operations
-  onAddSubPoint?: (outlinePointId: string, text: string) => void;
-  onEditSubPoint?: (outlinePointId: string, subPointId: string, newText: string) => void;
-  onSetPointNote?: (pointId: string, note?: string) => void;
-  onSetSubPointNote?: (pointId: string, subPointId: string, note?: string) => void;
-  onDeleteSubPoint?: (outlinePointId: string, subPointId: string) => void;
-  onReorderSubPoints?: (outlinePointId: string, sourceIndex: number, destinationIndex: number) => void;
-  showNotes?: boolean;
-}> = ({
-  point,
-  items,
-  containerId,
-  onEdit,
-  isHighlighted,
-  getHighlightType,
-  onKeepItem,
-  onRevertItem,
-  onTogglePointLock,
-  onToggleThoughtLock,
-  onToggleReviewed,
-  headerColor,
-  t,
-  activeId,
-  onMoveToAmbiguous,
-  sermonId,
-  onAudioThoughtCreated,
-  isFocusMode,
-  onAddThought,
-  sectionTitle,
-  audioError,
-  setAudioError,
-  onClearAudioError,
-  onAiSortPoint,
-  isOnline,
-  aiBlocked = false,
-  transcriptionBlocked = false,
-  transcriptionUnavailableLabel,
-  isSorting = false,
-  isSortReviewPending = false,
-  sortingOutlinePointId,
-  dragHandleProps,
-  onEditPoint,
-  onDeletePoint,
-  onSaveEdit,
-  onAddSubPoint,
-  onEditSubPoint,
-  onSetPointNote,
-  onSetSubPointNote,
-  onDeleteSubPoint,
-  onReorderSubPoints,
-  showNotes = false,
-  // eslint-disable-next-line sonarjs/cognitive-complexity -- dense UI component with multiple conditional controls
-}) => {
-    const { setNodeRef, isOver } = useDroppable({
-      id: `outline-point-${point.id}`,
-      data: { container: containerId, outlinePointId: point.id }
-    });
-
-    const pointItems = items.filter(item => item.outlinePointId === point.id);
-    const hasItems = pointItems.length > 0;
-    const isPointLocked = hasItems && pointItems.every((item) => item.isLocked);
-    const aiSortState = getOutlinePointAiSortState({
-      items,
-      outlinePointId: point.id,
-      isOnline,
-      aiBlocked,
-      isSorting,
-      isDiffModeActive: isSortReviewPending,
-    });
-    const isSortingThisPoint = isSorting && sortingOutlinePointId === point.id;
-
-    const colors = getPlaceholderColors(containerId, headerColor);
-
-    const [isCollapsed, setIsCollapsed] = React.useState<boolean>(false);
-
-    // Local state for audio recording (per outline point)
-    const [isRecordingAudio, setIsRecordingAudio] = React.useState<boolean>(false);
-    const [subPointProcessingTarget, setSubPointProcessingTarget] = React.useState<string | null>(null);
-    const [subPointAudioErrors, setSubPointAudioErrors] = React.useState<Record<string, string>>({});
-
-    const createSubPointProcessingSetter = React.useCallback((subPointId: string): React.Dispatch<React.SetStateAction<boolean>> => {
-      return (value) => {
-        setSubPointProcessingTarget((current) => {
-          const next = value instanceof Function ? value(current === subPointId) : value;
-          if (next) return subPointId;
-          return current === subPointId ? null : current;
-        });
-      };
-    }, []);
-
-    const setSubPointAudioError = React.useCallback((subPointId: string, error: string | null) => {
-      setSubPointAudioErrors((previous) => {
-        if (!error) {
-          const next = { ...previous };
-          delete next[subPointId];
-          return next;
-        }
-
-        return { ...previous, [subPointId]: error };
-      });
-    }, []);
-
-    // Local inline edit state (normal mode)
-    const [isEditingLocally, setIsEditingLocally] = React.useState(false);
-    const [localEditText, setLocalEditText] = React.useState(point.text);
-    const localEditRef = React.useRef<HTMLInputElement>(null);
-    React.useEffect(() => {
-      if (isEditingLocally && localEditRef.current) {
-        localEditRef.current.focus();
-        localEditRef.current.select();
-      }
-    }, [isEditingLocally]);
-
-    const handleLocalSave = () => {
-      const textToSave = normalizeCapitalizedTitle(localEditText);
-      if (!textToSave) {
-        setIsEditingLocally(false);
-        setLocalEditText(point.text);
-        return;
-      }
-      onSaveEdit?.(point.id, textToSave);
-      setIsEditingLocally(false);
-    };
-
-    const handleLocalCancel = () => {
-      setIsEditingLocally(false);
-      setLocalEditText(point.text);
-    };
-
-    const pointLockToggleLabel = getPointLockToggleLabel(isPointLocked, t);
-    const pointToggleHandler = onTogglePointLock ?? onToggleReviewed;
-    const canUseInlineRecorder = Boolean(sermonId && isPointAudioSection(containerId));
-    const renderSubPointRecorder = canUseInlineRecorder
-      ? (subPoint: SubPoint) => (
-        <FlatRecorderButton
-          disabled={isPointLocked || transcriptionBlocked}
-          title={transcriptionBlocked ? transcriptionUnavailableLabel : undefined}
-          transcriptionError={subPointAudioErrors[subPoint.id] ?? null}
-          onClearError={() => setSubPointAudioError(subPoint.id, null)}
-          onRecordingComplete={(audioBlob) => {
-            if (transcriptionBlocked) return;
-            if (!sermonId) return;
-            void recordAudioThought({
-              audioBlob,
-              sectionId: containerId,
-              sermonId,
-              pointId: point.id,
-              subPointId: subPoint.id,
-              setIsRecordingAudio: createSubPointProcessingSetter(subPoint.id),
-              setAudioError: (error) => setSubPointAudioError(subPoint.id, error),
-              onAudioThoughtCreated,
-              t,
-              errorContext: "Error recording audio for sub-point:",
-            });
-          }}
-          isProcessing={subPointProcessingTarget === subPoint.id}
-          onError={(error) => {
-            setSubPointAudioError(subPoint.id, error);
-            setSubPointProcessingTarget((current) => current === subPoint.id ? null : current);
-          }}
-        />
-      )
-      : undefined;
-    const aiSortTooltip = (() => {
-      if (isSortingThisPoint) {
-        return t("structure.sorting", { defaultValue: "Sorting..." });
-      }
-      switch (aiSortState.disabledReason) {
-        case "offline":
-          return t("structure.aiSortPointDisabledOffline", {
-            defaultValue: "AI sorting is unavailable offline.",
-          });
-        case "quotaExhausted":
-          return t("structure.aiSortPointDisabledQuotaExhausted", {
-            defaultValue: "Not enough AI usage remaining.",
-          });
-        case "sorting":
-          return t("structure.aiSortPointDisabledSorting", {
-            defaultValue: "AI sorting is already running.",
-          });
-        case "review":
-          return t("structure.aiSortPointDisabledReview", {
-            defaultValue: "Review or revert current AI suggestions first.",
-          });
-        case "tooMany":
-          return t("structure.aiSortPointDisabledTooMany", {
-            defaultValue: "AI sorting supports up to 25 thoughts in one structure point.",
-          });
-        case "insufficientUnlocked":
-          return t("structure.aiSortPointDisabledTooFewUnlocked", {
-            defaultValue: "Need at least 2 unlocked thoughts in this structure point.",
-          });
-        default:
-          return t("structure.aiSortPoint", {
-            defaultValue: "Sort this structure point with AI. Locked thoughts stay fixed.",
-          });
-      }
-    })();
-
-    return (
-      <>
-        <div
-          className={`group ${colors.border} ${colors.bg} rounded-lg transition duration-200 ${isOver ? 'ring-2 ring-blue-400 shadow-lg scale-[1.02]' : 'shadow-sm hover:shadow-md'
-            }`}
-          style={headerColor ? { borderColor: headerColor } : {}}
-        >
-          {/* SermonOutline point header */}
-          <div
-            className={`px-4 py-2 rounded-t-lg border-b border-opacity-20 dark:border-opacity-30 ${headerColor ? BG_GRAY_LIGHTER_DARK : colors.header}`}
-            style={headerColor ? { backgroundColor: `${headerColor}20` } : {}}
-          >
-            <div className="flex items-center justify-between gap-1.5 w-full">
-              {/* Drag handle for normal mode reordering */}
-              {dragHandleProps && (
-                <div
-                  {...(dragHandleProps as React.HTMLAttributes<HTMLDivElement>)}
-                  className={isPointLocked ? "hidden" : `cursor-grab opacity-50 hover:opacity-90 flex-shrink-0 transition-opacity ${colors.headerText}`}
-                  title={!isPointLocked ? t('common.dragToReorder', { defaultValue: 'Drag to reorder' }) : undefined}
-                >
-                  {!isPointLocked && <Bars3Icon className="h-4 w-4" />}
-                </div>
-              )}
-
-              {/* Inline edit form or click-to-edit title */}
-              {isEditingLocally ? (
-                <div className="flex-1 flex items-center gap-1 min-w-0">
-                  <input
-                    ref={localEditRef}
-                    type="text"
-                    value={localEditText}
-                    onChange={(e) => setLocalEditText(capitalizeFirstLetter(e.target.value))}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleLocalSave(); if (e.key === 'Escape') handleLocalCancel(); }}
-                    className="flex-1 px-2 py-0.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded border border-gray-300 dark:border-gray-500 focus:outline-none focus:ring-1 focus:ring-blue-400 min-w-0"
-                  />
-                  <button aria-label={t(TRANSLATION_COMMON_SAVE)} onClick={handleLocalSave} className={`${INLINE_EDIT_ACTION_BUTTON_BASE_CLASS} text-green-600 hover:text-green-700 dark:text-green-400`}>
-                    <CheckIcon className="h-4 w-4" />
-                  </button>
-                  <button aria-label={t(TRANSLATION_COMMON_CANCEL)} onClick={handleLocalCancel} className={`${INLINE_EDIT_ACTION_BUTTON_BASE_CLASS} text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200`}>
-                    <XMarkIcon className="h-4 w-4" />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                  {point.subPoints && point.subPoints.length > 0 && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setIsCollapsed(prev => !prev);
-                      }}
-                      className="p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10 text-gray-500 dark:text-gray-400 transition-colors flex-shrink-0"
-                      title={isCollapsed ? t('common.expand') : t('common.collapse')}
-                      aria-label={isCollapsed ? t('common.expand') : t('common.collapse')}
-                    >
-                      <ChevronDownIcon
-                        className={`h-3.5 w-3.5 transform transition-transform duration-200 ${
-                          isCollapsed ? '-rotate-90' : ''
-                        }`}
-                      />
-                    </button>
-                  )}
-                  <h4
-                    onClick={() => openPointEditor({
-                      point,
-                      isLocked: isPointLocked,
-                      isFocusMode,
-                      setLocalEditText,
-                      setIsEditingLocally,
-                      onEditPoint,
-                    })}
-                    className={`font-medium text-sm min-w-0 truncate select-none ${isPointLocked ? 'cursor-default' : 'cursor-text hover:bg-black/5 dark:hover:bg-white/10 rounded px-1 -mx-1 transition-colors'} ${headerColor ? 'text-gray-800 dark:text-gray-200' : colors.headerText}`}
-                    title={!isPointLocked ? t('common.clickToEdit', { defaultValue: 'Click to edit' }) : undefined}
-                  >
-                    {point.text}
-                  </h4>
-                  {isFocusMode && onAiSortPoint && (
-                    <button
-                      type="button"
-                      onClick={() => onAiSortPoint(point.id)}
-                      disabled={aiSortState.disabledReason !== null}
-                      title={aiSortTooltip}
-                      aria-label={aiSortTooltip}
-                      data-testid={`outline-point-ai-sort-${point.id}`}
-                      className={`p-1 rounded-full border transition-colors flex-shrink-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 dark:focus-visible:ring-amber-300 ${
-                        isSortingThisPoint
-                          ? "bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-200 border-amber-300 dark:border-amber-700"
-                          : aiSortState.disabledReason
-                            ? "bg-white/10 text-gray-400 dark:text-gray-500 border-white/10 cursor-not-allowed opacity-60"
-                            : "bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/30 dark:hover:bg-amber-900/50 text-amber-700 dark:text-amber-200 border-amber-200 dark:border-amber-700"
-                      }`}
-                    >
-                      {isSortingThisPoint ? (
-                        <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                      ) : (
-                        <SparklesIcon className="h-4 w-4" />
-                      )}
-                    </button>
-                  )}
-                  {/* Delete button (only if not reviewed, not focus mode) - Moved next to text */}
-                  {!isFocusMode && onDeletePoint && !isPointLocked && (
-                    <button
-                      aria-label={t(TRANSLATION_COMMON_DELETE)}
-                      onClick={() => onDeletePoint(point.id)}
-                      className="p-1 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 rounded transition-colors flex-shrink-0"
-                      title={t(TRANSLATION_COMMON_DELETE)}
-                    >
-                      <TrashIcon className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* Right-side actions and info */}
-              <div className="flex items-center gap-1 sm:gap-1.5 flex-shrink-0 select-none">
-
-                {/* Toggle point lock status button */}
-                {pointToggleHandler && hasItems && (
-                  <button
-                    onClick={() => void pointToggleHandler?.(point.id, !isPointLocked)}
-                    className={`p-1.5 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 dark:focus-visible:ring-blue-300 flex-shrink-0 ${isPointLocked
-                      ? 'bg-green-100 hover:bg-green-200 dark:bg-green-900 dark:hover:bg-green-800 text-green-700 dark:text-green-300'
-                      : 'bg-white/20 hover:bg-white/30 text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                      }`}
-                    title={pointLockToggleLabel}
-                    aria-label={pointLockToggleLabel}
-                  >
-                    <CheckIcon className={`h-3.5 w-3.5 ${isPointLocked ? 'text-green-700 dark:text-green-300' : ''}`} />
-                  </button>
-                )}
-
-                {/* Quick help for outline point */}
-                {containerId === 'main' && (
-                  <div className="flex-shrink-0">
-                    <OutlinePointGuidanceTooltip t={t} popoverAlignment="right" />
-                  </div>
-                )}
-
-                <span className={`text-xs whitespace-nowrap flex-shrink-0 ${headerColor ? 'text-gray-600 dark:text-gray-400' : colors.headerText} opacity-70`}>
-                  {pointItems.length} {pointItems.length === 1 ? t('structure.thought') : t('structure.thoughts')}
-                </span>
-
-                {/* Focus Recorder Button (per outline point) */}
-                {isFocusMode && onAddThought && (
-                  <button
-                    onClick={() => {
-                      debugLog('Structure: focus outline add clicked', {
-                        sectionId: containerId,
-                        outlinePointId: point.id,
-                        isFocusMode,
-                        sermonId,
-                      });
-                    onAddThought?.(containerId, point.id);
-                  }}
-                    disabled={isPointLocked}
-                    className={`w-[30px] h-[30px] flex-shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 dark:focus-visible:ring-green-300 flex items-center justify-center ${isPointLocked ? 'bg-gray-300 dark:bg-gray-600 cursor-not-allowed opacity-50' : 'bg-gray-400 hover:bg-green-500'}`}
-                    title={isPointLocked ? t('structure.pointLocked', { defaultValue: 'All thoughts in this structure point are locked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
-                    aria-label={isPointLocked ? t('structure.pointLocked', { defaultValue: 'All thoughts in this structure point are locked' }) : t(TRANSLATION_STRUCTURE_ADD_THOUGHT, { section: sectionTitle || containerId })}
-                  >
-                    <PlusIcon className="h-4 w-4 text-white" />
-                  </button>
-                )}
-
-                {canUseInlineRecorder && (
-                  <>
-                    <FocusRecorderButton
-                      size="small"
-                      disabled={isPointLocked || transcriptionBlocked}
-                      title={transcriptionBlocked ? transcriptionUnavailableLabel : undefined}
-                      transcriptionError={audioError ?? null}
-                      onClearError={onClearAudioError}
-                      onRecordingComplete={(audioBlob) => {
-                        if (transcriptionBlocked) return;
-                        if (!sermonId) return;
-                        void recordAudioThought({
-                          audioBlob,
-                          sectionId: containerId,
-                          sermonId,
-                          pointId: point.id,
-                          setIsRecordingAudio,
-                          setAudioError,
-                          onAudioThoughtCreated,
-                          t,
-                          errorContext: "Error recording audio for outline point:",
-                        });
-                      }}
-                      isProcessing={isRecordingAudio}
-                      onError={(err) => {
-                        setAudioError(err);
-                        setIsRecordingAudio(false);
-                      }}
-                    />
-                  </>
-                )}
-              </div>
-            </div>
-
-            {showNotes && !isEditingLocally && (
-              <PointNote
-                note={point.note}
-                onChange={(note) => onSetPointNote?.(point.id, note)}
-                isReadOnly={isPointLocked}
-                indentClass="ml-6"
-                addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
-              />
-            )}
-          </div>
-
-          {!isFocusMode && !isEditingLocally && !isCollapsed && ((point.subPoints?.length ?? 0) > 0 || Boolean(onAddSubPoint && onEditSubPoint && onDeleteSubPoint)) && (
-            <SubPointList
-              subPoints={point.subPoints ?? []}
-              outlinePointId={point.id}
-              isPointLocked={isPointLocked}
-              onAdd={onAddSubPoint ?? (() => undefined)}
-              onEdit={onEditSubPoint ?? (() => undefined)}
-              onDelete={onDeleteSubPoint ?? (() => undefined)}
-              onReorder={onReorderSubPoints}
-              getAffectedThoughtCount={(spId) => pointItems.filter((it) => it.subPointId === spId).length}
-              t={t}
-            />
-          )}
-
-          {/* Drop zone for thoughts — grouped by sub-point */}
-          <SubPointAwareDropZone
-            setNodeRef={setNodeRef}
-            isOver={isOver}
-            pointItems={pointItems}
-            subPoints={(point.subPoints ?? []).sort((a, b) => a.position - b.position)}
-            containerId={containerId}
-            outlinePointId={point.id}
-            hasItems={hasItems}
-            onEdit={onEdit}
-            isHighlighted={isHighlighted}
-            getHighlightType={getHighlightType}
-            onKeepItem={onKeepItem}
-            onRevertItem={onRevertItem}
-            activeId={activeId}
-            onMoveToAmbiguous={onMoveToAmbiguous}
-            onToggleThoughtLock={onToggleThoughtLock}
-            renderSubPointRecorder={renderSubPointRecorder}
-            showNotes={showNotes}
-            isPointLocked={isPointLocked}
-            onSetSubPointNote={onSetSubPointNote}
-            t={t}
-          />
-        </div>
-      </>
-    );
-  };
-
-// Component for rendering unassigned thoughts drop target
-const UnassignedThoughtsDropTarget: React.FC<{
-  items: Item[];
-  containerId: string;
-  onEdit?: (item: Item) => void;
-  isHighlighted: (itemId: string) => boolean;
-  getHighlightType: (itemId: string) => 'assigned' | 'moved' | undefined;
-  onKeepItem?: (itemId: string, columnId: string) => void;
-  onRevertItem?: (itemId: string, columnId: string) => void;
-  t: Translate;
-  activeId?: string | null;
-  onMoveToAmbiguous?: (itemId: string, fromContainerId: string) => void;
-  onToggleThoughtLock?: (thoughtId: string, isLocked: boolean) => Promise<void> | void;
-}> = ({
-  items,
-  containerId,
-  onEdit,
-  isHighlighted,
-  getHighlightType,
-  onKeepItem,
-  onRevertItem,
-  t,
-  activeId,
-  onMoveToAmbiguous,
-  onToggleThoughtLock,
-}) => {
-    const { setNodeRef, isOver } = useDroppable({
-      id: `unassigned-${containerId}`,
-      data: { container: containerId, outlinePointId: null } // null means unassigned
-    });
-
-    return (
-      <div
-        ref={setNodeRef}
-        className={`min-h-[80px] p-4 transition-all rounded-lg ${isOver ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-400 dark:ring-blue-500' : BG_GRAY_LIGHT_DARK
-          }`}
-      >
-        {items.length === 0 ? (
-          <div className="text-center text-gray-400 dark:text-gray-500 text-sm py-6 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all">
-            {t('structure.dropToUnassign', { defaultValue: 'Drop thoughts here to unassign them from structure points' })}
-          </div>
-        ) : (
-          <SortableContext items={items} strategy={verticalListSortingStrategy}>
-            <div className="space-y-4">
-              {items.map((item) => (
-                <SortableItem
-                  key={item.id}
-                  item={item}
-                  containerId={containerId}
-                  onEdit={onEdit}
-                  isHighlighted={isHighlighted(item.id)}
-                  highlightType={getHighlightType(item.id)}
-                  onKeep={onKeepItem}
-                  onRevert={onRevertItem}
-                  activeId={activeId}
-                  onMoveToAmbiguous={onMoveToAmbiguous}
-                  onToggleLock={onToggleThoughtLock}
-                  isLocked={Boolean(item.isLocked)}
-                />
-              ))}
-
-              {/* Additional drop area at the end for consistency */}
-              <div className={`text-center text-gray-400 dark:text-gray-500 text-sm py-4 mt-2 px-4 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded transition-all ${isOver ? 'border-blue-400 dark:border-blue-500 bg-blue-50 dark:bg-blue-900/20' : ''
-                }`}>
-                {t('structure.dropToUnassign')}
-              </div>
-            </div>
-          </SortableContext>
-        )}
-      </div>
-    );
-  };
+type ColumnComponentProps = ColumnProps & { showNotes?: boolean };
 
 export default function Column({
   id,
@@ -983,8 +105,9 @@ export default function Column({
   const [isSidebarVisible, setIsSidebarVisible] = useState(false);
 
   // Calculate counts for assigned and unassigned items
-  const assignedItems = items.filter(item => item.outlinePointId).length;
-  const unassignedItems = items.length - assignedItems;
+  const itemIndex = React.useMemo(() => buildColumnItemIndex(items), [items]);
+  const unassignedItems = itemIndex.unassigned.length;
+  const assignedItems = items.length - unassignedItems;
 
   // Calculate if this column has any highlighted items
   const hasHighlightedItems = items.some(item => item.id in highlightedItems);
@@ -1041,24 +164,10 @@ export default function Column({
     t,
   });
 
-  const pointLockState = React.useMemo(() => {
-    return localSermonPoints.reduce<Record<string, { hasThoughts: boolean; isLocked: boolean }>>((acc, point) => {
-      const pointItems = items.filter((item) => item.outlinePointId === point.id);
-      acc[point.id] = {
-        hasThoughts: pointItems.length > 0,
-        isLocked: pointItems.length > 0 && pointItems.every((item) => item.isLocked),
-      };
-      return acc;
-    }, {});
-  }, [items, localSermonPoints]);
-
-  const isPointLocked = (pointId: string) => pointLockState[pointId]?.isLocked ?? false;
+  const isPointLocked = (pointId: string) => itemIndex.byPoint.get(pointId)?.isLocked ?? false;
   const resolvedPointToggleHandler = onTogglePointLock ?? onToggleReviewed;
 
-  const allPointsBlocked = localSermonPoints.length > 0 && localSermonPoints.every((point) => {
-    const pointState = pointLockState[point.id];
-    return Boolean(pointState?.hasThoughts && pointState.isLocked);
-  });
+  const allPointsBlocked = localSermonPoints.length > 0 && localSermonPoints.every(point => isPointLocked(point.id));
 
   // --- State for Audio Recording ---
   const [isRecordingAudio, setIsRecordingAudio] = useState<boolean>(false);
@@ -1112,12 +221,63 @@ export default function Column({
   const borderColor = getSectionBorderColor(id, headerColor);
   const outlineInsertAccent = getOutlineInsertAccent(id);
 
-  // Helper functions for highlighting
-  const isItemHighlighted = (itemId: string) => itemId in highlightedItems;
-  const getItemHighlightType = (itemId: string) => highlightedItems[itemId]?.type;
-
   // Filter unassigned items (not linked to any outline point)
-  const unassignedItemsForDisplay = items.filter(item => !item.outlinePointId);
+  const unassignedItemsForDisplay = itemIndex.unassigned;
+
+  const renderThoughtItem: ThoughtItemRenderer = (item, subPointText) => (
+    <SortableItem
+      key={item.id}
+      item={item}
+      {...(subPointText !== undefined ? { locationContext: { subPointText } } : {})}
+      containerId={id}
+      onEdit={onEdit}
+      isHighlighted={item.id in highlightedItems}
+      highlightType={highlightedItems[item.id]?.type}
+      onKeep={onKeepItem}
+      onRevert={onRevertItem}
+      activeId={activeId}
+      onMoveToAmbiguous={onMoveToAmbiguous}
+      onToggleLock={onToggleThoughtLock}
+      isLocked={Boolean(item.isLocked)}
+    />
+  );
+
+  const renderPoint = (point: SermonPoint, normalActions?: Pick<React.ComponentProps<typeof OutlinePointCard>, "dragHandleProps" | "onEditPoint" | "onDeletePoint" | "onSaveEdit">) => (
+    <OutlinePointCard
+      point={point}
+      pointItems={itemIndex.byPoint.get(point.id)?.items ?? []}
+      renderItem={renderThoughtItem}
+      containerId={id}
+      onTogglePointLock={resolvedPointToggleHandler}
+      headerColor={headerColor}
+      t={t}
+      activeId={activeId}
+      sermonId={sermonId}
+      onAudioThoughtCreated={onAudioThoughtCreated}
+      isFocusMode={isFocusMode}
+      aiBlocked={aiBlocked}
+      transcriptionBlocked={transcriptionBlocked}
+      transcriptionUnavailableLabel={transcriptionUnavailableLabel}
+      onAddThought={onAddThought}
+      sectionTitle={title}
+      audioError={pointAudioErrors[point.id] ?? null}
+      setAudioError={(error) => setPointAudioError(point.id, error)}
+      onClearAudioError={() => setPointAudioError(point.id, null)}
+      onAiSortPoint={onAiSortPoint}
+      isOnline={isOnline}
+      isSorting={isLoading}
+      isSortReviewPending={isDiffModeActive}
+      sortingOutlinePointId={sortingOutlinePointId}
+      onAddSubPoint={handleAddSubPoint}
+      onEditSubPoint={handleEditSubPoint}
+      onSetPointNote={handleSetPointNote}
+      onSetSubPointNote={handleSetSubPointNote}
+      onDeleteSubPoint={handleDeleteSubPoint}
+      onReorderSubPoints={isFocusMode ? handleReorderSubPoints : undefined}
+      {...normalActions}
+      showNotes={showNotes}
+    />
+  );
 
   const renderUnassignedThoughtsSection = (sectionItems: Item[]) => (
     <div className="mt-8">
@@ -1125,19 +285,7 @@ export default function Column({
         <h4 className={`text-sm font-medium ${UI_COLORS.muted.text} dark:${UI_COLORS.muted.darkText} mb-4`}>
           {t(TRANSLATION_STRUCTURE_UNASSIGNED_THOUGHTS, { defaultValue: DEFAULT_UNASSIGNED_THOUGHTS_TEXT })} ({sectionItems.length})
         </h4>
-        <UnassignedThoughtsDropTarget
-          items={sectionItems}
-          containerId={id}
-          onEdit={onEdit}
-          isHighlighted={isItemHighlighted}
-          getHighlightType={getItemHighlightType}
-          onKeepItem={onKeepItem}
-          onRevertItem={onRevertItem}
-          t={t}
-          activeId={activeId}
-          onMoveToAmbiguous={onMoveToAmbiguous}
-          onToggleThoughtLock={onToggleThoughtLock}
-        />
+        <UnassignedThoughtLane items={sectionItems} containerId={id} renderItem={renderThoughtItem} t={t} />
       </div>
     </div>
   );
@@ -1491,45 +639,7 @@ export default function Column({
             <>
               {localSermonPoints.map((point) => (
                 <div key={point.id} className="pb-4">
-                  <SermonPointPlaceholder
-                    point={point}
-                    items={items}
-                    containerId={id}
-                    onEdit={onEdit}
-                    isHighlighted={isItemHighlighted}
-                    getHighlightType={getItemHighlightType}
-                    onKeepItem={onKeepItem}
-                    onRevertItem={onRevertItem}
-                    onTogglePointLock={resolvedPointToggleHandler}
-                    onToggleThoughtLock={onToggleThoughtLock}
-                    headerColor={headerColor}
-                    t={t}
-                    activeId={activeId}
-                    onMoveToAmbiguous={onMoveToAmbiguous}
-                    sermonId={sermonId}
-                    onAudioThoughtCreated={onAudioThoughtCreated}
-                    isFocusMode={isFocusMode}
-                    aiBlocked={aiBlocked}
-                    transcriptionBlocked={transcriptionBlocked}
-                    transcriptionUnavailableLabel={transcriptionUnavailableLabel}
-                    onAddThought={onAddThought}
-                    sectionTitle={title}
-                    audioError={pointAudioErrors[point.id] ?? null}
-                    setAudioError={(error) => setPointAudioError(point.id, error)}
-                    onClearAudioError={() => setPointAudioError(point.id, null)}
-                    onAiSortPoint={onAiSortPoint}
-                    isOnline={isOnline}
-                    isSorting={isLoading}
-                    isSortReviewPending={isDiffModeActive}
-                    sortingOutlinePointId={sortingOutlinePointId}
-                    onAddSubPoint={handleAddSubPoint}
-                    onEditSubPoint={handleEditSubPoint}
-                    onSetPointNote={handleSetPointNote}
-                    onSetSubPointNote={handleSetSubPointNote}
-                    onDeleteSubPoint={handleDeleteSubPoint}
-                    onReorderSubPoints={handleReorderSubPoints}
-                    showNotes={showNotes}
-                  />
+                  {renderPoint(point)}
                 </div>
               ))}
               {/* Unassigned thoughts section */}
@@ -1543,22 +653,7 @@ export default function Column({
               </div>
             ) : (
               <div className="space-y-4">
-                {items.map((item) => (
-                  <SortableItem
-                    key={item.id}
-                    item={item}
-                    containerId={id}
-                    onEdit={onEdit}
-                    isHighlighted={item.id in highlightedItems}
-                    highlightType={highlightedItems[item.id]?.type}
-                    onKeep={onKeepItem}
-                    onRevert={onRevertItem}
-                    activeId={activeId}
-                    onMoveToAmbiguous={onMoveToAmbiguous}
-                    onToggleLock={onToggleThoughtLock}
-                    isLocked={Boolean(item.isLocked)}
-                  />
-                ))}
+                {items.map(item => renderThoughtItem(item))}
               </div>
             )
           )}
@@ -1570,10 +665,10 @@ export default function Column({
   const renderNormalHeader = () => (
     <div className="relative mb-2 rounded-t-md">
       <div
-        className={`p-3 flex justify-between items-center`}
+        className="flex flex-wrap items-center justify-between gap-2 p-3"
         style={headerBgStyle}
       >
-        <h2 className="text-lg font-bold text-white flex items-center">
+        <h2 className="flex min-w-0 max-w-full flex-wrap items-center gap-y-1 text-lg font-bold text-white">
           <span className="flex items-center gap-2">
             {title}
             {id === 'introduction' && (
@@ -1608,7 +703,7 @@ export default function Column({
             )}
           </div>
         </h2>
-        <div className="flex items-center space-x-2">
+        <div className="flex shrink-0 items-center gap-2">
           {/* Mic button (normal mode) */}
 	          {sermonId && onAudioThoughtCreated && isPointAudioSection(id) && (
 	            <div className="relative" ref={normalModePopoverRef}>
@@ -1743,7 +838,7 @@ export default function Column({
                 </div>
                 {point.subPoints && point.subPoints.length > 0 && (
                   <ul className="ml-2 mt-0.5 space-y-0.5">
-                    {[...point.subPoints].sort((a, b) => a.position - b.position).map((sp) => (
+                    {sortSubPointsByPosition(point.subPoints).map((sp) => (
                       <li key={sp.id} className="text-xs text-white/70 flex items-center gap-1.5">
                         <span className="w-1 h-1 rounded-full bg-white/50 flex-shrink-0" />
                         {sp.text}
@@ -1893,48 +988,12 @@ export default function Column({
                                   </div>
                                 </div>
                               )}
-                              <SermonPointPlaceholder
-                                point={point}
-                                items={items}
-                                containerId={id}
-                                onEdit={onEdit}
-                                isHighlighted={isItemHighlighted}
-                                getHighlightType={getItemHighlightType}
-                                onKeepItem={onKeepItem}
-                                onRevertItem={onRevertItem}
-                                onTogglePointLock={resolvedPointToggleHandler}
-                                onToggleThoughtLock={onToggleThoughtLock}
-                                headerColor={headerColor}
-                                t={t}
-                                activeId={activeId}
-                                onMoveToAmbiguous={onMoveToAmbiguous}
-                                sermonId={sermonId}
-                                onAudioThoughtCreated={onAudioThoughtCreated}
-                                isFocusMode={false}
-                                aiBlocked={aiBlocked}
-                                transcriptionBlocked={transcriptionBlocked}
-                                transcriptionUnavailableLabel={transcriptionUnavailableLabel}
-                                onAddThought={onAddThought}
-                                sectionTitle={title}
-                                audioError={pointAudioErrors[point.id] ?? null}
-                                setAudioError={(error) => setPointAudioError(point.id, error)}
-                                onClearAudioError={() => setPointAudioError(point.id, null)}
-                                onAiSortPoint={onAiSortPoint}
-                                isOnline={isOnline}
-                                isSorting={isLoading}
-                                isSortReviewPending={isDiffModeActive}
-                                sortingOutlinePointId={sortingOutlinePointId}
-                                dragHandleProps={providedDraggable.dragHandleProps as unknown as React.HTMLAttributes<HTMLElement>}
-                                onEditPoint={handleStartEdit}
-                                onDeletePoint={(pointId) => setDeletePointId(pointId)}
-                                onSaveEdit={handleSaveEditDirect}
-                                onAddSubPoint={handleAddSubPoint}
-                                onEditSubPoint={handleEditSubPoint}
-                                onSetPointNote={handleSetPointNote}
-                                onSetSubPointNote={handleSetSubPointNote}
-                                onDeleteSubPoint={handleDeleteSubPoint}
-                                showNotes={showNotes}
-                              />
+                              {renderPoint(point, {
+                                dragHandleProps: providedDraggable.dragHandleProps as unknown as React.HTMLAttributes<HTMLElement>,
+                                onEditPoint: handleStartEdit,
+                                onDeletePoint: setDeletePointId,
+                                onSaveEdit: handleSaveEditDirect,
+                              })}
                             </div>
                           )}
                         </Draggable>
@@ -1946,7 +1005,6 @@ export default function Column({
               </Droppable>
             </DragDropContext>
 
-            {/* Bottom Add Point Button for normal mode */}
             {/* Bottom Add Point Button for normal mode */}
             {localSermonPoints.length > 0 && renderAddPointButton()}
 
@@ -1964,22 +1022,7 @@ export default function Column({
           ) : (
             <div className="space-y-4">
               {renderAddPointButton()}
-              {items.map((item) => (
-                <SortableItem
-                  key={item.id}
-                  item={item}
-                  containerId={id}
-                  onEdit={onEdit}
-                  isHighlighted={item.id in highlightedItems}
-                  highlightType={highlightedItems[item.id]?.type}
-                  onKeep={onKeepItem}
-                  onRevert={onRevertItem}
-                  activeId={activeId}
-                  onMoveToAmbiguous={onMoveToAmbiguous}
-                  onToggleLock={onToggleThoughtLock}
-                  isLocked={Boolean(item.isLocked)}
-                />
-              ))}
+              {items.map(item => renderThoughtItem(item))}
             </div>
           )
         )}
