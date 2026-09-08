@@ -105,8 +105,7 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-// `exportContent.ts` (pulled in by SermonCard) reads translations at MODULE LOAD, so the
-// stub has to answer `t` before anything renders.
+// Non-React export helpers use the same language as the surrounding test UI.
 jest.mock('@locales/i18n', () => ({
   i18n: { t: (_key: string, fallback?: string) => fallback ?? _key, language: 'en' },
 }));

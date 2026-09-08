@@ -125,3 +125,33 @@ Artifacts: `export-text-before-desktop.png`, `export-text-before-mobile.png`, `e
 Regression evidence: all nine new preview/download cases failed against the original implementations and pass after changes. Direct export subset: 54 tests, 97.19% lines, 86.36% functions; first narrow coverage run was below the global function floor until the real close/reopen ownership contract was added. Full root gates are recorded at the checkpoint below.
 
 Export checkpoint 2026-09-07 20:15 PDT: root coverage and lint/type/unused gates passed, **579 suites / 5432 tests**, **91.16% aggregate lines**. One pre-existing study-detail complexity warning remains.
+
+
+## Export document model and contract replacement
+
+`exportContent.ts` is now a small translation/API adapter. `exportContentModel.ts` organizes language-independent sections/blocks using the canonical visual-order owner. `exportContentRenderer.ts` owns the shared header, numbered thought hierarchy and saved-plan rendering. Removed repeated headers, dead debug paths, redundant partitions and re-sorting already ordered outline thoughts. The final implementation is220runtime lines versus723before. The initial compact renderer still had excessive branching; separate thought/outline/loose renderers now pass the complexity check without warnings.
+
+A frozen copy of the original implementation and a deterministic matrix remain in ignored `frontend/output/refactoring-proof/`. Sixteen input fixtures × seven scopes × two content types × two formats × tag/metadata switches = **1792 exact string comparisons**, all equal before/after, with frozen inputs. They cover missing outlines/structure, ordering, subpoints, loose/multi-tag content, multiline text, blank metadata and plan/draft fallback. This is a migration experiment, not another permanent duplicate suite.
+
+Both old export suites (701lines) are replaced by one public contract plus direct model/renderer/language seams and a shared fixture. The12public behavior cases also passed against the frozen original implementation. Crosswalk:
+
+| Former contract | Replacement owner |
+|---|---|
+| Plain/Markdown, metadata/tags flags | Public format/header/tag cases |
+| Empty sermon/empty text/no outline/blank verse | Explicit empty-output assertions and optional-scripture cases |
+| Multiple translated aliases | Actual canonical utility; asserts each section and author's tag text |
+| Explicit structure order, reversed order, orphan priority | Parameterized direct model cases |
+| Position/subpoint visual interleave | Exact model block order plus both rendered formats |
+| Continuous N/N.M numbering and focused reset | Public hierarchy and main/mainPart cases |
+| Loose and multi-tag headings | Model block-kind and public text cases |
+| Missing/invalid legacy tags and dates | Retained-text compatibility case |
+| Saved plan, Markdown and missing-plan message | Public plan cases; adds saved-over-draft precedence |
+| Multiline scripture with blank lines | Shared header contract for both content types/formats |
+
+The former tag-normalization test only asserted Other Thoughts appeared. Its replacement checks all four sections with real normalization. The old large suite mocked canonical tag normalization and repeated identical empty-structure inputs; those duplicate/proxy checks were removed.
+
+BUG-20260907-export-language: four original cases failed because module-load translations never refreshed. Translations now resolve per export. Live RU→EN→RU without reload changed only generated labels, preserving the author's Russian text. `export-model-after.txt` matches the prior production `export-after.txt` byte-for-byte. Screenshot `export-language-english-after.png` was inspected.
+
+A separate dev-environment problem was found while checking this packet: an existing service worker served a private-layout module without FORM_COLORS alongside a new page module containing it. Bypassing only the worker through DevTools resolved the error without code/data changes. The local-worker lifecycle is tracked separately as BUG-20260907-dev-export-palette; this packet's live checks explicitly used that temporary bypass.
+
+Export-model checkpoint2026-09-07 20:37 PDT: **581suites /5445tests**, **91.09%aggregate lines**, full rootcoverage+lint/types/unused passed. Facade/model/renderer100%lines; model95.16%branches, renderer98.38%branches. A temporary parity-proof import-formatting issue was corrected before rerunning the entire gate. No new lint warnings.

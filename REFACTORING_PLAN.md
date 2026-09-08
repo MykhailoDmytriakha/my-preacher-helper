@@ -205,3 +205,5 @@ Owner delegated final design choices and requested a substantial continuous pass
 A frozen original source instance runs separately for comparable screenshots. Progress is judged by removed duplicate rules and preserved behavior, not by files touched or elapsed time alone.
 
 2026-09-07 20:15 PDT: общий экспорт TXT/PDF, lifecycle предпросмотра, общий download и отложенная загрузка Word/PDF проверены production-браузером и полными root gates (579/5432). Следующий этап: модель/форматирование экспортируемого документа и контракты тестов.
+
+2026-09-07 20:37 PDT: модель экспорта723→220строк,1792точных сравнения с исходной версией; два набора тестов заменены контрактами модели/форматирования/публичного API. Язык экспорта исправлен и проверен живьём. Полные gates581/5445зелёные. Далее — общие поля мыслей и меню пунктов.
