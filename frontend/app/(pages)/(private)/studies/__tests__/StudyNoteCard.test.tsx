@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // Mock useClipboard hook
@@ -6,6 +6,7 @@ jest.mock('@/hooks/useClipboard', () => ({
   useClipboard: jest.fn(() => ({
     isCopied: false,
     copyToClipboard: jest.fn(),
+    reset: jest.fn(),
   })),
 }));
 
@@ -19,6 +20,8 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
 }));
 
+import { useClipboard } from '@/hooks/useClipboard';
+import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { StudyNote } from '@/models/models';
 import { HIGHLIGHT_COLORS } from '@/utils/themeColors';
 
@@ -516,4 +519,23 @@ describe('StudyNoteCard', () => {
       expect(shareButton).toHaveClass('dark:hover:text-emerald-300');
     });
   });
+});
+
+
+it('does not label updated note content as copied by an earlier pending request', async () => {
+  (useClipboard as jest.Mock).mockImplementation(jest.requireActual('@/hooks/useClipboard').useClipboard);
+  (formatStudyNoteForCopy as jest.Mock).mockImplementation((note: StudyNote) => note.content);
+  let finish!: () => void;
+  const writeText = jest.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+  const note = createTestNote();
+  const props = { note, bibleLocale: 'en' as const, isExpanded: true, onToggleExpand: jest.fn(), onEdit: jest.fn() };
+  const { rerender } = render(<StudyNoteCard {...props} />);
+  fireEvent.click(screen.getByTitle('common.copy'));
+  rerender(<StudyNoteCard {...props} note={{ ...note, content: 'Updated content' }} />);
+  await act(async () => { finish(); });
+  expect(writeText).toHaveBeenCalledWith('Reflect on grace');
+  expect(screen.queryByTitle('common.copied')).toBeNull();
+  expect(screen.getByTitle('common.copy')).toBeInTheDocument();
 });

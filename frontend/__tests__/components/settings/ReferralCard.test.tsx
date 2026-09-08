@@ -18,6 +18,7 @@ describe('ReferralCard', () => {
   const user = { uid: 'user with spaces' } as User;
 
   beforeEach(() => {
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
     jest.clearAllMocks();
     fetchMock.resetMocks();
     writeText.mockResolvedValue(undefined);

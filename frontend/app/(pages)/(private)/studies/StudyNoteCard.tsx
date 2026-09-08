@@ -12,7 +12,7 @@ import {
   DocumentDuplicateIcon,
 } from '@heroicons/react/24/outline';
 import { useRouter } from 'next/navigation';
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Chip } from '@/components/ui/Chip';
@@ -103,11 +103,8 @@ export default function StudyNoteCard({
   const { t } = useTranslation();
   const router = useRouter();
 
-  // Clipboard functionality
-  const clipboardResult = useClipboard({
-    successDuration: 1500,
-  });
-  const { isCopied, copyToClipboard } = clipboardResult || { isCopied: false, copyToClipboard: () => { } };
+  const { isCopied, copyToClipboard, reset: resetCopy } = useClipboard({ successDuration: 1500 });
+  useEffect(() => resetCopy(), [note.id, note.title, note.content, note.tags, note.scriptureRefs, bibleLocale, resetCopy]);
 
   // Handle copying note data
   const handleCopyNote = async () => {

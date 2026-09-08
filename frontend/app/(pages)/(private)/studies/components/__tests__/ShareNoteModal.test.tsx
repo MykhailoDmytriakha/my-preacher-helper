@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { useClipboard } from '@/hooks/useClipboard';
@@ -142,4 +142,22 @@ describe('ShareNoteModal', () => {
     await user.click(screen.getByRole('button', { name: 'studiesWorkspace.shareLinks.revokeLink' }));
     await waitFor(() => expect(onDelete).toHaveBeenCalledWith('link-1'));
   });
+});
+
+
+it.each(['close', 'link'] as const)('invalidates a pending copy when the share scope changes: %s', async change => {
+  mockUseClipboard.mockImplementation(jest.requireActual('@/hooks/useClipboard').useClipboard);
+  let finish!: () => void;
+  const writeText = jest.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+  const props = { isOpen: true, note: createTestNote(), shareLink: createShareLink(), onClose: jest.fn(), onCreate: jest.fn(), onDelete: jest.fn() };
+  const { rerender } = render(<ShareNoteModal {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'studiesWorkspace.shareLinks.copyLink' }));
+  if (change === 'close') rerender(<ShareNoteModal {...props} isOpen={false} />);
+  else rerender(<ShareNoteModal {...props} shareLink={createShareLink({ token: 'new-token' })} />);
+  await act(async () => { finish(); });
+  if (change === 'close') rerender(<ShareNoteModal {...props} />);
+  expect(screen.queryByRole('button', { name: 'common.copied' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'studiesWorkspace.shareLinks.copyLink' })).toBeInTheDocument();
 });

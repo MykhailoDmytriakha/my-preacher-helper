@@ -2,12 +2,13 @@
 
 import { ClipboardIcon, SparklesIcon } from '@heroicons/react/24/outline';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import "@locales/i18n";
 
 import { useAiUsage } from '@/hooks/useAiUsage';
+import { useClipboard } from '@/hooks/useClipboard';
 import { BrainstormSuggestion } from '@/models/models';
 import { generateBrainstormSuggestion } from '@/services/brainstorm.service';
 import { LightBulbIcon } from '@components/Icons';
@@ -28,12 +29,16 @@ export default function BrainstormModule({
   const [internalSuggestion, setInternalSuggestion] = useState<BrainstormSuggestion | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { t } = useTranslation();
-  const [copied, setCopied] = useState(false);
+  const { isCopied: copied, copyToClipboard, reset: resetCopy } = useClipboard({
+    onSuccess: () => { toast.success(t('brainstorm.copiedToClipboard') || 'Suggestion copied to clipboard!'); },
+    onError: () => { toast.error(t('common.saveError')); },
+  });
   const { aiBlocked, refresh: refreshAiUsage } = useAiUsage();
   const quotaUnavailableLabel = aiBlocked ? t('settings.usage.aiUsageExhausted') : undefined;
 
   // Use external state if provided, otherwise use internal state
   const currentSuggestion = externalSuggestion !== undefined ? externalSuggestion : internalSuggestion;
+  useEffect(() => resetCopy(), [currentSuggestion, resetCopy]);
   const setCurrentSuggestion = onSuggestionChange || setInternalSuggestion;
 
   const handleGenerateSuggestion = async () => {
@@ -54,16 +59,7 @@ export default function BrainstormModule({
 
   const handleCopySuggestion = () => {
     if (!currentSuggestion?.text) return;
-    // Confirm the copy only once the clipboard actually accepted it: the write can
-    // reject (permission, insecure context) and the old code claimed success anyway.
-    void navigator.clipboard
-      .writeText(currentSuggestion.text)
-      .then(() => {
-        toast.success(t('brainstorm.copiedToClipboard') || 'Suggestion copied to clipboard!');
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      })
-      .catch(() => toast.error(t('common.saveError')));
+    void copyToClipboard(currentSuggestion.text);
   };
 
   const getTypeIcon = (type: string) => {

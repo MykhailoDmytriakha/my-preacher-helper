@@ -1,4 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+
+import { copyPlainText } from '@/utils/clipboard';
 
 interface UseClipboardOptions {
   successDuration?: number;
@@ -6,101 +8,73 @@ interface UseClipboardOptions {
   onError?: (error: Error) => void;
 }
 
-interface UseClipboardReturn {
-  isCopied: boolean;
-  isLoading: boolean;
-  error: string | null;
-  copyToClipboard: (text: string) => Promise<boolean>;
-  reset: () => void;
+interface CopyFeedbackOptions extends UseClipboardOptions {
+  errorDuration?: number;
+  ignoreWhileCopying?: boolean;
 }
 
-/**
- * Custom hook for clipboard operations with fallback support
- * @param options Configuration options
- * @returns Clipboard state and copy function
- */
-export const useClipboard = (options: UseClipboardOptions = {}): UseClipboardReturn => {
-  const { 
-    successDuration = 1500, 
-    onSuccess, 
-    onError 
-  } = options;
+type CopyStatus = 'idle' | 'copying' | 'success' | 'error';
 
-  const [isCopied, setIsCopied] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+/** Plain and formatted copies share feedback lifetime, but retain their own transport. */
+export function useCopyFeedback({
+  successDuration = 1500, errorDuration, ignoreWhileCopying = false, onSuccess, onError,
+}: CopyFeedbackOptions = {}) {
+  const [status, setStatus] = useState<CopyStatus>('idle');
   const [error, setError] = useState<string | null>(null);
+  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const attempt = useRef(0);
+  const copying = useRef(false);
 
-  const reset = useCallback(() => {
-    setIsCopied(false);
-    setError(null);
+  const invalidate = useCallback(() => {
+    attempt.current += 1;
+    copying.current = false;
+    if (feedbackTimer.current !== null) clearTimeout(feedbackTimer.current);
+    feedbackTimer.current = null;
   }, []);
+  useEffect(() => invalidate, [invalidate]);
 
-  const fallbackCopy = useCallback((text: string): boolean => {
+  const reset = useCallback((message: string | null = null) => {
+    invalidate();
+    setStatus(message === null ? 'idle' : 'error');
+    setError(message);
+  }, [invalidate]);
+
+  const runCopy = useCallback(async (operation: () => Promise<boolean>): Promise<boolean> => {
+    if (ignoreWhileCopying && copying.current) return false;
+    reset();
+    const currentAttempt = attempt.current;
+    copying.current = true;
+    setStatus('copying');
+    let copied = false;
+    let failure = new Error('Copy failed');
     try {
-      // Create temporary textarea
-      const textarea = document.createElement('textarea');
-      textarea.value = text;
-      textarea.style.position = 'fixed';
-      textarea.style.opacity = '0';
-      textarea.style.pointerEvents = 'none';
-      
-      document.body.appendChild(textarea);
-      textarea.select();
-      
-      const success = document.execCommand('copy');
-      document.body.removeChild(textarea);
-      
-      return success;
-    } catch {
-      return false;
+      copied = await operation();
+    } catch (cause) {
+      if (cause instanceof Error) failure = cause;
     }
-  }, []);
+    if (currentAttempt !== attempt.current) return copied;
+    copying.current = false;
+    setStatus(copied ? 'success' : 'error');
+    setError(copied ? null : failure.message);
+    const duration = copied ? successDuration : errorDuration;
+    if (duration !== undefined) feedbackTimer.current = setTimeout(() => reset(), duration);
+    if (copied) onSuccess?.();
+    else onError?.(failure);
+    return copied;
+  }, [errorDuration, ignoreWhileCopying, onError, onSuccess, reset, successDuration]);
 
+  return { status, error, runCopy, reset };
+}
+
+export function useClipboard(options: UseClipboardOptions = {}) {
+  const { status, error, runCopy, reset } = useCopyFeedback(options);
   const copyToClipboard = useCallback(async (text: string): Promise<boolean> => {
     if (!text) {
-      setError('No text provided');
+      reset('No text provided');
       return false;
     }
+    return runCopy(async () => { await copyPlainText(text); return true; });
+  }, [reset, runCopy]);
 
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Try modern clipboard API first
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        // Fallback for older browsers or non-secure contexts
-        const success = fallbackCopy(text);
-        if (!success) {
-          throw new Error('Fallback copy failed');
-        }
-      }
-
-      setIsCopied(true);
-      onSuccess?.();
-
-      // Reset copied state after duration
-      setTimeout(() => {
-        setIsCopied(false);
-      }, successDuration);
-
-      return true;
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error('Copy failed');
-      setError(error.message);
-      onError?.(error);
-      return false;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [successDuration, onSuccess, onError, fallbackCopy]);
-
-  return {
-    isCopied,
-    isLoading,
-    error,
-    copyToClipboard,
-    reset
-  };
-}; 
+  return { isCopied: status === 'success', isLoading: status === 'copying', error, copyToClipboard, reset };
+}

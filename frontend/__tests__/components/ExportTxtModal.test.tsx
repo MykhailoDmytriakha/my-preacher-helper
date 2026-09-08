@@ -23,6 +23,7 @@ describe('ExportTxtModal', () => {
   );
 
   beforeEach(() => {
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
     jest.clearAllMocks();
     // Mock clipboard
     Object.assign(navigator, {
@@ -78,12 +79,30 @@ describe('ExportTxtModal', () => {
 
     await waitFor(() => expect(getContent).toHaveBeenCalled());
 
+    await screen.findByText('Plain Content');
     const copyBtn = screen.getByRole('button', { name: 'Copy' });
+    expect(copyBtn).toBeEnabled();
     fireEvent.click(copyBtn);
 
     // Feedback toggles to Copied!
     await waitFor(() => {
       expect(screen.getByText('Copied!')).toBeInTheDocument();
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith('Plain Content');
     });
   });
+});
+
+
+it('keeps the prepared text selectable when clipboard permission is denied', async () => {
+  const writeText = jest.fn().mockRejectedValue(new Error('Denied'));
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+  const report = jest.spyOn(console, 'error').mockImplementation(() => {});
+  render(<ExportTxtModal isOpen onClose={jest.fn()} content="Prepared text" getContent={jest.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
+  await waitFor(() => expect(report).toHaveBeenCalledWith('Failed to copy text:', expect.any(Error)));
+  expect(screen.getByText('Prepared text')).toBeInTheDocument();
+  expect(screen.queryByText('Copied!')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Copy' })).toBeEnabled();
+  report.mockRestore();
 });

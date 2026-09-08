@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import Switch from "@/components/ui/Switch";
+import { useClipboard } from "@/hooks/useClipboard";
 import { sanitizeMarkdown } from "@/utils/markdownUtils";
 
 import { ACTIVE_BUTTON_CLASS, INACTIVE_BUTTON_CLASS } from "./constants";
@@ -29,7 +30,10 @@ export function ExportTxtModal({
   const [isLoading, setIsLoading] = useState(false);
   const [exportContent, setExportContent] = useState("");
   const [error, setError] = useState(false);
-  const [isCopied, setIsCopied] = useState(false);
+  const { isCopied, copyToClipboard, reset: resetCopy } = useClipboard({
+    onError: (cause) => console.error("Failed to copy text:", cause),
+  });
+  useEffect(() => resetCopy(), [isOpen, exportContent, resetCopy]);
   const modalId = useRef(`export-modal-${Math.random().toString(36).substring(2, 9)}`);
 
   useEffect(() => {
@@ -68,19 +72,7 @@ export function ExportTxtModal({
   }, [activeFormat, content, exportType, getContent, isOpen, showTags]);
 
   const handleCopy = () => {
-    if (isCopied) {
-      return;
-    }
-
-    navigator.clipboard
-      .writeText(exportContent)
-      .then(() => {
-        setIsCopied(true);
-        setTimeout(() => setIsCopied(false), 1500);
-      })
-      .catch((err) => {
-        console.error("Failed to copy text:", err);
-      });
+    if (!isCopied) void copyToClipboard(exportContent);
   };
 
   const handleDownload = () => {

@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+
+import { useClipboard } from '@/hooks/useClipboard';
 
 import type { User } from 'firebase/auth';
 
@@ -12,14 +14,14 @@ interface ReferralCardProps {
 export default function ReferralCard({ user }: ReferralCardProps) {
   const { t } = useTranslation();
   const [referralLink, setReferralLink] = useState('');
-  const [copied, setCopied] = useState(false);
+  const { isCopied: copied, copyToClipboard, reset } = useClipboard({ successDuration: 2000 });
   const [invitedCount, setInvitedCount] = useState<number | null>(null);
-  const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    reset();
     if (!user) return;
     setReferralLink(`${window.location.origin}/?ref=${encodeURIComponent(user.uid)}`);
-  }, [user]);
+  }, [user, reset]);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,23 +55,7 @@ export default function ReferralCard({ user }: ReferralCardProps) {
     return () => { cancelled = true; };
   }, [user]);
 
-  useEffect(() => () => {
-    if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
-  }, []);
-
   if (!user) return null;
-
-  const handleCopy = async () => {
-    if (!referralLink) return;
-    try {
-      await navigator.clipboard.writeText(referralLink);
-      setCopied(true);
-      if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
-      copyResetTimer.current = setTimeout(() => setCopied(false), 2_000);
-    } catch {
-      setCopied(false);
-    }
-  };
 
   return (
     <section className="rounded-[14px] bg-white p-4 shadow-sm dark:bg-slate-800 md:p-6" aria-labelledby="referral-card-title">
@@ -98,7 +84,7 @@ export default function ReferralCard({ user }: ReferralCardProps) {
         />
         <button
           type="button"
-          onClick={() => void handleCopy()}
+          onClick={() => void copyToClipboard(referralLink)}
           aria-label={copied ? t('settings.referral.copied') : t('settings.referral.copy')}
           className={`rounded-lg px-4 py-2 text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-slate-800 ${copied ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-blue-600 hover:bg-blue-700'}`}
         >

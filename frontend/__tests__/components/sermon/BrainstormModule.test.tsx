@@ -131,6 +131,7 @@ const resetScenarioState = () => {
 
 describe('BrainstormModule', () => {
   beforeEach(() => {
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
     fetchMock.resetMocks();
     jest.clearAllMocks();
     // Set up default environment variable for API base
@@ -546,3 +547,21 @@ describe('BrainstormModule', () => {
     });
   });
 }); 
+
+describe('copy feedback', () => {
+  it.each([true, false])('confirms the exact current suggestion only when the clipboard accepts it: %s', async accepted => {
+    const writeText = jest.fn();
+    if (accepted) writeText.mockResolvedValue(undefined);
+    else writeText.mockRejectedValue(new Error('Denied'));
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+    const { rerender } = render(<BrainstormModule sermonId={mockSermonId} currentSuggestion={mockBrainstormSuggestion} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Copy suggestion' }));
+    await waitFor(() => expect(accepted ? toast.success : toast.error).toHaveBeenCalled());
+    expect(writeText).toHaveBeenCalledWith(mockBrainstormSuggestion.text);
+    expect(accepted ? toast.error : toast.success).not.toHaveBeenCalled();
+    if (accepted) expect(screen.getByText('Copied!')).toBeInTheDocument();
+    rerender(<BrainstormModule sermonId={mockSermonId} currentSuggestion={{ ...mockBrainstormSuggestion, text: 'New suggestion' }} />);
+    expect(screen.queryByText('Copied!')).toBeNull();
+  });
+});

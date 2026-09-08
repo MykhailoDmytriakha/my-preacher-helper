@@ -80,3 +80,18 @@ Series/group before shots were captured from the still-unchanged respective comp
 ## Remaining work
 
 Large-component boundaries (ScratchPanel/Column/OutlineBoard), clipboard consumers and duplicate tests, export presentation, final integrated visual review, production build and final full gates. This document will be updated as those packets are validated.
+
+## Clipboard consolidation — verified local checkpoint
+
+Plain and rich clipboard operations share one feedback lifecycle. Their transports retain the intentional difference: ordinary modern clipboard rejection is an error; formatted plan copy may use a selection fallback. The fallback always removes temporary DOM. Referral, diagnostic reports, TXT, brainstorm, study notes, thought menus and outbox copy now reach the same plain-copy owner.
+
+The former duplicate clipboard suite is replaced by one hook contract and direct transport tests. Initial state, pending state, callbacks, default/custom duration, reset, empty content, modern rejection and fallback success/failure remain covered; additional cases exercise overlapping attempts and unmount. The old test claiming fallback after modern rejection did not actually call the modern API because another test left it undefined. The replacement checks both the rejection and the absence of a fallback.
+
+Negative controls: the frozen original hook fails 9/10 final lifecycle cases; original rich-copy cleanup fails both new fallback cases; original formatted-feedback hook fails all three new reset/unmount/same-event duplicate cases. These are defects corrected alongside consolidation, not claims that every old behavior was correct. No document write, conflict decision or queued draft format changes.
+
+
+Clipboard checkpoint: **575 suites / 5407 tests**, **91.14% aggregate lines**, root coverage + lint/types/unused green. The shared hook and selection transport have direct contract tests; caller scope regressions also run with the real hook. All modified runtime files meet the 80% line floor. V8 aggregate reports vary with mixed mocked/real-hook suites; an isolated direct run verifies every hook line, including the empty-text branch.
+
+Actual local browser proof: referral URL equals the displayed link; TXT copy equals all 80 preview characters; formatted plan provides both HTML and plain text; diagnostics copy equals all 17086 report characters. Saved images under `output/playwright/refactoring`: `referral-copy-after-desktop.png`, `export-text-before-desktop.png`, `export-text-before-mobile.png`, `plan-copy-after-mobile.png`, `diagnostics-copy-after-mobile.png`. The export images are the baseline for the next visual consolidation. Browser viewport checks are not physical-device or deployment proof.
+
+ShareLinksPanel now stores only the selected token; it no longer recreates a timer or success state after the common hook settles. A separate red/green case verifies that an older accepted copy cannot republish success after a newer rejected one. Hidden share windows, updated cards and dismissed/reopened thought menus invalidate obsolete feedback. Canonical writeRecovery's stateless copy adapter retains its existing unavailable-API contract.

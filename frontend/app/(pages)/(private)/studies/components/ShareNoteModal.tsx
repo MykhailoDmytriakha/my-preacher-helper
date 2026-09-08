@@ -7,7 +7,7 @@ import {
   TrashIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
@@ -40,11 +40,13 @@ export default function ShareNoteModal({
   onDelete,
 }: ShareNoteModalProps) {
   const { t } = useTranslation();
-  const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
+  const { isCopied, copyToClipboard, reset: resetCopy } = useClipboard({ successDuration: 1500 });
   const [isWorking, setIsWorking] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
 
   const shareUrl = useMemo(() => (shareLink ? getShareNoteUrl(shareLink.token) : ''), [shareLink]);
+
+  useEffect(() => resetCopy(), [isOpen, shareUrl, resetCopy]);
 
   const handleCreate = useCallback(async () => {
     if (!note || isWorking) return;

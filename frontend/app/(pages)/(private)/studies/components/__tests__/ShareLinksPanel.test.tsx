@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { useClipboard } from '@/hooks/useClipboard';
@@ -151,15 +151,10 @@ describe('ShareLinksPanel', () => {
       return persistedWrite(request);
     });
     const link = createShareLink({ noteId: 'missing-note', token: 'token-456' });
-    const copyToClipboard = jest.fn().mockResolvedValue(true);
-
-    mockUseClipboard.mockReturnValue({
-      isCopied: false,
-      isLoading: false,
-      error: null,
-      copyToClipboard,
-      reset: jest.fn(),
-    });
+    const copyToClipboard = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: copyToClipboard } });
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+    mockUseClipboard.mockImplementation(jest.requireActual('@/hooks/useClipboard').useClipboard);
 
     render(
       <ShareLinksPanel
@@ -187,4 +182,20 @@ describe('ShareLinksPanel', () => {
     expect(onDelete).toHaveBeenCalledTimes(1);
     resolveDelete();
   });
+});
+
+
+it('does not show success for an earlier link after the newest copy was refused', async () => {
+  mockUseClipboard.mockImplementation(jest.requireActual('@/hooks/useClipboard').useClipboard);
+  let finish!: () => void;
+  const writeText = jest.fn().mockReturnValueOnce(new Promise<void>(resolve => { finish = resolve; })).mockRejectedValueOnce(new Error('Denied'));
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+  render(<ShareLinksPanel notes={[]} shareLinks={[createShareLink(), createShareLink({ id: 'link-2', token: 'second-token' })]} onCreate={jest.fn()} onDelete={jest.fn()} />);
+  const buttons = screen.getAllByRole('button', { name: 'studiesWorkspace.shareLinks.copyLink' });
+  fireEvent.click(buttons[0]);
+  await act(async () => { fireEvent.click(buttons[1]); });
+  await act(async () => { finish(); });
+  expect(writeText).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText('common.copied')).toBeNull();
 });

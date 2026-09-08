@@ -26,11 +26,16 @@ export const ThoughtOptionsMenu: React.FC<ThoughtOptionsMenuProps> = ({
   const [isOpen, setIsOpen] = React.useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   
-  const { isCopied, isLoading, copyToClipboard } = useClipboard({
+  const { isCopied, isLoading, copyToClipboard, reset: resetCopy } = useClipboard({
     successDuration: TIMING.COPY_SUCCESS_DURATION,
     onSuccess: () => setIsOpen(false),
     onError: (error: Error) => console.error('Failed to copy thought text:', error)
   });
+
+  useEffect(() => resetCopy(), [thoughtText, resetCopy]);
+  useEffect(() => {
+    if (!isOpen && isLoading) resetCopy();
+  }, [isOpen, isLoading, resetCopy]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {

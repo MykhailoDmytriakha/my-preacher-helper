@@ -1,7 +1,7 @@
 'use client';
 
 import { DocumentDuplicateIcon, LinkIcon, PlusIcon, TrashIcon } from '@heroicons/react/24/outline';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useClipboard } from '@/hooks/useClipboard';
@@ -34,14 +34,13 @@ export default function ShareLinksPanel({
   onDelete,
 }: ShareLinksPanelProps) {
   const { t } = useTranslation();
-  const { copyToClipboard } = useClipboard({ successDuration: 1500 });
+  const { isCopied, copyToClipboard } = useClipboard({ successDuration: 1500 });
 
   const [selectedNoteId, setSelectedNoteId] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [writeError, setWriteError] = useState<string | null>(null);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
-  const copyTimeoutRef = useRef<number | null>(null);
 
   const noteMap = useMemo(() => new Map(notes.map((note) => [note.id, note])), [notes]);
   const shareLinksByNoteId = useMemo(() => new Map(shareLinks.map((link) => [link.noteId, link])), [shareLinks]);
@@ -53,12 +52,6 @@ export default function ShareLinksPanel({
     () => [...shareLinks].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
     [shareLinks]
   );
-
-  useEffect(() => () => {
-    if (copyTimeoutRef.current) {
-      window.clearTimeout(copyTimeoutRef.current);
-    }
-  }, []);
 
   const handleCreate = useCallback(async () => {
     if (!selectedNoteId || isCreating) return;
@@ -98,15 +91,9 @@ export default function ShareLinksPanel({
     }
   }, [deletingId, onDelete]);
 
-  const handleCopy = useCallback(async (token: string) => {
-    const url = getShareNoteUrl(token);
-    const success = await copyToClipboard(url);
-    if (!success) return;
+  const handleCopy = useCallback((token: string) => {
     setCopiedToken(token);
-    if (copyTimeoutRef.current) {
-      window.clearTimeout(copyTimeoutRef.current);
-    }
-    copyTimeoutRef.current = window.setTimeout(() => setCopiedToken(null), 1500);
+    void copyToClipboard(getShareNoteUrl(token));
   }, [copyToClipboard]);
 
   return (
@@ -213,7 +200,7 @@ export default function ShareLinksPanel({
                     >
                       <DocumentDuplicateIcon className="h-3.5 w-3.5" />
                       <span className="hidden lg:inline">
-                        {copiedToken === link.token
+                        {isCopied && copiedToken === link.token
                           ? t('common.copied')
                           : t('studiesWorkspace.shareLinks.copyLink')}
                       </span>

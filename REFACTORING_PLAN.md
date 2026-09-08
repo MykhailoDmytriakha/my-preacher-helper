@@ -195,7 +195,8 @@ Owner delegated final design choices and requested a substantial continuous pass
 - [x] Preserve the first verified packet in `3cfee878` on `codex/codebase-simplification`.
 - [x] Complete the entire settings switch family and share the native switch with export controls.
 - [x] Consolidate series create/edit fields, color selection and dialog presentation; reuse the frame for group creation.
-- [ ] Audit export dialogs and clipboard consumers, preserving plain/rich clipboard distinctions.
+- [x] Consolidate clipboard consumers, preserving plain/rich transport distinctions and verifying actual browser payloads.
+- [ ] Simplify export dialogs, preparation and file output.
 - [ ] Simplify large screen state/operations using the existing canonical data mechanisms.
 - [ ] Consolidate overlapping tests with an explicit contract crosswalk and regression checks.
 - [ ] Run final coverage/lint/type gates and inspect actual desktop/mobile light/dark flows.

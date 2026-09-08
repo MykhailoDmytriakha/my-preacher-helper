@@ -12,6 +12,7 @@ jest.mock('@/utils/appDiagnostics', () => ({
   diagnosticServerVersion: jest.fn(),
 }));
 beforeEach(() => {
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
   (diagnosticServerVersion as jest.Mock).mockResolvedValue({ status: 'answered', version: 'def' });
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: jest.fn().mockResolvedValue(undefined) } });
 });

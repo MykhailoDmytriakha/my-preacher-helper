@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { toast } from 'sonner';
 
 import { OutboxConflictBanner } from '@/components/OutboxConflictBanner';
 import { conflictSafeUpdate } from '@/services/conflictSafeUpdate.client';
@@ -53,6 +54,7 @@ const conflicted = () =>
 
 describe('OutboxConflictBanner', () => {
   beforeEach(() => {
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
     localStorage.clear();
     mockGuardedWrite.mockReset();
     mockGuardedWrite.mockResolvedValue(8);
@@ -257,4 +259,39 @@ describe('the ordinary refusal panel shows everything and loads theirs', () => {
     await waitFor(() => expect(mockInvalidate).toHaveBeenCalled());
     expect(listOutbox('u1')).toHaveLength(1);
   });
+});
+
+describe('copying a recoverable draft', () => {
+  it.each([false, true])('copies the complete nested draft without writing or discarding it; deleted target: %s', async targetMissing => {
+    localStorage.clear();
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+    enqueueWrite({ id: 'groups:g1:content:u1', uid: 'u1', collection: 'groups', docId: 'g1', aggregate: 'content',
+      patch: { title: 'Group', flow: [{ id: 'b1', text: 'Complete paragraph\nSecond line' }] },
+      baseRevision: 2, status: 'conflicted', targetMissing, savedAt: 1 });
+    const before = listOutbox('u1');
+    render(<OutboxConflictBanner />);
+    const displayed = document.querySelector('pre')!.textContent;
+    fireEvent.click(screen.getByRole('button', { name: 'freshness.copyTextAction' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(displayed));
+    expect(displayed).toContain('Complete paragraph');
+    expect(listOutbox('u1')).toEqual(before);
+    expect(mockGuardedWrite).not.toHaveBeenCalled();
+  });
+});
+
+
+it('reports a rejected recovery copy without consuming the refused draft', async () => {
+  localStorage.clear();
+  const writeText = jest.fn().mockRejectedValue(new Error('Denied'));
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+  conflicted();
+  render(<OutboxConflictBanner />);
+  fireEvent.click(screen.getByRole('button', { name: 'freshness.copyTextAction' }));
+  await waitFor(() => expect(toast.error).toHaveBeenCalledWith('common.saveError'));
+  expect(toast.success).not.toHaveBeenCalled();
+  expect(listOutbox('u1')).toHaveLength(1);
+  expect(mockGuardedWrite).not.toHaveBeenCalled();
 });

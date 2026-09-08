@@ -716,6 +716,7 @@ describe('Sermon Plan Page UI Smoke Test', () => {
 
     await waitFor(() => {
       expect(mockExecCommand).toHaveBeenCalledWith('copy');
+      expect(mockToast.success).toHaveBeenCalledWith('plan.copySuccess');
     });
   });
 

@@ -1,3 +1,4 @@
+import { copyTextWithSelection } from '@/utils/clipboard';
 import { debugLog } from "@/utils/debugMode";
 
 /**
@@ -59,32 +60,14 @@ export async function copyFormattedFromElement(element: HTMLDivElement | null): 
     selection?.removeAllRanges();
     selection?.addRange(range);
     if (document.execCommand('copy')) {
-      selection?.removeAllRanges();
-      document.body.removeChild(tempContainer);
       return true;
     }
   } catch (error) {
     debugLog("Plan copy failed: execCommand(html) branch", { error });
   } finally {
     selection?.removeAllRanges();
-    document.body.removeChild(tempContainer);
+    tempContainer.remove();
   }
 
-  try {
-    const textarea = document.createElement('textarea');
-    textarea.value = plainText;
-    textarea.style.position = 'fixed';
-    textarea.style.opacity = '0';
-    textarea.style.left = '-9999px';
-    document.body.appendChild(textarea);
-    textarea.focus({ preventScroll: true });
-    textarea.select();
-    const success = document.execCommand('copy');
-    document.body.removeChild(textarea);
-    return success;
-  } catch (error) {
-    debugLog("Plan copy failed: execCommand(text) branch", { error });
-  }
-
-  return false;
+  return copyTextWithSelection(plainText);
 }

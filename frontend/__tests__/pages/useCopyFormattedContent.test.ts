@@ -15,7 +15,7 @@ const translate = (key: string, options?: { defaultValue?: string }) => options?
 
 describe("useCopyFormattedContent", () => {
   beforeEach(() => {
-    jest.useFakeTimers();
+    jest.useFakeTimers({ doNotFake: ['queueMicrotask', 'nextTick'] });
     jest.clearAllMocks();
   });
 
@@ -127,4 +127,33 @@ describe("useCopyFormattedContent", () => {
     expect(result.current.status).toBe(COPY_STATUS.ERROR);
     expect(toast.error).toHaveBeenCalledWith("plan.copyError");
   });
+});
+
+
+it.each(['reset', 'unmount'] as const)('does not publish pending copy feedback after %s', async action => {
+  let finish!: (value: boolean) => void;
+  const operation = new Promise<boolean>(resolve => { finish = resolve; });
+  const { result, unmount } = renderHook(() => useCopyFormattedContent({ t: translate }));
+  jest.clearAllMocks();
+  let pending!: Promise<void>;
+  act(() => { pending = result.current.runCopy(() => operation); });
+  act(() => { if (action === 'reset') result.current.resetToIdle(); else unmount(); });
+  await act(async () => { finish(true); await pending; });
+  expect(toast.success).not.toHaveBeenCalled();
+  if (action === 'reset') expect(result.current.status).toBe(COPY_STATUS.IDLE);
+});
+
+it('ignores a duplicate request in the same event before React renders', async () => {
+  let finish!: (value: boolean) => void;
+  const operation = jest.fn(() => new Promise<boolean>(resolve => { finish = resolve; }));
+  const { result } = renderHook(() => useCopyFormattedContent({ t: translate }));
+  let pending!: Promise<void>;
+  act(() => {
+    pending = result.current.runCopy(operation);
+    void result.current.runCopy(operation);
+  });
+  const calls = operation.mock.calls.length;
+  await act(async () => { finish(true); });
+  expect(calls).toBe(1);
+  await pending;
 });

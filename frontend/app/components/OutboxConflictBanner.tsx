@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { OUTBOX_CHANGED_EVENT } from '@/components/OutboxDrain';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { getClientDb } from '@/config/firebaseClientDb';
+import { useClipboard } from '@/hooks/useClipboard';
 import { useAuth } from '@/providers/AuthProvider';
 import { conflictSafeUpdate, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { pendingOutboxConflicts } from '@/services/outboxReplay.client';
@@ -31,6 +32,10 @@ const CONFLICT_PENDING_LABEL_KEY = 'freshness.conflictPendingLabel';
 export function OutboxConflictBanner() {
   const { user } = useAuth();
   const { t } = useTranslation();
+  const { copyToClipboard } = useClipboard({
+    onSuccess: () => { toast.success(t('freshness.copiedToast')); },
+    onError: () => { toast.error(t(SAVE_ERROR_KEY)); },
+  });
   const queryClient = useQueryClient();
   const [conflicts, setConflicts] = useState<OutboxEntry[]>([]);
   const [stuck, setStuck] = useState(0);
@@ -155,12 +160,7 @@ export function OutboxConflictBanner() {
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
-              onClick={() => {
-                void navigator.clipboard
-                  ?.writeText(recoverableText)
-                  .then(() => toast.success(t('freshness.copiedToast')))
-                  .catch(() => toast.error(t(SAVE_ERROR_KEY)));
-              }}
+              onClick={() => { void copyToClipboard(recoverableText); }}
               className="rounded-lg bg-amber-600 px-3 py-1.5 font-medium text-white transition-colors hover:bg-amber-700"
             >
               {t('freshness.copyTextAction')}
@@ -226,12 +226,7 @@ export function OutboxConflictBanner() {
         </pre>
         <button
           type="button"
-          onClick={() => {
-            void navigator.clipboard
-              ?.writeText(recoverableText)
-              .then(() => toast.success(t('freshness.copiedToast')))
-              .catch(() => toast.error(t(SAVE_ERROR_KEY)));
-          }}
+          onClick={() => { void copyToClipboard(recoverableText); }}
           className="mt-2 rounded-lg border border-amber-300 px-3 py-1.5 font-medium text-amber-900 transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:text-amber-200 dark:hover:bg-amber-500/20"
         >
           {t('freshness.copyTextAction')}
