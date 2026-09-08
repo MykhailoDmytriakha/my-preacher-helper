@@ -46,7 +46,7 @@ import { useSermonActions } from "./hooks/useSermonActions";
 import { useStructureDnd } from "./hooks/useStructureDnd";
 import { createStructureCollisionDetection } from "./utils/collision";
 import { boardLayoutClass, showLayoutToggle } from "./utils/sectionLayout";
-import { isLocalThoughtId, findOutlinePoint } from "./utils/structure";
+import { findOutlinePoint } from "./utils/structure";
 
 // Translation key constants
 const TRANSLATION_KEYS = {
@@ -1032,7 +1032,17 @@ function StructurePageContent() {
             )}
             onSave={handleSaveEdit}
             onClose={handleCloseEdit}
-            allowOffline={editingItem.id.startsWith('temp-') || isLocalThoughtId(editingItem.id)}
+            /**
+             * Editing stays open offline, the same as on the sermon page
+             * (`sermons/[id]/page.tsx`), because writes queue and replay — that is what
+             * offline-first means here. This used to be narrowed to locally-created
+             * thoughts, and the narrowing was invisible only because connectivity lied:
+             * a session started with no network reported itself online, so the modal
+             * opened editable anyway. Once connectivity told the truth, that same
+             * session silently became read-only — a change nobody asked for, landing on
+             * exactly the person who opens the app on an iPad with the Wi-Fi off.
+             */
+            allowOffline={true}
           />
         )}
       </div>

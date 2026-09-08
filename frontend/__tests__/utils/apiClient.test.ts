@@ -1,4 +1,5 @@
 import { apiClient, onConnectivityChange, probeConnectivity } from '@/utils/apiClient';
+import { __resetConnectivityForTests } from '@/utils/connectivity';
 import { fetchWithTimeout, FetchTimeoutError } from '@/utils/fetchWithTimeout';
 import { subscribeToUsageClientEvents } from '@/services/usageCapClient';
 import { UsageCapReachedError } from '@/services/usageLimits';
@@ -18,13 +19,14 @@ describe('apiClient', () => {
   beforeEach(async () => {
     jest.useFakeTimers();
     jest.clearAllMocks();
-    
-    // Reset internal state to online
-    (fetchWithTimeout as jest.Mock).mockResolvedValueOnce(new Response('ok'));
-    try {
-      await apiClient('http://test.com/reset');
-      jest.advanceTimersByTime(3500); // trigger any hysteresis
-    } catch { }
+
+    /**
+     * Connectivity is a module-level store shared by every test in this file, and its state
+     * outlives a single case. Reset it outright rather than nudging it back with a fake
+     * request: a leftover "reachable" from an earlier case made a later one see a
+     * connectivity notification it never caused.
+     */
+    __resetConnectivityForTests();
     jest.clearAllMocks();
   });
 
@@ -134,19 +136,31 @@ describe('apiClient', () => {
   });
 
   describe('probeConnectivity', () => {
-    it('returns true on success', async () => {
+    /**
+     * THREE OUTCOMES, NOT TWO. A boolean forced two different situations into one answer
+     * and contradicted itself on screen: a 503 during a deploy made the probe report
+     * failure, the toast said "still no connection", and moments later the offline icon
+     * disappeared anyway — because the reply had in fact travelled. "The network carried
+     * it" and "the server is usable" are different facts.
+     */
+    it('reports a healthy server when the check answers ok', async () => {
       (fetchWithTimeout as jest.Mock).mockResolvedValue(new Response('ok', { status: 200 }));
       process.env.NEXT_PUBLIC_API_BASE = 'http://test.com';
 
-      const result = await probeConnectivity();
-      expect(result).toBe(true);
+      expect(await probeConnectivity()).toBe('healthy');
     });
 
-    it('returns false on fetch throw', async () => {
+    it('separates a reachable-but-unhealthy server from an unreachable one', async () => {
+      (fetchWithTimeout as jest.Mock).mockResolvedValue(new Response('', { status: 503 }));
+      process.env.NEXT_PUBLIC_API_BASE = 'http://test.com';
+
+      expect(await probeConnectivity()).toBe('unhealthy');
+    });
+
+    it('reports unreachable when nothing comes back', async () => {
       (fetchWithTimeout as jest.Mock).mockRejectedValue(new Error('Failed'));
-      
-      const result = await probeConnectivity();
-      expect(result).toBe(false);
+
+      expect(await probeConnectivity()).toBe('unreachable');
     });
   });
 });

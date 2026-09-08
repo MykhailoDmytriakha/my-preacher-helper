@@ -48,11 +48,24 @@ export interface FreshnessDiagnostics {
   lastServerResponseAt: number | null;
   lastServerResult: 'matching' | 'different' | 'deleted' | 'uncompared' | null;
   incident: { origin: FreshnessEvent; events: FreshnessEvent[] } | null;
+  /**
+   * A failure a returning connection will NOT resolve — access revoked, the account no
+   * longer proven, the watch terminated. Kept outside `incident.events`, which is a ring
+   * buffer that drops its oldest entries: three presses of "check again" while offline
+   * append six events and would push an access denial out of the window, taking the
+   * warning — and the retry button with it — off the screen.
+   */
+  persistentFailure: FreshnessReason | null;
 }
 
 const emptyDiagnostics = (): FreshnessDiagnostics => ({
-  lastServerResponseAt: null, lastServerResult: null, incident: null,
+  lastServerResponseAt: null, lastServerResult: null, incident: null, persistentFailure: null,
 });
+
+/** Reasons that outlive the connection: reconnecting does not make them go away. */
+const PERSISTENT_FAILURES: ReadonlySet<FreshnessReason> = new Set<FreshnessReason>([
+  'accessDenied', 'accountRequired', 'listenerStopped',
+]);
 
 
 /**
@@ -205,6 +218,9 @@ export function useDocumentFreshness<T>({
     if (lastRemote === base) {
       setState('fresh');
       setRemote(null);
+      setDiagnostics((current) => (
+        current.lastServerResult === 'different' ? { ...current, lastServerResult: 'matching' } : current
+      ));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serialisedKnown]);
@@ -242,6 +258,8 @@ export function useDocumentFreshness<T>({
             previous.errorCode === event.errorCode && event.source !== 'manual') return current;
         return {
           ...current,
+          // Remembered outside the bounded history, which drops its oldest entries.
+          persistentFailure: PERSISTENT_FAILURES.has(event.reason) ? event.reason : current.persistentFailure,
           incident: {
             origin: current.incident?.origin ?? event,
             // The origin is retained separately even when the bounded history rolls over.
@@ -278,7 +296,7 @@ export function useDocumentFreshness<T>({
         lastRemoteSerialisedRef.current = null;
         setRemote(null);
         setState('stale');
-        setDiagnostics({ lastServerResponseAt: at, lastServerResult: 'deleted', incident: null });
+        setDiagnostics({ lastServerResponseAt: at, lastServerResult: 'deleted', incident: null, persistentFailure: null });
         return;
       }
       const value = selectRef.current(snapshot.data()!);
@@ -294,6 +312,8 @@ export function useDocumentFreshness<T>({
         lastServerResponseAt: at,
         lastServerResult: base === null ? 'uncompared' : different ? 'different' : 'matching',
         incident: null,
+        // The server answered, so nothing is blocking us any more.
+        persistentFailure: null,
       });
     };
     const subscribe = () => {
@@ -439,6 +459,15 @@ export function useDocumentFreshness<T>({
     if (adoptedKnownRef.current !== null) adoptedKnownRef.current = serializeContent(value);
     setRemote(null);
     setState((currentState) => (currentState === 'stale' ? 'fresh' : currentState));
+    /**
+     * The RECORD of the difference has to settle too, not just the state. It used to
+     * survive here until the next server snapshot rewrote it — and offline there is no
+     * next snapshot, so a difference the person had already adopted kept the panel on
+     * screen, telling them about a conflict they resolved minutes ago.
+     */
+    setDiagnostics((current) => (
+      current.lastServerResult === 'different' ? { ...current, lastServerResult: 'matching' } : current
+    ));
   }, []);
 
   return {

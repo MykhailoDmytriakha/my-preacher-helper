@@ -3,6 +3,7 @@
 import { useTranslation } from 'react-i18next';
 
 import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
+import { useDeviceOnline } from '@/hooks/useOnlineStatus';
 
 import type { FreshnessDiagnostics, FreshnessReason } from '@/hooks/useDocumentFreshness';
 
@@ -76,11 +77,25 @@ export function DataFreshnessBanner({
   className = '',
 }: DataFreshnessBannerProps) {
   const { t } = useTranslation();
-  const incident = diagnostics?.incident;
+  /**
+   * This banner stands down for ONE reason: the device has no network, so the crossed-out
+   * Wi-Fi icon already says everything there is to say. The app-wide "are we online" answer
+   * is the wrong one to ask — a single request timing out marks the SERVER unreachable
+   * while Wi-Fi and Firestore are fine, and the person would lose the specific warning that
+   * what they are editing may be stale.
+   */
+  const deviceOffline = !useDeviceOnline();
 
+  if (isPureOfflineSilence({ unknown, deleted, deviceOffline, diagnostics })) return null;
 
   const entity = t(`freshness.${entityKey}`);
-  const copy = messageKeys({ deleted, unknown, dirty, hasRefresh: Boolean(onRefresh), reason: incident?.origin.reason });
+  const copy = messageKeys({
+    deleted,
+    unknown,
+    dirty,
+    hasRefresh: Boolean(onRefresh),
+    reason: headlineReason(diagnostics),
+  });
   const description = t(copy.description, copy.namesEntity ? { entity } : undefined);
 
   return (
@@ -190,6 +205,82 @@ function FreshnessHistory({ diagnostics, unknown, deleted }: {
   );
 }
 
+
+/**
+ * WHILE THERE IS NO CONNECTION, THE CROSSED-OUT WI-FI ICON IS THE WHOLE MESSAGE —
+ * BUT ONLY WHEN "NO CONNECTION" IS GENUINELY ALL THERE IS TO SAY.
+ *
+ * "We cannot confirm this is the newest version" is TRUE offline, and it is also the
+ * obvious consequence of having no internet, which the header icon and the top strip
+ * already say in one glance. Spelling it out here produced the opposite of help: a
+ * panel headed "the device reports no internet", a timeline of check attempts and a
+ * developer-details button, filling the top of an iPad that had simply been opened
+ * with the Wi-Fi off.
+ *
+ * ⚠️ WHAT MAKES THIS DANGEROUS TO WRITE AS `unknown && !isOnline`. Going offline does
+ * not erase what the server already told us: `unavailable()` in `useDocumentFreshness`
+ * flips the STATE to `unknown` while `remotelyDeleted` and `remote` keep holding a
+ * confirmed answer, and every screen passes `unknown` and `deleted` at the same time.
+ * A bare offline check therefore hid "this record was deleted on another device" the
+ * moment the Wi-Fi dropped — leaving someone typing into a record that no longer
+ * exists, which is the exact loss this banner was built to prevent.
+ *
+ * So silence requires ALL of:
+ *   - the device really is offline, and freshness really is unverifiable;
+ *   - the server never told us anything that outlives the connection — no confirmed
+ *     deletion, no confirmed difference;
+ *   - nothing in the incident is a problem that will still be there once the
+ *     connection returns. Access denied and a lost account are exactly that: they
+ *     say the next save will fail for a reason no amount of Wi-Fi fixes.
+ */
+export function isPureOfflineSilence({ unknown, deleted, deviceOffline, diagnostics }: {
+  unknown: boolean;
+  deleted: boolean;
+  /** The DEVICE has no network — not merely "the app considers itself offline". */
+  deviceOffline: boolean;
+  diagnostics?: FreshnessDiagnostics;
+}): boolean {
+  if (!unknown || !deviceOffline || deleted) return false;
+  // A server answer that survives losing the connection.
+  if (diagnostics?.lastServerResult === 'different' || diagnostics?.lastServerResult === 'deleted') return false;
+  /**
+   * Read the REMEMBERED failure, not the event history. `incident.events` is a ring buffer
+   * that keeps only the last few entries, so pressing "check again" a few times offline —
+   * each press appending two events — could push an access denial out of the window and
+   * take the whole banner, retry button included, off the screen.
+   */
+  return diagnostics?.persistentFailure == null;
+}
+
+/**
+ * WHICH REASON THE BANNER LEADS WITH.
+ *
+ * `incident.origin` is deliberately sticky — it keeps the first event of an incident — and
+ * that makes it the wrong thing to headline twice over. Once a connection drops, the origin
+ * stays `offline`, so when the network comes back this banner reappears (the state is still
+ * `unknown` until a server snapshot lands) headed "the device reports no internet" over a
+ * working connection. That is the very sentence this work started from, merely relocated.
+ * And if something serious arrived AFTER the disconnection — permission revoked, session
+ * gone, the watch terminated — the sticky origin buries it under generic uncertainty, at
+ * the moment the person most needs to know their next save will fail.
+ *
+ * So: lead with anything that outlives the connection, whenever it happened; otherwise with
+ * the origin; and never with `offline` once we are back online.
+ */
+function headlineReason(diagnostics: FreshnessDiagnostics | undefined): FreshnessReason | undefined {
+  if (diagnostics?.persistentFailure) return diagnostics.persistentFailure;
+  const incident = diagnostics?.incident;
+  if (!incident) return undefined;
+  if (incident.origin.reason !== 'offline') return incident.origin.reason;
+  /**
+   * "The device reports no internet" is never the headline. Once the connection is back it
+   * is simply false, and while it is still down the banner is only on screen at all because
+   * something more important is true — the server holds a different version, or this record
+   * was deleted elsewhere. Leading with the connection would bury that under the very
+   * sentence this work set out to stop showing.
+   */
+  return undefined;
+}
 
 function messageKeys({ deleted, unknown, dirty, hasRefresh, reason }: {
   deleted: boolean; unknown: boolean; dirty: boolean; hasRefresh: boolean; reason?: FreshnessReason;

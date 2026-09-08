@@ -3113,7 +3113,12 @@
   },
   "connection": {
     "offlineBanner": "Working offline. Your changes are saved on this device and will be sent when the connection returns.",
-    "sessionExpired": "Your session has expired. Sign in again to keep saving — your text stays on screen until then."
+    "sessionExpired": "Your session has expired. Sign in again to keep saving — your text stays on screen until then.",
+    "offlineIconTitle": "No connection. Tap to check again.",
+    "offlineIconLabel": "No connection — check again",
+    "probeStillOffline": "Still no connection. AI features are unavailable for now.",
+    "probeBackOnline": "Connection is back. AI and transcription are ready.",
+    "probeServerUnhealthy": "The connection is back, but the service is not responding properly. Try again in a few minutes."
   },
   "textScale": {
     "title": "Text size",

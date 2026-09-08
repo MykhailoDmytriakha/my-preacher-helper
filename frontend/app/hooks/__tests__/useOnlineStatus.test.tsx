@@ -1,12 +1,28 @@
 import { act, renderHook } from '@testing-library/react';
 
-import { getConnectivityStatus, onConnectivityChange } from '@/utils/apiClient';
+import { getConnectivityStatus, subscribeToConnectivity } from '@/utils/connectivity';
 
 import { useOnlineStatus } from '../useOnlineStatus';
 
-jest.mock('@/utils/apiClient', () => ({
+/**
+ * THIS HOOK IS A SUBSCRIPTION, NOT A SECOND OPINION.
+ *
+ * It used to recompute `navigator.onLine && getConnectivityStatus()` itself, in each of the
+ * ~25 components that call it. That was the same formula written many times rather than one
+ * detector shared by many readers, and it disagreed with itself twice in ways that reached
+ * users: the device half never reached `apiClient` (which everything else reads directly),
+ * and ANDing every notification with `navigator.onLine` meant a successful manual check
+ * could not restore the app while that flag was stuck false — as it is for a PWA resumed
+ * from the background on iPadOS.
+ *
+ * Both halves now live in `utils/connectivity`, which keeps them apart. What is left to pin
+ * here is that this hook reports that store faithfully and lets go of it on unmount. What
+ * the store itself believes is pinned against the real module in
+ * `__tests__/utils/connectivity.test.ts`.
+ */
+jest.mock('@/utils/connectivity', () => ({
   getConnectivityStatus: jest.fn(),
-  onConnectivityChange: jest.fn(),
+  subscribeToConnectivity: jest.fn(),
 }));
 
 jest.mock('@/utils/debugMode', () => ({
@@ -14,26 +30,19 @@ jest.mock('@/utils/debugMode', () => ({
 }));
 
 const mockGetConnectivityStatus = getConnectivityStatus as jest.MockedFunction<typeof getConnectivityStatus>;
-const mockOnConnectivityChange = onConnectivityChange as jest.MockedFunction<typeof onConnectivityChange>;
+const mockSubscribe = subscribeToConnectivity as jest.MockedFunction<typeof subscribeToConnectivity>;
 
 describe('useOnlineStatus', () => {
-  let browserOnline = true;
-  let apiObserver: ((isOnline: boolean) => void) | undefined;
+  let notifyStore: (() => void) | undefined;
   const unsubscribe = jest.fn();
 
   beforeEach(() => {
-    browserOnline = true;
-    apiObserver = undefined;
+    notifyStore = undefined;
     unsubscribe.mockClear();
 
-    Object.defineProperty(window.navigator, 'onLine', {
-      configurable: true,
-      get: () => browserOnline,
-    });
-
     mockGetConnectivityStatus.mockReturnValue(true);
-    mockOnConnectivityChange.mockImplementation((observer) => {
-      apiObserver = observer;
+    mockSubscribe.mockImplementation((listener) => {
+      notifyStore = listener;
       return unsubscribe;
     });
   });
@@ -42,7 +51,7 @@ describe('useOnlineStatus', () => {
     jest.clearAllMocks();
   });
 
-  it('requires both browser and API connectivity for initial online status', () => {
+  it('starts from what the connectivity module already knows', () => {
     mockGetConnectivityStatus.mockReturnValue(false);
 
     const { result } = renderHook(() => useOnlineStatus());
@@ -50,26 +59,46 @@ describe('useOnlineStatus', () => {
     expect(result.current).toBe(false);
   });
 
-  it('drops offline when API connectivity reports a failure', () => {
+  it('follows the module down', () => {
     const { result } = renderHook(() => useOnlineStatus());
-
     expect(result.current).toBe(true);
 
     act(() => {
-      apiObserver?.(false);
+      mockGetConnectivityStatus.mockReturnValue(false);
+      notifyStore?.();
     });
 
     expect(result.current).toBe(false);
   });
 
-  it('does not force online from a browser online event while API status is still offline', () => {
-    browserOnline = false;
+  it('follows the module back up, without consulting the device flag again', () => {
+    /**
+     * The stuck-flag case: `navigator.onLine` can stay false over a working network, and
+     * the old formula multiplied every answer by it — so a confirmed recovery could never
+     * be applied and the manual retry button could not do the one job it exists for.
+     */
+    Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: false });
+    mockGetConnectivityStatus.mockReturnValue(false);
     const { result } = renderHook(() => useOnlineStatus());
-
     expect(result.current).toBe(false);
 
-    browserOnline = true;
+    act(() => {
+      mockGetConnectivityStatus.mockReturnValue(true);
+      notifyStore?.();
+    });
+
+    expect(result.current).toBe(true);
+    Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: true });
+  });
+
+  it('does not listen to window events itself — the module owns that', () => {
+    /**
+     * Two listeners for the same event, in two places, with an order that decided the
+     * outcome: the hook's own handler ran first and could declare the app online before
+     * the provider's probe had sent anything.
+     */
     mockGetConnectivityStatus.mockReturnValue(false);
+    const { result } = renderHook(() => useOnlineStatus());
 
     act(() => {
       window.dispatchEvent(new Event('online'));

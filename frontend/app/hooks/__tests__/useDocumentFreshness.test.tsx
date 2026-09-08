@@ -706,7 +706,7 @@ describe('diagnostic incidents and read-only retry', () => {
     const old = emit;
     rerender({ docId: 'b' });
     await act(async () => { old!(server({ title: 'wrong document' })); resolve({ title: 'wrong document' }); });
-    expect(result.current.diagnostics).toEqual({ lastServerResponseAt: null, lastServerResult: null, incident: null });
+    expect(result.current.diagnostics).toEqual({ lastServerResponseAt: null, lastServerResult: null, incident: null, persistentFailure: null });
     expect(result.current.remote).toBeNull();
     expect(result.current.checking).toBe(false);
   });

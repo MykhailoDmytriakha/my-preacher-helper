@@ -2,6 +2,12 @@ import {
   notifyUsageRequestSettled,
   throwIfUsageCapReached,
 } from '@/services/usageCapClient';
+import {
+  getConnectivityStatus,
+  reportServerReachable,
+  reportServerUnreachable,
+  subscribeToConnectivity,
+} from '@/utils/connectivity';
 import { debugLog } from '@/utils/debugMode';
 import { fetchWithTimeout, FetchTimeoutError } from '@/utils/fetchWithTimeout';
 
@@ -34,47 +40,27 @@ const TIMEOUT_BY_CATEGORY: Record<RequestCategory, number> = {
   health: 3000,
 };
 
-// Internal connectivity state observers
-type ConnectivityObserver = (isOnline: boolean) => void;
-const observers = new Set<ConnectivityObserver>();
+/**
+ * CONNECTIVITY IS NOT THIS MODULE'S JOB — it only reports what its requests observed.
+ *
+ * This file owned the answer for a long time, and owning it made the answer wrong: the flag
+ * started at "online" and moved only when a request failed, so a session that issues no
+ * requests — an app launched with the Wi-Fi off — reported a working connection for its
+ * whole life. Every repair attempted on top of that needed another mechanism to compensate,
+ * and each mechanism brought its own way to get stuck.
+ *
+ * The state now lives in `connectivity.ts`, which keeps the device signal and the server
+ * signal apart. Here we do the one thing a transport can honestly say: a reply came back,
+ * or the request never reached anything. Re-exported below so the ~25 existing readers keep
+ * their import.
+ */
+export {
+  getConnectivityStatus,
+  getConnectivityState,
+} from '@/utils/connectivity';
 
-export const onConnectivityChange = (observer: ConnectivityObserver) => {
-  observers.add(observer);
-  return () => observers.delete(observer);
-};
-
-let lastKnownOnlineStatus = true;
-let recoveryTimeoutId: NodeJS.Timeout | null = null;
-
-export const getConnectivityStatus = () => lastKnownOnlineStatus;
-
-const setOnlineStatus = (isOnline: boolean) => {
-  // IF dropping to offline -> DO IT IMMEDIATELY
-  if (!isOnline) {
-    if (recoveryTimeoutId) {
-      clearTimeout(recoveryTimeoutId);
-      recoveryTimeoutId = null;
-    }
-    if (lastKnownOnlineStatus) {
-      debugLog('apiClient: connectivity dropped', { isOnline: false });
-      lastKnownOnlineStatus = false;
-      observers.forEach((observer) => observer(false));
-    }
-    return;
-  }
-
-  // IF recovering to online -> DEBOUNCE (Hysteresis)
-  // We want to be sure the network is stable before enabling "Magic"
-  if (isOnline && !lastKnownOnlineStatus && !recoveryTimeoutId) {
-    debugLog('apiClient: connectivity recovery detected, stabilizing...', { isOnline: true });
-    recoveryTimeoutId = setTimeout(() => {
-      lastKnownOnlineStatus = true;
-      recoveryTimeoutId = null;
-      debugLog('apiClient: connectivity stabilized', { isOnline: true });
-      observers.forEach((observer) => observer(true));
-    }, 3000); // Wait 3 seconds of success before confirming "Online"
-  }
-};
+export const onConnectivityChange = (observer: (isOnline: boolean) => void) =>
+  subscribeToConnectivity(() => observer(getConnectivityStatus()));
 
 /**
  * High-level API client with tiered timeouts and connectivity tracking.
@@ -99,8 +85,9 @@ export async function apiClient(
       // For now, let the caller handle the redirect or retry
     }
 
-    // Any successful response (even 4xx/5xx) means the server is reachable
-    setOnlineStatus(true);
+    // Any reply — 200 or 503 — proves the network carried it. Whether the SERVER is
+    // healthy is a different question, and not one connectivity should answer.
+    reportServerReachable();
     await throwIfUsageCapReached(response);
     return response;
   } catch (error: unknown) {
@@ -117,7 +104,7 @@ export async function apiClient(
         error: err.message,
         category 
       });
-      setOnlineStatus(false);
+      reportServerUnreachable();
     }
 
     throw error;
@@ -130,16 +117,32 @@ export async function apiClient(
 
 /**
  * Manual probe to check server availability.
+ *
+ * THREE OUTCOMES, NOT TWO. A boolean here forced two different situations into one answer
+ * and produced a contradiction on screen: a 503 during a deploy made the probe return
+ * "false", the toast said "still no connection", and moments later the offline icon
+ * disappeared anyway — because the reply had in fact travelled, so connectivity had every
+ * right to call the network fine. The network carrying a request and the server being
+ * usable are different questions, and the person deserves to be told which one failed.
  */
-export async function probeConnectivity(): Promise<boolean> {
+export type ProbeOutcome = 'healthy' | 'unhealthy' | 'unreachable';
+
+export async function probeConnectivity(): Promise<ProbeOutcome> {
   try {
     const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
     const response = await apiClient(`${API_BASE}/api/health`, {
       method: 'HEAD',
       category: 'health',
+      /**
+       * This answer is the one piece of evidence allowed to overrule the device flag, so it
+       * has to come from the network every time. Without this the browser's own HTTP cache
+       * can hand back a previous 204 with the Wi-Fi off, and the app would announce that
+       * the connection is back having reached nothing.
+       */
+      cache: 'no-store',
     });
-    return response.ok;
+    return response.ok ? 'healthy' : 'unhealthy';
   } catch {
-    return false;
+    return 'unreachable';
   }
 }
