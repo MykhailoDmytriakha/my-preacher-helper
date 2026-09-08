@@ -8,7 +8,7 @@ This is an ongoing implementation, not a claim that every area is complete. The 
 |---|---|---|---|
 | Settings | All six settings share one row and one native Switch; TXT export uses that Switch too | Owner checks, persistence paths, acceptance/refusal handling, version details and local debug preference | FeatureToggle contracts, GroupsFeatureToggle, DebugModeToggle, Switch tests; desktop/mobile screenshots |
 | Series forms | One values model, payload conversion, field set and color selector for create/edit | Exact normalized payload, initial sermons, queued vs remote acceptance, refusal keeps draft, stale-write handoff, untouched refresh vs dirty draft | SeriesModal.contract passed nine scenarios before extraction; same scenarios plus additional error cases after |
-| Entity dialogs | Shared FormDialog, FormActions and field styling for series and group creation | Caller retains submission and dismissal; group bootstrap/date data untouched | FormDialog/FormField direct tests, existing group contracts, browser form interaction |
+| Entity dialogs | Shared FormDialog, FormActions and field styling for series, groups and all three prayer dialogs | Caller retains submission/dismissal and disabled states; group bootstrap/date data untouched; prayer answer skip stays distinct from cancellation | FormDialog/FormField direct tests, existing entity contracts; real long-draft regression checks and light/dark/mobile/desktop screenshots |
 | Text dictation | One useTextDictation controller for thought creation, thought editing and prayer updates | Same endpoint, retained audio on ordinary failure, same-blob retry, global usage-cap reporting, current-draft append; caller-specific whitespace/empty-error presentation | Six behavioral contracts passed before and after; direct hook 100% lines/branches/functions; actual desktop/mobile form inspection |
 | Scratch board | Separate note-card UI and pure placement/outline model; one outline clone, canonical sections and placement type; remove unused card/section props and duplicate Apply guard | Fresh IDs only for consumed scratch nodes, additive notes, remote/draft identity, capture/apply locks, delete confirmation and undo | 41 focused tests; direct model/card coverage; real draft collapse/reopen |
 | Test renderer | Native React roots and portals; cleanup unmounts before deleting manual fixtures | Provider context, draft identity, nested dialogs, actual body placement | Dedicated red/green portal regressions; entire test suite |
@@ -45,7 +45,7 @@ A former icon assertion accidentally matched the header close icon. Portal-relat
 
 2026-09-07 18:11 PDT: root `npm run test:coverage && npm run lint:full` passed, 569 suites / 5358 tests, 91.10% lines (106886/117326). No lint/type/unused errors; one pre-existing study-detail complexity warning. New shared runtime components all report 100% line coverage. This checkpoint does not prove live Firestore semantics, physical-device behavior or production deployment.
 
-Live candidate: development server with PWA disabled, authenticated existing test account. A mobile series draft retained both its title and actual rich-editor text through custom color confirmation. No horizontal overflow; the submit action remained reachable after scrolling. The draft was cancelled without creating a series. Dark-mode verification for the newly unified forms is still pending.
+Live candidate: development server with PWA disabled, authenticated existing test account. A mobile series draft retained both its title and actual rich-editor text through custom color confirmation. No horizontal overflow; the submit action remained reachable after scrolling. The draft was cancelled without creating a series. Dark-mode verification was completed in the 19:05 dialog checkpoint below.
 
 2026-09-07 18:30 PDT: the scratch packet passed root `npm run test:coverage && npm run lint:full`: 571 suites / 5368 tests, 90.88% aggregate lines. The extracted card and model have 100% line coverage; ScratchPanel has 90.67%. Aggregate coverage also varies in untouched modules across full runs, so that percentage is not used as functional equivalence proof. Existing behavior assertions all passed. The page now has 1040 lines versus 1523; the reduction includes actual duplicate/dead rules, not just moved code.
 
@@ -54,6 +54,10 @@ In the authenticated browser, the existing DnD stand retained a two-line manual 
 2026-09-07 18:49 PDT: dictation packet passed root coverage and lint/type/unused: 573 suites / 5381 tests, 90.94% aggregate lines. Six new cross-form behavior cases passed on the old implementations before consolidation. The first lint/type pass found a Testing Library test option mistakenly copied from Playwright; it was removed, and both full gates reran green. Direct hook coverage is 100% in all dimensions. Component-level focused coverage: create thought97.32%, edit thought92.72%, prayer update97.79% before adding the recorder-error case. One shared 71-line controller replaces 233 deleted lines with 57 caller-specific lines.
 
 Live forms: actual rich editor accepted text, enabled Save, and retained the dictation control. Create draft cleared/cancelled; edit existing test thought opened and cancelled; no thought/prayer writes or paid transcription requests. A 390px prayer update inspection revealed an existing long-text overflow bug (BUG-20260907-prayer-update-overflow); it is recorded for the dialog packet, not concealed by the successful dictation tests.
+
+2026-09-07 19:05 PDT: prayer dialog packet passed both full root gates: 573 suites / 5383 tests, 91.11% lines. No new lint warning. One form shell now handles series/group and prayer layouts, names, optional backdrop dismissal, and close locks. Shared actions preserve independent validation/saving/cancel locks. Dead error state removed from prayer create/answer; data-write/recovery behavior unchanged. Shared auto-sized fields no longer offer a conflicting manual resize grip.
+
+**BUG-20260907-prayer-update-overflow — locally fixed and verified.** Before: a 30-line update placed Submit at y1076–1112 on a390×844 viewport; answer at y1072–1108; prayer edit at y1153–1189, with document height844 and no usable scroll region. After: all three scroll to Submit at y779–823. The same local test account and QA prayer were used; drafts were cleared/restored then cancelled. Status remained active and updates remained empty. Series/group/prayer dark screenshots inspected; theme restored to System. Browser console has font-preload warnings only. This proves desktop-browser viewport behavior, not a physical keyboard/device claim.
 
 ## Saved visual evidence
 
@@ -66,7 +70,10 @@ Files are under `output/playwright/refactoring/` (local artifacts):
 - `color-picker-mobile-inspection.png`.
 - `scratch-before-desktop.png`, `scratch-after-desktop.png`.
 - `thought-create-after-desktop.png`, `thought-edit-after-desktop.png`, `thought-edit-after-mobile.png`, `prayer-update-after-mobile.png`.
-- `prayer-update-long-before-mobile.png` captures the pre-fix long-text overflow.
+- `prayer-update-long-before-mobile.png`, `prayer-update-long-after-mobile.png` show the actual overflow regression.
+- `prayer-update-unified-mobile.png`, `prayer-update-after-dark-desktop.png`.
+- `prayer-edit-before-mobile.png`, `prayer-edit-after-mobile.png`, `prayer-answer-before-mobile.png`, `prayer-answer-after-mobile.png`.
+- `series-create-after-dark-desktop.png`, `series-create-after-dark-mobile.png`, `group-create-after-dark-desktop.png`, `group-create-after-dark-mobile.png`.
 
 Series/group before shots were captured from the still-unchanged respective components before their edits. An isolated archive of original `814461fd` was also booted, but its separate-origin authentication remained loading; it was not used as proof of an authenticated before/after comparison.
 

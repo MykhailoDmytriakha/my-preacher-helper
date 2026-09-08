@@ -41,3 +41,31 @@ it('keeps cancel separate from form submission and disables only submission whil
   expect(screen.getByRole('button', { name: 'common.saving' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
 });
+
+it('allows opt-in backdrop dismissal, protects content clicks, and blocks every close control when requested', () => {
+  const close = jest.fn();
+  const props = { title: 'Prayer', eyebrow: 'Journal', onClose: close, dismissOnBackdrop: true, size: 'compact' as const, tone: 'rose' as const };
+  const { rerender } = render(<FormDialog {...props}><textarea aria-label="Draft" /></FormDialog>);
+  const dialog = screen.getByRole('dialog', { name: 'Prayer' });
+  fireEvent.click(screen.getByRole('textbox'));
+  expect(close).not.toHaveBeenCalled();
+  fireEvent.click(dialog.parentElement!);
+  expect(close).toHaveBeenCalledTimes(1);
+  close.mockClear();
+  rerender(<FormDialog {...props} closeDisabled><textarea aria-label="Draft" /></FormDialog>);
+  expect(screen.getByRole('button', { name: 'common.close' })).toBeDisabled();
+  fireEvent.click(dialog.parentElement!);
+  fireEvent.click(screen.getByRole('button', { name: 'common.close' }));
+  expect(close).not.toHaveBeenCalled();
+});
+
+it('supports independent validation and cancellation locks with a caller-specific saving label', () => {
+  const props = { onCancel: jest.fn(), cancelLabel: 'Cancel', submitLabel: 'Add update', savingLabel: 'Saving update', tone: 'rose' as const };
+  const { rerender } = render(<FormActions {...props} saving={false} submitDisabled cancelDisabled />);
+  expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Add update' })).toBeDisabled();
+  rerender(<FormActions {...props} saving />);
+  expect(screen.getByRole('button', { name: 'Saving update' })).toHaveAttribute('aria-busy', 'true');
+  expect(screen.getByRole('button', { name: 'Saving update' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
+});
