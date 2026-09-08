@@ -3,105 +3,56 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Chip } from '@/components/ui/Chip';
+import SettingsToggleRow from '@/components/settings/SettingsToggleRow';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserSettings } from '@/hooks/useUserSettings';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 
 export default function StructurePreviewToggle() {
-    const { t } = useTranslation();
-    const { user } = useAuth();
-    const [enabled, setEnabled] = useState(false);
-    const [hasLoaded, setHasLoaded] = useState(false);
-    const { settings, loading, updateStructurePreviewAccess } = useUserSettings(user?.uid);
+  const { t } = useTranslation();
+  const { user } = useAuth();
+  const [enabled, setEnabled] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const { settings, loading, updateStructurePreviewAccess } = useUserSettings(user?.uid);
 
-    useEffect(() => {
-        let isActive = true;
+  useEffect(() => {
+    if (!user?.uid) {
+      setEnabled(false);
+      setHasLoaded(true);
+    } else if (!loading) {
+      setEnabled(settings?.enableStructurePreview || false);
+      setHasLoaded(true);
+    }
+  }, [user?.uid, settings, loading]);
 
-        if (!user?.uid) {
-            if (isActive) {
-                setEnabled(false);
-                setHasLoaded(true);
-            }
-            return () => {
-                isActive = false;
-            };
-        }
+  const handleToggle = async () => {
+    if (!user?.uid) return;
 
-        if (loading) {
-            return () => {
-                isActive = false;
-            };
-        }
-
-        const enabledValue = settings?.enableStructurePreview || false;
-        if (isActive) {
-            setEnabled(enabledValue);
-            setHasLoaded(true);
-        }
-
-        return () => {
-            isActive = false;
-        };
-    }, [user?.uid, settings, loading]);
-
-    const handleToggle = async () => {
-        if (!user?.uid) return;
-
-        // Queued acceptance means the refusal comes LATE; a no-op there hides it.
-        const previous = enabled;
-        const reportFailure = (error: unknown) => {
-            console.error('❌ StructurePreviewToggle: Error updating setting:', error);
-            // Message comes from the shared recovery toast; restore the switch only.
-            setEnabled(previous);
-        };
-
-        try {
-            const newValue = !enabled;
-            await awaitAcceptance(updateStructurePreviewAccess(newValue), reportFailure);
-            setEnabled(newValue);
-        } catch (error) {
-            reportFailure(error);
-        }
+    // Queued acceptance means the refusal comes LATE; a no-op there hides it.
+    const previous = enabled;
+    const reportFailure = (error: unknown) => {
+      console.error('❌ StructurePreviewToggle: Error updating setting:', error);
+      // Message comes from the shared recovery toast; restore the switch only.
+      setEnabled(previous);
     };
 
-    if (loading && !hasLoaded) {
-        return (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 md:p-6">
-                <div className="animate-pulse" data-testid="structure-preview-loading">
-                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mb-4"></div>
-                    <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/2"></div>
-                </div>
-            </div>
-        );
+    try {
+      const newValue = !enabled;
+      await awaitAcceptance(updateStructurePreviewAccess(newValue), reportFailure);
+      setEnabled(newValue);
+    } catch (error) {
+      reportFailure(error);
     }
+  };
 
-    return (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 md:p-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                        {t('settings.structurePreview.title')}
-                        <Chip tone="amber" size="sm">Beta</Chip>
-                    </h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                        {t('settings.structurePreview.description')}
-                    </p>
-                </div>
-                <button
-                    onClick={handleToggle}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${enabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-600'
-                        }`}
-                    role="switch"
-                    aria-checked={enabled}
-                    data-testid="structure-preview-toggle"
-                >
-                    <span
-                        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${enabled ? 'translate-x-5' : 'translate-x-0'
-                            }`}
-                    />
-                </button>
-            </div>
-        </div>
-    );
+  return (
+    <SettingsToggleRow
+      title={t('settings.structurePreview.title')}
+      description={t('settings.structurePreview.description')}
+      enabled={enabled}
+      onToggle={handleToggle}
+      loading={loading && !hasLoaded}
+      testId="structure-preview"
+    />
+  );
 }

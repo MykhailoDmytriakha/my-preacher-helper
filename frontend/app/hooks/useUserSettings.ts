@@ -54,102 +54,74 @@ export function useUserSettings(userId: string | null | undefined) {
   const revert = (previous: UserSettings | null | undefined) =>
     queryClient.setQueryData(buildQueryKey(userId), previous ?? null);
 
+  const updateCachedSettings = async (patch: Partial<UserSettings>) => {
+    await queryClient.cancelQueries({ queryKey: buildQueryKey(userId) });
+    const previous = queryClient.getQueryData<UserSettings | null>(buildQueryKey(userId));
+    patchSettings(patch);
+    return { previous };
+  };
+
+  const mutationCallbacks = {
+    onError: (_error: unknown, _variables: unknown, context: { previous: UserSettings | null | undefined } | undefined) =>
+      revert(context?.previous),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: SETTINGS_PREFIX }),
+  };
+
   const updatePrepModeMutation = useMutation({
+    ...mutationCallbacks,
     mutationKey: SETTINGS_MUTATION_KEYS.prepMode,
     mutationFn: ({ userId: uid, value }: { userId: string; value: boolean }) => updatePrepModeAccess(uid, value),
-    onMutate: async ({ value }) => {
-      await queryClient.cancelQueries({ queryKey: buildQueryKey(userId) });
-      const previous = queryClient.getQueryData<UserSettings | null>(buildQueryKey(userId));
-      patchSettings({ enablePrepMode: value });
-      return { previous };
-    },
-    onError: (_e, _v, ctx) => revert(ctx?.previous),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: SETTINGS_PREFIX }),
+    onMutate: ({ value }) => updateCachedSettings({ enablePrepMode: value }),
   });
 
   const updateAudioGenerationMutation = useMutation({
+    ...mutationCallbacks,
     mutationKey: SETTINGS_MUTATION_KEYS.audioGeneration,
     mutationFn: ({ userId: uid, value }: { userId: string; value: boolean }) =>
       updateAudioGenerationAccess(uid, value),
-    onMutate: async ({ value }) => {
-      await queryClient.cancelQueries({ queryKey: buildQueryKey(userId) });
-      const previous = queryClient.getQueryData<UserSettings | null>(buildQueryKey(userId));
-      patchSettings({ enableAudioGeneration: value });
-      return { previous };
-    },
-    onError: (_e, _v, ctx) => revert(ctx?.previous),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: SETTINGS_PREFIX }),
+    onMutate: ({ value }) => updateCachedSettings({ enableAudioGeneration: value }),
   });
 
   const updateStructurePreviewMutation = useMutation({
+    ...mutationCallbacks,
     mutationKey: SETTINGS_MUTATION_KEYS.structurePreview,
     mutationFn: ({ userId: uid, value }: { userId: string; value: boolean }) =>
       updateStructurePreviewAccess(uid, value),
-    onMutate: async ({ value }) => {
-      await queryClient.cancelQueries({ queryKey: buildQueryKey(userId) });
-      const previous = queryClient.getQueryData<UserSettings | null>(buildQueryKey(userId));
-      patchSettings({ enableStructurePreview: value });
-      return { previous };
-    },
-    onError: (_e, _v, ctx) => revert(ctx?.previous),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: SETTINGS_PREFIX }),
+    onMutate: ({ value }) => updateCachedSettings({ enableStructurePreview: value }),
   });
 
   const updateFirstDayOfWeekMutation = useMutation({
+    ...mutationCallbacks,
     mutationKey: SETTINGS_MUTATION_KEYS.firstDayOfWeek,
     mutationFn: ({ userId: uid, value }: { userId: string; value: FirstDayOfWeek }) =>
       updateFirstDayOfWeek(uid, value),
-    onMutate: async ({ value }) => {
-      await queryClient.cancelQueries({ queryKey: buildQueryKey(userId) });
-      const previous = queryClient.getQueryData<UserSettings | null>(buildQueryKey(userId));
-      patchSettings({ firstDayOfWeek: value });
-      return { previous };
-    },
-    onError: (_e, _v, ctx) => revert(ctx?.previous),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: SETTINGS_PREFIX }),
+    onMutate: ({ value }) => updateCachedSettings({ firstDayOfWeek: value }),
   });
 
   const updateShowAppVersionMutation = useMutation({
+    ...mutationCallbacks,
     mutationKey: SETTINGS_MUTATION_KEYS.showAppVersion,
     mutationFn: ({ userId: uid, value }: { userId: string; value: boolean }) => updateShowAppVersion(uid, value),
-    onMutate: async ({ value }) => {
-      await queryClient.cancelQueries({ queryKey: buildQueryKey(userId) });
-      const previous = queryClient.getQueryData<UserSettings | null>(buildQueryKey(userId));
-      patchSettings({ showAppVersion: value });
-      return { previous };
-    },
-    onError: (_e, _v, ctx) => revert(ctx?.previous),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: SETTINGS_PREFIX }),
+    onMutate: ({ value }) => updateCachedSettings({ showAppVersion: value }),
   });
 
   const updateModelPreferenceMutation = useMutation({
+    ...mutationCallbacks,
     mutationKey: SETTINGS_MUTATION_KEYS.modelPreference,
     mutationFn: ({ userId: uid, preference }: { userId: string; preference: ModelPreference }) =>
       persistModelPreference(uid, preference),
-    onMutate: async ({ preference }) => {
-      await queryClient.cancelQueries({ queryKey: buildQueryKey(userId) });
-      const previous = queryClient.getQueryData<UserSettings | null>(buildQueryKey(userId));
-      patchSettings(preference);
-      return { previous };
-    },
-    onError: (_e, _v, ctx) => revert(ctx?.previous),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: SETTINGS_PREFIX }),
+    onMutate: ({ preference }) => updateCachedSettings(preference),
   });
 
   const updateFunctionModelPreferenceMutation = useMutation({
+    ...mutationCallbacks,
     mutationKey: SETTINGS_MUTATION_KEYS.functionModelPreference,
     mutationFn: ({ userId: uid, preference }: { userId: string; preference: FunctionModelPreference }) =>
       persistFunctionModelPreference(uid, preference),
-    onMutate: async ({ preference }) => {
-      await queryClient.cancelQueries({ queryKey: buildQueryKey(userId) });
-      const previous = queryClient.getQueryData<UserSettings | null>(buildQueryKey(userId));
-      patchSettings(preference);
-      return { previous };
-    },
-    onError: (_e, _v, ctx) => revert(ctx?.previous),
+    onMutate: ({ preference }) => updateCachedSettings(preference),
     onSuccess: async () => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: SETTINGS_PREFIX }),
+        mutationCallbacks.onSuccess(),
         queryClient.invalidateQueries({ queryKey: ['me', 'entitlement'] }),
       ]);
     },

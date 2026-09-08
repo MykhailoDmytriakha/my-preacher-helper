@@ -238,6 +238,12 @@ describe('Settings Page', () => {
     });
   });
 
+  it('mounts one user settings section shared by both navigation layouts', async () => {
+    renderWithProviders();
+    await waitFor(() => expect(screen.getAllByTestId('user-settings-section')).toHaveLength(1));
+    expect(screen.getAllByTestId('settings-nav')).toHaveLength(2);
+  });
+
   describe('Responsive Layout', () => {
     beforeEach(() => {
       renderWithProviders();
@@ -259,9 +265,9 @@ describe('Settings Page', () => {
         const desktopNavs = screen.getAllByText('User Settings');
         expect(desktopNavs.length).toBeGreaterThan(0);
         
-        // Find the desktop nav button (should be in hidden md:flex container)
+        // Desktop navigation is hidden on mobile; the content tree is shared.
         const desktopNav = desktopNavs.find(nav => 
-          nav.closest('div')?.parentElement?.parentElement?.classList.contains('hidden')
+          nav.closest('div')?.parentElement?.classList.contains('hidden')
         );
         expect(desktopNav).toBeInTheDocument();
       });
@@ -348,8 +354,8 @@ describe('Settings Page', () => {
       fireEvent.click((await screen.findAllByTestId('nav-ai-models'))[0]);
 
       await waitFor(() => {
-        expect(screen.getAllByTestId('usage-widget')).toHaveLength(2);
-        expect(screen.getAllByTestId('model-selector')).toHaveLength(2);
+        expect(screen.getAllByTestId('usage-widget')).toHaveLength(1);
+        expect(screen.getAllByTestId('model-selector')).toHaveLength(1);
         expect(screen.queryByTestId('user-settings-section')).not.toBeInTheDocument();
       });
     });

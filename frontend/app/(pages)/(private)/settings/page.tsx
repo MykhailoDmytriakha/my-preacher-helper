@@ -154,10 +154,12 @@ export default function SettingsPage() {
           <div className="space-y-6">
             <ReferralCard user={user} />
             <UserSettingsSection user={user} />
-            <PrepModeToggle />
-            <AudioGenerationToggle />
-            <StructurePreviewToggle />
-            <GroupsFeatureToggle />
+            <div className="rounded-lg bg-white shadow dark:bg-gray-800">
+              <PrepModeToggle />
+              <AudioGenerationToggle />
+              <StructurePreviewToggle />
+              <GroupsFeatureToggle />
+            </div>
             <DebugModeToggle />
             <ShowVersionToggle />
           </div>
@@ -171,17 +173,6 @@ export default function SettingsPage() {
           <div className="space-y-6">
             <UsageWidget user={user} />
             <ModelSelector user={user} />
-          </div>
-        );
-      default:
-        return (
-          <div className="space-y-6">
-            <ReferralCard user={user} />
-            <UserSettingsSection user={user} />
-            <PrepModeToggle />
-            <StructurePreviewToggle />
-            <GroupsFeatureToggle />
-            <DebugModeToggle />
           </div>
         );
     }
@@ -254,10 +245,10 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Desktop Layout (side-by-side) - only visible on desktop */}
-        <div className="hidden md:flex md:flex-row md:gap-8">
+        {/* One content tree at every viewport width; only navigation changes layout. */}
+        <div className="md:flex md:flex-row md:gap-8">
           {/* Navigation sidebar for desktop */}
-          <div className="w-64 flex-shrink-0">
+          <div className="hidden w-64 flex-shrink-0 md:block">
             <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-2 flex flex-col gap-1">
               <SettingsNav
                 isAdmin={isAdmin}
@@ -271,15 +262,10 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Main content area for desktop */}
-          <div className="flex-1 transition-opacity duration-200 ease-in-out">
+          {/* Shared content for mobile and desktop */}
+          <div className="min-w-0 flex-1 transition-opacity duration-200 ease-in-out">
             {renderActiveSection()}
           </div>
-        </div>
-
-        {/* Mobile Content Area - only visible on mobile */}
-        <div className="block md:hidden transition-opacity duration-200 ease-in-out">
-          {renderActiveSection()}
         </div>
       </SettingsLayout>
     </>

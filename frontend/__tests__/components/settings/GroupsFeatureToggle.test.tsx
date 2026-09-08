@@ -1,11 +1,12 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import GroupsFeatureToggle from '@/components/settings/GroupsFeatureToggle';
 import { useUserSettings } from '@/hooks/useUserSettings';
 import { updateGroupsAccess } from '@/services/userSettings.service';
 
+let mockUser: { uid: string } | null = { uid: 'test-user-id' };
 jest.mock('@/hooks/useAuth', () => ({
-  useAuth: () => ({ user: { uid: 'test-user-id' } }),
+  useAuth: () => ({ user: mockUser }),
 }));
 
 jest.mock('react-i18next', () => ({
@@ -30,6 +31,7 @@ describe('GroupsFeatureToggle', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUser = { uid: 'test-user-id' };
     refresh.mockResolvedValue(undefined);
     mockUpdateGroupsAccess.mockResolvedValue(undefined);
     mockUseUserSettings.mockReturnValue({
@@ -80,6 +82,54 @@ describe('GroupsFeatureToggle', () => {
 
     const toggle = await screen.findByRole('switch');
     expect(toggle).not.toBeChecked();
+  });
+
+  it('does not submit without an authenticated owner', () => {
+    mockUser = null;
+    render(<GroupsFeatureToggle />);
+    fireEvent.click(screen.getByRole('switch'));
+    expect(mockUpdateGroupsAccess).not.toHaveBeenCalled();
+  });
+
+  it('adopts the loaded value and preserves it through a background refresh', () => {
+    const initial = mockUseUserSettings('test-user-id');
+    mockUseUserSettings.mockReturnValue({ ...initial, settings: { ...initial.settings!, enableGroups: true } });
+    const { rerender } = render(<GroupsFeatureToggle />);
+    expect(screen.getByRole('switch')).toBeChecked();
+    mockUseUserSettings.mockReturnValue({ ...initial, loading: true, settings: null });
+    rerender(<GroupsFeatureToggle />);
+    expect(screen.getByRole('switch')).toBeChecked();
+    mockUseUserSettings.mockReturnValue({ ...initial, settings: null });
+    rerender(<GroupsFeatureToggle />);
+    expect(screen.getByRole('switch')).not.toBeChecked();
+    expect(mockUpdateGroupsAccess).not.toHaveBeenCalled();
+  });
+
+  it('locks during persistence and refresh, then announces the confirmed value once', async () => {
+    let persist!: () => void;
+    let refreshed!: () => void;
+    mockUpdateGroupsAccess.mockReturnValueOnce(new Promise<void>(resolve => { persist = resolve; }));
+    refresh.mockReturnValueOnce(new Promise<void>(resolve => { refreshed = resolve; }));
+    const announced = jest.fn();
+    window.addEventListener('groups-feature-updated', announced);
+    try {
+      render(<GroupsFeatureToggle />);
+      fireEvent.click(screen.getByRole('switch'));
+      expect(screen.getByRole('switch')).toBeDisabled();
+      fireEvent.click(screen.getByRole('switch'));
+      expect(mockUpdateGroupsAccess).toHaveBeenCalledTimes(1);
+      expect(refresh).not.toHaveBeenCalled();
+      await act(async () => { persist(); });
+      expect(screen.getByRole('switch')).toBeDisabled();
+      expect(announced).not.toHaveBeenCalled();
+      await act(async () => { refreshed(); });
+      expect(screen.getByRole('switch')).toBeEnabled();
+      expect(screen.getByRole('switch')).toBeChecked();
+      expect(announced).toHaveBeenCalledTimes(1);
+      expect(announced.mock.calls[0][0].detail).toBe(true);
+    } finally {
+      window.removeEventListener('groups-feature-updated', announced);
+    }
   });
 
   it('toggles groups feature and refreshes settings', async () => {
