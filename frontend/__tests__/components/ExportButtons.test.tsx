@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
@@ -246,6 +246,22 @@ describe('ExportButtons Component', () => {
     });
   });
 
+  it.each(['default', 'icon'] as const)('blocks duplicate Word downloads in the %s layout and recovers after failure', async variant => {
+    let reject!: (error: Error) => void;
+    mockExportToWord.mockReturnValueOnce(new Promise((_, no) => { reject = no; }));
+    render(<ExportButtons getExportContent={mockGetExportContent} sermonId={mockSermonId} planData={planData} variant={variant} />);
+    const button = screen.getByRole('button', { name: 'Export to Word' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    await waitFor(() => expect(mockExportToWord).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole('button', { name: 'Exporting...' })).toBeDisabled();
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    await act(async () => { reject(new Error('Export failed')); });
+    expect(screen.getByRole('button', { name: 'Export to Word' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Export to Word' }));
+    await waitFor(() => expect(mockExportToWord).toHaveBeenCalledTimes(2));
+  });
+
   it('renders extra buttons and applies slot class', () => {
     render(
       <ExportButtons
@@ -301,6 +317,19 @@ describe('ExportButtons Component', () => {
 
     await user.click(screen.getByRole('button', { name: 'Export to PDF' }));
     expect(await screen.findByText('export.savePdf')).toBeInTheDocument();
+  });
+
+  it('closes controlled text and PDF dialogs through their shared close action', async () => {
+    const onTxtModalClose = jest.fn();
+    render(<ExportButtons sermonId={mockSermonId} getExportContent={mockGetExportContent} getPdfContent={mockGetPdfContent} showTxtModalDirectly onTxtModalClose={onTxtModalClose} />);
+    await screen.findByText('Test content');
+    fireEvent.click(screen.getByRole('button', { name: 'common.close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(onTxtModalClose).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Export to PDF' }));
+    await screen.findByText('<div>PDF</div>');
+    fireEvent.click(screen.getByRole('button', { name: 'common.close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('renders audio export button and opens modal', async () => {

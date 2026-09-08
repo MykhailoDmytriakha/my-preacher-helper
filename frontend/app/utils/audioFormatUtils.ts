@@ -282,22 +282,7 @@ export function buildRecordingFilename(mimeType: string): string {
   return `recording-${Date.now()}.${extension}`;
 }
 
-/**
- * Trigger a browser download of a Blob to the user's device.
- * The last line of defense against losing a recorded thought.
- */
-export function downloadBlobToDevice(blob: Blob, filename: string): void {
-  if (typeof document === 'undefined') return;
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  // Revoke on next tick so the click's navigation isn't cancelled.
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+export { downloadBlobToDevice } from '@/utils/download';
 
 /**
  * Creates and configures a MediaRecorder with proper event handlers

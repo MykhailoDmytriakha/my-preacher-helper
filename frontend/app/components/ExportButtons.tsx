@@ -1,13 +1,11 @@
 "use client";
 
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 
 import "@locales/i18n";
 
 import AudioExportModal from "@/components/AudioExportModal";
 import { debugLog } from "@/utils/debugMode";
-
-import { exportToWord } from "../../utils/wordExport";
 
 import { ExportButtonsLayout } from "./export-buttons/ExportButtonsLayout";
 import { ExportPdfModal } from "./export-buttons/ExportPdfModal";
@@ -41,6 +39,8 @@ export default function ExportButtons({
   const [showTxtModal, setShowTxtModal] = useState(showTxtModalDirectly || false);
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [showAudioModal, setShowAudioModal] = useState(false);
+  const [isWordExporting, setIsWordExporting] = useState(false);
+  const wordExportPending = useRef(false);
 
   const hasPlan = initialHasPlan !== undefined ? initialHasPlan : !!planData;
   const isPdfAvailable = !!getPdfContent && !disabledFormats.includes("pdf");
@@ -84,11 +84,14 @@ export default function ExportButtons({
   };
 
   const handleWordClick = async () => {
-    if (isWordDisabled || !planData) {
+    if (isWordDisabled || !planData || wordExportPending.current) {
       return;
     }
 
+    wordExportPending.current = true;
+    setIsWordExporting(true);
     try {
+      const { exportToWord } = await import('../../utils/wordExport');
       await exportToWord({
         data: planData,
         filename: `sermon-plan-${sermonTitle.replace(/[^a-zA-Zа-яА-Я0-9]/g, "-").toLowerCase()}.docx`,
@@ -96,6 +99,9 @@ export default function ExportButtons({
       });
     } catch (error) {
       console.error("Error exporting to Word:", error);
+    } finally {
+      wordExportPending.current = false;
+      setIsWordExporting(false);
     }
   };
 
@@ -110,6 +116,7 @@ export default function ExportButtons({
         orientation={orientation}
         isPdfAvailable={isPdfAvailable}
         isWordDisabled={isWordDisabled}
+        isWordExporting={isWordExporting}
         isAudioEnabled={enableAudio}
         isPreached={isPreached}
         variant={variant}

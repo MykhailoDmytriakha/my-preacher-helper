@@ -79,7 +79,7 @@ Series/group before shots were captured from the still-unchanged respective comp
 
 ## Remaining work
 
-Large-component boundaries (ScratchPanel/Column/OutlineBoard), clipboard consumers and duplicate tests, export presentation, final integrated visual review, production build and final full gates. This document will be updated as those packets are validated.
+Export content model/rendering and duplicate contracts, shared thought fields, Column/OutlineBoard boundaries, wider codebase review and final integrated verification. This document will be updated as those packets are validated.
 
 ## Clipboard consolidation — verified local checkpoint
 
@@ -95,3 +95,33 @@ Clipboard checkpoint: **575 suites / 5407 tests**, **91.14% aggregate lines**, r
 Actual local browser proof: referral URL equals the displayed link; TXT copy equals all 80 preview characters; formatted plan provides both HTML and plain text; diagnostics copy equals all 17086 report characters. Saved images under `output/playwright/refactoring`: `referral-copy-after-desktop.png`, `export-text-before-desktop.png`, `export-text-before-mobile.png`, `plan-copy-after-mobile.png`, `diagnostics-copy-after-mobile.png`. The export images are the baseline for the next visual consolidation. Browser viewport checks are not physical-device or deployment proof.
 
 ShareLinksPanel now stores only the selected token; it no longer recreates a timer or success state after the common hook settles. A separate red/green case verifies that an older accepted copy cannot republish success after a newer rejected one. Hidden share windows, updated cards and dismissed/reopened thought menus invalidate obsolete feedback. Canonical writeRecovery's stateless copy adapter retains its existing unavailable-API contract.
+
+
+## Export dialogs and loading — local production proof
+
+TXT/PDF share a presentation-only ExportDialog and a preview lifecycle hook. The existing FormDialog and FormButton own their common appearance. Preview requests from a previous builder/opening cannot replace the current result or hide it with a late error. A supplied TXT preview takes precedence over an earlier pending builder. PDF canvas completion from a previous opening cannot publish feedback into the new window.
+
+TXT uses the shared download transport and the advertised `.txt` / `.md` extensions. Audio format downloads and concatenated audio reuse that transport; object URLs are released after the download starts, including exceptional click cleanup. Player URLs retain their separate playback lifetime.
+
+Word and PDF libraries load only when their export action is used. Word blocks duplicate requests while preparing and re-enables after failure. The application does not enable the currently unavailable PDF feature. Existing output formats and Word payloads remain intact.
+
+Comparable production builds (same builder, installed dependencies and environment; before is frozen commit `11b8a3c2`):
+
+| Route | Before First Load JS | After First Load JS |
+|---|---:|---:|
+| Sermon list | 932 kB | 664 kB |
+| Sermon detail | 1.29 MB | 1.02 MB |
+| Plan | 1.11 MB | 839 kB |
+| Manual plan | 1.10 MB | 835 kB |
+| Structure | 1.14 MB | 877 kB |
+| Dashboard control | 489 kB | 489 kB |
+
+These are Next.js bundle-report sizes, not measured mobile latency. Lazy external imports follow the [Next.js 15 documentation](https://nextjs.org/docs/15/app/guides/lazy-loading).
+
+Actual authenticated production browser: `export.txt` contains all 80 preview characters exactly; `export.md` contains the expected heading, quoted scripture and numbered thought. Word downloads `sermon-plan-dnd-stand.docx`; ZIP/XML inspection confirms sermon title, scripture, outline title and the actual plan note. No application writes or paid AI calls. TXT format/type/tag controls and light/dark desktop/mobile layouts were exercised. Theme restored to System. PDF is covered by component tests, not claimed as a live enabled feature.
+
+Artifacts: `export-text-before-desktop.png`, `export-text-before-mobile.png`, `export-text-after-desktop.png`, `export-markdown-after-mobile.png`, `export-text-after-dark-desktop.png`, `export-text-after-dark-mobile.png`, `export-after.txt`, `export-after.md`, `export-after.docx` under `output/playwright/refactoring/`. Desktop dark screenshot was recaptured after transitions settled.
+
+Regression evidence: all nine new preview/download cases failed against the original implementations and pass after changes. Direct export subset: 54 tests, 97.19% lines, 86.36% functions; first narrow coverage run was below the global function floor until the real close/reopen ownership contract was added. Full root gates are recorded at the checkpoint below.
+
+Export checkpoint 2026-09-07 20:15 PDT: root coverage and lint/type/unused gates passed, **579 suites / 5432 tests**, **91.16% aggregate lines**. One pre-existing study-detail complexity warning remains.

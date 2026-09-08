@@ -203,3 +203,5 @@ Owner delegated final design choices and requested a substantial continuous pass
 - [ ] Deliver saved screenshots and an integrated review guide with known limits.
 
 A frozen original source instance runs separately for comparable screenshots. Progress is judged by removed duplicate rules and preserved behavior, not by files touched or elapsed time alone.
+
+2026-09-07 20:15 PDT: общий экспорт TXT/PDF, lifecycle предпросмотра, общий download и отложенная загрузка Word/PDF проверены production-браузером и полными root gates (579/5432). Следующий этап: модель/форматирование экспортируемого документа и контракты тестов.

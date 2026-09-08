@@ -1,7 +1,7 @@
 'use client';
 
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import { useId, type ReactNode } from 'react';
+import { useId, type ReactNode, type ButtonHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
@@ -15,7 +15,7 @@ interface FormDialogProps {
   eyebrow: string;
   description?: string;
   tone?: FormTone;
-  size?: 'standard' | 'compact';
+  size?: 'standard' | 'compact' | 'wide';
   dismissOnBackdrop?: boolean;
   closeDisabled?: boolean;
   onClose: () => void;
@@ -31,7 +31,7 @@ export default function FormDialog({ title, eyebrow, description, tone = 'blue',
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm sm:px-4"
       onClick={event => { if (dismissOnBackdrop && !closeDisabled && event.target === event.currentTarget) onClose(); }}>
       <div role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined}
-        className={`flex h-[100dvh] w-full flex-col overflow-hidden border border-gray-200/70 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900 sm:h-auto sm:max-h-[85vh] sm:rounded-2xl ${size === 'compact' ? 'sm:max-w-md' : 'sm:max-w-2xl'}`}>
+        className={`flex h-[100dvh] w-full flex-col overflow-hidden border border-gray-200/70 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900 sm:h-auto sm:max-h-[85vh] sm:rounded-2xl ${size === 'compact' ? 'sm:max-w-md' : size === 'wide' ? 'sm:max-w-4xl' : 'sm:max-w-2xl'}`}>
         <div className={`h-1 w-full shrink-0 bg-gradient-to-r ${FORM_COLORS[tone].gradient}`} />
         <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-7">
           <div className="flex items-start justify-between gap-4">
@@ -52,6 +52,18 @@ export default function FormDialog({ title, eyebrow, description, tone = 'blue',
   );
 }
 
+interface FormButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  tone?: FormTone;
+  variant?: 'primary' | 'secondary';
+}
+
+export function FormButton({ tone = 'blue', variant = 'primary', className = '', ...props }: FormButtonProps) {
+  const appearance = variant === 'secondary'
+    ? 'border border-gray-200 px-4 text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800'
+    : `px-5 text-white shadow-sm disabled:opacity-60 ${FORM_COLORS[tone].action}`;
+  return <button type="button" className={`inline-flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold transition ${appearance} ${className}`} {...props} />;
+}
+
 interface FormActionsProps {
   onCancel: () => void;
   cancelLabel: string;
@@ -67,12 +79,12 @@ export function FormActions({ onCancel, cancelLabel, submitLabel, saving, submit
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-end">
-      <button type="button" onClick={onCancel} disabled={cancelDisabled} className="rounded-xl border border-gray-200 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
+      <FormButton variant="secondary" onClick={onCancel} disabled={cancelDisabled}>
         {cancelLabel}
-      </button>
-      <button type="submit" disabled={saving || submitDisabled} aria-busy={saving} className={`inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold text-white shadow-sm transition disabled:opacity-60 ${FORM_COLORS[tone].action}`}>
+      </FormButton>
+      <FormButton type="submit" tone={tone} disabled={saving || submitDisabled} aria-busy={saving}>
         {saving ? savingLabel ?? t('common.saving') : submitLabel}
-      </button>
+      </FormButton>
     </div>
   );
 }

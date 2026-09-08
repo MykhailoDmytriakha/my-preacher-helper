@@ -9,6 +9,7 @@ export interface ExportButtonsLayoutProps {
   orientation?: "horizontal" | "vertical";
   isPdfAvailable?: boolean;
   isWordDisabled?: boolean;
+  isWordExporting?: boolean;
   isAudioEnabled?: boolean;
   isPreached?: boolean;
   variant?: "default" | "icon";

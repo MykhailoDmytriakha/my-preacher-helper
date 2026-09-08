@@ -1,6 +1,6 @@
 "use client";
 
-import { AudioLines, File, FileText, FileType, Volume2 } from "lucide-react";
+import { AudioLines, File, FileText, FileType, LoaderCircle, Volume2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import ActionButton, { ACTION_BUTTON_SLOT_CLASS } from "@/components/common/ActionButton";
@@ -27,6 +27,7 @@ export function ExportButtonsLayout({
   orientation = "horizontal",
   isPdfAvailable = false,
   isWordDisabled = false,
+  isWordExporting = false,
   isAudioEnabled = false,
   isPreached = false,
   variant = "default",
@@ -43,7 +44,7 @@ export function ExportButtonsLayout({
   const tooltipPositionClass = TOOLTIP_POSITION_BY_ORIENTATION[orientation];
   const pdfExportLabel = translate("export.pdfTitle", "Export to PDF");
   const pdfExportComingSoonLabel = translate("export.pdfTitleComingSoon", "Export to PDF (coming soon)");
-  const wordExportLabel = translate("export.wordTitle", "Export to Word");
+  const wordExportLabel = isWordExporting ? translate("export.wordExporting", "Exporting...") : translate("export.wordTitle", "Export to Word");
   const txtExportLabel = translate("export.txtTitle", "Export to TXT");
   const pdfButtonLabel = translate("export.pdfButton", "PDF");
   const txtButtonLabel = translate("export.txtButton", "TXT");
@@ -85,11 +86,12 @@ export function ExportButtonsLayout({
         <div className="tooltip">
           <button
             onClick={onWordClick}
-            disabled={isWordDisabled}
+            disabled={isWordDisabled || isWordExporting}
+            aria-busy={isWordExporting}
             className={`p-1.5 rounded-md transition-colors ${getWordIconButtonClassName(isWordDisabled, isPreached)}`}
             aria-label={wordExportLabel}
           >
-            <FileType className="w-4 h-4" />
+            {isWordExporting ? <LoaderCircle className="w-4 h-4 animate-spin" /> : <FileType className="w-4 h-4" />}
           </button>
           <span className="tooltiptext tooltiptext-top">{wordTooltipText}</span>
         </div>
@@ -137,7 +139,8 @@ export function ExportButtonsLayout({
       <div className={`tooltip ${textButtonSlotClassName}`}>
         <ActionButton
           onClick={onWordClick}
-          disabled={isWordDisabled}
+          disabled={isWordDisabled || isWordExporting}
+          aria-busy={isWordExporting}
           className={getWordTextButtonClassName(isWordDisabled, isPreached)}
           aria-label={wordExportLabel}
         >

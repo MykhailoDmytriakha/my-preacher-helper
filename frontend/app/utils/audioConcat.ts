@@ -1,3 +1,5 @@
+import { downloadBlobToDevice } from '@/utils/download';
+
 /**
  * Audio Concatenation Utilities
  * 
@@ -311,14 +313,7 @@ export async function insertSilenceBetweenBlobs(
  * ```
  */
 export function downloadAudioAsFile(blob: Blob, filename: string): void {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    downloadBlobToDevice(blob, filename);
 }
 
 /**

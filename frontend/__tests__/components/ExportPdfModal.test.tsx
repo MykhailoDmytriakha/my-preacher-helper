@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 
 import "@testing-library/jest-dom";
@@ -119,6 +119,46 @@ describe("ExportPdfModal", () => {
     expect(mockSave).not.toHaveBeenCalled();
   });
 
+  it("clears an export failure when reopened and allows a fresh download", async () => {
+    const getContent = jest.fn().mockResolvedValue(<div>PDF Preview</div>);
+    const props = { onClose: jest.fn(), getContent, title: 'Recovered' };
+    mockHtml2Canvas.mockRejectedValueOnce(new Error('canvas failed'));
+    const { rerender } = render(<ExportPdfModal {...props} isOpen />);
+    await screen.findByText('PDF Preview');
+    fireEvent.click(screen.getByRole('button', { name: 'Save as PDF' }));
+    await screen.findByRole('alert');
+    rerender(<ExportPdfModal {...props} isOpen={false} />);
+    rerender(<ExportPdfModal {...props} isOpen />);
+    await screen.findByText('PDF Preview');
+    expect(screen.queryByRole('alert')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save as PDF' }));
+    await waitFor(() => expect(mockSave).toHaveBeenCalledWith('Recovered.pdf'));
+  });
+
+  it.each(['resolve', 'reject'] as const)('keeps a reopened preview independent when an earlier canvas export later %ss', async outcome => {
+    let resolve!: (canvas: unknown) => void;
+    let reject!: (error: Error) => void;
+    mockHtml2Canvas.mockReturnValueOnce(new Promise((yes, no) => { resolve = yes; reject = no; }));
+    const getContent = jest.fn().mockResolvedValue(<div>PDF Preview</div>);
+    const props = { onClose: jest.fn(), getContent, title: 'Earlier export' };
+    const { rerender } = render(<ExportPdfModal {...props} isOpen />);
+    await screen.findByText('PDF Preview');
+    fireEvent.click(screen.getByRole('button', { name: 'Save as PDF' }));
+    await waitFor(() => expect(mockHtml2Canvas).toHaveBeenCalledTimes(1));
+    rerender(<ExportPdfModal {...props} isOpen={false} />);
+    rerender(<ExportPdfModal {...props} isOpen />);
+    await screen.findByText('PDF Preview');
+    await act(async () => {
+      if (outcome === 'reject') reject(new Error('Earlier export failed'));
+      else resolve({ width: 800, height: 1200, toDataURL: () => 'data:image/png;base64,export' });
+    });
+    expect(screen.getByText('PDF Preview')).toBeVisible();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Save as PDF' })).toBeEnabled();
+    if (outcome === 'resolve') expect(mockSave).toHaveBeenCalledWith('Earlier export.pdf');
+    else expect(mockSave).not.toHaveBeenCalled();
+  });
+
   it("calls onClose from both close affordances", async () => {
     const onClose = jest.fn();
 
@@ -133,7 +173,7 @@ describe("ExportPdfModal", () => {
 
     expect(await screen.findByText("PDF Preview")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: "common.close" }));
     fireEvent.click(screen.getByRole("button", { name: "actions.cancel" }));
 
     expect(onClose).toHaveBeenCalledTimes(2);

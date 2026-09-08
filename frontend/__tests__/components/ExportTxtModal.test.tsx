@@ -99,6 +99,7 @@ it('keeps the prepared text selectable when clipboard permission is denied', asy
   Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
   const report = jest.spyOn(console, 'error').mockImplementation(() => {});
   render(<ExportTxtModal isOpen onClose={jest.fn()} content="Prepared text" getContent={jest.fn()} />);
+  await screen.findByText('Prepared text');
   fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
   await waitFor(() => expect(report).toHaveBeenCalledWith('Failed to copy text:', expect.any(Error)));
   expect(screen.getByText('Prepared text')).toBeInTheDocument();
