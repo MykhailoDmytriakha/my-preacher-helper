@@ -37,7 +37,6 @@ jest.mock('@/hooks/useSermon', () => ({
 }));
 jest.mock('@/components/sermon/SermonHeader', () => () => <div>Header</div>);
 jest.mock('@components/AudioRecorder', () => ({ AudioRecorder: () => <div>Recorder</div> }));
-jest.mock('@components/AddThoughtManual', () => () => <div>AddThought</div>);
 jest.mock('@components/EditThoughtModal', () => () => <div>EditModal</div>);
 jest.mock('@components/sermon/BrainstormModule', () => () => <div>Brainstorm</div>);
 jest.mock('@components/sermon/ThoughtList', () => () => <div>ThoughtList</div>);

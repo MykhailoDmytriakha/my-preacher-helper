@@ -83,7 +83,6 @@ jest.mock('@/components/sermon/KnowledgeSection', () => () => <div data-testid="
 jest.mock('@/components/sermon/StructureStats', () => () => <div data-testid="mock-stats"></div>);
 jest.mock('@/components/sermon/StructurePreview', () => () => <div data-testid="mock-preview"></div>);
 jest.mock('@/components/ThoughtCard', () => () => <div data-testid="mock-thought-card"></div>);
-jest.mock('@/components/AddThoughtManual', () => () => <div data-testid="mock-add-manual"></div>);
 jest.mock('@/components/navigation/DashboardNav', () => () => <div data-testid="mock-nav"></div>);
 jest.mock('@/components/GuestBanner', () => () => <div data-testid="mock-guest-banner"></div>);
 

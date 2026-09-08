@@ -72,12 +72,6 @@ jest.mock('@/utils/transcriptionRetryClient', () => {
     };
 });
 
-jest.mock('@utils/tagUtils', () => ({
-    isStructureTag: jest.fn(() => false),
-    getStructureIcon: jest.fn(() => null),
-    getTagStyle: jest.fn(() => ({ bg: '', text: '', border: '' })),
-    normalizeStructureTag: jest.fn(() => null),
-}));
 
 import { toast } from 'sonner';
 
@@ -261,20 +255,13 @@ describe('CreateThoughtModal', () => {
         const onClose = jest.fn();
         render(<CreateThoughtModal {...defaultProps} onClose={onClose} />);
 
-        const backdrop = document.querySelector('div.bg-black.bg-opacity-50');
+        const backdrop = screen.getByRole('dialog').parentElement;
         expect(backdrop).toBeInTheDocument();
         fireEvent.click(backdrop!);
 
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
-    it('scroll container has mobile bg and sm:bg-transparent override to avoid white desktop background', () => {
-        render(<CreateThoughtModal {...defaultProps} />);
-        const scrollContainer = screen.getByRole('dialog').parentElement;
-        expect(scrollContainer?.className).toContain('bg-white');
-        expect(scrollContainer?.className).toContain('sm:bg-transparent');
-        expect(scrollContainer?.className).toContain('sm:dark:bg-transparent');
-    });
 
     it('does not close dirty modal when confirm is rejected', () => {
         const originalConfirm = window.confirm;

@@ -5,7 +5,8 @@ import { ChevronDown } from 'lucide-react';
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { Thought, SermonOutline, SermonPoint } from '@/models/models';
+import { OutlinePointOptions } from '@/components/thought/OutlinePointOptions';
+import { Thought, SermonOutline } from '@/models/models';
 import { resolveThoughtOutlineLocation } from '@/utils/subPoints';
 import { normalizeStructureTag, CANONICAL_TO_SECTION, isStructureTag } from "@utils/tagUtils";
 
@@ -114,153 +115,25 @@ export default function SermonPointSelector({
 
   if (!hasSermonPoints) return null;
 
-  if (outlinePoint) {
-    return (
-      <div className="mt-3 relative inline-block" ref={dropdownRef}>
-        <button
-          onClick={() => !disabled && setIsOpen(!isOpen)}
-          disabled={disabled || isUpdating}
-          className="text-left text-sm inline-flex max-w-full items-center gap-2 overflow-hidden rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 font-medium text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/50 dark:text-blue-200 dark:hover:bg-blue-900/70 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <span className="min-w-0 truncate">
-            {getSectionName(outlinePoint.section)}: {outlinePoint.text}
-          </span>
-          {subPointChipText && (
-            <span className="inline-flex min-w-0 max-w-[180px] items-center rounded-full border border-blue-200/80 bg-white/80 px-2 py-0.5 text-[11px] font-medium leading-4 text-blue-700 dark:border-blue-700 dark:bg-blue-950/50 dark:text-blue-200">
-              <span className="truncate">{subPointChipText}</span>
-            </span>
-          )}
-          <ChevronDown className={`h-4 w-4 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-        </button>
-
-        <AnimatePresence>
-          {isOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.15 }}
-              className="absolute z-50 mt-2 min-w-[250px] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-60 overflow-y-auto"
-            >
-              <button
-                onClick={() => handleSermonPointSelect(null)}
-                disabled={isUpdating}
-                className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-              >
-                {t('editThought.noSermonPoint')}
-              </button>
-
-              {Object.entries(filteredSermonPoints).map(([section, points]) =>
-                points.length > 0 ? (
-                  <div key={section}>
-                    <div className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900">
-                      {t(`outline.${section === 'main' ? 'mainPoints' : section}`)}
-                    </div>
-                    {points.map((point: SermonPoint) => (
-                      <div key={point.id}>
-                        <button
-                          onClick={() => handleSermonPointSelect(point.id, null)}
-                          disabled={isUpdating}
-                          className={`w-full text-left px-4 py-2 text-sm transition-colors disabled:opacity-50 ${thought.outlinePointId === point.id && !thought.subPointId
-                              ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200'
-                              : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
-                            }`}
-                        >
-                          {point.text}
-                        </button>
-                        {point.subPoints && point.subPoints.length > 0 && (
-                          [...point.subPoints].sort((a, b) => a.position - b.position).map((sp) => (
-                            <button
-                              key={sp.id}
-                              onClick={() => handleSermonPointSelect(point.id, sp.id)}
-                              disabled={isUpdating}
-                              className={`w-full text-left pl-8 pr-4 py-1.5 text-sm transition-colors disabled:opacity-50 ${thought.outlinePointId === point.id && thought.subPointId === sp.id
-                                  ? 'bg-blue-50 text-blue-700 dark:bg-blue-900/50 dark:text-blue-200'
-                                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
-                                }`}
-                            >
-                              <span className="inline-flex items-center gap-1.5">
-                                <span className="w-1 h-1 rounded-full bg-gray-400 dark:bg-gray-500 flex-shrink-0" />
-                                {sp.text}
-                              </span>
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : null
-              )}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    );
-  }
-
+  const triggerClass = outlinePoint
+    ? 'max-w-full overflow-hidden border border-blue-200 bg-blue-50 font-medium text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/50 dark:text-blue-200 dark:hover:bg-blue-900/70'
+    : 'border-2 border-dashed border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-700 dark:border-gray-600 dark:text-gray-400 dark:hover:border-gray-500 dark:hover:text-gray-300';
   return (
-    <div className="mt-3 relative inline-block" ref={dropdownRef}>
-      <button
-        onClick={() => !disabled && setIsOpen(!isOpen)}
-        disabled={disabled || isUpdating}
-        className="text-left text-sm inline-flex items-center gap-2 rounded-full px-3 py-1.5 border-2 border-dashed border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        <span>
-          {t('editThought.noSermonPointAssigned')}
-        </span>
-        <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+    <div className="relative mt-3 inline-block" ref={dropdownRef}>
+      <button type="button" onClick={() => !disabled && setIsOpen(!isOpen)} disabled={disabled || isUpdating} aria-expanded={isOpen}
+        className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${triggerClass}`}>
+        <span className="min-w-0 truncate">{outlinePoint ? `${getSectionName(outlinePoint.section)}: ${outlinePoint.text}` : t('editThought.noSermonPointAssigned')}</span>
+        {subPointChipText && <span className="inline-flex min-w-0 max-w-[180px] items-center rounded-full border border-blue-200/80 bg-white/80 px-2 py-0.5 text-[11px] font-medium leading-4 text-blue-700 dark:border-blue-700 dark:bg-blue-950/50 dark:text-blue-200">
+          <span className="truncate">{subPointChipText}</span>
+        </span>}
+        <ChevronDown className={`h-4 w-4 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
-
       <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.15 }}
-            className="absolute z-50 mt-2 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-60 overflow-y-auto"
-          >
-            <div className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900">
-              {t('editThought.selectSermonPoint')}
-            </div>
-
-            {Object.entries(filteredSermonPoints).map(([section, points]) =>
-              points.length > 0 ? (
-                <div key={section}>
-                  <div className="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900">
-                    {t(`outline.${section === 'main' ? 'mainPoints' : section}`)}
-                  </div>
-                  {points.map((point: SermonPoint) => (
-                    <div key={point.id}>
-                      <button
-                        onClick={() => handleSermonPointSelect(point.id, null)}
-                        disabled={isUpdating}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-                      >
-                        {point.text}
-                      </button>
-                      {point.subPoints && point.subPoints.length > 0 && (
-                        [...point.subPoints].sort((a, b) => a.position - b.position).map((sp) => (
-                          <button
-                            key={sp.id}
-                            onClick={() => handleSermonPointSelect(point.id, sp.id)}
-                            disabled={isUpdating}
-                            className="w-full text-left pl-8 pr-4 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-                          >
-                            <span className="inline-flex items-center gap-1.5">
-                              <span className="w-1 h-1 rounded-full bg-gray-400 dark:bg-gray-500 flex-shrink-0" />
-                              {sp.text}
-                            </span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : null
-            )}
-          </motion.div>
-        )}
+        {isOpen && <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.15 }}
+          className={`absolute z-50 mt-2 max-h-60 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800 ${outlinePoint ? 'min-w-[250px]' : 'w-full'}`}>
+          {!outlinePoint && <div className="bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-500 dark:bg-gray-900 dark:text-gray-400">{t('editThought.selectSermonPoint')}</div>}
+          <OutlinePointOptions groups={filteredSermonPoints} outlinePointId={thought.outlinePointId} subPointId={thought.subPointId} onSelect={handleSermonPointSelect} disabled={isUpdating || disabled} allowClear={Boolean(outlinePoint)} />
+        </motion.div>}
       </AnimatePresence>
     </div>
   );

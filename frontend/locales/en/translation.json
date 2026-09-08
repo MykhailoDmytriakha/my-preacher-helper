@@ -1114,6 +1114,9 @@
     "offlineWarning": "You are currently offline. Manual thoughts cannot be saved until you reconnect."
   },
   "thought": {
+    "editorLabel": "Thought",
+    "addTagAria": "Add tag {{tag}}",
+    "removeTagAria": "Remove tag {{tag}}",
     "tagsLabel": "Tags:",
     "availableTags": "Available tags to add:",
     "missingTags": "If needed tag is missing, go to {link}",

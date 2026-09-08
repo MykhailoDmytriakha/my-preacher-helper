@@ -42,7 +42,7 @@ jest.mock('@components/ui/RichMarkdownEditor', () => ({
 jest.mock('@components/FocusRecorderButton', () => ({
   FocusRecorderButton: ({ onError, disabled, isProcessing }: any) => (
     <div>
-      <button
+      <button type="button"
         data-testid="focus-recorder-error"
         disabled={disabled}
         onClick={() => onError?.('Recorder error')}
@@ -81,6 +81,8 @@ jest.mock('react-i18next', () => ({
           'editThought.subPointClearedOnMove': 'Saving with a different outline point will remove the current sub-point assignment.',
           'editThought.availableTags': 'Available tags',
           'thought.tagsLabel': 'Tags',
+          'thought.addTagAria': 'Add tag {{tag}}',
+          'thought.removeTagAria': 'Remove tag {{tag}}',
           'buttons.cancel': 'Cancel',
           'buttons.save': 'Save',
           'buttons.saving': 'Saving',
@@ -462,13 +464,4 @@ describe('EditThoughtModal Component', () => {
     expect(screen.getByTestId('focus-recorder-processing')).toHaveTextContent('false');
   });
 
-  test('scroll container has mobile bg-white and sm:bg-transparent override to avoid white desktop background', () => {
-    render(<EditThoughtModal {...mockProps} />);
-    // EditThoughtModal has no role="dialog" — traverse up from heading
-    const heading = screen.getByText('Edit Thought');
-    const scrollContainer = heading.closest('.overflow-y-auto');
-    expect(scrollContainer?.className).toContain('bg-white');
-    expect(scrollContainer?.className).toContain('sm:bg-transparent');
-    expect(scrollContainer?.className).toContain('sm:dark:bg-transparent');
-  });
 });
