@@ -9,6 +9,7 @@ This is an ongoing implementation, not a claim that every area is complete. The 
 | Settings | All six settings share one row and one native Switch; TXT export uses that Switch too | Owner checks, persistence paths, acceptance/refusal handling, version details and local debug preference | FeatureToggle contracts, GroupsFeatureToggle, DebugModeToggle, Switch tests; desktop/mobile screenshots |
 | Series forms | One values model, payload conversion, field set and color selector for create/edit | Exact normalized payload, initial sermons, queued vs remote acceptance, refusal keeps draft, stale-write handoff, untouched refresh vs dirty draft | SeriesModal.contract passed nine scenarios before extraction; same scenarios plus additional error cases after |
 | Entity dialogs | Shared FormDialog, FormActions and field styling for series and group creation | Caller retains submission and dismissal; group bootstrap/date data untouched | FormDialog/FormField direct tests, existing group contracts, browser form interaction |
+| Text dictation | One useTextDictation controller for thought creation, thought editing and prayer updates | Same endpoint, retained audio on ordinary failure, same-blob retry, global usage-cap reporting, current-draft append; caller-specific whitespace/empty-error presentation | Six behavioral contracts passed before and after; direct hook 100% lines/branches/functions; actual desktop/mobile form inspection |
 | Scratch board | Separate note-card UI and pure placement/outline model; one outline clone, canonical sections and placement type; remove unused card/section props and duplicate Apply guard | Fresh IDs only for consumed scratch nodes, additive notes, remote/draft identity, capture/apply locks, delete confirmation and undo | 41 focused tests; direct model/card coverage; real draft collapse/reopen |
 | Test renderer | Native React roots and portals; cleanup unmounts before deleting manual fixtures | Provider context, draft identity, nested dialogs, actual body placement | Dedicated red/green portal regressions; entire test suite |
 
@@ -50,6 +51,10 @@ Live candidate: development server with PWA disabled, authenticated existing tes
 
 In the authenticated browser, the existing DnD stand retained a two-line manual draft through Escape/reopen, restored focus, and reported textarea clientHeight = scrollHeight = 56 with no horizontal overflow. The draft was cleared without submission. Before/after desktop screenshots show unchanged layout. This fixture had no scratch pool cards; direct card tests exercise editing, focus retention, placement keyboard actions, read-only state and drag preview.
 
+2026-09-07 18:49 PDT: dictation packet passed root coverage and lint/type/unused: 573 suites / 5381 tests, 90.94% aggregate lines. Six new cross-form behavior cases passed on the old implementations before consolidation. The first lint/type pass found a Testing Library test option mistakenly copied from Playwright; it was removed, and both full gates reran green. Direct hook coverage is 100% in all dimensions. Component-level focused coverage: create thought97.32%, edit thought92.72%, prayer update97.79% before adding the recorder-error case. One shared 71-line controller replaces 233 deleted lines with 57 caller-specific lines.
+
+Live forms: actual rich editor accepted text, enabled Save, and retained the dictation control. Create draft cleared/cancelled; edit existing test thought opened and cancelled; no thought/prayer writes or paid transcription requests. A 390px prayer update inspection revealed an existing long-text overflow bug (BUG-20260907-prayer-update-overflow); it is recorded for the dialog packet, not concealed by the successful dictation tests.
+
 ## Saved visual evidence
 
 Files are under `output/playwright/refactoring/` (local artifacts):
@@ -60,6 +65,8 @@ Files are under `output/playwright/refactoring/` (local artifacts):
 - `group-create-before-desktop.png`, `group-create-after-desktop.png`.
 - `color-picker-mobile-inspection.png`.
 - `scratch-before-desktop.png`, `scratch-after-desktop.png`.
+- `thought-create-after-desktop.png`, `thought-edit-after-desktop.png`, `thought-edit-after-mobile.png`, `prayer-update-after-mobile.png`.
+- `prayer-update-long-before-mobile.png` captures the pre-fix long-text overflow.
 
 Series/group before shots were captured from the still-unchanged respective components before their edits. An isolated archive of original `814461fd` was also booted, but its separate-origin authentication remained loading; it was not used as proof of an authenticated before/after comparison.
 

@@ -1,15 +1,13 @@
 'use client';
 
 import { XMarkIcon } from '@heroicons/react/24/outline';
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
-import { useAiUsage } from '@/hooks/useAiUsage';
-import { isUsageCapReachedError } from '@/services/usageLimits';
+import { useTextDictation } from '@/hooks/useTextDictation';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
-import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
 import { FocusRecorderButton } from '@components/FocusRecorderButton';
 
 interface Props {
@@ -19,75 +17,20 @@ interface Props {
 
 export default function AddUpdateModal({ onClose, onSubmit }: Props) {
   const { t } = useTranslation();
-  const { transcriptionBlocked, refresh: refreshAiUsage } = useAiUsage();
-  const transcriptionUnavailableLabel = transcriptionBlocked ? t('settings.usage.transcriptionUsageExhausted') : undefined;
   const [text, setText] = useState('');
   const [saving, setSaving] = useState(false);
-  const [dictating, setDictating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Voice recovery: keep the recording alive so a failed transcription never loses the thought.
-  const [voiceError, setVoiceError] = useState<string | null>(null);
-  const [voiceRetryCount, setVoiceRetryCount] = useState(0);
-  const storedVoiceBlobRef = useRef<Blob | null>(null);
-  const VOICE_MAX_RETRIES = 3;
 
-  const runVoiceTranscription = async (audioBlob: Blob) => {
-    setError(null);
-    setVoiceError(null);
-    setDictating(true);
-    try {
-      const result = await transcribeAudioWithRetry(audioBlob, { endpoint: '/api/thoughts/transcribe' });
-      const dictatedText = (result.polishedText || result.originalText || '').trim();
-      if (!dictatedText) {
-        setError(t('prayer.update.dictationEmpty'));
-        return;
-      }
-
-      setText((previousText) => {
-        const trimmedPreviousText = previousText.replace(/\s+$/, '');
-        const separator = trimmedPreviousText ? '\n\n' : '';
-        return `${trimmedPreviousText}${separator}${dictatedText}`;
-      });
-      await refreshAiUsage();
-      // Success — the thought is now saved as text; drop the in-memory safety copy.
-      storedVoiceBlobRef.current = null;
-      setVoiceError(null);
-      setVoiceRetryCount(0);
-    } catch (err) {
-      if (isUsageCapReachedError(err)) {
-        setDictating(false);
-        return;
-      }
-
-      // Never lose the thought: keep the recording for the in-session recovery panel.
-      storedVoiceBlobRef.current = audioBlob;
-      const message = err instanceof TranscriptionClientError
-        ? buildTranscriptionErrorMessage(err, t)
-        : (err instanceof Error ? err.message : t('prayer.update.dictationError'));
-      setVoiceError(message);
-    } finally {
-      setDictating(false);
-    }
-  };
-
-  const handleDictationComplete = (audioBlob: Blob) => {
-    setVoiceRetryCount(0);
-    void runVoiceTranscription(audioBlob);
-  };
-
-  const handleRetryVoice = () => {
-    const blob = storedVoiceBlobRef.current;
-    if (!blob) return;
-    setVoiceRetryCount((count) => count + 1);
-    void runVoiceTranscription(blob);
-  };
-
-  const handleClearVoiceError = () => {
-    storedVoiceBlobRef.current = null;
-    setVoiceError(null);
-    setVoiceRetryCount(0);
-  };
-
+  const dictation = useTextDictation({
+    onStart: () => setError(null),
+    onText: dictatedText => setText(previous => {
+      const prefix = previous.replace(/\s+$/, '');
+      return `${prefix}${prefix ? '\n\n' : ''}${dictatedText}`;
+    }),
+    onEmpty: () => setError(t('prayer.update.dictationEmpty')),
+    fallbackErrorKey: 'prayer.update.dictationError',
+  });
+  const transcriptionUnavailableLabel = dictation.transcriptionBlocked ? t('settings.usage.transcriptionUsageExhausted') : undefined;
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim()) return;
@@ -127,18 +70,18 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
               <div className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center" title={transcriptionUnavailableLabel}>
                 <FocusRecorderButton
                   size="small"
-                  onRecordingComplete={handleDictationComplete}
-                  isProcessing={dictating}
-                  disabled={saving || transcriptionBlocked}
+                  onRecordingComplete={dictation.complete}
+                  isProcessing={dictation.isProcessing}
+                  disabled={saving || dictation.transcriptionBlocked}
                   title={transcriptionUnavailableLabel}
-                  transcriptionError={voiceError}
-                  onRetry={handleRetryVoice}
-                  retryCount={voiceRetryCount}
-                  maxRetries={VOICE_MAX_RETRIES}
-                  onClearError={handleClearVoiceError}
+                  transcriptionError={dictation.error}
+                  onRetry={dictation.retry}
+                  retryCount={dictation.retryCount}
+                  maxRetries={dictation.maxRetries}
+                  onClearError={dictation.clear}
                   onError={(message) => {
                     setError(message);
-                    setDictating(false);
+                    dictation.stopProcessing();
                   }}
                 />
               </div>
@@ -170,14 +113,14 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
             <button
               type="button"
               onClick={onClose}
-              disabled={saving || dictating}
+              disabled={saving || dictation.isProcessing}
               className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
             >
               {t('prayer.update.cancel')}
             </button>
             <button
               type="submit"
-              disabled={saving || dictating || !text.trim()}
+              disabled={saving || dictation.isProcessing || !text.trim()}
               className="px-4 py-2 text-sm bg-rose-500 hover:bg-rose-600 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed font-medium"
             >
               {saving ? t('prayer.update.saving') : t('prayer.update.submit')}

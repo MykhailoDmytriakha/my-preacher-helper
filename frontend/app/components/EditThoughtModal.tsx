@@ -5,16 +5,14 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
-import { useAiUsage } from '@/hooks/useAiUsage';
 import { useScrollLock } from '@/hooks/useScrollLock';
+import { useTextDictation } from '@/hooks/useTextDictation';
 import { SermonPoint, SermonOutline } from '@/models/models';
 import { useConnection } from '@/providers/ConnectionProvider';
-import { isUsageCapReachedError } from '@/services/usageLimits';
 import {
   awaitAcceptance,
   type WriteSubmission,
 } from '@/utils/recoverableWrite';
-import { buildTranscriptionErrorMessage, transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/transcriptionRetryClient';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { FocusRecorderButton } from "@components/FocusRecorderButton";
 import { isStructureTag, getStructureIcon, getTagStyle, normalizeStructureTag } from "@utils/tagUtils";
@@ -349,25 +347,23 @@ export default function EditThoughtModal({
 }: EditThoughtModalProps) {
   const { isOnline, isMagicAvailable } = useConnection();
   const { t } = useTranslation();
-  const { transcriptionBlocked, refresh: refreshAiUsage } = useAiUsage();
   const isReadOnly = !isOnline && !allowOffline;
-  const isDictationDisabled = !isMagicAvailable || isReadOnly || transcriptionBlocked;
-  const transcriptionUnavailableLabel = transcriptionBlocked ? t('settings.usage.transcriptionUsageExhausted') : undefined;
   const [text, setText] = useState(initialText);
   const [tags, setTags] = useState<string[]>(initialTags);
   const [selectedSermonPointId, setSelectedSermonPointId] = useState<string | null | undefined>(initialSermonPointId);
   const [selectedSubPointId, setSelectedSubPointId] = useState<string | null | undefined>(initialSubPointId);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const dictation = useTextDictation({
+    onText: dictatedText => setText(previous => `${previous}${previous ? '\n\n' : ''}${dictatedText}`),
+    onEmpty: () => toast.error(t('errors.audioProcessing')),
+    onError: message => toast.error(message),
+  });
+  const transcriptionUnavailableLabel = dictation.transcriptionBlocked ? t('settings.usage.transcriptionUsageExhausted') : undefined;
+  const isDictationDisabled = !isMagicAvailable || isReadOnly || dictation.transcriptionBlocked;
 
   useScrollLock(true);
 
-  const [isDictating, setIsDictating] = useState(false);
-  // Voice recovery: keep the recording alive so a failed transcription never loses the thought.
-  const [voiceError, setVoiceError] = useState<string | null>(null);
-  const [voiceRetryCount, setVoiceRetryCount] = useState(0);
-  const storedVoiceBlobRef = useRef<Blob | null>(null);
-  const VOICE_MAX_RETRIES = 3;
   const modalRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const metaRef = useRef<HTMLDivElement>(null);
@@ -431,62 +427,6 @@ export default function EditThoughtModal({
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const runVoiceTranscription = async (audioBlob: Blob) => {
-    setIsDictating(true);
-    setVoiceError(null);
-    try {
-      const result = await transcribeAudioWithRetry(audioBlob, { endpoint: '/api/thoughts/transcribe' });
-      const appendedText = (result.polishedText || result.originalText || '').trim();
-      if (!appendedText) {
-        toast.error(t('errors.audioProcessing'));
-        return;
-      }
-
-      setText((prev) => {
-        const separator = prev ? "\n\n" : "";
-        return `${prev}${separator}${appendedText}`;
-      });
-      await refreshAiUsage();
-      // Success — the thought is now saved as text; drop the in-memory safety copy.
-      storedVoiceBlobRef.current = null;
-      setVoiceError(null);
-      setVoiceRetryCount(0);
-    } catch (error) {
-      if (isUsageCapReachedError(error)) {
-        setIsDictating(false);
-        return;
-      }
-
-      // Never lose the thought: keep the recording for the in-session recovery panel.
-      storedVoiceBlobRef.current = audioBlob;
-      const message = error instanceof TranscriptionClientError
-        ? buildTranscriptionErrorMessage(error, t)
-        : (error instanceof Error ? error.message : t('errors.audioProcessing'));
-      setVoiceError(message);
-      toast.error(message);
-    } finally {
-      setIsDictating(false);
-    }
-  };
-
-  const handleDictationComplete = (audioBlob: Blob) => {
-    setVoiceRetryCount(0);
-    void runVoiceTranscription(audioBlob);
-  };
-
-  const handleRetryVoice = () => {
-    const blob = storedVoiceBlobRef.current;
-    if (!blob) return;
-    setVoiceRetryCount((count) => count + 1);
-    void runVoiceTranscription(blob);
-  };
-
-  const handleClearVoiceError = () => {
-    storedVoiceBlobRef.current = null;
-    setVoiceError(null);
-    setVoiceRetryCount(0);
   };
 
   const filteredSermonPoints = getFilteredSermonPoints(sermonOutline, containerSection);
@@ -569,18 +509,18 @@ export default function EditThoughtModal({
                   <div className="relative flex items-center justify-center w-12 h-12 flex-shrink-0">
                     <FocusRecorderButton
                       size="small"
-                      onRecordingComplete={handleDictationComplete}
-                      isProcessing={isDictating}
+                      onRecordingComplete={dictation.complete}
+                      isProcessing={dictation.isProcessing}
                       disabled={isSubmitting || isDictationDisabled}
                       title={transcriptionUnavailableLabel}
-                      transcriptionError={voiceError}
-                      onRetry={handleRetryVoice}
-                      retryCount={voiceRetryCount}
-                      maxRetries={VOICE_MAX_RETRIES}
-                      onClearError={handleClearVoiceError}
+                      transcriptionError={dictation.error}
+                      onRetry={dictation.retry}
+                      retryCount={dictation.retryCount}
+                      maxRetries={dictation.maxRetries}
+                      onClearError={dictation.clear}
                       onError={(errorMessage: string) => {
                         toast.error(errorMessage);
-                        setIsDictating(false);
+                        dictation.stopProcessing();
                       }}
                     />
                   </div>
