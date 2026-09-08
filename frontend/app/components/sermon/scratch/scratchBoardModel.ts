@@ -146,4 +146,3 @@ export function getComposeNoticeKey(outline: ComposedPlanOutline) {
   if (composeItems.length > 0 && manualCount === 0) return "scratch.board.composeSuccessAllAi";
   return "scratch.board.composeSuccessHybrid";
 }
-

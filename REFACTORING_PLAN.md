@@ -196,14 +196,19 @@ Owner delegated final design choices and requested a substantial continuous pass
 - [x] Complete the entire settings switch family and share the native switch with export controls.
 - [x] Consolidate series create/edit fields, color selection and dialog presentation; reuse the frame for group creation.
 - [x] Consolidate clipboard consumers, preserving plain/rich transport distinctions and verifying actual browser payloads.
-- [ ] Simplify export dialogs, preparation and file output.
-- [ ] Simplify large screen state/operations using the existing canonical data mechanisms.
-- [ ] Consolidate overlapping tests with an explicit contract crosswalk and regression checks.
-- [ ] Run final coverage/lint/type gates and inspect actual desktop/mobile light/dark flows.
-- [ ] Deliver saved screenshots and an integrated review guide with known limits.
+- [x] Simplify export dialogs, preparation and file output.
+- [x] Simplify selected large screens: ScratchPanel, Column and OutlineBoard, preserving canonical data mechanisms.
+- [x] Consolidate mapped overlapping/dead tests with explicit contract crosswalks and regression checks.
+- [x] Run final coverage/lint/type gates and inspect actual desktop/mobile light/dark flows.
+- [x] Prepare saved screenshots and an integrated review guide with known limits.
 
 A frozen original source instance runs separately for comparable screenshots. Progress is judged by removed duplicate rules and preserved behavior, not by files touched or elapsed time alone.
 
 2026-09-07 20:15 PDT: общий экспорт TXT/PDF, lifecycle предпросмотра, общий download и отложенная загрузка Word/PDF проверены production-браузером и полными root gates (579/5432). Следующий этап: модель/форматирование экспортируемого документа и контракты тестов.
 
 2026-09-07 20:37 PDT: модель экспорта723→220строк,1792точных сравнения с исходной версией; два набора тестов заменены контрактами модели/форматирования/публичного API. Язык экспорта исправлен и проверен живьём. Полные gates581/5445зелёные. Далее — общие поля мыслей и меню пунктов.
+
+
+2026-09-07 21:49 PDT: owner requested closure now. No further backend refactoring started. Closing packet: OutlineBoard structural model, gesture hook, shared scratch layer and single-pass note index; final full gates and production build in progress. Broader server/AI and untouched large-page work remains explicitly deferred. The integrated review guide is frontend/docs/codebase-refactoring-2026-09-07.md.
+
+2026-09-07 21:54 PDT: closing root gates passed590suites/5469tests/91.24%lines; lint/types/unused pass with one pre-existing complexity warning. Final production build passed, including strict TypeScript and40static pages. Local production preview uses127.0.0.1:3100; no push or deployment.

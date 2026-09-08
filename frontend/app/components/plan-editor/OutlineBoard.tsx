@@ -3,60 +3,34 @@
 import {
   DndContext,
   DragOverlay,
-  KeyboardSensor,
   MeasuringStrategy,
-  MouseSensor,
-  TouchSensor,
-  pointerWithin,
-  rectIntersection,
-  useDraggable,
-  useDroppable,
-  useSensor,
-  useSensors,
-  type CollisionDetection,
   type DragEndEvent,
-  type DragOverEvent,
-  type DragStartEvent,
-  type Modifier,
 } from '@dnd-kit/core';
 import { ChevronDownIcon, PlusIcon } from '@heroicons/react/20/solid';
 import { Bars2Icon, Bars3Icon, CheckIcon, PencilIcon, TrashIcon, XMarkIcon } from '@heroicons/react/24/outline';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
 import PointNote from '@/components/PointNote';
 import {
-  allowedCollisions,
-  isDropTargetEnabled,
   NOTE_POOL_ID,
   notePointContainerId,
-  noteSlotHeight,
   noteSubContainerId,
-  parseNoteContainerId,
-  resolveNoteCollision,
-  type NoteContainerMeasure,
-  type NoteSlot,
 } from '@/utils/boardDnd';
 import { newClientId } from '@/utils/clientId';
-import {
-  findPointSection,
-  findSubPointParent,
-  movePoint,
-  moveSubPoint as moveSubPointInOutline,
-  nestPointUnderPoint,
-  nestPointUnderPointAt,
-  outdentSubPoint,
-} from '@/utils/outlineDnd';
-import {
-  remapAfterNest,
-  remapAfterOutdent,
-  remapAfterSubPointReparent,
-} from '@/utils/scratchPlacementRemap';
+import { sortSubPointsByPosition } from '@/utils/subPoints';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 import { getSectionStyling } from '@/utils/themeColors';
 import { getSectionLabel } from '@lib/sections';
 
+import { DraggableCard, DropZone } from './BoardDragPrimitives';
+import { dragIdFor, parseDragId, intoPointDropId, gapDropId, subGapDropId, sectionDropId, resolveOutlineDrop } from './outlineBoardModel';
+import { indexScratchNotes } from './outlineBoardNotes';
+import { ScratchNotePool, ScratchNoteStrip, SCRATCH_DROP_OVER_CLASS } from './ScratchNoteLayer';
+import { useOutlineBoardDrag } from './useOutlineBoardDrag';
+
+import type { ScratchLayerProps } from './outlineBoardTypes';
 import type { OutlinePoint, ScratchNote, SermonOutline, SubPoint } from '@/models/models';
 
 const ACTIVE_DROP_INDICATOR_CLASS = 'bg-indigo-500';
@@ -73,9 +47,6 @@ const SECTIONS: { key: SectionKey; styleKey: 'introduction' | 'mainPart' | 'conc
 const CANCEL_KEY = 'common.cancel';
 const SAVE_KEY = 'common.save';
 const DELETE_KEY = 'common.delete';
-const SCRATCH_DROP_OVER_CLASS = 'ring-1 ring-indigo-300 bg-indigo-50/60 dark:bg-indigo-900/20';
-const NOTE_SLOT_CLASS = 'rounded-lg border border-dashed border-indigo-400 bg-indigo-50/70 dark:border-indigo-500/70 dark:bg-indigo-900/30';
-const NOTE_HOME_CLASS = 'rounded-lg border border-dotted border-slate-300 bg-slate-100/50 dark:border-gray-600 dark:bg-white/5';
 
 /**
  * WHY THIS BOARD IS ON dnd-kit AND NOT ON `@hello-pangea/dnd`.
@@ -99,128 +70,8 @@ const NOTE_HOME_CLASS = 'rounded-lg border border-dotted border-slate-300 bg-sla
  * slide apart to show exactly that slot. The owner's words for the old seams and
  * bands: "the machine catches every pixel; my movements are rough".
  */
-const DRAG_POINT = 'point:';
-const DRAG_SUB = 'sub:';
-const DRAG_NOTE = 'note:';
-const DROP_INTO_POINT = 'into-point:';
-const DROP_GAP = 'gap:';
-const DROP_SUB_GAP = 'subgap:';
-const DROP_SECTION = 'section:';
-
-/** Whatever the drag library needs on the grab handle — the note card only spreads it. */
-export type DragHandleProps = Record<string, unknown>;
-
-/**
- * A structural move does not change an id, but it changes what the id means:
- * a point and a sub-point are addressed differently. Carry the translated note
- * addresses with the move so attached notes keep their place on the screen.
- */
-type OutlineDropResult = {
-  next: SermonOutline | null;
-  movedPointTo: SectionKey | null;
-  placementChanges: { noteId: string; placement: { pointId: string; subPointId?: string } }[];
-};
-
-type DragKind = 'point' | 'sub' | 'note';
-type DragSubject = { kind: DragKind; id: string };
-
-const dragIdFor = (kind: DragKind, id: string) =>
-  `${kind === 'point' ? DRAG_POINT : kind === 'sub' ? DRAG_SUB : DRAG_NOTE}${id}`;
-
-const parseDragId = (raw: string): DragSubject | null => {
-  if (raw.startsWith(DRAG_POINT)) return { kind: 'point', id: raw.slice(DRAG_POINT.length) };
-  if (raw.startsWith(DRAG_SUB)) return { kind: 'sub', id: raw.slice(DRAG_SUB.length) };
-  if (raw.startsWith(DRAG_NOTE)) return { kind: 'note', id: raw.slice(DRAG_NOTE.length) };
-  return null;
-};
-
-const intoPointDropId = (pointId: string) => `${DROP_INTO_POINT}${pointId}`;
-const gapDropId = (section: SectionKey, index: number) => `${DROP_GAP}${section}:${index}`;
-const subGapDropId = (pointId: string, index: number) => `${DROP_SUB_GAP}${pointId}:${index}`;
-const sectionDropId = (section: SectionKey) => `${DROP_SECTION}${section}`;
-
-const parseGapDropId = (raw: string): { section: SectionKey; index: number } | null => {
-  if (!raw.startsWith(DROP_GAP)) return null;
-  const [section, index] = raw.slice(DROP_GAP.length).split(':');
-  return isSectionKey(section) ? { section, index: Number(index) } : null;
-};
-
-const rectOf = (el: Element) => {
-  const r = el.getBoundingClientRect();
-  return { top: r.top, left: r.left, width: r.width, height: r.height };
-};
-
-const parseSubGapDropId = (raw: string): { pointId: string; index: number } | null => {
-  if (!raw.startsWith(DROP_SUB_GAP)) return null;
-  const rest = raw.slice(DROP_SUB_GAP.length);
-  const at = rest.lastIndexOf(':');
-  return at < 0 ? null : { pointId: rest.slice(0, at), index: Number(rest.slice(at + 1)) };
-};
-
-/**
- * A card that can be picked up. The listeners go on the HANDLE, not the card, so
- * double-clicking the text to rename still works and a drag never starts from a
- * stray click inside an input.
- */
-function DraggableCard({
-  dragId,
-  disabled,
-  children,
-}: {
-  dragId: string;
-  disabled?: boolean;
-  children: (state: {
-    setNodeRef: (node: HTMLElement | null) => void;
-    handleProps: Record<string, unknown>;
-    isDragging: boolean;
-  }) => React.ReactNode;
-}) {
-  const { setNodeRef, attributes, listeners, isDragging } = useDraggable({ id: dragId, disabled });
-  return (
-    <>
-      {children({
-        setNodeRef,
-        handleProps: disabled ? {} : { ...attributes, ...listeners },
-        isDragging,
-      })}
-    </>
-  );
-}
-
-/**
- * A place a card can be dropped into.
- *
- * `activeKind` is what makes the board quiet: a target that cannot accept the
- * thing currently in the air is disabled outright, so it never highlights and
- * never competes for the pointer. Nothing is dragging → nothing is a target,
- * which is why the resting board shows no drop zones at all.
- */
-function DropZone({
-  dropId,
-  disabled,
-  activeKind,
-  render,
-}: {
-  dropId: string;
-  disabled?: boolean;
-  activeKind: DragKind | null;
-  render: (state: {
-    setNodeRef: (node: HTMLElement | null) => void;
-    isOver: boolean;
-    isCandidate: boolean;
-  }) => React.ReactNode;
-}) {
-  const isCandidate = activeKind !== null && isDropTargetEnabled(activeKind, dropId);
-  /*
-   * `disabled` here is ONLY about the board being read-only. It must never depend
-   * on what is currently being dragged: dnd-kit measures the targets as the drag
-   * begins, so a target that switches itself on at that same moment is measured
-   * as absent and never collides with anything for the rest of the gesture.
-   */
-  const off = Boolean(disabled);
-  const { setNodeRef, isOver } = useDroppable({ id: dropId, disabled: off });
-  return <>{render({ setNodeRef, isOver: isOver && !off && isCandidate, isCandidate })}</>;
-}
+/** Drag attributes carried by scratch cards; persistence stays with their owner. */
+export type { DragHandleProps } from './outlineBoardTypes';
 
 const renderInBodyPortal = (
   node: React.ReactElement<HTMLElement>,
@@ -239,54 +90,6 @@ const toOutline = (outline: Record<SectionKey, OutlinePoint[]>): SermonOutline =
   main: outline.main,
   conclusion: outline.conclusion,
 });
-
-const isSectionKey = (value: string): value is SectionKey =>
-  value === 'introduction' || value === 'main' || value === 'conclusion';
-
-const sortSubPoints = (subPoints: SubPoint[]): SubPoint[] =>
-  [...subPoints].sort((a, b) => a.position - b.position);
-
-const findParentPointIdForSubPoint = (
-  outline: Record<SectionKey, OutlinePoint[]>,
-  subPointId: string
-): string | null => {
-  for (const section of SECTIONS) {
-    const point = outline[section.key].find((item) =>
-      (item.subPoints ?? []).some((sp) => sp.id === subPointId)
-    );
-    if (point) return point.id;
-  }
-  return null;
-};
-
-type ScratchPlacementTarget = { pointId: string; subPointId?: string };
-
-type ScratchLayerProps = {
-  pool: ScratchNote[];
-  notesById: Map<string, ScratchNote>;
-  placements: Record<string, ScratchPlacementTarget>;
-  /** Re-file a note without touching its order — structural remaps and the "back to the pool" button. */
-  onPlace: (noteId: string, target: ScratchPlacementTarget | null) => void;
-  /**
-   * One drop: WHICH container and WHERE among its notes. `neighbourIds` are that
-   * container's notes as displayed, without the moved one; `index` counts among them.
-   */
-  onMove?: (noteId: string, target: ScratchPlacementTarget | null, neighbourIds: string[], index: number) => void;
-  renderNote: (
-    note: ScratchNote,
-    dragHandleProps: DragHandleProps,
-    options?: { overlay?: boolean }
-  ) => React.ReactNode;
-  poolHeader?: React.ReactNode;
-  poolEmptyLabel?: string;
-  /**
-   * Wording for the per-point notes while the scratch layer is on. On this board a
-   * point's note is the very slot a placed scratch note lands in, so calling it a
-   * "reminder note" here drags the plan-editor vocabulary onto a screen that is
-   * about scratch notes. Omitted -> the plan-editor wording.
-   */
-  noteLabels?: React.ComponentProps<typeof PointNote>['labels'];
-};
 
 interface OutlineBoardProps {
   value: SermonOutline;
@@ -342,104 +145,11 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
 }) => {
   const { t } = useTranslation();
   const points = withSection(value);
-
-  const [activeDrag, setActiveDrag] = useState<DragSubject | null>(null);
-  const activeDragRef = useRef<DragSubject | null>(null);
-  /** Which target the pointer is over right now — for feedback the zones cannot show themselves. */
-  const [hoveredDropId, setHoveredDropId] = useState<string | null>(null);
-  /**
-   * The note layer's own state while a note is in the air: the open slot (which
-   * container, which index, whether it is the note's own place) and the height of
-   * the lifted card, which every slot is cut to. The ref mirrors the slot for the
-   * collision function, which runs outside React's render.
-   */
-  type ActiveNoteSlot = NoteSlot & { own: boolean };
-  const [noteSlot, setNoteSlot] = useState<ActiveNoteSlot | null>(null);
-  const noteSlotRef = useRef<NoteSlot | null>(null);
-  const [activeNoteHeight, setActiveNoteHeight] = useState(0);
-  const activeNoteHeightRef = useRef(0);
-  /*
-   * The lifted card leaves its list one render AFTER lift-off, never in the same
-   * one: dnd-kit measures the card for the flying copy in the activation render,
-   * and a card hidden in that very render measures as a 0×0 rectangle at the page
-   * corner — the copy then wrapped into a 26px column far from the finger.
-   */
-  const [liftedNoteId, setLiftedNoteId] = useState<string | null>(null);
-  const overlayCardRef = useRef<HTMLDivElement | null>(null);
-  /*
-   * A drag starts only after the pointer has travelled a few pixels, so a tap on
-   * the handle still counts as a click and the card can be renamed or deleted
-   * without the board thinking a move began. Touch is its own sensor: a finger
-   * must rest for a moment before the card lifts, otherwise a scroll would begin
-   * every drag and the browser would cancel it — the same pair the structure page
-   * settled on.
-   */
-  const sensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 8 } }),
-    useSensor(KeyboardSensor)
-  );
-
-  const resetNoteDrag = () => {
-    noteSlotRef.current = null;
-    setNoteSlot(null);
-    setLiftedNoteId(null);
-    activeNoteHeightRef.current = 0;
-    setActiveNoteHeight(0);
-  };
-
-  const onDragStart = (event: DragStartEvent) => {
-    const subject = parseDragId(String(event.active.id));
-    activeDragRef.current = subject;
-    setActiveDrag(subject);
-    setHoveredDropId(null);
-    noteSlotRef.current = null;
-    setNoteSlot(null);
-    lastNoteKeyRef.current = null;
-    lastNoteCollisionsRef.current = null;
-    if (subject?.kind === 'note' && typeof document !== 'undefined') {
-      // The inner card, not its wrapper: in the pool grid the wrapper is stretched
-      // to the tallest card of its row, and every slot would be cut to that.
-      const wrapper = document.querySelector<HTMLElement>(`[data-scratch-note="${subject.id}"]`);
-      const card = (wrapper?.firstElementChild as HTMLElement | null) ?? wrapper;
-      const height = card ? card.getBoundingClientRect().height : 0;
-      activeNoteHeightRef.current = height;
-      setActiveNoteHeight(height);
-    }
-  };
-
-  /*
-   * dnd-kit reports `onDragOver` only when the container changes; the slot's index
-   * moves inside one container on every pointer move, so both `onDragMove` and
-   * `onDragOver` feed the same reader. State changes only when the slot does —
-   * a fresh object per move would re-render the board sixty times a second.
-   */
-  const readNoteSlot = (collisions: DragOverEvent['collisions']) => {
-    if (activeDragRef.current?.kind !== 'note') return;
-    const data = collisions?.[0]?.data as NoteSlot | undefined;
-    const slot = data && typeof data.containerId === 'string' ? { containerId: data.containerId, index: data.index } : null;
-    noteSlotRef.current = slot;
-    if (!slot) {
-      setNoteSlot((current) => (current === null ? current : null));
-      return;
-    }
-    const home = noteHomeOf(activeDragRef.current.id);
-    const own = home !== null && home.containerId === slot.containerId && home.index === slot.index;
-    setNoteSlot((current) =>
-      current && current.containerId === slot.containerId && current.index === slot.index && current.own === own
-        ? current
-        : { ...slot, own }
-    );
-  };
-
-  const onDragOver = (event: DragOverEvent) => {
-    setHoveredDropId(event.over ? String(event.over.id) : null);
-    readNoteSlot(event.collisions);
-  };
-
-  const onDragMove = (event: DragOverEvent) => {
-    readNoteSlot(event.collisions);
-  };
+  const noteIndex = useMemo(() => indexScratchNotes(scratch), [scratch]);
+  const notesInContainer = (id: string) => noteIndex.get(id) ?? [];
+  const { activeDrag, hoveredDropId, noteSlot, activeNoteHeight, liftedNoteId, overlayCardRef, sensors,
+    collisionDetection, keepHandleUnderFinger, onDragStart, onDragMove, onDragOver,
+    handleNoteDrop, noteHomeOf, clearActiveDrag, resetNoteDrag, cancelDrag } = useOutlineBoardDrag(points, scratch, notesInContainer);
 
   /** What the flying copy says — the card's own words, so the drag is recognisable. */
   const activeDragLabel = (): string => {
@@ -621,247 +331,6 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     setPendingSubPointDelete(null);
   };
 
-  /** The placement a note container stands for; `undefined` when the container cannot be resolved. */
-  const placementForContainer = (containerId: string): ScratchPlacementTarget | null | undefined => {
-    const parsed = parseNoteContainerId(containerId);
-    if (!parsed) return undefined;
-    if (parsed.kind === 'pool') return null;
-    if (parsed.kind === 'point') return { pointId: parsed.pointId };
-    const parentPointId = findParentPointIdForSubPoint(points, parsed.subPointId);
-    return parentPointId ? { pointId: parentPointId, subPointId: parsed.subPointId } : undefined;
-  };
-
-  /** Which container a note is in right now, and where among its notes. */
-  const noteHomeOf = (noteId: string): NoteSlot | null => {
-    if (!scratch) return null;
-    const placement = scratch.placements[noteId];
-    const containerId = !placement
-      ? NOTE_POOL_ID
-      : placement.subPointId
-        ? noteSubContainerId(placement.subPointId)
-        : notePointContainerId(placement.pointId);
-    const index = notesInContainer(containerId).findIndex((note) => note.id === noteId);
-    return index < 0 ? null : { containerId, index };
-  };
-
-  /**
-   * ONE DROP, ONE OPERATION. The slot was resolved while the note was in the air
-   * (the collision function keeps it in a ref); here it only has to be handed on.
-   * Nothing changes when the note is let go where it already lives.
-   */
-  const handleNoteDrop = (subject: DragSubject, event: DragEndEvent) => {
-    if (!scratch) return;
-    /*
-     * The slot normally arrives through `onDragOver`. A drop that never reported a
-     * hover (a synthetic one, or a sensor that skipped it) still names a container
-     * in `over`: the note then goes to the end of that container.
-     */
-    const overId = event.over ? String(event.over.id) : null;
-    const eventSlot = event.collisions?.[0]?.data as NoteSlot | undefined;
-    const slot: NoteSlot | null =
-      noteSlotRef.current ??
-      (eventSlot && typeof eventSlot.containerId === 'string' ? { containerId: eventSlot.containerId, index: eventSlot.index } : null) ??
-      (overId && parseNoteContainerId(overId)
-        ? { containerId: overId, index: notesInContainer(overId).filter((note) => note.id !== subject.id).length }
-        : null);
-    if (!slot) return;
-    const home = noteHomeOf(subject.id);
-    if (home && home.containerId === slot.containerId && home.index === slot.index) return;
-    const target = placementForContainer(slot.containerId);
-    if (target === undefined) return;
-    const neighbourIds = notesInContainer(slot.containerId)
-      .map((note) => note.id)
-      .filter((id) => id !== subject.id);
-    if (scratch.onMove) {
-      scratch.onMove(subject.id, target, neighbourIds, slot.index);
-    } else {
-      scratch.onPlace(subject.id, target);
-    }
-  };
-
-  /**
-   * What the collision function needs to know about a container: its note cards
-   * as displayed (without the one in the air) and the open slot, if any. Read from
-   * the DOM on every move — a handful of rectangles, and always the truth.
-   */
-  const measureNoteContainer = (containerId: string, activeId: string | null): NoteContainerMeasure | null => {
-    if (typeof document === 'undefined') return null;
-    const strip = document.querySelector<HTMLElement>(`[data-scratch-strip="${containerId}"]`);
-    if (!strip) return null;
-    const cards: NoteContainerMeasure['cards'] = [];
-    let slot: NoteContainerMeasure['slot'] = null;
-    let slotIndex: number | null = null;
-    let home: { rect: NoteContainerMeasure['slot']; index: number } | null = null;
-    for (const child of Array.from(strip.children) as HTMLElement[]) {
-      if (child.dataset.scratchSlot !== undefined) {
-        slot = rectOf(child);
-        slotIndex = cards.length;
-      } else if (child.dataset.scratchNote !== undefined) {
-        if (child.dataset.scratchNote === activeId) {
-          // Still on screen for the first collision of the drag; hidden after that.
-          if (!child.classList.contains('hidden')) home = { rect: rectOf(child), index: cards.length };
-        } else {
-          cards.push(rectOf(child));
-        }
-      }
-    }
-    if (!slot && home) {
-      slot = home.rect;
-      slotIndex = home.index;
-    }
-    return { cards, slot, slotIndex, isGrid: containerId === NOTE_POOL_ID };
-  };
-
-  /*
-   * Two vocabularies, one router. A point or a sub-point keeps `pointerWithin`
-   * ordered by precision (a seam sits inside a card sits inside a column). A note
-   * gets the deepest CONTAINER under the pointer and the slot inside it. Without
-   * pointer coordinates (keyboard) the dragged rectangle stands in for the pointer.
-   *
-   * THE CONTAINER IS READ FROM THE LIVE DOM, NOT FROM MEASURED RECTANGLES. Opening
-   * a slot makes its container taller; dnd-kit's rectangle for that container is
-   * from before, so the pointer near the bottom "leaves" a container it is still
-   * inside — the slot closes, the container shrinks, the pointer is back inside,
-   * the slot opens again. Measured live: that loop froze the page. What the
-   * pointer is over right now is the only reading that cannot go stale.
-   */
-  const noteContainersUnderPointer = (point: { x: number; y: number }): { id: string }[] => {
-    if (typeof document === 'undefined' || typeof document.elementsFromPoint !== 'function') return [];
-    const seen = new Set<string>();
-    const hits: { id: string }[] = [];
-    for (const el of document.elementsFromPoint(point.x, point.y)) {
-      const container = (el as HTMLElement).closest?.('[data-note-container]') as HTMLElement | null;
-      const id = container?.dataset.noteContainer;
-      if (id && !seen.has(id)) {
-        seen.add(id);
-        hits.push({ id });
-      }
-    }
-    return hits;
-  };
-
-  /*
-   * A NOTE'S TARGET CHANGES ONLY WHEN THE POINTER MOVES — OR THE PAGE DOES.
-   * dnd-kit recomputes collisions on every re-measure as well, and a slot that
-   * opens above a sub-point shifts that row under a still pointer: parent → child
-   * → the slot closes → the row shifts back → parent → … — an effect-driven loop
-   * that froze the page. Between two pointer events the answer is the previous
-   * answer. The key also carries the window scroll: during auto-scroll the pointer
-   * rests while the board slides under it, and that IS a move. For a keyboard
-   * drag the centre of the flying copy stands in for the pointer, so the same
-   * rule holds there.
-   */
-  const lastNoteKeyRef = useRef<string | null>(null);
-  const lastNoteCollisionsRef = useRef<ReturnType<CollisionDetection> | null>(null);
-  const collisionDetection = useCallback<CollisionDetection>((args) => {
-    const subject = parseDragId(String(args.active.id));
-    const kind = subject?.kind ?? null;
-    if (kind !== 'note') {
-      const hits = args.pointerCoordinates ? pointerWithin(args) : rectIntersection(args);
-      return allowedCollisions(kind, hits);
-    }
-    const rect = args.collisionRect;
-    const fallbackPoint = rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
-    const point = args.pointerCoordinates ?? fallbackPoint;
-    const scroll = typeof window === 'undefined' ? '' : `${Math.round(window.scrollX)},${Math.round(window.scrollY)}`;
-    const key = point ? `${Math.round(point.x)},${Math.round(point.y)}|${scroll}` : null;
-    if (key && key === lastNoteKeyRef.current && lastNoteCollisionsRef.current) {
-      return lastNoteCollisionsRef.current;
-    }
-    const hits = point ? noteContainersUnderPointer(point) : rectIntersection(args);
-    const slot = resolveNoteCollision({
-      pointer: args.pointerCoordinates,
-      fallbackPoint,
-      hits,
-      previous: noteSlotRef.current,
-      measure: (containerId) => measureNoteContainer(containerId, subject?.id ?? null),
-    });
-    const result = slot ? [{ id: slot.containerId, data: slot }] : [];
-    lastNoteKeyRef.current = key;
-    lastNoteCollisionsRef.current = result;
-    return result;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  /*
-   * THE HANDLE STAYS UNDER THE FINGER. The flying copy of a tall note is clipped to
-   * a few lines, but dnd-kit positions the overlay by the ORIGINAL card's corner,
-   * so the clipped copy's handle would float that much above the finger — the
-   * owner's "the card hangs above the mouse". Shift it down by exactly the
-   * difference and the handle row lands where it was picked up.
-   */
-  const keepHandleUnderFinger = useCallback<Modifier>(({ transform, active }) => {
-    const kind = active ? parseDragId(String(active.id))?.kind : null;
-    if (kind !== 'note') return transform;
-    const overlayCard = overlayCardRef.current;
-    const fullHeight = activeNoteHeightRef.current;
-    if (!overlayCard || !fullHeight) return transform;
-    const dy = fullHeight - overlayCard.offsetHeight;
-    return dy > 0 ? { ...transform, y: transform.y + dy } : transform;
-  }, []);
-
-  const handlePointDrop = (subject: DragSubject, overId: string, outline: SermonOutline): OutlineDropResult => {
-    const result: OutlineDropResult = { next: null, movedPointTo: null, placementChanges: [] };
-    if (overId.startsWith(DROP_INTO_POINT)) {
-      // Dropped ON a card — the point becomes its sub-point (children follow).
-      const newParentId = overId.slice(DROP_INTO_POINT.length);
-      const formerChildren = (SECTIONS.flatMap((sec) => points[sec.key]).find((p) => p.id === subject.id)?.subPoints ?? []).map((sp) => sp.id);
-      result.next = nestPointUnderPoint(outline, subject.id, newParentId);
-      result.placementChanges = remapAfterNest(scratch?.placements ?? {}, subject.id, newParentId, formerChildren);
-    } else if (parseSubGapDropId(overId)) {
-      /*
-       * A seam BETWEEN sub-points is a real intention: "put this point under
-       * that one, right here". The board drew the line for it and then did
-       * nothing, because this branch only understood seams between points —
-       * so every drop above or below a sub-point silently did nothing.
-       */
-      const subGap = parseSubGapDropId(overId)!;
-      const formerChildren = (SECTIONS.flatMap((sec) => points[sec.key]).find((p) => p.id === subject.id)?.subPoints ?? []).map((sp) => sp.id);
-      result.next = nestPointUnderPointAt(outline, subject.id, subGap.pointId, subGap.index);
-      result.placementChanges = remapAfterNest(scratch?.placements ?? {}, subject.id, subGap.pointId, formerChildren);
-    } else {
-      const gap = parseGapDropId(overId);
-      const section = gap?.section ?? (overId.startsWith(DROP_SECTION) && isSectionKey(overId.slice(DROP_SECTION.length))
-        ? (overId.slice(DROP_SECTION.length) as SectionKey)
-        : null);
-      if (!section) return result;
-      const index = gap ? gap.index : (points[section]?.length ?? 0);
-      if (findPointSection(outline, subject.id) !== section) result.movedPointTo = section;
-      result.next = movePoint(outline, subject.id, section, index);
-    }
-    return result;
-  };
-
-  const handleSubPointDrop = (subject: DragSubject, overId: string, outline: SermonOutline): OutlineDropResult => {
-    const result: OutlineDropResult = { next: null, movedPointTo: null, placementChanges: [] };
-    if (overId.startsWith(DROP_INTO_POINT)) {
-      const targetPointId = overId.slice(DROP_INTO_POINT.length);
-      // Onto a card: land at the end of that card's children.
-      result.next = moveSubPointInOutline(outline, subject.id, targetPointId, Number.MAX_SAFE_INTEGER);
-      result.placementChanges = remapAfterSubPointReparent(scratch?.placements ?? {}, subject.id, targetPointId);
-    } else {
-      const subGap = parseSubGapDropId(overId);
-      if (subGap) {
-        result.next = moveSubPointInOutline(outline, subject.id, subGap.pointId, subGap.index);
-      } else {
-        // A gap between POINTS means "leave your parent" — the sub-point is promoted.
-        const gap = parseGapDropId(overId);
-        const section = gap?.section ?? (overId.startsWith(DROP_SECTION) && isSectionKey(overId.slice(DROP_SECTION.length))
-          ? (overId.slice(DROP_SECTION.length) as SectionKey)
-          : null);
-        if (!section) return result;
-        const index = gap ? gap.index : (points[section]?.length ?? 0);
-        const formerParent = findSubPointParent(outline, subject.id)?.point.id;
-        result.next = outdentSubPoint(outline, subject.id, section, index);
-        result.movedPointTo = section;
-        if (formerParent) {
-          result.placementChanges = remapAfterOutdent(scratch?.placements ?? {}, subject.id, formerParent);
-        }
-      }
-    }
-    return result;
-  };
-
   /**
    * ONE DROP, READ AS A SENTENCE.
    *
@@ -872,9 +341,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
    */
   const onDragEnd = (event: DragEndEvent) => {
     const subject = parseDragId(String(event.active.id));
-    activeDragRef.current = null;
-    setActiveDrag(null);
-    setHoveredDropId(null);
+    clearActiveDrag();
     const overId = event.over ? String(event.over.id) : null;
 
     if (subject?.kind === 'note') {
@@ -886,12 +353,9 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     if (!subject || !overId) return;
 
     const outline = toOutline(points);
-    const { next, movedPointTo, placementChanges } = subject.kind === 'point'
-      ? handlePointDrop(subject, overId, outline)
-      : handleSubPointDrop(subject, overId, outline);
-
-    if (!next) return;
-    if (JSON.stringify(next) === JSON.stringify(outline)) return;
+    const transition = resolveOutlineDrop(outline, subject, overId, scratch?.placements);
+    if (!transition) return;
+    const { next, movedPointTo, placementChanges, subPointMove } = transition;
 
     onChange(next);
     // Re-file the notes whose address the move invalidated (pure remap above).
@@ -907,19 +371,9 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
      * that no type or test would catch, only a preacher finding his notes under
      * the wrong heading.
      */
-    if (subject.kind === 'point' && movedPointTo) {
-      onOutlinePointMoved?.(subject.id, movedPointTo, next);
-    }
-    if (subject.kind === 'sub') {
-      const before = findSubPointParent(outline, subject.id);
-      const after = findSubPointParent(next, subject.id);
-      if (before && after && before.point.id !== after.point.id) {
-        onSubPointMoved?.(subject.id, before.point.id, after.point.id, after.section, next);
-      }
-      // Promoted out of its parent: it is a point now, in whatever section it landed.
-      if (before && !after && movedPointTo) {
-        onOutlinePointMoved?.(subject.id, movedPointTo, next);
-      }
+    if (movedPointTo) onOutlinePointMoved?.(subject.id, movedPointTo, next);
+    if (subPointMove) {
+      onSubPointMoved?.(subject.id, subPointMove.sourcePointId, subPointMove.destinationPointId, subPointMove.section, next);
     }
   };
 
@@ -968,165 +422,11 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
     />
   );
 
-  const activeNoteId = activeDrag?.kind === 'note' ? activeDrag.id : null;
-  useEffect(() => {
-    if (activeNoteId) setLiftedNoteId(activeNoteId);
-  }, [activeNoteId]);
-
-  const renderScratchNote = (note: ScratchNote, testId?: string) => {
-    if (!scratch) return null;
-
-    return (
-      <DraggableCard key={note.id} dragId={dragIdFor('note', note.id)} disabled={isReadOnly}>
-        {({ setNodeRef, handleProps }) => (
-          /*
-           * THE LIFTED CARD LEAVES THE LIST. Its copy is in the air and its place is
-           * the open slot; keeping it here too would make the list one card longer
-           * for the whole gesture. It stays mounted (hidden) so the drag keeps its
-           * node. It hides on THIS board's state, which `onDragStart` sets one
-           * effect after dnd-kit has measured the card: hiding on the library's own
-           * `isDragging` was one render too early — the overlay was then sized from
-           * a card that was already `display: none`, a 0×0 rectangle at the page
-           * corner, and the copy wrapped into a 26px column far from the finger.
-           */
-          <div
-            ref={setNodeRef}
-            data-testid={testId}
-            data-scratch-note={note.id}
-            className={note.id === liftedNoteId ? 'hidden' : undefined}
-          >
-            {scratch.renderNote(note, handleProps as DragHandleProps)}
-          </div>
-        )}
-      </DraggableCard>
-    );
-  };
-
-  /**
-   * THE SLOT IS THE SIGNAL. Neighbours slide apart exactly where the note will
-   * land; nothing else lights up, no words are printed. At home the slot is the
-   * card's full height, so lifting moves nothing; in another container it is
-   * compact, so a tall note does not shove every destination away while it travels.
-   */
-  const renderNoteSlot = (key: string, own: boolean, sameContainer: boolean) => (
-    <div
-      key={key}
-      data-scratch-slot={own ? 'home' : 'target'}
-      aria-hidden="true"
-      className={own ? NOTE_HOME_CLASS : NOTE_SLOT_CLASS}
-      style={{ height: noteSlotHeight(activeNoteHeight, own || sameContainer) }}
-    />
-  );
-
-  /**
-   * A container's notes with the slot woven in. While a note is in the air its own
-   * card is hidden; its place shows as a muted home slot until the note is aimed
-   * at another container, and as the live slot when it is aimed at its own place.
-   */
-  const renderNoteList = (containerId: string, notes: ScratchNote[], testIdFor?: (note: ScratchNote) => string) => {
-    const slot = noteSlot && noteSlot.containerId === containerId ? noteSlot : null;
-    const home = liftedNoteId ? noteHomeOf(liftedNoteId) : null;
-    const homeHere = home && home.containerId === containerId ? home : null;
-    const showHome = homeHere !== null && (!slot || slot.own || noteSlot === null);
-    const sameContainer = home !== null && home.containerId === containerId;
-    const visible = notes.filter((note) => note.id !== liftedNoteId);
-    const items: React.ReactNode[] = [];
-    visible.forEach((note, index) => {
-      if (slot && !slot.own && slot.index === index) items.push(renderNoteSlot('slot', false, sameContainer));
-      if (showHome && homeHere && homeHere.index === index) items.push(renderNoteSlot('home', true, true));
-      items.push(renderScratchNote(note, testIdFor?.(note)));
-    });
-    if (slot && !slot.own && slot.index >= visible.length) items.push(renderNoteSlot('slot', false, sameContainer));
-    if (showHome && homeHere && homeHere.index >= visible.length) items.push(renderNoteSlot('home', true, true));
-    // The hidden original keeps the drag's node alive; it takes no room.
-    const active = liftedNoteId ? notes.find((note) => note.id === liftedNoteId) : undefined;
-    if (active) items.push(renderScratchNote(active, testIdFor?.(active)));
-    return items;
-  };
-
-  /**
-   * KEEP THE SPACE, CHANGE ONLY THE PAINT. Collapsing an empty strip when it was
-   * not a target made the whole card change height the instant a drag began — the
-   * "everything jumped" report. The strip keeps its box; the slot inside it, when
-   * the container is the target, is the only thing that appears.
-   */
-  const renderNoteStrip = ({ containerId, notes, testId }: { containerId: string; notes: ScratchNote[]; testId: string }) => {
-    if (!scratch) return null;
-    return (
-      <div
-        data-testid={testId}
-        data-scratch-strip={containerId}
-        className="mt-1.5 flex min-h-[32px] flex-col gap-1.5 rounded-lg px-1 py-1"
-      >
-        {renderNoteList(containerId, notes, (note) => `scratch-placed-note-${note.id}`)}
-      </div>
-    );
-  };
-
-  const getScratchPoolNotes = () => (scratch ? scratch.pool : []);
-
-  const getScratchPointNotes = (pointId: string) =>
-    scratch
-      ? Array.from(scratch.notesById.values()).filter((note) => {
-          const placement = scratch.placements[note.id];
-          return placement?.pointId === pointId && !placement.subPointId;
-        })
-      : [];
-
-  const getScratchSubPointNotes = (subPointId: string) =>
-    scratch
-      ? Array.from(scratch.notesById.values()).filter(
-          (note) => scratch.placements[note.id]?.subPointId === subPointId
-        )
-      : [];
-
-  /** The notes a given container shows — the neighbours a drop is measured against. */
-  const notesInContainer = (containerId: string): ScratchNote[] => {
-    const parsed = parseNoteContainerId(containerId);
-    if (!parsed) return [];
-    if (parsed.kind === 'pool') return getScratchPoolNotes();
-    if (parsed.kind === 'point') return getScratchPointNotes(parsed.pointId);
-    return getScratchSubPointNotes(parsed.subPointId);
-  };
 
   const isNoteTarget = (containerId: string) => noteSlot !== null && !noteSlot.own && noteSlot.containerId === containerId;
-
-  const renderScratchPool = () => {
-    if (!scratch) return null;
-    const poolNotes = getScratchPoolNotes();
-    const poolIsEmpty = poolNotes.length === 0;
-
-    return (
-      <DropZone
-        dropId={NOTE_POOL_ID}
-        disabled={isReadOnly}
-        activeKind={activeDrag?.kind ?? null}
-        render={({ setNodeRef }) => (
-          <section
-            ref={setNodeRef}
-            data-testid="scratch-note-pool-band"
-            data-note-container={NOTE_POOL_ID}
-            className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm shadow-gray-900/5 dark:border-gray-700 dark:bg-gray-900 dark:shadow-black/20"
-          >
-            {scratch.poolHeader && <div className="mb-3">{scratch.poolHeader}</div>}
-            <div
-              data-scratch-strip={NOTE_POOL_ID}
-              className={`grid min-h-[88px] grid-cols-1 gap-3 rounded-lg transition-all duration-150 md:grid-cols-2 xl:grid-cols-3 ${
-                isNoteTarget(NOTE_POOL_ID) ? SCRATCH_DROP_OVER_CLASS : ''
-              }`}
-            >
-              {poolIsEmpty && !isNoteTarget(NOTE_POOL_ID) && (
-                <div className="col-span-full rounded-lg border border-dashed border-gray-300 px-3 py-6 text-center text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400">
-                  {scratch.poolEmptyLabel}
-                </div>
-              )}
-              {renderNoteList(NOTE_POOL_ID, poolNotes)}
-            </div>
-          </section>
-        )}
-      />
-    );
-  };
+  const noteListProps = { isReadOnly, noteSlot, liftedNoteId, activeNoteHeight, noteHomeOf };
+  const renderNoteStrip = ({ containerId, notes, testId }: { containerId: string; notes: ScratchNote[]; testId: string }) => scratch
+    ? <ScratchNoteStrip {...noteListProps} scratch={scratch} containerId={containerId} notes={notes} testId={testId} /> : null;
 
   const renderSubPointControls = (point: OutlinePoint, sp: SubPoint) => {
     const isEditing = editingSubPointId === sp.id;
@@ -1201,7 +501,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   };
 
   const renderSubPoints = (point: OutlinePoint) => {
-    const sorted = sortSubPoints(point.subPoints ?? []);
+    const sorted = sortSubPointsByPosition(point.subPoints);
     const pendingDeleteForPoint =
       pendingSubPointDelete?.outlinePointId === point.id ? pendingSubPointDelete : null;
     const showWrapper = sorted.length > 0 || addingSubPointTo === point.id || pendingDeleteForPoint !== null || !isReadOnly;
@@ -1279,7 +579,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                             renderNoteStrip({
                               containerId: noteSubContainerId(sp.id),
                               testId: `scratch-subpoint-drop-zone-${sp.id}`,
-                              notes: getScratchSubPointNotes(sp.id),
+                              notes: notesInContainer(noteSubContainerId(sp.id)),
                             })}
                         </div>
                       </div>
@@ -1567,7 +867,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                               renderNoteStrip({
                                 containerId: notePointContainerId(point.id),
                                 testId: `scratch-point-drop-zone-${point.id}`,
-                                notes: getScratchPointNotes(point.id),
+                                notes: notesInContainer(notePointContainerId(point.id)),
                               })}
                             {!collapsedPoints[point.id] && renderSubPoints(point)}
                           </div>
@@ -1706,17 +1006,12 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
         onDragStart={onDragStart}
         onDragMove={onDragMove}
         onDragOver={onDragOver}
-        onDragCancel={() => {
-          activeDragRef.current = null;
-          setActiveDrag(null);
-          setHoveredDropId(null);
-          resetNoteDrag();
-        }}
+        onDragCancel={cancelDrag}
         onDragEnd={onDragEnd}
       >
         {scratch ? (
           <div className="space-y-4">
-            {renderScratchPool()}
+            <ScratchNotePool {...noteListProps} scratch={scratch} notes={notesInContainer(NOTE_POOL_ID)} activeDrag={activeDrag} />
             {boardColumns}
           </div>
         ) : (

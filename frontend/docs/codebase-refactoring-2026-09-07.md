@@ -1,6 +1,6 @@
 # Codebase simplification — working review guide
 
-This is an ongoing implementation, not a claim that every area is complete. The owner delegated design choices and authorized local commits, with one integrated review at the end. Nothing has been pushed or deployed.
+The owner requested closure at 21:49 PDT after a substantial implementation pass. The packets below are complete or have an explicitly dated verification checkpoint; this is not a claim that every area of the repository has been refactored. Design choices and local commits were delegated. Nothing has been pushed or deployed.
 
 ## Verified packets
 
@@ -79,7 +79,7 @@ Series/group before shots were captured from the still-unchanged respective comp
 
 ## Remaining work
 
-Export content model/rendering and duplicate contracts, shared thought fields, Column/OutlineBoard boundaries, wider codebase review and final integrated verification. This document will be updated as those packets are validated.
+Export content/model, shared thought fields, Column, and OutlineBoard have now been handled in the packets below. Remaining scope: wider server/AI client decomposition, other large pages (including study detail), additional dialog families, and further test consolidation after mapping their real contracts. Existing product bugs in BUGS.md remain unless explicitly closed by these commits. In particular, physical-device behavior, paid AI quality, offline multi-device convergence, and keyboard scratch dragging are not certified by this pass.
 
 ## Clipboard consolidation — verified local checkpoint
 
@@ -217,3 +217,32 @@ Crosswalk to the retained actual hook tests:
 Seven new preview contracts run against the unmodified current hook, using actual React state and a controlled animation-frame queue. Cancellation is verified both before and after preview paint, preserving IDs, positions, refs and active state. Three isolated negative controls were detected: network write during hover3failures, missing cancel restoration2failures, duplicated source item1failure. Temporary mutant/proof files were removed in finally; the application hook was never changed. The real hook suites pass53tests. Pointer-hover/cancel proof on the live page is recorded in the Column section above.
 
 DnD cleanup checkpoint2026-09-07 21:31 PDT: **586suites /5444tests**, **91.05%aggregate lines**, rootcoverage+lint/types/unusedgreen. The first full run passed tests but TypeScript rejected a deliberately partial drag-event fixture; its boundary assertion was corrected and the entire gate rerun. Twenty disconnected cases removed, seven actual-hook cases added; active application behavior unchanged.
+
+
+## Outline board: completed local refactor
+
+OutlineBoard shrank from1768 to1064lines. The editor now delegates structural move decisions to outlineBoardModel, gesture/collision/overlay state to useOutlineBoardDrag, and pool/placed-note rendering to ScratchNoteLayer. Shared BoardDragPrimitives keep the same draggable/droppable registration rules. outlineBoardNotes builds a single-pass container index while preserving caller pool order, Map iteration order, note identity and legacy orphan placements. The existing outlineDnd, boardDnd and scratchPlacementRemap remain the canonical rules; persistence still belongs to the caller.
+
+BUG-20260907-board-subgap-placement: dropping a subpoint onto a card previously remapped its attached scratch note, while dropping into that card's subpoint gap did not. Follow-up effects now derive from the actual before/after relationship, so both targets update the note's parent address. The regression test failed on the original implementation and passes after. Point nesting with children, promotion, cross-section movement, read-only, invalid targets and no-op drops retain their contracts.
+
+New direct tests cover all new runtime modules. Live-DOM collision tests check deepest nested targets, stationary-pointer cache identity, scroll invalidation, reset between gestures, inner-card measurement, hidden-original preservation, a single physical destination slot, atomic move callbacks and clipped-overlay handle positioning. These complement the retained board tests; they do not replace actual browser verification.
+
+Actual browser proof used one temporary QA scratch note in the existing test account. Full text and controls fit at1280px and390px; the mobile card had clientWidth=scrollWidth324px and no document overflow. A real pointer drag showed the correct point destination; Escape returned the original card to the pool without losing its text. A completed drop moved the card into the point. Placement remains a draft until Apply, as before: reload returns it to the pool. Apply was not pressed. The QA note was deleted through the confirmation dialog and a subsequent reload confirmed zero scratch notes and no QA text. Existing point/subpoint content was left intact.
+
+Screenshots in output/playwright/refactoring: outline-board-note-drag-desktop.png, outline-board-qa-desktop.png, outline-board-qa-mobile.png, outline-board-after-desktop.png. The QA-card shots deliberately show the temporary verification text. The after shot is after cleanup. Existing keyboard-drag issue BUG-20260905-scratch-keyboard-drag-lifts-offscreen remains open; this packet does not claim to fix it.
+
+## Integrated acceptance route
+
+Use the local candidate and the normal account; review can be done as one walkthrough:
+
+1. Settings: check all six toggles in their common group.
+2. Series create/edit and group creation: shared spacing, fields, scrolling and actions.
+3. Thought create/edit: text, tags, outline selection, mobile long draft and cancellation.
+4. Prayer update/edit/answer: reachable actions with long text, light/dark appearance.
+5. Structure page: normal/focus mode, collapse/expand, action wrapping, pointer drag/cancel.
+6. Scratch mode: pool, manual capture, note card and plan editing.
+7. Export: TXT/Markdown preview and download, Word download; language labels follow the current UI language.
+
+Saved screenshots document inspected states, not a claim that every viewport and every feature combination was exhaustively tested. Full-suite results and production-build outcome are recorded below.
+
+Closing root gate2026-09-07 21:52 PDT: **590/590suites, 5469/5469tests, 91.24%aggregate lines**; coverage, ESLint, TypeScript and unused checks exit0. No thresholds weakened. Final full-run line coverage: OutlineBoard81.65%, gesture hook98.07%, structural model100%, note index100%, drag primitives100%, scratch layer100%. One existing study-detail cognitive-complexity warning remains. Full-run file percentages differ from focused runs; the named behavior contracts and red/green failures are the equivalence evidence. Final production build subsequently passed (route type generation, separate strict TypeScript validation and Next.js build;40static pages generated). The build script intentionally delegates type checking to its parallel strict process; it was not skipped. Lint had already passed in the root gate. The final structure route is876kB First Load JS, with sermon detail1.02MB, list664kB and plan839kB.

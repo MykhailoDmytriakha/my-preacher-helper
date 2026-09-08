@@ -493,4 +493,3 @@ export const OutlinePointCard: React.FC<{
     </>
   );
 };
-
