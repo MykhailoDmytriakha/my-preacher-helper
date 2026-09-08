@@ -194,3 +194,26 @@ Actual browser: normal/focus, desktop/mobile, light/dark; title draft changed th
 Screenshots under output/playwright/refactoring: column-before-desktop.png, column-focus-before-desktop.png, column-focus-before-mobile.png, column-focus-after-desktop.png, column-focus-after-mobile.png, column-mobile-detail-after.png, column-responsive-after-mobile.png, column-after-dark-desktop.png, column-after-dark-mobile.png, column-collapsed-drag-preview.png. Theme restored System. Browser checks are not physical-device evidence.
 
 Column checkpoint2026-09-07 21:22 PDT: **588suites /5457tests**, **91%aggregate lines**, full rootcoverage+lint/types/unusedgreen. Changedruntime file-wide lines: Column96.93%, pointcard96.96%, lanes99.69%, itemindex100%, SubPointList89.05%. The existing study-page complexity warning remains.
+
+
+## Remove disconnected drag-and-drop tests and their unused implementation
+
+The active structure page calls useStructureDnd; a full source/reference search found no runtime consumer of utils/dnd-handlers.ts. Two old suites imported that 151-line alternate implementation; a third 498-line suite defined its own handlers, including a simplified drag-end branch and expect(true). The three suites total939lines/20cases and are removed with the unused implementation. Their historical README named a nonexistent page/test and now points to real owners.
+
+Crosswalk to the retained actual hook tests:
+
+| Former claim | Actual protection |
+|---|---|
+| Cross-container move and before-target placement | Existing moving-between-containers, exact reordered IDs/persisted order; new preview before-last case |
+| Container inference without data | Existing infer destination, container-ID fallback and end fallback cases |
+| Null target, missing source, invalid destination, self target | New parameterized real preview contracts; existing end no-target/no-op/invalid-container cases |
+| Same-container reorder | Existing real reorder persistence and two-card live-preview commit cases |
+| Required tag updates/clearing | Existing section-change payload and ambiguous-additional-drop payload cases |
+| Repeated preview without duplicates | New real ref/state coalescing case and existing skip-duplicate/adjacent group cases |
+| Hover makes no backend calls | New assertions on the actual hook's imported write services, not an isolated function with no service imports |
+| Dummy DOM spacer becomes ambiguous | Obsolete implementation detail: actual spacer is not registered as a droppable; the registered ambiguous-additional-drop target has retained payload coverage |
+| No-error / expect(true) branches | Removed empty assertions; actual no-op state and no-write expectations remain |
+
+Seven new preview contracts run against the unmodified current hook, using actual React state and a controlled animation-frame queue. Cancellation is verified both before and after preview paint, preserving IDs, positions, refs and active state. Three isolated negative controls were detected: network write during hover3failures, missing cancel restoration2failures, duplicated source item1failure. Temporary mutant/proof files were removed in finally; the application hook was never changed. The real hook suites pass53tests. Pointer-hover/cancel proof on the live page is recorded in the Column section above.
+
+DnD cleanup checkpoint2026-09-07 21:31 PDT: **586suites /5444tests**, **91.05%aggregate lines**, rootcoverage+lint/types/unusedgreen. The first full run passed tests but TypeScript rejected a deliberately partial drag-event fixture; its boundary assertion was corrected and the entire gate rerun. Twenty disconnected cases removed, seven actual-hook cases added; active application behavior unchanged.
