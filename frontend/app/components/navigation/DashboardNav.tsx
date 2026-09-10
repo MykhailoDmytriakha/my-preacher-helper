@@ -3,7 +3,7 @@
 import { BookOpenIcon, ChatBubbleLeftEllipsisIcon } from '@heroicons/react/24/solid';
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import "@locales/i18n";
 
@@ -32,6 +32,17 @@ import { isConductRoute } from '@/utils/usageGrace';
 import { AppUpdateButton } from "./AppUpdateButton";
 import ModeToggle, { type SermonMode } from "./ModeToggle";
 import { OfflineIndicator } from "./OfflineIndicator";
+
+/** The gap a word leaves behind on the bar when it is dropped. */
+const BAR_GAP = 8;
+/**
+ * The room a state must have TO SPARE before the bar settles into it. It exists only to
+ * absorb layout rounding — hiding a word does not always hand the zone back exactly the
+ * width that word measured — so it is two pixels, not eight: a generous margin here costs a
+ * whole rung. Measured live at 1280px with Russian labels, the labelled list fits with six
+ * pixels left, and an eight-pixel margin threw the labels away for nothing.
+ */
+const FIT_SLACK = 2;
 
 const parseSermonMode = (value: string | null | undefined): SermonMode | null => {
   if (value === 'prep' || value === 'classic' || value === 'raw') return value;
@@ -69,6 +80,165 @@ export default function DashboardNav() {
       }))
   ), [t, showGroupsNav]);
   const workspaceNavItems = navItems.filter((item) => item.key !== 'settings');
+
+  /**
+   * THE BAR MEASURES ITSELF INSTEAD OF GUESSING AT A BREAKPOINT.
+   *
+   * The labels used to appear at `xl` and the list was clipped by `overflow-hidden`, so on
+   * every width where the labelled list was wider than the space left over — a long locale,
+   * a wide language switcher, one more section — the LAST item (the calendar) was simply cut
+   * off the right edge. Cut off, not hidden: no menu held it, and on a desktop there is no
+   * hamburger, so the section was unreachable and nothing on screen said so.
+   *
+   * A breakpoint cannot know this, because what is scarce is not the WINDOW but the space
+   * left after the logo and the right-hand controls, and the labels are as long as the
+   * translation makes them. So the list reports the width it needs (`scrollWidth` counts the
+   * overflow it cannot show), the zone reports the width it has, and the labels drop when
+   * they do not fit. The needed width is remembered from the labelled render: dropping the
+   * labels shrinks the list, and re-measuring it then would flip the decision back and
+   * forth for ever.
+   */
+  const navZoneRef = useRef<HTMLDivElement | null>(null);
+  const navListRef = useRef<HTMLUListElement | null>(null);
+  const wordmarkRef = useRef<HTMLSpanElement | null>(null);
+  const feedbackLabelRef = useRef<HTMLSpanElement | null>(null);
+  const labelledWidthRef = useRef<number | null>(null);
+  const wordmarkWidthRef = useRef(0);
+  const feedbackLabelWidthRef = useRef(0);
+  const [navCompact, setNavCompact] = useState(false);
+  const [showWordmark, setShowWordmark] = useState(true);
+  const [showFeedbackLabel, setShowFeedbackLabel] = useState(true);
+  /** Set during render: only a list that is actually showing labels can report their width. */
+  const navLabelsShownRef = useRef(true);
+  const wordmarkShownRef = useRef(true);
+  const feedbackLabelShownRef = useRef(true);
+
+  const measureNavFit = useCallback(() => {
+    const zone = navZoneRef.current;
+    const list = navListRef.current;
+    if (!zone || !list) return;
+    if (navLabelsShownRef.current) labelledWidthRef.current = list.scrollWidth;
+    // Plus the gap each one leaves behind when it goes.
+    if (wordmarkShownRef.current && wordmarkRef.current) {
+      wordmarkWidthRef.current = wordmarkRef.current.offsetWidth + BAR_GAP;
+    }
+    if (feedbackLabelShownRef.current && feedbackLabelRef.current) {
+      feedbackLabelWidthRef.current = feedbackLabelRef.current.offsetWidth + BAR_GAP;
+    }
+    const needed = labelledWidthRef.current;
+    const available = zone.clientWidth;
+    // Zero means "not laid out yet" (a test renderer, a hidden tab): keep the labels.
+    if (!available || !needed) return;
+
+    /*
+      WHAT GIVES WAY FIRST IS A DECISION, NOT AN ACCIDENT.
+      Two words on the bar are worth less than the section names, and they go in this order:
+      the app's own name (its square icon still says what the app is, and the person reading
+      it is already inside the app), then the word on the feedback button (the speech bubble
+      is unmistakable). Only when neither is enough do the sections collapse into icons — and
+      then both words come back, because the icon row leaves room for them.
+
+      `base` is the width the list would have if EVERY word were on the bar, so the ladder is
+      a pure function of the window and cannot oscillate: giving a word back never changes
+      the rung the next measurement lands on.
+    */
+    const wordmark = wordmarkWidthRef.current;
+    const feedbackLabel = feedbackLabelWidthRef.current;
+    const base =
+      available -
+      (wordmarkShownRef.current ? 0 : wordmark) -
+      (feedbackLabelShownRef.current ? 0 : feedbackLabel);
+    // A rung is only taken when it fits with a little room to spare, so the bar cannot sit
+    // exactly on a boundary and flip back and forth for ever.
+    const fits = (room: number) => needed + FIT_SLACK <= room;
+
+    if (fits(base)) {
+      setNavCompact(false);
+      setShowWordmark(true);
+      setShowFeedbackLabel(true);
+    } else if (fits(base + wordmark)) {
+      setNavCompact(false);
+      setShowWordmark(false);
+      setShowFeedbackLabel(true);
+    } else if (fits(base + wordmark + feedbackLabel)) {
+      setNavCompact(false);
+      setShowWordmark(false);
+      setShowFeedbackLabel(false);
+    } else {
+      setNavCompact(true);
+      setShowWordmark(true);
+      setShowFeedbackLabel(true);
+    }
+  }, []);
+
+  /**
+   * Forget every remembered width and go back to the widest state, so the next measuring
+   * pass can take a fresh one. Needed whenever the labels themselves change size: a new
+   * locale, and — the case that is easy to miss — web fonts finishing their swap. A cached
+   * number taken in the fallback font is too small, and nothing else would ever re-take it.
+   */
+  const resetNavFit = useCallback(() => {
+    labelledWidthRef.current = null;
+    wordmarkWidthRef.current = 0;
+    feedbackLabelWidthRef.current = 0;
+    setNavCompact(false);
+    setShowWordmark(true);
+    setShowFeedbackLabel(true);
+  }, []);
+
+  /**
+   * A new locale means new label widths, so the remembered number is thrown away.
+   *
+   * Keyed on the LABELS THEMSELVES, never on the `navItems` array: that array is rebuilt on
+   * every render (it is memoised on `t`, and i18next hands out a fresh `t` each pass), so an
+   * effect keyed on its identity re-ran, reset the state, re-rendered, and ran again —
+   * "Maximum update depth exceeded" on the very first paint.
+   */
+  const navSignature = useMemo(() => navItems.map((item) => item.label).join('|'), [navItems]);
+
+  useLayoutEffect(() => {
+    resetNavFit();
+  }, [navSignature, resetNavFit]);
+
+  /**
+   * MEASURED AFTER EVERY RENDER, deliberately without a dependency list.
+   *
+   * The decision is a pure function of widths that do not depend on the decision itself
+   * (`base` normalises away whatever is currently hidden), so re-running it converges: the
+   * second pass computes the same answer, `setState` sees identical values and React stops.
+   * Guarding it with dependencies is what broke it — after the reset above the bar rendered
+   * its labels again and nothing re-measured them, so a language change from the compact
+   * state could leave a labelled list wider than its own zone.
+   */
+  useLayoutEffect(() => {
+    measureNavFit();
+  });
+
+  useLayoutEffect(() => {
+    const zone = navZoneRef.current;
+    if (!zone || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => measureNavFit());
+    observer.observe(zone);
+    return () => observer.disconnect();
+  }, [measureNavFit]);
+
+  /**
+   * Web fonts land after the first measurement and make every label wider. Nothing else
+   * notices: the zone keeps its width, so the observer stays silent and the remembered
+   * number stays too small.
+   */
+  useEffect(() => {
+    const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
+    if (!fonts?.ready) return;
+    let cancelled = false;
+    fonts.ready.then(() => {
+      if (!cancelled) resetNavFit();
+    }).catch(() => { });
+    return () => {
+      cancelled = true;
+    };
+  }, [resetNavFit]);
+
   const settingsNavItem = navItems.find((item) => item.key === 'settings');
   const SettingsIcon = settingsNavItem?.icon;
   const currentNavItem = navItems.find((item) => isNavItemActive(pathname, item.matchers));
@@ -119,6 +289,15 @@ export default function DashboardNav() {
   const sermonIdForMode = getSermonIdFromPathname(pathname);
   // Check if we're on any sermon-related page
   const isSermonRelated = /^\/sermons\//.test(pathname || "") || pathname === '/structure';
+  /**
+   * Icons alone, no labels: either because a sermon page needs its width for the mode
+   * toggle, or because the measurement above says the labels do not fit.
+   */
+  const feedbackLabelText = (t('feedback.button') || 'Feedback') as string;
+  const iconOnlyNav = isSermonRelated || navCompact;
+  navLabelsShownRef.current = !iconOnlyNav;
+  wordmarkShownRef.current = showWordmark;
+  feedbackLabelShownRef.current = showFeedbackLabel;
   const [savedMode, setSavedMode] = useState<SermonMode>('classic');
 
   // Get current mode directly from URL params for immediate response
@@ -221,9 +400,11 @@ export default function DashboardNav() {
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-sm shadow-blue-950/10 transition group-hover:shadow-blue-500/20 dark:from-blue-500 dark:to-indigo-500">
                 <BookOpenIcon className="h-5 w-5" aria-hidden="true" />
               </span>
-              <span className="hidden whitespace-nowrap xl:inline">
-                {t('navigation.appName', { defaultValue: 'My Preacher Helper' })}
-              </span>
+              {showWordmark && (
+                <span ref={wordmarkRef} className="hidden whitespace-nowrap lg:inline">
+                  {t('navigation.appName', { defaultValue: 'My Preacher Helper' })}
+                </span>
+              )}
             </Link>
           )}
 
@@ -236,8 +417,19 @@ export default function DashboardNav() {
             icons stay out in the open — the accessible name still carries the
             label, and `title` gives it back on hover.
           */}
+          <div ref={navZoneRef} className="min-w-0 flex-1">
           <ul
-            className="flex min-w-0 items-center gap-1 overflow-hidden rounded-full border border-gray-200/70 bg-gray-50/85 p-1 shadow-inner shadow-white/60 dark:border-gray-700/60 dark:bg-gray-900/70 dark:shadow-black/20"
+            ref={navListRef}
+            /*
+              `overflow-x-auto`, never `overflow-hidden`. The measurement above should keep
+              the list inside its zone, but every measurement has a moment when it is not
+              true yet — the server's first paint, a cold start where hydration is slow or
+              never happens, a font that lands late. Clipping turns that moment into a
+              section that does not exist: on a desktop there is no hamburger to reach it
+              from. Scrolling keeps it reachable while the bar catches up. The scrollbar
+              itself is hidden — when the measurement is right, there is nothing to scroll.
+            */
+            className="flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-full border border-gray-200/70 bg-gray-50/85 p-1 shadow-inner shadow-white/60 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden dark:border-gray-700/60 dark:bg-gray-900/70 dark:shadow-black/20"
             aria-label={t('navigation.primary', { defaultValue: 'Primary navigation' }) ?? 'Primary navigation'}
           >
             {workspaceNavItems.map((item) => {
@@ -251,7 +443,7 @@ export default function DashboardNav() {
                     prefetch={isOnline}
                     aria-current={active ? 'page' : undefined}
                     aria-label={item.label}
-                    title={isSermonRelated ? item.label : undefined}
+                    title={iconOnlyNav ? item.label : undefined}
                     /*
                       ONE HEIGHT ACROSS THE WHOLE BAR: every target in the header is
                       36px, so every capsule around one measures 46px (36 + p-1 on
@@ -261,22 +453,20 @@ export default function DashboardNav() {
                       adapts to the page: labelled pills where there is room, square
                       icons on sermon pages where there is not.
                     */
-                    className={`inline-flex h-9 items-center justify-center whitespace-nowrap rounded-full border text-sm font-medium transition ${isSermonRelated
+                    className={`inline-flex h-9 items-center justify-center whitespace-nowrap rounded-full border text-sm font-medium transition ${iconOnlyNav
                       ? 'w-9'
-                      : 'max-w-[9.75rem] gap-1.5 px-2.5'
+                      : 'gap-1.5 px-2.5'
                       } ${active
                         ? themeClasses.pill
                         : `border-transparent text-gray-600 dark:text-gray-300 ${themeClasses.hover}`
                       }`}
                   >
-                    <Icon className={`shrink-0 ${isSermonRelated ? 'h-[18px] w-[18px]' : 'h-4 w-4'}`} aria-hidden="true" />
-                    {!isSermonRelated && (
+                    <Icon className={`shrink-0 ${iconOnlyNav ? 'h-[18px] w-[18px]' : 'h-4 w-4'}`} aria-hidden="true" />
+                    {!iconOnlyNav && (
                       <>
-                        <span className="hidden min-w-0 truncate xl:inline" suppressHydrationWarning={true}>
-                          {item.label}
-                        </span>
+                        <span suppressHydrationWarning={true}>{item.label}</span>
                         {item.isBeta && (
-                          <Chip weight="bold" tone="blue" size="xs" className="hidden uppercase leading-tight 2xl:inline-flex">
+                          <Chip weight="bold" tone="blue" size="xs" className="uppercase leading-tight">
                             Beta
                           </Chip>
                         )}
@@ -287,9 +477,7 @@ export default function DashboardNav() {
               );
             })}
           </ul>
-
-          {/* Spacer to push controls right */}
-          <div className="flex-1" />
+          </div>
 
           {/* Right: Desktop controls */}
           <div className="flex shrink-0 items-center gap-2 rounded-full border border-gray-200/70 bg-gray-50/85 px-2 py-1 shadow-sm dark:border-gray-700/60 dark:bg-gray-900/70">
@@ -300,12 +488,17 @@ export default function DashboardNav() {
             <button
               onClick={handleFeedbackClick}
               className="inline-flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 px-3.5 text-sm font-semibold text-white shadow-sm shadow-blue-950/10 transition-all hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:from-blue-500 dark:to-indigo-500 dark:hover:from-blue-400 dark:hover:to-indigo-400 dark:focus:ring-offset-gray-950"
-              aria-label="Provide feedback"
+              // The word beside the bubble is the first thing this bar gives up, so the name has
+              // to live on the button itself — and in the reader's language, not in English.
+              aria-label={feedbackLabelText}
+              title={feedbackLabelText}
             >
               <ChatBubbleLeftEllipsisIcon className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span className="hidden xl:inline" suppressHydrationWarning={true}>
-                {t('feedback.button') || 'Feedback'}
-              </span>
+              {showFeedbackLabel && (
+                <span ref={feedbackLabelRef} className="hidden lg:inline" suppressHydrationWarning={true}>
+                  {feedbackLabelText}
+                </span>
+              )}
             </button>
             {settingsNavItem && SettingsIcon && (
               <Link
