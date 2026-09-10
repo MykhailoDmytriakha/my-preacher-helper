@@ -6,7 +6,7 @@ import {
   CalendarDays,
   ChevronRight,
   Clock3,
-  Heart,
+  Flame,
   NotebookTabs,
   Plus,
   StickyNote,
@@ -301,7 +301,7 @@ export default function DashboardPage() {
       value: String(dashboardData.activePrayersCount),
       helper: t('dashboardHome.metrics.activePrayers.helper'),
       href: '/prayers',
-      icon: Heart,
+      icon: Flame,
       tone: 'rose',
     },
   ];
@@ -576,7 +576,7 @@ function PrayerFocusPanel({ prayers }: { prayers: PrayerItem[] }) {
   return (
     <section ref={setPanelRef} className={`${tonedCardClass('rose')} flex flex-col xl:col-span-2`} aria-labelledby="prayer-focus-title">
       <div className={panelHeaderClass}>
-        <PanelTitle icon={Heart} id="prayer-focus-title" title={t('dashboardHome.sections.prayer.title')} />
+        <PanelTitle icon={Flame} id="prayer-focus-title" title={t('dashboardHome.sections.prayer.title')} />
         <Link href="/prayers" className={panelLinkClass('rose')}>
           {t('dashboardHome.sections.prayer.viewAll')}
           <ChevronRight className="h-3.5 w-3.5" />
@@ -584,13 +584,13 @@ function PrayerFocusPanel({ prayers }: { prayers: PrayerItem[] }) {
       </div>
 
       {prayers.length === 0 ? (
-        <EmptyPanel icon={Heart} text={t('dashboardHome.sections.prayer.empty')} />
+        <EmptyPanel icon={Flame} text={t('dashboardHome.sections.prayer.empty')} />
       ) : (
         <div ref={setListRef} className={`divide-y divide-gray-100 p-2 dark:divide-gray-800`}>
           {prayers.slice(0, visibleCount).map((prayer) => (
             <Link key={prayer.id} href={prayer.href} className={`grid grid-cols-[1fr_18px] gap-3 content-center sm:grid-cols-[36px_1fr_18px] ${panelRowClass} ${rowLink('rose')}`}>
               <div className={`hidden h-9 w-9 items-center justify-center rounded-lg sm:flex ${toneClasses.rose.badge}`}>
-                <Heart className="h-4 w-4" />
+                <Flame className="h-4 w-4" />
               </div>
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">

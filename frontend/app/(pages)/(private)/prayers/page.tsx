@@ -4,7 +4,7 @@ import { Popover, PopoverButton, PopoverPanel, Transition } from '@headlessui/re
 import {
   AdjustmentsHorizontalIcon,
   ArrowsUpDownIcon,
-  HeartIcon,
+  FireIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   XMarkIcon,
@@ -393,7 +393,7 @@ export default function PrayerPage() {
       )}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <HeartIcon className="h-6 w-6 flex-shrink-0 text-rose-500" />
+          <FireIcon className="h-6 w-6 flex-shrink-0 text-rose-500" />
           <h1 className="bg-gradient-to-r from-rose-600 to-pink-600 bg-clip-text text-2xl font-bold leading-tight text-transparent sm:text-3xl">
             {t('prayer.title')}
           </h1>
@@ -726,7 +726,7 @@ export default function PrayerPage() {
         </div>
       ) : filtered.length === 0 ? (
         <div className="py-16 text-center text-gray-400 dark:text-gray-500">
-          <HeartIcon className="mx-auto mb-3 h-12 w-12 opacity-30" />
+          <FireIcon className="mx-auto mb-3 h-12 w-12 opacity-30" />
           <p className="text-sm">
             {prayerRequests.length === 0 ? t('prayer.empty') : t('prayer.emptyFiltered')}
           </p>
