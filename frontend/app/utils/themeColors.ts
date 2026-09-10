@@ -396,6 +396,67 @@ export function getFocusModeButtonColors(section: 'introduction' | 'mainPart' | 
  * FULL CLASS STRINGS ONLY. Tailwind's JIT reads source text; `bg-${name}-100` compiles to
  * nothing, and the chip silently loses its plate.
  */
+/**
+ * The three cards of the pastor's plane (`/care`). Colour belongs to the CARD, never to the
+ * single section inside it: a card says what kind of thing it holds — the people you carry,
+ * the ministry you perform, what rests on you personally — and twelve differently coloured
+ * lines would turn one surface into twelve competing cards.
+ *
+ * `edge` exists because a wash alone disappears: on white the card had no boundary at all,
+ * and in the dark theme the card, the panel inside it and the page behind it were three
+ * shades of nearly the same black. Every surface here draws its own border.
+ *
+ * These are deliberately NOT the six category colours of the dashboard (sermons blue,
+ * groups amber, and so on). A room here is not a sermon and not a group; reusing those
+ * hues would claim a link that does not exist. Indigo, emerald and rose are the plane's
+ * own, and rose is kept for the pastor's own card because the section itself is the heart.
+ *
+ * FULL CLASS STRINGS ONLY. Tailwind's JIT reads source text; `bg-${name}-50` compiles to
+ * nothing and the card silently loses its wash.
+ */
+export const CARE_CARD_TONES = {
+  indigo: {
+    wash: 'bg-indigo-50/80 dark:bg-indigo-950/30',
+    edge: 'border-indigo-200/60 dark:border-indigo-900/60',
+    title: 'text-indigo-700 dark:text-indigo-300',
+    hint: 'text-indigo-600/90 dark:text-indigo-300/75',
+    icon: 'text-indigo-600 dark:text-indigo-300',
+    count: 'text-indigo-700 dark:text-indigo-300',
+    rowHover: 'hover:bg-indigo-50 dark:hover:bg-indigo-950/40',
+    rowTitleHover: 'group-hover:text-indigo-700 dark:group-hover:text-indigo-300',
+    focus: 'focus-visible:ring-indigo-500/40',
+  },
+  emerald: {
+    /**
+     * `emerald-50` at full strength read as the loudest of the three — the same lightness
+     * on paper, but a far more saturated hue, so the middle card shouted. Thinned to 60% it
+     * sits level with indigo and rose; the ink stays emerald, so the card keeps its identity.
+     */
+    wash: 'bg-emerald-50/60 dark:bg-emerald-950/25',
+    edge: 'border-emerald-200/60 dark:border-emerald-900/50',
+    title: 'text-emerald-700 dark:text-emerald-300',
+    hint: 'text-emerald-700/80 dark:text-emerald-300/75',
+    icon: 'text-emerald-700 dark:text-emerald-300',
+    count: 'text-emerald-700 dark:text-emerald-300',
+    rowHover: 'hover:bg-emerald-50/80 dark:hover:bg-emerald-950/40',
+    rowTitleHover: 'group-hover:text-emerald-700 dark:group-hover:text-emerald-300',
+    focus: 'focus-visible:ring-emerald-500/40',
+  },
+  rose: {
+    wash: 'bg-rose-50/80 dark:bg-rose-950/30',
+    edge: 'border-rose-200/60 dark:border-rose-900/50',
+    title: 'text-rose-700 dark:text-rose-300',
+    hint: 'text-rose-600/80 dark:text-rose-300/75',
+    icon: 'text-rose-700 dark:text-rose-300',
+    count: 'text-rose-700 dark:text-rose-300',
+    rowHover: 'hover:bg-rose-50 dark:hover:bg-rose-950/40',
+    rowTitleHover: 'group-hover:text-rose-700 dark:group-hover:text-rose-300',
+    focus: 'focus-visible:ring-rose-500/40',
+  },
+} as const;
+
+export type CareCardTone = keyof typeof CARE_CARD_TONES;
+
 export const CHIP_TONES = {
   emerald: {
     base: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200',

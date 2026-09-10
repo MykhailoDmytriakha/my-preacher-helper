@@ -75,10 +75,31 @@ const segmentLabels: Record<string, SegmentConfig> = {
     defaultLabel: 'Studies',
     href: '/studies'
   },
+  care: {
+    labelKey: 'navigation.care',
+    defaultLabel: 'Heart matters',
+    href: '/care'
+  },
   prayers: {
-    labelKey: 'navigation.prayer',
-    defaultLabel: 'Prayer',
+    // The room's own name, not the section's: inside the plane this crumb sits next to
+    // "Heart", and two words meaning the same thing side by side say nothing.
+    labelKey: 'care.sections.prayers.title',
+    defaultLabel: 'Prayer Journal',
     href: '/prayers'
+  }
+};
+
+/**
+ * Rooms that live INSIDE the pastor's plane: their trail starts at the plane, not at
+ * themselves. Without this a person standing in the prayer journal has no way back to the
+ * section they entered from — the heart in the nav is lit, but the trail denies the plane
+ * exists. The journal is the first room to move in; the rest follow it here.
+ */
+const sectionParents: Record<string, SegmentConfig> = {
+  prayers: {
+    labelKey: 'navigation.care',
+    defaultLabel: 'Heart matters',
+    href: '/care'
   }
 };
 
@@ -297,6 +318,15 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
     const rootConfig = segmentLabels[firstSegment];
 
     const crumbs: BreadcrumbItem[] = [];
+
+    // A room inside the plane opens its trail with the plane itself.
+    const sectionParent = sectionParents[firstSegment];
+    if (sectionParent) {
+      crumbs.push({
+        label: t(sectionParent.labelKey, { defaultValue: sectionParent.defaultLabel }),
+        href: sectionParent.href
+      });
+    }
 
     // Add root breadcrumb based on context
     if (rootConfig) {

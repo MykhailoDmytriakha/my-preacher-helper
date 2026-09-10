@@ -108,7 +108,8 @@
     },
     "escape": {
       "ariaLabel": "Go back"
-    }
+    },
+    "care": "Heart matters"
   },
   "landing": {
     "title": "Preacher Helper, built for preachers",
@@ -3131,5 +3132,75 @@
     "close": "Close text size",
     "open": "Text size",
     "slider": "Text size slider"
+  },
+  "care": {
+    "title": "Heart matters",
+    "soon": "soon",
+    "soonHint": "Not built yet — it keeps its place and waits its turn",
+    "activePrayers": "Active prayers: {{count}}",
+    "cards": {
+      "people": {
+        "title": "People",
+        "hint": "the ones you carry on your heart"
+      },
+      "ministry": {
+        "title": "Ministry",
+        "hint": "how to conduct it and what to say"
+      },
+      "own": {
+        "title": "Mine",
+        "hint": "what you carry yourself"
+      }
+    },
+    "sections": {
+      "people": {
+        "title": "People",
+        "hint": "name, birthday, when you last met"
+      },
+      "visits": {
+        "title": "Visits",
+        "hint": "whose home you have been to, who is still waiting"
+      },
+      "needs": {
+        "title": "Needs",
+        "hint": "what hurts for whom right now"
+      },
+      "council": {
+        "title": "Brothers' council",
+        "hint": "what not to forget to say at the council"
+      },
+      "rites": {
+        "title": "Orders of service",
+        "hint": "funeral, wedding, baptism, communion"
+      },
+      "crisis": {
+        "title": "When trouble comes",
+        "hint": "what to do first"
+      },
+      "word": {
+        "title": "A word for the case",
+        "hint": "what to read to the sick, to the grieving"
+      },
+      "projects": {
+        "title": "Projects",
+        "hint": "the things that drag on for months"
+      },
+      "prayers": {
+        "title": "Prayer journal",
+        "hint": "who and what you pray for — and what is answered"
+      },
+      "promises": {
+        "title": "Gave my word",
+        "hint": "what you promised whom — do not forget"
+      },
+      "questions": {
+        "title": "Hard questions",
+        "hint": "you worked it out once — do not search again"
+      },
+      "beforeGod": {
+        "title": "Before God",
+        "hint": "your own decisions and questions"
+      }
+    }
   }
 }

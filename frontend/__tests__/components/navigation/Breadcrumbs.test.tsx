@@ -299,7 +299,13 @@ describe('Breadcrumbs', () => {
     expect(screen.getByText('Foo Bar')).toBeInTheDocument();
   });
 
-  it('should show Prayers > Prayer Title for prayer detail page', () => {
+  /**
+   * The prayer journal became a ROOM inside the pastor's plane, so its trail has to start
+   * at the plane. Without the first crumb a person standing on a prayer has no way back to
+   * the section they entered from — the heart in the nav is lit, but the trail pretends the
+   * plane does not exist.
+   */
+  it('should open the prayer trail with the pastor plane, then the journal, then the prayer', () => {
     mockUsePathname.mockReturnValue('/prayers/prayer-1');
     mockUseSearchParams.mockReturnValue({
       get: jest.fn().mockReturnValue(null),
@@ -314,7 +320,26 @@ describe('Breadcrumbs', () => {
     render(<Breadcrumbs />);
 
     expect(mockUsePrayerDetail).toHaveBeenCalledWith('prayer-1');
-    expect(screen.getByText('Prayer')).toBeInTheDocument();
+
+    const plane = screen.getByRole('link', { name: 'Heart matters' });
+    expect(plane).toHaveAttribute('href', '/care');
+    expect(screen.getByRole('link', { name: 'Prayer Journal' })).toHaveAttribute('href', '/prayers');
     expect(screen.getByText('Healing Prayer')).toBeInTheDocument();
+  });
+
+  it('should show the plane above the journal on the prayer list itself', () => {
+    mockUsePathname.mockReturnValue('/prayers');
+    mockUseSearchParams.mockReturnValue({
+      get: jest.fn().mockReturnValue(null),
+    });
+    mockUseSermon.mockReturnValue({ sermon: null });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
+
+    render(<Breadcrumbs />);
+
+    expect(screen.getByRole('link', { name: 'Heart matters' })).toHaveAttribute('href', '/care');
+    expect(screen.getByText('Prayer Journal')).toBeInTheDocument();
   });
 });

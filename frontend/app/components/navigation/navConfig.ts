@@ -69,12 +69,19 @@ export const primaryNavItems: PrimaryNavItem[] = [
     theme: 'groups'
   },
   {
-    key: 'prayer',
-    href: '/prayers',
-    labelKey: 'navigation.prayer',
-    defaultLabel: 'Prayer',
+    /**
+     * The pastor's plane, not the prayer journal. The journal is the first ROOM inside it
+     * (`/prayers`), which is why the heart stays lit on both paths: leaving the plane for a
+     * room must not look like leaving the section. The theme key is still `prayer` on
+     * purpose — it names the rose palette this section has always had, and renaming it
+     * would touch every surface that reads `NAV_ITEM_THEMES`.
+     */
+    key: 'care',
+    href: '/care',
+    labelKey: 'navigation.care',
+    defaultLabel: 'Heart matters',
     icon: HeartIcon,
-    matchers: [/^\/prayers(\/|$)/],
+    matchers: [/^\/care(\/|$)/, /^\/prayers(\/|$)/],
     theme: 'prayer' as const,
   },
   {
