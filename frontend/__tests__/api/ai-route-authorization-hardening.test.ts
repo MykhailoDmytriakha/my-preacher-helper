@@ -82,7 +82,7 @@ const routeCases: RouteCase[] = [
     name: '/api/insights/plan',
     invoke: () => planPost(queryRequest('/api/insights/plan')),
     ai: generateSectionHints as jest.Mock,
-    aiResult: { introduction: ['hint'] },
+    aiResult: { introduction: 'hint', main: '', conclusion: '' },
   },
   {
     name: '/api/insights/topics',

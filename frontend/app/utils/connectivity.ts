@@ -52,6 +52,25 @@ let state: ConnectivityState = { device: true, server: 'unknown' };
 /** The device has not been read yet in this environment, so `state.device` is a placeholder. */
 let deviceRead = false;
 
+// Evidence is ordered by request start, not by when a slow request finally settles.
+let requestSequence = 0;
+let lastEvidenceSequence = 0;
+
+export const beginConnectivityRequest = (): number => ++requestSequence;
+
+export const isConnectivityRequestCurrent = (requestId: number): boolean =>
+  requestId >= lastEvidenceSequence;
+
+const acceptEvidence = (requestId: number): boolean => {
+  if (!isConnectivityRequestCurrent(requestId)) return false;
+  lastEvidenceSequence = requestId;
+  return true;
+};
+
+const invalidatePendingEvidence = () => {
+  lastEvidenceSequence = ++requestSequence;
+};
+
 /**
  * One boolean for the screens: is the app usable right now?
  *
@@ -93,6 +112,7 @@ const publish = () => {
 
 const setDevice = (device: boolean) => {
   if (state.device === device) return;
+  invalidatePendingEvidence();
   // A device transition settles the question by itself; a half-finished recovery is stale.
   cancelPendingRecovery();
   /**
@@ -145,7 +165,8 @@ const cancelPendingRecovery = () => {
  * The way back from a device flag that is simply stuck is `reportProbeSucceeded`, which a
  * person triggers deliberately and which cannot be served from the cache.
  */
-export const reportServerReachable = () => {
+export const reportServerReachable = (requestId = beginConnectivityRequest()) => {
+  if (!acceptEvidence(requestId)) return;
   if (state.server === 'reachable' || recoveryTimer) return;
   if (!state.device) return;
   if (isOnlineFrom(state)) {
@@ -170,7 +191,8 @@ export const reportServerReachable = () => {
  * a flapping link, and making them watch a crossed-out icon after being told the connection
  * is back is the toast lying.
  */
-export const reportProbeSucceeded = () => {
+export const reportProbeSucceeded = (requestId = beginConnectivityRequest()) => {
+  if (!acceptEvidence(requestId)) return;
   cancelPendingRecovery();
   if (state.server === 'reachable') return;
   /**
@@ -184,7 +206,8 @@ export const reportProbeSucceeded = () => {
 };
 
 /** A request could not reach the server: timeout, DNS, refused, dropped mid-flight. */
-export const reportServerUnreachable = () => {
+export const reportServerUnreachable = (requestId = beginConnectivityRequest()) => {
+  if (!acceptEvidence(requestId)) return;
   cancelPendingRecovery();
   if (state.server === 'unreachable') return;
   state = { ...state, server: 'unreachable' };
@@ -204,6 +227,7 @@ const handleVisibility = () => {
 };
 
 const attach = () => {
+  invalidatePendingEvidence();
   if (typeof window === 'undefined') return;
   /**
    * Whatever we knew about the server belongs to a period we were not watching. The network
@@ -221,6 +245,7 @@ const attach = () => {
 };
 
 const detach = () => {
+  invalidatePendingEvidence();
   // A recovery still settling belongs to the period we were watching; letting its timer
   // fire after a gap would publish "online" on evidence nobody was there to check.
   cancelPendingRecovery();

@@ -1447,6 +1447,8 @@
     "imageLimitReached": "Максимум 3 изображения",
     "invalidImage": "Поддерживаются только изображения PNG, JPEG и WebP",
     "imageTooLarge": "Изображение слишком большое (макс. 3 МБ)",
+    "textBudget": "{{used}} / {{limit}} байт",
+    "textOverBudget": "Превышение на {{count}} байт",
     "payloadTooLarge": "Отзыв слишком большой для одного запроса. Сократите сообщение или удалите вложение.",
     "attachmentBudgetRemaining": "Осталось {{amount}} МБ для вложений",
     "removeImage": "Удалить изображение",

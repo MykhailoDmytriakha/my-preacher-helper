@@ -27,6 +27,8 @@ export function OfflineIndicator() {
     setIsChecking(true);
     try {
       const outcome = await checkConnection();
+      // A newer request or device event has already replaced this evidence.
+      if (outcome === 'superseded') return;
       /**
        * Three outcomes, three sentences. A single boolean here once told someone "still no
        * connection" and then removed the offline icon a moment later, because the server

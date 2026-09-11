@@ -4,7 +4,6 @@ import React, { createContext, useContext, useCallback } from 'react';
 
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { probeConnectivity, type ProbeOutcome } from '@/utils/apiClient';
-import { reportProbeSucceeded } from '@/utils/connectivity';
 import { debugLog } from '@/utils/debugMode';
 
 interface ConnectionContextType {
@@ -49,9 +48,7 @@ export const ConnectionProvider: React.FC<{ children: React.ReactNode }> = ({ ch
    */
   const checkConnection = useCallback(async () => {
     debugLog('ConnectionProvider: manual probe initiated');
-    const outcome = await probeConnectivity();
-    if (outcome !== 'unreachable') reportProbeSucceeded();
-    return outcome;
+    return probeConnectivity();
   }, []);
 
   return (

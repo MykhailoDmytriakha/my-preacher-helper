@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import React from 'react';
 
 import { ConnectionProvider, useConnection } from '@/providers/ConnectionProvider';
-import { probeConnectivity } from '@/utils/apiClient';
+import { fetchWithTimeout } from '@/utils/fetchWithTimeout';
 import {
   __resetConnectivityForTests,
   reportServerReachable,
@@ -23,12 +23,13 @@ import {
  * that landed while the probe was in flight. Connectivity lives in `utils/connectivity`,
  * where the device signal and the server signal are kept apart, and this is a republisher.
  *
- * Only `probeConnectivity` is mocked — it does HTTP. The connectivity store is the real
+ * Only `fetchWithTimeout` is mocked — it does HTTP. The connectivity store is the real
  * one, so a change that detaches the provider from it fails here rather than passing
  * against a hand-written stand-in.
  */
-jest.mock('@/utils/apiClient', () => ({
-  probeConnectivity: jest.fn(async () => 'healthy'),
+jest.mock('@/utils/fetchWithTimeout', () => ({
+  ...jest.requireActual('@/utils/fetchWithTimeout'),
+  fetchWithTimeout: jest.fn(),
 }));
 
 describe('ConnectionProvider', () => {
@@ -78,7 +79,7 @@ describe('ConnectionProvider', () => {
   });
 
   it('stays offline when the check reaches nothing', async () => {
-    (probeConnectivity as jest.Mock).mockResolvedValueOnce('unreachable');
+    (fetchWithTimeout as jest.Mock).mockRejectedValueOnce(new Error('Failed to fetch'));
     const { result } = renderConnection();
 
     act(() => { reportServerUnreachable(); });
@@ -99,7 +100,7 @@ describe('ConnectionProvider', () => {
      * evidence allowed to overrule a device flag that is stuck — the state a person is in
      * when they press this button on an iPad resumed from the background.
      */
-    (probeConnectivity as jest.Mock).mockResolvedValueOnce('healthy');
+    (fetchWithTimeout as jest.Mock).mockResolvedValueOnce(new Response('ok'));
     const { result } = renderConnection();
 
     act(() => { reportServerUnreachable(); });
@@ -115,7 +116,7 @@ describe('ConnectionProvider', () => {
   });
 
   it('also comes back when the server replied with an error — the network still carried it', async () => {
-    (probeConnectivity as jest.Mock).mockResolvedValueOnce('unhealthy');
+    (fetchWithTimeout as jest.Mock).mockResolvedValueOnce(new Response('', { status: 503 }));
     const { result } = renderConnection();
 
     act(() => { reportServerUnreachable(); });
@@ -127,6 +128,23 @@ describe('ConnectionProvider', () => {
 
     expect(answer).toBe('unhealthy');
     expect(result.current.isOnline).toBe(true);
+  });
+
+  it('does not let a delayed manual probe undo a newer offline event', async () => {
+    let resolveProbe!: (response: Response) => void;
+    (fetchWithTimeout as jest.Mock).mockImplementationOnce(() => new Promise((resolve) => { resolveProbe = resolve; }));
+    const { result } = renderConnection();
+    let pending!: ReturnType<typeof result.current.checkConnection>;
+    act(() => { pending = result.current.checkConnection(); });
+    act(() => {
+      Object.defineProperty(window.navigator, 'onLine', { value: false, configurable: true });
+      window.dispatchEvent(new Event('offline'));
+    });
+    await act(async () => {
+      resolveProbe(new Response('ok'));
+      expect(await pending).toBe('superseded');
+    });
+    expect(result.current.isOnline).toBe(false);
   });
 
   it('throws error if useConnection is used outside provider', () => {

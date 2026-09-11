@@ -3,7 +3,10 @@ import {
   throwIfUsageCapReached,
 } from '@/services/usageCapClient';
 import {
+  beginConnectivityRequest,
   getConnectivityStatus,
+  isConnectivityRequestCurrent,
+  reportProbeSucceeded,
   reportServerReachable,
   reportServerUnreachable,
   subscribeToConnectivity,
@@ -69,6 +72,14 @@ export async function apiClient(
   url: string,
   options: ApiClientOptions = {}
 ): Promise<Response> {
+  return performApiRequest(url, options, beginConnectivityRequest());
+}
+
+async function performApiRequest(
+  url: string,
+  options: ApiClientOptions,
+  requestId: number
+): Promise<Response> {
   const { category = 'crud', timeout, ...fetchOptions } = options;
   const finalTimeout = timeout ?? TIMEOUT_BY_CATEGORY[category];
 
@@ -87,13 +98,14 @@ export async function apiClient(
 
     // Any reply — 200 or 503 — proves the network carried it. Whether the SERVER is
     // healthy is a different question, and not one connectivity should answer.
-    reportServerReachable();
+    reportServerReachable(requestId);
     await throwIfUsageCapReached(response);
     return response;
   } catch (error: unknown) {
     const err = error as Error & { name?: string };
+    // A slow AI/audio operation is not evidence that unrelated reads lost their network.
     const isConnectivityError = 
-      err instanceof FetchTimeoutError || 
+      (err instanceof FetchTimeoutError && category !== 'ai' && category !== 'audio') ||
       err.message === 'Failed to fetch' ||
       err.name === 'TypeError' ||
       err.message?.includes('NetworkError');
@@ -104,7 +116,7 @@ export async function apiClient(
         error: err.message,
         category 
       });
-      reportServerUnreachable();
+      reportServerUnreachable(requestId);
     }
 
     throw error;
@@ -118,19 +130,20 @@ export async function apiClient(
 /**
  * Manual probe to check server availability.
  *
- * THREE OUTCOMES, NOT TWO. A boolean here forced two different situations into one answer
+ * Three current outcomes, plus a superseded result that must not update the UI. A boolean here forced two different situations into one answer
  * and produced a contradiction on screen: a 503 during a deploy made the probe return
  * "false", the toast said "still no connection", and moments later the offline icon
  * disappeared anyway — because the reply had in fact travelled, so connectivity had every
  * right to call the network fine. The network carrying a request and the server being
  * usable are different questions, and the person deserves to be told which one failed.
  */
-export type ProbeOutcome = 'healthy' | 'unhealthy' | 'unreachable';
+export type ProbeOutcome = 'healthy' | 'unhealthy' | 'unreachable' | 'superseded';
 
 export async function probeConnectivity(): Promise<ProbeOutcome> {
+  const requestId = beginConnectivityRequest();
   try {
     const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
-    const response = await apiClient(`${API_BASE}/api/health`, {
+    const response = await performApiRequest(`${API_BASE}/api/health`, {
       method: 'HEAD',
       category: 'health',
       /**
@@ -140,9 +153,11 @@ export async function probeConnectivity(): Promise<ProbeOutcome> {
        * the connection is back having reached nothing.
        */
       cache: 'no-store',
-    });
+    }, requestId);
+    if (!isConnectivityRequestCurrent(requestId)) return 'superseded';
+    reportProbeSucceeded(requestId);
     return response.ok ? 'healthy' : 'unhealthy';
   } catch {
-    return 'unreachable';
+    return isConnectivityRequestCurrent(requestId) ? 'unreachable' : 'superseded';
   }
 }

@@ -35,7 +35,7 @@ jest.mock('@/utils/feedbackPayload', () => {
 // Mock dependencies
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { amount?: string }) => {
+    t: (key: string, options?: { amount?: string; used?: number; limit?: number; count?: number }) => {
       const translations: { [key: string]: string } = {
         'feedback.typeLabel': 'Feedback Type',
         'feedback.typeSuggestion': 'Suggestion',
@@ -54,12 +54,14 @@ jest.mock('react-i18next', () => ({
         'feedback.imageLimitReached': 'Maximum 3 images allowed',
         'feedback.invalidImage': 'Only PNG, JPEG, and WebP images are supported',
         'feedback.imageTooLarge': 'Image is too large (max 3 MB)',
+        'feedback.textBudget': '{{used}} / {{limit}} bytes',
+        'feedback.textOverBudget': '{{count}} bytes over the limit',
         'feedback.payloadTooLarge': 'Feedback is too large for one request. Shorten the message or remove an attachment.',
         'feedback.attachmentBudgetRemaining': '{{amount}} MB attachment budget remaining',
         'feedback.pasteHint': 'Or paste a screenshot straight from the clipboard — Ctrl+V / ⌘V',
         'writeRecovery.refused': 'Save refused. Nothing was saved; your text is still here.',
       };
-      return (translations[key] || key).replace('{{amount}}', options?.amount || '');
+      return (translations[key] || key).replace('{{amount}}', options?.amount || '').replace('{{used}}', String(options?.used ?? '')).replace('{{limit}}', String(options?.limit ?? '')).replace('{{count}}', String(options?.count ?? ''));
     }
   })
 }));
@@ -99,6 +101,22 @@ describe('FeedbackForm Component', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFeedbackPayloadSizer = undefined;
+  });
+
+  test('keeps an oversized paste visible, blocks submission, and accepts a shortened message', async () => {
+    render(<FeedbackForm onSubmit={mockOnSubmit} onCancel={mockOnCancel} />);
+    const text = 'x'.repeat(feedbackPayload.MAX_FEEDBACK_TEXT_BYTES + 10);
+    const textarea = screen.getByRole('textbox');
+    fireEvent.change(textarea, { target: { value: text } });
+    expect(textarea).toHaveValue(text);
+    expect(screen.getByTestId('feedback-text-budget')).toHaveTextContent('900010');
+    expect(screen.getByTestId('feedback-text-budget')).toHaveTextContent('10');
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    expect(mockOnSubmit).not.toHaveBeenCalled();
+    fireEvent.change(textarea, { target: { value: 'Shortened feedback' } });
+    fireEvent.click(screen.getByTestId('attach-diagnostics'));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    await waitFor(() => expect(mockOnSubmit).toHaveBeenCalledWith('Shortened feedback', 'suggestion', []));
   });
 
   test('renders form with all elements including attachment button', () => {
@@ -500,7 +518,9 @@ describe('FeedbackForm Component', () => {
     const textarea = screen.getByPlaceholderText('Please tell us what you think...');
     fireEvent.change(textarea, { target: { value: '\\'.repeat(100) } });
 
-    expect(textarea).toHaveValue('');
+    expect(textarea).toHaveValue('\\'.repeat(100));
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    expect(mockOnSubmit).not.toHaveBeenCalled();
     expect(screen.getByTestId('payload-error')).toHaveTextContent(
       'Feedback is too large for one request. Shorten the message or remove an attachment.'
     );

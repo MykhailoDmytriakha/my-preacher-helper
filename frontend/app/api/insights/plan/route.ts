@@ -42,7 +42,7 @@ export async function POST(request: Request) {
 
     // Generate thoughts plan using OpenAI
     const sectionHints = await generateSectionHints(sermon, uid);
-    if (!sectionHints) {
+    if (!sectionHints || !Object.values(sectionHints).some((hint) => typeof hint === 'string' && hint.trim().length > 0)) {
       console.error("Plan route: Failed to generate thoughts plan");
       return NextResponse.json({ error: "Failed to generate thoughts plan" }, { status: 500 });
     }

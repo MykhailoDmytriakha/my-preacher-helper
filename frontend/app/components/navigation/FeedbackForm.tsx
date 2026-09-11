@@ -164,6 +164,9 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
   };
 
   const handleFeedbackTextChange = (value: string) => {
+    feedbackTextRef.current = value;
+    setFeedbackText(value);
+    setSubmissionError('');
     const serializedPayloadBytes = getFeedbackPayloadByteLength({
       feedbackText: value,
       feedbackType: FEEDBACK_TYPE_PAYLOAD_PLACEHOLDER,
@@ -178,10 +181,7 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
       return;
     }
 
-    feedbackTextRef.current = value;
-    setFeedbackText(value);
     setPayloadError('');
-    setSubmissionError('');
   };
 
   /**
@@ -219,7 +219,8 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
         images,
         userId: '',
       });
-      if (serializedPayloadBytes > MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES) {
+      if (getUtf8ByteLength(feedbackText) > MAX_FEEDBACK_TEXT_BYTES ||
+        serializedPayloadBytes > MAX_FEEDBACK_CLIENT_PAYLOAD_BYTES) {
         setPayloadError(t(PAYLOAD_TOO_LARGE_KEY));
         return;
       }
@@ -245,6 +246,8 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
     }
   };
 
+  const feedbackTextBytes = getUtf8ByteLength(feedbackText);
+  const excessTextBytes = Math.max(0, feedbackTextBytes - MAX_FEEDBACK_TEXT_BYTES);
   const canAddMore = images.length < MAX_FEEDBACK_IMAGES;
   const serializedAttachmentBytes = getFeedbackPayloadByteLength({
     feedbackText: '',
@@ -293,12 +296,18 @@ export default function FeedbackForm({ onSubmit, onCancel }: FeedbackFormProps) 
         <textarea
           value={feedbackText}
           onChange={(e) => handleFeedbackTextChange(e.target.value)}
+          aria-describedby="feedback-text-budget"
+          aria-invalid={excessTextBytes > 0 || undefined}
           rows={4}
           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
           placeholder={t('feedback.messagePlaceholder') || 'Please tell us what you think...'}
           required
           disabled={isSubmitting}
         />
+        <p id="feedback-text-budget" data-testid="feedback-text-budget" className="mt-1 text-xs text-gray-500 dark:text-gray-400" aria-live="polite">
+          {t('feedback.textBudget', { used: feedbackTextBytes, limit: MAX_FEEDBACK_TEXT_BYTES })}
+          {excessTextBytes > 0 && ` — ${t('feedback.textOverBudget', { count: excessTextBytes })}`}
+        </p>
       </div>
 
       {/* Image attachment section */}

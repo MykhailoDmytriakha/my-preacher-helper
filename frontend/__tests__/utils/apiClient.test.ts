@@ -1,5 +1,5 @@
 import { apiClient, onConnectivityChange, probeConnectivity } from '@/utils/apiClient';
-import { __resetConnectivityForTests } from '@/utils/connectivity';
+import { __resetConnectivityForTests, getConnectivityStatus, reportProbeSucceeded } from '@/utils/connectivity';
 import { fetchWithTimeout, FetchTimeoutError } from '@/utils/fetchWithTimeout';
 import { subscribeToUsageClientEvents } from '@/services/usageCapClient';
 import { UsageCapReachedError } from '@/services/usageLimits';
@@ -135,6 +135,41 @@ describe('apiClient', () => {
     unsubscribe();
   });
 
+  it.each(['ai', 'audio'] as const)('keeps ordinary reads online when %s times out', async (category) => {
+    const unsubscribe = onConnectivityChange(jest.fn());
+    (fetchWithTimeout as jest.Mock).mockResolvedValueOnce(new Response('ok'));
+    await apiClient('/api/sermons', { category: 'metadata' });
+    (fetchWithTimeout as jest.Mock).mockRejectedValueOnce(new FetchTimeoutError('timeout'));
+    await expect(apiClient('/api/generate', { category })).rejects.toThrow(FetchTimeoutError);
+    expect(getConnectivityStatus()).toBe(true);
+    unsubscribe();
+  });
+
+  it.each(['ai', 'audio'] as const)('still reports a real network failure for %s', async (category) => {
+    const unsubscribe = onConnectivityChange(jest.fn());
+    (fetchWithTimeout as jest.Mock).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await expect(apiClient('/api/generate', { category })).rejects.toThrow('Failed to fetch');
+    expect(getConnectivityStatus()).toBe(false);
+    unsubscribe();
+  });
+
+  it('ignores an older failure after a newer request starts recovery', async () => {
+    const unsubscribe = onConnectivityChange(jest.fn());
+    (fetchWithTimeout as jest.Mock).mockRejectedValueOnce(new Error('Failed to fetch'));
+    await expect(apiClient('/api/initial')).rejects.toThrow('Failed to fetch');
+    let rejectOld!: (error: Error) => void;
+    (fetchWithTimeout as jest.Mock).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectOld = reject; }));
+    const oldRequest = apiClient('/api/old');
+    const oldFailure = expect(oldRequest).rejects.toThrow('Failed to fetch');
+    (fetchWithTimeout as jest.Mock).mockResolvedValueOnce(new Response('ok'));
+    await apiClient('/api/new');
+    rejectOld(new Error('Failed to fetch'));
+    await oldFailure;
+    jest.advanceTimersByTime(3000);
+    expect(getConnectivityStatus()).toBe(true);
+    unsubscribe();
+  });
+
   describe('probeConnectivity', () => {
     /**
      * THREE OUTCOMES, NOT TWO. A boolean forced two different situations into one answer
@@ -155,6 +190,16 @@ describe('apiClient', () => {
       process.env.NEXT_PUBLIC_API_BASE = 'http://test.com';
 
       expect(await probeConnectivity()).toBe('unhealthy');
+    });
+
+    it('discards a late probe failure after newer proof of recovery', async () => {
+      let rejectProbe!: (error: Error) => void;
+      (fetchWithTimeout as jest.Mock).mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectProbe = reject; }));
+      const pending = probeConnectivity();
+      reportProbeSucceeded();
+      rejectProbe(new Error('Failed to fetch'));
+      expect(await pending).toBe('superseded');
+      expect(getConnectivityStatus()).toBe(true);
     });
 
     it('reports unreachable when nothing comes back', async () => {

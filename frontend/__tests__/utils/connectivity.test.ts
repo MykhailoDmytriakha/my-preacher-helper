@@ -1,5 +1,6 @@
 import {
   __resetConnectivityForTests,
+  beginConnectivityRequest,
   getConnectivityState,
   getConnectivityStatus,
   reportProbeSucceeded,
@@ -35,6 +36,54 @@ describe('connectivity', () => {
   afterEach(() => {
     __resetConnectivityForTests();
     setOnLine(true);
+  });
+
+  it('ignores stale outcomes across a device disconnect and reconnect', () => {
+    subscribeToConnectivity(() => {});
+    const old = beginConnectivityRequest();
+    setOnLine(false);
+    window.dispatchEvent(new Event('offline'));
+    setOnLine(true);
+    window.dispatchEvent(new Event('online'));
+    reportServerUnreachable(old);
+    expect(getConnectivityState().server).toBe('unknown');
+    reportServerReachable(old);
+    expect(getConnectivityState().server).toBe('unknown');
+    reportProbeSucceeded(old);
+    expect(getConnectivityState().server).toBe('unknown');
+  });
+
+  it('keeps a newer failure when an older success arrives', () => {
+    subscribeToConnectivity(() => {});
+    const old = beginConnectivityRequest();
+    const recent = beginConnectivityRequest();
+    reportServerUnreachable(recent);
+    reportServerReachable(old);
+    expect(getConnectivityStatus()).toBe(false);
+  });
+
+  it('allows a new failure to cancel recovery but ignores one older than a manual probe', () => {
+    jest.useFakeTimers();
+    subscribeToConnectivity(() => {});
+    reportServerUnreachable();
+    reportServerReachable(beginConnectivityRequest());
+    reportServerUnreachable(beginConnectivityRequest());
+    jest.advanceTimersByTime(3000);
+    expect(getConnectivityStatus()).toBe(false);
+    const old = beginConnectivityRequest();
+    reportProbeSucceeded(beginConnectivityRequest());
+    reportServerUnreachable(old);
+    expect(getConnectivityStatus()).toBe(true);
+    jest.useRealTimers();
+  });
+
+  it('invalidates in-flight evidence when all subscribers leave and reattach', () => {
+    const unsubscribe = subscribeToConnectivity(() => {});
+    const old = beginConnectivityRequest();
+    unsubscribe();
+    subscribeToConnectivity(() => {});
+    reportServerUnreachable(old);
+    expect(getConnectivityState().server).toBe('unknown');
   });
 
   it('reports offline when the device has no network at the first read', () => {

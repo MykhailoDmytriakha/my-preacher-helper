@@ -1445,6 +1445,8 @@
     "imageLimitReached": "Maximum 3 images allowed",
     "invalidImage": "Only PNG, JPEG, and WebP images are supported",
     "imageTooLarge": "Image is too large (max 3 MB)",
+    "textBudget": "{{used}} / {{limit}} bytes",
+    "textOverBudget": "{{count}} bytes over the limit",
     "payloadTooLarge": "Feedback is too large for one request. Shorten the message or remove an attachment.",
     "attachmentBudgetRemaining": "{{amount}} MB attachment budget remaining",
     "removeImage": "Remove image",
