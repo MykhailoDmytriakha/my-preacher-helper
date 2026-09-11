@@ -76,6 +76,40 @@ describe('ModeToggle compact menu', () => {
     expect(screen.getByRole('button', { name: 'Classic' })).toHaveAttribute('aria-expanded', 'false');
   });
 
+  it('adapts to the space left by neighboring controls without losing selection', async () => {
+    const user = userEvent.setup();
+    const originalObserver = globalThis.ResizeObserver;
+    const observations: { target: Element; callback: ResizeObserverCallback }[] = [];
+    globalThis.ResizeObserver = class {
+      constructor(private callback: ResizeObserverCallback) {}
+      observe(target: Element) { observations.push({ target, callback: this.callback }); }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    resize(1280);
+    const { container, unmount } = render(<ControlledToggle />);
+    try {
+      const wrapper = container.firstElementChild!;
+      const observer = observations.find(({ target }) => target === wrapper)!;
+      const setAvailableWidth = (width: number) => act(() => {
+        Object.defineProperty(wrapper, 'clientWidth', { configurable: true, value: width });
+        observer.callback([], {} as ResizeObserver);
+      });
+      setAvailableWidth(420);
+      expect(screen.getAllByRole('button')).toHaveLength(1);
+      await user.click(screen.getByRole('button', { name: 'Scratch notes' }));
+      await user.click(screen.getByRole('option', { name: 'Classic' }));
+      setAvailableWidth(560);
+      expect(screen.getAllByRole('button')).toHaveLength(3);
+      expect(screen.getByRole('button', { name: 'Classic' })).toHaveAttribute('aria-pressed', 'true');
+      setAvailableWidth(420);
+      expect(screen.getByRole('button', { name: 'Classic' })).toHaveAttribute('aria-haspopup', 'listbox');
+    } finally {
+      unmount();
+      globalThis.ResizeObserver = originalObserver;
+    }
+  });
+
   it('supports keyboard selection and outside dismissal', async () => {
     const user = userEvent.setup();
     render(<><ControlledToggle /><button>Outside</button></>);

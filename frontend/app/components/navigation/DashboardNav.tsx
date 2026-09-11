@@ -327,6 +327,7 @@ export default function DashboardNav() {
 
   const modeToggle = isSermonRoot && !sermonMissing ? (
     <ModeToggle
+      compactBreakpoint={1024}
       currentMode={currentMode}
       onSetMode={setMode}
       canUsePrep={!prepModeLoading && showWizardButton}
@@ -341,9 +342,9 @@ export default function DashboardNav() {
 
   const renderNavigation = (usageGrace: UsageGraceViewModel | null) => (
     <nav className="sticky top-0 z-40 border-b border-gray-200/80 bg-white/95 shadow-sm backdrop-blur dark:border-gray-700/70 dark:bg-gray-950/95">
-      <div className="relative w-full px-4 sm:px-6 lg:px-8">
+      <div className={`relative w-full px-4 sm:px-6 lg:px-8 ${modeToggle ? 'lg:grid lg:h-16 lg:grid-cols-[max-content_minmax(0,1fr)_max-content] lg:items-center lg:gap-4' : ''}`}>
         {/* Desktop Layout */}
-        <div className="hidden lg:flex h-16 items-center gap-4 relative">
+        <div className={modeToggle ? 'hidden lg:contents' : 'hidden lg:flex h-16 items-center gap-4 relative'}>
           {/*
             Left: Logo — and NOT on sermon pages.
             It is a link to the dashboard, which the very first icon of the nav
@@ -378,7 +379,7 @@ export default function DashboardNav() {
             icons stay out in the open — the accessible name still carries the
             label, and `title` gives it back on hover.
           */}
-          <div ref={navZoneRef} className="min-w-0 flex-1">
+          <div ref={navZoneRef} className={`min-w-0 flex-1 ${modeToggle ? 'lg:col-start-1 lg:row-start-1' : ''}`}>
           <ul
             ref={navListRef}
             /*
@@ -436,7 +437,7 @@ export default function DashboardNav() {
           </div>
 
           {/* Right: Desktop controls */}
-          <div className="flex shrink-0 items-center gap-2 rounded-full border border-gray-200/70 bg-gray-50/85 px-2 py-1 shadow-sm dark:border-gray-700/60 dark:bg-gray-900/70">
+          <div className={`flex shrink-0 items-center gap-2 rounded-full border border-gray-200/70 bg-gray-50/85 px-2 py-1 shadow-sm dark:border-gray-700/60 dark:bg-gray-900/70 ${modeToggle ? 'lg:col-start-3 lg:row-start-1' : ''}`}>
             {usageGrace && <UsageGraceIndicator model={usageGrace} placement="desktop" />}
             <AppUpdateButton />
             <OfflineIndicator />
@@ -494,7 +495,7 @@ export default function DashboardNav() {
               <span className="text-[10px] font-medium leading-tight">{t('navigation.feedbackShort', { defaultValue: 'Feedback' })}</span>
             </button>
 
-            <Link
+            {modeToggle ? <div aria-hidden="true" /> : <Link
               href={currentNavItem?.href || "/dashboard"}
               prefetch={isOnline}
               className="min-w-0 break-words bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-center text-lg font-bold leading-tight text-transparent"
@@ -502,7 +503,7 @@ export default function DashboardNav() {
               <span suppressHydrationWarning={true}>
                 {currentNavItem?.label || t('navigation.dashboard')}
               </span>
-            </Link>
+            </Link>}
 
             <button
               type="button"
@@ -526,7 +527,7 @@ export default function DashboardNav() {
           </div>
         </div>
         {modeToggle && (
-          <div className="mt-3 flex justify-center pb-3 lg:absolute lg:left-1/2 lg:top-1/2 lg:mt-0 lg:block lg:-translate-x-1/2 lg:-translate-y-1/2 lg:p-0">
+          <div className="absolute left-[4.5rem] right-[4.5rem] top-3 flex h-12 min-w-0 items-center justify-center sm:left-20 sm:right-20 lg:static lg:col-start-2 lg:row-start-1 lg:h-auto">
             {modeToggle}
           </div>
         )}

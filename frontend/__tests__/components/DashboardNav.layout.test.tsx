@@ -56,7 +56,7 @@ describe('DashboardNav layout', () => {
     }
   });
 
-  it('centers the ModeToggle when on a sermon page', () => {
+  it('reserves a desktop grid column for the single responsive mode picker', () => {
     // Override usePathname specifically for this test
     const { usePathname } = require('next/navigation');
     usePathname.mockReturnValue('/sermons/123');
@@ -68,17 +68,19 @@ describe('DashboardNav layout', () => {
       </TestProviders>
     );
 
-    // Desktop wrapper remains relative for the rest of the desktop chrome.
-    const desktopWrapper = screen.getByRole('navigation').querySelector('.lg\\:flex.h-16');
-    expect(desktopWrapper).toHaveClass('relative');
+    const wrapper = screen.getByRole('navigation').querySelector(':scope > div');
+    expect(wrapper).toHaveClass('lg:grid');
+    expect(wrapper).toHaveClass('lg:grid-cols-[max-content_minmax(0,1fr)_max-content]');
 
-    // The single responsive ModeToggle instance is centered absolutely on desktop
-    // and participates in normal flow on mobile.
+    // In normal desktop flow the mode picker owns its column, so adjacent controls
+    // cannot occupy the same space. Mobile placement uses the reserved title slot.
     const classicToggle = screen.getByTestId('toggle-classic');
-    const modeToggleContainer = classicToggle.closest('.mt-3');
+    expect(screen.getAllByTestId('toggle-classic')).toHaveLength(1);
+    const modeToggleContainer = classicToggle.closest('.lg\\:col-start-2');
     expect(modeToggleContainer).toBeInTheDocument();
-    expect(modeToggleContainer).toHaveClass('lg:-translate-x-1/2');
-    expect(modeToggleContainer).toHaveClass('lg:-translate-y-1/2');
-    expect(modeToggleContainer).toHaveClass('mt-3');
+    expect(modeToggleContainer).toHaveClass('lg:static', 'lg:row-start-1');
+    expect(modeToggleContainer?.parentElement).toBe(wrapper);
+    expect(wrapper?.querySelector('.lg\\:col-start-1')).toBeInTheDocument();
+    expect(wrapper?.querySelector('.lg\\:col-start-3')).toBeInTheDocument();
   });
 });
