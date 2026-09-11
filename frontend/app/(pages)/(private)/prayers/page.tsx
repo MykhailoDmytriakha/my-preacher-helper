@@ -3,12 +3,14 @@
 import { Popover, PopoverButton, PopoverPanel, Transition } from '@headlessui/react';
 import {
   AdjustmentsHorizontalIcon,
+  ArrowLeftIcon,
   ArrowsUpDownIcon,
   FireIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline';
+import Link from 'next/link';
 import { useQueryState } from 'nuqs';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -364,6 +366,13 @@ export default function PrayerPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
+      <Link
+        href="/care"
+        className="inline-flex items-center gap-1.5 text-sm font-semibold text-rose-600 transition hover:text-rose-700 dark:text-rose-300 dark:hover:text-rose-200"
+      >
+        <ArrowLeftIcon className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+        {t('prayer.backToCare')}
+      </Link>
       {/* A save this screen made was TURNED AWAY. The refused text is held durably,
           so it is still here after a reload — and the choice is visible instead of
           living in memory nobody can reach. */}

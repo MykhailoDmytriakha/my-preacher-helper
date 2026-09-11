@@ -2998,6 +2998,7 @@
     }
   },
   "prayer": {
+    "backToCare": "Back to heart matters",
     "notFound": "Prayer request not found",
     "back": "Back",
     "title": "Prayer Journal",
