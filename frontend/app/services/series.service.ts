@@ -4,6 +4,7 @@ import { getClientDb } from '@/config/firebaseClientDb';
 import { Series } from '@/models/models';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
+import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 import { timeOrZero, compareById } from '@/utils/sortHelpers';
 
@@ -41,20 +42,6 @@ const SERIES_UPDATE_FIELDS: (keyof Series)[] = [
 
 // --- helpers mirroring series.repository.ts (kept byte-identical) ---
 
-function deepCleanUndefined<T>(value: T): T {
-  if (value === null || value === undefined) return value;
-  if (Array.isArray(value)) {
-    return value.map((item) => deepCleanUndefined(item)) as T;
-  }
-  if (typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .filter(([, v]) => v !== undefined)
-        .map(([k, v]) => [k, deepCleanUndefined(v)])
-    ) as T;
-  }
-  return value;
-}
 
 function hydrateSeries(series: Series): Series {
   const items = normalizeSeriesItems(series.items, series.sermonIds || []);

@@ -20,6 +20,13 @@ jest.mock('@/hooks/useSeriesDetail', () => ({
 jest.mock('@/hooks/useGroupDetail', () => ({
   useGroupDetail: jest.fn(),
 }));
+// The trail names an order of service by its title, so the component asks the section's hook
+// for it. Mocked here like every other detail source: the trail's job is the trail, and a live
+// Firestore list has nothing to do with whether it is built correctly.
+jest.mock('@/hooks/useServiceOrders', () => ({
+  useServiceOrders: () => ({ orders: [{ id: 'order-1', title: 'Погребение' }] }),
+}));
+
 jest.mock('@/hooks/usePrayerDetail', () => ({
   usePrayerDetail: jest.fn(),
 }));
@@ -341,5 +348,23 @@ describe('Breadcrumbs', () => {
 
     expect(screen.getByRole('link', { name: 'Heart matters' })).toHaveAttribute('href', '/care');
     expect(screen.getByText('Prayer Journal')).toBeInTheDocument();
+  });
+
+  /**
+   * The last crumb used to be the document id — twenty characters of noise where the name of
+   * the rite belongs. A trail that ends in an id tells a person nothing about where they are.
+   */
+  it('names an order of service in the trail instead of echoing its id', () => {
+    mockUsePathname.mockReturnValue('/care/orders/order-1');
+    mockUseSearchParams.mockReturnValue({ get: jest.fn().mockReturnValue(null) });
+    mockUseSermon.mockReturnValue({ sermon: null });
+    mockUseSeriesDetail.mockReturnValue({ series: null });
+    mockUseGroupDetail.mockReturnValue({ group: null });
+    mockUsePrayerDetail.mockReturnValue({ prayer: null });
+
+    render(<Breadcrumbs />);
+
+    expect(screen.getByText('Погребение')).toBeInTheDocument();
+    expect(screen.queryByText('order-1')).not.toBeInTheDocument();
   });
 });

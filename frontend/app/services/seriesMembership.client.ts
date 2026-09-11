@@ -4,6 +4,7 @@ import { getClientDb } from '@/config/firebaseClientDb';
 import { Series, SeriesItem, SeriesItemType } from '@/models/models';
 import { revisionBump } from '@/services/conflictSafeUpdate.client';
 import { auth } from '@/services/firebaseAuth.service';
+import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import {
   deriveSermonIdsFromItems,
   inferSeriesKind,
@@ -39,20 +40,6 @@ export type SeriesTransform =
   | { seriesId: string; op: 'reorder'; itemIds: string[] };
 
 /** Firestore rejects `undefined`; drop it recursively before writing. */
-function deepCleanUndefined<T>(value: T): T {
-  if (value === null || value === undefined) return value;
-  if (Array.isArray(value)) {
-    return value.map((item) => deepCleanUndefined(item)) as T;
-  }
-  if (typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .filter(([, v]) => v !== undefined)
-        .map(([k, v]) => [k, deepCleanUndefined(v)])
-    ) as T;
-  }
-  return value;
-}
 
 // Recompute the same-doc derived fields atomically alongside items so the
 // server-query mirror (`sermonIds`) and UX hint (`seriesKind`) never desync —

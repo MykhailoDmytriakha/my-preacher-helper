@@ -41,8 +41,24 @@ const APP_ROOT = path.join(__dirname, '..', '..', 'app');
  * writer has no answer to "what happens when the other device saved first".
  */
 const FROZEN_DIRECT_WRITES: Record<string, number> = {
-  // The interface itself: `revisionedUpdate` and the guarded transaction live here.
-  'services/conflictSafeUpdate.client.ts': 3,
+  /*
+   * The interface itself: `revisionedUpdate`, the guarded transaction — and, since 2026-09-10,
+   * `revisionedBatch`, which is why this number went from 3 to 5.
+   *
+   * RAISED DELIBERATELY, AND THE REASON BELONGS HERE. The rule above says never to raise a
+   * number, because a new direct write usually means a writer with no answer to "what happens
+   * when the other device saved first". This one has an answer, and it is the reason it exists:
+   * it writes PLACEMENT — the order a hand-arranged list sits in — never words. The later
+   * arrangement wins on purpose; refusing would leave a person watching rows spring back. What
+   * it cannot do is land in halves, and that is exactly what it was added for: spreading a list
+   * whose numbers ran out of room used to be written one document at a time, and a refusal in
+   * the middle left the arrangement partly rewritten on the server with nothing able to repair
+   * it. Every counter still moves, so an edit to the CONTENT of those documents can still be
+   * refused properly.
+   *
+   * A future raise of this number needs the same thing: the answer written down, here.
+   */
+  'services/conflictSafeUpdate.client.ts': 5,
   'services/sermons.client.ts': 10,
   'services/groups.service.ts': 3,
   'services/userSettings.service.ts': 3,

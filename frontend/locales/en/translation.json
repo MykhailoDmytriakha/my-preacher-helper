@@ -2787,7 +2787,7 @@
         "offline": "You need to be online: the server picks out the key thoughts.",
         "empty": "The note has no text.",
         "planFailed": "The note could not be read. Try again.",
-        "titleRequired": "A sermon title is required.",
+    "titleRequired": "A sermon title is required.",
         "verseRequired": "A Scripture reference is required.",
         "cutFailed": "Could not pick out the key thoughts. Try again.",
         "createFailed": "The sermon was not created. The scratch notes are ready, try again.",
@@ -3165,7 +3165,7 @@
         "hint": "what not to forget to say at the council"
       },
       "rites": {
-        "title": "Orders of service",
+        "title": "Conducting services",
         "hint": "funeral, wedding, baptism, communion"
       },
       "crisis": {
@@ -3197,5 +3197,186 @@
         "hint": "your own decisions and questions"
       }
     }
+  },
+  "serviceOrders": {
+    "title": "Conducting services",
+    "subtitle": "Every service is laid out step by step: what you do and why, from the first word to the last. Open it and lead, without having to remember.",
+    "boundary": "The app gives the sequence of steps, not the theology. The words, the prayers and the texts stay yours.",
+    "seed": "Add the standard set",
+    "seedHint": "Ten services with the sequence of steps already laid out. Each is fully editable; delete the ones you do not need.",
+    "seedOffline": "Adding the standard set needs a connection",
+    "seeding": "Adding…",
+    "writeFailed": "Could not save. Please try again.",
+    "emptyTitle": "Your services will live here",
+    "emptyHint": "Ten to start with — funeral, wedding, baptism, communion and the rest. The sequence of steps is laid out; the words are yours to write.",
+    "custom": "New service",
+    "steps_one": "{{count}} step",
+    "steps_other": "{{count}} steps",
+    "reorder": "Rearrange",
+    "reorderDone": "Done",
+    "reorderHint": "Arrange them the way you work",
+    "moveUp": "Up",
+    "moveDown": "Down",
+    "open": "Open",
+    "catalog": {
+      "funeral": {
+        "title": "Funeral",
+        "summary": "opening · reading · word of comfort · graveside",
+        "steps": [
+          "Before it begins",
+          "Opening word",
+          "Prayer",
+          "Scripture reading",
+          "Singing",
+          "Word of comfort",
+          "Word from the family",
+          "Farewell",
+          "At the graveside",
+          "After the burial"
+        ]
+      },
+      "wedding": {
+        "title": "Wedding",
+        "summary": "the questions · the rings · the blessing",
+        "steps": [
+          "Before it begins",
+          "Opening word",
+          "Scripture reading",
+          "Word about marriage",
+          "Questions to the bride and groom",
+          "Vows",
+          "Rings",
+          "Prayer of blessing",
+          "Announcement and greeting"
+        ]
+      },
+      "baptism": {
+        "title": "Baptism",
+        "summary": "confession of faith · baptism · word to the newly baptised",
+        "steps": [
+          "Before it begins",
+          "Opening word",
+          "Scripture reading",
+          "The candidate speaks",
+          "The question of faith",
+          "Baptism",
+          "Prayer",
+          "Word to the newly baptised"
+        ]
+      },
+      "communion": {
+        "title": "The Lord's Supper",
+        "summary": "the bread · the cup · the word before partaking",
+        "steps": [
+          "Preparation",
+          "Word before partaking",
+          "Reading about the supper",
+          "The bread",
+          "The cup",
+          "Singing and closing prayer"
+        ]
+      },
+      "childBlessing": {
+        "title": "Blessing of children",
+        "summary": "word to the parents · prayer · the church’s promise",
+        "steps": [
+          "Before it begins",
+          "Word to the parents",
+          "Scripture reading",
+          "Prayer of blessing",
+          "The church’s promise"
+        ]
+      },
+      "visit": {
+        "title": "A visit",
+        "summary": "what I bring · listening · reading and prayer",
+        "steps": [
+          "Before the door",
+          "Greeting",
+          "Listening",
+          "Scripture reading",
+          "Prayer",
+          "Agree on the next time",
+          "Afterwards — what to write down"
+        ]
+      },
+      "ordination": {
+        "title": "Ordination",
+        "summary": "the questions · laying on of hands · the charge",
+        "steps": [
+          "Before it begins",
+          "Word about the ministry",
+          "Questions to the candidate",
+          "The church testifies",
+          "Laying on of hands and prayer",
+          "The charge"
+        ]
+      },
+      "membership": {
+        "title": "Receiving into membership",
+        "summary": "the testimony · the church’s question · the welcome",
+        "steps": [
+          "Before it begins",
+          "The testimony",
+          "The church’s question",
+          "Word about membership",
+          "Prayer and welcome"
+        ]
+      },
+      "anointing": {
+        "title": "Anointing the sick",
+        "summary": "the reading · confession · the prayer of faith",
+        "steps": [
+          "Before it begins",
+          "Scripture reading",
+          "Confession and prayer",
+          "The anointing",
+          "The prayer of faith",
+          "Word of encouragement"
+        ]
+      },
+      "houseBlessing": {
+        "title": "Blessing a home",
+        "summary": "the word · prayer for the home · blessing the household",
+        "steps": [
+          "Before it begins",
+          "Word and reading",
+          "Prayer for the home",
+          "Blessing the household"
+        ]
+      }
+    },
+    "notFound": "No such service — it may have been deleted.",
+    "backToList": "All services",
+    "edit": "Edit",
+    "done": "Done",
+    "stepWords": "your words",
+    "stepEmpty": "— your words —",
+    "stepTitle": "What happens",
+    "addStep": "Add a step",
+    "removeStep": "Remove step",
+    "flag": "Do not forget",
+    "refs": "Scripture",
+    "refsHint": "comma separated: John 11:25–26, Ps 23",
+    "orderTitle": "Name of the service",
+    "deleteOrder": "Delete this service",
+    "deleteConfirm": "Delete this service? It cannot be brought back.",
+    "emptySteps": "This service has no steps yet.",
+    "newOrderTitle": "New service",
+    "dragHandle": "Drag to reorder",
+    "backToPlane": "Back to heart matters",
+    "notHereYet": "This service has not reached this device yet. It will appear once you are online.",
+    "createOffline": "Creating a new service needs a connection",
+    "writeQueued": "No connection — it will be saved when you are back online.",
+    "writeConflict": "This service was changed on another device. Your text is still in the field — move it across and save again.",
+    "stepGone": "This step was removed on another device. Your words are still in the field — move them into another step so they are not lost.",
+    "titleRequired": "A rite needs a name. The one you typed was not saved — give it a name and it will be.",
+    "goneWithWords": "This service was removed on another device. What you had written is here and has not been saved anywhere — copy it out before you leave this page.",
+    "writeUnknown": "The connection broke off before the server answered, so it is not known whether this was saved. It is still here — keep this page open and it will be sent again; if it was already stored, saving twice changes nothing.",
+    "deleteOffline": "Deleting needs a connection",
+    "renumberOffline": "Spreading the list out again needs a connection. Try when you are back online.",
+    "draftFound": "There are edits from last time that were never saved.",
+    "draftRestore": "Restore",
+    "draftDiscard": "Discard"
   }
 }

@@ -650,3 +650,56 @@ export interface PrayerCategory {
   color?: string;
   createdAt: string;
 }
+
+/**
+ * ORDERS OF SERVICE — the pastor's own reference book for what he performs rarely.
+ *
+ * A REFERENCE, NOT A JOURNAL. There is one document per rite and performing it leaves no
+ * record: the owner asked for exactly this ("записи каждого совершенного не нужно, это больше
+ * как справочник"). Adding instances later would turn a book you open into a history you have
+ * to maintain, and the maintenance is what kills tools of this class.
+ */
+export type ServiceOrderCatalogKey =
+  | 'funeral' | 'wedding' | 'baptism' | 'communion' | 'childBlessing'
+  | 'visit' | 'ordination' | 'membership' | 'anointing' | 'houseBlessing';
+
+export interface ServiceOrderStep {
+  /** Client-generated, stable for the life of the step: writes are keyed by it, not by index. */
+  id: string;
+  title: string;
+  /** The pastor's own words. The app never ships any. */
+  body?: string;
+  scriptureRefs?: string[];
+  /** "Не забыть" — the thing that goes wrong when it is forgotten. */
+  flagged?: boolean;
+}
+
+export interface ServiceOrder {
+  id: string;
+  userId: string;
+  /**
+   * Present only on an order seeded from the built-in starting sequence, and NEVER edited afterwards:
+   * it is the catalog identity, not the category. The title above it is free — a pastor may
+   * keep two funeral orders, and the second one is simply a custom order called "Погребение
+   * ребёнка". Overloading one field with identity, category and uniqueness is how that
+   * becomes impossible.
+   */
+  catalogKey?: ServiceOrderCatalogKey;
+  title: string;
+  summary?: string;
+  steps: ServiceOrderStep[];
+  /**
+   * WHERE IT SITS IN HIS LIST — his decision, not ours.
+   *
+   * A midpoint between neighbours rather than an index, so moving one rite writes ONE
+   * document: an index would rewrite every row it shifted past, and half of those writes can
+   * be lost on a phone with no signal. Ties (two devices moving into the same gap while
+   * offline) are broken by document id, and a gap that collapses is repaired by renumbering
+   * the whole list — see `serviceOrderRank.ts`.
+   */
+  rank: number;
+  createdAt: string;
+  updatedAt: string;
+  /** Revision per editable aggregate; absent reads as 0. */
+  rev?: Record<string, number>;
+}

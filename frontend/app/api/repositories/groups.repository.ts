@@ -1,5 +1,6 @@
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { Group, GroupFlowItem } from '@/models/models';
+import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 
 const GROUPS_COLLECTION = 'groups';
 const ERROR_GROUP_NOT_FOUND = 'Group not found';
@@ -9,21 +10,6 @@ export class GroupsRepository {
     return Object.fromEntries(
       Object.entries(obj).filter(([, value]) => value !== undefined)
     ) as T;
-  }
-
-  private deepCleanUndefined<T>(value: T): T {
-    if (value === null || value === undefined) return value;
-    if (Array.isArray(value)) {
-      return value.map((item) => this.deepCleanUndefined(item)) as T;
-    }
-    if (typeof value === 'object' && value !== null) {
-      return Object.fromEntries(
-        Object.entries(value)
-          .filter(([, v]) => v !== undefined)
-          .map(([k, v]) => [k, this.deepCleanUndefined(v)])
-      ) as T;
-    }
-    return value;
   }
 
   private normalizeFlow(flow: GroupFlowItem[] = []): GroupFlowItem[] {
@@ -62,7 +48,7 @@ export class GroupsRepository {
       throw new Error(ERROR_GROUP_NOT_FOUND);
     }
 
-    const cleanUpdates = this.deepCleanUndefined(
+    const cleanUpdates = deepCleanUndefined(
       this.filterUndefinedValues({
         ...updates,
         ...(updates.flow ? { flow: this.normalizeFlow(updates.flow) } : {}),

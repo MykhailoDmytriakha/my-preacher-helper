@@ -37,6 +37,7 @@ import { enqueueWrite, listOutbox, newIntentId, type OutboxEntry } from '@/servi
 import { changedFields } from '@/utils/changedFields';
 import { newClientId } from '@/utils/clientId';
 import { toDateOnlyKey } from '@/utils/dateOnly';
+import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { mergeOutline } from '@/utils/mergeOutline';
 import { mergeScratch } from '@/utils/mergeScratch';
 import { mergeSections } from '@/utils/mergeSections';
@@ -75,22 +76,6 @@ function db() {
 
 function sermonRef(id: string) {
   return doc(db(), SERMONS_COLLECTION, id);
-}
-
-/** Firestore rejects `undefined` values; drop them recursively before writing. */
-function deepCleanUndefined<T>(value: T): T {
-  if (value === null || value === undefined) return value;
-  if (Array.isArray(value)) {
-    return value.map((item) => deepCleanUndefined(item)) as T;
-  }
-  if (typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .filter(([, v]) => v !== undefined)
-        .map(([k, v]) => [k, deepCleanUndefined(v)])
-    ) as T;
-  }
-  return value;
 }
 
 /**

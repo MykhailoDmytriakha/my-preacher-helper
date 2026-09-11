@@ -13,6 +13,7 @@ import { getClientDb } from '@/config/firebaseClientDb';
 import { PrayerRequest, PrayerStatus, PrayerUpdate } from '@/models/models';
 import { atomicUpdate } from '@/services/atomicUpdate.client';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
+import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 
 const PRAYER_REQUESTS_COLLECTION = 'prayerRequests';
 const PRAYER_NOT_FOUND_ERROR = 'Prayer request not found';
@@ -33,20 +34,6 @@ export interface AddPrayerUpdateViaClientPayload {
   createdAt: string;
 }
 
-function deepCleanUndefined<T>(value: T): T {
-  if (value === null || value === undefined) return value;
-  if (Array.isArray(value)) {
-    return value.map((item) => deepCleanUndefined(item)) as T;
-  }
-  if (typeof value === 'object') {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .filter(([, v]) => v !== undefined)
-        .map(([k, v]) => [k, deepCleanUndefined(v)])
-    ) as T;
-  }
-  return value;
-}
 
 function hydratePrayerRequest(data: Omit<PrayerRequest, 'id'>, id: string): PrayerRequest {
   return {

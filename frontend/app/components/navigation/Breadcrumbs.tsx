@@ -9,6 +9,7 @@ import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
 import useSermon from '@/hooks/useSermon';
+import { useServiceOrders } from '@/hooks/useServiceOrders';
 import { useShellPathname } from '@/hooks/useShellPathname';
 import { debugLog } from '@/utils/debugMode';
 import '@locales/i18n';
@@ -80,6 +81,11 @@ const segmentLabels: Record<string, SegmentConfig> = {
     defaultLabel: 'Heart matters',
     href: '/care'
   },
+  orders: {
+    labelKey: 'serviceOrders.title',
+    defaultLabel: 'Orders of service',
+    href: '/care/orders'
+  },
   prayers: {
     // The room's own name, not the section's: inside the plane this crumb sits next to
     // "Heart", and two words meaning the same thing side by side say nothing.
@@ -119,6 +125,12 @@ const detailParents: Record<string, SegmentConfig> = {
   prayers: {
     labelKey: 'navigation.prayerDetail',
     defaultLabel: 'Prayer'
+  },
+  // Falls back to the generic word only while the list is still loading; normally the
+  // resolver above answers with the rite's own name.
+  orders: {
+    labelKey: 'serviceOrders.orderTitle',
+    defaultLabel: 'Order of service'
   }
 };
 
@@ -147,6 +159,7 @@ type BuildSegmentCrumbParams = {
   series: SeriesData;
   group: GroupData;
   prayer: PrayerData;
+  serviceOrder: { title: string } | undefined;
 };
 
 type DetailLabelContext = {
@@ -154,6 +167,7 @@ type DetailLabelContext = {
   series: SeriesData;
   group: GroupData;
   prayer: PrayerData;
+  serviceOrder: { title: string } | undefined;
 };
 
 type DetailLabelResolver = (context: DetailLabelContext) => string | null;
@@ -163,6 +177,7 @@ const detailLabelResolvers: Record<string, DetailLabelResolver> = {
   series: ({ series }) => (series ? series.title || `Series ${series.id.slice(-4)}` : null),
   groups: ({ group }) => group?.title || null,
   prayers: ({ prayer }) => prayer?.title || null,
+  orders: ({ serviceOrder }) => serviceOrder?.title || null,
 };
 
 const buildCrumb = (label: string, isLast: boolean, currentPath: string, hrefOverride?: string) => ({
@@ -199,6 +214,7 @@ const buildSegmentCrumb = ({
   series,
   group,
   prayer,
+  serviceOrder,
 }: BuildSegmentCrumbParams): BreadcrumbItem => {
   const config = segmentLabels[segment];
   if (config) {
@@ -211,7 +227,7 @@ const buildSegmentCrumb = ({
   }
 
   if (parent) {
-    const detailLabel = resolveDetailLabel(parent, t, { sermon, series, group, prayer });
+    const detailLabel = resolveDetailLabel(parent, t, { sermon, series, group, prayer, serviceOrder });
     if (detailLabel) {
       return buildCrumb(detailLabel, isLast, currentPath);
     }
@@ -281,6 +297,17 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
 
   // Get prayer data if we have prayerId
   const { prayer } = usePrayerDetail(prayerId || '');
+
+  const serviceOrderId = useMemo(() => {
+    const segments = pathname.split('/').filter(Boolean);
+    if (segments[0] === 'care' && segments[1] === 'orders' && segments[2]) return segments[2];
+    return null;
+  }, [pathname]);
+
+  // The orders list is small and already cached by the section; asked for only while standing
+  // on one of them, so every other page pays nothing.
+  const { orders: serviceOrders } = useServiceOrders(undefined, { enabled: Boolean(serviceOrderId) });
+  const serviceOrder = serviceOrders.find((order) => order.id === serviceOrderId);
 
   const items = useMemo<BreadcrumbItem[]>(() => {
     if (shouldHide) {
@@ -354,7 +381,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
 
       const isLast = index === segments.length - 1;
       const parent = segments[index - 1];
-      crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series, group, prayer }));
+      crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series, group, prayer, serviceOrder }));
     });
 
     /**
@@ -418,7 +445,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
     });
 
     return crumbs.length > 1 ? crumbs : [];
-  }, [pathname, searchParams, sermon, sermonId, series, group, groupId, prayer, shouldHide, t]);
+  }, [pathname, searchParams, sermon, sermonId, series, group, groupId, prayer, serviceOrder, shouldHide, t]);
 
   if (shouldHide) {
     return null;

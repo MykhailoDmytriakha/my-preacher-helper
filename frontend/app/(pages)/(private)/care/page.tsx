@@ -96,7 +96,7 @@ const CARDS: CareCard[] = [
     key: 'ministry',
     tone: 'emerald',
     sections: [
-      { key: 'rites', icon: ScrollText },
+      { key: 'rites', icon: ScrollText, href: '/care/orders' },
       { key: 'crisis', icon: ExclamationTriangleIcon },
       { key: 'word', icon: BookOpenIcon },
       { key: 'projects', icon: BriefcaseIcon },

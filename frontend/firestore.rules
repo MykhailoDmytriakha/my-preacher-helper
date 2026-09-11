@@ -117,6 +117,12 @@ service cloud.firestore {
       allow create:       if ownsIncoming('userId');
       allow update:       if ownsExisting('userId') && ownsIncoming('userId');
     }
+    // Orders of service — the pastor's own reference book, one document per rite.
+    match /serviceOrders/{id} {
+      allow read, delete: if ownsExisting('userId');
+      allow create:       if ownsIncoming('userId');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId');
+    }
     match /prayerCategories/{id} {
       allow read, delete: if ownsExisting('userId');
       allow create:       if ownsIncoming('userId');

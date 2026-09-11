@@ -37,6 +37,13 @@ export const sermonListKey = (uid: string | undefined) => ['sermons', uid] as co
 export const studyNoteListKey = (uid: string | undefined) => ['study-notes', uid] as const;
 
 /**
+ * The pastor's orders of service. Owner-scoped like every other list here, and for the same
+ * reason: the cache is persisted to IndexedDB and outlives a sign-out, so a key that names
+ * only the collection is shared by every account that ever used this browser.
+ */
+export const serviceOrderListKey = (uid: string | undefined) => ['serviceOrders', uid] as const;
+
+/**
  * The owner of whatever is on screen right now: the signed-in user, or the guest
  * identity kept in localStorage. Undefined while auth is still resolving — callers
  * get a distinct key for that state rather than silently sharing one.

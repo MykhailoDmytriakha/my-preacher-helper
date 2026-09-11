@@ -33,8 +33,8 @@ const SECTIONS_BY_CARD = {
 const CARDS = Object.keys(SECTIONS_BY_CARD) as (keyof typeof SECTIONS_BY_CARD)[];
 const SECTIONS = CARDS.flatMap((card) => SECTIONS_BY_CARD[card]);
 
-/** The only section that is built. Everything else must be inert and marked "soon". */
-const BUILT: Record<string, string> = { prayers: '/prayers' };
+/** The sections that are built. Everything else must be inert and marked "soon". */
+const BUILT: Record<string, string> = { prayers: '/prayers', rites: '/care/orders' };
 
 describe('Pastor plane', () => {
   beforeEach(() => {
@@ -82,13 +82,15 @@ describe('Pastor plane', () => {
     });
   });
 
-  it('sends the prayer journal to its existing route', () => {
+  it('opens every built section at its own route', () => {
     render(<CarePage />);
 
-    const row = screen.getByTestId('care-section-prayers');
-    expect(row.tagName).toBe('A');
-    expect(row).toHaveAttribute('href', BUILT.prayers);
-    expect(within(row).queryByText('care.soon')).not.toBeInTheDocument();
+    Object.entries(BUILT).forEach(([section, href]) => {
+      const row = screen.getByTestId(`care-section-${section}`);
+      expect(row.tagName).toBe('A');
+      expect(row).toHaveAttribute('href', href);
+      expect(within(row).queryByText('care.soon')).not.toBeInTheDocument();
+    });
   });
 
   /**
