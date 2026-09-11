@@ -368,7 +368,7 @@ export default function PrayerPage() {
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
       <Link
         href="/care"
-        className="inline-flex items-center gap-1.5 text-sm font-semibold text-rose-600 transition hover:text-rose-700 dark:text-rose-300 dark:hover:text-rose-200"
+        className="inline-flex items-center gap-1.5 text-sm font-semibold text-rose-600 transition-opacity hover:opacity-80"
       >
         <ArrowLeftIcon className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
         {t('prayer.backToCare')}
