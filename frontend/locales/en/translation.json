@@ -734,10 +734,6 @@
       "title": "Sermon Audio Generation (Beta)",
       "description": "Enable experimental audio generation for sermons"
     },
-    "groups": {
-      "title": "Groups Workspace (Beta)",
-      "description": "Enable access to the Groups workspace and related navigation"
-    },
     "structurePreview": {
       "title": "Structure Preview (Beta)",
       "description": "Show the structure preview panel on the sermon details page"
@@ -2566,7 +2562,7 @@
       "ctaDescription": "Tell us which study templates or sources you use most via Feedback so we can wire them into navigation."
     },
     "groups": {
-      "badge": "Preview",
+      "badge": "Workspace",
       "title": "Groups workspace",
       "description": "Prepare small-group conversations with the same clarity you expect from sermon workflows.",
       "listTitle": "Focus areas",
@@ -2586,11 +2582,6 @@
         "deleteConfirm": "Delete this group permanently?",
         "deleteConfirmTitle": "Delete Group",
         "assignToSeries": "Assign to series"
-      },
-      "access": {
-        "disabledTitle": "Groups workspace is disabled",
-        "disabledDescription": "Enable this beta feature in Settings to access groups.",
-        "openSettings": "Open settings"
       },
       "form": {
         "title": "Group title",

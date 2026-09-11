@@ -9,7 +9,6 @@ import LanguageSwitcher from "@/components/navigation/LanguageSwitcher";
 import { primaryNavItems, isNavItemActive } from '@/components/navigation/navConfig';
 import ThemeModeToggle from "@/components/navigation/ThemeModeToggle";
 import UserAvatar from "@/components/navigation/UserAvatar";
-import { Chip } from "@/components/ui/Chip";
 import { getNavItemTheme } from '@/utils/themeColors';
 import "@locales/i18n";
 
@@ -17,13 +16,12 @@ interface MobileMenuProps {
   isOpen: boolean;
   onLogout: () => Promise<void>;
   pathname?: string | null;
-  showGroups?: boolean;
   onNavigate?: () => void;
   /** Who is signed in. The phone bar has no room for an avatar, so this row carries it. */
   user?: User | null;
 }
 
-export default function MobileMenu({ isOpen, onLogout, pathname, showGroups = true, onNavigate, user = null }: MobileMenuProps) {
+export default function MobileMenu({ isOpen, onLogout, pathname, onNavigate, user = null }: MobileMenuProps) {
   const { t } = useTranslation();
 
   if (!isOpen) return null;
@@ -35,7 +33,6 @@ export default function MobileMenu({ isOpen, onLogout, pathname, showGroups = tr
   const accountEmail = user?.displayName ? user.email : null;
 
   const navItems = primaryNavItems
-    .filter((item) => showGroups || item.key !== 'groups')
     .map((item) => ({
       ...item,
       label: t(item.labelKey, { defaultValue: item.defaultLabel })
@@ -86,11 +83,6 @@ export default function MobileMenu({ isOpen, onLogout, pathname, showGroups = tr
                 <span className="flex items-center gap-2" suppressHydrationWarning={true}>
                   <Icon className="h-5 w-5" aria-hidden="true" />
                   {item.label}
-                  {item.isBeta && (
-                    <Chip weight="bold" tone="blue" size="xs" className="uppercase leading-tight">
-                      Beta
-                    </Chip>
-                  )}
                 </span>
                 {active && (
                   <span className={`text-xs ${themeClasses.indicator}`} aria-hidden="true">

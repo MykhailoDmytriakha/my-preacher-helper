@@ -8,7 +8,6 @@ import { DataFreshnessBanner } from "@/components/DataFreshnessBanner";
 import LanguageInitializer from "@/components/navigation/LanguageInitializer";
 import AudioGenerationToggle from "@/components/settings/AudioGenerationToggle";
 import DebugModeToggle from "@/components/settings/DebugModeToggle";
-import GroupsFeatureToggle from "@/components/settings/GroupsFeatureToggle";
 import ModelSelector from "@/components/settings/ModelSelector";
 import PlanTemplatesSection from "@/components/settings/PlanTemplatesSection";
 import PrepModeToggle from "@/components/settings/PrepModeToggle";
@@ -76,7 +75,6 @@ export default function SettingsPage() {
         enablePrepMode: data.enablePrepMode ?? null,
         enableAudioGeneration: data.enableAudioGeneration ?? null,
         enableStructurePreview: data.enableStructurePreview ?? null,
-        enableGroups: data.enableGroups ?? null,
         showAppVersion: data.showAppVersion ?? null,
         preferredProviderId: data.preferredProviderId ?? null,
         preferredModelId: data.preferredModelId ?? null,
@@ -158,7 +156,6 @@ export default function SettingsPage() {
               <PrepModeToggle />
               <AudioGenerationToggle />
               <StructurePreviewToggle />
-              <GroupsFeatureToggle />
               <DebugModeToggle />
               <ShowVersionToggle />
             </div>

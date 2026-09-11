@@ -105,11 +105,12 @@ describe('MobileMenu Component', () => {
     expect(settingsLink).toHaveAttribute('href', '/settings');
   });
 
-  test('renders beta label and active indicator when appropriate', () => {
+  test('renders groups without a beta label and preserves the active indicator', () => {
     render(<MobileMenu isOpen={true} onLogout={mockLogout} pathname="/settings" />);
 
-    // Beta label for groups
-    expect(screen.getByText('Beta')).toBeInTheDocument();
+    // Released groups navigation has no beta label.
+    expect(screen.getByRole('link', { name: 'navigation.groups' })).toHaveAttribute('href', '/groups');
+    expect(screen.queryByText('Beta')).not.toBeInTheDocument();
 
     // Active indicator (bullet point)
     expect(screen.getByText('•')).toBeInTheDocument();

@@ -412,21 +412,8 @@ export async function updateGroupsAccess(userId: string, enabled: boolean): Prom
  * @returns Boolean indicating if user has groups workspace access
  */
 export async function hasGroupsAccess(userId: string): Promise<boolean> {
-  try {
-    if (!userId) {
-      return false;
-    }
-
-    if (isBrowserOffline()) {
-      return false;
-    }
-
-    const settings = await getUserSettings(userId);
-    return settings?.enableGroups || false;
-  } catch (error) {
-    console.error('Error checking groups access:', error);
-    return false;
-  }
+  // Keep the legacy helper compatible without requiring the retired beta preference.
+  return Boolean(userId);
 }
 
 /**

@@ -498,16 +498,17 @@ describe('DashboardNav Component', () => {
     expect(mobileFeedbackButtons.length).toBeGreaterThan(0);
   });
 
-  test('renders beta label for groups nav item', async () => {
+  test('renders the released groups nav item without a beta label', async () => {
     mockOldAuthState.user = { uid: 'user123' } as User;
     render(
       <TestProviders>
         <DashboardNav />
       </TestProviders>
     );
-    // "Groups" nav item should have "Beta" badge
+    // Groups remains available as a released navigation item.
     await waitFor(() => {
-      expect(screen.getByText('Beta')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'navigation.groups' })).toHaveAttribute('href', '/groups');
+      expect(screen.queryByText('Beta')).not.toBeInTheDocument();
     });
   });
 

@@ -262,7 +262,6 @@ describe('userSettings.service', () => {
   it('evaluates access helpers from client settings and preserves offline/guest behavior', async () => {
     mockGetDoc
       .mockResolvedValueOnce(docSnap('user1', { enablePrepMode: true }))
-      .mockResolvedValueOnce(docSnap('user1', { enableGroups: true }))
       .mockResolvedValueOnce(docSnap('user1', { enableStructurePreview: true }));
 
     const service = await importServiceWithClientMocks();
@@ -273,8 +272,19 @@ describe('userSettings.service', () => {
 
     setNavigatorOnline(false);
     await expect(service.hasPrepModeAccess('user1')).resolves.toBe(false);
-    await expect(service.hasGroupsAccess('user1')).resolves.toBe(false);
+    await expect(service.hasGroupsAccess('user1')).resolves.toBe(true);
     await expect(service.hasStructurePreviewAccess('user1')).resolves.toBe(false);
+  });
+
+  it('allows released groups without reading legacy preferences, including offline', async () => {
+    const service = await importServiceWithClientMocks();
+    mockGetDoc.mockResolvedValue(docSnap('user1', { enableGroups: false }));
+    await expect(service.hasGroupsAccess('user1')).resolves.toBe(true);
+    mockGetDoc.mockRejectedValue(new Error('settings unavailable'));
+    setNavigatorOnline(false);
+    await expect(service.hasGroupsAccess('user1')).resolves.toBe(true);
+    await expect(service.hasGroupsAccess('')).resolves.toBe(false);
+    expect(mockGetDoc).not.toHaveBeenCalled();
   });
 
   it('falls back to the default language when no cookie is present', async () => {

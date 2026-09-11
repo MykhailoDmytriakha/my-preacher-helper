@@ -20,7 +20,6 @@ export type PrimaryNavItem = {
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   matchers: RegExp[];
   theme?: NavItemThemeKey;
-  isBeta?: boolean;
 };
 
 export const primaryNavItems: PrimaryNavItem[] = [
@@ -65,7 +64,6 @@ export const primaryNavItems: PrimaryNavItem[] = [
     defaultLabel: 'Groups',
     icon: UsersIcon,
     matchers: [/^\/groups(\/|$)/],
-    isBeta: true,
     theme: 'groups'
   },
   {

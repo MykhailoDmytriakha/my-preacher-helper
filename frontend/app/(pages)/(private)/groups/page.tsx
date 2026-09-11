@@ -7,7 +7,6 @@ import {
   PlusIcon,
   UserGroupIcon,
 } from '@heroicons/react/24/outline';
-import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -19,7 +18,6 @@ import { useGroups } from '@/hooks/useGroups';
 import { useSeries } from '@/hooks/useSeries';
 import { Group } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
-import { hasGroupsAccess } from '@/services/userSettings.service';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
 import '@locales/i18n';
@@ -27,9 +25,7 @@ import '@locales/i18n';
 export default function GroupsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [groupsEnabled, setGroupsEnabled] = useState(false);
-  const [accessLoading, setAccessLoading] = useState(true);
-  const groupsUserId = user?.uid && groupsEnabled ? user.uid : null;
+  const groupsUserId = user?.uid ?? null;
   const { groups, loading, error, refreshGroups, createNewGroup, deleteExistingGroup } = useGroups(groupsUserId);
   const { series } = useSeries(groupsUserId);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -37,30 +33,7 @@ export default function GroupsPage() {
   const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
 
   useEffect(() => {
-    let isActive = true;
-    recordDiagnostic('route-check', { source: 'groups', result: 'started' });
-
-    async function checkAccess() {
-      if (!user?.uid) {
-        if (isActive) {
-          setGroupsEnabled(false);
-          setAccessLoading(false);
-        }
-        return;
-      }
-
-      const access = await hasGroupsAccess(user.uid);
-      recordDiagnostic('route-check', { source: 'groups', result: access ? 'allowed' : 'not-enabled-or-unavailable' });
-      if (isActive) {
-        setGroupsEnabled(access);
-        setAccessLoading(false);
-      }
-    }
-
-    checkAccess();
-    return () => {
-      isActive = false;
-    };
+    recordDiagnostic('route-check', { source: 'groups', result: user?.uid ? 'allowed' : 'unauthenticated' });
   }, [user?.uid]);
 
   const stats = useMemo(() => {
@@ -109,6 +82,9 @@ export default function GroupsPage() {
     }
   };
 
+  // The private layout owns the sign-in flow; no workspace is shown without a user.
+  if (!user?.uid) return null;
+
   if (error) {
     return (
       <div className="space-y-6">
@@ -122,50 +98,6 @@ export default function GroupsPage() {
           <div className="mt-3"><TechnicalDetailsButton /></div>
         </div>
       </div>
-    );
-  }
-
-  if (accessLoading) {
-    return (
-      <div className="space-y-4">
-        <TechnicalDetailsButton />
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {[1, 2, 3].map((index) => (
-          <div
-            key={index}
-            className="h-36 animate-pulse rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
-          />
-        ))}
-      </div>
-      </div>
-    );
-  }
-
-  if (!groupsEnabled) {
-    return (
-      <section className="space-y-4">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-          {t('navigation.groups', { defaultValue: 'Groups' })}
-        </h1>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-900 dark:border-amber-700/50 dark:bg-amber-950/40 dark:text-amber-100">
-          <p className="text-base font-semibold">
-            {t('workspaces.groups.access.disabledTitle', {
-              defaultValue: 'Groups workspace is disabled',
-            })}
-          </p>
-          <p className="mt-1 text-sm">
-            {t('workspaces.groups.access.disabledDescription', {
-              defaultValue: 'Enable this beta feature in Settings to access groups.',
-            })}
-          </p>
-          <Link
-            href="/settings"
-            className="mt-3 inline-flex items-center rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-700"
-          >
-            {t('workspaces.groups.access.openSettings', { defaultValue: 'Open settings' })}
-          </Link>
-        </div>
-      </section>
     );
   }
 

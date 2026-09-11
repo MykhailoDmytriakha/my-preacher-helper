@@ -14,7 +14,6 @@ jest.mock('@/services/firebaseAuth.service', () => ({
 jest.mock('@/components/navigation/LanguageInitializer', () => () => <div />);
 jest.mock('@/components/settings/AudioGenerationToggle', () => () => <div />);
 jest.mock('@/components/settings/DebugModeToggle', () => () => <div />);
-jest.mock('@/components/settings/GroupsFeatureToggle', () => () => <div />);
 jest.mock('@/components/settings/ModelSelector', () => () => <div />);
 jest.mock('@/components/settings/PlanTemplatesSection', () => () => <div />);
 jest.mock('@/components/settings/PrepModeToggle', () => () => <div />);

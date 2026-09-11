@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import GroupDetailPage from '@/(pages)/(private)/groups/[id]/page';
 import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { useSeries } from '@/hooks/useSeries';
+import { useAuth } from '@/providers/AuthProvider';
 import { hasGroupsAccess } from '@/services/userSettings.service';
 
 const mockPush = jest.fn();
@@ -98,7 +99,7 @@ jest.mock('@/hooks/useSeriesMembership', () => {
 });
 
 jest.mock('@/providers/AuthProvider', () => ({
-  useAuth: () => ({ user: { uid: 'user-1' } }),
+  useAuth: jest.fn(() => ({ user: { uid: 'user-1' } })),
 }));
 
 jest.mock('@/hooks/useUserSettings', () => ({
@@ -150,6 +151,7 @@ jest.mock('@/components/series/SeriesSelector', () => ({
 
 const mockUseGroupDetail = useGroupDetail as jest.MockedFunction<typeof useGroupDetail>;
 const mockUseSeries = useSeries as jest.MockedFunction<typeof useSeries>;
+const mockUseAuth = jest.mocked(useAuth);
 const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGroupsAccess>;
 const mockToastError = toast.error as jest.MockedFunction<typeof toast.error>;
 const mockToastSuccess = toast.success as jest.MockedFunction<typeof toast.success>;
@@ -229,7 +231,8 @@ describe('GroupDetailPage', () => {
     jest.clearAllMocks();
     jest.useRealTimers();
     (window as any).confirm = jest.fn(() => true);
-    mockHasGroupsAccess.mockResolvedValue(true);
+    mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as any);
+    mockHasGroupsAccess.mockResolvedValue(false);
     mockUseParams.mockReturnValue({ id: 'group-1' });
     mockUseSeries.mockReturnValue({ series: DEFAULT_SERIES } as any);
     updateGroupDetail.mockResolvedValue(undefined);
@@ -323,15 +326,31 @@ describe('GroupDetailPage', () => {
   // from the hook's deleteMutation.onError (covered in useGroupDetail.test.tsx),
   // not from this page. So there is no page-level delete-failure path to assert.
 
-  it('shows disabled message when groups feature is off', async () => {
-    mockHasGroupsAccess.mockResolvedValueOnce(false);
+  it.each([true, false])('opens immediately without a beta check when online is %s', (online) => {
+    const onlineSpy = jest.spyOn(navigator, 'onLine', 'get').mockReturnValue(online);
+    try {
+      render(<GroupDetailPage />);
 
-    render(<GroupDetailPage />);
+      expect(screen.getByRole('button', { name: 'Delete group' })).toBeInTheDocument();
+      expect(mockUseGroupDetail).toHaveBeenCalledWith('group-1');
+      expect(mockUseSeries).toHaveBeenCalledWith('user-1');
+      expect(mockHasGroupsAccess).not.toHaveBeenCalled();
+      expect(screen.queryByText('Groups workspace is disabled')).not.toBeInTheDocument();
+    } finally {
+      onlineSpy.mockRestore();
+    }
+  });
 
-    await waitFor(() => {
-      expect(screen.getByText('Groups workspace is disabled')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
-    });
+  it('disables queries and hides the editor after logout', () => {
+    const { rerender, container } = render(<GroupDetailPage />);
+    expect(screen.getByRole('button', { name: 'Delete group' })).toBeInTheDocument();
+
+    mockUseAuth.mockReturnValue({ user: null } as any);
+    rerender(<GroupDetailPage />);
+
+    expect(mockUseGroupDetail).toHaveBeenLastCalledWith('');
+    expect(mockUseSeries).toHaveBeenLastCalledWith(null);
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('renders empty flow placeholder when no blocks exist', async () => {

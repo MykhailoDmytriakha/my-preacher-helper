@@ -50,7 +50,6 @@ import { useSeries } from '@/hooks/useSeries';
 import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { Group, GroupBlockStatus, GroupBlockTemplate, GroupBlockTemplateType, GroupFlowItem } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
-import { hasGroupsAccess } from '@/services/userSettings.service';
 import { changedFields } from '@/utils/changedFields';
 import { contentFingerprint } from '@/utils/contentFingerprint';
 import {
@@ -85,8 +84,6 @@ export default function GroupDetailPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const groupId = typeof id === 'string' ? id : '';
-  const [groupsEnabled, setGroupsEnabled] = useState(false);
-  const [accessLoading, setAccessLoading] = useState(true);
 
   const {
     group,
@@ -103,9 +100,9 @@ export default function GroupDetailPage() {
     takeTheirsOnConflict,
     adoptRemoteNonce,
     refreshGroupDetail,
-  } = useGroupDetail(groupsEnabled ? groupId : '');
+  } = useGroupDetail(user?.uid ? groupId : '');
 
-  const groupsUserId = user?.uid && groupsEnabled ? user.uid : null;
+  const groupsUserId = user?.uid ?? null;
   const { series } = useSeries(groupsUserId);
   const { addToSeries, removeFromAllSeries } = useSeriesMembership();
 
@@ -177,31 +174,6 @@ export default function GroupDetailPage() {
       debouncedSave();
     }
   };
-
-  useEffect(() => {
-    let isActive = true;
-
-    async function checkAccess() {
-      if (!user?.uid) {
-        if (isActive) {
-          setGroupsEnabled(false);
-          setAccessLoading(false);
-        }
-        return;
-      }
-
-      const access = await hasGroupsAccess(user.uid);
-      if (isActive) {
-        setGroupsEnabled(access);
-        setAccessLoading(false);
-      }
-    }
-
-    checkAccess();
-    return () => {
-      isActive = false;
-    };
-  }, [user?.uid]);
 
   useEffect(() => {
     updateGroupDetailRef.current = updateGroupDetail;
@@ -562,7 +534,10 @@ export default function GroupDetailPage() {
     removeFromAllSeries({ type: 'group', refId: group.id });
   };
 
-  if (accessLoading || (groupsEnabled && loading)) {
+  // The private layout owns the sign-in flow; no editor is shown without a user.
+  if (!user?.uid) return null;
+
+  if (loading) {
     return (
       <div className="space-y-4">
         {[1, 2, 3].map((index) => (
@@ -571,32 +546,6 @@ export default function GroupDetailPage() {
             className="h-24 animate-pulse rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
           />
         ))}
-      </div>
-    );
-  }
-
-  if (!groupsEnabled) {
-    return (
-      <div className="space-y-4">
-        <button
-          onClick={() => router.push('/settings')}
-          className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100"
-        >
-          <ArrowLeftIcon className="h-4 w-4" />
-          {t('navigation.settings', { defaultValue: 'Settings' })}
-        </button>
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 dark:border-amber-700/50 dark:bg-amber-950/40 dark:text-amber-100">
-          <p className="font-semibold">
-            {t('workspaces.groups.access.disabledTitle', {
-              defaultValue: 'Groups workspace is disabled',
-            })}
-          </p>
-          <p className="mt-1 text-sm">
-            {t('workspaces.groups.access.disabledDescription', {
-              defaultValue: 'Enable this beta feature in Settings to access groups.',
-            })}
-          </p>
-        </div>
       </div>
     );
   }

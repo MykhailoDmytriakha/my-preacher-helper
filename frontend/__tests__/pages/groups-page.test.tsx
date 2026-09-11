@@ -2,6 +2,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 import GroupsPage from '@/(pages)/(private)/groups/page';
 import { useGroups } from '@/hooks/useGroups';
+import { useSeries } from '@/hooks/useSeries';
+import { useAuth } from '@/providers/AuthProvider';
 import { hasGroupsAccess } from '@/services/userSettings.service';
 import { persistedWrite, queuedWrite } from '@/utils/recoverableWrite';
 
@@ -88,6 +90,7 @@ jest.mock('@/components/groups/GroupCard', () => {
 });
 
 const mockUseGroups = useGroups as jest.MockedFunction<typeof useGroups>;
+const mockUseAuth = jest.mocked(useAuth);
 const mockHasGroupsAccess = hasGroupsAccess as jest.MockedFunction<typeof hasGroupsAccess>;
 
 describe('GroupsPage', () => {
@@ -98,7 +101,8 @@ describe('GroupsPage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (window as any).confirm = jest.fn(() => true);
-    mockHasGroupsAccess.mockResolvedValue(true);
+    mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as any);
+    mockHasGroupsAccess.mockResolvedValue(false);
     // The write contract: createNewGroup returns a WriteSubmission whose acceptance
     // says WHY closing is safe. A group create is owned by the durable queue, so the
     // honest outcome is `queued` — and `queued` may never be announced as saved.
@@ -222,14 +226,30 @@ describe('GroupsPage', () => {
     expect(deleteExistingGroup).toHaveBeenCalledTimes(1);
   });
 
-  it('renders access disabled state when groups feature is off', async () => {
-    mockHasGroupsAccess.mockResolvedValueOnce(false);
+  it.each([true, false])('opens immediately without a beta check when online is %s', (online) => {
+    const onlineSpy = jest.spyOn(navigator, 'onLine', 'get').mockReturnValue(online);
+    try {
+      render(<GroupsPage />);
 
-    render(<GroupsPage />);
+      expect(screen.getByRole('button', { name: 'New group' })).toBeInTheDocument();
+      expect(mockUseGroups).toHaveBeenCalledWith('user-1');
+      expect(useSeries).toHaveBeenCalledWith('user-1');
+      expect(mockHasGroupsAccess).not.toHaveBeenCalled();
+      expect(screen.queryByText('Groups workspace is disabled')).not.toBeInTheDocument();
+    } finally {
+      onlineSpy.mockRestore();
+    }
+  });
 
-    await waitFor(() => {
-      expect(screen.getByText('Groups workspace is disabled')).toBeInTheDocument();
-      expect(screen.getByRole('link', { name: 'Open settings' })).toHaveAttribute('href', '/settings');
-    });
+  it('disables queries and hides the workspace after logout', () => {
+    const { rerender, container } = render(<GroupsPage />);
+    expect(screen.getByText('Group One')).toBeInTheDocument();
+
+    mockUseAuth.mockReturnValue({ user: null } as any);
+    rerender(<GroupsPage />);
+
+    expect(mockUseGroups).toHaveBeenLastCalledWith(null);
+    expect(useSeries).toHaveBeenLastCalledWith(null);
+    expect(container).toBeEmptyDOMElement();
   });
 });

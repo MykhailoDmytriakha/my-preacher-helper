@@ -464,7 +464,7 @@ describe('DashboardNav mode toggle', () => {
 });
 
 describe('Navigation button visibility', () => {
-  it('hides groups navigation item when groups access is disabled', async () => {
+  it('keeps released groups visible when the legacy access helper denies access', async () => {
     mockHasGroupsAccess.mockResolvedValueOnce(false);
     pathnameMock = '/dashboard';
 
@@ -475,11 +475,11 @@ describe('Navigation button visibility', () => {
     );
 
     await waitFor(() => {
-      expect(screen.queryByText('navigation.groups')).not.toBeInTheDocument();
+      expect(screen.getByText('navigation.groups')).toBeInTheDocument();
     });
   });
 
-  it('updates groups item visibility immediately after feature toggle event', async () => {
+  it('ignores retired groups feature toggle events', async () => {
     pathnameMock = '/dashboard';
     render(
       <TestProviders>
@@ -494,7 +494,7 @@ describe('Navigation button visibility', () => {
     window.dispatchEvent(new CustomEvent('groups-feature-updated', { detail: false }));
 
     await waitFor(() => {
-      expect(screen.queryByText('navigation.groups')).not.toBeInTheDocument();
+      expect(screen.getByText('navigation.groups')).toBeInTheDocument();
     });
 
     window.dispatchEvent(new CustomEvent('groups-feature-updated', { detail: true }));

@@ -12,7 +12,6 @@ import LanguageSwitcher from "@/components/navigation/LanguageSwitcher";
 import MobileMenu from "@/components/navigation/MobileMenu";
 import { primaryNavItems, isNavItemActive } from "@/components/navigation/navConfig";
 import UserProfileDropdown from "@/components/navigation/UserProfileDropdown";
-import { Chip } from "@/components/ui/Chip";
 import {
   UsageGraceController,
   UsageGraceIndicator,
@@ -24,7 +23,6 @@ import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { usePrepModeAccess } from "@/hooks/usePrepModeAccess";
 import useSermon, { sermonIsMissing } from '@/hooks/useSermon';
 import { useShellPathname } from "@/hooks/useShellPathname";
-import { hasGroupsAccess } from "@/services/userSettings.service";
 import { debugLog } from "@/utils/debugMode";
 import { getNavItemTheme } from "@/utils/themeColors";
 import { isConductRoute } from '@/utils/usageGrace';
@@ -67,18 +65,16 @@ export default function DashboardNav() {
   const { hasAccess: showWizardButton, loading: prepModeLoading } = usePrepModeAccess();
   debugLog('🔧 DashboardNav: showWizardButton:', showWizardButton, 'prepModeLoading:', prepModeLoading);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [showGroupsNav, setShowGroupsNav] = useState(true);
   const pathname = useShellPathname();
   const router = useRouter();
   const searchParams = useSearchParams();
   const navItems = useMemo(() => (
     primaryNavItems
-      .filter((item) => showGroupsNav || item.key !== 'groups')
       .map((item) => ({
         ...item,
         label: t(item.labelKey, { defaultValue: item.defaultLabel })
       }))
-  ), [t, showGroupsNav]);
+  ), [t]);
   const workspaceNavItems = navItems.filter((item) => item.key !== 'settings');
 
   /**
@@ -243,41 +239,6 @@ export default function DashboardNav() {
   const SettingsIcon = settingsNavItem?.icon;
   const currentNavItem = navItems.find((item) => isNavItemActive(pathname, item.matchers));
   const settingsActive = settingsNavItem ? isNavItemActive(pathname, settingsNavItem.matchers) : false;
-
-  useEffect(() => {
-    let isActive = true;
-
-    async function checkGroupsAccess() {
-      if (!user?.uid) {
-        if (isActive) setShowGroupsNav(false);
-        return;
-      }
-
-      const hasAccess = await hasGroupsAccess(user.uid);
-      if (isActive) {
-        setShowGroupsNav(hasAccess);
-      }
-    }
-
-    checkGroupsAccess();
-    return () => {
-      isActive = false;
-    };
-  }, [user?.uid]);
-
-  useEffect(() => {
-    const handleGroupsFeatureUpdated = (event: Event) => {
-      const customEvent = event as CustomEvent<boolean>;
-      if (typeof customEvent.detail === 'boolean') {
-        setShowGroupsNav(customEvent.detail);
-      }
-    };
-
-    window.addEventListener('groups-feature-updated', handleGroupsFeatureUpdated as EventListener);
-    return () => {
-      window.removeEventListener('groups-feature-updated', handleGroupsFeatureUpdated as EventListener);
-    };
-  }, []);
 
   // Function to close mobile menu when path changes
   useEffect(() => {
@@ -465,11 +426,6 @@ export default function DashboardNav() {
                     {!iconOnlyNav && (
                       <>
                         <span suppressHydrationWarning={true}>{item.label}</span>
-                        {item.isBeta && (
-                          <Chip weight="bold" tone="blue" size="xs" className="uppercase leading-tight">
-                            Beta
-                          </Chip>
-                        )}
                       </>
                     )}
                   </Link>
@@ -594,7 +550,6 @@ export default function DashboardNav() {
         onLogout={handleLogout}
         user={user}
         pathname={pathname || ''}
-        showGroups={showGroupsNav}
         onNavigate={() => setMobileMenuOpen(false)}
       />
 
