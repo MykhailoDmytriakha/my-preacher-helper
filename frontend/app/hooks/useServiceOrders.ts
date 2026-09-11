@@ -16,6 +16,7 @@ import {
   updateServiceOrderMeta,
   updateServiceOrderSteps,
 } from '@/services/serviceOrders.service';
+import { seedServiceOrdersOnServer } from '@/services/serviceOrdersReadFallback.client';
 import { serviceOrderListKey } from '@/utils/queryKeys';
 import { buildSeedOrders, SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCatalog';
 import {
@@ -286,32 +287,27 @@ export function useServiceOrders(
       if (!isOnline) throw new Error('OFFLINE_SEED');
       return writing(async () => {
         /*
-         * Re-read before writing: two devices that both loaded an empty list would otherwise
-         * each create the whole standard set and leave twenty services behind. This does not
-         * make the race impossible — only a server-side transaction would — but it closes the
-         * window from "as long as the page was open" to "the moment of the press".
+         * THE WHOLE SET IS OFFERED AND THE SERVER DECIDES WHAT IS MISSING.
+         *
+         * Two reasons, and the second is why this moved. Deciding here needed a fresh read and
+         * ten separate writes, and on a device where the browser's Firestore is silent both of
+         * those hang — the pastor pressed the button and nothing at all happened. And deciding
+         * here could only ever be a guess about the other device: two browsers that cannot see
+         * each other both concluded "nothing is there" and left twenty rites behind. The server
+         * sees the stored list once, creates only the rites whose key is not in it, and that
+         * race is gone rather than narrowed.
+         *
+         * The WORDS are still built here: they are his language and live in the locale files.
          */
-        const fresh = await getAllServiceOrders(effectiveUserId);
-        const present = new Set(fresh.map((order) => order.catalogKey).filter(Boolean));
-        const missing = SERVICE_ORDER_CATALOG.filter((key) => !present.has(key));
-        if (missing.length === 0) return [];
         const drafts = buildSeedOrders(
           effectiveUserId,
           t as unknown as (key: string, options?: Record<string, unknown>) => unknown,
-          missing,
-          rankForAppend(fresh)
+          SERVICE_ORDER_CATALOG,
+          rankForAppend(list)
         );
-        // Sequential on purpose: ten parallel writes on a weak connection fail as a group and
-        // leave a half-seeded list, which is the state that is hardest to explain to a person.
-        const created: ServiceOrder[] = [];
-        for (const draft of drafts) {
-          created.push(await createServiceOrder(draft));
-        }
-        write((current) => {
-          const known = new Set(current.map((order) => order.id));
-          return [...current, ...created.filter((order) => !known.has(order.id))];
-        });
-        return created;
+        const stored = await seedServiceOrdersOnServer(drafts);
+        write(() => stored);
+        return stored;
       });
     },
     // Even a seed that stopped half-way created documents. Without this the cache keeps
