@@ -16,7 +16,7 @@ import {
   updateServiceOrderMeta,
   updateServiceOrderSteps,
 } from '@/services/serviceOrders.service';
-import { seedServiceOrdersOnServer } from '@/services/serviceOrdersReadFallback.client';
+import { seedServiceOrdersOnServer } from '@/services/serviceOrdersSeed.client';
 import { serviceOrderListKey } from '@/utils/queryKeys';
 import { buildSeedOrders, SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCatalog';
 import {

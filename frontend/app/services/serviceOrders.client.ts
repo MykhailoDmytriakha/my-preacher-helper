@@ -4,7 +4,6 @@ import {
   deleteDoc,
   doc,
   getDocs,
-  getDocsFromServer,
   query,
   where,
 } from 'firebase/firestore';
@@ -17,9 +16,8 @@ import {
   revisionedBatch,
   revisionedUpdate,
 } from '@/services/conflictSafeUpdate.client';
-import { readServiceOrdersFromServer } from '@/services/serviceOrdersReadFallback.client';
+import { readOwnerList, readOwnerListFromServer } from '@/services/ownerListRead.client';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
-import { readWithDeadline } from '@/utils/readWithDeadline';
 import { sortByRank } from '@/utils/serviceOrderRank';
 
 import type { ServiceOrder, ServiceOrderStep } from '@/models/models';
@@ -58,90 +56,49 @@ export function hydrateServiceOrder(data: Omit<ServiceOrder, 'id'>, id: string):
   };
 }
 
-/**
- * Long enough that a healthy device is never cut off — it answers in tens of milliseconds — and
- * short enough that a silent one does not hold a pastor in front of an empty screen.
- */
-const SDK_DEADLINE_MS = 2500;
+/** The same shaping for both roads: the browser's own read and the server's answer. */
+const shapeServiceOrders = (documents: Record<string, unknown>[]): ServiceOrder[] =>
+  sortByRank(
+    documents.map((data) =>
+      hydrateServiceOrder(data as unknown as Omit<ServiceOrder, 'id'>, String(data.id ?? ''))
+    )
+  );
 
-/**
- * Codes that mean "no answer", as opposed to an answer of refusal. A refused read is a real
- * answer: asking a second channel the same question would only bring the same refusal later.
- */
-const SILENT_CODES = ['unavailable', 'deadline-exceeded', 'internal', 'unknown', 'cancelled'];
-
-/**
- * TWO ROADS TO THE SAME DATABASE, tried in the order that costs nothing.
- *
- * The browser's own Firestore is first and normally the only one used. But on the owner's iPad
- * that road is silent — measured 2026-09-06 against the sermon page: zero server snapshots from
- * the SDK while the app's HTTP road answered in 205 ms, same device, same minute — and a
- * `getDocs` in that state neither resolves nor throws. A list with one road and no deadline
- * therefore waits for ever, which is exactly what the pastor saw: a skeleton under a heading.
- *
- * Offline is a different thing and is left alone: there the SDK answers from the local replica,
- * and the server is unreachable anyway.
- */
-export async function getAllServiceOrdersViaClient(userId: string): Promise<ServiceOrder[]> {
-  const online = typeof navigator === 'undefined' || navigator.onLine !== false;
-  const viaSdk = readAll(userId, getDocs);
-  try {
-    return await readWithDeadline(viaSdk, online ? SDK_DEADLINE_MS : 8000);
-  } catch (error) {
-    const code = (error as { code?: string }).code;
-    if (!online || !SILENT_CODES.includes(code ?? '')) throw error;
-    /*
-     * THE FIRST ROAD IS NOT ABANDONED, ONLY OVERTAKEN.
-     *
-     * The deadline says "do not keep him waiting", not "that answer is worthless": a merely slow
-     * connection would otherwise have its own answer thrown away at 2.501 seconds and be handed
-     * a failure if the second road happened to be down. Both keep running, the first to answer
-     * wins, and only both of them failing is a failure.
-     */
-    return firstToAnswer(viaSdk, readServiceOrdersFromServer());
-  }
-}
-
-/** Whichever answers first; rejects only when neither can, with the failure that came first. */
-function firstToAnswer<T>(one: Promise<T>, other: Promise<T>): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    let failures = 0;
-    let firstFailure: unknown;
-    const watch = (candidate: Promise<T>) =>
-      candidate.then(resolve, (error: unknown) => {
-        failures += 1;
-        if (failures === 1) firstFailure = error;
-        if (failures === 2) reject(firstFailure);
-      });
-    watch(one);
-    watch(other);
-  });
-}
-
-/**
- * THE SAME READ, BUT IT IS NOT ALLOWED TO ANSWER FROM THE CACHE.
- *
- * `getDocs` falls back to what this device already holds when it cannot reach Firestore, and
- * silence from a cache is indistinguishable from silence from the server. That is fine for
- * filling a screen and useless for the one question worth asking the server: is this rite
- * really gone? Here an unreachable server REJECTS, so the page can say "not here yet" instead
- * of announcing a deletion nobody performed.
- */
-export async function getAllServiceOrdersFromServerViaClient(userId: string): Promise<ServiceOrder[]> {
-  return readAll(userId, getDocsFromServer);
-}
-
-async function readAll(
-  userId: string,
-  read: typeof getDocs
-): Promise<ServiceOrder[]> {
+async function readServiceOrdersViaSdk(userId: string): Promise<ServiceOrder[]> {
   const db = getClientDb();
-  const snap = await read(
+  const snap = await getDocs(
     query(collection(db, SERVICE_ORDERS_COLLECTION), where('userId', '==', userId))
   );
-  return sortByRank(
-    snap.docs.map((d) => hydrateServiceOrder(d.data() as Omit<ServiceOrder, 'id'>, d.id))
+  return shapeServiceOrders(snap.docs.map((d) => ({ ...(d.data() as object), id: d.id })));
+}
+
+/**
+ * TWO ROADS TO THE SAME DATABASE, through the one helper every owner list uses.
+ *
+ * This section was the first to meet the silent transport — on the owner's iPad the browser's
+ * Firestore answers nothing at all, and a list read with one road and no deadline waited for
+ * ever under its heading. The rule that came out of it is not local to rites: it is written once
+ * in `ownerListRead.client.ts` and every list in the app now reads through it.
+ */
+export async function getAllServiceOrdersViaClient(userId: string): Promise<ServiceOrder[]> {
+  return readOwnerList(
+    SERVICE_ORDERS_COLLECTION,
+    userId,
+    readServiceOrdersViaSdk(userId),
+    shapeServiceOrders
   );
+}
+
+/**
+ * THE SAME LIST, BUT IT IS NOT ALLOWED TO ANSWER FROM THE CACHE.
+ *
+ * Silence from a cache is indistinguishable from silence from the server, and that is fine for
+ * filling a screen and useless for the one question worth asking: is this rite really gone? So
+ * this asks the app's own server and nothing else — which on the silent device is the only road
+ * that answers at all, and which cannot answer from anything local by construction.
+ */
+export async function getAllServiceOrdersFromServerViaClient(userId: string): Promise<ServiceOrder[]> {
+  return readOwnerListFromServer(SERVICE_ORDERS_COLLECTION, userId, shapeServiceOrders);
 }
 
 /**

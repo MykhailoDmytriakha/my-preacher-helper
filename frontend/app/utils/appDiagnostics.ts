@@ -4,7 +4,7 @@ const MAX_EVENTS = 80;
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const SESSION = Date.now();
 const EVENTS = [
-  'sermon-read', 'structure-load', 'service-orders-read',
+  'sermon-read', 'structure-load', 'service-orders-read', 'owner-list-read',
   'boot', 'route', 'route-check', 'visibility', 'focus', 'online', 'offline', 'pageshow', 'pagehide',
   'worker-change', 'runtime-error', 'unhandled-rejection', 'auth',
   'freshness-start', 'freshness-stop', 'snapshot-cache', 'snapshot-pending', 'snapshot-server',

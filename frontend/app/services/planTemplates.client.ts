@@ -12,6 +12,7 @@ import {
 import { getClientDb } from '@/config/firebaseClientDb';
 import { PlanTemplate, SermonOutline } from '@/models/models';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
+import { readOwnerList } from '@/services/ownerListRead.client';
 
 /** A template's name and structure are edited together by one person. */
 export const PLAN_TEMPLATE_AGGREGATE = 'template';
@@ -28,15 +29,24 @@ const normalizeStructure = (structure?: Partial<SermonOutline>): SermonOutline =
   conclusion: structure?.conclusion ?? [],
 });
 
-export async function getPlanTemplatesViaClient(userId: string): Promise<PlanTemplate[]> {
+/** The same shaping for both roads: the browser's own read and the server's answer. */
+const shapePlanTemplates = (documents: Record<string, unknown>[]): PlanTemplate[] =>
+  documents
+    .map((data) => ({
+      ...(data as Omit<PlanTemplate, 'id'>),
+      id: String(data.id ?? ''),
+      structure: normalizeStructure((data as Omit<PlanTemplate, 'id'>).structure),
+    }))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+async function readPlanTemplatesViaSdk(userId: string): Promise<PlanTemplate[]> {
   const db = getClientDb();
   const snap = await getDocs(query(collection(db, COLLECTION), where('userId', '==', userId)));
-  return snap.docs
-    .map((d) => {
-      const data = d.data() as Omit<PlanTemplate, 'id'>;
-      return { ...data, id: d.id, structure: normalizeStructure(data.structure) };
-    })
-    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  return shapePlanTemplates(snap.docs.map((d) => ({ ...(d.data() as object), id: d.id })));
+}
+
+export async function getPlanTemplatesViaClient(userId: string): Promise<PlanTemplate[]> {
+  return readOwnerList(COLLECTION, userId, readPlanTemplatesViaSdk(userId), shapePlanTemplates);
 }
 
 export async function createPlanTemplateViaClient(payload: {

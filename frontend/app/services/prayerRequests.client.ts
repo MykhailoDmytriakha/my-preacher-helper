@@ -13,7 +13,9 @@ import { getClientDb } from '@/config/firebaseClientDb';
 import { PrayerRequest, PrayerStatus, PrayerUpdate } from '@/models/models';
 import { atomicUpdate } from '@/services/atomicUpdate.client';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
+import { readOwnerList } from '@/services/ownerListRead.client';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
+import { readWithDeadline } from '@/utils/readWithDeadline';
 
 const PRAYER_REQUESTS_COLLECTION = 'prayerRequests';
 const PRAYER_NOT_FOUND_ERROR = 'Prayer request not found';
@@ -49,21 +51,46 @@ function sortPrayerRequests(list: PrayerRequest[]): PrayerRequest[] {
   return [...list].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export async function getAllPrayerRequestsViaClient(userId: string): Promise<PrayerRequest[]> {
+/** The same shaping for both roads: the browser's own read and the server's answer. */
+const shapePrayerRequests = (documents: Record<string, unknown>[]): PrayerRequest[] =>
+  sortPrayerRequests(
+    documents.map((data) =>
+      hydratePrayerRequest(data as Omit<PrayerRequest, 'id'>, String(data.id ?? ''))
+    )
+  );
+
+async function readPrayerRequestsViaSdk(userId: string): Promise<PrayerRequest[]> {
   const db = getClientDb();
   const snap = await getDocs(
     query(collection(db, PRAYER_REQUESTS_COLLECTION), where('userId', '==', userId))
   );
-  return sortPrayerRequests(
-    snap.docs.map((d) =>
-      hydratePrayerRequest(d.data() as Omit<PrayerRequest, 'id'>, d.id)
-    )
+  return shapePrayerRequests(snap.docs.map((d) => ({ ...(d.data() as object), id: d.id })));
+}
+
+export async function getAllPrayerRequestsViaClient(userId: string): Promise<PrayerRequest[]> {
+  return readOwnerList(
+    PRAYER_REQUESTS_COLLECTION,
+    userId,
+    readPrayerRequestsViaSdk(userId),
+    shapePrayerRequests
   );
 }
 
+/**
+ * ONE PRAYER, WITH A BOUND ON THE WAITING.
+ *
+ * There is no second road for a single prayer yet — the app has no server read for one — so this
+ * is half the cure and says so: on the device where the browser's Firestore is silent the page
+ * now learns that it could not be read, instead of showing a spinner until it is closed. The
+ * other half is a server read of one document, recorded in BUGS.md with the rest of the class.
+ */
 export async function getPrayerRequestByIdViaClient(id: string): Promise<PrayerRequest | undefined> {
   const db = getClientDb();
-  const snap = await getDoc(doc(db, PRAYER_REQUESTS_COLLECTION, id));
+  const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+  const snap = await readWithDeadline(
+    getDoc(doc(db, PRAYER_REQUESTS_COLLECTION, id)),
+    online ? 4000 : 8000
+  );
   if (!snap.exists()) return undefined;
   return hydratePrayerRequest(snap.data() as Omit<PrayerRequest, 'id'>, snap.id);
 }

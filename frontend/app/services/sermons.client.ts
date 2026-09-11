@@ -32,6 +32,7 @@ import {
   revisionedUpdate,
 } from '@/services/conflictSafeUpdate.client';
 import { auth } from '@/services/firebaseAuth.service';
+import { readOwnerList } from '@/services/ownerListRead.client';
 import { readSermonFromServer } from '@/services/sermonReadFallback.client';
 import { enqueueWrite, listOutbox, newIntentId, type OutboxEntry } from '@/services/writeOutbox.client';
 import { changedFields } from '@/utils/changedFields';
@@ -111,12 +112,19 @@ function sortSermons(sermons: Sermon[]): Sermon[] {
 
 // --- READS ---
 
-export async function getSermonsViaClient(userId: string): Promise<Sermon[]> {
+/** The same shaping for both roads: the browser's own read and the server's answer. */
+const shapeSermons = (documents: Record<string, unknown>[]): Sermon[] =>
+  sortSermons(documents.map((data) => hydrateSermon(data as unknown as Sermon)));
+
+async function readSermonsViaSdk(userId: string): Promise<Sermon[]> {
   const snap = await getDocs(
     query(collection(db(), SERMONS_COLLECTION), where('userId', '==', userId))
   );
-  const sermons = snap.docs.map((d) => hydrateSermon({ ...(d.data() as Sermon), id: d.id }));
-  return sortSermons(sermons);
+  return shapeSermons(snap.docs.map((d) => ({ ...(d.data() as object), id: d.id })));
+}
+
+export async function getSermonsViaClient(userId: string): Promise<Sermon[]> {
+  return readOwnerList(SERMONS_COLLECTION, userId, readSermonsViaSdk(userId), shapeSermons);
 }
 
 export async function getSermonByIdViaClient(id: string): Promise<Sermon | undefined> {
@@ -151,20 +159,25 @@ export async function getSermonByIdViaClient(id: string): Promise<Sermon | undef
   }
 }
 
+/*
+ * BOTH OF THESE READ THE SERMON ITSELF, so they go through the sermon read — which already
+ * knows what to do when the browser's Firestore says nothing: wait a bounded time, then ask the
+ * app's own server. Read raw, as they were, they hung for ever on the device where that
+ * transport is silent, and a plan or a preaching date that never arrives stops the screen just
+ * as surely as a missing sermon.
+ */
 export async function getSermonOutlineViaClient(
   sermonId: string
 ): Promise<SermonOutline | undefined> {
-  const snap = await getDoc(sermonRef(sermonId));
-  if (!snap.exists()) return undefined;
-  const sermon = snap.data() as Sermon;
+  const sermon = await getSermonByIdViaClient(sermonId);
+  if (!sermon) return undefined;
   // Server returns `sermon.outline || {}` for an existing sermon with no outline.
   return (sermon.outline || {}) as SermonOutline;
 }
 
 export async function fetchPreachDatesViaClient(sermonId: string): Promise<PreachDate[]> {
-  const snap = await getDoc(sermonRef(sermonId));
-  if (!snap.exists()) return [];
-  return (snap.data() as Sermon).preachDates || [];
+  const sermon = await getSermonByIdViaClient(sermonId);
+  return sermon?.preachDates || [];
 }
 
 export async function fetchCalendarSermonsViaClient(
@@ -172,10 +185,12 @@ export async function fetchCalendarSermonsViaClient(
   startDate?: string,
   endDate?: string
 ): Promise<Sermon[]> {
-  const snap = await getDocs(
-    query(collection(db(), SERMONS_COLLECTION), where('userId', '==', userId))
+  let sermons = await readOwnerList(
+    SERMONS_COLLECTION,
+    userId,
+    readSermonsViaSdk(userId),
+    shapeSermons
   );
-  let sermons = snap.docs.map((d) => hydrateSermon({ ...(d.data() as Sermon), id: d.id }));
 
   if (startDate || endDate) {
     const normalizedStart = toDateOnlyKey(startDate);
