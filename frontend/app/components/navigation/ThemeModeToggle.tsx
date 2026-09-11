@@ -9,7 +9,7 @@ import '@locales/i18n';
 
 type ThemeIcon = ComponentType<SVGProps<SVGSVGElement>>;
 
-type ThemeModeToggleVariant = 'full' | 'compact';
+type ThemeModeToggleVariant = 'full' | 'compact' | 'menu';
 
 type ThemeOptionDef = {
   value: ThemePreference;
@@ -80,6 +80,28 @@ export default function ThemeModeToggle({ variant = 'full', className = '' }: Th
     'flex items-stretch overflow-hidden rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/60 divide-x divide-gray-200 dark:divide-gray-700',
     isCompact ? 'h-9 w-auto' : 'h-10 w-full',
   ].join(' ');
+
+  if (variant === 'menu') {
+    return (
+      <div className={`space-y-2 ${className}`} role="group" aria-label={appearanceLabel}>
+        <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">{appearanceLabel}</p>
+        <div className="flex gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-800">
+          {themeOptions.map(({ value, label, icon: Icon, gradient, textClass }) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={value === preference}
+              onClick={() => setPreference(value)}
+              className={`flex min-h-12 min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-lg px-1 text-xs font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 ${value === preference ? `bg-gradient-to-r ${gradient} ${textClass}` : 'text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700'}`}
+            >
+              <Icon className="h-4 w-4" aria-hidden="true" />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={containerClassName} role={isCompact ? 'group' : undefined} aria-label={isCompact ? appearanceLabel : undefined}>

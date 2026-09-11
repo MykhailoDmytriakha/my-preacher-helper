@@ -483,58 +483,46 @@ export default function DashboardNav() {
 
         {/* Mobile Layout */}
         <div className="lg:hidden py-3">
-          <div className="flex items-center justify-between relative">
-            {/* Left: Hamburger Menu */}
-            <div className="flex items-center z-10">
-              {/* Same 36px target as everything else in the bar — and on a phone it
-                  is also the difference between a comfortable tap and a careful one. */}
-              <button
-                type="button"
-                className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus:outline-none dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-gray-100"
-                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              >
-                <span className="sr-only">Open menu</span>
-                {mobileMenuOpen ? (
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                ) : (
-                  <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                  </svg>
-                )}
-              </button>
-            </div>
+          <div data-testid="mobile-navigation-controls" className="grid grid-cols-[3rem_minmax(0,1fr)_3rem] items-center gap-2">
+            <button
+              type="button"
+              onClick={handleFeedbackClick}
+              className="flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-xl text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-gray-100"
+              aria-label={t('feedback.button', { defaultValue: 'Feedback' })}
+            >
+              <ChatBubbleLeftEllipsisIcon className="h-6 w-6 text-purple-600 dark:text-purple-400" aria-hidden="true" />
+              <span className="text-[10px] font-medium leading-tight">{t('navigation.feedbackShort', { defaultValue: 'Feedback' })}</span>
+            </button>
 
-            {/* Center: Title */}
-            <div className="absolute left-0 right-0 flex justify-center pointer-events-none">
-              <Link
-                href={currentNavItem?.href || "/dashboard"}
-                prefetch={isOnline}
-                className="flex items-center text-lg font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent pointer-events-auto"
-              >
-                <span suppressHydrationWarning={true}>
-                  {currentNavItem?.label || t('navigation.dashboard')}
-                </span>
-              </Link>
-            </div>
+            <Link
+              href={currentNavItem?.href || "/dashboard"}
+              prefetch={isOnline}
+              className="min-w-0 break-words bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-center text-lg font-bold leading-tight text-transparent"
+            >
+              <span suppressHydrationWarning={true}>
+                {currentNavItem?.label || t('navigation.dashboard')}
+              </span>
+            </Link>
 
-            {/* Right: Mobile controls */}
-            <div className="flex items-center gap-2 z-10">
-              {usageGrace && <UsageGraceIndicator model={usageGrace} placement="mobile" />}
-              <AppUpdateButton />
-              <OfflineIndicator />
-              {/* Feedback button for mobile */}
-              <button
-                onClick={handleFeedbackClick}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-blue-500 to-purple-600 text-sm text-white"
-                aria-label="Provide feedback"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-[18px] w-[18px]">
-                  <path fillRule="evenodd" d="M10 2c-2.236 0-4.43.18-6.57.524C1.993 2.755 1 4.014 1 5.426v5.148c0 1.413.993 2.67 2.43 2.902 1.168.188 2.352.327 3.55.414.28.02.521.18.642.413l1.713 3.293a.75.75 0 001.33 0l1.713-3.293a.783.783 0 01.642-.413 41.102 41.102 0 003.55-.414c1.437-.231 2.43-1.49 2.43-2.902V5.426c0-1.413-.993-2.67-2.43-2.902A41.289 41.102 0 0010 2z" clipRule="evenodd" />
-                </svg>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label={t('navigation.openMenu', { defaultValue: 'Open menu' })}
+              aria-haspopup="dialog"
+              aria-expanded={mobileMenuOpen}
+              className="flex h-12 w-12 flex-col items-center justify-center gap-0.5 rounded-xl text-gray-500 transition hover:bg-gray-100 hover:text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-600 dark:text-gray-300 dark:hover:bg-white/10 dark:hover:text-gray-100"
+            >
+              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d={mobileMenuOpen ? 'M6 18L18 6M6 6l12 12' : 'M4 6h16M4 12h16M4 18h16'} />
+              </svg>
+              <span className="text-[10px] font-medium leading-tight">{t('navigation.menu', { defaultValue: 'Menu' })}</span>
+            </button>
+          </div>
+          <div className="flex justify-end gap-2 empty:hidden [&_button]:min-h-12 [&_button]:min-w-12">
+            {usageGrace && <UsageGraceIndicator model={usageGrace} placement="mobile" />}
+            <AppUpdateButton />
+            <OfflineIndicator />
           </div>
         </div>
         {modeToggle && (
@@ -551,6 +539,7 @@ export default function DashboardNav() {
         user={user}
         pathname={pathname || ''}
         onNavigate={() => setMobileMenuOpen(false)}
+        onClose={() => setMobileMenuOpen(false)}
       />
 
       {/* Feedback Modal */}

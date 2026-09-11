@@ -11,13 +11,13 @@ const SUPPORTED_LANGUAGES = [
   { code: 'uk', name: 'Українська' },
 ];
 
-export default function LanguageSwitcher() {
-  const { i18n } = useTranslation();
+export default function LanguageSwitcher({ variant = 'compact' }: { variant?: 'compact' | 'menu' }) {
+  const { i18n, t } = useTranslation();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const { user } = useAuth();
 
-  const currentLang = SUPPORTED_LANGUAGES.find((lang) => 
+  const currentLang = SUPPORTED_LANGUAGES.find((lang) =>
     lang.code === (i18n?.language || 'en')
   ) || SUPPORTED_LANGUAGES[0];
 
@@ -29,10 +29,10 @@ export default function LanguageSwitcher() {
     try {
       // Update language in i18n
       i18n.changeLanguage(lang);
-      
+
       // Update language in DB or cookie via service
       await updateUserLanguage(user?.uid || '', lang);
-      
+
       setOpen(false);
     } catch (error) {
       console.error('Failed to update language preference:', error);
@@ -58,6 +58,29 @@ export default function LanguageSwitcher() {
     };
   }, [open]);
 
+  if (variant === 'menu') {
+    return (
+      <div role="group" aria-label={t('navigation.language', { defaultValue: 'Interface language' })} className="space-y-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
+        <span>{t('navigation.language', { defaultValue: 'Interface language' })}</span>
+        <div className="flex gap-1 rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-gray-700 dark:bg-gray-800">
+          {SUPPORTED_LANGUAGES.map(({ code, name }) => (
+            <button
+              key={code}
+              type="button"
+              aria-pressed={currentLang.code === code}
+              onClick={() => { void changeLanguage(code); }}
+              className={`min-h-12 min-w-0 flex-1 rounded-lg px-1 py-2 text-[13px] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 ${currentLang.code === code
+                ? 'bg-blue-50 font-semibold text-blue-600 dark:bg-blue-900/40 dark:text-blue-300'
+                : 'font-normal text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700'}`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative inline-block text-left" ref={containerRef}>
       <button
@@ -75,25 +98,25 @@ export default function LanguageSwitcher() {
               <button
                 key={lang.code}
                 onClick={() => changeLanguage(lang.code)}
-                className={`w-full text-left px-4 py-2 text-sm flex items-center justify-between 
-                  ${lang.code === i18n.language 
-                    ? 'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-200 font-medium' 
+                className={`w-full text-left px-4 py-2 text-sm flex items-center justify-between
+                  ${lang.code === i18n.language
+                    ? 'bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-200 font-medium'
                     : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                   }`}
               >
                 <span suppressHydrationWarning={true}>{lang.name}</span>
-                
+
                 {lang.code === i18n.language && (
-                  <svg 
-                    xmlns="http://www.w3.org/2000/svg" 
-                    className="h-4 w-4 ml-2 text-blue-600 dark:text-blue-300" 
-                    viewBox="0 0 20 20" 
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-4 w-4 ml-2 text-blue-600 dark:text-blue-300"
+                    viewBox="0 0 20 20"
                     fill="currentColor"
                   >
-                    <path 
-                      fillRule="evenodd" 
-                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" 
-                      clipRule="evenodd" 
+                    <path
+                      fillRule="evenodd"
+                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                      clipRule="evenodd"
                     />
                   </svg>
                 )}
@@ -104,4 +127,4 @@ export default function LanguageSwitcher() {
       )}
     </div>
   );
-} 
+}

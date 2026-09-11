@@ -1,4 +1,5 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 
 import '@testing-library/jest-dom';
@@ -10,7 +11,9 @@ jest.mock('react-i18next', () => ({
     t: (key: string) => {
       const translations: { [key: string]: string } = {
         'navigation.settings': 'Settings',
-        'navigation.logout_account': 'Logout Account'
+        'navigation.logout_account': 'Logout Account',
+        'navigation.menu': 'Menu',
+        'common.close': 'Close',
       };
       return translations[key] || key;
     }
@@ -36,6 +39,12 @@ describe('MobileMenu Component', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 690 });
+    window.matchMedia = jest.fn(() => ({
+      matches: false,
+      addEventListener: jest.fn(),
+      removeEventListener: jest.fn(),
+    })) as unknown as typeof window.matchMedia;
   });
 
   test('renders nothing when isOpen is false', () => {
@@ -56,23 +65,18 @@ describe('MobileMenu Component', () => {
     expect(screen.getByTestId('theme-mode-toggle')).toBeInTheDocument();
   });
 
-  /**
-   * On a phone the avatar has nowhere to live: the bar is full and everything the desktop
-   * dropdown offers — theme, language, logout — already sits in this menu. The one thing
-   * missing was the answer to "which account am I in", so it goes on the same row as the
-   * switchers, on the left.
-   */
-  test('says who is signed in, on the switcher row', () => {
+  test('shows the account name, email and actual profile photo', () => {
     const user = {
       displayName: 'Mykhailo',
       email: 'mykhailo@example.com',
-      photoURL: null,
+      photoURL: 'https://example.com/avatar.png',
     } as unknown as import('firebase/auth').User;
 
     render(<MobileMenu isOpen={true} onLogout={mockLogout} user={user} />);
 
     expect(screen.getByText('Mykhailo')).toBeInTheDocument();
     expect(screen.getByText('mykhailo@example.com')).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'Avatar' })).toHaveAttribute('src', 'https://example.com/avatar.png');
   });
 
   test('promotes the email when the account has no display name', () => {
@@ -114,5 +118,56 @@ describe('MobileMenu Component', () => {
 
     // Active indicator (bullet point)
     expect(screen.getByText('•')).toBeInTheDocument();
+  });
+
+  test('keeps all eight destinations and highlights care on prayer detail routes', () => {
+    render(<MobileMenu isOpen onLogout={mockLogout} pathname="/prayers/123" />);
+    expect(screen.getAllByRole('link')).toHaveLength(8);
+    expect(screen.getByRole('link', { name: 'navigation.care' })).toHaveAttribute('aria-current', 'page');
+  });
+
+  test('notifies navigation and closes after selecting a destination', async () => {
+    const user = userEvent.setup();
+    const onNavigate = jest.fn();
+    const onClose = jest.fn();
+    render(<MobileMenu isOpen onLogout={mockLogout} onNavigate={onNavigate} onClose={onClose} />);
+    await user.click(screen.getByRole('link', { name: 'Settings' }));
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test('focuses the menu and restores the trigger after Escape', async () => {
+    const user = userEvent.setup();
+    function Harness() {
+      const [open, setOpen] = React.useState(false);
+      return <><button onClick={() => setOpen(true)}>Open menu</button>
+        <MobileMenu isOpen={open} onLogout={mockLogout} onClose={() => setOpen(false)} /></>;
+    }
+    render(<Harness />);
+    await user.click(screen.getByRole('button', { name: 'Open menu' }));
+    expect(await screen.findByRole('dialog', { name: 'Menu' })).toHaveAttribute('aria-modal', 'true');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus());
+    await waitFor(() => expect(document.documentElement).toHaveStyle({ overflow: 'hidden' }));
+    await user.tab({ shift: true });
+    expect(screen.getByRole('button', { name: 'Logout Account' })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Open menu' })).toHaveFocus());
+    await waitFor(() => expect(document.documentElement).not.toHaveStyle({ overflow: 'hidden' }));
+  });
+
+  test('supports the legacy close callback and closes when the viewport becomes desktop', async () => {
+    const user = userEvent.setup();
+    const onNavigate = jest.fn();
+    render(<MobileMenu isOpen onLogout={mockLogout} onNavigate={onNavigate} />);
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onNavigate).toHaveBeenCalledTimes(1);
+    act(() => {
+      window.innerWidth = 1280;
+      window.dispatchEvent(new Event('resize'));
+    });
+    expect(onNavigate).toHaveBeenCalledTimes(2);
   });
 });

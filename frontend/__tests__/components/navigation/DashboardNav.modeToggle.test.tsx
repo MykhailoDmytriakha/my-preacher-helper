@@ -135,6 +135,9 @@ jest.mock('react-i18next', () => ({
       'wizard.modeRaw': 'Scratch',
       'wizard.switchToRaw': 'Scratch Notes',
       'feedback.button': 'Feedback',
+      'navigation.openMenu': 'Open menu',
+      'navigation.menu': 'Menu',
+      'navigation.feedbackShort': 'Feedback',
     } as Record<string, string>)[k] || k,
   })
 }));
@@ -619,7 +622,7 @@ describe('Feedback integration', () => {
     );
     
     // Simulate clicking the feedback button (desktop)
-    const feedbackButton = screen.getAllByRole('button', { name: /Provide feedback/i })[0];
+    const feedbackButton = screen.getAllByRole('button', { name: /^Feedback$/i })[0];
     fireEvent.click(feedbackButton);
     expect(mockHandleFeedbackClick).toHaveBeenCalled();
 

@@ -109,7 +109,11 @@
     "escape": {
       "ariaLabel": "Назад"
     },
-    "care": "Дела сердечные"
+    "care": "Дела сердечные",
+    "menu": "Меню",
+    "feedbackShort": "Отзыв",
+    "language": "Язык интерфейса",
+    "openMenu": "Открыть меню"
   },
   "landing": {
     "title": "Preacher Helper, созданный для проповедников",

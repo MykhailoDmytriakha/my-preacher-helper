@@ -96,7 +96,10 @@ jest.mock('react-i18next', () => ({
         'navigation.settings': 'Settings',
         'navigation.logout': 'Logout',
         'navigation.guest': 'Guest',
-        'feedback.button': 'Feedback'
+        'feedback.button': 'Feedback',
+        'navigation.openMenu': 'Open menu',
+        'navigation.menu': 'Menu',
+        'navigation.feedbackShort': 'Feedback'
       };
       return translations[key] || key;
     },
@@ -417,7 +420,7 @@ describe('DashboardNav Component', () => {
     );
 
     // Find and click desktop feedback button 
-    const feedbackButton = screen.getByText('Feedback');
+    const feedbackButton = screen.getAllByRole('button', { name: 'Feedback' })[0];
     await act(async () => {
       fireEvent.click(feedbackButton);
     });
@@ -493,9 +496,9 @@ describe('DashboardNav Component', () => {
       </TestProviders>
     );
 
-    // Find mobile feedback button (should be just an icon without text)
-    const mobileFeedbackButtons = screen.getAllByRole('button', { name: /provide feedback/i });
-    expect(mobileFeedbackButtons.length).toBeGreaterThan(0);
+    const mobileControls = screen.getByTestId('mobile-navigation-controls');
+    expect(within(mobileControls).getByRole('button', { name: 'Feedback' })).toHaveTextContent('Feedback');
+    expect(within(mobileControls).getByRole('button', { name: 'Open menu' })).toHaveTextContent('Menu');
   });
 
   test('renders the released groups nav item without a beta label', async () => {

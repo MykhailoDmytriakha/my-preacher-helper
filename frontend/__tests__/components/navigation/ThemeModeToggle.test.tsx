@@ -46,6 +46,23 @@ describe('ThemeModeToggle', () => {
     expect(screen.getByRole('group', { name: /Theme mode|settings\.appearance\.themeMode/ })).toBeInTheDocument();
   });
 
+  it('exposes all menu choices and activates the existing preference callback without submitting a form', async () => {
+    const user = userEvent.setup();
+    const setPreference = jest.fn();
+    const onSubmit = jest.fn();
+    mockUseThemePreference.mockReturnValue({ preference: 'system', setPreference } as any);
+    const { rerender } = render(<form onSubmit={onSubmit}><ThemeModeToggle variant="menu" /></form>);
+    for (const preference of ['dark', 'light', 'system']) {
+      await user.click(screen.getByRole('button', { name: `settings.appearance.${preference}` }));
+      expect(setPreference).toHaveBeenLastCalledWith(preference);
+    }
+    expect(onSubmit).not.toHaveBeenCalled();
+    mockUseThemePreference.mockReturnValue({ preference: 'dark', setPreference } as any);
+    rerender(<ThemeModeToggle variant="menu" />);
+    expect(screen.getByRole('button', { name: 'settings.appearance.dark' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'settings.appearance.system' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
   it('falls back to system label when preference is unknown', async () => {
     mockUseThemePreference.mockReturnValue({ preference: 'unknown', setPreference: jest.fn() } as any);
 

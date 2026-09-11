@@ -109,7 +109,11 @@
     "escape": {
       "ariaLabel": "Go back"
     },
-    "care": "Heart matters"
+    "care": "Heart matters",
+    "menu": "Menu",
+    "feedbackShort": "Feedback",
+    "language": "Interface language",
+    "openMenu": "Open menu"
   },
   "landing": {
     "title": "Preacher Helper, built for preachers",
