@@ -698,7 +698,24 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     );
   }
 
-  if ((loading || verdict === 'checking') && !order) return null;
+  /*
+    BEING FETCHED IS NOT THE SAME AS NOT BEING THERE, and neither of them is a blank page.
+    This screen rendered nothing at all while the read was in the air — invisible on a fast
+    machine, and on a tablet with a poor connection a heading over emptiness.
+  */
+  if ((loading || verdict === 'checking') && !order) {
+    return (
+      <div className="mx-auto w-full max-w-3xl" aria-busy="true" data-testid="service-order-loading">
+        <BackToList />
+        <div className="mt-6 h-9 w-2/3 animate-pulse rounded-xl bg-gray-100 dark:bg-gray-800" />
+        <div className="mt-7 flex flex-col gap-3">
+          {[0, 1, 2].map((row) => (
+            <div key={row} className="h-16 animate-pulse rounded-2xl bg-gray-100 dark:bg-gray-800" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (!order) {
     return (

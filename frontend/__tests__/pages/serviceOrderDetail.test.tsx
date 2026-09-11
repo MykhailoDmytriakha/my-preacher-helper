@@ -1038,6 +1038,17 @@ describe('One service', () => {
     });
   });
 
+  /** Being fetched is not the same as not being there, and neither of them is a blank page. */
+  it('shows the shape of the rite while it is being read', () => {
+    state.orders = [];
+    state.loading = true;
+    render(<ServiceOrderPage />);
+
+    expect(screen.getByTestId('service-order-loading')).toBeInTheDocument();
+    expect(screen.queryByText('serviceOrders.notFound')).not.toBeInTheDocument();
+    state.loading = false;
+  });
+
   /**
    * A CONTROLLED MIRROR THAT NEVER LETS GO WOULD FREEZE THE PAGE on the version it first saw.
    * A SAVED write hands the screen back to the document, so a change made elsewhere shows up

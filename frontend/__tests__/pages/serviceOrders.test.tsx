@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { toast } from 'sonner';
 
@@ -19,10 +19,13 @@ const mockMoveOrder = jest.fn().mockResolvedValue(undefined);
 const mockSeed = jest.fn().mockResolvedValue(undefined);
 const mockCreateCustom = jest.fn().mockResolvedValue(undefined);
 
+const mockRefresh = jest.fn().mockResolvedValue(undefined);
+
 const orderState = {
   orders: [] as unknown[],
   loading: false,
   isOnline: true,
+  error: null as unknown,
   canSeed: false,
   seedingAll: false,
   seeding: false,
@@ -36,7 +39,7 @@ jest.mock('@/hooks/useServiceOrders', () => ({
     createCustomOrder: mockCreateCustom,
     deleteOrder: jest.fn(),
     moveOrder: mockMoveOrder,
-    error: null,
+    refresh: mockRefresh,
   }),
 }));
 
@@ -319,5 +322,64 @@ describe('while a move is still in the air', () => {
     const up = screen.getAllByRole('button', { name: /serviceOrders\.moveUp/ });
     expect(up.every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
     orderState.moving = false;
+  });
+});
+
+/**
+ * A PAGE WITH NOTHING ON IT LOOKS BROKEN.
+ *
+ * While the first read is in the air this screen rendered nothing at all: on a fast machine a
+ * blink, on a tablet with a poor connection a heading over emptiness, with no list, no
+ * invitation to start and nothing to press. The owner met exactly that on an iPad and asked
+ * where "завести типовые" had gone.
+ */
+describe('before the list has been read', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    orderState.orders = [];
+    orderState.loading = false;
+    orderState.isOnline = true;
+    orderState.error = null;
+    orderState.canSeed = true;
+  });
+
+  it('shows the shape of the list while it is being fetched', () => {
+    orderState.loading = true;
+    render(<ServiceOrdersPage />);
+
+    expect(screen.getByTestId('service-orders-loading')).toBeInTheDocument();
+    // And it does NOT invite him to start a set he may already have.
+    expect(screen.queryByRole('button', { name: 'serviceOrders.seed' })).not.toBeInTheDocument();
+  });
+
+  it('offers a way to ask again when the read is taking too long', () => {
+    jest.useFakeTimers();
+    orderState.loading = true;
+    render(<ServiceOrdersPage />);
+
+    expect(screen.queryByText('serviceOrders.slowRead')).not.toBeInTheDocument();
+    act(() => {
+      jest.advanceTimersByTime(10000);
+    });
+    expect(screen.getByText('serviceOrders.slowRead')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.retry' }));
+    expect(mockRefresh).toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+
+  /**
+   * A LIST THAT COULD NOT BE READ IS NOT AN EMPTY LIST. Inviting him to start a standard set he
+   * may already have is how a rite gets seeded twice.
+   */
+  it('says the list could not be read instead of calling it empty', () => {
+    orderState.error = new Error('Missing or insufficient permissions.');
+    render(<ServiceOrdersPage />);
+
+    expect(screen.getByTestId('service-orders-unread')).toHaveTextContent('serviceOrders.listUnread');
+    expect(screen.queryByRole('button', { name: 'serviceOrders.seed' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.retry' }));
+    expect(mockRefresh).toHaveBeenCalled();
   });
 });

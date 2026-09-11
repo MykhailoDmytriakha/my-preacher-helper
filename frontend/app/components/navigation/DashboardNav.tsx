@@ -102,18 +102,28 @@ export default function DashboardNav() {
   const wordmarkWidthRef = useRef(0);
   const feedbackLabelWidthRef = useRef(0);
   const [navCompact, setNavCompact] = useState(false);
+  const [navTight, setNavTight] = useState(false);
   const [showWordmark, setShowWordmark] = useState(true);
   const [showFeedbackLabel, setShowFeedbackLabel] = useState(true);
   /** Set during render: only a list that is actually showing labels can report their width. */
   const navLabelsShownRef = useRef(true);
+  const navTightShownRef = useRef(false);
   const wordmarkShownRef = useRef(true);
   const feedbackLabelShownRef = useRef(true);
+  /** The width the labelled list needs once the row is squeezed; taken from a tight render. */
+  const tightWidthRef = useRef<number | null>(null);
 
   const measureNavFit = useCallback(() => {
     const zone = navZoneRef.current;
     const list = navListRef.current;
     if (!zone || !list) return;
-    if (navLabelsShownRef.current) labelledWidthRef.current = list.scrollWidth;
+    if (navLabelsShownRef.current) {
+      // Two widths for the same labels: the roomy row and the squeezed one. Each is taken only
+      // from a render that is actually in that state, and both are remembered — so the ladder
+      // below stays a pure function of the window and cannot flip between two rungs for ever.
+      if (navTightShownRef.current) tightWidthRef.current = list.scrollWidth;
+      else labelledWidthRef.current = list.scrollWidth;
+    }
     // Plus the gap each one leaves behind when it goes.
     if (wordmarkShownRef.current && wordmarkRef.current) {
       wordmarkWidthRef.current = wordmarkRef.current.offsetWidth + BAR_GAP;
@@ -148,20 +158,41 @@ export default function DashboardNav() {
     // exactly on a boundary and flip back and forth for ever.
     const fits = (room: number) => needed + FIT_SLACK <= room;
 
+    const bare = base + wordmark + feedbackLabel;
+    /*
+      THE ROW GIVES WAY BEFORE THE WORDS DO.
+      One rung before the names disappear: the same labels with less air around them. On a
+      tablet held sideways this is the whole difference between seven words and seven icons —
+      measured, the squeeze is worth about fifty pixels, and about forty is what was missing.
+      Until a tight render has been measured its width is unknown, so that rung is TRIED: the
+      next pass measures it and either keeps it or falls through to icons, once and for good.
+    */
+    const tight = tightWidthRef.current;
+    const tightFits = tight === null || tight + FIT_SLACK <= bare;
+
     if (fits(base)) {
       setNavCompact(false);
+      setNavTight(false);
       setShowWordmark(true);
       setShowFeedbackLabel(true);
     } else if (fits(base + wordmark)) {
       setNavCompact(false);
+      setNavTight(false);
       setShowWordmark(false);
       setShowFeedbackLabel(true);
-    } else if (fits(base + wordmark + feedbackLabel)) {
+    } else if (fits(bare)) {
       setNavCompact(false);
+      setNavTight(false);
+      setShowWordmark(false);
+      setShowFeedbackLabel(false);
+    } else if (tightFits) {
+      setNavCompact(false);
+      setNavTight(true);
       setShowWordmark(false);
       setShowFeedbackLabel(false);
     } else {
       setNavCompact(true);
+      setNavTight(false);
       setShowWordmark(true);
       setShowFeedbackLabel(true);
     }
@@ -175,9 +206,11 @@ export default function DashboardNav() {
    */
   const resetNavFit = useCallback(() => {
     labelledWidthRef.current = null;
+    tightWidthRef.current = null;
     wordmarkWidthRef.current = 0;
     feedbackLabelWidthRef.current = 0;
     setNavCompact(false);
+    setNavTight(false);
     setShowWordmark(true);
     setShowFeedbackLabel(true);
   }, []);
@@ -257,6 +290,7 @@ export default function DashboardNav() {
   const feedbackLabelText = (t('feedback.button') || 'Feedback') as string;
   const iconOnlyNav = isSermonRelated || navCompact;
   navLabelsShownRef.current = !iconOnlyNav;
+  navTightShownRef.current = navTight;
   wordmarkShownRef.current = showWordmark;
   feedbackLabelShownRef.current = showFeedbackLabel;
   const [savedMode, setSavedMode] = useState<SermonMode>('classic');
@@ -391,7 +425,7 @@ export default function DashboardNav() {
               from. Scrolling keeps it reachable while the bar catches up. The scrollbar
               itself is hidden — when the measurement is right, there is nothing to scroll.
             */
-            className="flex w-fit max-w-full items-center gap-1 overflow-x-auto rounded-full border border-gray-200/70 bg-gray-50/85 p-1 shadow-inner shadow-white/60 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden dark:border-gray-700/60 dark:bg-gray-900/70 dark:shadow-black/20"
+            className={`flex w-fit max-w-full items-center ${navTight ? 'gap-0.5' : 'gap-1'} overflow-x-auto rounded-full border border-gray-200/70 bg-gray-50/85 p-1 shadow-inner shadow-white/60 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden dark:border-gray-700/60 dark:bg-gray-900/70 dark:shadow-black/20`}
             aria-label={t('navigation.primary', { defaultValue: 'Primary navigation' }) ?? 'Primary navigation'}
           >
             {workspaceNavItems.map((item) => {
@@ -417,7 +451,9 @@ export default function DashboardNav() {
                     */
                     className={`inline-flex h-9 items-center justify-center whitespace-nowrap rounded-full border text-sm font-medium transition ${iconOnlyNav
                       ? 'w-9'
-                      : 'gap-1.5 px-2.5'
+                      : navTight
+                        ? 'gap-1 px-1.5'
+                        : 'gap-1.5 px-2.5'
                       } ${active
                         ? themeClasses.pill
                         : `border-transparent text-gray-600 dark:text-gray-300 ${themeClasses.hover}`

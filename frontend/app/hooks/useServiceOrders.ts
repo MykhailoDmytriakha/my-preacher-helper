@@ -202,6 +202,15 @@ export function useServiceOrders(
     [beforeWriting, afterWriting, beginWrite, endWrite]
   );
 
+  /**
+   * ASK THE WHOLE LIST AGAIN. The page needs this when a read failed or is simply taking too
+   * long: a screen with nothing on it and no way to try again is a screen that looks broken.
+   */
+  const refresh = useCallback(
+    () => queryClient.refetchQueries({ queryKey: listKey }),
+    [queryClient, listKey]
+  );
+
   const write = useCallback(
     (update: (current: ServiceOrder[]) => ServiceOrder[]) =>
       queryClient.setQueryData<ServiceOrder[]>(listKey, (current) =>
@@ -621,6 +630,8 @@ export function useServiceOrders(
     error,
     isOnline,
     recheck,
+    /** Ask the list again, by hand — the way out of a read that failed or is taking too long. */
+    refresh,
     /** True while the standard set is worth offering: something of it is still missing. */
     canSeed: missingCatalogKeys.length > 0,
     seeding: seedMutation.isPending,

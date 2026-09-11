@@ -36,7 +36,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -93,6 +93,8 @@ export default function ServiceOrdersPage() {
     createCustomOrder,
     moveOrder,
     moving,
+    error,
+    refresh,
   } = useServiceOrders();
 
   const [creating, setCreating] = useState(false);
@@ -107,6 +109,33 @@ export default function ServiceOrdersPage() {
    */
   const [reordering, setReordering] = useState(false);
   const isEmpty = orders.length === 0;
+
+  /**
+   * A PAGE WITH NOTHING ON IT IS A PAGE THAT LOOKS BROKEN.
+   *
+   * While the first read is in the air this screen used to render nothing at all — on a fast
+   * machine that is a blink, and on a tablet with a poor connection it is a blank page under a
+   * heading, with no list, no invitation to start, and nothing to press. The owner met exactly
+   * that and asked where "завести типовые" had gone.
+   *
+   * So: rows in outline while it is being fetched, a plain sentence if it is taking unusually
+   * long, and a way to ask again either way.
+   */
+  const [slowRead, setSlowRead] = useState(false);
+
+  useEffect(() => {
+    if (!loading) {
+      setSlowRead(false);
+      return;
+    }
+    const timer = setTimeout(() => setSlowRead(true), 10000);
+    return () => clearTimeout(timer);
+  }, [loading]);
+
+  const askAgain = () => {
+    setSlowRead(false);
+    void refresh();
+  };
 
   /**
    * The same dnd-kit setup the series screen uses — one mechanism for dragging in this app,
@@ -276,54 +305,20 @@ export default function ServiceOrdersPage() {
         </p>
       </header>
 
-      {isEmpty && !loading ? (
-        /*
-          FIRST OPENING — an invitation, not a leftover.
-          Three things and nothing else: what will be here, the one thing to press, and — in a
-          quiet line, in grey — why it is safe to press it. The boundary about theology used to
-          sit in an amber box below; amber reads as a warning, and the page opened by saying
-          "something is wrong" instead of "start here".
-        */
-        <section className="mt-16 flex flex-col items-center px-6 text-center">
-          <ScrollText
-            className="h-12 w-12 text-emerald-700/25 dark:text-emerald-300/25"
-            strokeWidth={1.25}
-            aria-hidden="true"
-          />
-          <h2 className="mt-5 text-lg font-bold tracking-tight text-gray-900 dark:text-gray-100">
-            {t('serviceOrders.emptyTitle')}
-          </h2>
-          <p className="mt-2 max-w-sm text-sm leading-relaxed text-gray-500 dark:text-gray-400">
-            {t('serviceOrders.emptyHint')}
-          </p>
-
-          <button
-            type="button"
-            onClick={seed}
-            disabled={seeding || !isOnline}
-            title={!isOnline ? (t('serviceOrders.seedOffline') as string) : undefined}
-            className="mt-7 inline-flex items-center rounded-full bg-emerald-700 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500"
-          >
-            {seeding ? t('serviceOrders.seeding') : t('serviceOrders.seed')}
-          </button>
-
-          <button
-            type="button"
-            onClick={addCustom}
-            disabled={creating || !isOnline}
-            title={!isOnline ? (t('serviceOrders.createOffline') as string) : undefined}
-            className="mt-3.5 text-sm font-semibold text-emerald-700 underline-offset-4 transition hover:underline disabled:opacity-60 dark:text-emerald-300"
-          >
-            {t('serviceOrders.custom')}
-          </button>
-
-          {failure && <ServiceOrderFailure message={failure} testId="service-orders-failure" />}
-
-          <p className="mt-10 max-w-md text-xs leading-relaxed text-gray-400 dark:text-gray-500">
-            {t('serviceOrders.boundary')}
-          </p>
-        </section>
-      ) : loading && orders.length === 0 ? null : (
+      {isEmpty && loading ? (
+        <BeingRead slow={slowRead} onRetry={askAgain} />
+      ) : isEmpty && error ? (
+        <CouldNotBeRead onRetry={askAgain} />
+      ) : isEmpty && !loading ? (
+        <FirstOpening
+          onSeed={seed}
+          onCustom={addCustom}
+          seeding={seeding}
+          creating={creating}
+          isOnline={isOnline}
+          failure={failure}
+        />
+      ) : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext
           items={orders.map((order) => order.id)}
@@ -373,6 +368,126 @@ export default function ServiceOrdersPage() {
         </p>
       )}
     </div>
+  );
+}
+
+
+
+/**
+ * FIRST OPENING — an invitation, not a leftover.
+ *
+ * Three things and nothing else: what will be here, the one thing to press, and — in a quiet
+ * line, in grey — why it is safe to press it. The boundary about theology used to sit in an
+ * amber box below; amber reads as a warning, and the page opened by saying "something is wrong"
+ * instead of "start here".
+ */
+function FirstOpening({
+  onSeed,
+  onCustom,
+  seeding,
+  creating,
+  isOnline,
+  failure,
+}: {
+  onSeed: () => void;
+  onCustom: () => void;
+  seeding: boolean;
+  creating: boolean;
+  isOnline: boolean;
+  failure: string | null;
+}) {
+  const { t } = useTranslation();
+  return (
+<section className="mt-16 flex flex-col items-center px-6 text-center">
+      <ScrollText
+        className="h-12 w-12 text-emerald-700/25 dark:text-emerald-300/25"
+        strokeWidth={1.25}
+        aria-hidden="true"
+      />
+      <h2 className="mt-5 text-lg font-bold tracking-tight text-gray-900 dark:text-gray-100">
+        {t('serviceOrders.emptyTitle')}
+      </h2>
+      <p className="mt-2 max-w-sm text-sm leading-relaxed text-gray-500 dark:text-gray-400">
+        {t('serviceOrders.emptyHint')}
+      </p>
+
+      <button
+        type="button"
+        onClick={onSeed}
+        disabled={seeding || !isOnline}
+        title={!isOnline ? (t('serviceOrders.seedOffline') as string) : undefined}
+        className="mt-7 inline-flex items-center rounded-full bg-emerald-700 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-800 disabled:opacity-60 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+      >
+        {seeding ? t('serviceOrders.seeding') : t('serviceOrders.seed')}
+      </button>
+
+      <button
+        type="button"
+        onClick={onCustom}
+        disabled={creating || !isOnline}
+        title={!isOnline ? (t('serviceOrders.createOffline') as string) : undefined}
+        className="mt-3.5 text-sm font-semibold text-emerald-700 underline-offset-4 transition hover:underline disabled:opacity-60 dark:text-emerald-300"
+      >
+        {t('serviceOrders.custom')}
+      </button>
+
+      {failure && <ServiceOrderFailure message={failure} testId="service-orders-failure" />}
+
+      <p className="mt-10 max-w-md text-xs leading-relaxed text-gray-400 dark:text-gray-500">
+        {t('serviceOrders.boundary')}
+      </p>
+    </section>
+  );
+}
+
+/**
+ * BEING FETCHED IS NOT NOTHING. The shape of the list while it is on its way, so the page says
+ * "wait" instead of looking broken — and, if it is taking unusually long, says that too and
+ * offers the one thing worth pressing.
+ */
+function BeingRead({ slow, onRetry }: { slow: boolean; onRetry: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <section className="mt-7 flex flex-col gap-2.5" aria-busy="true" data-testid="service-orders-loading">
+      {[0, 1, 2, 3].map((row) => (
+        <div key={row} className="h-16 animate-pulse rounded-2xl bg-gray-100 dark:bg-gray-800" />
+      ))}
+      {slow && (
+        <div className="mt-6 flex flex-col items-center gap-3 text-center">
+          <p className="text-sm text-gray-500 dark:text-gray-400">{t('serviceOrders.slowRead')}</p>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="text-sm font-semibold text-emerald-700 underline-offset-4 transition hover:underline dark:text-emerald-300"
+          >
+            {t('serviceOrders.retry')}
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * A LIST THAT COULD NOT BE READ IS NOT AN EMPTY LIST. Inviting him to start a standard set he
+ * may already have is how a rite gets seeded twice, and "у тебя пока пусто" about a failed read
+ * is simply untrue.
+ */
+function CouldNotBeRead({ onRetry }: { onRetry: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <section className="mt-16 flex flex-col items-center px-6 text-center" data-testid="service-orders-unread">
+      <p className="max-w-md text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+        {t('serviceOrders.listUnread')}
+      </p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="mt-5 inline-flex items-center rounded-full bg-emerald-700 px-6 py-3 text-sm font-bold text-white transition hover:bg-emerald-800 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+      >
+        {t('serviceOrders.retry')}
+      </button>
+    </section>
   );
 }
 

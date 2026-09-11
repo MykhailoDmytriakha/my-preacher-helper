@@ -109,6 +109,8 @@ class TestResizeObserver {
 }
 
 const LABELLED_LIST = 900;
+/** The same labels with the air squeezed out of the row: narrower, and still words. */
+const TIGHT_LIST = 820;
 const WORDMARK = 200;
 const FEEDBACK_LABEL = 100;
 
@@ -134,7 +136,12 @@ const sizeWords = () => {
  */
 const layout = ({ available }: { available: number }) => {
   const list = screen.getByRole('list', { name: 'Основная навигация' });
-  fix(list, 'scrollWidth', LABELLED_LIST);
+  // Read, not fixed: a squeezed row really is narrower, and a constant here would make the
+  // squeeze look like it bought nothing.
+  Object.defineProperty(list, 'scrollWidth', {
+    configurable: true,
+    get: () => (list.className.includes('gap-0.5') ? TIGHT_LIST : LABELLED_LIST),
+  });
   const zone = list.parentElement;
   if (!zone) throw new Error('no nav zone');
   Object.defineProperty(zone, 'clientWidth', {
@@ -198,6 +205,32 @@ describe('DashboardNav fitting the width it actually has', () => {
     expect(screen.queryByText('Помощник проповедника')).not.toBeInTheDocument();
     expect(screen.queryByText('Обратная связь')).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Календарь/ })).toHaveTextContent('Календарь');
+  });
+
+  /**
+   * THE ROW GIVES WAY BEFORE THE WORDS DO.
+   *
+   * One rung between "both words gone" and "no words at all": the same seven names with less
+   * air around them. On a tablet held sideways that squeeze is the whole difference between
+   * reading the sections and guessing them from icons — the owner asked for exactly this.
+   */
+  it('squeezes the row before it gives up the section names', () => {
+    // 900 loose does not fit in 550 + 316; 820 tight does.
+    layout({ available: 550 });
+
+    expect(screen.getByRole('link', { name: /Календарь/ })).toHaveTextContent('Календарь');
+    expect(screen.queryByText('Помощник проповедника')).not.toBeInTheDocument();
+    expect(screen.queryByText('Обратная связь')).not.toBeInTheDocument();
+    expect(screen.getByRole('list', { name: 'Основная навигация' }).className).toContain('gap-0.5');
+  });
+
+  it('lets the row breathe again the moment there is room', () => {
+    layout({ available: 550 });
+    expect(screen.getByRole('list', { name: 'Основная навигация' }).className).toContain('gap-0.5');
+
+    layout({ available: 1200 });
+    expect(screen.getByRole('list', { name: 'Основная навигация' }).className).toContain('gap-1');
+    expect(screen.getByText('Помощник проповедника')).toBeInTheDocument();
   });
 
   /**
