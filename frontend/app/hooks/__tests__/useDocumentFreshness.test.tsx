@@ -801,3 +801,40 @@ describe('semantic snapshot comparison', () => {
     expect(result.current.state).toBe('fresh');
   });
 });
+
+describe('independent service-order reads', () => {
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('detects another device while the SDK is silent and stops polling when unmounted', async () => {
+    jest.useFakeTimers();
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    const read = jest.fn().mockResolvedValue({ title: 'Local' });
+    const { result, unmount } = renderHook(() => useDocumentFreshness({
+      collection: 'serviceOrders', docId: 'o1', uid: 'u1', enabled: true,
+      known: { title: 'Local' }, select: data => ({ title: data.title }), readFromServer: read, pollIntervalMs: 15000,
+    }));
+    await act(async () => { await jest.advanceTimersByTimeAsync(4000); });
+    read.mockResolvedValue({ title: 'Remote' });
+    await act(async () => { await jest.advanceTimersByTimeAsync(11000); });
+    expect(result.current.state).toBe('stale');
+    expect(result.current.remote).toEqual({ title: 'Remote' });
+    unmount();
+    const calls = read.mock.calls.length;
+    await act(async () => { await jest.advanceTimersByTimeAsync(30000); });
+    expect(read).toHaveBeenCalledTimes(calls);
+  });
+
+  it('does not report an old poll as remote change after a confirmed own save', async () => {
+    let resolve!: (value: { title: string }) => void;
+    const read = jest.fn(() => new Promise<{ title: string }>(done => { resolve = done; }));
+    const { result, rerender } = renderHook(({ title }) => useDocumentFreshness({
+      collection: 'serviceOrders', docId: 'o1', uid: 'u1', enabled: true,
+      known: { title }, select: data => ({ title: data.title }), readFromServer: read,
+    }), { initialProps: { title: 'Before save' } });
+    let check!: Promise<void>;
+    act(() => { check = result.current.checkAgain(); });
+    rerender({ title: 'Own saved title' });
+    await act(async () => { resolve({ title: 'Before save' }); await check; });
+    expect(result.current.state).not.toBe('stale');
+  });
+});

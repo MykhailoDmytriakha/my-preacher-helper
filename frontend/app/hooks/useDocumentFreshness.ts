@@ -104,6 +104,10 @@ export interface UseDocumentFreshnessOptions<T> {
    * the newer value goes quiet and a further change is news again.
    */
   adoptFirstServerAnswerAsKnown?: boolean;
+  /** Independent authenticated read for devices whose Firestore listener cannot connect. */
+  readFromServer?: (id: string) => Promise<DocumentData | null>;
+  /** Visible-only checks while the independent transport is in use. */
+  pollIntervalMs?: number;
 }
 
 export interface UseDocumentFreshnessResult<T> {
@@ -129,6 +133,8 @@ export function useDocumentFreshness<T>({
   known,
   enabled,
   adoptFirstServerAnswerAsKnown = false,
+  readFromServer,
+  pollIntervalMs,
 }: UseDocumentFreshnessOptions<T>): UseDocumentFreshnessResult<T> {
   const [state, setState] = useState<FreshnessState>('unknown');
   /**
@@ -193,6 +199,9 @@ export function useDocumentFreshness<T>({
   /** What the screen accounts for: its own value, or the one we adopted for it. */
   const baseline = () => knownRef.current ?? adoptedKnownRef.current;
 
+  const hasIndependentRead = Boolean(readFromServer);
+  const serverReadRef = useRef(readFromServer);
+  serverReadRef.current = readFromServer;
   const selectRef = useRef(select);
   selectRef.current = select;
 
@@ -384,8 +393,10 @@ export function useDocumentFreshness<T>({
       }
       // A stalled SDK listener and getDocFromServer share a transport. Sermons
       // recover through an independent authenticated read of the same document.
-      const read = collection === 'sermons'
-        ? readSermonFromServer(docId).then(data => ({
+      const readBaseline = baseline();
+      const independentRead = serverReadRef.current ?? (collection === 'sermons' ? readSermonFromServer : undefined);
+      const read = independentRead
+        ? independentRead(docId).then(data => ({
           exists: () => Boolean(data),
           data: () => data as DocumentData | undefined,
           metadata: { fromCache: false, hasPendingWrites: false },
@@ -396,6 +407,8 @@ export function useDocumentFreshness<T>({
           recordDiagnostic('freshness-late-response', { collection, source, elapsedMs: Date.now() - startedAt });
           return;
         }
+        // An answer started before our own confirmed save cannot judge that newer baseline.
+        if (independentRead && readBaseline !== baseline()) return;
         // Server-source reads can still contain latency-compensated local writes.
         if (snapshot.metadata?.hasPendingWrites || hasPendingWrites) unavailable('pendingChanges', source);
         else if (snapshot.metadata?.fromCache) unavailable('cached', source);
@@ -408,10 +421,13 @@ export function useDocumentFreshness<T>({
     };
     checkRef.current = () => checkServer('manual');
     const recoveryTimer = window.setTimeout(() => {
-      if (collection === 'sermons' && !lastServerProofRef.current && navigator.onLine !== false) {
+      if ((serverReadRef.current || collection === 'sermons') && !lastServerProofRef.current && navigator.onLine !== false) {
         void checkServer('opening');
       }
     }, 4000);
+    const pollTimer = hasIndependentRead && pollIntervalMs ? window.setInterval(() => {
+      if (document.visibilityState === 'visible' && navigator.onLine !== false) void checkServer('return');
+    }, Math.max(5000, pollIntervalMs)) : undefined;
     const onWentOffline = () => unavailable('offline', 'device');
     const onReturned = () => {
       if (document.visibilityState !== 'visible') return;
@@ -430,13 +446,14 @@ export function useDocumentFreshness<T>({
       finishRead?.();
       window.clearTimeout(graceTimer);
       window.clearTimeout(recoveryTimer);
+      window.clearInterval(pollTimer);
       window.removeEventListener('offline', onWentOffline);
       window.removeEventListener('online', onReturned);
       document.removeEventListener('visibilitychange', onReturned);
       window.removeEventListener('focus', onReturned);
       unsubscribe();
     };
-  }, [collection, docId, uid, enabled]);
+  }, [collection, docId, uid, enabled, pollIntervalMs, hasIndependentRead]);
 
   /**
    * The caller reports what it now shows. ONLY an exact match clears the warning.

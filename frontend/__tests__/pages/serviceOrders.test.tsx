@@ -123,6 +123,23 @@ describe('Orders of service', () => {
       expect(mockMoveOrder).toHaveBeenCalledWith('u1_wedding', 0);
     });
 
+    it('places the row immediately while saving, then restores the list if saving is refused', async () => {
+      let refuse!: (error: Error) => void;
+      mockMoveOrder.mockImplementationOnce(() => new Promise((_, reject) => { refuse = reject; }));
+      render(<ServiceOrdersPage />);
+      enterReorder();
+      fireEvent.click(screen.getByRole('button', { name: 'serviceOrders.moveUp: Венчание' }));
+
+      const rowIds = () => screen.getAllByTestId(/^service-order-/).map((row) => row.dataset.testid);
+      expect(rowIds()).toEqual(['service-order-wedding', 'service-order-funeral', 'service-order-custom-1']);
+      expect(screen.getByRole('button', { name: 'serviceOrders.moveDown: Венчание' })).toBeDisabled();
+
+      await act(async () => { refuse(new Error('Write refused')); });
+      expect(rowIds()).toEqual(['service-order-funeral', 'service-order-wedding', 'service-order-custom-1']);
+      expect(screen.getByRole('alert')).toHaveTextContent('serviceOrders.writeFailed');
+      expect(screen.getByRole('button', { name: 'serviceOrders.moveUp: Венчание' })).toBeEnabled();
+    });
+
     it('cannot move the first order up or the last one down', () => {
       render(<ServiceOrdersPage />);
       enterReorder();

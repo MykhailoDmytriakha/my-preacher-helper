@@ -5,6 +5,9 @@
  * hook never learns whether a write went straight to the device's Firestore, through the
  * guard, or into the offline outbox — and a later change of that answer touches one file.
  */
+
+import { isBrowserOffline } from '@/services/atomicUpdate.client';
+import { createServiceOrderOnServer, deleteServiceOrderOnServer, setServiceOrderRanksOnServer, updateServiceOrderMetaOnServer, updateServiceOrderStepsOnServer } from '@/services/serviceOrderEditing.client';
 import {
   createServiceOrderViaClient,
   deleteServiceOrderViaClient,
@@ -26,16 +29,16 @@ export const getAllServiceOrdersFromServer = (userId: string): Promise<ServiceOr
   getAllServiceOrdersFromServerViaClient(userId);
 
 export const createServiceOrder = (order: Omit<ServiceOrder, 'id'>): Promise<ServiceOrder> =>
-  createServiceOrderViaClient(order);
+  isBrowserOffline() ? createServiceOrderViaClient(order) : createServiceOrderOnServer(order);
 
-export const deleteServiceOrder = (id: string): Promise<void> => deleteServiceOrderViaClient(id);
+export const deleteServiceOrder = (id: string): Promise<void> => isBrowserOffline() ? deleteServiceOrderViaClient(id) : deleteServiceOrderOnServer(id);
 
 export const setServiceOrderRank = (id: string, rank: number): Promise<void> =>
-  setServiceOrderRankViaClient(id, rank);
+  isBrowserOffline() ? setServiceOrderRankViaClient(id, rank) : setServiceOrderRanksOnServer([{ id, rank }]);
 
 /** All the ranks of a spread-out list, committed together or not at all. */
 export const setServiceOrderRanks = (entries: { id: string; rank: number }[]): Promise<void> =>
-  setServiceOrderRanksViaClient(entries);
+  isBrowserOffline() ? setServiceOrderRanksViaClient(entries) : setServiceOrderRanksOnServer(entries);
 
 export const updateServiceOrderMeta = (
   id: string,
@@ -44,10 +47,14 @@ export const updateServiceOrderMeta = (
   expectedBaseline: Record<string, unknown> | null = null,
   userId?: string
 ): Promise<number | null> =>
-  updateServiceOrderMetaViaClient(id, updates, expectedRevision, expectedBaseline, userId);
+  isBrowserOffline()
+    ? updateServiceOrderMetaViaClient(id, updates, expectedRevision, expectedBaseline, userId)
+    : updateServiceOrderMetaOnServer(id, updates, expectedRevision, expectedBaseline);
 
 /** Resolves with the steps as they were COMMITTED, or null when the write changed nothing. */
 export const updateServiceOrderSteps = (
   id: string,
   mutate: (steps: ServiceOrderStep[]) => ServiceOrderStep[] | null
-): Promise<ServiceOrderStep[] | null> => updateServiceOrderStepsViaClient(id, mutate);
+): Promise<ServiceOrderStep[] | null> => isBrowserOffline()
+  ? updateServiceOrderStepsViaClient(id, mutate)
+  : updateServiceOrderStepsOnServer(id, mutate);

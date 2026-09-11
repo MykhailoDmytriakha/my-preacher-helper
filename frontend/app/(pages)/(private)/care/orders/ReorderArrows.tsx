@@ -31,7 +31,7 @@ export function ReorderArrows({
   downLabel: string;
 }) {
   const button =
-    'flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 dark:hover:bg-gray-800 dark:hover:text-gray-200';
+    'flex h-11 w-11 touch-manipulation items-center justify-center rounded-lg text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 dark:hover:bg-gray-800 dark:hover:text-gray-200';
 
   return (
     <span className="flex shrink-0 items-center">

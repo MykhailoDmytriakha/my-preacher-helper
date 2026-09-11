@@ -316,6 +316,7 @@ export function useServiceOrders(
   });
 
   const createCustomMutation = useMutation({
+    retry: false,
     mutationFn: async (title: string) => {
       if (!effectiveUserId) throw new Error('No user');
       /*
@@ -343,6 +344,7 @@ export function useServiceOrders(
   });
 
   const deleteMutation = useMutation({
+    retry: false,
     mutationFn: async (id: string) => {
       /*
        * ONLINE ONLY, ENFORCED. A deletion queued on a phone with no signal arrives whenever
@@ -420,6 +422,8 @@ export function useServiceOrders(
   );
 
   const stepsMutation = useMutation({
+    // A timed-out HTTP write may already have committed; never replay stale intent.
+    retry: false,
     mutationFn: async ({
       id,
       mutate,
@@ -451,6 +455,8 @@ export function useServiceOrders(
   });
 
   const renameMutation = useMutation({
+    // A timed-out HTTP write may already have committed; never replay stale intent.
+    retry: false,
     mutationFn: async ({
       id,
       title,
@@ -502,6 +508,8 @@ export function useServiceOrders(
    * half of those arriving is worse than none.
    */
   const moveMutation = useMutation({
+    // A timed-out HTTP write may already have committed; never replay stale intent.
+    retry: false,
     mutationFn: async ({ writes }: { writes: { id: string; rank: number }[] }) => {
       // One document — one write. Several — one batch: a spread that lands in halves leaves the
       // pastor's arrangement partly rewritten with nothing able to put it back.
@@ -667,7 +675,7 @@ export function useServiceOrders(
          * baseline moves with each commit, so by the time this runs it is the current name.
          */
         const held = baselines.current.get(key);
-        if (title === held?.title) return;
+        if (title === held?.title) return held.revision;
         try {
           const { committedRevision } = await renameMutation.mutateAsync({
             id,
@@ -678,6 +686,7 @@ export function useServiceOrders(
           if (committedRevision !== null && held) {
             baselines.current.set(key, { title, revision: committedRevision });
           }
+          return committedRevision;
         } catch (error) {
           /*
            * A REFUSAL CARRIES THE WAY OUT, so take it. The transaction that refused this write

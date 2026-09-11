@@ -3,22 +3,28 @@
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import { Chip } from '@/components/ui/Chip';
+import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
+import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
 import {
   isOfflineQueuedError,
   isStaleWriteError,
   isUnreachableWriteError,
 } from '@/services/conflictSafeUpdate.client';
+import { readServiceOrderOnServer } from '@/services/serviceOrderEditing.client';
 import { newClientId } from '@/utils/clientId';
+import { serializeContent } from '@/utils/contentFingerprint';
+import { selectServiceOrderContent } from '@/utils/serviceOrderFreshness';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
 
 import { ReorderArrows, ServiceOrderFailure } from '../ReorderArrows';
 
-import type { ServiceOrderStep } from '@/models/models';
+import type { ServiceOrder, ServiceOrderStep } from '@/models/models';
 import '@locales/i18n';
 
 /**
@@ -142,7 +148,28 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
 
   const { orders, loading, isOnline, updateSteps, openedWith, closedEditing, recheck, renameOrder, deleteOrder } =
     useServiceOrders();
-  const order = orders.find((candidate) => candidate.id === orderId);
+  const cachedOrder = orders.find((candidate) => candidate.id === orderId);
+  // A background list refresh must not silently replace the service being read.
+  const [acceptedOrder, setAcceptedOrder] = useState<ServiceOrder | null>(null);
+  const editVersion = useRef(0);
+  const knownContent = useMemo(() => { const source = acceptedOrder ?? cachedOrder; return source ? selectServiceOrderContent({ ...source }) : null; }, [acceptedOrder, cachedOrder]);
+  useEffect(() => {
+    if (!acceptedOrder && cachedOrder) setAcceptedOrder(cachedOrder);
+  }, [acceptedOrder, cachedOrder]);
+  const order = cachedOrder ? acceptedOrder ?? cachedOrder : undefined;
+  const freshnessUid = useFreshnessUid(cachedOrder?.userId);
+  const freshness = useDocumentFreshness({
+    collection: 'serviceOrders', docId: orderId, uid: freshnessUid,
+    enabled: Boolean(knownContent), known: knownContent, select: selectServiceOrderContent,
+    readFromServer: readServiceOrderOnServer, pollIntervalMs: 15000,
+  });
+  const [freshnessDismissed, setFreshnessDismissed] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const remoteFingerprint = serializeContent(freshness.remote);
+  useEffect(() => { setFreshnessDismissed(false); }, [remoteFingerprint, freshness.state]);
+  const confirmContent = (patch: Partial<ServiceOrder>) => {
+    setAcceptedOrder(current => current ? { ...current, ...patch } : current);
+  };
   /** Always the current document, for a write that runs long after the keystroke that armed it. */
   const orderRef = useRef(order);
   orderRef.current = order;
@@ -345,6 +372,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    * editor's mirror — the funeral's sentence appearing inside the wedding.
    */
   const schedule = useCallback((key: string, run: () => void) => {
+    editVersion.current += 1;
     const existing = pending.current.get(key);
     if (existing) clearTimeout(existing.timer);
     const timer = setTimeout(() => {
@@ -434,6 +462,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
 
   const mirror = useCallback(
     (mutate: (steps: ServiceOrderStep[]) => ServiceOrderStep[] | null) => {
+      editVersion.current += 1;
       const next = mutate(typedRef.current) ?? typedRef.current;
       typedRef.current = next;
       setTyped(next);
@@ -525,6 +554,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     const sentSteps = typedRef.current;
     try {
       const committed = await updateSteps(orderId, mutate);
+      if (committed) confirmContent({ steps: selectServiceOrderContent({ steps: committed }).steps });
       /*
        * AN ANSWER IS ONLY WORTH ADOPTING IF THE EDITOR HAS NOT MOVED ON.
        *
@@ -636,7 +666,8 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
     }
     setFailure(stillUnsaid());
     try {
-      await renameOrder(orderId, next, session);
+      const revision = await renameOrder(orderId, next, session);
+      confirmContent({ title: next, ...(revision == null ? {} : { rev: { ...orderRef.current?.rev, meta: revision } }) });
       forgetRefusal(null, TITLE_KEY);
       // Only if it is still the name that was saved. Clearing it outright threw away a NEWER
       // one: type again while the first save is travelling, and the draft holding the second
@@ -660,6 +691,26 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
    * nowhere else. Nothing said so, and leaving the page took it. So the words are shown instead,
    * plainly and selectably, with what happened said above them.
    */
+  const hasLocalChanges = typed !== null || titleDraft !== null || pending.current.size > 0 || unresolved.current.size > 0 || rearranging;
+  const acceptRemote = async () => {
+    if (hasLocalChanges || refreshing) return;
+    setRefreshing(true);
+    const version = editVersion.current;
+    try {
+      const remote = await readServiceOrderOnServer(orderId);
+      if (editVersion.current !== version) return;
+      if (!remote) { await recheck(orderId); return; }
+      const content = selectServiceOrderContent({ ...remote });
+      setAcceptedOrder(remote);
+      setSession(newClientId());
+      typedRef.current = content.steps;
+      setTyped(null);
+      setRefsDraft({});
+      freshness.markSynced(content);
+    } catch { setFailure(t('freshness.refreshFailedToast') as string); }
+    finally { setRefreshing(false); }
+  };
+
   if (!order && (typed || titleDraft || unresolved.current.size > 0) && lastKnown.current) {
     return (
       <div className="mx-auto w-full max-w-3xl">
@@ -853,11 +904,21 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
         leave. One line, one arrow, in the words of the place it returns to.
       */}
       <BackToList />
+      {!freshnessDismissed && freshness.state !== 'fresh' && (
+        <DataFreshnessBanner
+          entityKey="entityRecord" dirty={hasLocalChanges}
+          deleted={freshness.remotelyDeleted} unknown={freshness.state === 'unknown'}
+          diagnostics={freshness.diagnostics} checking={freshness.checking} canCheck={freshness.canCheck}
+          onCheckAgain={freshness.checkAgain} onRefresh={hasLocalChanges ? undefined : acceptRemote} refreshing={refreshing}
+          onDismiss={() => setFreshnessDismissed(true)}
+        />
+      )}
 
       <header className="mt-4">
         <div className="flex items-center justify-between gap-4">
           {editing ? (
             <input
+              key={session}
               defaultValue={order.title}
               aria-label={t('serviceOrders.orderTitle') as string}
               onFocus={() =>
@@ -1029,7 +1090,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
                         onClick={() => removeStep(step.id)}
                         disabled={rearranging}
                         aria-label={t('serviceOrders.removeStep') as string}
-                        className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30 dark:hover:bg-rose-950/40"
+                        className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-lg text-gray-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-30 dark:hover:bg-rose-950/40"
                       >
                         <Trash2 className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
                       </button>

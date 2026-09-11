@@ -2,6 +2,8 @@
 
 import {
   DndContext,
+  DragOverlay,
+  defaultDropAnimationSideEffects,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
@@ -11,6 +13,7 @@ import {
 } from '@dnd-kit/core';
 import {
   SortableContext,
+  arrayMove,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
@@ -36,7 +39,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -47,7 +50,7 @@ import { CARE_CARD_TONES } from '@/utils/themeColors';
 import { ReorderArrows, ServiceOrderFailure } from './ReorderArrows';
 
 import type { ServiceOrder, ServiceOrderCatalogKey } from '@/models/models';
-import type { ComponentType, SVGProps } from 'react';
+import type { ButtonHTMLAttributes, ComponentType, SVGProps } from 'react';
 import '@locales/i18n';
 
 /**
@@ -80,6 +83,10 @@ const iconFor = (order: ServiceOrder) =>
 
 const tone = CARE_CARD_TONES.emerald;
 
+function presentOrders(orders: ServiceOrder[], ids: string[] | null): ServiceOrder[] {
+  return ids ? ids.flatMap((id) => orders.find((order) => order.id === id) ?? []) : orders;
+}
+
 export default function ServiceOrdersPage() {
   const { t } = useTranslation();
   const router = useRouter();
@@ -108,6 +115,12 @@ export default function ServiceOrdersPage() {
    * that can be rearranged has behaved on this kind of device for fifteen years.
    */
   const [reordering, setReordering] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [pendingIds, setPendingIds] = useState<string[] | null>(null);
+  const moveInFlight = useRef(false);
+  const displayedOrders = presentOrders(orders, pendingIds);
+  const activeOrder = orders.find((order) => order.id === activeId);
+  const moveBusy = moving || pendingIds !== null;
   const isEmpty = orders.length === 0;
 
   /**
@@ -192,17 +205,27 @@ export default function ServiceOrdersPage() {
   };
 
   const move = async (id: string, toIndex: number) => {
+    const fromIndex = orders.findIndex((order) => order.id === id);
+    if (moveInFlight.current || moving || fromIndex < 0 || toIndex < 0 || toIndex >= orders.length || fromIndex === toIndex) return;
+    moveInFlight.current = true;
     setFailure(null);
+    // Set the destination before dnd-kit measures its drop animation. The cache writer
+    // first cancels in-flight reads, so waiting for that writer would expose the old slot.
+    setPendingIds(arrayMove(orders.map((order) => order.id), fromIndex, toIndex));
     try {
       await moveOrder(id, toIndex);
     } catch (error) {
       announceFailure(error);
+    } finally {
+      moveInFlight.current = false;
+      setPendingIds(null);
     }
   };
 
   /** Dropped where the eye was pointing: dnd-kit's target index is the place in the list. */
   const onDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
+    setActiveId(null);
     if (!over || active.id === over.id) return;
     const toIndex = orders.findIndex((order) => order.id === over.id);
     if (toIndex < 0) return;
@@ -319,26 +342,47 @@ export default function ServiceOrdersPage() {
           failure={failure}
         />
       ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={({ active }) => setActiveId(String(active.id))}
+          onDragCancel={() => setActiveId(null)}
+          onDragEnd={onDragEnd}
+        >
         <SortableContext
-          items={orders.map((order) => order.id)}
+          items={displayedOrders.map((order) => order.id)}
           strategy={verticalListSortingStrategy}
         >
         <ul className={`flex flex-col gap-2.5 ${reordering ? 'mt-4' : 'mt-7'}`}>
-          {orders.map((order, index) => (
+          {displayedOrders.map((order, index) => (
             <li key={order.id}>
               <OrderRow
                 order={order}
                 index={index}
                 total={orders.length}
                 reordering={reordering}
-                moving={moving}
+                moving={moveBusy}
                 onMove={move}
               />
             </li>
           ))}
         </ul>
         </SortableContext>
+          <DragOverlay dropAnimation={{ sideEffects: defaultDropAnimationSideEffects({ styles: { active: { opacity: '0' } } }) }}>
+            {activeOrder ? (
+              <div aria-hidden="true" inert>
+                <OrderRowView
+                  order={activeOrder}
+                  index={orders.indexOf(activeOrder)}
+                  total={orders.length}
+                  reordering
+                  moving={false}
+                  onMove={move}
+                  overlay
+                />
+              </div>
+            ) : null}
+          </DragOverlay>
         </DndContext>
       )}
 
@@ -491,36 +535,34 @@ function CouldNotBeRead({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-function OrderRow({
-  order,
-  index,
-  total,
-  reordering,
-  moving,
-  onMove,
-}: {
+type OrderRowProps = {
   order: ServiceOrder;
   index: number;
   total: number;
   reordering: boolean;
-  /**
-   * ONE MOVE AT A TIME. Two of them sent a second apart can reach Firestore in the other order,
-   * and then the list on screen and the list in the database disagree about an arrangement the
-   * pastor made himself — which is a different thing from two devices disagreeing, and not one
-   * he has any way to notice.
-   */
   moving: boolean;
   onMove: (id: string, toIndex: number) => Promise<unknown>;
+};
+
+function OrderRow(props: OrderRowProps) {
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
+    id: props.order.id,
+    disabled: !props.reordering || props.moving,
+  });
+
+  return (
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0 : undefined }}>
+      <OrderRowView {...props} handleProps={{ ...attributes, ...listeners, ref: setActivatorNodeRef }} />
+    </div>
+  );
+}
+
+function OrderRowView({ order, index, total, reordering, moving, onMove, handleProps, overlay = false }: OrderRowProps & {
+  handleProps?: ButtonHTMLAttributes<HTMLButtonElement> & { ref?: (node: HTMLButtonElement | null) => void };
+  overlay?: boolean;
 }) {
   const { t } = useTranslation();
   const Icon = iconFor(order);
-  // Registered always, active only while arranging: the hook must be called unconditionally,
-  // and `disabled` is what decides whether a row can actually be picked up.
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: order.id,
-    disabled: !reordering || moving,
-  });
-
   const stepCount = t('serviceOrders.steps', { count: order.steps.length });
   const nameAndSummary = (
     <>
@@ -535,24 +577,12 @@ function OrderRow({
 
   return (
     <div
-      ref={setNodeRef}
-      /*
-       * THE LIFTED CARD HAS TO BE ON TOP, and `z-10` alone does not put it there: z-index is
-       * ignored on a statically positioned element, so the row below kept painting over the
-       * one in the hand. The card is positioned while it travels, and only then.
-       */
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        zIndex: isDragging ? 50 : undefined,
-        position: isDragging ? 'relative' : undefined,
-      }}
       className={`flex items-center gap-3 rounded-2xl border bg-white p-4 transition-colors dark:bg-gray-900 ${
         reordering
           ? 'border-emerald-200 dark:border-emerald-900/60'
           : 'border-gray-200 hover:border-emerald-300 dark:border-gray-800 dark:hover:border-emerald-800'
-      } ${isDragging ? 'shadow-xl ring-2 ring-emerald-300 dark:ring-emerald-700' : ''}`}
-      data-testid={`service-order-${order.catalogKey ?? order.id}`}
+      } ${overlay ? 'shadow-xl ring-2 ring-emerald-300 dark:ring-emerald-700' : ''}`}
+      data-testid={overlay ? "service-order-drag-overlay" : `service-order-${order.catalogKey ?? order.id}`}
     >
       {reordering && (
         // The handle IS the grip: the row is picked up where the hand is already pointing,
@@ -561,9 +591,9 @@ function OrderRow({
           type="button"
           // Ten handles with one name tell a screen reader nothing about what it will move.
           aria-label={`${t('serviceOrders.dragHandle')}: ${order.title}`}
-          className="flex h-8 w-6 shrink-0 cursor-grab items-center justify-center text-gray-300 active:cursor-grabbing dark:text-gray-600"
-          {...attributes}
-          {...listeners}
+          className="-ml-2 flex h-11 w-11 shrink-0 touch-none select-none cursor-grab items-center justify-center rounded-lg text-gray-400 active:cursor-grabbing dark:text-gray-500"
+          disabled={moving}
+          {...handleProps}
         >
           <GripVertical className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
         </button>
