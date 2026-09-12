@@ -2,11 +2,12 @@
 
 import { ArrowLeft, Check, ChevronLeft, ChevronRight, Landmark, List, Megaphone, PauseCircle, XCircle } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { CouncilOutcomePanel, useOutcomeLine } from '@/components/council/CouncilOutcomePanel';
+import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { useCouncil } from '@/hooks/useCouncils';
 import {
@@ -51,6 +52,14 @@ export default function CouncilConductPage() {
 
   // `null` until the person moves: the first open section is where the meeting resumes.
   const [chosenIndex, setChosenIndex] = useState<number | null>(null);
+  /*
+   * WHERE THE MEETING RESUMED, remembered once. The resume point is "the first section still
+   * open", and marking an outcome on that very section moves it — so a screen derived from it
+   * live jumps to the next section the moment the pastor ticks something, while he is still
+   * speaking about this one, and "next" then skips a section. The entry point is read on the
+   * first render that has the council and never again.
+   */
+  const resumeIndex = useRef<number | null>(null);
   const [overview, setOverview] = useState(false);
   const [showQuestions, setShowQuestions] = useState(false);
 
@@ -85,7 +94,8 @@ export default function CouncilConductPage() {
     );
   }
 
-  const index = Math.min(chosenIndex ?? firstOpenTopicIndex(council), topics.length - 1);
+  if (resumeIndex.current === null) resumeIndex.current = firstOpenTopicIndex(council);
+  const index = Math.min(chosenIndex ?? resumeIndex.current, topics.length - 1);
   const topic = topics[index];
   const progress = councilProgress(council);
   const isLast = index === topics.length - 1;
@@ -148,13 +158,25 @@ export default function CouncilConductPage() {
         </button>
       </header>
 
+      {/*
+        THE SECTIONS STAND ON THE LEFT, AND THE BOTTOM BAR RUNS UNDER EVERYTHING. Reading starts
+        at the left edge, so the running order of the council belongs there — the eye finds "where
+        are we" before it reads the section, instead of travelling to the far corner for it. And
+        the bar with "back", the count and "next" is the floor of the whole screen, not of one
+        column: a panel that runs past it to the bottom of the glass reads as a second, unfinished
+        page beside the first.
+      */}
       <div className="flex min-h-0 flex-1">
+        <aside className="hidden w-80 shrink-0 overflow-y-auto border-r border-gray-200 bg-gray-50/60 px-3 py-4 lg:block dark:border-gray-800 dark:bg-gray-900/40">
+          {sectionList}
+        </aside>
+
         {overview ? (
           <main className="flex-1 overflow-y-auto px-4 py-4 lg:hidden">{sectionList}</main>
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
             <main className="flex-1 overflow-y-auto px-4 py-5">
-              <div className="mx-auto w-full max-w-2xl">
+              <div className="prose-scaled mx-auto w-full max-w-2xl">
                 <p className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
                   {t('council.conduct.section', { index: index + 1, total: topics.length })}
                 </p>
@@ -220,33 +242,43 @@ export default function CouncilConductPage() {
               </div>
             </main>
 
-            <footer className="flex items-center gap-2 border-t border-gray-200 px-4 py-3 dark:border-gray-800">
-              <button type="button" onClick={() => goTo(index - 1)} disabled={index === 0} className={buttonQuiet}>
-                <ChevronLeft className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-                {t('council.conduct.prev')}
-              </button>
-              <span className="flex-1 text-center text-xs text-gray-600 dark:text-gray-400">
-                {t('council.discussedCount', { done: progress.done, total: progress.total })}
-              </span>
-              {isLast ? (
-                <button type="button" onClick={finish} className={buttonPrimary} data-testid="council-finish">
-                  <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
-                  {t('council.conduct.finish')}
-                </button>
-              ) : (
-                <button type="button" onClick={() => goTo(index + 1)} className={buttonPrimary} data-testid="council-next">
-                  {t('council.conduct.next')}
-                  <ChevronRight className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
-                </button>
-              )}
-            </footer>
           </div>
         )}
-
-        <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-gray-200 bg-gray-50/60 px-3 py-4 lg:block dark:border-gray-800 dark:bg-gray-900/40">
-          {sectionList}
-        </aside>
       </div>
+
+      <footer className="flex items-center gap-2 border-t border-gray-200 px-4 py-3 dark:border-gray-800">
+        <button type="button" onClick={() => goTo(index - 1)} disabled={index === 0} className={buttonQuiet}>
+          <ChevronLeft className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+          {t('council.conduct.prev')}
+        </button>
+        <span className="flex-1 text-center text-xs text-gray-600 dark:text-gray-400">
+          {t('council.discussedCount', { done: progress.done, total: progress.total })}
+        </span>
+        {isLast ? (
+          <button type="button" onClick={finish} className={buttonPrimary} data-testid="council-finish">
+            <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
+            {t('council.conduct.finish')}
+          </button>
+        ) : (
+          <button type="button" onClick={() => goTo(index + 1)} className={buttonPrimary} data-testid="council-next">
+            {t('council.conduct.next')}
+            <ChevronRight className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
+          </button>
+        )}
+      </footer>
+
+      {/*
+        THE SAME ROUND CONTROL AS IN THE NOTES. A council is read aloud from a tablet held at
+        arm's length, and the size that suits a desk does not suit that. The notes already own
+        this: one provider, one CSS variable, one remembered preference — so the button is
+        borrowed whole rather than built again here.
+
+        It is lifted clear of the bottom bar: at its usual height it sat on top of "finish the
+        council", and two round things in one corner, one of which ends the meeting, is exactly
+        the kind of neighbourhood a thumb gets wrong. Above the overlay's own layer, too, or the
+        screen would swallow it.
+      */}
+      <FloatingTextScaleControls className="!bottom-24 z-[210]" />
     </Shell>
   );
 }
@@ -342,8 +374,52 @@ function StateMark({ topic, index }: { topic: CouncilTopic; index: number }) {
   );
 }
 
+/**
+ * The meeting screen covers the application, and the keyboard has to agree with the eye: without
+ * this, Tab walks off the last button into the navigation underneath — visible to a screen reader,
+ * invisible to everyone else — and a pastor mid-council finds himself on another page.
+ */
 function Shell({ children }: { children: React.ReactNode }) {
-  return <div className="fixed inset-0 z-[200] flex flex-col bg-white dark:bg-gray-950">{children}</div>;
+  const frame = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab' || !frame.current) return;
+      const reachable = frame.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      const visible = [...reachable].filter((element) => element.offsetParent !== null);
+      if (visible.length === 0) return;
+      const first = visible[0];
+      const last = visible[visible.length - 1];
+      const active = document.activeElement;
+      if (!frame.current.contains(active)) {
+        event.preventDefault();
+        first.focus();
+        return;
+      }
+      if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
+
+  return (
+    <div
+      ref={frame}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-[200] flex flex-col bg-white dark:bg-gray-950"
+    >
+      {children}
+    </div>
+  );
 }
 
 function Centered({ message, onBack, backLabel }: { message: string; onBack: () => void; backLabel: string }) {
