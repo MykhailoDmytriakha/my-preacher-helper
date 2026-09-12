@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Landmark, List, Megaphone, PauseCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Landmark, List, ListChecks, Megaphone, PauseCircle, XCircle } from 'lucide-react';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -167,7 +167,13 @@ export default function CouncilConductPage() {
         page beside the first.
       */}
       <div className="flex min-h-0 flex-1">
-        <aside className="hidden w-80 shrink-0 overflow-y-auto border-r border-gray-200 bg-gray-50/60 px-3 py-4 lg:block dark:border-gray-800 dark:bg-gray-900/40">
+        {/*
+          WIDE ENOUGH TO READ, and what does not fit on one line takes a second. A council is
+          navigated by these titles during the meeting: "Решение 2: окно 4-10 января 20…" is not a
+          title, it is a riddle, and a pastor should not have to open a section to find out whether
+          it is the one he wants.
+        */}
+        <aside className="hidden shrink-0 flex-col border-r border-gray-200 bg-gray-50/60 px-3 py-4 lg:flex lg:w-[22rem] xl:w-[26rem] dark:border-gray-800 dark:bg-gray-900/40">
           {sectionList}
         </aside>
 
@@ -176,40 +182,60 @@ export default function CouncilConductPage() {
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
             <main className="flex-1 overflow-y-auto px-4 py-5">
-              <div className="prose-scaled mx-auto w-full max-w-2xl">
-                <p className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-                  {t('council.conduct.section', { index: index + 1, total: topics.length })}
+              {/*
+                ONE SIZING SYSTEM, NOT TWO. `prose-scaled` gives every paragraph the same absolute
+                size, which erases the difference between a counter and the matter itself; this
+                screen scales its container once and states every part as a share of it.
+              */}
+              <div className="council-scaled mx-auto w-full max-w-2xl">
+                {/*
+                  ONE QUIET LINE, THEN THE TITLE. Where the council stands and what kind of section
+                  this is are the same thought — "section 1 of 8, an announcement" — and they were
+                  two lines, one above the title and one below it, with the title trapped between
+                  them. Said once, above, in the smallest voice on the screen, they leave the title
+                  alone at the top of the section where a person looks first. Sizes are shares of
+                  the container, so the whole stack grows together when the text is made larger
+                  and the counter never swells to the size of the matter itself.
+                */}
+                <p className="flex items-center gap-[0.5em] text-[0.72em] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  <span>{t('council.conduct.section', { index: index + 1, total: topics.length })}</span>
+                  <span aria-hidden="true">·</span>
+                  <span className="inline-flex items-center gap-[0.35em] text-indigo-700 dark:text-indigo-300">
+                    {isInfoTopic(topic) ? (
+                      <Megaphone className="h-[1.1em] w-[1.1em]" strokeWidth={2.25} aria-hidden="true" />
+                    ) : (
+                      <ListChecks className="h-[1.1em] w-[1.1em]" strokeWidth={2.25} aria-hidden="true" />
+                    )}
+                    {isInfoTopic(topic) ? t('council.topic.kindInfo') : t('council.topic.kindDecision')}
+                  </span>
                 </p>
-                <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-gray-900 sm:text-3xl dark:text-gray-100">{topic.title}</h1>
-                {isInfoTopic(topic) && (
-                  <p className="mt-2 inline-flex items-center gap-1.5 text-sm font-semibold text-gray-600 dark:text-gray-400">
-                    <Megaphone className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
-                    {t('council.topic.kindInfo')}
-                  </p>
-                )}
+                <h1 className="mt-[0.25em] text-[1.9em] font-extrabold tracking-tight text-gray-900 dark:text-gray-100">
+                  {topic.title}
+                </h1>
                 {topic.forAssembly && (
                   /*
                    * LOUD ON PURPOSE. At the meeting this is the one flag that must not be missed —
                    * the matter leaves this room and goes to the members' meeting — so it is a filled
                    * banner here, not the quiet chip the preparation page wears.
                    */
-                  <p className="mt-3 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-3.5 py-2 text-sm font-bold text-white shadow-sm dark:bg-indigo-500">
-                    <Landmark className="h-4 w-4" strokeWidth={2.25} aria-hidden="true" />
+                  <p className="mt-[0.8em] inline-flex items-center gap-[0.5em] rounded-xl bg-indigo-600 px-[0.9em] py-[0.5em] text-[0.85em] font-bold text-white shadow-sm dark:bg-indigo-500">
+                    <Landmark className="h-[1.15em] w-[1.15em]" strokeWidth={2.25} aria-hidden="true" />
                     {t('council.conduct.assemblyBanner')}
                   </p>
                 )}
                 {topic.summary && (
-                  <div className="mt-3 text-base leading-relaxed text-gray-800 dark:text-gray-300">
+                  // No size of its own: the explanation is the body, and the body is the container's size.
+                  <div className="mt-[0.9em] text-gray-800 dark:text-gray-300">
                     <MarkdownDisplay content={topic.summary} />
                   </div>
                 )}
 
                 {topic.questions.length > 0 && (
-                  <div className="mt-4 rounded-2xl border border-gray-200 dark:border-gray-800">
+                  <div className="mt-[1.1em] rounded-2xl border border-gray-200 dark:border-gray-800">
                     <button
                       type="button"
                       onClick={() => setShowQuestions((value) => !value)}
-                      className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-gray-800 dark:text-gray-200"
+                      className="flex w-full items-center justify-between px-[1em] py-[0.7em] text-left text-[0.85em] font-semibold text-gray-800 dark:text-gray-200"
                       aria-expanded={showQuestions}
                     >
                       {t('council.conduct.questionsToggle')}
@@ -220,12 +246,18 @@ export default function CouncilConductPage() {
                       />
                     </button>
                     {showQuestions && (
-                      <ul className="space-y-3 border-t border-gray-200 px-4 py-3 dark:border-gray-800">
+                      /*
+                       * SPACING IN `em`, SO IT GROWS WITH THE TEXT. The size control changes the
+                       * font and nothing else; an indent and a gap fixed in rem stay where they
+                       * were, and at 200% the answer's rule presses into its own words while the
+                       * questions run together. Stated as `em` they are proportions, not pixels.
+                       */
+                      <ul className="space-y-[1em] border-t border-gray-200 px-[1em] py-[0.8em] leading-relaxed dark:border-gray-800">
                         {topic.questions.map((question) => (
-                          <li key={question.id} className="text-sm">
-                            <p className="font-semibold text-gray-900 dark:text-gray-100">{question.question}</p>
+                          <li key={question.id} className="text-[0.92em]">
+                            <p className="font-semibold text-indigo-800 dark:text-indigo-200">{question.question}</p>
                             {question.answer && (
-                              <p className="mt-1 ml-3 border-l-2 border-indigo-200 pl-3 text-gray-700 dark:border-indigo-900 dark:text-gray-400">
+                              <p className="ml-[0.75em] mt-[0.35em] border-l-2 border-indigo-200 pl-[0.75em] text-gray-700 dark:border-indigo-900 dark:text-gray-400">
                                 {question.answer}
                               </p>
                             )}
@@ -246,7 +278,13 @@ export default function CouncilConductPage() {
         )}
       </div>
 
-      <footer className="flex items-center gap-2 border-t border-gray-200 px-4 py-3 dark:border-gray-800">
+      {/*
+        THE CORNERS BELONG TO THE HANDS, NOT TO THE BUTTONS. A tablet is held at its bottom edges,
+        and that is exactly where "back" and "next" used to end — a thumb resting on the glass
+        moves the council on. They are inset far enough that holding the device touches nothing,
+        and the bar itself is taller so the targets stay big while standing away from the edge.
+      */}
+      <footer className="flex items-center gap-3 border-t border-gray-200 px-6 py-3.5 sm:px-12 dark:border-gray-800">
         <button type="button" onClick={() => goTo(index - 1)} disabled={index === 0} className={buttonQuiet}>
           <ChevronLeft className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
           {t('council.conduct.prev')}
@@ -278,7 +316,7 @@ export default function CouncilConductPage() {
         the kind of neighbourhood a thumb gets wrong. Above the overlay's own layer, too, or the
         screen would swallow it.
       */}
-      <FloatingTextScaleControls className="!bottom-24 z-[210]" />
+      <FloatingTextScaleControls className="!bottom-32 !right-6 z-[210]" />
     </Shell>
   );
 }
@@ -300,11 +338,11 @@ function SectionList({
   const progress = councilProgress(council);
 
   return (
-    <div>
+    <div className="flex min-h-0 flex-1 flex-col">
       <p className="px-1 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
         {t('council.conduct.sections')} · {t('council.discussedCount', { done: progress.done, total: progress.total })}
       </p>
-      <ol className="mt-2 space-y-1.5">
+      <ol className="mt-2 min-h-0 flex-1 space-y-1.5 overflow-y-auto">
         {council.topics.map((item, itemIndex) => (
           <li key={item.id}>
             <button
@@ -320,7 +358,7 @@ function SectionList({
               <StateMark topic={item} index={itemIndex} />
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-1.5">
-                  <span className="block truncate text-sm font-bold text-gray-900 dark:text-gray-100">{item.title}</span>
+                  <span className="block text-sm font-bold leading-snug text-gray-900 line-clamp-2 dark:text-gray-100">{item.title}</span>
                   {item.forAssembly && (
                     <Landmark className="h-3.5 w-3.5 shrink-0 text-indigo-600 dark:text-indigo-300" strokeWidth={2.25} aria-label={t('council.conduct.assemblyBanner')} />
                   )}
@@ -333,8 +371,14 @@ function SectionList({
           </li>
         ))}
       </ol>
-      <div className="mt-5 flex justify-end">
-        <button type="button" onClick={onFinish} className={buttonPrimary}>
+      {/*
+        ENDING THE COUNCIL LIVES AT THE FAR END OF THE PANEL, behind a rule and a stretch of empty
+        space. It used to sit directly under the last section, where the hand travels while moving
+        through the list — one slip and the meeting is over. Distance is the guard here: the undo
+        in the toast is the second one, and neither should have to be used.
+      */}
+      <div className="mt-6 border-t border-gray-200 pt-5 dark:border-gray-800">
+        <button type="button" onClick={onFinish} className={`${buttonPrimary} w-full justify-center`}>
           <Check className="h-4 w-4" strokeWidth={2.5} aria-hidden="true" />
           {t('council.conduct.finish')}
         </button>

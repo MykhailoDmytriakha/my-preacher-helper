@@ -156,6 +156,77 @@ input[type="search"]::-webkit-search-results-decoration {
   font-size: calc(0.875rem * var(--text-scale));
 }
 
+/*
+ * THE COUNCIL'S MEETING SCREEN — the size control MULTIPLIES, it does not flatten.
+ *
+ * `.prose-scaled` gives every paragraph the same `1rem * scale`, which is right for a page that
+ * is one body of text and wrong here: the section counter, the kind of section and the body all
+ * became the same 32px at 200%, and a screen with no hierarchy left is a screen a pastor has to
+ * read word by word to find his place. So the scale is applied ONCE, to the container, and every
+ * line states its size as a share of that: the counter stays small, the title stays a title, and
+ * the whole stack grows together.
+ */
+.council-scaled {
+  font-size: calc(1rem * var(--text-scale));
+}
+
+/*
+ * The markdown body arrives wrapped in Tailwind Typography, which pins its own 1rem on the
+ * wrapper — so the explanation stayed 16px while the title around it grew. Here it takes the
+ * screen's size like everything else, and the shares inside it keep their proportions.
+ */
+.council-scaled .prose,
+.council-scaled .prose :where(p, li, ul, ol, blockquote) {
+  font-size: inherit;
+}
+
+.council-scaled h1 {
+  font-size: 1.9em;
+}
+
+.council-scaled h2 {
+  font-size: 1.45em;
+}
+
+.council-scaled h3 {
+  font-size: 1.2em;
+}
+
+/* Lists: the bullet's indent and the space between points are proportions too. */
+.council-scaled ul,
+.council-scaled ol {
+  margin-block: 0.7em;
+  padding-left: 1.2em;
+}
+
+.council-scaled li + li {
+  margin-top: 0.45em;
+}
+
+/*
+ * THE COUNCIL'S MEETING SCREEN — leading that grows with the letters.
+ *
+ * The size control multiplies font-size through `--text-scale`, but Tailwind's type scale ships a
+ * line-height in rem with every size (`text-3xl` is 1.875rem of type on 2.25rem of line). Double
+ * the type and the lines stay where they were: at 200% the title climbs onto the label under it
+ * and a question sits on its own answer. Stated without units, the line is a proportion of the
+ * letters and follows them up. Scoped to this screen on purpose — the notes have their own
+ * rhythm, and this is not the place to change it for them.
+ */
+.council-scaled h1,
+.council-scaled h2,
+.council-scaled h3 {
+  line-height: 1.15;
+}
+
+.council-scaled p,
+.council-scaled li,
+.council-scaled ul,
+.council-scaled ol,
+.council-scaled blockquote {
+  line-height: 1.55;
+}
+
 /* Focus Mode animations */
 @keyframes fadeIn {
   from {
