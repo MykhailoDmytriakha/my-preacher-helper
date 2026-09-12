@@ -1,4 +1,4 @@
-import type { PreachDate, Sermon } from '@/models/models';
+import type { Church, PreachDate, Sermon } from '@/models/models';
 import type { WriteSubmission } from '@/utils/recoverableWrite';
 
 export type DashboardSyncStatus = 'pending' | 'error';
@@ -28,6 +28,12 @@ export interface DashboardCreateSermonInput {
   verse: string;
   seriesId?: string;
   plannedDate?: string;
+  /**
+   * The congregation this sermon is being prepared for. Lands on `Sermon.church`, and —
+   * when a planned date is also given — on that date's `church` too, because both facts
+   * are true at once and neither is derived from the other (see `Sermon.church`).
+   */
+  church?: Church;
   unspecifiedChurchName?: string;
 }
 
@@ -37,6 +43,13 @@ export interface DashboardEditSermonInput {
   verse: string;
   plannedDate: string;
   initialPlannedDate: string;
+  /**
+   * Edited "prepared for" congregation. `undefined` means this edit did not touch it;
+   * a church with a blank name means it was cleared — the update path strips undefined
+   * keys, so a deletion cannot travel as `undefined`, and `isUnspecifiedChurch` is the
+   * single reader that decides what "not stated" looks like.
+   */
+  church?: Church;
   unspecifiedChurchName?: string;
 }
 

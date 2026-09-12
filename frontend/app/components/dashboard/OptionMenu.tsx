@@ -14,6 +14,7 @@ import {
 } from "@/hooks/useSermonNoteLinks";
 import { DashboardOptimisticActions, DashboardSermonSyncState } from "@/models/dashboardOptimistic";
 import { Sermon, PreachDate, Series } from "@/models/models";
+import { UNSPECIFIED_CHURCH_ID } from "@/utils/church";
 import {
   getEffectiveIsPreached,
   getPreachDatesByStatus,
@@ -51,7 +52,6 @@ interface OptionMenuProps {
   series?: Series[];
 }
 
-const UNSPECIFIED_CHURCH_ID = 'church-unspecified';
 
 export default function OptionMenu({
   sermon,

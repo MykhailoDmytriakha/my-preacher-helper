@@ -1,4 +1,5 @@
-import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render as rtlRender, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import React from 'react';
 
 import EditSermonModal from '@/components/EditSermonModal';
@@ -14,6 +15,10 @@ const mockUseConnection = jest.fn(() => ({ isOnline: true, isMagicAvailable: tru
 // Mock dependencies
 jest.mock('@/services/sermon.service', () => ({
   updateSermon: jest.fn(),
+  // The church picker inside this modal reads the person's church history, which comes
+  // from the sermon list. Listing it out means a future call added to the service fails
+  // HERE rather than wherever it is used, so keep the mock complete.
+  getSermons: jest.fn().mockResolvedValue([]),
 }));
 jest.mock('@/services/preachDates.service', () => ({
   addPreachDate: jest.fn(),
@@ -76,6 +81,20 @@ jest.mock('react-i18next', () => ({
     };
   },
 }));
+
+/**
+ * The modal now embeds the shared church picker, which reads church history through
+ * React Query. In the app it always renders under the root provider; bare `render` here
+ * had no client at all, so every test wraps in a real one rather than mocking the hook —
+ * a mocked hook would prove the screen works while the picker is dead.
+ */
+const renderWithClient = (ui: React.ReactElement) => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: Infinity } },
+  });
+  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+};
+const render = renderWithClient;
 
 describe('EditSermonModal Component', () => {
   const mockSermon: Sermon = {

@@ -227,6 +227,25 @@ export interface Sermon {
    */
   sourceNoteIds?: string[];
 
+  /**
+   * THE CONGREGATION THIS SERMON IS BEING PREPARED FOR — an intention, not an event.
+   *
+   * Deliberately NOT the same fact as `preachDates[].church`, and never derived from it.
+   * This one answers "who am I writing this for", which is known from the moment the
+   * sermon is started and often BEFORE any date exists. A preach date answers "where did
+   * I actually say it, on this day", there can be several, and they can name other
+   * congregations entirely once the same sermon travels.
+   *
+   * Because neither side is a copy of the other, nothing ever has to reconcile them:
+   * setting a date does not rewrite this, and changing this does not touch a date.
+   *
+   * Absent means "not stated". Storing it here — rather than making `PreachDate.date`
+   * optional so a church could sit in an undated event record — keeps every calendar
+   * reader (25+ direct reads of `pd.date`, several sorting with `localeCompare`) working
+   * on the invariant it already has: a preach date always has a date.
+   */
+  church?: Church;
+
   preachDates?: PreachDate[];      // Array of preach dates
 
   // Audio Generation (Beta)

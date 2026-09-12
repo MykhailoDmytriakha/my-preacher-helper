@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render as rtlRender, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 import DashboardPage from '@/(pages)/(private)/dashboard/page';
@@ -240,6 +241,20 @@ jest.mock('@/services/sermon.service', () => ({
 jest.mock('@/services/preachDates.service', () => ({
   addPreachDate: jest.fn(),
 }));
+
+/**
+ * The create-sermon form embeds the shared church picker, which reads church history
+ * through React Query. In the app it always renders under the root provider; a bare
+ * `render` here had none. A real client is used rather than a mocked hook — a mocked
+ * hook would leave the picker dead while the test stayed green.
+ */
+const renderWithClient = (ui: React.ReactElement) => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: Infinity } },
+  });
+  return rtlRender(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>);
+};
+const render = renderWithClient;
 
 describe('Dashboard page', () => {
   beforeEach(() => {

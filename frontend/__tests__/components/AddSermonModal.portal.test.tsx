@@ -63,10 +63,17 @@ describe('AddSermonModal portal + centering (regression)', () => {
     expect(document.body.contains(heading)).toBe(true);
     expect(wrapper.contains(heading)).toBe(false);
 
-    // Overlay div must include fixed + centered flex classes
+    /*
+      The overlay must cover the viewport and hold the form in the middle horizontally.
+      VERTICAL placement is width-dependent on purpose: a phone gets a bottom sheet
+      (`items-end`), every wider screen gets a centred dialog (`sm:items-center`). The
+      regression being guarded is the form drifting into a corner or being clipped by
+      the transformed wrapper — not one particular vertical alignment.
+    */
     const overlay = heading.closest('.fixed');
     expect(overlay).toBeTruthy();
     const classList = (overlay as HTMLElement).className.split(' ');
-    expect(classList).toEqual(expect.arrayContaining(['fixed', 'inset-0', 'flex', 'items-center', 'justify-center']));
+    expect(classList).toEqual(expect.arrayContaining(['fixed', 'inset-0', 'flex', 'justify-center']));
+    expect(classList).toEqual(expect.arrayContaining(['sm:items-center']));
   });
 });

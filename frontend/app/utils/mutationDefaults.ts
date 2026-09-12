@@ -37,12 +37,14 @@ import {
 import { getNextPlannedDate, getPreachDatesByStatus } from '@/utils/preachDateStatus';
 import { sermonDetailKey } from '@/utils/queryKeys';
 
+import { buildUnspecifiedChurch } from './church';
+
 import type {
   DashboardCreateSermonInput,
   DashboardEditSermonInput,
   PreachDateDraft,
 } from '@/models/dashboardOptimistic';
-import type { Church, Group, PreachDate, PrayerRequest, PrayerStatus, Series, Sermon, StudyNote, Tag } from '@/models/models';
+import type { Group, PreachDate, PrayerRequest, PrayerStatus, Series, Sermon, StudyNote, Tag } from '@/models/models';
 import type { ModelPreference } from '@/services/userSettings.service';
 import type { FunctionModelPreference } from '@/services/userSettings.service';
 import type { FirstDayOfWeek } from '@/utils/weekStart';
@@ -211,13 +213,7 @@ export interface DashboardSermonSaveDateVars {
 
 const PREACHED_STATUS_UPDATE_ERROR = 'Failed to update preached status.';
 
-export const UNSPECIFIED_CHURCH_ID = 'church-unspecified';
-
-export const buildUnspecifiedChurch = (name?: string): Church => ({
-  id: UNSPECIFIED_CHURCH_ID,
-  name: name?.trim() || 'Church not specified',
-  city: '',
-});
+export { UNSPECIFIED_CHURCH_ID, buildUnspecifiedChurch } from './church';
 
 const mergePreachDate = (baseSermon: Sermon, preachDate: PreachDate): Sermon => {
   const preachDates = baseSermon.preachDates || [];
@@ -236,7 +232,7 @@ const mergePreachDate = (baseSermon: Sermon, preachDate: PreachDate): Sermon => 
 // variables alone (no closure state), so onMutate produces the same result on
 // the first run and on a manual retry re-fire.
 const buildOptimisticEditedSermon = (vars: DashboardSermonUpdateVars): Sermon => {
-  const { sermon, title, verse, plannedDate, initialPlannedDate, unspecifiedChurchName } = vars.input;
+  const { sermon, title, verse, plannedDate, initialPlannedDate, church, unspecifiedChurchName } = vars.input;
   const existingPlannedDate = getNextPlannedDate(sermon);
   let preachDates = [...(sermon.preachDates || [])];
 
@@ -260,7 +256,9 @@ const buildOptimisticEditedSermon = (vars: DashboardSermonUpdateVars): Sermon =>
     }
   }
 
-  return { ...sermon, title, verse, preachDates };
+  // `undefined` means "this edit did not touch the church"; a nameless church means
+  // "cleared" (the update path strips undefined keys, so it cannot carry a deletion).
+  return { ...sermon, title, verse, preachDates, ...(church !== undefined ? { church: church ?? undefined } : {}) };
 };
 
 // Variable shapes carried by each mutation. They MUST be self-contained (no
@@ -542,6 +540,9 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
         date: now,
         thoughts: [],
         userId: uid,
+        // "Prepared for this congregation" travels with the sermon itself, so it
+        // survives whether or not a date was given (see `Sermon.church`).
+        ...(input.church ? { church: input.church } : {}),
       });
 
       if (!input.plannedDate) {
@@ -554,7 +555,7 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
         id: plannedDateId,
         date: input.plannedDate,
         status: 'planned',
-        church: buildUnspecifiedChurch(input.unspecifiedChurchName),
+        church: input.church ?? buildUnspecifiedChurch(input.unspecifiedChurchName),
       });
       return mergePreachDate(created, createdPlannedDate);
     },
@@ -567,13 +568,14 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
         date: now,
         thoughts: [],
         userId: uid,
+        ...(input.church ? { church: input.church } : {}),
         preachDates: input.plannedDate
           ? [
               {
                 id: plannedDateId,
                 date: input.plannedDate,
                 status: 'planned',
-                church: buildUnspecifiedChurch(input.unspecifiedChurchName),
+                church: input.church ?? buildUnspecifiedChurch(input.unspecifiedChurchName),
                 createdAt: now,
               },
             ]
@@ -591,8 +593,12 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
   queryClient.setMutationDefaults(DASHBOARD_SERMON_MUTATION_KEYS.update, {
     mutationFn: async (vars: DashboardSermonUpdateVars): Promise<Sermon> => {
       const { input, newPlannedDateId } = vars;
-      const { sermon, title, verse, plannedDate, initialPlannedDate, unspecifiedChurchName } = input;
+      const { sermon, title, verse, plannedDate, initialPlannedDate, church, unspecifiedChurchName } = input;
       const existingPlannedDate = getNextPlannedDate(sermon);
+      // Only a touched church joins the patch. Sending it unconditionally would make
+      // every title edit restate the church and so refuse a concurrent church edit
+      // from another device for no reason.
+      const corePatch = church !== undefined ? { title, verse, church } : { title, verse };
 
       // Surgical patch + stated revision. Without the patch this rewrote the WHOLE
       // core snapshot from a possibly day-old `sermon` object — verse, isPreached
@@ -601,8 +607,8 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
       // revision means such a replay is REFUSED (the sync badge offers Retry)
       // instead of destroying text.
       const updatedBase = await updateSermonRequest(
-        { ...sermon, title, verse },
-        { title, verse },
+        { ...sermon, ...corePatch },
+        corePatch,
         // A deliberate re-send aims at what the server holds NOW; otherwise the
         // revision this edit was built from.
         vars.expectedRevision ?? sermon.rev?.[SERMON_CORE_AGGREGATE] ?? 0

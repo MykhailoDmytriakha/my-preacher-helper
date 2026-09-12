@@ -1,7 +1,7 @@
 // This is the SermonHeader component created to refactor the header UI from the sermon page
 'use client';
 
-import { ScrollText } from 'lucide-react';
+import { Church, ScrollText } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import React from 'react';
@@ -239,6 +239,22 @@ const SermonHeader: React.FC<SermonHeaderProps> = ({ sermon, series = [], onUpda
         />
         <div className="flex flex-wrap items-center gap-2 mt-1">
           <span className="text-sm text-gray-500 dark:text-gray-400">{formattedDate}</span>
+
+          {/* WHO THIS SERMON IS BEING PREPARED FOR. Stated at creation and often known
+              long before any date, so it is shown next to the date rather than inside the
+              calendar — see `Sermon.church`. Silent when nobody named a congregation. */}
+          {sermon.church?.name && (
+            <span
+              className={`${buildChipClasses({ tone: 'cyan', size: 'sm' })} gap-1.5`}
+              title={t('calendar.church')}
+            >
+              <Church className="h-3 w-3" aria-hidden="true" />
+              <span className="truncate">
+                {sermon.church.name}
+                {sermon.church.city ? `, ${sermon.church.city}` : ''}
+              </span>
+            </span>
+          )}
 
           {/* Series Badge - only when sermon is in a series */}
           {sermonSeries && (

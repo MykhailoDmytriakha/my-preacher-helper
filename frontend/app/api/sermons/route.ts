@@ -28,6 +28,24 @@ function readScratchSource(candidate: Record<string, unknown>, allowedNoteIds: S
   return { noteId: source.noteId, heading: typeof source.heading === 'string' ? source.heading : '' };
 }
 
+/**
+ * THE CONGREGATION THE SERMON IS BEING PREPARED FOR, taken at birth.
+ *
+ * Whitelisted the same way as everything else on this route: a name is required (an
+ * unnamed church is "not stated", which is simply the absent field), the city is optional,
+ * and the id is ignored entirely — churches have no collection, so a client-supplied id
+ * would be a claim about a record that does not exist. Both strings are capped so a
+ * create cannot seed an unbounded value into the document.
+ */
+function readPreparedForChurch(value: unknown): Sermon['church'] | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const candidate = value as Record<string, unknown>;
+  const name = typeof candidate.name === 'string' ? candidate.name.trim().slice(0, 200) : '';
+  if (!name) return undefined;
+  const city = typeof candidate.city === 'string' ? candidate.city.trim().slice(0, 200) : '';
+  return { id: '', name, city };
+}
+
 function scratchCreatedAt(value: unknown, fallback: string): string {
   return typeof value === 'string' && value ? value : fallback;
 }
@@ -159,6 +177,8 @@ export async function POST(request: Request) {
     };
     if (sourceNoteIds.length > 0) sermonData.sourceNoteIds = sourceNoteIds;
     if (scratchAtBirth.length > 0) sermonData.scratch = scratchAtBirth;
+    const preparedForChurch = readPreparedForChurch(sermon.church);
+    if (preparedForChurch) sermonData.church = preparedForChurch;
 
     // Idempotent create when the client supplies the id (offline buffer): a
     // replayed create reuses the same doc instead of duplicating. Ownership

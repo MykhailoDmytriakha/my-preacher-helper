@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 import "@locales/i18n";
 
+import ChurchField from '@/components/church/ChurchField';
 import DatePickerField from '@/components/ui/DatePickerField';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { DashboardEditSermonInput } from '@/models/dashboardOptimistic';
@@ -52,6 +53,14 @@ export default function EditSermonModal({
   const [title, setTitle] = useState(sermon.title);
   const [verse, setVerse] = useState(sermon.verse);
   const [plannedDate, setPlannedDate] = useState(initialPlannedDate);
+  /**
+   * The congregation this sermon is prepared for. CLEARING IS A NAMELESS CHURCH, not
+   * `undefined`: the update path strips undefined keys (`deepCleanUndefined`), so an
+   * undefined here would silently leave the old church in the document. Every reader
+   * already judges "not stated" through `isUnspecifiedChurch`, so a blank name reads as
+   * cleared everywhere without a second rule.
+   */
+  const [church, setChurch] = useState<Church | undefined>(sermon.church);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [mounted, setMounted] = useState(false);
@@ -76,7 +85,11 @@ export default function EditSermonModal({
     };
   }
 
-  const hasChanges = title !== sermon.title || verse !== sermon.verse || plannedDate !== initialPlannedDate;
+  const churchChanged =
+    (church?.name || '').trim() !== (sermon.church?.name || '').trim() ||
+    (church?.city || '').trim() !== (sermon.church?.city || '').trim();
+  const hasChanges =
+    title !== sermon.title || verse !== sermon.verse || plannedDate !== initialPlannedDate || churchChanged;
 
   const mergePreachDate = (baseSermon: Sermon, preachDate: PreachDate): Sermon => {
     const preachDates = baseSermon.preachDates || [];
@@ -149,6 +162,7 @@ export default function EditSermonModal({
           verse,
           plannedDate,
           initialPlannedDate,
+          church: churchChanged ? church ?? { id: '', name: '', city: '' } : undefined,
           unspecifiedChurchName: getUnspecifiedChurch().name,
         });
 
@@ -183,7 +197,10 @@ export default function EditSermonModal({
       // semantics. Refusal recovery is now safe in this modal, but changing the
       // concurrency policy also requires the separate take-mine/take-theirs flow;
       // that is outside this focused write-result fix.
-      const data = await updateSermon({ ...sermon, title, verse }, { title, verse });
+      const corePatch = churchChanged
+        ? { title, verse, church: church ?? { id: '', name: '', city: '' } }
+        : { title, verse };
+      const data = await updateSermon({ ...sermon, ...corePatch }, corePatch);
 
       if (!data) {
         throw new Error('Failed to update sermon');
@@ -276,6 +293,22 @@ export default function EditSermonModal({
               maxRows={16}
               required
               disabled={isSubmitting || isReadOnly}
+            />
+          </div>
+          <div className="mb-6">
+            <label htmlFor="edit-church" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+              {t('calendar.church')}
+            </label>
+            <ChurchField
+              id="edit-church"
+              value={church?.name ? church : undefined}
+              onChange={(next) => {
+                markEdited();
+                setChurch(next);
+              }}
+              hideLabel
+              disabled={isSubmitting || isReadOnly}
+              inputClassName="mt-1 block w-full rounded-md border border-gray-300 p-3 pr-12 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-700 dark:text-white"
             />
           </div>
           <div className="mb-6">

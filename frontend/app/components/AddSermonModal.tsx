@@ -6,10 +6,12 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import TextareaAutosize from 'react-textarea-autosize';
 
+import ChurchField from '@/components/church/ChurchField';
 import { useSeries } from '@/hooks/useSeries';
 import { DashboardCreateSermonInput } from '@/models/dashboardOptimistic';
 import { Sermon, Church } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
+import { buildUnspecifiedChurch } from '@/utils/church';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { PlusIcon } from "@components/Icons";
@@ -39,6 +41,16 @@ interface AddSermonModalProps {
 
 const NEW_SERMON_KEY = 'addSermon.newSermon';
 
+/** One rounded card per group, hairline dividers between its rows. */
+const GROUP_CARD =
+  'rounded-2xl border border-gray-200 bg-white divide-y divide-gray-200 dark:border-gray-700 dark:bg-gray-800/60 dark:divide-gray-700';
+const GROUP_TITLE =
+  'px-1 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400';
+const FIELD_ROW = 'p-4';
+const FIELD_LABEL = 'block text-sm font-medium text-gray-700 dark:text-gray-200';
+const FIELD_INPUT =
+  'mt-1 block w-full rounded-xl border border-gray-300 bg-white p-3 text-gray-900 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-700 dark:text-white';
+
 export default function AddSermonModal({
   onNewSermonCreated,
   onCancel,
@@ -62,6 +74,7 @@ export default function AddSermonModal({
   const [verse, setVerse] = useState('');
   const [selectedSeriesId, setSelectedSeriesId] = useState<string>(preSelectedSeriesId || '');
   const [plannedDate, setPlannedDate] = useState('');
+  const [church, setChurch] = useState<Church | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
   // What went wrong with the LAST attempt, shown inside the form the person is still
   // looking at. Previously these failures went only to the console.
@@ -71,17 +84,15 @@ export default function AddSermonModal({
     onOpenChange?.(open);
   }, [open, onOpenChange]);
 
-  const getUnspecifiedChurch = (): Church => ({
-    id: 'church-unspecified',
-    name: t('calendar.unspecifiedChurch', { defaultValue: 'Church not specified' }),
-    city: ''
-  });
+  const getUnspecifiedChurch = (): Church =>
+    buildUnspecifiedChurch(t('calendar.unspecifiedChurch', { defaultValue: 'Church not specified' }));
 
   const resetForm = () => {
     setTitle('');
     setVerse('');
     setSelectedSeriesId(preSelectedSeriesId || '');
     setPlannedDate('');
+    setChurch(undefined);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -97,6 +108,7 @@ export default function AddSermonModal({
           verse,
           seriesId: selectedSeriesId || undefined,
           plannedDate: allowPlannedDate ? plannedDate || undefined : undefined,
+          church,
           unspecifiedChurchName: getUnspecifiedChurch().name,
         }), (error) => {
           // A refusal that lands AFTER acceptance: if this form is still on screen it is
@@ -142,7 +154,9 @@ export default function AddSermonModal({
       date: currentDate,
       thoughts: [],
       userId: user.uid,
-      seriesId: selectedSeriesId || undefined
+      seriesId: selectedSeriesId || undefined,
+      // Travels with the sermon, so a church named without a date is still kept.
+      church
     };
 
     setIsSubmitting(true);
@@ -155,7 +169,7 @@ export default function AddSermonModal({
           const createdPlannedDate = await addPreachDate(createdSermon.id, {
             date: plannedDate,
             status: 'planned',
-            church: getUnspecifiedChurch()
+            church: church ?? getUnspecifiedChurch()
           });
 
           sermonForCallback = {
@@ -190,138 +204,172 @@ export default function AddSermonModal({
 
   const modalContent = (
     <div
-      className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-[110] p-4"
+      className="fixed inset-0 z-[110] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
       onClick={() => {
         if (!isSubmitting) {
           handleClose();
         }
       }}
     >
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-[600px] max-h-[85vh] my-8 flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-2xl font-bold mb-6">{t(NEW_SERMON_KEY)}</h2>
-        <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
-          {submitError && (
-            <div
-              role="alert"
-              className="mb-4 rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200"
-            >
-              {submitError}
-            </div>
-          )}
-          <div className="mb-6">
-            <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-              {t('addSermon.titleLabel')}
-            </label>
-            <TextareaAutosize
-              id="title"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder={t('addSermon.titlePlaceholder')}
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white resize-none transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
-              minRows={1}
-              maxRows={6}
-              disabled={isSubmitting}
-              required
-            />
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              {t('addSermon.titleExample')}
-            </p>
+      {/*
+        THREE BANDS, AND ONLY THE MIDDLE ONE SCROLLS. The title and the buttons used to
+        scroll away with the fields, so on a phone the person filling the last field
+        could not see Save at all. Now the form is a column: sticky head, scrolling
+        body, sticky foot.
+      */}
+      <div
+        className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-gray-50 shadow-xl dark:bg-gray-900 sm:max-h-[85vh] sm:w-[560px] sm:rounded-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
+          <div className="shrink-0 border-b border-gray-200 px-5 py-4 dark:border-gray-800">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-50">{t(NEW_SERMON_KEY)}</h2>
           </div>
-          <div className="mb-6 flex-grow overflow-auto">
-            <label htmlFor="verse" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-              {t('addSermon.verseLabel')}
-            </label>
-            <div className="overflow-y-auto" style={{ maxHeight: 'calc(85vh - 350px)' }}>
-              <TextareaAutosize
-                id="verse"
-                value={verse}
-                onChange={e => setVerse(e.target.value)}
-                placeholder={t('addSermon.versePlaceholder')}
-                className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 dark:bg-gray-700 dark:text-white resize-none transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
-                minRows={3}
-                maxRows={16}
-                disabled={isSubmitting}
-                required
-              />
-            </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              {t('addSermon.verseExample')}
-            </p>
-          </div>
-          <div className="mb-6">
-            <label htmlFor="series" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-              {t('addSermon.seriesLabel')}
-            </label>
-            <div className="relative mt-1">
-              <select
-                id="series"
-                value={selectedSeriesId}
-                onChange={(e) => setSelectedSeriesId(e.target.value)}
-                className="block w-full appearance-none border border-gray-300 dark:border-gray-700 rounded-md p-3 pr-12 dark:bg-gray-700 dark:text-white transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
-                disabled={isSubmitting}
+
+          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5">
+            {submitError && (
+              <div
+                role="alert"
+                className="rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200"
               >
-                <option value="">{t('addSermon.noSeriesOption')}</option>
-                {series.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.title || s.theme}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                aria-hidden="true"
-                className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-900 dark:text-gray-100"
-              />
-            </div>
-          </div>
-          {allowPlannedDate && (
-            <div className="mb-6">
-              <label htmlFor="plannedDate" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-                {t('addSermon.plannedDateLabel', { defaultValue: 'Planned preaching date (optional)' })}
-              </label>
-              <DatePickerField
-                id="plannedDate"
-                value={plannedDate}
-                onChange={setPlannedDate}
-                wrapperClassName="mt-1"
-                inputClassName="block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 pr-12 dark:bg-gray-700 dark:text-white transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
-                disabled={isSubmitting}
-              />
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {t('addSermon.plannedDateHint', { defaultValue: 'You can set church details later in Calendar.' })}
+                {submitError}
+              </div>
+            )}
+
+            <section>
+              <h3 className={GROUP_TITLE}>{t('addSermon.groupSermon')}</h3>
+              <div className={GROUP_CARD}>
+                <div className={FIELD_ROW}>
+                  <label htmlFor="title" className={FIELD_LABEL}>
+                    {t('addSermon.titleLabel')}
+                  </label>
+                  <TextareaAutosize
+                    id="title"
+                    value={title}
+                    onChange={e => setTitle(e.target.value)}
+                    placeholder={t('addSermon.titlePlaceholder')}
+                    className={`${FIELD_INPUT} resize-none`}
+                    minRows={1}
+                    maxRows={4}
+                    disabled={isSubmitting}
+                    required
+                  />
+                </div>
+                <div className={FIELD_ROW}>
+                  <label htmlFor="verse" className={FIELD_LABEL}>
+                    {t('addSermon.verseLabel')}
+                  </label>
+                  <TextareaAutosize
+                    id="verse"
+                    value={verse}
+                    onChange={e => setVerse(e.target.value)}
+                    placeholder={t('addSermon.versePlaceholder')}
+                    className={`${FIELD_INPUT} resize-none`}
+                    minRows={3}
+                    maxRows={10}
+                    disabled={isSubmitting}
+                    required
+                  />
+                </div>
+              </div>
+            </section>
+
+            <section>
+              <h3 className={GROUP_TITLE}>{t('addSermon.groupLater')}</h3>
+              <div className={GROUP_CARD}>
+                <div className={FIELD_ROW}>
+                  <label htmlFor="church" className={FIELD_LABEL}>
+                    {t('calendar.church')}
+                  </label>
+                  <ChurchField
+                    id="church"
+                    value={church}
+                    onChange={setChurch}
+                    hideLabel
+                    disabled={isSubmitting}
+                    inputClassName={`${FIELD_INPUT} pr-12`}
+                  />
+                </div>
+                {allowPlannedDate && (
+                  <div className={FIELD_ROW}>
+                    <label htmlFor="plannedDate" className={FIELD_LABEL}>
+                      {t('addSermon.plannedDateLabel', { defaultValue: 'Planned preaching date' })}
+                    </label>
+                    <DatePickerField
+                      id="plannedDate"
+                      value={plannedDate}
+                      onChange={setPlannedDate}
+                      wrapperClassName=""
+                      inputClassName={`${FIELD_INPUT} pr-12`}
+                      disabled={isSubmitting}
+                    />
+                  </div>
+                )}
+                <div className={FIELD_ROW}>
+                  <label htmlFor="series" className={FIELD_LABEL}>
+                    {t('addSermon.seriesLabel')}
+                  </label>
+                  <div className="relative">
+                    <select
+                      id="series"
+                      value={selectedSeriesId}
+                      onChange={(e) => setSelectedSeriesId(e.target.value)}
+                      className={`${FIELD_INPUT} appearance-none pr-12`}
+                      disabled={isSubmitting}
+                    >
+                      <option value="">{t('addSermon.noSeriesOption')}</option>
+                      {series.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.title || s.theme}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown
+                      aria-hidden="true"
+                      className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-500 dark:text-gray-300"
+                    />
+                  </div>
+                </div>
+              </div>
+              <p className="px-1 pt-2 text-xs text-gray-500 dark:text-gray-400">
+                {t('addSermon.groupLaterHint')}
               </p>
+            </section>
+          </div>
+
+          <div className="shrink-0 border-t border-gray-200 px-5 py-4 dark:border-gray-800">
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isSubmitting) {
+                    return;
+                  }
+                  if (onCancel) {
+                    onCancel(); // Signal cancellation to parent
+                  } else {
+                    handleClose(); // Default close behavior
+                  }
+                }}
+                disabled={isSubmitting}
+                className="rounded-xl px-4 py-2.5 font-medium text-gray-600 transition hover:bg-gray-200/70 disabled:cursor-not-allowed disabled:opacity-60 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                {t('addSermon.cancel')}
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSubmitting && (
+                  <span
+                    className="h-4 w-4 animate-spin rounded-full border-2 border-white/80 border-b-transparent"
+                    aria-hidden="true"
+                  />
+                )}
+                <span>{isSubmitting ? t('common.saving', { defaultValue: 'Saving...' }) : t('addSermon.save')}</span>
+              </button>
             </div>
-          )}
-          <div className="flex justify-end gap-3 mt-auto">
-            <button
-              type="button"
-              onClick={() => {
-                if (isSubmitting) {
-                  return;
-                }
-                if (onCancel) {
-                  onCancel(); // Signal cancellation to parent
-                } else {
-                  handleClose(); // Default close behavior
-                }
-              }}
-              disabled={isSubmitting}
-              className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {t('addSermon.cancel')}
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {isSubmitting && (
-                <span
-                  className="h-4 w-4 animate-spin rounded-full border-2 border-white/80 border-b-transparent"
-                  aria-hidden="true"
-                />
-              )}
-              <span>{isSubmitting ? t('common.saving', { defaultValue: 'Saving...' }) : t('addSermon.save')}</span>
-            </button>
           </div>
         </form>
       </div>

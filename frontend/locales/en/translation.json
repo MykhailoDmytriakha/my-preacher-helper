@@ -381,18 +381,18 @@
     "newSermon": "New Sermon",
     "createNewSermon": "Create New Sermon",
     "titleLabel": "Title",
-    "titlePlaceholder": "Enter sermon title",
-    "titleExample": "Example:\n\"The Power of Faith in Trials\"",
+    "titlePlaceholder": "e.g. The Power of Faith in Trials",
     "verseLabel": "Scripture Verse",
-    "versePlaceholder": "Enter scripture verse",
-    "verseExample": "Example:\nEph 1:15: \"For this reason, ever since I heard about your faith in Christ Jesus...\"",
-    "plannedDateLabel": "Planned preaching date (optional)",
-    "plannedDateHint": "You can add church details later in Calendar",
-    "seriesLabel": "Add to Series (Optional)",
+    "versePlaceholder": "e.g. Eph 1:15 — \"For this reason, ever since I heard about your faith in the Lord Jesus...\"",
+    "plannedDateLabel": "Planned preaching date",
+    "seriesLabel": "Series",
     "seriesPlaceholder": "Select a series...",
     "noSeriesOption": "No series",
     "cancel": "Cancel",
-    "save": "Save"
+    "save": "Save",
+    "groupSermon": "Sermon",
+    "groupLater": "Can be filled in later",
+    "groupLaterHint": "You can change the church and the date later in Calendar"
   },
   "optionMenu": {
     "edit": "Edit",
@@ -1834,7 +1834,10 @@
     },
     "churchAutocomplete": {
       "placeholder": "Enter church name...",
-      "cityPlaceholder": "Enter city (optional)"
+      "cityPlaceholder": "Enter city (optional)",
+      "noMatch": "No match — it will be saved as a new one",
+      "emptyHistory": "No saved churches yet",
+      "historyCount": "Churches in history: {{count}}"
     },
     "noPreachDatesWarning": "Marked as preached, but no dates added",
     "audiencePlaceholder": "e.g. Youth, General Service, Wedding",
@@ -2789,7 +2792,7 @@
         "offline": "You need to be online: the server picks out the key thoughts.",
         "empty": "The note has no text.",
         "planFailed": "The note could not be read. Try again.",
-    "titleRequired": "A sermon title is required.",
+        "titleRequired": "A sermon title is required.",
         "verseRequired": "A Scripture reference is required.",
         "cutFailed": "Could not pick out the key thoughts. Try again.",
         "createFailed": "The sermon was not created. The scratch notes are ready, try again.",
