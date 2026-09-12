@@ -1,7 +1,7 @@
 'use client';
 
 import { Check, PauseCircle, XCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { isInfoTopic, outcomeText, topicState, type TopicOutcome } from '@/utils/council';
@@ -41,6 +41,27 @@ export function CouncilOutcomePanel({
     if ((topic.decision ?? '') === decision.trim()) return;
     onWrite({ decision: decision.trim() });
   };
+
+  /*
+   * AND IT SURVIVES LEAVING. Enter and blur are the natural ends of typing, but a person who
+   * types the decision and then closes the tab, goes back, or steps to the next section performs
+   * neither: the text would live only in this component and die with it. The latest values are
+   * kept in a ref so the send on the way out is not re-armed on every keystroke.
+   */
+  const latest = useRef({ decision, stored: topic.decision ?? '', onWrite });
+  latest.current = { decision, stored: topic.decision ?? '', onWrite };
+  useEffect(() => {
+    const commitLatest = () => {
+      const { decision: typed, stored, onWrite: write } = latest.current;
+      if (stored === typed.trim()) return;
+      write({ decision: typed.trim() });
+    };
+    window.addEventListener('pagehide', commitLatest);
+    return () => {
+      window.removeEventListener('pagehide', commitLatest);
+      commitLatest();
+    };
+  }, []);
 
   const optionClass = (accepted: boolean) =>
     `flex w-full items-center gap-3 rounded-xl border text-left transition ${large ? 'px-4 py-3 text-base' : 'px-3 py-2.5 text-sm'} ${
@@ -190,6 +211,22 @@ export function CouncilOutcomePanel({
       </div>
     </div>
   );
+}
+
+/**
+ * THE HISTORY KEEPS MACHINE WORDS. When a section ends without a decision, what is recorded as
+ * its outcome is the state itself — `postponed`, `dropped`, `told` — and printing that straight
+ * put English into a Russian and a Ukrainian screen. The three are translated here; anything
+ * else in the record is the pastor's own text and is shown exactly as he wrote it.
+ */
+export function useRecordedOutcomeLabel() {
+  const { t } = useTranslation();
+  return (recorded: string): string => {
+    if (recorded === 'postponed') return t('council.topic.postponedShort');
+    if (recorded === 'dropped') return t('council.topic.droppedShort');
+    if (recorded === 'told') return t('council.topic.told');
+    return recorded;
+  };
 }
 
 /** One line a list can show for a section: the decision, or what the council did instead; empty while open. */

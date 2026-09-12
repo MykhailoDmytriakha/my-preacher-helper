@@ -62,15 +62,23 @@ export async function requestOwnerJson<T>(
     if (!headers.Authorization || resolveOwnerUid() !== owner) {
       throw Object.assign(new Error('Authentication required'), { code: 'unauthenticated' });
     }
+    const body = payload === undefined ? undefined : JSON.stringify(payload);
+    /*
+     * A keepalive request may carry at most 64 KiB, and a browser refuses the whole request when
+     * it is larger — so asking for keepalive on a long document is how the last save is lost
+     * rather than saved. Over the limit the request goes without the flag: the browser MAY still
+     * finish it as the page closes, which is strictly better than a refusal.
+     */
+    const withinKeepaliveBudget = body === undefined || new Blob([body]).size < 60_000;
     const response = await apiClient(url, {
       method: resolvedMethod,
       headers: { ...headers, 'Content-Type': 'application/json' },
-      ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
+      ...(body === undefined ? {} : { body }),
       cache: 'no-store',
       category: 'crud',
       timeout: 8000,
       signal: controller.signal,
-      ...(keepalive ? { keepalive: true } : {}),
+      ...(keepalive && withinKeepaliveBudget ? { keepalive: true } : {}),
     });
     const value = (await response.json().catch(() => ({}))) as T & { error?: string };
     if (resolveOwnerUid() !== owner) throw Object.assign(new Error('Account changed'), { code: 'unauthenticated' });

@@ -34,31 +34,18 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { ReorderArrows } from '@/(pages)/(private)/care/orders/ReorderArrows';
-import { CouncilOutcomePanel, useOutcomeLine, useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
+import { CouncilOutcomePanel, useOutcomeLine, useRecordedOutcomeLabel, useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { Chip } from '@/components/ui/Chip';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import { LiveTextArea, LiveTextInput } from '@/components/ui/LiveTextInput';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { useCouncil } from '@/hooks/useCouncils';
-import {
-  applyOutcome,
-  hasProgress,
-  holdCouncil,
-  isInfoTopic,
-  newOption,
-  newQuestion,
-  newTopic,
-  outcomeText,
-  preparingCouncils,
-  reopenCouncil,
-  reorderTopics,
-  topicState,
-} from '@/utils/council';
+import { applyOutcome, hasProgress, holdCouncil, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reopenCouncil, reorderTopics, setTopicKind, topicState } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
 
 import type { Council, CouncilTopic } from '@/models/models';
-import type { FormEvent } from 'react';
 import '@locales/i18n';
 
 /**
@@ -98,8 +85,6 @@ export default function CouncilDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
   /** Where the "add section" form is open — at the top, or at the bottom of a long council. */
-  const [addingTopic, setAddingTopic] = useState<'top' | 'bottom' | null>(null);
-  const [newTopicTitle, setNewTopicTitle] = useState('');
   /**
    * ARRANGING IS A DIFFERENT JOB FROM READING, so it has its own mode — the same rule the
    * orders of service follow: handles and arrows come out when asked and go away when done.
@@ -142,14 +127,19 @@ export default function CouncilDetailPage() {
       topics: current.topics.map((topic) => (topic.id === topicId ? updater(topic) : topic)),
     }));
 
-  const addTopic = (event: FormEvent) => {
-    event.preventDefault();
-    const title = newTopicTitle.trim();
-    if (!title) return;
-    const topic = newTopic(title);
-    patch((current) => ({ ...current, topics: [...current.topics, topic] }));
-    setNewTopicTitle('');
-    setAddingTopic(null);
+  /**
+   * ADDING A SECTION OPENS THE SECTION, not a box for its name. A title alone was a second door
+   * to walk through — type, confirm, and only then see the kind, the explanation and the
+   * questions — while the thought that brings a pastor here is usually the whole section, not
+   * its heading. The empty section is created at once and its editor is open with the cursor in
+   * the title; "delete" inside the editor is the way back, so nothing is trapped.
+   */
+  const addTopic = (position: 'top' | 'bottom') => {
+    const topic = newTopic('');
+    patch((current) => ({
+      ...current,
+      topics: position === 'top' ? [topic, ...current.topics] : [...current.topics, topic],
+    }));
     setEditingTopicId(topic.id);
   };
 
@@ -204,25 +194,6 @@ export default function CouncilDetailPage() {
 
   const activeTopic = council.topics.find((topic) => topic.id === activeId);
 
-  const addTopicForm = (
-    <form onSubmit={addTopic} className="mt-3 flex gap-2">
-      <input
-        autoFocus
-        value={newTopicTitle}
-        onChange={(event) => setNewTopicTitle(event.target.value)}
-        placeholder={t('council.detail.newTopicPlaceholder')}
-        className={inputClass}
-        data-testid="council-new-topic"
-      />
-      <button type="submit" className={buttonPrimary} disabled={!newTopicTitle.trim()}>
-        {t('council.create')}
-      </button>
-      <button type="button" onClick={() => setAddingTopic(null)} className={buttonQuiet}>
-        {t('council.cancel')}
-      </button>
-    </form>
-  );
-
   return (
     <div className="mx-auto w-full max-w-4xl">
       <BackToList />
@@ -233,10 +204,10 @@ export default function CouncilDetailPage() {
             {held ? (
               <h1 className={`text-2xl font-extrabold tracking-tight sm:text-3xl ${tone.title}`}>{council.title}</h1>
             ) : (
-              <input
+              <LiveTextInput
                 aria-label={t('council.detail.titleLabel')}
                 value={council.title}
-                onChange={(event) => patch((current) => ({ ...current, title: event.target.value }))}
+                onChange={(next) => patch((current) => ({ ...current, title: next }))}
                 className={`w-full rounded-lg border border-transparent bg-transparent px-1 text-2xl font-extrabold tracking-tight hover:border-gray-200 focus:border-indigo-400 focus:outline-none sm:text-3xl dark:hover:border-gray-700 ${tone.title}`}
                 data-testid="council-title"
               />
@@ -333,10 +304,10 @@ export default function CouncilDetailPage() {
           <h2 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
             {held ? t('council.detail.outcomes') : t('council.detail.sections')}
           </h2>
-          {!held && !addingTopic && (
+          {!held && (
             <button
               type="button"
-              onClick={() => setAddingTopic('top')}
+              onClick={() => addTopic('top')}
               // Filled while it is the only thing to do; quiet once the list exists and
               // "hold the council" has taken the top weight.
               className={council.topics.length === 0 ? buttonPrimary : buttonQuiet}
@@ -347,8 +318,6 @@ export default function CouncilDetailPage() {
             </button>
           )}
         </div>
-
-        {addingTopic === 'top' && addTopicForm}
 
         {reordering ? (
           <DndContext
@@ -395,7 +364,7 @@ export default function CouncilDetailPage() {
         </ol>
         )}
 
-        {council.topics.length === 0 && !addingTopic && (
+        {council.topics.length === 0 && (
           <p className="mt-3 px-1 text-sm text-gray-500 dark:text-gray-400">{t('council.detail.conductNeedsTopics')}</p>
         )}
 
@@ -404,15 +373,14 @@ export default function CouncilDetailPage() {
           person is at the end of it when the next section comes to mind, and the new section
           belongs right there, under the last one — not behind a scroll to the top and back.
         */}
-        {!held && !reordering && council.topics.length > 0 && addingTopic !== 'bottom' && (
+        {!held && !reordering && council.topics.length > 0 && (
           <div className="mt-3 flex justify-end">
-            <button type="button" onClick={() => setAddingTopic('bottom')} className={buttonQuiet} data-testid="council-add-topic-bottom">
+            <button type="button" onClick={() => addTopic('bottom')} className={buttonQuiet} data-testid="council-add-topic-bottom">
               <Plus className="h-4 w-4" strokeWidth={2} aria-hidden="true" />
               {t('council.detail.addTopic')}
             </button>
           </div>
         )}
-        {addingTopic === 'bottom' && addTopicForm}
       </section>
 
 
@@ -477,6 +445,7 @@ function TopicCard({
   const { t } = useTranslation();
   const outcomeLine = useOutcomeLine();
   const stateLine = useTopicStateLine();
+  const recordedLabel = useRecordedOutcomeLabel();
   const [editingOutcome, setEditingOutcome] = useState(false);
   const [enteringOutcome, setEnteringOutcome] = useState(false);
   const [choosingTarget, setChoosingTarget] = useState(false);
@@ -545,12 +514,19 @@ function TopicCard({
               )}
 
               {topic.questions.length > 0 && (
+                /*
+                 * WHAT THE BROTHERS WILL ASK IS SOMEONE ELSE'S VOICE, and on a page of the
+                 * pastor's own text it has to be findable at a glance — he opens the section to
+                 * check a question, not to read it through. The block's own colour does that:
+                 * the label and each question in the section's indigo, the answers left in grey
+                 * so the pair still reads as question and answer and not as one coloured wall.
+                 */
                 <div className="mt-3">
-                  <p className={labelClass}>{t('council.topic.questions')}</p>
+                  <p className={`${labelClass} text-indigo-700 dark:text-indigo-300`}>{t('council.topic.questions')}</p>
                   <ul className="mt-1.5 space-y-1.5">
                     {topic.questions.map((question) => (
                       <li key={question.id} className="text-sm">
-                        <p className="font-semibold text-gray-800 dark:text-gray-200">{question.question}</p>
+                        <p className="font-semibold text-indigo-800 dark:text-indigo-200">{question.question}</p>
                         {/* The answer steps in from the question: two tones of grey alone read as one block. */}
                         {question.answer && (
                           <p className="mt-0.5 ml-3 border-l-2 border-indigo-200 pl-3 text-gray-700 dark:border-indigo-900 dark:text-gray-400">
@@ -610,9 +586,8 @@ function TopicCard({
                   >
                     <div className="min-w-0">
                       <p className={labelClass}>{t('council.topic.atCouncil')}</p>
-                      {/* An announcement's state IS the lit button beside it, and an open panel IS the
-                          decision's state — either way a line here would say it twice. */}
-                      {!info && !enteringOutcome && (
+                      {/* While the row is open it says the state itself; a line then repeats it. */}
+                      {!enteringOutcome && (
                         <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100">
                           {handled ? (
                             stateLine(topic).text
@@ -622,30 +597,26 @@ function TopicCard({
                         </p>
                       )}
                     </div>
-                    {/* A section that is only said needs no form to open: its one button stands right here. */}
-                    {info ? (
-                      <div className="sm:shrink-0">
-                        <CouncilOutcomePanel
-                          topic={topic}
-                          onWrite={(next) =>
-                            onChange((current) => applyOutcome(current, next, { at: new Date().toISOString(), trackChanges: false }))
-                          }
-                        />
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setEnteringOutcome((value) => !value)}
-                        className={`${buttonText} shrink-0 ${enteringOutcome ? '' : 'text-indigo-700 dark:text-indigo-300'}`}
-                        aria-expanded={enteringOutcome}
-                        data-testid={`council-topic-outcome-${topic.id}`}
-                      >
-                        <Pencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
-                        {enteringOutcome ? t('council.topic.hideOutcome') : handled ? t('council.topic.editOutcome') : t('council.topic.enterOutcome')}
-                      </button>
-                    )}
+                    {/*
+                      * BOTH KINDS ASK BEFORE THEY OFFER. The announcement's three buttons used to
+                      * stand open in the card, and while a council is being written they lie right
+                      * under the hand: the owner said he was wary of touching the page at all in
+                      * case he marked something by accident. One small "enter the outcome" opens
+                      * the row for either kind, so nothing that changes a record is ever one stray
+                      * tap away, and the two kinds of section behave the same way.
+                      */}
+                    <button
+                      type="button"
+                      onClick={() => setEnteringOutcome((value) => !value)}
+                      className={`${buttonText} shrink-0 ${enteringOutcome ? '' : 'text-indigo-700 dark:text-indigo-300'}`}
+                      aria-expanded={enteringOutcome}
+                      data-testid={`council-topic-outcome-${topic.id}`}
+                    >
+                      <Pencil className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+                      {enteringOutcome ? t('council.topic.hideOutcome') : handled ? t('council.topic.editOutcome') : t('council.topic.enterOutcome')}
+                    </button>
                   </div>
-                  {enteringOutcome && !info && (
+                  {enteringOutcome && (
                     <div className="mt-3 border-t border-indigo-200/80 pt-3 dark:border-indigo-900/50">
                       <CouncilOutcomePanel
                         topic={topic}
@@ -728,9 +699,9 @@ function TopicCard({
                               <li key={`${change.at}-${changeIndex}`}>
                                 <span className="font-semibold">{t('council.topic.changedOn', { date: formatDate(change.at) })}</span>
                                 {' · '}
-                                {t('council.topic.was')}: <span className="line-through">{change.from || '—'}</span>
+                                {t('council.topic.was')}: <span className="line-through">{recordedLabel(change.from) || '—'}</span>
                                 {' → '}
-                                {t('council.topic.became')}: <span className="font-semibold text-gray-800 dark:text-gray-200">{change.to || '—'}</span>
+                                {t('council.topic.became')}: <span className="font-semibold text-gray-800 dark:text-gray-200">{recordedLabel(change.to) || '—'}</span>
                               </li>
                             ))}
                           </ul>
@@ -830,10 +801,10 @@ function TopicEditor({
 
   return (
     <div className="space-y-4">
-      <input
+      <LiveTextInput
         autoFocus
         value={topic.title}
-        onChange={(event) => onChange((current) => ({ ...current, title: event.target.value }))}
+        onChange={(next) => onChange((current) => ({ ...current, title: next }))}
         placeholder={t('council.detail.newTopicPlaceholder')}
         aria-label={t('council.detail.newTopicPlaceholder')}
         className={`${inputClass} text-base font-bold`}
@@ -851,13 +822,7 @@ function TopicEditor({
             size="md"
             tone="indigo"
             selected={!isInfoTopic(topic)}
-            onClick={() =>
-              onChange((current) => {
-                const next = { ...current };
-                delete next.kind;
-                return next;
-              })
-            }
+            onClick={() => onChange((current) => setTopicKind(current, 'decision'))}
             data-testid="council-kind-decision"
           >
             {t('council.topic.kindDecision')}
@@ -867,7 +832,7 @@ function TopicEditor({
             tone="indigo"
             selected={isInfoTopic(topic)}
             icon={<Megaphone className="h-3.5 w-3.5" strokeWidth={2.25} aria-hidden="true" />}
-            onClick={() => onChange((current) => ({ ...current, kind: 'info' }))}
+            onClick={() => onChange((current) => setTopicKind(current, 'info'))}
             data-testid="council-kind-info"
           >
             {t('council.topic.kindInfo')}
@@ -894,32 +859,32 @@ function TopicEditor({
       </div>
 
       <div>
-        <span className={labelClass}>{t('council.topic.questions')}</span>
+        <span className={`${labelClass} text-indigo-700 dark:text-indigo-300`}>{t('council.topic.questions')}</span>
         <p className={hintClass}>{t('council.topic.questionsHint')}</p>
         <ul className="mt-1.5 space-y-2">
           {topic.questions.map((question) => (
             <li key={question.id} className="flex gap-2">
               <div className="flex-1 space-y-1">
-                <input
+                <LiveTextInput
                   value={question.question}
-                  onChange={(event) =>
+                  onChange={(next) =>
                     onChange((current) => ({
                       ...current,
                       questions: current.questions.map((item) =>
-                        item.id === question.id ? { ...item, question: event.target.value } : item
+                        item.id === question.id ? { ...item, question: next } : item
                       ),
                     }))
                   }
                   placeholder={t('council.topic.questionPlaceholder')}
                   className={`${inputClass} font-semibold`}
                 />
-                <input
+                <LiveTextArea
                   value={question.answer ?? ''}
-                  onChange={(event) =>
+                  onChange={(next) =>
                     onChange((current) => ({
                       ...current,
                       questions: current.questions.map((item) =>
-                        item.id === question.id ? { ...item, answer: event.target.value } : item
+                        item.id === question.id ? { ...item, answer: next } : item
                       ),
                     }))
                   }
@@ -955,18 +920,18 @@ function TopicEditor({
 
       {!isInfoTopic(topic) && (
       <div>
-        <span className={labelClass}>{t('council.topic.options')}</span>
+        <span className={`${labelClass} text-indigo-700 dark:text-indigo-300`}>{t('council.topic.options')}</span>
         <p className={hintClass}>{t('council.topic.optionsHint')}</p>
         <ul className="mt-1.5 space-y-2">
           {topic.options.map((option) => (
             <li key={option.id} className="flex gap-2">
-              <input
+              <LiveTextInput
                 value={option.text}
-                onChange={(event) =>
+                onChange={(next) =>
                   onChange((current) => ({
                     ...current,
                     options: current.options.map((item) =>
-                      item.id === option.id ? { ...item, text: event.target.value } : item
+                      item.id === option.id ? { ...item, text: next } : item
                     ),
                   }))
                 }
@@ -976,7 +941,7 @@ function TopicEditor({
               <button
                 type="button"
                 onClick={() =>
-                  onChange((current) => ({ ...current, options: current.options.filter((item) => item.id !== option.id) }))
+                  onChange((current) => removeTopicOption(current, option.id))
                 }
                 className={buttonText}
                 aria-label={t('council.topic.remove')}

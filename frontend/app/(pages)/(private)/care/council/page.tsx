@@ -48,7 +48,13 @@ export default function CouncilListPage() {
   const isEmpty = councils.length === 0;
 
   const openCreate = () => {
-    setTitle(t('council.newCouncilPlaceholder') === 'Council name' ? 'Council' : 'Совет');
+    /*
+     * The suggested name comes from the translation file like every other word on the screen.
+     * It used to be decided by comparing another string against its English text, which meant
+     * every language that was not recognised as English silently got the Russian word — a
+     * Ukrainian pastor was offered «Совет» for his own council.
+     */
+    setTitle(t('council.newCouncilName'));
     setDate('');
     setCreating(true);
   };

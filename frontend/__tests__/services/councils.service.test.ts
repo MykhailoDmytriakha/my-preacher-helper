@@ -56,10 +56,24 @@ describe('council writes choose their road', () => {
     expect(mockSetViaSdk).not.toHaveBeenCalled();
   });
 
-  it('creates a council the server does not know yet instead of failing the save', async () => {
+  it('never re-creates a council the server knew and no longer has: a deleted one must not rise again', async () => {
+    mockReplace.mockRejectedValue(Object.assign(new Error('gone'), { code: 'not-found' }));
+    expect(await saveCouncil(council, { knownToServer: true })).toEqual({ kind: 'gone' });
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('creates a council the server never knew: one written on this device while offline', async () => {
     mockReplace.mockRejectedValue(Object.assign(new Error('gone'), { code: 'not-found' }));
     mockCreate.mockResolvedValue({ ...council, rev: 0 });
     expect(await saveCouncil(council)).toEqual({ kind: 'saved', council: { ...council, rev: 0 } });
+  });
+
+  it('does not wait for the offline SDK, whose promise only settles when the server answers', async () => {
+    setOnline(false);
+    // Offline `setDoc` resolves on acknowledgement, which may be hours away — a save that waits
+    // for it holds every later change behind it.
+    mockSetViaSdk.mockImplementation(() => new Promise<void>(() => undefined));
+    await expect(saveCouncil(council)).resolves.toEqual({ kind: 'queued' });
   });
 
   it('queues through the SDK while offline, for save, create and delete alike', async () => {

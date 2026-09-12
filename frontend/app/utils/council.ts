@@ -34,7 +34,96 @@ export interface TopicOutcome {
 
 export type TopicState = 'decided' | 'told' | 'postponed' | 'dropped' | 'open';
 
+/**
+ * A READ MUST NOT ERASE WHAT IS STILL BEING TYPED.
+ *
+ * The list on screen comes from the cache, and every visit to a council starts a fresh read in
+ * the background. That read takes a second or two — the browser's Firestore is given 2.5 s
+ * before the app's server is asked — and it carries the council as it was when the read began.
+ * Hand its answer straight to the cache and a question typed in the meantime disappears from
+ * under the pastor's hands a couple of seconds after he typed it: nothing crashed, nothing was
+ * refused, the screen simply went back in time.
+ *
+ * So the answer is merged, not installed. A council the browser is still holding — its write
+ * unsent or refused — stays as the browser has it; everything else is taken from the read. A
+ * council the server does not return at all is kept only while it is unsettled: otherwise one
+ * deleted on another device would keep coming back.
+ *
+ * The test is the queue, never a timestamp. Two devices and one pastor mean two clocks, and a
+ * phone running three minutes fast would otherwise shadow every answer the server gives with its
+ * own older copy — the defect wearing the mask of the fix.
+ */
+export type MergeEvidence = {
+  /** The highest revision the server has confirmed to us for this council. */
+  confirmedRev: (id: string) => number | undefined;
+  /** Whether that confirmation happened after this read set out — so the answer cannot know it. */
+  confirmedAfterTheReadBegan: (id: string) => boolean;
+};
+
+export function mergeUnsentCouncils(
+  fromServer: Council[],
+  local: Council[],
+  isUnsettled: (id: string) => boolean,
+  evidence: MergeEvidence = { confirmedRev: () => undefined, confirmedAfterTheReadBegan: () => false }
+): Council[] {
+  const byId = new Map(local.map((council) => [council.id, council]));
+  const merged = fromServer.map((server) => {
+    const mine = byId.get(server.id);
+    if (!mine) return server;
+    /*
+     * A read that set out before a write and came back after it carries the document as it was
+     * BEFORE that write. The revision says so: the server itself has already acknowledged a higher
+     * one to us. Installing the older answer would undo a save that succeeded, which is the worst
+     * kind of loss — the one that happens after the person was told it was saved.
+     */
+    const confirmed = evidence.confirmedRev(server.id);
+    const answerIsStale = confirmed !== undefined && (server.rev ?? 0) < confirmed;
+    return isUnsettled(server.id) || answerIsStale ? mine : server;
+  });
+  const returned = new Set(fromServer.map((council) => council.id));
+  /*
+   * A council missing from the answer is usually one deleted elsewhere — but not when it was
+   * created while this very read was travelling: that answer was assembled before the council
+   * existed, and dropping it would delete a council off the screen seconds after it was made.
+   */
+  const heldBack = local.filter(
+    (council) => !returned.has(council.id) && (isUnsettled(council.id) || evidence.confirmedAfterTheReadBegan(council.id))
+  );
+  return [...heldBack, ...merged];
+}
+
 export const isInfoTopic = (topic: CouncilTopic): boolean => topic.kind === 'info';
+
+/**
+ * CHANGING WHAT A SECTION IS ALSO CHANGES WHAT ITS OUTCOME MEANS. "Said" on an announcement is
+ * not "decided" on a decision, and an accepted option makes no sense once there are no options
+ * to accept. The mark is derived from content on a decision section and set by hand on an
+ * announcement, so carrying it across the border leaves a section that claims an outcome nobody
+ * gave it. The outcome is cleared with the border crossing; the content — title, explanation,
+ * questions, options — stays untouched.
+ */
+export function setTopicKind(topic: CouncilTopic, kind: 'decision' | 'info'): CouncilTopic {
+  if ((topic.kind ?? 'decision') === kind) return topic;
+  const next: CouncilTopic = { ...topic, kind };
+  delete next.discussed;
+  delete next.acceptedOptionId;
+  delete next.decision;
+  delete next.resolution;
+  return next;
+}
+
+/**
+ * Removing an option that the council had accepted takes the acceptance with it: an id pointing
+ * at nothing reads on every screen as "decided", with no decision to show.
+ */
+export function removeTopicOption(topic: CouncilTopic, optionId: string): CouncilTopic {
+  const next: CouncilTopic = { ...topic, options: topic.options.filter((option) => option.id !== optionId) };
+  if (next.acceptedOptionId === optionId) {
+    delete next.acceptedOptionId;
+    if (!next.decision) delete next.discussed;
+  }
+  return next;
+}
 
 /** Whether the council is done with this section, one way or another. */
 export const isTopicHandled = (topic: CouncilTopic): boolean => Boolean(topic.discussed || topic.resolution);

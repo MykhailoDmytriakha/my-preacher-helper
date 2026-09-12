@@ -5,7 +5,10 @@ import {
   daysUntil,
   firstOpenTopicIndex,
   holdCouncil,
+  mergeUnsentCouncils,
   nextPreparingCouncil,
+  removeTopicOption,
+  setTopicKind,
   outcomeText,
   reorderTopics,
   reopenCouncil,
@@ -184,5 +187,82 @@ describe('council logic', () => {
     const later = { ...councils[0], id: 'later', title: 'Совет в октябре', date: '2026-10-09' };
     expect(nextPreparingCouncil([later, ...councils])?.title).toBe('Совет 18 сентября');
     expect(nextPreparingCouncil(councils.filter((council) => council.status === 'held'))).toBeUndefined();
+  });
+});
+
+describe('a background read never erases what is still being typed', () => {
+  const council = (over: Partial<import('@/models/models').Council> = {}) =>
+    ({ id: 'c1', userId: 'u1', title: 'Совет', status: 'preparing', topics: [], createdAt: '2026-09-01T10:00:00.000Z', updatedAt: '2026-09-01T10:00:00.000Z', rev: 1, ...over }) as import('@/models/models').Council;
+
+  it('keeps the browser copy of a council whose write has not been confirmed', () => {
+    const typed = council({ title: 'Совет с только что набранным вопросом', updatedAt: '2026-09-01T10:00:05.000Z' });
+    const merged = mergeUnsentCouncils([council()], [typed], (id) => id === 'c1');
+    expect(merged).toEqual([typed]);
+  });
+
+  it('trusts the queue and not the clock: a settled local copy never shadows the server', () => {
+    // Two devices mean two clocks. A phone running fast would otherwise hide every answer the
+    // server gives behind its own older copy.
+    const localWithFutureClock = council({ title: 'Часы спешат', updatedAt: '2099-01-01T00:00:00.000Z' });
+    const fromServer = council({ title: 'С сервера', rev: 9 });
+    expect(mergeUnsentCouncils([fromServer], [localWithFutureClock], () => false)).toEqual([fromServer]);
+  });
+
+  it('takes the server copy for everything settled, so another device is seen', () => {
+    const fromServer = council({ title: 'С другого устройства', updatedAt: '2026-09-02T10:00:00.000Z', rev: 4 });
+    expect(mergeUnsentCouncils([fromServer], [council()], () => false)).toEqual([fromServer]);
+  });
+
+  it('never lets a read that set out earlier undo a save the server already confirmed', () => {
+    // The read carries rev 1; the write that landed while it travelled took the council to rev 2.
+    const stale = council({ title: 'Каким было до сохранения', rev: 1 });
+    const mine = council({ title: 'Сохранённое', rev: 2 });
+    expect(mergeUnsentCouncils([stale], [mine], () => false, { confirmedRev: () => 2, confirmedAfterTheReadBegan: () => false })).toEqual([mine]);
+    // A genuinely newer answer from another device is taken as it is.
+    const newer = council({ title: 'С другого устройства', rev: 5 });
+    expect(mergeUnsentCouncils([newer], [mine], () => false, { confirmedRev: () => 2, confirmedAfterTheReadBegan: () => false })).toEqual([newer]);
+  });
+
+  it('keeps a council created while the read was travelling, which could not be in that answer', () => {
+    const justCreated = council({ id: 'c3', title: 'Создан, пока чтение шло' });
+    const settled = () => false;
+    expect(
+      mergeUnsentCouncils([], [justCreated], settled, { confirmedRev: () => 0, confirmedAfterTheReadBegan: () => true })
+    ).toEqual([justCreated]);
+    // Confirmed long ago and absent now means deleted somewhere else: it goes.
+    expect(
+      mergeUnsentCouncils([], [justCreated], settled, { confirmedRev: () => 0, confirmedAfterTheReadBegan: () => false })
+    ).toEqual([]);
+  });
+
+  it('holds back a council the server did not return only while it is unsettled', () => {
+    const justCreated = council({ id: 'c2' });
+    expect(mergeUnsentCouncils([], [justCreated], (id) => id === 'c2')).toEqual([justCreated]);
+    // Settled and absent from the answer means deleted elsewhere: it does not come back.
+    expect(mergeUnsentCouncils([], [justCreated], () => false)).toEqual([]);
+  });
+});
+
+describe('changing what a section is clears an outcome that no longer applies', () => {
+  it('drops the mark when an announcement becomes a decision', () => {
+    const said = topic({ kind: 'info', discussed: true, options: [], questions: [] });
+    const asDecision = setTopicKind(said, 'decision');
+    expect(asDecision.discussed).toBeUndefined();
+    expect(topicState(asDecision)).toBe('open');
+  });
+
+  it('drops the accepted option when that option is deleted', () => {
+    const decided = topic({ acceptedOptionId: 'o1', discussed: true, decision: '' });
+    const without = removeTopicOption(decided, 'o1');
+    expect(without.acceptedOptionId).toBeUndefined();
+    expect(topicState(without)).toBe('open');
+    expect(without.options.some((option) => option.id === 'o1')).toBe(false);
+  });
+
+  it('keeps a written decision when a different option is deleted', () => {
+    const decided = topic({ acceptedOptionId: 'o1', discussed: true, decision: 'Подрядчик Иванов' });
+    const without = removeTopicOption(decided, 'o2');
+    expect(without.acceptedOptionId).toBe('o1');
+    expect(topicState(without)).toBe('decided');
   });
 });
