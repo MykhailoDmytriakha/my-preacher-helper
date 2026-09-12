@@ -71,3 +71,9 @@ export function resolveOwnerUid(): string | undefined {
     return undefined;
   }
 }
+
+/**
+ * The pastor's councils — owner-scoped for the same reason as the orders of service above:
+ * the persisted cache outlives a sign-out.
+ */
+export const councilListKey = (uid: string | undefined) => ['councils', uid] as const;

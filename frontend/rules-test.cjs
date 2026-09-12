@@ -16,7 +16,7 @@ async function check(label, p) {
 // Collections owned via a `userId` field.
 const USER_COLS = [
   'sermons', 'studyNotes', 'studyNoteBranchStates', 'series', 'groups',
-  'prayerRequests', 'prayerCategories', 'tags', 'feedback',
+  'prayerRequests', 'prayerCategories', 'tags', 'feedback', 'serviceOrders', 'councils',
 ];
 const SERVER_MANAGED_USER_FIELDS = {
   paidTier: 'tier4',

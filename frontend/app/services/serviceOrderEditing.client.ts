@@ -1,49 +1,23 @@
 'use client';
 
 import { StaleWriteError } from '@/services/conflictSafeUpdate.client';
-import { apiClient } from '@/utils/apiClient';
-import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
-import { resolveOwnerUid } from '@/utils/queryKeys';
+import { requestOwnerJson } from '@/services/ownerHttpTransport.client';
 
 import type { ServiceOrder, ServiceOrderStep } from '@/models/models';
 
-const HTTP_ERROR_CODES: Record<number, string> = { 400: 'invalid-argument', 401: 'unauthenticated', 403: 'permission-denied', 404: 'not-found' };
+const SERVICE_ORDER_MESSAGES = {
+  failed: 'Service order request failed',
+  timedOut: 'Service order request timed out',
+  unavailable: 'Service order transport unavailable',
+};
 
-/** A write uses one transport. A timeout is indeterminate, never a reason to replay via the SDK. */
-async function requestOrder(path: string, payload?: unknown, method = payload === undefined ? 'GET' : 'PATCH'): Promise<{ status: number; value: ServiceOrder }> {
-  const owner = resolveOwnerUid();
-  let timer: ReturnType<typeof setTimeout>;
-  const controller = new AbortController();
-  const operation = async () => {
-    const headers = await getAuthenticatedRequestHeaders();
-    if (controller.signal.aborted) throw Object.assign(new Error('Request expired'), { code: 'deadline-exceeded' });
-    if (!headers.Authorization || resolveOwnerUid() !== owner) {
-      throw Object.assign(new Error('Authentication required'), { code: 'unauthenticated' });
-    }
-    const response = await apiClient(`/api/service-orders/${path}`, {
-      method,
-      headers: { ...headers, 'Content-Type': 'application/json' },
-      ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
-      cache: 'no-store', category: 'crud', timeout: 8000, signal: controller.signal,
-    });
-    const value = await response.json();
-    if (resolveOwnerUid() !== owner) throw Object.assign(new Error('Account changed'), { code: 'unauthenticated' });
-    if (!response.ok && response.status !== 409) {
-      throw Object.assign(new Error(value.error ?? 'Service order request failed'), {
-        code: HTTP_ERROR_CODES[response.status] ?? 'unavailable',
-      });
-    }
-    return { status: response.status, value: value as ServiceOrder };
-  };
-  try {
-    return await Promise.race([
-      operation(),
-      new Promise<never>((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(Object.assign(new Error('Service order request timed out'), { code: 'deadline-exceeded' })); }, 10000); }),
-    ]);
-  } catch (error) {
-    if ((error as { code?: string }).code) throw error;
-    throw Object.assign(new Error('Service order transport unavailable'), { code: 'unavailable' });
-  } finally { clearTimeout(timer!); }
+/**
+ * The shared owner transport with this section's words. Everything that made this road safe on
+ * the iPad — one transport per write, a timeout that is never replayed, the owner fixed at the
+ * start — lives in `ownerHttpTransport.client.ts` now, once, for every section that uses it.
+ */
+function requestOrder(path: string, payload?: unknown, method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'): Promise<{ status: number; value: ServiceOrder }> {
+  return requestOwnerJson<ServiceOrder>(`/api/service-orders/${path}`, { method, payload, messages: SERVICE_ORDER_MESSAGES });
 }
 
 export async function readServiceOrderOnServer(id: string): Promise<ServiceOrder | null> {

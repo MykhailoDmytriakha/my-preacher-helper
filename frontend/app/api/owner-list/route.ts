@@ -28,6 +28,7 @@ const OWNER_COLLECTIONS = new Set([
   'prayerRequests',
   'planTemplates',
   'serviceOrders',
+  'councils',
 ]);
 
 /**

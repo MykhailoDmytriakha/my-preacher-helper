@@ -703,3 +703,91 @@ export interface ServiceOrder {
   /** Revision per editable aggregate; absent reads as 0. */
   rev?: Record<string, number>;
 }
+
+/**
+ * BROTHERS' COUNCIL — the regular meeting of the church's ministers, as the pastor prepares
+ * it and then runs it.
+ *
+ * A council is an EVENT with a life: it is prepared (sections are written down: what the
+ * matter is, what the brothers may ask, what could be decided), it is held (the pastor walks
+ * the sections and marks what was accepted), and afterwards it stays as a record with its
+ * date. The owner described exactly this shape ("есть список подготовленных, есть прошлые;
+ * внутри секции: название, короткое объяснение, вопросы братьев, решения, которые можем
+ * принять"), and it mirrors how a group meeting is run in `/groups/[id]/conduct`.
+ *
+ * What is NOT here, on purpose: attendance, votes, budgets, and the content of anyone's
+ * confession — a council record keeps the matter and the decision, never the conversation.
+ */
+export type CouncilStatus = 'preparing' | 'held';
+
+export interface CouncilTopicQuestion {
+  id: string;
+  /** What a brother may ask about this matter. */
+  question: string;
+  /** The pastor's prepared answer. */
+  answer?: string;
+}
+
+export interface CouncilTopicOption {
+  id: string;
+  text: string;
+}
+
+/**
+ * One edit of a topic's outcome AFTER the council was held. The owner wants to see "было так,
+ * стало так" with the date, so the record is never silently overwritten.
+ */
+export interface CouncilTopicChange {
+  at: string;
+  from: string;
+  to: string;
+}
+
+export interface CouncilTopic {
+  /** Client-generated, stable for the life of the section. */
+  id: string;
+  /**
+   * What the section is FOR. Absent means a decision is expected — options, a line of what
+   * was decided. `info` is a section the pastor only says: context, an announcement, a
+   * report; at the council it is ticked as told, nothing is decided.
+   */
+  kind?: 'decision' | 'info';
+  title: string;
+  /** Short explanation: what the matter is and what the pastor proposes. */
+  summary?: string;
+  questions: CouncilTopicQuestion[];
+  options: CouncilTopicOption[];
+  /** Marked for the members' meeting — the council prepares proposals for it. */
+  forAssembly?: boolean;
+  /**
+   * DERIVED, never ticked by hand: true exactly when an option was accepted or a decision was
+   * written (the owner: "галочка условная, а не ручная"). Kept on the record so lists and
+   * counts read it without re-deriving.
+   */
+  discussed?: boolean;
+  /** The council did not decide: it put the matter off, or took it off the agenda. */
+  resolution?: 'postponed' | 'dropped';
+  /** Which prepared option the council accepted, if one of them. */
+  acceptedOptionId?: string;
+  /** What was decided, typed in a line — with or without an accepted option. */
+  decision?: string;
+  changes?: CouncilTopicChange[];
+  /** Set on a section that was not talked through and was carried to a later council. */
+  carriedToCouncilId?: string;
+}
+
+export interface Council {
+  id: string;
+  userId: string;
+  title: string;
+  /** Planned day, YYYY-MM-DD; a council may be prepared before its date is known. */
+  date?: string;
+  status: CouncilStatus;
+  /** When the pastor finished conducting it. */
+  heldAt?: string;
+  topics: CouncilTopic[];
+  createdAt: string;
+  updatedAt: string;
+  /** Server-kept revision of the whole document; a write states the one it was built on. */
+  rev?: number;
+}

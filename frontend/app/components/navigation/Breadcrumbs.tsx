@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useCouncils } from '@/hooks/useCouncils';
 import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
@@ -86,6 +87,11 @@ const segmentLabels: Record<string, SegmentConfig> = {
     defaultLabel: 'Orders of service',
     href: '/care/orders'
   },
+  council: {
+    labelKey: 'council.title',
+    defaultLabel: "Brothers' council",
+    href: '/care/council'
+  },
   prayers: {
     // The room's own name, not the section's: inside the plane this crumb sits next to
     // "Heart", and two words meaning the same thing side by side say nothing.
@@ -131,6 +137,11 @@ const detailParents: Record<string, SegmentConfig> = {
   orders: {
     labelKey: 'serviceOrders.orderTitle',
     defaultLabel: 'Order of service'
+  },
+  // A council is named by the pastor; the generic word stands in only while the list loads.
+  council: {
+    labelKey: 'council.title',
+    defaultLabel: 'Council'
   }
 };
 
@@ -160,6 +171,7 @@ type BuildSegmentCrumbParams = {
   group: GroupData;
   prayer: PrayerData;
   serviceOrder: { title: string } | undefined;
+  council: { title: string } | undefined;
 };
 
 type DetailLabelContext = {
@@ -168,6 +180,7 @@ type DetailLabelContext = {
   group: GroupData;
   prayer: PrayerData;
   serviceOrder: { title: string } | undefined;
+  council: { title: string } | undefined;
 };
 
 type DetailLabelResolver = (context: DetailLabelContext) => string | null;
@@ -178,6 +191,7 @@ const detailLabelResolvers: Record<string, DetailLabelResolver> = {
   groups: ({ group }) => group?.title || null,
   prayers: ({ prayer }) => prayer?.title || null,
   orders: ({ serviceOrder }) => serviceOrder?.title || null,
+  council: ({ council }) => council?.title || null,
 };
 
 const buildCrumb = (label: string, isLast: boolean, currentPath: string, hrefOverride?: string) => ({
@@ -215,6 +229,7 @@ const buildSegmentCrumb = ({
   group,
   prayer,
   serviceOrder,
+  council,
 }: BuildSegmentCrumbParams): BreadcrumbItem => {
   const config = segmentLabels[segment];
   if (config) {
@@ -227,7 +242,7 @@ const buildSegmentCrumb = ({
   }
 
   if (parent) {
-    const detailLabel = resolveDetailLabel(parent, t, { sermon, series, group, prayer, serviceOrder });
+    const detailLabel = resolveDetailLabel(parent, t, { sermon, series, group, prayer, serviceOrder, council });
     if (detailLabel) {
       return buildCrumb(detailLabel, isLast, currentPath);
     }
@@ -309,6 +324,15 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
   const { orders: serviceOrders } = useServiceOrders(undefined, { enabled: Boolean(serviceOrderId) });
   const serviceOrder = serviceOrders.find((order) => order.id === serviceOrderId);
 
+  const councilId = useMemo(() => {
+    const segments = pathname.split('/').filter(Boolean);
+    if (segments[0] === 'care' && segments[1] === 'council' && segments[2]) return segments[2];
+    return null;
+  }, [pathname]);
+  // Councils are a small local list already read by the section; a lookup costs nothing.
+  const { councils } = useCouncils();
+  const council = councilId ? councils.find((item) => item.id === councilId) : undefined;
+
   const items = useMemo<BreadcrumbItem[]>(() => {
     if (shouldHide) {
       return [];
@@ -381,7 +405,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
 
       const isLast = index === segments.length - 1;
       const parent = segments[index - 1];
-      crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series, group, prayer, serviceOrder }));
+      crumbs.push(buildSegmentCrumb({ segment, parent, currentPath, isLast, t, sermon, series, group, prayer, serviceOrder, council }));
     });
 
     /**
@@ -445,7 +469,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
     });
 
     return crumbs.length > 1 ? crumbs : [];
-  }, [pathname, searchParams, sermon, sermonId, series, group, groupId, prayer, serviceOrder, shouldHide, t]);
+  }, [pathname, searchParams, sermon, sermonId, series, group, groupId, prayer, serviceOrder, council, shouldHide, t]);
 
   if (shouldHide) {
     return null;

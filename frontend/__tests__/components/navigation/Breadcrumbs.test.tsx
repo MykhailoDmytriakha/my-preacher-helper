@@ -27,6 +27,10 @@ jest.mock('@/hooks/useServiceOrders', () => ({
   useServiceOrders: () => ({ orders: [{ id: 'order-1', title: 'Погребение' }] }),
 }));
 
+jest.mock('@/hooks/useCouncils', () => ({
+  useCouncils: () => ({ councils: [{ id: 'council-1', title: 'Совет 18 сентября' }] }),
+}));
+
 jest.mock('@/hooks/usePrayerDetail', () => ({
   usePrayerDetail: jest.fn(),
 }));

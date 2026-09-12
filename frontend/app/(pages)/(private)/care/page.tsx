@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useCouncils } from '@/hooks/useCouncils';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { useAuth } from '@/providers/AuthProvider';
 import { CARE_CARD_TONES, type CareCardTone } from '@/utils/themeColors';
@@ -68,6 +69,8 @@ type CareSection = {
   icon: ComponentType<SVGProps<SVGSVGElement>>;
   /** Present only for a section that is built. Absent means "soon", and the row is inert. */
   href?: string;
+  /** What the number beside the row counts, said in words for a screen reader. */
+  countLabelKey?: string;
 };
 
 type CareCard = { key: CardKey; tone: CareCardTone; sections: CareSection[] };
@@ -89,7 +92,7 @@ const CARDS: CareCard[] = [
       { key: 'people', icon: UsersIcon },
       { key: 'visits', icon: MapPinIcon },
       { key: 'needs', icon: BellAlertIcon },
-      { key: 'council', icon: ChatBubbleLeftRightIcon },
+      { key: 'council', icon: ChatBubbleLeftRightIcon, href: '/care/council', countLabelKey: 'council.hubCount' },
     ],
   },
   {
@@ -106,7 +109,7 @@ const CARDS: CareCard[] = [
     key: 'own',
     tone: 'rose',
     sections: [
-      { key: 'prayers', icon: FireIcon, href: '/prayers' },
+      { key: 'prayers', icon: FireIcon, href: '/prayers', countLabelKey: 'care.activePrayers' },
       { key: 'promises', icon: FlagIcon },
       { key: 'questions', icon: QuestionMarkCircleIcon },
       { key: 'beforeGod', icon: HeartIcon },
@@ -132,12 +135,15 @@ export default function CarePage() {
   const { user } = useAuth();
   // The same list the journal itself reads, so opening the plane also warms its cache.
   const { prayerRequests } = usePrayerRequests(user?.uid ?? null);
+  // The councils still being prepared: the number a pastor wants before opening the row.
+  const { councils } = useCouncils();
 
   const counts = useMemo<Partial<Record<SectionKey, number>>>(
     () => ({
       prayers: (prayerRequests ?? []).filter((prayer) => prayer.status === 'active').length,
+      council: councils.filter((council) => council.status === 'preparing').length,
     }),
-    [prayerRequests]
+    [councils, prayerRequests]
   );
 
   return (
@@ -220,7 +226,7 @@ function SectionRow({
         <span className="shrink-0">
           {/* A reader announced the title, the hint, and then bare "2". The digit is for the
               eye; the words say what it counts, in the reader's own language. */}
-          <span className="sr-only">{t('care.activePrayers', { count })}</span>
+          <span className="sr-only">{t(section.countLabelKey ?? 'care.activePrayers', { count })}</span>
           <span className={`text-base font-extrabold ${toneClasses.count}`} aria-hidden="true">
             {count}
           </span>

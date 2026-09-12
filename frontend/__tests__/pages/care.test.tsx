@@ -23,6 +23,12 @@ jest.mock('@/hooks/usePrayerRequests', () => ({
   usePrayerRequests: () => ({ prayerRequests: mockPrayers }),
 }));
 
+// The plane counts councils in preparation the same way; the hook needs a QueryClient the
+// page test does not build, and the number is the section's own concern.
+jest.mock('@/hooks/useCouncils', () => ({
+  useCouncils: () => ({ councils: [], loading: false }),
+}));
+
 /** Every section on the plane, grouped into the card it belongs to. */
 const SECTIONS_BY_CARD = {
   people: ['people', 'visits', 'needs', 'council'],
@@ -34,7 +40,7 @@ const CARDS = Object.keys(SECTIONS_BY_CARD) as (keyof typeof SECTIONS_BY_CARD)[]
 const SECTIONS = CARDS.flatMap((card) => SECTIONS_BY_CARD[card]);
 
 /** The sections that are built. Everything else must be inert and marked "soon". */
-const BUILT: Record<string, string> = { prayers: '/prayers', rites: '/care/orders' };
+const BUILT: Record<string, string> = { prayers: '/prayers', rites: '/care/orders', council: '/care/council' };
 
 describe('Pastor plane', () => {
   beforeEach(() => {

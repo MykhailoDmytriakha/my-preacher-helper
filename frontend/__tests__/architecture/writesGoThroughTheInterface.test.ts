@@ -78,6 +78,19 @@ const FROZEN_DIRECT_WRITES: Record<string, number> = {
   // A page writing Firestore straight from the browser — the furthest thing from the rule,
   // and worth naming here so it stays visible instead of blending into the services.
   '(pages)/(private)/settings/page.tsx': 1,
+  /*
+   * ADDED 2026-09-11, WITH THE ANSWER WRITTEN DOWN. A council is written WHOLE, by its own id,
+   * and its guard is not in the browser at all: every online write goes to the app's server
+   * (`PUT /api/councils/:id`), which compares the revision the client built on and REFUSES a
+   * superseded base with the current document — the very question this rule asks, answered
+   * on the one road that still answers when the browser's Firestore is silent (the owner's
+   * iPad, `BUG-20260911-service-orders-write-lock`). The single `setDoc` here is the OFFLINE
+   * road only: the replica queues the whole document and replays it when the network is back,
+   * and a replay of a whole document at its own id is the same write, never a twin. A later
+   * replay lands last-write-wins on purpose — the person was offline and this is the copy
+   * they had; the same choice the prayer journal's offline queue makes.
+   */
+  'services/councils.client.ts': 1,
 };
 
 /**
