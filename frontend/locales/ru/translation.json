@@ -1740,7 +1740,8 @@
     "description": "Планируйте проповеди, распределяйте темы и держите команду в курсе расписания служений.",
     "legend": {
       "sermons": "Проповеди",
-      "groups": "Группы"
+      "groups": "Группы",
+      "councils": "Советы"
     },
     "views": {
       "month": "Месяц",
@@ -1843,7 +1844,10 @@
     },
     "noPreachDatesWarning": "Отмечено как проповеданное, но даты не добавлены",
     "audiencePlaceholder": "например: молодёжь, общее служение, венчание",
-    "notesPlaceholder": "Замечания или что стоит улучшить..."
+    "notesPlaceholder": "Замечания или что стоит улучшить...",
+    "totalCouncilsWord_one": "совет",
+    "totalCouncilsWord_few": "совета",
+    "totalCouncilsWord_many": "советов"
   },
   "copy": {
     "title": "Копирование содержимого",

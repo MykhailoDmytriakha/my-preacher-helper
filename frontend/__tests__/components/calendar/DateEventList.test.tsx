@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 import DateEventList from '@/components/calendar/DateEventList';
+import { councilEntries, groupEntries, sermonEntries } from '@/utils/calendarEntries';
 import { Sermon } from '@/models/models';
 import '@testing-library/jest-dom';
 
@@ -23,6 +24,10 @@ jest.mock('react-i18next', () => ({
                 'calendar.outcomes.poor': 'Poor',
                 'calendar.status.planned': 'Planned',
                 'calendar.status.preached': 'Preached',
+                'calendar.totalCouncilsWord': options?.count === 1 ? 'council' : 'councils',
+                'council.status.preparing': 'Preparing',
+                'council.status.held': 'Held',
+                'council.discussedCount': `covered ${options?.done} of ${options?.total}`,
             };
             return translations[key] || key;
         },
@@ -46,6 +51,7 @@ jest.mock('@heroicons/react/24/outline', () => ({
     UserIcon: () => <div data-testid="user-icon" />,
     BookOpenIcon: () => <div data-testid="book-open-icon" />,
     UserGroupIcon: () => <div data-testid="user-group-icon" />,
+    ChatBubbleLeftRightIcon: () => <div data-testid="council-icon" />,
 }));
 
 describe('DateEventList', () => {
@@ -101,7 +107,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[]}
+                entries={[...sermonEntries([])]}
                 series={[]}
             />
         );
@@ -113,7 +119,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[mockSermon]}
+                entries={[...sermonEntries([mockSermon])]}
                 series={[]}
             />
         );
@@ -125,7 +131,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[mockSermon, mockSermon2]}
+                entries={[...sermonEntries([mockSermon, mockSermon2])]}
                 series={[]}
             />
         );
@@ -137,7 +143,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[]}
+                entries={[...sermonEntries([])]}
                 series={[]}
             />
         );
@@ -149,7 +155,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[mockSermon, mockSermon2]}
+                entries={[...sermonEntries([mockSermon, mockSermon2])]}
                 series={[]}
             />
         );
@@ -163,7 +169,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[mockSermon]}
+                entries={[...sermonEntries([mockSermon])]}
                 series={[]}
             />
         );
@@ -179,7 +185,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={reversedSermons}
+                entries={sermonEntries(reversedSermons)}
                 series={[]}
             />
         );
@@ -194,7 +200,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[mockSermon]}
+                entries={[...sermonEntries([mockSermon])]}
                 series={[]}
             />
         );
@@ -208,7 +214,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[mockSermon]}
+                entries={[...sermonEntries([mockSermon])]}
                 series={[]}
             />
         );
@@ -220,7 +226,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[mockSermon]}
+                entries={[...sermonEntries([mockSermon])]}
                 series={[]}
             />
         );
@@ -244,7 +250,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[mockSermon]}
+                entries={[...sermonEntries([mockSermon])]}
                 series={[]}
             />
         );
@@ -257,7 +263,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[mockSermon]}
+                entries={[...sermonEntries([mockSermon])]}
                 series={[]}
             />
         );
@@ -270,7 +276,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[mockSermon]}
+                entries={[...sermonEntries([mockSermon])]}
                 series={[]}
             />
         );
@@ -282,7 +288,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[mockSermon]}
+                entries={[...sermonEntries([mockSermon])]}
                 series={[]}
             />
         );
@@ -305,7 +311,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[sermonWithoutDates]}
+                entries={[...sermonEntries([sermonWithoutDates])]}
             />
         );
 
@@ -338,7 +344,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[mockSermon, anotherSermonOnSameDate]}
+                entries={[...sermonEntries([mockSermon, anotherSermonOnSameDate])]}
             />
         );
 
@@ -354,7 +360,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[mockSermon]}
+                entries={[...sermonEntries([mockSermon])]}
                 series={[]}
             />
         );
@@ -372,7 +378,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[]}
+                entries={[...sermonEntries([])]}
                 series={[]}
             />
         );
@@ -404,8 +410,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[]}
-                groups={[mockGroup as any]}
+                entries={[...sermonEntries([]), ...groupEntries([mockGroup as any])]}
                 series={[]}
             />
         );
@@ -435,8 +440,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[]}
-                groups={[mockGroup as any]}
+                entries={[...sermonEntries([]), ...groupEntries([mockGroup as any])]}
                 series={[]}
             />
         );
@@ -466,8 +470,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[]}
-                groups={[mockGroup as any]}
+                entries={[...sermonEntries([]), ...groupEntries([mockGroup as any])]}
                 series={[]}
             />
         );
@@ -505,8 +508,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[]}
-                groups={[mockGroup as any]}
+                entries={[...sermonEntries([]), ...groupEntries([mockGroup as any])]}
                 series={[mockSeries as any]}
             />
         );
@@ -541,8 +543,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[]}
-                groups={[mockGroup as any]}
+                entries={[...sermonEntries([]), ...groupEntries([mockGroup as any])]}
                 series={[mockSeries as any]}
             />
         );
@@ -572,7 +573,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[sermonNoCityChurch]}
+                entries={[...sermonEntries([sermonNoCityChurch])]}
                 series={[]}
             />
         );
@@ -603,7 +604,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[plannedSermon]}
+                entries={[...sermonEntries([plannedSermon])]}
                 series={[]}
             />
         );
@@ -643,7 +644,7 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[sermonWithSeries]}
+                entries={[...sermonEntries([sermonWithSeries])]}
                 series={[mockSeries as any]}
             />
         );
@@ -682,12 +683,50 @@ describe('DateEventList', () => {
         render(
             <DateEventList
                 month={mockMonth}
-                sermons={[sermonFallback]}
+                entries={[...sermonEntries([sermonFallback])]}
                 series={[mockSeries as any]}
             />
         );
 
         expect(screen.getByText('Acts Study')).toBeInTheDocument();
     });
-});
 
+    describe('a council on its day', () => {
+        const council = {
+            id: 'k1',
+            userId: 'user-1',
+            title: 'Совет — Bible Truck',
+            date: '2024-01-15',
+            status: 'preparing' as const,
+            topics: [
+                { id: 't1', title: 'Контекст', questions: [], options: [] },
+                { id: 't2', title: 'Решение', questions: [], options: [], discussed: true },
+            ],
+            createdAt: '',
+            updatedAt: '',
+        };
+
+        it('stands beside the sermons of that day and leads to the council itself', () => {
+            render(<DateEventList month={mockMonth} entries={[...sermonEntries([mockSermon]), ...councilEntries([council])]} series={[]} />);
+
+            expect(screen.getByText('Совет — Bible Truck')).toBeInTheDocument();
+            const links = screen.getAllByTestId('link').map((link) => link.getAttribute('href'));
+            expect(links).toContain('/care/council/k1');
+        });
+
+        it('says how far the council got rather than where it met', () => {
+            render(<DateEventList month={mockMonth} entries={councilEntries([council])} series={[]} />);
+
+            expect(screen.getByText('covered 1 of 2')).toBeInTheDocument();
+            expect(screen.getByText('1 council')).toBeInTheDocument();
+        });
+
+        it('stays quiet about progress before the council has happened', () => {
+            const untouched = { ...council, topics: council.topics.map((topic) => ({ ...topic, discussed: false })) };
+            render(<DateEventList month={mockMonth} entries={councilEntries([untouched])} series={[]} />);
+
+            expect(screen.queryByText('covered 0 of 2')).not.toBeInTheDocument();
+            expect(screen.getByText('Совет — Bible Truck')).toBeInTheDocument();
+        });
+    });
+});

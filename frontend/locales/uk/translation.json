@@ -1740,7 +1740,8 @@
     "description": "Плануйте проповіді, розподіляйте спікерів і тримайте команду в курсі розкладу служінь.",
     "legend": {
       "sermons": "Проповіді",
-      "groups": "Групи"
+      "groups": "Групи",
+      "councils": "Ради"
     },
     "views": {
       "month": "Місяць",
@@ -1843,7 +1844,10 @@
     },
     "noPreachDatesWarning": "Позначено як проповідане, але дати не додані",
     "audiencePlaceholder": "наприклад: молодь, загальне служіння, вінчання",
-    "notesPlaceholder": "Зауваження або що варто покращити..."
+    "notesPlaceholder": "Зауваження або що варто покращити...",
+    "totalCouncilsWord_one": "рада",
+    "totalCouncilsWord_few": "ради",
+    "totalCouncilsWord_many": "рад"
   },
   "copy": {
     "title": "Копіювання вмісту",

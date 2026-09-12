@@ -1738,7 +1738,8 @@
     "description": "Schedule sermons, allocate speakers, and keep the team in sync on ministry plans.",
     "legend": {
       "sermons": "Sermons",
-      "groups": "Groups"
+      "groups": "Groups",
+      "councils": "Councils"
     },
     "views": {
       "month": "Month",
@@ -1841,7 +1842,9 @@
     },
     "noPreachDatesWarning": "Marked as preached, but no dates added",
     "audiencePlaceholder": "e.g. Youth, General Service, Wedding",
-    "notesPlaceholder": "Any specific feedback or things to improve..."
+    "notesPlaceholder": "Any specific feedback or things to improve...",
+    "totalCouncilsWord_one": "council",
+    "totalCouncilsWord_other": "councils"
   },
   "copy": {
     "title": "Copy Content",

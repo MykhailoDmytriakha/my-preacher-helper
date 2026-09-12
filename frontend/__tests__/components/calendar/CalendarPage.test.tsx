@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 import CalendarPage from '../../../app/(pages)/(private)/calendar/page';
 import { PreachDate, Sermon } from '@/models/models';
 import { useCalendarSermons } from '@/hooks/useCalendarSermons';
+import { useCalendarCouncils } from '@/hooks/useCalendarCouncils';
 import { useCalendarGroups } from '@/hooks/useCalendarGroups';
 import { useSeries } from '@/hooks/useSeries';
 import '@testing-library/jest-dom';
@@ -14,6 +15,10 @@ jest.mock('@/hooks/useCalendarSermons', () => ({
 
 jest.mock('@/hooks/useCalendarGroups', () => ({
   useCalendarGroups: jest.fn(),
+}));
+
+jest.mock('@/hooks/useCalendarCouncils', () => ({
+  useCalendarCouncils: jest.fn(),
 }));
 
 jest.mock('@/hooks/useSeries', () => ({
@@ -38,14 +43,19 @@ jest.mock('@/components/calendar/CalendarHeader', () => {
 });
 
 jest.mock('@/components/calendar/PreachCalendar', () => {
-  return function MockPreachCalendar({ onDateSelect, sermonStatusByDate }: any) {
+  return function MockPreachCalendar({ onDateSelect, kindsByDate, shown, onToggleKind }: any) {
     return (
       <div
         data-testid="preach-calendar"
-        data-sermon-status-keys={Object.keys(sermonStatusByDate || {}).join(',')}
+        data-marked-days={Object.keys(kindsByDate || {}).sort().join(',')}
+        data-kinds={Object.entries(kindsByDate || {}).map(([day, kinds]: any) => `${day}:${kinds.join('+')}`).sort().join(' ')}
+        data-shown={Object.entries(shown || {}).filter(([, on]) => on).map(([kind]) => kind).sort().join(',')}
       >
         <button onClick={() => onDateSelect(new Date('2024-01-15'))}>
           Select Date
+        </button>
+        <button data-testid="turn-off-councils" onClick={() => onToggleKind('council')}>
+          Councils
         </button>
       </div>
     );
@@ -53,11 +63,11 @@ jest.mock('@/components/calendar/PreachCalendar', () => {
 });
 
 jest.mock('@/components/calendar/DateEventList', () => {
-  return function MockDateEventList({ month, sermons, series }: any) {
+  return function MockDateEventList({ month, entries, series }: any) {
     return (
-      <div data-testid="date-event-list">
+      <div data-testid="date-event-list" data-kinds={entries.map((entry: any) => entry.kind).sort().join(',')}>
         Month: {month.toISOString().split('T')[0]}
-        Sermons: {sermons.length}
+        Sermons: {entries.filter((entry: any) => entry.kind === 'sermon').length}
         Series: {series?.length || 0}
       </div>
     );
@@ -75,8 +85,12 @@ jest.mock('@/components/calendar/LegacyDataWarning', () => {
 });
 
 jest.mock('@/components/calendar/AgendaView', () => {
-  return function MockAgendaView({ sermons, series }: any) {
-    return <div data-testid="agenda-view">Agenda: {sermons.length} sermons, {series?.length || 0} series</div>;
+  return function MockAgendaView({ entries, series }: any) {
+    return (
+      <div data-testid="agenda-view" data-kinds={entries.map((entry: any) => entry.kind).sort().join(',')}>
+        Agenda: {entries.length} entries, {series?.length || 0} series
+      </div>
+    );
   };
 });
 
@@ -124,6 +138,7 @@ jest.mock('react-i18next', () => ({
 // Mock the useCalendarSermons hook
 const mockUseCalendarSermons = jest.mocked(useCalendarSermons);
 const mockUseCalendarGroups = jest.mocked(useCalendarGroups);
+const mockUseCalendarCouncils = jest.mocked(useCalendarCouncils);
 const mockUseSeries = jest.mocked(useSeries);
 
 describe('CalendarPage', () => {
@@ -159,14 +174,29 @@ describe('CalendarPage', () => {
     preachDates: []
   };
 
+  const mockCouncilEntry = {
+    kind: 'council' as const,
+    id: 'council-k1',
+    refId: 'k1',
+    date: '2024-01-15',
+    title: 'Совет — Bible Truck',
+    href: '/care/council/k1',
+    status: 'preparing' as const,
+    progress: { done: 0, total: 3 },
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseCalendarGroups.mockReturnValue({
       groups: [],
-      groupsByDate: {},
       isLoading: false,
       error: null,
       refetch: jest.fn(),
+    } as any);
+    mockUseCalendarCouncils.mockReturnValue({
+      entries: [],
+      isLoading: false,
+      error: null,
     });
   });
 
@@ -238,10 +268,10 @@ describe('CalendarPage', () => {
 
     render(<CalendarPage />);
 
-    expect(screen.getByTestId('preach-calendar')).toHaveAttribute(
-      'data-sermon-status-keys',
-      '2024-01-15'
-    );
+    // Dates arrive in several shapes; the calendar marks one day, keyed date-only.
+
+
+    expect(screen.getByTestId('preach-calendar')).toHaveAttribute('data-marked-days', '2024-01-15');
   });
 
   it('displays Quick Summary with total preachings count', () => {
@@ -552,5 +582,97 @@ describe('CalendarPage', () => {
 
     expect(screen.getByTestId('legacy-data-warning')).toBeInTheDocument();
     expect(screen.getByText('Pending: 1')).toBeInTheDocument();
+  });
+
+  describe('the brothers\' council in the calendar', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    const sermonsOnly = () =>
+      mockUseCalendarSermons.mockReturnValue({
+        sermons: [mockSermon],
+        sermonsByDate: {},
+        pendingSermons: [],
+        isLoading: false,
+        error: null,
+        refetch: jest.fn(),
+      } as any);
+
+    it('marks the day of a council and names its kind, not a group', () => {
+      sermonsOnly();
+      mockUseCalendarCouncils.mockReturnValue({ entries: [mockCouncilEntry], isLoading: false, error: null });
+
+      render(<CalendarPage />);
+
+      expect(screen.getByTestId('preach-calendar')).toHaveAttribute('data-kinds', '2024-01-15:sermon+council');
+    });
+
+    it('puts the council among the events of its day', () => {
+      jest.useFakeTimers().setSystemTime(new Date('2024-01-15T12:00:00Z'));
+      sermonsOnly();
+      mockUseCalendarCouncils.mockReturnValue({ entries: [mockCouncilEntry], isLoading: false, error: null });
+
+      render(<CalendarPage />);
+
+      expect(screen.getByTestId('date-event-list')).toHaveAttribute('data-kinds', 'council,sermon');
+    });
+
+    it('takes the councils off the calendar when the person switches them off', () => {
+      jest.useFakeTimers().setSystemTime(new Date('2024-01-15T12:00:00Z'));
+      sermonsOnly();
+      mockUseCalendarCouncils.mockReturnValue({ entries: [mockCouncilEntry], isLoading: false, error: null });
+
+      render(<CalendarPage />);
+      fireEvent.click(screen.getByTestId('turn-off-councils'));
+
+      expect(screen.getByTestId('preach-calendar')).toHaveAttribute('data-shown', 'group,sermon');
+      expect(screen.getByTestId('date-event-list')).toHaveAttribute('data-kinds', 'sermon');
+    });
+
+    it('waits for the councils before drawing the month', () => {
+      sermonsOnly();
+      mockUseCalendarCouncils.mockReturnValue({ entries: [], isLoading: true, error: null });
+
+      render(<CalendarPage />);
+
+      expect(screen.queryByTestId('preach-calendar')).not.toBeInTheDocument();
+    });
+
+    it('says the calendar failed only when it has nothing at all to show', () => {
+      mockUseCalendarSermons.mockReturnValue({
+        sermons: [],
+        sermonsByDate: {},
+        pendingSermons: [],
+        isLoading: false,
+        error: null,
+        refetch: jest.fn(),
+      } as any);
+      mockUseCalendarCouncils.mockReturnValue({ entries: [], isLoading: false, error: new Error('nope') });
+
+      render(<CalendarPage />);
+
+      expect(screen.getByText('Error loading calendar')).toBeInTheDocument();
+    });
+
+    it('carries the same entries into the agenda, with the switches visible there too', () => {
+      sermonsOnly();
+      mockUseCalendarCouncils.mockReturnValue({ entries: [mockCouncilEntry], isLoading: false, error: null });
+
+      render(<CalendarPage />);
+      fireEvent.click(screen.getByText('Agenda'));
+
+      expect(screen.getByTestId('agenda-view')).toHaveAttribute('data-kinds', 'council,sermon');
+    });
+
+    it('keeps the calendar standing when one source fails but others answered', () => {
+      sermonsOnly();
+      mockUseCalendarCouncils.mockReturnValue({ entries: [], isLoading: false, error: new Error('read failed') });
+
+      render(<CalendarPage />);
+
+      expect(screen.queryByText('Error loading calendar')).not.toBeInTheDocument();
+      expect(screen.getByTestId('preach-calendar')).toBeInTheDocument();
+    });
   });
 });

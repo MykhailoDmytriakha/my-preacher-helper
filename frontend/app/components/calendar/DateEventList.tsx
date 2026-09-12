@@ -1,48 +1,28 @@
 "use client";
 
-import {
-  BookOpenIcon,
-  CalendarDaysIcon,
-  MapPinIcon,
-  UserGroupIcon,
-  UserIcon,
-} from '@heroicons/react/24/outline';
 import { format, parseISO } from 'date-fns';
 import { enUS, ru, uk } from 'date-fns/locale';
-import Link from 'next/link';
 import { useTranslation } from 'react-i18next';
 
-import { Chip } from '@/components/ui/Chip';
-import { Group, GroupMeetingDate, PreachDate, Sermon, Series } from '@/models/models';
-import { getContrastColor } from '@/utils/color';
-import { toDateOnlyKey } from '@/utils/dateOnly';
-import { getEffectivePreachDateStatus } from '@/utils/preachDateStatus';
+import { CalendarEntryCard } from '@/components/calendar/CalendarEntryCard';
+import { CALENDAR_KIND_STYLE } from '@/components/calendar/calendarKinds';
+import { CALENDAR_KINDS, countByKind, entriesByDate, type CalendarEntry } from '@/utils/calendarEntries';
 import { getSeriesForRef } from '@/utils/seriesMembership';
+
+import type { Series } from '@/models/models';
 
 interface DateEventListProps {
   month: Date;
-  sermons: Sermon[];
-  groups?: Group[];
+  /** Everything falling in this month, already filtered by what the person chose to see. */
+  entries: CalendarEntry[];
   series?: Series[];
 }
 
-type SermonEvent = {
-  kind: 'sermon';
-  id: string;
-  date: string;
-  sermon: Sermon;
-  preachDate: PreachDate;
-};
-
-type GroupEvent = {
-  kind: 'group';
-  id: string;
-  date: string;
-  group: Group;
-  meetingDate: GroupMeetingDate;
-};
-
-export default function DateEventList({ month, sermons, groups = [], series = [] }: DateEventListProps) {
+/**
+ * THE MONTH, DAY BY DAY. It knows nothing about sermons, groups or councils — only about entries
+ * and the counts they add up to, so a new kind arrives without a line changing here.
+ */
+export default function DateEventList({ month, entries, series = [] }: DateEventListProps) {
   const { t, i18n } = useTranslation();
 
   const getDateLocale = () => {
@@ -57,201 +37,45 @@ export default function DateEventList({ month, sermons, groups = [], series = []
   };
 
   const formattedMonth = format(month, 'MMMM yyyy', { locale: getDateLocale() });
-
-  // DERIVED from series.items (sole truth); the deprecated back-refs are ignored.
-  const getSermonSeries = (sermon: Sermon) => getSeriesForRef(sermon.id, series);
-  const getGroupSeries = (group: Group) => getSeriesForRef(group.id, series);
-
-  const sermonEvents: SermonEvent[] = sermons.flatMap((sermon) =>
-    (sermon.preachDates || []).flatMap((preachDate) => {
-      const dateKey = toDateOnlyKey(preachDate.date);
-      if (!dateKey) {
-        return [];
-      }
-
-      return [{
-        kind: 'sermon' as const,
-        id: `sermon-${sermon.id}-${preachDate.id}`,
-        date: dateKey,
-        sermon,
-        preachDate: {
-          ...preachDate,
-          date: dateKey,
-        },
-      }];
-    })
-  );
-
-  const groupEvents: GroupEvent[] = groups.flatMap((group) =>
-    (group.meetingDates || []).flatMap((meetingDate) => {
-      const dateKey = toDateOnlyKey(meetingDate.date);
-      if (!dateKey) {
-        return [];
-      }
-
-      return [{
-        kind: 'group' as const,
-        id: `group-${group.id}-${meetingDate.id}`,
-        date: dateKey,
-        group,
-        meetingDate: {
-          ...meetingDate,
-          date: dateKey,
-        },
-      }];
-    })
-  );
-
-  const eventsByDate = [...sermonEvents, ...groupEvents].reduce(
-    (acc, event) => {
-      if (!acc[event.date]) {
-        acc[event.date] = [];
-      }
-      acc[event.date].push(event);
-      return acc;
-    },
-    {} as Record<string, Array<SermonEvent | GroupEvent>>
-  );
-
-  const sortedDates = Object.keys(eventsByDate).sort().reverse();
-  const totalSermons = sermonEvents.length;
-  const totalGroups = groupEvents.length;
+  const byDate = entriesByDate(entries);
+  const sortedDates = Object.keys(byDate).sort().reverse();
+  const counts = countByKind(entries);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{formattedMonth}</h2>
         <div className="flex items-center gap-3">
-          {totalSermons > 0 && (
-            <span className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
-              <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>
-              {totalSermons} {t('calendar.totalSermonsWord', { count: totalSermons })}
+          {CALENDAR_KINDS.filter((kind) => counts[kind] > 0).map((kind) => (
+            <span key={kind} className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
+              <span className={`h-2 w-2 shrink-0 rounded-full ${CALENDAR_KIND_STYLE[kind].dot}`} />
+              {counts[kind]} {t(CALENDAR_KIND_STYLE[kind].countKey, { count: counts[kind] })}
             </span>
-          )}
-          {totalGroups > 0 && (
-            <span className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
-              {totalGroups} {t('calendar.totalGroupsWord', { count: totalGroups, defaultValue: totalGroups === 1 ? 'группа' : 'групп' })}
-            </span>
-          )}
+          ))}
         </div>
       </div>
 
       <div className="space-y-6">
         {sortedDates.length === 0 ? (
-          <div className="text-center py-12 bg-gray-50 dark:bg-gray-800/30 rounded-xl border border-dashed border-gray-300 dark:border-gray-700">
+          <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 py-12 text-center dark:border-gray-700 dark:bg-gray-800/30">
             <p className="text-gray-500 dark:text-gray-400">{t('calendar.noPreachDates')}</p>
           </div>
         ) : (
           sortedDates.map((dateStr) => {
-            const date = parseISO(dateStr);
-            const formattedDate = format(date, 'PPPP', { locale: getDateLocale() });
-            const dayEvents = eventsByDate[dateStr].sort((a, b) => a.kind.localeCompare(b.kind));
+            const dayEntries = [...byDate[dateStr]].sort((a, b) => a.kind.localeCompare(b.kind));
 
             return (
               <div key={dateStr} className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-md font-medium text-gray-700 dark:text-gray-300">{formattedDate}</h3>
+                  <h3 className="text-md font-medium text-gray-700 dark:text-gray-300">
+                    {format(parseISO(dateStr), 'PPPP', { locale: getDateLocale() })}
+                  </h3>
                 </div>
 
                 <div className="grid gap-3">
-                  {dayEvents.map((event) => {
-                    const isSermon = event.kind === 'sermon';
-                    const title = isSermon ? event.sermon.title : event.group.title;
-                    const href = isSermon ? `/sermons/${event.sermon.id}` : `/groups/${event.group.id}`;
-                    const subtitle = isSermon ? event.sermon.verse : event.group.description;
-                    const location = isSermon
-                      ? event.preachDate.church.name
-                        ? `${event.preachDate.church.name}${event.preachDate.church.city ? `, ${event.preachDate.church.city}` : ''}`
-                        : undefined
-                      : event.meetingDate.location;
-                    const audience = isSermon ? event.preachDate.audience : event.meetingDate.audience;
-                    const outcome = isSermon ? event.preachDate.outcome : event.meetingDate.outcome;
-                    const sermonDateStatus = isSermon
-                      ? getEffectivePreachDateStatus(event.preachDate, Boolean(event.sermon.isPreached))
-                      : null;
-                    const isPlannedSermon = sermonDateStatus === 'planned';
-                    const linkedSeries = isSermon ? getSermonSeries(event.sermon) : getGroupSeries(event.group);
-
-                    return (
-                      <Link
-                        key={event.id}
-                        href={href}
-                        className="group block bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 transition-all shadow-sm hover:shadow-md overflow-hidden"
-                      >
-                        <div className="flex flex-col gap-2">
-                          <div className="flex justify-between items-start gap-2 overflow-hidden">
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                              {isSermon ? (
-                                <BookOpenIcon className="h-4 w-4 text-blue-600 dark:text-blue-300 flex-shrink-0 mt-0.5" />
-                              ) : (
-                                <UserGroupIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-300 flex-shrink-0 mt-0.5" />
-                              )}
-                              <h4 className="font-bold text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate min-w-0">
-                                {title}
-                              </h4>
-                            </div>
-                            {outcome && (
-                              <Chip weight="bold" tone="blue" size="xs" className="uppercase tracking-wider flex-shrink-0 whitespace-nowrap">
-                                {t(`calendar.outcomes.${outcome}`)}
-                              </Chip>
-                            )}
-                            {isSermon && (
-                              <Chip weight="bold"
-                                tone={isPlannedSermon ? 'amber' : 'emerald'}
-                                size="xs"
-                                className="uppercase tracking-wider flex-shrink-0 whitespace-nowrap"
-                              >
-                                {isPlannedSermon
-                                  ? t('calendar.status.planned', { defaultValue: 'Planned' })
-                                  : t('calendar.status.preached', { defaultValue: 'Preached' })}
-                              </Chip>
-                            )}
-                          </div>
-
-                          {linkedSeries && (
-                            <div>
-                              <Chip
-                                tone="custom"
-                                size="sm"
-                                className="max-w-[120px]"
-                                style={{
-                                  backgroundColor: linkedSeries.color || '#3B82F6',
-                                  color: getContrastColor(linkedSeries.color || '#3B82F6'),
-                                }}
-                              >
-                                <span className="block truncate">{linkedSeries.title}</span>
-                              </Chip>
-                            </div>
-                          )}
-
-                          {subtitle && (
-                            <div className="flex items-start gap-1.5 text-sm text-gray-600 dark:text-gray-400 min-w-0 overflow-hidden">
-                              <CalendarDaysIcon className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                              <div className="break-words whitespace-pre-line flex-1 min-w-0 overflow-hidden">{subtitle}</div>
-                            </div>
-                          )}
-
-                          {(location || audience) && (
-                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600 dark:text-gray-400 overflow-hidden">
-                              {location && (
-                                <div className="flex items-center gap-1.5 font-medium text-blue-600 dark:text-blue-400 min-w-0 max-w-full">
-                                  <MapPinIcon className="w-4 h-4 flex-shrink-0" />
-                                  <span className="truncate">{location}</span>
-                                </div>
-                              )}
-                              {audience && (
-                                <div className="flex items-center gap-1.5 min-w-0">
-                                  <UserIcon className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                                  <span className="truncate">{audience}</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </Link>
-                    );
-                  })}
+                  {dayEntries.map((entry) => (
+                    <CalendarEntryCard key={entry.id} entry={entry} series={getSeriesForRef(entry.refId, series)} />
+                  ))}
                 </div>
               </div>
             );

@@ -1,11 +1,7 @@
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
-import { Group, GroupMeetingDate } from '@/models/models';
-import { toDateOnlyKey } from '@/utils/dateOnly';
 import * as groupsService from '@services/groups.service';
 
 import { useAuth } from './useAuth';
-
-type GroupWithMeetingContext = Group & { currentMeetingDate: GroupMeetingDate };
 
 export function useCalendarGroups(startDate?: Date, endDate?: Date) {
   const { user } = useAuth();
@@ -23,32 +19,8 @@ export function useCalendarGroups(startDate?: Date, endDate?: Date) {
     enabled: !!userId,
   });
 
-  const groupsByDate = groups.reduce((acc, group) => {
-    (group.meetingDates || []).forEach((meetingDate) => {
-      const dateKey = toDateOnlyKey(meetingDate.date);
-      if (!dateKey) {
-        return;
-      }
-
-      if (!acc[dateKey]) {
-        acc[dateKey] = [];
-      }
-
-      acc[dateKey].push({
-        ...group,
-        currentMeetingDate: {
-          ...meetingDate,
-          date: dateKey,
-        },
-      });
-    });
-
-    return acc;
-  }, {} as Record<string, GroupWithMeetingContext[]>);
-
   return {
     groups,
-    groupsByDate,
     isLoading,
     error,
     refetch,

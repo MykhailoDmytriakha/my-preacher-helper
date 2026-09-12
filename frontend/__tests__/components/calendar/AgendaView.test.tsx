@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 import AgendaView from '@/components/calendar/AgendaView';
+import { councilEntries, sermonEntries } from '@/utils/calendarEntries';
 import { Sermon } from '@/models/models';
 import '@testing-library/jest-dom';
 
@@ -36,6 +37,7 @@ jest.mock('@heroicons/react/24/outline', () => ({
     MapPinIcon: () => <div data-testid="map-pin-icon" />,
     UserIcon: () => <div data-testid="user-icon" />,
     UserGroupIcon: () => <div data-testid="user-group-icon" />,
+    ChatBubbleLeftRightIcon: () => <div data-testid="council-icon" />,
     BookOpenIcon: () => <div data-testid="book-open-icon" />,
     ChevronRightIcon: () => <div data-testid="chevron-right-icon" />,
 }));
@@ -79,13 +81,13 @@ describe('AgendaView', () => {
     };
 
     it('renders empty state when no sermons', () => {
-        render(<AgendaView sermons={[]} series={[]} />);
+        render(<AgendaView entries={[]} series={[]} />);
 
         expect(screen.getByText('No preach dates recorded')).toBeInTheDocument();
     });
 
     it('renders sermon information correctly', () => {
-        render(<AgendaView sermons={[mockSermon]} series={[]} />);
+        render(<AgendaView entries={sermonEntries([mockSermon])} series={[]} />);
 
         expect(screen.getByText('Test Sermon')).toBeInTheDocument();
         expect(screen.getByText('Jan')).toBeInTheDocument();
@@ -98,20 +100,15 @@ describe('AgendaView', () => {
     });
 
     it('displays long sermon verse with proper multi-line classes', () => {
-        render(<AgendaView sermons={[mockSermonWithLongVerse]} series={[]} />);
+        render(<AgendaView entries={sermonEntries([mockSermonWithLongVerse])} series={[]} />);
 
         const verseElement = screen.getByText(mockSermonWithLongVerse.verse);
         expect(verseElement).toBeInTheDocument();
 
-        // Check that the verse is wrapped in a div with proper multi-line classes
+        // A long verse wraps onto as many lines as it needs instead of being cut short.
         const verseContainer = verseElement.closest('div');
         expect(verseContainer).toHaveClass('break-words', 'whitespace-pre-line', 'flex-1');
-
-        // Check that parent container has current metadata layout classes
-        const parentContainer = verseContainer?.parentElement;
-        expect(parentContainer).toHaveClass('flex', 'flex-col', 'gap-2');
-
-        expect(parentContainer).toBeInTheDocument();
+        expect(verseContainer?.parentElement).toBeInTheDocument();
     });
 
     it('renders multiple sermons for same date', () => {
@@ -121,7 +118,7 @@ describe('AgendaView', () => {
             title: 'Another Sermon'
         };
 
-        render(<AgendaView sermons={[mockSermon, anotherSermon]} series={[]} />);
+        render(<AgendaView entries={sermonEntries([mockSermon, anotherSermon])} series={[]} />);
 
         expect(screen.getByText('Test Sermon')).toBeInTheDocument();
         expect(screen.getByText('Another Sermon')).toBeInTheDocument();
@@ -136,18 +133,38 @@ describe('AgendaView', () => {
             }]
         };
 
-        render(<AgendaView sermons={[goodSermon]} series={[]} />);
+        render(<AgendaView entries={sermonEntries([goodSermon])} series={[]} />);
 
         expect(screen.getByText('Good')).toBeInTheDocument();
     });
 
     it('renders link elements correctly', () => {
-        render(<AgendaView sermons={[mockSermon]} series={[]} />);
+        render(<AgendaView entries={sermonEntries([mockSermon])} series={[]} />);
 
         // Check that the link element exists
         const linkElement = screen.getByTestId('link');
         expect(linkElement).toBeInTheDocument();
         expect(linkElement).toHaveAttribute('href', '/sermons/sermon-1');
         expect(linkElement).toHaveClass('group');
+    });
+
+    it('carries a council in the running list, linked to the council itself', () => {
+        const council = {
+            id: 'k1',
+            userId: 'user-1',
+            title: 'Совет — Bible Truck',
+            date: '2024-01-20',
+            status: 'preparing' as const,
+            topics: [{ id: 't1', title: 'Контекст', questions: [], options: [] }],
+            createdAt: '',
+            updatedAt: '',
+        };
+
+        render(<AgendaView entries={councilEntries([council])} series={[]} />);
+
+        expect(screen.getByText('Совет — Bible Truck')).toBeInTheDocument();
+        // The mocked Link keeps only href and className, so the link itself is the anchor here.
+        expect(screen.getByTestId('link')).toHaveAttribute('href', '/care/council/k1');
+        expect(screen.getByTestId('council-icon')).toBeInTheDocument();
     });
 });

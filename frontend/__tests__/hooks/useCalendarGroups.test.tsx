@@ -31,7 +31,7 @@ const buildServerFirstResult = <TData,>(data: TData) =>
   } as unknown as ReturnType<typeof useServerFirstQuery>);
 
 describe('useCalendarGroups', () => {
-  it('groups meeting dates by day and calls service query', async () => {
+  it('asks the service for the range it was given', async () => {
     mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as any);
 
     const startDate = new Date('2026-02-01T00:00:00.000Z');
@@ -61,10 +61,8 @@ describe('useCalendarGroups', () => {
 
     const { result } = renderHook(() => useCalendarGroups(startDate, endDate));
 
+    // The hook fetches; turning meetings into days is `groupEntries` and is tested there.
     expect(result.current.groups).toHaveLength(2);
-    expect(result.current.groupsByDate['2026-02-11']).toHaveLength(2);
-    expect(result.current.groupsByDate['2026-02-12']).toHaveLength(1);
-    expect(result.current.groupsByDate['2026-02-11T00:00:00.000Z']).toBeUndefined();
     expect(capturedOptions.enabled).toBe(true);
 
     mockFetchCalendarGroups.mockResolvedValue([]);
@@ -85,7 +83,6 @@ describe('useCalendarGroups', () => {
     const queried = await capturedOptions.queryFn();
 
     expect(result.current.groups).toEqual([]);
-    expect(result.current.groupsByDate).toEqual({});
     expect(capturedOptions.enabled).toBe(false);
     expect(queried).toEqual([]);
     expect(mockFetchCalendarGroups).not.toHaveBeenCalled();

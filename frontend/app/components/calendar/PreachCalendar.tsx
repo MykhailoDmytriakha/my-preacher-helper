@@ -2,55 +2,94 @@
 
 import { format } from "date-fns";
 import { enUS, ru, uk } from "date-fns/locale";
-import { useEffect, useMemo } from "react";
+import { createContext, useContext, useEffect, useRef } from "react";
 import { DayPicker } from "react-day-picker";
 import { useTranslation } from "react-i18next";
 
+import { CalendarKindFilters } from "@/components/calendar/CalendarKindFilters";
+import { CALENDAR_KIND_STYLE } from "@/components/calendar/calendarKinds";
 import { useUserSettings } from "@/hooks/useUserSettings";
-import { PreachDate, Sermon } from "@/models/models";
 import { useAuth } from "@/providers/AuthProvider";
-import { debugLog } from "@/utils/debugMode";
-import { getEffectivePreachDateStatus } from "@/utils/preachDateStatus";
+import { type CalendarKind } from "@/utils/calendarEntries";
 import { getWeekStartsOn } from "@/utils/weekStart";
+
+import type { DayButtonProps } from "react-day-picker";
 
 import "react-day-picker/dist/style.css";
 
 const DATE_KEY_FORMAT = 'yyyy-MM-dd';
-const EMPTY_SERMON_STATUS = { planned: 0, preached: 0 } as const;
-
-type SermonCalendarEvent = Sermon & { currentPreachDate?: PreachDate };
-
-const hasCurrentPreachDate = (event: unknown): event is SermonCalendarEvent & { currentPreachDate: PreachDate } => {
-    if (!event || typeof event !== 'object') {
-        return false;
-    }
-    return 'currentPreachDate' in event && Boolean((event as SermonCalendarEvent).currentPreachDate);
-};
 
 interface PreachCalendarProps {
-    eventsByDate: Record<string, unknown[]>;
-    sermonStatusByDate?: Record<string, { planned: number; preached: number }>;
+    /** Which kinds fall on each day — already filtered to what the person chose to see. */
+    kindsByDate: Record<string, CalendarKind[]>;
     selectedDate: Date;
     onDateSelect: (date: Date) => void;
     currentMonth?: Date;
     onMonthChange?: (month: Date) => void;
-    filterSermons?: boolean;
-    filterGroups?: boolean;
-    onToggleSermons?: () => void;
-    onToggleGroups?: () => void;
+    shown: Record<CalendarKind, boolean>;
+    onToggleKind: (kind: CalendarKind) => void;
 }
 
+/**
+ * What each day holds, reaching the day cell without changing the cell's identity. Handing the
+ * component itself a new closure on every change would rebuild every button in the month, and the
+ * keyboard would lose the day it was standing on mid-arrow-key.
+ */
+const DayKinds = createContext<Record<string, CalendarKind[]>>({});
+
+/**
+ * THE DAY CELL DRAWS WHAT IS THERE, AND ASKS NOTHING ELSE.
+ *
+ * It used to decide a kind by what an event was missing — "no preach date, therefore a group" —
+ * which was true only while there were exactly two kinds, and silently wrong the moment a third
+ * arrived. Now the page hands the kinds down.
+ *
+ * The dots are real elements in the button, not `::before` and `::after`: there are only two of
+ * those, both were already spent, and two hand-tuned offsets do not become three.
+ */
+function DayButtonWithDots({ day, modifiers, children, ...buttonProps }: DayButtonProps) {
+    const kindsByDate = useContext(DayKinds);
+    const button = useRef<HTMLButtonElement>(null);
+    const kinds = kindsByDate[format(day.date, DATE_KEY_FORMAT)] ?? [];
+
+    /*
+     * The library's own day button does this, and taking it over means taking it on: without it
+     * the arrow keys move the calendar's idea of the focused day while the focus itself stays
+     * behind, and keyboard navigation stops at the day it started on.
+     */
+    useEffect(() => {
+        if (modifiers.focused) button.current?.focus();
+    }, [modifiers.focused]);
+
+    return (
+        <button {...buttonProps} ref={button} className={`${buttonProps.className ?? ''} preach-day`}>
+            {children}
+            {kinds.length > 0 && (
+                <span className="preach-day-dots" aria-hidden="true">
+                    {kinds.map((kind) => (
+                        <span
+                            key={kind}
+                            data-kind={kind}
+                            className={`preach-day-dot ${modifiers.selected ? 'bg-white' : CALENDAR_KIND_STYLE[kind].dot}`}
+                        />
+                    ))}
+                </span>
+            )}
+        </button>
+    );
+}
+
+/** One object, once: a new one each render would remount every cell. */
+const DAY_COMPONENTS = { DayButton: DayButtonWithDots };
+
 export default function PreachCalendar({
-    eventsByDate,
-    sermonStatusByDate = {},
+    kindsByDate,
     selectedDate,
     onDateSelect,
     currentMonth,
     onMonthChange,
-    filterSermons = true,
-    filterGroups = true,
-    onToggleSermons,
-    onToggleGroups
+    shown,
+    onToggleKind
 }: PreachCalendarProps) {
     const { t, i18n } = useTranslation();
     const { user } = useAuth();
@@ -63,76 +102,6 @@ export default function PreachCalendar({
             case 'uk': return uk;
             default: return enUS;
         }
-    };
-
-    const derivedSermonStatusByDate = useMemo(() => {
-        return Object.entries(eventsByDate).reduce((acc, [dateKey, events]) => {
-            events.forEach((event) => {
-                if (!hasCurrentPreachDate(event)) {
-                    return;
-                }
-
-                if (!acc[dateKey]) {
-                    acc[dateKey] = { planned: 0, preached: 0 };
-                }
-
-                const status = getEffectivePreachDateStatus(
-                    event.currentPreachDate,
-                    Boolean(event.isPreached)
-                );
-                acc[dateKey][status] += 1;
-            });
-            return acc;
-        }, {} as Record<string, { planned: number; preached: number }>);
-    }, [eventsByDate]);
-
-    // Source of truth:
-    // - Use statuses derived from `eventsByDate` when available (same source as right panel list).
-    // - Fallback to external map only for compatibility when event payload lacks preach-date context.
-    const effectiveSermonStatusByDate =
-        Object.keys(derivedSermonStatusByDate).length > 0
-            ? derivedSermonStatusByDate
-            : sermonStatusByDate;
-
-    const getSermonStatusForDate = (dateStr: string) =>
-        effectiveSermonStatusByDate[dateStr] || EMPTY_SERMON_STATUS;
-
-    useEffect(() => {
-        const plannedKeys = Object.entries(effectiveSermonStatusByDate)
-            .filter(([, value]) => value.planned > 0)
-            .map(([date]) => date)
-            .sort();
-        const preachedKeys = Object.entries(effectiveSermonStatusByDate)
-            .filter(([, value]) => value.preached > 0)
-            .map(([date]) => date)
-            .sort();
-
-        debugLog('[calendar][PreachCalendar] marker sources', {
-            eventKeys: Object.keys(eventsByDate).sort(),
-            derivedStatusKeys: Object.keys(derivedSermonStatusByDate).sort(),
-            fallbackStatusKeys: Object.keys(sermonStatusByDate).sort(),
-            effectiveStatusKeys: Object.keys(effectiveSermonStatusByDate).sort(),
-            plannedKeys,
-            preachedKeys,
-        });
-    }, [eventsByDate, derivedSermonStatusByDate, sermonStatusByDate, effectiveSermonStatusByDate]);
-
-    const hasSermonsDate = (date: Date) => {
-        if (!filterSermons) return false;
-        const dateStr = format(date, DATE_KEY_FORMAT);
-        const events = eventsByDate[dateStr] || [];
-        const hasSermonEvent = events.some(hasCurrentPreachDate);
-        const sermonStatus = getSermonStatusForDate(dateStr);
-        const hasSermonStatus = ((sermonStatus?.planned || 0) + (sermonStatus?.preached || 0)) > 0;
-        return hasSermonEvent || hasSermonStatus;
-    };
-
-    const hasGroupsDate = (date: Date) => {
-        if (!filterGroups) return false;
-        const dateStr = format(date, DATE_KEY_FORMAT);
-        const events = eventsByDate[dateStr] || [];
-        // Groups are events without currentPreachDate
-        return events.some(event => !hasCurrentPreachDate(event));
     };
 
     return (
@@ -193,47 +162,26 @@ export default function PreachCalendar({
           --preach-calendar-selected-border: #93c5fd;
           --preach-calendar-selected-shadow: rgba(147, 197, 253, 0.35);
         }
-        .has-sermon .rdp-day_button,
-        .has-group .rdp-day_button {
+        .preach-day {
           position: relative;
         }
-        .has-sermon .rdp-day_button::before {
-          content: '';
+        .preach-day-dots {
           position: absolute;
-          bottom: 4px;
-          left: 50%;
-          transform: translateX(-50%);
+          bottom: 3px;
+          left: 0;
+          right: 0;
+          display: flex;
+          justify-content: center;
+          gap: 3px;
+          pointer-events: none;
+        }
+        .preach-day-dot {
           width: 4px;
           height: 4px;
-          border-radius: 50%;
-          background-color: #3b82f6; /* bg-blue-500 */
-        }
-        .has-group .rdp-day_button::after {
-          content: '';
-          position: absolute;
-          bottom: 4px;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 4px;
-          height: 4px;
-          border-radius: 50%;
-          background-color: #10b981; /* bg-emerald-500 */
-        }
-        .has-sermon.has-group .rdp-day_button::before {
-          left: calc(50% - 3px);
-          transform: translateX(-50%);
-        }
-        .has-sermon.has-group .rdp-day_button::after {
-          left: calc(50% + 3px);
-          transform: translateX(-50%);
-        }
-        .rdp-selected.has-sermon .rdp-day_button::before,
-        .rdp-selected.has-group .rdp-day_button::after,
-        .rdp-day_selected.has-sermon .rdp-day_button::before,
-        .rdp-day_selected.has-group .rdp-day_button::after {
-          background-color: white;
+          border-radius: 9999px;
         }
       `}</style>
+            <DayKinds.Provider value={kindsByDate}>
             <DayPicker
                 mode="single"
                 selected={selectedDate}
@@ -242,44 +190,12 @@ export default function PreachCalendar({
                 onMonthChange={onMonthChange}
                 locale={getDateLocale()}
                 weekStartsOn={weekStartsOn}
-                modifiers={{
-                    hasSermon: (date) => hasSermonsDate(date),
-                    hasGroup: (date) => hasGroupsDate(date)
-                }}
-                modifiersClassNames={{
-                    hasSermon: "has-sermon",
-                    hasGroup: "has-group"
-                }}
+                components={DAY_COMPONENTS}
                 className="w-full flex justify-center"
             />
+            </DayKinds.Provider>
 
-            {/* Legend Toggles */}
-            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700 w-full flex flex-wrap justify-center gap-2 px-1">
-                <button
-                    onClick={onToggleSermons}
-                    className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-full transition-colors ${filterSermons
-                        ? 'bg-blue-50 dark:bg-blue-900/40 hover:bg-blue-100 dark:hover:bg-blue-900/60'
-                        : 'hover:bg-gray-100 dark:hover:bg-gray-800 opacity-50'
-                        }`}
-                >
-                    <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-blue-500 shrink-0"></div>
-                    <span className={`text-[11px] sm:text-xs font-medium whitespace-nowrap ${filterSermons ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}>
-                        {t('calendar.legend.sermons', { defaultValue: 'Sermons' })}
-                    </span>
-                </button>
-                <button
-                    onClick={onToggleGroups}
-                    className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-full transition-colors ${filterGroups
-                        ? 'bg-emerald-50 dark:bg-emerald-900/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60'
-                        : 'hover:bg-gray-100 dark:hover:bg-gray-800 opacity-50'
-                        }`}
-                >
-                    <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-500 shrink-0"></div>
-                    <span className={`text-[11px] sm:text-xs font-medium whitespace-nowrap ${filterGroups ? 'text-emerald-700 dark:text-emerald-300' : 'text-gray-500 dark:text-gray-400'}`}>
-                        {t('calendar.legend.groups', { defaultValue: 'Groups' })}
-                    </span>
-                </button>
-            </div>
+            <CalendarKindFilters shown={shown} onToggleKind={onToggleKind} className="mt-4 border-t border-gray-100 pt-4 dark:border-gray-700" />
         </div>
     );
 }
