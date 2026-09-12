@@ -141,12 +141,6 @@ const StructureStats: React.FC<StructureStatsProps> = ({
         </div>
       </div>
       <div className="mt-4 sm:mt-6 space-y-2">
-        <StructurePlanToggle
-          sermon={sermon}
-          sermonId={sermon.id}
-          hasInconsistentThoughts={hasInconsistentThoughts}
-          t={t}
-        />
         {onOpenPlanEditor && (
           <button
             type="button"
@@ -157,6 +151,12 @@ const StructureStats: React.FC<StructureStatsProps> = ({
             {t('planEditor.openButton')}
           </button>
         )}
+        <StructurePlanToggle
+          sermon={sermon}
+          sermonId={sermon.id}
+          hasInconsistentThoughts={hasInconsistentThoughts}
+          t={t}
+        />
       </div>
     </div>
   );
