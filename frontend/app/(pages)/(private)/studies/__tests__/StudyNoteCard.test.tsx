@@ -154,6 +154,99 @@ describe('StudyNoteCard', () => {
     expect(heading).toHaveClass('leading-tight');
   });
 
+  // The title row used to carry the type chip, the share button and the copy button beside
+  // the name. On a 390px phone that left the name 125px of a 358px card — three clipped
+  // lines. Reading and acting now stand on different floors of the card.
+  describe('narrow screens', () => {
+    it('keeps share and copy out of the title row so the name gets the full width', () => {
+      const note = createTestNote({ id: 'note-floors', title: 'A name that needs the room' });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={false}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onShare={jest.fn()}
+        />
+      );
+
+      const heading = screen.getByRole('heading', { name: 'A name that needs the room' });
+      const titleRow = heading.parentElement as HTMLElement;
+      expect(titleRow.querySelectorAll('button')).toHaveLength(0);
+
+      // Both actions live in the footer, the row that also carries the counts and the date.
+      const copyButton = screen.getByRole('button', { name: 'common.copy' });
+      const footer = copyButton.closest('div')?.parentElement as HTMLElement;
+      expect(footer).toHaveTextContent('🏷️');
+      expect(footer).toContainElement(screen.getByRole('button', { name: 'studiesWorkspace.shareLinks.shareButton' }));
+    });
+
+    // Class names prove nothing about what a thumb does. These two press real elements and
+    // watch the router: everything in this card navigates, so the action strip has to be the
+    // one place that does not.
+    it('does not leave the list when the press lands in the action strip rather than on a button', () => {
+      const note = createTestNote({ id: 'note-miss', title: 'Stay put' });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={false}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onShare={jest.fn()}
+        />
+      );
+
+      const strip = screen.getByRole('button', { name: 'common.copy' }).parentElement as HTMLElement;
+      fireEvent.click(strip);
+
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+
+    it('still leaves for the note when the press lands on the title', () => {
+      const note = createTestNote({ id: 'note-go', title: 'Take me there' });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={false}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+          onShare={jest.fn()}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('heading', { name: 'Take me there' }));
+
+      expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('/studies/note-go'));
+    });
+
+    it('drops the word from the question chip below the sm breakpoint, keeping its name for screen readers', () => {
+      const note = createTestNote({ id: 'note-q', title: 'Asked', type: 'question' });
+
+      render(
+        <StudyNoteCard
+          note={note}
+          bibleLocale="en"
+          isExpanded={false}
+          onToggleExpand={jest.fn()}
+          onEdit={jest.fn()}
+        />
+      );
+
+      const chip = screen.getByLabelText('studiesWorkspace.type.question');
+      const word = screen.getByText('studiesWorkspace.type.question');
+      expect(word).toHaveClass('hidden');
+      expect(word).toHaveClass('sm:inline');
+      // Without this the chip's own gap sits between the mark and an empty box.
+      expect(chip).toHaveClass('max-sm:gap-0');
+    });
+  });
+
 
 
   describe('Search Highlighting', () => {

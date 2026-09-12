@@ -117,6 +117,13 @@ export default function StudyNoteCard({
     onShare(note);
   };
 
+  // The chip says it, names itself to a screen reader with it, and shows it as a tooltip
+  // when only the mark is drawn — one word, three places. The two count words are the same
+  // story: a heading in the open card, and the accessible name of the count in the footer.
+  const questionLabel = t('studiesWorkspace.type.question') || 'Question';
+  const scriptureRefsLabel = t('studiesWorkspace.scriptureRefs');
+  const tagsLabel = t('studiesWorkspace.tags');
+
   // Format relative time
   const formatRelativeTime = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -284,11 +291,29 @@ export default function StudyNoteCard({
         >
           {/* Content preview */}
           <div className="min-w-0 flex-1">
-            {/* Title */}
+            {/*
+              Title. The row holds the note's name and nothing else: share and copy live in
+              the footer below. They used to sit here, and on a 390px phone the name was left
+              with 125px of a 358px card — three clipped lines beside two buttons the reader
+              had not asked for. Reading and acting are different jobs and now stand on
+              different floors.
+            */}
             <div className="flex items-start gap-2">
               {note.type === 'question' && (
-                <Chip tone="amber" size="sm" className="mt-0.5 shrink-0" icon={<QuestionMarkCircleIcon className="h-3.5 w-3.5" />}>
-                  {t('studiesWorkspace.type.question') || 'Question'}
+                <Chip
+                  tone="amber"
+                  size="sm"
+                  // `max-sm:gap-0` closes a gap nothing stands in: Chip always renders the
+                  // wrapper around its children, so below `sm` the chip's own gap sat
+                  // between the mark and an empty box and cost the title 4px.
+                  className="mt-0.5 shrink-0 max-sm:gap-0"
+                  icon={<QuestionMarkCircleIcon className="h-3.5 w-3.5" />}
+                  ariaLabel={questionLabel}
+                  title={questionLabel}
+                >
+                  {/* Narrow screens get the mark alone — the word costs 50px the title needs
+                      more. `ariaLabel` above keeps the chip named for a screen reader. */}
+                  <span className="hidden sm:inline">{questionLabel}</span>
                 </Chip>
               )}
               <h4 className="flex-1 text-base font-semibold text-gray-900 dark:text-gray-50 line-clamp-3 leading-tight">
@@ -301,45 +326,17 @@ export default function StudyNoteCard({
                   note.title || t('studiesWorkspace.untitled')
                 )}
               </h4>
+              {/*
+                The match count stays up here with the name, unlike share and copy. In search
+                a collapsed card can render an unbounded run of snippets (extractSearchSnippets
+                caps nothing), and a summary that sits under them is a summary nobody reads.
+                It costs the title width only while a search is running.
+              */}
               {searchQuery && totalMatchSignals > 0 && !isExpanded && (
                 <span className={`${MATCH_COUNT_BADGE} shrink-0`}>
                   {totalMatchSignals} {t('studiesWorkspace.matchingNotes')}
                 </span>
               )}
-              <div className="ml-2 flex flex-wrap sm:flex-nowrap items-center justify-end gap-1 shrink-0">
-                {onShare && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleShareNote();
-                    }}
-                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition disabled:opacity-50 ${hasShareLink
-                      ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-300'
-                      : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200'
-                      }`}
-                    title={t('studiesWorkspace.shareLinks.shareButton')}
-                    aria-label={t('studiesWorkspace.shareLinks.shareButton')}
-                  >
-                    <LinkIcon className="h-4 w-4" />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCopyNote();
-                  }}
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
-                  title={isCopied ? t('common.copied', 'Copied!') : t('common.copy', 'Copy')}
-                >
-                  {isCopied ? (
-                    <CheckIcon className="h-4 w-4 text-green-600 dark:text-green-400" />
-                  ) : (
-                    <DocumentDuplicateIcon className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
             </div>
 
             {/* Preview text (collapsed only) */}
@@ -370,7 +367,7 @@ export default function StudyNoteCard({
                               <div className="flex items-center justify-between text-xs font-semibold text-gray-700 dark:text-gray-200">
                                 <div className="flex items-center gap-2">
                                   <TagIcon className="h-4 w-4" />
-                                  <span>{t('studiesWorkspace.tags')}</span>
+                                  <span>{tagsLabel}</span>
                                 </div>
                                 <span className={MATCH_COUNT_BADGE}>{matchingTags.length}</span>
                               </div>
@@ -389,7 +386,7 @@ export default function StudyNoteCard({
                               <div className="flex items-center justify-between text-xs font-semibold text-gray-700 dark:text-gray-200">
                                 <div className="flex items-center gap-2">
                                   <BookmarkIcon className="h-4 w-4" />
-                                  <span>{t('studiesWorkspace.scriptureRefs')}</span>
+                                  <span>{scriptureRefsLabel}</span>
                                 </div>
                                 <span className={MATCH_COUNT_BADGE}>{matchingRefs.length}</span>
                               </div>
@@ -426,18 +423,78 @@ export default function StudyNoteCard({
               </div>
             )}
 
-            {/* Meta info */}
-            <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-              <span className="inline-flex items-center gap-1">
-                <BookmarkIcon className="h-3.5 w-3.5" />
-                {note.scriptureRefs.length}
+            {/*
+              Footer. Counts on the left, actions pushed to the right edge — the two used to
+              be on different floors and the right half of this row sat empty at 136px while
+              the title upstairs fought for space. `min-h-8` keeps the row the same height
+              whether or not the share button is there, so a note with a link and one without
+              do not sit at different depths in the list.
+            */}
+            <div className="mt-2 flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+              {/*
+                Each count names itself. The bullets that used to separate them are gone —
+                the gap does that for the eye — but a screen reader read the bullets as
+                boundaries and would otherwise run the numbers together: "0, 0, today".
+              */}
+              <span
+                className="inline-flex items-center gap-1"
+                aria-label={`${note.scriptureRefs.length} ${scriptureRefsLabel}`}
+              >
+                <BookmarkIcon className="h-3.5 w-3.5" aria-hidden="true" />
+                <span aria-hidden="true">{note.scriptureRefs.length}</span>
               </span>
-              <span>•</span>
-              <span className="inline-flex items-center gap-1">
-                🏷️ {note.tags.length}
+              <span
+                className="inline-flex items-center gap-1"
+                aria-label={`${note.tags.length} ${tagsLabel}`}
+              >
+                <span aria-hidden="true">🏷️ {note.tags.length}</span>
               </span>
-              <span>•</span>
               <span>{formatRelativeTime(note.updatedAt)}</span>
+              {/*
+                The strip swallows its own clicks. Everything in this card navigates to the
+                note, the footer included, and a thumb aiming for "copy" that lands beside it
+                would otherwise carry the reader off the list. The negative margin with equal
+                padding widens the safe area by 6px on every side without moving anything:
+                a near miss lands on the strip, not on the row underneath.
+              */}
+              <div
+                className="-m-1.5 ml-auto flex shrink-0 items-center gap-1 p-1.5"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {onShare && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleShareNote();
+                    }}
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition disabled:opacity-50 ${hasShareLink
+                      ? 'text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-300'
+                      : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200'
+                      }`}
+                    title={t('studiesWorkspace.shareLinks.shareButton')}
+                    aria-label={t('studiesWorkspace.shareLinks.shareButton')}
+                  >
+                    <LinkIcon className="h-4 w-4" />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCopyNote();
+                  }}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700 dark:hover:text-gray-200"
+                  title={isCopied ? t('common.copied', 'Copied!') : t('common.copy', 'Copy')}
+                  aria-label={isCopied ? t('common.copied', 'Copied!') : t('common.copy', 'Copy')}
+                >
+                  {isCopied ? (
+                    <CheckIcon className="h-4 w-4 text-green-600 dark:text-green-400" />
+                  ) : (
+                    <DocumentDuplicateIcon className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 
@@ -461,7 +518,7 @@ export default function StudyNoteCard({
             <div className="border-t border-gray-100 px-4 py-3 pl-4 dark:border-gray-700 sm:pl-12">
               <div className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
                 <BookmarkIcon className="h-4 w-4 text-emerald-600" />
-                {t('studiesWorkspace.scriptureRefs')}
+                {scriptureRefsLabel}
               </div>
               <div className="flex flex-wrap gap-2">
                 {note.scriptureRefs.map((ref) => (
@@ -481,7 +538,7 @@ export default function StudyNoteCard({
           {note.tags.length > 0 && (
             <div className="border-t border-gray-100 px-4 py-3 pl-4 dark:border-gray-700 sm:pl-12">
               <div className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
-                🏷️ {t('studiesWorkspace.tags')}
+                🏷️ {tagsLabel}
               </div>
               <div className="flex flex-wrap gap-2">
                 {note.tags.map((tag) => (
