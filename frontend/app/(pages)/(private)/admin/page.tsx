@@ -348,7 +348,6 @@ function UsageMiniBar({ user }: { user: AdminUser }) {
   return (
     <UsageBar
       baseLimit={baseLimit}
-      hardCap={cap}
       size="compact"
       state={state}
       used={used}

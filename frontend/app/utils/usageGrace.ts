@@ -66,6 +66,18 @@ export function getUsageRemaining(metric: UsageMetricSnapshot): number {
   return metric.state === 'grace' ? metric.graceRemaining : metric.baseRemaining;
 }
 
+/**
+ * How far past the limit this metric already is — 0 while it is still inside.
+ *
+ * Needed because past the line "remaining" answers a question nobody asked. The grace band
+ * has a remainder of its own, and printing it in the words of an ordinary remainder told a
+ * person at 102 of 100 that 8 were left: true of the band, the exact opposite of his
+ * situation, and sitting right beside a bar reading 102%.
+ */
+export function getUsageOverage(metric: UsageMetricSnapshot): number {
+  return Math.max(0, metric.used - metric.baseLimit);
+}
+
 export function formatUsageResetDate(resetsAt: string, locale: string): string {
   const date = new Date(resetsAt);
   if (Number.isNaN(date.getTime())) return '';
@@ -81,6 +93,27 @@ export function normalizeGraceVerses(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((verse): verse is string => typeof verse === 'string' && verse.trim().length > 0)
     : [];
+}
+
+/**
+ * The next verse in the cycle — every one is seen before any is seen twice.
+ *
+ * `getDeterministicVerse` hashes the counter together with the period, which is right when the
+ * point is stability (the same line all month, in one place). It is wrong when the point is
+ * MOVEMENT: hashing scatters, so consecutive views can land on the same verse twice running and
+ * skip another entirely. Here the period only chooses where the cycle starts, and the view
+ * number walks it, so four verses take four showings to come round.
+ */
+export function getRotatingVerse(verses: string[], period: string, view: number): string {
+  if (verses.length === 0) return '';
+
+  let start = 0;
+  for (const character of period) {
+    start = ((start * 31) + (character.codePointAt(0) ?? 0)) >>> 0;
+  }
+
+  const step = Math.max(0, Math.trunc(view));
+  return verses[(start + step) % verses.length];
 }
 
 export function getDeterministicVerse(

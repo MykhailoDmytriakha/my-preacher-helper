@@ -651,7 +651,11 @@
     "resetsAt": "renews {{date}}",
     "graceToast": "You have crossed the monthly boundary — but we are merciful to you. Grace remains with you for a little while longer. If you truly need it, may the Lord bless you.",
     "hardCap": "This time we have done even more than we could. But it is important to remember others too, so there is enough grace for everyone. Everything will open again {{date}}.",
-    "softExpansion": "If you need more right now, you can expand your plan."
+    "softExpansion": "If you need more right now, you can expand your plan.",
+    "grace": "You have passed the monthly line — and we are carrying you. There is still grace here for a while. Everything opens again on {{date}}.",
+    "overLimit": "Over limit",
+    "limitReached": "Limit reached",
+    "openSettings": "Open plan settings"
   },
   "settings": {
     "nav": {

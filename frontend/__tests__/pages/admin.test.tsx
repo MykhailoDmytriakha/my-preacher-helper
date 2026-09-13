@@ -112,7 +112,8 @@ describe('Admin Page', () => {
 
     expect(await screen.findByText('alpha@example.com')).toBeInTheDocument();
     const fill = screen.getByTestId('usage-bar-fill');
-    expect(fill).toHaveStyle({ width: '94.54545454545455%' });
+    // The track spans what was USED, so a hundred percent keeps a place on it: the allowance
+    // runs to a mark labelled 100%, and the excess runs on past that mark.
     expect(fill).toHaveClass(
       'bg-gradient-to-r',
       'from-violet-600',
@@ -120,6 +121,10 @@ describe('Admin Page', () => {
       'dark:from-violet-500',
       'dark:to-fuchsia-500'
     );
+    expect(screen.getByTestId('usage-bar-limit-mark')).toHaveStyle({ left: fill.style.width });
+    expect(screen.getByTestId('usage-bar-limit-caption')).toHaveTextContent('usage.bar.percent');
+    expect(Number.parseFloat(fill.style.width)).toBeLessThan(100);
+    expect(Number.parseFloat(screen.getByTestId('usage-bar-overage').style.width)).toBeGreaterThan(0);
   });
 
   it('opens a drawer and prefills the edit form after clicking a row', async () => {

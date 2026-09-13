@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Chip } from '@/components/ui/Chip';
 import Tooltip from '@/components/ui/Tooltip';
 import UsageBar from '@/components/usage/UsageBar';
-import { UsageHardCapNotice } from '@/components/usage/UsageGraceIndicator';
+import { UsageGraceNotice, UsageHardCapNotice } from '@/components/usage/UsageGraceIndicator';
 import { useUserEntitlement } from '@/hooks/useUserEntitlement';
 
 import type { User } from 'firebase/auth';
@@ -48,6 +48,10 @@ export default function UsageWidget({ user }: UsageWidgetProps) {
   const audioUsage = entitlement.usage.audio;
   const blockedUsage = [aiUsage, transcriptionUsage, audioUsage]
     .find((usage) => usage.state === 'blocked');
+  // Only one notice at a time, and the harder state wins: being stopped is the thing to say
+  // first. Grace speaks whenever any metric is past its line and still being carried.
+  const graceUsage = [aiUsage, transcriptionUsage, audioUsage]
+    .find((usage) => usage.state === 'grace');
   const transcriptionValue = t('settings.usage.minutesOfLimit', {
     used: formatMinutes(transcriptionUsage.used),
     limit: Math.round(transcriptionUsage.baseLimit / 60),
@@ -84,7 +88,6 @@ export default function UsageWidget({ user }: UsageWidgetProps) {
           <dd>
             <UsageBar
               baseLimit={aiUsage.baseLimit}
-              hardCap={aiUsage.hardCap}
               size="full"
               state={aiUsage.state}
               used={aiUsage.used}
@@ -96,7 +99,6 @@ export default function UsageWidget({ user }: UsageWidgetProps) {
           <dd>
             <UsageBar
               baseLimit={transcriptionUsage.baseLimit}
-              hardCap={transcriptionUsage.hardCap}
               size="full"
               state={transcriptionUsage.state}
               used={transcriptionUsage.used}
@@ -109,7 +111,6 @@ export default function UsageWidget({ user }: UsageWidgetProps) {
           <dd>
             <UsageBar
               baseLimit={audioUsage.baseLimit}
-              hardCap={audioUsage.hardCap}
               size="full"
               state={audioUsage.state}
               used={audioUsage.used}
@@ -118,7 +119,9 @@ export default function UsageWidget({ user }: UsageWidgetProps) {
           </dd>
         </div>
       </dl>
-      {blockedUsage && <UsageHardCapNotice resetsAt={blockedUsage.resetsAt} />}
+      {blockedUsage
+        ? <UsageHardCapNotice resetsAt={blockedUsage.resetsAt} />
+        : graceUsage && <UsageGraceNotice resetsAt={graceUsage.resetsAt} />}
     </section>
   );
 }
