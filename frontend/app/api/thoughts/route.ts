@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { assertLegacyWritable, legacyBoundaryResponse, runLegacyTransaction } from '@/data-engine/legacyBoundary.server';
 import { Sermon, Thought } from '@/models/models';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { validateAudioDuration } from '@/utils/server/audioServerUtils';
@@ -93,6 +94,7 @@ async function handleManualPost(request: Request, uid: string) {
     if (sermon.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    assertLegacyWritable(sermon);
     console.log("Thoughts route: Manual thought:", thought);
     console.log("Will not apply AI to manual thought");
 
@@ -106,6 +108,8 @@ async function handleManualPost(request: Request, uid: string) {
     console.log("Firestore update: Stored new manual thought into sermon document.");
     return NextResponse.json(thoughtWithId);
   } catch (error) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
     console.error('Thoughts route: Manual POST error:', error);
     return NextResponse.json({ error: 'Failed to process manual thought' }, { status: 500 });
   }
@@ -168,6 +172,7 @@ async function handleAutoPost(request: Request, uid: string) {
     if (sermon.userId !== uid) {
       return errorResponse('Forbidden', 403);
     }
+    assertLegacyWritable(sermon);
 
     tracker.addContext({
       audioSizeBytes: audioFile.size,
@@ -321,6 +326,8 @@ async function handleAutoPost(request: Request, uid: string) {
     });
     return NextResponse.json(thought);
   } catch (error) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
     console.error('Thoughts route: Transcription error:', error);
     if (isUsageCapReachedError(error)) {
       return usageCapResponse(error);
@@ -377,6 +384,7 @@ export async function DELETE(request: Request) {
     if (sermon.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    assertLegacyWritable(sermon);
     console.log("Thoughts route: Deleting thought:", thought);
 
     await sermonsRepository.updateSermonData(sermonId, {
@@ -386,6 +394,8 @@ export async function DELETE(request: Request) {
     console.log("Successfully deleted thought.");
     return NextResponse.json({ message: "Thought deleted successfully." });
   } catch (error) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
     console.error("Error deleting thought:", error);
     return NextResponse.json({ error: "Failed to delete thought." }, { status: 500 });
   }
@@ -420,6 +430,7 @@ export async function PUT(request: Request) {
     if (sermon.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    assertLegacyWritable(sermon);
 
     const oldThought = sermon.thoughts.find((th) => th.id === updatedThoughtNew.id);
     if (!oldThought) {
@@ -473,7 +484,7 @@ export async function PUT(request: Request) {
 
     // Use Admin SDK with transaction to ensure atomic update
     try {
-      await adminDb.runTransaction(async (transaction) => {
+      await runLegacyTransaction(async (transaction) => {
         const sermonDocRef = adminDb.collection("sermons").doc(sermonId);
         const sermonDoc = await transaction.get(sermonDocRef);
 
@@ -514,10 +525,10 @@ export async function PUT(request: Request) {
       if (error instanceof Error && error.message === 'Forbidden') {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       }
-      return NextResponse.json({ error: "Failed to update thought." }, { status: 500 });
+      return legacyBoundaryResponse(error) ?? NextResponse.json({ error: "Failed to update thought." }, { status: 500 });
     }
   } catch (error) {
     console.error("Thoughts route: Error updating thought:", error);
-    return NextResponse.json({ error: "Failed to update thought." }, { status: 500 });
+    return legacyBoundaryResponse(error) ?? NextResponse.json({ error: "Failed to update thought." }, { status: 500 });
   }
 }

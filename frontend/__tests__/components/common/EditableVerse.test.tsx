@@ -4,6 +4,7 @@ import React from 'react';
 import EditableVerse from '@/components/common/EditableVerse';
 import '@testing-library/jest-dom';
 import { runScenarios } from '@test-utils/scenarioRunner';
+import { manualTextFieldScenarios } from '@test-utils/manualTextFieldScenarios';
 
 // Mock translations
 jest.mock('react-i18next', () => ({
@@ -279,3 +280,5 @@ describe('EditableVerse Component', () => {
     });
   });
 });
+
+manualTextFieldScenarios('verse', ({ value, onSave, manual }) => <EditableVerse initialVerse={value} onSave={onSave} manual={manual} />);

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { studiesRepository } from '@repositories/studies.repository';
 
 // Error messages
@@ -21,6 +22,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     if (note.userId !== uid) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     return NextResponse.json(note);
   } catch (error) {
+    const refusal = legacyBoundaryResponse(error);
+    if (refusal) return refusal;
+    if (error && typeof error === 'object' && 'status' in error && (error.status === 400 || error.status === 403)) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Request refused' }, { status: error.status });
+    }
     console.error(`GET /api/studies/notes/${id} error`, error);
     return NextResponse.json({ error: 'Failed to load study note' }, { status: 500 });
   }
@@ -38,6 +44,11 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     await studiesRepository.deleteNote(id, uid);
     return NextResponse.json({ success: true });
   } catch (error) {
+    const refusal = legacyBoundaryResponse(error);
+    if (refusal) return refusal;
+    if (error && typeof error === 'object' && 'status' in error && (error.status === 400 || error.status === 403)) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Request refused' }, { status: error.status });
+    }
     console.error(`DELETE /api/studies/notes/${id} error`, error);
     return NextResponse.json({ error: 'Failed to delete study note' }, { status: 500 });
   }

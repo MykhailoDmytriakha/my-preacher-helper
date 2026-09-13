@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { studiesRepository } from '@repositories/studies.repository';
 
 export async function GET(request: Request) {
@@ -21,6 +22,11 @@ export async function GET(request: Request) {
     const materials = await studiesRepository.listMaterials(uid);
     return NextResponse.json(materials.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()));
   } catch (error) {
+    const refusal = legacyBoundaryResponse(error);
+    if (refusal) return refusal;
+    if (error && typeof error === 'object' && 'status' in error && (error.status === 400 || error.status === 403)) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Request refused' }, { status: error.status });
+    }
     console.error('GET /api/studies/materials error', error);
     return NextResponse.json({ error: 'Failed to fetch study materials' }, { status: 500 });
   }
@@ -53,6 +59,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json(material, { status: 201 });
   } catch (error) {
+    const refusal = legacyBoundaryResponse(error);
+    if (refusal) return refusal;
+    if (error && typeof error === 'object' && 'status' in error && (error.status === 400 || error.status === 403)) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Request refused' }, { status: error.status });
+    }
     console.error('POST /api/studies/materials error', error);
     return NextResponse.json({ error: 'Failed to create study material' }, { status: 500 });
   }

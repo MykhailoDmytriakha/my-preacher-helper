@@ -1,6 +1,5 @@
 import * as shareNotesRoute from 'app/api/share/notes/[token]/route';
 
-import { studiesRepository } from '@repositories/studies.repository';
 import { studyNoteShareLinksRepository } from '@repositories/studyNoteShareLinks.repository';
 
 jest.mock('next/server', () => ({
@@ -15,20 +14,13 @@ jest.mock('next/server', () => ({
   },
 }));
 
-jest.mock('@repositories/studies.repository', () => ({
-  studiesRepository: {
-    getNote: jest.fn(),
-  },
-}));
-
 jest.mock('@repositories/studyNoteShareLinks.repository', () => ({
   studyNoteShareLinksRepository: {
-    findByToken: jest.fn(),
+    readSharedNote: jest.fn(),
     incrementViewCount: jest.fn(),
   },
 }));
 
-const mockStudiesRepo = studiesRepository as jest.Mocked<typeof studiesRepository>;
 const mockShareLinksRepo = studyNoteShareLinksRepository as jest.Mocked<typeof studyNoteShareLinksRepository>;
 
 describe('share notes route', () => {
@@ -43,7 +35,7 @@ describe('share notes route', () => {
   }) as any;
 
   it('returns 404 when share link not found', async () => {
-    mockShareLinksRepo.findByToken.mockResolvedValue(null as any);
+    mockShareLinksRepo.readSharedNote.mockResolvedValue(null as any);
 
     const response = await shareNotesRoute.GET(makeRequest(), { params: Promise.resolve({ token: 'token-1' }) });
     const data = await response.json();
@@ -53,8 +45,7 @@ describe('share notes route', () => {
   });
 
   it('returns 404 when note not found', async () => {
-    mockShareLinksRepo.findByToken.mockResolvedValue({ id: 'link-1', noteId: 'note-1' } as any);
-    mockStudiesRepo.getNote.mockResolvedValue(null as any);
+    mockShareLinksRepo.readSharedNote.mockResolvedValue(null);
 
     const response = await shareNotesRoute.GET(makeRequest(), { params: Promise.resolve({ token: 'token-1' }) });
     const data = await response.json();
@@ -65,8 +56,7 @@ describe('share notes route', () => {
 
   it('increments view count when no cookie', async () => {
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
-    mockShareLinksRepo.findByToken.mockResolvedValue({ id: 'link-1', noteId: 'note-1' } as any);
-    mockStudiesRepo.getNote.mockResolvedValue({ content: 'Hello' } as any);
+    mockShareLinksRepo.readSharedNote.mockResolvedValue({ shareLink: { id: 'link-1', noteId: 'note-1', ownerId: 'owner' }, content: 'Hello' } as any);
 
     const response = await shareNotesRoute.GET(makeRequest(), { params: Promise.resolve({ token: 'token-1' }) });
     const data = await response.json();
@@ -79,8 +69,7 @@ describe('share notes route', () => {
 
   it('skips increment when cookie is recent', async () => {
     const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
-    mockShareLinksRepo.findByToken.mockResolvedValue({ id: 'link-1', noteId: 'note-1' } as any);
-    mockStudiesRepo.getNote.mockResolvedValue({ content: 'Hello' } as any);
+    mockShareLinksRepo.readSharedNote.mockResolvedValue({ shareLink: { id: 'link-1', noteId: 'note-1', ownerId: 'owner' }, content: 'Hello' } as any);
 
     const response = await shareNotesRoute.GET(makeRequest(String(1_000_000)), { params: Promise.resolve({ token: 'token-1' }) });
     const data = await response.json();
@@ -92,7 +81,7 @@ describe('share notes route', () => {
   });
 
   it('returns 500 on unexpected error', async () => {
-    mockShareLinksRepo.findByToken.mockRejectedValue(new Error('boom'));
+    mockShareLinksRepo.readSharedNote.mockRejectedValue(new Error('boom'));
 
     const response = await shareNotesRoute.GET(makeRequest(), { params: Promise.resolve({ token: 'token-1' }) });
     const data = await response.json();

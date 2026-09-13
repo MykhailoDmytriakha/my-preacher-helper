@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { seriesRepository } from '@repositories/series.repository';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
@@ -47,6 +48,8 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
 
     return NextResponse.json({ message: 'Проповедь успешно удалена' }, { status: 200 });
   } catch (error: unknown) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
     const { id } = await params;
     console.error(`Ошибка при удалении проповеди ${id}:`, error);
     return NextResponse.json(

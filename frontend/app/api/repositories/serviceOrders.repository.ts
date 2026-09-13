@@ -1,10 +1,9 @@
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { assertLegacyWritable, runLegacyTransaction } from '@/data-engine/legacyBoundary.server';
 
 import type { ServiceOrder } from '@/models/models';
 
 const COLLECTION = 'serviceOrders';
-/** gRPC status for "this document is already there" — Firestore's answer to a losing `create`. */
-const ALREADY_EXISTS = 6;
 
 /**
  * THE SERVER'S OWN WAY TO THE RITES.
@@ -52,42 +51,40 @@ export class ServiceOrdersRepository {
     userId: string,
     drafts: Omit<ServiceOrder, 'id'>[]
   ): Promise<ServiceOrder[]> {
-    const existing = await this.listForOwner(userId);
-    const present = new Set(existing.map((order) => order.catalogKey).filter(Boolean));
-    const missing = drafts.filter((draft) => draft.catalogKey && !present.has(draft.catalogKey));
-    if (missing.length === 0) return existing;
-
-    /*
-     * ONE RITE PER KEY, DECIDED BY THE DATABASE — not by the read above.
-     *
-     * Reading first and writing after is a guess with a gap in the middle: two presses a
-     * hundred milliseconds apart both read an empty list and both write their ten, and the
-     * pastor ends up with twenty. So each rite is written at a name derived from its owner and
-     * its own key, with `create`, which REFUSES an existing document instead of replacing it.
-     * The second press then loses every race it enters and changes nothing — the duplicate is
-     * impossible rather than unlikely, and no rite already written in can be overwritten.
-     */
-    const created: ServiceOrder[] = [];
-    for (const draft of missing) {
-      // The owner is taken from the verified token, never from the payload: a client may say
-      // which rites it wants, never whose they are.
-      const data = stripUndefined({ ...draft, userId }) as Omit<ServiceOrder, 'id'>;
-      const ref = adminDb.collection(COLLECTION).doc(`${userId}__${draft.catalogKey}`);
-      try {
-        await ref.create(data);
-        created.push(hydrate(data, ref.id));
-      } catch (error) {
-        // ALREADY_EXISTS (6): another press won this rite. That is the outcome we wanted.
-        if ((error as { code?: number }).code !== ALREADY_EXISTS) throw error;
+    if (drafts.length > 100) throw Object.assign(new Error('Seed exceeds its atomic write budget'), { code: 'data-engine-required' });
+    if (new Set(drafts.map(draft => draft.catalogKey)).size !== drafts.length) throw Object.assign(new Error('Duplicate catalog keys'), { code: 'invalid-argument' });
+    return runLegacyTransaction(async transaction => {
+      // Existing legacy records can have non-catalog document IDs. Read the owner
+      // query and deterministic target IDs before staging any of the missing rites.
+      const existing = await transaction.get(adminDb.collection(COLLECTION).where('userId', '==', userId).limit(101));
+      if (existing.docs.length > 100) throw Object.assign(new Error('Seed exceeds its atomic read budget'), { code: 'data-engine-required' });
+      const requested = new Set(drafts.map(draft => draft.catalogKey));
+      const present = new Set<string>();
+      const result: ServiceOrder[] = [];
+      for (const document of existing.docs) {
+        const raw = document.data();
+        const data = raw as Omit<ServiceOrder, 'id'>;
+        if (data.catalogKey && requested.has(data.catalogKey)) assertLegacyWritable(data);
+        // Tombstones are never advertised as live orders by a legacy seed reply.
+        if (raw._dataEngine && typeof raw._dataEngine === 'object' && 'deleted' in raw._dataEngine && raw._dataEngine.deleted) continue;
+        if (data.catalogKey) present.add(data.catalogKey);
+        result.push(hydrate(data, document.id));
       }
-    }
-    /*
-     * Read again rather than adding up what THIS request did. Two simultaneous presses each
-     * create part of the set and lose the rest to the other; adding up would hand each of them
-     * its own half as if it were the whole list. By this line every key asked for either exists
-     * or was just created, so the stored list is the complete and current answer.
-     */
-    return created.length > 0 ? this.listForOwner(userId) : existing;
+      const missing = drafts.filter(draft => draft.catalogKey && !present.has(draft.catalogKey));
+      const refs = missing.map(draft => adminDb.collection(COLLECTION).doc(`${userId}__${draft.catalogKey}`));
+      const snapshots = await Promise.all(refs.map(ref => transaction.get(ref)));
+      snapshots.forEach(snapshot => {
+        if (!snapshot.exists) return;
+        if (snapshot.data()?.userId !== userId) throw Object.assign(new Error('Forbidden'), { code: 'permission-denied' });
+        assertLegacyWritable(snapshot.data());
+      });
+      missing.forEach((draft, index) => {
+        const data = snapshots[index].exists ? snapshots[index].data()! : stripUndefined({ ...draft, userId });
+        if (!snapshots[index].exists) transaction.create(refs[index], data);
+        result.push(hydrate(data as Omit<ServiceOrder, 'id'>, refs[index].id));
+      });
+      return result;
+    });
   }
 }
 

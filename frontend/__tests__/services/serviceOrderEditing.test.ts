@@ -62,3 +62,16 @@ it('creates and deletes through the same bounded HTTP transport', async () => {
   await deleteServiceOrderOnServer('o1');
   expect(mockRequest.mock.calls[1][1].method).toBe('DELETE');
 });
+
+
+it('stops a migration refusal before the steps CAS retry loop can use it as a document', async () => {
+  mockRequest.mockResolvedValueOnce(response(order)).mockResolvedValueOnce(response({ code: 'data-engine-required', error: 'data-engine-required' }, 409));
+  const mutate = jest.fn(() => []);
+  await expect(updateServiceOrderStepsOnServer('o1', mutate)).rejects.toMatchObject({ code: 'data-engine-required', status: 409 });
+  expect(mockRequest).toHaveBeenCalledTimes(2); expect(mutate).toHaveBeenCalledTimes(1);
+});
+it('does not report migration refusal as successful placement or a title conflict', async () => {
+  mockRequest.mockResolvedValue(response({ code: 'data-engine-required' }, 409));
+  await expect(setServiceOrderRanksOnServer([{ id: 'o1', rank: 1 }])).rejects.toMatchObject({ code: 'data-engine-required' });
+  await expect(updateServiceOrderMetaOnServer('o1', { title: 'New' }, 1, null)).rejects.toMatchObject({ code: 'data-engine-required' });
+});

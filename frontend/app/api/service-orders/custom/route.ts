@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { createLegacyDocument } from '@/data-engine/legacyBoundary.server';
 
 import { noStore, stepsSchema, writeError } from '../writeSupport';
 
@@ -17,7 +18,7 @@ export async function POST(request: Request) {
     const ref = adminDb.collection('serviceOrders').doc();
     const now = new Date().toISOString();
     const order = { ...parsed.data, userId: uid, createdAt: now, updatedAt: now };
-    await ref.create(order);
-    return NextResponse.json({ ...order, id: ref.id }, { status: 201, headers: noStore });
+    const stored = await createLegacyDocument(ref, order, uid);
+    return NextResponse.json({ ...stored.data, id: ref.id }, { status: 201, headers: noStore });
   } catch (error) { return writeError(error); }
 }

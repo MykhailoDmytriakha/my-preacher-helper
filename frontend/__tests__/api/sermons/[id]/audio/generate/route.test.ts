@@ -78,6 +78,12 @@ jest.mock('next/server', () => {
 jest.mock('@/config/firebaseAdminConfig', () => ({
   adminDb: {
     collection: jest.fn(),
+    runTransaction: jest.fn(async callback => {
+      const writes: Promise<unknown>[] = [];
+      const result = await callback({ get: (ref: any) => ref.get(), update: (ref: any, data: unknown) => { writes.push(Promise.resolve(ref.update(data))); } });
+      await Promise.all(writes);
+      return result;
+    }),
   },
 }));
 
@@ -356,6 +362,23 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
     await expect(response.json()).resolves.toEqual({
       error: 'No chunks found for sections: conclusion',
     });
+  });
+
+  it('refuses migrated documents before generating paid audio', async () => {
+    mockGet.mockResolvedValueOnce({ exists: true, data: () => ({ userId: 'user-1', _dataEngine: { protocol: 1 } }) });
+    const response = await POST(createRequest({ userId: 'user-1', voice: 'onyx', quality: 'standard' }) as never, { params: Promise.resolve({ id: 'sermon-1' }) });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
+    expect(generateChunkAudio).not.toHaveBeenCalled();
+  });
+
+  it('streams an explicit migration error when the guarded save refuses after generation', async () => {
+    (generateChunkAudio as jest.Mock).mockResolvedValue({ audioBlob: new Blob([new Uint8Array(250_000)], { type: 'audio/mpeg' }), index: 0, durationSeconds: 1 });
+    mockUpdate.mockRejectedValueOnce(Object.assign(new Error('data-engine-required'), { code: 'data-engine-required' }));
+    const response = await POST(createRequest({ userId: 'user-1', voice: 'onyx', quality: 'standard' }) as never, { params: Promise.resolve({ id: 'sermon-1' }) });
+    const events = await readStreamEvents(response.body as ReadableStream<Uint8Array>);
+    expect(events).toContainEqual(expect.objectContaining({ type: 'error', message: expect.stringContaining('data-engine-required') }));
+    expect(events.some(event => event.type === 'download_complete')).toBe(false);
   });
 
   it('streams progress, chunk data, and completion for a successful generation', async () => {

@@ -1,6 +1,10 @@
+import { FieldValue } from 'firebase-admin/firestore';
+
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { assertLegacyWritable, runLegacyTransaction, updateLegacyDocument } from '@/data-engine/legacyBoundary.server';
 import { Group, GroupFlowItem } from '@/models/models';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
+import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems, removeSeriesItemByRef } from '@/utils/seriesItems';
 
 const GROUPS_COLLECTION = 'groups';
 const ERROR_GROUP_NOT_FOUND = 'Group not found';
@@ -56,7 +60,7 @@ export class GroupsRepository {
       })
     );
 
-    await adminDb.collection(GROUPS_COLLECTION).doc(groupId).update(cleanUpdates);
+    await updateLegacyDocument(adminDb.collection(GROUPS_COLLECTION).doc(groupId), cleanUpdates);
     return this.hydrateGroup({
       ...current,
       ...cleanUpdates,
@@ -78,11 +82,30 @@ export class GroupsRepository {
       return;
     }
 
-    await adminDb.collection(GROUPS_COLLECTION).doc(groupId).update(updateData);
+    await updateLegacyDocument(adminDb.collection(GROUPS_COLLECTION).doc(groupId), updateData);
   }
 
-  async deleteGroup(groupId: string): Promise<void> {
-    await adminDb.collection(GROUPS_COLLECTION).doc(groupId).delete();
+  async deleteGroup(groupId: string, ownerUid?: string): Promise<void> {
+    const reference = adminDb.collection(GROUPS_COLLECTION).doc(groupId);
+    await runLegacyTransaction(async transaction => {
+      const group = await transaction.get(reference);
+      if (!group.exists) return;
+      const owner = group.data()?.userId;
+      if (!owner || (ownerUid !== undefined && owner !== ownerUid)) throw Object.assign(new Error('Forbidden'), { code: 'permission-denied', status: 403 });
+      assertLegacyWritable(group.data());
+      const series = await transaction.get(adminDb.collection('series').where('userId', '==', owner).limit(101));
+      if (series.docs.length > 99) throw Object.assign(new Error('Legacy cascade exceeds its atomic write budget'), { code: 'data-engine-required', status: 409 });
+      for (const document of series.docs) {
+        const data = document.data();
+        if (data.userId !== owner) continue;
+        const items = normalizeSeriesItems(data.items, data.sermonIds || []);
+        if (!items.some(item => item.type === 'group' && item.refId === groupId)) continue;
+        const nextItems = removeSeriesItemByRef(items, { type: 'group', refId: groupId });
+        transaction.update(document.ref, { items: nextItems, sermonIds: deriveSermonIdsFromItems(nextItems),
+          seriesKind: inferSeriesKind(nextItems), 'rev.items': FieldValue.increment(1), updatedAt: new Date().toISOString() });
+      }
+      transaction.delete(reference);
+    });
   }
 }
 

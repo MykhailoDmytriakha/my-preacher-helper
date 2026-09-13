@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { assertLegacyWritable, legacyBoundaryResponse, runLegacyTransaction } from '@/data-engine/legacyBoundary.server';
 
 import { noStore, writeError } from '../writeSupport';
 
@@ -16,12 +17,14 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'Invalid placement' }, { status: 400 });
   }
   try {
-    await adminDb.runTransaction(async tx => {
+    if (parsed.data.ranks.length > 100) return legacyBoundaryResponse({ code: 'data-engine-required' })!;
+    await runLegacyTransaction(async tx => {
       const refs = parsed.data.ranks.map(entry => adminDb.collection('serviceOrders').doc(entry.id));
       const snapshots = await tx.getAll(...refs);
       if (snapshots.some(snapshot => !snapshot.exists || snapshot.data()?.userId !== uid)) {
         throw Object.assign(new Error('Service order not found'), { code: 'not-found' });
       }
+      snapshots.forEach(snapshot => assertLegacyWritable(snapshot.data()));
       const updatedAt = new Date().toISOString();
       snapshots.forEach((snapshot, index) => {
         tx.update(refs[index], { rank: parsed.data.ranks[index].rank, updatedAt, 'rev.placement': (snapshot.data()?.rev?.placement ?? 0) + 1 });

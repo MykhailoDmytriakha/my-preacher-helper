@@ -91,7 +91,7 @@ export default function PreachCalendar({
     shown,
     onToggleKind
 }: PreachCalendarProps) {
-    const { t, i18n } = useTranslation();
+    const { i18n } = useTranslation();
     const { user } = useAuth();
     const { settings } = useUserSettings(user?.uid);
     const weekStartsOn = getWeekStartsOn(settings?.firstDayOfWeek);

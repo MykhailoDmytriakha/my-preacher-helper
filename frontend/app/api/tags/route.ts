@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { deleteTag } from '@clients/firestore.client';
 
 export async function DELETE(request: Request) {
@@ -25,6 +26,8 @@ export async function DELETE(request: Request) {
     const result = await deleteTag(uid, tagName);
     return NextResponse.json({ message: 'Tag removed', ...result }, { status: 200 });
   } catch (error) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
     console.error('DELETE: Error removing tag', error);
     return NextResponse.json({ message: 'Error removing tag' }, { status: 500 });
   }

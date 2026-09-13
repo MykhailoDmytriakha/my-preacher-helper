@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { assertLegacyWritable, legacyBoundaryResponse, updateLegacyDocument } from '@/data-engine/legacyBoundary.server';
 
 import type { Sermon } from '@/models/models';
 import type { AudioChunk } from '@/types/audioGeneration.types';
@@ -47,6 +48,7 @@ export async function PUT(
             return NextResponse.json({ error: 'Forbidden: You do not own this sermon' }, { status: 403 });
         }
 
+        assertLegacyWritable(sermonDoc.data());
         const body = await request.json();
         const newText: string = body.text;
         if (!newText || typeof newText !== 'string') {
@@ -66,7 +68,7 @@ export async function PUT(
         };
 
         // 4. Save back
-        await adminDb.collection('sermons').doc(sermonId).update({
+        await updateLegacyDocument(adminDb.collection('sermons').doc(sermonId), {
             audioChunks: chunks,
         });
 
@@ -79,6 +81,8 @@ export async function PUT(
             },
         });
     } catch (error) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
         console.error('Chunk update error:', error);
         return NextResponse.json(
             { error: error instanceof Error ? error.message : 'Update failed' },

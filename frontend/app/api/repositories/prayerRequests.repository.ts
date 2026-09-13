@@ -1,4 +1,5 @@
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { createLegacyDocument } from '@/data-engine/legacyBoundary.server';
 import { PrayerRequest } from '@/models/models';
 
 const COLLECTION = 'prayerRequests';
@@ -38,28 +39,12 @@ export class PrayerRequestsRepository {
       updatedAt: now,
     });
 
-    // Idempotent create when the client supplies the id: a replayed offline
-    // write reuses the same doc instead of duplicating. Guard ownership so a
-    // client cannot overwrite another user's document by guessing an id.
-    if (clientId) {
-      const ref = adminDb.collection(COLLECTION).doc(clientId);
-      const existing = await ref.get();
-      if (existing.exists) {
-        const existingData = existing.data() as Omit<PrayerRequest, 'id'>;
-        // Idempotent replay only when the doc is the SAME user's. Any mismatch
-        // (including a missing userId on the stored doc) is treated as a foreign
-        // id and rejected, so a client can never reach another user's document.
-        if (existingData.userId !== payload.userId) {
-          throw new Error('Forbidden: prayer id belongs to another user');
-        }
-        return hydrate(existingData, clientId);
-      }
-      await ref.set(data);
-      return hydrate(data as Omit<PrayerRequest, 'id'>, clientId);
-    }
-
-    const ref = await adminDb.collection(COLLECTION).add(data);
-    return hydrate(data as Omit<PrayerRequest, 'id'>, ref.id);
+    const owner = payload.userId;
+    if (typeof owner !== 'string' || !owner) throw Object.assign(new Error('Prayer owner is required'), { status: 403 });
+    const collection = adminDb.collection(COLLECTION);
+    const ref = clientId ? collection.doc(clientId) : collection.doc();
+    const result = await createLegacyDocument(ref, data, owner);
+    return hydrate(result.data as Omit<PrayerRequest, 'id'>, ref.id);
   }
 }
 

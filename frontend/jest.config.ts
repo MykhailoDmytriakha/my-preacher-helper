@@ -66,6 +66,11 @@ const config: Config = {
   testPathIgnorePatterns: [
     '<rootDir>/.next/',
     '<rootDir>/node_modules/',
+    // Shared fake IndexedDB helper; its behavior is covered by storage tests.
+    '<rootDir>/app/data-engine/__tests__/storageHarness\\.ts$',
+    // Static-analysis and repository fixtures are imported by tests, not test suites.
+    '<rootDir>/__tests__/architecture/firestoreBoundary\\.ts$',
+    '<rootDir>/__tests__/api/repositories/legacyRepositoryFixture\\.ts$',
   ],
   coveragePathIgnorePatterns: [
     '/node_modules/',
@@ -95,6 +100,7 @@ const config: Config = {
     '!app/**/__mocks__/**', // Exclude __mocks__ directories
     '!**/node_modules/**', // Standard exclusion
     '!app/models/models.ts', // Types-only file; no runtime coverage
+    '!app/data-engine/types.ts', // Types-only command, snapshot and transport contracts
     '!app/models/optimisticEntities.ts', // Types-only optimistic entity contracts
     '!app/models/dashboardOptimistic.ts', // Types-only file; no runtime coverage
     '!app/types/TimerProps.ts', // Types-only file; no runtime coverage

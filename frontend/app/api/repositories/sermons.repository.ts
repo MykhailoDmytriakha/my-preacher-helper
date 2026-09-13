@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 
 import { adminDb, FieldValue } from '@/config/firebaseAdminConfig';
+import { deleteLegacyDocument, runLegacyTransaction, updateLegacyDocument } from '@/data-engine/legacyBoundary.server';
 import { Sermon, SermonOutline, SermonContent, SermonPoint, PreachDate } from '@/models/models';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 
@@ -107,7 +108,7 @@ export class SermonsRepository {
         updatedAt: new Date().toISOString()
       };
 
-      await docRef.update(dataWithTimestamp);
+      await updateLegacyDocument(docRef, dataWithTimestamp);
       console.log(`Firestore: updated sermon data ${id} successfully`);
     } catch (error) {
       console.error(`Error updating sermon data for ${id}:`, error);
@@ -120,7 +121,7 @@ export class SermonsRepository {
     try {
       // Use the Admin SDK to delete the sermon
       const docRef = adminDb.collection("sermons").doc(id);
-      await docRef.delete();
+      await deleteLegacyDocument(docRef);
       console.log(`Firestore: deleted sermon ${id}`);
     } catch (error) {
       console.error(`Error deleting sermon with id ${id}:`, error);
@@ -335,7 +336,7 @@ export class SermonsRepository {
 
       // Series linkage/position is index metadata. Do not bump user-facing
       // updatedAt here; bulk series syncs must not make old sermons look edited.
-      await docRef.update(updateData);
+      await updateLegacyDocument(docRef, updateData);
       console.log(`Sermon series info updated for sermon id ${sermonId}`);
     } catch (error) {
       console.error(`Error updating sermon series info for sermon ${sermonId}:`, error);
@@ -360,7 +361,7 @@ export class SermonsRepository {
       if (clientId) {
         const docRef = adminDb.collection(this.collection).doc(sermonId);
         const operationId = randomUUID();
-        const result = await adminDb.runTransaction(async (transaction) => {
+        const result = await runLegacyTransaction(async (transaction) => {
           const docSnap = await transaction.get(docRef);
           if (!docSnap.exists) {
             throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
@@ -432,7 +433,7 @@ export class SermonsRepository {
       // PARTIAL patch onto whatever it reads, so replaying would lay the old patch
       // over a newer edit of the same date. See `PREACH_DATE_OPS_REMEMBERED`.
       const operationId = randomUUID();
-      const updatedPreachDate = await adminDb.runTransaction(async (transaction) => {
+      const updatedPreachDate = await runLegacyTransaction(async (transaction) => {
         const docSnap = await transaction.get(docRef);
         if (!docSnap.exists) {
           throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);
@@ -495,7 +496,7 @@ export class SermonsRepository {
       // harmless — EXCEPT when the same id was re-created meanwhile, which a replay
       // would delete again. See `PREACH_DATE_OPS_REMEMBERED`.
       const operationId = randomUUID();
-      await adminDb.runTransaction(async (transaction) => {
+      await runLegacyTransaction(async (transaction) => {
         const docSnap = await transaction.get(docRef);
         if (!docSnap.exists) {
           throw new Error(ERROR_MESSAGES.SERMON_NOT_FOUND);

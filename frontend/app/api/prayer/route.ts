@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { prayerRequestsRepository } from '@repositories/prayerRequests.repository';
 
 // POST /api/prayer
@@ -35,6 +36,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
+    const refusal = legacyBoundaryResponse(error);
+    if (refusal) return refusal;
+    if (error && typeof error === 'object' && 'status' in error && (error.status === 400 || error.status === 403)) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : 'Request refused' }, { status: error.status });
+    }
     console.error('Error creating prayer request:', error);
     if (error instanceof Error && error.message.startsWith('Forbidden:')) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

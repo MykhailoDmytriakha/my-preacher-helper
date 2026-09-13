@@ -1,119 +1,31 @@
+/** @jest-environment node */
 import { PrayerRequestsRepository } from '@/api/repositories/prayerRequests.repository';
-
-const mockPrayerAdd = jest.fn();
-const mockPrayerGet = jest.fn();
-const mockPrayerDoc = jest.fn();
-const mockPrayerSet = jest.fn();
-
-jest.mock('@/config/firebaseAdminConfig', () => ({
-  adminDb: {
-    collection: jest.fn(),
-  },
-}));
-
-const { adminDb } = jest.requireMock('@/config/firebaseAdminConfig') as {
-  adminDb: { collection: jest.Mock<unknown, unknown[]> };
-};
-
-const mockCollection = adminDb.collection;
-
-const setupFirestoreMocks = () => {
-  mockCollection.mockImplementation((collectionName: unknown) => {
-    const name = String(collectionName);
-    if (name === 'prayerRequests') {
-      return {
-        add: mockPrayerAdd.mockResolvedValue({ id: 'new-prayer-id' }),
-        doc: mockPrayerDoc.mockReturnValue({
-          get: mockPrayerGet,
-          set: mockPrayerSet.mockResolvedValue(undefined),
-        }),
-      };
-    }
-
-    throw new Error(`Unexpected collection ${name}`);
-  });
-};
-
-describe('PrayerRequestsRepository', () => {
-  let repository: PrayerRequestsRepository;
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    setupFirestoreMocks();
-    repository = new PrayerRequestsRepository();
-  });
-
-  it('creates prayers with timestamps and strips undefined fields', async () => {
-    const nowSpy = jest
-      .spyOn(Date.prototype, 'toISOString')
-      .mockReturnValue('2026-03-05T00:00:00.000Z');
-
-    const created = await repository.create({
-      userId: 'user-1',
-      title: 'New prayer',
-      description: undefined,
-      categoryId: undefined,
-      tags: [],
-      status: 'active',
-      updates: [],
-    });
-
-    expect(mockCollection).toHaveBeenCalledWith('prayerRequests');
-    expect(mockPrayerAdd).toHaveBeenCalledWith({
-      userId: 'user-1',
-      title: 'New prayer',
-      tags: [],
-      status: 'active',
-      updates: [],
-      createdAt: '2026-03-05T00:00:00.000Z',
-      updatedAt: '2026-03-05T00:00:00.000Z',
-    });
-    expect(created.id).toBe('new-prayer-id');
-    nowSpy.mockRestore();
-  });
-
-  it('creates with a client-supplied id via doc().set() (idempotent path)', async () => {
-    mockPrayerGet.mockResolvedValue({ exists: false });
-
-    const created = await repository.create(
-      { userId: 'user-1', title: 'Client id prayer', tags: [], status: 'active', updates: [] },
-      'client-uuid-1'
-    );
-
-    expect(mockPrayerDoc).toHaveBeenCalledWith('client-uuid-1');
-    expect(mockPrayerSet).toHaveBeenCalledTimes(1);
-    expect(mockPrayerAdd).not.toHaveBeenCalled(); // not the auto-id path
-    expect(created.id).toBe('client-uuid-1');
-  });
-
-  it('is idempotent: replaying a create for an existing same-user doc returns it without re-writing', async () => {
-    mockPrayerGet.mockResolvedValue({
-      exists: true,
-      data: () => ({ userId: 'user-1', title: 'Already there', tags: [], status: 'active', updates: [] }),
-    });
-
-    const created = await repository.create(
-      { userId: 'user-1', title: 'Replay', tags: [], status: 'active', updates: [] },
-      'client-uuid-1'
-    );
-
-    expect(created.id).toBe('client-uuid-1');
-    expect(created.title).toBe('Already there'); // existing doc, not re-written
-    expect(mockPrayerSet).not.toHaveBeenCalled(); // no duplicate write
-  });
-
-  it('rejects a client id that belongs to another user (ownership guard)', async () => {
-    mockPrayerGet.mockResolvedValue({
-      exists: true,
-      data: () => ({ userId: 'other-user', title: 'Theirs', tags: [], status: 'active', updates: [] }),
-    });
-
-    await expect(
-      repository.create(
-        { userId: 'user-1', title: 'Hijack', tags: [], status: 'active', updates: [] },
-        'client-uuid-1'
-      )
-    ).rejects.toThrow('Forbidden');
-    expect(mockPrayerSet).not.toHaveBeenCalled();
-  });
+import { adminDb } from '@/config/firebaseAdminConfig';
+import { legacyRepositoryFixture } from './legacyRepositoryFixture';
+jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: { collection: jest.fn(), runTransaction: jest.fn() } }));
+const repository = new PrayerRequestsRepository();
+let fixture: ReturnType<typeof legacyRepositoryFixture>;
+const payload = () => ({ userId: 'owner', title: 'Prayer', status: 'active' as const, tags: [], updates: [] });
+beforeEach(() => { jest.clearAllMocks(); fixture = legacyRepositoryFixture(adminDb); });
+it('creates normalized prayers with server or client identity and strips undefined', async () => {
+  const created = await repository.create({ ...payload(), description: undefined });
+  expect(created).toMatchObject({ id: 'auto-1', status: 'active', updates: [], tags: [], createdAt: expect.any(String) });
+  expect(fixture.records.get('prayerRequests/auto-1')).not.toHaveProperty('description');
+  expect(await repository.create(payload(), 'client')).toMatchObject({ id: 'client' });
+});
+it('returns an existing same-owner legacy prayer without overwriting its mutable state', async () => {
+  fixture.records.set('prayerRequests/p', { ...payload(), title: 'Edited', status: 'answered', updates: [{ text: 'Update' }] });
+  expect(await repository.create(payload(), 'p')).toMatchObject({ title: 'Edited', status: 'answered', updates: [{ text: 'Update' }] });
+  expect(fixture.records.get('prayerRequests/p')?.title).toBe('Edited');
+});
+it.each([null, {}, { deleted: true }])('rejects migrated create collisions including tombstones: %j', async marker => {
+  fixture.records.set('prayerRequests/p', { ...payload(), _dataEngine: marker });
+  await expect(repository.create(payload(), 'p')).rejects.toMatchObject({ code: 'data-engine-required' });
+});
+it('rejects foreign collisions and retries when migration wins a create overlap', async () => {
+  fixture.records.set('prayerRequests/foreign', { ...payload(), userId: 'other' });
+  await expect(repository.create(payload(), 'foreign')).rejects.toMatchObject({ status: 403 });
+  fixture.race(() => fixture.records.set('prayerRequests/p', { ...payload(), _dataEngine: null }));
+  await expect(repository.create(payload(), 'p')).rejects.toMatchObject({ code: 'data-engine-required' });
+  expect(fixture.records.get('prayerRequests/p')).toHaveProperty('_dataEngine', null);
 });

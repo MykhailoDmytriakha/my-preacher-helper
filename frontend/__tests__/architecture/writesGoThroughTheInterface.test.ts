@@ -130,6 +130,9 @@ function countDirectWrites(): Record<string, number> {
   sourceFiles(APP_ROOT).forEach((file) => {
     const relative = path.relative(APP_ROOT, file);
     if (relative.startsWith('api' + path.sep)) return;
+    // The receipt transaction is the new canonical adapter; its boundary is type-checked
+    // by dataEngineBoundary.test.ts and its atomic behavior by emulator.integration.test.ts.
+    if (relative === 'data-engine/server.ts' || relative === 'data-engine/legacyBoundary.server.ts') return;
     const found = (fs.readFileSync(file, 'utf8').match(DIRECT_WRITE) ?? []).length;
     if (found > 0) counts[relative] = found;
   });

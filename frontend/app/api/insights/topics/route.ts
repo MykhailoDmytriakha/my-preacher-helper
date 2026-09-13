@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
+import { assertLegacyWritable, legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { Sermon, Insights } from '@/models/models';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { generateSermonTopics } from '@clients/openAI.client';
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
     if (sermon.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    assertLegacyWritable(sermon);
 
     // Get current insights to preserve other sections
     const currentInsights = sermon.insights || { topics: [], relatedVerses: [], possibleDirections: [] };
@@ -59,6 +61,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ insights: updatedInsights });
   } catch (error) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
     console.error('Topics route: Error generating topics:', error);
     return NextResponse.json({ error: 'Failed to generate topics' }, { status: 500 });

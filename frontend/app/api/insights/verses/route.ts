@@ -3,6 +3,7 @@ import 'openai/shims/node';
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { assertLegacyWritable, legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { Sermon, Insights } from '@/models/models';
 import { generateSermonVerses } from '@clients/openAI.client';
 import { sermonsRepository } from '@repositories/sermons.repository';
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
     if (sermon.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    assertLegacyWritable(sermon);
 
     // Get current insights to preserve other sections
     const currentInsights = sermon.insights || { topics: [], relatedVerses: [], possibleDirections: [] };
@@ -57,6 +59,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ insights: updatedInsights });
   } catch (error) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
     console.error('Verses route: Error generating related verses:', error);
     return NextResponse.json({ error: 'Failed to generate related verses' }, { status: 500 });
   }

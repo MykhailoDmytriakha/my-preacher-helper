@@ -22,7 +22,7 @@
  */
 const PREFIX = 'outbox:v1:';
 
-export type OutboxStatus = 'pending' | 'conflicted';
+export type OutboxStatus = 'pending' | 'conflicted' | 'migration-required' | 'blocked';
 
 export interface OutboxEntry {
   /** Stable id so a replay is idempotent and can be removed exactly once. */
@@ -71,6 +71,8 @@ export interface OutboxEntry {
    */
   targetMissing?: boolean;
   status: OutboxStatus;
+  /** Terminal replay refusal. The original patch and baseline remain intact. */
+  recoveryReason?: 'data-engine-required' | 'permission-denied';
   savedAt: number;
 }
 
@@ -152,9 +154,8 @@ export function removeFromOutbox(id: string): void {
  * quota: the conflict record is slightly larger than the pending one, so the write
  * could fail while the caller assumed it had succeeded — the entry stayed `pending`,
  * was refused again on every heartbeat, and never once turned into a choice the
- * person could make. If the full record does not fit, we retry WITHOUT the opening
- * values (by far the largest field): the guard then falls back to the counter, which
- * is a weaker check but keeps the text and the question alive.
+ * person could make. A quota failure preserves the complete original entry, including its opening
+ * values. Losing those values would make later recovery less safe.
  */
 export function markOutboxConflicted(
   id: string,
@@ -169,12 +170,25 @@ export function markOutboxConflicted(
     const entry = JSON.parse(raw) as OutboxEntry;
     const conflicted = { ...entry, status: 'conflicted' as const, actualRevision, targetMissing };
     if (enqueueWrite(conflicted)) return true;
-    const { expectedBaseline: _dropped, ...compact } = conflicted;
-    if (enqueueWrite(compact)) return true;
     console.error('writeOutbox: could not record the conflict for', id);
     return false;
   } catch {
     /* leave it as-is: a malformed entry is better than a deleted one */
+    return false;
+  }
+}
+
+/** Stop automatic replay without weakening or deleting the saved intent. */
+export function markOutboxRecoveryRequired(id: string, reason: 'data-engine-required' | 'permission-denied'): boolean {
+  const store = storage();
+  if (!store) return false;
+  try {
+    const raw = store.getItem(keyFor(id));
+    if (!raw) return false;
+    const entry = JSON.parse(raw) as OutboxEntry;
+    if (entry.id !== id) return false;
+    return enqueueWrite({ ...entry, status: reason === 'data-engine-required' ? 'migration-required' : 'blocked', recoveryReason: reason });
+  } catch {
     return false;
   }
 }

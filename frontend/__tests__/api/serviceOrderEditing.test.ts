@@ -11,14 +11,14 @@ const mockGetAll = jest.fn();
 const mockCreate = jest.fn();
 const mockDelete = jest.fn();
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: {
-  collection: () => ({ doc: (id = 'new-order') => ({ id, get: () => mockGet(id), create: mockCreate }) }),
-  runTransaction: (run: (tx: unknown) => Promise<unknown>) => run({ get: (ref: { id: string }) => mockGet(ref.id), getAll: (...refs: unknown[]) => mockGetAll(...refs), update: mockUpdate, delete: mockDelete }),
+  collection: () => ({ doc: (id = 'new-order') => ({ id, path: `serviceOrders/${id}`, get: () => mockGet(id), create: mockCreate }) }),
+  runTransaction: (run: (tx: unknown) => Promise<unknown>) => run({ get: (ref: { id: string }) => mockGet(ref.id), getAll: async (...refs: unknown[]) => (await mockGetAll(...refs)).map((snapshot: object, index: number) => ({ ...snapshot, ref: refs[index] })), update: mockUpdate, delete: mockDelete, create: (_ref: unknown, data: unknown) => mockCreate(data) }),
 } }));
 const doc = (data: Record<string, unknown>) => ({ exists: true, data: () => data });
 const current = { userId: 'owner', title: 'Visit', steps: [{ id: 's1', title: 'Listen' }], rev: { steps: 3, meta: 2 } };
 const request = (value?: unknown) => ({ json: async () => value } as Request);
 const context = { params: Promise.resolve({ id: 'order1' }) };
-beforeEach(() => { jest.clearAllMocks(); mockAuth.mockResolvedValue('owner'); mockGet.mockResolvedValue(doc(current)); });
+beforeEach(() => { jest.clearAllMocks(); mockAuth.mockResolvedValue('owner'); mockGet.mockImplementation(id => Promise.resolve(id === 'new-order' ? { exists: false } : doc(current))); });
 it('requires authentication for reads and every write', async () => {
   mockAuth.mockResolvedValue(null);
   expect((await GET(request(), context)).status).toBe(401);
@@ -87,4 +87,29 @@ it('deletes only the authenticated owner service', async () => {
   expect(mockDelete).not.toHaveBeenCalled();
   expect((await DELETE(request(), context)).status).toBe(200);
   expect(mockDelete).toHaveBeenCalledTimes(1);
+});
+
+
+it.each([null, {}, { protocol: 1, deleted: true }])('refuses marked order updates/deletes before interpreting CAS: %j', async metadata => {
+  mockGet.mockResolvedValue(doc({ ...current, _dataEngine: metadata }));
+  const response = await PATCH(request({ aggregate: 'steps', expectedRevision: 0, steps: [] }), context);
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
+  expect((await DELETE(request(), context)).status).toBe(409);
+  expect(mockUpdate).not.toHaveBeenCalled(); expect(mockDelete).not.toHaveBeenCalled();
+});
+it('refuses a protected later placement participant before staging any rank', async () => {
+  mockGetAll.mockResolvedValue([doc(current), doc({ ...current, _dataEngine: null })]);
+  const response = await place(request({ ranks: [{ id: 'a', rank: 1 }, { id: 'b', rank: 2 }] }));
+  expect(response.status).toBe(409); expect(mockUpdate).not.toHaveBeenCalled();
+});
+it('explicitly refuses placement above the atomic bound without reading or writing', async () => {
+  const response = await place(request({ ranks: Array.from({ length: 101 }, (_, index) => ({ id: String(index), rank: index })) }));
+  expect(response.status).toBe(409); expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
+  expect(mockGetAll).not.toHaveBeenCalled(); expect(mockUpdate).not.toHaveBeenCalled();
+});
+it('refuses a tombstone collision during custom create', async () => {
+  mockGet.mockResolvedValue(doc({ ...current, _dataEngine: { deleted: true } }));
+  expect((await create(request({ title: 'New', steps: [], rank: 1 }))).status).toBe(409);
+  expect(mockCreate).not.toHaveBeenCalled();
 });

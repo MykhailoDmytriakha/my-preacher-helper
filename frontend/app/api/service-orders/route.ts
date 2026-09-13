@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { SERVICE_ORDER_CATALOG } from '@/utils/serviceOrderCatalog';
 import { serviceOrdersRepository } from '@repositories/serviceOrders.repository';
 
@@ -144,6 +145,6 @@ export async function POST(request: Request) {
     return NextResponse.json(stored, { status: 201, headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('Error seeding service orders:', error);
-    return NextResponse.json({ error: 'Failed to create service orders' }, { status: 500 });
+    return legacyBoundaryResponse(error) ?? NextResponse.json({ error: 'Failed to create service orders' }, { status: 500 });
   }
 }

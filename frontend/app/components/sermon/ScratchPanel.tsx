@@ -57,7 +57,7 @@ interface ScratchPanelProps {
   moveScratchNote?: (noteId: string, neighbourIds: string[], index: number) => void;
   isScratchWritePending: boolean;
   scratchRevision: number;
-  onApplyOutline: (outline: SermonOutline, consumedNoteIds: string[]) => void | Promise<void>;
+  onApplyOutline: (outline: SermonOutline, consumedNoteIds: string[]) => void | { delivery: 'queued' } | Promise<void | { delivery: 'queued' }>;
   onOutlineChange: (outline: SermonOutline) => void | Promise<void>;
   isReadOnly?: boolean;
 }
@@ -679,10 +679,13 @@ export default function ScratchPanel({
         throw new Error(t("scratch.board.applyPlacementError"));
       }
 
-      const persistApply = Promise.resolve(onApplyOutline(finalOutline, Array.from(consumedNoteIds)));
+      let deliveryQueued = false;
+      const persistApply = Promise.resolve(onApplyOutline(finalOutline, Array.from(consumedNoteIds))).then(result => {
+        deliveryQueued = result?.delivery === 'queued';
+      });
       void persistApply.catch(reportApplyError);
 
-      let didOnlineWriteSettle = true;
+      let didOnlineWriteSettle = false;
       if (!isBrowserOffline()) {
         didOnlineWriteSettle = await waitForSettleWithTimeout(persistApply, APPLY_SETTLE_TIMEOUT_MS);
       }
@@ -698,7 +701,9 @@ export default function ScratchPanel({
       // shadow so the board renders the freshly-applied outline (which already folded that
       // edit in) instead of keeping the stale pre-Apply draft until a remount. (Review r8.)
       setManualOutline(null);
-      if (didOnlineWriteSettle) {
+      if (deliveryQueued) {
+        setComposeNoticeKey('scratch.board.applyQueued');
+      } else if (didOnlineWriteSettle) {
         toast.success(t("scratch.board.applySuccess"), SCRATCH_TOAST_OPTIONS);
       }
     } catch (error) {

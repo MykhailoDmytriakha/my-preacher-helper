@@ -1,0 +1,39 @@
+# Remaining Admin writers and staged cutover
+
+Status: local implementation, 2026-09-12. DataEngine activation remains disabled. No rules deployment is implied by this document. Paths below are relative to `frontend/app`.
+
+The marker guard is a staged safety boundary, not a complete migration: it keeps an existing `_dataEngine` document immutable to reviewed legacy writers. Unmarked legacy creates still produce no engine feed event or receipt. Client drafts/outboxes and old installed clients need an explicit recovery and upgrade path.
+
+| Domain and callers | Admin write paths | Current boundary and intended migration |
+| --- | --- | --- |
+| Sermons; thoughts, insights, outline, plan, preach dates, audio APIs; series/tag cascades | `api/repositories/sermons.repository.ts`, sermon/insights/thoughts API routes, `api/repositories/series.repository.ts`, `api/clients/firestore.client.ts:deleteTag` | Guarded locally through `data-engine/legacyBoundary.server.ts`. All mutation targets are read in the transaction; marker presence of any shape refuses. Bounded cascades are atomic. AI already underway can finish paid work then receive an explicit refusal; final UX should submit reversible proposals through the editor's durable command lifecycle. |
+| Councils; `services/councilsTransport.client.ts` -> `/api/councils`, `/api/councils/[id]` | `api/repositories/councils.repository.ts:createForOwner/replaceForOwner/deleteForOwner` | Guarded locally. Create replay checks the stored marker before returning a council. Replacement refuses markers before legacy CAS handling; deletion cannot remove tombstones. Final: document commands plus a durable destination/source dependency or typed two-council carry operation for `hooks/useCouncils.ts:carryTopicToNext`. |
+| Service orders; `services/serviceOrderEditing.client.ts`, `services/serviceOrdersSeed.client.ts` | `api/service-orders/[id]/route.ts`, `placement/route.ts`, `custom/route.ts`, `api/repositories/serviceOrders.repository.ts:seedMissingForOwner` | Guarded locally. Placement refuses above 100 targets before database I/O. Catalog seeding reads the owner query and deterministic target IDs before any write, preserves old random-ID catalog entries, and refuses oversized scans/protected collisions atomically. Final: document edits, stable create/catalog identity and an explicit atomic placement command if the whole ordering must commit together. |
+| Study notes/materials; `services/studies.service.ts` note DELETE; exposed materials POST/PUT/DELETE routes | `api/repositories/studies.repository.ts:deleteNote/createMaterial/updateMaterial/deleteMaterial` and reference helper batches | Still unguarded. Create/delete combine separate commits; update's transaction lacks marker validation. Material PUT passes arbitrary update fields. Needs a single bounded transaction over the primary and owned related notes/materials/share links, with no partial cleanup. Final: existing engine create/delete cascades and `material-notes` relation command. |
+| Groups; `services/groups.service.ts` -> `/api/groups/[id]` DELETE | `api/repositories/groups.repository.ts:deleteGroup`; dormant `updateGroup/updateGroupSeriesInfo` exports have no current production callers | Still unguarded for group deletion. The route first detaches series in a separate guarded transaction, then physically deletes the group. Must combine group read, all owner-series reads, detach and delete. Final: engine group delete cascade. |
+| Prayer; `services/prayerRequests.service.ts` -> `/api/prayer` POST | `api/repositories/prayerRequests.repository.ts:create` | Still get-then-set for client IDs, or auto-ID add. Needs guarded transaction create with a stable client ID. Final: engine create. Other prayer operations are client SDK writes; no active prayer-category Admin writer was found. |
+| Tags | Dormant `api/clients/firestore.client.ts:saveTag/updateTagInDb` | No current production callers found; active DELETE is guarded. Remove dormant writers or guard their future use. Final custom-tag commands must preserve required-tag restrictions. |
+| Share links; `services/studyNoteShareLinks.service.ts`; public `/api/share/notes/[token]` GET | `api/repositories/studyNoteShareLinks.repository.ts:createLink/deleteLink/incrementViewCount` | Partial protection only: create contends on the note, public reads consistently check note/link retirement, and view increments cannot revive retired links. No command receipt/feed for create/revoke/view changes. Needs typed owner create/revoke operations or a separate explicit ownership model. Prefer separate metrics for public view counters rather than editor receipts for each view. |
+| User settings and privileged user state | SDK settings via `services/userSettings.service.ts`; Admin `services/usageLimits.server.ts:consumeUsage`, `api/admin/users/[uid]/entitlement/route.ts`, `api/referral/claim/route.ts` | SDK marker rules protect editable profiles. Admin usage/tier/referral patches still bypass engine revision/feed. Do not blanket-refuse them and break metering. Introduce a trusted protected-field engine policy, or separate privileged records from editor-owned profiles. |
+| Plan templates, calendar, care | SDK `services/planTemplates.client.ts`; calendar/care project sermons, groups, councils and prayers | No additional Admin writers found. Template/settings SDK cutover and pending-write recovery remain necessary. Calendar/care inherit their underlying domains' readiness. |
+
+## Response and concurrency invariants
+
+- `services/ownerHttpTransport.client.ts` now throws typed `data-engine-required` on that specific HTTP 409 payload before generic answer-status handling. Ordinary CAS 409 bodies remain valid document responses. Councils/order consumers must never use a migration error as a current document, retry it, or report successful placement.
+- Refusal cannot authorize replay over a different transport. Timeout/unknown writes retain their existing uncertainty semantics.
+- Every target read precedes all transaction effects. Ownership and marker checks are inside the transaction; a preliminary route check alone cannot close a migration race.
+- No legacy create may return a tombstone as a successful replay. No legacy delete may physically erase a marked document.
+- Bounds refuse the whole operation; they never truncate related-document cleanup or silently split an atomic operation.
+- Existing SDK rules are staged per-document protection. Full cohort activation additionally needs legacy-create closure, durable intent recovery, all Admin writers closed, and list/feed freshness for trusted auxiliary changes.
+
+## Local evidence
+
+Sermon stage: 21 API/architecture suites with 235 tests; 198 rules-emulator cases including an SDK write queued before migration and rejected after reconnect; a real in-flight legacy request paused after its preliminary check and refused after an actual engine commit. The overlap fixture uses random UUIDs because Jest globally fixes `Date.now()`. A separate deterministic transaction simulation covers migration between a legacy transactional read and commit.
+
+Councils/order stage has direct route, repository and shared-transport tests for marker shapes, tombstones, atomic seed/placement refusal, ordinary CAS preservation, transaction retry and no transport replay. The frozen SDK boundary is updated only for reviewed adapter moves; it remains an inventory of migration debt, not proof of zero legacy access.
+
+Latest councils/order local gate: 7 targeted suites, 78 tests passed; the boundary suite
+passed all 4 tests. Councils repository, orders repository and owner HTTP transport
+each reached 100% line coverage. Targeted ESLint (zero warnings), TypeScript and
+whitespace checks passed. Frozen inventory: 222 SDK calls, 236 runtime capabilities,
+29 legacy HTTP writes. This evidence does not authorize activation or deployment.

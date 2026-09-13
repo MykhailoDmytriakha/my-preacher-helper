@@ -74,16 +74,22 @@ const setupFirestoreMocks = () => {
     }),
     get: mockGet,
     where: mockWhere.mockReturnValue({
+      where: mockWhere, limit: jest.fn().mockReturnThis(),
       get: mockGet,
     }),
   });
 
   mockGet.mockResolvedValue(mockDocumentSnapshot);
-  adminDb.runTransaction.mockImplementation(async (callback: (transaction: any) => Promise<unknown>) => callback(guardTransactionReadOrder({
-    get: (source: { get: () => Promise<unknown> }) => source.get(),
-    update: (ref: { update: (...args: unknown[]) => unknown }, ...args: unknown[]) => ref.update(...args),
-    delete: (ref: { delete: () => unknown }) => ref.delete(),
-  })));
+  adminDb.runTransaction.mockImplementation(async (callback: (transaction: any) => Promise<unknown>) => {
+    const pending: Promise<unknown>[] = [];
+    const result = await callback(guardTransactionReadOrder({
+      get: (source: { get: () => Promise<unknown> }) => source.get(),
+      update: (ref: any, ...args: unknown[]) => { pending.push(Promise.resolve(ref.update(...args))); },
+      delete: (ref: any) => { pending.push(Promise.resolve(ref.delete())); },
+    }));
+    await Promise.all(pending);
+    return result;
+  });
 };
 
 // Mock Date to return consistent timestamps
@@ -125,7 +131,7 @@ describe('SeriesRepository', () => {
         items: [{ id: 'foreign-target', type: 'sermon', refId: 'sermon-1', position: 1 }],
       };
       let sermonExists = true;
-      const query = { kind: 'sermon-query' };
+      const query = { kind: 'sermon-query', where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis() };
 
       (mockCollection as jest.Mock).mockImplementation((name: string) => {
         if (name === 'sermons') {
@@ -140,6 +146,7 @@ describe('SeriesRepository', () => {
           const staged: Array<() => void> = [];
           const result = await callback(guardTransactionReadOrder({
             get: jest.fn(async (source) => {
+              if (source === sermonRef) return { exists: true, ref: sermonRef, data: () => ({ userId: 'user-1' }) };
               expect(source).toBe(query);
               return {
                 docs: [
@@ -183,13 +190,13 @@ describe('SeriesRepository', () => {
       const ownedRef = { id: 'series-owned' };
       const sermonRef = { id: 'sermon-1' };
       const liveItems = [{ id: 'target', type: 'sermon', refId: 'sermon-1', position: 1 }];
-      const query = { kind: 'sermon-query' };
+      const query = { kind: 'sermon-query', where: jest.fn().mockReturnThis(), limit: jest.fn().mockReturnThis() };
       (mockCollection as jest.Mock).mockImplementation((name: string) => name === 'sermons'
         ? { doc: jest.fn().mockReturnValue(sermonRef) }
         : { where: jest.fn().mockReturnValue(query) });
       adminDb.runTransaction.mockImplementationOnce(async (callback: (transaction: any) => Promise<unknown>) => {
         await callback(guardTransactionReadOrder({
-          get: jest.fn().mockResolvedValue({ docs: [{ id: 'series-owned', ref: ownedRef, data: () => ({ ...mockSeriesData, items: liveItems }) }] }),
+          get: jest.fn(async source => source === sermonRef ? { exists: true, ref: sermonRef, data: () => ({ userId: 'user-1' }) } : { docs: [{ id: 'series-owned', ref: ownedRef, data: () => ({ ...mockSeriesData, items: liveItems }) }] }),
           update: jest.fn(),
           delete: jest.fn(),
         }));
@@ -206,6 +213,7 @@ describe('SeriesRepository', () => {
     it('should return early when no series contain the sermon', async () => {
       const logSpy = jest.spyOn(console, 'log').mockImplementation();
       mockWhere.mockReturnValue({
+      where: mockWhere, limit: jest.fn().mockReturnThis(),
         get: jest.fn().mockResolvedValue({ empty: true, docs: [] }),
       });
 
@@ -233,6 +241,7 @@ describe('SeriesRepository', () => {
       ];
 
       mockWhere.mockReturnValue({
+      where: mockWhere, limit: jest.fn().mockReturnThis(),
         get: jest.fn().mockResolvedValue({ empty: false, docs }),
       });
 
@@ -251,6 +260,7 @@ describe('SeriesRepository', () => {
     it('should throw error when Firestore query fails', async () => {
       const error = new Error('Firestore error');
       mockWhere.mockReturnValue({
+      where: mockWhere, limit: jest.fn().mockReturnThis(),
         get: jest.fn().mockRejectedValue(error),
       });
 
@@ -384,7 +394,7 @@ describe('SeriesRepository', () => {
         ],
         sermonIds: ['sermon-1'],
       };
-      const query = { kind: 'owner-query' };
+      const query = { kind: 'owner-query', limit: jest.fn().mockReturnThis() };
       const where = jest.fn().mockReturnValue(query);
       (mockCollection as jest.Mock).mockReturnValue({ where });
       adminDb.runTransaction.mockImplementationOnce(async (callback: (transaction: any) => Promise<unknown>) => {
@@ -418,7 +428,7 @@ describe('SeriesRepository', () => {
 
     it('leaves matching series unchanged when the group-removal transaction fails', async () => {
       const liveItems = [{ id: 'group', type: 'group', refId: 'group-1', position: 1 }];
-      (mockCollection as jest.Mock).mockReturnValue({ where: jest.fn().mockReturnValue({ kind: 'owner-query' }) });
+      (mockCollection as jest.Mock).mockReturnValue({ where: jest.fn().mockReturnValue({ kind: 'owner-query', limit: jest.fn().mockReturnThis() }) });
       adminDb.runTransaction.mockImplementationOnce(async (callback: (transaction: any) => Promise<unknown>) => {
         await callback(guardTransactionReadOrder({
           get: jest.fn().mockResolvedValue({

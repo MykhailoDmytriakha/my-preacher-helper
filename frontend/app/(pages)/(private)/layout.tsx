@@ -12,14 +12,17 @@ import DevQuickNav from '@/components/navigation/DevQuickNav';
 import { OutboxConflictBanner } from '@/components/OutboxConflictBanner';
 import { OutboxDrain } from '@/components/OutboxDrain';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { DataEngineWorkspace } from '@/data-engine/react.client';
 
 export default function PrivateLayout({ children }: { children: ReactNode }) {
   return (
     <ProtectedRoute>
+      <DataEngineWorkspace>
       <TechnicalDetailsDialog />
       <Suspense fallback={null}>
         <PrivateLayoutContent>{children}</PrivateLayoutContent>
       </Suspense>
+      </DataEngineWorkspace>
     </ProtectedRoute>
   );
 }

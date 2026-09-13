@@ -148,7 +148,7 @@ describe('studies materials [id] route', () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(mockRepo.updateMaterial).toHaveBeenCalledWith('material-1', { title: 'Updated', userId: 'user-1' });
+      expect(mockRepo.updateMaterial).toHaveBeenCalledWith('material-1', { title: 'Updated', userId: 'user-1' }, 'user-1');
       expect(data.title).toBe('Updated');
     });
 
@@ -199,7 +199,7 @@ describe('studies materials [id] route', () => {
       const response = await route.DELETE(makeRequest('user-1', 'DELETE'), params);
       const data = await response.json();
 
-      expect(mockRepo.deleteMaterial).toHaveBeenCalledWith('material-1');
+      expect(mockRepo.deleteMaterial).toHaveBeenCalledWith('material-1', 'user-1');
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
     });

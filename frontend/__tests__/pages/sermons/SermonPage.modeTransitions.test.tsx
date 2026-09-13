@@ -3,11 +3,22 @@ import React from 'react';
 
 import '@testing-library/jest-dom';
 jest.mock('@/hooks/useDocumentFreshness', () => ({
-  useDocumentFreshness: () => ({ state: 'fresh', remote: null, remotelyDeleted: false, markSynced: jest.fn() }),
+  useDocumentFreshness: jest.fn(() => ({ state: 'fresh', remote: null, remotelyDeleted: false, markSynced: jest.fn() })),
 }));
 
 jest.mock('@locales/i18n', () => ({}));
 import SermonPage from '@/(pages)/(private)/sermons/[id]/page';
+import { EngineScratchWorkspace } from '@/(pages)/(private)/sermons/[id]/components/EngineScratchWorkspace';
+import { useScratchNotes } from '@/(pages)/(private)/sermons/[id]/hooks/useScratchNotes';
+import { useSermonCoreDataDocument } from '@/(pages)/(private)/sermons/[id]/hooks/useSermonCoreDataDocument';
+import SermonHeader from '@/components/sermon/SermonHeader';
+import TextContextStepContent from '@/components/sermon/prep/TextContextStepContent';
+import SpiritualStepContent from '@/components/sermon/prep/SpiritualStepContent';
+import ThesisStepContent from '@/components/sermon/prep/ThesisStepContent';
+import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanStepContent';
+import { DataDocumentProvider } from '@/data-engine/react.client';
+import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
+import useSermon from '@/hooks/useSermon';
 
 import { TestProviders } from '../../../test-utils/test-providers';
 
@@ -19,6 +30,23 @@ jest.mock('@/components/AudioRecorder', () => ({
 
 let searchParamsMock: URLSearchParams;
 let routerMock: any;
+let mockEngineEnabled = false;
+const mockSetSermon = jest.fn();
+let mockCore: ReturnType<typeof useSermonCoreDataDocument>;
+
+jest.mock('@/data-engine/react.client', () => ({
+  isDataEngineEnabled: () => mockEngineEnabled,
+  DataDocumentProvider: jest.fn(({ children }: { children: React.ReactNode }) => <div data-testid="document-provider">{children}</div>),
+}));
+jest.mock('@/(pages)/(private)/sermons/[id]/hooks/useSermonCoreDataDocument', () => ({
+  useSermonCoreDataDocument: jest.fn(() => mockCore),
+}));
+jest.mock('@/(pages)/(private)/sermons/[id]/components/EngineScratchWorkspace', () => ({
+  EngineScratchWorkspace: jest.fn(() => <div data-testid="engine-scratch-workspace" />),
+}));
+jest.mock('@/(pages)/(private)/sermons/[id]/hooks/useScratchNotes', () => ({
+  useScratchNotes: jest.fn(() => ({ notes: [], scratchRevision: 0, isWritePending: false })),
+}));
 
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'abc' }),
@@ -40,12 +68,12 @@ Object.defineProperty(window, 'localStorage', {
 
 // Minimal mocks for hooks/services used by page
 jest.mock('@/hooks/useSermon', () => {
-  const useSermonMock = () => ({
+  const useSermonMock = Object.assign(jest.fn(() => ({
     sermon: { id: 'abc', userId: 'u1', date: '2024-01-01', title: 'T', verse: '', thoughts: [], outline: { introduction: [], main: [], conclusion: [] } },
-    setSermon: jest.fn(),
+    setSermon: mockSetSermon,
     loading: false,
     refreshSermon: jest.fn(),
-  });
+  })), { sermonIsMissing: jest.requireActual('@/hooks/useSermon').sermonIsMissing });
   // The module is mocked AS a function here (CJS default interop), so the named rule has to
   // hang off it. It stays REAL: a stubbed rule would pass while the screens drift apart.
   useSermonMock.sermonIsMissing = jest.requireActual('@/hooks/useSermon').sermonIsMissing;
@@ -61,7 +89,12 @@ jest.mock('@/hooks/useTags', () => ({
 jest.mock('@/hooks/useSeries', () => ({
   useSeries: () => ({ series: [] }),
 }));
-jest.mock('@/components/sermon/SermonHeader', () => ({ __esModule: true, default: ({}) => <div data-testid="sermon-header" /> }));
+jest.mock('@/components/sermon/SermonHeader', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="sermon-header" />) }));
+jest.mock('@/components/sermon/prep/TextContextStepContent', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="text-context" />) }));
+jest.mock('@/components/sermon/prep/SpiritualStepContent', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="spiritual" />) }));
+jest.mock('@/components/sermon/prep/ThesisStepContent', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="thesis" />) }));
+jest.mock('@/components/sermon/prep/ExegeticalPlanStepContent', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="exegetical" />) }));
+jest.mock('@/components/sermon/prep/PrepStepCard', () => ({ __esModule: true, default: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 jest.mock('@/components/sermon/BrainstormModule', () => ({ __esModule: true, default: ({}) => <div data-testid="brainstorm" /> }));
 jest.mock('@/components/sermon/ThoughtList', () => ({ __esModule: true, default: ({}) => <div data-testid="thought-list" /> }));
 jest.mock('@/components/sermon/ThoughtFilterControls', () => ({ __esModule: true, default: ({}) => null }));
@@ -76,6 +109,17 @@ jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (k: string) => k
 describe('SermonPage mode transitions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockEngineEnabled = false;
+    const data = { userId: 'u1', date: '2024-01-01', title: 'Canonical title', verse: 'Canonical verse', thoughts: [],
+      preparation: { textContext: { passageSummary: 'Summary', contextNotes: 'Keep this newer value' }, thesis: { homiletical: 'Keep thesis' } } };
+    mockCore = { data, coreValues: { title: data.title, verse: data.verse }, preparation: data.preparation,
+      confirmed: { resource: { collection: 'sermons', id: 'abc' }, value: data, metadata: { protocol: 1, generation: 'g', revision: 2, deleted: false } },
+      status: null, error: null, loading: false, isReadOnly: false,
+      retry: jest.fn(async () => undefined), patchCore: jest.fn(async () => ({ delivery: 'queued' as const })),
+      patchPreparation: jest.fn(async () => ({ delivery: 'queued' as const })), keepLocal: jest.fn(), acceptRemote: jest.fn(),
+      titleBinding: { active: false, busy: false, value: data.title, begin: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn() },
+      verseBinding: { active: false, busy: false, value: data.verse, begin: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn() },
+    } as unknown as ReturnType<typeof useSermonCoreDataDocument>;
     searchParamsMock = new URLSearchParams();
     routerMock = { push: jest.fn(), replace: jest.fn() };
     mockLocalStorage.getItem.mockReturnValue(null);
@@ -130,8 +174,107 @@ describe('SermonPage mode transitions', () => {
     );
 
     expect(await screen.findByTestId('scratch-panel')).toBeInTheDocument();
+    expect(screen.queryByTestId('engine-scratch-workspace')).not.toBeInTheDocument();
+    expect(useScratchNotes).toHaveBeenLastCalledWith(expect.objectContaining({ sermon: expect.objectContaining({ id: 'abc' }) }));
     expect(screen.queryByTestId('audio-recorder')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('brainstorm.title')).not.toBeInTheDocument();
+  });
+
+  test('uses the public engine scratch workspace in the enabled raw branch and deactivates the legacy consumer', async () => {
+    mockEngineEnabled = true;
+    searchParamsMock.set('mode', 'raw');
+    render(<TestProviders><SermonPage /></TestProviders>);
+    expect(await screen.findByTestId('engine-scratch-workspace')).toBeInTheDocument();
+    expect(screen.queryByTestId('scratch-panel')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('audio-recorder')).not.toBeInTheDocument();
+    expect(useScratchNotes).toHaveBeenLastCalledWith(expect.objectContaining({ sermon: null }));
+    const props = jest.mocked(EngineScratchWorkspace).mock.calls.at(-1)![0];
+    expect(props.sermonId).toBe('abc');
+    expect(props.isReadOnly).toBe(false);
+    expect(props.onConfirmed).toBeUndefined();
+    mockSetSermon.mockClear();
+    expect(mockSetSermon).not.toHaveBeenCalled();
+    expect(mockCore.patchCore).not.toHaveBeenCalled();
+    expect(useSermon).not.toHaveBeenCalled();
+    expect(DataDocumentProvider).toHaveBeenLastCalledWith(expect.objectContaining({ resource: { collection: 'sermons', id: 'abc' }, options: { slot: 'sermon' } }), undefined);
+  });
+
+  test('preserves the mounted scratch pane while the page displays preparation mode', async () => {
+    mockEngineEnabled = true;
+    searchParamsMock.set('mode', 'prep');
+    render(<TestProviders><SermonPage /></TestProviders>);
+    expect(await screen.findByTestId('sermon-header')).toBeInTheDocument();
+    expect(screen.queryByTestId('audio-recorder')).not.toBeInTheDocument();
+    expect(screen.getByTestId('engine-scratch-workspace')).toBeInTheDocument();
+    expect(screen.queryByTestId('scratch-panel')).not.toBeInTheDocument();
+    expect(useScratchNotes).toHaveBeenLastCalledWith(expect.objectContaining({ sermon: null }));
+  });
+
+  test('renders the canonical draft with the route identity and ignores confirmation-only metadata changes', () => {
+    mockEngineEnabled = true;
+    mockCore.data = { ...mockCore.data!, id: 'stored-id-is-not-the-route', title: 'Unsaved canonical title' };
+    mockCore.coreValues = { title: 'Unsaved canonical title', verse: 'Canonical verse' };
+    mockCore.confirmed = { ...mockCore.confirmed!, value: { ...mockCore.confirmed!.value!, title: 'Older confirmed title' } };
+    const view = render(<TestProviders><SermonPage /></TestProviders>);
+    const first = jest.mocked(SermonHeader).mock.calls.at(-1)![0];
+    expect(first.sermon.id).toBe('abc');
+    expect(first.sermon.title).toBe('Unsaved canonical title');
+    expect(first.editor).toMatchObject({ values: mockCore.coreValues, titleForm: mockCore.titleBinding, verseForm: mockCore.verseBinding, isReadOnly: false });
+    expect(useSermon).not.toHaveBeenCalled();
+    expect(useDocumentFreshness).toHaveBeenLastCalledWith(expect.objectContaining({ enabled: false }));
+    expect(mockLocalStorage.getItem.mock.calls.some(([key]) => key.startsWith('prep-draft-backup-'))).toBe(false);
+    mockCore.confirmed = { ...mockCore.confirmed!, metadata: { ...mockCore.confirmed!.metadata!, revision: 3, operationId: 'own-ack' } };
+    view.rerender(<TestProviders><SermonPage /></TestProviders>);
+    expect(jest.mocked(SermonHeader).mock.calls.at(-1)![0].sermon).toBe(first.sermon);
+    expect(mockCore.patchCore).not.toHaveBeenCalled(); expect(mockCore.patchPreparation).not.toHaveBeenCalled();
+    expect(mockSetSermon).not.toHaveBeenCalled();
+  });
+
+  test('sends only the intended preparation field even when the form callback holds an older render', async () => {
+    mockEngineEnabled = true; searchParamsMock.set('mode', 'prep');
+    render(<TestProviders><SermonPage /></TestProviders>);
+    const text = jest.mocked(TextContextStepContent).mock.calls.at(-1)![0];
+    const thesis = jest.mocked(ThesisStepContent).mock.calls.at(-1)![0];
+    const spiritual = jest.mocked(SpiritualStepContent).mock.calls.at(-1)![0];
+    const exegetical = jest.mocked(ExegeticalPlanStepContent).mock.calls.at(-1)![0];
+    mockCore.preparation = { textContext: { passageSummary: 'Another saved summary', contextNotes: 'Latest sibling' } };
+    await text.onSavePassageSummary!('My summary');
+    await text.onSaveContextNotes!('My context');
+    await text.onSaveRepeatedWords!([]);
+    await text.onToggleReadWholeBookOnce!(false);
+    await thesis.onSaveHomiletical!('My thesis');
+    await spiritual.savePreparation({ textContext: { contextNotes: 'Stale accidental sibling' }, spiritual: { readAndPrayedConfirmed: true } });
+    await exegetical.onSaveAuthorIntent!('My intention');
+    await text.onSaveVerse('Acts 1');
+    expect(jest.mocked(mockCore.patchPreparation).mock.calls.map(([patch]) => patch)).toEqual([
+      { textContext: { passageSummary: 'My summary' } }, { textContext: { contextNotes: 'My context' } },
+      { textContext: { repeatedWords: [] } }, { textContext: { readWholeBookOnceConfirmed: false } },
+      { thesis: { homiletical: 'My thesis' } }, { spiritual: { readAndPrayedConfirmed: true } }, { authorIntent: 'My intention' },
+    ]);
+    expect(mockCore.patchCore).toHaveBeenCalledWith({ verse: 'Acts 1' });
+    expect(mockSetSermon).not.toHaveBeenCalled();
+  });
+
+  test('keeps a deleted dirty document visible but locks core/preparation and disables unmigrated writers', () => {
+    mockEngineEnabled = true; mockCore.isReadOnly = true;
+    mockCore.confirmed = { ...mockCore.confirmed!, value: null, metadata: { ...mockCore.confirmed!.metadata!, deleted: true } };
+    render(<TestProviders><SermonPage /></TestProviders>);
+    expect(jest.mocked(SermonHeader).mock.calls.at(-1)![0].sermon.title).toBe('Canonical title');
+    expect(jest.mocked(SermonHeader).mock.calls.at(-1)![0].editor?.isReadOnly).toBe(true);
+    expect(screen.getByTestId('text-context').closest('fieldset')).toBeDisabled();
+    expect(screen.queryByTestId('audio-recorder')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('knowledge')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('brainstorm.title')).not.toBeInTheDocument();
+  });
+
+  test('does not reconstruct an absent document from metadata or legacy query data', () => {
+    mockEngineEnabled = true; mockCore.data = null; mockCore.loading = false;
+    mockCore.confirmed = { ...mockCore.confirmed!, value: null, metadata: { ...mockCore.confirmed!.metadata!, deleted: true } };
+    render(<TestProviders><SermonPage /></TestProviders>);
+    expect(screen.queryByTestId('sermon-header')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('engine-scratch-workspace')).not.toBeInTheDocument();
+    expect(useSermon).not.toHaveBeenCalled();
+    expect(mockCore.patchCore).not.toHaveBeenCalled();
   });
 
   test('initializes mode from URL param when present', async () => {

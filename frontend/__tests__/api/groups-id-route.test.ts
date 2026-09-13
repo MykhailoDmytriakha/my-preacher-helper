@@ -56,8 +56,10 @@ describe('/api/groups/[id] route', () => {
       const response = await DELETE({} as Request, { params: Promise.resolve({ id: 'g1' }) });
       const data = await response.json();
 
-      expect(seriesRepository.removeGroupFromAllSeries).toHaveBeenCalledWith('g1', 'user-1');
-      expect(groupsRepository.deleteGroup).toHaveBeenCalledWith('g1');
+      // The repository owns the group/series cleanup transaction; the route must
+      // not perform a second best-effort series write.
+      expect(seriesRepository.removeGroupFromAllSeries).not.toHaveBeenCalled();
+      expect(groupsRepository.deleteGroup).toHaveBeenCalledWith('g1', 'user-1');
       expect(response.status).toBe(200);
       expect(data.message).toBe('Group deleted successfully');
     });

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
+import { legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { sermonsRepository } from '@repositories/sermons.repository';
 
 const SERMON_NOT_FOUND_ERROR = 'Sermon not found';
@@ -31,6 +32,8 @@ export async function GET(request: Request) {
     const outline = await sermonsRepository.fetchSermonOutlineBySermonId(sermonId);
     return NextResponse.json(outline);
   } catch (error: unknown) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
     if ((error as Error).message === SERMON_NOT_FOUND_ERROR) {
       return NextResponse.json({ error: (error as Error).message }, { status: 404 });
     }
@@ -73,6 +76,8 @@ export async function PUT(request: Request) {
     
     return NextResponse.json(updatedOutline);
   } catch (error: unknown) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
     if ((error as Error).message === SERMON_NOT_FOUND_ERROR) {
       return NextResponse.json({ error: (error as Error).message }, { status: 404 });
     }

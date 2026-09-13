@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { toast } from 'sonner';
 
 import { OutboxConflictBanner } from '@/components/OutboxConflictBanner';
@@ -11,7 +11,13 @@ import '@testing-library/jest-dom';
  * These pin the ONE path that may overwrite (a human choosing "keep mine") and
  * the one that may discard (a human choosing "take theirs").
  */
-jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => ({ user: { uid: 'u1' } }) }));
+let mockOwner: string | null = 'u1';
+const mockOwnerListeners = new Set<() => void>();
+jest.mock('@/providers/AuthProvider', () => ({ useAuth: () => {
+  const React = jest.requireActual('react');
+  const owner = React.useSyncExternalStore((listener: () => void) => { mockOwnerListeners.add(listener); return () => mockOwnerListeners.delete(listener); }, () => mockOwner);
+  return { user: owner ? { uid: owner } : null };
+} }));
 jest.mock('@/config/firebaseClientDb', () => ({ getClientDb: () => ({}) }));
 jest.mock('sonner', () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 jest.mock('firebase/firestore', () => ({ doc: (_db: unknown, c: string, id: string) => ({ __p: `${c}/${id}` }) }));
@@ -30,6 +36,7 @@ jest.mock('@/services/seriesMembership.client', () => ({
 jest.mock('@/services/outboxReplay.client', () => {
   const actual = jest.requireActual('@/services/writeOutbox.client');
   return {
+    recordOutboxRecoveryRefusal: (id: string, error: { code?: string }) => error.code === 'data-engine-required' || error.code === 'permission-denied' ? actual.markOutboxRecoveryRequired(id, error.code) : null,
     replayOutbox: jest.fn().mockResolvedValue({ replayed: 0, conflicted: 0, failed: 0, touched: [] }),
     pendingOutboxConflicts: (uid: string) =>
       actual.listOutbox(uid).filter((e: { status: string }) => e.status === 'conflicted'),
@@ -294,4 +301,92 @@ it('reports a rejected recovery copy without consuming the refused draft', async
   expect(toast.success).not.toHaveBeenCalled();
   expect(listOutbox('u1')).toHaveLength(1);
   expect(mockGuardedWrite).not.toHaveBeenCalled();
+});
+
+
+describe('held legacy changes', () => {
+  const held = (status: 'migration-required' | 'blocked' = 'migration-required') => {
+    const raw = JSON.stringify({ id: 'held', uid: 'u1', collection: 'sermons', docId: 's1', aggregate: 'core', patch: { title: 'My original title' }, expectedBaseline: { title: 'Old original title' }, status, baseRevision: 7, savedAt: 1, unknownField: { preserve: true } }, null, 2);
+    localStorage.setItem('outbox:v1:held', raw);
+    return raw;
+  };
+  beforeEach(() => { localStorage.clear(); mockOwner = 'u1'; mockGuardedWrite.mockReset(); });
+  afterEach(() => { mockOwner = 'u1'; });
+
+  it.each(['migration-required', 'blocked'] as const)('offers complete copy for %s with no misleading overwrite or retry actions', async status => {
+    const raw = held(status);
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+    Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
+    render(<OutboxConflictBanner />);
+    expect(screen.getByText(status === 'migration-required' ? 'legacyRecovery.title' : 'legacyRecovery.blockedTitle')).toBeInTheDocument();
+    expect(screen.queryByText('freshness.conflictKeepMine')).not.toBeInTheDocument();
+    expect(screen.queryByText('freshness.discardAction')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.copy' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(raw));
+    expect(localStorage.getItem('outbox:v1:held')).toBe(raw);
+    expect(mockGuardedWrite).not.toHaveBeenCalled();
+  });
+
+  it('downloads exactly the stored record and leaves it recoverable afterward', async () => {
+    const raw = held();
+    const create = jest.fn().mockReturnValue('blob:export');
+    const revoke = jest.fn();
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create });
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revoke });
+    const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    try {
+      render(<OutboxConflictBanner />);
+      fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.export' }));
+      const blob = create.mock.calls[0][0] as Blob;
+      const text = await new Promise(resolve => { const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.readAsText(blob); });
+      expect(text).toBe(raw);
+      expect(click).toHaveBeenCalledTimes(1);
+      expect(revoke).toHaveBeenCalledWith('blob:export');
+      expect(localStorage.getItem('outbox:v1:held')).toBe(raw);
+    } finally { click.mockRestore(); }
+  });
+
+  it('surfaces read/export failures and fences the old owner immediately', () => {
+    const raw = held();
+    const create = jest.fn(() => { throw new Error('download unavailable'); });
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create });
+    render(<OutboxConflictBanner />);
+    fireEvent.click(screen.getByRole('button', { name: 'legacyRecovery.export' }));
+    expect(screen.getByText('legacyRecovery.actionFailed')).toBeInTheDocument();
+    expect(mockOwnerListeners.size).toBeGreaterThan(0);
+    act(() => { mockOwner = 'u2'; mockOwnerListeners.forEach(listener => listener()); });
+    expect(screen.queryByText('legacyRecovery.title')).not.toBeInTheDocument();
+    expect(screen.queryByText('legacyRecovery.actionFailed')).not.toBeInTheDocument();
+    expect(localStorage.getItem('outbox:v1:held')).toBe(raw);
+  });
+
+  it('moves an existing conflict into held recovery when its explicit write meets the engine boundary', async () => {
+    conflicted();
+    mockGuardedWrite.mockRejectedValue(Object.assign(new Error('data-engine-required'), { code: 'data-engine-required' }));
+    render(<OutboxConflictBanner />);
+    fireEvent.click(screen.getByRole('button', { name: 'freshness.conflictKeepMine' }));
+    await screen.findByText('legacyRecovery.title');
+    expect(screen.queryByText('freshness.conflictKeepMine')).not.toBeInTheDocument();
+    expect(listOutbox('u1')[0]).toMatchObject({ status: 'migration-required', patch: { verse: 'typed on a train' } });
+  });
+
+  it('makes storage read failures visible without claiming that no local changes exist', () => {
+    held();
+    const read = jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('storage unavailable'); });
+    try {
+      render(<OutboxConflictBanner />);
+      expect(screen.getByText('legacyRecovery.actionFailed')).toBeInTheDocument();
+    } finally { read.mockRestore(); }
+    expect(localStorage.getItem('outbox:v1:held')).not.toBeNull();
+  });
+
+  it('keeps ordinary conflicts actionable alongside held records', () => {
+    held();
+    conflicted();
+    render(<OutboxConflictBanner />);
+    expect(screen.getByText('legacyRecovery.title')).toBeInTheDocument();
+    expect(screen.getByText('freshness.conflictTitle')).toBeInTheDocument();
+  });
 });

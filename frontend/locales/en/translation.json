@@ -1,4 +1,45 @@
 {
+  "legacyRecovery": {
+    "title": "A saved change needs recovery",
+    "blockedTitle": "A saved change could not be delivered",
+    "body": "Your original change is still on this device. Automatic delivery has stopped. Its old format does not contain a complete starting version, so it cannot safely replace the current document. Copy or export it for recovery; this keeps the original local record.",
+    "preview": "View the complete saved record",
+    "copy": "Copy saved record",
+    "export": "Export saved record",
+    "actionFailed": "Could not read or export the saved change. The original record has been kept."
+  },
+  "dataSync": {
+    "phase": {
+      "savingLocally": "Saving on this device…",
+      "localFailure": "Could not save on this device. Keep this page open and retry.",
+      "draft": "Draft saved on this device.",
+      "queued": "Queued for delivery. The server has not confirmed these changes.",
+      "sending": "Sending changes…",
+      "unknown": "Delivery result unknown. Your draft is retained.",
+      "blocked": "Delivery is waiting for an earlier operation.",
+      "refused": "The server refused these changes. Your draft is retained.",
+      "conflict": "These changes conflict with the server version. Your draft is retained.",
+      "remoteChanged": "A newer version is available. Your draft is retained.",
+      "deleted": "Deleted on the server. Any local draft remains here.",
+      "saved": "Saved."
+    },
+    "freshness": {
+      "unknown": "The server version has not been checked yet.",
+      "cache": "Showing a saved copy from this device."
+    },
+    "checking": "Checking for updates…",
+    "readFailed": "Could not check for updates.",
+    "keepLocal": "Keep my changes",
+    "acceptRemote": "Use server version",
+    "retry": "Retry",
+    "findRecovery": "Find saved drafts",
+    "recoveryLoading": "Finding drafts…",
+    "recoveryLabel": "Saved draft",
+    "chooseRecovery": "Choose a draft",
+    "recover": "Recover selected draft",
+    "recoveryHint": "Recovery opens a separate copy. The original saved draft stays on this device.",
+    "actionFailed": "Could not complete this action."
+  },
   "diagnostics": {
     "collecting": "Collecting technical information…",
     "open": "Technical information for developers",
@@ -1339,6 +1380,7 @@
     "failedUnavailable": "Could not generate this — please try again"
   },
   "common": {
+    "noData": "No local data is available.",
     "done": "Done",
     "warning": "Warning",
     "confirm": "Confirm",
@@ -1990,6 +2032,7 @@
       "applyPendingWrites": "Wait until scratch notes finish saving.",
       "applyReadOnly": "Editing is disabled for this sermon.",
       "applySuccess": "Scratch notes applied to the sermon structure.",
+      "applyQueued": "Changes are queued. The server has not confirmed them yet.",
       "applyError": "Could not apply the scratch notes to the structure.",
       "applyPlacementError": "One placed scratch note could not be matched to its target. Move it back to the pool or place it again.",
       "aiBadge": "✨ AI",

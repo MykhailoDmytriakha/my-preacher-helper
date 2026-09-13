@@ -43,7 +43,7 @@ describe('SermonsRepository', () => {
 
     // Setup Firestore mocks
     mockUpdate = jest.fn();
-    mockGet = jest.fn();
+    mockGet = jest.fn().mockResolvedValue({ exists: true, data: () => ({}) });
     mockDelete = jest.fn();
     mockTransactionSet = jest.fn();
 
@@ -74,6 +74,7 @@ describe('SermonsRepository', () => {
           update: (ref: { update: (value: unknown) => unknown }, value: unknown) => {
             pendingWrites.push(Promise.resolve(ref.update(value)));
           },
+          delete: (ref: { delete: () => unknown }) => { pendingWrites.push(Promise.resolve(ref.delete())); },
           set: (ref: { set: (value: unknown) => unknown }, value: unknown) => {
             pendingWrites.push(Promise.resolve(ref.set(value)));
           },

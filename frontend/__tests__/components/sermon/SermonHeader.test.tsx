@@ -2,7 +2,8 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { toast } from 'sonner';
 
-import SermonHeader from '@/components/sermon/SermonHeader';
+import SermonHeader, { type SermonHeaderEditor } from '@/components/sermon/SermonHeader';
+import { DataSyncStatus, type DataSyncStatusProps } from '@/data-engine/DataSyncStatus';
 import { Sermon, Series } from '@/models/models';
 import { OfflineQueuedError, StaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { getSermonById, updateSermon } from '@/services/sermon.service';
@@ -10,6 +11,112 @@ import { getExportContent } from '@utils/exportContent';
 import '@testing-library/jest-dom';
 
 let latestExportProps: any = null;
+
+jest.mock('@/data-engine/DataSyncStatus', () => ({
+  DataSyncStatus: jest.fn((props: DataSyncStatusProps) => <div data-testid="canonical-sync-status">
+    {props.status?.phase}{props.error}
+    <button onClick={props.onKeepLocal}>Canonical keep local</button>
+    <button onClick={props.onAcceptRemote}>Canonical accept remote</button>
+    <button onClick={props.onRetry}>Canonical retry</button>
+  </div>),
+}));
+
+describe('SermonHeader canonical editor injection', () => {
+  const sermon: Sermon = { id: 'canonical-sermon', userId: 'owner', title: 'Legacy title', verse: 'Legacy verse', date: '2026-09-12', thoughts: [] };
+  const editor = () => {
+    const canonical: SermonHeaderEditor & { changed: () => void } = {
+      values: { title: 'Canonical title', verse: 'Canonical verse' }, isReadOnly: false,
+      status: { phase: 'queued', freshness: 'cache', checking: false, readFailed: false, hasForeignChange: false, canSave: false, canAcceptRemote: false, canKeepLocal: false, canRemove: false },
+      error: null, changed: () => undefined,
+      titleForm: form('Canonical title'), verseForm: form('Canonical verse'),
+      keepLocal: jest.fn(async () => undefined), acceptRemote: jest.fn(async () => undefined), retry: jest.fn(async () => undefined),
+    };
+    function form(value: string): SermonHeaderEditor['titleForm'] {
+      const binding = {
+        active: false, busy: false, value,
+        begin: jest.fn(async () => { binding.active = true; canonical.changed(); }),
+        update: jest.fn(async (text: string) => { binding.value = text; canonical.changed(); }),
+        save: jest.fn(async (_text: string) => { binding.active = false; canonical.changed(); }),
+        cancel: jest.fn(async () => { binding.active = false; canonical.changed(); }),
+      };
+      return binding;
+    }
+    return canonical;
+  };
+  const renderCanonical = (canonical: ReturnType<typeof editor>, onUpdate?: (sermon: Sermon) => void) => {
+    const view = render(<SermonHeader sermon={sermon} editor={canonical} onUpdate={onUpdate} />);
+    canonical.changed = () => view.rerender(<SermonHeader sermon={sermon} editor={canonical} onUpdate={onUpdate} />);
+    return view;
+  };
+  beforeEach(() => { jest.clearAllMocks(); });
+
+  it('renders canonical title and verse and delegates their patches without legacy writes or confirmed publication', async () => {
+    const canonical = editor(); const onUpdate = jest.fn();
+    const view = renderCanonical(canonical, onUpdate);
+    expect(screen.getByRole('heading', { name: 'Canonical title' })).toBeInTheDocument();
+    expect(screen.getByText('Canonical verse')).toBeInTheDocument();
+    expect(screen.getByTestId('canonical-sync-status')).toHaveTextContent('queued');
+    expect(screen.queryByTestId('option-menu')).not.toBeInTheDocument();
+    fireEvent.click(screen.getAllByTitle('Edit')[0]);
+    await waitFor(() => expect(screen.getByTitle('Save')).toBeInTheDocument());
+    fireEvent.change(screen.getByDisplayValue('Canonical title'), { target: { value: 'Typed title' } });
+    fireEvent.click(screen.getByTitle('Save'));
+    await waitFor(() => expect(canonical.titleForm.save).toHaveBeenCalledWith('Typed title'));
+    await waitFor(() => expect(screen.queryByTitle('Save')).not.toBeInTheDocument());
+    view.rerender(<SermonHeader sermon={sermon} editor={{ ...canonical, values: { ...canonical.values, title: 'Typed title' } }} onUpdate={onUpdate} />);
+    expect(screen.getByRole('heading', { name: 'Typed title' })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByTitle('Edit')[1]);
+    await waitFor(() => expect(screen.getByTitle('Save')).toBeInTheDocument());
+    fireEvent.change(screen.getByDisplayValue('Canonical verse'), { target: { value: 'Typed verse' } });
+    fireEvent.click(screen.getByTitle('Save'));
+    await waitFor(() => expect(canonical.verseForm.save).toHaveBeenCalledWith('Typed verse'));
+    expect(updateSermon).not.toHaveBeenCalled(); expect(getSermonById).not.toHaveBeenCalled();
+    expect(onUpdate).not.toHaveBeenCalled(); expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it('uses canonical conflict actions and error text without the legacy conflict store UI', async () => {
+    const canonical = editor(); canonical.error = 'Local persistence failed';
+    render(<SermonHeader sermon={sermon} editor={canonical} />);
+    const props = jest.mocked(DataSyncStatus).mock.calls.at(-1)![0];
+    expect(props.status).toBe(canonical.status); expect(props.error).toBe(canonical.error);
+    await props.onKeepLocal?.(); await props.onAcceptRemote?.(); await props.onRetry?.();
+    expect(canonical.keepLocal).toHaveBeenCalledTimes(1); expect(canonical.acceptRemote).toHaveBeenCalledTimes(1); expect(canonical.retry).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('freshness.conflictTitle')).not.toBeInTheDocument();
+    expect(updateSermon).not.toHaveBeenCalled(); expect(getSermonById).not.toHaveBeenCalled();
+  });
+
+  it('retains the open form on a canonical command failure', async () => {
+    const canonical = editor(); jest.mocked(canonical.titleForm.save).mockRejectedValueOnce(new Error('Disk unavailable'));
+    renderCanonical(canonical);
+    fireEvent.click(screen.getAllByTitle('Edit')[0]);
+    await waitFor(() => expect(screen.getByTitle('Save')).toBeInTheDocument());
+    fireEvent.change(screen.getByDisplayValue('Canonical title'), { target: { value: 'Never discard this' } });
+    fireEvent.click(screen.getByTitle('Save'));
+    expect(await screen.findByText('Failed to save title')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Never discard this')).toBeInTheDocument();
+    expect(updateSermon).not.toHaveBeenCalled();
+  });
+
+  it('locks owner-disabled or deleted canonical editors and hides legacy lifecycle actions', () => {
+    const canonical = editor(); canonical.isReadOnly = true;
+    const view = render(<SermonHeader sermon={sermon} editor={canonical} />);
+    screen.getAllByTitle('Edit').forEach(button => expect(button).toBeDisabled());
+    expect(screen.queryByTestId('option-menu')).not.toBeInTheDocument();
+    view.rerender(<SermonHeader sermon={sermon} editor={{ ...canonical, isReadOnly: false, status: { ...canonical.status!, phase: 'deleted' } }} />);
+    screen.getAllByTitle('Edit').forEach(button => expect(button).toBeDisabled());
+    expect(screen.getByRole('heading', { name: 'Canonical title' })).toBeInTheDocument();
+    expect(canonical.titleForm.begin).not.toHaveBeenCalled(); expect(canonical.verseForm.begin).not.toHaveBeenCalled();
+  });
+
+  it('keeps canonical empty values distinct from populated legacy values while status initializes', () => {
+    const canonical = editor(); canonical.values = { title: '', verse: '' }; canonical.status = null;
+    render(<SermonHeader sermon={sermon} editor={canonical} />);
+    expect(screen.queryByText('Legacy title')).not.toBeInTheDocument();
+    expect(screen.queryByText('Legacy verse')).not.toBeInTheDocument();
+    expect(jest.mocked(DataSyncStatus).mock.calls.at(-1)![0].status).toBeNull();
+    expect(screen.queryByTestId('option-menu')).not.toBeInTheDocument();
+  });
+});
 
 // Mock dependencies
 jest.mock('@/providers/ConnectionProvider', () => ({
@@ -765,6 +872,19 @@ describe('SermonHeader — a refused save keeps the text and offers a choice', (
 
     await waitFor(() => expect(onUpdate).toHaveBeenLastCalledWith(committed));
     expect(getSermonByIdMock).not.toHaveBeenCalled();
+  });
+
+  it('retains the legacy conflict when loading the other version fails', async () => {
+    updateSermonMock.mockRejectedValueOnce(new StaleWriteError('core', 4, 7));
+    getSermonByIdMock.mockRejectedValueOnce(new Error('Network unavailable'));
+    const onUpdate = jest.fn();
+    render(<SermonHeader sermon={sermonAtRev4} onUpdate={onUpdate} />);
+    editTitle('Keep this draft');
+    await screen.findByText('freshness.conflictTitle');
+    fireEvent.click(screen.getByText('freshness.conflictTakeTheirs'));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('errors.failedToLoadSermon'));
+    expect(screen.getByText('Keep this draft')).toBeInTheDocument();
+    expect(onUpdate).not.toHaveBeenCalled();
   });
 
 });

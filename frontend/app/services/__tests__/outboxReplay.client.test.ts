@@ -344,7 +344,7 @@ describe('a refusal that cannot be recorded is not reported as resolved', () => 
     delete (window.navigator as unknown as Record<string, unknown>).onLine;
   });
 
-  it('drops the opening values to make the conflict record fit', async () => {
+  it('retains the full opening baseline when the conflict record cannot fit', async () => {
     setOnline(false);
     await conflictSafeUpdate({} as never, { verse: 'typed on a train' }, 'missing', {
       aggregate: 'core',
@@ -361,8 +361,7 @@ describe('a refusal that cannot be recorded is not reported as resolved', () => 
       });
     });
 
-    // The FULL conflict record is refused; the compact one (without the opening
-    // values) is accepted.
+    // The conflict transition is refused; the original record must remain intact.
     const realSetItem = Storage.prototype.setItem;
     const setItem = jest
       .spyOn(Storage.prototype, 'setItem')
@@ -375,15 +374,16 @@ describe('a refusal that cannot be recorded is not reported as resolved', () => 
 
     try {
       const result = await replayOutbox('u1');
-      expect(result).toMatchObject({ conflicted: 1, failed: 0 });
+      expect(result).toMatchObject({ conflicted: 0, failed: 1 });
     } finally {
       setItem.mockRestore();
     }
 
     const left = listOutbox('u1');
     expect(left).toHaveLength(1);
-    expect(left[0].status).toBe('conflicted');
-    // The TEXT is still there; only the opening values were sacrificed.
+    expect(left[0].status).toBe('pending');
+    expect(left[0].expectedBaseline).toEqual({ verse: 'a very long opening value '.repeat(40) });
+    // Both the text and its original baseline survive the storage failure.
     expect(left[0].patch).toEqual({ verse: 'typed on a train' });
   });
 });

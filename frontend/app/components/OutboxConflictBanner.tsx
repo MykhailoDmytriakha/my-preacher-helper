@@ -9,10 +9,11 @@ import { toast } from 'sonner';
 import { OUTBOX_CHANGED_EVENT } from '@/components/OutboxDrain';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { getClientDb } from '@/config/firebaseClientDb';
+import { discoverLegacyRecovery, exportLegacyRecovery, type LegacyRecoverySource } from '@/data-engine/legacyRecovery.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useAuth } from '@/providers/AuthProvider';
 import { conflictSafeUpdate, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
-import { pendingOutboxConflicts } from '@/services/outboxReplay.client';
+import { pendingOutboxConflicts, recordOutboxRecoveryRefusal } from '@/services/outboxReplay.client';
 import { listOutbox, markOutboxConflicted, removeFromOutbox, type OutboxEntry } from '@/services/writeOutbox.client';
 
 const SAVE_ERROR_KEY = 'common.saveError';
@@ -29,7 +30,7 @@ const CONFLICT_PENDING_LABEL_KEY = 'freshness.conflictPendingLabel';
  * "Keep mine" is the ONLY path that overwrites, and only after the person chose
  * it: the replay itself never re-sends a refused intent with a fresh revision.
  */
-export function OutboxConflictBanner() {
+function LegacyConflictBanner() {
   const { user } = useAuth();
   const { t } = useTranslation();
   const { copyToClipboard } = useClipboard({
@@ -196,7 +197,10 @@ export function OutboxConflictBanner() {
       // would resend the same outdated number and the button would never work.
       if (isStaleWriteError(error)) {
         markOutboxConflicted(entry.id, error.actualRevision);
+      } else {
+        recordOutboxRecoveryRefusal(entry.id, error);
       }
+      window.dispatchEvent(new Event(OUTBOX_CHANGED_EVENT));
       console.error('outbox: keep-mine failed', error);
     } finally {
       setBusy(false);
@@ -234,4 +238,72 @@ export function OutboxConflictBanner() {
       </div>
     </div>
   );
+}
+
+
+export function OutboxConflictBanner() {
+  const { user } = useAuth();
+  return <>
+    {user?.uid && <LegacyRecoveryBanner key={`recovery:${user.uid}`} owner={user.uid} />}
+    <LegacyConflictBanner key={`conflict:${user?.uid ?? 'signed-out'}`} />
+  </>;
+}
+
+function LegacyRecoveryBanner({ owner }: { owner: string }) {
+  const { t } = useTranslation();
+  const [sources, setSources] = useState<LegacyRecoverySource[]>([]);
+  const [error, setError] = useState(false);
+  const { copyToClipboard, isLoading } = useClipboard({
+    onSuccess: () => { toast.success(t('freshness.copiedToast')); },
+    onError: () => { setError(true); },
+  });
+  useEffect(() => {
+    const refresh = () => {
+      try {
+        setSources(discoverLegacyRecovery(owner).filter(source => source.kind === 'outbox'
+          && (source.status === 'migration-required' || source.status === 'blocked')));
+        setError(false);
+      } catch {
+        setError(true);
+      }
+    };
+    refresh();
+    window.addEventListener(OUTBOX_CHANGED_EVENT, refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener(OUTBOX_CHANGED_EVENT, refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, [owner]);
+  const download = (source: LegacyRecoverySource) => {
+    let url: string | undefined;
+    try {
+      const raw = exportLegacyRecovery(source, owner);
+      url = URL.createObjectURL(new Blob([raw], { type: 'application/json' }));
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'saved-local-change.json';
+      anchor.click();
+    } catch {
+      setError(true);
+    } finally {
+      if (url) URL.revokeObjectURL(url);
+    }
+  };
+  return <>
+    {error && <p role="alert">{t('legacyRecovery.actionFailed')}</p>}
+    {sources.map(source => <section key={source.id} role="alert" className="mb-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-500/40 dark:bg-amber-500/10">
+      <p className="font-medium">{t(source.status === 'migration-required' ? 'legacyRecovery.title' : 'legacyRecovery.blockedTitle')}</p>
+      <p className="mt-1">{t('legacyRecovery.body')}</p>
+      <p className="mt-1 text-xs">{source.resource?.collection}/{source.documentId} · {source.aggregate}</p>
+      <details className="mt-2">
+        <summary>{t('legacyRecovery.preview')}</summary>
+        <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap">{source.raw}</pre>
+      </details>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" disabled={isLoading} onClick={() => { void copyToClipboard(exportLegacyRecovery(source, owner)); }} className="rounded-lg border border-amber-300 px-3 py-1.5">{t('legacyRecovery.copy')}</button>
+        <button type="button" onClick={() => download(source)} className="rounded-lg border border-amber-300 px-3 py-1.5">{t('legacyRecovery.export')}</button>
+      </div>
+    </section>)}
+  </>;
 }

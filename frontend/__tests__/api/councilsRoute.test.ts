@@ -105,3 +105,12 @@ describe('councils over HTTPS', () => {
     expect((await DELETE(request('DELETE'), params)).status).toBe(404);
   });
 });
+
+
+it('returns typed migration refusals for create, replace and delete without confusing ordinary CAS', async () => {
+  const error = Object.assign(new Error('data-engine-required'), { code: 'data-engine-required' });
+  repo.createForOwner.mockRejectedValue(error); repo.replaceForOwner.mockRejectedValue(error); repo.deleteForOwner.mockRejectedValue(error);
+  for (const response of [await POST(request('POST', { id: 'c1', council: body() })), await PUT(request('PUT', { council: body(), expectedRev: 2 }), params), await DELETE(request('DELETE'), params)]) {
+    expect(response.status).toBe(409); expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
+  }
+});

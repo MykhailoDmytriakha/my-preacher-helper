@@ -168,3 +168,10 @@ describe('creating the standard set over HTTPS', () => {
     ]);
   });
 });
+
+
+it('surfaces atomic seed migration refusal as a typed409', async () => {
+  mockSeed.mockRejectedValueOnce(Object.assign(new Error('data-engine-required'), { code: 'data-engine-required' }));
+  const response = await POST(request({ orders: [draft('funeral')] }));
+  expect(response.status).toBe(409); expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
+});

@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 
 import { getRequiredAuthenticatedUid } from '@/api/auth/requireAuthenticatedUid.server';
 import { usageCapResponse } from '@/api/errors/usageCapResponse';
+import { assertLegacyWritable, legacyBoundaryResponse } from '@/data-engine/legacyBoundary.server';
 import { Sermon } from '@/models/models';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { generateSermonInsights } from '@clients/openAI.client';
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
     if (sermon.userId !== uid) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
+    assertLegacyWritable(sermon);
 
     // Generate insights using OpenAI
     const insights = await generateSermonInsights(sermon, uid);
@@ -50,6 +52,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ insights });
   } catch (error) {
+    const boundary = legacyBoundaryResponse(error);
+    if (boundary) return boundary;
     if (isUsageCapReachedError(error)) return usageCapResponse(error);
     console.error('Insights route: Error generating insights:', error);
     return NextResponse.json({ error: 'Failed to generate insights' }, { status: 500 });

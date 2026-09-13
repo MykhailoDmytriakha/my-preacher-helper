@@ -91,3 +91,13 @@ describe('council writes choose their road', () => {
     expect((await deleteCouncil('c1')).kind).toBe('saved');
   });
 });
+
+
+it('retains a migration refusal without creating or replaying through the SDK', async () => {
+  jest.clearAllMocks();
+  setOnline(true);
+  const error = Object.assign(new Error('data-engine-required'), { code: 'data-engine-required' });
+  mockReplace.mockRejectedValueOnce(error);
+  expect(await saveCouncil(council)).toEqual({ kind: 'refused', error });
+  expect(mockSetViaSdk).not.toHaveBeenCalled(); expect(mockCreate).not.toHaveBeenCalled();
+});
