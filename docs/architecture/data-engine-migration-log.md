@@ -324,3 +324,33 @@ draft carries the mark, and the destination is the second edit, its generation r
 inside the engine, never supplied by the screen. After that come the council screen,
 the conduct screen, wiring `EngineCouncilCreator`, and only then the switch.
 
+
+### 2026-09-12 — Step 3b, client half begins: the mark becomes the command
+
+Owner redirected the order of work: stop deepening the core and get the branch to a
+state someone can pull, run locally and actually click through. That is the right
+call on the evidence — both of today's most valuable defects were found in a browser
+while every test was green, and this repository already holds a warning about growing
+a layer without a live consumer (`useSermonThoughtsDataDocument`: written, tested,
+imported by nobody). The plan is unchanged; the priority inside it is: finish the
+councils domain end to end, switch it on locally, and repair whatever the live run
+surfaces — including core defects — rather than repairing them in advance.
+
+`domainPolicy.ts` now turns a carried mark into the two-council command. The screen
+marks one topic as carried to council X and saves; `requiredDomainTargets` names the
+destination so the engine reads its snapshot itself, and `prepareCarry` builds both
+edits. The copy that lands in the destination derives its identifiers from the
+operation id: `copyTopicForNext` uses random ones, and a replay after a lost
+acknowledgement would then leave the destination holding the section twice.
+
+Refused: a destination the engine could not confirm, a deleted destination, one
+owned by someone else, carrying into the source council itself, and more than one
+section in a single save. Ordinary editing claims nothing and stays a plain update.
+
+Nine policy tests, three red for the right reason first. Gates: `test:fast` 6635
+passed / 6640, `tsc --noEmit` exit 0, `lint:full` exit 0.
+
+**Next, in this order:** the council document adapter (update, delete, carry through
+the public interface), the council and conduct screens, wiring
+`EngineCouncilCreator`, then switching councils on locally and clicking the whole
+cycle — create, type, carry, delete, offline, reload, two windows.
