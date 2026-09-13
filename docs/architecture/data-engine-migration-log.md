@@ -549,11 +549,36 @@ enabled on both sides:
 - the hub count, the calendar entry and the breadcrumb title, all read through one
   shared reader.
 
-What is left in this domain: retiring `useCouncils` once nothing reads it, and a
-browser pass over the carry **button** itself (the command was proven by sending it
-directly, because the dev server stopped picking up an added probe and that tab's
-console returned nothing).
+What is left in this domain: retiring `useCouncils` once nothing reads it — which
+cannot happen before the rollout, since three screens and the shared reader use it as
+the other half of the switch — and the carry **button**, which is now a filed defect
+rather than an untested path (see below).
 
 Not yet true of any domain, including this one: the switch stays off, the rules are
 not deployed, and the core still carries nine open defects — the receipt
 amplification among them, which no deployment may ignore.
+
+### 2026-09-13 — The carry button does not reach the mechanism
+
+Walked the whole path through the interface this time: two councils created through
+the screen, a section added and named, the source conducted to `held`, then the
+"В следующий совет" button pressed.
+
+**It neither carries nor offers a choice.** With two councils in `preparing` on the
+server, the button reports `aria-expanded="false"` — the screen believes there are
+fewer than two destinations — and after the press both documents are untouched
+(source stays at revision 4, destination at 1, no mark). Warming the list first by
+entering through the council list, so the navigation happens inside the application,
+changes nothing.
+
+Filed as `BUG-20260913-engine-carry-button-sees-no-targets` (P1) with the measurement
+and the anchors. The cause is localised to how the screen obtains its list of
+destinations, not to the mechanism: the same operation sent directly changes both
+documents in one transaction and a replay adds nothing, both proven earlier today.
+
+Retiring `useCouncils` is **not** available as a next step: three screens and
+`useCouncilsRead` call it as the legacy half of the per-collection switch, and that
+half has to keep working until the rollout.
+
+Test data created for this pass was deleted afterwards; only the account's own
+council remains.
