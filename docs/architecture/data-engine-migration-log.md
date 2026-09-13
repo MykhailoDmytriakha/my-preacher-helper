@@ -97,6 +97,61 @@ Point of no return: the first engine write to the production database in step 9.
 Before it, rollback is one switch. After it, marked documents exist that legacy
 writers cannot handle.
 
+## Whole-app remainder: what is left before the engine runs the app
+
+The queue above is **councils only** — the first domain and its rollout. This
+section is the rest of the road, so that "how much is left" has one answer in one
+place. Counts are measured, not estimated: exported functions in each legacy write
+service, and the bypass ledger in
+`frontend/__tests__/architecture/legacyFirestoreAccess.json`.
+
+### Blockers that gate every domain
+
+Nothing may be switched on in production while these stand.
+
+| Blocker | Where | Why it gates |
+|---|---|---|
+| Receipt amplification | `app/data-engine/server.ts`, `BUG-20260912-engine-receipt-amplification` | Every acknowledged save stores a full document copy: ~1000 saves of a 500 KiB sermon ≈ 488 MiB of receipts |
+| Four more core P1 defects | `BUGS.md` (`engine-ack-metadata-conflict`, `engine-successor-save`, `engine-manual-form-baseline`, `engine-local-retry`) | They break the ordinary save cycle, recovery and manual forms |
+| Two core P2 defects | `BUGS.md` (`engine-collection-demand`, `engine-collection-cache-race`) | Reads continue after leaving a screen; a second tab's write reads as a lost deletion |
+| Mixed-mode collection reads | `BUG-20260912-engine-collection-shows-deleted-legacy` | A legacy write raises no feed event, so a read-only crossover shows deleted rows. Reading and writing must move together, per domain |
+| Manual Save forms | `app/data-engine/README.md`, manual scopes | Still being designed. Every domain with an explicit Save button waits for it |
+| Rules not deployed | `frontend/firestore.rules` | Prepared marker rules exist but are not live; until they are, an old client can still write a migrated document offline |
+| Legacy queued writes | `app/data-engine/legacyRecovery.client.ts` | Pending writes in `writeOutbox`, React Query paused mutations and the membership outbox must be discovered and settled before their domain's legacy path closes |
+| No browser/device validation | — | Nothing has been proven in a genuinely foregrounded window, an installed PWA, or on a phone |
+| No cost measurement | — | Reads and writes per session under the engine have never been measured against the Firestore quota |
+
+### Domains
+
+"Ops" counts exported functions in the domain's legacy write service — the surface
+that has to move. "State" is what exists today, measured by imports, not by intent.
+
+| Domain | Ops | State today | What it still needs |
+|---|---|---|---|
+| Councils | 6 | List read through the engine (done, unshippable alone); `council-carry` registered in the core; `EngineCouncilCreator` written and unwired | Client half of writing: domain policy for the carry, document adapter, council and conduct screens, wiring the creator, then the readers in step 4 |
+| Sermons | 33 | Partially on the engine: core fields and scratch wired; `useSermonThoughtsDataDocument` written but **imported by no screen**; eight controls inert behind the switch (`page.tsx`, `legacyReadOnly`) | Wire thoughts; adapters for outline, structure, plan, preach dates and the AI writers; un-inert the eight controls. Largest domain, last in order |
+| Groups | 11 | Untouched. Carries two of the five audited losses (meeting array online and offline) | Full adapter and screens; the meeting array is the same ID-item class as council topics |
+| Studies (notes + materials + share links) | 7 | Untouched; the note editor is the most complete legacy example of the contract | Full adapter; `material-notes` relation already exists in the core; share links need an ownership decision |
+| Series (+ membership) | 6 + 6 | Untouched; `series-membership` relation already exists in the core | Full adapter; its own outbox must be retired with it |
+| Prayers | 9 | Untouched | Full adapter; the answer/update journal is another embedded array |
+| Service orders | 13 | Untouched; already has HTTP + CAS and its own freshness | Full adapter; placement is a bounded multi-document operation and may need its own command |
+| Plan templates | 5 | Untouched | Full adapter |
+| User settings | 18 | Untouched; also written by privileged server paths (usage, tier, referral) | A trusted protected-field policy so metering does not break |
+| Tags | 4 | Untouched; active delete already guarded | Custom-tag commands must preserve required-tag restrictions |
+| Prayer categories | — | Untouched | Small adapter |
+| Calendar / care views | — | Read-only projections over the domains above | Follows whatever its underlying domains do |
+
+Total legacy write surface: **118 exported operations across 11 services**, none
+retired yet. Bypass ledger: **125 SDK calls, 230 runtime imports, 29 legacy HTTP
+writes** — the number that has to reach zero.
+
+### After the last domain
+
+Retire the legacy layer itself: `conflictSafeUpdate.client.ts` (493 lines),
+`writeOutbox.client.ts`, `outboxReplay.client.ts` and the React Query
+`mutationDefaults.ts` write paths, then turn the architecture gate from a shrinking
+budget into a hard zero.
+
 ## Closing log
 
 Newest last. Every entry: what changed, what proves it, what stays unproven.
