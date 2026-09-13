@@ -273,10 +273,11 @@
         "title": "This week",
         "viewCalendar": "View calendar",
         "viewFullCalendar": "View full calendar",
-        "empty": "No upcoming or recent past sermons or group meetings to show.",
+        "empty": "No upcoming or recent past sermons, group meetings or councils to show.",
         "types": {
           "sermon": "Sermon",
-          "group": "Group"
+          "group": "Group",
+          "council": "Council"
         }
       },
       "prayer": {
