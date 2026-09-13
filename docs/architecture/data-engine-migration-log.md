@@ -56,7 +56,7 @@ A closing entry must state what changed, what proves it, and what stays unproven
 | 2 | This migration log | — | File exists in git and is updated at every closing | closed |
 | 3a | Councils list **read** through the engine, on the list screen | 1 | The list screen renders the same councils through the engine behind the switch; verified in a browser | closed |
 | 3b | Councils writing, **whole**: create, update, delete and the two-council carry | 3a | Every council write runs through the engine, the carry as a registered core command; the conflict matrix is red before it is green | create, update and recovery verified live; delete and carry untested in a browser |
-| 4 | Remaining council readers and legacy retirement | 3b | Hub, breadcrumbs, calendar and the pre-database localStorage carry-over; only then is the domain migrated | open |
+| 4 | Remaining council readers and legacy retirement | 3b | Hub, breadcrumbs, calendar and the pre-database localStorage carry-over; only then is the domain migrated | readers done; localStorage carry-over and legacy retirement left |
 | 5 | Live browser proof for councils | 4 | Two windows, offline, reload mid-save: both edits survive; a conflict shows both versions | open |
 | 6 | Core bugs surfaced by 3-5 | 5 | Each fix has a red check: disable the fix and the test fails | open |
 | 7 | Receipt amplification | 6 | A thousand saves do not grow storage linearly (`app/data-engine/server.ts`) | open |
@@ -482,3 +482,31 @@ Cleanup: both engine-marked test councils were removed; the account's own
 "QA совет с секциями" was left untouched.
 
 Gates: `test:fast` 6645 passed / 6650, `tsc --noEmit` exit 0, `lint:full` exit 0.
+
+### 2026-09-13 — Every council reader now goes through one door
+
+The care hub, the breadcrumbs, the calendar and the council screen each read the
+list separately, and three of them were still on the legacy road while the domain
+moved. A reader left behind shows a council that was deleted, and the person cannot
+tell which screen is lying.
+
+`useCouncilsRead` is now that one door: it picks the source once, and no screen
+carries its own branch. Hooks cannot be called conditionally, so it calls both and
+returns the migrated one — the extra list read ends when the legacy hook retires
+with the domain.
+
+For that to be possible, `useDataCollection` had to stop throwing without a
+provider. The distinction is by the meaning of the failure: for a document editor a
+missing provider is a programming mistake and still throws, but for a collection
+read from a screen that also runs without the engine it is simply an absence of
+rows. A test covers the idle case, and the strict boundary keeps its own test.
+
+Verified live with councils enabled: the hub counts "Советов в подготовке: 1", the
+calendar shows the council on its date, and the breadcrumbs read
+"Дела сердечные / Братский совет / QA совет с секциями" — all through the engine,
+against the account's own council, with no test data of mine left in the database.
+
+Gates: `test:fast` 6646 passed / 6651, `tsc --noEmit` exit 0, `lint:full` exit 0.
+
+Still open in this domain: the pre-database localStorage carry-over, retiring the
+legacy hook, and a browser pass over the carry button itself.

@@ -73,6 +73,13 @@ export function useDataEngine(): EngineContextValue {
   return context;
 }
 
+/**
+ * For readers that exist in both deployments. A document editor keeps the strict boundary — a
+ * missing provider there is a mistake — but a collection read from a screen that also runs
+ * without the engine is an absence of rows, not a programming error.
+ */
+const idleEngine: EngineContextValue = { browser: null, owner: null, error: null };
+
 interface DocumentOptions {
   slot?: string;
   create?: boolean;
@@ -280,7 +287,7 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
 
 /** Collection snapshots retain tombstones so a remote deletion is distinguishable from an incomplete list. */
 export function useDataCollection(collection: string | null) {
-  const { browser, owner, error: engineError } = useDataEngine();
+  const { browser, owner, error: engineError } = useContext(EngineContext) ?? idleEngine;
   const [attempt, setAttempt] = useState(0);
   const identity = useMemo(() => ({ owner, browser, collection, attempt }), [owner, browser, collection, attempt]);
   const scope = useRef(identity); scope.current = identity;

@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { useCouncils } from '@/hooks/useCouncils';
+import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { useGroupDetail } from '@/hooks/useGroupDetail';
 import { usePrayerDetail } from '@/hooks/usePrayerDetail';
 import { useSeriesDetail } from '@/hooks/useSeriesDetail';
@@ -330,7 +330,7 @@ export default function Breadcrumbs({ forceShow = false }: { forceShow?: boolean
     return null;
   }, [pathname]);
   // Councils are a small local list already read by the section; a lookup costs nothing.
-  const { councils } = useCouncils();
+  const { councils } = useCouncilsRead();
   const council = councilId ? councils.find((item) => item.id === councilId) : undefined;
 
   const items = useMemo<BreadcrumbItem[]>(() => {

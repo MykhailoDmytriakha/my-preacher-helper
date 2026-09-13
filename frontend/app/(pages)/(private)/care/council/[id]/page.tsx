@@ -44,7 +44,7 @@ import { DataSyncStatus, type RecoveryChoice } from '@/data-engine/DataSyncStatu
 import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import { useCouncil } from '@/hooks/useCouncils';
-import { useCouncilsDataCollection } from '@/hooks/useCouncilsDataCollection';
+import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { COUNCILS_COLLECTION } from '@/services/councils.client';
 import { applyOutcome, hasProgress, holdCouncil, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reopenCouncil, reorderTopics, setTopicKind, topicState } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
@@ -100,7 +100,7 @@ function LegacyCouncilDetailPage({ councilId }: { councilId: string }) {
 function EngineCouncilDetailPage({ councilId }: { councilId: string }) {
   const { t } = useTranslation();
   const document = useCouncilDataDocument(councilId);
-  const list = useCouncilsDataCollection();
+  const list = useCouncilsRead();
   /*
    * A REFUSED SAVE HAS TO REACH THE PERSON. The screen calls these without awaiting — that is
    * how an editing screen works — so a rejected promise has nowhere to land unless it is caught

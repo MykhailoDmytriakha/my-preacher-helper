@@ -18,7 +18,7 @@ import Link from 'next/link';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { useCouncils } from '@/hooks/useCouncils';
+import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { useAuth } from '@/providers/AuthProvider';
 import { CARE_CARD_TONES, type CareCardTone } from '@/utils/themeColors';
@@ -136,7 +136,7 @@ export default function CarePage() {
   // The same list the journal itself reads, so opening the plane also warms its cache.
   const { prayerRequests } = usePrayerRequests(user?.uid ?? null);
   // The councils still being prepared: the number a pastor wants before opening the row.
-  const { councils } = useCouncils();
+  const { councils } = useCouncilsRead();
 
   const counts = useMemo<Partial<Record<SectionKey, number>>>(
     () => ({

@@ -464,6 +464,17 @@ describe('React DataEngine contract', () => {
     expect(() => renderHook(() => useDataEngine())).toThrow('Mount DataEngineProvider'); report.mockRestore();
   });
 
+  // A screen that also exists without the engine reads a collection the same way in both
+  // deployments. No engine means no rows to show — an absence, not a programming error — while a
+  // document editor keeps the strict boundary, where a missing provider really is a mistake.
+  it('reports an absent engine as an empty collection rather than throwing', () => {
+    const { result } = renderHook(() => useDataCollection('councils'));
+    expect(result.current.state).toBeNull();
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(createBrowserDataEngine).not.toHaveBeenCalled();
+  });
+
   it('forwards explicit remove and cancels the pending autosave timer', async () => {
     const s = makeEditor(); const b = makeBrowser(s.editor); jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
     const { result } = renderHook(() => useDataDocument(resource), { wrapper: Wrapper });
