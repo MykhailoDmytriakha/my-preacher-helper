@@ -136,6 +136,21 @@ function validateRelation(command: Extract<DataCommand, { kind: 'relation' }>): 
       || new Set(command.targets.map(target => target.id)).size !== command.targets.length) fail('Invalid material membership');
     return;
   }
+  if (command.relation === 'council-carry') {
+    // Exactly two councils: the section leaves one and lands in the other. One edit would be an
+    // ordinary change; three would be an operation nobody has described.
+    if (command.resource.collection !== 'councils' || !Array.isArray(command.edits) || command.edits.length !== 2) fail('Invalid council carry');
+    const named = new Set<string>();
+    for (const edit of command.edits) {
+      if (!object(edit) || !object(edit.resource) || edit.resource.collection !== 'councils'
+        || !isValidIdentifier(edit.resource.id) || !generation(edit.generation)
+        || named.has(edit.resource.id) || !Array.isArray(edit.beforeTopics) || !Array.isArray(edit.afterTopics)
+        || !edit.beforeTopics.every(object) || !edit.afterTopics.every(object)) fail('Invalid council carry');
+      named.add(edit.resource.id);
+    }
+    if (!equalValues(command.edits[0].resource, command.resource) || command.edits[0].generation !== command.generation) fail('Primary council identity mismatch');
+    return;
+  }
   if (command.relation !== 'series-membership' || command.resource.collection !== 'series'
     || !Array.isArray(command.edits) || command.edits.length < 1 || command.edits.length > 2) fail('Invalid series membership');
   const seen = new Set<string>();

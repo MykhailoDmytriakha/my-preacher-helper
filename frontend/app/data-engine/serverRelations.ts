@@ -40,6 +40,13 @@ function currentItems(value: DocumentData): DocumentData[] {
   return value.items as DocumentData[];
 }
 
+function currentTopics(value: DocumentData): DocumentData[] {
+  if (value.topics === undefined) return [];
+  if (!Array.isArray(value.topics)) return fail(INVALID_DOCUMENT);
+  validateResourceDocument('councils', { topics: value.topics }, { kind: 'update', changedFields: ['topics'] });
+  return value.topics as DocumentData[];
+}
+
 function seriesFields(items: DocumentData[]): DocumentData {
   validateResourceDocument('series', { items }, { kind: 'update', changedFields: ['items'] });
   const identities = items.map(item => `${item.type}:${item.refId}`);
@@ -171,6 +178,22 @@ class RelationPlanner {
     }
   }
 
+  /**
+   * A section moves between two councils in one commit. Each side states the topics it was built
+   * on, so a section another device added meanwhile survives the merge; a stale generation on
+   * either side is a conflict, never a silent overwrite.
+   */
+  private async councilCarry(command: Extract<DataCommand, { relation: 'council-carry' }>): Promise<CommandResult | undefined> {
+    for (const edit of command.edits) {
+      const council = await this.get(edit.resource);
+      const value = this.live(council, edit.generation);
+      const merged = mergeFields({ exists: true, value: edit.beforeTopics }, { exists: true, value: edit.afterTopics },
+        { exists: true, value: currentTopics(value) }, ['topics']);
+      if (merged.conflicts.length) return this.conflict(merged.conflicts.map(item => ({ ...item, path: [edit.resource.id, ...item.path] })));
+      this.stage(council, { topics: merged.value.value as Json });
+    }
+  }
+
   private guardOrdinary(command: Exclude<DataCommand, { kind: 'relation' }>): void {
     const collection = command.resource.collection;
     if (command.kind === 'create') {
@@ -181,6 +204,9 @@ class RelationPlanner {
       const forbidden: Record<string, string[]> = {
         studyNotes: ['materialIds', 'isDraft'], studyMaterials: ['noteIds'], series: ['items', 'sermonIds', 'seriesKind'],
         sermons: ['seriesId', 'seriesPosition'], groups: ['seriesId', 'seriesPosition'],
+        // Sections are carried between councils as one operation; an ordinary rewrite of the
+        // whole array cannot promise the source and the destination change together.
+        councils: ['topics'],
       };
       if (command.changes.some(change => forbidden[collection]?.includes(change.path[0]))) fail(RELATION_REQUIRED);
     }
@@ -319,7 +345,9 @@ class RelationPlanner {
     let result: CommandResult | undefined;
     if (this.command.kind === 'relation') {
       this.live(this.primary, this.command.generation);
-      result = this.command.relation === 'material-notes' ? await this.materialRelation(this.command) : await this.seriesRelation(this.command);
+      result = this.command.relation === 'material-notes' ? await this.materialRelation(this.command)
+        : this.command.relation === 'council-carry' ? await this.councilCarry(this.command)
+        : await this.seriesRelation(this.command);
       // A legacy no-op still establishes a durable generation.
       if (!result && !(this.writes.get(key(this.primary.resource)) ?? this.primary).metadata) {
         this.writes.set(key(this.primary.resource), advanceResourceSnapshot(this.primary, this.live(this.primary), this.command.operationId, []));

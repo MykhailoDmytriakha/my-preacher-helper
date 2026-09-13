@@ -281,3 +281,82 @@ describe('registered transactional relation planning', () => {
     expect(await planDataCommand(command, primary, reader)).toMatchObject({ result: { code: 'invalid-scratch-provenance' }, writes: [] });
   });
 });
+
+/**
+ * CARRYING A SECTION TO THE NEXT COUNCIL.
+ *
+ * Two councils change together or neither does: the section is marked as carried in the source
+ * only because it landed in the destination. Two independent writes cannot promise that.
+ */
+describe('council carry', () => {
+  const topic = (id: string, extra: DocumentData = {}): DocumentData => ({ id, title: `Topic ${id}`, questions: [], options: [], ...extra });
+  const council = (id: string, topics: DocumentData[], extra: DocumentData = {}) =>
+    put('councils', id, { title: `Council ${id}`, status: 'preparing', topics, createdAt: 'now', updatedAt: 'now', ...extra });
+  const carry = (source: ResourceSnapshot, edits: Array<{ resource: ResourceSnapshot; before: DocumentData[]; after: DocumentData[] }>): DataCommand =>
+    ({ ...commandBase(source), kind: 'relation', relation: 'council-carry', edits: edits.map(edit => ({
+      resource: edit.resource.resource, generation: edit.resource.metadata?.generation ?? null, beforeTopics: edit.before, afterTopics: edit.after,
+    })) } as unknown as DataCommand);
+
+  it('marks the source and fills the destination in one commit', async () => {
+    const moved = topic('t1');
+    const source = council('source', [moved, topic('t2')]);
+    const target = council('target', []);
+    const plan = await planDataCommand(carry(source, [
+      { resource: source, before: [moved, topic('t2')], after: [{ ...moved, carriedToCouncilId: 'target' }, topic('t2')] },
+      { resource: target, before: [], after: [{ ...moved, id: 'copy' }] },
+    ]), source, reader);
+
+    expect(plan.result.kind).toBe('acknowledged');
+    expect(plan.writes).toHaveLength(2);
+    const written = Object.fromEntries(plan.writes.map(write => [write.resource.id, write.value?.topics as DocumentData[]]));
+    expect(written.source[0]).toMatchObject({ id: 't1', carriedToCouncilId: 'target' });
+    expect(written.target).toEqual([{ ...moved, id: 'copy' }]);
+  });
+
+  it('keeps a section another device added to the destination while this carry flew', async () => {
+    const moved = topic('t1');
+    const source = council('source', [moved]);
+    const target = council('target', [topic('remote')]);
+    const plan = await planDataCommand(carry(source, [
+      { resource: source, before: [moved], after: [{ ...moved, carriedToCouncilId: 'target' }] },
+      // This device never saw "remote": its own before is the empty destination it read.
+      { resource: target, before: [], after: [{ ...moved, id: 'copy' }] },
+    ]), source, reader);
+
+    expect(plan.result.kind).toBe('acknowledged');
+    const written = Object.fromEntries(plan.writes.map(write => [write.resource.id, write.value?.topics as DocumentData[]]));
+    expect(written.target.map(item => item.id).sort()).toEqual(['copy', 'remote']);
+  });
+
+  it('refuses a stale generation on either side rather than overwriting it', async () => {
+    const moved = topic('t1');
+    const source = council('source', [moved]);
+    const target = council('target', []);
+    const command = carry(source, [
+      { resource: source, before: [moved], after: [{ ...moved, carriedToCouncilId: 'target' }] },
+      { resource: target, before: [], after: [{ ...moved, id: 'copy' }] },
+    ]) as Extract<DataCommand, { relation: 'council-carry' }>;
+    const stale = { ...command, edits: [command.edits[0], { ...command.edits[1], generation: 'stale' }] } as unknown as DataCommand;
+    // Whole-command refusal, exactly as series membership answers: no partial write reaches
+    // either council, so the section is neither duplicated nor lost.
+    expect(await planDataCommand(stale, source, reader)).toMatchObject({ result: { kind: 'refused', code: 'generation-mismatch' }, writes: [] });
+  });
+
+  it('refuses a carry aimed at a collection that is not councils', async () => {
+    const source = council('source', [topic('t1')]);
+    const foreign = put('sermons', 'sermon', { title: 'Not a council' });
+    const command = carry(source, [
+      { resource: source, before: [topic('t1')], after: [topic('t1')] },
+      { resource: foreign, before: [], after: [topic('t1')] },
+    ]);
+    expect(await planDataCommand(command, source, reader)).toMatchObject({ result: { code: 'invalid-document' }, writes: [] });
+  });
+
+  it('refuses to rewrite topics through an ordinary update', async () => {
+    const source = council('source', [topic('t1')]);
+    const command: DataCommand = { ...commandBase(source), kind: 'update', changes: [
+      { path: ['topics'], before: { exists: true, value: [topic('t1')] }, after: { exists: true, value: [] } },
+    ] };
+    expect(await planDataCommand(command, source, reader)).toMatchObject({ result: { code: 'relation-command-required' }, writes: [] });
+  });
+});
