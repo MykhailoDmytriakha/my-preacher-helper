@@ -75,6 +75,26 @@ describe('useCouncilDataDocument', () => {
     await expect(result.current.updateCouncil('council-1', current => current)).rejects.toThrow();
   });
 
+  // A page load gives the editor a new identity, so an unfinished edit from the previous load
+  // stays on disk unclaimed. The engine offers it deliberately instead of applying it silently;
+  // the screen has to be able to show that offer, with enough text to recognise it by.
+  it('offers unfinished work with a preview a person can recognise', async () => {
+    const listRecoverable = jest.fn().mockResolvedValue([
+      { id: 'left-behind', record: { checkpoint: {
+        draft: { title: 'Council', topics: [{ id: 't1', title: 'Section nobody saved' }] },
+        confirmed: { value: { title: 'Council', topics: [] } },
+      } } },
+    ]);
+    const recover = jest.fn().mockResolvedValue(undefined);
+    const { result } = setup(stored(), { listRecoverable, recover });
+
+    const choices = await result.current.listRecoverable();
+    expect(choices).toEqual([{ id: 'left-behind', title: 'Council', preview: 'Section nobody saved' }]);
+
+    await act(async () => { await result.current.recover('left-behind'); });
+    expect(recover).toHaveBeenCalledWith('left-behind');
+  });
+
   it('opens the document for this council and forwards status, error and retry', async () => {
     const retry = jest.fn();
     const { result } = setup(stored(), { error: 'engine offline', retry });

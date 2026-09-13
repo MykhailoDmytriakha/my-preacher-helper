@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { CouncilOutcomePanel, useOutcomeLine } from '@/components/council/CouncilOutcomePanel';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
-import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
+import { DataSyncStatus, type RecoveryChoice } from '@/data-engine/DataSyncStatus';
 import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import { useCouncil } from '@/hooks/useCouncils';
@@ -66,9 +66,23 @@ function EngineCouncilConductPage({ councilId }: { councilId: string }) {
   const document = useCouncilDataDocument(councilId);
   // Conducting is the worst place to lose a decision quietly: a refusal is said out loud here too.
   const report = (error: unknown) => { toast.error(error instanceof Error ? error.message : t('council.save.refused')); };
+  // Unfinished work from an earlier load is offered, never applied behind the person's back.
+  const [recovery, setRecovery] = useState<{ choices: RecoveryChoice[]; loading: boolean; error: string | null }>({ choices: [], loading: false, error: null });
+  const listRecovery = async () => {
+    setRecovery({ choices: [], loading: true, error: null });
+    try { setRecovery({ choices: await document.listRecoverable(), loading: false, error: null }); }
+    catch (error) { setRecovery({ choices: [], loading: false, error: error instanceof Error ? error.message : t('dataSync.actionFailed') }); }
+  };
+  const recover = async (id: string) => {
+    try { await document.recover(id); setRecovery({ choices: [], loading: false, error: null }); }
+    catch (error) { setRecovery(previous => ({ ...previous, error: error instanceof Error ? error.message : t('dataSync.actionFailed') })); }
+  };
+
   return <>
     <DataSyncStatus status={document.status} error={document.error} className="mb-4"
-      onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal()} onAcceptRemote={() => document.acceptRemote()} />
+      onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal()} onAcceptRemote={() => document.acceptRemote()}
+      recoveryChoices={recovery.choices} onListRecovery={listRecovery} onRecover={recover}
+      recoveryLoading={recovery.loading} recoveryError={recovery.error} />
     <CouncilConductContent councilId={councilId} source={{
       council: document.council, loading: document.loading,
       updateCouncil: (id: string, updater: (current: Council) => Council) => { void document.updateCouncil(id, updater).catch(report); },

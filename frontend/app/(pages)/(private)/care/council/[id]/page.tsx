@@ -40,7 +40,7 @@ import { Chip } from '@/components/ui/Chip';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { LiveTextArea, LiveTextInput } from '@/components/ui/LiveTextInput';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
-import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
+import { DataSyncStatus, type RecoveryChoice } from '@/data-engine/DataSyncStatus';
 import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import { useCouncil } from '@/hooks/useCouncils';
@@ -109,6 +109,18 @@ function EngineCouncilDetailPage({ councilId }: { councilId: string }) {
   const report = (error: unknown) => {
     toast.error(error instanceof Error ? error.message : t('council.save.refused'));
   };
+  // Unfinished work from an earlier load is offered, never applied behind the person's back.
+  const [recovery, setRecovery] = useState<{ choices: RecoveryChoice[]; loading: boolean; error: string | null }>({ choices: [], loading: false, error: null });
+  const listRecovery = async () => {
+    setRecovery({ choices: [], loading: true, error: null });
+    try { setRecovery({ choices: await document.listRecoverable(), loading: false, error: null }); }
+    catch (error) { setRecovery({ choices: [], loading: false, error: error instanceof Error ? error.message : t('dataSync.actionFailed') }); }
+  };
+  const recover = async (id: string) => {
+    try { await document.recover(id); setRecovery({ choices: [], loading: false, error: null }); }
+    catch (error) { setRecovery(previous => ({ ...previous, error: error instanceof Error ? error.message : t('dataSync.actionFailed') })); }
+  };
+
   const carryTopicToNext = (_id: string, topic: CouncilTopic, _fallbackTitle: string, targetId?: string | 'new'): Council | undefined => {
     const targets = preparingCouncils(list.councils).filter(item => item.id !== councilId);
     const target = targetId && targetId !== 'new' ? targets.find(item => item.id === targetId) : targets[0];
@@ -132,7 +144,9 @@ function EngineCouncilDetailPage({ councilId }: { councilId: string }) {
   };
   return <>
     <DataSyncStatus status={document.status} error={document.error} className="mb-4"
-      onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal()} onAcceptRemote={() => document.acceptRemote()} />
+      onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal()} onAcceptRemote={() => document.acceptRemote()}
+      recoveryChoices={recovery.choices} onListRecovery={listRecovery} onRecover={recover}
+      recoveryLoading={recovery.loading} recoveryError={recovery.error} />
     <CouncilDetailContent source={source} />
   </>;
 }

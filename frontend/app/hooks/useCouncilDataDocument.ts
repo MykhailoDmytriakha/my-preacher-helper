@@ -61,6 +61,26 @@ export function useCouncilDataDocument(councilId: string) {
     await document.remove();
   }, [document]);
 
+  /**
+   * WORK LEFT BEHIND BY AN EARLIER PAGE LOAD.
+   *
+   * Every load gives the editor a new identity, so an edit the server refused — or one that never
+   * left — stays on disk belonging to nobody. The engine offers it rather than applying it
+   * silently, which is right: another tab's text must not appear under your cursor. The screen's
+   * job is to make that offer visible, with enough of the text to recognise it by.
+   */
+  const listRecoverable = useCallback(async () => {
+    const records = await document.listRecoverable();
+    return records.map(({ id, record }) => {
+      const draft = record.checkpoint.draft as unknown as Council | null;
+      const title = draft?.title ?? (record.checkpoint.confirmed.value as unknown as Council | null)?.title;
+      const preview = (draft?.topics ?? []).map(item => item?.title).filter(Boolean).join('\n').slice(0, 500);
+      return { id, title: typeof title === 'string' && title.trim() ? title : councilId, ...(preview ? { preview } : {}) };
+    });
+  }, [document, councilId]);
+
+  const recover = useCallback(async (sourceId: string) => { await document.recover(sourceId); }, [document]);
+
   return {
     council,
     loading: document.loading,
@@ -74,5 +94,7 @@ export function useCouncilDataDocument(councilId: string) {
     updateCouncil,
     deleteCouncil,
     carryTopicToNext,
+    listRecoverable,
+    recover,
   };
 }

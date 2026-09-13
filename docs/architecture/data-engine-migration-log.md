@@ -423,3 +423,30 @@ its client policy have tests, but the button only appears on a council that has 
 held, and that path has not been walked in a browser yet.
 
 Gates: `test:fast` 6644 passed / 6649, `tsc --noEmit` exit 0, `lint:full` exit 0.
+
+### 2026-09-13 — Unfinished work is findable again
+
+A page load gives the editor a new identity (`browser.client.ts` derives it from the
+tab), so an edit left behind by an earlier load belongs to no editor and never
+appears. The text was never lost — both of yesterday's refused edits were still on
+disk — but there was no way to reach them, and the banner said "Saved".
+
+The engine already solves this properly: it offers unfinished work rather than
+applying it silently, which is right, because another tab's text must not appear
+under your cursor. The sermon workspace used that offer; the council screens did not.
+`useCouncilDataDocument` now exposes `listRecoverable`/`recover` with a title and a
+preview built from the draft's sections, and both council screens pass them to the
+shared banner.
+
+Verified live: after a reload the council screen found both drafts left from the
+previous session, and restoring one brought its section back into the editor. The
+server then refused that restored draft because it was built on revision 1 while the
+document had reached revision 4 — correct behaviour, stated plainly by the banner,
+with the text kept for the person to decide.
+
+What remains is narrower than the original report, and the tracker entry was rewritten
+to match: the banner still reads "Saved" while unfinished drafts sit beside it, so the
+work is findable only by pressing the button blind
+(`BUG-20260913-engine-idle-banner-hides-unfinished-work`, P2).
+
+Gates: `test:fast` 6645 passed / 6650, `tsc --noEmit` exit 0, `lint:full` exit 0.
