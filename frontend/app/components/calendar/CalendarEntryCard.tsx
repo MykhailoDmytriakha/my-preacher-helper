@@ -124,6 +124,30 @@ export function CalendarEntryCard({
         )}
 
         {/*
+          WHAT IT IS ABOUT, not just what it is called. The section lists a council's headings
+          under its name; the day showed the name alone, so the pastor had to leave the calendar
+          to remember his own agenda. Numbered like there, because the order is the order he will
+          walk them in.
+        */}
+        {entry.sections && (
+          <ol className="space-y-1">
+            {entry.sections.titles.map((title, index) => (
+              <li key={`${title}-${index}`} className="flex gap-2 text-sm">
+                <span className="w-4 shrink-0 text-right text-xs font-bold tabular-nums text-gray-500 dark:text-gray-500">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-gray-700 dark:text-gray-300">{title}</span>
+              </li>
+            ))}
+            {entry.sections.hidden > 0 && (
+              <li className="pl-6 text-xs text-gray-400 dark:text-gray-500">
+                {t('council.moreTopics', { count: entry.sections.hidden })}
+              </li>
+            )}
+          </ol>
+        )}
+
+        {/*
           A council says how far it got rather than where it met — but only once there is
           something to say. "Covered 0 of 8" before the meeting is a number pretending to be news;
           a council still being prepared is told by its name and its chip, and nothing else.

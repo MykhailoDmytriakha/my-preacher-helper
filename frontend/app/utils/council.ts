@@ -19,6 +19,37 @@ export const newTopic = (title = ''): CouncilTopic => ({
   options: [],
 });
 
+/**
+ * HOW MANY SECTIONS A CARD SHOWS, and what it says about the rest.
+ *
+ * Lived as a bare number inside the council list screen, which is why the calendar could not
+ * follow the same rule and ended up showing no sections at all: the pastor opened a day, saw a
+ * council's name and had to leave the calendar to remember what it was about.
+ */
+export const TOPICS_ON_CARD = 6;
+
+export interface TopicPreview {
+  /** The sections themselves, so a caller can pair each with whatever it draws beneath it. */
+  topics: CouncilTopic[];
+  /** How many titled sections did not fit; zero when they all did. */
+  hidden: number;
+}
+
+/**
+ * The first few section headings of a council, for any card that wants to say what it is about.
+ *
+ * A section still waiting for its name is skipped rather than drawn as a blank line — one is
+ * always sitting there while the pastor types. Counted out of `hidden` for the same reason: an
+ * empty row is not something the reader is missing.
+ */
+export const topicPreview = (council: Council, limit = TOPICS_ON_CARD): TopicPreview => {
+  const named = council.topics.filter((topic) => topic.title?.trim());
+  // The TOPICS travel, not their titles: a caller that draws something under each heading — the
+  // section list shows what was decided — must keep every line paired with its own section, and
+  // an index into the unfiltered array stops meaning that the moment an untitled one is skipped.
+  return { topics: named.slice(0, limit), hidden: Math.max(0, named.length - limit) };
+};
+
 export const newQuestion = (question = ''): CouncilTopicQuestion => ({ id: newClientId(), question });
 
 export const newOption = (text = ''): CouncilTopicOption => ({ id: newClientId(), text });

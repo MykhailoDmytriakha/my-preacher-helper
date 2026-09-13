@@ -1,4 +1,4 @@
-import { councilProgress } from '@/utils/council';
+import { councilProgress, topicPreview } from '@/utils/council';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { getEffectivePreachDateStatus } from '@/utils/preachDateStatus';
 
@@ -41,6 +41,14 @@ export interface CalendarEntry {
   audience?: string;
   outcome?: string;
   status?: CalendarEntryStatus;
+  /**
+   * WHAT THIS THING IS MADE OF, listed — a council's section headings today.
+   *
+   * A day answers "what do I have and what is it about", and for a council the agenda IS the
+   * "about": its name alone sent the pastor out of the calendar to remember it. Absent when
+   * there is nothing named yet, so a card never draws an empty block.
+   */
+  sections?: { titles: string[]; hidden: number };
   /** For a council: how many of its sections have an outcome. */
   progress?: { done: number; total: number };
 }
@@ -105,6 +113,10 @@ export function councilEntries(councils: Council[]): CalendarEntry[] {
     if (!date) return [];
     // The section's own rule for what counts as handled — not a second copy of it living here.
     const { done, total } = councilProgress(council);
+    // The SAME rule the section's own list uses for how many headings a card carries, so the two
+    // surfaces cannot drift into showing different amounts of the same council.
+    const { topics, hidden } = topicPreview(council);
+    const sections = { titles: topics.map((topic) => topic.title.trim()), hidden };
     return [
       {
         kind: 'council' as const,
@@ -115,6 +127,7 @@ export function councilEntries(councils: Council[]): CalendarEntry[] {
         href: `/care/council/${council.id}`,
         status: council.status === 'held' ? ('held' as const) : ('preparing' as const),
         progress: { done, total },
+        ...(sections.titles.length > 0 ? { sections } : {}),
       },
     ];
   });

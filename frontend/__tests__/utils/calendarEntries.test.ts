@@ -86,6 +86,40 @@ describe('everything the calendar shows, in one shape', () => {
     });
   });
 
+  it('carries the section headings, because a day answers "what is it about"', () => {
+    // The section itself lists a council's sections under its name; the calendar showed the
+    // name alone, so remembering the agenda meant leaving the day and opening the council.
+    const [entry] = councilEntries([council()]);
+    expect(entry.sections).toEqual({ titles: ['Контекст', 'Решение 1'], hidden: 0 });
+  });
+
+  it('shows the first few headings and says how many are left', () => {
+    const many = council({
+      topics: Array.from({ length: 9 }, (_, i) => ({ id: `t${i}`, title: `Секция ${i + 1}`, questions: [], options: [] })),
+    } as Partial<Council>);
+
+    const [entry] = councilEntries([many]);
+    expect(entry.sections?.titles).toEqual([
+      'Секция 1', 'Секция 2', 'Секция 3', 'Секция 4', 'Секция 5', 'Секция 6',
+    ]);
+    expect(entry.sections?.hidden).toBe(3);
+  });
+
+  it('says nothing at all when the council has no sections yet', () => {
+    // An empty list rendered as an empty block is a card with a hole in it.
+    expect(councilEntries([council({ topics: [] })])[0].sections).toBeUndefined();
+  });
+
+  it('skips a section left untitled, instead of printing a blank line', () => {
+    const [entry] = councilEntries([council({
+      topics: [
+        { id: 't1', title: 'Контекст', questions: [], options: [] },
+        { id: 't2', title: '   ', questions: [], options: [] },
+      ],
+    } as Partial<Council>)]);
+    expect(entry.sections?.titles).toEqual(['Контекст']);
+  });
+
   it('leaves out a council whose day is not set: a calendar has nowhere to put it', () => {
     expect(councilEntries([council({ date: undefined })])).toEqual([]);
   });

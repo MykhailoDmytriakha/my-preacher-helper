@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
 import { Chip } from '@/components/ui/Chip';
 import { useCouncils } from '@/hooks/useCouncils';
-import { councilProgress, daysUntil, splitForList } from '@/utils/council';
+import { councilProgress, daysUntil, splitForList, topicPreview } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
 
@@ -192,7 +192,6 @@ function Group({ title, empty, councils }: { title: string; empty: string; counc
 }
 
 /** How many sections a card lists before it says "N more": a council rarely has more, and a card is not a page. */
-const TOPICS_ON_CARD = 6;
 
 function CouncilRow({ council }: { council: Council }) {
   const { t } = useTranslation();
@@ -211,8 +210,9 @@ function CouncilRow({ council }: { council: Council }) {
       ? `${formatDateOnly(council.date)} · ${relativeDay(council.date, t)}`
       : t('council.noDate');
 
-  const shown = council.topics.slice(0, TOPICS_ON_CARD);
-  const hidden = council.topics.length - shown.length;
+  // The cap and the "+N left" rule live in `utils/council`, shared with the calendar card, so
+  // the two surfaces cannot show different amounts of the same council.
+  const { topics: shown, hidden } = topicPreview(council);
 
   return (
     <Link
