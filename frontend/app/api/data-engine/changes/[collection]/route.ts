@@ -8,8 +8,8 @@ export async function GET(request: Request, context: { params: Promise<{ collect
   const owner = await getRequiredAuthenticatedUid(request);
   if (!owner) return Response.json({ code: 'unauthenticated' }, { status: 401 });
   try {
-    assertDataEngineEnabled();
     const { collection } = await context.params;
+    assertDataEngineEnabled(collection);
     const params = new URL(request.url).searchParams;
     const after = params.get('after');
     const limit = params.get('limit');

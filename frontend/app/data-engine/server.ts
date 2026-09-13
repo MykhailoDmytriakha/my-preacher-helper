@@ -32,8 +32,20 @@ export class DataEngineServerError extends Error {
  * are being migrated. This deployment gate is not a replacement for that migration.
  * Trusted server adapters can exercise processCommand without exposing a public API.
  */
-export function assertDataEngineEnabled(): void {
-  if (process.env.DATA_ENGINE_ENABLED !== 'true') throw new DataEngineServerError('data-engine-disabled', 503);
+export function assertDataEngineEnabled(collection?: string): void {
+  if (process.env.DATA_ENGINE_ENABLED === 'true') return;
+  const migrated = (process.env.DATA_ENGINE_COLLECTIONS ?? '').split(',').map(entry => entry.trim()).filter(Boolean);
+  // A domain migrates as a whole, so the deployment lists the collections it owns.
+  // Without a collection the caller only asks whether the protocol is served at all.
+  if (!migrated.length || (collection !== undefined && !migrated.includes(collection))) {
+    throw new DataEngineServerError('data-engine-disabled', 503);
+  }
+}
+
+/** The command route gates before validation, so an unusable body yields no collection. */
+export function commandCollection(body: unknown): string | undefined {
+  const resource = (body as { resource?: { collection?: unknown } } | null)?.resource;
+  return typeof resource?.collection === 'string' ? resource.collection : undefined;
 }
 
 function validSegment(value: unknown): value is string {

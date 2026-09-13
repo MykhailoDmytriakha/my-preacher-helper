@@ -55,6 +55,42 @@ describe('DataEngine HTTP routes', () => {
     expect(readCollectionChanges).not.toHaveBeenCalled();
   });
 
+  // The client switch alone is not a boundary: a build with one migrated collection
+  // must not be able to drive an unmigrated one through the protocol.
+  it('serves only the collections this deployment migrated', async () => {
+    const collections = process.env.DATA_ENGINE_COLLECTIONS;
+    try {
+      delete process.env.DATA_ENGINE_ENABLED;
+      process.env.DATA_ENGINE_COLLECTIONS = 'councils';
+      const councilContext = { params: Promise.resolve({ collection: 'councils' }) };
+      const councilDocument = { params: Promise.resolve({ collection: 'councils', id: 'council-1' }) };
+
+      for (const response of [await read(request(), documentContext), await list(request(), listContext),
+        await changes(request('http://localhost/api/data-engine/changes/sermons?after=0'), listContext)]) {
+        expect(response.status).toBe(503);
+        expect(await response.json()).toEqual({ code: 'data-engine-disabled' });
+      }
+      expect(readDocument).not.toHaveBeenCalled();
+      expect(listDocuments).not.toHaveBeenCalled();
+      expect(readCollectionChanges).not.toHaveBeenCalled();
+
+      expect((await read(request(), councilDocument)).status).toBe(200);
+      expect((await list(request(), councilContext)).status).toBe(200);
+      expect((await changes(request('http://localhost/api/data-engine/changes/councils?after=0'), councilContext)).status).toBe(200);
+
+      (readCommandBody as jest.Mock).mockResolvedValue({ resource: { collection: 'sermons', id: 'sermon-1' } });
+      expect((await POST(request())).status).toBe(503);
+      expect(processCommand).not.toHaveBeenCalled();
+
+      (readCommandBody as jest.Mock).mockResolvedValue({ resource: { collection: 'councils', id: 'council-1' } });
+      expect((await POST(request())).status).toBe(200);
+      expect(processCommand).toHaveBeenCalledTimes(1);
+    } finally {
+      if (collections === undefined) delete process.env.DATA_ENGINE_COLLECTIONS;
+      else process.env.DATA_ENGINE_COLLECTIONS = collections;
+    }
+  });
+
   it('requires authentication before parsing commands or accessing documents', async () => {
     (getRequiredAuthenticatedUid as jest.Mock).mockResolvedValue(null);
     expect((await POST(request())).status).toBe(401);

@@ -8,8 +8,9 @@ export async function GET(request: Request, context: { params: Promise<{ collect
   const owner = await getRequiredAuthenticatedUid(request);
   if (!owner) return Response.json({ code: 'unauthenticated' }, { status: 401 });
   try {
-    assertDataEngineEnabled();
-    return Response.json(await readDocument(owner, await context.params), { headers: { 'Cache-Control': 'no-store' } });
+    const resource = await context.params;
+    assertDataEngineEnabled(resource.collection);
+    return Response.json(await readDocument(owner, resource), { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     return serverErrorResponse(error);
   }

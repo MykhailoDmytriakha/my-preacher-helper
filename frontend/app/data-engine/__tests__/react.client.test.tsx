@@ -4,7 +4,7 @@ import React from 'react';
 import { useAuth } from '@/providers/AuthProvider';
 
 import { createBrowserDataEngine, type BrowserDataEngine } from '../browser.client';
-import { DataDocumentProvider, DataEngineProvider, DataEngineWorkspace, isDataEngineEnabled, useDataCollection, useDataDocument, useDataEngine, useDataForm } from '../react.client';
+import { DataDocumentProvider, DataEngineProvider, DataEngineWorkspace, isCollectionOnEngine, isDataEngineEnabled, useDataCollection, useDataDocument, useDataEngine, useDataForm } from '../react.client';
 
 import type { CollectionState } from '../collections';
 import type { EditorState, RecoveryCheckpoint } from '../controller';
@@ -222,6 +222,36 @@ describe('React DataEngine contract', () => {
     } finally {
       if (original === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
       else process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = original;
+    }
+  });
+
+  // A domain migrates as a whole, so the switch has to be per collection: enabling the
+  // engine for a migrated domain must not also route an unmigrated one through it.
+  it('routes only the listed collections through the engine', () => {
+    const enabled = process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+    const collections = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    try {
+      delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+      delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+      expect(isCollectionOnEngine('councils')).toBe(false);
+      expect(isDataEngineEnabled()).toBe(false);
+
+      process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = ' councils , prayerRequests ';
+      expect(isCollectionOnEngine('councils')).toBe(true);
+      expect(isCollectionOnEngine('prayerRequests')).toBe(true);
+      expect(isCollectionOnEngine('sermons')).toBe(false);
+      // The workspace still mounts: one migrated collection needs the engine alive.
+      expect(isDataEngineEnabled()).toBe(true);
+
+      delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+      process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = 'true';
+      expect(isCollectionOnEngine('sermons')).toBe(true);
+      expect(isCollectionOnEngine('councils')).toBe(true);
+    } finally {
+      if (enabled === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED;
+      else process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED = enabled;
+      if (collections === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+      else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = collections;
     }
   });
 

@@ -32,7 +32,7 @@ import StructurePreview from "@/components/sermon/StructurePreview";
 import StructureStats from "@/components/sermon/StructureStats";
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
 import { getClientDb } from "@/config/firebaseClientDb";
-import { DataDocumentProvider, isDataEngineEnabled } from '@/data-engine/react.client';
+import { DataDocumentProvider, isCollectionOnEngine } from '@/data-engine/react.client';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -337,7 +337,7 @@ const checkForInconsistentThoughtsHelper = (sermon: Sermon | null): boolean => {
 
 export default function SermonPage() {
   const id = useRouteId();
-  return isDataEngineEnabled() ? (
+  return isCollectionOnEngine('sermons') ? (
     <DataDocumentProvider resource={{ collection: 'sermons', id }} options={{ slot: 'sermon' }}>
       <EngineSermonPageContent id={id} />
     </DataDocumentProvider>

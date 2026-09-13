@@ -36,6 +36,8 @@ let mockCore: ReturnType<typeof useSermonCoreDataDocument>;
 
 jest.mock('@/data-engine/react.client', () => ({
   isDataEngineEnabled: () => mockEngineEnabled,
+  // The page asks about its own collection: activation is per migrated domain.
+  isCollectionOnEngine: (collection: string) => collection === 'sermons' && mockEngineEnabled,
   DataDocumentProvider: jest.fn(({ children }: { children: React.ReactNode }) => <div data-testid="document-provider">{children}</div>),
 }));
 jest.mock('@/(pages)/(private)/sermons/[id]/hooks/useSermonCoreDataDocument', () => ({

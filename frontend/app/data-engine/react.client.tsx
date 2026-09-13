@@ -23,9 +23,23 @@ const EngineContext = createContext<EngineContextValue | null>(null);
 const message = (error: unknown) => error instanceof Error ? error.message : 'Data engine failed';
 const EDITOR_CHANGED = 'The active editor changed';
 
-/** Enable only with the coordinated server, legacy-writer and rules cutover. */
+const listed = (value: string | undefined): string[] =>
+  (value ?? '').split(',').map(entry => entry.trim()).filter(Boolean);
+
+/**
+ * A domain migrates as a whole, so activation is per collection. The older
+ * all-or-nothing flag stays valid and means every collection.
+ * Enable only with the coordinated server, legacy-writer and rules cutover.
+ */
+export function isCollectionOnEngine(collection: string): boolean {
+  if (process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED === 'true') return true;
+  return listed(process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS).includes(collection);
+}
+
+/** Whether the workspace needs a live engine at all: one migrated collection is enough. */
 export function isDataEngineEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED === 'true';
+  return process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED === 'true'
+    || listed(process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS).length > 0;
 }
 
 /** Keep one owner-scoped engine alive when navigation chrome is hidden. */
