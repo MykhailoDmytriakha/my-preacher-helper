@@ -287,6 +287,20 @@ export const RetryTranscriptionButton = ({
   );
 };
 
+/**
+ * NOTHING WAS LOST HERE, AND THE PANEL HAS TO LOOK LIKE IT.
+ *
+ * It was dressed as an alarm — amber field, warning triangle — for the one moment when the
+ * app has just succeeded at its most important job: the dictated thought is on the device and
+ * cannot slip away. What actually failed is one step afterwards. So the surface is calm, the
+ * mark is a saved microphone rather than a hazard sign, and the words lead with the good news.
+ *
+ * The actions were four buttons in four colours, each sized by its own text, wrapping to three
+ * lines on a narrow card — nothing said which one to press. There is one thing to do (try that
+ * step again) and three ways out, so exactly one button is filled and the rest are quiet and
+ * equal. Past the monthly limit the filled button is not offered at all: trying again cannot
+ * succeed while the limit stands, and offering it is how the panel asked for a pointless click.
+ */
 export const AudioRecoveryPanel = ({
   show,
   audioUrl,
@@ -295,6 +309,7 @@ export const AudioRecoveryPanel = ({
   retryCount,
   maxRetries,
   isProcessing,
+  limitReached = false,
   onRetry,
   onRecordAgain,
   onDiscard,
@@ -304,65 +319,68 @@ export const AudioRecoveryPanel = ({
 }: AudioRecoveryPanelProps) => {
   if (!show || !audioUrl || !errorMessage) return null;
 
-  const canRetry = retryCount < maxRetries && !isProcessing;
-  const buttonBase =
-    "rounded-md px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60";
-  const retryLabel = `${t(AUDIO_TRANSLATION_KEYS.RETRY_TRANSCRIPTION)} (${retryCount + 1}/${maxRetries})`;
+  const canRetry = !limitReached && retryCount < maxRetries && !isProcessing;
+  const compact = appliedVariant === "mini";
+  const quietAction =
+    "inline-flex min-w-fit flex-1 items-center justify-center whitespace-nowrap rounded-xl px-3 py-2.5 text-sm font-medium text-slate-600 ring-1 ring-inset ring-slate-200 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-300 dark:ring-slate-700 dark:hover:bg-slate-800";
 
   return (
-    <div className={`${appliedVariant === "mini" ? "p-3" : "p-4"} rounded-lg border border-amber-200 bg-amber-50 shadow-sm dark:border-amber-700 dark:bg-amber-900/30 ${className}`}>
-      <div className="flex min-w-0 items-start gap-2 text-amber-800 dark:text-amber-200">
-        <svg className="mt-0.5 h-4 w-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.72-1.36 3.485 0l6.518 11.59c.75 1.334-.213 2.986-1.742 2.986H3.48c-1.53 0-2.492-1.652-1.742-2.986l6.518-11.59zM11 14a1 1 0 10-2 0 1 1 0 002 0zm-1-2a1 1 0 01-1-1V7a1 1 0 112 0v4a1 1 0 01-1 1z" clipRule="evenodd" />
-        </svg>
+    <div
+      className={`${compact ? "p-4" : "p-5"} rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900 ${className}`}
+      data-testid="audio-recovery-panel"
+    >
+      <div className="flex min-w-0 items-start gap-3">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300">
+          <svg aria-hidden="true" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 12a7 7 0 0 1-14 0M12 19v3" />
+          </svg>
+        </span>
         <div className="min-w-0 flex-1">
-          <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
-            <span className="text-sm font-semibold">{t("audio.savedRecording")}</span>
-            <span className="text-sm font-medium text-amber-700 dark:text-amber-200">{errorMessage}</span>
-          </div>
-          <audio
-            controls
-            src={audioUrl}
-            preload="metadata"
-            className="h-9 w-full min-w-0"
-            aria-label={t("audio.playRecording")}
-          />
+          <p className="text-sm font-semibold text-slate-900 dark:text-white">{t("audio.savedRecording")}</p>
+          <p className="mt-0.5 text-sm leading-6 text-slate-500 dark:text-slate-400">{errorMessage}</p>
         </div>
       </div>
 
-      <div className={appliedVariant === "mini" ? "mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3" : "mt-3 flex flex-wrap gap-2"}>
+      <audio
+        controls
+        src={audioUrl}
+        preload="metadata"
+        className="mt-4 h-10 w-full min-w-0"
+        aria-label={t("audio.playRecording")}
+      />
+
+      {!limitReached && (
+        /**
+         * Present but refusing is right while the attempt is in flight or spent — the button
+         * stays where the hand expects it, and the counter beside it says why. Past the limit
+         * it is gone instead: it cannot come back this month, and a permanently dead control
+         * is a question with no answer.
+         */
         <button
           type="button"
           onClick={onRetry}
           disabled={!canRetry}
-          className={`${buttonBase} border border-amber-300 bg-white text-amber-800 hover:bg-amber-100 focus:ring-amber-500 dark:border-amber-600 dark:bg-gray-900/40 dark:text-amber-200 dark:hover:bg-amber-900/50`}
+          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
           aria-label={t(AUDIO_TRANSLATION_KEYS.RETRY_TRANSCRIPTION)}
         >
-          {retryLabel}
+          {t(AUDIO_TRANSLATION_KEYS.RETRY_TRANSCRIPTION)}
+          <span className="text-xs font-medium tabular-nums text-blue-100" data-testid="audio-retry-count">
+            {Math.min(retryCount + 1, maxRetries)}/{maxRetries}
+          </span>
         </button>
-        <button
-          type="button"
-          onClick={onRecordAgain}
-          disabled={isProcessing}
-          className={`${buttonBase} border border-green-300 bg-green-50 text-green-800 hover:bg-green-100 focus:ring-green-500 dark:border-green-700 dark:bg-green-900/30 dark:text-green-200 dark:hover:bg-green-900/50`}
-        >
+      )}
+
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button type="button" onClick={onRecordAgain} disabled={isProcessing} className={quietAction}>
           {t("audio.recordAgain")}
         </button>
         {onDownload && (
-          <button
-            type="button"
-            onClick={onDownload}
-            className={`${buttonBase} border border-indigo-300 bg-indigo-50 text-indigo-800 hover:bg-indigo-100 focus:ring-indigo-500 dark:border-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-200 dark:hover:bg-indigo-900/50`}
-          >
+          <button type="button" onClick={onDownload} className={quietAction}>
             {t("audio.downloadRecording")}
           </button>
         )}
-        <button
-          type="button"
-          onClick={onDiscard}
-          disabled={isProcessing}
-          className={`${buttonBase} border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:ring-gray-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700`}
-        >
+        <button type="button" onClick={onDiscard} disabled={isProcessing} className={quietAction}>
           {t("audio.discardRecording")}
         </button>
       </div>

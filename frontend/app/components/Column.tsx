@@ -175,6 +175,9 @@ export default function Column({
   const [sectionAudioError, setSectionAudioError] = useState<string | null>(null);
   const [normalAudioError, setNormalAudioError] = useState<string | null>(null);
   const [pointAudioErrors, setPointAudioErrors] = useState<Record<string, string>>({});
+  // One flag for the whole column: the monthly allowance is an account-wide fact, not a
+  // property of the recording that happened to meet it.
+  const [audioLimitReached, setAudioLimitReached] = useState(false);
   const normalModePopoverRef = useRef<HTMLDivElement | null>(null);
   const normalAudioErrorRef = useRef<string | null>(null);
 
@@ -358,6 +361,7 @@ export default function Column({
             disabled={allPointsBlocked || transcriptionBlocked}
             title={transcriptionBlocked ? transcriptionUnavailableLabel : undefined}
             transcriptionError={sectionAudioError}
+            transcriptionLimitReached={audioLimitReached}
             onClearError={() => setSectionAudioError(null)}
             onRecordingComplete={(audioBlob) => {
               if (transcriptionBlocked) return;
@@ -368,6 +372,7 @@ export default function Column({
                 sermonId,
                 setIsRecordingAudio,
                 setAudioError: setSectionAudioError,
+                setLimitReached: setAudioLimitReached,
                 onAudioThoughtCreated,
                 t,
                 successMessage: sectionLabel
@@ -730,6 +735,7 @@ export default function Column({
                         disabled={allPointsBlocked || transcriptionBlocked}
                         title={transcriptionBlocked ? transcriptionUnavailableLabel : undefined}
                         transcriptionError={normalAudioError}
+                        transcriptionLimitReached={audioLimitReached}
                         onClearError={() => setNormalAudioErrorSafely(null)}
 	                      onRecordingComplete={(audioBlob) => {
                           if (transcriptionBlocked) return;
@@ -739,6 +745,7 @@ export default function Column({
 	                          sermonId,
 	                          setIsRecordingAudio,
 	                          setAudioError: setNormalAudioErrorSafely,
+	                          setLimitReached: setAudioLimitReached,
 	                          onAudioThoughtCreated,
 	                          t,
 	                          onSuccess: () => setShowAudioPopover(false),

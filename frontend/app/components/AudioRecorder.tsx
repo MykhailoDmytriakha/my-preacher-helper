@@ -32,6 +32,7 @@ export const AudioRecorder = ({
   retryCount = 0,
   maxRetries = 3,
   transcriptionError,
+  transcriptionLimitReached = false,
   onClearError,
   variant = "standard",
   autoStart = false,
@@ -160,6 +161,7 @@ export const AudioRecorder = ({
       )}
 
       <AudioRecoveryPanel
+        limitReached={transcriptionLimitReached}
         show={shouldShowRecovery}
         audioUrl={storedAudioUrl}
         errorMessage={transcriptionErrorMessage}

@@ -291,7 +291,7 @@ describe("AudioRecorderControls", () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(onRecordAgain).toHaveBeenCalledTimes(1);
     expect(onDiscard).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("audio.retryTranscription (2/3)")).toBeInTheDocument();
+    expect(screen.getByTestId("audio-retry-count")).toHaveTextContent("2/3");
   });
 
   it("disables recovery retry actions while processing or after max attempts", () => {
@@ -333,6 +333,70 @@ describe("AudioRecorderControls", () => {
     expect(screen.getByRole("button", { name: "audio.retryTranscription" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "audio.recordAgain" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "audio.discardRecording" })).toBeDisabled();
+  });
+
+  /**
+   * PAST THE LIMIT THE PANEL MUST NOT ASK FOR A POINTLESS CLICK.
+   *
+   * Retrying the same step cannot succeed while the month's allowance is spent, and the panel
+   * offered it anyway — "retry transcription (1/3)", in the middle of a message saying the
+   * limit is reached. The ways OUT still have to be there: the recording is on the device and
+   * downloading it is the thing that actually helps.
+   */
+  it("drops the retry action once the monthly limit is the reason", () => {
+    const onDownload = jest.fn();
+    render(
+      <AudioRecoveryPanel
+        show={true}
+        audioUrl="blob:recording"
+        errorMessage="audio.limitReached"
+        appliedVariant="standard"
+        retryCount={0}
+        maxRetries={3}
+        isProcessing={false}
+        limitReached={true}
+        onRetry={jest.fn()}
+        onRecordAgain={jest.fn()}
+        onDiscard={jest.fn()}
+        onDownload={onDownload}
+        t={t}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "audio.retryTranscription" })).not.toBeInTheDocument();
+    expect(screen.getByText("audio.savedRecording")).toBeInTheDocument();
+    expect(screen.getByText("audio.limitReached")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "audio.downloadRecording" }));
+    expect(onDownload).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the recovery panel calm — nothing was lost, so nothing is dressed as an alarm", () => {
+    render(
+      <AudioRecoveryPanel
+        show={true}
+        audioUrl="blob:recording"
+        errorMessage="transcription failed"
+        appliedVariant="standard"
+        retryCount={0}
+        maxRetries={3}
+        isProcessing={false}
+        onRetry={jest.fn()}
+        onRecordAgain={jest.fn()}
+        onDiscard={jest.fn()}
+        t={t}
+      />
+    );
+
+    // The amber field and the hazard triangle said "something went wrong with your thought"
+    // about the moment the thought was successfully put beyond reach of loss.
+    const panel = screen.getByTestId("audio-recovery-panel");
+    expect(panel.className).not.toMatch(/amber|red|rose/);
+    // Exactly one filled action: there is one thing to do and three ways out.
+    expect(screen.getByRole("button", { name: "audio.retryTranscription" })).toHaveClass("bg-blue-600");
+    ["audio.recordAgain", "audio.downloadRecording", "audio.discardRecording"].forEach((name) => {
+      const button = screen.queryByRole("button", { name });
+      if (button) expect(button.className).not.toMatch(/bg-(green|indigo|amber)/);
+    });
   });
 
   it("covers recording progress for mini and standard variants", () => {

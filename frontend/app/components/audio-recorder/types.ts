@@ -16,6 +16,8 @@ export interface AudioRecorderProps {
   retryCount?: number;
   maxRetries?: number;
   transcriptionError?: string | null;
+  /** The month's allowance is spent: the same step cannot succeed on a second press. */
+  transcriptionLimitReached?: boolean;
   onClearError?: () => void;
   variant?: RecorderVariant;
   autoStart?: boolean;
@@ -71,6 +73,8 @@ export interface AudioRecoveryPanelProps {
   retryCount: number;
   maxRetries: number;
   isProcessing: boolean;
+  /** The month's allowance is spent, so trying the same step again cannot succeed. */
+  limitReached?: boolean;
   onRetry: () => void;
   onRecordAgain: () => void;
   onDiscard: () => void;

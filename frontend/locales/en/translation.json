@@ -655,7 +655,11 @@
     "grace": "You have passed the monthly line — and we are carrying you. There is still grace here for a while. Everything opens again on {{date}}.",
     "overLimit": "Over limit",
     "limitReached": "Limit reached",
-    "openSettings": "Open plan settings"
+    "openSettings": "Open plan settings",
+    "capDialog": {
+      "title": "Let us pause here for now",
+      "dismiss": "Understood"
+    }
   },
   "settings": {
     "nav": {
@@ -1060,7 +1064,8 @@
     "mini": {
       "title": "Audio Recorder",
       "description": "Record audio for this section"
-    }
+    },
+    "limitReached": "The recording is saved on this device. The monthly allowance is spent, so it cannot be transcribed until the limit renews."
   },
   "errors": {
     "generic": "Error",
