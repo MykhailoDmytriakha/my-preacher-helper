@@ -40,6 +40,13 @@ function currentItems(value: DocumentData): DocumentData[] {
   return value.items as DocumentData[];
 }
 
+/** Which sections claim to have been carried, and where: the part only the carry may change. */
+function carryMarks(side: { exists: boolean; value?: Json } | undefined): string {
+  const topics = side?.exists && Array.isArray(side.value) ? side.value : [];
+  return JSON.stringify(topics.map(topic => ownObject(topic)
+    ? [topic.id ?? null, topic.carriedToCouncilId ?? null] : [null, null]));
+}
+
 function currentTopics(value: DocumentData): DocumentData[] {
   if (value.topics === undefined) return [];
   if (!Array.isArray(value.topics)) return fail(INVALID_DOCUMENT);
@@ -204,10 +211,13 @@ class RelationPlanner {
       const forbidden: Record<string, string[]> = {
         studyNotes: ['materialIds', 'isDraft'], studyMaterials: ['noteIds'], series: ['items', 'sermonIds', 'seriesKind'],
         sermons: ['seriesId', 'seriesPosition'], groups: ['seriesId', 'seriesPosition'],
-        // Sections are carried between councils as one operation; an ordinary rewrite of the
-        // whole array cannot promise the source and the destination change together.
-        councils: ['topics'],
       };
+      // Editing a section is ordinary work and stays an ordinary update. Only the carry mark is
+      // a claim about ANOTHER council, and a claim that the other document never received is how
+      // a section ends up in neither: it belongs to the two-council command.
+      if (collection === 'councils' && command.changes.some(change => change.path[0] === 'topics' && carryMarks(change.after) !== carryMarks(change.before))) {
+        fail(RELATION_REQUIRED);
+      }
       if (command.changes.some(change => forbidden[collection]?.includes(change.path[0]))) fail(RELATION_REQUIRED);
     }
   }

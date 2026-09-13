@@ -352,11 +352,19 @@ describe('council carry', () => {
     expect(await planDataCommand(command, source, reader)).toMatchObject({ result: { code: 'invalid-document' }, writes: [] });
   });
 
-  it('refuses to rewrite topics through an ordinary update', async () => {
+  it('refuses only the carry mark through an ordinary update, not ordinary editing', async () => {
     const source = council('source', [topic('t1')]);
-    const command: DataCommand = { ...commandBase(source), kind: 'update', changes: [
-      { path: ['topics'], before: { exists: true, value: [topic('t1')] }, after: { exists: true, value: [] } },
+    const claim: DataCommand = { ...commandBase(source), kind: 'update', changes: [
+      { path: ['topics'], before: { exists: true, value: [topic('t1')] },
+        after: { exists: true, value: [{ ...topic('t1'), carriedToCouncilId: 'target' }] } },
     ] };
-    expect(await planDataCommand(command, source, reader)).toMatchObject({ result: { code: 'relation-command-required' }, writes: [] });
+    expect(await planDataCommand(claim, source, reader)).toMatchObject({ result: { code: 'relation-command-required' }, writes: [] });
+
+    // Typing in a section is not a claim about another council and must stay an ordinary update.
+    const typing: DataCommand = { ...commandBase(source), kind: 'update', changes: [
+      { path: ['topics'], before: { exists: true, value: [topic('t1')] },
+        after: { exists: true, value: [{ ...topic('t1'), title: 'Reworded', decision: 'Agreed' }] } },
+    ] };
+    expect(await planDataCommand(typing, source, reader)).toMatchObject({ result: { kind: 'acknowledged' } });
   });
 });

@@ -236,3 +236,31 @@ Gates after this work: `test:fast` 6627 passed / 6632, `tsc --noEmit` exit 0,
 `lint:full` exit 0. Verified live at localhost:3005 that the council section still
 behaves exactly as before, since nothing on screen changed.
 
+### 2026-09-12 — Step 3b, core half: carrying a section is a registered command
+
+`council-carry` now sits beside `material-notes` and `series-membership`: the type
+(`types.ts`), the gate (`protocol.ts`, exactly two councils, both in the councils
+collection, the first edit being the command's own resource), and the execution
+(`serverRelations.ts`, three-way merge of `topics` per side against the live
+document). A stale generation on either side refuses the whole command with no
+partial write.
+
+**A guard I had to narrow, found by walking on rather than by a test.** The first
+version forbade every ordinary update of `councils.topics`, which would have turned
+each keystroke in a section into a two-council operation. Editing a section is
+ordinary work; only the carry **mark** — a claim that another council received the
+section — belongs to the two-council command. `carryMarks` compares just that part
+of the array, so typing stays an ordinary update and a claim about another document
+does not.
+
+Five tests, four red for the right reason first. Gates: `test:fast` 6632 passed /
+6637, `tsc --noEmit` exit 0, `lint:full` exit 0.
+
+**Where this step stands.** The core half is done. The client half is not: the
+domain policy (`domainPolicy.ts`) turns an edited draft into a command and today
+knows how to build a one-resource series relation and a material relation whose
+targets the engine reads itself. The carry needs the same treatment — the source's
+draft carries the mark, and the destination is the second edit, its generation read
+inside the engine, never supplied by the screen. After that come the council screen,
+the conduct screen, wiring `EngineCouncilCreator`, and only then the switch.
+
