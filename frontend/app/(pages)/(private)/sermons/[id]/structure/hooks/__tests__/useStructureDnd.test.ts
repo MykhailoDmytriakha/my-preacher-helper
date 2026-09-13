@@ -618,6 +618,91 @@ describe('useStructureDnd', () => {
       expect(mockSetContainers).toHaveBeenCalled();
     });
 
+    /**
+     * A MOVE IS THE PERSON'S OWN EDIT AND MUST NEVER READ AS A FOREIGN ONE.
+     *
+     * The freshness banner compares the sermon on screen with the sermon on the server, and
+     * `sermon.thoughts` is the screen's side of that comparison. A drag writes the moved
+     * thought — its outline point, its position, its tags — and if the confirmed thought is
+     * not put back into `sermon.thoughts`, the server's copy differs from the screen's for
+     * a reason the screen itself caused. The preacher, alone in one tab, is then told his
+     * sermon "was edited somewhere else", and it never clears on its own.
+     */
+    /**
+     * Folds every `setSermon` call over the starting sermon, in order — which is what React
+     * does. Applying each updater to a FRESH copy and taking the last one reads whichever
+     * updater happened to run last (the structure write) and hides the thought entirely.
+     */
+    const sermonAfterDrag = (initial: Sermon): Sermon =>
+      mockSetSermon.mock.calls.reduce<Sermon>(
+        (state, [updater]) => (typeof updater === 'function' ? (updater(state) as Sermon) : (updater as Sermon)),
+        initial,
+      );
+
+    it('puts the confirmed thought back on the sermon after a move to another section', async () => {
+      const containers = buildContainers();
+      const sermon = buildSermon();
+      const { result } = renderHook(() => useStructureDnd({
+        ...defaultProps,
+        sermon,
+        containers,
+        containersRef: { current: containers },
+      }));
+
+      act(() => {
+        result.current.handleDragStart({ active: { id: THOUGHT_ONE } } as never);
+      });
+      await act(async () => {
+        await result.current.handleDragEnd(buildDragEvent(THOUGHT_ONE, {
+          id: 'main', data: { current: { container: 'main' } },
+        }));
+      });
+
+      expect(mockUpdateThought).toHaveBeenCalled();
+      const written = mockUpdateThought.mock.calls.at(-1)?.[1] as Thought;
+      const moved = sermonAfterDrag(sermon).thoughts.find((thought) => thought.id === THOUGHT_ONE);
+
+      expect(written).toBeDefined();
+      expect(moved).toEqual(written);
+    });
+
+    it('puts it back after a reorder INSIDE one section too — position is what changed there', async () => {
+      const containers = buildContainers({
+        introduction: [
+          buildItem(THOUGHT_ONE, { requiredTags: ['intro'], outlinePointId: OUTLINE_INTRO, position: 1000 }),
+          buildItem(THOUGHT_THREE, { requiredTags: ['intro'], outlinePointId: OUTLINE_INTRO, position: 1500 }),
+        ],
+      });
+      const sermon = buildSermon({
+        thoughts: [
+          buildThought(THOUGHT_ONE, { tags: ['intro'], outlinePointId: OUTLINE_INTRO, position: 1000 }),
+          buildThought(THOUGHT_THREE, { tags: ['intro'], outlinePointId: OUTLINE_INTRO, position: 1500 }),
+        ],
+        structure: { introduction: [THOUGHT_ONE, THOUGHT_THREE], main: [], conclusion: [], ambiguous: [] },
+      });
+      const { result } = renderHook(() => useStructureDnd({
+        ...defaultProps,
+        sermon,
+        containers,
+        containersRef: { current: containers },
+      }));
+
+      act(() => {
+        result.current.handleDragStart({ active: { id: THOUGHT_THREE } } as never);
+      });
+      await act(async () => {
+        await result.current.handleDragEnd(buildDragEvent(THOUGHT_THREE, {
+          id: THOUGHT_ONE, data: { current: { container: 'introduction', outlinePointId: OUTLINE_INTRO } },
+        }));
+      });
+
+      const written = mockUpdateThought.mock.calls.at(-1)?.[1] as Thought;
+      const moved = sermonAfterDrag(sermon).thoughts.find((thought) => thought.id === THOUGHT_THREE);
+
+      expect(written).toBeDefined();
+      expect(moved).toEqual(written);
+    });
+
     it('should handle drag end with no over target', async () => {
       const mockSetContainers = jest.fn();
       const { result } = renderHook(() => useStructureDnd({

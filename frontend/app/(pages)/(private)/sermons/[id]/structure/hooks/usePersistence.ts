@@ -7,6 +7,8 @@ import { Thought, ThoughtsBySection, Sermon } from "@/models/models";
 import { updateStructure } from "@/services/structure.service";
 import { updateThought } from "@/services/thought.service";
 
+import { applyConfirmedThought } from "../utils/confirmedThought";
+
 const SYNC_TTL_MS = 30 * 60 * 1000;
 const SYNC_SUCCESS_MS = 3500;
 
@@ -106,13 +108,7 @@ export const usePersistence = ({ setSermon, onThoughtSyncStateChange }: UsePersi
         );
         // CONFIRMED: this is now what the screen knows to be stored.
         baseThoughtByKeyRef.current.set(key, updatedThought);
-        setSermon((prev: Sermon | null) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            thoughts: prev.thoughts.map((t: Thought) => (t.id === updatedThought.id ? updatedThought : t)),
-          };
-        });
+        applyConfirmedThought(setSermon, updatedThought);
         onThoughtSyncStateChange?.(thought.id, 'success', {
           successAt: new Date().toISOString(),
           operation: 'update',

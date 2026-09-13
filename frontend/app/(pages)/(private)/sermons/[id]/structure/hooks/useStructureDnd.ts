@@ -17,7 +17,7 @@ import { updateStructure } from "@/services/structure.service";
 import { updateThought } from "@/services/thought.service";
 import { awaitAcceptance, queuedMutation, skippedWrite, type WriteSubmission } from "@/utils/recoverableWrite";
 
-
+import { applyConfirmedThought } from "../utils/confirmedThought";
 import {
   isStructureChanged,
   ensureUniqueItems,
@@ -576,6 +576,7 @@ const persistThoughtChange = (
   finalSermonPointId: string | null | undefined,
   finalSubPointId: string | null | undefined,
   newPos: number,
+  setSermon: React.Dispatch<React.SetStateAction<Sermon | null>>,
 ): Promise<Thought> | null => {
   const thought = sermon.thoughts.find((t: Thought) => t.id === movedItem.id);
   if (thought) {
@@ -591,7 +592,12 @@ const persistThoughtChange = (
     };
     // The pre-drag thought IS the baseline: a move changes placement, so the write
     // must state placement only and leave the words alone.
-    return updateThought(sermon.id, updatedThought, thought);
+    return updateThought(sermon.id, updatedThought, thought).then((confirmed) => {
+      // The screen's own copy has to hold what was just stored, or the freshness banner
+      // reports this move as somebody else's edit — see `applyConfirmedThought`.
+      applyConfirmedThought(setSermon, confirmed);
+      return confirmed;
+    });
   }
   return null;
 };
@@ -1030,6 +1036,7 @@ export const useStructureDnd = ({
         updatedItem.outlinePointId,
         updatedItem.subPointId,
         updatedItem.position || 0,
+        setSermon,
       );
     }
 
@@ -1053,7 +1060,10 @@ export const useStructureDnd = ({
           position: newPos,
         };
         // Reordering states position only; the baseline keeps the text out of it.
-        thoughtPersistence = updateThought(sermon.id, updatedThought, thought);
+        thoughtPersistence = updateThought(sermon.id, updatedThought, thought).then((confirmed) => {
+          applyConfirmedThought(setSermon, confirmed);
+          return confirmed;
+        });
       }
     }
 
