@@ -1,318 +1,102 @@
-import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
-import SettingsPage from '@/(pages)/(private)/settings/page';
-import { runScenarios } from '@test-utils/scenarioRunner';
+import SettingsShell from '@/(pages)/(private)/settings/layout';
+import SettingsIndexPage from '@/(pages)/(private)/settings/page';
 import { TestProviders } from '@test-utils/test-providers';
-import { auth as mockAuth } from '@services/firebaseAuth.service';
 
-// Mock all dependencies
-const mockUseAuth = jest.fn(() => ({ user: { uid: 'test-user-id' } }));
-jest.mock('@/hooks/useAuth', () => ({
-  useAuth: () => mockUseAuth()
+const replace = jest.fn();
+let pathname = '/settings/user';
+let search = '';
+
+jest.mock('next/navigation', () => ({
+  usePathname: () => pathname,
+  useSearchParams: () => new URLSearchParams(search),
+  useRouter: () => ({ replace, push: jest.fn(), refresh: jest.fn(), back: jest.fn() }),
+  useParams: () => ({}),
+}));
+
+jest.mock('@/providers/AuthProvider', () => ({
+  useAuth: () => ({ user: { uid: 'test-user-id', email: 'test@example.com' }, loading: false }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+
+jest.mock('@/hooks/useDocumentFreshness', () => ({
+  useDocumentFreshness: () => ({ state: 'fresh', remote: null, remotelyDeleted: false, markSynced: jest.fn() }),
 }));
 
 jest.mock('react-i18next', () => ({
-  useTranslation: () => ({
-    t: (key: string) => key // Return key as translation for simplicity
-  })
+  useTranslation: () => ({ t: (key: string) => key }),
 }));
 
 jest.mock('@locales/i18n', () => ({}));
+jest.mock('@/components/navigation/LanguageInitializer', () => () => <div data-testid="language-initializer" />);
 
-// Mock Firebase auth
-jest.mock('@services/firebaseAuth.service', () => ({
-  auth: {
-    onAuthStateChanged: jest.fn((callback) => {
-      callback({ uid: 'test-user-id' });
-      return jest.fn();
-    })
-  }
-}));
-
-
-// Mock components
-jest.mock('@/components/settings/UserSettingsSection', () => ({
-  __esModule: true,
-  default: () => <div data-testid="user-settings-section">User Settings</div>
-}));
-
-jest.mock('@/components/settings/TagsSection', () => ({
-  __esModule: true,
-  default: ({ user }: any) => <div data-testid="tags-section">Tags Section for {user?.uid}</div>
-}));
-
-jest.mock('@/components/settings/SettingsLayout', () => ({
-  __esModule: true,
-  default: ({ children, title }: any) => (
-    <div data-testid="settings-layout">
-      <h1>{title}</h1>
-      {children}
-    </div>
-  )
-}));
-
-jest.mock('@/components/settings/SettingsNav', () => ({
-  __esModule: true,
-  default: ({ activeSection, onNavigate }: any) => (
-    <nav data-testid="settings-nav">
-      <button
-        data-testid="nav-user"
-        onClick={() => onNavigate('user')}
-        className={activeSection === 'user' ? 'active' : ''}
-      >
-        User
-      </button>
-      <button
-        data-testid="nav-tags"
-        onClick={() => onNavigate('tags')}
-        className={activeSection === 'tags' ? 'active' : ''}
-      >
-        Tags
-      </button>
-    </nav>
-  )
-}));
-
-jest.mock('@/components/navigation/LanguageInitializer', () => ({
-  __esModule: true,
-  default: () => <div data-testid="language-initializer" />
-}));
-
-// Import the actual component after all mocks
-
-describe('Settings Page Integration', () => {
-  const mockOnAuthStateChanged = mockAuth.onAuthStateChanged as jest.MockedFunction<typeof mockAuth.onAuthStateChanged>;
-  const resetScenario = () => {
-    jest.clearAllMocks();
-    mockUseAuth.mockReturnValue({ user: { uid: 'test-user-id' } });
-    mockOnAuthStateChanged.mockImplementation((callback: any) => {
-      callback({ uid: 'test-user-id' } as any);
-      return jest.fn();
-    });
-  };
-
-  beforeEach(resetScenario);
-
-  describe('Page Structure and Navigation', () => {
-    it('renders settings page with default user section', async () => {
-      await runScenarios(
-        [
-          {
-            name: 'displays settings layout with title',
-            run: async () => {
-              render(
-                <TestProviders>
-                  <SettingsPage />
-                </TestProviders>
-              );
-
-              await waitFor(() => {
-                expect(screen.getByTestId('settings-layout')).toBeInTheDocument();
-              });
-
-              expect(screen.getByText('settings.title')).toBeInTheDocument();
-            }
-          },
-          {
-            name: 'shows user settings section by default',
-            run: async () => {
-              render(
-                <TestProviders>
-                  <SettingsPage />
-                </TestProviders>
-              );
-
-              await waitFor(() => {
-                expect(screen.getAllByTestId('user-settings-section')[0]).toBeInTheDocument();
-              });
-
-              expect(screen.getAllByTestId('user-settings-section')[0]).toHaveTextContent('User Settings');
-            }
-          },
-          {
-            name: 'includes PrepModeToggle in user settings section',
-            run: async () => {
-              render(
-                <TestProviders>
-                  <SettingsPage />
-                </TestProviders>
-              );
-
-              await waitFor(() => {
-                // The PrepModeToggle should be rendered within the user settings section
-                // We can verify this by checking that the toggle is present
-                expect(screen.getAllByRole('switch').length).toBeGreaterThan(0);
-              });
-            }
-          },
-          {
-            name: 'shows navigation on desktop layout',
-            run: async () => {
-              render(
-                <TestProviders>
-                  <SettingsPage />
-                </TestProviders>
-              );
-
-              await waitFor(() => {
-                expect(screen.getAllByTestId('settings-nav').length).toBeGreaterThanOrEqual(2);
-              });
-
-              expect(screen.getAllByTestId('nav-user').length).toBeGreaterThanOrEqual(2);
-              expect(screen.getAllByTestId('nav-tags').length).toBeGreaterThanOrEqual(2);
-            }
-          }
-        ],
-        { beforeEachScenario: resetScenario, afterEachScenario: cleanup }
-      );
-    });
-
-    it('handles section navigation', async () => {
-      await runScenarios(
-        [
-          {
-            name: 'switches to tags section when navigation clicked',
-            run: async () => {
-              render(
-                <TestProviders>
-                  <SettingsPage />
-                </TestProviders>
-              );
-
-              await waitFor(() => {
-                expect(screen.getAllByTestId('settings-nav')[0]).toBeInTheDocument();
-              });
-
-              const tagsButton = screen.getAllByTestId('nav-tags')[0];
-              fireEvent.click(tagsButton);
-
-              await waitFor(() => {
-                expect(screen.getAllByTestId('tags-section')[0]).toBeInTheDocument();
-                expect(screen.getAllByText('Tags Section for test-user-id')[0]).toBeInTheDocument();
-              });
-
-              // User settings section should be hidden
-              expect(screen.queryAllByTestId('user-settings-section').length).toBe(0);
-            }
-          },
-          {
-            name: 'switches back to user section',
-            run: async () => {
-              render(
-                <TestProviders>
-                  <SettingsPage />
-                </TestProviders>
-              );
-
-              await waitFor(() => {
-                expect(screen.getAllByTestId('settings-nav')[0]).toBeInTheDocument();
-              });
-
-              // Switch to tags first
-              fireEvent.click(screen.getAllByTestId('nav-tags')[0]);
-
-              await waitFor(() => {
-                expect(screen.getAllByTestId('tags-section')[0]).toBeInTheDocument();
-              });
-
-              // Switch back to user
-              fireEvent.click(screen.getAllByTestId('nav-user')[0]);
-
-              await waitFor(() => {
-                expect(screen.getAllByTestId('user-settings-section')[0]).toBeInTheDocument();
-              });
-
-              expect(screen.queryAllByTestId('tags-section').length).toBe(0);
-            }
-          }
-        ],
-        { beforeEachScenario: resetScenario, afterEachScenario: cleanup }
-      );
-    });
+/**
+ * THE WHOLE POINT OF THE SPLIT, END TO END: a section is an address.
+ *
+ * The unit suites mock the navigation away; this one runs the real one inside the real
+ * shell, so a section that is spelled one way in a link and another in the router shows up
+ * here. It also covers the two doors into the screen — the bare address and every bookmark
+ * written back when the section was a piece of in-page state.
+ */
+describe('Settings addresses', () => {
+  beforeEach(() => {
+    replace.mockClear();
+    pathname = '/settings/user';
+    search = '';
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, json: async () => ({}) }) as never;
   });
 
-  describe('Authentication Handling', () => {
-    it('handles authenticated user correctly', async () => {
-      await runScenarios(
-        [
-          {
-            name: 'renders content for authenticated user',
-            run: async () => {
-              render(
-                <TestProviders>
-                  <SettingsPage />
-                </TestProviders>
-              );
+  const renderShell = () => render(
+    <TestProviders><SettingsShell><div data-testid="section-content" /></SettingsShell></TestProviders>
+  );
 
-              await waitFor(() => {
-                expect(screen.getByTestId('settings-layout')).toBeInTheDocument();
-              });
+  it('offers every section at its own address, in both navigation layouts', async () => {
+    renderShell();
 
-              // Should show content, not redirect
-              expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
-            }
-          }
-        ],
-        { beforeEachScenario: resetScenario, afterEachScenario: cleanup }
-      );
-    });
+    await waitFor(() => expect(screen.getByTestId('section-content')).toBeInTheDocument());
+    const hrefs = screen.getAllByRole('link').map((link) => link.getAttribute('href'));
+    // Two navigation layouts share one content tree, so every address appears twice.
+    expect(hrefs.filter((href) => href === '/settings/user')).toHaveLength(2);
+    expect(hrefs.filter((href) => href === '/settings/limits')).toHaveLength(2);
+    expect(hrefs.filter((href) => href === '/settings/tags')).toHaveLength(2);
+    expect(hrefs.filter((href) => href === '/settings/templates')).toHaveLength(2);
   });
 
-  describe('Mobile vs Desktop Layouts', () => {
-    // Note: These tests would need more complex mocking to test responsive behavior
-    // For now, we'll test the basic structure that supports both layouts
-    it('supports both mobile and desktop navigation patterns', async () => {
-      await runScenarios(
-        [
-          {
-            name: 'includes navigation structure for both layouts',
-            run: async () => {
-              render(
-                <TestProviders>
-                  <SettingsPage />
-                </TestProviders>
-              );
+  it('marks the section the address names as the current page', async () => {
+    pathname = '/settings/limits';
+    renderShell();
 
-              await waitFor(() => {
-                expect(screen.getAllByTestId('settings-nav').length).toBeGreaterThanOrEqual(2);
-              });
-
-              // The component renders both mobile and desktop layouts
-              // Mobile: grid layout with navigation at top
-              // Desktop: sidebar navigation
-              expect(screen.getAllByTestId('nav-user').length).toBeGreaterThanOrEqual(2);
-              expect(screen.getAllByTestId('nav-tags').length).toBeGreaterThanOrEqual(2);
-            }
-          }
-        ],
-        { beforeEachScenario: resetScenario, afterEachScenario: cleanup }
-      );
+    await waitFor(() => expect(screen.getByTestId('section-content')).toBeInTheDocument());
+    screen.getAllByRole('link', { current: 'page' }).forEach((link) => {
+      expect(link).toHaveAttribute('href', '/settings/limits');
     });
+    expect(screen.getAllByRole('link', { current: 'page' })).toHaveLength(2);
   });
 
-  describe('Language Initialization', () => {
-    it('includes language initializer component', async () => {
-      await runScenarios(
-        [
-          {
-            name: 'renders language initializer for i18n setup',
-            run: async () => {
-              render(
-                <TestProviders>
-                  <SettingsPage />
-                </TestProviders>
-              );
+  it('sends the bare address on to the first section', async () => {
+    render(<SettingsIndexPage />);
 
-              await waitFor(() => {
-                expect(screen.getAllByTestId('language-initializer').length).toBeGreaterThan(0);
-              });
-            }
-          }
-        ],
-        { beforeEachScenario: resetScenario, afterEachScenario: cleanup }
-      );
-    });
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/settings/user'));
+  });
+
+  it.each([
+    ['planTemplates', '/settings/templates'],
+    ['aiModels', '/settings/limits'],
+    ['tags', '/settings/tags'],
+  ])('honours a link written before the split: ?section=%s', async (legacy, expected) => {
+    search = `?section=${legacy}`;
+    render(<SettingsIndexPage />);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(expected));
+  });
+
+  it('ignores a section name it does not know and opens the first one', async () => {
+    search = '?section=nonsense';
+    render(<SettingsIndexPage />);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/settings/user'));
   });
 });

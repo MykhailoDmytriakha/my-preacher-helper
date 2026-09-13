@@ -2,13 +2,16 @@ import { render, screen, waitFor } from '@testing-library/react';
 import fetchMock from 'jest-fetch-mock';
 import React from 'react';
 
-import SettingsPage from '@/(pages)/(private)/settings/page';
-import { auth } from '@/services/firebaseAuth.service';
+import SettingsShell from '@/(pages)/(private)/settings/layout';
 
-jest.mock('@/services/firebaseAuth.service', () => ({
-  auth: {
-    onAuthStateChanged: jest.fn(),
-  },
+const mockGetIdToken = jest.fn().mockResolvedValue('firebase-id-token');
+const adminUser = { uid: 'admin-uid', getIdToken: mockGetIdToken };
+jest.mock('@/providers/AuthProvider', () => ({
+  useAuth: () => ({ user: adminUser, loading: false }),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
+jest.mock('@/hooks/useDocumentFreshness', () => ({
+  useDocumentFreshness: () => ({ state: 'fresh', remote: null, remotelyDeleted: false, markSynced: jest.fn() }),
 }));
 
 jest.mock('@/components/navigation/LanguageInitializer', () => () => <div />);
@@ -34,23 +37,15 @@ jest.mock('react-i18next', () => ({
 }));
 
 describe('Settings admin link', () => {
-  const mockOnAuthStateChanged = jest.mocked(auth.onAuthStateChanged);
-  const mockGetIdToken = jest.fn().mockResolvedValue('firebase-id-token');
-  const adminUser = { uid: 'admin-uid', getIdToken: mockGetIdToken };
-
   beforeEach(() => {
-    jest.clearAllMocks();
     fetchMock.resetMocks();
-    mockOnAuthStateChanged.mockImplementation((callback) => {
-      if (typeof callback === 'function') callback(adminUser as never);
-      return jest.fn();
-    });
+    mockGetIdToken.mockResolvedValue('firebase-id-token');
   });
 
   it('shows the admin link only when the server confirms administrator access', async () => {
     fetchMock.mockResponseOnce(JSON.stringify({ admin: true }));
 
-    render(<SettingsPage />);
+    render(<SettingsShell><div /></SettingsShell>);
 
     const links = await screen.findAllByRole('link', { name: 'settings.admin.goToAdmin' });
     expect(links).toHaveLength(2);
@@ -60,7 +55,7 @@ describe('Settings admin link', () => {
   it('does not show the admin link when the server denies access', async () => {
     fetchMock.mockResponseOnce(JSON.stringify({ error: 'Forbidden' }), { status: 403 });
 
-    render(<SettingsPage />);
+    render(<SettingsShell><div /></SettingsShell>);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(screen.queryAllByRole('link', { name: 'settings.admin.goToAdmin' })).toHaveLength(0);

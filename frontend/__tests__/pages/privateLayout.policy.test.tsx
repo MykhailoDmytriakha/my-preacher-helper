@@ -28,8 +28,8 @@ jest.mock('@dnd-kit/sortable', () => ({
 // Mock router hooks per page
 jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'sermon-1' }),
-  useRouter: () => ({ push: jest.fn(), prefetch: jest.fn() }),
-  useSearchParams: () => ({ get: () => 'sermon-1' }),
+  useRouter: () => ({ push: jest.fn(), prefetch: jest.fn(), replace: jest.fn() }),
+  useSearchParams: () => new URLSearchParams(),
   usePathname: () => '/sermons',
 }));
 

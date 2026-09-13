@@ -517,7 +517,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                       {t('planEditor.saveAsTemplate')}
                     </button>
                     <Link
-                      href="/settings?section=planTemplates"
+                      href="/settings/templates"
                       className="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-gray-700 text-sm text-slate-500 dark:text-gray-400"
                     >
                       {t('planEditor.manageTemplates')}

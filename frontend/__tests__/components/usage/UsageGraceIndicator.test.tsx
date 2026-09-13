@@ -151,7 +151,7 @@ describe('UsageGraceIndicator', () => {
     renderController();
     fireEvent.click(screen.getByTestId('usage-grace-indicator-desktop'));
 
-    expect(screen.getByTestId('usage-grace-settings-desktop')).toHaveAttribute('href', '/settings');
+    expect(screen.getByTestId('usage-grace-settings-desktop')).toHaveAttribute('href', '/settings/limits');
   });
 
   it('keeps the tooltip free of the settings link while still inside the limit', () => {

@@ -225,7 +225,7 @@ export function UsageGraceIndicator({ model, placement }: UsageGraceIndicatorPro
         <Link
           className="mt-1 inline-flex w-full items-center justify-center rounded-md bg-white px-3 py-1.5 text-xs font-semibold text-slate-900 transition hover:bg-slate-200 dark:bg-slate-900 dark:text-white dark:hover:bg-slate-700"
           data-testid={`usage-grace-settings-${placement}`}
-          href="/settings"
+          href="/settings/limits"
         >
           {t('usageGrace.openSettings')}
         </Link>
