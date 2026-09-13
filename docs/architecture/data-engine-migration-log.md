@@ -54,8 +54,20 @@ A closing entry must state what changed, what proves it, and what stays unproven
 |---|---|---|---|---|
 | 1 | Per-collection activation switch | — | With only `councils` enabled, the sermon page still renders every legacy control | closed |
 | 2 | This migration log | — | File exists in git and is updated at every closing | closed |
-| 3 | Councils domain adapter | 1 | Council fields, topics as ID items, conduct and delete expressed as engine operations; adverse matrix red before green | open |
-| 4 | Councils screens on the engine | 3 | Four pages and two hooks read/write through the engine behind the switch | open |
+| 3a | Councils list **read** through the engine, on the list screen | 1 | The list screen renders the same councils through the engine behind the switch; verified in a browser | closed |
+| 3b | Councils create, update and delete | 3a | Writing runs through the engine; the conflict matrix is red before it is green | open |
+| 3c | Councils: carry a topic to the next council | 3b | A registered two-council command in the core, with its own refusal and replay tests | open |
+| 4 | Remaining council readers and legacy retirement | 3c | Hub, breadcrumbs, calendar and the pre-database localStorage carry-over; only then is the domain migrated | open |
+
+Each slice is deliberately cut to run through every layer — storage, engine,
+hook, screen, browser — rather than finishing one layer at a time. Reading comes
+before writing because the protocol marker is written only by an engine write
+(`app/data-engine/server.ts`), so a read-only slice changes no stored document
+and stays reversible by the switch alone. The carry-over
+between two councils is separated because it is not an adapter at all: the core
+knows only `material-notes` and `series-membership` relations, so a third one has
+to be registered there, and the core still has five open P1 defects. Mixing that
+risk into ordinary CRUD would make a failure impossible to attribute.
 | 5 | Live browser proof | 4 | Two windows, offline, reload mid-save: both edits survive; a conflict shows both versions | open |
 | 6 | Core bugs surfaced by 3-5 | 5 | Each fix has a red check: disable the fix and the test fails | open |
 | 7 | Receipt amplification | 6 | A thousand saves do not grow storage linearly (`app/data-engine/server.ts`) | open |
@@ -132,4 +144,56 @@ server's surface.
 **Unproven.** No production deployment, no rules change, no second device, no
 installed PWA, and no cost measurement. Councils still runs on its legacy path:
 this step only made it possible to migrate one domain without disturbing another.
+
+### 2026-09-12 — Step 3a: the council list reads through the engine
+
+**Scope, and why it is this small.** Only reading, and only the list screen. The
+protocol marker is written by an engine write (`app/data-engine/server.ts`), so a
+read-only slice leaves every stored council exactly as the legacy road left it and
+the switch alone reverses it. Writing, and the two-council carry-over that needs a
+new relation command in the core, are separate queue items.
+
+**What changed.**
+
+- `app/hooks/useCouncilsDataCollection.ts` — the list taken from the shared
+  collection. Tombstones and confirmed absences are filtered out for the view while
+  the engine keeps knowing about them; shaping reuses `hydrateCouncil` from the
+  legacy road rather than a second copy of that rule; `complete` and `freshness`
+  are surfaced so an incomplete offline cache is never presented as "no councils".
+- `care/council/page.tsx` — the same branch pattern the sermon page uses:
+  `EngineCouncilListPage` and `LegacyCouncilListPage` around one
+  `CouncilListContent`. The legacy path is unchanged. The engine page still takes
+  `createCouncil` from the legacy hook: that is a deliberate, temporary seam which
+  step 3b removes, and it costs one extra list read while the switch is on.
+- `CouncilListSource` names what the screen needs from a reader, so it no longer
+  depends on React Query's result type. `tsc` found that; the tests did not.
+- `app/data-engine/server.ts` — `_dataEngineHeads` is exempt from the per-collection
+  list. It is the engine's own bookkeeping, not a migrated domain, and gating it
+  left a client enabled for one collection unable to learn that its own collection
+  had changed.
+
+**Evidence.**
+
+- Five adapter tests, four of them red for the right reason against a shell
+  implementation; seven screen tests, and a mutation (engine branch reading the
+  legacy list) turns the screen test red, so it guards the branch and not its
+  own existence.
+- The `_dataEngineHeads` regression was found **in the browser**, not by the gates:
+  the screen said the councils could not be read while every test was green. Its
+  fix has a test that was red (503 where 200 was required) before it.
+- Gates from `frontend`: `test:fast` 6623 passed / 6628 (was 6616 / 6621),
+  `tsc --noEmit` exit 0, `lint:full` exit 0 with the 13 pre-existing warnings.
+  The four legacy council suites stay green at 47 tests.
+- Live run at localhost:3005 as the dev test user with councils enabled on both
+  sides: a council created through the **legacy** road appeared in the list served
+  by the engine, under "preparing", with the engine's own HTTP calls returning 200.
+  The test council was deleted afterwards; the account's collection is empty again.
+
+**Unproven, and one limit of the harness.** The automation tab is always
+`visibilityState: 'hidden'`, and the engine deliberately does not read collections
+for a hidden tab — that is its read-budget policy, not a defect. Visibility had to
+be emulated for the render to happen, so the list was verified with an emulated
+visible document, not a genuinely foregrounded window. A human opening
+`/care/council` with the switch on is the check this cannot replace. Nothing about
+writing, conflicts, offline behaviour or a second device is claimed by this step.
 

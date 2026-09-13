@@ -85,6 +85,12 @@ describe('DataEngine HTTP routes', () => {
       (readCommandBody as jest.Mock).mockResolvedValue({ resource: { collection: 'councils', id: 'council-1' } });
       expect((await POST(request())).status).toBe(200);
       expect(processCommand).toHaveBeenCalledTimes(1);
+
+      // The engine reads its own change heads through the same route. That record is its
+      // bookkeeping, not a migrated domain, so listing user collections must not cut it off —
+      // a client enabled for one collection could otherwise never learn of a remote change.
+      const heads = { params: Promise.resolve({ collection: '_dataEngineHeads', id: JSON.stringify(['owner', 'councils']) }) };
+      expect((await read(request(), heads)).status).toBe(200);
     } finally {
       if (collections === undefined) delete process.env.DATA_ENGINE_COLLECTIONS;
       else process.env.DATA_ENGINE_COLLECTIONS = collections;

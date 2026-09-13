@@ -35,9 +35,12 @@ export class DataEngineServerError extends Error {
 export function assertDataEngineEnabled(collection?: string): void {
   if (process.env.DATA_ENGINE_ENABLED === 'true') return;
   const migrated = (process.env.DATA_ENGINE_COLLECTIONS ?? '').split(',').map(entry => entry.trim()).filter(Boolean);
-  // A domain migrates as a whole, so the deployment lists the collections it owns.
+  if (!migrated.length) throw new DataEngineServerError('data-engine-disabled', 503);
+  // A domain migrates as a whole, so the deployment lists the collections it owns. The engine's
+  // own bookkeeping is not one of them: change heads are how a client learns that any migrated
+  // collection moved, and gating them behind the same list would leave it deaf to its own domain.
   // Without a collection the caller only asks whether the protocol is served at all.
-  if (!migrated.length || (collection !== undefined && !migrated.includes(collection))) {
+  if (collection !== undefined && collection !== HEADS_COLLECTION && !migrated.includes(collection)) {
     throw new DataEngineServerError('data-engine-disabled', 503);
   }
 }

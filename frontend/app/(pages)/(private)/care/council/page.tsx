@@ -9,7 +9,10 @@ import { useTranslation } from 'react-i18next';
 
 import { useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
 import { Chip } from '@/components/ui/Chip';
+import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useCouncils } from '@/hooks/useCouncils';
+import { useCouncilsDataCollection } from '@/hooks/useCouncilsDataCollection';
+import { COUNCILS_COLLECTION } from '@/services/councils.client';
 import { councilProgress, daysUntil, splitForList } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
@@ -37,9 +40,40 @@ const inputClass =
   'w-full rounded-xl border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:placeholder:text-gray-500';
 
 export default function CouncilListPage() {
+  return isCollectionOnEngine(COUNCILS_COLLECTION) ? <EngineCouncilListPage /> : <LegacyCouncilListPage />;
+}
+
+function LegacyCouncilListPage() {
+  return <CouncilListContent source={useCouncils()} />;
+}
+
+/**
+ * READING THROUGH THE ENGINE, writing still on the domain's own road.
+ *
+ * Only the list is taken from the shared collection; creating a council stays where it is until
+ * its own slice. Both live at once on purpose: an engine write is what marks a document as the
+ * engine's, so a read-only crossover leaves every stored council exactly as the legacy road
+ * left it, and turning the switch off returns the screen to one reader.
+ */
+function EngineCouncilListPage() {
+  const legacy = useCouncils();
+  const engine = useCouncilsDataCollection();
+  return <CouncilListContent source={{ ...legacy, councils: engine.councils, loading: engine.loading, error: engine.error, refresh: engine.refresh }} />;
+}
+
+/** What this screen needs from a reader, named here so it does not depend on either one's internals. */
+interface CouncilListSource {
+  councils: Council[];
+  loading: boolean;
+  error: unknown;
+  refresh: () => unknown;
+  createCouncil: ReturnType<typeof useCouncils>['createCouncil'];
+}
+
+function CouncilListContent({ source }: { source: CouncilListSource }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const { councils, loading, error, refresh, createCouncil } = useCouncils();
+  const { councils, loading, error, refresh, createCouncil } = source;
   const [creating, setCreating] = useState(false);
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
