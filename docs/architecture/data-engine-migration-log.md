@@ -391,3 +391,35 @@ Gates: `test:fast` 6644 passed / 6649, `tsc --noEmit` exit 0, `lint:full` exit 0
 istochnik" and "ENGINE B naznachenie". Their legacy write path is refused by the
 marker guard, so they should be removed through the engine once editing works, or
 deleted directly in the database.
+
+### 2026-09-13 — Step 3b: editing reaches the database; the refusal that hid it is gone
+
+**Editing a council now works end to end through the engine**, verified live as the
+dev test user with councils enabled on both sides: renaming a council, adding a
+section and naming it all reached the database at revisions 2, 3 and 4.
+
+**What was wrong, and why it stayed hidden.** The carry guard compared the whole
+`topics` array, so adding or removing a section read as a claim that a section had
+been carried to another council — and the screen adds an empty section which the
+person names afterwards. Every edit was refused with `relation-command-required`.
+That was the third time in this work that a guard written against a field name
+turned out wider than its meaning; the rule is now to compare the meaning of the
+change, not the shape of the field.
+
+It stayed hidden because the screens called the adapter without awaiting, so the
+rejected promise had nowhere to land: the council simply stopped saving while the
+screen looked fine. Both council screens now mount the shared `DataSyncStatus` and
+report refusals. Making the failure speak is what produced the diagnosis — the
+banner said "the server refused the change" and the probe then named the code.
+
+**Found while doing this, and filed rather than fixed:**
+`BUG-20260913-engine-refused-draft-lost-on-reload` — a refused edit disappears after
+a reload while the banner says "Saved", although the banner itself promises the draft
+was kept. That is a text-loss defect of exactly the class this whole engine exists to
+remove, and it is the next thing to fix.
+
+**Not verified live:** carrying a section to another council. Its core command and
+its client policy have tests, but the button only appears on a council that has been
+held, and that path has not been walked in a browser yet.
+
+Gates: `test:fast` 6644 passed / 6649, `tsc --noEmit` exit 0, `lint:full` exit 0.
