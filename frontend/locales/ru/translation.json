@@ -688,7 +688,8 @@
       "audioSeconds": "{{count}} секунд",
       "minutesOfLimit": "{{used}} / {{limit}} мин",
       "aiUsageExhausted": "Недостаточно оставшегося AI-использования.",
-      "transcriptionUsageExhausted": "Недостаточно оставшегося лимита транскрибации."
+      "transcriptionUsageExhausted": "Недостаточно оставшегося лимита транскрибации.",
+      "audioUsageExhausted": "Недостаточно оставшегося лимита озвучки."
     },
     "modelSelector": {
       "title": "Модели ИИ по функциям",

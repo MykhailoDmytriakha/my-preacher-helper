@@ -95,10 +95,12 @@ export default function Column({
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
   const isOnline = useOnlineStatus();
-  const { aiBlocked, transcriptionBlocked, refresh: refreshAiUsage } = useAiUsage();
-  const transcriptionUnavailableLabel = transcriptionBlocked
-    ? t("settings.usage.transcriptionUsageExhausted")
-    : undefined;
+  const { aiBlocked, blocked, blockedLabelKey, refresh: refreshAiUsage } = useAiUsage();
+  // Dictation spends transcription AND ai (`/api/thoughts` admits both), so asking only about
+  // transcription left the microphone bright on an account whose AI allowance was spent.
+  const transcriptionBlocked = blocked('dictation');
+  const dictationBlockedKey = blockedLabelKey('dictation');
+  const transcriptionUnavailableLabel = dictationBlockedKey ? t(dictationBlockedKey) : undefined;
   const [showTooltip, setShowTooltip] = useState<boolean>(false);
 
   // State for responsive sidebar visibility on small screens

@@ -67,7 +67,7 @@ jest.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: { uid: 'user-1' }, loading: false }),
 }));
 jest.mock('@/hooks/useAiUsage', () => ({
-  useAiUsage: () => ({ aiBlocked: false, refresh: jest.fn().mockResolvedValue(undefined) }),
+  useAiUsage: () => require('@test-utils/aiUsage').aiUsageStub(),
 }));
 // Empty by default so the order assertion below sees the header a plain sermon draws; the
 // provenance test fills it in.

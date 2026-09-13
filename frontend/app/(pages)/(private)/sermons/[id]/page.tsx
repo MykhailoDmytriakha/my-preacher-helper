@@ -32,6 +32,7 @@ import StructurePreview from "@/components/sermon/StructurePreview";
 import StructureStats from "@/components/sermon/StructureStats";
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
 import { getClientDb } from "@/config/firebaseClientDb";
+import { useAiUsage } from '@/hooks/useAiUsage';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useRouteId } from "@/hooks/useRouteId";
@@ -352,6 +353,17 @@ export default function SermonPage() {
   const { series } = useSeries(user?.uid || null);
   const { settings: userSettings } = useUserSettings(user?.uid);
   const { isMagicAvailable } = useConnection();
+  /**
+   * THE ONE RECORDER THAT ASKED NOTHING AT ALL.
+   *
+   * Every other microphone in the app at least asked about the transcription allowance; this
+   * one — the "new recording" button on the sermon screen, the most used control there is —
+   * had no gate whatsoever. Past the limit it stayed bright, took the dictation, and handed
+   * back a refusal for a rule the screen never showed.
+   */
+  const { blocked: usageBlocked, blockedLabelKey: usageBlockedLabelKey } = useAiUsage();
+  const dictationBlocked = usageBlocked('dictation');
+  const dictationBlockedKey = usageBlockedLabelKey('dictation');
   const isReadOnly = false; // Support Indifferent Sync: edit always possible locally
 
   const searchParams = useSearchParams();
@@ -1940,6 +1952,8 @@ useEffect(() => {
           onClearError={handleClearError}
           hideKeyboardShortcuts={uiMode === 'prep'}
           isReadOnly={!isMagicAvailable}
+          isRecorderDisabled={dictationBlocked}
+          recorderTitle={dictationBlocked && dictationBlockedKey ? t(dictationBlockedKey) : undefined}
           onOpenCreateModal={() => setIsCreateModalOpen(true)}
           manualThoughtTitle={t('manualThought.addManual')}
         />

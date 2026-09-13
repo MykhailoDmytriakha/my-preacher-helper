@@ -688,7 +688,8 @@
       "audioSeconds": "{{count}} секунд",
       "minutesOfLimit": "{{used}} / {{limit}} хв",
       "aiUsageExhausted": "Недостатньо доступного AI-використання.",
-      "transcriptionUsageExhausted": "Недостатньо доступного ліміту транскрибування."
+      "transcriptionUsageExhausted": "Недостатньо доступного ліміту транскрибування.",
+      "audioUsageExhausted": "Недостатньо залишку ліміту озвучення."
     },
     "modelSelector": {
       "title": "Моделі ШІ за функціями",

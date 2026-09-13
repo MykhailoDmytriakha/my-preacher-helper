@@ -6,6 +6,7 @@ import EditThoughtModal from '@/components/EditThoughtModal';
 import type { WriteSubmission } from '@/utils/recoverableWrite';
 
 import type { Item, Sermon } from '@/models/models';
+import { aiUsageStub } from '@test-utils/aiUsage';
 
 // FirestoreError's constructor is private, so TypeScript refuses `new FirestoreError(...)`
 // even though the class is exported. The cast keeps the REAL SDK class at runtime — which is
@@ -41,7 +42,7 @@ jest.mock('@/providers/ConnectionProvider', () => ({
 }));
 
 jest.mock('@/hooks/useAiUsage', () => ({
-  useAiUsage: () => ({ transcriptionBlocked: false, refresh: jest.fn() }),
+  useAiUsage: () => aiUsageStub(),
 }));
 
 jest.mock('@/hooks/useScrollLock', () => ({ useScrollLock: jest.fn() }));

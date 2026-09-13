@@ -114,8 +114,16 @@ export default function AudioRecorderPortalBridge({
   manualButtonSeparate,
   hideRecordButton,
 }: AudioRecorderPortalBridgeProps) {
-  const recorderDisabled = isRecorderDisabled ?? isReadOnly;
-  const manualDisabled = isManualDisabled ?? isReadOnly;
+  /**
+   * A REASON TO REFUSE ADDS TO THE OTHERS, IT DOES NOT REPLACE THEM.
+   *
+   * These read `isRecorderDisabled ?? isReadOnly`, so a caller that answered the question at
+   * all — even with "no" — silently switched the read-only rule off. A screen that gained a
+   * usage gate would have lost its offline gate in the same line, and nothing would have said
+   * so. Every reason now stands on its own.
+   */
+  const recorderDisabled = isReadOnly || (isRecorderDisabled ?? false);
+  const manualDisabled = isReadOnly || (isManualDisabled ?? false);
   const splitLeft = manualControl ?? (
     <button
       type="button"

@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react';
 import React from 'react';
 import Column from '../../app/components/Column';
 import '@testing-library/jest-dom';
+import { aiUsageStub } from '@test-utils/aiUsage';
 
 // Constants matching Column.tsx to use in expectations
 const DEFAULT_ALL_POINTS_BLOCKED_TEXT = 'All structure points are locked';
@@ -105,25 +106,42 @@ describe('Column Disabling Logic', () => {
     const unlockedPointItems = [{ id: 'thought-2', content: 'Unlocked thought', outlinePointId: 'p2', isLocked: false }];
 
     beforeEach(() => {
-        mockUseAiUsage.mockReturnValue({
-            aiRemaining: 10,
-            aiBlocked: false,
-            transcriptionRemaining: 60,
-            transcriptionBlocked: false,
-            loading: false,
-            refresh: jest.fn(),
-        });
+        mockUseAiUsage.mockReturnValue(aiUsageStub());
+    });
+
+    /**
+     * THE MICROPHONE ANSWERS FOR BOTH ALLOWANCES, because the request spends both.
+     *
+     * `/api/thoughts` is admitted for `['transcription', 'ai']`. Gating on transcription alone
+     * left every recorder bright on an account with speech recognition to spare and the AI
+     * allowance gone: the take went out, the server refused it, and the preacher met an error
+     * for a rule no screen had shown him.
+     */
+    it('disables Column mic recorders when the AI allowance is spent, even with transcription to spare', () => {
+        mockUseAiUsage.mockReturnValue(aiUsageStub({ aiBlocked: true, transcriptionBlocked: false }));
+
+        render(
+            <Column
+                id="main"
+                title="Main"
+                items={unlockedPointItems as any}
+                outlinePoints={[mockUnreviewedPoint]}
+                isFocusMode={true}
+                onAudioThoughtCreated={jest.fn()}
+                sermonId={mockSermonId}
+            />
+        );
+
+        for (const recorder of [screen.getByTestId('focus-recorder-button'), screen.getByTestId('audio-recorder')]) {
+            expect(recorder).toBeDisabled();
+            // And the words name the allowance that actually ran out, not the one the
+            // component happened to have in mind.
+            expect(recorder).toHaveAttribute('title', 'settings.usage.aiUsageExhausted');
+        }
     });
 
     it('disables Column mic recorders with the transcription quota tooltip and re-enables them when available', () => {
-        mockUseAiUsage.mockReturnValue({
-            aiRemaining: 10,
-            aiBlocked: false,
-            transcriptionRemaining: 0,
-            transcriptionBlocked: true,
-            loading: false,
-            refresh: jest.fn(),
-        });
+        mockUseAiUsage.mockReturnValue(aiUsageStub({ transcriptionBlocked: true }));
 
         const { unmount } = render(
             <Column
@@ -143,14 +161,7 @@ describe('Column Disabling Logic', () => {
         }
 
         unmount();
-        mockUseAiUsage.mockReturnValue({
-            aiRemaining: 10,
-            aiBlocked: false,
-            transcriptionRemaining: 60,
-            transcriptionBlocked: false,
-            loading: false,
-            refresh: jest.fn(),
-        });
+        mockUseAiUsage.mockReturnValue(aiUsageStub());
 
         render(
             <Column

@@ -202,7 +202,11 @@ function useNoteAIAssistant({
     setScriptureRefs: (refs: ScriptureReference[] | ((prev: ScriptureReference[]) => ScriptureReference[])) => void; setTags: (tags: string[] | ((prev: string[]) => string[])) => void;
     t: ReturnType<typeof useTranslation>['t'];
 }) {
-    const { aiBlocked, transcriptionBlocked, refresh: refreshAiUsage } = useAiUsage();
+    const { aiBlocked, blocked, blockedLabelKey, refresh: refreshAiUsage } = useAiUsage();
+    // `/api/studies/transcribe` admits transcription AND ai, so the microphone has to answer
+    // for both — gating on transcription alone let the take go out and be refused.
+    const dictationBlocked = blocked('dictation');
+    const dictationBlockedKey = blockedLabelKey('dictation');
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
     // Voice recovery: keep the recording alive so a failed transcription never loses the thought.
@@ -375,7 +379,7 @@ function useNoteAIAssistant({
     }, []);
 
     return {
-        isAnalyzing, isVoiceProcessing, aiBlocked, transcriptionBlocked, handleAIAnalyze, handleVoiceRecordingComplete,
+        isAnalyzing, isVoiceProcessing, aiBlocked, dictationBlocked, dictationBlockedKey, handleAIAnalyze, handleVoiceRecordingComplete,
         voiceError, voiceRetryCount, voiceMaxRetries: VOICE_MAX_RETRIES, handleRetryVoice, handleClearVoiceError,
         resendVoiceBlob,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
@@ -950,7 +954,7 @@ export default function StudyNoteEditorPage() {
 
     // AI assistant hook
     const {
-        isAnalyzing, isVoiceProcessing, aiBlocked, transcriptionBlocked, handleAIAnalyze, handleVoiceRecordingComplete,
+        isAnalyzing, isVoiceProcessing, aiBlocked, dictationBlocked, dictationBlockedKey, handleAIAnalyze, handleVoiceRecordingComplete,
         voiceError, voiceRetryCount, voiceMaxRetries, handleRetryVoice, handleClearVoiceError,
         resendVoiceBlob,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
@@ -1359,8 +1363,8 @@ export default function StudyNoteEditorPage() {
                                 <FocusRecorderButton
                                     onRecordingComplete={handleVoiceRecordingComplete}
                                     isProcessing={isVoiceProcessing}
-                                    disabled={transcriptionBlocked}
-                                    title={transcriptionBlocked ? t('settings.usage.transcriptionUsageExhausted') : undefined}
+                                    disabled={dictationBlocked}
+                                    title={dictationBlockedKey ? t(dictationBlockedKey) : undefined}
                                     onError={(err: unknown) => toast.error(String(err) || 'Error')}
                                     transcriptionError={voiceError}
                                     onRetry={handleRetryVoice}

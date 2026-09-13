@@ -688,7 +688,8 @@
       "audioSeconds": "{{count}} seconds",
       "minutesOfLimit": "{{used}} / {{limit}} min",
       "aiUsageExhausted": "Not enough AI usage remaining.",
-      "transcriptionUsageExhausted": "Not enough transcription usage remaining."
+      "transcriptionUsageExhausted": "Not enough transcription usage remaining.",
+      "audioUsageExhausted": "Not enough audio generation remaining."
     },
     "modelSelector": {
       "title": "AI models by function",

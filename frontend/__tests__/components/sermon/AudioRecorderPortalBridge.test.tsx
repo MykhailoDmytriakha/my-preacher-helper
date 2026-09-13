@@ -62,6 +62,42 @@ describe('AudioRecorderPortalBridge', () => {
     expect(screen.getByTitle('Add manual thought')).toBeEnabled();
   });
 
+  /**
+   * A REASON TO REFUSE ADDS TO THE OTHERS; IT DOES NOT REPLACE THEM.
+   *
+   * These read `isRecorderDisabled ?? isReadOnly`, so a caller that answered the question at
+   * all — including with "no" — silently switched the read-only rule off. The sermon screen
+   * was about to gain a usage gate and would have lost its offline gate in the same line.
+   */
+  it('keeps the read-only refusal when a caller also answers about usage', () => {
+    render(
+      <AudioRecorderPortalBridge
+        {...commonProps}
+        isReadOnly
+        isRecorderDisabled={false}
+        isManualDisabled={false}
+      />
+    );
+
+    expect(screen.getByTestId('recorder-disabled')).toHaveTextContent('true');
+    expect(screen.getByTitle('Add manual thought')).toBeDisabled();
+  });
+
+  it('refuses on the usage gate alone when the screen is otherwise writable', () => {
+    render(
+      <AudioRecorderPortalBridge
+        {...commonProps}
+        isReadOnly={false}
+        isRecorderDisabled
+        recorderTitle="settings.usage.aiUsageExhausted"
+      />
+    );
+
+    expect(screen.getByTestId('recorder-disabled')).toHaveTextContent('true');
+    // The manual thought costs nothing, so it stays available.
+    expect(screen.getByTitle('Add manual thought')).toBeEnabled();
+  });
+
   it('renders into portal target and reacts to ResizeObserver updates', () => {
     const portalTarget = document.createElement('div');
     document.body.appendChild(portalTarget);

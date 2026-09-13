@@ -8,15 +8,10 @@ import React from 'react';
 // UI tests that are not about entitlements should remain focused on their own
 // interaction. The production hook is covered through the authenticated
 // entitlement fetch test; individual quota UI tests override this default.
+// Built from the real gate table, so the default stub cannot disagree with it about what an
+// action costs — the very drift this hook exists to prevent.
 jest.mock('@/hooks/useAiUsage', () => ({
-  useAiUsage: () => ({
-    aiRemaining: 1,
-    aiBlocked: false,
-    transcriptionRemaining: 1,
-    transcriptionBlocked: false,
-    loading: false,
-    refresh: jest.fn(),
-  }),
+  useAiUsage: () => require('./test-utils/aiUsage').aiUsageStub({ aiRemaining: 1, transcriptionRemaining: 1 }),
 }));
 
 // Set dummy API keys for OpenAI client initialization during tests

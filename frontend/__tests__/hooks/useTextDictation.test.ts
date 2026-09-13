@@ -6,7 +6,9 @@ import { transcribeAudioWithRetry, TranscriptionClientError } from '@/utils/tran
 
 const mockRefresh = jest.fn();
 let mockBlocked = false;
-jest.mock('@/hooks/useAiUsage', () => ({ useAiUsage: () => ({ transcriptionBlocked: mockBlocked, refresh: mockRefresh }) }));
+jest.mock('@/hooks/useAiUsage', () => ({
+  useAiUsage: () => require('@test-utils/aiUsage').aiUsageStub({ transcriptionBlocked: mockBlocked, refresh: mockRefresh }),
+}));
 jest.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 jest.mock('@/utils/transcriptionRetryClient', () => ({
   ...jest.requireActual('@/utils/transcriptionRetryClient'), transcribeAudioWithRetry: jest.fn(),

@@ -125,10 +125,10 @@ export default function ScratchPanel({
   const { t } = useTranslation();
   const boardNoteLabels = useScratchNoteLabels();
   const { isMagicAvailable } = useConnection();
-  const { aiBlocked, transcriptionBlocked, refresh: refreshAiUsage } = useAiUsage();
-  const transcriptionUnavailableLabel = transcriptionBlocked
-    ? t("settings.usage.transcriptionUsageExhausted")
-    : undefined;
+  const { aiBlocked, blocked, blockedLabelKey, refresh: refreshAiUsage } = useAiUsage();
+  const transcriptionBlocked = blocked('dictation');
+  const dictationBlockedKey = blockedLabelKey('dictation');
+  const transcriptionUnavailableLabel = dictationBlockedKey ? t(dictationBlockedKey) : undefined;
   const [capturePortal, setCapturePortal] = useState<HTMLDivElement | null>(null);
   const [isManualCaptureOpen, setIsManualCaptureOpen] = useState(false);
   const [manualDraft, setManualDraft] = useState("");

@@ -16,7 +16,9 @@ interface TextDictationOptions {
 /** Transcription and in-session audio recovery; each editor owns how text and errors are presented. */
 export function useTextDictation({ onText, onEmpty, onError, onStart, fallbackErrorKey = 'errors.audioProcessing' }: TextDictationOptions) {
   const { t } = useTranslation();
-  const { transcriptionBlocked, refresh } = useAiUsage();
+  const { blocked, blockedLabelKey, refresh } = useAiUsage();
+  // The same two-resource rule: a dictation request is admitted for transcription AND ai.
+  const transcriptionBlocked = blocked('dictation');
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
@@ -67,5 +69,16 @@ export function useTextDictation({ onText, onEmpty, onError, onStart, fallbackEr
   };
 
   const stopProcessing = () => setIsProcessing(false);
-  return { isProcessing, error, retryCount, maxRetries: 3, transcriptionBlocked, complete, retry, clear, stopProcessing };
+  return {
+    isProcessing,
+    error,
+    retryCount,
+    maxRetries: 3,
+    transcriptionBlocked,
+    blockedLabelKey: blockedLabelKey('dictation'),
+    complete,
+    retry,
+    clear,
+    stopProcessing,
+  };
 }
