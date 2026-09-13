@@ -22,6 +22,8 @@ import { BrainstormSuggestionSchema } from '@/config/schemas/zod/brainstorm.zod'
 import { ComposePlanResponseSchema } from '@/config/schemas/zod/composePlan.zod';
 import { CutNoteResponseSchema } from '@/config/schemas/zod/cutNote.zod';
 import { InsightsResponseSchema } from '@/config/schemas/zod/insights.zod';
+import { NotePlanResponseSchema } from '@/config/schemas/zod/notePlan.zod';
+import { PlanPointContentResponseSchema } from '@/config/schemas/zod/planPointContent.zod';
 import { PolishTranscriptionSchema } from '@/config/schemas/zod/polishTranscription.zod';
 import { SectionHintsResponseSchema } from '@/config/schemas/zod/sectionHints.zod';
 import { SermonPointsResponseSchema } from '@/config/schemas/zod/sermonPoints.zod';
@@ -48,6 +50,11 @@ const STRUCTURED_OUTPUT_SCHEMAS: Array<[string, z.ZodType]> = [
   ['speech_optimization', SpeechOptimizationResponseSchema],
   ['studyNoteAnalysis', StudyNoteAnalysisSchema],
   ['cutNote', CutNoteResponseSchema],
+  // Both reach a provider and were missing from this list. They matter more than most: their
+  // cue-group object is REUSED (notePlan picks fields off it), which is the exact precondition
+  // the cycle needs.
+  ['plan_point_content', PlanPointContentResponseSchema],
+  ['note_plan', NotePlanResponseSchema],
 ];
 
 type GeneratedSchema = { json_schema: { schema: Record<string, unknown> } };

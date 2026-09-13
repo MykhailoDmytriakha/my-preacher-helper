@@ -646,6 +646,77 @@ describe('openAI.client additional coverage', () => {
     });
   });
 
+  describe('cue sets — the shape of the thought, made visible', () => {
+    const runWithGroups = async (groups: unknown[], turn: string | null = null) => {
+      mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
+        success: true,
+        data: { groups, turn },
+        refusal: null,
+        error: null,
+      });
+      return generatePlanPointContent(
+        'Test Sermon', 'John 3:16', 'Outline Point', ['Thought A'], 'main', [],
+        undefined, 'memory', undefined, baseSermon.userId
+      );
+    };
+
+    it('renders a set as a caption with its members under it', async () => {
+      const result = await runWithGroups([
+        {
+          heading: null,
+          cues: ['стоит само по себе'],
+          sets: [{ label: 'три образа пустоты', items: ['сосуд — без масла', 'облако — без воды', 'плевелы — без зерна'] }],
+          refs: [],
+        },
+      ]);
+
+      expect(result.content).toContain('- стоит само по себе');
+      expect(result.content).toContain('**три образа пустоты**');
+      expect(result.content).toContain('- сосуд — без масла');
+      // The caption is NOT a heading: headings belong to the preacher's structure.
+      expect(result.content).not.toContain('### три образа пустоты');
+    });
+
+    it('leaves no gap under the route arrow when every cue moved into a set', async () => {
+      /**
+       * Regression: the group separator plus the set separator wrote TWO blank lines between
+       * the arrow and the first caption. The turn has to be present for the defect to show —
+       * with an empty turn the final trim() hides it, and a test without one passes either way
+       * (found by breaking the fix on purpose and watching this test stay green).
+       */
+      const result = await runWithGroups(
+        [{ heading: null, cues: [], sets: [{ label: 'два случая', items: ['первый', 'второй'] }], refs: [] }],
+        'было -> стало',
+      );
+
+      expect(result.content).toBe('**→ было → стало**\n\n**два случая**\n- первый\n- второй');
+    });
+
+    it('drops a set that has no label or no members, instead of printing an empty caption', async () => {
+      const result = await runWithGroups([
+        {
+          heading: null,
+          cues: ['единственный триггер'],
+          sets: [{ label: '   ', items: ['потерянный'] }, { label: 'пусто', items: [] }],
+          refs: [],
+        },
+      ]);
+
+      expect(result.content).not.toContain('****');
+      expect(result.content).not.toContain('**пусто**');
+      expect(result.content).toContain('- единственный триггер');
+    });
+
+    it('still renders a group that has ONLY sets and refs', async () => {
+      const result = await runWithGroups([
+        { heading: null, cues: [], sets: [{ label: 'тогда / сейчас', items: ['было', 'стало'] }], refs: ['Быт. 25:34: пренебрег Исав первородством'] },
+      ]);
+
+      expect(result.content).toContain('**тогда / сейчас**');
+      expect(result.content).toContain('*Быт. 25:34: пренебрег Исав первородством*');
+    });
+  });
+
   it('generates plan point content', async () => {
     mockStructuredOutput.callWithStructuredOutput.mockResolvedValue({
       success: true,
