@@ -57,6 +57,16 @@ A closing entry must state what changed, what proves it, and what stays unproven
 | 3a | Councils list **read** through the engine, on the list screen | 1 | The list screen renders the same councils through the engine behind the switch; verified in a browser | closed |
 | 3b | Councils writing, **whole**: create, update, delete and the two-council carry | 3a | Every council write runs through the engine, the carry as a registered core command; the conflict matrix is red before it is green | open |
 | 4 | Remaining council readers and legacy retirement | 3b | Hub, breadcrumbs, calendar and the pre-database localStorage carry-over; only then is the domain migrated | open |
+| 5 | Live browser proof for councils | 4 | Two windows, offline, reload mid-save: both edits survive; a conflict shows both versions | open |
+| 6 | Core bugs surfaced by 3-5 | 5 | Each fix has a red check: disable the fix and the test fails | open |
+| 7 | Receipt amplification | 6 | A thousand saves do not grow storage linearly (`app/data-engine/server.ts`) | open |
+| 8 | Legacy queued council writes | 4 | A pending legacy write is discovered, shown and either replayed or exported | open |
+| 9 | Rollout: rules, server flag, client flag | 7, 8 | An old PWA is refused and keeps its draft; owner presses the button | open |
+
+Step 3b is **half done**: its core side is committed (`council-carry` registered,
+the ordinary-update guard narrowed to the carry mark). Its client side has not
+started beyond `EngineCouncilCreator`, which is written, tested and deliberately
+unwired.
 
 **Writing cannot be split, and reading cannot ship before it.** Two findings from
 step 3b's first attempt, both grounded:
@@ -82,11 +92,6 @@ between two councils is separated because it is not an adapter at all: the core
 knows only `material-notes` and `series-membership` relations, so a third one has
 to be registered there, and the core still has five open P1 defects. Mixing that
 risk into ordinary CRUD would make a failure impossible to attribute.
-| 5 | Live browser proof | 4 | Two windows, offline, reload mid-save: both edits survive; a conflict shows both versions | open |
-| 6 | Core bugs surfaced by 3-5 | 5 | Each fix has a red check: disable the fix and the test fails | open |
-| 7 | Receipt amplification | 6 | A thousand saves do not grow storage linearly (`app/data-engine/server.ts`) | open |
-| 8 | Legacy queued council writes | 4 | A pending legacy write is discovered, shown and either replayed or exported | open |
-| 9 | Rollout: rules, server flag, client flag | 7, 8 | An old PWA is refused and keeps its draft; owner presses the button | open |
 
 Point of no return: the first engine write to the production database in step 9.
 Before it, rollback is one switch. After it, marked documents exist that legacy
