@@ -40,6 +40,7 @@ import { Chip } from '@/components/ui/Chip';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { LiveTextArea, LiveTextInput } from '@/components/ui/LiveTextInput';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
+import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import { useCouncil } from '@/hooks/useCouncils';
@@ -100,6 +101,14 @@ function EngineCouncilDetailPage({ councilId }: { councilId: string }) {
   const { t } = useTranslation();
   const document = useCouncilDataDocument(councilId);
   const list = useCouncilsDataCollection();
+  /*
+   * A REFUSED SAVE HAS TO REACH THE PERSON. The screen calls these without awaiting — that is
+   * how an editing screen works — so a rejected promise has nowhere to land unless it is caught
+   * here. Swallowing it is how a council silently stopped saving while the screen looked fine.
+   */
+  const report = (error: unknown) => {
+    toast.error(error instanceof Error ? error.message : t('council.save.refused'));
+  };
   const carryTopicToNext = (_id: string, topic: CouncilTopic, _fallbackTitle: string, targetId?: string | 'new'): Council | undefined => {
     const targets = preparingCouncils(list.councils).filter(item => item.id !== councilId);
     const target = targetId && targetId !== 'new' ? targets.find(item => item.id === targetId) : targets[0];
@@ -117,11 +126,15 @@ function EngineCouncilDetailPage({ councilId }: { councilId: string }) {
   const source = {
     council: document.council, councils: list.councils, loading: document.loading || list.loading,
     error: document.error ?? list.error, refresh: document.refresh,
-    updateCouncil: (id: string, updater: (current: Council) => Council) => { void document.updateCouncil(id, updater); },
-    deleteCouncil: (id: string) => { void document.deleteCouncil(id); },
+    updateCouncil: (id: string, updater: (current: Council) => Council) => { void document.updateCouncil(id, updater).catch(report); },
+    deleteCouncil: (id: string) => { void document.deleteCouncil(id).catch(report); },
     carryTopicToNext,
   };
-  return <CouncilDetailContent source={source} />;
+  return <>
+    <DataSyncStatus status={document.status} error={document.error} className="mb-4"
+      onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal()} onAcceptRemote={() => document.acceptRemote()} />
+    <CouncilDetailContent source={source} />
+  </>;
 }
 
 interface CouncilDetailSource {

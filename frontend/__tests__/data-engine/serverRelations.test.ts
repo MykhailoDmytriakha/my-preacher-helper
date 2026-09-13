@@ -366,5 +366,18 @@ describe('council carry', () => {
         after: { exists: true, value: [{ ...topic('t1'), title: 'Reworded', decision: 'Agreed' }] } },
     ] };
     expect(await planDataCommand(typing, source, reader)).toMatchObject({ result: { kind: 'acknowledged' } });
+
+    // Adding and removing sections claims nothing about another council either. The screen adds
+    // an empty section and the person names it afterwards; refusing that stops all editing.
+    const added: DataCommand = { ...commandBase(source), kind: 'update', changes: [
+      { path: ['topics'], before: { exists: true, value: [topic('t1')] },
+        after: { exists: true, value: [topic('t1'), { id: 'fresh', title: '', questions: [], options: [] }] } },
+    ] };
+    expect(await planDataCommand(added, source, reader)).toMatchObject({ result: { kind: 'acknowledged' } });
+
+    const removed: DataCommand = { ...commandBase(source), kind: 'update', changes: [
+      { path: ['topics'], before: { exists: true, value: [topic('t1')] }, after: { exists: true, value: [] } },
+    ] };
+    expect(await planDataCommand(removed, source, reader)).toMatchObject({ result: { kind: 'acknowledged' } });
   });
 });

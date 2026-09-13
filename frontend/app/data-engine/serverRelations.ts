@@ -40,11 +40,18 @@ function currentItems(value: DocumentData): DocumentData[] {
   return value.items as DocumentData[];
 }
 
-/** Which sections claim to have been carried, and where: the part only the carry may change. */
+/**
+ * Which sections claim to have been carried, and where.
+ *
+ * Only sections that actually carry the mark count. Comparing the whole array instead made
+ * adding or removing a section look like a claim about another council, which refused ordinary
+ * editing: the screen adds an empty section and the person names it afterwards.
+ */
 function carryMarks(side: { exists: boolean; value?: Json } | undefined): string {
   const topics = side?.exists && Array.isArray(side.value) ? side.value : [];
-  return JSON.stringify(topics.map(topic => ownObject(topic)
-    ? [topic.id ?? null, topic.carriedToCouncilId ?? null] : [null, null]));
+  const marks = topics.flatMap(topic => ownObject(topic) && typeof topic.id === 'string' && typeof topic.carriedToCouncilId === 'string'
+    ? [[topic.id, topic.carriedToCouncilId]] : []);
+  return JSON.stringify(marks.sort((left, right) => left[0].localeCompare(right[0])));
 }
 
 function currentTopics(value: DocumentData): DocumentData[] {
