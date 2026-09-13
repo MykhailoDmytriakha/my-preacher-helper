@@ -55,7 +55,7 @@ A closing entry must state what changed, what proves it, and what stays unproven
 | 1 | Per-collection activation switch | — | With only `councils` enabled, the sermon page still renders every legacy control | closed |
 | 2 | This migration log | — | File exists in git and is updated at every closing | closed |
 | 3a | Councils list **read** through the engine, on the list screen | 1 | The list screen renders the same councils through the engine behind the switch; verified in a browser | closed |
-| 3b | Councils writing, **whole**: create, update, delete and the two-council carry | 3a | Every council write runs through the engine, the carry as a registered core command; the conflict matrix is red before it is green | open |
+| 3b | Councils writing, **whole**: create, update, delete and the two-council carry | 3a | Every council write runs through the engine, the carry as a registered core command; the conflict matrix is red before it is green | create, update and recovery verified live; delete and carry untested in a browser |
 | 4 | Remaining council readers and legacy retirement | 3b | Hub, breadcrumbs, calendar and the pre-database localStorage carry-over; only then is the domain migrated | open |
 | 5 | Live browser proof for councils | 4 | Two windows, offline, reload mid-save: both edits survive; a conflict shows both versions | open |
 | 6 | Core bugs surfaced by 3-5 | 5 | Each fix has a red check: disable the fix and the test fails | open |
@@ -63,10 +63,12 @@ A closing entry must state what changed, what proves it, and what stays unproven
 | 8 | Legacy queued council writes | 4 | A pending legacy write is discovered, shown and either replayed or exported | open |
 | 9 | Rollout: rules, server flag, client flag | 7, 8 | An old PWA is refused and keeps its draft; owner presses the button | open |
 
-Step 3b is **half done**: its core side is committed (`council-carry` registered,
-the ordinary-update guard narrowed to the carry mark). Its client side has not
-started beyond `EngineCouncilCreator`, which is written, tested and deliberately
-unwired.
+Step 3b stands as follows, checked 2026-09-13: creating a council, renaming it,
+adding and naming a section, and recovering unfinished work from an earlier page
+load all run through the engine and were verified in a browser against the dev test
+account. Deleting a council and carrying a section to another council have code and
+tests on both sides — core command and client policy — but neither has been walked
+through in a browser yet.
 
 **Writing cannot be split, and reading cannot ship before it.** Two findings from
 step 3b's first attempt, both grounded:
