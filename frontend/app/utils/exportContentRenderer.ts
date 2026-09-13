@@ -1,4 +1,5 @@
 import { planMarkdownToPlainText } from '@/utils/planHierarchy';
+import { hasWrittenPlan, renderPlanFromSermon } from '@/utils/planText';
 import { buildSubPointRenderableEntries } from '@/utils/subPoints';
 
 import type { Sermon, Thought } from '@/models/models';
@@ -90,14 +91,23 @@ export function renderThoughtExport(sermon: Sermon, sections: ExportSection[], o
   return content;
 }
 
-/** Saved plan takes precedence over the legacy draft; author markdown remains intact in MD. */
+/**
+ * The plan as a document, ASSEMBLED rather than fetched; author markdown remains intact in MD.
+ *
+ * It used to read `sermon.plan || sermon.draft` — the whole assembled document, which is no
+ * longer stored: it is built from the structure and the per-node text when someone reads it.
+ * For every sermon kept in the current shape this returned an empty string, so even with the
+ * export button enabled the file would have come out with a header and nothing under it.
+ */
 export function renderPlanExport(sermon: Sermon, options: ExportTextOptions, labels: ExportLabels): string {
-  const plan = sermon.plan || sermon.draft;
-  if (!plan) return '';
+  // No plan at all still means no document, header included: assembly always returns three
+  // strings, so without this a plan-less sermon exported a title page with nothing under it.
+  if (!hasWrittenPlan(sermon)) return '';
+  const plan = renderPlanFromSermon(sermon);
   const markdown = options.format === 'markdown';
   let content = renderHeader(sermon, options, labels);
   for (const key of ['introduction', 'main', 'conclusion'] as const) {
-    const outline = plan[key]?.outline;
+    const outline = plan[key];
     if (!outline?.trim()) continue;
     content += markdown ? `## ${labels[key]}\n\n${outline}\n\n---\n\n` : `${labels[key]}:\n\n${planMarkdownToPlainText(outline)}\n\n---------------------\n\n`;
   }

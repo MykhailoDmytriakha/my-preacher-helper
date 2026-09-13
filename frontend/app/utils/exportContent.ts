@@ -1,5 +1,6 @@
 import { buildExportSections } from '@/utils/exportContentModel';
 import { renderPlanExport, renderThoughtExport } from '@/utils/exportContentRenderer';
+import { hasPlan } from '@/utils/sermonPlanAccess';
 import { i18n } from '@locales/i18n';
 
 import type { Sermon } from '@/models/models';
@@ -28,7 +29,10 @@ export function getExportContent(sermon: Sermon, focusedSection?: string, option
   const { type = 'thoughts', format = 'plain', includeTags = false, includeMetadata = true } = options;
   const textOptions = { format, includeTags, includeMetadata };
   if (type === 'plan') {
-    if (!sermon.plan && !sermon.draft) return Promise.resolve(i18n.t('export.noPlanAvailable', 'No plan available for export'));
+    // Asked of the PLAN, not of the stored document: the assembled plan is built on read, so a
+    // sermon kept in the current shape has neither `plan` nor `draft` and was told it had no
+    // plan to export while its plan was on the screen behind the button.
+    if (!hasPlan(sermon)) return Promise.resolve(i18n.t('export.noPlanAvailable', 'No plan available for export'));
     return Promise.resolve(renderPlanExport(sermon, textOptions, getLabels()));
   }
   return Promise.resolve(renderThoughtExport(sermon, buildExportSections(sermon, focusedSection), textOptions, getLabels()));

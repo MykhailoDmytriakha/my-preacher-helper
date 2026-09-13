@@ -1,5 +1,5 @@
 import { Sermon, PlanData } from '@/models/models';
-import { hasWrittenPlan } from '@/utils/planText';
+import { hasWrittenPlan, renderPlanFromSermon, writtenSections } from '@/utils/planText';
 
 const hasStructure = (sermon: Sermon | null | undefined): boolean => {
   if (!sermon) return false;
@@ -62,19 +62,18 @@ export function getSermonAccessType(sermon: Sermon | null | undefined): 'plan' |
  */
 export function isSermonReadyForPreaching(sermon: Sermon | null | undefined): boolean {
   if (!sermon) return false;
-  const draft = sermon.draft || sermon.plan;
-  if (!draft) {
-    return false;
-  }
 
-  const { introduction, main, conclusion } = draft;
+  /**
+   * ASKED OF WHAT IS WRITTEN, NOT OF THE ASSEMBLED STRING.
+   *
+   * This used to read `sermon.draft || sermon.plan`, the document that is no longer stored,
+   * and answer "nothing written" for every sermon kept in the current shape. Reading the
+   * assembled sections instead would swing the other way: assembly prints the structure's
+   * headings, so an untouched plan would look complete.
+   */
+  const written = writtenSections(sermon);
 
-  // Check if all sections have meaningful content (not just empty strings)
-  const hasIntroContent = Boolean(introduction?.outline?.trim().length);
-  const hasMainContent = Boolean(main?.outline?.trim().length);
-  const hasConclusionContent = Boolean(conclusion?.outline?.trim().length);
-
-  return hasIntroContent && hasMainContent && hasConclusionContent;
+  return written.introduction && written.main && written.conclusion;
 }
 
 /**
@@ -117,17 +116,24 @@ export function planEditorRoute(sermonId: string, sermon: Sermon | null | undefi
  */
 export function getSermonPlanData(sermon: Sermon | null | undefined): PlanData | undefined {
   if (!sermon) return undefined;
-  const planSource = sermon.draft || sermon.plan;
-  if (!planSource) return undefined;
-
-  // A plan is considered ready if at least one section has an outline
   if (!hasPlan(sermon)) return undefined;
+
+  /**
+   * BUILT, NOT READ OUT OF STORAGE — the same source `hasPlan` answers from.
+   *
+   * This used to take `sermon.draft || sermon.plan`, the assembled document that is no
+   * longer stored, and hand back `undefined` for every sermon kept in the current shape.
+   * The export buttons take that as "no plan": on the card and in the sermon header Word
+   * and PDF went grey while the plan page, which builds its own content, offered them —
+   * one plan, two answers, and the grey one was on the screen the person starts from.
+   */
+  const plan = renderPlanFromSermon(sermon);
 
   return {
     sermonTitle: sermon.title,
     sermonVerse: sermon.verse,
-    introduction: planSource.introduction?.outline || '',
-    main: planSource.main?.outline || '',
-    conclusion: planSource.conclusion?.outline || ''
+    introduction: plan.introduction,
+    main: plan.main,
+    conclusion: plan.conclusion
   };
 }
