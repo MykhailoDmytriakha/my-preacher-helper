@@ -55,9 +55,23 @@ A closing entry must state what changed, what proves it, and what stays unproven
 | 1 | Per-collection activation switch | — | With only `councils` enabled, the sermon page still renders every legacy control | closed |
 | 2 | This migration log | — | File exists in git and is updated at every closing | closed |
 | 3a | Councils list **read** through the engine, on the list screen | 1 | The list screen renders the same councils through the engine behind the switch; verified in a browser | closed |
-| 3b | Councils create, update and delete | 3a | Writing runs through the engine; the conflict matrix is red before it is green | open |
-| 3c | Councils: carry a topic to the next council | 3b | A registered two-council command in the core, with its own refusal and replay tests | open |
-| 4 | Remaining council readers and legacy retirement | 3c | Hub, breadcrumbs, calendar and the pre-database localStorage carry-over; only then is the domain migrated | open |
+| 3b | Councils writing, **whole**: create, update, delete and the two-council carry | 3a | Every council write runs through the engine, the carry as a registered core command; the conflict matrix is red before it is green | open |
+| 4 | Remaining council readers and legacy retirement | 3b | Hub, breadcrumbs, calendar and the pre-database localStorage carry-over; only then is the domain migrated | open |
+
+**Writing cannot be split, and reading cannot ship before it.** Two findings from
+step 3b's first attempt, both grounded:
+
+- An engine-created council carries the protocol marker, so the council screen's
+  legacy update is refused (409 on the server, rules offline). Creating without
+  editing would hand the person a council they cannot type in. Editing in turn
+  needs the carry-over, which writes two councils at once and cannot be split into
+  two independent writes without losing its atomicity — so it needs a registered
+  relation command in the core. Create, update, delete and carry are one piece.
+- Reading alone is not shippable either: see
+  `BUG-20260912-engine-collection-shows-deleted-legacy`. While a legacy writer
+  still owns the collection, its writes raise no feed event, so the engine's cached
+  list keeps showing a council that was deleted. Step 3a's code stands, but its
+  switch must not be turned on until writing moves with it.
 
 Each slice is deliberately cut to run through every layer — storage, engine,
 hook, screen, browser — rather than finishing one layer at a time. Reading comes
@@ -189,11 +203,36 @@ new relation command in the core, are separate queue items.
   by the engine, under "preparing", with the engine's own HTTP calls returning 200.
   The test council was deleted afterwards; the account's collection is empty again.
 
+**Correction, found the next day of work.** This slice is complete as code but is
+**not shippable on its own**: while the legacy road still writes councils, its
+writes raise no feed event, so the engine's cached list keeps showing a deleted
+council. Measured: the server returned `snapshots: []` while the browser cache
+held one row and the screen drew it. Tracked as
+`BUG-20260912-engine-collection-shows-deleted-legacy`. The switch for councils
+stays off until writing moves too.
+
 **Unproven, and one limit of the harness.** The automation tab is always
 `visibilityState: 'hidden'`, and the engine deliberately does not read collections
 for a hidden tab — that is its read-budget policy, not a defect. Visibility had to
 be emulated for the render to happen, so the list was verified with an emulated
-visible document, not a genuinely foregrounded window. A human opening
-`/care/council` with the switch on is the check this cannot replace. Nothing about
+visible document, not a genuinely foregrounded window. Nothing about
 writing, conflicts, offline behaviour or a second device is claimed by this step.
+
+### 2026-09-12 — Step 3b, first attempt: the creator exists, the slice does not
+
+`care/council/EngineCouncilCreator.tsx` creates one council through the public
+interface: the screen makes the client id, this owns the lifecycle, `commit` with
+autosave off freezes the whole intended value, the stored fields never carry the
+id, and one council is submitted exactly once even across re-renders. Four tests,
+three red for the right reason first. It is **not wired to any screen**.
+
+It is not wired because wiring it alone would break the domain: an engine-created
+council is marked, and the council screen still edits through the legacy road,
+which a marked document refuses. Following that thread showed the carry-over needs
+a core relation command, and reading showed its own mixed-mode defect. The queue
+above now carries one whole writing step instead of three.
+
+Gates after this work: `test:fast` 6627 passed / 6632, `tsc --noEmit` exit 0,
+`lint:full` exit 0. Verified live at localhost:3005 that the council section still
+behaves exactly as before, since nothing on screen changed.
 
