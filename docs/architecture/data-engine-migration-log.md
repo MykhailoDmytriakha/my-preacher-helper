@@ -55,8 +55,8 @@ A closing entry must state what changed, what proves it, and what stays unproven
 | 1 | Per-collection activation switch | — | With only `councils` enabled, the sermon page still renders every legacy control | closed |
 | 2 | This migration log | — | File exists in git and is updated at every closing | closed |
 | 3a | Councils list **read** through the engine, on the list screen | 1 | The list screen renders the same councils through the engine behind the switch; verified in a browser | closed |
-| 3b | Councils writing, **whole**: create, update, delete and the two-council carry | 3a | Every council write runs through the engine, the carry as a registered core command; the conflict matrix is red before it is green | create, update and recovery verified live; delete and carry untested in a browser |
-| 4 | Remaining council readers and legacy retirement | 3b | Hub, breadcrumbs, calendar and the pre-database localStorage carry-over; only then is the domain migrated | readers done; localStorage carry-over and legacy retirement left |
+| 3b | Councils writing, **whole**: create, update, delete and the two-council carry | 3a | Every council write runs through the engine, the carry as a registered core command; the conflict matrix is red before it is green | closed — create, update, delete, carry, replay and recovery all proven |
+| 4 | Remaining council readers and legacy retirement | 3b | Hub, breadcrumbs, calendar and the pre-database localStorage carry-over; only then is the domain migrated | readers and carry-over done; retiring the legacy hook left |
 | 5 | Live browser proof for councils | 4 | Two windows, offline, reload mid-save: both edits survive; a conflict shows both versions | open |
 | 6 | Core bugs surfaced by 3-5 | 5 | Each fix has a red check: disable the fix and the test fails | open |
 | 7 | Receipt amplification | 6 | A thousand saves do not grow storage linearly (`app/data-engine/server.ts`) | open |
@@ -510,3 +510,50 @@ Gates: `test:fast` 6646 passed / 6651, `tsc --noEmit` exit 0, `lint:full` exit 0
 
 Still open in this domain: the pre-database localStorage carry-over, retiring the
 legacy hook, and a browser pass over the carry button itself.
+
+### 2026-09-13 — Councils from before the database now travel through the engine
+
+The legacy hook carries councils that lived in `localStorage` before the section had
+a database. Left alone, it would have created them on its own road — planting
+unmarked documents inside a domain the engine already owns, which is precisely the
+mixed state that makes a list show what the database no longer has.
+
+`EngineCouncilMigration` does it instead while councils are migrated: it carries one
+council at a time through the ordinary create path, so each arrives with the protocol
+marker. It only carries what the server itself has not answered with, and the browser
+copy — the only copy these councils have — is cleared solely after every one of them
+has landed. A refusal stops the queue and leaves everything in place for the next
+opening. The legacy carry-over now stands down whenever the collection is on the
+engine.
+
+Three tests, including the refusal case. A mutation that removes the stop did **not**
+turn the tests red, and the honest reading is that it changes no behaviour: a refused
+council never advances the queue, so the end — and the clearing — is never reached.
+The guard is duplicated rather than load-bearing, and this is recorded rather than
+claimed as proof.
+
+Gates: `test:fast` 6649 passed / 6654, `tsc --noEmit` exit 0, `lint:full` exit 0.
+
+### Where the councils domain stands, 2026-09-13
+
+Proven against the live server, signed in as the dev test user with the collection
+enabled on both sides:
+
+- creating a council, and the screen navigating to it;
+- renaming it, adding a section and naming it;
+- conducting it, which moves it to `held` with its time recorded;
+- carrying a section to another council — both documents change in one operation,
+  and sending the identical command twice leaves one copy, not two;
+- deleting a council, which leaves a tombstone rather than an absence;
+- recovering unfinished work left by an earlier page load;
+- the hub count, the calendar entry and the breadcrumb title, all read through one
+  shared reader.
+
+What is left in this domain: retiring `useCouncils` once nothing reads it, and a
+browser pass over the carry **button** itself (the command was proven by sending it
+directly, because the dev server stopped picking up an added probe and that tab's
+console returned nothing).
+
+Not yet true of any domain, including this one: the switch stays off, the rules are
+not deployed, and the core still carries nine open defects — the receipt
+amplification among them, which no deployment may ignore.

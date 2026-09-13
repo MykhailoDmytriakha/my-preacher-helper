@@ -5,9 +5,10 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { useAuth } from '@/providers/AuthProvider';
-import { getAllCouncilsViaClient } from '@/services/councils.client';
+import { COUNCILS_COLLECTION, getAllCouncilsViaClient } from '@/services/councils.client';
 import { clearLocalCouncils, readLocalCouncils } from '@/services/councils.local';
 import { createCouncil as createOnRoad, deleteCouncil as deleteOnRoad, saveCouncil, type CouncilSaveResult } from '@/services/councils.service';
 import { councilQueue, existingCouncilQueue } from '@/services/councilWriteQueue.client';
@@ -231,7 +232,9 @@ export function useCouncils() {
    * then clears the copy. Once per account per browser.
    */
   useEffect(() => {
-    if (!userId || !query.isSuccess || migrationStarted.has(userId)) return;
+    // While councils belong to the engine, the carry-over goes through it instead: creating
+    // them on this road would plant unmarked documents inside a migrated domain.
+    if (!userId || !query.isSuccess || migrationStarted.has(userId) || isCollectionOnEngine(COUNCILS_COLLECTION)) return;
     const local = readLocalCouncils(userId);
     if (local.length === 0) return;
     /*

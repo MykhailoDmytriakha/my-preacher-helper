@@ -21,6 +21,7 @@ import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
 
 import { EngineCouncilCreator } from './EngineCouncilCreator';
+import { EngineCouncilMigration } from './EngineCouncilMigration';
 
 import type { Council } from '@/models/models';
 import type { FormEvent } from 'react';
@@ -79,7 +80,11 @@ function EngineCouncilListPage() {
     // The screen does not navigate yet: a council nobody confirmed is not a place to go.
     return undefined;
   };
+  // Councils that lived in the browser before the database: carried through the engine, one at a
+  // time, and only once the server itself has answered which ids it already has.
+  const serverIds = engine.complete ? new Set(engine.councils.map(council => council.id)) : null;
   return <>
+    {!pending && user?.uid && <EngineCouncilMigration owner={user.uid} serverIds={serverIds} />}
     {pending && <EngineCouncilCreator council={pending} onCreated={id => { setPending(null); router.push(`/care/council/${id}`); }}
       onFailed={message => { setPending(null); toast.error(message || t('council.save.refused')); }} />}
     <CouncilListContent source={{ councils: engine.councils, loading: engine.loading, error: engine.error, refresh: engine.refresh, createCouncil }} />
