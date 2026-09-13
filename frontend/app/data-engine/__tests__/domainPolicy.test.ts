@@ -78,3 +78,57 @@ describe('Domain command preparation', () => {
     expect(session.checkpoint().pending).toEqual({});
   });
 });
+
+/**
+ * CARRYING A SECTION, as the screen sees it: it marks one topic as carried and saves. The second
+ * council is the engine's business — including the copy, whose identifiers must be the same on a
+ * replay, or a lost acknowledgement would leave the destination holding the section twice.
+ */
+describe('Council carry preparation', () => {
+  const topic = (id: string, extra: DocumentData = {}): DocumentData =>
+    ({ id, title: `Topic ${id}`, questions: [{ id: `q-${id}`, question: 'Why?' }], options: [{ id: `o-${id}`, text: 'Yes' }], ...extra });
+  const council = (id: string, topics: DocumentData[], generation: string | null = `gen-${id}`) =>
+    snap('councils', id, { userId: 'owner', title: `Council ${id}`, status: 'preparing', topics, createdAt: 'now', updatedAt: 'now' }, generation);
+
+  it('asks the engine for the destination council named by the mark', () => {
+    const source = council('source', [topic('t1')]);
+    const draft = { ...source.value!, topics: [{ ...topic('t1'), carriedToCouncilId: 'target' }] };
+    expect(requiredDomainTargets(source, draft)).toEqual([{ collection: 'councils', id: 'target' }]);
+    // No mark, no second council: ordinary editing must not drag another document into the write.
+    expect(requiredDomainTargets(source, { ...source.value!, topics: [{ ...topic('t1'), title: 'Reworded' }] })).toEqual([]);
+  });
+
+  it('builds one two-council command whose copy is derived from the operation, not from chance', () => {
+    const source = council('source', [topic('t1'), topic('t2')]);
+    const target = council('target', [topic('kept')]);
+    const draft = { ...source.value!, topics: [{ ...topic('t1'), carriedToCouncilId: 'target' }, topic('t2')] };
+
+    const prepared = prepareDomainCommand('owner', 'operation-1', source, draft, [target]);
+    expect(prepared.command).toMatchObject({ kind: 'relation', relation: 'council-carry', generation: 'gen-source' });
+    const edits = (prepared.command as { edits: Array<{ resource: { id: string }; generation: string | null; beforeTopics: DocumentData[]; afterTopics: DocumentData[] }> }).edits;
+    expect(edits).toHaveLength(2);
+    expect(edits[0]).toMatchObject({ resource: { id: 'source' }, generation: 'gen-source' });
+    expect(edits[0].afterTopics[0]).toMatchObject({ id: 't1', carriedToCouncilId: 'target' });
+    expect(edits[1]).toMatchObject({ resource: { id: 'target' }, generation: 'gen-target' });
+    expect(edits[1].beforeTopics).toEqual([topic('kept')]);
+
+    const copied = edits[1].afterTopics[1];
+    expect(copied).toMatchObject({ title: 'Topic t1' });
+    // The decision and the mark do not travel: the next council starts the matter afresh.
+    expect(copied).not.toHaveProperty('carriedToCouncilId');
+    expect(copied.id).not.toBe('t1');
+
+    // Same operation, same copy: a replay after a lost acknowledgement is a no-op, not a twin.
+    const again = prepareDomainCommand('owner', 'operation-1', source, draft, [target]);
+    expect(again.command).toEqual(prepared.command);
+    const other = prepareDomainCommand('owner', 'operation-2', source, draft, [target]);
+    expect((other.command as { edits: Array<{ afterTopics: DocumentData[] }> }).edits[1].afterTopics[1].id).not.toBe(copied.id);
+  });
+
+  it('refuses a carry whose destination snapshot the engine could not confirm', () => {
+    const source = council('source', [topic('t1')]);
+    const draft = { ...source.value!, topics: [{ ...topic('t1'), carriedToCouncilId: 'target' }] };
+    expect(() => prepareDomainCommand('owner', 'operation-1', source, draft, [])).toThrow();
+    expect(() => prepareDomainCommand('owner', 'operation-1', source, draft, [snap('councils', 'target', null, null)])).toThrow();
+  });
+});
