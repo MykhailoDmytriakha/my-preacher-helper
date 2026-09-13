@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type MouseEvent } from "react";
 import "@locales/i18n";
 
 import AudioExportModal from "@/components/AudioExportModal";
+import { useAiUsage } from "@/hooks/useAiUsage";
 import { debugLog } from "@/utils/debugMode";
 
 import { ExportButtonsLayout } from "./export-buttons/ExportButtonsLayout";
@@ -42,6 +43,14 @@ export default function ExportButtons({
   const [isWordExporting, setIsWordExporting] = useState(false);
   const wordExportPending = useRef(false);
 
+  /**
+   * Asked here rather than by whoever renders these buttons: every caller that assembled a
+   * usage answer for itself got it wrong the same way, and the audio button is the only
+   * control in this row that spends an allowance at all.
+   */
+  const { blocked, blockedLabelKey } = useAiUsage();
+  const isAudioDisabled = enableAudio && blocked("audioGeneration");
+
   const hasPlan = initialHasPlan !== undefined ? initialHasPlan : !!planData;
   const isPdfAvailable = !!getPdfContent && !disabledFormats.includes("pdf");
   const isTxtDisabled = disabledFormats.includes("txt");
@@ -50,6 +59,13 @@ export default function ExportButtons({
   useEffect(() => {
     setShowTxtModal(showTxtModalDirectly || false);
   }, [showTxtModalDirectly]);
+
+  const handleAudioClick = () => {
+    // Refuses on its own as well as being disabled: a door to a spent allowance must not open
+    // by keyboard, by a stale render, or by anything else that reaches the handler.
+    if (isAudioDisabled) return;
+    setShowAudioModal(true);
+  };
 
   const handleTxtClick = (event: MouseEvent) => {
     if (isTxtDisabled) {
@@ -112,12 +128,14 @@ export default function ExportButtons({
         onTxtClick={handleTxtClick}
         onPdfClick={handlePdfClick}
         onWordClick={handleWordClick}
-        onAudioClick={enableAudio ? () => setShowAudioModal(true) : undefined}
+        onAudioClick={enableAudio ? handleAudioClick : undefined}
         orientation={orientation}
         isPdfAvailable={isPdfAvailable}
         isWordDisabled={isWordDisabled}
         isWordExporting={isWordExporting}
         isAudioEnabled={enableAudio}
+        isAudioDisabled={isAudioDisabled}
+        audioDisabledLabelKey={blockedLabelKey("audioGeneration") ?? undefined}
         isPreached={isPreached}
         variant={variant}
         extraButtons={extraButtons}

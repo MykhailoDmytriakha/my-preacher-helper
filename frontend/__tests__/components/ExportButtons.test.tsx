@@ -15,6 +15,11 @@ jest.mock('react-i18next', () => ({
 
 jest.mock('@locales/i18n', () => ({}));
 
+const mockAudioGenerationBlocked = { value: false };
+jest.mock('@/hooks/useAiUsage', () => ({
+  useAiUsage: () => require('@test-utils/aiUsage').aiUsageStub({ aiBlocked: mockAudioGenerationBlocked.value }),
+}));
+
 jest.mock('react-markdown', () => ({ children }: any) => <div>{children}</div>);
 
 jest.mock('remark-gfm', () => ({}));
@@ -333,6 +338,51 @@ describe('ExportButtons Component', () => {
   });
 
   it('renders audio export button and opens modal', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ExportButtons
+        getExportContent={mockGetExportContent}
+        sermonId={mockSermonId}
+        enableAudio
+        sermonTitle="Test Sermon"
+      />
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Audio (Beta)' }));
+    expect(screen.getByTestId('audio-export-modal')).toBeInTheDocument();
+  });
+
+  /**
+   * BUG-20260913-audio-export-opens-past-the-limit
+   *
+   * A DOOR THAT LEADS ONLY TO A PAID ACTION HAS TO ANSWER FOR THAT ACTION.
+   *
+   * This button asked one question — is the audio feature switched on — while the thing behind
+   * it asks another: is there allowance left. Past the limit it opened a whole wizard onto a
+   * grey "Generate" that could not be pressed, and the rule was told at the one place where
+   * nothing could be done about it.
+   */
+  it('refuses to open the audio wizard when the generation allowance is spent, and says which one', () => {
+    mockAudioGenerationBlocked.value = true;
+    render(
+      <ExportButtons
+        getExportContent={mockGetExportContent}
+        sermonId={mockSermonId}
+        enableAudio
+        sermonTitle="Test Sermon"
+      />
+    );
+
+    const audioButton = screen.getByRole('button', { name: 'settings.usage.aiUsageExhausted' });
+    expect(audioButton).toBeDisabled();
+
+    fireEvent.click(audioButton);
+    expect(screen.queryByTestId('audio-export-modal')).not.toBeInTheDocument();
+  });
+
+  it('keeps the door open while the allowance lasts', async () => {
+    mockAudioGenerationBlocked.value = false;
     const user = userEvent.setup();
 
     render(

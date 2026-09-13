@@ -11,6 +11,9 @@ export interface ExportButtonsLayoutProps {
   isWordDisabled?: boolean;
   isWordExporting?: boolean;
   isAudioEnabled?: boolean;
+  /** The generation allowance is spent, so the wizard behind this door leads nowhere. */
+  isAudioDisabled?: boolean;
+  audioDisabledLabelKey?: string;
   isPreached?: boolean;
   variant?: "default" | "icon";
   extraButtons?: ReactNode;
