@@ -6,16 +6,21 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 
 import { useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
 import { Chip } from '@/components/ui/Chip';
 import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useCouncils } from '@/hooks/useCouncils';
 import { useCouncilsDataCollection } from '@/hooks/useCouncilsDataCollection';
+import { useAuth } from '@/providers/AuthProvider';
 import { COUNCILS_COLLECTION } from '@/services/councils.client';
+import { newClientId } from '@/utils/clientId';
 import { councilProgress, daysUntil, splitForList } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
+
+import { EngineCouncilCreator } from './EngineCouncilCreator';
 
 import type { Council } from '@/models/models';
 import type { FormEvent } from 'react';
@@ -56,9 +61,29 @@ function LegacyCouncilListPage() {
  * left it, and turning the switch off returns the screen to one reader.
  */
 function EngineCouncilListPage() {
-  const legacy = useCouncils();
+  const { t } = useTranslation();
+  const router = useRouter();
+  const { user } = useAuth();
   const engine = useCouncilsDataCollection();
-  return <CouncilListContent source={{ ...legacy, councils: engine.councils, loading: engine.loading, error: engine.error, refresh: engine.refresh }} />;
+  // One council being born at a time. It lives in state because a create needs its id before
+  // the network, and the component that owns the lifecycle is mounted only while it is in flight.
+  const [pending, setPending] = useState<Council | null>(null);
+  const createCouncil = (input: { title: string; date?: string }): Council | undefined => {
+    if (!user?.uid || pending) return undefined;
+    const now = new Date().toISOString();
+    setPending({
+      id: newClientId(), userId: user.uid, title: input.title.trim(),
+      ...(input.date ? { date: input.date } : {}),
+      status: 'preparing', topics: [], createdAt: now, updatedAt: now,
+    });
+    // The screen does not navigate yet: a council nobody confirmed is not a place to go.
+    return undefined;
+  };
+  return <>
+    {pending && <EngineCouncilCreator council={pending} onCreated={id => { setPending(null); router.push(`/care/council/${id}`); }}
+      onFailed={message => { setPending(null); toast.error(message || t('council.save.refused')); }} />}
+    <CouncilListContent source={{ councils: engine.councils, loading: engine.loading, error: engine.error, refresh: engine.refresh, createCouncil }} />
+  </>;
 }
 
 /** What this screen needs from a reader, named here so it does not depend on either one's internals. */

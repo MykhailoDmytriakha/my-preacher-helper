@@ -58,6 +58,43 @@ describe('EngineCouncilCreator', () => {
     );
   });
 
+  // The editor opens asynchronously. Submitting before it is ready is refused by the engine, so
+  // the council is never created — the failure this test exists to prevent.
+  it('waits for the editor before submitting', async () => {
+    const commit = jest.fn().mockResolvedValue(undefined);
+    jest.mocked(useDataDocument).mockReturnValue({ commit, loading: true, error: null } as unknown as ReturnType<typeof useDataDocument>);
+    const onCreated = jest.fn();
+    const { rerender } = render(<EngineCouncilCreator council={draft} onCreated={onCreated} onFailed={jest.fn()} />);
+    await waitFor(() => expect(commit).not.toHaveBeenCalled());
+
+    jest.mocked(useDataDocument).mockReturnValue({ commit, loading: false, error: null } as unknown as ReturnType<typeof useDataDocument>);
+    rerender(<EngineCouncilCreator council={draft} onCreated={onCreated} onFailed={jest.fn()} />);
+    await waitFor(() => expect(commit).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('council-1'));
+  });
+
+  // The document's state changes while the create is in flight. If that re-run cancels the
+  // report, the screen never learns the council exists: the form stays stuck and the button dies.
+  it('still reports the created council when the document state changes mid-flight', async () => {
+    let settle: (() => void) | undefined;
+    const commit = jest.fn().mockImplementation(() => new Promise<void>(resolve => { settle = () => resolve(); }));
+    jest.mocked(useDataDocument).mockReturnValue({ commit, loading: false, error: null } as unknown as ReturnType<typeof useDataDocument>);
+    const onCreated = jest.fn();
+    const { rerender } = render(<EngineCouncilCreator council={draft} onCreated={onCreated} onFailed={jest.fn()} />);
+    await waitFor(() => expect(commit).toHaveBeenCalledTimes(1));
+
+    // The engine reopens the document as the create lands, so readiness flips while the request
+    // is in the air. A cancellation tied to that re-run swallows the answer and the screen hangs.
+    jest.mocked(useDataDocument).mockReturnValue({ commit, loading: true, error: null } as unknown as ReturnType<typeof useDataDocument>);
+    rerender(<EngineCouncilCreator council={draft} onCreated={onCreated} onFailed={jest.fn()} />);
+    jest.mocked(useDataDocument).mockReturnValue({ commit, loading: false, error: null } as unknown as ReturnType<typeof useDataDocument>);
+    rerender(<EngineCouncilCreator council={draft} onCreated={onCreated} onFailed={jest.fn()} />);
+    settle!();
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith('council-1'));
+    expect(commit).toHaveBeenCalledTimes(1);
+  });
+
   it('renders nothing: it is a lifecycle, not a view', () => {
     mockDocument();
     const { container } = render(<EngineCouncilCreator council={draft} onCreated={jest.fn()} onFailed={jest.fn()} />);

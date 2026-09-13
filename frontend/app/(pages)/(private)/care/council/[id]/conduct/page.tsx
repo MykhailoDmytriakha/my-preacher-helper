@@ -9,7 +9,10 @@ import { toast } from 'sonner';
 import { CouncilOutcomePanel, useOutcomeLine } from '@/components/council/CouncilOutcomePanel';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
+import { isCollectionOnEngine } from '@/data-engine/react.client';
+import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import { useCouncil } from '@/hooks/useCouncils';
+import { COUNCILS_COLLECTION } from '@/services/councils.client';
 import {
   applyOutcome,
   councilProgress,
@@ -46,9 +49,35 @@ const buttonQuiet =
 export default function CouncilConductPage() {
   const { id } = useParams();
   const councilId = typeof id === 'string' ? id : '';
+  return isCollectionOnEngine(COUNCILS_COLLECTION)
+    ? <EngineCouncilConductPage councilId={councilId} />
+    : <LegacyCouncilConductPage councilId={councilId} />;
+}
+
+function LegacyCouncilConductPage({ councilId }: { councilId: string }) {
+  const { council, loading, updateCouncil } = useCouncil(councilId);
+  return <CouncilConductContent councilId={councilId} source={{ council, loading, updateCouncil }} />;
+}
+
+/** Conducting only ever edits this one council, so the document editor is the whole source. */
+function EngineCouncilConductPage({ councilId }: { councilId: string }) {
+  const document = useCouncilDataDocument(councilId);
+  return <CouncilConductContent councilId={councilId} source={{
+    council: document.council, loading: document.loading,
+    updateCouncil: (id: string, updater: (current: Council) => Council) => { void document.updateCouncil(id, updater); },
+  }} />;
+}
+
+interface CouncilConductSource {
+  council: Council | null | undefined;
+  loading: boolean;
+  updateCouncil: (id: string, updater: (current: Council) => Council) => void;
+}
+
+function CouncilConductContent({ councilId, source }: { councilId: string; source: CouncilConductSource }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const { council, loading, updateCouncil } = useCouncil(councilId);
+  const { council, loading, updateCouncil } = source;
 
   // `null` until the person moves: the first open section is where the meeting resumes.
   const [chosenIndex, setChosenIndex] = useState<number | null>(null);

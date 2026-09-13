@@ -354,3 +354,40 @@ passed / 6640, `tsc --noEmit` exit 0, `lint:full` exit 0.
 the public interface), the council and conduct screens, wiring
 `EngineCouncilCreator`, then switching councils on locally and clicking the whole
 cycle — create, type, carry, delete, offline, reload, two windows.
+
+### 2026-09-12 — Step 3b: councils wired end to end; create works, editing does not yet
+
+The whole domain is now wired behind the switch: `useCouncilDataDocument` (update,
+delete, carry through the public interface), the council screen and the conduct
+screen branch the way the sermon page does, and `EngineCouncilCreator` is wired into
+the list. With `councils` enabled on both sides, creating a council **works through
+the engine end to end** — verified live at localhost:3005 as the dev test user: two
+councils were created, each landed in the database carrying the protocol marker at
+revision 1, and the screen navigated to the new council's page. A legacy council
+without the marker sits beside them, which is the mixed state the migration expects.
+
+**Two defects of mine, both found in the browser with every test green.**
+
+- The creator submitted before the editor existed. `useDataDocument` opens
+  asynchronously; the mock in its test was always ready, so nothing was created and
+  nothing failed either. Fixed by waiting for readiness, with a test that was red.
+- Readiness flips while the create is in flight, so the effect re-ran and its cleanup
+  cancelled the report — the screen never learned the council existed, its form stayed
+  half-open and the button died. Fixed by tying the pending answer to the council id
+  and the component's life rather than to one run of the effect; the reproducing test
+  was red first.
+
+**What does not work yet, stated plainly.** Editing does not reach the database:
+neither renaming a council nor adding a section changes the stored document (revision
+stays 1). The screens call the adapter as fire-and-forget (`void document.update…`),
+so a refusal disappears silently — nobody, including me, sees why. The next step is to
+surface that failure first (show it through `DataSyncStatus` and a toast), then fix the
+cause it reveals. Carrying a section could not be exercised because it needs an edited
+source council.
+
+Gates: `test:fast` 6644 passed / 6649, `tsc --noEmit` exit 0, `lint:full` exit 0.
+
+**Left in the dev test account:** two councils carrying the engine marker, "ENGINE A
+istochnik" and "ENGINE B naznachenie". Their legacy write path is refused by the
+marker guard, so they should be removed through the engine once editing works, or
+deleted directly in the database.

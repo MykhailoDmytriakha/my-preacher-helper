@@ -40,7 +40,11 @@ import { Chip } from '@/components/ui/Chip';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import { LiveTextArea, LiveTextInput } from '@/components/ui/LiveTextInput';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
+import { isCollectionOnEngine } from '@/data-engine/react.client';
+import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import { useCouncil } from '@/hooks/useCouncils';
+import { useCouncilsDataCollection } from '@/hooks/useCouncilsDataCollection';
+import { COUNCILS_COLLECTION } from '@/services/councils.client';
 import { applyOutcome, hasProgress, holdCouncil, isInfoTopic, newOption, newQuestion, newTopic, outcomeText, preparingCouncils, removeTopicOption, reopenCouncil, reorderTopics, setTopicKind, topicState } from '@/utils/council';
 import { formatDate, formatDateOnly } from '@/utils/dateFormatter';
 import { CARE_CARD_TONES } from '@/utils/themeColors';
@@ -78,9 +82,63 @@ type TopicUpdater = (topic: CouncilTopic) => CouncilTopic;
 export default function CouncilDetailPage() {
   const { id } = useParams();
   const councilId = typeof id === 'string' ? id : '';
+  return isCollectionOnEngine(COUNCILS_COLLECTION)
+    ? <EngineCouncilDetailPage councilId={councilId} />
+    : <LegacyCouncilDetailPage councilId={councilId} />;
+}
+
+function LegacyCouncilDetailPage({ councilId }: { councilId: string }) {
+  return <CouncilDetailContent source={useCouncil(councilId)} />;
+}
+
+/**
+ * THE COUNCIL THROUGH THE ENGINE. The document is the editor's; the list beside it only names
+ * where a section may be carried. Carrying is one mark — the destination copy is the engine's
+ * business — so the screen keeps its own contract and loses its second write.
+ */
+function EngineCouncilDetailPage({ councilId }: { councilId: string }) {
+  const { t } = useTranslation();
+  const document = useCouncilDataDocument(councilId);
+  const list = useCouncilsDataCollection();
+  const carryTopicToNext = (_id: string, topic: CouncilTopic, _fallbackTitle: string, targetId?: string | 'new'): Council | undefined => {
+    const targets = preparingCouncils(list.councils).filter(item => item.id !== councilId);
+    const target = targetId && targetId !== 'new' ? targets.find(item => item.id === targetId) : targets[0];
+    if (!target) {
+      // Creating the next council from here needs a create outside a render; until the engine
+      // exposes one, the person is told what to do rather than left with a silent button.
+      toast.error(t('council.topic.carryNeedsTarget'));
+      return undefined;
+    }
+    void document.carryTopicToNext(councilId, topic, target.id).catch((error: unknown) => {
+      toast.error(error instanceof Error ? error.message : t('council.topic.carryFailed'));
+    });
+    return target;
+  };
+  const source = {
+    council: document.council, councils: list.councils, loading: document.loading || list.loading,
+    error: document.error ?? list.error, refresh: document.refresh,
+    updateCouncil: (id: string, updater: (current: Council) => Council) => { void document.updateCouncil(id, updater); },
+    deleteCouncil: (id: string) => { void document.deleteCouncil(id); },
+    carryTopicToNext,
+  };
+  return <CouncilDetailContent source={source} />;
+}
+
+interface CouncilDetailSource {
+  council: Council | null | undefined;
+  councils: Council[];
+  loading: boolean;
+  error: unknown;
+  refresh: () => unknown;
+  updateCouncil: (id: string, updater: (current: Council) => Council) => void;
+  deleteCouncil: (id: string) => void;
+  carryTopicToNext: (id: string, topic: CouncilTopic, fallbackTitle: string, targetId?: string | 'new') => Council | undefined;
+}
+
+function CouncilDetailContent({ source }: { source: CouncilDetailSource }) {
   const { t } = useTranslation();
   const router = useRouter();
-  const { council, councils, loading, error, refresh, updateCouncil, deleteCouncil, carryTopicToNext } = useCouncil(councilId);
+  const { council, councils, loading, error, refresh, updateCouncil, deleteCouncil, carryTopicToNext } = source;
 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingTopicId, setEditingTopicId] = useState<string | null>(null);

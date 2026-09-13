@@ -3295,6 +3295,7 @@
       "notTold": "not said yet",
       "tell": "Said",
       "carryFailed": "The section could not be carried over: the council was not saved. Try again.",
+      "carryNeedsTarget": "Create the next council first, then carry the section into it.",
       "toNextCouncil": "To the next council",
       "carryWhere": "Carry to which council?",
       "carryNew": "To a new council",

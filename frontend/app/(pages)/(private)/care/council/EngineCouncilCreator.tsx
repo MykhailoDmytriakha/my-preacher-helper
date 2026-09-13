@@ -33,21 +33,32 @@ export function EngineCouncilCreator({ council, onCreated, onFailed }: EngineCou
   const report = useRef({ onCreated, onFailed });
   report.current = { onCreated, onFailed };
 
+  /**
+   * WHOSE ANSWER STILL MATTERS: this council, in a mounted component. Readiness flips as the
+   * create lands, so the effect re-runs while the request is in the air — and a cancellation tied
+   * to that re-run swallows the answer. The screen then never learns the council exists: its form
+   * stays half-open and the button dies. Found in a browser, with every test green.
+   */
+  const awaiting = useRef<string | null>(null);
+  useEffect(() => () => { awaiting.current = null; }, []);
+
   useEffect(() => {
-    if (submitted.current === council.id) return;
+    // The editor opens asynchronously. Submitting before it exists is refused, and the council is
+    // simply never created — the other half of the same lesson.
+    if (document.loading || submitted.current === council.id) return;
     submitted.current = council.id;
+    awaiting.current = council.id;
     const { id, ...fields } = council;
-    let active = true;
     void commit(() => fields as unknown as DocumentData)
-      .then(() => { if (active) report.current.onCreated(id); })
+      .then(() => { if (awaiting.current === id) { awaiting.current = null; report.current.onCreated(id); } })
       .catch((error: unknown) => {
-        if (!active) return;
+        if (awaiting.current !== id) return;
         // The council does not exist, so the id is free again: the person may press once more.
+        awaiting.current = null;
         submitted.current = null;
         report.current.onFailed(error instanceof Error ? error.message : 'council-create-failed');
       });
-    return () => { active = false; };
-  }, [council, commit]);
+  }, [council, commit, document.loading]);
 
   return null;
 }
