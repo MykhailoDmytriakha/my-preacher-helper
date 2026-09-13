@@ -452,3 +452,33 @@ work is findable only by pressing the button blind
 (`BUG-20260913-engine-idle-banner-hides-unfinished-work`, P2).
 
 Gates: `test:fast` 6645 passed / 6650, `tsc --noEmit` exit 0, `lint:full` exit 0.
+
+### 2026-09-13 — Carrying and deleting proven against the live server
+
+Conducting a council runs through the engine: the council moved to `held` with its
+time recorded, revision 4 to 5.
+
+**Carrying a section changes two documents in one operation.** Sent against the
+running server: the source's section gained its "carried to" mark (revision 5 to 6)
+and the destination gained the copy (revision 1 to 2). There is no in-between state
+where the section sits in both councils or in neither.
+
+**A replay is harmless.** The identical command was sent twice; both answers were
+acknowledgements, and the destination ended with two sections rather than three. The
+copy's identifiers come from the operation id, so a lost answer costs nothing — which
+is the property the random identifiers of `copyTopicForNext` could not give.
+
+**Deleting leaves a tombstone.** Both test councils were deleted through the engine:
+the stored value is gone but the record remains marked deleted, so a late write from
+another device cannot resurrect them.
+
+**Not proven: the carry button itself.** The command was sent directly rather than
+through the screen, because the dev-server Fast Refresh did not pick up an added probe
+and this tab's console returned nothing, so the wrapper could not be observed. The
+button's own path — which council the screen picks when several are being prepared,
+and what it shows afterwards — still needs a browser pass.
+
+Cleanup: both engine-marked test councils were removed; the account's own
+"QA совет с секциями" was left untouched.
+
+Gates: `test:fast` 6645 passed / 6650, `tsc --noEmit` exit 0, `lint:full` exit 0.
