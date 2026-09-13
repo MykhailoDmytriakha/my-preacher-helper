@@ -231,17 +231,11 @@ export default function OptionMenu({
 
   const openPreachDetailsModal = (preachDate: PreachDate | null) => {
     setPreachDateToMark(preachDate);
+    // The stand-in is NOT blanked here any more: the form itself decides what "not stated"
+    // looks like and what to offer instead (the sermon's own congregation), so that rule
+    // lives in one place rather than in every door that opens the form.
     setPreachModalInitialData(
-      preachDate
-        ? {
-            ...preachDate,
-            status: 'preached',
-            church:
-              preachDate.church?.id === UNSPECIFIED_CHURCH_ID
-                ? { id: '', name: '', city: '' }
-                : preachDate.church
-          }
-        : undefined
+      preachDate ? { ...preachDate, status: 'preached' } : undefined
     );
     setShowPreachModal(true);
     closeMenu();
@@ -538,6 +532,7 @@ export default function OptionMenu({
         onSave={handleSavePreachDate}
         syncState={syncState}
         initialData={preachModalInitialData}
+        defaultChurch={sermon.church}
         defaultStatus="preached"
       />
 

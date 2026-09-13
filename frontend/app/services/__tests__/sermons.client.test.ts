@@ -485,6 +485,35 @@ describe('field patches keep untouched fields out of the write', () => {
     expect(written.preparation).toBeUndefined();
   });
 
+  it('writes the congregation the sermon is prepared for', async () => {
+    // The whitelist decides which keys reach the document. `church` was added to the
+    // model and to both edit forms but not here, so every save dropped it silently and
+    // the person's congregation came back empty after a reload.
+    await updateSermonViaClient(fullSermon as never, {
+      title: fullSermon.title,
+      verse: fullSermon.verse,
+      church: { id: 'c1', name: 'Grace Chapel', city: 'Fresno' },
+    } as never);
+
+    const written = store[SERMON_ID] as unknown as Record<string, unknown>;
+    expect(written.church).toEqual({ id: 'c1', name: 'Grace Chapel', city: 'Fresno' });
+  });
+
+  it('clears the congregation when the person emptied the field', async () => {
+    // A cleared church travels as a NAMELESS church, never as `undefined`: the write path
+    // strips undefined keys, so an undefined would leave the old congregation in place.
+    store[SERMON_ID] = { userId: 'u1', thoughts: [], church: { id: 'c1', name: 'Grace Chapel', city: '' } } as never;
+
+    await updateSermonViaClient(fullSermon as never, {
+      title: fullSermon.title,
+      verse: fullSermon.verse,
+      church: { id: '', name: '', city: '' },
+    } as never);
+
+    const written = store[SERMON_ID] as unknown as Record<string, unknown>;
+    expect(written.church).toEqual({ id: '', name: '', city: '' });
+  });
+
   it('still writes the whole whitelist when no patch is given (legacy callers)', async () => {
     await updateSermonViaClient(fullSermon as never);
 

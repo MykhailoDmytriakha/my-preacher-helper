@@ -37,7 +37,7 @@ import {
 import { getNextPlannedDate, getPreachDatesByStatus } from '@/utils/preachDateStatus';
 import { sermonDetailKey } from '@/utils/queryKeys';
 
-import { buildUnspecifiedChurch } from './church';
+import { churchForNewPreachDate, churchToFillOnPreachDate } from './church';
 
 import type {
   DashboardCreateSermonInput,
@@ -239,20 +239,32 @@ const buildOptimisticEditedSermon = (vars: DashboardSermonUpdateVars): Sermon =>
   if (plannedDate !== initialPlannedDate) {
     if (plannedDate) {
       if (existingPlannedDate) {
+        const filledChurch = churchToFillOnPreachDate(church, existingPlannedDate.church);
         preachDates = preachDates.map((pd) =>
-          pd.id === existingPlannedDate.id ? { ...pd, date: plannedDate, status: 'planned' as const } : pd
+          pd.id === existingPlannedDate.id
+            ? { ...pd, date: plannedDate, status: 'planned' as const, ...(filledChurch ? { church: filledChurch } : {}) }
+            : pd
         );
       } else {
         preachDates.push({
           id: vars.newPlannedDateId,
           date: plannedDate,
           status: 'planned',
-          church: buildUnspecifiedChurch(unspecifiedChurchName),
+          church: churchForNewPreachDate(church, unspecifiedChurchName),
           createdAt: new Date().toISOString(),
         });
       }
     } else if (existingPlannedDate) {
       preachDates = preachDates.filter((pd) => pd.id !== existingPlannedDate.id);
+    }
+  } else if (existingPlannedDate) {
+    // The date stayed put, but the congregation may have been named just now — and a date
+    // still holding the stand-in is exactly what makes Calendar say "church not specified".
+    const filledChurch = churchToFillOnPreachDate(church, existingPlannedDate.church);
+    if (filledChurch) {
+      preachDates = preachDates.map((pd) =>
+        pd.id === existingPlannedDate.id ? { ...pd, church: filledChurch } : pd
+      );
     }
   }
 
@@ -555,7 +567,7 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
         id: plannedDateId,
         date: input.plannedDate,
         status: 'planned',
-        church: input.church ?? buildUnspecifiedChurch(input.unspecifiedChurchName),
+        church: churchForNewPreachDate(input.church, input.unspecifiedChurchName),
       });
       return mergePreachDate(created, createdPlannedDate);
     },
@@ -575,7 +587,7 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
                 id: plannedDateId,
                 date: input.plannedDate,
                 status: 'planned',
-                church: input.church ?? buildUnspecifiedChurch(input.unspecifiedChurchName),
+                church: churchForNewPreachDate(input.church, input.unspecifiedChurchName),
                 createdAt: now,
               },
             ]
@@ -618,12 +630,19 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
       }
 
       let persisted = updatedBase;
+      // A date still holding the stand-in takes the congregation this form just named;
+      // one that already names its own is never touched (see churchToFillOnPreachDate).
+      const churchForExistingDate = existingPlannedDate
+        ? churchToFillOnPreachDate(church, existingPlannedDate.church)
+        : undefined;
+
       if (plannedDate !== initialPlannedDate) {
         if (plannedDate) {
           if (existingPlannedDate) {
             const updatedPlannedDate = await updatePreachDate(sermon.id, existingPlannedDate.id, {
               date: plannedDate,
               status: 'planned',
+              ...(churchForExistingDate ? { church: churchForExistingDate } : {}),
             });
             persisted = mergePreachDate(persisted, updatedPlannedDate);
           } else {
@@ -631,7 +650,7 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
               id: newPlannedDateId,
               date: plannedDate,
               status: 'planned',
-              church: buildUnspecifiedChurch(unspecifiedChurchName),
+              church: churchForNewPreachDate(church, unspecifiedChurchName),
             });
             persisted = mergePreachDate(persisted, createdPlannedDate);
           }
@@ -642,6 +661,15 @@ export function registerOfflineMutationDefaults(queryClient: QueryClient) {
             preachDates: (persisted.preachDates || []).filter((pd) => pd.id !== existingPlannedDate.id),
           };
         }
+      } else if (existingPlannedDate && churchForExistingDate) {
+        // THE COMMON CASE, and the one the old code could not reach: the sermon already
+        // had its planned date, and this edit only named the congregation. Without this
+        // the sermon carried the church while its own date in Calendar still said
+        // "church not specified".
+        const updatedPlannedDate = await updatePreachDate(sermon.id, existingPlannedDate.id, {
+          church: churchForExistingDate,
+        });
+        persisted = mergePreachDate(persisted, updatedPlannedDate);
       }
       return persisted;
     },

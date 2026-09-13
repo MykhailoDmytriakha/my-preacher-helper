@@ -409,11 +409,8 @@
   },
   "editSermon": {
     "editSermon": "Edit Sermon",
-    "titleLabel": "Title",
-    "titlePlaceholder": "Enter sermon title",
     "verseLabel": "Scripture Verse",
     "versePlaceholder": "Enter scripture verse",
-    "plannedDateLabel": "Planned preaching date (optional)",
     "clearPlannedDate": "Clear",
     "plannedDateHint": "Leave empty if you do not want a planned date",
     "updateError": "Error updating sermon"

@@ -1,21 +1,17 @@
 "use client";
 
-import { ChevronDown } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import TextareaAutosize from 'react-textarea-autosize';
 
-import ChurchField from '@/components/church/ChurchField';
+import SermonFormDialog from '@/components/sermon/SermonFormDialog';
 import { useSeries } from '@/hooks/useSeries';
 import { DashboardCreateSermonInput } from '@/models/dashboardOptimistic';
 import { Sermon, Church } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
-import { buildUnspecifiedChurch } from '@/utils/church';
+import { buildUnspecifiedChurch, churchForNewPreachDate } from '@/utils/church';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { PlusIcon } from "@components/Icons";
-import DatePickerField from '@components/ui/DatePickerField';
 import { auth } from '@services/firebaseAuth.service';
 import { addPreachDate } from '@services/preachDates.service';
 import { createSermon } from '@services/sermon.service';
@@ -40,16 +36,6 @@ interface AddSermonModalProps {
 }
 
 const NEW_SERMON_KEY = 'addSermon.newSermon';
-
-/** One rounded card per group, hairline dividers between its rows. */
-const GROUP_CARD =
-  'rounded-2xl border border-gray-200 bg-white divide-y divide-gray-200 dark:border-gray-700 dark:bg-gray-800/60 dark:divide-gray-700';
-const GROUP_TITLE =
-  'px-1 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400';
-const FIELD_ROW = 'p-4';
-const FIELD_LABEL = 'block text-sm font-medium text-gray-700 dark:text-gray-200';
-const FIELD_INPUT =
-  'mt-1 block w-full rounded-xl border border-gray-300 bg-white p-3 text-gray-900 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-700 dark:text-white';
 
 export default function AddSermonModal({
   onNewSermonCreated,
@@ -169,7 +155,7 @@ export default function AddSermonModal({
           const createdPlannedDate = await addPreachDate(createdSermon.id, {
             date: plannedDate,
             status: 'planned',
-            church: church ?? getUnspecifiedChurch()
+            church: churchForNewPreachDate(church, getUnspecifiedChurch().name)
           });
 
           sermonForCallback = {
@@ -203,177 +189,34 @@ export default function AddSermonModal({
   };
 
   const modalContent = (
-    <div
-      className="fixed inset-0 z-[110] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
-      onClick={() => {
-        if (!isSubmitting) {
-          handleClose();
+    <SermonFormDialog
+      heading={t(NEW_SERMON_KEY)}
+      values={{ title, verse, church, plannedDate, seriesId: selectedSeriesId }}
+      onChange={(patch) => {
+        if ('title' in patch) setTitle(patch.title ?? '');
+        if ('verse' in patch) setVerse(patch.verse ?? '');
+        if ('church' in patch) setChurch(patch.church);
+        if ('plannedDate' in patch) setPlannedDate(patch.plannedDate ?? '');
+        if ('seriesId' in patch) setSelectedSeriesId(patch.seriesId ?? '');
+      }}
+      onSubmit={handleSubmit}
+      onCancel={() => {
+        if (isSubmitting) {
+          return;
+        }
+        if (onCancel) {
+          onCancel(); // Signal cancellation to parent
+        } else {
+          handleClose(); // Default close behavior
         }
       }}
-    >
-      {/*
-        THREE BANDS, AND ONLY THE MIDDLE ONE SCROLLS. The title and the buttons used to
-        scroll away with the fields, so on a phone the person filling the last field
-        could not see Save at all. Now the form is a column: sticky head, scrolling
-        body, sticky foot.
-      */}
-      <div
-        className="flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-gray-50 shadow-xl dark:bg-gray-900 sm:max-h-[85vh] sm:w-[560px] sm:rounded-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
-          <div className="shrink-0 border-b border-gray-200 px-5 py-4 dark:border-gray-800">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-50">{t(NEW_SERMON_KEY)}</h2>
-          </div>
-
-          <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5">
-            {submitError && (
-              <div
-                role="alert"
-                className="rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200"
-              >
-                {submitError}
-              </div>
-            )}
-
-            <section>
-              <h3 className={GROUP_TITLE}>{t('addSermon.groupSermon')}</h3>
-              <div className={GROUP_CARD}>
-                <div className={FIELD_ROW}>
-                  <label htmlFor="title" className={FIELD_LABEL}>
-                    {t('addSermon.titleLabel')}
-                  </label>
-                  <TextareaAutosize
-                    id="title"
-                    value={title}
-                    onChange={e => setTitle(e.target.value)}
-                    placeholder={t('addSermon.titlePlaceholder')}
-                    className={`${FIELD_INPUT} resize-none`}
-                    minRows={1}
-                    maxRows={4}
-                    disabled={isSubmitting}
-                    required
-                  />
-                </div>
-                <div className={FIELD_ROW}>
-                  <label htmlFor="verse" className={FIELD_LABEL}>
-                    {t('addSermon.verseLabel')}
-                  </label>
-                  <TextareaAutosize
-                    id="verse"
-                    value={verse}
-                    onChange={e => setVerse(e.target.value)}
-                    placeholder={t('addSermon.versePlaceholder')}
-                    className={`${FIELD_INPUT} resize-none`}
-                    minRows={3}
-                    maxRows={10}
-                    disabled={isSubmitting}
-                    required
-                  />
-                </div>
-              </div>
-            </section>
-
-            <section>
-              <h3 className={GROUP_TITLE}>{t('addSermon.groupLater')}</h3>
-              <div className={GROUP_CARD}>
-                <div className={FIELD_ROW}>
-                  <label htmlFor="church" className={FIELD_LABEL}>
-                    {t('calendar.church')}
-                  </label>
-                  <ChurchField
-                    id="church"
-                    value={church}
-                    onChange={setChurch}
-                    hideLabel
-                    disabled={isSubmitting}
-                    inputClassName={`${FIELD_INPUT} pr-12`}
-                  />
-                </div>
-                {allowPlannedDate && (
-                  <div className={FIELD_ROW}>
-                    <label htmlFor="plannedDate" className={FIELD_LABEL}>
-                      {t('addSermon.plannedDateLabel', { defaultValue: 'Planned preaching date' })}
-                    </label>
-                    <DatePickerField
-                      id="plannedDate"
-                      value={plannedDate}
-                      onChange={setPlannedDate}
-                      wrapperClassName=""
-                      inputClassName={`${FIELD_INPUT} pr-12`}
-                      disabled={isSubmitting}
-                    />
-                  </div>
-                )}
-                <div className={FIELD_ROW}>
-                  <label htmlFor="series" className={FIELD_LABEL}>
-                    {t('addSermon.seriesLabel')}
-                  </label>
-                  <div className="relative">
-                    <select
-                      id="series"
-                      value={selectedSeriesId}
-                      onChange={(e) => setSelectedSeriesId(e.target.value)}
-                      className={`${FIELD_INPUT} appearance-none pr-12`}
-                      disabled={isSubmitting}
-                    >
-                      <option value="">{t('addSermon.noSeriesOption')}</option>
-                      {series.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.title || s.theme}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown
-                      aria-hidden="true"
-                      className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-500 dark:text-gray-300"
-                    />
-                  </div>
-                </div>
-              </div>
-              <p className="px-1 pt-2 text-xs text-gray-500 dark:text-gray-400">
-                {t('addSermon.groupLaterHint')}
-              </p>
-            </section>
-          </div>
-
-          <div className="shrink-0 border-t border-gray-200 px-5 py-4 dark:border-gray-800">
-            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  if (isSubmitting) {
-                    return;
-                  }
-                  if (onCancel) {
-                    onCancel(); // Signal cancellation to parent
-                  } else {
-                    handleClose(); // Default close behavior
-                  }
-                }}
-                disabled={isSubmitting}
-                className="rounded-xl px-4 py-2.5 font-medium text-gray-600 transition hover:bg-gray-200/70 disabled:cursor-not-allowed disabled:opacity-60 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                {t('addSermon.cancel')}
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isSubmitting && (
-                  <span
-                    className="h-4 w-4 animate-spin rounded-full border-2 border-white/80 border-b-transparent"
-                    aria-hidden="true"
-                  />
-                )}
-                <span>{isSubmitting ? t('common.saving', { defaultValue: 'Saving...' }) : t('addSermon.save')}</span>
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
-    </div>
+      submitLabel={t('addSermon.save')}
+      saving={isSubmitting}
+      error={submitError}
+      seriesOptions={series.map((s) => ({ id: s.id, label: s.title || s.theme }))}
+      showPlannedDate={allowPlannedDate}
+      detailsHint={t('addSermon.groupLaterHint')}
+    />
   );
 
   return (
@@ -389,7 +232,7 @@ export default function AddSermonModal({
         </button>
       )}
 
-      {open && createPortal(modalContent, document.body)}
+      {open && modalContent}
     </>
   );
 }

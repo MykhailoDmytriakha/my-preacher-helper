@@ -127,11 +127,13 @@ jest.mock('@components/calendar/PreachDateModal', () => {
     onClose,
     onSave,
     initialData,
+    defaultChurch,
   }: {
     isOpen: boolean;
     onClose: () => void;
     onSave: (data: any) => Promise<void>;
     initialData?: any;
+    defaultChurch?: any;
   }) {
     if (!isOpen) return null;
     return (
@@ -139,6 +141,7 @@ jest.mock('@components/calendar/PreachDateModal', () => {
         data-testid="preach-date-modal"
         data-initial-church-id={initialData?.church?.id || ''}
         data-initial-church-name={initialData?.church?.name || ''}
+        data-default-church-name={defaultChurch?.name || ''}
       >
         <button
           onClick={() =>
@@ -609,6 +612,7 @@ describe('OptionMenu Component', () => {
     const plannedSermon: Sermon = {
       ...mockSermon,
       isPreached: false,
+      church: { id: 'c-grace', name: 'Grace Chapel', city: 'Fresno' },
       preachDates: [
         {
           id: 'pd-plan-unspecified',
@@ -631,9 +635,13 @@ describe('OptionMenu Component', () => {
     fireEvent.click(screen.getByRole('button'));
     fireEvent.click(screen.getByText('optionMenu.markAsPreached'));
 
+    // This door hands over BOTH facts — the dated event as it stands, and the congregation
+    // the sermon is prepared for — and lets the form decide which to show. What the form
+    // then does with a stand-in is proven in its own suite (PreachDateModal.test.tsx),
+    // so the rule is asserted once, where it lives.
     expect(screen.getByTestId('preach-date-modal')).toBeInTheDocument();
-    expect(screen.getByTestId('preach-date-modal')).toHaveAttribute('data-initial-church-id', '');
-    expect(screen.getByTestId('preach-date-modal')).toHaveAttribute('data-initial-church-name', '');
+    expect(screen.getByTestId('preach-date-modal')).toHaveAttribute('data-initial-church-id', 'church-unspecified');
+    expect(screen.getByTestId('preach-date-modal')).toHaveAttribute('data-default-church-name', 'Grace Chapel');
 
     fireEvent.click(screen.getByText('Save Date'));
 

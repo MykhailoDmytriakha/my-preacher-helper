@@ -66,6 +66,57 @@ describe('PreachDateModal', () => {
         jest.clearAllMocks();
     });
 
+    describe('the congregation the sermon is already prepared for', () => {
+        const SERMON_CHURCH = { id: 'c-grace', name: 'Grace Chapel', city: 'Fresno' };
+        const STAND_IN = { id: 'church-unspecified', name: 'Church not specified', city: '' };
+
+        it('offers it when the sermon has no date yet, instead of asking for it again', () => {
+            // Marking a sermon preached opens this form with no date to read from, so the
+            // church field started empty even though the sermon itself names one — the
+            // person had to type a congregation the app already knew.
+            render(
+                <PreachDateModal
+                    isOpen
+                    onClose={mockOnClose}
+                    onSave={mockOnSave}
+                    defaultChurch={SERMON_CHURCH}
+                    defaultStatus="preached"
+                />
+            );
+
+            expect(screen.getByTestId('church-input')).toHaveValue('Grace Chapel');
+            expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
+        });
+
+        it('offers it when the existing date still holds the stand-in', () => {
+            render(
+                <PreachDateModal
+                    isOpen
+                    onClose={mockOnClose}
+                    onSave={mockOnSave}
+                    defaultChurch={SERMON_CHURCH}
+                    initialData={{ id: 'pd1', date: '2026-09-20', status: 'planned', church: STAND_IN, createdAt: '' } as never}
+                />
+            );
+
+            expect(screen.getByTestId('church-input')).toHaveValue('Grace Chapel');
+        });
+
+        it('NEVER overrides a congregation the date itself names', () => {
+            render(
+                <PreachDateModal
+                    isOpen
+                    onClose={mockOnClose}
+                    onSave={mockOnSave}
+                    defaultChurch={SERMON_CHURCH}
+                    initialData={{ id: 'pd1', date: '2026-09-20', status: 'planned', church: { id: 'c-hope', name: 'Hope Church', city: '' }, createdAt: '' } as never}
+                />
+            );
+
+            expect(screen.getByTestId('church-input')).toHaveValue('Hope Church');
+        });
+    });
+
     it('renders with "Add" title when no initialData is provided', () => {
         render(
             <PreachDateModal
@@ -122,7 +173,7 @@ describe('PreachDateModal', () => {
         const audienceInput = screen.getByPlaceholderText(/e.g. Youth/i);
         fireEvent.change(audienceInput, { target: { value: 'Adults' } });
 
-        const saveButton = screen.getByText('Save');
+        const saveButton = screen.getByRole('button', { name: 'Save' });
         await act(async () => {
             fireEvent.click(saveButton);
         });
@@ -143,7 +194,7 @@ describe('PreachDateModal', () => {
             />
         );
 
-        fireEvent.click(screen.getByText('Cancel'));
+        fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
         expect(mockOnClose).toHaveBeenCalled();
     });
 
@@ -156,7 +207,7 @@ describe('PreachDateModal', () => {
             />
         );
 
-        const saveButton = screen.getByText('Save');
+        const saveButton = screen.getByRole('button', { name: 'Save' });
         expect(saveButton).toBeDisabled();
     });
 
@@ -179,7 +230,7 @@ describe('PreachDateModal', () => {
         fireEvent.change(church, { target: { value: 'Refused Church' } });
         fireEvent.change(audience, { target: { value: 'Exact refused audience' } });
         fireEvent.change(notes, { target: { value: 'Exact refused preaching notes' } });
-        fireEvent.click(screen.getByText('Save'));
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         // The message belongs to the entity's recovery descriptor — one refusal, one
         // reporter. The form's duty is what follows: stay open, keep every field.
         expect(date).toHaveValue('2026-11-19');
@@ -231,7 +282,7 @@ describe('PreachDateModal', () => {
         fireEvent.change(screen.getByTestId('church-input'), {
             target: { value: 'Detached Refusal Church' },
         });
-        fireEvent.click(screen.getByText('Save'));
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         // The message belongs to the entity's recovery descriptor — one refusal, one
         // reporter. The form's duty is what follows: keep every field it was given.
         expect(screen.getByTestId('church-input')).toHaveValue('Detached Refusal Church');
@@ -254,7 +305,7 @@ describe('PreachDateModal', () => {
         fireEvent.change(screen.getByTestId('church-input'), {
             target: { value: 'Offline Church' },
         });
-        fireEvent.click(screen.getByText('Save'));
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
         // Acceptance yields one macrotask so an already-refused write can reject first;
         // waiting for that tick is what a real editor does before closing.

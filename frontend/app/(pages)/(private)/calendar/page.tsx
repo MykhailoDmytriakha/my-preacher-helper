@@ -331,6 +331,7 @@ export default function CalendarPage() {
                     church: { id: '', name: '', city: '' },
                     createdAt: new Date().toISOString()
                 } : undefined)}
+                defaultChurch={selectedSermon?.church}
                 defaultStatus={selectedSermon && getEffectiveIsPreached(selectedSermon) ? 'preached' : 'planned'}
             />
         </div>

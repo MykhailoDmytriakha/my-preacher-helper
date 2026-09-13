@@ -409,11 +409,8 @@
   },
   "editSermon": {
     "editSermon": "Редактировать проповедь",
-    "titleLabel": "Тема",
-    "titlePlaceholder": "Введите тему проповеди",
     "verseLabel": "Стих из Писания",
     "versePlaceholder": "Введите стих из Писания",
-    "plannedDateLabel": "Планируемая дата проповеди (необязательно)",
     "clearPlannedDate": "Очистить",
     "plannedDateHint": "Оставьте пустым, если планируемая дата не нужна",
     "updateError": "Ошибка обновления проповеди"

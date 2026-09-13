@@ -409,11 +409,8 @@
   },
   "editSermon": {
     "editSermon": "Редагувати проповідь",
-    "titleLabel": "Тема",
-    "titlePlaceholder": "Введіть тему проповіді",
     "verseLabel": "Вірш з Писання",
     "versePlaceholder": "Введіть вірш з Писання",
-    "plannedDateLabel": "Запланована дата проповіді (необов'язково)",
     "clearPlannedDate": "Очистити",
     "plannedDateHint": "Залиште порожнім, якщо запланована дата не потрібна",
     "updateError": "Помилка оновлення проповіді"
