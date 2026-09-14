@@ -23,6 +23,7 @@ import { emitStructuredTelemetryEvent, openStructuredTelemetryEvent, TokenUsage 
 import { logger, formatDuration } from "./openAIHelpers";
 import { buildSimplePromptBlueprint, PromptBlueprint } from "./promptBuilder";
 
+import type { ErrorDisposition } from "./ai/providerAdapters";
 import type { UsageAdmission } from '@/services/usageLimits.server';
 import type OpenAI from "openai";
 
@@ -112,6 +113,17 @@ async function runWithFallback<TResult>(
   targets: readonly [ModelTarget, ...ModelTarget[]],
   execute: (target: ModelTarget) => Promise<TResult>,
   onAttempt: (target: ModelTarget) => void,
+  // Only the LAST target's error survives the chain, so without this every earlier
+  // failure vanished: a run that reported `401` from the last fallback said nothing
+  // about why the PRIMARY model — the one actually chosen for the job — refused. The
+  // reported error is the tail of the chain, never its cause.
+  onFailure: (report: {
+    target: ModelTarget;
+    error: unknown;
+    disposition: ErrorDisposition;
+    attempt: number;
+    willTryNext: boolean;
+  }) => void,
   index = 0
 ): Promise<TResult> {
   const target = targets[index] as ModelTarget;
@@ -122,8 +134,9 @@ async function runWithFallback<TResult>(
   } catch (error) {
     const disposition = providerAdapters[target.providerId].classifyError(error);
     const canTryNext = disposition !== 'terminal' && index < targets.length - 1;
+    onFailure({ target, error, disposition, attempt: index + 1, willTryNext: canTryNext });
     if (!canTryNext) throw error;
-    return runWithFallback(targets, execute, onAttempt, index + 1);
+    return runWithFallback(targets, execute, onAttempt, onFailure, index + 1);
   }
 }
 
@@ -239,6 +252,20 @@ export async function callWithStructuredOutput<T extends z.ZodType>(
       (target) => {
         executionState.target = target;
         logger.info(operationName, `Starting structured output call using model: ${target.modelId}`);
+      },
+      ({ target, error, disposition, attempt, willTryNext }) => {
+        const status = (error as { status?: unknown })?.status;
+        const reason = error instanceof Error ? error.message : String(error);
+        logger.warn(
+          operationName,
+          `Attempt ${attempt}/${targets.length} failed on ${target.providerId}:${target.modelId}`,
+          {
+            status: status ?? null,
+            disposition,
+            willTryNext,
+            reason: reason.slice(0, 300),
+          }
+        );
       }
     );
     const target = executionState.target;
