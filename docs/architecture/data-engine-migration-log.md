@@ -4,6 +4,85 @@ Started 2026-09-12 on branch `data-engine`, worktree `2767/my-preacher-helper`,
 baseline commit `35abc917`. This file is the hand-off record: what is being
 migrated, in which order, what is already closed and with which evidence.
 
+## Read this first — where the work stands on 2026-09-13
+
+**Nothing is live.** Both switches default to off, the marker rules are prepared but
+not deployed, and no production data has gone through the engine.
+
+**Councils is the first domain and is functionally complete**, verified in a browser
+against the dev test account with the collection enabled on both sides: creating a
+council and landing on its page, renaming it, adding and naming a section, conducting
+it, deleting it (which leaves a tombstone), recovering unfinished work left by an
+earlier page load, and the hub count, calendar entry and breadcrumb title all reading
+through one shared reader. Carrying a section between two councils is proven at the
+protocol level — one transaction touches both documents, and an identical replay adds
+nothing — but **the button that should trigger it does not work**
+(`BUG-20260913-engine-carry-button-sees-no-targets`).
+
+**Defects filed by this migration** — all in `BUGS.md` at the repository root:
+
+- `BUG-20260913-engine-carry-button-sees-no-targets` (P1) — the screen sees no
+  destinations, so the carry button does nothing.
+- `BUG-20260913-engine-idle-banner-hides-unfinished-work` (P2) — the banner reads
+  "Saved" while unfinished drafts sit beside it, findable only by pressing a button
+  blind.
+- `BUG-20260912-engine-collection-shows-deleted-legacy` (P1) — a collection read by
+  the engine while a legacy writer still owns it keeps showing deleted rows. This is
+  why reading and writing must be switched on together, per domain.
+
+Seven further core defects were filed by the engine's author and are untouched; the
+receipt amplification among them blocks any deployment.
+
+**The eleven other domains have not been started.** See "Whole-app remainder" below.
+
+## How to run and check this locally
+
+The dev server needs the collection named on both sides; the client variable is
+compiled into the build, so it has to be present when the server starts:
+
+```sh
+cd frontend
+NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS=councils DATA_ENGINE_COLLECTIONS=councils npx next dev -p 3005
+```
+
+Port 3005 keeps this out of the way of a dev server already running on 3000. Sign in
+on the landing page with "Войти как тестовый пользователь" — an existing dev account,
+no account is created. `frontend/.env.local` is gitignored and does not exist in a
+fresh worktree; copy it from the main checkout.
+
+**Two traps that cost hours here.** A browser-automation tab reports
+`visibilityState: 'hidden'`, and the engine deliberately does not read collections for
+a hidden tab — that is its read-budget policy, not a defect — so nothing loads until
+visibility is emulated:
+
+```js
+Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
+Object.defineProperty(document, 'hidden', { get: () => false, configurable: true });
+document.dispatchEvent(new Event('visibilitychange'));
+```
+
+And the engine's own state lives in four IndexedDB databases
+(`preacher-data-engine-v1`, `-state-v1`, `-snapshots-v1`, `-cursors-v1`). Reading them
+answers questions no console message will: what is queued, what is still a draft, what
+the cached collection actually holds.
+
+To inspect the server side directly, any page can call the engine's routes with the
+signed-in token from `localStorage['firebase:authUser:…'].stsTokenManager.accessToken`:
+`/api/data-engine/collections/councils?limit=100`,
+`/api/data-engine/documents/councils/<id>`, and `POST /api/data-engine/commands`.
+
+## Where the code lives
+
+- `frontend/app/data-engine/` — the engine itself, written by its author; this
+  migration changed `react.client.tsx`, `server.ts`, `protocol.ts`,
+  `serverRelations.ts`, `types.ts` and `domainPolicy.ts`.
+- `frontend/app/hooks/useCouncilsDataCollection.ts`, `useCouncilDataDocument.ts`,
+  `useCouncilsRead.ts` — the councils adapters and the one reader every screen uses.
+- `frontend/app/(pages)/(private)/care/council/` — the council screens, plus
+  `EngineCouncilCreator.tsx` and `EngineCouncilMigration.tsx`.
+- Gates before any commit, from `frontend`: `npm run test:fast`, `npx tsc --noEmit`,
+  `npm run lint:full`.
+
 ## How this relates to the existing documents
 
 - [`data-engine-proposal-2026-09-12.md`](./data-engine-proposal-2026-09-12.md) — the architecture and why B was chosen. Unchanged.
@@ -11,9 +90,10 @@ migrated, in which order, what is already closed and with which evidence.
 - [`data-engine-remaining-admin-writers.md`](./data-engine-remaining-admin-writers.md) — the staged legacy-writer boundary. Still current.
 - [`../audits/2026-09-12-sync-mechanisms-context.md`](../audits/2026-09-12-sync-mechanisms-context.md) — the audit that reproduced five data-loss scenarios.
 
-## Verified state at the time this log was opened
+## Verified state at the time this log was opened (2026-09-12 — a snapshot, not the current state)
 
-Measured, not quoted from the documents above:
+Measured at the time, not quoted from the documents above. For where things stand
+now, read the first section instead:
 
 - Engine module: 34 files, 5984 lines; 619 direct tests green plus 5 emulator
   tests green against a live Firestore emulator on port 8188.
@@ -55,7 +135,7 @@ A closing entry must state what changed, what proves it, and what stays unproven
 | 1 | Per-collection activation switch | — | With only `councils` enabled, the sermon page still renders every legacy control | closed |
 | 2 | This migration log | — | File exists in git and is updated at every closing | closed |
 | 3a | Councils list **read** through the engine, on the list screen | 1 | The list screen renders the same councils through the engine behind the switch; verified in a browser | closed |
-| 3b | Councils writing, **whole**: create, update, delete and the two-council carry | 3a | Every council write runs through the engine, the carry as a registered core command; the conflict matrix is red before it is green | closed — create, update, delete, carry, replay and recovery all proven |
+| 3b | Councils writing, **whole**: create, update, delete and the two-council carry | 3a | Every council write runs through the engine, the carry as a registered core command; the conflict matrix is red before it is green | mechanism closed — create, update, delete, carry, replay and recovery all proven; the carry **button** is a filed defect |
 | 4 | Remaining council readers and legacy retirement | 3b | Hub, breadcrumbs, calendar and the pre-database localStorage carry-over; only then is the domain migrated | readers and carry-over done; retiring the legacy hook left |
 | 5 | Live browser proof for councils | 4 | Two windows, offline, reload mid-save: both edits survive; a conflict shows both versions | open |
 | 6 | Core bugs surfaced by 3-5 | 5 | Each fix has a red check: disable the fix and the test fails | open |
@@ -533,30 +613,6 @@ The guard is duplicated rather than load-bearing, and this is recorded rather th
 claimed as proof.
 
 Gates: `test:fast` 6649 passed / 6654, `tsc --noEmit` exit 0, `lint:full` exit 0.
-
-### Where the councils domain stands, 2026-09-13
-
-Proven against the live server, signed in as the dev test user with the collection
-enabled on both sides:
-
-- creating a council, and the screen navigating to it;
-- renaming it, adding a section and naming it;
-- conducting it, which moves it to `held` with its time recorded;
-- carrying a section to another council — both documents change in one operation,
-  and sending the identical command twice leaves one copy, not two;
-- deleting a council, which leaves a tombstone rather than an absence;
-- recovering unfinished work left by an earlier page load;
-- the hub count, the calendar entry and the breadcrumb title, all read through one
-  shared reader.
-
-What is left in this domain: retiring `useCouncils` once nothing reads it — which
-cannot happen before the rollout, since three screens and the shared reader use it as
-the other half of the switch — and the carry **button**, which is now a filed defect
-rather than an untested path (see below).
-
-Not yet true of any domain, including this one: the switch stays off, the rules are
-not deployed, and the core still carries nine open defects — the receipt
-amplification among them, which no deployment may ignore.
 
 ### 2026-09-13 — The carry button does not reach the mechanism
 
