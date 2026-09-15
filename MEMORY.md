@@ -630,9 +630,9 @@ Use `TechnicalDetailsButton` for unclear states; its `TechnicalDetailsDialog` ow
 1. New lesson → Lessons Inbox immediately
 2. 3+ similar lessons → group, extract principle → Long-Term Protocol
 3. Processed lessons → archive or delete
-4. Session logs: `.sessions/SESSION_[date]-[name].md` — single source per chat
-5. **Session Start:** Read Long-Term Memory → Check Inbox → Load Session Log
-6. **Session End:** Capture lessons → Update Session Log → Commit
+4. Work journal: the Elephant case (`el log`), not a file — `CLAUDE.md` §3. Legacy `.sessions/` is an archive: read-only, nothing new goes there.
+5. **Session Start:** Read Long-Term Memory → Check Inbox → `el` (where the case stands, what is next)
+6. **Session End:** Capture lessons → `el` (Order says "State is behind" → `el readme set next "…"`) → Commit
 
 ---
 
