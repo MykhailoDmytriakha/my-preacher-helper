@@ -995,7 +995,25 @@
     "draftMode": "Draft",
     "pointMode": "Point-by-Point",
     "createOutlineTooltip": "Add thoughts to your sermon first, then create a structure",
-    "assignThoughtsTooltip": "All thoughts must be assigned to structure points before creating a plan"
+    "assignThoughtsTooltip": "All thoughts must be assigned to structure points before creating a plan",
+    "sourceNoteSection": {
+      "title": "Source note",
+      "kicker": "This sermon was built on this note",
+      "stats": "{{words}} words · {{minutes}} min read",
+      "cutTotal": "scratch notes cut: {{count}}",
+      "cutBadge": "{{count}} cut",
+      "open": "Open",
+      "readOnly": "The note is read-only here — edit it in the note itself.",
+      "sections": "sections: {{count}}"
+    },
+    "materialEmpty": {
+      "plain": "Thoughts will appear here",
+      "plainHint": "Press “New recording” and speak — what you say becomes the first thought. Or write it by hand.",
+      "sortAtoms": "Sort the scratch notes",
+      "stillUnsorted": "Scratch notes from this note still unsorted:",
+      "atomsBandNoNote": "No thoughts yet. The work started with scratch notes:",
+      "scratchOnlyHint": "The scratch notes are written — sort them into the sermon structure."
+    }
   },
   "filters": {
     "filter": "Filter",

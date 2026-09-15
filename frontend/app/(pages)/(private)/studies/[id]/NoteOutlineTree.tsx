@@ -4,7 +4,7 @@ import { ChevronDownIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { type MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
+import { jumpToSection, type MarkdownOutlineControl } from '@/hooks/useMarkdownOutline';
 import { type MarkdownSection } from '@/utils/markdownSections';
 
 /**
@@ -52,19 +52,7 @@ export function NoteOutlineTree({
     );
 }
 
-/**
- * Brings a heading into view. The section is opened first (with its ancestors) so the
- * jump never lands inside folded text.
- */
-export function jumpToSection(outline: MarkdownOutlineControl, id: string) {
-    outline.revealSection(id);
-    // After the reveal has rendered, or the target may still be unmounted.
-    requestAnimationFrame(() => {
-        document
-            .querySelector(`[data-section-id="${id}"]`)
-            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-}
+export { jumpToSection };
 
 /**
  * What stands at the head of an outline row: an arrow when there are headings to hide

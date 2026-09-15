@@ -1547,6 +1547,9 @@ useEffect(() => {
       onThoughtUpdate={handleThoughtUpdate}
       onThoughtOutlinePointChange={handleThoughtOutlinePointChange}
       isReadOnly={isReadOnly}
+      sermon={sermon}
+      scratchNotes={scratchNotes.notes}
+      onOpenScratch={() => setUiMode('raw')}
     />
   );
 

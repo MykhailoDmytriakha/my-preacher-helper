@@ -2,19 +2,22 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { Rows3 } from "lucide-react";
-import React from "react";
+import React, { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import BrainstormModule from "@/components/sermon/BrainstormModule";
+import SourceNoteSection, { atomsOwnedByNotes } from "@/components/sermon/SourceNoteSection";
 import ThoughtFilterControls from "@/components/sermon/ThoughtFilterControls";
 import ThoughtList from "@/components/sermon/ThoughtList";
+import ThoughtsEmptyState from "@/components/sermon/ThoughtsEmptyState";
 import { Chip } from "@/components/ui/Chip";
+import { useSourceNotes } from "@/hooks/useSermonNoteLinks";
 import { getSectionLabel } from "@/lib/sections";
 import { useConnection } from "@/providers/ConnectionProvider";
 import { getContrastColor } from "@utils/color";
 import { normalizeStructureTag } from "@utils/tagUtils";
 
-import type { BrainstormSuggestion, SermonOutline, Thought } from "@/models/models";
+import type { BrainstormSuggestion, ScratchNote, Sermon, SermonOutline, Thought } from "@/models/models";
 import type { SortOrder, StructureFilter, ViewFilter } from "@hooks/useThoughtFiltering";
 import type { Dispatch, Ref, RefObject, SetStateAction } from "react";
 
@@ -50,6 +53,11 @@ interface ClassicThoughtsPanelProps {
   onThoughtUpdate: (updatedThought: Thought) => void;
   onThoughtOutlinePointChange?: (thought: Thought, outlinePointId?: string | null, subPointId?: string | null) => Promise<void> | void;
   isReadOnly: boolean;
+  /** The sermon itself — needed to show the note it was built on, and what was cut from it. */
+  sermon?: Sermon | null;
+  scratchNotes?: ScratchNote[];
+  /** Switches the screen to the scratch room, where atoms are sorted into the outline. */
+  onOpenScratch?: () => void;
 }
 
 const StructureFilterBadge = ({ structureFilter }: { structureFilter: string }) => {
@@ -176,14 +184,56 @@ export default function ClassicThoughtsPanel({
   onThoughtUpdate,
   onThoughtOutlinePointChange,
   isReadOnly,
+  sermon,
+  scratchNotes = [],
+  onOpenScratch,
 }: ClassicThoughtsPanelProps) {
   const { t } = useTranslation();
   const { isMagicAvailable } = useConnection();
   const hasAnyActiveFilter = viewFilter !== "all" || structureFilter !== "all" || tagFilters.length > 0 || sortOrder !== "date";
+  const { notes: sourceNotes } = useSourceNotes(sermon);
+  /**
+   * Nothing to filter and nothing to sort while the list is empty, so the two controls that do
+   * only that step aside. They come back with the first thought. "Идеи" stays: asking AI for a
+   * starting point is exactly what an empty sermon is for.
+   */
+  const hasThoughts = totalThoughts > 0;
+  /**
+   * Which section of the note to open, asked for from the thoughts side.
+   *
+   * The corner where many thoughts meet a long note is not solvable by arrangement — the screen
+   * is finite and neither side is — so there the lever stops being layout and becomes selection:
+   * a scratch atom points back at the paragraph it was cut from. The counter lets the same
+   * heading be asked for twice in a row and still re-fire.
+   */
+  /**
+   * Atoms that the note above already shows under their own heading. They are deliberately
+   * NOT repeated in the thoughts block: the same card in two places on one screen reads as
+   * two pieces of work. What stays here is what the note has no home for.
+   */
+  const ownedByNotes = useMemo(
+    () => atomsOwnedByNotes(sourceNotes, scratchNotes),
+    [sourceNotes, scratchNotes]
+  );
+  const homelessAtoms = useMemo(
+    () => scratchNotes.filter((atom) => !ownedByNotes.has(atom.id)),
+    [scratchNotes, ownedByNotes]
+  );
 
   return (
     <motion.div layout={false} className="space-y-4 sm:space-y-6">
       <div ref={portalRef} className="w-full empty:hidden [&>div]:h-full" />
+
+      {/* ABOVE the thoughts on purpose. Thoughts grow without bound, the note does not; put the
+          growing block first and the fixed one leaves the screen exactly when there is most to
+          work with. It arrives open only while there are no thoughts — then it IS the material. */}
+      {sermon && (
+        <SourceNoteSection
+          sermon={sermon}
+          scratchNotes={scratchNotes}
+          defaultOpen={!hasThoughts}
+        />
+      )}
 
       <section>
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
@@ -194,7 +244,7 @@ export default function ClassicThoughtsPanel({
             </span>
 
             <AnimatePresence initial={false}>
-              {isClassicMode && (
+              {isClassicMode && hasThoughts && (
                 <motion.div
                   key="filter"
                   className="relative ml-0 sm:ml-3 z-50"
@@ -331,8 +381,35 @@ export default function ClassicThoughtsPanel({
             onThoughtOutlinePointChange={onThoughtOutlinePointChange}
             resetFilters={resetFilters}
             isReadOnly={isReadOnly}
+            emptyState={
+              <ThoughtsEmptyState
+                scratchNotes={homelessAtoms}
+                onOpenScratch={onOpenScratch}
+              />
+            }
           />
         </motion.div>
+
+        {/* Thoughts exist but the material they were cut from has not run out: say so, quietly,
+            where the person is already looking. Judged by UNSORTED ATOMS rather than by the
+            thought count — two thoughts beside twenty atoms is not "the note is used up". */}
+        {hasThoughts && scratchNotes.length > 0 && (
+          <p className="mt-4 flex flex-wrap items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+            <span>{t('sermon.materialEmpty.stillUnsorted')}</span>
+            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-900/50 dark:text-violet-300">
+              {scratchNotes.length}
+            </span>
+            {onOpenScratch && (
+              <button
+                type="button"
+                onClick={onOpenScratch}
+                className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+              >
+                {t('sermon.materialEmpty.sortAtoms')}
+              </button>
+            )}
+          </p>
+        )}
       </section>
     </motion.div>
   );
