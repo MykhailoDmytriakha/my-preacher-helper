@@ -9,6 +9,7 @@ const EVENTS = [
   'worker-change', 'runtime-error', 'unhandled-rejection', 'auth',
   'freshness-start', 'freshness-stop', 'snapshot-cache', 'snapshot-pending', 'snapshot-server',
   'freshness-check', 'freshness-error', 'freshness-timeout', 'freshness-late-response', 'freshness-late-error',
+  'freshness-deferred',
 ] as const;
 type EventName = typeof EVENTS[number];
 interface EventData {

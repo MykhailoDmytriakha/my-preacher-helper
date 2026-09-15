@@ -22,9 +22,15 @@ jest.mock('@/services/sermonReadFallback.client', () => ({ readSermonFromServer:
 
 jest.mock('@/config/firebaseClientDb', () => ({ getClientDb: () => ({}) }));
 const getDocFromServer = jest.fn();
+/** Resolves the outstanding `waitForPendingWrites`, i.e. the backend acknowledged. */
+let settleWrites: (() => void) | null = null;
+const waitForPendingWrites = jest.fn(
+  (..._args: unknown[]) => new Promise<void>((resolve) => { settleWrites = resolve; })
+);
 jest.mock('firebase/firestore', () => ({
   doc: (_db: unknown, collection: string, id: string) => ({ collection, id }),
   getDocFromServer: (...args: unknown[]) => getDocFromServer(...args),
+  waitForPendingWrites: (...args: unknown[]) => waitForPendingWrites(...args),
   onSnapshot: (
     _ref: unknown,
     _options: unknown,
@@ -70,7 +76,9 @@ describe('useDocumentFreshness', () => {
   beforeEach(() => {
     emit = null;
     fail = null;
+    settleWrites = null;
     unsubscribe.mockClear();
+    waitForPendingWrites.mockClear();
   });
 
   it('stays SILENT before the server answers — a cold start is not a warning', () => {
@@ -608,6 +616,60 @@ describe('diagnostic incidents and read-only retry', () => {
       act(() => jest.advanceTimersByTime(20_000));
       expect(result.current.diagnostics.incident?.events).toHaveLength(1);
     });
+
+  /**
+   * A DOCUMENT THIS DEVICE IS STILL CREATING IS NOT A DOCUMENT IT MAY NOT READ.
+   *
+   * The editor mints a client id and opens on it before the create is accepted, so
+   * the listener attaches to something the server has not got yet — and the rules
+   * refuse a missing document exactly as they refuse someone else's. Reported live:
+   * an amber "the server refused the check" seconds after a note was saved fine.
+   */
+  describe('a document whose own write is still unacknowledged', () => {
+    const pending = (title: string) => server({ title }, { hasPendingWrites: true, fromCache: true });
+
+    it('stays silent instead of announcing that access was refused', () => {
+      const { result } = render({ title: 'draft' });
+      act(() => emit!(pending('draft')));
+      act(() => fail!({ code: 'permission-denied' }));
+      expect(waitForPendingWrites).toHaveBeenCalledTimes(1);
+      expect(result.current.diagnostics.persistentFailure).toBeNull();
+      expect(result.current.diagnostics.incident).toBeNull();
+      expect(result.current.state).toBe('fresh');
+    });
+
+    it('subscribes again once the backend acknowledges the write', async () => {
+      const { result } = render({ title: 'draft' });
+      act(() => emit!(pending('draft')));
+      const refused = emit;
+      act(() => fail!({ code: 'permission-denied' }));
+      await act(async () => { settleWrites!(); });
+      expect(emit).not.toBe(refused);
+      act(() => emit!(server({ title: 'draft' })));
+      expect(result.current.state).toBe('fresh');
+      expect(result.current.diagnostics.lastServerResult).toBe('matching');
+    });
+
+    it('reports access denied on a second refusal, once the write has settled', async () => {
+      const { result } = render({ title: 'draft' });
+      act(() => emit!(pending('draft')));
+      act(() => fail!({ code: 'permission-denied' }));
+      await act(async () => { settleWrites!(); });
+      act(() => emit!(server({ title: 'draft' }, { fromCache: true })));
+      act(() => fail!({ code: 'permission-denied' }));
+      expect(waitForPendingWrites).toHaveBeenCalledTimes(1);
+      expect(result.current.diagnostics.persistentFailure).toBe('accessDenied');
+      expect(result.current.state).toBe('unknown');
+    });
+
+    it('never defers a refusal about a document it has not written to', () => {
+      const { result } = render({ title: 'draft' });
+      act(() => emit!(server({ title: 'draft' })));
+      act(() => fail!({ code: 'permission-denied' }));
+      expect(waitForPendingWrites).not.toHaveBeenCalled();
+      expect(result.current.diagnostics.persistentFailure).toBe('accessDenied');
+    });
+  });
 
   it('preserves the first trigger through retries and bounded history', async () => {
     const { result } = render({ title: 'same' });

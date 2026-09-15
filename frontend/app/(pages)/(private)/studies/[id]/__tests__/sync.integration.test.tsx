@@ -30,6 +30,9 @@ jest.mock('firebase/firestore', () => ({
     mockEmit = next;
     return jest.fn();
   },
+  // The hook defers a refusal while its own write is unacknowledged; without this
+  // export the deferral would throw instead of waiting.
+  waitForPendingWrites: () => new Promise<void>(() => {}),
 }));
 jest.mock('@/components/diagnostics/TechnicalDetailsButton', () => ({ TechnicalDetailsButton: () => null }));
 // The page decides its layout in JS, not in CSS, so the breakpoint bands are testable.
