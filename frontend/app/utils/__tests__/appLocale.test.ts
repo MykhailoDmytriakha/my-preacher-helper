@@ -1,6 +1,6 @@
 import { enUS, ru, uk } from 'date-fns/locale';
 
-import { dateFnsLocaleFor, formatMonthTitle, resolveAppLocale } from '@/utils/appLocale';
+import { dateFnsLocaleFor, formatMonthName, formatMonthTitle, resolveAppLocale } from '@/utils/appLocale';
 
 /**
  * THE LANGUAGE OF THE INTERFACE, DECIDED ONCE.
@@ -53,5 +53,17 @@ describe('a month named on its own', () => {
   it('never borrows the in-a-date form', () => {
     expect(formatMonthTitle(september, ru)).not.toMatch(/сентября/i);
     expect(formatMonthTitle(september, uk)).not.toMatch(/вересня/i);
+  });
+});
+
+describe('a month named inside a sentence', () => {
+  const august = new Date(2026, 7, 14);
+
+  it.each([
+    [enUS, 'August 2026'],
+    [ru, 'август 2026'],
+    [uk, 'серпень 2026'],
+  ])('keeps the standalone form and the language\'s own case (%#)', (locale, expected) => {
+    expect(formatMonthName(august, locale)).toBe(expected);
   });
 });

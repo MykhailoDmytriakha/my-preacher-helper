@@ -26,7 +26,12 @@ interface AnalyticsSectionProps {
 export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProps) {
     const { t, i18n } = useTranslation();
     const { locale: appLocale, dateLocale } = useAppLocale();
-    const sermonsLabel = t('calendar.analytics.sermons', { defaultValue: 'sermons' });
+    /*
+     * "Притчи: 1 проповедь" — the count picks its own word form and the book is named in the
+     * interface's language. The word used to be one fixed plural ("4 проповедей") beside an
+     * "English (Russian)" book name whatever the language.
+     */
+    const countPhrase = (count: number) => `${count} ${t('calendar.totalSermonsWord', { count })}`;
     const currentYear = new Date().getFullYear();
     const [selectedYear, setSelectedYear] = useState<number | 'all'>(currentYear);
     const [selectedBook, setSelectedBook] = useState<BookInfo | null>(null);
@@ -231,7 +236,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                                 ? `rgba(168, 85, 247, ${intensity / 100 * 0.2})`
                                                 : 'transparent'
                                         }}
-                                        title={`${book.names.en} (${book.names.ru}): ${count} ${sermonsLabel}`}
+                                        title={`${book.names[appLocale]}: ${countPhrase(count)}`}
                                         onClick={handleOpenBook}
                                         role={isClickable ? 'button' : undefined}
                                         tabIndex={isClickable ? 0 : undefined}
@@ -288,7 +293,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                                 ? `rgba(168, 85, 247, ${intensity / 100 * 0.2})`
                                                 : 'transparent'
                                         }}
-                                        title={`${book.names.en} (${book.names.ru}): ${count} ${sermonsLabel}`}
+                                        title={`${book.names[appLocale]}: ${countPhrase(count)}`}
                                         onClick={handleOpenBook}
                                         role={isClickable ? 'button' : undefined}
                                         tabIndex={isClickable ? 0 : undefined}
@@ -357,7 +362,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                             ? `rgba(245, 158, 11, ${intensity / 100 * 0.2})`
                                             : 'transparent'
                                     }}
-                                    title={`${formatMonthTitle(monthDate, dateLocale)}: ${count} ${sermonsLabel}`}
+                                    title={`${formatMonthTitle(monthDate, dateLocale)}: ${countPhrase(count)}`}
                                     onClick={() => {
                                         if (count > 0) {
                                             setSelectedMonth(month);

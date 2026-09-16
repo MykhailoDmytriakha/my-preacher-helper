@@ -44,6 +44,16 @@ export function dateFnsLocaleFor(language?: string | null): Locale {
  * form, so it never showed there.
  */
 export function formatMonthTitle(date: Date, dateLocale: Locale): string {
-  const title = format(date, 'LLLL yyyy', { locale: dateLocale });
+  const title = formatMonthName(date, dateLocale);
   return title.charAt(0).toUpperCase() + title.slice(1);
+}
+
+/**
+ * The same standalone month inside a sentence, in the language's own case: "за август 2026",
+ * "in August 2026". Russian and Ukrainian months are masculine and inanimate, so this form is
+ * also what "за" asks for; "в" would need the prepositional ("в августе"), which date-fns
+ * does not have — templates put the month after "за", never after "в".
+ */
+export function formatMonthName(date: Date, dateLocale: Locale): string {
+  return format(date, 'LLLL yyyy', { locale: dateLocale });
 }

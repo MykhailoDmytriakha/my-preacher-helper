@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import { MonthlyPreachEntry } from "@/components/calendar/calendarAnalytics";
 import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
-import { formatMonthTitle } from '@/utils/appLocale';
+import { formatMonthName } from '@/utils/appLocale';
 
 interface MonthlySermonsModalProps {
     isOpen: boolean;
@@ -33,7 +33,8 @@ export default function MonthlySermonsModal({
         if (!monthKey) return "";
         const [year, month] = monthKey.split("-").map(Number);
         const date = new Date(year, month - 1, 1);
-        return formatMonthTitle(date, dateLocale);
+        // Inside the title sentence, so the month keeps its own case: "Проповеди за август 2026".
+        return formatMonthName(date, dateLocale);
     }, [monthKey, dateLocale]);
 
     if (!isOpen || !monthKey) return null;
