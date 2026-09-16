@@ -83,6 +83,39 @@ export async function readOwnerList<T>(
   }
 }
 
+/**
+ * ONE DOCUMENT, WITH THE SAME PROMISE THE LISTS HAVE.
+ *
+ * A single `getDoc` hangs on a silent transport exactly as a query does, and a series page that
+ * waits for ever on one document is no better off than one waiting on a list. There is no
+ * server route for reading a single document of these collections, and adding one would be a
+ * second door to guard: the owner list already answers, so the document is taken out of it.
+ * Reading a few extra documents is a cost paid only on a device that would otherwise show
+ * nothing at all.
+ */
+export async function readOwnerDocument<T extends { id: string }>(
+  collection: string,
+  owner: string,
+  id: string,
+  viaSdk: Promise<T | undefined>,
+  hydrate: (documents: Record<string, unknown>[]) => T[]
+): Promise<T | undefined> {
+  const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+  try {
+    return await readWithDeadline(viaSdk, online ? SDK_DEADLINE_MS : 8000);
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    if (!online || !SILENT_CODES.includes(code ?? '')) throw error;
+    if (resolveOwnerUid() !== owner) {
+      throw Object.assign(new Error(ACCOUNT_CHANGED), { code: 'unauthenticated' });
+    }
+    const fromServer = async () =>
+      (await readOwnerListFromServer(collection, owner, hydrate)).find((entry) => entry.id === id);
+    // As with a list: the first road is overtaken, not abandoned.
+    return readWithDeadline(firstToAnswer(viaSdk, fromServer()), SECOND_ROAD_DEADLINE_MS);
+  }
+}
+
 /** The same list, asked of the app's own server over ordinary HTTPS. */
 export async function readOwnerListFromServer<T>(
   collection: string,

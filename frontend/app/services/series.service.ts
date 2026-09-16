@@ -3,10 +3,12 @@ import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, whe
 import { getClientDb } from '@/config/firebaseClientDb';
 import { Series } from '@/models/models';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
+import { readOwnerDocument, readOwnerList } from '@/services/ownerListRead.client';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { deriveSermonIdsFromItems, inferSeriesKind, normalizeSeriesItems } from '@/utils/seriesItems';
 import { timeOrZero, compareById } from '@/utils/sortHelpers';
+import { auth } from '@services/firebaseAuth.service';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 
@@ -65,18 +67,45 @@ function sortSeries(list: Series[]): Series[] {
 
 // --- client-SDK read/write paths ---
 
-async function getAllSeriesViaClient(userId: string): Promise<Series[]> {
+/** The same shaping for both roads: the browser's own read and the server's answer. */
+const shapeSeries = (documents: Record<string, unknown>[]): Series[] =>
+  sortSeries(documents.map((data) => hydrateSeries(data as unknown as Series)));
+
+async function readSeriesViaSdk(userId: string): Promise<Series[]> {
   const db = getClientDb();
   const snap = await getDocs(query(collection(db, SERIES_COLLECTION), where('userId', '==', userId)));
-  const list = snap.docs.map((d) => hydrateSeries({ ...(d.data() as Omit<Series, 'id'>), id: d.id } as Series));
-  return sortSeries(list);
+  return shapeSeries(snap.docs.map((d) => ({ ...(d.data() as object), id: d.id })));
 }
 
-async function getSeriesByIdViaClient(seriesId: string): Promise<Series | undefined> {
+/*
+ * ONE ROAD IS NOT ENOUGH HERE EITHER. On the owner's iPad the browser's Firestore answers
+ * nothing at all — neither data nor error — and a series screen with no deadline then stays a
+ * skeleton for ever (measured 2026-09-16: 46 s on `/series/:id`, one HTTP read of councils in
+ * 251 ms beside it). Lists went through this door on 2026-09-11; series, groups and study notes
+ * were left behind, which is why this section was the one that would not open.
+ */
+async function getAllSeriesViaClient(userId: string): Promise<Series[]> {
+  return readOwnerList(SERIES_COLLECTION, userId, readSeriesViaSdk(userId), shapeSeries);
+}
+
+async function readOneSeriesViaSdk(seriesId: string): Promise<Series | undefined> {
   const db = getClientDb();
   const snap = await getDoc(doc(db, SERIES_COLLECTION, seriesId));
   if (!snap.exists()) return undefined;
   return hydrateSeries({ ...(snap.data() as Omit<Series, 'id'>), id: snap.id } as Series);
+}
+
+async function getSeriesByIdViaClient(seriesId: string): Promise<Series | undefined> {
+  const owner = auth.currentUser?.uid;
+  // Signed out there is nobody to read for; leave the old path to answer (or refuse) as it did.
+  if (!owner) return readOneSeriesViaSdk(seriesId);
+  return readOwnerDocument(
+    SERIES_COLLECTION,
+    owner,
+    seriesId,
+    readOneSeriesViaSdk(seriesId),
+    shapeSeries
+  );
 }
 
 async function createSeriesViaClient(series: Omit<Series, 'id'> & { id?: string }): Promise<Series> {

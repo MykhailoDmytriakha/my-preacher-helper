@@ -71,6 +71,25 @@ it('answers the caller with his own documents', async () => {
   expect(where).toHaveBeenCalledWith('userId', '==', 'owner-1');
 });
 
+it.each(['sermons', 'prayerRequests', 'planTemplates', 'serviceOrders', 'councils', 'series', 'groups', 'studyNotes'])(
+  'serves %s, because a collection missing here has no second road at all',
+  async (collectionName) => {
+    // Dropping a name from the whitelist silently removes the fallback the screen depends on:
+    // that is exactly how the series page came to hang for ever on the owner's iPad.
+    const response = await GET(request(collectionName));
+
+    expect(response.status).toBe(200);
+    expect(collection).toHaveBeenCalledWith(collectionName);
+  }
+);
+
+it('still refuses a collection nobody allowed', async () => {
+  const response = await GET(request('secrets'));
+
+  expect(response.status).toBe(400);
+  expect(collection).not.toHaveBeenCalled();
+});
+
 it('refuses a caller who brought no verified token', async () => {
   mockUid.mockResolvedValue(null);
 

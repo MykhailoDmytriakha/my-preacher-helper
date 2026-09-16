@@ -1,5 +1,5 @@
 import { apiClient } from '@/utils/apiClient';
-import { readOwnerList } from '@/services/ownerListRead.client';
+import { readOwnerList, readOwnerDocument } from '@/services/ownerListRead.client';
 
 /**
  * A LIST THAT NEVER ARRIVES IS THE SAME DEFECT AS A LIST THAT ARRIVES WRONG.
@@ -146,4 +146,52 @@ it('refuses a malformed server answer', async () => {
   mockApi.mockResolvedValue({ ok: true, status: 200, json: async () => ({}) } as Response);
 
   await expect(readOwnerList('sermons', 'owner-1', unavailable(), shape)).rejects.toThrow();
+});
+
+describe('one document, with the same promise the lists have', () => {
+  it('answers from the browser when it answers in time, and asks nobody else', async () => {
+    const document = await readOwnerDocument('series', 'owner-1', 'a', Promise.resolve({ id: 'a', title: 'От браузера' }), shape);
+
+    expect(document).toEqual({ id: 'a', title: 'От браузера' });
+    expect(mockApi).not.toHaveBeenCalled();
+  });
+
+  it('answers from the server even when the browser NEVER answers at all', async () => {
+    // The iPad case: `getDoc` neither resolves nor rejects. Without the deadline this test
+    // hangs, which is precisely what the screen did.
+    jest.useFakeTimers();
+    try {
+      mockApi.mockResolvedValue({ ok: true, json: async () => [{ id: 'a', title: 'От сервера' }] } as never);
+
+      const reading = readOwnerDocument('series', 'owner-1', 'a', silent(), shape);
+      await jest.advanceTimersByTimeAsync(3000);
+
+      await expect(reading).resolves.toEqual({ id: 'a', title: 'От сервера' });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('takes the document out of the owner list when the browser says nothing', async () => {
+    mockApi.mockResolvedValue({ ok: true, json: async () => [{ id: 'a', title: 'От сервера' }] } as never);
+
+    const document = await readOwnerDocument('series', 'owner-1', 'a', unavailable(), shape);
+
+    expect(document).toEqual({ id: 'a', title: 'От сервера' });
+  });
+
+  it('answers "no such document" when the server list does not hold it', async () => {
+    mockApi.mockResolvedValue({ ok: true, json: async () => [{ id: 'b', title: 'Другая' }] } as never);
+
+    await expect(readOwnerDocument('series', 'owner-1', 'a', unavailable(), shape)).resolves.toBeUndefined();
+  });
+
+  it('hands a refusal straight back instead of asking a second time', async () => {
+    const refused = Promise.reject(Object.assign(new Error('nope'), { code: 'permission-denied' }));
+
+    await expect(readOwnerDocument('series', 'owner-1', 'a', refused, shape)).rejects.toMatchObject({
+      code: 'permission-denied',
+    });
+    expect(mockApi).not.toHaveBeenCalled();
+  });
 });

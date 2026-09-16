@@ -3,6 +3,7 @@ import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, whe
 import { getClientDb } from '@/config/firebaseClientDb';
 import { ScratchNote, StudyNote } from '@/models/models';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
+import { readOwnerList } from '@/services/ownerListRead.client';
 import { parseUsageCapError, type UsageCapReachedError } from '@/services/usageLimits';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
@@ -99,10 +100,19 @@ function filterNotesClient(notes: StudyNote[], filters: NoteFilters): StudyNote[
 
 // --- client-SDK read/write paths ---
 
-async function getStudyNotesViaClient(userId: string, filters: NoteFilters): Promise<StudyNote[]> {
+/** The same shaping for both roads. */
+const shapeNotes = (documents: Record<string, unknown>[]): StudyNote[] =>
+  documents.map((data) => normalizeNote(data as unknown as StudyNote));
+
+async function readNotesViaSdk(userId: string): Promise<StudyNote[]> {
   const db = getClientDb();
   const snap = await getDocs(query(collection(db, NOTES_COLLECTION), where('userId', '==', userId)));
-  const notes = snap.docs.map((d) => normalizeNote({ ...(d.data() as StudyNote), id: d.id }));
+  return shapeNotes(snap.docs.map((d) => ({ ...(d.data() as object), id: d.id })));
+}
+
+/* Same class as series and groups: one road, no deadline — see `series.service.ts`. */
+async function getStudyNotesViaClient(userId: string, filters: NoteFilters): Promise<StudyNote[]> {
+  const notes = await readOwnerList(NOTES_COLLECTION, userId, readNotesViaSdk(userId), shapeNotes);
   return filterNotesClient(notes, filters);
 }
 
