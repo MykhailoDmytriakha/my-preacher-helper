@@ -1767,7 +1767,9 @@
     "legend": {
       "sermons": "Проповіді",
       "groups": "Групи",
-      "councils": "Ради"
+      "councils": "Ради",
+      "notes": "Нотатки",
+      "prayers": "Молитви"
     },
     "views": {
       "month": "Місяць",
@@ -1792,7 +1794,8 @@
     "outcome": "Результат",
     "status": {
       "planned": "Заплановано",
-      "preached": "Проповідано"
+      "preached": "Проповідано",
+      "updated": "Змінено"
     },
     "missingDateWarning": "Цю проповідь позначено як виголошену, але відсутня інформація про дату",
     "missingDateWarningTitle": "Старі дані проповідей",
@@ -1873,7 +1876,13 @@
     "notesPlaceholder": "Зауваження або що варто покращити...",
     "totalCouncilsWord_one": "рада",
     "totalCouncilsWord_few": "ради",
-    "totalCouncilsWord_many": "рад"
+    "totalCouncilsWord_many": "рад",
+    "totalNotesWord_one": "нотатка",
+    "totalNotesWord_few": "нотатки",
+    "totalNotesWord_many": "нотаток",
+    "totalPrayersWord_one": "молитва",
+    "totalPrayersWord_few": "молитви",
+    "totalPrayersWord_many": "молитов"
   },
   "copy": {
     "title": "Копіювання вмісту",

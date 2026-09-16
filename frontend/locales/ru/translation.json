@@ -1767,7 +1767,9 @@
     "legend": {
       "sermons": "Проповеди",
       "groups": "Группы",
-      "councils": "Советы"
+      "councils": "Советы",
+      "notes": "Заметки",
+      "prayers": "Молитвы"
     },
     "views": {
       "month": "Месяц",
@@ -1792,7 +1794,8 @@
     "outcome": "Результат",
     "status": {
       "planned": "Запланировано",
-      "preached": "Проповедано"
+      "preached": "Проповедано",
+      "updated": "Изменено"
     },
     "missingDateWarning": "Эта проповедь отмечена как прочитанная, но отсутствует информация о дате",
     "missingDateWarningTitle": "Старые данные проповедей",
@@ -1873,7 +1876,13 @@
     "notesPlaceholder": "Замечания или что стоит улучшить...",
     "totalCouncilsWord_one": "совет",
     "totalCouncilsWord_few": "совета",
-    "totalCouncilsWord_many": "советов"
+    "totalCouncilsWord_many": "советов",
+    "totalNotesWord_one": "заметка",
+    "totalNotesWord_few": "заметки",
+    "totalNotesWord_many": "заметок",
+    "totalPrayersWord_one": "молитва",
+    "totalPrayersWord_few": "молитвы",
+    "totalPrayersWord_many": "молитв"
   },
   "copy": {
     "title": "Копирование содержимого",

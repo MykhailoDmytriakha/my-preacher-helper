@@ -27,6 +27,9 @@ const STATUS_TONE: Record<CalendarEntryStatus, 'amber' | 'emerald' | 'indigo' | 
   preached: 'emerald',
   preparing: 'indigo',
   held: 'neutral',
+  updated: 'neutral',
+  // The green the prayer section itself gives an answered prayer.
+  answered: 'emerald',
 };
 
 const STATUS_KEY: Record<CalendarEntryStatus, string> = {
@@ -34,6 +37,8 @@ const STATUS_KEY: Record<CalendarEntryStatus, string> = {
   preached: 'calendar.status.preached',
   preparing: 'council.status.preparing',
   held: 'council.status.held',
+  updated: 'calendar.status.updated',
+  answered: 'prayer.status.answered',
 };
 
 export function CalendarEntryCard({

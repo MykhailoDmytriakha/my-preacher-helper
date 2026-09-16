@@ -1,6 +1,12 @@
 'use client';
 
-import { BookOpenIcon, ChatBubbleLeftRightIcon, UserGroupIcon } from '@heroicons/react/24/outline';
+import {
+  BookOpenIcon,
+  ChatBubbleLeftRightIcon,
+  DocumentTextIcon,
+  HeartIcon,
+  UserGroupIcon,
+} from '@heroicons/react/24/outline';
 
 import { CALENDAR_KINDS, type CalendarKind } from '@/utils/calendarEntries';
 
@@ -8,9 +14,12 @@ import type { ComponentType, SVGProps } from 'react';
 
 /**
  * WHAT EACH KIND LOOKS LIKE — in one place, so a day dot, a legend button, a month count and a
- * card icon cannot drift apart. The colours are the ones each section already wears elsewhere in
- * the application: sermons blue, groups emerald, the brothers' council indigo, as on the pastor's
- * plane. A fourth section joins by adding its line here and a builder in `calendarEntries.ts`.
+ * card icon cannot drift apart. The colours are the application's own category colours, the
+ * ones the dashboard already wears (`utils/themeColors.ts`): sermons blue, groups amber, study
+ * notes emerald, prayer rose; the brothers' council keeps the indigo of the pastor's plane.
+ * Groups were emerald here for a while, which is what a note would have to be — two kinds in
+ * one colour is a day cell that cannot say which is which. A sixth section joins by adding its
+ * line here and a builder in `calendarEntries.ts`.
  */
 export type CalendarKindStyle = {
   icon: ComponentType<SVGProps<SVGSVGElement>>;
@@ -44,13 +53,13 @@ export const CALENDAR_KIND_STYLE: Record<CalendarKind, CalendarKindStyle> = {
   },
   group: {
     icon: UserGroupIcon,
-    dot: 'bg-emerald-500',
-    iconColor: 'text-emerald-600 dark:text-emerald-300',
-    legendOn: 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/40 dark:hover:bg-emerald-900/60',
-    legendLabel: 'text-emerald-700 dark:text-emerald-300',
-    dateBadge: 'border-emerald-100 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-900/20',
-    dateBadgeMonth: 'text-emerald-600 dark:text-emerald-400',
-    dateBadgeDay: 'text-emerald-900 dark:text-emerald-100',
+    dot: 'bg-amber-500',
+    iconColor: 'text-amber-600 dark:text-amber-300',
+    legendOn: 'bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/40 dark:hover:bg-amber-900/60',
+    legendLabel: 'text-amber-700 dark:text-amber-300',
+    dateBadge: 'border-amber-100 bg-amber-50 dark:border-amber-800/50 dark:bg-amber-900/20',
+    dateBadgeMonth: 'text-amber-600 dark:text-amber-400',
+    dateBadgeDay: 'text-amber-900 dark:text-amber-100',
     legendKey: 'calendar.legend.groups',
     countKey: 'calendar.totalGroupsWord',
   },
@@ -65,6 +74,30 @@ export const CALENDAR_KIND_STYLE: Record<CalendarKind, CalendarKindStyle> = {
     dateBadgeDay: 'text-indigo-900 dark:text-indigo-100',
     legendKey: 'calendar.legend.councils',
     countKey: 'calendar.totalCouncilsWord',
+  },
+  note: {
+    icon: DocumentTextIcon,
+    dot: 'bg-emerald-500',
+    iconColor: 'text-emerald-600 dark:text-emerald-300',
+    legendOn: 'bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/40 dark:hover:bg-emerald-900/60',
+    legendLabel: 'text-emerald-700 dark:text-emerald-300',
+    dateBadge: 'border-emerald-100 bg-emerald-50 dark:border-emerald-800/50 dark:bg-emerald-900/20',
+    dateBadgeMonth: 'text-emerald-600 dark:text-emerald-400',
+    dateBadgeDay: 'text-emerald-900 dark:text-emerald-100',
+    legendKey: 'calendar.legend.notes',
+    countKey: 'calendar.totalNotesWord',
+  },
+  prayer: {
+    icon: HeartIcon,
+    dot: 'bg-rose-500',
+    iconColor: 'text-rose-600 dark:text-rose-300',
+    legendOn: 'bg-rose-50 hover:bg-rose-100 dark:bg-rose-900/40 dark:hover:bg-rose-900/60',
+    legendLabel: 'text-rose-700 dark:text-rose-300',
+    dateBadge: 'border-rose-100 bg-rose-50 dark:border-rose-800/50 dark:bg-rose-900/20',
+    dateBadgeMonth: 'text-rose-600 dark:text-rose-400',
+    dateBadgeDay: 'text-rose-900 dark:text-rose-100',
+    legendKey: 'calendar.legend.prayers',
+    countKey: 'calendar.totalPrayersWord',
   },
 };
 

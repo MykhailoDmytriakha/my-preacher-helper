@@ -1765,7 +1765,9 @@
     "legend": {
       "sermons": "Sermons",
       "groups": "Groups",
-      "councils": "Councils"
+      "councils": "Councils",
+      "notes": "Notes",
+      "prayers": "Prayers"
     },
     "views": {
       "month": "Month",
@@ -1790,7 +1792,8 @@
     "outcome": "Outcome",
     "status": {
       "planned": "Planned",
-      "preached": "Preached"
+      "preached": "Preached",
+      "updated": "Updated"
     },
     "missingDateWarning": "This sermon is marked as preached but missing date information",
     "missingDateWarningTitle": "Legacy Preaching Data",
@@ -1870,7 +1873,11 @@
     "audiencePlaceholder": "e.g. Youth, General Service, Wedding",
     "notesPlaceholder": "Any specific feedback or things to improve...",
     "totalCouncilsWord_one": "council",
-    "totalCouncilsWord_other": "councils"
+    "totalCouncilsWord_other": "councils",
+    "totalNotesWord_one": "note",
+    "totalNotesWord_other": "notes",
+    "totalPrayersWord_one": "prayer",
+    "totalPrayersWord_other": "prayers"
   },
   "copy": {
     "title": "Copy Content",

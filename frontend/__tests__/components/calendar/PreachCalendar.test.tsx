@@ -52,7 +52,7 @@ jest.mock('@/hooks/useUserSettings', () => ({
   useUserSettings: (userId?: string) => mockUseUserSettings(userId),
 }));
 
-const allShown: Record<CalendarKind, boolean> = { sermon: true, group: true, council: true };
+const allShown: Record<CalendarKind, boolean> = { sermon: true, group: true, council: true, note: true, prayer: true };
 
 const renderCalendar = (props: Partial<React.ComponentProps<typeof PreachCalendar>> = {}) =>
   render(
@@ -115,7 +115,20 @@ describe('PreachCalendar', () => {
     const dots = dotsOn(container, 15);
     expect(dots.map((dot) => dot.getAttribute('data-kind'))).toEqual(['sermon', 'group']);
     expect(dots[0]).toHaveClass('bg-blue-500');
-    expect(dots[1]).toHaveClass('bg-emerald-500');
+    // Groups wear the dashboard's amber, so the emerald of a study note is not mistaken for one.
+    expect(dots[1]).toHaveClass('bg-amber-500');
+  });
+
+  it('draws a study note and a prayer in their own colours, after the kinds that came before', () => {
+    const { container } = renderCalendar({
+      kindsByDate: { '2024-01-21': ['sermon', 'group', 'council', 'note', 'prayer'] },
+      currentMonth: new Date(2024, 0, 1),
+      selectedDate: new Date(2024, 0, 2),
+    });
+    const dots = dotsOn(container, 21);
+    expect(dots.map((dot) => dot.getAttribute('data-kind'))).toEqual(['sermon', 'group', 'council', 'note', 'prayer']);
+    expect(dots[3]).toHaveClass('bg-emerald-500');
+    expect(dots[4]).toHaveClass('bg-rose-500');
   });
 
   it('draws the council dot in its own colour, without being mistaken for a group', () => {
@@ -157,6 +170,8 @@ describe('PreachCalendar', () => {
     expect(screen.getByTestId('calendar-filter-sermon')).toBeInTheDocument();
     expect(screen.getByTestId('calendar-filter-group')).toBeInTheDocument();
     expect(screen.getByTestId('calendar-filter-council')).toBeInTheDocument();
+    expect(screen.getByTestId('calendar-filter-note')).toBeInTheDocument();
+    expect(screen.getByTestId('calendar-filter-prayer')).toBeInTheDocument();
   });
 
   it('says which kind was switched, so the page does not have to keep a flag per kind', () => {

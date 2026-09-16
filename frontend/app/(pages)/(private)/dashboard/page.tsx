@@ -865,8 +865,24 @@ function buildSermonRows(sermons: Sermon[], t: TFunction, locale: string): Sermo
     });
 }
 
-/** What each kind is called in the week panel. A new kind adds a line here and nowhere else. */
-const AGENDA_TYPE_KEY: Record<CalendarKind, string> = {
+/**
+ * WHAT THE WEEK PANEL CARRIES, and what each of those is called.
+ *
+ * The panel answers "where do I have to BE this week", so it holds appointments — the kinds of
+ * calendar entry that are a place and an hour. Study notes and prayers are on the calendar too,
+ * and deliberately not here: they are things written, not things to attend, and a week that
+ * listed every note edited would bury the two meetings the pastor actually has to walk to.
+ *
+ * Naming the kinds this way means an entry of any other kind is dropped by a type the compiler
+ * checks, rather than rendered with a missing label.
+ */
+const AGENDA_KINDS = ['sermon', 'group', 'council'] as const;
+type AgendaKind = (typeof AGENDA_KINDS)[number];
+
+const isAgendaKind = (kind: CalendarKind): kind is AgendaKind =>
+  (AGENDA_KINDS as readonly CalendarKind[]).includes(kind);
+
+const AGENDA_TYPE_KEY: Record<AgendaKind, string> = {
   sermon: 'dashboardHome.sections.week.types.sermon',
   group: 'dashboardHome.sections.week.types.group',
   council: 'dashboardHome.sections.week.types.council',
@@ -905,12 +921,12 @@ function buildCalendarEvents({
     ...groupEntries(groups),
     ...councilEntries(councils),
   ]
-    .filter((entry) => isWithinRange(entry.date, start, end))
+    .filter((entry) => isAgendaKind(entry.kind) && isWithinRange(entry.date, start, end))
     .map((entry) => ({
       id: entry.id,
       date: entry.date,
       title: entry.title || t('dashboardHome.sections.sermons.untitled'),
-      type: t(AGENDA_TYPE_KEY[entry.kind]),
+      type: t(AGENDA_TYPE_KEY[entry.kind as AgendaKind]),
       href: entry.href,
     }));
 

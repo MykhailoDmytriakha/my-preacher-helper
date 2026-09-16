@@ -50,3 +50,23 @@ export const parseDateOnlyAsLocalDate = (value: string | null | undefined): Date
 
   return parsed;
 };
+
+/**
+ * THE LOCAL DAY OF AN INSTANT — for stamps like `createdAt`, which name a moment, not a day.
+ *
+ * `toDateOnlyKey` keeps the leading `YYYY-MM-DD` of an ISO string on purpose: preach and meeting
+ * dates were stored as UTC midnight, and that prefix IS the day the person chose. A `createdAt`
+ * is different — the clock writes it, in UTC — so a note saved at half past eleven at night in
+ * Seattle is already "tomorrow" by its prefix. This reads the instant and answers in the person's
+ * own day. A date-only string has no instant and passes through untouched.
+ */
+export const toLocalDateOnlyKey = (value: string | null | undefined): string | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (DATE_ONLY_REGEX.test(trimmed)) return trimmed;
+  // local-day-of-instant
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return toLocalYmd(parsed);
+};

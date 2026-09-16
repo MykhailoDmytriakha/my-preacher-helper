@@ -5,6 +5,8 @@ import { PreachDate, Sermon } from '@/models/models';
 import { useCalendarSermons } from '@/hooks/useCalendarSermons';
 import { useCalendarCouncils } from '@/hooks/useCalendarCouncils';
 import { useCalendarGroups } from '@/hooks/useCalendarGroups';
+import { useCalendarNotes } from '@/hooks/useCalendarNotes';
+import { useCalendarPrayers } from '@/hooks/useCalendarPrayers';
 import { useSeries } from '@/hooks/useSeries';
 import '@testing-library/jest-dom';
 
@@ -19,6 +21,14 @@ jest.mock('@/hooks/useCalendarGroups', () => ({
 
 jest.mock('@/hooks/useCalendarCouncils', () => ({
   useCalendarCouncils: jest.fn(),
+}));
+
+jest.mock('@/hooks/useCalendarNotes', () => ({
+  useCalendarNotes: jest.fn(),
+}));
+
+jest.mock('@/hooks/useCalendarPrayers', () => ({
+  useCalendarPrayers: jest.fn(),
 }));
 
 jest.mock('@/hooks/useSeries', () => ({
@@ -139,6 +149,8 @@ jest.mock('react-i18next', () => ({
 const mockUseCalendarSermons = jest.mocked(useCalendarSermons);
 const mockUseCalendarGroups = jest.mocked(useCalendarGroups);
 const mockUseCalendarCouncils = jest.mocked(useCalendarCouncils);
+const mockUseCalendarNotes = jest.mocked(useCalendarNotes);
+const mockUseCalendarPrayers = jest.mocked(useCalendarPrayers);
 const mockUseSeries = jest.mocked(useSeries);
 
 describe('CalendarPage', () => {
@@ -185,6 +197,24 @@ describe('CalendarPage', () => {
     progress: { done: 0, total: 3 },
   };
 
+  const mockNoteEntry = {
+    kind: 'note' as const,
+    id: 'note-n1-written',
+    refId: 'n1',
+    date: '2024-01-15',
+    title: 'Молитва Иависа',
+    href: '/studies/n1',
+  };
+
+  const mockPrayerEntry = {
+    kind: 'prayer' as const,
+    id: 'prayer-p1-brought',
+    refId: 'p1',
+    date: '2024-01-15',
+    title: 'За церковь',
+    href: '/prayers/p1',
+  };
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockUseCalendarGroups.mockReturnValue({
@@ -198,6 +228,8 @@ describe('CalendarPage', () => {
       isLoading: false,
       error: null,
     });
+    mockUseCalendarNotes.mockReturnValue({ entries: [], isLoading: false, error: null });
+    mockUseCalendarPrayers.mockReturnValue({ entries: [], isLoading: false, error: null });
   });
 
   it('renders calendar header and components', () => {
@@ -626,7 +658,7 @@ describe('CalendarPage', () => {
       render(<CalendarPage />);
       fireEvent.click(screen.getByTestId('turn-off-councils'));
 
-      expect(screen.getByTestId('preach-calendar')).toHaveAttribute('data-shown', 'group,sermon');
+      expect(screen.getByTestId('preach-calendar')).toHaveAttribute('data-shown', 'group,note,prayer,sermon');
       expect(screen.getByTestId('date-event-list')).toHaveAttribute('data-kinds', 'sermon');
     });
 
@@ -672,6 +704,65 @@ describe('CalendarPage', () => {
       render(<CalendarPage />);
 
       expect(screen.queryByText('Error loading calendar')).not.toBeInTheDocument();
+      expect(screen.getByTestId('preach-calendar')).toBeInTheDocument();
+    });
+  });
+
+  describe('study notes and prayers in the calendar', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    const sermonsOnly = () => {
+      mockUseCalendarSermons.mockReturnValue({
+        sermons: [mockSermon],
+        sermonsByDate: {},
+        pendingSermons: [],
+        isLoading: false,
+        error: null,
+        refetch: jest.fn(),
+      } as any);
+      mockUseSeries.mockReturnValue({ series: [], loading: false, error: null } as any);
+    };
+
+    it('marks the day of a note and of a prayer with their own kinds', () => {
+      sermonsOnly();
+      mockUseCalendarNotes.mockReturnValue({ entries: [mockNoteEntry], isLoading: false, error: null });
+      mockUseCalendarPrayers.mockReturnValue({ entries: [mockPrayerEntry], isLoading: false, error: null });
+
+      render(<CalendarPage />);
+
+      expect(screen.getByTestId('preach-calendar')).toHaveAttribute('data-kinds', '2024-01-15:sermon+note+prayer');
+    });
+
+    it('puts them among the events of their day and counts them in the month summary', () => {
+      jest.useFakeTimers().setSystemTime(new Date('2024-01-15T12:00:00Z'));
+      sermonsOnly();
+      mockUseCalendarNotes.mockReturnValue({ entries: [mockNoteEntry], isLoading: false, error: null });
+      mockUseCalendarPrayers.mockReturnValue({ entries: [mockPrayerEntry], isLoading: false, error: null });
+
+      render(<CalendarPage />);
+
+      expect(screen.getByTestId('date-event-list')).toHaveAttribute('data-kinds', 'note,prayer,sermon');
+      expect(screen.getByTestId('calendar-summary-note')).toHaveTextContent('1');
+      expect(screen.getByTestId('calendar-summary-prayer')).toHaveTextContent('1');
+    });
+
+    it('waits for the notes and the prayers before drawing the month', () => {
+      sermonsOnly();
+      mockUseCalendarNotes.mockReturnValue({ entries: [], isLoading: true, error: null });
+
+      render(<CalendarPage />);
+
+      expect(screen.queryByTestId('preach-calendar')).not.toBeInTheDocument();
+    });
+
+    it('keeps the calendar when the prayers refused but the rest answered', () => {
+      sermonsOnly();
+      mockUseCalendarPrayers.mockReturnValue({ entries: [], isLoading: false, error: new Error('offline') });
+
+      render(<CalendarPage />);
+
       expect(screen.getByTestId('preach-calendar')).toBeInTheDocument();
     });
   });
