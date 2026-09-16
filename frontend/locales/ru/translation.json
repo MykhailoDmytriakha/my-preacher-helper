@@ -385,6 +385,7 @@
     "titlePlaceholder": "Например: Сила веры в испытаниях",
     "verseLabel": "Стих из Писания",
     "versePlaceholder": "Например: Еф 1:15 — «Посему и я, услышав о вашей вере во Христа Иисуса...»",
+    "fillRequiredField": "Заполните поле «{{field}}»",
     "plannedDateLabel": "Планируемая дата проповеди",
     "seriesLabel": "Серия",
     "seriesPlaceholder": "Выберите серию...",

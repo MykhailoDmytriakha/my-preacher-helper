@@ -49,6 +49,8 @@ interface SermonCardProps {
 
 interface SermonCardHeaderProps {
   sermon: Sermon;
+  /** The loaded series list — the menu needs it to offer add / move / remove. */
+  series?: Series[];
   formattedCreatedDate: string;
   formattedUpdatedDate: string | null;
   formattedPreachedDate: string | null;
@@ -90,6 +92,7 @@ interface SermonCardFooterProps {
 
 function SermonCardHeader({
   sermon,
+  series,
   formattedCreatedDate,
   formattedUpdatedDate,
   formattedPreachedDate,
@@ -146,8 +149,14 @@ function SermonCardHeader({
       </div>
 
       <div className="z-20 -mr-2 -mt-1">
+        {/*
+          The SAME series list this card derives its badge from. Without it the menu hid
+          every series action, so filing a list of sermons into series meant opening and
+          closing each one; the card knew the answer and did not pass it on.
+        */}
         <OptionMenu
           sermon={sermon}
+          series={series}
           onDelete={(id: string) => onDelete(id)}
           onUpdate={onUpdate}
           optimisticActions={optimisticActions}
@@ -366,6 +375,7 @@ export default function SermonCard({
           {/* Header: Dates & Menu */}
           <SermonCardHeader
             sermon={sermon}
+            series={series}
             formattedCreatedDate={formattedCreatedDate}
             formattedUpdatedDate={formattedUpdatedDate}
             formattedPreachedDate={formattedPreachedDate}

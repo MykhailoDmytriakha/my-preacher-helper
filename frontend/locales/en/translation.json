@@ -385,6 +385,7 @@
     "titlePlaceholder": "e.g. The Power of Faith in Trials",
     "verseLabel": "Scripture Verse",
     "versePlaceholder": "e.g. Eph 1:15 — \"For this reason, ever since I heard about your faith in the Lord Jesus...\"",
+    "fillRequiredField": "Fill in \"{{field}}\"",
     "plannedDateLabel": "Planned preaching date",
     "seriesLabel": "Series",
     "seriesPlaceholder": "Select a series...",

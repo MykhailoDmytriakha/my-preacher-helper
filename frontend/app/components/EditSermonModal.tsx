@@ -6,6 +6,8 @@ import "@locales/i18n";
 
 import SermonFormDialog from '@/components/sermon/SermonFormDialog';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useSeries } from '@/hooks/useSeries';
+import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { DashboardEditSermonInput } from '@/models/dashboardOptimistic';
 import { Church, PreachDate, Sermon } from '@/models/models';
 import { SERMON_CORE_AGGREGATE } from '@/services/sermons.client';
@@ -16,6 +18,7 @@ import {
   awaitAcceptance,
   type WriteSubmission,
 } from '@/utils/recoverableWrite';
+import { getSeriesForRef } from '@/utils/seriesMembership';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { addPreachDate, deletePreachDate, updatePreachDate } from '@services/preachDates.service';
 import { updateSermon } from '@services/sermon.service';
@@ -59,6 +62,23 @@ export default function EditSermonModal({
    * cleared everywhere without a second rule.
    */
   const [church, setChurch] = useState<Church | undefined>(sermon.church);
+  /**
+   * THE SERIES IS EDITABLE HERE because this is where a person looks for it.
+   *
+   * The create door offers a series and this one did not, so changing your mind meant
+   * finding a menu item you had to know about — and the natural reading of that absence
+   * was "the link is broken". The value is DERIVED from the loaded playlist
+   * (`series.items` is the sole truth), never from the deprecated `sermon.seriesId`.
+   */
+  const { series: seriesList, loading: seriesLoading } = useSeries(null);
+  const { addToSeries, removeFromAllSeries } = useSeriesMembership();
+  const currentSeriesId = getSeriesForRef(sermon.id, seriesList)?.id ?? '';
+  const [seriesId, setSeriesId] = useState(currentSeriesId);
+  const seriesTouchedRef = React.useRef(false);
+  // Until the person touches the field, it follows the list: the playlist may still be
+  // loading when this opens, and a field frozen at "" would then offer to unfile the sermon.
+  const shownSeriesId = seriesTouchedRef.current ? seriesId : currentSeriesId;
+  const seriesChanged = seriesTouchedRef.current && shownSeriesId !== currentSeriesId;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveError, setSaveError] = useState('');
   const formEditedRef = React.useRef(false);
@@ -86,7 +106,26 @@ export default function EditSermonModal({
     (church?.name || '').trim() !== (sermon.church?.name || '').trim() ||
     (church?.city || '').trim() !== (sermon.church?.city || '').trim();
   const hasChanges =
-    title !== sermon.title || verse !== sermon.verse || plannedDate !== initialPlannedDate || churchChanged;
+    title !== sermon.title ||
+    verse !== sermon.verse ||
+    plannedDate !== initialPlannedDate ||
+    churchChanged ||
+    seriesChanged;
+
+  /**
+   * Membership goes through its one writer and is NOT awaited: the sweep is optimistic and
+   * offline it never resolves, so awaiting it would hang the editor. Its refusals have their
+   * own reporter for every surface (`useSeriesMembership`), which is why this does not try
+   * to speak for them.
+   */
+  const applySeriesChange = () => {
+    if (!seriesChanged) return;
+    if (shownSeriesId) {
+      addToSeries(shownSeriesId, { type: 'sermon', refId: sermon.id });
+      return;
+    }
+    removeFromAllSeries({ type: 'sermon', refId: sermon.id });
+  };
 
   const mergePreachDate = (baseSermon: Sermon, preachDate: PreachDate): Sermon => {
     const preachDates = baseSermon.preachDates || [];
@@ -201,6 +240,7 @@ export default function EditSermonModal({
           unspecifiedChurchName: getUnspecifiedChurch().name,
         });
 
+        applySeriesChange();
         await awaitAcceptance(submission, (error) => {
           /**
            * A LATE refusal is shown on the sermon's own card, as a badge with the text
@@ -235,6 +275,7 @@ export default function EditSermonModal({
       const corePatch = churchChanged
         ? { title, verse, church: church ?? { id: '', name: '', city: '' } }
         : { title, verse };
+      applySeriesChange();
       const data = await updateSermon({ ...sermon, ...corePatch }, corePatch);
 
       if (!data) {
@@ -253,13 +294,17 @@ export default function EditSermonModal({
   return (
     <SermonFormDialog
       heading={t('editSermon.editSermon')}
-      values={{ title, verse, church, plannedDate, seriesId: '' }}
+      values={{ title, verse, church, plannedDate, seriesId: shownSeriesId }}
       onChange={(patch) => {
         markEdited();
         if ('title' in patch) setTitle(patch.title ?? '');
         if ('verse' in patch) setVerse(patch.verse ?? '');
         if ('church' in patch) setChurch(patch.church);
         if ('plannedDate' in patch) setPlannedDate(patch.plannedDate ?? '');
+        if ('seriesId' in patch) {
+          seriesTouchedRef.current = true;
+          setSeriesId(patch.seriesId ?? '');
+        }
       }}
       onSubmit={handleSubmit}
       onCancel={onClose}
@@ -268,6 +313,8 @@ export default function EditSermonModal({
       submitDisabled={!hasChanges}
       readOnly={isReadOnly}
       error={saveError}
+      seriesOptions={seriesList.map((entry) => ({ id: entry.id, label: entry.title || entry.theme }))}
+      seriesLoading={seriesLoading}
       showPlannedDate
       detailsHint={t('editSermon.plannedDateHint', { defaultValue: 'Leave empty if you do not want a planned date.' })}
     />

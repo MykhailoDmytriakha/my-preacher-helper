@@ -288,6 +288,32 @@ describe('SermonCard Component', () => {
     expect(screen.getByText('Test Series')).toBeInTheDocument();
   });
 
+  it('offers the series actions in the card menu, not only on the sermon page', () => {
+    // The card already derives its badge from this list; the menu was the one place the
+    // list did not reach, so filing a list of sermons meant opening each one in turn.
+    const series: Series[] = [
+      {
+        id: 'series-1',
+        title: 'Test Series',
+        userId: 'test-user-id',
+        theme: 'Test Theme',
+        bookOrTopic: 'Romans',
+        sermonIds: [],
+        status: 'active',
+        createdAt: '2024-01-01',
+        updatedAt: '2024-01-02',
+      },
+    ];
+
+    render(
+      <SermonCard sermon={baseSermon} series={series} onDelete={mockOnDelete} onUpdate={mockOnUpdate} />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'optionMenu.options' }));
+
+    expect(screen.getByText('workspaces.series.actions.addToSeries')).toBeInTheDocument();
+  });
+
   it('renders export buttons with icon variant', () => {
     render(
       <SermonCard

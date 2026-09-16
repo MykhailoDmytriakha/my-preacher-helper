@@ -385,6 +385,7 @@
     "titlePlaceholder": "Наприклад: Сила віри у випробуваннях",
     "verseLabel": "Вірш з Писання",
     "versePlaceholder": "Наприклад: Еф 1:15 — «Тому й я, почувши про вашу віру в Христа Ісуса...»",
+    "fillRequiredField": "Заповніть поле «{{field}}»",
     "plannedDateLabel": "Запланована дата проповіді",
     "seriesLabel": "Серія",
     "seriesPlaceholder": "Виберіть серію...",

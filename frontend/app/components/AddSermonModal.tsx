@@ -52,7 +52,9 @@ export default function AddSermonModal({
   // showTriggerButton is used to conditionally render the trigger button
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { series } = useSeries(user?.uid || null);
+  // `loading` travels with the list: an empty dropdown claims there are no series,
+  // which on a slow phone is a lie the person acts on (they pick "no series").
+  const { series, loading: seriesLoading } = useSeries(user?.uid || null);
   const [internalOpen, setInternalOpen] = useState(false);
   const open = isOpen !== undefined ? isOpen : internalOpen;
   const handleClose = onClose || (() => setInternalOpen(false));
@@ -214,6 +216,7 @@ export default function AddSermonModal({
       saving={isSubmitting}
       error={submitError}
       seriesOptions={series.map((s) => ({ id: s.id, label: s.title || s.theme }))}
+      seriesLoading={seriesLoading}
       showPlannedDate={allowPlannedDate}
       detailsHint={t('addSermon.groupLaterHint')}
     />

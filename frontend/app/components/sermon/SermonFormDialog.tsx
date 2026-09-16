@@ -55,6 +55,13 @@ interface SermonFormDialogProps {
   error?: string;
   /** Given → the series row is offered. Omitted → the door does not manage series. */
   seriesOptions?: SermonSeriesOption[];
+  /**
+   * The series list has not arrived yet. "I do not know the series" and "there are no
+   * series" look identical in an empty dropdown, and on a slow phone the person reads the
+   * first as the second, picks "no series" because it is the only entry, and files the
+   * sermon outside the series they wanted.
+   */
+  seriesLoading?: boolean;
   /** Omitted → no planned-date row at all (some create flows deliberately have none). */
   showPlannedDate?: boolean;
   /** Sits under the second group, in the caller's words. */
@@ -75,6 +82,7 @@ export default function SermonFormDialog({
   readOnly = false,
   error,
   seriesOptions,
+  seriesLoading = false,
   showPlannedDate = false,
   detailsHint,
   titleMaxRows = 4,
@@ -83,6 +91,51 @@ export default function SermonFormDialog({
   const { t } = useTranslation();
   const locked = saving || readOnly;
   const fieldId = (name: string) => `sermon-form-${name}`;
+
+  /**
+   * WHY THIS FORM CHECKS ITSELF INSTEAD OF LETTING THE BROWSER DO IT.
+   *
+   * `required` hands the refusal to the browser, and the browser pins its bubble to the
+   * offending field. This dialog scrolls, and the field the person is looking at when they
+   * press Save — the series row, at the bottom — is not the field that is empty. So Save
+   * did nothing, said nothing, and the sermon was never created: the most expensive silence
+   * a button can have. The check lives here, names the field in the person's language, and
+   * puts them back in it.
+   */
+  /*
+   * No asterisks on the labels: this form already groups its fields by obligation —
+   * "Sermon" above, "Can be filled in later" below — so a mark on every field of the
+   * first group would distinguish nothing and only add noise to what a screen reader
+   * reads out.
+   */
+  const missingFieldRef = React.useRef<string | null>(null);
+  const [missingField, setMissingField] = React.useState<string | null>(null);
+
+  const requiredFields: { name: string; labelKey: string; value: string }[] = [
+    { name: 'title', labelKey: 'addSermon.titleLabel', value: values.title },
+    { name: 'verse', labelKey: 'addSermon.verseLabel', value: values.verse },
+  ];
+
+  const handleSubmit = (event: React.FormEvent) => {
+    const empty = requiredFields.find((field) => !field.value.trim());
+    if (!empty) {
+      missingFieldRef.current = null;
+      setMissingField(null);
+      onSubmit(event);
+      return;
+    }
+    event.preventDefault();
+    missingFieldRef.current = empty.name;
+    setMissingField(t('addSermon.fillRequiredField', { field: t(empty.labelKey) }));
+    const element = document.getElementById(fieldId(empty.name));
+    element?.focus();
+    // Optional call on purpose: not every environment implements it, and a missing
+    // scroll must never swallow the message the person needs to read.
+    element?.scrollIntoView?.({ block: 'center' });
+  };
+
+  /** The caller's own error (a refused write) and this form's complaint share one place. */
+  const notice = error || missingField;
 
   const footer = (
     <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
@@ -111,13 +164,13 @@ export default function SermonFormDialog({
   );
 
   return (
-    <FormDialog title={heading} onClose={onCancel} onSubmit={onSubmit} footer={footer} closeDisabled={saving}>
-      {error && (
+    <FormDialog title={heading} onClose={onCancel} onSubmit={handleSubmit} footer={footer} closeDisabled={saving}>
+      {notice && (
         <div
           role="alert"
           className="rounded-xl border border-red-200/80 bg-red-50 px-4 py-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200"
         >
-          {error}
+          {notice}
         </div>
       )}
 
@@ -137,7 +190,8 @@ export default function SermonFormDialog({
               minRows={1}
               maxRows={titleMaxRows}
               disabled={locked}
-              required
+              aria-required="true"
+              aria-invalid={missingFieldRef.current === 'title' || undefined}
             />
           </div>
           <div className={FIELD_ROW}>
@@ -153,7 +207,8 @@ export default function SermonFormDialog({
               minRows={3}
               maxRows={verseMaxRows}
               disabled={locked}
-              required
+              aria-required="true"
+              aria-invalid={missingFieldRef.current === 'verse' || undefined}
             />
           </div>
         </div>
@@ -213,6 +268,16 @@ export default function SermonFormDialog({
               <label htmlFor={fieldId('series')} className={FIELD_LABEL}>
                 {t('addSermon.seriesLabel')}
               </label>
+              {seriesLoading ? (
+                /* Not an empty dropdown: an empty one claims there are no series. */
+                <div className="flex items-center gap-2 px-1 py-2.5 text-sm text-gray-500 dark:text-gray-400">
+                  <span
+                    className="h-4 w-4 animate-spin rounded-full border-2 border-gray-400 border-b-transparent"
+                    aria-hidden="true"
+                  />
+                  <span>{t('workspaces.series.loadingSeries')}</span>
+                </div>
+              ) : (
               <div className="relative">
                 <select
                   id={fieldId('series')}
@@ -233,6 +298,7 @@ export default function SermonFormDialog({
                   className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-500 dark:text-gray-300"
                 />
               </div>
+              )}
             </div>
           )}
         </div>
