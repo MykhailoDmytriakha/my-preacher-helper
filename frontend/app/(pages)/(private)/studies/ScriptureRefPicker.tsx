@@ -4,6 +4,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useState, useRef, useEffect, KeyboardEvent, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { ScriptureReference } from '@/models/models';
 
 import {
@@ -160,24 +161,13 @@ export default function ScriptureRefPicker({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [onCancel]);
 
-  // Prevent body scroll when modal is open
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, []);
 
-  // Handle Escape key
-  useEffect(() => {
-    function handleKeyDown(event: globalThis.KeyboardEvent) {
-      if (event.key === 'Escape') {
-        onCancel();
-      }
-    }
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onCancel]);
+  /*
+   * Escape and the page lock come from the shared rule. The hand-rolled lock this replaced
+   * wrote an empty overflow onto the body when it closed, releasing any window still open
+   * behind it.
+   */
+  const layer = useModalLayer({ onClose: onCancel });
 
   const handleConfirm = () => {
     // Convert chapters from locale numbering to Hebrew (storage) for Psalms
@@ -242,7 +232,7 @@ export default function ScriptureRefPicker({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div {...layer} className="fixed inset-0 z-50 flex items-center justify-center overscroll-contain">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
 

@@ -147,10 +147,17 @@ export default function SermonFormDialog({
       >
         {t('addSermon.cancel')}
       </button>
+      {/*
+        A BUTTON THAT CHANGES SIZE PUSHES ITS NEIGHBOUR. "Save" becoming "Saving…" grew this
+        button by a third, sliding Cancel out from under the finger already moving towards it,
+        and a screenshot caught mid-repaint showed the two states printed over each other.
+        The room for the longer wording is reserved from the start, so only the contents change.
+      */}
       <button
         type="submit"
         disabled={locked || submitDisabled}
-        className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+        aria-busy={saving || undefined}
+        className="inline-flex min-w-[9.5rem] items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
       >
         {saving && (
           <span

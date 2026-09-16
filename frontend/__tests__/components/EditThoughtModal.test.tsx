@@ -346,8 +346,10 @@ describe('EditThoughtModal Component', () => {
   test('disables save button when no changes are made', () => {
     render(<EditThoughtModal {...mockProps} />);
 
-    // Save button should be disabled initially (no changes made)
-    const saveButton = screen.getByText('Save');
+    // Save button should be disabled initially (no changes made).
+    // Asked for by ROLE, not by text: the shared actions row wraps its wording in a span so a
+    // spinner can sit beside it, and a text lookup then returns the label instead of the button.
+    const saveButton = screen.getByRole('button', { name: 'Save' });
     expect(saveButton).toBeDisabled();
 
     // Make a change

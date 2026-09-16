@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { TimerPhaseDurations } from '@/types/TimerState';
 import { SERMON_SECTION_COLORS } from '@/utils/themeColors';
 
@@ -167,13 +168,17 @@ const SectionTimePicker: React.FC<SectionTimePickerProps> = ({
     });
   };
 
+  /* Escape and the page lock come from the one shared rule (`useModalLayer`). */
+  const layer = useModalLayer({ onClose: onCancel });
+
   const totalSeconds = phaseDurations.introduction + phaseDurations.main + phaseDurations.conclusion;
   const activeThemeKey = activePhase === 'main' ? 'mainPart' : activePhase;
   const activeTheme = SERMON_SECTION_COLORS[activeThemeKey];
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      {...layer}
+      className="fixed inset-0 z-50 flex items-center justify-center overscroll-contain bg-black/60 backdrop-blur-sm"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) {
           onCancel();

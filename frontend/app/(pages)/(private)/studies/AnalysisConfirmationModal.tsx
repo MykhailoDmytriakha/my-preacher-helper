@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Chip } from '@/components/ui/Chip';
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { ScriptureReference } from '@/models/models';
 
 import { getLocalizedBookName, BibleLocale } from './bibleData';
@@ -62,19 +63,11 @@ export default function AnalysisConfirmationModal({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [isOpen, onClose]);
 
-    useEffect(() => {
-        if (!isOpen) return;
-        function handleKeyDown(event: KeyboardEvent) {
-            if (event.key === 'Escape') onClose();
-        }
-        document.addEventListener('keydown', handleKeyDown);
-        return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen, onClose]);
-
-    useEffect(() => {
-        document.body.style.overflow = isOpen ? 'hidden' : '';
-        return () => { document.body.style.overflow = ''; };
-    }, [isOpen]);
+    /*
+     * Escape and the page lock come from the shared rule. The hand-rolled lock this replaced
+     * wrote an empty overflow onto the body, which released any window still open behind it.
+     */
+    const layer = useModalLayer({ onClose, active: isOpen });
 
     if (!isOpen || !result) return null;
 
@@ -123,7 +116,7 @@ export default function AnalysisConfirmationModal({
     const nothingToApply = !hasTitle && !hasTags && !hasRefs;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center">
+        <div {...layer} className="fixed inset-0 z-[100] flex items-center justify-center overscroll-contain">
             <div className="absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity" />
 
             <div

@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { createSermon } from '@/services/sermon.service';
 import {
@@ -341,12 +342,14 @@ export default function CreateSermonFromNoteModal({
     if (opener && typeof opener.focus === 'function' && !opener.hasAttribute('disabled')) opener.focus();
   }, [onClose, returnFocusTo]);
 
+  /*
+   * Escape and the page lock come from the shared rule; the Tab trap below stays, because
+   * keeping focus inside THIS dialog is its own business and differs window by window.
+   */
+  const layer = useModalLayer({ onClose: close });
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        close();
-        return;
-      }
       if (event.key !== 'Tab' || !dialogRef.current) return;
       const nodes = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
       if (nodes.length === 0) return;
@@ -550,7 +553,7 @@ export default function CreateSermonFromNoteModal({
       : error;
 
   const content = (
-    <div className="fixed inset-0 z-[100] flex bg-black/60 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4">
+    <div {...layer} className="fixed inset-0 z-[100] flex overscroll-contain bg-black/60 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4">
       <div
         ref={dialogRef}
         role="dialog"

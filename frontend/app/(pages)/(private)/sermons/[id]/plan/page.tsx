@@ -13,6 +13,7 @@ import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import { useRouteId } from "@/hooks/useRouteId";
+import { useScrollLock } from '@/hooks/useScrollLock';
 import useSermon from "@/hooks/useSermon";
 import { SermonPoint, Sermon, Thought } from "@/models/models";
 import { savePlanModeViaClient } from "@/services/sermons.client";
@@ -444,18 +445,12 @@ export default function PlanPage() {
     };
   }, [showSectionMenu]);
 
-  useEffect(() => {
-    if (!isPlanOverlay) {
-      return;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isPlanOverlay]);
+  /*
+   * The plan overlay holds the page like every other window does — through the counted lock,
+   * not by writing on the body itself. Its own version saved "the overflow before me", which
+   * on top of another window was already `hidden`, and restored that on the way out.
+   */
+  useScrollLock(isPlanOverlay);
 
   useEffect(() => {
     if (!isPlanOverlay) {

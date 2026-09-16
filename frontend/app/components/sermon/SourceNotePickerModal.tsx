@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { resolveBibleLocale } from '@/(pages)/(private)/studies/bibleData';
 import { formatScriptureRef } from '@/(pages)/(private)/studies/bookAbbreviations';
 import { Chip } from '@/components/ui/Chip';
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { useStudyNoteDirectory } from '@/hooks/useSermonNoteLinks';
 import { formatDateOnly } from '@/utils/dateFormatter';
 import { compareById, timeOrZero } from '@/utils/sortHelpers';
@@ -97,18 +98,12 @@ export default function SourceNotePickerModal({
     };
   }, [mounted, returnFocusTo]);
 
-  // Escape listens on the DOCUMENT, not on the dialog: it must work even if focus has drifted
-  // out (a click on the overlay, an extension stealing focus), and a dialog that can only be
-  // dismissed while focus happens to be inside is a trap.
-  useEffect(() => {
-    const onEscape = (event: KeyboardEvent) => {
-      // Never while a save is in flight: the answer decides whether this dialog closes or
-      // stays with the choice on screen, and it cannot do either once it is gone.
-      if (event.key === 'Escape' && !saving) onClose();
-    };
-    window.addEventListener('keydown', onEscape);
-    return () => window.removeEventListener('keydown', onEscape);
-  }, [onClose, saving]);
+  /*
+   * Escape, the page lock and "am I the topmost window" now come from the one rule every
+   * window in the app follows (`useModalLayer`). This dialog kept its own copy, which listened
+   * on `window` and therefore also closed when a picker ON TOP of it was dismissed.
+   */
+  const layer = useModalLayer({ onClose, closeDisabled: saving });
 
   /**
    * TAB STAYS INSIDE, even when the element that had focus disappeared.
@@ -230,7 +225,8 @@ export default function SourceNotePickerModal({
 
   const content = (
     <div
-      className="fixed inset-0 z-[100] flex bg-black/60 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4"
+      {...layer}
+      className="fixed inset-0 z-[100] flex overscroll-contain bg-black/60 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4"
     >
       {/*
         MOBILE IS FULL-SCREEN ON PURPOSE. A capped-height card with a list scrolling inside it

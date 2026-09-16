@@ -5,6 +5,7 @@ import React, { useId, type ReactNode, type ButtonHTMLAttributes } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { FORM_COLORS } from '@/utils/themeColors';
 
 import Chip from './Chip';
@@ -49,6 +50,12 @@ export default function FormDialog({ title, eyebrow, description, tone = 'blue',
   const { t } = useTranslation();
   const titleId = useId();
   const descriptionId = useId();
+  /*
+   * What being a modal window means — holding the page still, answering Escape, knowing
+   * whether it is the topmost — is one rule for every window in the app (`useModalLayer`).
+   * This dialog is simply one of its callers.
+   */
+  const layer = useModalLayer({ onClose, closeDisabled });
   const banded = footer !== undefined;
   const width = WIDTH_BY_SIZE[size ?? (banded ? 'form' : 'standard')];
 
@@ -77,7 +84,7 @@ export default function FormDialog({ title, eyebrow, description, tone = 'blue',
       </div>
     );
     return createPortal(
-      <div className="fixed inset-0 z-[110] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
+      <div {...layer} className="fixed inset-0 z-[110] flex items-end justify-center overscroll-contain bg-black/50 p-0 sm:items-center sm:p-4"
         onClick={event => { if (!closeDisabled && event.target === event.currentTarget) onClose(); }}>
         <div role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined}
           onClick={event => event.stopPropagation()}
@@ -89,7 +96,7 @@ export default function FormDialog({ title, eyebrow, description, tone = 'blue',
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm sm:px-4"
+    <div {...layer} className="fixed inset-0 z-[100] flex items-center justify-center overscroll-contain bg-black/50 backdrop-blur-sm sm:px-4"
       onClick={event => { if (dismissOnBackdrop && !closeDisabled && event.target === event.currentTarget) onClose(); }}>
       <div role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined}
         className={`flex h-[100dvh] w-full flex-col overflow-hidden border border-gray-200/70 bg-white shadow-2xl dark:border-gray-800 dark:bg-gray-900 sm:h-auto sm:max-h-[85vh] sm:rounded-2xl ${width}`}>
@@ -130,11 +137,32 @@ export function FormActions({ onCancel, cancelLabel, submitLabel, saving, submit
   const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:justify-end">
+      {/*
+        CANCEL STAYS LIVE WHILE A SAVE RUNS, on purpose (frozen by `FormDialog.test.tsx`): the
+        person may always walk away from a dialog, and the write has its own recovery if it
+        lands afterwards. Only the caller may shut it, through `cancelDisabled`.
+      */}
       <FormButton variant="secondary" onClick={onCancel} disabled={cancelDisabled}>
         {cancelLabel}
       </FormButton>
-      <FormButton type="submit" tone={tone} disabled={saving || submitDisabled} aria-busy={saving}>
-        {saving ? savingLabel ?? t('common.saving') : submitLabel}
+      {/*
+        THE ROOM FOR "SAVING…" IS TAKEN BEFORE IT IS NEEDED. Otherwise the button grows the
+        moment it is pressed and shoves Cancel out from under the finger going for it.
+      */}
+      <FormButton
+        type="submit"
+        tone={tone}
+        disabled={saving || submitDisabled}
+        aria-busy={saving}
+        className="min-w-[9.5rem]"
+      >
+        {saving && (
+          <span
+            className="h-4 w-4 animate-spin rounded-full border-2 border-white/80 border-b-transparent"
+            aria-hidden="true"
+          />
+        )}
+        <span>{saving ? savingLabel ?? t('common.saving') : submitLabel}</span>
       </FormButton>
     </div>
   );

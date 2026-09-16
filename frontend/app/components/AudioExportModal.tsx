@@ -10,8 +10,10 @@
 
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { Volume2 } from 'lucide-react';
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+
+import { useModalLayer } from '@/hooks/useModalLayer';
 
 import StepByStepWizard from './audio/StepByStepWizard';
 
@@ -43,21 +45,21 @@ export default function AudioExportModal({
         setIsGenerating(generating);
     }, []);
 
-    // Lock background scroll while open
-    useEffect(() => {
-        if (isOpen) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = 'unset';
-        }
-        return () => { document.body.style.overflow = 'unset'; };
-    }, [isOpen]);
+    /*
+     * The page lock is NOT hand-rolled here any more. This one wrote `overflow: unset` onto the
+     * body whenever it closed — including when another window was still open behind it, which
+     * released that window's lock and let the page scroll away underneath it.
+     */
+    const layer = useModalLayer({ onClose: handleClose, active: isOpen });
 
     if (!isOpen) return null;
 
     return (
         <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-3 backdrop-blur-sm sm:p-4"
+            {...layer}
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-[100] flex items-center justify-center overscroll-contain bg-black/50 p-3 backdrop-blur-sm sm:p-4"
             onClick={handleClose}
             data-testid="modal-overlay"
         >

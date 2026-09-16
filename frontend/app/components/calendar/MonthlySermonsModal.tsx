@@ -8,6 +8,7 @@ import { useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 
 import { MonthlyPreachEntry } from "@/components/calendar/calendarAnalytics";
+import { useModalLayer } from '@/hooks/useModalLayer';
 
 interface MonthlySermonsModalProps {
     isOpen: boolean;
@@ -23,6 +24,8 @@ export default function MonthlySermonsModal({
     entries
 }: MonthlySermonsModalProps) {
     const { t, i18n } = useTranslation();
+    /* One rule for every window: holds the page still, answers Escape (`useModalLayer`). */
+    const layer = useModalLayer({ onClose, active: isOpen });
 
     const getDateLocale = useCallback(() => {
         switch (i18n.language) {
@@ -51,7 +54,7 @@ export default function MonthlySermonsModal({
     });
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <div {...layer} className="fixed inset-0 z-[100] flex items-center justify-center overscroll-contain bg-black/50 p-4 backdrop-blur-sm">
             <div
                 role="dialog"
                 aria-modal="true"

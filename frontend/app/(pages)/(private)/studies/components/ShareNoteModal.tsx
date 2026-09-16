@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Chip } from '@/components/ui/Chip';
 import { useClipboard } from '@/hooks/useClipboard';
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { StudyNote, StudyNoteShareLink } from '@/models/models';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { getShareNoteUrl } from '@/utils/shareNoteUtils';
@@ -28,7 +29,7 @@ interface ShareNoteModalProps {
 }
 
 const PANEL_CLASS = 'relative w-full max-w-xl rounded-2xl bg-white p-6 shadow-xl dark:bg-gray-900';
-const OVERLAY_CLASS = 'fixed inset-0 z-50 flex items-center justify-center px-4 py-8';
+const OVERLAY_CLASS = 'fixed inset-0 z-50 flex items-center justify-center overscroll-contain px-4 py-8';
 
 export default function ShareNoteModal({
   isOpen,
@@ -43,6 +44,8 @@ export default function ShareNoteModal({
   const { isCopied, copyToClipboard, reset: resetCopy } = useClipboard({ successDuration: 1500 });
   const [isWorking, setIsWorking] = useState(false);
   const [writeError, setWriteError] = useState<string | null>(null);
+  /* This window had no keyboard way out at all until the shared rule gave it one. */
+  const layer = useModalLayer({ onClose, active: isOpen, closeDisabled: isWorking });
 
   const shareUrl = useMemo(() => (shareLink ? getShareNoteUrl(shareLink.token) : ''), [shareLink]);
 
@@ -100,7 +103,7 @@ export default function ShareNoteModal({
     : t('studiesWorkspace.shareLinks.statusOffDescription');
 
   const modalContent = (
-    <div className={OVERLAY_CLASS} role="dialog" aria-modal="true">
+    <div {...layer} className={OVERLAY_CLASS} role="dialog" aria-modal="true">
       <button
         type="button"
         onClick={onClose}
