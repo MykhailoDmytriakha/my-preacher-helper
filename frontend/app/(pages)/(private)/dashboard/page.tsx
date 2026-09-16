@@ -33,11 +33,13 @@ import { useSeries } from '@/hooks/useSeries';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { Council, Group, PrayerRequest, Sermon, Series, StudyNote } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
+import { resolveAppLocale } from '@/utils/appLocale';
 import { councilEntries, groupEntries, sermonEntries, type CalendarKind } from '@/utils/calendarEntries';
 import { getContrastColor } from '@/utils/color';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 import { awaitAcceptance, persistedWrite } from '@/utils/recoverableWrite';
+import { formatScriptureReference } from '@/utils/scriptureReference';
 
 import type {
   DashboardOptimisticActions,
@@ -836,7 +838,7 @@ function buildDashboardData({
     agendaItems: agendaEvents.slice(0, PANEL_ITEM_POOL),
     prayerItems: buildPrayerItems(prayerRequests, t, locale),
     seriesItems: buildSeriesItems(series, sermons, t),
-    studyItems: buildStudyItems(notes, t),
+    studyItems: buildStudyItems(notes, t, locale),
     groupItems: buildGroupItems(groups, t, locale),
   };
 }
@@ -995,14 +997,14 @@ function buildSeriesItems(series: Series[], sermons: Sermon[], t: TFunction): Se
     });
 }
 
-function buildStudyItems(notes: StudyNote[], t: TFunction): StudyItem[] {
+function buildStudyItems(notes: StudyNote[], t: TFunction, locale: string): StudyItem[] {
   return [...notes]
     .sort((a, b) => getTime(b.updatedAt) - getTime(a.updatedAt))
     .slice(0, PANEL_ITEM_POOL)
     .map((note) => ({
       id: note.id,
-      passage: getStudyDisplayTitle(note, t),
-      references: getStudyReferences(note).slice(0, 2),
+      passage: getStudyDisplayTitle(note, t, locale),
+      references: getStudyReferences(note, locale).slice(0, 2),
       tags: (note.tags || []).length > 0 ? note.tags.slice(0, 3) : [note.type === 'question' ? t('dashboardHome.sections.studies.questionTag') : t('dashboardHome.sections.studies.noteTag')],
       href: `/studies/${note.id}`,
     }));
@@ -1061,22 +1063,18 @@ function getNextMeetingDate(group: Group) {
     .sort((a, b) => getTime(a) - getTime(b))[0];
 }
 
-function getStudyReferences(note: StudyNote) {
-  return note.scriptureRefs
-    .map(formatStudyReference)
-    .filter((reference): reference is string => Boolean(reference));
+/**
+ * The study panel's passages, in the interface language. This used to print the stored English
+ * book id ("Luke 5:17") on a Russian dashboard, with its own rules for ranges — one of eight
+ * copies of the same formatting, now `utils/scriptureReference.ts`.
+ */
+function getStudyReferences(note: StudyNote, locale: string) {
+  const face = { locale: resolveAppLocale(locale), style: 'long' as const };
+  return (note.scriptureRefs ?? []).map((reference) => formatScriptureReference(reference, face));
 }
 
-function formatStudyReference(reference: StudyNote['scriptureRefs'][number]) {
-  if (!reference.chapter) return reference.book;
-  if (reference.toChapter) return `${reference.book} ${reference.chapter}-${reference.toChapter}`;
-  if (!reference.fromVerse) return `${reference.book} ${reference.chapter}`;
-  const verse = reference.toVerse ? `${reference.fromVerse}-${reference.toVerse}` : reference.fromVerse;
-  return `${reference.book} ${reference.chapter}:${verse}`;
-}
-
-function getStudyDisplayTitle(note: StudyNote, t: TFunction) {
-  return note.title || getStudyReferences(note)[0] || t('dashboardHome.sections.studies.untitled');
+function getStudyDisplayTitle(note: StudyNote, t: TFunction, locale: string) {
+  return note.title || getStudyReferences(note, locale)[0] || t('dashboardHome.sections.studies.untitled');
 }
 
 function isWithinRange(date: string, start: Date, end: Date) {

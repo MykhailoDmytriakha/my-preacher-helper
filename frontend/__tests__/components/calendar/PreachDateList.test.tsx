@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import PreachDateList from '@/components/calendar/PreachDateList';
@@ -60,7 +60,6 @@ describe('PreachDateList', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    window.confirm = jest.fn().mockReturnValue(true);
 
     mockedUsePreachDates.mockReturnValue({
       preachDates: [],
@@ -162,15 +161,17 @@ describe('PreachDateList', () => {
     render(<PreachDateList sermonId="s1" />);
 
     fireEvent.click(screen.getByTitle('common.delete'));
+    const question = await screen.findByRole('dialog', { name: 'calendar.deleteConfirm' });
+    await act(async () => {
+      fireEvent.click(within(question).getByRole('button', { name: 'common.delete' }));
+    });
 
     await waitFor(() => {
-      expect(window.confirm).toHaveBeenCalledWith('calendar.deleteConfirm');
       expect(deleteDate).toHaveBeenCalledWith('pd-delete');
     });
   });
 
   it('does not delete when confirmation is cancelled', async () => {
-    (window.confirm as jest.Mock).mockReturnValue(false);
     mockedUsePreachDates.mockReturnValue({
       preachDates: [
         {
@@ -192,10 +193,13 @@ describe('PreachDateList', () => {
 
     render(<PreachDateList sermonId="s1" />);
     fireEvent.click(screen.getByTitle('common.delete'));
-
-    await waitFor(() => {
-      expect(deleteDate).not.toHaveBeenCalled();
+    const question = await screen.findByRole('dialog', { name: 'calendar.deleteConfirm' });
+    await act(async () => {
+      fireEvent.click(within(question).getByRole('button', { name: /cancel/i }));
     });
+
+    expect(deleteDate).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('opens add modal and calls addDate on save', async () => {

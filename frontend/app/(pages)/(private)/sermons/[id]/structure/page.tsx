@@ -14,6 +14,7 @@ import EditThoughtModal from "@/components/EditThoughtModal";
 import { StructurePageSkeleton } from "@/components/skeletons/StructurePageSkeleton";
 import { SortableItemPreview } from "@/components/SortableItem";
 import { useAiUsage } from "@/hooks/useAiUsage";
+import { useConfirm } from '@/hooks/useConfirm';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useRouteId } from "@/hooks/useRouteId";
@@ -87,6 +88,7 @@ function StructurePageContent() {
   const sermonIdFromQuery = searchParams?.get("sermonId");
   const sermonId = sermonIdFromPath || sermonIdFromQuery || null;
   const { t } = useTranslation();
+  const { confirm, confirmDialog } = useConfirm();
   const { refresh: refreshAiUsage } = useAiUsage();
   const [isClient, setIsClient] = useState(false);
   const [isVerticalLayout, setIsVerticalLayout] = useState<boolean>(() => {
@@ -408,7 +410,7 @@ function StructurePageContent() {
     return getSermonPlanData(sermon);
   }, [sermon]);
 
-  const handleRemoveFromStructure = (itemId: string, containerId: string) => {
+  const handleRemoveFromStructure = async (itemId: string, containerId: string) => {
     if (!sermon || containerId !== 'ambiguous') {
       toast.error(t('errors.removingError') || "Error removing item.");
       return;
@@ -425,7 +427,7 @@ function StructurePageContent() {
       defaultValue: `Are you sure you want to permanently delete this thought: "${thoughtToDelete.text}"?`,
       text: thoughtToDelete.text
     });
-    if (!window.confirm(confirmMessage)) {
+    if (!(await confirm({ title: confirmMessage, confirmText: t('common.delete') }))) {
       return;
     }
     const submission = handleDeleteThought(itemId);
@@ -1046,6 +1048,7 @@ function StructurePageContent() {
           />
         )}
       </div>
+      {confirmDialog}
     </div>
   );
 }

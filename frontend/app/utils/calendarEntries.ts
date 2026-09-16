@@ -1,9 +1,10 @@
 import { councilProgress, topicPreview } from '@/utils/council';
 import { toDateOnlyKey, toLocalDateOnlyKey } from '@/utils/dateOnly';
 import { getEffectivePreachDateStatus } from '@/utils/preachDateStatus';
-import { formatScriptureRefs } from '@/utils/writeRecovery';
+import { formatScriptureReferences } from '@/utils/scriptureReference';
 
 import type { Council, Group, PrayerRequest, Sermon, StudyNote } from '@/models/models';
+import type { AppLocale } from '@/utils/appLocale';
 
 /**
  * ONE SHAPE FOR EVERYTHING THE CALENDAR SHOWS.
@@ -144,6 +145,11 @@ const NOTE_REFERENCE_PREVIEW = 2;
 export interface NoteEntryWords {
   /** What to call a note that has no title and no Scripture to be named by. */
   untitled: string;
+  /**
+   * The interface language, for the book names. Without it the stored English id leaked onto
+   * the day card — "Luke 5:17-26" under a note whose own chips read "Лк.5:17-26".
+   */
+  locale: AppLocale;
 }
 
 /**
@@ -168,11 +174,12 @@ export function noteEntries(notes: StudyNote[], words: NoteEntryWords): Calendar
     const written = toLocalDateOnlyKey(note.createdAt);
     if (!written) return [];
     const ownTitle = note.title?.trim();
-    const references = formatScriptureRefs(note.scriptureRefs?.slice(0, NOTE_REFERENCE_PREVIEW));
+    const face = { locale: words.locale, style: 'long' as const };
+    const references = formatScriptureReferences(note.scriptureRefs, { ...face, limit: NOTE_REFERENCE_PREVIEW });
     const base = {
       kind: 'note' as const,
       refId: note.id,
-      title: ownTitle || formatScriptureRefs(note.scriptureRefs?.slice(0, 1)) || words.untitled,
+      title: ownTitle || formatScriptureReferences(note.scriptureRefs, { ...face, limit: 1 }) || words.untitled,
       href: `/studies/${note.id}`,
       // The references sit under a title of the note's own; under a title that IS the reference
       // they would only repeat it.

@@ -11,10 +11,10 @@ import {
   updateScratchNoteViaClient,
 } from '@/services/sermons.client';
 import { apiClient } from '@/utils/apiClient';
+import { isBrowserOffline } from '@/utils/connectivity';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
 const SCRATCH_COMPOSE_TIMEOUT_MS = 55_000;
-const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
 
 export function addScratchNote(
   sermonId: string,

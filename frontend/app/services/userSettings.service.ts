@@ -1,9 +1,10 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
-import { DEFAULT_LANGUAGE, COOKIE_LANG_KEY, COOKIE_MAX_AGE } from '@/../../frontend/locales/constants';
 import { getClientDb } from '@/config/firebaseClientDb';
 import { UserSettings } from '@/models/models';
+import { isBrowserOffline } from '@/utils/connectivity';
 import { debugLog } from '@/utils/debugMode';
+import { DEFAULT_LANGUAGE, COOKIE_LANG_KEY, COOKIE_MAX_AGE } from '@locales/constants';
 
 import type { FirstDayOfWeek } from '@/utils/weekStart';
 
@@ -55,7 +56,6 @@ async function updateUserSettingsViaClient(userId: string, updates: Record<strin
 }
 
 // Read/language helpers below keep their graceful cookie fallback.
-const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
 
 /**
  * Get user language preference - optimized approach

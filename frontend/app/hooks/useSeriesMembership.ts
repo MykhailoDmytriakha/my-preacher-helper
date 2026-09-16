@@ -14,6 +14,7 @@ import {
   type SeriesMembershipRef,
   type SeriesTransform,
 } from '@/services/seriesMembership.client';
+import { isBrowserOffline } from '@/utils/connectivity';
 import { reconcileServerList, type VersionedCopy } from '@/utils/readFreshness';
 import {
   persistedWrite,
@@ -346,7 +347,7 @@ export function useSeriesMembership() {
       // Offline, commitSeriesBatch stores an operation in the membership outbox (or
       // Firestore's persistent write queue). Online it is a transaction, which is
       // neither replayable nor retained by React Query after this tab closes.
-      const durableOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      const durableOffline = isBrowserOffline();
       return durableOffline
         ? queuedMutation(`series:membership:${sweepReceipt(transforms)}`, request)
         : persistedWrite(request);

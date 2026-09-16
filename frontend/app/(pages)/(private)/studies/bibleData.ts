@@ -8,7 +8,10 @@
  * - UK: Ukrainian Ohienko (UKR) - Septuagint/Orthodox numbering
  */
 
-export type BibleLocale = 'en' | 'ru' | 'uk';
+import { resolveAppLocale, type AppLocale } from '@/utils/appLocale';
+
+/** The same three languages as the interface, by definition. */
+export type BibleLocale = AppLocale;
 
 export interface BookInfo {
   /** Canonical ID (English name used as key) */
@@ -182,10 +185,8 @@ export function getBookByName(name: string, locale?: BibleLocale): BookInfo | un
  * chain drift in exactly the way that makes one screen find a note the other cannot.
  */
 export function resolveBibleLocale(language?: string): BibleLocale {
-  const lang = language?.toLowerCase() || 'en';
-  if (lang.startsWith('ru')) return 'ru';
-  if (lang.startsWith('uk')) return 'uk';
-  return 'en';
+  // The Bible speaks the interface's language — decided once, in `utils/appLocale.ts`.
+  return resolveAppLocale(language);
 }
 
 /**
@@ -296,26 +297,6 @@ export function convertPsalmNumber(
 
   // RU ↔ UK: Both use Septuagint, no change
   return psalm;
-}
-
-/**
- * Format a Scripture reference with localized book name and abbreviation.
- */
-export function formatScriptureRefLocalized(
-  ref: {
-    book: string;
-    chapter: number;
-    fromVerse: number;
-    toVerse?: number;
-  },
-  locale: BibleLocale
-): string {
-  const abbrev = getLocalizedAbbrev(ref.book, locale);
-  const verseRange =
-    ref.toVerse && ref.toVerse !== ref.fromVerse
-      ? `${ref.fromVerse}-${ref.toVerse}`
-      : String(ref.fromVerse);
-  return `${abbrev}.${ref.chapter}:${verseRange}`;
 }
 
 /**

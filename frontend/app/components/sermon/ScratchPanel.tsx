@@ -22,6 +22,7 @@ import { useConnection } from "@/providers/ConnectionProvider";
 import { composePlanFromScratch } from "@/services/scratch.service";
 import { transcribeThoughtAudio } from "@/services/thought.service";
 import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioFormatUtils";
+import { isBrowserOffline } from '@/utils/connectivity';
 import { SECTION_KEYS, type SectionKey } from '@/utils/outlineDnd';
 import { getSectionLabel } from "@lib/sections";
 
@@ -73,10 +74,6 @@ function truncateForConfirm(text: string) {
   return clean.length > CONFIRM_PREVIEW_LIMIT
     ? `${clean.slice(0, CONFIRM_PREVIEW_LIMIT)}…`
     : clean;
-}
-
-function isBrowserOffline() {
-  return typeof navigator !== "undefined" && navigator.onLine === false;
 }
 
 async function waitForSettleWithTimeout<T>(promise: Promise<T>, timeoutMs: number) {
@@ -620,7 +617,7 @@ export default function ScratchPanel({
       const isTimeout =
         error instanceof Error &&
         (error.name === "FetchTimeoutError" || error.message.toLowerCase().includes("timed out"));
-      const isOffline = typeof navigator !== "undefined" && navigator.onLine === false;
+      const isOffline = isBrowserOffline();
       const message = isOffline
         ? t("scratch.board.composeOffline")
         : isTimeout

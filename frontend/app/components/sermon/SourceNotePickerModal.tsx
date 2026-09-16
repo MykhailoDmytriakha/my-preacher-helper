@@ -6,11 +6,11 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
 import { resolveBibleLocale } from '@/(pages)/(private)/studies/bibleData';
-import { formatScriptureRef } from '@/(pages)/(private)/studies/bookAbbreviations';
 import { Chip } from '@/components/ui/Chip';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { useStudyNoteDirectory } from '@/hooks/useSermonNoteLinks';
 import { formatDateOnly } from '@/utils/dateFormatter';
+import { formatScriptureReference } from '@/utils/scriptureReference';
 import { compareById, timeOrZero } from '@/utils/sortHelpers';
 import { matchesStudyNoteQuery } from '@/utils/studyNoteUtils';
 import { SOURCE_NOTE_COLORS, UI_COLORS } from '@/utils/themeColors';
@@ -346,7 +346,7 @@ export default function SourceNotePickerModal({
                           <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                             {(note.scriptureRefs ?? []).slice(0, 3).map((ref) => (
                               <Chip key={ref.id} tone="emerald" size="sm">
-                                {formatScriptureRef(ref, bibleLocale)}
+                                {formatScriptureReference(ref, { locale: bibleLocale })}
                               </Chip>
                             ))}
                             {(note.tags ?? []).slice(0, 3).map((tag) => (

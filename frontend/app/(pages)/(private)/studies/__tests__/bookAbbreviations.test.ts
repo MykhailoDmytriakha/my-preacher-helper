@@ -1,4 +1,10 @@
-import { formatScriptureRef } from '../bookAbbreviations';
+import { formatScriptureReference } from '@/utils/scriptureReference';
+
+// The short face moved to `utils/scriptureReference.ts`; these expectations are unchanged.
+const formatScriptureRef = (
+  ref: Parameters<typeof formatScriptureReference>[0],
+  locale?: 'en' | 'ru' | 'uk'
+) => formatScriptureReference(ref, { locale });
 
 describe('formatScriptureRef', () => {
   it('formats Psalms using locale-specific numbering for ru', () => {

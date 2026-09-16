@@ -4,6 +4,7 @@ import { XMarkIcon } from '@heroicons/react/24/outline';
 import { useState, useRef, useEffect, KeyboardEvent, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { ScriptureReference } from '@/models/models';
 
@@ -11,7 +12,6 @@ import {
   getBooksForDropdown,
   getChapterCount,
   getVerseCount,
-  BibleLocale,
   psalmHebrewToSeptuagint,
   psalmSeptuagintToHebrew,
 } from './bibleData';
@@ -61,16 +61,11 @@ export default function ScriptureRefPicker({
   onCancel,
   mode = 'add',
 }: ScriptureRefPickerProps) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Get current locale for Bible data (map i18n language to BibleLocale)
-  const bibleLocale: BibleLocale = useMemo(() => {
-    const lang = i18n.language?.toLowerCase() || 'en';
-    if (lang.startsWith('ru')) return 'ru';
-    if (lang.startsWith('uk')) return 'uk';
-    return 'en';
-  }, [i18n.language]);
+  // The interface language decides the book names in the picker (`utils/appLocale.ts`).
+  const { locale: bibleLocale } = useAppLocale();
 
   // Get localized book list for dropdown
   const bookList = useMemo(() => getBooksForDropdown(bibleLocale), [bibleLocale]);

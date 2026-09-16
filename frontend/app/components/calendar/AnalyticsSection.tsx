@@ -8,15 +8,16 @@ import {
     BookOpenIcon
 } from "@heroicons/react/24/outline";
 import { format } from "date-fns";
-import { enUS, ru, uk } from "date-fns/locale";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { BibleLocale, BookInfo } from "@/(pages)/(private)/studies/bibleData";
+import { BookInfo } from "@/(pages)/(private)/studies/bibleData";
 import BibleBookSermonsModal from "@/components/calendar/BibleBookSermonsModal";
 import { buildBookPreachEntries, buildMonthlyPreachEntries, computeAnalyticsStats, parseDateInfo } from "@/components/calendar/calendarAnalytics";
 import MonthlySermonsModal from "@/components/calendar/MonthlySermonsModal";
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { Sermon } from "@/models/models";
+import { formatMonthTitle } from '@/utils/appLocale';
 
 interface AnalyticsSectionProps {
     sermonsByDate: Record<string, Sermon[]>;
@@ -24,6 +25,7 @@ interface AnalyticsSectionProps {
 
 export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProps) {
     const { t, i18n } = useTranslation();
+    const { locale: appLocale, dateLocale } = useAppLocale();
     const sermonsLabel = t('calendar.analytics.sermons', { defaultValue: 'sermons' });
     const currentYear = new Date().getFullYear();
     const [selectedYear, setSelectedYear] = useState<number | 'all'>(currentYear);
@@ -31,14 +33,6 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
     const [isBookModalOpen, setIsBookModalOpen] = useState(false);
     const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
     const [isMonthModalOpen, setIsMonthModalOpen] = useState(false);
-
-    const getDateLocale = useCallback(() => {
-        switch (i18n.language) {
-            case 'ru': return ru;
-            case 'uk': return uk;
-            default: return enUS;
-        }
-    }, [i18n.language]);
 
     const availableYears = useMemo(() => {
         const years = new Set<number>();
@@ -78,8 +72,8 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
         if (month < 1 || month > 12) return monthKey;
         const monthDate = new Date(year, month - 1, 1);
         if (Number.isNaN(monthDate.getTime())) return monthKey;
-        return format(monthDate, 'MMMM yyyy', { locale: getDateLocale() }).replace(/^./, str => str.toUpperCase());
-    }, [getDateLocale]);
+        return formatMonthTitle(monthDate, dateLocale);
+    }, [dateLocale]);
 
     return (
         <div className="space-y-8">
@@ -248,7 +242,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                     >
                                         <div className="text-center">
                                             <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
-                                                {book.abbrev[i18n.language as BibleLocale] || book.abbrev.en}
+                                                {book.abbrev[appLocale] || book.abbrev.en}
                                             </div>
                                             {count > 0 && (
                                                 <div className="text-xs font-bold text-purple-600 dark:text-purple-400 mt-1">
@@ -305,7 +299,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                     >
                                         <div className="text-center">
                                             <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
-                                                {book.abbrev[i18n.language as BibleLocale] || book.abbrev.en}
+                                                {book.abbrev[appLocale] || book.abbrev.en}
                                             </div>
                                             {count > 0 && (
                                                 <div className="text-xs font-bold text-purple-600 dark:text-purple-400 mt-1">
@@ -363,7 +357,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                             ? `rgba(245, 158, 11, ${intensity / 100 * 0.2})`
                                             : 'transparent'
                                     }}
-                                    title={`${format(monthDate, 'MMMM yyyy', { locale: getDateLocale() }).replace(/^./, str => str.toUpperCase())}: ${count} ${sermonsLabel}`}
+                                    title={`${formatMonthTitle(monthDate, dateLocale)}: ${count} ${sermonsLabel}`}
                                     onClick={() => {
                                         if (count > 0) {
                                             setSelectedMonth(month);
@@ -373,7 +367,7 @@ export default function AnalyticsSection({ sermonsByDate }: AnalyticsSectionProp
                                 >
                                     <div className="text-center">
                                         <div className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">
-                                            {format(monthDate, 'LLL yy', { locale: getDateLocale() }).replace('.', '').replace(/^./, str => str.toUpperCase())}
+                                            {format(monthDate, 'LLL yy', { locale: dateLocale }).replace('.', '').replace(/^./, str => str.toUpperCase())}
                                         </div>
                                         {count > 0 && (
                                             <div className="text-sm font-bold text-amber-600 dark:text-amber-400 mt-1">

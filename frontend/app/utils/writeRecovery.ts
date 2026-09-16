@@ -2,7 +2,6 @@ import { toast } from 'sonner';
 
 import { isStaleWriteError, isWriteRefusedError } from '@/services/conflictSafeUpdate.client';
 
-import type { ScriptureReference } from '@/models/models';
 import type { Mutation, QueryClient } from '@tanstack/react-query';
 
 export function recoveryText(parts: readonly (string | null | undefined)[]): string {
@@ -136,25 +135,3 @@ export function subscribeToTerminalMutationFailures({
   });
 }
 
-/**
- * Scripture references as the person reads them. Shared so the note hook and the note
- * editor cannot drift into two different renderings of the same draft.
- *
- * Every part below the book is optional in the model — a reference can be a whole book,
- * a chapter, a chapter range or a verse range — so each piece is appended only when it
- * exists. Formatting the optional parts blindly produced "Matthew undefined:undefined",
- * which is worse than the reference the person actually picked.
- */
-export function formatScriptureRefs(refs: ScriptureReference[] | undefined): string | undefined {
-  if (!refs?.length) return undefined;
-  const formatted = refs
-    .map((ref) => {
-      if (ref.chapter === undefined) return ref.book;
-      const chapters = ref.toChapter ? `${ref.chapter}-${ref.toChapter}` : `${ref.chapter}`;
-      if (ref.fromVerse === undefined) return `${ref.book} ${chapters}`;
-      const verses = ref.toVerse ? `${ref.fromVerse}-${ref.toVerse}` : `${ref.fromVerse}`;
-      return `${ref.book} ${chapters}:${verses}`;
-    })
-    .filter(Boolean);
-  return formatted.length ? formatted.join('; ') : undefined;
-}

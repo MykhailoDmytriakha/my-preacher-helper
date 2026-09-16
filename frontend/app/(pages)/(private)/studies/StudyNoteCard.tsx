@@ -19,13 +19,14 @@ import { Chip } from '@/components/ui/Chip';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { useClipboard } from '@/hooks/useClipboard';
 import { StudyNote } from '@/models/models';
+import { formatScriptureReference, scriptureReferenceSearchText, type ScriptureRefShape } from '@/utils/scriptureReference';
 import { extractSearchSnippets } from '@/utils/searchUtils';
 import { formatStudyNoteForCopy } from '@/utils/studyNoteUtils';
 import { UI_COLORS } from '@/utils/themeColors';
 import HighlightedText from '@components/HighlightedText';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
-import { getLocalizedBookName, BibleLocale, psalmHebrewToSeptuagint } from './bibleData';
+import { BibleLocale } from './bibleData';
 
 
 interface StudyNoteCardProps {
@@ -140,46 +141,12 @@ export default function StudyNoteCard({
 
   // Check if note needs AI analysis (no title, no refs, no tags)
 
-  // Format scripture reference for display
-  const formatRef = useCallback((ref: {
-    book: string;
-    chapter?: number;
-    toChapter?: number;
-    fromVerse?: number;
-    toVerse?: number
-  }) => {
-    // Get display chapter for Psalms (convert Hebrew to Septuagint for ru/uk)
-    const getDisplayChapter = (book: string, chapter: number) => {
-      if (book === 'Psalms' && (bibleLocale === 'ru' || bibleLocale === 'uk')) {
-        return psalmHebrewToSeptuagint(chapter);
-      }
-      return chapter;
-    };
-
-    const bookName = getLocalizedBookName(ref.book, bibleLocale);
-
-    // Book-only reference
-    if (ref.chapter === undefined) {
-      return bookName;
-    }
-
-    const chapter = getDisplayChapter(ref.book, ref.chapter);
-
-    // Chapter range (e.g., Matthew 5-7)
-    if (ref.toChapter !== undefined) {
-      const toChapter = getDisplayChapter(ref.book, ref.toChapter);
-      return `${bookName} ${chapter}-${toChapter}`;
-    }
-
-    // Chapter-only reference (e.g., Romans 8)
-    if (ref.fromVerse === undefined) {
-      return `${bookName} ${chapter}`;
-    }
-
-    // Verse or verse range
-    const verses = ref.toVerse ? `${ref.fromVerse}-${ref.toVerse}` : `${ref.fromVerse}`;
-    return `${bookName} ${chapter}:${verses}`;
-  }, [bibleLocale]);
+  // The card reads a reference as prose — the spelled-out book, renumbered Psalms
+  // (`utils/scriptureReference.ts`, the one reading of a reference for the whole app).
+  const formatRef = useCallback(
+    (ref: ScriptureRefShape) => formatScriptureReference(ref, { locale: bibleLocale, style: 'long' }),
+    [bibleLocale]
+  );
 
   const searchTokens = useMemo(
     () => (searchQuery ? searchQuery.toLowerCase().split(/\s+/).filter(Boolean) : []),
@@ -216,10 +183,10 @@ export default function StudyNoteCard({
       searchTokens.length === 0
         ? []
         : note.scriptureRefs.filter((ref) => {
-          const lowered = formatRef(ref).toLowerCase();
+          const lowered = scriptureReferenceSearchText(ref, bibleLocale);
           return searchTokens.some((token) => lowered.includes(token));
         }),
-    [note.scriptureRefs, searchTokens, formatRef]
+    [note.scriptureRefs, searchTokens, bibleLocale]
   );
 
   const titleMatches = useMemo(

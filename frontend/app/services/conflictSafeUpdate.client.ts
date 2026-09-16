@@ -10,6 +10,7 @@ import {
 import { getClientDb } from '@/config/firebaseClientDb';
 import { auth } from '@/services/firebaseAuth.service';
 import { enqueueWrite, newIntentId } from '@/services/writeOutbox.client';
+import { isBrowserOffline } from '@/utils/connectivity';
 import { contentFingerprint } from '@/utils/contentFingerprint';
 
 /**
@@ -420,7 +421,7 @@ export async function conflictSafeUpdate(
     });
   };
 
-  if (typeof navigator !== 'undefined' && navigator.onLine === false && outboxRoute) {
+  if (isBrowserOffline() && outboxRoute) {
     // Only claim "queued" when it REALLY is. If storage refused the entry, fall
     // through to the transaction so the caller gets a visible failure instead of
     // a promise nobody can keep.

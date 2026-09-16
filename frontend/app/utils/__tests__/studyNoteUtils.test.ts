@@ -1,18 +1,15 @@
 import { formatStudyNoteForCopy, matchesStudyNoteQuery } from '../studyNoteUtils';
-import { formatScriptureRef } from '../../(pages)/(private)/studies/bookAbbreviations';
+import { formatScriptureReference } from '@/utils/scriptureReference';
 import type { StudyNote } from '@/models/models';
 
-// Mock the bookAbbreviations module
-jest.mock('../../(pages)/(private)/studies/bookAbbreviations', () => ({
-  formatScriptureRef: jest.fn(),
+// Only the copy formatter is stubbed; the search text stays real, because what a search can
+// find is the behaviour under test and a stub would prove nothing about it.
+jest.mock('@/utils/scriptureReference', () => ({
+  ...jest.requireActual('@/utils/scriptureReference'),
+  formatScriptureReference: jest.fn(),
 }));
 
-// Mock the bibleData module
-jest.mock('../../(pages)/(private)/studies/bibleData', () => ({
-  BibleLocale: {},
-}));
-
-const mockFormatScriptureRef = formatScriptureRef as jest.MockedFunction<typeof formatScriptureRef>;
+const mockFormatScriptureRef = formatScriptureReference as jest.MockedFunction<typeof formatScriptureReference>;
 
 describe('formatStudyNoteForCopy', () => {
   const baseNote: StudyNote = {
@@ -248,7 +245,13 @@ describe('matchesStudyNoteQuery', () => {
 
   it('matches the reference AS DISPLAYED, so typing what the badge shows finds the note', () => {
     expect(matchesStudyNoteQuery(note, ['john.2'], 'en')).toBe(true);
-    expect(mockFormatScriptureRef).toHaveBeenCalledWith(note.scriptureRefs[0], 'en');
+    // …and what a card spells out, too.
+    expect(matchesStudyNoteQuery(note, ['john', '2:1'], 'en')).toBe(true);
+  });
+
+  it('finds a note by the reference as a Russian reader sees it', () => {
+    expect(matchesStudyNoteQuery(note, ['ин.2'], 'ru')).toBe(true);
+    expect(matchesStudyNoteQuery(note, ['от', 'иоанна'], 'ru')).toBe(true);
   });
 
   it('requires EVERY token, so a second word narrows instead of widening', () => {

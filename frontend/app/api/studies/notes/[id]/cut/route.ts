@@ -9,6 +9,7 @@ import { usageCapResponse } from '@/api/errors/usageCapResponse';
 import { isUsageCapReachedError } from '@/services/usageLimits';
 import { expectedScratchCountCorridor } from '@/utils/noteCutCorridor';
 import { planNoteCutSlices, sectionsText, sliceSections, splitNoteIntoSections } from '@/utils/noteSections';
+import { formatScriptureReference } from '@/utils/scriptureReference';
 import { cutStudyNoteIntoScratch } from '@clients/studyNoteCut.structured';
 import { studiesRepository } from '@repositories/studies.repository';
 
@@ -68,18 +69,9 @@ export interface CutNoteResponseBody {
   limit: number;
 }
 
+/** The model reads English book names (`MEMORY.md` → AI Integration): the canonical face. */
 function formatRefForPrompt(ref: ScriptureReference): string {
-  const book = ref.book;
-  const chapter = ref.chapter;
-  if (!chapter) return book;
-  const toChapter = (ref as { toChapter?: number }).toChapter;
-  if (toChapter && toChapter !== chapter) return `${book} ${chapter}-${toChapter}`;
-  const fromVerse = ref.fromVerse;
-  if (!fromVerse) return `${book} ${chapter}`;
-  const toVerse = ref.toVerse;
-  return toVerse && toVerse !== fromVerse
-    ? `${book} ${chapter}:${fromVerse}-${toVerse}`
-    : `${book} ${chapter}:${fromVerse}`;
+  return formatScriptureReference(ref, { style: 'canonical' });
 }
 
 /** The atom's text always carries its Scripture, even when the model kept it apart. */

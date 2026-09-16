@@ -4,10 +4,10 @@ import { toast } from "sonner";
 
 import { useResolvedUid } from "@/hooks/useResolvedUid";
 import { Sermon, Item, Thought, ThoughtsBySection } from "@/models/models";
-import { isBrowserOffline } from '@/services/atomicUpdate.client';
 import { updateStructure } from "@/services/structure.service";
 import { updateThought, deleteThought, createManualThought } from "@/services/thought.service";
 import { newClientId } from "@/utils/clientId";
+import { isBrowserOffline } from '@/utils/connectivity';
 import { debugLog } from "@/utils/debugMode";
 import { persistedWrite, queuedMutation, refusedWrite, skippedWrite, type WriteSubmission } from '@/utils/recoverableWrite';
 import { insertThoughtIdInStructure, replaceThoughtIdInStructure, resolveSectionFromOutline } from "@/utils/thoughtOrdering";

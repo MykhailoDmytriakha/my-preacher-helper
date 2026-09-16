@@ -15,6 +15,7 @@ import { usePlanTemplates } from '@/hooks/usePlanTemplates';
 import { updateSermonOutline } from '@/services/outline.service';
 import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
+import { isBrowserOffline } from '@/utils/connectivity';
 import { awaitAcceptance, persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
@@ -254,7 +255,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
         try {
           const request = updateSermonOutline(sermon.id, next, baseOutlineRef.current);
           const acceptance = await awaitAcceptance(
-            typeof navigator !== 'undefined' && navigator.onLine === false
+            isBrowserOffline()
               ? queuedMutation(`outline:${sermon.id}`, request)
               : persistedWrite(request),
             (error) => toast.error(t(writeFailureTranslationKey(error, 'errors.saveOutlineError')))

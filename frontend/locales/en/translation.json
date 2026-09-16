@@ -1132,7 +1132,8 @@
   },
   "createThought": {
     "title": "New Thought",
-    "dirtyGuard": "You have unsaved text. Close anyway?"
+    "dirtyGuard": "You have unsaved text. Close anyway?",
+    "dirtyGuardConfirm": "Close"
   },
   "manualThought": {
     "addManual": "Add Manual Thought",
@@ -2522,6 +2523,8 @@
         "cancel": "Cancel",
         "addToSeries": "Add to Series",
         "removeFromSeries": "Remove from Series",
+        "removeFromSeriesConfirm": "Remove the sermon from the series \"{{series}}\"?",
+        "removeFromSeriesKeepsSermon": "The sermon itself stays; only the series changes.",
         "moveToDifferentSeries": "Move to Another Series",
         "viewSeries": "View Series",
         "selectSeries": "Select Series",

@@ -7,8 +7,10 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { SubPointList } from '@/components/column/SubPointList';
+import { useConfirm } from '@/hooks/useConfirm';
 import { updateSermonOutline } from '@/services/outline.service';
 import { newClientId } from '@/utils/clientId';
+import { isBrowserOffline } from '@/utils/connectivity';
 import { awaitAcceptance, persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from '@/utils/textNormalization';
 import { getSectionStyling } from '@/utils/themeColors';
@@ -68,6 +70,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
   isReadOnly = false,
 }) => {
   const { t } = useTranslation();
+  const { confirm, confirmDialog } = useConfirm();
 
   // --- All useState hooks at the top ---
   const [saving, setSaving] = useState<boolean>(false);
@@ -222,7 +225,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
         // `preferMine` — this view cannot hold a refused plan; see the writer.
         const request = updateSermonOutline(sermon.id, outlineToSave, baseOutlineRef.current, 'preferMine');
         const acceptance = await awaitAcceptance(
-          typeof navigator !== 'undefined' && navigator.onLine === false
+          isBrowserOffline()
             ? queuedMutation(`outline:${sermon.id}`, request)
             : persistedWrite(request),
           (error) => toast.error(t(writeFailureTranslationKey(error, 'errors.saveOutlineError')))
@@ -325,9 +328,13 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
     directlySaveOutlineChanges(updatedPoints);
   };
 
-  const handleDeletePoint = (pointToDelete: SermonPoint) => {
+  const handleDeletePoint = async (pointToDelete: SermonPoint) => {
     if (isReadOnly) return;
-    if (window.confirm(t('structure.deletePointConfirm', { text: pointToDelete.text }))) {
+    const confirmed = await confirm({
+      title: t('structure.deletePointConfirm', { text: pointToDelete.text }),
+      confirmText: t('common.delete'),
+    });
+    if (confirmed) {
       const updatedPoints = Object.entries(sectionPoints).reduce((acc, [section, points]) => {
         acc[section as SectionType] = points.filter(p => p.id !== pointToDelete.id);
         return acc;
@@ -750,6 +757,7 @@ const SermonOutlineEditor: React.FC<SermonOutlineProps> = ({
         {renderSection('mainPart')}
         {renderSection('conclusion')}
       </div>
+      {confirmDialog}
     </DragDropContext>
   );
 };

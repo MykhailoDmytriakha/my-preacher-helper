@@ -7,8 +7,9 @@ import { useTranslation } from 'react-i18next';
 import { Chip } from '@/components/ui/Chip';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { ScriptureReference } from '@/models/models';
+import { formatScriptureReference } from '@/utils/scriptureReference';
 
-import { getLocalizedBookName, BibleLocale } from './bibleData';
+import { BibleLocale } from './bibleData';
 
 export interface AnalysisResultData {
     title?: string;
@@ -84,19 +85,9 @@ export default function AnalysisConfirmationModal({
     const hasTags = result.tags !== undefined;
     const hasRefs = result.scriptureRefs !== undefined;
 
-    const formatRef = (ref: ScriptureReference) => {
-        const bookName = getLocalizedBookName(ref.book, bibleLocale);
-        if (!ref.chapter) return bookName;
-        if (!ref.fromVerse) {
-            if (ref.toChapter && ref.toChapter !== ref.chapter) {
-                return `${bookName} ${ref.chapter}–${ref.toChapter}`;
-            }
-            return `${bookName} ${ref.chapter}`;
-        }
-        let text = `${bookName} ${ref.chapter}:${ref.fromVerse}`;
-        if (ref.toVerse && ref.toVerse !== ref.fromVerse) text += `–${ref.toVerse}`;
-        return text;
-    };
+    // Shown and compared as prose, Psalms renumbered as the reader's Bible numbers them.
+    const formatRef = (ref: ScriptureReference) =>
+        formatScriptureReference(ref, { locale: bibleLocale, style: 'long' });
 
     // Tags diff — merge semantics: only new items matter
     const currentTagsSet = new Set(currentTags || []);

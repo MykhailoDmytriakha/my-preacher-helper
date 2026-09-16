@@ -45,8 +45,27 @@ type Listener = () => void;
 
 const listeners = new Set<Listener>();
 
-const readDevice = (): boolean =>
-  typeof navigator === 'undefined' || navigator.onLine !== false;
+const readDevice = (): boolean => !isBrowserOffline();
+
+/**
+ * HAS THE BROWSER SAID, RIGHT NOW, THAT THERE IS NO NETWORK?
+ *
+ * The one reading of `navigator.onLine` for the whole app. Twenty-seven places used to spell it
+ * themselves, four different ways — `onLine === false`, `onLine !== false`, `!onLine`, with and
+ * without the server-side guard — and a rule that has to change (a captive portal says "online"
+ * over a dead link, BUG-20260908-captive-wifi-reads-as-online) cannot be changed in
+ * twenty-seven places at once.
+ *
+ * Deliberately NARROW: only an explicit "offline" from the browser counts. It is the right
+ * question for a write path deciding whether to queue — "queue only when we KNOW we cannot
+ * send" — and it is not the answer to "is the app usable"; that is `getConnectivityStatus`,
+ * which also weighs what the server has actually said.
+ *
+ * Read fresh on every call, never cached: a write deciding in this instant must not act on a
+ * value from before the last `offline` event.
+ */
+export const isBrowserOffline = (): boolean =>
+  typeof navigator !== 'undefined' && navigator.onLine === false;
 
 let state: ConnectivityState = { device: true, server: 'unknown' };
 /** The device has not been read yet in this environment, so `state.device` is a placeholder. */

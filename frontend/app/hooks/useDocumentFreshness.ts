@@ -7,6 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { getClientDb } from '@/config/firebaseClientDb';
 import { readSermonFromServer } from '@/services/sermonReadFallback.client';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
+import { isBrowserOffline } from '@/utils/connectivity';
 import { serializeContent } from '@/utils/contentFingerprint';
 
 /**
@@ -413,7 +414,7 @@ export function useDocumentFreshness<T>({
       // A terminal failure already has a more specific explanation.
       if (!listenerStopped) unavailable('initialCheck', 'opening');
     }, 15_000);
-    if (navigator.onLine === false) unavailable('offline', 'device');
+    if (isBrowserOffline()) unavailable('offline', 'device');
 
     const checkServer = (source: 'manual' | 'return' | 'opening'): Promise<void> => {
       if (!active) return Promise.resolve();
@@ -484,12 +485,12 @@ export function useDocumentFreshness<T>({
     };
     checkRef.current = () => checkServer('manual');
     const recoveryTimer = window.setTimeout(() => {
-      if ((serverReadRef.current || collection === 'sermons') && !lastServerProofRef.current && navigator.onLine !== false) {
+      if ((serverReadRef.current || collection === 'sermons') && !lastServerProofRef.current && !isBrowserOffline()) {
         void checkServer('opening');
       }
     }, 4000);
     const pollTimer = hasIndependentRead && pollIntervalMs ? window.setInterval(() => {
-      if (document.visibilityState === 'visible' && navigator.onLine !== false) void checkServer('return');
+      if (document.visibilityState === 'visible' && !isBrowserOffline()) void checkServer('return');
     }, Math.max(5000, pollIntervalMs)) : undefined;
     const onWentOffline = () => unavailable('offline', 'device');
     const onReturned = () => {
@@ -560,7 +561,7 @@ export function useDocumentFreshness<T>({
       state === 'unknown' &&
       !everAnswered &&
       !silenceIsNews &&
-      !(typeof navigator !== 'undefined' && navigator.onLine === false)
+      !isBrowserOffline()
         ? 'fresh'
         : state,
     remote,

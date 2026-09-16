@@ -7,6 +7,7 @@ import {
 } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
+import { isBrowserOffline } from '@/utils/connectivity';
 
 /** Firestore's update payload shape: any field may hold a value or a FieldValue sentinel. */
 export type DocPatch = { [key: string]: FieldValue | Partial<unknown> | undefined };
@@ -128,9 +129,4 @@ async function queuedUpdate<T>(
 function isTransportFailure(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
   return code === 'unavailable' || code === 'deadline-exceeded';
-}
-
-/** Same offline probe the other client services use (outline/scratch/userSettings). */
-export function isBrowserOffline(): boolean {
-  return typeof navigator !== 'undefined' && !navigator.onLine;
 }

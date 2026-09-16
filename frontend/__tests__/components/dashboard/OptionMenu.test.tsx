@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
@@ -87,11 +87,12 @@ jest.mock('@/providers/AuthProvider', () => ({
   useAuth: () => ({ user: { uid: 'user-1' }, loading: false }),
 }));
 
+const mockRemoveFromAllSeries = jest.fn();
 jest.mock('@/hooks/useSeriesMembership', () => ({
   useSeriesMembership: () => ({
     addToSeries: jest.fn(),
     addRefsToSeries: jest.fn(),
-    removeFromAllSeries: jest.fn(),
+    removeFromAllSeries: mockRemoveFromAllSeries,
     reorderSeries: jest.fn(),
   }),
 }));
@@ -166,21 +167,39 @@ jest.mock('@locales/i18n', () => {}, { virtual: true });
 // Mock the useTranslation hook
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => {
+    t: (key: string, options?: { series?: string }) => {
       const translations: { [key: string]: string } = {
         'optionMenu.options': 'Options',
         'optionMenu.edit': 'Edit',
         'optionMenu.delete': 'Delete',
         'optionMenu.deleteConfirm': 'Are you sure you want to delete this sermon?',
         'optionMenu.deleteError': 'Error deleting sermon',
+        'common.delete': 'Confirm delete',
+        'common.cancel': 'Keep it',
+        'workspaces.series.actions.removeFromSeries': 'Remove from Series',
+        'workspaces.series.actions.removeFromSeriesKeepsSermon': 'The sermon itself stays.',
       };
-      
+      if (key === 'workspaces.series.actions.removeFromSeriesConfirm') {
+        return `Remove the sermon from "${options?.series}"?`;
+      }
+
       return translations[key] || key;
     },
     // The source-note picker resolves Bible book names from the active language.
     i18n: { language: 'en' },
   }),
 }));
+
+/**
+ * The deletion question is the app's own window now, not `window.confirm`: open it, then answer
+ * it inside the dialog, the way a person does.
+ */
+const answerDeleteQuestion = async (answer: 'confirm' | 'cancel') => {
+  const dialog = await screen.findByRole('dialog', { name: 'Are you sure you want to delete this sermon?' });
+  await act(async () => {
+    fireEvent.click(within(dialog).getByRole('button', { name: answer === 'confirm' ? 'Confirm delete' : 'Keep it' }));
+  });
+};
 
 describe('OptionMenu Component', () => {
   // Default mock sermon
@@ -213,8 +232,6 @@ describe('OptionMenu Component', () => {
   
   beforeEach(() => {
     jest.clearAllMocks();
-    // Mock window.confirm to always return true
-    window.confirm = jest.fn().mockImplementation(() => true);
     mockRouterRefresh.mockReset();
   });
   
@@ -486,11 +503,9 @@ describe('OptionMenu Component', () => {
     // Open the menu
     fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     
-    // Click Delete
+    // Click Delete, then confirm in the app's own window
     fireEvent.click(screen.getByText('Delete'));
-    
-    // Check confirm was called
-    expect(window.confirm).toHaveBeenCalledWith('Are you sure you want to delete this sermon?');
+    await answerDeleteQuestion('confirm');
     
     // Check deleteSermon service was called
     expect(deleteSermon).toHaveBeenCalledWith('sermon-1');
@@ -744,17 +759,74 @@ describe('OptionMenu Component', () => {
     });
   });
 
+  it('asks in the app\'s own window, never in the browser\'s box', async () => {
+    const native = jest.spyOn(window, 'confirm');
+    render(<OptionMenu {...defaultProps} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+    fireEvent.click(screen.getByText('Delete'));
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(native).not.toHaveBeenCalled();
+    native.mockRestore();
+  });
+
+  describe('removing the sermon from its series', () => {
+    const series = [{
+      id: 'series-1',
+      userId: 'user-1',
+      title: 'Advent',
+      theme: '',
+      bookOrTopic: '',
+      sermonIds: [],
+      items: [{ id: 'item-1', type: 'sermon' as const, refId: 'sermon-1', position: 0 }],
+      status: 'active' as const,
+      createdAt: '2026-01-01',
+      updatedAt: '2026-01-01',
+    }];
+
+    const openQuestion = async () => {
+      render(<OptionMenu {...defaultProps} series={series as never} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Options' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Remove from Series' }));
+      return screen.findByRole('dialog', { name: 'Remove the sermon from "Advent"?' });
+    };
+
+    it('names the series, says the sermon stays, and answers with the menu item\'s own words', async () => {
+      const question = await openQuestion();
+
+      expect(question).toHaveTextContent('The sermon itself stays.');
+      expect(within(question).getByRole('button', { name: 'Remove from Series' })).toBeInTheDocument();
+      expect(mockRemoveFromAllSeries).not.toHaveBeenCalled();
+
+      await act(async () => {
+        fireEvent.click(within(question).getByRole('button', { name: 'Remove from Series' }));
+      });
+
+      expect(mockRemoveFromAllSeries).toHaveBeenCalledWith({ type: 'sermon', refId: 'sermon-1' });
+    });
+
+    it('leaves the series alone when the person keeps it', async () => {
+      const question = await openQuestion();
+
+      await act(async () => {
+        fireEvent.click(within(question).getByRole('button', { name: 'Keep it' }));
+      });
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(mockRemoveFromAllSeries).not.toHaveBeenCalled();
+    });
+  });
+
   it('does not delete sermon when confirmation is canceled', async () => {
-    // Mock confirm to return false this time
-    window.confirm = jest.fn().mockImplementation(() => false);
-    
     render(<OptionMenu {...defaultProps} />);
     
     // Open the menu
     fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     
-    // Click Delete
+    // Click Delete, then decline in the app's own window
     fireEvent.click(screen.getByText('Delete'));
+    await answerDeleteQuestion('cancel');
     
     // Check deleteSermon service was not called
     expect(deleteSermon).not.toHaveBeenCalled();
@@ -775,6 +847,7 @@ describe('OptionMenu Component', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Options' }));
     fireEvent.click(screen.getByText('Delete'));
+    await answerDeleteQuestion('confirm');
 
     await waitFor(() => {
       expect(optimisticActions.deleteSermon).toHaveBeenCalledWith(mockSermon);

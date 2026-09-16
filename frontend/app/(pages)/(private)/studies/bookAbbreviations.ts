@@ -1,9 +1,7 @@
 /**
- * Book abbreviations and formatting utilities for Scripture reference badges.
- * Uses localized data from bibleData.ts
+ * The legacy Russian abbreviation table. Formatting a reference lives in
+ * `utils/scriptureReference.ts` — one reading of a reference's shape for the whole app.
  */
-
-import { getLocalizedAbbrev, BibleLocale, psalmHebrewToSeptuagint } from './bibleData';
 
 /**
  * Legacy abbreviations map for backward compatibility.
@@ -79,70 +77,3 @@ export const BOOK_ABBREVIATIONS: Record<string, string> = {
   Jude: 'Иуд',
   Revelation: 'Откр',
 };
-
-/**
- * Formats a Scripture reference into a compact display string.
- * Uses localized abbreviation based on provided locale.
- *
- * IMPORTANT: For Psalms, the chapter number is converted from the standard Hebrew/Protestant
- * numbering (used for storage) to the user's locale numbering for display.
- * - EN uses Hebrew numbering (displayed as-is)
- * - RU/UK use Septuagint numbering (converted from Hebrew for display)
- *
- * Supports flexible reference types:
- * - Book only: { book: 'Ezekiel' } -> "Иез." (ru)
- * - Chapter only: { book: 'Psalms', chapter: 23 } -> "Пс.22" (ru, Septuagint)
- * - Chapter range: { book: 'Matthew', chapter: 5, toChapter: 7 } -> "Мф.5-7"
- * - Verse: { book: 'John', chapter: 3, fromVerse: 16 } -> "Ин.3:16"
- * - Verse range: { book: 'Isaiah', chapter: 4, fromVerse: 5, toVerse: 8 } -> "Ис.4:5-8"
- */
-export function formatScriptureRef(
-  ref: {
-    book: string;
-    chapter?: number;
-    toChapter?: number;
-    fromVerse?: number;
-    toVerse?: number;
-  },
-  locale?: BibleLocale
-): string {
-  // Use localized abbreviation if locale provided, otherwise fallback to Russian
-  const abbr = locale
-    ? getLocalizedAbbrev(ref.book, locale)
-    : BOOK_ABBREVIATIONS[ref.book] || ref.book;
-
-  // Book-only reference (e.g., "Ezekiel")
-  if (ref.chapter === undefined) {
-    return abbr;
-  }
-
-  // Convert Psalm number from Hebrew (storage) to Septuagint (RU/UK display)
-  const convertPsalmChapter = (chapter: number) => {
-    if (ref.book === 'Psalms' && locale && (locale === 'ru' || locale === 'uk')) {
-      return psalmHebrewToSeptuagint(chapter);
-    }
-    return chapter;
-  };
-
-  const displayChapter = convertPsalmChapter(ref.chapter);
-
-  // Verse or verse range takes precedence even if toChapter is present (handle legacy data)
-  if (ref.fromVerse !== undefined) {
-    const verseRange =
-      ref.toVerse && ref.toVerse !== ref.fromVerse
-        ? `${ref.fromVerse}-${ref.toVerse}`
-        : String(ref.fromVerse);
-
-    return `${abbr}.${displayChapter}:${verseRange}`;
-  }
-
-  // Chapter range (e.g., "Matthew 5-7")
-  if (ref.toChapter !== undefined && ref.toChapter !== ref.chapter) {
-    const displayToChapter = convertPsalmChapter(ref.toChapter);
-    return `${abbr}.${displayChapter}-${displayToChapter}`;
-  }
-
-  // Chapter-only reference (e.g., "Psalm 23")
-  return `${abbr}.${displayChapter}`;
-}
-

@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { noteEntries, type CalendarEntry } from '@/utils/calendarEntries';
 
@@ -21,7 +22,8 @@ export function useCalendarNotes(): {
 } {
   const { t } = useTranslation();
   const { notes, loading, error } = useStudyNotes();
+  const { locale } = useAppLocale();
   const untitled = t('dashboardHome.sections.studies.untitled');
-  const entries = useMemo(() => noteEntries(notes, { untitled }), [notes, untitled]);
+  const entries = useMemo(() => noteEntries(notes, { untitled, locale }), [notes, untitled, locale]);
   return { entries, isLoading: loading, error };
 }

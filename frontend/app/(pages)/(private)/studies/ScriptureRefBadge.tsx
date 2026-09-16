@@ -4,10 +4,9 @@ import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Chip } from '@/components/ui/Chip';
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { ScriptureReference } from '@/models/models';
-
-import { BibleLocale } from './bibleData';
-import { formatScriptureRef } from './bookAbbreviations';
+import { formatScriptureReference } from '@/utils/scriptureReference';
 
 interface ScriptureRefBadgeProps {
   reference: ScriptureReference;
@@ -30,35 +29,19 @@ const ScriptureRefBadge = memo(function ScriptureRefBadge({
   onRemove,
   isEditing = false,
 }: ScriptureRefBadgeProps) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
 
   // Get current locale for Bible data
-  const bibleLocale: BibleLocale = useMemo(() => {
-    const lang = i18n.language?.toLowerCase() || 'en';
-    if (lang.startsWith('ru')) return 'ru';
-    if (lang.startsWith('uk')) return 'uk';
-    return 'en';
-  }, [i18n.language]);
+  const { locale: bibleLocale } = useAppLocale();
 
-  const displayText = formatScriptureRef(reference, bibleLocale);
+  const displayText = formatScriptureReference(reference, { locale: bibleLocale });
 
   // Spoken form of the reference: the visible text is an abbreviation, which a screen
   // reader would read as letters.
-  const spokenReference = useMemo(() => {
-    let label = reference.book;
-    if (reference.chapter !== undefined) {
-      label += ` ${reference.chapter}`;
-      if (reference.toChapter !== undefined) {
-        label += `-${reference.toChapter}`;
-      } else if (reference.fromVerse !== undefined) {
-        label += `:${reference.fromVerse}`;
-        if (reference.toVerse !== undefined) {
-          label += `-${reference.toVerse}`;
-        }
-      }
-    }
-    return label;
-  }, [reference]);
+  const spokenReference = useMemo(
+    () => formatScriptureReference(reference, { locale: bibleLocale, style: 'long' }),
+    [reference, bibleLocale]
+  );
 
   return (
     <Chip

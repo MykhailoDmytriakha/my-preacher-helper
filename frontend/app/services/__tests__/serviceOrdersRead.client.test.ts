@@ -31,6 +31,9 @@ jest.mock('firebase/firestore', () => ({
   doc: () => ({}),
 }));
 jest.mock('@/services/ownerListRead.client', () => ({
+  // The real module underneath: a stub that lists only what this file uses silently drops
+  // whatever the service starts using next (`isSilentReadError`, say).
+  ...jest.requireActual('@/services/ownerListRead.client'),
   readOwnerList: jest.fn(),
   readOwnerListFromServer: jest.fn(),
 }));

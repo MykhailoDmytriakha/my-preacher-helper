@@ -2,13 +2,14 @@
 
 import { XMarkIcon, CalendarIcon, MapPinIcon, BookOpenIcon } from "@heroicons/react/24/outline";
 import { format, isValid, parseISO } from "date-fns";
-import { enUS, ru, uk } from "date-fns/locale";
 import Link from "next/link";
-import { useMemo, useCallback } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import { MonthlyPreachEntry } from "@/components/calendar/calendarAnalytics";
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
+import { formatMonthTitle } from '@/utils/appLocale';
 
 interface MonthlySermonsModalProps {
     isOpen: boolean;
@@ -23,24 +24,17 @@ export default function MonthlySermonsModal({
     monthKey,
     entries
 }: MonthlySermonsModalProps) {
-    const { t, i18n } = useTranslation();
+    const { t } = useTranslation();
+    const { dateLocale } = useAppLocale();
     /* One rule for every window: holds the page still, answers Escape (`useModalLayer`). */
     const layer = useModalLayer({ onClose, active: isOpen });
-
-    const getDateLocale = useCallback(() => {
-        switch (i18n.language) {
-            case 'ru': return ru;
-            case 'uk': return uk;
-            default: return enUS;
-        }
-    }, [i18n.language]);
 
     const formattedMonth = useMemo(() => {
         if (!monthKey) return "";
         const [year, month] = monthKey.split("-").map(Number);
         const date = new Date(year, month - 1, 1);
-        return format(date, "MMMM yyyy", { locale: getDateLocale() }).replace(/^./, str => str.toUpperCase());
-    }, [monthKey, getDateLocale]);
+        return formatMonthTitle(date, dateLocale);
+    }, [monthKey, dateLocale]);
 
     if (!isOpen || !monthKey) return null;
 
@@ -88,7 +82,7 @@ export default function MonthlySermonsModal({
                             {entries.map(({ sermon, preachDate }) => {
                                 const parsedDate = parseISO(preachDate.date);
                                 const formattedDate = isValid(parsedDate)
-                                    ? format(parsedDate, 'd MMM yyyy', { locale: getDateLocale() })
+                                    ? format(parsedDate, 'd MMM yyyy', { locale: dateLocale })
                                     : preachDate.date;
                                 return (
                                     <div

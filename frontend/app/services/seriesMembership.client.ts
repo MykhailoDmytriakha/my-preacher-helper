@@ -4,6 +4,7 @@ import { getClientDb } from '@/config/firebaseClientDb';
 import { Series, SeriesItem, SeriesItemType } from '@/models/models';
 import { revisionBump } from '@/services/conflictSafeUpdate.client';
 import { auth } from '@/services/firebaseAuth.service';
+import { isBrowserOffline } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import {
   deriveSermonIdsFromItems,
@@ -292,7 +293,7 @@ export async function commitSeriesBatch(transforms: SeriesTransform[]): Promise<
   // keep working offline (the whole point of firing it without awaiting). Fall
   // back to the pre-existing read + batch, exactly as before — see the note in
   // conflictSafeUpdate.client.ts about degrading openly rather than pretending.
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+  if (isBrowserOffline()) {
     // Queue the OPERATION, never a computed array.
     //
     // The old offline path read the cached document, built the whole new item list

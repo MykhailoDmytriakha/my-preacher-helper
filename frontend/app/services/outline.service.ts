@@ -5,9 +5,9 @@ import {
 } from '@/services/sermons.client';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
+import { isBrowserOffline } from '@/utils/connectivity';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE;
-const isBrowserOffline = () => typeof navigator !== 'undefined' && !navigator.onLine;
 
 /**
  * Fetches the outline for a specific sermon

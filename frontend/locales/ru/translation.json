@@ -1134,7 +1134,8 @@
   },
   "createThought": {
     "title": "Новая мысль",
-    "dirtyGuard": "Есть несохранённый текст. Закрыть?"
+    "dirtyGuard": "Есть несохранённый текст. Закрыть?",
+    "dirtyGuardConfirm": "Закрыть"
   },
   "manualThought": {
     "addManual": "Добавить мысль вручную",
@@ -2531,6 +2532,8 @@
         "cancel": "Отмена",
         "addToSeries": "Добавить в серию",
         "removeFromSeries": "Удалить из серии",
+        "removeFromSeriesConfirm": "Удалить проповедь из серии «{{series}}»?",
+        "removeFromSeriesKeepsSermon": "Сама проповедь останется, изменится только серия.",
         "moveToDifferentSeries": "Переместить в серию",
         "viewSeries": "Просмотреть серию",
         "selectSeries": "Выбрать серию",

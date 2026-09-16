@@ -63,7 +63,7 @@ const note = (over: Partial<StudyNote> = {}): StudyNote =>
     userId: 'u1',
     title: 'Молитва Иависа',
     content: 'Девять глав одних имён…',
-    scriptureRefs: [{ book: '1 Пар', chapter: 4, fromVerse: 9, toVerse: 10 }],
+    scriptureRefs: [{ book: 'Luke', chapter: 5, fromVerse: 17, toVerse: 26 }],
     tags: [],
     createdAt: at(2026, 8, 3),
     updatedAt: at(2026, 8, 3, 18),
@@ -84,7 +84,7 @@ const prayer = (over: Partial<PrayerRequest> = {}): PrayerRequest =>
     ...over,
   }) as PrayerRequest;
 
-const WORDS = { untitled: 'Заметка без названия' };
+const WORDS = { untitled: 'Заметка без названия', locale: 'ru' as const };
 
 describe('everything the calendar shows, in one shape', () => {
   it('turns a sermon into an entry per preach date, carrying church and status', () => {
@@ -192,7 +192,7 @@ describe('everything the calendar shows, in one shape', () => {
         refId: 'n1',
         date: '2026-09-03',
         title: 'Молитва Иависа',
-        subtitle: '1 Пар 4:9-10',
+        subtitle: 'От Луки 5:17-26',
         href: '/studies/n1',
       });
       expect(entry.status).toBeUndefined();
@@ -206,13 +206,25 @@ describe('everything the calendar shows, in one shape', () => {
           { id: 'r3', book: 'Jeremiah', chapter: 31, fromVerse: 31, toVerse: 34 },
         ],
       })], WORDS);
-      expect(entry.subtitle).toBe('Luke 5:17-26; John 2:1-11');
+      expect(entry.subtitle).toBe('От Луки 5:17-26; От Иоанна 2:1-11');
     });
 
     it('is named by its first Scripture reference when it has no title, and does not repeat it below', () => {
       const [entry] = noteEntries([note({ title: undefined })], WORDS);
-      expect(entry.title).toBe('1 Пар 4:9-10');
+      expect(entry.title).toBe('От Луки 5:17-26');
       expect(entry.subtitle).toBeUndefined();
+    });
+
+    it('names the book in the interface language, never the stored English id', () => {
+      // BUG-20260916-calendar-shows-english-book-names: the day card read "Luke 5:17-26"
+      // under a note whose own chips said "Лк.5:17-26".
+      const [entry] = noteEntries([note({ title: undefined })], { ...WORDS, locale: 'uk' });
+      expect(entry.title).toBe('Від Луки 5:17-26');
+    });
+
+    it('renumbers a Psalm the way the reader\'s Bible does', () => {
+      const [entry] = noteEntries([note({ title: undefined, scriptureRefs: [{ id: 'p', book: 'Psalms', chapter: 23 }] })], WORDS);
+      expect(entry.title).toBe('Псалтирь 22');
     });
 
     it('is called untitled in the caller\'s words when it has neither title nor Scripture', () => {

@@ -1,11 +1,12 @@
 "use client";
 
 import { format, parseISO } from 'date-fns';
-import { enUS, ru, uk } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
 
 import { CalendarEntryCard } from '@/components/calendar/CalendarEntryCard';
 import { CALENDAR_KIND_STYLE } from '@/components/calendar/calendarKinds';
+import { useAppLocale } from '@/hooks/useAppLocale';
+import { formatMonthTitle } from '@/utils/appLocale';
 import { CALENDAR_KINDS, countByKind, entriesByDate, type CalendarEntry } from '@/utils/calendarEntries';
 import { getSeriesForRef } from '@/utils/seriesMembership';
 
@@ -23,20 +24,10 @@ interface DateEventListProps {
  * and the counts they add up to, so a new kind arrives without a line changing here.
  */
 export default function DateEventList({ month, entries, series = [] }: DateEventListProps) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const { dateLocale } = useAppLocale();
 
-  const getDateLocale = () => {
-    switch (i18n.language) {
-      case 'ru':
-        return ru;
-      case 'uk':
-        return uk;
-      default:
-        return enUS;
-    }
-  };
-
-  const formattedMonth = format(month, 'MMMM yyyy', { locale: getDateLocale() });
+  const formattedMonth = formatMonthTitle(month, dateLocale);
   const byDate = entriesByDate(entries);
   const sortedDates = Object.keys(byDate).sort().reverse();
   const counts = countByKind(entries);
@@ -68,7 +59,7 @@ export default function DateEventList({ month, entries, series = [] }: DateEvent
               <div key={dateStr} className="space-y-3">
                 <div className="flex items-center gap-2">
                   <h3 className="text-md font-medium text-gray-700 dark:text-gray-300">
-                    {format(parseISO(dateStr), 'PPPP', { locale: getDateLocale() })}
+                    {format(parseISO(dateStr), 'PPPP', { locale: dateLocale })}
                   </h3>
                 </div>
 

@@ -17,8 +17,10 @@ import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { useActiveSection } from '@/hooks/useActiveSection';
 import { useAiUsage } from '@/hooks/useAiUsage';
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useCollapseOnScroll } from '@/hooks/useCollapseOnScroll';
+import { useConfirm } from '@/hooks/useConfirm';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useDurableDraft } from '@/hooks/useDurableDraft';
 import { useMarkdownOutline } from '@/hooks/useMarkdownOutline';
@@ -155,9 +157,9 @@ function useNoteInitialization({
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function useNoteDeletion({ t, noteId, isNew, uid, deleteNote, shareLinks, deleteShareLink, router }: any) {
+function useNoteDeletion({ t, confirm, noteId, isNew, uid, deleteNote, shareLinks, deleteShareLink, router }: any) {
     return async () => {
-        if (window.confirm(t('studiesWorkspace.deleteConfirm'))) {
+        if (await confirm({ title: t('studiesWorkspace.deleteConfirm'), confirmText: t('common.delete') })) {
             if (noteId && !isNew && uid) {
                 try {
                     // useStudyNotes' delete recovery descriptor reports a late refusal while this screen is mounted.
@@ -659,7 +661,7 @@ function noteScrollLayout(wide: boolean, navHeight: number, belowHeader: number,
 }
 
 export default function StudyNoteEditorPage() {
-    const { t, i18n } = useTranslation();
+    const { t } = useTranslation();
     const router = useRouter();
     const routeId = useRouteId();
     const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
@@ -693,12 +695,7 @@ export default function StudyNoteEditorPage() {
     // Load existing note data or create a new empty template
     const existingNote = useMemo(() => notes.find(n => n.id === noteId), [notes, noteId]);
 
-    const bibleLocale: BibleLocale = useMemo(() => {
-        const lang = i18n.language?.toLowerCase() || 'en';
-        if (lang.startsWith('ru')) return 'ru';
-        if (lang.startsWith('uk')) return 'uk';
-        return 'en';
-    }, [i18n.language]);
+    const { locale: bibleLocale } = useAppLocale();
 
     const availableTags = useMemo(() => {
         const fromTags = [...(tagData.requiredTags ?? []), ...(tagData.customTags ?? [])].map(t => t.name);
@@ -984,8 +981,10 @@ export default function StudyNoteEditorPage() {
         router.push(queryParams ? `/studies?${queryParams}` : '/studies');
     };
 
+    const { confirm, confirmDialog } = useConfirm();
     const handleDelete = useNoteDeletion({
         t,
+        confirm,
         noteId,
         isNew,
         uid,
@@ -1465,6 +1464,7 @@ export default function StudyNoteEditorPage() {
                 sheet is up it would sit ON the outline rows. Nothing to size while the
                 text is covered anyway. */}
             {!isEditing && !sheetOpen && <FloatingTextScaleControls />}
+            {confirmDialog}
         </div>
     );
 }

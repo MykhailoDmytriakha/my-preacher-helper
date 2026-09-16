@@ -27,6 +27,9 @@ jest.mock('firebase/firestore', () => ({
   updateDoc: jest.fn(),
 }));
 jest.mock('@/services/ownerListRead.client', () => ({
+  // The real module underneath: a stub that lists only what this file uses silently drops
+  // whatever the service starts using next (`isSilentReadError`, say).
+  ...jest.requireActual('@/services/ownerListRead.client'),
   readOwnerList: jest.fn(),
   readOwnerListFromServer: jest.fn(),
   readOwnerDocument: jest.fn(),
@@ -61,9 +64,6 @@ const storedGroup = {
   createdAt: '2026-09-01T00:00:00.000Z',
   updatedAt: '2026-09-01T00:00:00.000Z',
 };
-
-/** A transport that never answers — the iPad where `getDocs` neither resolves nor throws. */
-const silent = () => new Promise(() => undefined);
 
 beforeEach(() => {
   jest.clearAllMocks();

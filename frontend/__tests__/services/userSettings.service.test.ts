@@ -1,4 +1,4 @@
-import { COOKIE_LANG_KEY, DEFAULT_LANGUAGE } from '@/../../frontend/locales/constants';
+import { COOKIE_LANG_KEY, DEFAULT_LANGUAGE } from '@locales/constants';
 
 const mockDb = { app: 'client-db' };
 const mockDoc = jest.fn((_db: unknown, path: string, id: string) => ({ path, id }));

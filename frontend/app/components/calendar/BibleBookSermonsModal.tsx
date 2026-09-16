@@ -2,12 +2,11 @@
 
 import { XMarkIcon, CalendarIcon, MapPinIcon, BookOpenIcon } from "@heroicons/react/24/outline";
 import { format, isValid, parseISO } from "date-fns";
-import { enUS, ru, uk } from "date-fns/locale";
 import Link from "next/link";
-import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
-import { BibleLocale, BookInfo } from "@/(pages)/(private)/studies/bibleData";
+import { BookInfo } from "@/(pages)/(private)/studies/bibleData";
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { PreachDate, Sermon } from "@/models/models";
 
@@ -24,24 +23,12 @@ export default function BibleBookSermonsModal({
     book,
     entries
 }: BibleBookSermonsModalProps) {
-    const { t, i18n } = useTranslation();
+    const { t } = useTranslation();
     /* One rule for every window: holds the page still, answers Escape (`useModalLayer`). */
     const layer = useModalLayer({ onClose, active: isOpen });
 
-    const bibleLocale: BibleLocale = useMemo(() => {
-        const lang = i18n.language?.toLowerCase() || 'en';
-        if (lang.startsWith('ru')) return 'ru';
-        if (lang.startsWith('uk')) return 'uk';
-        return 'en';
-    }, [i18n.language]);
-
-    const getDateLocale = () => {
-        switch (bibleLocale) {
-            case 'ru': return ru;
-            case 'uk': return uk;
-            default: return enUS;
-        }
-    };
+    // The book names and the month names speak the same language, decided in one place.
+    const { locale: bibleLocale, dateLocale } = useAppLocale();
 
     if (!isOpen || !book) return null;
 
@@ -90,7 +77,7 @@ export default function BibleBookSermonsModal({
                             {entries.map(({ sermon, preachDate }) => {
                                 const parsedDate = parseISO(preachDate.date);
                                 const formattedDate = isValid(parsedDate)
-                                    ? format(parsedDate, 'd MMM yyyy', { locale: getDateLocale() })
+                                    ? format(parsedDate, 'd MMM yyyy', { locale: dateLocale })
                                     : preachDate.date;
                                 return (
                                     <div

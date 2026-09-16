@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
@@ -17,7 +18,8 @@ import {
   useWriteRecovery,
   type WriteSubmission,
 } from '@/utils/recoverableWrite';
-import { formatScriptureRefs, recoveryText } from '@/utils/writeRecovery';
+import { formatScriptureReferences } from '@/utils/scriptureReference';
+import { recoveryText } from '@/utils/writeRecovery';
 import {
   createStudyNote,
   deleteStudyNote,
@@ -56,6 +58,7 @@ export interface StudyNoteUpdateSubmission extends WriteSubmission {
 
 export function useStudyNotes() {
   const { t } = useTranslation();
+  const { locale } = useAppLocale();
   const { uid, isAuthLoading } = useResolvedUid();
   const queryClient = useQueryClient();
   const isOnline = useOnlineStatus();
@@ -141,7 +144,7 @@ export function useStudyNotes() {
         note.content,
         note.tags.join(', '),
         // Picked reference by reference; losing them means picking them all again.
-        formatScriptureRefs(note.scriptureRefs),
+        formatScriptureReferences(note.scriptureRefs, { locale, style: 'long' }),
         note.type,
       ]),
     toastId: (note) => `write-recovery:study-note:create:${note.id}`,
@@ -156,7 +159,7 @@ export function useStudyNotes() {
       vars.updates.title,
       vars.updates.content,
       vars.updates.tags?.join(', '),
-      formatScriptureRefs(vars.updates.scriptureRefs),
+      formatScriptureReferences(vars.updates.scriptureRefs, { locale, style: 'long' }),
       vars.updates.type,
     ]),
     toastId: (vars) => `write-recovery:study-note:update:${vars.id}:${JSON.stringify(vars.updates)}`,

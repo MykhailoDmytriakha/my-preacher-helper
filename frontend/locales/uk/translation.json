@@ -1134,7 +1134,8 @@
   },
   "createThought": {
     "title": "Нова думка",
-    "dirtyGuard": "Є незбережений текст. Закрити?"
+    "dirtyGuard": "Є незбережений текст. Закрити?",
+    "dirtyGuardConfirm": "Закрити"
   },
   "manualThought": {
     "addManual": "Додати думку вручну",
@@ -2531,6 +2532,8 @@
         "cancel": "Скасувати",
         "addToSeries": "Додати до серії",
         "removeFromSeries": "Видалити із серії",
+        "removeFromSeriesConfirm": "Видалити проповідь із серії «{{series}}»?",
+        "removeFromSeriesKeepsSermon": "Сама проповідь залишиться, зміниться лише серія.",
         "moveToDifferentSeries": "Перемістити до серії",
         "viewSeries": "Переглянути серію",
         "selectSeries": "Вибрати серію",

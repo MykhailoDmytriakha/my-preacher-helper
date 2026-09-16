@@ -32,11 +32,14 @@ import {
   revisionedUpdate,
 } from '@/services/conflictSafeUpdate.client';
 import { auth } from '@/services/firebaseAuth.service';
+import { accountChangedError } from '@/services/ownerHttpTransport.client';
 import { readOwnerList } from '@/services/ownerListRead.client';
+import { isSilentReadError } from '@/services/ownerListRead.client';
 import { readSermonFromServer } from '@/services/sermonReadFallback.client';
 import { enqueueWrite, listOutbox, newIntentId, type OutboxEntry } from '@/services/writeOutbox.client';
 import { changedFields } from '@/utils/changedFields';
 import { newClientId } from '@/utils/clientId';
+import { isBrowserOffline } from '@/utils/connectivity';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { mergeOutline } from '@/utils/mergeOutline';
@@ -127,15 +130,22 @@ export async function getSermonsViaClient(userId: string): Promise<Sermon[]> {
   return readOwnerList(SERMONS_COLLECTION, userId, readSermonsViaSdk(userId), shapeSermons);
 }
 
+/**
+ * How long the sermon's own document may keep the browser's Firestore silent before the app's
+ * server is asked (set by BUG-20260906-sermon-read-hangs, `4f098b62`). Longer than the lists'
+ * 2.5 s on purpose: this read also waits for a cache answer it may then refuse to trust.
+ */
+const SERMON_SDK_DEADLINE_MS = 4000;
+
 export async function getSermonByIdViaClient(id: string): Promise<Sermon | undefined> {
-  const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+  const online = !isBrowserOffline();
   const owner = auth.currentUser?.uid;
   let cached: Sermon | undefined;
   const assertOwner = () => {
-    if (auth.currentUser?.uid !== owner) throw Object.assign(new Error('Account changed'), { code: 'unauthenticated' });
+    if (auth.currentUser?.uid !== owner) throw accountChangedError();
   };
   try {
-    const snap = await readWithDeadline(getDoc(sermonRef(id)), online ? 4000 : 8000);
+    const snap = await readWithDeadline(getDoc(sermonRef(id)), online ? SERMON_SDK_DEADLINE_MS : 8000);
     assertOwner();
     // Pending writes belong to this device. Recovery must not replace them with
     // an older committed version. A cache-only answer is not a server proof.
@@ -144,8 +154,7 @@ export async function getSermonByIdViaClient(id: string): Promise<Sermon | undef
     }
     if (snap.exists()) cached = hydrateSermon({ ...(snap.data() as Sermon), id: snap.id });
   } catch (error) {
-    const code = (error as { code?: string }).code;
-    if (!online || !['unavailable', 'deadline-exceeded', 'internal', 'unknown', 'cancelled'].includes(code ?? '')) throw error;
+    if (!online || !isSilentReadError(error)) throw error;
   }
   try {
     const sermon = await readSermonFromServer(id);
@@ -371,7 +380,7 @@ export async function updateSermonPreparationViaClient(
    * transaction, no base, no caller change — the queue applies it at reconnect
    * instead of overwriting.
    */
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+  if (isBrowserOffline()) {
     const nestedPatch: { [field: string]: FieldValue | Partial<unknown> | undefined } = {
       updatedAt: now(),
       ...revisionBump(SERMON_PREPARATION_AGGREGATE),
@@ -442,7 +451,7 @@ export async function updateStructureViaClient(
       { kind: 'structure', base: baseStructure ?? undefined }
     );
 
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+  if (isBrowserOffline()) {
     if (structureIntent()) return { message: 'ThoughtsBySection queued for merge on reconnect' };
     throw new UnsavedMergeError(SERMON_THOUGHTS_AGGREGATE);
   }
@@ -606,7 +615,7 @@ export async function updateSermonOutlineViaClient(
         { kind: 'outline', base: options.baseOutline ?? null }
       );
 
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    if (isBrowserOffline()) {
       if (outlineIntent()) return outline;
       // Nowhere to store the operation. Say so — a computed plan queued from a cached
       // read would replace the other device's points at reconnect, which is the very
@@ -702,7 +711,7 @@ export async function applyScratchToOutlineViaClient(
       { kind: 'applyScratch', base }
     );
 
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+  if (isBrowserOffline()) {
     if (applyIntent()) return { outline: cleanOutline, scratch: cleanScratch };
     throw new UnsavedMergeError(SERMON_OUTLINE_AGGREGATE);
   }
@@ -812,7 +821,7 @@ async function writeScratchNotesViaClient(
    * still takes the transactional path (online) or the old whole-array queue (offline,
    * unchanged and no worse than before).
    */
-  if (typeof navigator !== 'undefined' && navigator.onLine === false && baseScratch) {
+  if (isBrowserOffline() && baseScratch) {
     const baseIds = new Set(baseScratch.map((n) => n.id));
     const mineIds = new Set(cleanScratch.map((n) => n.id));
     const added = cleanScratch.filter((n) => !baseIds.has(n.id));

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import CreateThoughtModal from '@/components/CreateThoughtModal';
@@ -263,25 +263,38 @@ describe('CreateThoughtModal', () => {
     });
 
 
-    it('does not close dirty modal when confirm is rejected', () => {
-        const originalConfirm = window.confirm;
-        window.confirm = jest.fn(() => false);
+    it('does not close dirty modal when confirm is rejected', async () => {
         const onClose = jest.fn();
+        render(<CreateThoughtModal {...defaultProps} onClose={onClose} />);
+        fireEvent.change(screen.getByTestId('mock-rich-editor'), { target: { value: 'Dirty text' } });
 
-        try {
-            render(<CreateThoughtModal {...defaultProps} onClose={onClose} />);
-            fireEvent.change(screen.getByTestId('mock-rich-editor'), { target: { value: 'Dirty text' } });
+        const dialog = screen.getByRole('dialog');
+        const overlaySheet = dialog.parentElement as HTMLElement | null;
+        expect(overlaySheet).toBeInTheDocument();
+        fireEvent.click(overlaySheet!);
 
-            const dialog = screen.getByRole('dialog');
-            const overlaySheet = dialog.parentElement as HTMLElement | null;
-            expect(overlaySheet).toBeInTheDocument();
-            fireEvent.click(overlaySheet!);
+        // The question is the app's own window now; the person declines it there.
+        const question = await screen.findByRole('dialog', { name: 'createThought.dirtyGuard' });
+        await act(async () => {
+            fireEvent.click(within(question).getByRole('button', { name: /cancel/i }));
+        });
 
-            expect(window.confirm).toHaveBeenCalled();
-            expect(onClose).not.toHaveBeenCalled();
-        } finally {
-            window.confirm = originalConfirm;
-        }
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('closes a dirty modal once the person confirms leaving', async () => {
+        const onClose = jest.fn();
+        render(<CreateThoughtModal {...defaultProps} onClose={onClose} />);
+        fireEvent.change(screen.getByTestId('mock-rich-editor'), { target: { value: 'Dirty text' } });
+
+        fireEvent.click(screen.getByRole('dialog').parentElement!);
+
+        const question = await screen.findByRole('dialog', { name: 'createThought.dirtyGuard' });
+        await act(async () => {
+            fireEvent.click(within(question).getByRole('button', { name: 'createThought.dirtyGuardConfirm' }));
+        });
+
+        expect(onClose).toHaveBeenCalledTimes(1);
     });
 
     it('shows toast when recorder reports an error', () => {
