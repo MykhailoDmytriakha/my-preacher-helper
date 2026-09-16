@@ -12,7 +12,12 @@ const createJestConfig = nextJest({
 const config: Config = {
   coverageProvider: 'v8',
   testEnvironment: 'jest-environment-jsdom',
-  testTimeout: 5000, // Increase global timeout to 15 seconds
+  /*
+   * Above the 4 s an async expectation may wait (`configure({ asyncUtilTimeout })` in
+   * jest.setup.js), so a starved expectation reports ITSELF rather than being cut off by the
+   * test timeout with no useful message. The old value said 5 s while its comment said 15.
+   */
+  testTimeout: 15000,
   // Performance optimizations
   maxWorkers: '50%', // Use 50% of available cores for better performance
   cache: true, // Enable caching for faster subsequent runs

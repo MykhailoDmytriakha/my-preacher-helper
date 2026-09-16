@@ -396,7 +396,7 @@ describe('StepByStepWizard (Audio Studio — stepped wizard)', () => {
         await goToPreview();
         fireEvent.click(await screen.findByRole('button', { name: /Generate Audio/ }));
 
-        expect(await screen.findByText('Audio Ready!', {}, { timeout: 3000 })).toBeInTheDocument();
+        expect(await screen.findByText('Audio Ready!', {})).toBeInTheDocument();
         expect(screen.getByRole('link', { name: /Download Again/ })).toHaveAttribute('download', 'sermon.mp3');
 
         fireEvent.click(screen.getByRole('button', { name: 'Close' }));

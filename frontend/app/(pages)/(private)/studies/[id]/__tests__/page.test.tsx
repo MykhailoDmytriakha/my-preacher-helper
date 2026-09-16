@@ -414,7 +414,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         // Wait for AI results to be applied
         await waitFor(() => {
             expect(screen.getByDisplayValue('AI Title')).toBeInTheDocument();
-        }, { timeout: 2000 });
+        });
 
         expect(screen.getByText('ai-tag')).toBeInTheDocument();
     });

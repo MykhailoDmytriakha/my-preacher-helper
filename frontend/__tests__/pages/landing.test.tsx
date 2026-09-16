@@ -100,7 +100,7 @@ describe('Landing Page UI Smoke Test', () => {
     // Wait for any potential loading states to resolve
     await waitFor(() => {
       expect(screen.queryByRole('progressbar', { hidden: true })).not.toBeInTheDocument();
-    }, { timeout: 3000 });
+    });
   });
 
   it('renders the main heading', async () => {
