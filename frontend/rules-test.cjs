@@ -208,6 +208,7 @@ const SERVER_MANAGED_USER_FIELDS = {
     if (actual.title !== 'engine committed' || actual._dataEngine.revision !== 1) throw new Error('Engine commit overwritten');
   })());
 
+  await check('an unmarked council is writable from a browser while its collection is open', assertSucceeds(updateDoc(doc(a, 'councils', 'd1'), { v: 2 })));
   await testEnv.cleanup();
   console.log(`\nRESULT: ${pass} passed, ${fail} failed`);
   process.exit(fail === 0 ? 0 : 1);

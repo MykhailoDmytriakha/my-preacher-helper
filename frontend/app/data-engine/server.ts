@@ -4,6 +4,7 @@ import { FieldPath } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 
+import { isCollectionServed, isEngineServing, isLegacyOpen } from './activation';
 import { commandFingerprint, getResourcePolicy, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
 import { planDataCommand } from './serverRelations';
@@ -33,14 +34,12 @@ export class DataEngineServerError extends Error {
  * Trusted server adapters can exercise processCommand without exposing a public API.
  */
 export function assertDataEngineEnabled(collection?: string): void {
-  if (process.env.DATA_ENGINE_ENABLED === 'true') return;
-  const migrated = (process.env.DATA_ENGINE_COLLECTIONS ?? '').split(',').map(entry => entry.trim()).filter(Boolean);
-  if (!migrated.length) throw new DataEngineServerError('data-engine-disabled', 503);
+  if (!isEngineServing()) throw new DataEngineServerError('data-engine-disabled', 503);
   // A domain migrates as a whole, so the deployment lists the collections it owns. The engine's
   // own bookkeeping is not one of them: change heads are how a client learns that any migrated
   // collection moved, and gating them behind the same list would leave it deaf to its own domain.
   // Without a collection the caller only asks whether the protocol is served at all.
-  if (collection !== undefined && collection !== HEADS_COLLECTION && !migrated.includes(collection)) {
+  if (collection !== undefined && collection !== HEADS_COLLECTION && !isCollectionServed(collection)) {
     throw new DataEngineServerError('data-engine-disabled', 503);
   }
 }
@@ -345,6 +344,9 @@ export async function readDocument(owner: string, resource: ResourceRef): Promis
 
 export type ResourcePage = CollectionPage;
 
+/** Said only while true, so an answer about a closed or unserved collection is byte-identical to before. */
+const legacyOpenness = (collection: string): { legacyOpen?: true } => isLegacyOpen(collection) ? { legacyOpen: true } : {};
+
 /** Firestore orders document IDs by UTF-8 bytes, i.e. by Unicode scalar value — not UTF-16 units. */
 function compareDocumentIds(left: string, right: string): number {
   const a = Array.from(left), b = Array.from(right);
@@ -372,10 +374,10 @@ export async function listDocuments(owner: string, collection: string, options: 
     const head = await transaction.get(headRef);
     const version = readHeadVersion(owner, collection, head.exists ? head.data() as DocumentData : undefined);
     if (policy.ownerField === 'id') {
-      if (options.cursor && options.cursor >= owner) return { snapshots: [], nextCursor: null, version };
+      if (options.cursor && options.cursor >= owner) return { snapshots: [], nextCursor: null, version, ...legacyOpenness(collection) };
       const document = await transaction.get(adminDb.collection(collection).doc(owner));
       const snapshot = snapshotFromRaw({ collection, id: owner }, document.exists ? document.data() : undefined);
-      return { snapshots: snapshot.value !== null || snapshot.metadata !== null ? [snapshot] : [], nextCursor: null, version };
+      return { snapshots: snapshot.value !== null || snapshot.metadata !== null ? [snapshot] : [], nextCursor: null, version, ...legacyOpenness(collection) };
     }
     // Two owner queries, one list: live documents answer the legacy owner field, tombstones
     // answer TOMBSTONE_OWNER_FIELD. Both run from the same cursor and merge in document order.
@@ -397,7 +399,7 @@ export async function listDocuments(owner: string, collection: string, options: 
       if (bytes > MAX_LIST_BYTES && snapshots.length > 0) break;
       snapshots.push(snapshot);
     }
-    return { snapshots, nextCursor: merged.length > snapshots.length ? snapshots.at(-1)!.resource.id : null, version };
+    return { snapshots, nextCursor: merged.length > snapshots.length ? snapshots.at(-1)!.resource.id : null, version, ...legacyOpenness(collection) };
   });
 }
 
@@ -423,7 +425,7 @@ export async function readCollectionChanges(owner: string, collection: string, a
       if (!owns(owner, resource, raw)) throw new DataEngineServerError(PERMISSION_DENIED, 403);
       return [resource.id, snapshotFromRaw(resource, raw)] as const;
     }));
-    return assembleChangePage(version, after, pointers, new Map(snapshots));
+    return { ...assembleChangePage(version, after, pointers, new Map(snapshots)), ...legacyOpenness(collection) };
   });
 }
 

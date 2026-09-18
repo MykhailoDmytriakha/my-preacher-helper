@@ -57,6 +57,10 @@ interface CollectionEntry {
   head: Observation | null;
   headVersion: number | null;
   closed: boolean;
+  /** The server said legacy writers may still change this collection without a feed event. */
+  legacyOpen: boolean;
+  /** Whether the server has been asked at all since this reader was created. */
+  asked: boolean;
 }
 
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -142,7 +146,9 @@ export class CollectionReader {
       this.assertCurrent(entry, generation);
       if (!entry.listeners.size) return;
       if (!this.online || !this.visible) this.requireAvailableCache(entry);
-      else if (entry.listeners.size && this.needsRefresh(entry)) return this.requestRefresh(collection, false).then(() => undefined);
+      // Every opening of a list asks again while legacy writers share the collection: their
+      // writes never move the head, so an unchanged head proves nothing about them.
+      else if (entry.listeners.size && (this.needsRefresh(entry) || entry.legacyOpen)) return this.requestRefresh(collection, false).then(() => undefined);
     }), entry, generation);
     let released = false;
     return () => {
@@ -199,7 +205,8 @@ export class CollectionReader {
     let entry = this.entries.get(collection);
     if (!entry) {
       entry = { owner: this.owner, collection, state: initialState(), cursor: undefined, loaded: false,
-        loading: null, inFlight: null, listeners: new Set(), stopHead: null, head: null, headVersion: null, closed: false };
+        loading: null, inFlight: null, listeners: new Set(), stopHead: null, head: null, headVersion: null, closed: false,
+        legacyOpen: false, asked: false };
       this.entries.set(collection, entry);
     }
     return entry;
@@ -243,6 +250,7 @@ export class CollectionReader {
           await this.advance(entry, generation);
           await this.reloadRows(entry, generation);
           this.assertCurrent(entry, generation);
+          entry.asked = true;
           entry.state = { ...entry.state, complete: true, freshness: 'server', checking: false, version: entry.cursor!.version, error: null };
           if (entry.headVersion !== null && entry.headVersion > entry.state.version) entry.state.freshness = 'cache';
           this.emit(entry);
@@ -269,8 +277,15 @@ export class CollectionReader {
     try { await this.changes(entry, generation, entry.cursor.version, true); }
     catch (error) {
       if (errorCode(error) !== 'feed-reset') throw error;
-      await this.hydrate(entry, generation);
+      return this.hydrate(entry, generation);
     }
+    // MIXED MODE. Between "the engine serves this collection" and "legacy writers are closed"
+    // (activation.ts) bundles that have not updated still write the legacy way, and a legacy
+    // write raises no feed event: the feed just said "nothing changed" about a collection in
+    // which a council may have been edited or deleted. The whole list is the only witness, and
+    // reconcileAbsence turns an unversioned row that vanished into a confirmed absence.
+    // The cost is one listing per synchronisation, so it lasts only while the server says so.
+    if (entry.legacyOpen) await this.hydrate(entry, generation);
   }
 
   private async hydrate(entry: CollectionEntry, generation: number): Promise<void> {
@@ -293,6 +308,7 @@ export class CollectionReader {
       const page = await this.options.transport.list(entry.owner, entry.collection, { limit: this.pageSize, ...(cursor === undefined ? {} : { cursor }) });
       this.assertCurrent(entry, generation, true);
       this.validatePage(entry, page, cursor, cursors);
+      entry.legacyOpen = page.legacyOpen === true;
       if (page.version < latestPageVersion) throw failure('Collection page moved backwards');
       anchor ??= page.version;
       latestPageVersion = page.version;
@@ -315,6 +331,7 @@ export class CollectionReader {
       const page = await this.options.transport.changes(entry.owner, entry.collection, after, { limit: this.pageSize });
       this.assertCurrent(entry, generation, true);
       this.validateChanges(entry, page, after, minimumVersion);
+      entry.legacyOpen = page.legacyOpen === true;
       if (page.resetRequired) throw failure('Collection change history requires a full refresh', 'feed-reset');
       await this.persistPage(entry, generation, page.snapshots);
       page.snapshots.forEach(snapshot => seen?.add(snapshot.resource.id));
@@ -422,7 +439,9 @@ export class CollectionReader {
   }
 
   private needsRefresh(entry: CollectionEntry): boolean {
-    return !entry.cursor?.initialized || (entry.headVersion !== null && entry.headVersion > entry.cursor.version);
+    // Once per reader the server is asked regardless of the head: only its answer says whether
+    // legacy writers still share this collection, and a cache from an earlier session cannot.
+    return !entry.asked || !entry.cursor?.initialized || (entry.headVersion !== null && entry.headVersion > entry.cursor.version);
   }
 
   private restart(): void {

@@ -32,10 +32,10 @@ const resultSchema: z.ZodType<CommandResult> = z.discriminatedUnion('kind', [
 const messages = { failed: 'Data engine request failed', timedOut: 'Data engine request timed out', unavailable: 'Data engine unavailable' };
 const version = z.number().int().safe().nonnegative();
 const pageSchema: z.ZodType<CollectionPage> = z.object({
-  snapshots: z.array(snapshotSchema).max(100), nextCursor: z.string().refine(isValidIdentifier).nullable(), version,
+  snapshots: z.array(snapshotSchema).max(100), nextCursor: z.string().refine(isValidIdentifier).nullable(), version, legacyOpen: z.boolean().optional(),
 });
 const changesSchema: z.ZodType<CollectionChanges> = z.object({
-  snapshots: z.array(snapshotSchema).max(100), cursor: version, version, hasMore: z.boolean(), resetRequired: z.boolean().optional(),
+  snapshots: z.array(snapshotSchema).max(100), cursor: version, version, hasMore: z.boolean(), resetRequired: z.boolean().optional(), legacyOpen: z.boolean().optional(),
 });
 
 function assertOwner(owner: string): void {

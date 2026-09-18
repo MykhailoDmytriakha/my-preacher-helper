@@ -384,6 +384,44 @@ describe('CollectionReader durable read lifecycle', () => {
   });
 });
 
+describe('a collection legacy writers may still change', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
+
+  it('reads the whole list again, because a legacy write raises no feed event', async () => {
+    const s = setup();
+    s.seed(legacy('kept'), true); s.seed(legacy('doomed'), true);
+    await s.reader.read(collection);
+    jest.mocked(s.transport.list).mockClear();
+
+    // An old bundle edits one council and deletes another through the legacy road: the head
+    // does not move and the feed stays empty — exactly BUG-20260912-engine-collection-shows-deleted-legacy.
+    s.server.set('kept', { ...legacy('kept'), value: { userId: 'owner', content: 'edited by an old bundle', updatedAt: '2026-09-18T10:00:00.000Z' } });
+    s.server.delete('doomed');
+    const transportList = jest.mocked(s.transport.list).getMockImplementation()!;
+    const transportChanges = jest.mocked(s.transport.changes).getMockImplementation()!;
+    jest.mocked(s.transport.list).mockImplementation(async (...args) => ({ ...(await transportList(...args)), legacyOpen: true }));
+    jest.mocked(s.transport.changes).mockImplementation(async (...args) => ({ ...(await transportChanges(...args)), legacyOpen: true }));
+
+    const state = await s.reader.refresh(collection);
+    expect(s.transport.list).toHaveBeenCalled();
+    const live = state.snapshots.filter(snapshot => snapshot.value !== null);
+    expect(live.map(snapshot => snapshot.resource.id)).toEqual(['kept']);
+    expect(live[0].value).toMatchObject({ content: 'edited by an old bundle' });
+    expect(state).toMatchObject({ complete: true, error: null });
+  });
+
+  it('trusts the feed alone once the collection is closed to legacy writers', async () => {
+    const s = setup();
+    s.seed(legacy('kept'), true);
+    await s.reader.read(collection);
+    jest.mocked(s.transport.list).mockClear();
+    await s.reader.refresh(collection);
+    // No `legacyOpen` in the answers: closed (or an older server) — no full listing per refresh.
+    expect(s.transport.list).not.toHaveBeenCalled();
+  });
+});
+
 describe('independent review race probes', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });

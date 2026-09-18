@@ -41,6 +41,17 @@ service cloud.firestore {
       return !request.resource.data.keys().hasAny(['_dataEngine']);
     }
 
+    // Collections CLOSED to browser writes — the LAST step of a domain's rollout, deployed
+    // together with the server's DATA_ENGINE_CLOSED_COLLECTIONS (app/data-engine/activation.ts).
+    // Rules cannot read the server's environment, so the same decision is spelled here.
+    // Until a collection is listed, a bundle that has not updated may still write the documents
+    // the engine has not touched; once listed, nothing reaches it from a browser at all — the
+    // engine writes through the Admin SDK, which rules do not govern.
+    // To close a domain, add its collection here:        ↓ e.g. ['councils']
+    function closedToBrowserWrites(name) {
+      return name in [];
+    }
+
     // ---- Revision protocol (PREPARED, NOT ARMED — see the checklist) ----
     //
     // The freshness mechanism refuses a save built from an older revision by
@@ -154,9 +165,9 @@ service cloud.firestore {
     // Brothers' council — one document per council, sections inside, the pastor's own.
     match /councils/{id} {
       allow read: if ownsExisting('userId');
-      allow delete: if ownsExisting('userId') && legacyExisting();
-      allow create:       if ownsIncoming('userId') && legacyIncoming();
-      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming();
+      allow delete: if ownsExisting('userId') && legacyExisting() && !closedToBrowserWrites('councils');
+      allow create:       if ownsIncoming('userId') && legacyIncoming() && !closedToBrowserWrites('councils');
+      allow update:       if ownsExisting('userId') && ownsIncoming('userId') && legacyExisting() && legacyIncoming() && !closedToBrowserWrites('councils');
     }
     match /prayerCategories/{id} {
       allow read: if ownsExisting('userId');

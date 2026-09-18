@@ -108,6 +108,8 @@ export interface CollectionPage {
   snapshots: ResourceSnapshot[];
   nextCursor: string | null;
   version: number;
+  /** Legacy writers may still change this collection without a feed event (activation.ts). */
+  legacyOpen?: boolean;
 }
 
 export interface CollectionChanges {
@@ -116,6 +118,8 @@ export interface CollectionChanges {
   version: number;
   hasMore: boolean;
   resetRequired?: boolean;
+  /** Legacy writers may still change this collection without a feed event (activation.ts). */
+  legacyOpen?: boolean;
 }
 
 export interface CollectionTransport {

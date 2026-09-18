@@ -482,6 +482,23 @@ describe('transactional DataEngine server', () => {
     expect(seen).toEqual(['a', 'b', 'c', 'd']);
   });
 
+  describe('legacy writers beside the engine', () => {
+    const saved = { ...process.env };
+    afterEach(() => { process.env = { ...saved }; });
+    it('tells a reader whether legacy writers may still change the collection unseen', async () => {
+      documents.set('councils/a', { userId: 'owner-1', title: 'A' });
+      // Served by the engine, legacy still open: a legacy write raises no feed event, so the
+      // reader must be told the feed alone is not the whole truth.
+      process.env.DATA_ENGINE_COLLECTIONS = 'councils';
+      expect(await listDocuments('owner-1', 'councils')).toMatchObject({ legacyOpen: true });
+      expect(await readCollectionChanges('owner-1', 'councils', 0)).toMatchObject({ legacyOpen: true });
+      // Closed — the LAST switch of a rollout: from here on the feed is the whole truth.
+      process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'councils';
+      expect(await listDocuments('owner-1', 'councils')).not.toHaveProperty('legacyOpen');
+      expect(await readCollectionChanges('owner-1', 'councils', 0)).not.toHaveProperty('legacyOpen');
+    });
+  });
+
   it('uses document identity for private user profiles instead of caller-selected ownership fields', async () => {
     documents.set('users/owner-1', { displayName: 'Mine', premium: true });
     documents.set('users/victim', { displayName: 'Private' });

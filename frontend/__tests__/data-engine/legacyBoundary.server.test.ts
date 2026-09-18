@@ -55,6 +55,43 @@ beforeEach(() => {
   });
 });
 
+describe('a collection closed to legacy writers', () => {
+  const saved = { ...process.env };
+  afterEach(() => { process.env = { ...saved }; });
+  const council = (id: string) => ({ path: `councils/${id}` }) as DocumentReference;
+
+  it('refuses update, delete and create of an UNMARKED document once the collection is closed', async () => {
+    process.env.DATA_ENGINE_COLLECTIONS = 'councils';
+    process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'councils';
+    records.set('councils/legacy', { userId: 'owner', title: 'Never touched by the engine' });
+    await expect(updateLegacyDocument(council('legacy'), { title: 'Old bundle' })).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
+    await expect(deleteLegacyDocument(council('legacy'))).rejects.toMatchObject({ code: 'data-engine-required' });
+    await expect(createLegacyDocument(council('fresh'), { userId: 'owner', title: 'Invisible to the feed' }, 'owner')).rejects.toMatchObject({ code: 'data-engine-required' });
+    expect(records.get('councils/legacy')).toEqual({ userId: 'owner', title: 'Never touched by the engine' });
+    expect(records.has('councils/fresh')).toBe(false);
+  });
+
+  it('leaves an open collection and every other collection writable, as before', async () => {
+    process.env.DATA_ENGINE_COLLECTIONS = 'councils';
+    records.set('councils/legacy', { userId: 'owner', title: 'Original' });
+    await updateLegacyDocument(council('legacy'), { title: 'Old bundle, still welcome' });
+    expect(records.get('councils/legacy')?.title).toBe('Old bundle, still welcome');
+    process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'councils';
+    records.set('sermons/a', { userId: 'owner', title: 'Original' });
+    await updateLegacyDocument(ref('a'), { title: 'Another domain' });
+    expect(records.get('sermons/a')?.title).toBe('Another domain');
+  });
+
+  it('ignores a closure that names a collection the engine does not serve', async () => {
+    // Closing without serving would leave nobody able to write: a misconfiguration must not
+    // become an outage.
+    process.env.DATA_ENGINE_CLOSED_COLLECTIONS = 'councils';
+    records.set('councils/legacy', { userId: 'owner', title: 'Original' });
+    await updateLegacyDocument(council('legacy'), { title: 'Still writable' });
+    expect(records.get('councils/legacy')?.title).toBe('Still writable');
+  });
+});
+
 describe('atomic legacy boundary', () => {
   it.each([null, {}, marker, { ...marker, deleted: true }])('refuses any existing marker shape: %j', async metadata => {
     records.set('sermons/a', { userId: 'owner', title: 'Original', _dataEngine: metadata });

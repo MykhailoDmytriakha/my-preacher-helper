@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+import { isClosedToLegacyWriters } from './activation';
+
 import type { DocumentData, DocumentReference, DocumentSnapshot, QuerySnapshot, Transaction } from 'firebase-admin/firestore';
 
 export const DATA_ENGINE_REQUIRED = 'data-engine-required';
@@ -18,10 +20,27 @@ export const DATA_ENGINE_REQUIRED = 'data-engine-required';
 export const LEGACY_REFUSAL_STATUS = 426;
 const MAX_LEGACY_WRITES = 100;
 
-export function assertLegacyWritable(raw: DocumentData | undefined): void {
-  if (raw && Object.prototype.hasOwnProperty.call(raw, '_dataEngine')) {
+/**
+ * Two refusals, for two stages of a rollout (activation.ts):
+ * - a document the engine already owns carries the marker and is refused from the first engine
+ *   write on, while its unmarked neighbours stay writable for bundles that have not updated;
+ * - a collection CLOSED to legacy writers refuses every legacy write, marked or not, creation
+ *   included — the last step, once every device runs the new bundle. Without it an old bundle
+ *   could still create or change an unmarked document that no engine list would ever hear of.
+ */
+export function assertLegacyWritable(raw: DocumentData | undefined, collection?: string): void {
+  if ((collection !== undefined && isClosedToLegacyWriters(collection))
+    || (raw && Object.prototype.hasOwnProperty.call(raw, '_dataEngine'))) {
     throw Object.assign(new Error(DATA_ENGINE_REQUIRED), { code: DATA_ENGINE_REQUIRED, status: LEGACY_REFUSAL_STATUS });
   }
+}
+
+/** The collection a document lives in directly; a subcollection is not its parent's domain. */
+function collectionOf(reference: DocumentReference): string | undefined {
+  const parent = (reference as { parent?: { id?: unknown } }).parent?.id;
+  if (typeof parent === 'string') return parent;
+  const segments = typeof reference.path === 'string' ? reference.path.split('/') : [];
+  return segments.length === 2 ? segments[0] : undefined;
 }
 
 export function isDataEngineRequired(error: unknown): boolean {
@@ -58,7 +77,7 @@ export async function runLegacyTransaction<T>(body: (transaction: Transaction) =
         if (['set', 'update', 'create', 'delete'].includes(String(property))) return (...args: unknown[]) => {
           const reference = args[0] as DocumentReference;
           if (!read.has(key(reference))) throw new Error('Legacy mutation requires a transactional target read');
-          assertLegacyWritable(read.get(key(reference)));
+          assertLegacyWritable(read.get(key(reference)), collectionOf(reference));
           const patch = args[1];
           if (patch && typeof patch === 'object' && Object.keys(patch).some(key => key === '_dataEngine' || key.startsWith('_dataEngine.'))) {
             assertLegacyWritable({ _dataEngine: true });
