@@ -4,7 +4,7 @@ Started 2026-09-12 on branch `data-engine`, worktree `2767/my-preacher-helper`,
 baseline commit `35abc917`. This file is the hand-off record: what is being
 migrated, in which order, what is already closed and with which evidence.
 
-## Read this first — where the work stands on 2026-09-13
+## Read this first — where the work stands on 2026-09-18
 
 **Nothing is live.** Both switches default to off, the marker rules are prepared but
 not deployed, and no production data has gone through the engine.
@@ -16,22 +16,28 @@ it, deleting it (which leaves a tombstone), recovering unfinished work left by a
 earlier page load, and the hub count, calendar entry and breadcrumb title all reading
 through one shared reader. Carrying a section between two councils is proven at the
 protocol level — one transaction touches both documents, and an identical replay adds
-nothing — but **the button that should trigger it does not work**
-(`BUG-20260913-engine-carry-button-sees-no-targets`).
+nothing. The button was reported broken on 2026-09-13; that report misread its own
+measurement (see "Corrections to earlier records"). The screen logic is now pinned by
+a test; one end-to-end pass through the button in a browser is still owed.
 
-**Defects filed by this migration** — all in `BUGS.md` at the repository root:
+**Open defects of this migration** — all in `BUGS.md` at the repository root:
 
-- `BUG-20260913-engine-carry-button-sees-no-targets` (P1) — the screen sees no
-  destinations, so the carry button does nothing.
+- `BUG-20260918-legacy-refusal-409-reads-as-conflict` (P1) — the legacy boundary refuses
+  with HTTP 409, and in the bundle already shipped to users 409 means "conflict, the body
+  is the current council": an old PWA drops the person's waiting text. Blocks rollout.
+- `BUG-20260912-engine-collection-shows-deleted-legacy` (P1) — a legacy write to an
+  UNMARKED document of a migrated collection is still accepted and raises no feed event,
+  so an engine list keeps showing deleted rows. The guards look at the document marker;
+  nothing closes the collection. Blocks rollout.
 - `BUG-20260913-engine-idle-banner-hides-unfinished-work` (P2) — the banner reads
   "Saved" while unfinished drafts sit beside it, findable only by pressing a button
   blind.
-- `BUG-20260912-engine-collection-shows-deleted-legacy` (P1) — a collection read by
-  the engine while a legacy writer still owns it keeps showing deleted rows. This is
-  why reading and writing must be switched on together, per domain.
+- `BUG-20260913-engine-carry-button-sees-no-targets` — moved to "needs re-checking":
+  the screen is proven by a test, the browser pass is owed.
 
-Seven further core defects were filed by the engine's author and are untouched; the
-receipt amplification among them blocks any deployment.
+The seven core defects the engine's author filed on 2026-09-12 are **fixed and guarded
+by tests**; their tracker entries were stale and have been removed. Evidence, one
+mutation per fix, is in "Corrections to earlier records" below.
 
 **The eleven other domains have not been started.** See "Whole-app remainder" below.
 
@@ -138,10 +144,10 @@ A closing entry must state what changed, what proves it, and what stays unproven
 | 3b | Councils writing, **whole**: create, update, delete and the two-council carry | 3a | Every council write runs through the engine, the carry as a registered core command; the conflict matrix is red before it is green | mechanism closed — create, update, delete, carry, replay and recovery all proven; the carry **button** is a filed defect |
 | 4 | Remaining council readers and legacy retirement | 3b | Hub, breadcrumbs, calendar and the pre-database localStorage carry-over; only then is the domain migrated | readers and carry-over done; retiring the legacy hook left |
 | 5 | Live browser proof for councils | 4 | Two windows, offline, reload mid-save: both edits survive; a conflict shows both versions | open |
-| 6 | Core bugs surfaced by 3-5 | 5 | Each fix has a red check: disable the fix and the test fails | open |
-| 7 | Receipt amplification | 6 | A thousand saves do not grow storage linearly (`app/data-engine/server.ts`) | open |
+| 6 | Core bugs surfaced by 3-5 | 5 | Each fix has a red check: disable the fix and the test fails | the seven filed on 2026-09-12 are closed with red checks (2026-09-18); anything step 5 surfaces still lands here |
+| 7 | Receipt amplification | 6 | A thousand saves do not grow storage linearly (`app/data-engine/server.ts`) | closed — was already fixed in `35abc917`: an acknowledged receipt is under 1 KB whatever the document size (`__tests__/data-engine/server.test.ts`, "stores a compact ACK…"). Receipts still grow by COUNT, one small document per save; retention of old receipts is not designed yet |
 | 8 | Legacy queued council writes | 4 | A pending legacy write is discovered, shown and either replayed or exported | open |
-| 9 | Rollout: rules, server flag, client flag | 7, 8 | An old PWA is refused and keeps its draft; owner presses the button | open |
+| 9 | Rollout: rules, server flag, client flag | 7, 8 | An old PWA is refused and keeps its draft; owner presses the button | open — and today it would FAIL its own acceptance: see `BUG-20260918-legacy-refusal-409-reads-as-conflict` |
 
 Step 3b stands as follows, checked 2026-09-13: creating a council, renaming it,
 adding and naming a section, and recovering unfinished work from an earlier page
@@ -193,11 +199,10 @@ Nothing may be switched on in production while these stand.
 
 | Blocker | Where | Why it gates |
 |---|---|---|
-| Receipt amplification | `app/data-engine/server.ts`, `BUG-20260912-engine-receipt-amplification` | Every acknowledged save stores a full document copy: ~1000 saves of a 500 KiB sermon ≈ 488 MiB of receipts |
-| Four more core P1 defects | `BUGS.md` (`engine-ack-metadata-conflict`, `engine-successor-save`, `engine-manual-form-baseline`, `engine-local-retry`) | They break the ordinary save cycle, recovery and manual forms |
-| Two core P2 defects | `BUGS.md` (`engine-collection-demand`, `engine-collection-cache-race`) | Reads continue after leaving a screen; a second tab's write reads as a lost deletion |
-| Mixed-mode collection reads | `BUG-20260912-engine-collection-shows-deleted-legacy` | A legacy write raises no feed event, so a read-only crossover shows deleted rows. Reading and writing must move together, per domain |
-| Manual Save forms | `app/data-engine/README.md`, manual scopes | Still being designed. Every domain with an explicit Save button waits for it |
+| ~~Receipt amplification, four more core P1 defects, two core P2 defects~~ | — | **Not blockers: fixed in `35abc917`, confirmed by mutation on 2026-09-18.** These three rows were written from the tracker, not from the code — see "Corrections to earlier records" |
+| A refusal that old bundles misread | `app/data-engine/legacyBoundary.server.ts`, `BUG-20260918-legacy-refusal-409-reads-as-conflict` | The boundary answers 409; shipped council and service-order clients read 409 as a compare-and-set conflict and forget the waiting text |
+| Mixed-mode collection reads | `BUG-20260912-engine-collection-shows-deleted-legacy` | A legacy write raises no feed event, so a read-only crossover shows deleted rows. Reading and writing must move together, per domain — **and that is not enough**: both guards (`legacyBoundary.server.ts`, `firestore.rules`) look at the DOCUMENT marker, so an old bundle can still write any council the engine has not touched yet. The collection itself has to close for legacy writers |
+| Manual Save forms | `app/data-engine/README.md`, manual scopes | The mechanism exists and is wired for the sermon title and verse (`useDataForm`, `manualScope.ts`; the open-A / type-B / remote-C case is guarded by `manualScope.test.ts`). What is owed is a live pass per form as each domain migrates — not a design |
 | Rules not deployed | `frontend/firestore.rules` | Prepared marker rules exist but are not live; until they are, an old client can still write a migrated document offline |
 | Legacy queued writes | `app/data-engine/legacyRecovery.client.ts` | Pending writes in `writeOutbox`, React Query paused mutations and the membership outbox must be discovered and settled before their domain's legacy path closes |
 | No browser/device validation | — | Nothing has been proven in a genuinely foregrounded window, an installed PWA, or on a phone |
@@ -233,6 +238,78 @@ Retire the legacy layer itself: `conflictSafeUpdate.client.ts` (493 lines),
 `writeOutbox.client.ts`, `outboxReplay.client.ts` and the React Query
 `mutationDefaults.ts` write paths, then turn the architecture gate from a shrinking
 budget into a hard zero.
+
+## Corrections to earlier records
+
+Added 2026-09-18 by the third agent on this branch (the engine core was written by one
+agent on 2026-09-12, the councils domain by a second on 2026-09-12/13). Each correction
+names the record that was wrong, why, and the evidence — so the next reader can check
+the correction instead of trusting it.
+
+### 1. "Seven core defects are untouched and block deployment" — they were already fixed
+
+**What was recorded.** `BUGS.md` carried seven engine entries dated 2026-09-12, and this
+log's summary and blockers table repeated them as open, with receipt amplification named
+as the thing that blocks any deployment.
+
+**What is true.** All seven were fixed inside the engine's first commit, `35abc917`, by
+the same author who filed them — the entries were written during that work and never
+removed (the repository rule is "fixed → delete the entry"). The summary here was then
+written from the tracker rather than from the code.
+
+**Evidence.** For each fix, one mutation that switches it off; the named test passes with
+the fix and fails without it, for the reason the tracker entry described. Run in a
+detached copy of the branch on 2026-09-18:
+
+| Tracker entry | Fix switched off | Test that turns red |
+|---|---|---|
+| `engine-receipt-amplification` | `server.ts` `serializeReceipt` stores the full result instead of the compact acknowledgement | `__tests__/data-engine/server.test.ts` "stores a compact ACK whose size is independent of unchanged large document content" |
+| `engine-ack-metadata-conflict` | `protocol.ts` `mergeDocumentFields` stops excluding the server-owned `rev` | `app/data-engine/__tests__/commits.test.ts` "delivers saved A then B after a full engine restart…" — fails with the very `rev.core` 1/2/3 conflict the entry named |
+| `engine-successor-save` (captures later typing) | `controller.ts` `save` takes its value inside the queue instead of at invocation | `commits.test.ts` "freezes save at invocation before persistence…" |
+| `engine-successor-save` (needs an open editor) | `engine.ts` `retry` no longer drains the commit queue | `commits.test.ts` "delivers saved A then B after a full engine restart without opening an editor…" |
+| `engine-manual-form-baseline` | `manualScope.ts` `save` reads the confirmed copy at Save time instead of the one pinned at open | `app/data-engine/__tests__/manualScope.test.ts` "pins pristine A at open…" — without the fix the server answers `acknowledged` where `conflict` is required |
+| `engine-local-retry` (checkpoint) | `controller.ts` `retryPersistence` skips the checkpoint write | `app/data-engine/__tests__/controller.test.ts` "retries a failed local checkpoint with the latest draft…" |
+| `engine-local-retry` (journal) | `retryPersistence` skips resubmitting the prepared command | `controller.test.ts` "retries a missing journal commit with the identical prepared command…" |
+| `engine-collection-demand` | `collections.ts` `assertCurrent` ignores "no listeners left" on network steps | `app/data-engine/__tests__/collections.test.ts` "stops background hydration requests after the final watch is released" |
+| `engine-collection-cache-race` | `collections.ts` `reconcileAbsence` walks the current cache instead of the rows captured before the read | `collections.test.ts` "does not call a newly committed cache insertion a missing deletion tombstone" — fails with "A versioned document is missing its deletion tombstone" |
+
+**What this does not prove.** A test guards the scenario it encodes. None of these seven
+has been exercised in a browser, and receipts still grow by COUNT (one small document per
+acknowledged save): no retention for old receipts or change-feed pointers exists yet.
+
+### 2. "The carry button sees no targets" — the measurement said the opposite
+
+**What was recorded.** `BUG-20260913-engine-carry-button-sees-no-targets` (P1): with two
+councils being prepared, the button reported `aria-expanded="false"`, read as "the screen
+believes there are fewer than two destinations"; after one press both documents were
+unchanged.
+
+**What is true.** `care/council/[id]/page.tsx` renders
+`aria-expanded={carryTargets.length > 1 ? choosingTarget : undefined}`. With fewer than two
+targets the attribute is ABSENT; `"false"` appears only when there are two or more and the
+chooser is closed. One press opens the chooser; the carry is the second press. "Nothing
+changed after the press" is what that design does, not a failure of it.
+
+**Evidence.** `care/council/__tests__/EngineCouncilCarry.test.tsx` pins the three shapes
+(two targets → chooser → carry with the chosen id; one target → one press; none → the
+person is told) plus a refusal being spoken aloud. Two mutations turn it red: ignoring the
+chosen target, and never opening the chooser.
+
+**Still owed.** One real pass through the button in a browser with the engine on. Until
+then the entry sits under "needs re-checking" in `BUGS.md`, not under open defects.
+
+### 3. Found while checking the above: a refusal that destroys text on old bundles
+
+Not a correction of a record but of an assumption — that refusing a legacy write is safe.
+`legacyBoundaryResponse` answers **409**. In the bundle already shipped to users, the
+councils client treats 409 as a compare-and-set conflict whose body is the current council
+(`services/councilsTransport.client.ts`: `conflict: status === 409, current: value`), and
+`hooks/useCouncils.ts` then forgets the waiting text and stores the body in its cache.
+`services/serviceOrderEditing.client.ts` reads 409 the same way. This branch's own client
+tells the two apart by the body's `code`, but a shipped bundle cannot be changed, and an
+installed PWA left open keeps running one for days (`AppUpdateButton.tsx`: the update is
+voluntary). Filed as `BUG-20260918-legacy-refusal-409-reads-as-conflict`; any status
+outside that client's table lands in its `refused` branch, which keeps the text.
 
 ## Closing log
 
@@ -638,3 +715,33 @@ half has to keep working until the rollout.
 
 Test data created for this pass was deleted afterwards; only the account's own
 council remains.
+
+### 2026-09-18 — The branch is brought onto current main and made to tell the truth
+
+**Merged `main`** (26 commits since `4c6360ab`), five conflicts, each resolved by keeping
+what both sides meant; the merge commit lists them. The architecture ledger moved with it:
+`main` had removed the settings page's SDK imports (two entries deleted) and added
+`waitForPendingWrites` to `useDocumentFreshness` (recorded as discovered debt, count one) —
+see `frontend/__tests__/architecture/README.md`.
+
+**A date bomb in the council list test** went off on this very day: the seeded council is
+dated 2026-09-18, the page counts days from the real clock, and the test never froze
+"today". It was red on `main` as well, where Vercel gates every build on it. The clock is
+now pinned at noon UTC (not midnight: `daysUntil` reads the local calendar date) and the
+test is green in three time zones.
+
+**The tracker and this log were corrected** — see "Corrections to earlier records": seven
+entries removed after a red check each, the carry-button entry refiled under "needs
+re-checking" with a new test, the idle-banner entry moved to the P2 section its own text
+names, and one new P1 filed for the 409 refusal that old bundles read as a conflict.
+
+**Independent review.** The rollout design was handed to a second engine for an
+adversarial pass; Codex was over its usage limit until 2026-09-19 01:10, so a clean
+subagent on a different model ran instead — the same provider, so its agreement is not
+counted as independent. A Codex pass is still owed before the owner's button.
+
+Gates on the merged tree, from `frontend`: `tsc --noEmit` exit 0; `test:fast` with the date
+bomb fixed and the carry test added — recorded in the commit that closes this entry.
+
+**Unproven.** Everything a browser has to show: the carry button end to end, two windows,
+offline, reload mid-save. No rules, flags or production data were touched.
