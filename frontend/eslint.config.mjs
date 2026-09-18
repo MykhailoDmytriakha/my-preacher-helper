@@ -30,6 +30,7 @@ const eslintConfig = [
       "**/public/sw.js",
       "**/.spike/**",
       "**/rules-test.cjs",
+      "**/rules-test-closed.cjs",
     ],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),

@@ -4,9 +4,15 @@ User-data features read and edit through `react.client.tsx`. They do not choose
 Firestore vs HTTP, construct commands, manage outboxes, compare revisions, or merge
 remote copies. Those decisions belong here and have direct behavioral tests.
 
-**Migration is in progress.** `NEXT_PUBLIC_DATA_ENGINE_ENABLED` and the server's
-`DATA_ENGINE_ENABLED` default to off. Do not enable them until the domain migration,
-legacy writer rejection, rules and queued-old-client migration have passed together.
+**Migration is in progress.** Every switch defaults to off. A domain is switched on per
+collection: `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS` (compiled into the bundle) and the server's
+`DATA_ENGINE_COLLECTIONS`; the older `*_ENABLED=true` pair still means every collection.
+A third switch, `DATA_ENGINE_CLOSED_COLLECTIONS`, refuses every legacy write to a collection and
+is thrown LAST, once every device runs the new bundle — `activation.ts` explains why the two
+cannot be thrown together. Between them legacy writers and the engine share the collection:
+the server says `legacyOpen` and lists are re-read, because a legacy write raises no feed event.
+The order, its rollbacks and its residual risks: "Rollout order" in
+`docs/architecture/data-engine-migration-log.md`. Do not flip anything from memory.
 The remaining debt is recorded in `docs/architecture/data-engine-implementation-plan.md`
 at the repository root and the architecture test ledger. The ledger is a shrinking
 inventory, not permission to add another bypass.
@@ -90,11 +96,16 @@ forms until open/edit/remote-change/save and cancel scenarios pass through it.
 4. Owner, resource and lifecycle generations fence every asynchronous result.
 5. Independent object fields and ID-based items merge; competing changes preserve
    the baseline, local and remote versions for an explicit decision.
-6. Deletes leave generation-bearing tombstones and enter the collection change feed.
+6. Deletes leave generation-bearing tombstones and enter the collection change feed. A tombstone
+   names its owner in `_dataEngineOwner`, never in the legacy owner field: no legacy
+   `where(userId == uid)` query — including the one inside bundles already shipped — may return it.
 7. SDK observations are read-only; pending SDK writes are not server confirmations.
 8. Collection cursors advance only after all corresponding snapshots are durable.
 9. Explicit Retry repairs local persistence offline and refreshes only the requested
    document; background journal retries do not add a second read-polling loop.
+10. A draft the domain policy cannot turn into a command ends as a terminal `refused` request
+    the person can resolve; only a failure without a policy code (a target unreadable offline)
+    stays retryable. A queue that retries the impossible leaves the editor no way out.
 
 ## Verification and migration evidence
 

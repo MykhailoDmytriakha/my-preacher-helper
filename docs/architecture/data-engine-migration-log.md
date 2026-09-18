@@ -22,13 +22,6 @@ a test; one end-to-end pass through the button in a browser is still owed.
 
 **Open defects of this migration** — all in `BUGS.md` at the repository root:
 
-- `BUG-20260918-legacy-refusal-409-reads-as-conflict` (P1) — the legacy boundary refuses
-  with HTTP 409, and in the bundle already shipped to users 409 means "conflict, the body
-  is the current council": an old PWA drops the person's waiting text. Blocks rollout.
-- `BUG-20260912-engine-collection-shows-deleted-legacy` (P1) — a legacy write to an
-  UNMARKED document of a migrated collection is still accepted and raises no feed event,
-  so an engine list keeps showing deleted rows. The guards look at the document marker;
-  nothing closes the collection. Blocks rollout.
 - `BUG-20260913-engine-idle-banner-hides-unfinished-work` (P2) — the banner reads
   "Saved" while unfinished drafts sit beside it, findable only by pressing a button
   blind.
@@ -38,6 +31,15 @@ a test; one end-to-end pass through the button in a browser is still owed.
 The seven core defects the engine's author filed on 2026-09-12 are **fixed and guarded
 by tests**; their tracker entries were stale and have been removed. Evidence, one
 mutation per fix, is in "Corrections to earlier records" below.
+
+Closed on 2026-09-18, each with a test that was red first (see the closing log):
+the 409 refusal that old bundles read as a conflict, the engine list that kept showing
+what a legacy writer deleted, the tombstone that haunted every legacy reader, the save
+queue that one refused carry wedged for good, and the build gate that the enabling deploy
+would have failed.
+
+**How a domain is rolled out changed on 2026-09-18** — read "Rollout order" below before
+touching any switch. Closing a collection to legacy writers is the LAST step, not the first.
 
 **The eleven other domains have not been started.** See "Whole-app remainder" below.
 
@@ -147,7 +149,7 @@ A closing entry must state what changed, what proves it, and what stays unproven
 | 6 | Core bugs surfaced by 3-5 | 5 | Each fix has a red check: disable the fix and the test fails | the seven filed on 2026-09-12 are closed with red checks (2026-09-18); anything step 5 surfaces still lands here |
 | 7 | Receipt amplification | 6 | A thousand saves do not grow storage linearly (`app/data-engine/server.ts`) | closed — was already fixed in `35abc917`: an acknowledged receipt is under 1 KB whatever the document size (`__tests__/data-engine/server.test.ts`, "stores a compact ACK…"). Receipts still grow by COUNT, one small document per save; retention of old receipts is not designed yet |
 | 8 | Legacy queued council writes | 4 | A pending legacy write is discovered, shown and either replayed or exported | open |
-| 9 | Rollout: rules, server flag, client flag | 7, 8 | An old PWA is refused and keeps its draft; owner presses the button | open — and today it would FAIL its own acceptance: see `BUG-20260918-legacy-refusal-409-reads-as-conflict` |
+| 9 | Rollout, in the order under "Rollout order" | 7, 8 | An old PWA keeps working on documents the engine has not touched, is refused with its text kept on the ones it has, and the collection is closed last; owner presses every button | mechanisms built and tested 2026-09-18; nothing deployed |
 
 Step 3b stands as follows, checked 2026-09-13: creating a council, renaming it,
 adding and naming a section, and recovering unfinished work from an earlier page
@@ -200,11 +202,11 @@ Nothing may be switched on in production while these stand.
 | Blocker | Where | Why it gates |
 |---|---|---|
 | ~~Receipt amplification, four more core P1 defects, two core P2 defects~~ | — | **Not blockers: fixed in `35abc917`, confirmed by mutation on 2026-09-18.** These three rows were written from the tracker, not from the code — see "Corrections to earlier records" |
-| A refusal that old bundles misread | `app/data-engine/legacyBoundary.server.ts`, `BUG-20260918-legacy-refusal-409-reads-as-conflict` | The boundary answers 409; shipped council and service-order clients read 409 as a compare-and-set conflict and forget the waiting text |
-| Mixed-mode collection reads | `BUG-20260912-engine-collection-shows-deleted-legacy` | A legacy write raises no feed event, so a read-only crossover shows deleted rows. Reading and writing must move together, per domain — **and that is not enough**: both guards (`legacyBoundary.server.ts`, `firestore.rules`) look at the DOCUMENT marker, so an old bundle can still write any council the engine has not touched yet. The collection itself has to close for legacy writers |
+| ~~A refusal that old bundles misread~~ | `app/data-engine/legacyBoundary.server.ts` | Fixed 2026-09-18: the refusal speaks 426, and the new bundle knows it by its code at any status |
+| ~~Mixed-mode collection reads~~ | `app/data-engine/activation.ts`, `collections.ts` | Fixed 2026-09-18: while legacy writers share a served collection the server says `legacyOpen` and the reader lists the whole collection on every synchronisation; closing the collection is a separate, last switch. **Cost to revisit:** one full listing per synchronisation while mixed — fine for councils, not for sermons |
 | Manual Save forms | `app/data-engine/README.md`, manual scopes | The mechanism exists and is wired for the sermon title and verse (`useDataForm`, `manualScope.ts`; the open-A / type-B / remote-C case is guarded by `manualScope.test.ts`). What is owed is a live pass per form as each domain migrates — not a design |
-| Rules not deployed | `frontend/firestore.rules` | Prepared marker rules exist but are not live; until they are, an old client can still write a migrated document offline |
-| Legacy queued writes | `app/data-engine/legacyRecovery.client.ts` | Pending writes in `writeOutbox`, React Query paused mutations and the membership outbox must be discovered and settled before their domain's legacy path closes |
+| Rules not deployed | `frontend/firestore.rules` | Prepared rules exist but are not live; until they are, an old client can still write a migrated document offline, the engine's SDK listener is denied the change head (it falls back to HTTP polling, up to ~15 s late), and a tombstone is unreadable to its owner's listener. `npm run test:rules` proves them on the emulator (256 + 5 checks) and is NOT part of the build gate — run it before deploying rules |
+| Legacy queued writes | `app/data-engine/legacyRecovery.client.ts` | Pending writes in `writeOutbox`, React Query paused mutations and the membership outbox must be discovered and settled before their domain's legacy path closes. **For councils this discovery finds nothing by construction:** their legacy queue lives in memory (`councilWriteQueue.client.ts`) and their optimistic copy in the persisted React Query cache `['councils', uid]` — neither is a place `discoverLegacyRecovery` looks. What an old bundle could not save survives a reload only there, unread |
 | No browser/device validation | — | Nothing has been proven in a genuinely foregrounded window, an installed PWA, or on a phone |
 | No cost measurement | — | Reads and writes per session under the engine have never been measured against the Firestore quota |
 
@@ -238,6 +240,45 @@ Retire the legacy layer itself: `conflictSafeUpdate.client.ts` (493 lines),
 `writeOutbox.client.ts`, `outboxReplay.client.ts` and the React Query
 `mutationDefaults.ts` write paths, then turn the architecture gate from a shrinking
 budget into a hard zero.
+
+## Rollout order
+
+Decided 2026-09-18, replacing the earlier "server, then rules, then client" with the collection
+closed at the first step. That order cannot be executed: the CLIENT switch
+(`NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS`) is compiled into the bundle, so "the client flips" means a
+build, a service-worker swap and a voluntary reload on every device — days, on an installed PWA
+(`AppUpdateButton.tsx`) — while a server-side closure is instant. Closing first would have left
+the bundle in every browser unable to save councils at all.
+
+So a rollout has a **mixed stage**, and every mechanism below exists to make that stage safe in
+itself. Each step is one deliberate action by the owner; rollback is named per step.
+
+| # | Action | What changes | Rollback |
+|---|---|---|---|
+| 0 | Merge to `main` with every switch unset | Nothing: all engine paths are off by default; the legacy boundary only refuses documents that carry a marker, and none does | revert the merge |
+| 1 | Set `DATA_ENGINE_COLLECTIONS=councils` on the server and `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS=councils` for the build, then deploy | New bundles read and write councils through the engine. Old bundles keep working the legacy way on every council the engine has not written yet; on one it has, they are refused with 426 and keep their text for the session. New bundles see legacy changes because the server says `legacyOpen` and the list is re-read | Unset both and redeploy. Documents the engine wrote stay marked: the legacy road refuses them until they are unmarked by hand. **This is the point of no return for those documents — not for the collection** |
+| 2 | Every device reloaded into the new bundle (Settings → "Показывать версию" shows the SHA) | The mixed stage ends in fact | — |
+| 3 | Deploy `firestore.rules` from this branch | Browsers can no longer write a marked document or forge a marker; the engine's listener may read the change head and its own tombstones | redeploy the previous rules |
+| 4 | Set `DATA_ENGINE_CLOSED_COLLECTIONS=councils` and list `'councils'` in `closedToBrowserWrites` (rules), deploy both | Every legacy write to councils is refused, creation included; the server stops saying `legacyOpen` and lists go back to following the feed alone | unset the variable, empty the list |
+
+**Preview deployments share the production database.** A preview built from this branch with the
+switches set writes real markers into real councils. Scope the two variables to the Preview
+environment of this branch only, test there on councils created for the test, and delete them
+through the engine afterwards. A tombstone no longer shows up in the production app's list
+(`TOMBSTONE_OWNER_FIELD`); a marked LIVE test council does, and production cannot edit it.
+
+**Residual risks that no server change removes** (the old bundle is already shipped):
+
+- An old bundle that edits councils OFFLINE queues a Firestore SDK write. On reconnect it lands
+  on an unmarked council as before; on a marked one the rules (once deployed) reject it and the
+  SDK reverts the local copy without telling the app. That text is lost. Before step 3 the same
+  write OVERWRITES the marked document, marker included. Either way: reload every device soon
+  after step 1, and do not edit councils offline on a device that has not reloaded.
+- An old bundle refused on a marked council keeps the text on screen and in its persisted React
+  Query cache, shown as if saved; after a reload the new bundle shows the server's truth and
+  nothing offers the old text back.
+- An old bundle that deletes a marked council removes it from its own screen first and is then
+  refused; the council reappears at its next read.
 
 ## Corrections to earlier records
 
@@ -310,6 +351,18 @@ tells the two apart by the body's `code`, but a shipped bundle cannot be changed
 installed PWA left open keeps running one for days (`AppUpdateButton.tsx`: the update is
 voluntary). Filed as `BUG-20260918-legacy-refusal-409-reads-as-conflict`; any status
 outside that client's table lands in its `refused` branch, which keeps the text.
+
+### 4. My own plan was wrong about the order of a rollout
+
+Recorded because it was the author of these corrections who got it wrong. The first design of
+2026-09-18 closed the collection to legacy writers at the moment the engine began to serve it
+("one source of truth: the same env list"). The adversarial review pointed at
+`react.client.tsx` — the client switch is `process.env.NEXT_PUBLIC_*` inside a client module,
+inlined at build time — and the conclusion follows without any experiment: the two switches
+cannot change together, the server one is instant, and closing first is a write outage for every
+bundle already running. The design became two switches with a mixed stage between them (see
+"Rollout order"). The lesson for the next domain: ask of every switch WHEN it actually takes
+effect on a device that is already running, before ordering a rollout around it.
 
 ## Closing log
 
@@ -745,3 +798,51 @@ bomb fixed and the carry test added — recorded in the commit that closes this 
 
 **Unproven.** Everything a browser has to show: the carry button end to end, two windows,
 offline, reload mid-save. No rules, flags or production data were touched.
+
+### 2026-09-18 — The mixed stage of a rollout is made safe; the closure becomes the last switch
+
+Six changes, each with a test that was red before its code and a mutation that turns it red
+again (eleven mutations, run in a detached copy of the branch):
+
+1. **The enabling deploy could not have built.** The Vercel build runs the suite with the
+   production env; with the engine switches set, four tests asserting "off unless opted in"
+   went red. `jest.setup.js` now clears `NEXT_PUBLIC_DATA_ENGINE_*` and `DATA_ENGINE_*` as it
+   already did for the client-SDK flags; `buildEnvIsolation.test.ts` is the alarm. Full suite
+   green with the switches set: 6934 passed.
+2. **A deleted council haunted every legacy reader.** The tombstone carried `userId`, and every
+   legacy reader asks `where(userId == uid)` — including the SDK query inside shipped bundles,
+   which cannot be taught to skip it. A tombstone now names its owner in `_dataEngineOwner`
+   and matches no legacy query; the engine lists it through a second owner query merged in
+   document order; rules let its owner read it. One predicate (`utils/engineTombstone.ts`)
+   covers tombstones written before today in the three legacy council lists.
+3. **The refusal spoke a status old bundles read as a conflict.** 426 instead of 409; the new
+   bundle knows the refusal by its code at any status.
+4. **One refused carry wedged a council's saves for good.** A coded failure of the domain policy
+   is now a terminal `refused` on the request; a carry is committed at once as its own request.
+5. **Legacy writers were invisible to engine lists.** `activation.ts`, `legacyOpen`, a full
+   listing per synchronisation while mixed, and the collection closure as a separate last switch
+   on the server and in the rules.
+6. **Readers and the pre-database carry-over.** The dashboard had arrived from `main` still on
+   the legacy hook; `councilReaders.test.ts` now fails the build for the next one. The legacy
+   list query stands down beside the engine. The carry-over hands over only council fields,
+   waits for a server answer of this session, never resurrects a tombstoned id, and says so
+   when it stops. The "new council" chip is not offered where it could only fail.
+
+**Refuted, and therefore not changed:** the review's claim that the carry button can target its
+own council — the button exists only on a HELD council, and a held council is never among the
+ones being prepared.
+
+Gates from `frontend`: `test:fast` 6934 passed / 6939 (5 skipped, opt-in emulator suites), the
+same with the engine switches set, `tsc --noEmit` exit 0, `npm run test:rules` 256 + 5 passed on
+the emulator; `lint:full` in the commit that closes this entry.
+
+**Unproven.** Nothing here has been walked in a browser yet: the carry button end to end, two
+windows, offline, reload mid-save, and an old bundle meeting a marked council. No switch, rule
+or production document was touched. The independent pass by a second engine (Codex) is still
+owed; the review used so far ran on the same provider and is not counted as independent.
+
+**Open design questions, not blockers for a councils pilot:** retention of receipts and
+change-feed pointers (one small document each per save, never deleted); the cost of the mixed
+stage for a large collection; a second road for the engine's list when its HTTP route is down
+and the local cache is empty (the legacy list had the SDK replica); recovering what an old
+bundle left in the persisted React Query cache.
