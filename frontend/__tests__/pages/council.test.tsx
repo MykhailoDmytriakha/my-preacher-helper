@@ -69,6 +69,12 @@ describe('Brothers\' council list', () => {
     engineCollections = '';
   });
 
+  // The page counts days from the real clock, and the seeded council is dated 2026-09-18:
+  // without a frozen "today" this suite turned red on that very day and stays red after it.
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   // The switch is per collection, so the same screen has to answer from whichever reader the
   // deployment migrated — and must not quietly keep rendering the other one's list.
   it('renders the engine list only where councils are the migrated collection', () => {
@@ -107,7 +113,11 @@ describe('Brothers\' council list', () => {
   });
 
   it('shows the councils being prepared apart from the held ones, each opening its own page', () => {
-    state.councils = seedCouncils('u1', new Date('2026-09-11T00:00:00Z'));
+    // Noon, not midnight UTC: `daysUntil` reads the LOCAL calendar date, and midnight UTC is
+    // still the previous day west of Greenwich — the build machine and a laptop must agree.
+    const today = new Date('2026-09-11T12:00:00Z');
+    jest.useFakeTimers().setSystemTime(today);
+    state.councils = seedCouncils('u1', today);
     render(<CouncilListPage />);
 
     const rows = screen.getAllByTestId(/council-row-/);
