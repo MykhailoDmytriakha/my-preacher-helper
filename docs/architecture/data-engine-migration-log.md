@@ -17,16 +17,14 @@ earlier page load, and the hub count, calendar entry and breadcrumb title all re
 through one shared reader. Carrying a section between two councils is proven at the
 protocol level — one transaction touches both documents, and an identical replay adds
 nothing. The button was reported broken on 2026-09-13; that report misread its own
-measurement (see "Corrections to earlier records"). The screen logic is now pinned by
-a test; one end-to-end pass through the button in a browser is still owed.
+measurement (see "Corrections to earlier records"). The screen logic is pinned by a test and
+the button was walked end to end in a browser on 2026-09-18: it works.
 
 **Open defects of this migration** — all in `BUGS.md` at the repository root:
 
 - `BUG-20260913-engine-idle-banner-hides-unfinished-work` (P2) — the banner reads
   "Saved" while unfinished drafts sit beside it, findable only by pressing a button
   blind.
-- `BUG-20260913-engine-carry-button-sees-no-targets` — moved to "needs re-checking":
-  the screen is proven by a test, the browser pass is owed.
 
 The seven core defects the engine's author filed on 2026-09-12 are **fixed and guarded
 by tests**; their tracker entries were stale and have been removed. Evidence, one
@@ -145,7 +143,7 @@ A closing entry must state what changed, what proves it, and what stays unproven
 | 3a | Councils list **read** through the engine, on the list screen | 1 | The list screen renders the same councils through the engine behind the switch; verified in a browser | closed |
 | 3b | Councils writing, **whole**: create, update, delete and the two-council carry | 3a | Every council write runs through the engine, the carry as a registered core command; the conflict matrix is red before it is green | mechanism closed — create, update, delete, carry, replay and recovery all proven; the carry **button** is a filed defect |
 | 4 | Remaining council readers and legacy retirement | 3b | Hub, breadcrumbs, calendar and the pre-database localStorage carry-over; only then is the domain migrated | readers and carry-over done; retiring the legacy hook left |
-| 5 | Live browser proof for councils | 4 | Two windows, offline, reload mid-save: both edits survive; a conflict shows both versions | open |
+| 5 | Live browser proof for councils | 4 | Two windows, offline, reload mid-save: both edits survive; a conflict shows both versions | closed 2026-09-18 on localhost against the dev test account — see the closing log. Not yet on a real device, an installed PWA or a preview deployment |
 | 6 | Core bugs surfaced by 3-5 | 5 | Each fix has a red check: disable the fix and the test fails | the seven filed on 2026-09-12 are closed with red checks (2026-09-18); anything step 5 surfaces still lands here |
 | 7 | Receipt amplification | 6 | A thousand saves do not grow storage linearly (`app/data-engine/server.ts`) | closed — was already fixed in `35abc917`: an acknowledged receipt is under 1 KB whatever the document size (`__tests__/data-engine/server.test.ts`, "stores a compact ACK…"). Receipts still grow by COUNT, one small document per save; retention of old receipts is not designed yet |
 | 8 | Legacy queued council writes | 4 | A pending legacy write is discovered, shown and either replayed or exported | open |
@@ -336,8 +334,11 @@ changed after the press" is what that design does, not a failure of it.
 person is told) plus a refusal being spoken aloud. Two mutations turn it red: ignoring the
 chosen target, and never opening the chooser.
 
-**Still owed.** One real pass through the button in a browser with the engine on. Until
-then the entry sits under "needs re-checking" in `BUGS.md`, not under open defects.
+**Settled in a browser the same day.** Two councils being prepared, the source conducted to
+`held`: the button read `aria-expanded="false"`, exactly as the report measured; the first press
+opened "Куда перенести?" and changed nothing (source revision 7, destination 1); choosing the
+destination moved the source to revision 9 with the "carried to" mark and the destination to
+revision 2 with the section in it. The entry is removed from `BUGS.md`.
 
 ### 3. Found while checking the above: a refusal that destroys text on old bundles
 
@@ -846,3 +847,33 @@ change-feed pointers (one small document each per save, never deleted); the cost
 stage for a large collection; a second road for the engine's list when its HTTP route is down
 and the local cache is empty (the legacy list had the SDK replica); recovering what an old
 bundle left in the persisted React Query cache.
+
+### 2026-09-18 — Councils walked in a browser: the whole cycle, offline, a reload, two tabs, the legacy road beside the engine
+
+Dev server of this branch on port 3005 with councils enabled on both sides, signed in as the dev
+test user, document visibility emulated (an automation tab is always `hidden`). Every number
+below was read from the running server through `/api/data-engine/documents/councils/<id>`.
+
+| Case | What was done | What the server and the screen showed |
+|---|---|---|
+| Create, edit | "FABLE source" created from the list screen; two sections typed from the keyboard | revision 1, then 5 with both sections; banner "Сохранено." |
+| Conduct | one section marked postponed, the council finished | `status: held`, revision 7 |
+| Carry by the button | first press, then the destination chosen in "Куда перенести?" | press one: chooser open, nothing written; press two: source 7 → 9 with the mark, destination 1 → 2 with the section; the "new council" chip is not offered |
+| Offline edit | `navigator.onLine` false + `offline` event, title typed | screen keeps the text, banner "Изменения в очереди. Сервер ещё не подтвердил…", server unchanged at revision 2 |
+| Reload with the edit unsent | page reloaded | the durable request left by itself: revision 3 with the offline text, banner "Сохранено." |
+| Two tabs, same field | tab 2 offline types "…B", tab 1 online types "…A" | tab 1 delivered tab 2's request (requests are owner-scoped on disk: any live tab sends them) — server "…B", revision 4; tab 1's own "…A" met a real conflict: red banner, both versions kept, "Оставить мой текст" → revision 5 with "…A"; tab 2 showed "…A" as soon as the caret left its field (`LiveTextInput` owns its text while focused) |
+| Legacy write to a marked council | `PUT /api/councils/<id>` with the user's token | 426 `data-engine-required`; document untouched at revision 5 |
+| Legacy create and delete beside the engine | `POST /api/councils`, later `DELETE` | the unmarked council appeared in the engine's list on the next opening; after the legacy delete the hub count dropped and the row was gone — the scenario of `BUG-20260912-engine-collection-shows-deleted-legacy`, closed live |
+| Delete through the engine, another tab open on it | the council deleted from tab 1 | tombstone at revision 6; legacy `GET /api/councils` returns no ghost; tab 2 says "Удалено на сервере…" and "Такого совета нет" |
+
+Dev-server log: no error lines. Test data removed; the account's own "QA совет с секциями" was not
+touched. Six tombstones remain in the test account (four from 2026-09-13 in the old shape, two
+from today in the new one).
+
+**Seen and not changed.** A title field that still has the caret keeps showing its own text while
+the engine has already adopted a newer remote one; one more keystroke there would send the
+field's whole text over the remote change. That is `LiveTextInput`'s rule, the same on the legacy
+road — recorded, not judged a defect of the engine.
+
+**Still unproven.** A genuinely foregrounded window, an installed PWA, a phone or iPad, a preview
+deployment, the read and write cost per session, and the independent pass by a second engine.
