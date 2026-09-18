@@ -278,6 +278,30 @@ through the engine afterwards. A tombstone no longer shows up in the production 
 - An old bundle that deletes a marked council removes it from its own screen first and is then
   refused; the council reappears at its next read.
 
+## Testing on a Vercel preview — what the owner does, and what not to touch
+
+A preview deployment of this branch is the only way to try the engine on a real iPad and an
+installed PWA. It is a different address and the SAME production database.
+
+1. Push the branch. Vercel builds a preview for it (it did for `sermon-design-by-church` on
+   2026-09-12); the build runs the test suite, which is green with the switches set.
+2. In Vercel → Settings → Environment Variables add, scoped to **Preview** and to the branch
+   `data-engine` only — never to Production: `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS=councils` and
+   `DATA_ENGINE_COLLECTIONS=councils`. Redeploy the preview: the first of the two is compiled into
+   the bundle. Do NOT set `DATA_ENGINE_CLOSED_COLLECTIONS`.
+3. Open the preview address, sign in, and work ONLY on councils created there for the test.
+   Reading your real councils is harmless — only a write marks a document. A council the engine
+   has written is refused by this branch's legacy road, but **production still runs `main`, which
+   has no such guard yet**: opening a test council in the production app and editing it there
+   would overwrite it, marker included. Leave test councils to the preview.
+4. When done, delete the test councils on the preview. A deleted one leaves a tombstone that the
+   production list does not show.
+5. Expect other devices' changes to arrive within about fifteen seconds rather than at once: the
+   production rules do not yet let the engine's listener read its change head, so it polls.
+
+What to try on the device: create and type, close the app mid-typing and reopen, airplane mode
+while typing then back, the same council open on two devices, carry a section, delete.
+
 ## Corrections to earlier records
 
 Added 2026-09-18 by the third agent on this branch (the engine core was written by one
