@@ -816,7 +816,10 @@ names, and one new P1 filed for the 409 refusal that old bundles read as a confl
 **Independent review.** The rollout design was handed to a second engine for an
 adversarial pass; Codex was over its usage limit until 2026-09-19 01:10, so a clean
 subagent on a different model ran instead — the same provider, so its agreement is not
-counted as independent. A Codex pass is still owed before the owner's button.
+counted as independent. **The owner declined the Codex pass on 2026-09-18**, so the review on
+record is that same-provider one: nine of its twenty-two findings were confirmed in code and
+acted on, two were refuted (the log names both). Nobody outside this provider has tried to break
+the rollout design.
 
 Gates on the merged tree, from `frontend`: `tsc --noEmit` exit 0; `test:fast` with the date
 bomb fixed and the carry test added — recorded in the commit that closes this entry.
@@ -863,8 +866,8 @@ the emulator; `lint:full` in the commit that closes this entry.
 
 **Unproven.** Nothing here has been walked in a browser yet: the carry button end to end, two
 windows, offline, reload mid-save, and an old bundle meeting a marked council. No switch, rule
-or production document was touched. The independent pass by a second engine (Codex) is still
-owed; the review used so far ran on the same provider and is not counted as independent.
+or production document was touched. The review used so far ran on the same provider and is not
+counted as independent; the owner declined a pass by a second engine (Codex) on 2026-09-18.
 
 **Open design questions, not blockers for a councils pilot:** retention of receipts and
 change-feed pointers (one small document each per save, never deleted); the cost of the mixed
@@ -900,4 +903,19 @@ field's whole text over the remote change. That is `LiveTextInput`'s rule, the s
 road — recorded, not judged a defect of the engine.
 
 **Still unproven.** A genuinely foregrounded window, an installed PWA, a phone or iPad, a preview
-deployment, the read and write cost per session, and the independent pass by a second engine.
+deployment, and the read and write cost per session. No engine outside this provider has reviewed
+the design (declined by the owner).
+
+### 2026-09-18 — The branch is on GitHub and the preview has its two switches
+
+On the owner's word: the date-bomb fix was committed to `main` (`778b3b02`, not pushed — a push
+of `main` is a production deploy and was not asked for); `data-engine` was pushed with an
+upstream; and `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS=councils` and `DATA_ENGINE_COLLECTIONS=councils`
+were added through the Vercel CLI, scoped to **Preview · branch `data-engine`** only
+(`vercel env ls` shows exactly that scope). Nothing was added to Production and
+`DATA_ENGINE_CLOSED_COLLECTIONS` does not exist anywhere. The first preview build started before
+the variables existed and therefore has the engine off; the build triggered by this commit is
+the first one that carries them.
+
+Owed by the owner: acceptance on a real device through the preview, on councils created for the
+test (see "Testing on a Vercel preview").
