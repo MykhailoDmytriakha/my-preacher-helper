@@ -16,12 +16,13 @@ const stored = (topics: CouncilTopic[] = [topic('t1')]): DocumentData => ({
 
 function setup(value: DocumentData | null = stored(), overrides: Record<string, unknown> = {}) {
   const update = jest.fn().mockResolvedValue(undefined);
+  const commit = jest.fn().mockResolvedValue(undefined);
   const remove = jest.fn().mockResolvedValue(undefined);
   jest.mocked(useDataDocument).mockReturnValue({
     data: value, confirmed: null, remote: null, status: null, loading: false, error: null,
-    update, remove, retry: jest.fn(), acceptRemote: jest.fn(), keepLocal: jest.fn(), ...overrides,
+    update, commit, remove, retry: jest.fn(), acceptRemote: jest.fn(), keepLocal: jest.fn(), ...overrides,
   } as unknown as ReturnType<typeof useDataDocument>);
-  return { ...renderHook(() => useCouncilDataDocument('council-1')), update, remove };
+  return { ...renderHook(() => useCouncilDataDocument('council-1')), update, commit, remove };
 }
 
 const applied = (update: jest.Mock, current: DocumentData | null): DocumentData | null =>
@@ -48,13 +49,17 @@ describe('useCouncilDataDocument', () => {
   });
 
   it('carries a section by marking it, leaving the destination to the engine', async () => {
-    const { result, update } = setup();
+    const { result, update, commit } = setup();
     await act(async () => { await result.current.carryTopicToNext('council-1', topic('t1'), 'target'); });
 
-    const next = applied(update, stored()) as unknown as Council;
+    const next = applied(commit, stored()) as unknown as Council;
     expect(next.topics[0]).toMatchObject({ id: 't1', carriedToCouncilId: 'target' });
     // Exactly one write leaves the screen: the destination copy is not the screen's business.
-    expect(update).toHaveBeenCalledTimes(1);
+    expect(commit).toHaveBeenCalledTimes(1);
+    // A carry is an ACT, saved at once as its own request. Left to the shared autosave, two
+    // carries inside its 750 ms window land in one draft, and the policy refuses a save that
+    // moves two sections — each carry must reach the engine alone.
+    expect(update).not.toHaveBeenCalled();
   });
 
   it('refuses to carry a section that was already carried', async () => {

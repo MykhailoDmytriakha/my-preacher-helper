@@ -215,7 +215,18 @@ export class CommitQueue {
     const targets = await Promise.all(requiredDomainTargets(record.working, record.intended).map(this.options.readConfirmed));
     this.assertCurrent(owner, generation);
     const operationId = record.sequence === 0 ? record.id : `${record.id}-${record.sequence}`;
-    const prepared = prepareDomainCommand(owner, operationId, record.working, record.intended, targets);
+    let prepared: ReturnType<typeof prepareDomainCommand>;
+    try { prepared = prepareDomainCommand(owner, operationId, record.working, record.intended, targets); }
+    catch (error) {
+      // The policy names WHY this draft can never be a command (two sections carried in one
+      // save, a destination that was deleted, a derived field). Left as a throw, the request
+      // stayed `queued` and was retried for ever, and `cancel` — which needs something terminal —
+      // refused the person both ways out. A coded refusal is terminal; nothing was sent.
+      // A failure WITHOUT a code (a target that could not be read offline) stays retryable.
+      const code = (error as { code?: unknown }).code;
+      if (typeof code !== 'string') throw error;
+      return commit({ ...record, state: 'refused', result: { kind: 'refused', operationId: record.id, code } });
+    }
     if (!resourceMatches(prepared.command.resource, record.baseline.resource)) throw new Error('Commit resource changed');
     return commit({ ...record, command: prepared.command, submitted: prepared.submittedValue, state: 'prepared' });
   }

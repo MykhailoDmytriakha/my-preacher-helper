@@ -29,14 +29,26 @@ export function useCouncilDataDocument(councilId: string) {
     [data, councilId]
   );
 
+  const apply = useCallback((mutate: (current: Council) => Council) => (current: DocumentData | null): DocumentData => {
+    if (!current) throw missing();
+    // The id addresses the document; it never travels inside the stored fields.
+    const { id: _id, ...next } = mutate(hydrateCouncil(current as Record<string, unknown>, councilId));
+    return { ...next, updatedAt: new Date().toISOString() } as unknown as DocumentData;
+  }, [councilId]);
+
+  /** Typing: persisted locally at once, delivered by the shared autosave. */
   const write = useCallback(async (mutate: (current: Council) => Council) => {
-    await document.update(current => {
-      if (!current) throw missing();
-      // The id addresses the document; it never travels inside the stored fields.
-      const { id: _id, ...next } = mutate(hydrateCouncil(current as Record<string, unknown>, councilId));
-      return { ...next, updatedAt: new Date().toISOString() } as unknown as DocumentData;
-    });
-  }, [document, councilId]);
+    await document.update(apply(mutate));
+  }, [document, apply]);
+
+  /**
+   * An act, not typing: saved at once as its own durable request. Two carries inside the
+   * autosave window would otherwise share one draft, and a save that moves two sections is one
+   * the policy refuses — each carry has to reach the engine alone, chained behind the last.
+   */
+  const act = useCallback(async (mutate: (current: Council) => Council) => {
+    await document.commit(apply(mutate));
+  }, [document, apply]);
 
   const updateCouncil = useCallback(async (_id: string, updater: (current: Council) => Council) => {
     if (!council) throw missing();
@@ -50,11 +62,11 @@ export function useCouncilDataDocument(councilId: string) {
     // Carrying twice would claim two destinations for one section; the second claim is refused
     // here rather than sent, so the person is told instead of watching a write fail.
     if (existing.carriedToCouncilId) throw new Error('The section was already carried to another council');
-    await write(current => ({
+    await act(current => ({
       ...current,
       topics: current.topics.map(item => (item.id === topic.id ? { ...item, carriedToCouncilId: targetCouncilId } : item)),
     }));
-  }, [council, write]);
+  }, [council, act]);
 
   const deleteCouncil = useCallback(async (_id: string) => {
     // The editor owns deletion: emptying the document would look like an edit and leave no tombstone.

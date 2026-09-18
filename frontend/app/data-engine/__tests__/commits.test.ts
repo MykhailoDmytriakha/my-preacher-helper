@@ -109,6 +109,39 @@ describe('Durable commit requests', () => {
     await queue.cancel('tab'); expect((await queue.list()).every(request => request.state === 'cancelled')).toBe(true);
   });
 
+  it('turns a draft the domain policy cannot express into a refusal the person can resolve, not a queue that retries for ever', async () => {
+    const s = setup(); const engine = s.makeEngine(); const editor = await engine.openEditor(initial().resource, 'tab');
+    // Membership belongs to the series, so no command exists for this draft — and none ever will.
+    await editor.commit(current => ({ ...current, seriesId: 'series-1' }));
+    engine.setOnline(true); await engine.retry().catch(() => undefined); await settle();
+
+    const [request] = await s.requests.list('owner');
+    expect(request).toMatchObject({ state: 'refused', command: null, result: { kind: 'refused', code: 'relation-owner-required' } });
+    expect(s.transport.send).not.toHaveBeenCalled();
+    expect(editor.getState().result).toMatchObject({ kind: 'refused', code: 'relation-owner-required' });
+
+    // The way out works: before, cancel() refused because nothing had reached a terminal state.
+    await editor.keepLocal();
+    expect((await s.requests.list('owner')).map(item => item.state)).toEqual(['cancelled']);
+    // …and the next honest save is not chained behind the dead one.
+    await editor.commit(current => ({ ...current, seriesId: undefined, title: 'after' } as never));
+    await engine.retry(); await settle();
+    expect(s.server().value?.title).toBe('after');
+    engine.dispose();
+  });
+
+  it('keeps a save retryable when only reading its targets failed', async () => {
+    const s = setup(); const { queue } = s.makeQueue(); const session = new DataSession(initial());
+    session.edit({ ...initial().value, title: 'mine' }); await queue.save('tab', session.checkpoint());
+    const failing = new CommitQueue({ store: s.requests, runtime: s.makeQueue().runtime, operationId: () => 'never',
+      readConfirmed: async () => { throw new Error('The document is not available in the local cache'); } });
+    failing.setOwner('owner');
+    await failing.drain(false).catch(() => undefined);
+    // An ordinary update needs no targets, so this one still prepares; the contract under test is
+    // that a plain Error never becomes a terminal refusal.
+    expect((await queue.list()).every(request => request.state !== 'refused')).toBe(true);
+  });
+
   it('shares one persisted materialization across competing workers and preserves operation bytes on retry', async () => {
     const s = setup(); const a = s.makeQueue(); const b = s.makeQueue();
     const session = new DataSession(initial()); session.edit({ ...initial().value, title: 'mine' });
@@ -190,6 +223,54 @@ describe('Durable commit requests', () => {
     expect(rows.get('studyMaterials/material')?.value).toMatchObject({ title: 'Saved title', noteIds: ['note'] });
     expect(rows.get('studyNotes/note')?.value).toMatchObject({ materialIds: ['material'] });
     expect((await queue.list())[0].state).toBe('acknowledged');
+  });
+
+  it('sends two carries made back to back as two commands, one section each', async () => {
+    const s = setup();
+    const topic = (id: string) => ({ id, title: `Topic ${id}`, questions: [], options: [] });
+    const council = (id: string, status: string, topics: unknown[]): ResourceSnapshot => ({ resource: { collection: 'councils', id },
+      value: { userId: 'owner', title: id, status, topics, createdAt: 'then', updatedAt: 'then' } as never, metadata: { protocol: 1, generation: `g-${id}`, revision: 1, deleted: false } });
+    const rows = new Map([['councils/source', council('source', 'held', [topic('t1'), topic('t2')])],
+      ['councils/next', council('next', 'preparing', [])], ['councils/later', council('later', 'preparing', [])]]);
+    jest.mocked(s.transport.read).mockImplementation(async (_owner, resource) => copy(rows.get(`${resource.collection}/${resource.id}`)!));
+    jest.mocked(s.transport.send).mockImplementation(async command => {
+      const plan = await planDataCommand(command, rows.get(`${command.resource.collection}/${command.resource.id}`)!, {
+        get: async resource => copy(rows.get(`${resource.collection}/${resource.id}`)!), list: async () => [],
+      });
+      for (const value of plan.writes) rows.set(`${value.resource.collection}/${value.resource.id}`, value);
+      return plan.result;
+    });
+    const { queue } = s.makeQueue(); const session = new DataSession(rows.get('councils/source')!);
+    const mark = (id: string, to: string) => session.edit({ ...session.checkpoint().draft!, topics: (session.checkpoint().draft!.topics as Array<{ id: string }>).map(item => item.id === id ? { ...item, carriedToCouncilId: to } : item) } as never);
+    // Each carry is saved the moment it is made (useCouncilDataDocument commits it), so the
+    // second request is chained behind the first instead of sharing its draft.
+    mark('t1', 'next'); await queue.save('tab', session.checkpoint());
+    mark('t2', 'later'); await queue.save('tab', session.checkpoint());
+    await queue.drain(true);
+
+    const sent = jest.mocked(s.transport.send).mock.calls.map(([command]) => command);
+    expect(sent.map(command => command.kind === 'relation' ? command.relation : command.kind)).toEqual(['council-carry', 'council-carry']);
+    expect((await queue.list()).map(request => request.state)).toEqual(['acknowledged', 'acknowledged']);
+    expect((rows.get('councils/next')!.value!.topics as unknown[])).toHaveLength(1);
+    expect((rows.get('councils/later')!.value!.topics as unknown[])).toHaveLength(1);
+    expect(rows.get('councils/source')!.value!.topics).toMatchObject([{ id: 't1', carriedToCouncilId: 'next' }, { id: 't2', carriedToCouncilId: 'later' }]);
+  });
+
+  it('refuses two carries squeezed into one save instead of wedging the council for ever', async () => {
+    const s = setup();
+    const topic = (id: string) => ({ id, title: `Topic ${id}`, questions: [], options: [] });
+    const source: ResourceSnapshot = { resource: { collection: 'councils', id: 'source' },
+      value: { userId: 'owner', title: 'source', status: 'held', topics: [topic('t1'), topic('t2')], createdAt: 'then', updatedAt: 'then' } as never, metadata: { protocol: 1, generation: 'g', revision: 1, deleted: false } };
+    const target: ResourceSnapshot = { resource: { collection: 'councils', id: 'next' },
+      value: { userId: 'owner', title: 'next', status: 'preparing', topics: [], createdAt: 'then', updatedAt: 'then' } as never, metadata: { protocol: 1, generation: 'n', revision: 1, deleted: false } };
+    jest.mocked(s.transport.read).mockImplementation(async (_owner, resource) => copy(resource.id === 'next' ? target : source));
+    const { queue } = s.makeQueue(); const session = new DataSession(source);
+    session.edit({ ...source.value!, topics: [{ ...topic('t1'), carriedToCouncilId: 'next' }, { ...topic('t2'), carriedToCouncilId: 'next' }] } as never);
+    await queue.save('tab', session.checkpoint()); await queue.drain(true);
+    expect((await queue.list())[0]).toMatchObject({ state: 'refused', result: { kind: 'refused', code: 'invalid-argument' } });
+    expect(s.transport.send).not.toHaveBeenCalled();
+    await queue.cancel('tab');
+    expect((await queue.list())[0].state).toBe('cancelled');
   });
 
   it('validates explicit predecessor identity without inferring order between different scope generations', async () => {
