@@ -94,7 +94,7 @@ export class GroupsRepository {
       if (!owner || (ownerUid !== undefined && owner !== ownerUid)) throw Object.assign(new Error('Forbidden'), { code: 'permission-denied', status: 403 });
       assertLegacyWritable(group.data());
       const series = await transaction.get(adminDb.collection('series').where('userId', '==', owner).limit(101));
-      if (series.docs.length > 99) throw Object.assign(new Error('Legacy cascade exceeds its atomic write budget'), { code: 'data-engine-required', status: 409 });
+      if (series.docs.length > 99) throw Object.assign(new Error('Legacy cascade exceeds its atomic write budget'), { code: 'data-engine-required' });
       for (const document of series.docs) {
         const data = document.data();
         if (data.userId !== owner) continue;

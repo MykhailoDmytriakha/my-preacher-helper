@@ -107,9 +107,12 @@ export async function requestOwnerJson<T>(
     });
     const value = (await response.json().catch(() => ({}))) as T & { error?: string; code?: string };
     if (resolveOwnerUid() !== owner) throw accountChangedError();
-    // A migration refusal is terminal for this legacy write, never a CAS document.
-    if (response.status === 409 && value?.code === 'data-engine-required') {
-      throw Object.assign(new Error(value.error ?? messages.failed), { code: 'data-engine-required', status: 409 });
+    // A migration refusal is terminal for this legacy write, never a CAS document. It is known
+    // by the body's code at ANY status: the server moved it off 409 for the sake of bundles that
+    // read 409 as a conflict, and matching the status too would turn the refusal into a
+    // retryable "unavailable" — an offline intent that loops instead of being offered back.
+    if (value?.code === 'data-engine-required') {
+      throw Object.assign(new Error(value.error ?? messages.failed), { code: 'data-engine-required', status: response.status });
     }
     if (!response.ok && !answerStatuses.includes(response.status)) {
       throw Object.assign(new Error(value?.error ?? messages.failed), {

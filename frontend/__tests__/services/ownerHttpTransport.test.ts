@@ -17,10 +17,13 @@ it('preserves true council CAS409 and every other explicitly allowed response', 
   mockRequest.mockResolvedValue(response({ reason: 'review' }, 422));
   expect(await requestOwnerJson('/api/custom', { messages, answerStatuses: [422] })).toEqual({ status: 422, value: { reason: 'review' } });
 });
-it.each(['create', 'replace', 'delete'])('throws council migration refusal before %s can read it as a document', async action => {
-  mockRequest.mockResolvedValue(response({ code: 'data-engine-required', error: 'Migration required' }, 409));
+// The server refuses with 426 (legacyBoundary.server.ts LEGACY_REFUSAL_STATUS); a deployment still
+// answering 409 must be understood too. The refusal is known by its code, whatever the status —
+// matched by status, a 426 would degrade into a retryable "unavailable".
+it.each([['create', 426], ['replace', 426], ['delete', 426], ['replace', 409]] as const)('throws council migration refusal before %s can read it as a document (status %d)', async (action, status) => {
+  mockRequest.mockResolvedValue(response({ code: 'data-engine-required', error: 'Migration required' }, status));
   const operation = action === 'create' ? createCouncilOnServer(council) : action === 'replace' ? replaceCouncilOnServer(council, 1) : deleteCouncilOnServer('c');
-  await expect(operation).rejects.toMatchObject({ code: 'data-engine-required', status: 409 });
+  await expect(operation).rejects.toMatchObject({ code: 'data-engine-required', status });
   expect(mockRequest).toHaveBeenCalledTimes(1);
 });
 it('does not turn an unknown network result into a retry or a CAS answer', async () => {

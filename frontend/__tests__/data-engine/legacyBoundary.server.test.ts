@@ -58,7 +58,7 @@ beforeEach(() => {
 describe('atomic legacy boundary', () => {
   it.each([null, {}, marker, { ...marker, deleted: true }])('refuses any existing marker shape: %j', async metadata => {
     records.set('sermons/a', { userId: 'owner', title: 'Original', _dataEngine: metadata });
-    await expect(updateLegacyDocument(ref('a'), { title: 'Legacy' })).rejects.toMatchObject({ code: 'data-engine-required', status: 409 });
+    await expect(updateLegacyDocument(ref('a'), { title: 'Legacy' })).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
     await expect(deleteLegacyDocument(ref('a'))).rejects.toMatchObject({ code: 'data-engine-required' });
     expect(records.get('sermons/a')?.title).toBe('Original');
   });
@@ -101,11 +101,11 @@ describe('atomic legacy boundary', () => {
     await expect(runLegacyTransaction(async transaction => { await transaction.get(ref('a')); transaction.update(ref('a'), '_dataEngine.revision', 9); })).rejects.toMatchObject({ code: 'data-engine-required' });
     expect(records.size).toBe(0);
   });
-  it('returns a visible typed 409 only for migration refusal', () => {
+  it('refuses a migrated write with a status old bundles do not read as a conflict', () => {
     expect(() => assertLegacyWritable(undefined)).not.toThrow();
     expect(legacyBoundaryResponse(new Error('Other'))).toBeNull();
     try { assertLegacyWritable({ _dataEngine: null }); } catch (error) {
-      expect(legacyBoundaryResponse(error)).toEqual({ status: 409, body: { code: 'data-engine-required', error: 'data-engine-required' } });
+      expect(legacyBoundaryResponse(error)).toEqual({ status: 426, body: { code: 'data-engine-required', error: 'data-engine-required' } });
     }
   });
 });

@@ -367,7 +367,7 @@ describe('POST /api/sermons/[id]/audio/generate', () => {
   it('refuses migrated documents before generating paid audio', async () => {
     mockGet.mockResolvedValueOnce({ exists: true, data: () => ({ userId: 'user-1', _dataEngine: { protocol: 1 } }) });
     const response = await POST(createRequest({ userId: 'user-1', voice: 'onyx', quality: 'standard' }) as never, { params: Promise.resolve({ id: 'sermon-1' }) });
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(426);
     expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
     expect(generateChunkAudio).not.toHaveBeenCalled();
   });

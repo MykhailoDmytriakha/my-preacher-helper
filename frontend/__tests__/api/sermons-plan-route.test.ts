@@ -239,7 +239,7 @@ describe('Sermon Plan Route', () => {
       (sermonsRepository.updateSermonContent as jest.Mock).mockRejectedValueOnce(Object.assign(new Error('data-engine-required'), { code: 'data-engine-required' }));
       const request = { nextUrl: { searchParams: { get: (key: string) => key === 'section' ? 'main' : null } } } as unknown as NextRequest;
       const response = await GET(request, { params: Promise.resolve({ id: 'test-sermon-123' }) });
-      expect(response.status).toBe(409);
+      expect(response.status).toBe(426);
       expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
     });
 

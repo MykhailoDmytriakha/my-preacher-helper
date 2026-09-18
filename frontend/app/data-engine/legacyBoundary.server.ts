@@ -3,11 +3,24 @@ import { NextResponse } from 'next/server';
 import type { DocumentData, DocumentReference, DocumentSnapshot, QuerySnapshot, Transaction } from 'firebase-admin/firestore';
 
 export const DATA_ENGINE_REQUIRED = 'data-engine-required';
+/**
+ * THE STATUS A REFUSAL SPEAKS IN — chosen for the bundles we can no longer change.
+ *
+ * It used to be 409. But in the councils and service-order clients already shipped to users,
+ * 409 means "compare-and-set conflict, and the body IS the current document"
+ * (councilsTransport.client.ts: `conflict: status === 409, current: value`): an old PWA that
+ * met this refusal forgot the person's waiting text and cached the refusal body as a council
+ * (BUG-20260918-legacy-refusal-409-reads-as-conflict). Any status outside that client's table
+ * lands in its `refused` branch, which keeps the text and says the save failed. 426 Upgrade
+ * Required is that, and it is also true: the way out is the newer bundle.
+ * The body's `code` stays the contract for bundles that know it — they match it at any status.
+ */
+export const LEGACY_REFUSAL_STATUS = 426;
 const MAX_LEGACY_WRITES = 100;
 
 export function assertLegacyWritable(raw: DocumentData | undefined): void {
   if (raw && Object.prototype.hasOwnProperty.call(raw, '_dataEngine')) {
-    throw Object.assign(new Error(DATA_ENGINE_REQUIRED), { code: DATA_ENGINE_REQUIRED, status: 409 });
+    throw Object.assign(new Error(DATA_ENGINE_REQUIRED), { code: DATA_ENGINE_REQUIRED, status: LEGACY_REFUSAL_STATUS });
   }
 }
 
@@ -16,7 +29,7 @@ export function isDataEngineRequired(error: unknown): boolean {
 }
 
 export function legacyBoundaryResponse(error: unknown): NextResponse | null {
-  return isDataEngineRequired(error) ? NextResponse.json({ code: DATA_ENGINE_REQUIRED, error: DATA_ENGINE_REQUIRED }, { status: 409 }) : null;
+  return isDataEngineRequired(error) ? NextResponse.json({ code: DATA_ENGINE_REQUIRED, error: DATA_ENGINE_REQUIRED }, { status: LEGACY_REFUSAL_STATUS }) : null;
 }
 
 /** Only reviewed legacy APIs may use this bridge. It cannot mutate protocol documents.
@@ -53,7 +66,7 @@ export async function runLegacyTransaction<T>(body: (transaction: Transaction) =
           if (typeof patch === 'string' && (patch === '_dataEngine' || patch.startsWith('_dataEngine.'))) assertLegacyWritable({ _dataEngine: true });
           if (property !== 'delete' && (!patch || typeof patch !== 'object' || ![Object.prototype, null].includes(Object.getPrototypeOf(patch)))) throw new Error('Legacy bridge requires an object patch');
           written.add(key(reference));
-          if (written.size > MAX_LEGACY_WRITES) throw Object.assign(new Error('Legacy cascade exceeds its atomic write budget'), { code: DATA_ENGINE_REQUIRED, status: 409 });
+          if (written.size > MAX_LEGACY_WRITES) throw Object.assign(new Error('Legacy cascade exceeds its atomic write budget'), { code: DATA_ENGINE_REQUIRED, status: LEGACY_REFUSAL_STATUS });
           Reflect.apply(method, target, args);
           return wrapped;
         };

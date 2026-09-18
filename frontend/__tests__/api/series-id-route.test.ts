@@ -35,7 +35,7 @@ describe('/api/series/[id] DELETE', () => {
   it('surfaces protected cascade refusal instead of reporting success', async () => {
     (seriesRepository.deleteSeriesAndDetach as jest.Mock).mockRejectedValue(Object.assign(new Error('data-engine-required'), { code: 'data-engine-required' }));
     const response = await remove();
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(426);
     expect(await response.json()).toMatchObject({ code: 'data-engine-required' });
   });
   it('returns 500 on ordinary deletion failure', async () => {

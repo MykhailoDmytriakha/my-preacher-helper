@@ -12,7 +12,7 @@ const MAX_RELATED = 99;
 const editableMaterialFields = new Set(['title', 'description', 'type', 'noteIds', 'sections']);
 
 function budget(count: number): void {
-  if (count > MAX_RELATED) throw Object.assign(new Error('Legacy cascade exceeds its atomic write budget'), { code: 'data-engine-required', status: 409 });
+  if (count > MAX_RELATED) throw Object.assign(new Error('Legacy cascade exceeds its atomic write budget'), { code: 'data-engine-required' });
 }
 function owned(snapshot: DocumentSnapshot, owner: string): boolean {
   return snapshot.exists && snapshot.data()?.userId === owner;
