@@ -12,11 +12,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import { changedFields } from '@/utils/changedFields';
 import { draftKey, clearDraftIfMatches, moveDraft } from '@/utils/durableDraft';
 import { announceIfPersisted, awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
-import { formatScriptureRefs, recoveryText } from '@/utils/writeRecovery';
+import { formatScriptureReferences } from '@/utils/scriptureReference';
+import { recoveryText } from '@/utils/writeRecovery';
 
 import type { NoteDraftPayload } from './noteDraft';
 import type { ScriptureReference, StudyNote } from '@/models/models';
@@ -61,6 +63,8 @@ export function useNoteAutoSave({
      */
     onSaved?: (saved: NoteDraftPayload) => void;
 }) {
+    // The recovery text is read by a person: references in the interface language.
+    const { locale } = useAppLocale();
     const [isSaving, setIsSaving] = useState(false);
     const [lastSaved, setLastSaved] = useState<Date | null>(null);
     const [saveError, setSaveError] = useState<string | null>(null);
@@ -186,7 +190,7 @@ export function useNoteAutoSave({
                     title,
                     content,
                     tags.join(', '),
-                    formatScriptureRefs(scriptureRefs),
+                    formatScriptureReferences(scriptureRefs, { locale, style: 'long' }),
                     type,
                 ]),
             });
@@ -252,7 +256,7 @@ export function useNoteAutoSave({
         } finally {
             setIsSaving(false);
         }
-    }, [noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, onConflict, onSaved]);
+    }, [noteId, isNew, isInitialized, isSaving, saveBlocked, saveNewNote, title, content, tags, scriptureRefs, type, updateNote, baselineRef, revisionRef, deliberateOverwriteRef, onConflict, onSaved, locale]);
 
     useEffect(() => {
         if (!isInitialized) return;

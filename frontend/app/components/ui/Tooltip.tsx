@@ -11,7 +11,18 @@ interface TooltipProps {
 type TooltipPosition = { left: number; top: number };
 
 /**
- * A small, non-interactive tooltip for short contextual help.
+ * THE GAP BETWEEN TRIGGER AND TOOLTIP IS NOT A REASON TO CLOSE.
+ *
+ * The panel is a DOM child of the wrapper, so hovering it counts as hovering the wrapper —
+ * but the eight pixels between them belong to neither, and crossing them fired `pointerleave`
+ * and shut the tooltip in the reader's face. That made every control inside one unreachable
+ * by mouse: reaching for it was exactly the move that dismissed it. Closing is delayed by
+ * one short beat, and coming back in cancels it.
+ */
+const POINTER_BRIDGE_MS = 160;
+
+/**
+ * A small tooltip for short contextual help.
  * It opens after a hover delay, immediately on focus, and can be pinned with a click/tap.
  */
 export default function Tooltip({ children, content, hoverDelay = 500 }: TooltipProps) {
@@ -19,6 +30,7 @@ export default function Tooltip({ children, content, hoverDelay = 500 }: Tooltip
   const wrapperRef = useRef<HTMLSpanElement>(null);
   const tooltipRef = useRef<HTMLSpanElement>(null);
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [clickMode, setClickMode] = useState<'none' | 'open' | 'closed'>('none');
@@ -33,12 +45,20 @@ export default function Tooltip({ children, content, hoverDelay = 500 }: Tooltip
     }
   }, []);
 
+  const clearCloseTimeout = useCallback(() => {
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+  }, []);
+
   const closeTooltip = useCallback(() => {
     clearHoverTimeout();
+    clearCloseTimeout();
     setIsHovered(false);
     setIsFocused(false);
     setClickMode('closed');
-  }, [clearHoverTimeout]);
+  }, [clearCloseTimeout, clearHoverTimeout]);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -54,8 +74,9 @@ export default function Tooltip({ children, content, hoverDelay = 500 }: Tooltip
       document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
       clearHoverTimeout();
+      clearCloseTimeout();
     };
-  }, [clearHoverTimeout, closeTooltip]);
+  }, [clearCloseTimeout, clearHoverTimeout, closeTooltip]);
 
   useLayoutEffect(() => {
     if (!isOpen || !wrapperRef.current || !tooltipRef.current) return;
@@ -91,21 +112,40 @@ export default function Tooltip({ children, content, hoverDelay = 500 }: Tooltip
       className="inline-flex"
       onPointerEnter={() => {
         clearHoverTimeout();
+        clearCloseTimeout();
         setClickMode((mode) => mode === 'closed' ? 'none' : mode);
         hoverTimeoutRef.current = setTimeout(() => setIsHovered(true), hoverDelay);
       }}
       onPointerLeave={() => {
         clearHoverTimeout();
-        setIsHovered(false);
-        setClickMode((mode) => mode === 'closed' ? 'none' : mode);
+        clearCloseTimeout();
+        // Both halves move together. Releasing the dismissal first while the hover flag is
+        // still up — the shape this had when the flag fell synchronously — re-opens the panel
+        // the moment the pointer walks off a control the reader just used inside it.
+        closeTimeoutRef.current = setTimeout(() => {
+          setIsHovered(false);
+          setClickMode((mode) => mode === 'closed' ? 'none' : mode);
+        }, POINTER_BRIDGE_MS);
       }}
       onFocus={() => {
         setClickMode((mode) => mode === 'closed' ? 'none' : mode);
         setIsFocused(true);
       }}
       onBlur={() => setIsFocused(false)}
-      onClick={() => {
+      onClick={(event) => {
+        /**
+         * A CLICK INSIDE THE PANEL IS NOT A CLICK ON THE TRIGGER.
+         *
+         * The panel lives inside the wrapper, so using a control in it bubbled here and was
+         * read as tapping the trigger — which toggles. Reaching for a link in an unpinned
+         * tooltip therefore PINNED it, and it stayed on screen over the page the link had
+         * just opened. Using something inside is the panel's work finished: it closes.
+         */
         clearHoverTimeout();
+        if (tooltipRef.current?.contains(event.target as Node)) {
+          closeTooltip();
+          return;
+        }
         setClickMode((mode) => mode === 'open' ? 'closed' : 'open');
       }}
     >

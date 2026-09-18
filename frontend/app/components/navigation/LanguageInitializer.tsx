@@ -3,9 +3,9 @@
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
-import { initializeLanguageFromDB } from '@/../../frontend/locales/getInitialLang';
 import { useAuth } from '@/providers/AuthProvider';
 import { getCookieLanguage } from '@/services/userSettings.service';
+import { initializeLanguageFromDB } from '@locales/getInitialLang';
 
 /**
  * Component that initializes language settings from the database

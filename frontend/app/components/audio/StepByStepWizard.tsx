@@ -218,7 +218,11 @@ export default function StepByStepWizard({
     const audioRef = useRef<HTMLAudioElement | null>(null);
 
     const { sermon } = useSermon(sermonId);
-    const { aiBlocked, refresh: refreshAiUsage } = useAiUsage();
+    const { aiBlocked, blocked, blockedLabelKey, refresh: refreshAiUsage } = useAiUsage();
+    // Producing the spoken sermon spends the AI allowance AND the audio one — `/audio/generate`
+    // admits both — while optimising the text alone spends only AI.
+    const audioGenerationBlocked = blocked('audioGeneration');
+    const audioGenerationBlockedKey = blockedLabelKey('audioGeneration');
     const {
         data: userEntitlement,
         isLoading: entitlementLoading,
@@ -1240,8 +1244,8 @@ export default function StepByStepWizard({
                 </button>
                 <button
                     onClick={handleGenerate}
-                    disabled={isLoading || chunks.length === 0 || aiBlocked}
-                    title={aiBlocked ? t('settings.usage.aiUsageExhausted') : undefined}
+                    disabled={isLoading || chunks.length === 0 || audioGenerationBlocked}
+                    title={audioGenerationBlockedKey ? t(audioGenerationBlockedKey) : undefined}
                     className="inline-flex items-center gap-2 rounded-xl bg-orange-600 px-6 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:bg-orange-700 disabled:opacity-50"
                 >
                     <AudioLines className="h-4 w-4" />{t('audioExport.generateAudioButton', { defaultValue: 'Generate Audio' })}

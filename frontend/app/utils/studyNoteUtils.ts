@@ -1,5 +1,6 @@
+import { formatScriptureReference, scriptureReferenceSearchText } from '@/utils/scriptureReference';
+
 import { BibleLocale } from '../(pages)/(private)/studies/bibleData';
-import { formatScriptureRef } from '../(pages)/(private)/studies/bookAbbreviations';
 
 import type { StudyNote } from '@/models/models';
 
@@ -18,7 +19,7 @@ export function matchesStudyNoteQuery(
 ): boolean {
   if (tokens.length === 0) return true;
   const refs = (note.scriptureRefs ?? [])
-    .map((ref) => formatScriptureRef(ref, bibleLocale))
+    .map((ref) => scriptureReferenceSearchText(ref, bibleLocale))
     .join(' ');
   const haystack = `${note.title ?? ''} ${note.content ?? ''} ${(note.tags ?? []).join(' ')} ${refs}`.toLowerCase();
   return tokens.every((token) => haystack.includes(token));
@@ -48,7 +49,7 @@ export function formatStudyNoteForCopy(
   if (note.scriptureRefs && note.scriptureRefs.length > 0) {
     markdown += '**Scripture References:**\n';
     note.scriptureRefs.forEach((ref) => {
-      const formattedRef = formatScriptureRef(ref, bibleLocale);
+      const formattedRef = formatScriptureReference(ref, { locale: bibleLocale });
       markdown += `- ${formattedRef}\n`;
     });
     markdown += '\n';

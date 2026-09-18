@@ -9,7 +9,8 @@ jest.mock('@/components/FocusRecorderButton', () => ({ FocusRecorderButton: ({ d
   <button type="button" disabled={disabled} title={title} onClick={() => onError('Microphone failed')}>Record</button>
   <button type="button" onClick={onRetry}>Retry</button><button type="button" onClick={onClearError}>Clear</button>
 </div> }));
-const dictation = () => ({ isProcessing: false, transcriptionBlocked: false, error: null, retryCount: 0, maxRetries: 3, complete: jest.fn(), retry: jest.fn(), clear: jest.fn(), stopProcessing: jest.fn() });
+const dictation = () => ({ isProcessing: false, transcriptionBlocked: false,
+  blockedLabelKey: null, error: null, retryCount: 0, maxRetries: 3, complete: jest.fn(), retry: jest.fn(), clear: jest.fn(), stopProcessing: jest.fn() });
 
 it('forwards retry/discard and reports recorder errors while ending its processing state', () => {
   const controller = dictation();
@@ -28,8 +29,20 @@ it.each([{ available: false, saving: false }, { available: true, saving: true },
   expect(screen.getByRole('button', { name: 'Record' })).toBeDisabled();
 });
 
+/**
+ * The words name the allowance that actually ran out. Dictation spends transcription AND ai,
+ * so the header cannot assume which one stopped it — the hook resolves that and hands over the key.
+ */
 it('explains quota exhaustion and supports a plain custom field label without dictation', () => {
-  const props = { dictation: { ...dictation(), transcriptionBlocked: true }, available: true, saving: false };
+  const props = {
+    dictation: {
+      ...dictation(),
+      transcriptionBlocked: true,
+      blockedLabelKey: 'settings.usage.transcriptionUsageExhausted',
+    },
+    available: true,
+    saving: false,
+  };
   const { rerender } = render(<ThoughtTextHeader {...props} />);
   expect(screen.getByRole('button', { name: 'Record' })).toHaveAttribute('title', 'settings.usage.transcriptionUsageExhausted');
   rerender(<ThoughtTextHeader {...props} labelKey="custom.field" showDictation={false} />);

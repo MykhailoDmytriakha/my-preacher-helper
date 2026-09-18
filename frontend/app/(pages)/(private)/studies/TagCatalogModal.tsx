@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { Chip } from '@/components/ui/Chip';
+import { useModalLayer } from '@/hooks/useModalLayer';
 
 import { STUDIES_INPUT_SHARED_CLASSES } from './constants';
 
@@ -79,36 +80,14 @@ export default function TagCatalogModal({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, onClose]);
 
-  // Handle Escape key to close
-  useEffect(() => {
-    if (!isOpen) return;
+  /* Escape, the page lock and "am I topmost" come from the one shared rule. */
+  const layer = useModalLayer({ onClose, active: isOpen });
 
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
-
-  // Prevent body scroll when modal is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div {...layer} className="fixed inset-0 z-50 flex items-center justify-center overscroll-contain">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 

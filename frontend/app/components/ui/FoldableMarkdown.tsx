@@ -8,7 +8,7 @@ import { useMarkdownOutline, type MarkdownOutlineControl } from '@/hooks/useMark
 import { type MarkdownSection } from '@/utils/markdownSections';
 import MarkdownDisplay from '@components/MarkdownDisplay';
 
-import { FOLD_ARROW_TONE, headingTone, sectionAir } from './foldableHeadingStyle';
+import { FOLD_ARROW_TONE, foldArrowOffset, headingTone, sectionAir } from './foldableHeadingStyle';
 
 interface FoldableMarkdownProps {
     content: string;
@@ -28,6 +28,23 @@ interface FoldableMarkdownProps {
      * the outline parks the heading underneath the sticky header.
      */
     scrollMarginTop?: number;
+    /**
+     * Something the HOST knows about a section, drawn beside its heading — the sermon
+     * screen uses it to say how many scratch atoms were cut from that section.
+     *
+     * Optional and defaulted off, and nothing is rendered when it returns a falsy value:
+     * a wrapper element drawn unconditionally would spend gap and margin on every note
+     * page that has no badge to show.
+     */
+    sectionBadge?: (section: MarkdownSection) => React.ReactNode;
+    /**
+     * Content the HOST owns, rendered INSIDE an open section, above the section's own text.
+     *
+     * The sermon screen puts the scratch atoms cut from a section right under its heading:
+     * the note and the atoms stop being two blocks competing for the screen and become one
+     * stream. Optional and defaulted off — a note page has nothing to put there.
+     */
+    sectionExtra?: (section: MarkdownSection) => React.ReactNode;
 }
 
 /** Kills the heading's own prose margins so it sits on the toggle row. */
@@ -49,6 +66,8 @@ export function FoldableMarkdown({
     control,
     showToggleAll = true,
     scrollMarginTop,
+    sectionBadge,
+    sectionExtra,
 }: FoldableMarkdownProps) {
     const { t } = useTranslation();
     // Parsing is skipped when a control is supplied — the owner already did it.
@@ -85,7 +104,7 @@ export function FoldableMarkdown({
                             onClick={() => toggleSection(section.id)}
                             aria-expanded={!collapsed}
                             aria-label={t('textOutline.toggleSection', { title: section.headingText })}
-                            className={`mt-0.5 shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:mt-1 sm:p-0.5 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200 ${FOLD_ARROW_TONE}`}
+                            className={`${foldArrowOffset(section.level)} shrink-0 rounded p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 sm:p-0.5 dark:text-gray-500 dark:hover:bg-gray-700 dark:hover:text-gray-200 ${FOLD_ARROW_TONE}`}
                         >
                             <ChevronRightIcon
                                 className={`h-4 w-4 transition-transform ${collapsed ? '' : 'rotate-90'}`}
@@ -116,6 +135,7 @@ export function FoldableMarkdown({
                                 &hellip;
                             </span>
                         )}
+                        {sectionBadge?.(section)}
                     </div>
                 </div>
 
@@ -124,6 +144,7 @@ export function FoldableMarkdown({
                     still says "this belongs to the heading above" at a third of the cost. */}
                 {!collapsed && hasContent && (
                     <div className="ml-0 border-l border-gray-200 pl-2.5 sm:ml-2 sm:pl-4 dark:border-gray-700">
+                        {sectionExtra?.(section)}
                         {section.body && (
                             <MarkdownDisplay
                                 content={section.body}

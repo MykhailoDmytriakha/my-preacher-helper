@@ -9,6 +9,7 @@ import {
   updateSermonOutline,
 } from "@/services/outline.service";
 import { newClientId } from "@/utils/clientId";
+import { isBrowserOffline } from '@/utils/connectivity';
 import { awaitAcceptance, persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
 import { capitalizeFirstLetter, normalizeCapitalizedTitle } from "@/utils/textNormalization";
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
@@ -187,7 +188,7 @@ export function useColumnOutlineState({
         // would become an error toast with the edit lost at the next reload.
         const request = updateSermonOutline(sermonId, outlineToSave, baseOutline, 'preferMine');
         const acceptance = await awaitAcceptance(
-          typeof navigator !== 'undefined' && navigator.onLine === false
+          isBrowserOffline()
             ? queuedMutation(`outline:${sermonId}`, request)
             : persistedWrite(request),
           (error) => toast.error(t(writeFailureTranslationKey(error, SAVE_OUTLINE_ERROR_KEY)))

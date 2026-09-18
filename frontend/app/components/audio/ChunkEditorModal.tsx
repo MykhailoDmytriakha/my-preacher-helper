@@ -9,6 +9,8 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useModalLayer } from '@/hooks/useModalLayer';
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -50,9 +52,15 @@ export default function ChunkEditorModal({
         }
     }, [chunk.index, text, onSave]);
 
+    /* One rule for every window: holds the page still, answers Escape (`useModalLayer`). */
+    const layer = useModalLayer({ onClose, closeDisabled: isSaving });
+
     return (
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+            {...layer}
+            role="dialog"
+            aria-modal="true"
+            className="fixed inset-0 z-50 flex items-center justify-center overscroll-contain bg-black/50"
             onClick={onClose}
         >
             <div

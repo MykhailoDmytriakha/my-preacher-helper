@@ -29,6 +29,8 @@ export function ExportButtonsLayout({
   isWordDisabled = false,
   isWordExporting = false,
   isAudioEnabled = false,
+  isAudioDisabled = false,
+  audioDisabledLabelKey,
   isPreached = false,
   variant = "default",
   extraButtons,
@@ -53,6 +55,18 @@ export function ExportButtonsLayout({
   const noPlanForWordLabel = translate("export.noPlanForWord", "Plan required for Word");
   const pdfAriaLabel = isPdfAvailable ? pdfExportLabel : pdfExportComingSoonLabel;
   const audioLabel = translate("export.audioButton", AUDIO_BUTTON_LABEL);
+  /**
+   * A DOOR THAT LEADS ONLY TO A PAID ACTION ANSWERS FOR THAT ACTION.
+   *
+   * This button asked whether the audio feature is switched on, while the thing behind it asks
+   * whether there is allowance left — so past the limit it opened a whole wizard onto a grey
+   * "Generate" that could not be pressed. The rule was told at the one place where nothing
+   * could be done about it (BUG-20260913-audio-export-opens-past-the-limit).
+   */
+  const audioUnavailableLabel = isAudioDisabled && audioDisabledLabelKey
+    ? t(audioDisabledLabelKey)
+    : undefined;
+  const audioAriaLabel = audioUnavailableLabel ?? audioLabel;
 
   if (variant === "icon") {
     const pdfTooltipText = isPdfAvailable ? pdfButtonLabel : soonAvailableLabel;
@@ -100,12 +114,14 @@ export function ExportButtonsLayout({
           <div className="tooltip">
             <button
               onClick={onAudioClick}
-              className={`p-1.5 rounded-md transition-colors ${getAudioIconButtonClassName(isPreached)}`}
-              aria-label={audioLabel}
+              disabled={isAudioDisabled}
+              title={audioUnavailableLabel}
+              className={`p-1.5 rounded-md transition-colors ${isAudioDisabled ? "text-gray-300 cursor-not-allowed dark:text-gray-700" : getAudioIconButtonClassName(isPreached)}`}
+              aria-label={audioAriaLabel}
             >
               <Volume2 className="w-4 h-4" />
             </button>
-            <span className="tooltiptext tooltiptext-top">{audioLabel}</span>
+            <span className="tooltiptext tooltiptext-top">{audioUnavailableLabel ?? audioLabel}</span>
           </div>
         )}
       </div>
@@ -153,12 +169,14 @@ export function ExportButtonsLayout({
         <div className={`tooltip ${textButtonSlotClassName}`}>
           <ActionButton
             onClick={onAudioClick}
-            className={getAudioTextButtonClassName(isPreached)}
-            aria-label={audioLabel}
+            disabled={isAudioDisabled}
+            title={audioUnavailableLabel}
+            className={isAudioDisabled ? "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50" : getAudioTextButtonClassName(isPreached)}
+            aria-label={audioAriaLabel}
           >
             <AudioLines className="w-4 h-4" />
           </ActionButton>
-          <span className={`tooltiptext ${tooltipPositionClass}`}>{audioLabel}</span>
+          <span className={`tooltiptext ${tooltipPositionClass}`}>{audioUnavailableLabel ?? audioLabel}</span>
         </div>
       )}
     </div>

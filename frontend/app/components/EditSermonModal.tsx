@@ -1,23 +1,24 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import TextareaAutosize from 'react-textarea-autosize';
 import "@locales/i18n";
 
-import ChurchField from '@/components/church/ChurchField';
-import DatePickerField from '@/components/ui/DatePickerField';
+import SermonFormDialog from '@/components/sermon/SermonFormDialog';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useSeries } from '@/hooks/useSeries';
+import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { DashboardEditSermonInput } from '@/models/dashboardOptimistic';
 import { Church, PreachDate, Sermon } from '@/models/models';
 import { SERMON_CORE_AGGREGATE } from '@/services/sermons.client';
+import { churchForNewPreachDate, churchToFillOnPreachDate } from '@/utils/church';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { getNextPlannedDate } from '@/utils/preachDateStatus';
 import {
   awaitAcceptance,
   type WriteSubmission,
 } from '@/utils/recoverableWrite';
+import { getSeriesForRef } from '@/utils/seriesMembership';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 import { addPreachDate, deletePreachDate, updatePreachDate } from '@services/preachDates.service';
 import { updateSermon } from '@services/sermon.service';
@@ -61,9 +62,25 @@ export default function EditSermonModal({
    * cleared everywhere without a second rule.
    */
   const [church, setChurch] = useState<Church | undefined>(sermon.church);
+  /**
+   * THE SERIES IS EDITABLE HERE because this is where a person looks for it.
+   *
+   * The create door offers a series and this one did not, so changing your mind meant
+   * finding a menu item you had to know about — and the natural reading of that absence
+   * was "the link is broken". The value is DERIVED from the loaded playlist
+   * (`series.items` is the sole truth), never from the deprecated `sermon.seriesId`.
+   */
+  const { series: seriesList, loading: seriesLoading } = useSeries(null);
+  const { addToSeries, removeFromAllSeries } = useSeriesMembership();
+  const currentSeriesId = getSeriesForRef(sermon.id, seriesList)?.id ?? '';
+  const [seriesId, setSeriesId] = useState(currentSeriesId);
+  const seriesTouchedRef = React.useRef(false);
+  // Until the person touches the field, it follows the list: the playlist may still be
+  // loading when this opens, and a field frozen at "" would then offer to unfile the sermon.
+  const shownSeriesId = seriesTouchedRef.current ? seriesId : currentSeriesId;
+  const seriesChanged = seriesTouchedRef.current && shownSeriesId !== currentSeriesId;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const [mounted, setMounted] = useState(false);
   const formEditedRef = React.useRef(false);
   /**
    * WHAT THIS FORM OPENED WITH, frozen per sermon.
@@ -89,7 +106,26 @@ export default function EditSermonModal({
     (church?.name || '').trim() !== (sermon.church?.name || '').trim() ||
     (church?.city || '').trim() !== (sermon.church?.city || '').trim();
   const hasChanges =
-    title !== sermon.title || verse !== sermon.verse || plannedDate !== initialPlannedDate || churchChanged;
+    title !== sermon.title ||
+    verse !== sermon.verse ||
+    plannedDate !== initialPlannedDate ||
+    churchChanged ||
+    seriesChanged;
+
+  /**
+   * Membership goes through its one writer and is NOT awaited: the sweep is optimistic and
+   * offline it never resolves, so awaiting it would hang the editor. Its refusals have their
+   * own reporter for every surface (`useSeriesMembership`), which is why this does not try
+   * to speak for them.
+   */
+  const applySeriesChange = () => {
+    if (!seriesChanged) return;
+    if (shownSeriesId) {
+      addToSeries(shownSeriesId, { type: 'sermon', refId: sermon.id });
+      return;
+    }
+    removeFromAllSeries({ type: 'sermon', refId: sermon.id });
+  };
 
   const mergePreachDate = (baseSermon: Sermon, preachDate: PreachDate): Sermon => {
     const preachDates = baseSermon.preachDates || [];
@@ -109,11 +145,6 @@ export default function EditSermonModal({
     name: t('calendar.unspecifiedChurch', { defaultValue: 'Church not specified' }),
     city: ''
   });
-
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
 
   useEffect(() => {
     // Optimistic cache updates and their rollback both replace `sermon` while
@@ -148,6 +179,49 @@ export default function EditSermonModal({
     setSaveError('');
   };
 
+  /**
+   * The dated half of this save: the sermon's own fields are already written, and what is
+   * left is the one planned date this form can touch. Lifted out of `handleSubmit` because
+   * the two halves answer different questions and read badly interleaved.
+   */
+  const syncPlannedDate = async (savedSermon: Sermon): Promise<Sermon> => {
+    const existingPlannedDate = getNextPlannedDate(sermon);
+    // Fill the unsaid, never overwrite the said — one rule, one home (`utils/church`).
+    const churchForExistingDate = existingPlannedDate
+      ? churchToFillOnPreachDate(church, existingPlannedDate.church)
+      : undefined;
+    const dateChanged = plannedDate !== initialPlannedDate;
+
+    if (dateChanged && plannedDate && existingPlannedDate) {
+      return mergePreachDate(savedSermon, await updatePreachDate(sermon.id, existingPlannedDate.id, {
+        date: plannedDate,
+        status: 'planned',
+        ...(churchForExistingDate ? { church: churchForExistingDate } : {})
+      }));
+    }
+    if (dateChanged && plannedDate) {
+      return mergePreachDate(savedSermon, await addPreachDate(sermon.id, {
+        date: plannedDate,
+        status: 'planned',
+        church: churchForNewPreachDate(church, getUnspecifiedChurch().name)
+      }));
+    }
+    if (dateChanged && existingPlannedDate) {
+      await deletePreachDate(sermon.id, existingPlannedDate.id);
+      return {
+        ...savedSermon,
+        preachDates: (savedSermon.preachDates || []).filter((pd) => pd.id !== existingPlannedDate.id)
+      };
+    }
+    if (existingPlannedDate && churchForExistingDate) {
+      // The date was already there and only the congregation was named just now.
+      return mergePreachDate(savedSermon, await updatePreachDate(sermon.id, existingPlannedDate.id, {
+        church: churchForExistingDate
+      }));
+    }
+    return savedSermon;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isReadOnly) return;
@@ -166,6 +240,7 @@ export default function EditSermonModal({
           unspecifiedChurchName: getUnspecifiedChurch().name,
         });
 
+        applySeriesChange();
         await awaitAcceptance(submission, (error) => {
           /**
            * A LATE refusal is shown on the sermon's own card, as a badge with the text
@@ -200,41 +275,14 @@ export default function EditSermonModal({
       const corePatch = churchChanged
         ? { title, verse, church: church ?? { id: '', name: '', city: '' } }
         : { title, verse };
+      applySeriesChange();
       const data = await updateSermon({ ...sermon, ...corePatch }, corePatch);
 
       if (!data) {
         throw new Error('Failed to update sermon');
       }
 
-      let updatedSermon = data;
-      const existingPlannedDate = getNextPlannedDate(sermon);
-
-      if (plannedDate !== initialPlannedDate) {
-        if (plannedDate) {
-          if (existingPlannedDate) {
-            const syncedPlannedDate = await updatePreachDate(sermon.id, existingPlannedDate.id, {
-              date: plannedDate,
-              status: 'planned'
-            });
-            updatedSermon = mergePreachDate(updatedSermon, syncedPlannedDate);
-          } else {
-            const createdPlannedDate = await addPreachDate(sermon.id, {
-              date: plannedDate,
-              status: 'planned',
-              church: getUnspecifiedChurch()
-            });
-            updatedSermon = mergePreachDate(updatedSermon, createdPlannedDate);
-          }
-        } else if (existingPlannedDate) {
-          await deletePreachDate(sermon.id, existingPlannedDate.id);
-          updatedSermon = {
-            ...updatedSermon,
-            preachDates: (updatedSermon.preachDates || []).filter((pd) => pd.id !== existingPlannedDate.id)
-          };
-        }
-      }
-
-      onUpdate(updatedSermon);
+      onUpdate(await syncPlannedDate(data));
       onClose();
     } catch (error) {
       setSaveError(t(writeFailureTranslationKey(error, EDIT_SERMON_ERROR_KEY)));
@@ -243,135 +291,32 @@ export default function EditSermonModal({
     }
   };
 
-  const modalContent = (
-    <div
-      onClick={(e) => e.stopPropagation()}
-      className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50 p-4"
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="edit-sermon-title"
-        onClick={(e) => e.stopPropagation()}
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-8 w-[600px] max-h-[85vh] my-8 flex flex-col overflow-hidden"
-      >
-        <h2 id="edit-sermon-title" className="text-2xl font-bold mb-6">{t('editSermon.editSermon')}</h2>
-        <form onSubmit={handleSubmit} className="flex flex-col flex-grow overflow-hidden">
-          <div className="mb-6">
-            <label htmlFor="title" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-              {t('editSermon.titleLabel')}
-            </label>
-            <TextareaAutosize 
-              id="title" 
-              value={title}
-              onChange={e => {
-                markEdited();
-                setTitle(e.target.value);
-              }}
-              placeholder={t('editSermon.titlePlaceholder')}
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none dark:bg-gray-700 dark:text-white transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
-              minRows={1}
-              maxRows={6}
-              required
-              disabled={isSubmitting || isReadOnly}
-            />
-          </div>
-          <div className="mb-6 flex-grow overflow-auto">
-            <label htmlFor="verse" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-              {t('editSermon.verseLabel')}
-            </label>
-            <TextareaAutosize 
-              id="verse"
-              value={verse}
-              onChange={e => {
-                markEdited();
-                setVerse(e.target.value);
-              }}
-              placeholder={t('editSermon.versePlaceholder')}
-              className="mt-1 block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 resize-none dark:bg-gray-700 dark:text-white transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
-              minRows={3}
-              maxRows={16}
-              required
-              disabled={isSubmitting || isReadOnly}
-            />
-          </div>
-          <div className="mb-6">
-            <label htmlFor="edit-church" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-              {t('calendar.church')}
-            </label>
-            <ChurchField
-              id="edit-church"
-              value={church?.name ? church : undefined}
-              onChange={(next) => {
-                markEdited();
-                setChurch(next);
-              }}
-              hideLabel
-              disabled={isSubmitting || isReadOnly}
-              inputClassName="mt-1 block w-full rounded-md border border-gray-300 p-3 pr-12 transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/30 disabled:opacity-60 dark:border-gray-700 dark:bg-gray-700 dark:text-white"
-            />
-          </div>
-          <div className="mb-6">
-            <label htmlFor="plannedDate" className="block text-sm font-medium text-gray-700 dark:text-gray-200">
-              {t('editSermon.plannedDateLabel', { defaultValue: 'Planned preaching date (optional)' })}
-            </label>
-            <div className="mt-1 flex items-center gap-2">
-              <DatePickerField
-                id="plannedDate"
-                value={plannedDate}
-                onChange={(value) => {
-                  markEdited();
-                  setPlannedDate(value);
-                }}
-                wrapperClassName="w-full"
-                inputClassName="block w-full border border-gray-300 dark:border-gray-700 rounded-md p-3 pr-12 dark:bg-gray-700 dark:text-white transition focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
-                disabled={isSubmitting || isReadOnly}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  markEdited();
-                  setPlannedDate('');
-                }}
-                disabled={isSubmitting || isReadOnly || !plannedDate}
-                className="px-3 py-2 text-sm font-medium border border-gray-300 dark:border-gray-600 rounded-md text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {t('editSermon.clearPlannedDate', { defaultValue: 'Clear' })}
-              </button>
-            </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              {t('editSermon.plannedDateHint', { defaultValue: 'Leave empty if you do not want a planned date.' })}
-            </p>
-          </div>
-          {saveError && (
-            <p role="alert" className="mb-4 text-sm text-red-600 dark:text-red-400">
-              {saveError}
-            </p>
-          )}
-          <div className="flex justify-end gap-3 mt-auto">
-            <button 
-              type="button" 
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="px-4 py-2 bg-gray-300 dark:bg-gray-600 dark:text-white rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 disabled:opacity-50 disabled:hover:bg-gray-300 transition-colors"
-            >
-              {t('buttons.cancel')}
-            </button>
-            <button 
-              type="submit" 
-              disabled={isSubmitting || !hasChanges || isReadOnly}
-              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:hover:bg-blue-600 transition-colors"
-            >
-              {isSubmitting ? t('buttons.saving') : t('buttons.save')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+  return (
+    <SermonFormDialog
+      heading={t('editSermon.editSermon')}
+      values={{ title, verse, church, plannedDate, seriesId: shownSeriesId }}
+      onChange={(patch) => {
+        markEdited();
+        if ('title' in patch) setTitle(patch.title ?? '');
+        if ('verse' in patch) setVerse(patch.verse ?? '');
+        if ('church' in patch) setChurch(patch.church);
+        if ('plannedDate' in patch) setPlannedDate(patch.plannedDate ?? '');
+        if ('seriesId' in patch) {
+          seriesTouchedRef.current = true;
+          setSeriesId(patch.seriesId ?? '');
+        }
+      }}
+      onSubmit={handleSubmit}
+      onCancel={onClose}
+      submitLabel={t('buttons.save')}
+      saving={isSubmitting}
+      submitDisabled={!hasChanges}
+      readOnly={isReadOnly}
+      error={saveError}
+      seriesOptions={seriesList.map((entry) => ({ id: entry.id, label: entry.title || entry.theme }))}
+      seriesLoading={seriesLoading}
+      showPlannedDate
+      detailsHint={t('editSermon.plannedDateHint', { defaultValue: 'Leave empty if you do not want a planned date.' })}
+    />
   );
-
-  if (mounted) {
-    return createPortal(modalContent, document.body);
-  }
-  return null;
 }

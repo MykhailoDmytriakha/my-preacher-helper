@@ -1,10 +1,10 @@
 "use client";
 
 import { CalendarDaysIcon } from '@heroicons/react/24/outline';
-import { enUS, ru, uk } from 'date-fns/locale';
 import { useTranslation } from 'react-i18next';
 
 import { CalendarEntryCard } from '@/components/calendar/CalendarEntryCard';
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { byNewestFirst, type CalendarEntry } from '@/utils/calendarEntries';
 import { getSeriesForRef } from '@/utils/seriesMembership';
 
@@ -18,9 +18,10 @@ interface AgendaViewProps {
 
 /** The same entries as the month view, in one list that crosses months. */
 export default function AgendaView({ entries, series = [] }: AgendaViewProps) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
 
-  const dateLocale = i18n.language === 'ru' ? ru : i18n.language === 'uk' ? uk : enUS;
+  // `ru-RU` used to fall through a strict comparison to English month names.
+  const { dateLocale } = useAppLocale();
   const ordered = [...entries].sort(byNewestFirst);
 
   if (ordered.length === 0) {

@@ -72,10 +72,12 @@ describe("ExportButtonsLayout", () => {
     expect(onWordClick).toHaveBeenCalledTimes(1);
     expect(onAudioClick).toHaveBeenCalledTimes(1);
 
-    expect(txtButton).toHaveClass("text-gray-500");
-    expect(pdfButton).toHaveClass("hover:text-purple-600");
-    expect(wordButton).toHaveClass("hover:text-green-600");
-    expect(audioButton).toHaveClass("hover:text-orange-600");
+    // Every available icon wears its colour at rest, so a working button cannot be mistaken
+    // for a dead one — the whole row used to be grey until the cursor found it.
+    expect(txtButton).toHaveClass("text-blue-600");
+    expect(pdfButton).toHaveClass("text-purple-600");
+    expect(wordButton).toHaveClass("text-green-600");
+    expect(audioButton).toHaveClass("text-orange-600");
 
     expect(screen.getByText("TXT")).toBeInTheDocument();
     expect(screen.getByText("PDF")).toBeInTheDocument();

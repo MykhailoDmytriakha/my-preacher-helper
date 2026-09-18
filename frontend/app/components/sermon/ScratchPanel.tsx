@@ -22,6 +22,7 @@ import { useConnection } from "@/providers/ConnectionProvider";
 import { composePlanFromScratch } from "@/services/scratch.service";
 import { transcribeThoughtAudio } from "@/services/thought.service";
 import { buildRecordingFilename, downloadBlobToDevice } from "@/utils/audioFormatUtils";
+import { isBrowserOffline } from '@/utils/connectivity';
 import { SECTION_KEYS, type SectionKey } from '@/utils/outlineDnd';
 import { getSectionLabel } from "@lib/sections";
 
@@ -75,10 +76,6 @@ function truncateForConfirm(text: string) {
     : clean;
 }
 
-function isBrowserOffline() {
-  return typeof navigator !== "undefined" && navigator.onLine === false;
-}
-
 async function waitForSettleWithTimeout<T>(promise: Promise<T>, timeoutMs: number) {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   const timeoutPromise = new Promise<"timeout">((resolve) => {
@@ -125,10 +122,10 @@ export default function ScratchPanel({
   const { t } = useTranslation();
   const boardNoteLabels = useScratchNoteLabels();
   const { isMagicAvailable } = useConnection();
-  const { aiBlocked, transcriptionBlocked, refresh: refreshAiUsage } = useAiUsage();
-  const transcriptionUnavailableLabel = transcriptionBlocked
-    ? t("settings.usage.transcriptionUsageExhausted")
-    : undefined;
+  const { aiBlocked, blocked, blockedLabelKey, refresh: refreshAiUsage } = useAiUsage();
+  const transcriptionBlocked = blocked('dictation');
+  const dictationBlockedKey = blockedLabelKey('dictation');
+  const transcriptionUnavailableLabel = dictationBlockedKey ? t(dictationBlockedKey) : undefined;
   const [capturePortal, setCapturePortal] = useState<HTMLDivElement | null>(null);
   const [isManualCaptureOpen, setIsManualCaptureOpen] = useState(false);
   const [manualDraft, setManualDraft] = useState("");
@@ -620,7 +617,7 @@ export default function ScratchPanel({
       const isTimeout =
         error instanceof Error &&
         (error.name === "FetchTimeoutError" || error.message.toLowerCase().includes("timed out"));
-      const isOffline = typeof navigator !== "undefined" && navigator.onLine === false;
+      const isOffline = isBrowserOffline();
       const message = isOffline
         ? t("scratch.board.composeOffline")
         : isTimeout

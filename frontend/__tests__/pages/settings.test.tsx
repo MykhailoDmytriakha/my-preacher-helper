@@ -1,20 +1,22 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import { usePathname } from 'next/navigation';
 import React from 'react';
 
-import SettingsPage from '@/(pages)/(private)/settings/page';
-import { auth } from '@/services/firebaseAuth.service';
+import SettingsShell from '@/(pages)/(private)/settings/layout';
+import LimitsPage from '@/(pages)/(private)/settings/limits/page';
+import TagsPage from '@/(pages)/(private)/settings/tags/page';
+import TemplatesPage from '@/(pages)/(private)/settings/templates/page';
+import UserPage from '@/(pages)/(private)/settings/user/page';
 import '@testing-library/jest-dom';
 import { TestProviders } from '@test-utils/test-providers';
 
-// Mock Firebase auth
-jest.mock('@/services/firebaseAuth.service', () => ({
-  auth: {
-    onAuthStateChanged: jest.fn((callback) => {
-      // Simulate authenticated user
-      callback({ uid: 'test-user', email: 'test@example.com', displayName: 'Test User' });
-      return jest.fn(); // Return unsubscribe function
-    }),
-  },
+const authState: { user: unknown; loading: boolean } = {
+  user: { uid: 'test-user', email: 'test@example.com', displayName: 'Test User' },
+  loading: false,
+};
+jest.mock('@/providers/AuthProvider', () => ({
+  useAuth: () => authState,
+  AuthProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
 // Mock child components
@@ -24,11 +26,15 @@ jest.mock('@/components/settings/UserSettingsSection', () => ({ user }: { user: 
     <p>User: {user?.email || 'No user'}</p>
   </div>
 ));
+jest.mock('@/components/settings/ReferralCard', () => () => <div data-testid="referral-card">Referral</div>);
 jest.mock('@/components/settings/TagsSection', () => ({ user }: { user: any }) => (
   <div data-testid="tags-section">
     <h2>Tags Management</h2>
     <p>User: {user?.email || 'No user'}</p>
   </div>
+));
+jest.mock('@/components/settings/PlanTemplatesSection', () => ({ user }: { user: any }) => (
+  <div data-testid="plan-templates-section">User: {user?.email || 'No user'}</div>
 ));
 jest.mock('@/components/settings/UsageWidget', () => () => <div data-testid="usage-widget">Usage</div>);
 jest.mock('@/components/settings/ModelSelector', () => () => <div data-testid="model-selector">Models</div>);
@@ -38,31 +44,10 @@ jest.mock('@/components/settings/SettingsLayout', () => ({ children, title }: { 
     {children}
   </div>
 ));
-jest.mock('@/components/settings/SettingsNav', () => ({ activeSection, onNavigate }: any) => (
-  <nav data-testid="settings-nav">
-    <button 
-      onClick={() => onNavigate('user')} 
-      className={activeSection === 'user' ? 'active' : ''}
-      data-testid="nav-user"
-    >
-      User Settings
-    </button>
-    <button 
-      onClick={() => onNavigate('tags')} 
-      className={activeSection === 'tags' ? 'active' : ''}
-      data-testid="nav-tags"
-    >
-      Tags Management
-    </button>
-    <button
-      onClick={() => onNavigate('aiModels')}
-      className={activeSection === 'aiModels' ? 'active' : ''}
-      data-testid="nav-ai-models"
-    >
-      AI &amp; limits
-    </button>
-  </nav>
+jest.mock('@components/settings/SettingsNav', () => ({ activeSection }: any) => (
+  <nav data-testid="settings-nav" data-active={activeSection}>navigation</nav>
 ));
+
 // The freshness layer is shared; here we only drive its OUTPUT, to prove this screen
 // actually renders the pill when the document moved on elsewhere.
 const mockFreshness = {
@@ -106,322 +91,102 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 
-// Mock window.location
-const mockLocation = {
-  href: '',
+const mockedUsePathname = usePathname as jest.MockedFunction<typeof usePathname>;
+
+const renderShell = (pathname: string, children: React.ReactNode) => {
+  mockedUsePathname.mockReturnValue(pathname);
+  return render(<TestProviders><SettingsShell>{children}</SettingsShell></TestProviders>);
 };
-Object.defineProperty(window, 'location', {
-  value: mockLocation,
-  writable: true,
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  authState.user = { uid: 'test-user', email: 'test@example.com', displayName: 'Test User' };
+  authState.loading = false;
+  mockFreshness.state = 'fresh';
+  mockFreshness.remote = null;
+  freshnessCalls.length = 0;
 });
 
-describe('Settings Page', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockLocation.href = '';
-  });
-  
-  const renderWithProviders = () =>
-    render(
-      <TestProviders>
-        <SettingsPage />
-      </TestProviders>
-    );
+/**
+ * THE SHELL IS THE LAYOUT NOW, and that is the whole point of the change.
+ *
+ * Each section became a route of its own so a link could point AT one — "open plan
+ * settings" used to land on whatever section the screen opened with. Chrome that must not
+ * be rebuilt on every such link lives here, above the section: title, navigation, the
+ * freshness pill, the admin check.
+ */
+describe('Settings shell', () => {
+  it('frames the section with the title, the navigation and the language initializer', async () => {
+    renderShell('/settings/user', <UserPage />);
 
-  describe('Basic Rendering', () => {
-    beforeEach(() => {
-      renderWithProviders();
-    });
-
-    it('renders the main settings heading', async () => {
-      await waitFor(() => {
-        const headings = screen.getAllByRole('heading', { name: /Settings/i });
-        expect(headings.length).toBeGreaterThan(0);
-      });
-    });
-
-    it('renders the Settings Navigation area', async () => {
-      await waitFor(() => {
-        const navs = screen.getAllByTestId('settings-nav');
-        expect(navs.length).toBeGreaterThan(0);
-      });
-      
-      // Check that navigation buttons exist
-      const userNavs = screen.getAllByTestId('nav-user');
-      const tagsNavs = screen.getAllByTestId('nav-tags');
-      expect(userNavs.length).toBeGreaterThan(0);
-      expect(tagsNavs.length).toBeGreaterThan(0);
-      
-      // Check button text content
-      expect(userNavs[0]).toHaveTextContent('User Settings');
-      expect(tagsNavs[0]).toHaveTextContent('Tags Management');
-    });
-
-    it('renders the User Settings section by default', async () => {
-      await waitFor(() => {
-        const sections = screen.getAllByTestId('user-settings-section');
-        expect(sections.length).toBeGreaterThan(0);
-        // Check that user info is displayed (there are multiple instances due to mobile/desktop layouts)
-        const userInfoElements = screen.getAllByText(/User: test@example\.com/);
-        expect(userInfoElements.length).toBeGreaterThan(0);
-      });
-    });
-
-    it('renders the Language Initializer component', async () => {
-      await waitFor(() => {
-        expect(screen.getByTestId('language-initializer')).toBeInTheDocument();
-      });
-    });
-
-    it('renders the Settings Layout wrapper', async () => {
-      await waitFor(() => {
-        expect(screen.getByTestId('settings-layout')).toBeInTheDocument();
-      });
-    });
-  });
-
-  describe('Navigation Functionality', () => {
-    beforeEach(() => {
-      renderWithProviders();
-    });
-
-    it('allows switching between user and tags sections', async () => {
-      await waitFor(() => {
-        const userSections = screen.getAllByTestId('user-settings-section');
-        expect(userSections.length).toBeGreaterThan(0);
-      });
-
-      // Click on tags navigation
-      const tagsNavs = screen.getAllByTestId('nav-tags');
-      expect(tagsNavs.length).toBeGreaterThan(0);
-      fireEvent.click(tagsNavs[0]);
-
-      await waitFor(() => {
-        const tagsSections = screen.getAllByTestId('tags-section');
-        expect(tagsSections.length).toBeGreaterThan(0);
-        expect(screen.queryByTestId('user-settings-section')).not.toBeInTheDocument();
-      });
-
-      // Click back to user navigation
-      const userNavs = screen.getAllByTestId('nav-user');
-      expect(userNavs.length).toBeGreaterThan(0);
-      fireEvent.click(userNavs[0]);
-
-      await waitFor(() => {
-        const userSections = screen.getAllByTestId('user-settings-section');
-        expect(userSections.length).toBeGreaterThan(0);
-        expect(screen.queryByTestId('tags-section')).not.toBeInTheDocument();
-      });
-    });
-
-    it('highlights active navigation section', async () => {
-      await waitFor(() => {
-        const userNavs = screen.getAllByTestId('nav-user');
-        const tagsNavs = screen.getAllByTestId('nav-tags');
-        
-        expect(userNavs.length).toBeGreaterThan(0);
-        expect(tagsNavs.length).toBeGreaterThan(0);
-        
-        expect(userNavs[0]).toHaveClass('active');
-        expect(tagsNavs[0]).not.toHaveClass('active');
-      });
-
-      // Switch to tags section
-      const tagsNavs = screen.getAllByTestId('nav-tags');
-      fireEvent.click(tagsNavs[0]);
-
-      await waitFor(() => {
-        expect(tagsNavs[0]).toHaveClass('active');
-        const userNavs = screen.getAllByTestId('nav-user');
-        expect(userNavs[0]).not.toHaveClass('active');
-      });
-    });
-  });
-
-  it('mounts one user settings section shared by both navigation layouts', async () => {
-    renderWithProviders();
-    await waitFor(() => expect(screen.getAllByTestId('user-settings-section')).toHaveLength(1));
+    await waitFor(() => expect(screen.getByTestId('settings-layout')).toBeInTheDocument());
+    expect(screen.getAllByRole('heading', { name: /Settings/i }).length).toBeGreaterThan(0);
+    expect(screen.getByTestId('language-initializer')).toBeInTheDocument();
+    // One for the phone, one for the desktop sidebar — one content tree between them.
     expect(screen.getAllByTestId('settings-nav')).toHaveLength(2);
+    expect(screen.getAllByTestId('user-settings-section')).toHaveLength(1);
   });
 
-  describe('Responsive Layout', () => {
-    beforeEach(() => {
-      renderWithProviders();
-    });
+  it('tells the navigation which section the ADDRESS is on, not which one was clicked', async () => {
+    renderShell('/settings/tags', <TagsPage />);
 
-    it('renders mobile navigation grid', async () => {
-      await waitFor(() => {
-        const mobileNavs = screen.getAllByText('User Settings');
-        expect(mobileNavs.length).toBeGreaterThan(0);
-        
-        // Find the mobile nav button (first one should be mobile)
-        const mobileNav = mobileNavs[0].closest('div');
-        expect(mobileNav?.parentElement).toHaveClass('block', 'md:hidden');
-      });
-    });
-
-    it('renders desktop navigation sidebar', async () => {
-      await waitFor(() => {
-        const desktopNavs = screen.getAllByText('User Settings');
-        expect(desktopNavs.length).toBeGreaterThan(0);
-        
-        // Desktop navigation is hidden on mobile; the content tree is shared.
-        const desktopNav = desktopNavs.find(nav => 
-          nav.closest('div')?.parentElement?.classList.contains('hidden')
-        );
-        expect(desktopNav).toBeInTheDocument();
-      });
+    await waitFor(() => expect(screen.getAllByTestId('settings-nav')).toHaveLength(2));
+    screen.getAllByTestId('settings-nav').forEach((nav) => {
+      expect(nav).toHaveAttribute('data-active', 'tags');
     });
   });
 
-  describe('Loading State', () => {
-    it('shows loading spinner initially', async () => {
-      // Mock auth to delay response
-      jest.mocked(auth.onAuthStateChanged).mockImplementationOnce((callback: any) => {
-        // Don't call callback immediately to simulate loading
-        setTimeout(() => callback({ uid: 'test-user', email: 'test@example.com' }), 100);
-        return jest.fn();
-      });
+  it('falls back to the first section when the address names no section it knows', async () => {
+    renderShell('/settings', <UserPage />);
 
-      renderWithProviders();
-
-      expect(screen.getByText('Loading settings...')).toBeInTheDocument();
-      expect(screen.getByTestId('settings-layout')).toBeInTheDocument();
-    });
+    await waitFor(() => expect(screen.getAllByTestId('settings-nav')[0]).toHaveAttribute('data-active', 'user'));
   });
 
-  describe('Authentication Handling', () => {
-    it('redirects to home when user is not authenticated', async () => {
-      // Mock auth to return no user
-      jest.mocked(auth.onAuthStateChanged).mockImplementationOnce((callback: any) => {
-        callback(null);
-        return jest.fn();
-      });
+  it('shows the loading spinner while the account is still being decided', () => {
+    authState.loading = true;
+    renderShell('/settings/user', <UserPage />);
 
-      renderWithProviders();
-
-      await waitFor(() => {
-        expect(mockLocation.href).toBe('/');
-      });
-    });
-
-    it('handles authenticated user correctly', async () => {
-      const mockUser = { uid: 'test-user', email: 'test@example.com', displayName: 'Test User' };
-      
-      jest.mocked(auth.onAuthStateChanged).mockImplementationOnce((callback: any) => {
-        callback(mockUser);
-        return jest.fn();
-      });
-
-      renderWithProviders();
-
-      await waitFor(() => {
-        const userTexts = screen.getAllByText('User: test@example.com');
-        expect(userTexts.length).toBeGreaterThan(0);
-      });
-    });
+    expect(screen.getByText('Loading settings...')).toBeInTheDocument();
+    expect(screen.getByTestId('settings-layout')).toBeInTheDocument();
+    expect(screen.queryByTestId('user-settings-section')).not.toBeInTheDocument();
   });
 
-  describe('Section Rendering', () => {
-    it('renders UserSettingsSection with user data', async () => {
-      renderWithProviders();
+  it('puts nothing of the person on screen when there is no account', () => {
+    authState.user = null;
+    const { container } = renderShell('/settings/user', <UserPage />);
 
-      await waitFor(() => {
-        const userSections = screen.getAllByTestId('user-settings-section');
-        expect(userSections.length).toBeGreaterThan(0);
-        expect(userSections[0]).toHaveTextContent('User: test@example.com');
-      });
-    });
+    // Signing out is answered one layer up by ProtectedRoute; this screen simply says nothing.
+    expect(container).toBeEmptyDOMElement();
+  });
+});
 
-    it('renders TagsSection with user data when active', async () => {
-      renderWithProviders();
+describe('Settings sections', () => {
+  it('gives the user section the account it is describing', async () => {
+    renderShell('/settings/user', <UserPage />);
 
-      // Switch to tags section
-      const tagsNavs = await screen.findAllByTestId('nav-tags');
-      expect(tagsNavs.length).toBeGreaterThan(0);
-      fireEvent.click(tagsNavs[0]);
-
-      await waitFor(() => {
-        const tagsSections = screen.getAllByTestId('tags-section');
-        expect(tagsSections.length).toBeGreaterThan(0);
-        expect(tagsSections[0]).toHaveTextContent('User: test@example.com');
-      });
-    });
-
-    it('shows usage and model selection after navigating to AI & limits', async () => {
-      renderWithProviders();
-
-      fireEvent.click((await screen.findAllByTestId('nav-ai-models'))[0]);
-
-      await waitFor(() => {
-        expect(screen.getAllByTestId('usage-widget')).toHaveLength(1);
-        expect(screen.getAllByTestId('model-selector')).toHaveLength(1);
-        expect(screen.queryByTestId('user-settings-section')).not.toBeInTheDocument();
-      });
-    });
+    await waitFor(() => expect(screen.getByTestId('user-settings-section')).toHaveTextContent('User: test@example.com'));
+    expect(screen.getByTestId('referral-card')).toBeInTheDocument();
   });
 
-  // Error handling test removed due to complexity of mocking auth state changes
+  it('shows usage and model selection on the limits section — the address the usage tooltip points at', async () => {
+    renderShell('/settings/limits', <LimitsPage />);
 
-  describe('Component Integration', () => {
-    it('integrates all child components correctly', async () => {
-      renderWithProviders();
-
-      await waitFor(() => {
-        // Check all major components are rendered
-        expect(screen.getByTestId('language-initializer')).toBeInTheDocument();
-        expect(screen.getByTestId('settings-layout')).toBeInTheDocument();
-        
-        // Handle duplicate nav elements
-        const navs = screen.getAllByTestId('settings-nav');
-        expect(navs.length).toBeGreaterThan(0);
-        
-        const userSections = screen.getAllByTestId('user-settings-section');
-        expect(userSections.length).toBeGreaterThan(0);
-      });
-    });
-
-    it('passes user data to child components', async () => {
-      renderWithProviders();
-
-      await waitFor(() => {
-        // Check that user data is passed to sections (handle duplicates)
-        const userTexts = screen.getAllByText('User: test@example.com');
-        expect(userTexts.length).toBeGreaterThan(0);
-      });
-    });
+    await waitFor(() => expect(screen.getByTestId('usage-widget')).toBeInTheDocument());
+    expect(screen.getByTestId('model-selector')).toBeInTheDocument();
+    expect(screen.queryByTestId('user-settings-section')).not.toBeInTheDocument();
   });
 
-  describe('State Management', () => {
-    it('maintains active section state', async () => {
-      renderWithProviders();
+  it('shows tags on the tags section', async () => {
+    renderShell('/settings/tags', <TagsPage />);
 
-      // Default should be user section
-      await waitFor(() => {
-        const userSections = screen.getAllByTestId('user-settings-section');
-        expect(userSections.length).toBeGreaterThan(0);
-      });
+    await waitFor(() => expect(screen.getByTestId('tags-section')).toHaveTextContent('User: test@example.com'));
+    expect(screen.queryByTestId('user-settings-section')).not.toBeInTheDocument();
+  });
 
-      // Switch to tags
-      const tagsNavs = screen.getAllByTestId('nav-tags');
-      expect(tagsNavs.length).toBeGreaterThan(0);
-      fireEvent.click(tagsNavs[0]);
+  it('shows structure templates on the templates section', async () => {
+    renderShell('/settings/templates', <TemplatesPage />);
 
-      await waitFor(() => {
-        const tagsSections = screen.getAllByTestId('tags-section');
-        expect(tagsSections.length).toBeGreaterThan(0);
-      });
-
-      // Switch back to user
-      const userNavs = screen.getAllByTestId('nav-user');
-      expect(userNavs.length).toBeGreaterThan(0);
-      fireEvent.click(userNavs[0]);
-
-      await waitFor(() => {
-        const userSections = screen.getAllByTestId('user-settings-section');
-        expect(userSections.length).toBeGreaterThan(0);
-      });
-    });
+    await waitFor(() => expect(screen.getByTestId('plan-templates-section')).toHaveTextContent('User: test@example.com'));
   });
 });
 
@@ -434,32 +199,17 @@ describe('Settings Page', () => {
  * text, so loading the newer values cannot destroy anything.
  */
 describe('Settings freshness', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    mockFreshness.state = 'fresh';
-    mockFreshness.remote = null;
-    freshnessCalls.length = 0;
-  });
-
   it('says nothing while the screen agrees with the server', async () => {
-    render(
-      <TestProviders>
-        <SettingsPage />
-      </TestProviders>
-    );
+    renderShell('/settings/user', <UserPage />);
 
-    await waitFor(() => expect(screen.getAllByTestId('settings-layout').length).toBeGreaterThan(0));
+    await waitFor(() => expect(screen.getByTestId('settings-layout')).toBeInTheDocument());
     expect(screen.queryByText('freshness.title')).not.toBeInTheDocument();
   });
 
   it('asks the freshness layer to treat the first server answer as the baseline', async () => {
     // Without this the screen passes `known: null` forever, the hook can never call
     // anything stale, and the pill is dead while every unit test stays green.
-    render(
-      <TestProviders>
-        <SettingsPage />
-      </TestProviders>
-    );
+    renderShell('/settings/user', <UserPage />);
 
     await waitFor(() => expect(freshnessCalls.length).toBeGreaterThan(0));
     const call = freshnessCalls[freshnessCalls.length - 1];
@@ -471,14 +221,28 @@ describe('Settings freshness', () => {
     mockFreshness.state = 'stale';
     mockFreshness.remote = { fields: 'newer' };
 
-    render(
-      <TestProviders>
-        <SettingsPage />
-      </TestProviders>
-    );
+    renderShell('/settings/user', <UserPage />);
 
     await waitFor(() => expect(screen.getByText('freshness.title')).toBeInTheDocument());
     // The wording names the entity, so it cannot be confused with the app-update toast.
     expect(screen.getByRole('status')).toHaveTextContent('freshness.entitySettings');
+  });
+
+  it('keeps the pill across a change of section, because the shell is not rebuilt', async () => {
+    mockFreshness.state = 'stale';
+    mockFreshness.remote = { fields: 'newer' };
+    mockedUsePathname.mockReturnValue('/settings/user');
+    const { rerender } = render(<TestProviders><SettingsShell><UserPage /></SettingsShell></TestProviders>);
+
+    await waitFor(() => expect(screen.getByText('freshness.title')).toBeInTheDocument());
+    const callsBefore = freshnessCalls.length;
+
+    mockedUsePathname.mockReturnValue('/settings/limits');
+    rerender(<TestProviders><SettingsShell><LimitsPage /></SettingsShell></TestProviders>);
+
+    expect(screen.getByText('freshness.title')).toBeInTheDocument();
+    expect(screen.getByTestId('usage-widget')).toBeInTheDocument();
+    // Re-rendered, not re-mounted: the listener was not torn down and set up again.
+    expect(freshnessCalls.length).toBeGreaterThan(callsBefore);
   });
 });

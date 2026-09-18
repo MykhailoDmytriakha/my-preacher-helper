@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { render, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import React, { useEffect } from 'react';
 import { toast } from 'sonner';
 
@@ -137,7 +137,13 @@ describe('QueryProvider', () => {
     expect(said).not.toMatch(/saved locally/i);
   });
 
-  it('shows the hard-cap message globally for a typed mutation error', async () => {
+  /**
+   * A REFUSAL IS HELD ON SCREEN, NOT FLASHED PAST.
+   *
+   * This used to assert a toast — which is how the message ended up stacked under another
+   * toast, below the fold, needing a hover to be read, and gone on a timer.
+   */
+  it('raises the hard-cap dialog globally for a typed mutation error', async () => {
     mockCreateIDBPersister.mockReturnValue({
       persistClient: jest.fn(),
       restoreClient: jest.fn(),
@@ -162,12 +168,8 @@ describe('QueryProvider', () => {
       '2026-08-01T00:00:00.000Z'
     ));
 
-    await waitFor(() => expect(toast).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({
-        id: 'usage-hard-cap:ai:2026-08-01T00:00:00.000Z',
-      })
-    ));
+    await waitFor(() => expect(screen.getByTestId('usage-cap-dialog')).toBeInTheDocument());
+    expect(toast).not.toHaveBeenCalled();
   });
 
   describe('shouldDehydrateMutation', () => {

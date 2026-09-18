@@ -77,7 +77,6 @@ const FROZEN_DIRECT_WRITES: Record<string, number> = {
   'services/usageLimits.server.ts': 2,
   // A page writing Firestore straight from the browser — the furthest thing from the rule,
   // and worth naming here so it stays visible instead of blending into the services.
-  '(pages)/(private)/settings/page.tsx': 1,
   /*
    * ADDED 2026-09-11, WITH THE ANSWER WRITTEN DOWN. A council is written WHOLE, by its own id,
    * and its guard is not in the browser at all: every online write goes to the app's server

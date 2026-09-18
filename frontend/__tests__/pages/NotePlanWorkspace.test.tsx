@@ -11,7 +11,9 @@ let mockBlocked = false;
 let mockLoading = false;
 let mockMissing: string[] = [];
 jest.mock('@/hooks/useOnlineStatus', () => ({ useOnlineStatus: () => mockOnline }));
-jest.mock('@/hooks/useAiUsage', () => ({ useAiUsage: () => ({ aiBlocked: mockBlocked, refresh: async () => undefined }) }));
+jest.mock('@/hooks/useAiUsage', () => ({
+  useAiUsage: () => require('@test-utils/aiUsage').aiUsageStub({ aiBlocked: mockBlocked }),
+}));
 jest.mock('@/hooks/useSermonNoteLinks', () => ({ useSourceNotes: () => ({
   notes: [{ id: 'n', title: 'Study source' }], missingIds: mockMissing, loading: mockLoading,
 }) }));

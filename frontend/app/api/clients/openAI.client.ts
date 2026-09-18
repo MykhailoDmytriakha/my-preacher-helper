@@ -940,8 +940,15 @@ function normalizeArrows(text: string): string {
  * Layout (v13):
  *   **→ turn**            — route arrow, RIGHT under the outline-point heading (arrows → →)
  *   ### {sub-point}       — sub-point heading as a real h3 (only when sub-points exist)
- *   - cue                 — recall triggers
+ *   - cue                 — recall triggers that stand on their own
+ *   **{set label}**       — names a MOVE the thought already makes, with its items under it
+ *   - item                — the members of that move, in one shape
  *   *ref*                 — that group's verses, one per line under its cues
+ *
+ * A set is NOT a heading: headings belong to the preacher's structure. It is a caption over a
+ * handful of cues that belong together — three images of one emptiness, two sides of one faith,
+ * then/now — and without it a list of six bullets hides the very shape the preacher wants to see
+ * at a glance. Where a thought has no such shape, `sets` is empty and the list stays flat.
  * No anchor/title is emitted: the outline point already provides the heading, and emitting
  * one produced a heading nested inside the outline-point heading. Sub-point headings are h3
  * (matching the structure skeleton in buildSectionOutlineMarkdown) so the UI gives them a
@@ -959,12 +966,26 @@ function assemblePlanPointMarkdown(data: PlanPointContentResponse): string {
     const cues = (group.cues ?? []).map((c) => normalizeArrows(c.trim())).filter(Boolean);
     // refs carry recognizable verse text; each renders on its own italic line.
     const refs = (group.refs ?? []).map((r) => r.trim()).filter(Boolean);
-    if (!heading && cues.length === 0 && refs.length === 0) continue;
+    const sets = (group.sets ?? []).filter((set) => set?.label?.trim() && (set.items ?? []).some((i) => i.trim()));
+    if (!heading && cues.length === 0 && sets.length === 0 && refs.length === 0) continue;
 
     lines.push(""); // blank line detaches this group from whatever came before
     // Sub-point heading as a real h3 level (no heading when there are no sub-points).
     if (heading) lines.push(`### ${heading}`);
     cues.forEach((c) => lines.push(`- ${c}`));
+
+    // Each set: a bold caption paragraph, then its items as an ordinary list. A blank line
+    // before the caption keeps it a paragraph of its own rather than a bullet's continuation.
+    for (const set of sets) {
+      const label = (set.label ?? "").trim();
+      const items = (set.items ?? []).map((i) => normalizeArrows(i.trim())).filter(Boolean);
+      if (!label || items.length === 0) continue;
+      // Only separate from what came before if something actually came before: a group whose
+      // cues all moved into sets would otherwise open with two blank lines.
+      if (lines[lines.length - 1] !== "") lines.push("");
+      lines.push(`**${label}**`);
+      items.forEach((i) => lines.push(`- ${i}`));
+    }
     // Each verse on its OWN line: a blank line before every ref makes it a separate
     // paragraph. Without it, "*a*\n*b*\n*c*" is one paragraph (soft breaks collapse to
     // spaces) and the verses render run-together. Works for both the UI markdown render
@@ -1227,7 +1248,9 @@ export async function generateNotePlanPoint(input: NotePlanInput, style: PlanSty
     contentByNodeId[node.nodeId] = input.revision?.mode === 'references'
       ? node.missingMaterial && !node.refs.length ? current : replacePlanReferenceParagraphs(current, node.refs)
       : assemblePlanPointMarkdown({
-      turn: node.turn, groups: [{ heading: null, cues: node.cues, refs: node.refs }],
+      // Note plans do not produce sets yet (their own prompt says nothing about them), so the
+      // field travels empty and the assembler renders exactly what it rendered before.
+      turn: node.turn, groups: [{ heading: null, cues: node.cues, sets: [], refs: node.refs }],
     });
     if (node.missingMaterial) missingMaterial[node.nodeId] = node.missingMaterial;
   }

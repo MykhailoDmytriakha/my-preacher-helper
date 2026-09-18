@@ -1,42 +1,48 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { toast } from 'sonner';
 
+import UsageCapDialog from '@/components/usage/UsageCapDialog';
 import { USER_ENTITLEMENT_QUERY_KEY } from '@/hooks/useUserEntitlement';
 import { subscribeToUsageClientEvents } from '@/services/usageCapClient';
-import {
-  formatUsageResetDate,
-  getDeterministicVerse,
-  normalizeGraceVerses,
-} from '@/utils/usageGrace';
+import { getDeterministicVerse, normalizeGraceVerses } from '@/utils/usageGrace';
+
+import type { UsageResource } from '@/services/usageLimits';
+
+interface CapAnnouncement {
+  resource: UsageResource;
+  resetsAt: string;
+}
 
 export default function UsageCapGlobalHandler() {
   const queryClient = useQueryClient();
-  const { t, i18n } = useTranslation(['translation', 'graceVerses']);
+  const { t } = useTranslation(['translation', 'graceVerses']);
+  const [announcement, setAnnouncement] = useState<CapAnnouncement | null>(null);
 
   useEffect(() => subscribeToUsageClientEvents((event) => {
     void queryClient.invalidateQueries({ queryKey: USER_ENTITLEMENT_QUERY_KEY });
     if (event.type !== 'cap-reached') return;
+    // Being refused stops the person mid-sentence, so it is shown until it is read — the
+    // toast this used to be was stacked under another one and timed out unnoticed.
+    setAnnouncement({ resource: event.error.resource, resetsAt: event.error.resetsAt });
+  }), [queryClient]);
 
-    const locale = i18n.resolvedLanguage ?? i18n.language ?? 'en';
-    const verses = normalizeGraceVerses(t('graceVerses:verses', { returnObjects: true }));
-    const resourceCounter = event.error.resource === 'ai'
-      ? 1
-      : event.error.resource === 'transcription' ? 2 : 3;
-    const verse = getDeterministicVerse(verses, event.error.resetsAt, resourceCounter);
-    const description = [t('usageGrace.softExpansion'), verse].filter(Boolean).join(' ');
+  if (!announcement) return null;
 
-    toast(t('usageGrace.hardCap', {
-      date: formatUsageResetDate(event.error.resetsAt, locale),
-    }), {
-      description,
-      duration: 12_000,
-      id: `usage-hard-cap:${event.error.resource}:${event.error.resetsAt}`,
-    });
-  }), [i18n.language, i18n.resolvedLanguage, queryClient, t]);
+  const verses = normalizeGraceVerses(t('graceVerses:verses', { returnObjects: true }));
+  const resourceCounter = announcement.resource === 'ai'
+    ? 1
+    : announcement.resource === 'transcription' ? 2 : 3;
 
-  return null;
+  return (
+    <UsageCapDialog
+      open
+      onClose={() => setAnnouncement(null)}
+      resetsAt={announcement.resetsAt}
+      resource={announcement.resource}
+      verse={getDeterministicVerse(verses, announcement.resetsAt, resourceCounter)}
+    />
+  );
 }

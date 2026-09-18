@@ -70,6 +70,20 @@ jest.mock('react-i18next', () => ({
           'editSermon.clearPlannedDate': 'Clear',
           'editSermon.plannedDateHint': 'Leave empty if you do not want a planned date',
           'editSermon.updateError': 'Failed to update sermon',
+          // The edit door now wears the SAME labels as "New sermon" — one shared form
+          // module, so the wording comes from one place. Same human strings, new keys.
+          'addSermon.titleLabel': 'Title',
+          'addSermon.titlePlaceholder': 'Enter sermon title',
+          'addSermon.verseLabel': 'Scripture Reference',
+          'addSermon.versePlaceholder': 'Enter scripture reference',
+          'addSermon.plannedDateLabel': 'Planned preaching date (optional)',
+          'addSermon.groupSermon': 'Sermon',
+          'addSermon.groupLater': 'Can be filled in later',
+          'addSermon.groupLaterHint': 'Church and date can be changed in Calendar later',
+          'addSermon.cancel': 'Cancel',
+          'calendar.church': 'Church',
+          'common.saving': 'Saving',
+          'common.close': 'Close',
           'buttons.cancel': 'Cancel',
           'buttons.save': 'Save',
           'buttons.saving': 'Saving',
@@ -171,7 +185,7 @@ describe('EditSermonModal Component', () => {
     fireEvent.change(screen.getByLabelText('Title'), {
       target: { value: 'Title typed on the laptop' },
     });
-    fireEvent.click(screen.getByText('Save'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     return waitFor(() => {
       expect(updateSermon).toHaveBeenCalled();
@@ -192,15 +206,15 @@ describe('EditSermonModal Component', () => {
     expect(screen.getByLabelText('Planned preaching date (optional)')).toHaveValue('');
     
     // Check buttons
-    expect(screen.getByText('Cancel')).toBeInTheDocument();
-    expect(screen.getByText('Save')).toBeInTheDocument();
-    expect(screen.getByText('Save')).toBeDisabled(); // Initially disabled with no changes
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled(); // Initially disabled with no changes
   });
 
   test('calls onClose when cancel button is clicked', () => {
     render(<EditSermonModal {...mockProps} />);
     
-    const cancelButton = screen.getByText('Cancel');
+    const cancelButton = screen.getByRole('button', { name: 'Cancel' });
     fireEvent.click(cancelButton);
     
     expect(mockProps.onClose).toHaveBeenCalledTimes(1);
@@ -210,7 +224,7 @@ describe('EditSermonModal Component', () => {
     render(<EditSermonModal {...mockProps} />);
     
     // Initially disabled
-    expect(screen.getByText('Save')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
     
     // Make changes
     fireEvent.change(screen.getByLabelText('Title'), {
@@ -218,7 +232,7 @@ describe('EditSermonModal Component', () => {
     });
     
     // Now should be enabled
-    expect(screen.getByText('Save')).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
   });
 
   test('handles API errors gracefully', async () => {
@@ -235,7 +249,7 @@ describe('EditSermonModal Component', () => {
     fireEvent.change(titleInput, { target: { value: 'Updated Title' } });
     
     // Click save button to submit the form
-    const saveButton = screen.getByText('Save');
+    const saveButton = screen.getByRole('button', { name: 'Save' });
     fireEvent.click(saveButton);
     
     // Verify that the error was handled (without checking for specific error message)
@@ -257,7 +271,7 @@ describe('EditSermonModal Component', () => {
     const verse = screen.getByLabelText('Scripture Reference');
     fireEvent.change(title, { target: { value: 'Exact refused sermon title' } });
     fireEvent.change(verse, { target: { value: 'Exact refused sermon verse' } });
-    fireEvent.click(screen.getByText('Save'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(screen.getByRole('dialog', { name: 'Edit Sermon' })).toBeInTheDocument();
     // The MESSAGE belongs to the dashboard's card badge — one refusal, one reporter.
@@ -274,7 +288,7 @@ describe('EditSermonModal Component', () => {
       target: { value: '2026-04-10' }
     });
 
-    fireEvent.click(screen.getByText('Save'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => {
       expect(updateSermon).toHaveBeenCalled();
@@ -307,18 +321,18 @@ describe('EditSermonModal Component', () => {
     fireEvent.change(titleInput, { target: { value: 'Updated Title' } });
     
     // Click save button to submit the form
-    const saveButton = screen.getByText('Save');
+    const saveButton = screen.getByRole('button', { name: 'Save' });
     fireEvent.click(saveButton);
     
     // Both buttons should be disabled during submission
-    expect(screen.getByText('Cancel')).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
     expect(saveButton).toBeDisabled();
 
     await act(async () => {
       resolveUpdate({});
     });
     await waitFor(() => {
-      expect(screen.getByText('Cancel')).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled();
     });
   });
 
@@ -337,7 +351,7 @@ describe('EditSermonModal Component', () => {
     fireEvent.click(screen.getByText('Clear'));
     expect(dateInput).toHaveValue('');
 
-    fireEvent.click(screen.getByText('Save'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => {
       expect(updateSermon).toHaveBeenCalled();
@@ -381,7 +395,7 @@ describe('EditSermonModal Component', () => {
     fireEvent.change(screen.getByLabelText('Planned preaching date (optional)'), {
       target: { value: '2099-04-20' }
     });
-    fireEvent.click(screen.getByText('Save'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => {
       expect(updatePreachDate).toHaveBeenCalledWith('test-sermon-id', 'pd-existing', {
@@ -421,7 +435,7 @@ describe('EditSermonModal Component', () => {
     fireEvent.change(screen.getByLabelText('Title'), {
       target: { value: 'Delegated Save Title' },
     });
-    fireEvent.click(screen.getByText('Save'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => {
       expect(onClose).toHaveBeenCalledTimes(1);
@@ -459,12 +473,12 @@ describe('EditSermonModal Component', () => {
     fireEvent.change(screen.getByLabelText('Title'), {
       target: { value: 'Delegated Error Title' },
     });
-    fireEvent.click(screen.getByText('Save'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => {
       expect(onSaveRequest).toHaveBeenCalled();
       expect(onClose).not.toHaveBeenCalled();
-      expect(screen.getByText('Save')).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Save' })).toBeEnabled();
     });
 
     expect(screen.getByLabelText('Title')).toHaveValue('Delegated Error Title');
@@ -514,7 +528,7 @@ describe('EditSermonModal Component', () => {
     fireEvent.change(screen.getByLabelText('Title'), {
       target: { value: 'Detached dashboard refusal title' },
     });
-    fireEvent.click(screen.getByText('Save'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     const dialog = screen.getByRole('dialog', { name: 'Edit Sermon' });
     /**
@@ -548,7 +562,7 @@ describe('EditSermonModal Component', () => {
     fireEvent.change(screen.getByLabelText('Title'), {
       target: { value: 'Queued offline sermon title' },
     });
-    fireEvent.click(screen.getByText('Save'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     expect(onSaveRequest).toHaveBeenCalledTimes(1);

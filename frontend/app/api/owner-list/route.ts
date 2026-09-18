@@ -29,6 +29,12 @@ const OWNER_COLLECTIONS = new Set([
   'planTemplates',
   'serviceOrders',
   'councils',
+  // Added 2026-09-16: without them the series screen had no second road at all, and on a
+  // device whose own Firestore is silent it stayed a skeleton for ever. Each is one person's
+  // document carrying `userId`, and nothing in it is shared (`firestore.rules:95,105,110`).
+  'series',
+  'groups',
+  'studyNotes',
 ]);
 
 /**

@@ -23,6 +23,7 @@ import AddSermonModal from '@/components/AddSermonModal';
 import { SermonSyncBadge } from '@/components/dashboard/SermonSyncBadge';
 import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
 import { Chip } from '@/components/ui/Chip';
+import { useCouncils } from '@/hooks/useCouncils';
 import { useDashboardOptimisticSermons } from '@/hooks/useDashboardOptimisticSermons';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useFittingRows } from '@/hooks/useFittingRows';
@@ -30,12 +31,15 @@ import { useGroups } from '@/hooks/useGroups';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { useSeries } from '@/hooks/useSeries';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
-import { Group, PrayerRequest, Sermon, Series, StudyNote } from '@/models/models';
+import { Council, Group, PrayerRequest, Sermon, Series, StudyNote } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
+import { resolveAppLocale } from '@/utils/appLocale';
+import { councilEntries, groupEntries, sermonEntries, type CalendarKind } from '@/utils/calendarEntries';
 import { getContrastColor } from '@/utils/color';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 import { awaitAcceptance, persistedWrite } from '@/utils/recoverableWrite';
+import { formatScriptureReference } from '@/utils/scriptureReference';
 
 import type {
   DashboardOptimisticActions,
@@ -74,7 +78,6 @@ type AgendaItem = {
   title: string;
   type: string;
   href: string;
-  tone: Tone;
 };
 
 type PrayerItem = {
@@ -232,12 +235,13 @@ export default function DashboardPage() {
   const { notes } = useStudyNotes();
   const { prayerRequests, createPrayer } = usePrayerRequests(user?.uid || null);
   const { groups } = useGroups(user?.uid || null);
+  const { councils } = useCouncils();
   const [showSermonModal, setShowSermonModal] = useState(false);
   const [showPrayerModal, setShowPrayerModal] = useState(false);
 
   const dashboardData = useMemo(
-    () => buildDashboardData({ sermons, series, notes, prayerRequests, groups, t, locale: i18n.language }),
-    [groups, i18n.language, notes, prayerRequests, sermons, series, t]
+    () => buildDashboardData({ sermons, series, notes, prayerRequests, groups, councils, t, locale: i18n.language }),
+    [councils, groups, i18n.language, notes, prayerRequests, sermons, series, t]
   );
 
   const handleCreatePrayer = async (
@@ -775,6 +779,7 @@ function buildDashboardData({
   notes,
   prayerRequests,
   groups,
+  councils,
   t,
   locale,
 }: {
@@ -783,6 +788,7 @@ function buildDashboardData({
   notes: StudyNote[];
   prayerRequests: PrayerRequest[];
   groups: Group[];
+  councils: Council[];
   t: TFunction;
   locale: string;
 }) {
@@ -801,6 +807,7 @@ function buildDashboardData({
   const upcomingEvents = buildCalendarEvents({
     sermons,
     groups,
+    councils,
     start: now,
     end: twoWeeksFromNow,
     locale,
@@ -812,6 +819,7 @@ function buildDashboardData({
     : buildCalendarEvents({
       sermons,
       groups,
+      councils,
       start: twoWeeksAgo,
       end: yesterday,
       locale,
@@ -830,7 +838,7 @@ function buildDashboardData({
     agendaItems: agendaEvents.slice(0, PANEL_ITEM_POOL),
     prayerItems: buildPrayerItems(prayerRequests, t, locale),
     seriesItems: buildSeriesItems(series, sermons, t),
-    studyItems: buildStudyItems(notes, t),
+    studyItems: buildStudyItems(notes, t, locale),
     groupItems: buildGroupItems(groups, t, locale),
   };
 }
@@ -859,9 +867,42 @@ function buildSermonRows(sermons: Sermon[], t: TFunction, locale: string): Sermo
     });
 }
 
+/**
+ * WHAT THE WEEK PANEL CARRIES, and what each of those is called.
+ *
+ * The panel answers "where do I have to BE this week", so it holds appointments — the kinds of
+ * calendar entry that are a place and an hour. Study notes and prayers are on the calendar too,
+ * and deliberately not here: they are things written, not things to attend, and a week that
+ * listed every note edited would bury the two meetings the pastor actually has to walk to.
+ *
+ * Naming the kinds this way means an entry of any other kind is dropped by a type the compiler
+ * checks, rather than rendered with a missing label.
+ */
+const AGENDA_KINDS = ['sermon', 'group', 'council'] as const;
+type AgendaKind = (typeof AGENDA_KINDS)[number];
+
+const isAgendaKind = (kind: CalendarKind): kind is AgendaKind =>
+  (AGENDA_KINDS as readonly CalendarKind[]).includes(kind);
+
+const AGENDA_TYPE_KEY: Record<AgendaKind, string> = {
+  sermon: 'dashboardHome.sections.week.types.sermon',
+  group: 'dashboardHome.sections.week.types.group',
+  council: 'dashboardHome.sections.week.types.council',
+};
+
+/**
+ * The week panel reads the SAME translation of the sources the Calendar reads.
+ *
+ * It used to walk `sermons` and `groups` itself, which is why the brothers' council — added to
+ * the Calendar months ago — never appeared here: every new kind had to be remembered in two
+ * places, and the second was forgotten. `calendarEntries` says of itself that the sources are
+ * translated once, there; this now honours that instead of keeping a private second opinion,
+ * and the next kind joins the week panel by existing.
+ */
 function buildCalendarEvents({
   sermons,
   groups,
+  councils,
   start,
   end,
   locale,
@@ -870,43 +911,26 @@ function buildCalendarEvents({
 }: {
   sermons: Sermon[];
   groups: Group[];
+  councils: Council[];
   start: Date;
   end: Date;
   locale: string;
   t: TFunction;
   sortDirection: 'asc' | 'desc';
 }): AgendaItem[] {
-  const events: Array<{ id: string; date: string; title: string; type: string; href: string; tone: Tone }> = [];
-
-  sermons.forEach((sermon) => {
-    (sermon.preachDates || []).forEach((preachDate) => {
-      const date = toDateOnlyKey(preachDate.date);
-      if (!date || !isWithinRange(date, start, end)) return;
-      events.push({
-        id: `${sermon.id}-${preachDate.id}`,
-        date,
-        title: sermon.title || t('dashboardHome.sections.sermons.untitled'),
-        type: t('dashboardHome.sections.week.types.sermon'),
-        href: `/sermons/${sermon.id}`,
-        tone: preachDate.status === 'preached' ? 'emerald' : 'blue',
-      });
-    });
-  });
-
-  groups.forEach((group) => {
-    (group.meetingDates || []).forEach((meetingDate) => {
-      const date = toDateOnlyKey(meetingDate.date);
-      if (!date || !isWithinRange(date, start, end)) return;
-      events.push({
-        id: `${group.id}-${meetingDate.id}`,
-        date,
-        title: group.title,
-        type: t('dashboardHome.sections.week.types.group'),
-        href: `/groups/${group.id}`,
-        tone: 'emerald',
-      });
-    });
-  });
+  const events = [
+    ...sermonEntries(sermons),
+    ...groupEntries(groups),
+    ...councilEntries(councils),
+  ]
+    .filter((entry) => isAgendaKind(entry.kind) && isWithinRange(entry.date, start, end))
+    .map((entry) => ({
+      id: entry.id,
+      date: entry.date,
+      title: entry.title || t('dashboardHome.sections.sermons.untitled'),
+      type: t(AGENDA_TYPE_KEY[entry.kind as AgendaKind]),
+      href: entry.href,
+    }));
 
   return events
     .sort((a, b) => sortDirection === 'asc' ? getTime(a.date) - getTime(b.date) : getTime(b.date) - getTime(a.date))
@@ -973,14 +997,14 @@ function buildSeriesItems(series: Series[], sermons: Sermon[], t: TFunction): Se
     });
 }
 
-function buildStudyItems(notes: StudyNote[], t: TFunction): StudyItem[] {
+function buildStudyItems(notes: StudyNote[], t: TFunction, locale: string): StudyItem[] {
   return [...notes]
     .sort((a, b) => getTime(b.updatedAt) - getTime(a.updatedAt))
     .slice(0, PANEL_ITEM_POOL)
     .map((note) => ({
       id: note.id,
-      passage: getStudyDisplayTitle(note, t),
-      references: getStudyReferences(note).slice(0, 2),
+      passage: getStudyDisplayTitle(note, t, locale),
+      references: getStudyReferences(note, locale).slice(0, 2),
       tags: (note.tags || []).length > 0 ? note.tags.slice(0, 3) : [note.type === 'question' ? t('dashboardHome.sections.studies.questionTag') : t('dashboardHome.sections.studies.noteTag')],
       href: `/studies/${note.id}`,
     }));
@@ -1039,22 +1063,18 @@ function getNextMeetingDate(group: Group) {
     .sort((a, b) => getTime(a) - getTime(b))[0];
 }
 
-function getStudyReferences(note: StudyNote) {
-  return note.scriptureRefs
-    .map(formatStudyReference)
-    .filter((reference): reference is string => Boolean(reference));
+/**
+ * The study panel's passages, in the interface language. This used to print the stored English
+ * book id ("Luke 5:17") on a Russian dashboard, with its own rules for ranges — one of eight
+ * copies of the same formatting, now `utils/scriptureReference.ts`.
+ */
+function getStudyReferences(note: StudyNote, locale: string) {
+  const face = { locale: resolveAppLocale(locale), style: 'long' as const };
+  return (note.scriptureRefs ?? []).map((reference) => formatScriptureReference(reference, face));
 }
 
-function formatStudyReference(reference: StudyNote['scriptureRefs'][number]) {
-  if (!reference.chapter) return reference.book;
-  if (reference.toChapter) return `${reference.book} ${reference.chapter}-${reference.toChapter}`;
-  if (!reference.fromVerse) return `${reference.book} ${reference.chapter}`;
-  const verse = reference.toVerse ? `${reference.fromVerse}-${reference.toVerse}` : reference.fromVerse;
-  return `${reference.book} ${reference.chapter}:${verse}`;
-}
-
-function getStudyDisplayTitle(note: StudyNote, t: TFunction) {
-  return note.title || getStudyReferences(note)[0] || t('dashboardHome.sections.studies.untitled');
+function getStudyDisplayTitle(note: StudyNote, t: TFunction, locale: string) {
+  return note.title || getStudyReferences(note, locale)[0] || t('dashboardHome.sections.studies.untitled');
 }
 
 function isWithinRange(date: string, start: Date, end: Date) {

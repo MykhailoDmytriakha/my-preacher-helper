@@ -5,6 +5,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { SermonPoint, Thought } from "@/models/models";
 import { announceIfPersisted, awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
@@ -59,19 +60,8 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
     };
   }, []);
 
-  // Handle escape key to close modal
-  useEffect(() => {
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    };
-
-    window.addEventListener("keydown", handleEscape);
-    return () => {
-      window.removeEventListener("keydown", handleEscape);
-    };
-  }, [onClose]);
+  /* Escape and the page lock come from the one shared rule (`useModalLayer`). */
+  const layer = useModalLayer({ onClose });
 
   const applyLocalThought = React.useCallback((updatedThought: Thought) => {
     setLocalThoughts((prev) =>
@@ -212,7 +202,7 @@ const KeyFragmentsModal: React.FC<KeyFragmentsModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+    <div {...layer} role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex items-center justify-center overscroll-contain bg-black bg-opacity-50">
       <div
         ref={modalRef}
         className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col"

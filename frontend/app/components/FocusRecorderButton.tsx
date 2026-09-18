@@ -27,6 +27,8 @@ interface FocusRecorderButtonProps {
   retryCount?: number;
   maxRetries?: number;
   transcriptionError?: string | null;
+  /** The month's allowance is spent: the same step cannot succeed on a second press. */
+  transcriptionLimitReached?: boolean;
   onClearError?: () => void;
 }
 
@@ -314,6 +316,7 @@ export const FocusRecorderButton = ({
   retryCount = 0,
   maxRetries = 3,
   transcriptionError,
+  transcriptionLimitReached = false,
   onClearError,
 }: FocusRecorderButtonProps) => {
   const [recordingTime, setRecordingTime] = useState(0);
@@ -757,6 +760,7 @@ export const FocusRecorderButton = ({
       />
 
       <AudioRecoveryPanel
+        limitReached={transcriptionLimitReached}
         show={shouldShowRecovery}
         audioUrl={storedAudioUrl}
         errorMessage={transcriptionError ?? null}

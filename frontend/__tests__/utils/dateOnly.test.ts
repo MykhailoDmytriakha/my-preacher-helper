@@ -1,4 +1,4 @@
-import { getTodayDateOnlyKey, toDateOnlyKey, parseDateOnlyAsLocalDate } from '@/utils/dateOnly';
+import { getTodayDateOnlyKey, toDateOnlyKey, toLocalDateOnlyKey, parseDateOnlyAsLocalDate } from '@/utils/dateOnly';
 
 describe('dateOnly', () => {
     describe('getTodayDateOnlyKey', () => {
@@ -77,5 +77,23 @@ describe('dateOnly', () => {
             // "0000-00-00" matches regex but is an invalid date
             expect(parseDateOnlyAsLocalDate('0000-00-00')).toBeNull();
         });
+    });
+});
+
+describe('toLocalDateOnlyKey — the day a stamp fell on, in the person\'s own clock', () => {
+    it('keeps a note written late in the evening on that evening\'s day, not on the UTC day', () => {
+        // Local time, whatever zone the test runs in: west of UTC the ISO form is already tomorrow.
+        const lateEvening = new Date(2026, 8, 15, 23, 30);
+        expect(toLocalDateOnlyKey(lateEvening.toISOString())).toBe('2026-09-15');
+    });
+
+    it('lets a date-only string through untouched: it names a day, not an instant', () => {
+        expect(toLocalDateOnlyKey('2026-09-06')).toBe('2026-09-06');
+    });
+
+    it('answers nothing for nothing', () => {
+        expect(toLocalDateOnlyKey(undefined)).toBeNull();
+        expect(toLocalDateOnlyKey('   ')).toBeNull();
+        expect(toLocalDateOnlyKey('not a date')).toBeNull();
     });
 });

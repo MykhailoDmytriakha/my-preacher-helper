@@ -15,10 +15,11 @@ import {
   seedCouncils,
   sortCouncils,
   splitForList,
+  topicPreview,
   topicState,
 } from '@/utils/council';
 
-import type { CouncilTopic } from '@/models/models';
+import type { Council, CouncilTopic } from '@/models/models';
 
 const topic = (overrides: Partial<CouncilTopic> = {}): CouncilTopic => ({
   id: 't1',
@@ -264,5 +265,39 @@ describe('changing what a section is clears an outcome that no longer applies', 
     const without = removeTopicOption(decided, 'o2');
     expect(without.acceptedOptionId).toBe('o1');
     expect(topicState(without)).toBe('decided');
+  });
+});
+
+
+describe('the sections a card shows', () => {
+  const council = (topics: Partial<CouncilTopic>[]): Council =>
+    ({ id: 'k1', userId: 'u1', title: 'Совет', status: 'preparing', topics, createdAt: '', updatedAt: '' }) as Council;
+
+  it('carries the SECTIONS, not their titles, so every line keeps its own outcome', () => {
+    /**
+     * The regression this guards: filtering out an untitled section and then indexing back into
+     * the unfiltered array pairs a heading with the NEXT section's decision — a council reading
+     * "Roof repair — accepted into membership". Only the sections themselves travel.
+     */
+    const preview = topicPreview(
+      council([
+        { id: 'a', title: 'Крыша', decision: 'Иванов' },
+        { id: 'b', title: '   ' },
+        { id: 'c', title: 'Приём', decision: 'Отложено' },
+      ]),
+    );
+
+    expect(preview.topics.map((topic) => topic.id)).toEqual(['a', 'c']);
+    expect(preview.topics.map((topic) => topic.decision)).toEqual(['Иванов', 'Отложено']);
+  });
+
+  it('counts only the named ones as left over', () => {
+    const preview = topicPreview(council(Array.from({ length: 8 }, (_, i) => ({ id: `t${i}`, title: `С ${i}` }))), 6);
+    expect(preview.topics).toHaveLength(6);
+    expect(preview.hidden).toBe(2);
+  });
+
+  it('hides nothing when they all fit', () => {
+    expect(topicPreview(council([{ id: 'a', title: 'Крыша' }])).hidden).toBe(0);
   });
 });

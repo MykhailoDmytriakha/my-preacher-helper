@@ -8,19 +8,22 @@ import AgendaView from "@/components/calendar/AgendaView";
 import AnalyticsSection from "@/components/calendar/AnalyticsSection";
 import CalendarHeader from "@/components/calendar/CalendarHeader";
 import { CalendarKindFilters } from "@/components/calendar/CalendarKindFilters";
-import { allKindsShown } from "@/components/calendar/calendarKinds";
+import { allKindsShown, CALENDAR_KIND_STYLE } from "@/components/calendar/calendarKinds";
 import DateEventList from "@/components/calendar/DateEventList";
 import LegacyDataWarning from "@/components/calendar/LegacyDataWarning";
 import PreachCalendar from "@/components/calendar/PreachCalendar";
 import PreachDateModal from "@/components/calendar/PreachDateModal";
 import { useCalendarCouncils } from "@/hooks/useCalendarCouncils";
 import { useCalendarGroups } from "@/hooks/useCalendarGroups";
+import { useCalendarNotes } from "@/hooks/useCalendarNotes";
+import { useCalendarPrayers } from "@/hooks/useCalendarPrayers";
 import { useCalendarSermons } from "@/hooks/useCalendarSermons";
 import { useSeries } from "@/hooks/useSeries";
 import { Sermon, PreachDate } from "@/models/models";
 import { useAuth } from "@/providers/AuthProvider";
 import * as preachDatesService from "@/services/preachDates.service";
 import {
+    CALENDAR_KINDS,
     countByKind,
     entriesInMonth,
     groupEntries,
@@ -58,6 +61,9 @@ export default function CalendarPage() {
         refetch: refetchGroups
     } = useCalendarGroups();
     const { entries: councilCalendarEntries, isLoading: councilsLoading, error: councilsError } = useCalendarCouncils();
+    const { entries: noteCalendarEntries, isLoading: notesLoading, error: notesError } = useCalendarNotes();
+    const { entries: prayerCalendarEntries, isLoading: prayersLoading, error: prayersError } = useCalendarPrayers();
+    const sourcesLoading = isLoading || groupsLoading || councilsLoading || notesLoading || prayersLoading;
 
     // Fetch series data for series color indicators
     const { series: allSeries } = useSeries(user?.uid || null);
@@ -65,11 +71,18 @@ export default function CalendarPage() {
     /*
      * EVERYTHING THE CALENDAR SHOWS, IN ONE SHAPE (`utils/calendarEntries.ts`). Each source is
      * translated once; from here down nothing on this page knows what a sermon or a council is,
-     * which is why the third kind cost a line rather than a pass through every view.
+     * which is why the third kind cost a line rather than a pass through every view — and the
+     * fourth and fifth, the study notes and the prayers, cost a line each.
      */
     const allEntries = useMemo(
-        () => [...sermonEntries(sermons), ...groupEntries(groups), ...councilCalendarEntries],
-        [councilCalendarEntries, groups, sermons]
+        () => [
+            ...sermonEntries(sermons),
+            ...groupEntries(groups),
+            ...councilCalendarEntries,
+            ...noteCalendarEntries,
+            ...prayerCalendarEntries,
+        ],
+        [councilCalendarEntries, groups, noteCalendarEntries, prayerCalendarEntries, sermons]
     );
 
     const visibleEntries = useMemo(() => allEntries.filter((entry) => shown[entry.kind]), [allEntries, shown]);
@@ -187,7 +200,7 @@ export default function CalendarPage() {
      * while the cache still holds last week's month — used to blank the whole page, analytics and
      * all. The page gives up only when there is genuinely nothing to show.
      */
-    if ((error || groupsError || councilsError) && allEntries.length === 0) {
+    if ((error || groupsError || councilsError || notesError || prayersError) && allEntries.length === 0) {
         return (
             <div className="flex items-center justify-center min-h-[400px]">
                 <div className="text-center">
@@ -207,7 +220,7 @@ export default function CalendarPage() {
                 onGoToToday={handleGoToToday}
             />
 
-            {!(isLoading || groupsLoading || councilsLoading) && (
+            {!sourcesLoading && (
                 <LegacyDataWarning
                     pendingSermons={pendingSermons}
                     onAddDate={handleAddDate}
@@ -217,7 +230,7 @@ export default function CalendarPage() {
             {view === 'month' ? (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     <div className="lg:col-span-1">
-                        {(isLoading || groupsLoading || councilsLoading) ? (
+                        {sourcesLoading ? (
                             <div className="h-[400px] bg-white dark:bg-gray-800 rounded-xl animate-pulse border border-gray-200 dark:border-gray-700" />
                         ) : (
                             <PreachCalendar
@@ -232,7 +245,7 @@ export default function CalendarPage() {
                         )}
 
                         {/* Analytics Mini-Summary could go here */}
-                        {!(isLoading || groupsLoading || councilsLoading) && (
+                        {!sourcesLoading && (
                             <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800/50">
                                 <h3 className="text-sm font-semibold text-blue-800 dark:text-blue-300 mb-2">
                                     {t('calendar.analytics.quickSummary')}
@@ -262,34 +275,28 @@ export default function CalendarPage() {
                                             </span>
                                         </div>
                                     )}
-                                    {monthCounts.group > 0 && (
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-emerald-600 dark:text-emerald-400">
-                                                {t('calendar.analytics.totalGroups', { defaultValue: 'Группы' })}
+                                    {/*
+                                      Every other kind of this month, one quiet row each, in the colour the
+                                      kind wears everywhere else on this page — so a new kind gets its row
+                                      without a block written by hand.
+                                    */}
+                                    {CALENDAR_KINDS.filter((kind) => kind !== 'sermon' && monthCounts[kind] > 0).map((kind) => (
+                                        <div key={kind} className="flex justify-between text-xs" data-testid={`calendar-summary-${kind}`}>
+                                            <span className={CALENDAR_KIND_STYLE[kind].legendLabel}>
+                                                {t(CALENDAR_KIND_STYLE[kind].legendKey)}
                                             </span>
-                                            <span className="font-bold text-emerald-900 dark:text-emerald-100">
-                                                {monthCounts.group}
-                                            </span>
-                                        </div>
-                                    )}
-                                    {/* The councils of this month, in the same quiet row as the rest. */}
-                                    {monthCounts.council > 0 && (
-                                        <div className="flex justify-between text-xs">
-                                            <span className="text-indigo-600 dark:text-indigo-400">
-                                                {t('calendar.legend.councils')}
-                                            </span>
-                                            <span className="font-bold text-indigo-900 dark:text-indigo-100">
-                                                {monthCounts.council}
+                                            <span className={`font-bold ${CALENDAR_KIND_STYLE[kind].legendLabel}`}>
+                                                {monthCounts[kind]}
                                             </span>
                                         </div>
-                                    )}
+                                    ))}
                                 </div>
                             </div>
                         )}
                     </div>
 
                     <div className="lg:col-span-2">
-                        {(isLoading || groupsLoading || councilsLoading) ? (
+                        {sourcesLoading ? (
                             <div className="space-y-4">
                                 {[1, 2].map(i => (
                                     <div key={i} className="h-32 bg-white dark:bg-gray-800 rounded-xl animate-pulse border border-gray-200 dark:border-gray-700" />
@@ -303,7 +310,7 @@ export default function CalendarPage() {
             ) : view === 'agenda' ? (
                 <div className="space-y-4">
                     <CalendarKindFilters shown={shown} onToggleKind={toggleKind} />
-                    {(isLoading || groupsLoading || councilsLoading) ? (
+                    {sourcesLoading ? (
                         <div className="space-y-4">
                             {[1, 2].map((row) => (
                                 <div key={row} className="h-24 animate-pulse rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800" />
@@ -331,6 +338,7 @@ export default function CalendarPage() {
                     church: { id: '', name: '', city: '' },
                     createdAt: new Date().toISOString()
                 } : undefined)}
+                defaultChurch={selectedSermon?.church}
                 defaultStatus={selectedSermon && getEffectiveIsPreached(selectedSermon) ? 'preached' : 'planned'}
             />
         </div>

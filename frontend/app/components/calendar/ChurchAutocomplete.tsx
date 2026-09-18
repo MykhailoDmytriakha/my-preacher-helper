@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import ChurchField from "@/components/church/ChurchField";
+import { FIELD_INPUT, FIELD_LABEL, FIELD_ROW } from "@/components/ui/formCardClasses";
 import { Church } from "@/models/models";
 
 interface ChurchAutocompleteProps {
@@ -34,22 +35,25 @@ export default function ChurchAutocomplete({
     };
 
     return (
-        <div className="space-y-4">
-            <ChurchField
-                id="church-name"
-                value={church.name ? church : undefined}
-                // Clearing the name keeps the city the person already typed: they are
-                // editing one record, and an empty name is not a reason to lose the city.
-                onChange={(next) => publish({ id: next?.id ?? church.id, name: next?.name ?? "", city: next?.city || church.city || "" })}
-                showHistoryCount
-                inputClassName="w-full rounded-lg border border-gray-200 bg-white py-2 pl-3 pr-10 text-sm leading-5 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-            />
+        <>
+            <div className={FIELD_ROW}>
+                <label htmlFor="church-name" className={FIELD_LABEL}>
+                    {t('calendar.church')}
+                </label>
+                <ChurchField
+                    id="church-name"
+                    value={church.name ? church : undefined}
+                    // Clearing the name keeps the city the person already typed: they are
+                    // editing one record, and an empty name is not a reason to lose the city.
+                    onChange={(next) => publish({ id: next?.id ?? church.id, name: next?.name ?? "", city: next?.city || church.city || "" })}
+                    hideLabel
+                    showHistoryCount
+                    inputClassName={`${FIELD_INPUT} pr-12`}
+                />
+            </div>
 
-            <div>
-                <label
-                    htmlFor="church-city"
-                    className="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300"
-                >
+            <div className={FIELD_ROW}>
+                <label htmlFor="church-city" className={FIELD_LABEL}>
                     {t('calendar.city')}
                 </label>
                 <input
@@ -58,9 +62,9 @@ export default function ChurchAutocomplete({
                     value={church.city || ""}
                     onChange={(e) => publish({ ...church, city: e.target.value })}
                     placeholder={t('calendar.churchAutocomplete.cityPlaceholder')}
-                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 transition-shadow focus:border-blue-500 focus:ring-2 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800"
+                    className={FIELD_INPUT}
                 />
             </div>
-        </div>
+        </>
     );
 }

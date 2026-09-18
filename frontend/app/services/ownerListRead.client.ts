@@ -1,9 +1,11 @@
 'use client';
 
+import { accountChangedError } from '@/services/ownerHttpTransport.client';
 import { apiClient } from '@/utils/apiClient';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { newClientId } from '@/utils/clientId';
+import { isBrowserOffline } from '@/utils/connectivity';
 import { resolveOwnerUid } from '@/utils/queryKeys';
 import { readWithDeadline } from '@/utils/readWithDeadline';
 
@@ -18,14 +20,23 @@ const SDK_DEADLINE_MS = 2500;
 /**
  * Codes that mean "no answer", as opposed to an answer of refusal. A refused read is a real
  * answer: asking a second road the same question would only bring the same refusal later.
+ *
+ * FOR READS ONLY. A read may be asked twice at no cost, so every flavour of silence qualifies —
+ * `internal` included. The write paths keep a deliberately narrower rule
+ * (`isUnreachableWriteError`, `isTransportFailure`): replaying a write that may already have
+ * landed is not free, so there `internal` must surface instead of being retried.
  */
 const SILENT_CODES = ['unavailable', 'deadline-exceeded', 'internal', 'unknown', 'cancelled'];
+
+/** Did the transport say nothing, so that the same question may be asked of the other road? */
+export function isSilentReadError(error: unknown): boolean {
+  const code = (error as { code?: string } | null | undefined)?.code;
+  return typeof code === 'string' && SILENT_CODES.includes(code);
+}
 
 /** After this, neither road has answered and the caller is told so rather than left waiting. */
 const SECOND_ROAD_DEADLINE_MS = 9000;
 
-/** Said in three places, and it must be the same sentence in all three. */
-const ACCOUNT_CHANGED = 'Account changed';
 
 /**
  * READING A LIST SO THAT NO DEVICE CAN LEAVE IT WAITING FOR EVER.
@@ -49,12 +60,11 @@ export async function readOwnerList<T>(
   viaSdk: Promise<T[]>,
   hydrate: (documents: Record<string, unknown>[]) => T[]
 ): Promise<T[]> {
-  const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+  const online = !isBrowserOffline();
   try {
     return await readWithDeadline(viaSdk, online ? SDK_DEADLINE_MS : 8000);
   } catch (error) {
-    const code = (error as { code?: string }).code;
-    if (!online || !SILENT_CODES.includes(code ?? '')) throw error;
+    if (!online || !isSilentReadError(error)) throw error;
     /*
      * WHOSE LIST WAS ASKED FOR IS DECIDED BY WHO ASKED, not by who is signed in now. A sign-in
      * that happens inside the 2.5 seconds would otherwise have the second road fetch the NEW
@@ -62,7 +72,7 @@ export async function readOwnerList<T>(
      * a cache still keyed by the old owner.
      */
     if (resolveOwnerUid() !== owner) {
-      throw Object.assign(new Error(ACCOUNT_CHANGED), { code: 'unauthenticated' });
+      throw accountChangedError();
     }
     /*
      * THE FIRST ROAD IS NOT ABANDONED, ONLY OVERTAKEN.
@@ -80,6 +90,38 @@ export async function readOwnerList<T>(
       firstToAnswer(viaSdk, readOwnerListFromServer(collection, owner, hydrate)),
       SECOND_ROAD_DEADLINE_MS
     );
+  }
+}
+
+/**
+ * ONE DOCUMENT, WITH THE SAME PROMISE THE LISTS HAVE.
+ *
+ * A single `getDoc` hangs on a silent transport exactly as a query does, and a series page that
+ * waits for ever on one document is no better off than one waiting on a list. There is no
+ * server route for reading a single document of these collections, and adding one would be a
+ * second door to guard: the owner list already answers, so the document is taken out of it.
+ * Reading a few extra documents is a cost paid only on a device that would otherwise show
+ * nothing at all.
+ */
+export async function readOwnerDocument<T extends { id: string }>(
+  collection: string,
+  owner: string,
+  id: string,
+  viaSdk: Promise<T | undefined>,
+  hydrate: (documents: Record<string, unknown>[]) => T[]
+): Promise<T | undefined> {
+  const online = !isBrowserOffline();
+  try {
+    return await readWithDeadline(viaSdk, online ? SDK_DEADLINE_MS : 8000);
+  } catch (error) {
+    if (!online || !isSilentReadError(error)) throw error;
+    if (resolveOwnerUid() !== owner) {
+      throw accountChangedError();
+    }
+    const fromServer = async () =>
+      (await readOwnerListFromServer(collection, owner, hydrate)).find((entry) => entry.id === id);
+    // As with a list: the first road is overtaken, not abandoned.
+    return readWithDeadline(firstToAnswer(viaSdk, fromServer()), SECOND_ROAD_DEADLINE_MS);
   }
 }
 
@@ -101,7 +143,7 @@ export async function readOwnerListFromServer<T>(
         // Acquiring a token takes a moment, and a sign-in inside that moment would send the new
         // account's credential for a question asked about the old one.
         if (resolveOwnerUid() !== owner) {
-          throw Object.assign(new Error(ACCOUNT_CHANGED), { code: 'unauthenticated' });
+          throw accountChangedError();
         }
         const response = await apiClient(
           `/api/owner-list?collection=${encodeURIComponent(collection)}&read=${newClientId()}`,
@@ -122,7 +164,7 @@ export async function readOwnerListFromServer<T>(
         // The account may have changed while this was in the air; answering the new owner with
         // the old owner's documents would be worse than answering nothing.
         if (resolveOwnerUid() !== owner) {
-          throw Object.assign(new Error(ACCOUNT_CHANGED), { code: 'unauthenticated' });
+          throw accountChangedError();
         }
         recordDiagnostic(OWNER_LIST_EVENT, {
           source: 'http',

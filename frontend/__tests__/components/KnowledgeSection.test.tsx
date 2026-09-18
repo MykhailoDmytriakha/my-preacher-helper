@@ -671,7 +671,7 @@ describe('KnowledgeSection Component', () => {
       // Wait for API error to be processed
       await waitFor(() => {
         expect(mockErrorFn).toHaveBeenCalled();
-      }, { timeout: 3000 });
+      });
     } finally {
       // Restore original console.error
       console.error = originalConsoleError;

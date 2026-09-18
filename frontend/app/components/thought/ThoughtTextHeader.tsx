@@ -17,7 +17,8 @@ interface ThoughtTextHeaderProps {
 export function ThoughtTextHeader({ dictation, available, saving, readOnly = false, showDictation = true, labelKey = 'editThought.textLabel' }: ThoughtTextHeaderProps) {
   const { t } = useTranslation();
   const disabled = !available || readOnly || dictation.transcriptionBlocked;
-  const quotaLabel = dictation.transcriptionBlocked ? t('settings.usage.transcriptionUsageExhausted') : undefined;
+  // Named by whichever allowance actually ran out — dictation spends two.
+  const quotaLabel = dictation.blockedLabelKey ? t(dictation.blockedLabelKey) : undefined;
   return <div className="flex min-h-[48px] flex-wrap items-center justify-between gap-3">
     <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{t(labelKey)}</label>
     {showDictation && <div className={`flex items-center gap-2 transition-opacity duration-300 ${disabled ? 'opacity-40 grayscale' : ''}`}

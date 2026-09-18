@@ -1,5 +1,6 @@
 // Performance optimization: Only load heavy mocks when needed
 import 'openai/shims/node';
+import { configure } from '@testing-library/dom';
 import '@testing-library/jest-dom';
 import 'jest-environment-jsdom';
 import fetchMock from 'jest-fetch-mock';
@@ -8,16 +9,27 @@ import React from 'react';
 // UI tests that are not about entitlements should remain focused on their own
 // interaction. The production hook is covered through the authenticated
 // entitlement fetch test; individual quota UI tests override this default.
+// Built from the real gate table, so the default stub cannot disagree with it about what an
+// action costs — the very drift this hook exists to prevent.
 jest.mock('@/hooks/useAiUsage', () => ({
-  useAiUsage: () => ({
-    aiRemaining: 1,
-    aiBlocked: false,
-    transcriptionRemaining: 1,
-    transcriptionBlocked: false,
-    loading: false,
-    refresh: jest.fn(),
-  }),
+  useAiUsage: () => require('./test-utils/aiUsage').aiUsageStub({ aiRemaining: 1, transcriptionRemaining: 1 }),
 }));
+
+/**
+ * HOW LONG AN ASYNC EXPECTATION MAY WAIT — and why the default was too short.
+ *
+ * `waitFor` and `findBy*` wait one second by default. That is generous on a developer's
+ * machine and not generous at all on the build machine, where the whole suite runs on two
+ * cores: a timer that fires in 20 ms here can take a second there simply because nothing got
+ * scheduled. The suite then fails a test that has nothing wrong with it, the deployment stops,
+ * and a rerun of the same commit goes green — which is exactly what BUG-20260905 describes.
+ *
+ * Four seconds is not "wait longer and hope". It is the difference between "the app never did
+ * this" and "the machine was busy": a real regression still fails, four seconds later, while a
+ * starved timer gets the room it needs. The per-test ceiling above it (`testTimeout`) leaves
+ * headroom for the expectation to fail before the test itself is cut off.
+ */
+configure({ asyncUtilTimeout: 4000 });
 
 // Set dummy API keys for OpenAI client initialization during tests
 process.env.OPENAI_API_KEY = 'test_key_openai';

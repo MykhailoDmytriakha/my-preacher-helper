@@ -83,7 +83,10 @@ const translationsByLocale: Record<string, Record<string, string>> = {
         'calendar.analytics.oldTestament': 'Ветхий Завет',
         'calendar.analytics.newTestament': 'Новый Завет',
         'calendar.analytics.monthlyActivity': 'Активность по месяцам',
-        'calendar.analytics.sermons': 'проповедей',
+        'calendar.totalSermonsWord_one': 'проповедь',
+        'calendar.totalSermonsWord_few': 'проповеди',
+        'calendar.totalSermonsWord_many': 'проповедей',
+        'calendar.totalSermonsWord_other': 'проповедей',
         'calendar.analytics.noSermons': 'Нет проповедей',
         'calendar.analytics.mostSermons': 'Больше всего проповедей',
         'calendar.analytics.noActivity': 'Нет активности',
@@ -107,7 +110,8 @@ const translationsByLocale: Record<string, Record<string, string>> = {
         'calendar.analytics.oldTestament': 'Old Testament',
         'calendar.analytics.newTestament': 'New Testament',
         'calendar.analytics.monthlyActivity': 'Monthly Activity',
-        'calendar.analytics.sermons': 'sermons',
+        'calendar.totalSermonsWord_one': 'sermon',
+        'calendar.totalSermonsWord_other': 'sermons',
         'calendar.analytics.noSermons': 'No sermons',
         'calendar.analytics.mostSermons': 'Most sermons',
         'calendar.analytics.noActivity': 'No activity',
@@ -131,7 +135,10 @@ const translationsByLocale: Record<string, Record<string, string>> = {
         'calendar.analytics.oldTestament': 'Старий Завіт',
         'calendar.analytics.newTestament': 'Новий Завіт',
         'calendar.analytics.monthlyActivity': 'Активність за місяцями',
-        'calendar.analytics.sermons': 'проповідей',
+        'calendar.totalSermonsWord_one': 'проповідь',
+        'calendar.totalSermonsWord_few': 'проповіді',
+        'calendar.totalSermonsWord_many': 'проповідей',
+        'calendar.totalSermonsWord_other': 'проповідей',
         'calendar.analytics.noSermons': 'Немає проповідей',
         'calendar.analytics.mostSermons': 'Найбільше проповідей',
         'calendar.analytics.noActivity': 'Немає активності',
@@ -154,7 +161,13 @@ jest.mock('react-i18next', () => ({
         t: (key: string, options?: any) => {
             if (key === 'buttons.close') return options?.defaultValue || 'Закрыть';
             const translations = translationsByLocale[currentLanguage] || {};
-            const template = translations[key] || options?.defaultValue || key;
+            // Like i18next: a count picks `key_one` / `key_few` / `key_many` / `key_other` first.
+            let form: string | undefined;
+            if (typeof options?.count === 'number') {
+                const lang = currentLanguage.startsWith('uk') ? 'uk' : currentLanguage.startsWith('ru') ? 'ru' : 'en';
+                form = translations[`${key}_${new Intl.PluralRules(lang).select(options.count)}`];
+            }
+            const template = form || translations[key] || options?.defaultValue || key;
             if (!options) return template;
             return Object.entries(options).reduce((acc, [optKey, value]) => {
                 if (optKey === 'defaultValue') return acc;
@@ -320,9 +333,9 @@ describe('AnalyticsSection', () => {
 
         render(<AnalyticsSection sermonsByDate={multiBookSermonsByDate} />);
 
-        expect(screen.getByTitle('Matthew (От Матфея): 1 проповедей')).toBeInTheDocument();
-        expect(screen.getByTitle('Mark (От Марка): 1 проповедей')).toBeInTheDocument();
-        expect(screen.getByTitle('Luke (От Луки): 1 проповедей')).toBeInTheDocument();
+        expect(screen.getByTitle('От Матфея: 1 проповедь')).toBeInTheDocument();
+        expect(screen.getByTitle('От Марка: 1 проповедь')).toBeInTheDocument();
+        expect(screen.getByTitle('От Луки: 1 проповедь')).toBeInTheDocument();
     });
 
     it('does not misclassify references when verse text mentions Иисуса', () => {
@@ -339,8 +352,8 @@ describe('AnalyticsSection', () => {
 
         render(<AnalyticsSection sermonsByDate={sermonsByDateWithJesusText} />);
 
-        expect(screen.getByTitle('1 Peter (1 Петра): 1 проповедей')).toBeInTheDocument();
-        expect(screen.getByTitle('Joshua (Иисус Навин): 0 проповедей')).toBeInTheDocument();
+        expect(screen.getByTitle('1 Петра: 1 проповедь')).toBeInTheDocument();
+        expect(screen.getByTitle('Иисус Навин: 0 проповедей')).toBeInTheDocument();
     });
 
     describe('Book recognition improvements', () => {
@@ -410,6 +423,28 @@ describe('AnalyticsSection', () => {
         });
     });
 
+    describe('tooltips read as a phrase in the interface language', () => {
+        const titles = () => Array.from(document.querySelectorAll('[title]')).map((node) => node.getAttribute('title') ?? '');
+
+        it.each([
+            ['ru', 'Притчи: 1 проповедь'],
+            ['uk', 'Приповістки: 1 проповідь'],
+            ['en', 'Proverbs: 1 sermon'],
+        ] as const)('names the book and agrees the count in %s', (language, expected) => {
+            currentLanguage = language;
+            render(<AnalyticsSection sermonsByDate={sermonsByDate} />);
+
+            expect(screen.getByTestId('book-tile-Proverbs')).toHaveAttribute('title', expected);
+        });
+
+        it('agrees the count on a month bar: three sermons are "3 проповеди"', () => {
+            render(<AnalyticsSection sermonsByDate={sermonsByDate} />);
+
+            expect(titles().some((title) => title.endsWith(': 3 проповеди'))).toBe(true);
+            expect(titles().some((title) => title.endsWith(': 3 проповедей'))).toBe(false);
+        });
+    });
+
     describe('Localization features', () => {
         it('displays month names in consistent format', () => {
             // Mock date-fns to return formatted months
@@ -417,7 +452,7 @@ describe('AnalyticsSection', () => {
             formatMock.mockImplementation((date, fmt) => {
                 void date;
                 if (fmt === 'LLL yy') return 'Янв 24'; // Russian format without dot, capitalized
-                if (fmt === 'MMMM yyyy') return 'Январь 2024';
+                if (fmt === 'LLLL yyyy') return 'январь 2024'; // standalone month, as date-fns names it alone
                 return 'January 2024';
             });
 
@@ -550,7 +585,7 @@ describe('AnalyticsSection', () => {
 
         expect(screen.getByText('Alpha Church')).toBeInTheDocument();
         expect(screen.queryByText(/Alpha Church,\s/)).not.toBeInTheDocument();
-        expect(screen.getByTitle(/Genesis.*: 1 проповедей/)).toBeInTheDocument();
+        expect(screen.getByTitle('Бытие: 1 проповедь')).toBeInTheDocument();
     });
 
     it('renders default book order for non-Russian locale', () => {

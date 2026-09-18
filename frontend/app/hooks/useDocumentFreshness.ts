@@ -1,12 +1,13 @@
 'use client';
 
 
-import { doc, getDocFromServer, onSnapshot, type DocumentData } from 'firebase/firestore';
+import { doc, getDocFromServer, onSnapshot, waitForPendingWrites, type DocumentData } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getClientDb } from '@/config/firebaseClientDb';
 import { readSermonFromServer } from '@/services/sermonReadFallback.client';
 import { diagnosticErrorCode, recordDiagnostic } from '@/utils/appDiagnostics';
+import { isBrowserOffline } from '@/utils/connectivity';
 import { serializeContent } from '@/utils/contentFingerprint';
 
 /**
@@ -56,6 +57,18 @@ export interface FreshnessDiagnostics {
    * warning — and the retry button with it — off the screen.
    */
   persistentFailure: FreshnessReason | null;
+}
+
+/**
+ * The structured code of a refusal, or nothing.
+ *
+ * Bounded on purpose: an error MESSAGE can carry document text, and diagnostics
+ * are stored on the device. Only a short, lower-case code survives this.
+ */
+function refusalCode(error: unknown): string | undefined {
+  const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+    ? error.code.replace(/^firestore\//, '') : undefined;
+  return code && /^[a-z-]{1,40}$/.test(code) ? code : undefined;
 }
 
 const emptyDiagnostics = (): FreshnessDiagnostics => ({
@@ -251,6 +264,8 @@ export function useDocumentFreshness<T>({
     let active = true;
     let listenerStopped = false;
     let hasPendingWrites = false;
+    /** At most one refusal per subscription may be deferred — see below. */
+    let deferredForOwnWrite = false;
     let unsubscribe = () => {};
     let requestId = 0;
     let inFlight: Promise<void> | null = null;
@@ -279,9 +294,7 @@ export function useDocumentFreshness<T>({
     };
     const unavailable = (reason: FreshnessReason, source: FreshnessEvent['source'], error?: unknown) => {
       if (!active) return;
-      const code = error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
-        ? error.code.replace(/^firestore\//, '') : undefined;
-      const errorCode = code && /^[a-z-]{1,40}$/.test(code) ? code : undefined;
+      const errorCode = refusalCode(error);
       const observed = errorCode === 'permission-denied' ? 'accessDenied'
         : errorCode === 'unauthenticated' ? 'accountRequired' : reason;
       recordDiagnostic(reason === 'checkTimeout' ? 'freshness-timeout' : 'freshness-error', { collection, source, code: errorCode, result: observed });
@@ -289,6 +302,50 @@ export function useDocumentFreshness<T>({
       lastRemoteSerialisedRef.current = null;
       setEverAnswered(true);
       setState('unknown');
+    };
+    /**
+     * A REFUSAL ABOUT A DOCUMENT WHOSE OWN WRITE IS STILL UNACKNOWLEDGED SAYS
+     * "NOT THERE YET", NOT "NOT YOURS".
+     *
+     * Rules answer a MISSING document exactly as they answer someone else's:
+     * `resource` is null, so `ownsExisting` is false and the read comes back
+     * `permission-denied` (`firestore.rules`, `match /studyNotes/{id}`). Measured
+     * live: a REST read of a non-existent own document answers 403 while the same
+     * token reads an existing one with 200.
+     *
+     * That matters because a screen may hold a document the server has never seen.
+     * The note editor mints a client id and moves the address bar to it the moment
+     * the create is SUBMITTED, not when it is accepted — so this listener attaches
+     * while the create is still in flight, and whichever of the two streams the
+     * backend serves first decides what the person sees. Firestore never resumes a
+     * terminally failed listener, so losing that coin flip left "the server refused
+     * the check" standing on screen for the rest of the session, seconds after the
+     * note had in fact been saved.
+     *
+     * THE UNACKNOWLEDGED WRITE IS ALSO THE CURE, because it always settles. The
+     * backend accepts it and the resubscription succeeds; or it rejects it, the
+     * queue empties, and the next refusal arrives with nothing pending behind it
+     * and is reported honestly. Hence one deferral per subscription: a second
+     * denial, after the writes have settled, is the real answer and must be shown.
+     *
+     * Offline this promise simply never settles, which is correct — the device is
+     * not being told anything — and the `offline` listener already says so.
+     */
+    const deferUntilOwnWriteSettles = (source: FreshnessEvent['source'], error: unknown): boolean => {
+      if (!hasPendingWrites || deferredForOwnWrite) return false;
+      if (refusalCode(error) !== 'permission-denied') return false;
+      deferredForOwnWrite = true;
+      recordDiagnostic('freshness-deferred', { collection, source });
+      waitForPendingWrites(getClientDb()).then(() => {
+        if (!active) return;
+        unsubscribe();
+        subscribe();
+      }, () => {
+        // The wait itself was abandoned (the signed-in user changed). That is a
+        // real "cannot tell", not a document that is merely still travelling.
+        if (active) unavailable('listenerStopped', source, error);
+      });
+      return true;
     };
     const serverAnswer = (snapshot: { exists: () => boolean; data: () => DocumentData | undefined }) => {
       if (!active) return;
@@ -346,6 +403,7 @@ export function useDocumentFreshness<T>({
         serverAnswer(snapshot);
       }, (error) => {
         listenerStopped = true;
+        if (deferUntilOwnWriteSettles('listener', error)) return;
         unavailable('listenerStopped', 'listener', error);
       });
     };
@@ -356,7 +414,7 @@ export function useDocumentFreshness<T>({
       // A terminal failure already has a more specific explanation.
       if (!listenerStopped) unavailable('initialCheck', 'opening');
     }, 15_000);
-    if (navigator.onLine === false) unavailable('offline', 'device');
+    if (isBrowserOffline()) unavailable('offline', 'device');
 
     const checkServer = (source: 'manual' | 'return' | 'opening'): Promise<void> => {
       if (!active) return Promise.resolve();
@@ -414,19 +472,25 @@ export function useDocumentFreshness<T>({
         else if (snapshot.metadata?.fromCache) unavailable('cached', source);
         else serverAnswer(snapshot);
       }).catch((error: unknown) => {
-        if (active && requestId === id) unavailable('checkFailed', source, error);
-        else recordDiagnostic('freshness-late-error', { collection, source, code: diagnosticErrorCode(error), elapsedMs: Date.now() - startedAt });
+        if (!active || requestId !== id) {
+          recordDiagnostic('freshness-late-error', { collection, source, code: diagnosticErrorCode(error), elapsedMs: Date.now() - startedAt });
+          return;
+        }
+        // A one-shot read is refused for the same reason a listener is: the
+        // document this device is still creating is not on the server yet.
+        if (deferUntilOwnWriteSettles(source, error)) return;
+        unavailable('checkFailed', source, error);
       }).finally(finish);
       return pending;
     };
     checkRef.current = () => checkServer('manual');
     const recoveryTimer = window.setTimeout(() => {
-      if ((serverReadRef.current || collection === 'sermons') && !lastServerProofRef.current && navigator.onLine !== false) {
+      if ((serverReadRef.current || collection === 'sermons') && !lastServerProofRef.current && !isBrowserOffline()) {
         void checkServer('opening');
       }
     }, 4000);
     const pollTimer = hasIndependentRead && pollIntervalMs ? window.setInterval(() => {
-      if (document.visibilityState === 'visible' && navigator.onLine !== false) void checkServer('return');
+      if (document.visibilityState === 'visible' && !isBrowserOffline()) void checkServer('return');
     }, Math.max(5000, pollIntervalMs)) : undefined;
     const onWentOffline = () => unavailable('offline', 'device');
     const onReturned = () => {
@@ -497,7 +561,7 @@ export function useDocumentFreshness<T>({
       state === 'unknown' &&
       !everAnswered &&
       !silenceIsNews &&
-      !(typeof navigator !== 'undefined' && navigator.onLine === false)
+      !isBrowserOffline()
         ? 'fresh'
         : state,
     remote,

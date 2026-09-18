@@ -1,8 +1,10 @@
-import { councilProgress } from '@/utils/council';
-import { toDateOnlyKey } from '@/utils/dateOnly';
+import { councilProgress, topicPreview } from '@/utils/council';
+import { toDateOnlyKey, toLocalDateOnlyKey } from '@/utils/dateOnly';
 import { getEffectivePreachDateStatus } from '@/utils/preachDateStatus';
+import { formatScriptureReferences } from '@/utils/scriptureReference';
 
-import type { Council, Group, Sermon } from '@/models/models';
+import type { Council, Group, PrayerRequest, Sermon, StudyNote } from '@/models/models';
+import type { AppLocale } from '@/utils/appLocale';
 
 /**
  * ONE SHAPE FOR EVERYTHING THE CALENDAR SHOWS.
@@ -20,11 +22,14 @@ import type { Council, Group, Sermon } from '@/models/models';
  * Pure: no React, no network. What each kind LOOKS like — its colour, its icon, its words — is a
  * view decision and lives in `components/calendar/calendarKinds.tsx`.
  */
-export const CALENDAR_KINDS = ['sermon', 'group', 'council'] as const;
+export const CALENDAR_KINDS = ['sermon', 'group', 'council', 'note', 'prayer'] as const;
 export type CalendarKind = (typeof CALENDAR_KINDS)[number];
 
-/** How a thing stands on its day: a sermon is planned or preached, a council is ahead or held. */
-export type CalendarEntryStatus = 'planned' | 'preached' | 'preparing' | 'held';
+/**
+ * How a thing stands on its day: a sermon is planned or preached, a council is ahead or held. A
+ * note or a prayer that is on the calendar a second time says why: it was updated, or answered.
+ */
+export type CalendarEntryStatus = 'planned' | 'preached' | 'preparing' | 'held' | 'updated' | 'answered';
 
 export interface CalendarEntry {
   kind: CalendarKind;
@@ -41,6 +46,14 @@ export interface CalendarEntry {
   audience?: string;
   outcome?: string;
   status?: CalendarEntryStatus;
+  /**
+   * WHAT THIS THING IS MADE OF, listed — a council's section headings today.
+   *
+   * A day answers "what do I have and what is it about", and for a council the agenda IS the
+   * "about": its name alone sent the pastor out of the calendar to remember it. Absent when
+   * there is nothing named yet, so a card never draws an empty block.
+   */
+  sections?: { titles: string[]; hidden: number };
   /** For a council: how many of its sections have an outcome. */
   progress?: { done: number; total: number };
 }
@@ -105,6 +118,10 @@ export function councilEntries(councils: Council[]): CalendarEntry[] {
     if (!date) return [];
     // The section's own rule for what counts as handled — not a second copy of it living here.
     const { done, total } = councilProgress(council);
+    // The SAME rule the section's own list uses for how many headings a card carries, so the two
+    // surfaces cannot drift into showing different amounts of the same council.
+    const { topics, hidden } = topicPreview(council);
+    const sections = { titles: topics.map((topic) => topic.title.trim()), hidden };
     return [
       {
         kind: 'council' as const,
@@ -115,8 +132,101 @@ export function councilEntries(councils: Council[]): CalendarEntry[] {
         href: `/care/council/${council.id}`,
         status: council.status === 'held' ? ('held' as const) : ('preparing' as const),
         progress: { done, total },
+        ...(sections.titles.length > 0 ? { sections } : {}),
       },
     ];
+  });
+}
+
+/** How many passages a day card previews under a note's title — the dashboard's number. */
+const NOTE_REFERENCE_PREVIEW = 2;
+
+/** The words a builder needs and cannot know: they belong to the language, not to the data. */
+export interface NoteEntryWords {
+  /** What to call a note that has no title and no Scripture to be named by. */
+  untitled: string;
+  /**
+   * The interface language, for the book names. Without it the stored English id leaked onto
+   * the day card — "Luke 5:17-26" under a note whose own chips read "Лк.5:17-26".
+   */
+  locale: AppLocale;
+}
+
+/**
+ * A NOTE APPEARS ON THE DAY IT WAS WRITTEN AND, IF LATER, ON THE DAY IT WAS LAST TOUCHED.
+ *
+ * It has no day of its own the way a sermon has a preach date; what it has is the stamps the
+ * clock left on it, and the owner asked for both. One day carries one card: a note written and
+ * edited on the same day is simply "written that day", and the first event keeps the day —
+ * otherwise nearly every note would read "updated" on the very day it was born, because that is
+ * when notes get edited. Only the second appearance carries a status, so the reader knows why the
+ * same note stands on the calendar twice.
+ *
+ * The stamps are instants, so the day is the person's own (`toLocalDateOnlyKey`), not the UTC
+ * prefix that would put an evening's work on tomorrow. The title falls back the way the
+ * dashboard's does: title, then the first Scripture reference, then a word for "untitled" that
+ * the caller passes in, because this module speaks no language. The passages under the title are
+ * a preview and stop at two, as they do in the dashboard's study panel: a note gathering seven
+ * of them would otherwise put a wall of chapter numbers on a day card.
+ */
+export function noteEntries(notes: StudyNote[], words: NoteEntryWords): CalendarEntry[] {
+  return notes.flatMap((note) => {
+    const written = toLocalDateOnlyKey(note.createdAt);
+    if (!written) return [];
+    const ownTitle = note.title?.trim();
+    const face = { locale: words.locale, style: 'long' as const };
+    const references = formatScriptureReferences(note.scriptureRefs, { ...face, limit: NOTE_REFERENCE_PREVIEW });
+    const base = {
+      kind: 'note' as const,
+      refId: note.id,
+      title: ownTitle || formatScriptureReferences(note.scriptureRefs, { ...face, limit: 1 }) || words.untitled,
+      href: `/studies/${note.id}`,
+      // The references sit under a title of the note's own; under a title that IS the reference
+      // they would only repeat it.
+      ...(ownTitle && references ? { subtitle: references } : {}),
+    };
+    const entries: CalendarEntry[] = [{ ...base, id: `note-${note.id}-written`, date: written }];
+    const touched = toLocalDateOnlyKey(note.updatedAt);
+    if (touched && touched > written) {
+      entries.push({ ...base, id: `note-${note.id}-updated`, date: touched, status: 'updated' });
+    }
+    return entries;
+  });
+}
+
+/** The first paragraph of a text — what a card can carry without becoming the text itself. */
+const firstParagraph = (text: string | undefined): string | undefined => {
+  const paragraph = text?.split(/\n\s*\n/)[0]?.trim();
+  return paragraph || undefined;
+};
+
+/**
+ * A PRAYER APPEARS ON THE DAY IT WAS BROUGHT AND, ONCE ANSWERED, ON THE DAY OF THE ANSWER.
+ *
+ * The same rule as a note: one card per day, the first event keeps a shared day, and only the
+ * second appearance says why it is there. The answer counts only while the prayer still stands
+ * answered — an `answeredAt` left behind by a prayer moved back to active is history, not a day.
+ * The updates written along the way stay inside the prayer: every one of them as a dot would turn
+ * the calendar into the prayer's own journal.
+ */
+export function prayerEntries(prayers: PrayerRequest[]): CalendarEntry[] {
+  return prayers.flatMap((prayer) => {
+    const brought = toLocalDateOnlyKey(prayer.createdAt);
+    if (!brought) return [];
+    const subtitle = firstParagraph(prayer.description);
+    const base = {
+      kind: 'prayer' as const,
+      refId: prayer.id,
+      title: prayer.title,
+      href: `/prayers/${prayer.id}`,
+      ...(subtitle ? { subtitle } : {}),
+    };
+    const entries: CalendarEntry[] = [{ ...base, id: `prayer-${prayer.id}-brought`, date: brought }];
+    const answered = prayer.status === 'answered' ? toLocalDateOnlyKey(prayer.answeredAt) : null;
+    if (answered && answered > brought) {
+      entries.push({ ...base, id: `prayer-${prayer.id}-answered`, date: answered, status: 'answered' });
+    }
+    return entries;
   });
 }
 

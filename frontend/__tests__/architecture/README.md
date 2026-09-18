@@ -61,3 +61,10 @@ The staged sermon guard migration moved existing writes into the legacy bridge a
 added transactional cascade reads. The detector also now counts Admin `create`;
 three pre-existing calls (councils repository, service-orders repository and custom
 order route) were verified in the pre-change checkout and added as discovered debt.
+
+Merging `main` on 2026-09-18 moved three ledger entries, none of them a new engine-era
+consumer. `main` commit `11b388b9` removed the settings page's direct SDK imports, so its two
+runtime entries were deleted (debt paid). `main` commit `13322a9f` added
+`waitForPendingWrites` to `hooks/useDocumentFreshness.ts` — a read-side wait inside the legacy
+freshness hook, written on `main` where this ledger does not exist — so it was recorded as
+discovered debt with a count of one. It retires with that hook when its domains migrate.

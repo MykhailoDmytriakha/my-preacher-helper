@@ -4,6 +4,7 @@ import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { useConfirm } from '@/hooks/useConfirm';
 import { useScrollLock } from '@/hooks/useScrollLock';
 import { useTextDictation } from '@/hooks/useTextDictation';
 import { Thought, SermonOutline } from '@/models/models';
@@ -60,6 +61,7 @@ export default function CreateThoughtModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submissionInFlightRef = useRef(false);
   const { t } = useTranslation();
+  const { confirm, confirmDialog } = useConfirm();
   const { isOnline, isMagicAvailable } = useConnection();
 
   const dictation = useTextDictation({
@@ -78,8 +80,16 @@ export default function CreateThoughtModal({
     onClose();
   };
 
-  const handleClose = () => {
-    if (isDirty && !window.confirm(t('createThought.dirtyGuard'))) return;
+  const handleClose = async () => {
+    if (isDirty) {
+      // Not destructive-looking: closing is the person's choice, the question only makes sure.
+      const close = await confirm({
+        title: t('createThought.dirtyGuard'),
+        confirmText: t('createThought.dirtyGuardConfirm'),
+        destructive: false,
+      });
+      if (!close) return;
+    }
     resetAndClose();
   };
 
@@ -226,6 +236,7 @@ export default function CreateThoughtModal({
         <FormActions onCancel={handleClose} cancelLabel={t('buttons.cancel')} submitLabel={t('buttons.save')}
           savingLabel={t('buttons.saving')} saving={isSubmitting} cancelDisabled={isSubmitting} submitDisabled={!text.trim()} />
       </form>
+      {confirmDialog}
     </FormDialog>
   );
 }

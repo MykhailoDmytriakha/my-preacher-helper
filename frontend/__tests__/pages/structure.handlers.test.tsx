@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 import StructurePage from '@/(pages)/(private)/sermons/[id]/structure/page';
@@ -217,7 +217,12 @@ jest.mock('@/components/Column', () => {
 
 jest.mock('@/(pages)/(private)/sermons/[id]/structure/components/AmbiguousSection', () => ({
   AmbiguousSection: (props: any) => {
+    // Once, like a single click. The delete now asks in an in-app window, and every question
+    // re-renders the page: asking on every render would ask forever.
+    const asked = React.useRef(false);
     React.useEffect(() => {
+      if (asked.current) return;
+      asked.current = true;
       props.onDelete?.('amb-1', 'ambiguous');
     }, [props]);
     return <div data-testid="ambiguous-section" />;
@@ -227,7 +232,6 @@ jest.mock('@/(pages)/(private)/sermons/[id]/structure/components/AmbiguousSectio
 describe('StructurePage handlers', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    window.confirm = jest.fn(() => true);
     focusModeState.focusedColumn = 'introduction';
     autoTriggerAiSort = false;
     autoTriggerPointLock = true;
@@ -287,6 +291,12 @@ describe('StructurePage handlers', () => {
     });
 
     render(<StructurePage />);
+
+    // The ambiguous thought is only deleted after the person says yes in the app's own window.
+    const question = await screen.findByTestId('confirm-modal');
+    expect(question).toHaveTextContent('"Ambiguous"');
+    expect(deleteThought).not.toHaveBeenCalled();
+    fireEvent.click(within(question).getByRole('button', { name: 'common.delete' }));
 
     await waitFor(() => {
       expect(pushSpy).toHaveBeenCalled();

@@ -16,6 +16,7 @@ jest.mock('react-i18next', () => ({
         return `${values?.used} / ${values?.limit} min`;
       }
       if (key === 'usageGrace.hardCap') return `Hard cap ${values?.date}`;
+      if (key === 'usageGrace.grace') return `Carried until ${values?.date}`;
       return values?.count ?? values?.tier ?? key;
     },
     i18n: { language: 'en', resolvedLanguage: 'en' },
@@ -132,6 +133,58 @@ describe('UsageWidget', () => {
     expect(notice).toHaveTextContent('Hard cap Aug 1, 2026');
     expect(notice).toHaveTextContent('usageGrace.softExpansion');
     expect(notice).toHaveClass('from-violet-50', 'to-fuchsia-50');
+  });
+
+  it('says the grace out loud while the person is being carried', () => {
+    /**
+     * The warm words used to wait for the hard cap, so the whole band where the person IS
+     * being carried passed in silence: a full bar, a number over a hundred, and nothing
+     * saying why anything still worked. F7 asks for grace to be FELT, not merely granted.
+     */
+    mockEntitlement({ ai: metric(102, 100, 110, 'grace') });
+
+    render(<UsageWidget user={{ uid: 'user-1' } as never} />);
+
+    const notice = screen.getByTestId('usage-grace-notice');
+    expect(notice).toHaveTextContent('Carried until Aug 1, 2026');
+    expect(notice).toHaveTextContent('Verse');
+  });
+
+  it('does not repeat the same verse when the panel is opened again', () => {
+    /**
+     * Four verses exist. Walking in from the tooltip and reading the line you just read there
+     * — or coming back to settings and meeting the same one — makes the grace feel filed
+     * rather than said. The showings share one cycle, so each visit moves it on.
+     */
+    mockEntitlement({ ai: metric(102, 100, 110, 'grace') });
+
+    const first = render(<UsageWidget user={{ uid: 'user-1' } as never} />);
+    const firstVerse = screen.getByTestId('usage-grace-notice').textContent;
+    first.unmount();
+
+    render(<UsageWidget user={{ uid: 'user-1' } as never} />);
+    const secondVerse = screen.getByTestId('usage-grace-notice').textContent;
+
+    expect(firstVerse).toBeTruthy();
+    expect(secondVerse).not.toBe(firstVerse);
+  });
+
+  it('lets the hard cap speak instead of the grace once it is reached — one notice, the harder one', () => {
+    mockEntitlement({ ai: metric(110, 100, 110, 'blocked'), transcription: metric(102, 100, 110, 'grace') });
+
+    render(<UsageWidget user={{ uid: 'user-1' } as never} />);
+
+    expect(screen.getByTestId('usage-hard-cap-notice')).toBeInTheDocument();
+    expect(screen.queryByTestId('usage-grace-notice')).not.toBeInTheDocument();
+  });
+
+  it('stays quiet while everything is inside its limit', () => {
+    mockEntitlement();
+
+    render(<UsageWidget user={{ uid: 'user-1' } as never} />);
+
+    expect(screen.queryByTestId('usage-grace-notice')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('usage-hard-cap-notice')).not.toBeInTheDocument();
   });
 
   it('opens the AI explanation after the hover delay and dismisses it with Escape', () => {

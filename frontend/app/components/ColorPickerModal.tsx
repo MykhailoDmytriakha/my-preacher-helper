@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useModalLayer } from '@/hooks/useModalLayer';
+
 interface ColorPickerModalProps {
   tagName: string;
   initialColor: string;
@@ -30,6 +32,8 @@ const colorPresets = [
 
 const ColorPickerModal: React.FC<ColorPickerModalProps> = ({ tagName, initialColor, onOk, onCancel }) => {
   const { t } = useTranslation();
+  /* Cancel is this window's way out, and Escape means the same thing. */
+  const layer = useModalLayer({ onClose: onCancel });
   const [selectedColor, setSelectedColor] = useState(initialColor);
   const [customColor, setCustomColor] = useState(initialColor);
 
@@ -45,7 +49,7 @@ const ColorPickerModal: React.FC<ColorPickerModalProps> = ({ tagName, initialCol
   };
 
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
+    <div {...layer} role="dialog" aria-modal="true" className="fixed inset-0 z-[110] flex items-center justify-center overscroll-contain bg-black bg-opacity-50 backdrop-blur-sm">
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-xl max-w-md w-full mx-4">
         <h2 className="text-xl font-semibold mb-5 text-gray-800 dark:text-gray-100">
           {t('settings.editColorFor')} <span className="text-blue-500">{tagName}</span>

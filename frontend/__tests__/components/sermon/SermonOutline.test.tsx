@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import React from 'react';
 
 import type { Sermon, SermonOutline as SermonOutlineType, Thought } from '@/models/models';
@@ -448,11 +448,7 @@ describe('SermonOutline Component', () => {
   });
 
   test('deletes an outline point when delete button is clicked and confirmed', async () => {
-    // Mock confirm to return true (simulating user clicking "OK")
-    const originalConfirm = window.confirm;
-    window.confirm = jest.fn().mockReturnValue(true);
-
-    try {
+    {
       render(<SermonOutline sermon={mockSermon} onOutlineUpdate={mockOnOutlineUpdate} />);
 
       // Wait for the initial render
@@ -471,11 +467,12 @@ describe('SermonOutline Component', () => {
       // Hover to reveal delete button (simulated by finding by role)
       const deleteButton = within(listItem!).getByLabelText('common.delete');
 
-      // Click the delete button
+      // Click the delete button, then confirm in the app's own window
       fireEvent.click(deleteButton);
-
-      // Confirm should have been called with the correct message
-      expect(window.confirm).toHaveBeenCalledWith('structure.deletePointConfirm');
+      const question = await screen.findByRole('dialog', { name: 'structure.deletePointConfirm' });
+      await act(async () => {
+        fireEvent.click(within(question).getByRole('button', { name: 'common.delete' }));
+      });
 
       // Check if updateSermonOutline was called with the updated outline
       await waitFor(() => {
@@ -495,9 +492,6 @@ describe('SermonOutline Component', () => {
       );
         expect(mockOnOutlineUpdate).toHaveBeenCalledWith(expectedOutline);
       });
-    } finally {
-      // Restore original window.confirm
-      window.confirm = originalConfirm;
     }
   }, 15000);
 

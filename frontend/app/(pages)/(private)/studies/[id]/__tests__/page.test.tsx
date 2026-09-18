@@ -414,7 +414,7 @@ describe('StudyNoteEditorPage Pagination', () => {
         // Wait for AI results to be applied
         await waitFor(() => {
             expect(screen.getByDisplayValue('AI Title')).toBeInTheDocument();
-        }, { timeout: 2000 });
+        });
 
         expect(screen.getByText('ai-tag')).toBeInTheDocument();
     });
@@ -554,7 +554,6 @@ describe('StudyNoteEditorPage Pagination', () => {
                 loading: false,
                 deleteShareLink: mockDeleteShareLink,
             });
-            window.confirm = jest.fn(() => true);
             (global.fetch as jest.Mock) = jest.fn().mockResolvedValue({
                 ok: true,
                 json: jest.fn().mockResolvedValue([{ noteId: 'note-1', id: 'link-1' }])
@@ -567,6 +566,11 @@ describe('StudyNoteEditorPage Pagination', () => {
             fireEvent.click(moreButton);
             const deleteButton = screen.getByText('common.delete');
             fireEvent.click(deleteButton);
+
+            // The app asks in its own window; nothing is removed before the answer.
+            const question = await screen.findByRole('dialog', { name: 'studiesWorkspace.deleteConfirm' });
+            expect(mockDeleteNote).not.toHaveBeenCalled();
+            fireEvent.click(within(question).getByRole('button', { name: 'common.delete' }));
 
             await waitFor(() => {
                 expect(mockDeleteNote).toHaveBeenCalledWith('note-1');

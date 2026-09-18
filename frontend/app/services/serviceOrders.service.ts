@@ -6,7 +6,6 @@
  * guard, or into the offline outbox — and a later change of that answer touches one file.
  */
 
-import { isBrowserOffline } from '@/services/atomicUpdate.client';
 import { createServiceOrderOnServer, deleteServiceOrderOnServer, setServiceOrderRanksOnServer, updateServiceOrderMetaOnServer, updateServiceOrderStepsOnServer } from '@/services/serviceOrderEditing.client';
 import {
   createServiceOrderViaClient,
@@ -18,6 +17,7 @@ import {
   updateServiceOrderMetaViaClient,
   updateServiceOrderStepsViaClient,
 } from '@/services/serviceOrders.client';
+import { isBrowserOffline } from '@/utils/connectivity';
 
 import type { ServiceOrder, ServiceOrderStep } from '@/models/models';
 

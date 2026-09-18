@@ -30,7 +30,7 @@ export default function AddUpdateModal({ onClose, onSubmit }: Props) {
     onEmpty: () => setError(t('prayer.update.dictationEmpty')),
     fallbackErrorKey: 'prayer.update.dictationError',
   });
-  const transcriptionUnavailableLabel = dictation.transcriptionBlocked ? t('settings.usage.transcriptionUsageExhausted') : undefined;
+  const transcriptionUnavailableLabel = dictation.blockedLabelKey ? t(dictation.blockedLabelKey) : undefined;
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!text.trim()) return;

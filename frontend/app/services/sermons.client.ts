@@ -32,11 +32,14 @@ import {
   revisionedUpdate,
 } from '@/services/conflictSafeUpdate.client';
 import { auth } from '@/services/firebaseAuth.service';
+import { accountChangedError } from '@/services/ownerHttpTransport.client';
 import { readOwnerList } from '@/services/ownerListRead.client';
+import { isSilentReadError } from '@/services/ownerListRead.client';
 import { readSermonFromServer } from '@/services/sermonReadFallback.client';
 import { enqueueWrite, listOutbox, newIntentId, type OutboxEntry } from '@/services/writeOutbox.client';
 import { changedFields } from '@/utils/changedFields';
 import { newClientId } from '@/utils/clientId';
+import { isBrowserOffline } from '@/utils/connectivity';
 import { toDateOnlyKey } from '@/utils/dateOnly';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { mergeOutline } from '@/utils/mergeOutline';
@@ -127,15 +130,22 @@ export async function getSermonsViaClient(userId: string): Promise<Sermon[]> {
   return readOwnerList(SERMONS_COLLECTION, userId, readSermonsViaSdk(userId), shapeSermons);
 }
 
+/**
+ * How long the sermon's own document may keep the browser's Firestore silent before the app's
+ * server is asked (set by BUG-20260906-sermon-read-hangs, `4f098b62`). Longer than the lists'
+ * 2.5 s on purpose: this read also waits for a cache answer it may then refuse to trust.
+ */
+const SERMON_SDK_DEADLINE_MS = 4000;
+
 export async function getSermonByIdViaClient(id: string): Promise<Sermon | undefined> {
-  const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+  const online = !isBrowserOffline();
   const owner = auth.currentUser?.uid;
   let cached: Sermon | undefined;
   const assertOwner = () => {
-    if (auth.currentUser?.uid !== owner) throw Object.assign(new Error('Account changed'), { code: 'unauthenticated' });
+    if (auth.currentUser?.uid !== owner) throw accountChangedError();
   };
   try {
-    const snap = await readWithDeadline(getDoc(sermonRef(id)), online ? 4000 : 8000);
+    const snap = await readWithDeadline(getDoc(sermonRef(id)), online ? SERMON_SDK_DEADLINE_MS : 8000);
     assertOwner();
     // Pending writes belong to this device. Recovery must not replace them with
     // an older committed version. A cache-only answer is not a server proof.
@@ -144,8 +154,7 @@ export async function getSermonByIdViaClient(id: string): Promise<Sermon | undef
     }
     if (snap.exists()) cached = hydrateSermon({ ...(snap.data() as Sermon), id: snap.id });
   } catch (error) {
-    const code = (error as { code?: string }).code;
-    if (!online || !['unavailable', 'deadline-exceeded', 'internal', 'unknown', 'cancelled'].includes(code ?? '')) throw error;
+    if (!online || !isSilentReadError(error)) throw error;
   }
   try {
     const sermon = await readSermonFromServer(id);
@@ -224,7 +233,7 @@ export async function fetchCalendarSermonsViaClient(
  * Passing an explicit patch keeps the blast radius to what the user touched.
  */
 export type SermonCoreUpdate = Partial<
-  Pick<Sermon, 'title' | 'verse' | 'isPreached' | 'preparation' | 'sourceNoteIds'>
+  Pick<Sermon, 'title' | 'verse' | 'isPreached' | 'preparation' | 'sourceNoteIds' | 'church'>
 >;
 
 /** Aggregate name for the sermon's own fields (title/verse/isPreached/preparation). */
@@ -242,6 +251,40 @@ export const SERMON_PREACH_DATES_AGGREGATE = 'preachDates';
 export const SERMON_PREPARATION_AGGREGATE = 'preparation';
 export const SERMON_PLAN_AGGREGATE = 'plan';
 
+/**
+ * The whitelist, and nothing but the whitelist.
+ *
+ * `patch` is authoritative when given: only the keys it carries are written, so an absent
+ * key means "leave whatever is on the server alone". Lives apart from the write itself
+ * because it is the part that grows — every new field on a sermon adds a line here, and a
+ * field the model has but this function does not is silently dropped on every save.
+ */
+function collectSermonCoreWrite(source: Sermon | SermonCoreUpdate, patch?: SermonCoreUpdate): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  const wants = (key: keyof SermonCoreUpdate) => !patch || key in patch;
+
+  // Text is skipped when falsy: an empty title is a mistake, not an intention.
+  if (wants('title') && source.title) data.title = source.title;
+  if (wants('verse') && source.verse) data.verse = source.verse;
+  if (wants('isPreached') && typeof source.isPreached === 'boolean') data.isPreached = source.isPreached;
+  if (wants('preparation') && source.preparation && typeof source.preparation === 'object') {
+    data.preparation = source.preparation;
+  }
+  // An EMPTY LIST is the opposite of empty text — it is how the last link is removed, so
+  // the test is "is it an array", never "is it truthy".
+  if (wants('sourceNoteIds') && Array.isArray(source.sourceNoteIds)) {
+    data.sourceNoteIds = source.sourceNoteIds;
+  }
+  // THE CONGREGATION THIS SERMON IS PREPARED FOR — a whole object, and the emptiness test
+  // is "is it an object", never "does it have a name". Clearing the field travels as a
+  // NAMELESS church, and a truthiness test would drop exactly that, leaving the old
+  // congregation in the document while the form showed it gone.
+  if (wants('church') && source.church && typeof source.church === 'object') {
+    data.church = source.church;
+  }
+  return data;
+}
+
 export async function updateSermonViaClient(
   updated: Sermon,
   patch?: SermonCoreUpdate,
@@ -250,33 +293,7 @@ export async function updateSermonViaClient(
   expectedBaseline?: Record<string, unknown> | null
 ): Promise<Sermon | null> {
   const ref = sermonRef(updated.id);
-  const data: Record<string, unknown> = {};
-  const source = patch ?? updated;
-  // `patch` is authoritative when given: only the keys it carries are written,
-  // so an absent key means "leave whatever is on the server alone".
-  if (!patch || 'title' in patch) {
-    if (source.title) data.title = source.title;
-  }
-  if (!patch || 'verse' in patch) {
-    if (source.verse) data.verse = source.verse;
-  }
-  if (!patch || 'isPreached' in patch) {
-    if (typeof source.isPreached === 'boolean') data.isPreached = source.isPreached;
-  }
-  if (!patch || 'preparation' in patch) {
-    if (source.preparation && typeof source.preparation === 'object') {
-      data.preparation = source.preparation;
-    }
-  }
-  // The fields above are skipped when falsy, which is right for text: an empty title is a
-  // mistake, not an intention. An EMPTY LIST is the opposite — it is how the last link is
-  // removed, so the test is "is it an array", never "is it truthy". Skipping `[]` here would
-  // make unlinking silently do nothing.
-  if (!patch || 'sourceNoteIds' in patch) {
-    if (Array.isArray(source.sourceNoteIds)) {
-      data.sourceNoteIds = source.sourceNoteIds;
-    }
-  }
+  const data = collectSermonCoreWrite(patch ?? updated, patch);
   if (Object.keys(data).length === 0) return null; // server replies 400 -> service null
   data.updatedAt = now();
 
@@ -363,7 +380,7 @@ export async function updateSermonPreparationViaClient(
    * transaction, no base, no caller change — the queue applies it at reconnect
    * instead of overwriting.
    */
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+  if (isBrowserOffline()) {
     const nestedPatch: { [field: string]: FieldValue | Partial<unknown> | undefined } = {
       updatedAt: now(),
       ...revisionBump(SERMON_PREPARATION_AGGREGATE),
@@ -434,7 +451,7 @@ export async function updateStructureViaClient(
       { kind: 'structure', base: baseStructure ?? undefined }
     );
 
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+  if (isBrowserOffline()) {
     if (structureIntent()) return { message: 'ThoughtsBySection queued for merge on reconnect' };
     throw new UnsavedMergeError(SERMON_THOUGHTS_AGGREGATE);
   }
@@ -598,7 +615,7 @@ export async function updateSermonOutlineViaClient(
         { kind: 'outline', base: options.baseOutline ?? null }
       );
 
-    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    if (isBrowserOffline()) {
       if (outlineIntent()) return outline;
       // Nowhere to store the operation. Say so — a computed plan queued from a cached
       // read would replace the other device's points at reconnect, which is the very
@@ -694,7 +711,7 @@ export async function applyScratchToOutlineViaClient(
       { kind: 'applyScratch', base }
     );
 
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+  if (isBrowserOffline()) {
     if (applyIntent()) return { outline: cleanOutline, scratch: cleanScratch };
     throw new UnsavedMergeError(SERMON_OUTLINE_AGGREGATE);
   }
@@ -804,7 +821,7 @@ async function writeScratchNotesViaClient(
    * still takes the transactional path (online) or the old whole-array queue (offline,
    * unchanged and no worse than before).
    */
-  if (typeof navigator !== 'undefined' && navigator.onLine === false && baseScratch) {
+  if (isBrowserOffline() && baseScratch) {
     const baseIds = new Set(baseScratch.map((n) => n.id));
     const mineIds = new Set(cleanScratch.map((n) => n.id));
     const added = cleanScratch.filter((n) => !baseIds.has(n.id));

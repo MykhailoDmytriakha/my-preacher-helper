@@ -27,6 +27,60 @@ describe('sermonPlanAccess utilities', () => {
     userId: 'user-1',
   };
 
+  describe('a plan kept in the CURRENT shape, where the assembled document is not stored', () => {
+    /**
+     * `planText` holds the text per node and the assembled document is built when someone
+     * reads it — deliberately, so the two cannot drift. A sermon saved this way has no
+     * `plan` and no `draft` at all, and anything that asks storage for the assembled
+     * document gets nothing: the Word and PDF buttons went grey on a sermon whose plan the
+     * owner was looking at, while the same button worked on the plan page, which builds its
+     * own content.
+     */
+    const modernSermon = {
+      id: 'sermon-modern',
+      title: 'Сила благочестия',
+      verse: '1 Тим 6:6',
+      date: '2026-09-13',
+      userId: 'user-1',
+      thoughts: [],
+      outline: {
+        introduction: [{ id: 'p1', text: 'Великое приобретение' }],
+        main: [{ id: 'p2', text: 'Принцип полноты' }],
+        conclusion: [{ id: 'p3', text: 'Так говорит Господь' }],
+      },
+      planText: {
+        p1: '- Исав пренебрёг первородством',
+        p2: '- сосуд без масла',
+        p3: '- довольствуются внешним видом',
+      },
+    } as unknown as Sermon;
+
+    it('says the plan exists', () => {
+      expect(hasPlan(modernSermon)).toBe(true);
+    });
+
+    it('hands the export the plan instead of undefined', () => {
+      const data = getSermonPlanData(modernSermon);
+
+      expect(data).toBeDefined();
+      expect(data?.introduction).toContain('Исав пренебрёг первородством');
+      expect(data?.main).toContain('сосуд без масла');
+      expect(data?.conclusion).toContain('довольствуются внешним видом');
+      expect(data?.sermonTitle).toBe('Сила благочестия');
+    });
+
+    it('calls it ready for preaching, all three sections being written', () => {
+      expect(isSermonReadyForPreaching(modernSermon)).toBe(true);
+    });
+
+    it('still answers no when nothing is written', () => {
+      const empty = { ...modernSermon, planText: {} } as unknown as Sermon;
+
+      expect(getSermonPlanData(empty)).toBeUndefined();
+      expect(isSermonReadyForPreaching(empty)).toBe(false);
+    });
+  });
+
   it('detects readiness when only structure is present', () => {
     const sermon: Sermon = {
       ...baseSermon,
@@ -150,7 +204,14 @@ describe('sermonPlanAccess utilities', () => {
     expect(getSermonPlanData(sermon)).toBeUndefined();
   });
 
-  it('prefers draft over plan when extracting plan data', () => {
+  it('takes the saved plan over the legacy draft, section by section, losing neither', () => {
+    /**
+     * This suite used to assert the opposite order while the export suite asserted this one:
+     * the two paths never met, so both could be "right". They share one assembler now, and
+     * the order is the export path's — `plan` is the saved document, `draft` the legacy field,
+     * which is also how the repository hydrates. Nothing is lost either way: the lookup is per
+     * SECTION, so a section only the draft holds still comes through.
+     */
     const sermon: Sermon = {
       ...baseSermon,
       plan: {
@@ -170,7 +231,7 @@ describe('sermonPlanAccess utilities', () => {
     expect(planData).toEqual({
       sermonTitle: baseSermon.title,
       sermonVerse: baseSermon.verse,
-      introduction: 'Draft intro',
+      introduction: 'Plan intro',
       main: 'Draft main',
       conclusion: 'Draft conclusion',
     });

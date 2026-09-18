@@ -74,10 +74,17 @@ const config: Config = {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.4' },
         },
+        // One lap of the "AI is working" comet. See `components/ui/AiBusyComet.tsx` for why
+        // the timing function below must stay eased rather than linear.
+        'ai-orbit': {
+          to: { transform: 'rotate(360deg)' },
+        },
       },
       animation: {
         'countdown-pop': 'countdown-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
         'pulse-fast': 'pulse-fast 0.3s ease-in-out infinite',
+        // Eased, never linear: the easing is what makes the tail stretch and catch up.
+        'ai-orbit': 'ai-orbit 1.6s cubic-bezier(0.65, 0, 0.35, 1) infinite',
       },
     },
   },

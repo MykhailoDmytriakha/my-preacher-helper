@@ -34,6 +34,41 @@ export interface MarkdownOutlineControl {
  * A section holding a search hit is force-opened even while collapsed — otherwise
  * the search silently misses text that is in the note.
  */
+/**
+ * Brings a heading into view. The section is opened first (with its ancestors) so the
+ * jump never lands inside folded text.
+ *
+ * Lives beside the control rather than inside the note page's outline tree, because the
+ * sermon screen jumps to a section too — from a scratch atom back to the paragraph it was
+ * cut from — and a second copy of "reveal, then scroll" would drift from this one.
+ */
+export function jumpToSection(outline: MarkdownOutlineControl, id: string) {
+    outline.revealSection(id);
+    // After the reveal has rendered, or the target may still be unmounted.
+    requestAnimationFrame(() => {
+        document
+            .querySelector(`[data-section-id="${id}"]`)
+            ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+}
+
+/** Depth-first search for the section whose heading text matches, trimmed. */
+export function findSectionByHeading(
+    sections: { id: string; headingText: string; children: unknown[] }[],
+    heading: string
+): string | null {
+    const needle = heading.trim();
+    for (const section of sections) {
+        if (section.headingText.trim() === needle) return section.id;
+        const inner = findSectionByHeading(
+            section.children as { id: string; headingText: string; children: unknown[] }[],
+            needle
+        );
+        if (inner) return inner;
+    }
+    return null;
+}
+
 export function useMarkdownOutline(content: string, searchQuery = ''): MarkdownOutlineControl {
     const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => new Set());
 

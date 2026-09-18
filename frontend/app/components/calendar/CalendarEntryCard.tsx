@@ -27,6 +27,9 @@ const STATUS_TONE: Record<CalendarEntryStatus, 'amber' | 'emerald' | 'indigo' | 
   preached: 'emerald',
   preparing: 'indigo',
   held: 'neutral',
+  updated: 'neutral',
+  // The green the prayer section itself gives an answered prayer.
+  answered: 'emerald',
 };
 
 const STATUS_KEY: Record<CalendarEntryStatus, string> = {
@@ -34,6 +37,8 @@ const STATUS_KEY: Record<CalendarEntryStatus, string> = {
   preached: 'calendar.status.preached',
   preparing: 'council.status.preparing',
   held: 'council.status.held',
+  updated: 'calendar.status.updated',
+  answered: 'prayer.status.answered',
 };
 
 export function CalendarEntryCard({
@@ -121,6 +126,30 @@ export function CalendarEntryCard({
             <CalendarDaysIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-400" />
             <div className="min-w-0 flex-1 overflow-hidden whitespace-pre-line break-words">{entry.subtitle}</div>
           </div>
+        )}
+
+        {/*
+          WHAT IT IS ABOUT, not just what it is called. The section lists a council's headings
+          under its name; the day showed the name alone, so the pastor had to leave the calendar
+          to remember his own agenda. Numbered like there, because the order is the order he will
+          walk them in.
+        */}
+        {entry.sections && (
+          <ol className="space-y-1">
+            {entry.sections.titles.map((title, index) => (
+              <li key={`${title}-${index}`} className="flex gap-2 text-sm">
+                <span className="w-4 shrink-0 text-right text-xs font-bold tabular-nums text-gray-500 dark:text-gray-500">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-gray-700 dark:text-gray-300">{title}</span>
+              </li>
+            ))}
+            {entry.sections.hidden > 0 && (
+              <li className="pl-6 text-xs text-gray-400 dark:text-gray-500">
+                {t('council.moreTopics', { count: entry.sections.hidden })}
+              </li>
+            )}
+          </ol>
         )}
 
         {/*

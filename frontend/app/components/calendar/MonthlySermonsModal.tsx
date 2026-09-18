@@ -2,12 +2,14 @@
 
 import { XMarkIcon, CalendarIcon, MapPinIcon, BookOpenIcon } from "@heroicons/react/24/outline";
 import { format, isValid, parseISO } from "date-fns";
-import { enUS, ru, uk } from "date-fns/locale";
 import Link from "next/link";
-import { useMemo, useCallback } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
 import { MonthlyPreachEntry } from "@/components/calendar/calendarAnalytics";
+import { useAppLocale } from '@/hooks/useAppLocale';
+import { useModalLayer } from '@/hooks/useModalLayer';
+import { formatMonthName } from '@/utils/appLocale';
 
 interface MonthlySermonsModalProps {
     isOpen: boolean;
@@ -22,22 +24,18 @@ export default function MonthlySermonsModal({
     monthKey,
     entries
 }: MonthlySermonsModalProps) {
-    const { t, i18n } = useTranslation();
-
-    const getDateLocale = useCallback(() => {
-        switch (i18n.language) {
-            case 'ru': return ru;
-            case 'uk': return uk;
-            default: return enUS;
-        }
-    }, [i18n.language]);
+    const { t } = useTranslation();
+    const { dateLocale } = useAppLocale();
+    /* One rule for every window: holds the page still, answers Escape (`useModalLayer`). */
+    const layer = useModalLayer({ onClose, active: isOpen });
 
     const formattedMonth = useMemo(() => {
         if (!monthKey) return "";
         const [year, month] = monthKey.split("-").map(Number);
         const date = new Date(year, month - 1, 1);
-        return format(date, "MMMM yyyy", { locale: getDateLocale() }).replace(/^./, str => str.toUpperCase());
-    }, [monthKey, getDateLocale]);
+        // Inside the title sentence, so the month keeps its own case: "Проповеди за август 2026".
+        return formatMonthName(date, dateLocale);
+    }, [monthKey, dateLocale]);
 
     if (!isOpen || !monthKey) return null;
 
@@ -51,7 +49,7 @@ export default function MonthlySermonsModal({
     });
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+        <div {...layer} className="fixed inset-0 z-[100] flex items-center justify-center overscroll-contain bg-black/50 p-4 backdrop-blur-sm">
             <div
                 role="dialog"
                 aria-modal="true"
@@ -85,7 +83,7 @@ export default function MonthlySermonsModal({
                             {entries.map(({ sermon, preachDate }) => {
                                 const parsedDate = parseISO(preachDate.date);
                                 const formattedDate = isValid(parsedDate)
-                                    ? format(parsedDate, 'd MMM yyyy', { locale: getDateLocale() })
+                                    ? format(parsedDate, 'd MMM yyyy', { locale: dateLocale })
                                     : preachDate.date;
                                 return (
                                     <div

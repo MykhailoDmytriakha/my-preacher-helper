@@ -2,6 +2,7 @@
 
 import { deleteCouncilViaSdk, setCouncilViaSdk } from '@/services/councils.client';
 import { createCouncilOnServer, deleteCouncilOnServer, replaceCouncilOnServer } from '@/services/councilsTransport.client';
+import { isBrowserOffline } from '@/utils/connectivity';
 
 import type { Council } from '@/models/models';
 
@@ -25,8 +26,6 @@ export type CouncilSaveResult =
   | { kind: 'gone' }
   | { kind: 'refused'; error: unknown };
 
-const deviceOnline = () => typeof navigator === 'undefined' || navigator.onLine !== false;
-
 /**
  * `knownToServer` is the difference between "deleted" and "not there yet", and only the caller
  * can tell them apart: it has seen whether the server ever answered about this council.
@@ -35,7 +34,7 @@ export async function saveCouncil(
   council: Council,
   options: { keepalive?: boolean; knownToServer?: boolean } = {}
 ): Promise<CouncilSaveResult> {
-  if (!deviceOnline()) {
+  if (isBrowserOffline()) {
     // NOT awaited: offline the SDK promise settles only when the server acknowledges, which may
     // be hours away. The local replica has the write the moment the call returns, and holding
     // the queue for an acknowledgement that cannot come blocks every later change behind it.
@@ -68,7 +67,7 @@ export async function saveCouncil(
 }
 
 export async function createCouncil(council: Council): Promise<CouncilSaveResult> {
-  if (!deviceOnline()) {
+  if (isBrowserOffline()) {
     void setCouncilViaSdk(council).catch((error) => console.error('council offline create failed', error));
     return { kind: 'queued' };
   }
@@ -81,7 +80,7 @@ export async function createCouncil(council: Council): Promise<CouncilSaveResult
 }
 
 export async function deleteCouncil(id: string): Promise<CouncilSaveResult> {
-  if (!deviceOnline()) {
+  if (isBrowserOffline()) {
     void deleteCouncilViaSdk(id).catch((error) => console.error('council offline delete failed', error));
     return { kind: 'queued' };
   }

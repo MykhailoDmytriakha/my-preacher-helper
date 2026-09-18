@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 
 import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import { Chip } from '@/components/ui/Chip';
+import { useConfirm } from '@/hooks/useConfirm';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useServiceOrders } from '@/hooks/useServiceOrders';
@@ -145,6 +146,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { t } = useTranslation();
+  const { confirm, confirmDialog } = useConfirm();
 
   const { orders, loading, isOnline, updateSteps, openedWith, closedEditing, recheck, renameOrder, deleteOrder } =
     useServiceOrders();
@@ -883,7 +885,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
   };
 
   const remove = async () => {
-    if (!window.confirm(t('serviceOrders.deleteConfirm') as string)) return;
+    if (!(await confirm({ title: t('serviceOrders.deleteConfirm') as string, confirmText: t('common.delete') }))) return;
     // Same rule as a removed step: whatever was typed is sent before the document goes, so a
     // refused deletion cannot swallow it.
     pending.current.forEach((_entry, key) => flush(key));
@@ -1164,6 +1166,7 @@ function ServiceOrderEditor({ orderId }: { orderId: string }) {
           </button>
         </div>
       )}
+      {confirmDialog}
     </div>
   );
 }

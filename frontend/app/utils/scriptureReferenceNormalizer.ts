@@ -1,6 +1,6 @@
 import { BIBLE_BOOKS_DATA, getBookByName, getLocalizedBookName } from '@/(pages)/(private)/studies/bibleData';
-import { formatScriptureRef } from '@/(pages)/(private)/studies/bookAbbreviations';
 import { getReferenceBookAliases, parseReferenceText } from '@/(pages)/(private)/studies/referenceParser';
+import { formatScriptureReference } from '@/utils/scriptureReference';
 import { formatRussianOrdinal } from '@utils/russianOrdinals';
 
 import type { BibleLocale } from '@/(pages)/(private)/studies/bibleData';
@@ -64,7 +64,7 @@ const formatReferenceForProse = (
   ref: NonNullable<ReturnType<typeof parseReferenceText>>,
   locale: BibleLocale
 ): string => {
-  const formatted = formatScriptureRef(ref, locale);
+  const formatted = formatScriptureReference(ref, { locale: locale });
   return locale === 'en'
     ? formatted.replace(/\.(?=\d)/u, ' ')
     : formatted.replace(/\.(?=\d)/u, '. ');

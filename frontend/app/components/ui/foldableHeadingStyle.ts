@@ -39,6 +39,17 @@ export const headingTone = (level: number): string =>
             ? '[&_*]:!text-emerald-800/85 dark:[&_*]:!text-emerald-400/85'
             : '[&_*]:!text-emerald-800/80 dark:[&_*]:!text-emerald-400/75';
 
+/**
+ * How far the fold arrow sits from the top of its row, by heading level.
+ *
+ * The arrow is a 16px glyph in a small button; the heading beside it is prose type whose
+ * line box grows with the level. Aligned to the top of the row, the arrow floated above the
+ * cap of a first-level heading. These offsets drop it onto the first line's optical centre,
+ * and they are full literals because Tailwind's JIT scans source text.
+ */
+export const foldArrowOffset = (level: number): string =>
+    level <= 1 ? 'mt-2 sm:mt-2.5' : level === 2 ? 'mt-1.5 sm:mt-2' : 'mt-0.5 sm:mt-1';
+
 /** The fold arrow, so it does not stay grey beside a green heading. */
 export const FOLD_ARROW_TONE =
     'text-emerald-600/50 hover:!text-emerald-700 dark:text-emerald-400/45 dark:hover:!text-emerald-300';

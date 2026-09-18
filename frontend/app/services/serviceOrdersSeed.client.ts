@@ -1,5 +1,6 @@
 'use client';
 
+import { accountChangedError, codeForHttpStatus } from '@/services/ownerHttpTransport.client';
 import { apiClient } from '@/utils/apiClient';
 import { getAuthenticatedRequestHeaders } from '@/utils/authenticatedRequest';
 import { resolveOwnerUid } from '@/utils/queryKeys';
@@ -29,7 +30,7 @@ export async function seedServiceOrdersOnServer(
    * can take back.
    */
   if (resolveOwnerUid() !== owner) {
-    throw Object.assign(new Error('Account changed'), { code: 'unauthenticated' });
+    throw accountChangedError();
   }
   const response = await apiClient('/api/service-orders', {
     method: 'POST',
@@ -41,18 +42,13 @@ export async function seedServiceOrdersOnServer(
   });
   if (!response.ok) {
     throw Object.assign(new Error('Server seed failed'), {
-      code:
-        response.status === 403
-          ? 'permission-denied'
-          : response.status === 401
-            ? 'unauthenticated'
-            : 'unavailable',
+      code: codeForHttpStatus(response.status),
     });
   }
   const value: unknown = await response.json();
   if (!Array.isArray(value)) throw new Error('Invalid service orders response');
   if (resolveOwnerUid() !== owner) {
-    throw Object.assign(new Error('Account changed'), { code: 'unauthenticated' });
+    throw accountChangedError();
   }
   return value as ServiceOrder[];
 }

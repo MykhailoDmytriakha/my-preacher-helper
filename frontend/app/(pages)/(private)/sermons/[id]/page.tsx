@@ -33,6 +33,7 @@ import StructureStats from "@/components/sermon/StructureStats";
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
 import { getClientDb } from "@/config/firebaseClientDb";
 import { DataDocumentProvider, isCollectionOnEngine } from '@/data-engine/react.client';
+import { useAiUsage } from '@/hooks/useAiUsage';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useFreshnessUid } from '@/hooks/useFreshnessUid';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -388,6 +389,17 @@ function SermonPageContent({ id, source, core }: { id: string; source: ReturnTyp
   const { series } = useSeries(user?.uid || null);
   const { settings: userSettings } = useUserSettings(user?.uid);
   const { isMagicAvailable } = useConnection();
+  /**
+   * THE ONE RECORDER THAT ASKED NOTHING AT ALL.
+   *
+   * Every other microphone in the app at least asked about the transcription allowance; this
+   * one — the "new recording" button on the sermon screen, the most used control there is —
+   * had no gate whatsoever. Past the limit it stayed bright, took the dictation, and handed
+   * back a refusal for a rule the screen never showed.
+   */
+  const { blocked: usageBlocked, blockedLabelKey: usageBlockedLabelKey } = useAiUsage();
+  const dictationBlocked = usageBlocked('dictation');
+  const dictationBlockedKey = usageBlockedLabelKey('dictation');
   const isReadOnly = Boolean(core?.isReadOnly);
   const engineEnabled = Boolean(core);
   // Explicit migration boundary: thoughts, outline editing and AI writers still use
@@ -1578,6 +1590,9 @@ useEffect(() => {
       onThoughtUpdate={handleThoughtUpdate}
       onThoughtOutlinePointChange={handleThoughtOutlinePointChange}
       isReadOnly={legacyReadOnly}
+      sermon={sermon}
+      scratchNotes={scratchNotes.notes}
+      onOpenScratch={() => setUiMode('raw')}
     />
   );
 
@@ -1907,6 +1922,8 @@ useEffect(() => {
           onClearError={handleClearError}
           hideKeyboardShortcuts={uiMode === 'prep'}
           isReadOnly={!isMagicAvailable}
+          isRecorderDisabled={dictationBlocked}
+          recorderTitle={dictationBlocked && dictationBlockedKey ? t(dictationBlockedKey) : undefined}
           onOpenCreateModal={() => setIsCreateModalOpen(true)}
           manualThoughtTitle={t('manualThought.addManual')}
         />

@@ -14,6 +14,7 @@ import { PrayerRequest, PrayerStatus, PrayerUpdate } from '@/models/models';
 import { atomicUpdate } from '@/services/atomicUpdate.client';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { readOwnerList } from '@/services/ownerListRead.client';
+import { isBrowserOffline } from '@/utils/connectivity';
 import { deepCleanUndefined } from '@/utils/deepCleanUndefined';
 import { readWithDeadline } from '@/utils/readWithDeadline';
 
@@ -86,7 +87,7 @@ export async function getAllPrayerRequestsViaClient(userId: string): Promise<Pra
  */
 export async function getPrayerRequestByIdViaClient(id: string): Promise<PrayerRequest | undefined> {
   const db = getClientDb();
-  const online = typeof navigator === 'undefined' || navigator.onLine !== false;
+  const online = !isBrowserOffline();
   const snap = await readWithDeadline(
     getDoc(doc(db, PRAYER_REQUESTS_COLLECTION, id)),
     online ? 4000 : 8000

@@ -9,11 +9,12 @@ import {
     FaceSmileIcon
 } from "@heroicons/react/24/outline";
 import { format } from "date-fns";
-import { enUS, ru, uk } from "date-fns/locale";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Chip } from "@/components/ui/Chip";
+import { useAppLocale } from '@/hooks/useAppLocale';
+import { useConfirm } from '@/hooks/useConfirm';
 import { usePreachDates } from "@/hooks/usePreachDates";
 import { PreachDate } from "@/models/models";
 import { parseDateOnlyAsLocalDate } from "@/utils/dateOnly";
@@ -38,18 +39,12 @@ interface PreachDateListProps {
 }
 
 export default function PreachDateList({ sermonId }: PreachDateListProps) {
-    const { t, i18n } = useTranslation();
+    const { t } = useTranslation();
+    const { confirm, confirmDialog } = useConfirm();
+    const { dateLocale } = useAppLocale();
     const { preachDates, isLoading, addDate, updateDate, deleteDate } = usePreachDates(sermonId);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingDate, setEditingDate] = useState<PreachDate | undefined>(undefined);
-
-    const getDateLocale = () => {
-        switch (i18n.language) {
-            case 'ru': return ru;
-            case 'uk': return uk;
-            default: return enUS;
-        }
-    };
 
     const handleAddClick = () => {
         setEditingDate(undefined);
@@ -62,7 +57,7 @@ export default function PreachDateList({ sermonId }: PreachDateListProps) {
     };
 
     const handleDeleteClick = async (dateId: string) => {
-        if (window.confirm(t('calendar.deleteConfirm'))) {
+        if (await confirm({ title: t('calendar.deleteConfirm'), confirmText: t('common.delete') })) {
             try {
                 // usePreachDates' delete recovery descriptor reports a late refusal while this screen is mounted.
                 await awaitAcceptance(deleteDate(dateId), () => undefined);
@@ -132,7 +127,7 @@ export default function PreachDateList({ sermonId }: PreachDateListProps) {
                                             if (!parsedDate) {
                                                 return pd.date;
                                             }
-                                            return format(parsedDate, 'PP', { locale: getDateLocale() });
+                                            return format(parsedDate, 'PP', { locale: dateLocale });
                                         })()}
                                     </span>
                                     <Chip weight="bold" tone={statusTone} size="xs" className="uppercase tracking-wider">
@@ -189,6 +184,7 @@ export default function PreachDateList({ sermonId }: PreachDateListProps) {
                 initialData={editingDate}
                 defaultStatus="planned"
             />
+            {confirmDialog}
         </div>
     );
 }

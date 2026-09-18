@@ -314,10 +314,11 @@
         "title": "Цей тиждень",
         "viewCalendar": "Відкрити календар",
         "viewFullCalendar": "Увесь календар",
-        "empty": "Немає найближчих або недавніх минулих проповідей і груп.",
+        "empty": "Немає найближчих або недавніх минулих проповідей, груп і рад.",
         "types": {
           "sermon": "Проповідь",
-          "group": "Група"
+          "group": "Група",
+          "council": "Рада"
         }
       },
       "prayer": {
@@ -425,6 +426,7 @@
     "titlePlaceholder": "Наприклад: Сила віри у випробуваннях",
     "verseLabel": "Вірш з Писання",
     "versePlaceholder": "Наприклад: Еф 1:15 — «Тому й я, почувши про вашу віру в Христа Ісуса...»",
+    "fillRequiredField": "Заповніть поле «{{field}}»",
     "plannedDateLabel": "Запланована дата проповіді",
     "seriesLabel": "Серія",
     "seriesPlaceholder": "Виберіть серію...",
@@ -450,11 +452,8 @@
   },
   "editSermon": {
     "editSermon": "Редагувати проповідь",
-    "titleLabel": "Тема",
-    "titlePlaceholder": "Введіть тему проповіді",
     "verseLabel": "Вірш з Писання",
     "versePlaceholder": "Введіть вірш з Писання",
-    "plannedDateLabel": "Запланована дата проповіді (необов'язково)",
     "clearPlannedDate": "Очистити",
     "plannedDateHint": "Залиште порожнім, якщо запланована дата не потрібна",
     "updateError": "Помилка оновлення проповіді"
@@ -693,8 +692,16 @@
     "remainingMinutes": "залишилося {{value}} хв",
     "resetsAt": "оновиться {{date}}",
     "graceToast": "Ви перейшли місячну межу — але ми до вас милостиві. Ще деякий час благодать із вами. Якщо вам це справді потрібно — нехай Господь вас благословить.",
-    "hardCap": "Цього разу ми зробили навіть більше, ніж могли. Але важливо пам'ятати й про інших — щоб благодаті вистачило всім. Усе знову відкриється {{date}}.",
-    "softExpansion": "Якщо потрібно більше вже зараз — можна розширити тариф."
+    "hardCap": "Цього разу ми зробили навіть більше, ніж могли. Але важливо пам'ятати й про інших — щоб благодаті вистачило всім. Усе знову відкриється {{date}}",
+    "softExpansion": "Якщо потрібно більше вже зараз — можна розширити тариф.",
+    "grace": "Ви пройшли місячну межу — і ми вас покриваємо. Благодать із вами ще якийсь час. Усе оновиться {{date}}",
+    "overLimit": "Понад ліміт",
+    "limitReached": "Ліміт вичерпано",
+    "openSettings": "Відкрити налаштування тарифу",
+    "capDialog": {
+      "title": "Поки що зупинимось тут",
+      "dismiss": "Зрозуміло"
+    }
   },
   "settings": {
     "nav": {
@@ -723,7 +730,8 @@
       "audioSeconds": "{{count}} секунд",
       "minutesOfLimit": "{{used}} / {{limit}} хв",
       "aiUsageExhausted": "Недостатньо доступного AI-використання.",
-      "transcriptionUsageExhausted": "Недостатньо доступного ліміту транскрибування."
+      "transcriptionUsageExhausted": "Недостатньо доступного ліміту транскрибування.",
+      "audioUsageExhausted": "Недостатньо залишку ліміту озвучення."
     },
     "modelSelector": {
       "title": "Моделі ШІ за функціями",
@@ -1031,7 +1039,25 @@
     "draftMode": "Черновик",
     "pointMode": "за Пунктами",
     "createOutlineTooltip": "Спочатку додайте думки до проповіді, потім створіть структуру",
-    "assignThoughtsTooltip": "Всі думки повинні бути прив'язані до пунктів структури перед створенням тексту проповіді"
+    "assignThoughtsTooltip": "Всі думки повинні бути прив'язані до пунктів структури перед створенням тексту проповіді",
+    "sourceNoteSection": {
+      "title": "Нотатка",
+      "kicker": "Проповідь побудована на цій нотатці",
+      "stats": "{{words}} слів · {{minutes}} хв читання",
+      "cutTotal": "нарізано начерків: {{count}}",
+      "cutBadge": "{{count}} нач.",
+      "open": "Відкрити",
+      "readOnly": "Текст нотатки лише для читання — правки робляться в самій нотатці.",
+      "sections": "розділів: {{count}}"
+    },
+    "materialEmpty": {
+      "plain": "Тут з’являться думки",
+      "plainHint": "Натисніть «Новий запис» і говоріть — сказане стане першою думкою. Або напишіть вручну.",
+      "sortAtoms": "Розібрати начерки",
+      "stillUnsorted": "Ще не розібрані начерки з нотатки:",
+      "atomsBandNoNote": "Думок ще немає. Роботу почато з начерків:",
+      "scratchOnlyHint": "Начерки вже записані — розберіть їх за структурою проповіді."
+    }
   },
   "filters": {
     "filter": "Фільтр",
@@ -1101,7 +1127,8 @@
     "mini": {
       "title": "Аудіо запис",
       "description": "Записати аудіо для цього розділу"
-    }
+    },
+    "limitReached": "Запис збережено на цьому пристрої. Місячний ліміт вичерпано — розшифрувати його можна буде після оновлення ліміту."
   },
   "errors": {
     "generic": "Помилка",
@@ -1148,7 +1175,8 @@
   },
   "createThought": {
     "title": "Нова думка",
-    "dirtyGuard": "Є незбережений текст. Закрити?"
+    "dirtyGuard": "Є незбережений текст. Закрити?",
+    "dirtyGuardConfirm": "Закрити"
   },
   "manualThought": {
     "addManual": "Додати думку вручну",
@@ -1783,7 +1811,9 @@
     "legend": {
       "sermons": "Проповіді",
       "groups": "Групи",
-      "councils": "Ради"
+      "councils": "Ради",
+      "notes": "Нотатки",
+      "prayers": "Молитви"
     },
     "views": {
       "month": "Місяць",
@@ -1808,7 +1838,8 @@
     "outcome": "Результат",
     "status": {
       "planned": "Заплановано",
-      "preached": "Проповідано"
+      "preached": "Проповідано",
+      "updated": "Змінено"
     },
     "missingDateWarning": "Цю проповідь позначено як виголошену, але відсутня інформація про дату",
     "missingDateWarningTitle": "Старі дані проповідей",
@@ -1860,7 +1891,6 @@
       "bibleBooks": "Розподіл по книгах Біблії",
       "oldTestament": "Старий Завіт",
       "newTestament": "Новий Завіт",
-      "sermons": "проповідей",
       "noSermons": "Немає проповідей",
       "mostSermons": "Найбільше проповідей",
       "noActivity": "Немає активності",
@@ -1868,11 +1898,19 @@
       "noActivityRecorded": "Активність ще не записана",
       "bookModalTitle": "Проповіді по книзі {{book}}",
       "bookModalCount": "{{count}} проповідей",
+      "bookModalCount_one": "{{count}} проповідь",
+      "bookModalCount_few": "{{count}} проповіді",
+      "bookModalCount_many": "{{count}} проповідей",
+      "bookModalCount_other": "{{count}} проповідей",
       "bookModalEmpty": "Немає проповідей по цій книзі",
       "bookModalNoVerse": "Місце Писання не вказано",
       "bookModalUntitled": "Без назви",
-      "monthModalTitle": "Проповіді у {{month}}",
+      "monthModalTitle": "Проповіді за {{month}}",
       "monthModalCount": "{{count}} проповідей",
+      "monthModalCount_one": "{{count}} проповідь",
+      "monthModalCount_few": "{{count}} проповіді",
+      "monthModalCount_many": "{{count}} проповідей",
+      "monthModalCount_other": "{{count}} проповідей",
       "monthModalEmpty": "У цьому місяці ще немає проповідей",
       "other": "Інші",
       "daysUnit": "дн."
@@ -1889,7 +1927,13 @@
     "notesPlaceholder": "Зауваження або що варто покращити...",
     "totalCouncilsWord_one": "рада",
     "totalCouncilsWord_few": "ради",
-    "totalCouncilsWord_many": "рад"
+    "totalCouncilsWord_many": "рад",
+    "totalNotesWord_one": "нотатка",
+    "totalNotesWord_few": "нотатки",
+    "totalNotesWord_many": "нотаток",
+    "totalPrayersWord_one": "молитва",
+    "totalPrayersWord_few": "молитви",
+    "totalPrayersWord_many": "молитов"
   },
   "copy": {
     "title": "Копіювання вмісту",
@@ -2538,6 +2582,8 @@
         "cancel": "Скасувати",
         "addToSeries": "Додати до серії",
         "removeFromSeries": "Видалити із серії",
+        "removeFromSeriesConfirm": "Видалити проповідь із серії «{{series}}»?",
+        "removeFromSeriesKeepsSermon": "Сама проповідь залишиться, зміниться лише серія.",
         "moveToDifferentSeries": "Перемістити до серії",
         "viewSeries": "Переглянути серію",
         "selectSeries": "Вибрати серію",

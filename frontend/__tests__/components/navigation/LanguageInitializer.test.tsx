@@ -29,7 +29,7 @@ jest.mock('react-i18next', () => ({
   })
 }));
 
-jest.mock('@/../../frontend/locales/getInitialLang', () => ({
+jest.mock('@locales/getInitialLang', () => ({
   initializeLanguageFromDB: () => mockInitializeLanguageFromDB()
 }));
 

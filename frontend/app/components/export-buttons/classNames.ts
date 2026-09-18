@@ -1,7 +1,16 @@
+/**
+ * AN AVAILABLE ACTION CARRIES ITS COLOUR AT REST, NOT ONLY UNDER THE CURSOR.
+ *
+ * The icon row painted every button grey and only revealed its colour on hover, so TXT and
+ * Word — both fully working — sat one shade of grey away from PDF, which is genuinely
+ * unavailable. Three identical grey glyphs, one of them dead, and no way to tell which by
+ * looking. Grey now means exactly one thing: this one cannot be pressed.
+ */
+
 export const getTxtIconButtonClassName = (isPreached: boolean) =>
   isPreached
-    ? "text-gray-500 hover:bg-gray-200 hover:text-blue-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-blue-400"
-    : "text-gray-400 hover:bg-blue-50 hover:text-blue-600 dark:text-gray-500 dark:hover:bg-blue-900/30 dark:hover:text-blue-400";
+    ? "text-blue-600 hover:bg-gray-200 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-gray-700"
+    : "text-blue-600 hover:bg-blue-50 hover:text-blue-700 dark:text-blue-400 dark:hover:bg-blue-900/30";
 
 export const getPdfIconButtonClassName = (isPdfAvailable: boolean, isPreached: boolean) => {
   if (!isPdfAvailable) {
@@ -9,8 +18,8 @@ export const getPdfIconButtonClassName = (isPdfAvailable: boolean, isPreached: b
   }
 
   return isPreached
-    ? "text-gray-500 hover:bg-gray-200 hover:text-purple-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-purple-400"
-    : "text-gray-400 hover:bg-purple-50 hover:text-purple-600 dark:text-gray-500 dark:hover:bg-purple-900/30 dark:hover:text-purple-400";
+    ? "text-purple-600 hover:bg-gray-200 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-gray-700"
+    : "text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/30";
 };
 
 export const getWordIconButtonClassName = (isWordDisabled: boolean, isPreached: boolean) => {
@@ -19,14 +28,14 @@ export const getWordIconButtonClassName = (isWordDisabled: boolean, isPreached: 
   }
 
   return isPreached
-    ? "text-gray-500 hover:bg-gray-200 hover:text-green-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-green-400"
-    : "text-gray-400 hover:bg-green-50 hover:text-green-600 dark:text-gray-500 dark:hover:bg-green-900/30 dark:hover:text-green-400";
+    ? "text-green-600 hover:bg-gray-200 hover:text-green-700 dark:text-green-400 dark:hover:bg-gray-700"
+    : "text-green-600 hover:bg-green-50 hover:text-green-700 dark:text-green-400 dark:hover:bg-green-900/30";
 };
 
 export const getAudioIconButtonClassName = (isPreached: boolean) =>
   isPreached
-    ? "text-gray-500 hover:bg-gray-200 hover:text-orange-600 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-orange-400"
-    : "text-gray-400 hover:bg-orange-50 hover:text-orange-600 dark:text-gray-500 dark:hover:bg-orange-900/30 dark:hover:text-orange-400";
+    ? "text-orange-600 hover:bg-gray-200 hover:text-orange-700 dark:text-orange-400 dark:hover:bg-gray-700"
+    : "text-orange-600 hover:bg-orange-50 hover:text-orange-700 dark:text-orange-400 dark:hover:bg-orange-900/30";
 
 export const getTxtTextButtonClassName = (isPreached: boolean) =>
   isPreached

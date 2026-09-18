@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { isOfflineQueuedError, isStaleWriteError, isWriteRefusedError } from '@/services/conflictSafeUpdate.client';
 import { newClientId } from '@/utils/clientId';
+import { isBrowserOffline } from '@/utils/connectivity';
 import {
   DASHBOARD_SERMON_KEY_PREFIX,
   DASHBOARD_SERMON_MUTATION_KEYS,
@@ -154,7 +155,7 @@ const writeFingerprint = (variables: unknown): string => {
 };
 
 const submissionForMutation = <T,>(receipt: string, request: Promise<T>): WriteSubmission =>
-  typeof navigator !== 'undefined' && !navigator.onLine
+  isBrowserOffline()
     ? queuedMutation(receipt, request)
     : persistedWrite(request);
 

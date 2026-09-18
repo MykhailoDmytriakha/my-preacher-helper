@@ -314,10 +314,11 @@
         "title": "Эта неделя",
         "viewCalendar": "Открыть календарь",
         "viewFullCalendar": "Весь календарь",
-        "empty": "Нет ближайших или недавних прошедших проповедей и групп.",
+        "empty": "Нет ближайших или недавних прошедших проповедей, групп и советов.",
         "types": {
           "sermon": "Проповедь",
-          "group": "Группа"
+          "group": "Группа",
+          "council": "Совет"
         }
       },
       "prayer": {
@@ -425,6 +426,7 @@
     "titlePlaceholder": "Например: Сила веры в испытаниях",
     "verseLabel": "Стих из Писания",
     "versePlaceholder": "Например: Еф 1:15 — «Посему и я, услышав о вашей вере во Христа Иисуса...»",
+    "fillRequiredField": "Заполните поле «{{field}}»",
     "plannedDateLabel": "Планируемая дата проповеди",
     "seriesLabel": "Серия",
     "seriesPlaceholder": "Выберите серию...",
@@ -450,11 +452,8 @@
   },
   "editSermon": {
     "editSermon": "Редактировать проповедь",
-    "titleLabel": "Тема",
-    "titlePlaceholder": "Введите тему проповеди",
     "verseLabel": "Стих из Писания",
     "versePlaceholder": "Введите стих из Писания",
-    "plannedDateLabel": "Планируемая дата проповеди (необязательно)",
     "clearPlannedDate": "Очистить",
     "plannedDateHint": "Оставьте пустым, если планируемая дата не нужна",
     "updateError": "Ошибка обновления проповеди"
@@ -693,8 +692,16 @@
     "remainingMinutes": "осталось {{value}} мин",
     "resetsAt": "обновится {{date}}",
     "graceToast": "Вы прошли месячную границу — но мы к вам милостивы. Ещё какое-то время благодать с вами. Если это вам вправду нужно — да благословит вас Господь.",
-    "hardCap": "На этот раз мы сделали даже больше, чем могли. Но важно помнить и о других — чтобы благодати хватило всем. Всё откроется снова {{date}}.",
-    "softExpansion": "Если нужно больше уже сейчас — можно расширить тариф."
+    "hardCap": "На этот раз мы сделали даже больше, чем могли. Но важно помнить и о других — чтобы благодати хватило всем. Всё откроется снова {{date}}",
+    "softExpansion": "Если нужно больше уже сейчас — можно расширить тариф.",
+    "grace": "Вы прошли месячную границу — и мы вас покрываем. Благодать с вами ещё какое-то время. Всё обновится {{date}}",
+    "overLimit": "Сверх лимита",
+    "limitReached": "Лимит выбран",
+    "openSettings": "Открыть настройки тарифа",
+    "capDialog": {
+      "title": "Пока остановимся здесь",
+      "dismiss": "Понятно"
+    }
   },
   "settings": {
     "nav": {
@@ -723,7 +730,8 @@
       "audioSeconds": "{{count}} секунд",
       "minutesOfLimit": "{{used}} / {{limit}} мин",
       "aiUsageExhausted": "Недостаточно оставшегося AI-использования.",
-      "transcriptionUsageExhausted": "Недостаточно оставшегося лимита транскрибации."
+      "transcriptionUsageExhausted": "Недостаточно оставшегося лимита транскрибации.",
+      "audioUsageExhausted": "Недостаточно оставшегося лимита озвучки."
     },
     "modelSelector": {
       "title": "Модели ИИ по функциям",
@@ -1031,7 +1039,25 @@
     "draftMode": "Черновик",
     "pointMode": "по Пунктам",
     "createOutlineTooltip": "Сначала добавьте мысли к проповеди, затем создайте структуру",
-    "assignThoughtsTooltip": "Все мысли должны быть привязаны к пунктам структуры перед созданием текста проповеди"
+    "assignThoughtsTooltip": "Все мысли должны быть привязаны к пунктам структуры перед созданием текста проповеди",
+    "sourceNoteSection": {
+      "title": "Заметка",
+      "kicker": "Проповедь построена на этой заметке",
+      "stats": "{{words}} слов · {{minutes}} мин чтения",
+      "cutTotal": "набросков вырезано: {{count}}",
+      "cutBadge": "{{count}} набр.",
+      "open": "Открыть",
+      "readOnly": "Текст заметки только для чтения — правки делаются в самой заметке.",
+      "sections": "разделов: {{count}}"
+    },
+    "materialEmpty": {
+      "plain": "Здесь появятся мысли",
+      "plainHint": "Нажмите «Новая запись» и говорите — сказанное станет первой мыслью. Или напишите руками.",
+      "sortAtoms": "Разобрать наброски",
+      "stillUnsorted": "Ещё не разобраны наброски из заметки:",
+      "atomsBandNoNote": "Мыслей ещё нет. Работа начата с набросков:",
+      "scratchOnlyHint": "Наброски уже записаны — разберите их по структуре проповеди."
+    }
   },
   "filters": {
     "filter": "Фильтр",
@@ -1101,7 +1127,8 @@
     "mini": {
       "title": "Аудио запись",
       "description": "Записать аудио для этого раздела"
-    }
+    },
+    "limitReached": "Запись сохранена на этом устройстве. Месячный лимит выбран — расшифровать её можно будет после обновления лимита."
   },
   "errors": {
     "generic": "Ошибка",
@@ -1148,7 +1175,8 @@
   },
   "createThought": {
     "title": "Новая мысль",
-    "dirtyGuard": "Есть несохранённый текст. Закрыть?"
+    "dirtyGuard": "Есть несохранённый текст. Закрыть?",
+    "dirtyGuardConfirm": "Закрыть"
   },
   "manualThought": {
     "addManual": "Добавить мысль вручную",
@@ -1783,7 +1811,9 @@
     "legend": {
       "sermons": "Проповеди",
       "groups": "Группы",
-      "councils": "Советы"
+      "councils": "Советы",
+      "notes": "Заметки",
+      "prayers": "Молитвы"
     },
     "views": {
       "month": "Месяц",
@@ -1808,7 +1838,8 @@
     "outcome": "Результат",
     "status": {
       "planned": "Запланировано",
-      "preached": "Проповедано"
+      "preached": "Проповедано",
+      "updated": "Изменено"
     },
     "missingDateWarning": "Эта проповедь отмечена как прочитанная, но отсутствует информация о дате",
     "missingDateWarningTitle": "Старые данные проповедей",
@@ -1860,7 +1891,6 @@
       "bibleBooks": "Распределение по книгам Библии",
       "oldTestament": "Ветхий Завет",
       "newTestament": "Новый Завет",
-      "sermons": "проповедей",
       "noSermons": "Нет проповедей",
       "mostSermons": "Больше всего проповедей",
       "noActivity": "Нет активности",
@@ -1868,11 +1898,19 @@
       "noActivityRecorded": "Активность еще не записана",
       "bookModalTitle": "Проповеди по книге {{book}}",
       "bookModalCount": "{{count}} проповедей",
+      "bookModalCount_one": "{{count}} проповедь",
+      "bookModalCount_few": "{{count}} проповеди",
+      "bookModalCount_many": "{{count}} проповедей",
+      "bookModalCount_other": "{{count}} проповедей",
       "bookModalEmpty": "Нет проповедей по этой книге",
       "bookModalNoVerse": "Писание не указано",
       "bookModalUntitled": "Проповедь без названия",
-      "monthModalTitle": "Проповеди в {{month}}",
+      "monthModalTitle": "Проповеди за {{month}}",
       "monthModalCount": "{{count}} проповедей",
+      "monthModalCount_one": "{{count}} проповедь",
+      "monthModalCount_few": "{{count}} проповеди",
+      "monthModalCount_many": "{{count}} проповедей",
+      "monthModalCount_other": "{{count}} проповедей",
       "monthModalEmpty": "В этом месяце еще нет проповедей",
       "other": "Другое",
       "daysUnit": "дн."
@@ -1889,7 +1927,13 @@
     "notesPlaceholder": "Замечания или что стоит улучшить...",
     "totalCouncilsWord_one": "совет",
     "totalCouncilsWord_few": "совета",
-    "totalCouncilsWord_many": "советов"
+    "totalCouncilsWord_many": "советов",
+    "totalNotesWord_one": "заметка",
+    "totalNotesWord_few": "заметки",
+    "totalNotesWord_many": "заметок",
+    "totalPrayersWord_one": "молитва",
+    "totalPrayersWord_few": "молитвы",
+    "totalPrayersWord_many": "молитв"
   },
   "copy": {
     "title": "Копирование содержимого",
@@ -2538,6 +2582,8 @@
         "cancel": "Отмена",
         "addToSeries": "Добавить в серию",
         "removeFromSeries": "Удалить из серии",
+        "removeFromSeriesConfirm": "Удалить проповедь из серии «{{series}}»?",
+        "removeFromSeriesKeepsSermon": "Сама проповедь останется, изменится только серия.",
         "moveToDifferentSeries": "Переместить в серию",
         "viewSeries": "Просмотреть серию",
         "selectSeries": "Выбрать серию",

@@ -7,6 +7,7 @@ import {
 } from '@/services/scratch.service';
 import { applyScratchToOutlineViaClient } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
+import { isBrowserOffline } from '@/utils/connectivity';
 import { moveNoteTo } from '@/utils/scratchOrder';
 
 import type { ScratchNote, Sermon, SermonOutline } from '@/models/models';
@@ -45,7 +46,7 @@ interface UseScratchNotesParams {
 }
 
 function shouldRollbackPersistFailure() {
-  return typeof navigator === 'undefined' || navigator.onLine !== false;
+  return !isBrowserOffline();
 }
 
 function getScratchSignature(scratch: ScratchNote[] | undefined) {

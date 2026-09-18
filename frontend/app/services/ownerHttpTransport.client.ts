@@ -27,6 +27,30 @@ const HTTP_ERROR_CODES: Record<number, string> = {
   404: 'not-found',
 };
 
+/**
+ * What an HTTP status means in the Firestore-shaped error codes the rest of the app reads.
+ * Four places kept their own shorter table; anything not a known refusal is `unavailable`,
+ * which the read paths treat as "try the other road" and the write paths as "queue it".
+ */
+export const codeForHttpStatus = (status: number): string => HTTP_ERROR_CODES[status] ?? 'unavailable';
+
+const ACCOUNT_CHANGED = 'Account changed';
+
+/**
+ * THE ANSWER TO A REQUEST THAT OUTLIVED ITS ACCOUNT.
+ *
+ * A sign-in that lands while a token is fetched or an answer is in the air must not hand one
+ * account's documents to another. Seven places built this refusal by hand; it is one value now,
+ * so a caller can also recognise it (`isAccountChangedError`) instead of matching the message.
+ */
+export function accountChangedError(): Error {
+  return Object.assign(new Error(ACCOUNT_CHANGED), { code: 'unauthenticated' });
+}
+
+export function isAccountChangedError(error: unknown): boolean {
+  return error instanceof Error && error.message === ACCOUNT_CHANGED;
+}
+
 export interface OwnerHttpMessages {
   /** When the response is not ok and carries no message of its own. */
   failed: string;
@@ -82,14 +106,14 @@ export async function requestOwnerJson<T>(
       ...(keepalive && withinKeepaliveBudget ? { keepalive: true } : {}),
     });
     const value = (await response.json().catch(() => ({}))) as T & { error?: string; code?: string };
-    if (resolveOwnerUid() !== owner) throw Object.assign(new Error('Account changed'), { code: 'unauthenticated' });
+    if (resolveOwnerUid() !== owner) throw accountChangedError();
     // A migration refusal is terminal for this legacy write, never a CAS document.
     if (response.status === 409 && value?.code === 'data-engine-required') {
       throw Object.assign(new Error(value.error ?? messages.failed), { code: 'data-engine-required', status: 409 });
     }
     if (!response.ok && !answerStatuses.includes(response.status)) {
       throw Object.assign(new Error(value?.error ?? messages.failed), {
-        code: HTTP_ERROR_CODES[response.status] ?? 'unavailable',
+        code: codeForHttpStatus(response.status),
       });
     }
     return { status: response.status, value: value as T };

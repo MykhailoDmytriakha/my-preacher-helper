@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
+import { useConfirm } from '@/hooks/useConfirm';
 import { useSeriesMembership } from "@/hooks/useSeriesMembership";
 import {
   applySourceNoteLinkPatch,
@@ -107,6 +108,8 @@ export default function OptionMenu({
   const router = useRouter();
   const queryClient = useQueryClient();
   const { addToSeries, removeFromAllSeries } = useSeriesMembership();
+  // The app's own "are you sure?" window — the browser's box looked foreign on an iPhone.
+  const { confirm, confirmDialog } = useConfirm();
 
   // Which series this sermon is in — DERIVED from the loaded list (series.items
   // is the sole truth). Only meaningful when a `series` list is passed in.
@@ -138,7 +141,10 @@ export default function OptionMenu({
     e.preventDefault();
     e.stopPropagation();
     if (isSyncPending) return;
-    const confirmed = window.confirm(t('optionMenu.deleteConfirm'));
+    const confirmed = await confirm({
+      title: t('optionMenu.deleteConfirm'),
+      confirmText: t('common.delete'),
+    });
     if (!confirmed) return;
 
     if (optimisticActions?.deleteSermon) {
@@ -231,17 +237,11 @@ export default function OptionMenu({
 
   const openPreachDetailsModal = (preachDate: PreachDate | null) => {
     setPreachDateToMark(preachDate);
+    // The stand-in is NOT blanked here any more: the form itself decides what "not stated"
+    // looks like and what to offer instead (the sermon's own congregation), so that rule
+    // lives in one place rather than in every door that opens the form.
     setPreachModalInitialData(
-      preachDate
-        ? {
-            ...preachDate,
-            status: 'preached',
-            church:
-              preachDate.church?.id === UNSPECIFIED_CHURCH_ID
-                ? { id: '', name: '', city: '' }
-                : preachDate.church
-          }
-        : undefined
+      preachDate ? { ...preachDate, status: 'preached' } : undefined
     );
     setShowPreachModal(true);
     closeMenu();
@@ -401,11 +401,19 @@ export default function OptionMenu({
     closeMenu();
   };
 
-  const handleRemoveFromSeries = (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
+  const handleRemoveFromSeries = async (e: React.MouseEvent<HTMLButtonElement, MouseEvent>) => {
     e.preventDefault();
     e.stopPropagation();
     if (!currentSeries) return;
-    if (!window.confirm(t('workspaces.series.actions.removeFromSeries') + '?')) return;
+    // A question of its own, naming the series — it used to be the button's label with "?" glued on.
+    // The answer button repeats the menu item the person just chose, and the note says the sermon
+    // stays: "remove" next to a sermon otherwise reads as deleting it.
+    const confirmed = await confirm({
+      title: t('workspaces.series.actions.removeFromSeriesConfirm', { series: currentSeries.title }),
+      description: t('workspaces.series.actions.removeFromSeriesKeepsSermon'),
+      confirmText: t('workspaces.series.actions.removeFromSeries'),
+    });
+    if (!confirmed) return;
     // Sweep-all: drop this sermon from every series it sits in. Fire-and-forget +
     // optimistic (the badge derives from the series list cache the sweep updates).
     removeFromAllSeries({ type: 'sermon', refId: sermon.id });
@@ -538,6 +546,7 @@ export default function OptionMenu({
         onSave={handleSavePreachDate}
         syncState={syncState}
         initialData={preachModalInitialData}
+        defaultChurch={sermon.church}
         defaultStatus="preached"
       />
 
@@ -580,6 +589,7 @@ export default function OptionMenu({
           }}
         />
       )}
+      {confirmDialog}
     </div>
   );
 }

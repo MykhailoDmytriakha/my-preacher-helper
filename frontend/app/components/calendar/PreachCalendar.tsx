@@ -1,13 +1,12 @@
 "use client";
 
 import { format } from "date-fns";
-import { enUS, ru, uk } from "date-fns/locale";
 import { createContext, useContext, useEffect, useRef } from "react";
 import { DayPicker } from "react-day-picker";
-import { useTranslation } from "react-i18next";
 
 import { CalendarKindFilters } from "@/components/calendar/CalendarKindFilters";
 import { CALENDAR_KIND_STYLE } from "@/components/calendar/calendarKinds";
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { useAuth } from "@/providers/AuthProvider";
 import { type CalendarKind } from "@/utils/calendarEntries";
@@ -91,18 +90,10 @@ export default function PreachCalendar({
     shown,
     onToggleKind
 }: PreachCalendarProps) {
-    const { i18n } = useTranslation();
+    const { dateLocale } = useAppLocale();
     const { user } = useAuth();
     const { settings } = useUserSettings(user?.uid);
     const weekStartsOn = getWeekStartsOn(settings?.firstDayOfWeek);
-
-    const getDateLocale = () => {
-        switch (i18n.language) {
-            case 'ru': return ru;
-            case 'uk': return uk;
-            default: return enUS;
-        }
-    };
 
     return (
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm p-4 overflow-hidden flex flex-col items-center">
@@ -188,7 +179,7 @@ export default function PreachCalendar({
                 onSelect={(date) => date && onDateSelect(date)}
                 month={currentMonth || selectedDate}
                 onMonthChange={onMonthChange}
-                locale={getDateLocale()}
+                locale={dateLocale}
                 weekStartsOn={weekStartsOn}
                 components={DAY_COMPONENTS}
                 className="w-full flex justify-center"

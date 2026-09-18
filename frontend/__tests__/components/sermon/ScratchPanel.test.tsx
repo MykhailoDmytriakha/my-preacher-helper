@@ -6,6 +6,7 @@ import ScratchPanel from '@/components/sermon/ScratchPanel';
 
 import type { ComposedPlanOutline } from '@/config/schemas/zod';
 import type { ScratchNote, SermonOutline } from '@/models/models';
+import { aiUsageStub } from '@test-utils/aiUsage';
 
 /**
  * The board runs on dnd-kit now, so a simulated drop is `{active, over}` — the
@@ -326,14 +327,7 @@ function expectPlanEditorNoteVisual(container: HTMLElement, text: string) {
 describe('ScratchPanel', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseAiUsage.mockReturnValue({
-      aiRemaining: 10,
-      aiBlocked: false,
-      transcriptionRemaining: 60,
-      transcriptionBlocked: false,
-      loading: false,
-      refresh: jest.fn(),
-    });
+    mockUseAiUsage.mockReturnValue(aiUsageStub());
     jest.useRealTimers();
     Object.defineProperty(navigator, 'onLine', {
       configurable: true,
@@ -355,14 +349,7 @@ describe('ScratchPanel', () => {
   });
 
   it('disables the scratch voice recorder with the transcription quota tooltip and re-enables it when available', () => {
-    mockUseAiUsage.mockReturnValue({
-      aiRemaining: 10,
-      aiBlocked: false,
-      transcriptionRemaining: 0,
-      transcriptionBlocked: true,
-      loading: false,
-      refresh: jest.fn(),
-    });
+    mockUseAiUsage.mockReturnValue(aiUsageStub({ transcriptionBlocked: true }));
 
     const { unmount } = renderScratchPanel({ notes: [] });
     const blockedRecorder = screen.getByRole('button', { name: 'audio.newRecording' });
@@ -370,14 +357,7 @@ describe('ScratchPanel', () => {
     expect(blockedRecorder).toHaveAttribute('title', 'settings.usage.transcriptionUsageExhausted');
 
     unmount();
-    mockUseAiUsage.mockReturnValue({
-      aiRemaining: 10,
-      aiBlocked: false,
-      transcriptionRemaining: 60,
-      transcriptionBlocked: false,
-      loading: false,
-      refresh: jest.fn(),
-    });
+    mockUseAiUsage.mockReturnValue(aiUsageStub());
 
     renderScratchPanel({ notes: [] });
     expect(screen.getByRole('button', { name: 'audio.newRecording' })).toBeEnabled();

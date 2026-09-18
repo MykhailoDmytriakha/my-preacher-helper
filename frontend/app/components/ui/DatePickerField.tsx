@@ -2,12 +2,12 @@
 
 import { CalendarDaysIcon } from "@heroicons/react/24/outline";
 import { format } from "date-fns";
-import { enUS, ru, uk } from "date-fns/locale";
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import { DayPicker } from "react-day-picker";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { useUserSettings } from "@/hooks/useUserSettings";
 import { useAuth } from "@/providers/AuthProvider";
 import { getTodayDateOnlyKey, parseDateOnlyAsLocalDate } from "@/utils/dateOnly";
@@ -48,7 +48,8 @@ export default function DatePickerField({
 }: DatePickerFieldProps) {
   const generatedId = useId();
   const inputId = id || generatedId;
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const { dateLocale } = useAppLocale();
   const { user } = useAuth();
   const { settings } = useUserSettings(user?.uid);
   const selectedDate = parseDateOnlyAsLocalDate(value);
@@ -63,14 +64,6 @@ export default function DatePickerField({
   });
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
-
-  const getDateLocale = () => {
-    switch (i18n.language) {
-      case "ru": return ru;
-      case "uk": return uk;
-      default: return enUS;
-    }
-  };
 
   useEffect(() => {
     setMounted(true);
@@ -263,7 +256,7 @@ export default function DatePickerField({
               month={month}
               onMonthChange={setMonth}
               onSelect={handleSelect}
-              locale={getDateLocale()}
+              locale={dateLocale}
               weekStartsOn={weekStartsOn}
             />
           </div>

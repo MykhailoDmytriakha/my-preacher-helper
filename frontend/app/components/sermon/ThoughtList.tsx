@@ -17,6 +17,13 @@ interface ThoughtListProps {
   onThoughtOutlinePointChange?: (thought: Thought, outlinePointId?: string | null, subPointId?: string | null) => Promise<void> | void;
   resetFilters: () => void;
   isReadOnly?: boolean;
+  /**
+   * What stands here when the sermon has no thoughts at all. The list knows only its own
+   * array, and "the array is empty" is not the same statement as "there is nothing to work
+   * with" — a sermon born from a study note has both the note and the atoms cut from it.
+   * The host, which can see those, supplies the honest version; without it the old line stays.
+   */
+  emptyState?: React.ReactNode;
 }
 
 const ThoughtList: React.FC<ThoughtListProps> = ({
@@ -31,10 +38,12 @@ const ThoughtList: React.FC<ThoughtListProps> = ({
   onThoughtOutlinePointChange,
   resetFilters,
   isReadOnly = false,
+  emptyState,
 }) => {
   const { t } = useTranslation();
 
   if (totalThoughtsCount === 0) {
+    if (emptyState) return <>{emptyState}</>;
     return (
       <div className="text-center py-8 border border-dashed border-gray-300 dark:border-gray-700 rounded-lg">
         <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">

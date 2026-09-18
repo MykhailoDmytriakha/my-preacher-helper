@@ -6,6 +6,7 @@ import { Sermon } from '@/models/models';
 import '@testing-library/jest-dom';
 
 // Mock react-i18next
+let mockLanguage = 'en';
 jest.mock('react-i18next', () => ({
     useTranslation: () => ({
         t: (key: string, options?: any) => {
@@ -32,7 +33,9 @@ jest.mock('react-i18next', () => ({
             return translations[key] || key;
         },
         i18n: {
-            language: 'en'
+            get language() {
+                return mockLanguage;
+            }
         }
     }),
 }));
@@ -101,6 +104,7 @@ describe('DateEventList', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        mockLanguage = 'en';
     });
 
     it('renders month title correctly', () => {
@@ -113,6 +117,17 @@ describe('DateEventList', () => {
         );
 
         expect(screen.getByText('January 2024')).toBeInTheDocument();
+    });
+
+    it.each([
+        ['ru', 'Январь 2024', 'января 2024'],
+        ['uk', 'Січень 2024', 'січня 2024'],
+    ])('names the month as a heading in %s, not in its in-a-date form', (language, heading, inDate) => {
+        mockLanguage = language;
+        render(<DateEventList month={mockMonth} entries={[]} series={[]} />);
+
+        expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent(heading);
+        expect(screen.queryByText(new RegExp(inDate, 'i'))).not.toBeInTheDocument();
     });
 
     it('displays total sermon count in header', () => {

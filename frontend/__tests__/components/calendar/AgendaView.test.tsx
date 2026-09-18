@@ -8,7 +8,10 @@ import '@testing-library/jest-dom';
 // Mock react-i18next
 jest.mock('react-i18next', () => ({
     useTranslation: () => ({
-        t: (key: string, _options?: any) => {
+        t: (key: string, options?: any) => {
+            // The overflow line is the only string here that carries a number, so the mock has
+            // to render it rather than echo the key — otherwise the assertion proves nothing.
+            if (key === 'council.moreTopics') return `ещё ${options?.count}`;
             const translations: { [key: string]: string } = {
                 'calendar.noPreachDates': 'No preach dates recorded',
                 'calendar.outcomes.excellent': 'Excellent',
@@ -166,5 +169,50 @@ describe('AgendaView', () => {
         // The mocked Link keeps only href and className, so the link itself is the anchor here.
         expect(screen.getByTestId('link')).toHaveAttribute('href', '/care/council/k1');
         expect(screen.getByTestId('council-icon')).toBeInTheDocument();
+        // The agenda answers "what is it about", not only "what is it called".
+        expect(screen.getByText('Контекст')).toBeInTheDocument();
+    });
+
+    it('lists the first few section headings and says how many are left', () => {
+        const council = {
+            id: 'k2',
+            userId: 'u1',
+            title: 'Совет с длинной повесткой',
+            date: '2026-09-20',
+            status: 'preparing' as const,
+            topics: Array.from({ length: 8 }, (_, i) => ({
+                id: `t${i}`,
+                title: `Секция ${i + 1}`,
+                questions: [],
+                options: [],
+            })),
+            createdAt: '',
+            updatedAt: '',
+        };
+
+        render(<AgendaView entries={councilEntries([council])} series={[]} />);
+
+        expect(screen.getByText('Секция 1')).toBeInTheDocument();
+        expect(screen.getByText('Секция 6')).toBeInTheDocument();
+        expect(screen.queryByText('Секция 7')).not.toBeInTheDocument();
+        expect(screen.getByText('ещё 2')).toBeInTheDocument();
+    });
+
+    it('draws no section block for a council that has none yet', () => {
+        const council = {
+            id: 'k3',
+            userId: 'u1',
+            title: 'Пустой совет',
+            date: '2026-09-20',
+            status: 'preparing' as const,
+            topics: [],
+            createdAt: '',
+            updatedAt: '',
+        };
+
+        render(<AgendaView entries={councilEntries([council])} series={[]} />);
+
+        expect(screen.getByText('Пустой совет')).toBeInTheDocument();
+        expect(screen.queryByRole('list')).not.toBeInTheDocument();
     });
 });

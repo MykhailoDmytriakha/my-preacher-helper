@@ -54,10 +54,11 @@ jest.mock('@/hooks/useTags', () => ({
 }));
 
 jest.mock('../bibleData', () => ({
+  // The real module underneath, so nothing the page (or the shared reference formatter it now
+  // uses) reaches for can silently vanish — the trap the old comment here warned about.
+  ...jest.requireActual('../bibleData'),
   getBooksForDropdown: jest.fn().mockReturnValue([]),
   getLocalizedBookName: jest.fn().mockImplementation((book) => book),
-  // A partial mock silently removes whatever it forgets, so anything the page reaches for
-  // has to be listed here — the language→book-set mapping included.
   resolveBibleLocale: jest.fn().mockReturnValue('en'),
 }));
 

@@ -314,10 +314,11 @@
         "title": "This week",
         "viewCalendar": "View calendar",
         "viewFullCalendar": "View full calendar",
-        "empty": "No upcoming or recent past sermons or group meetings to show.",
+        "empty": "No upcoming or recent past sermons, group meetings or councils to show.",
         "types": {
           "sermon": "Sermon",
-          "group": "Group"
+          "group": "Group",
+          "council": "Council"
         }
       },
       "prayer": {
@@ -425,6 +426,7 @@
     "titlePlaceholder": "e.g. The Power of Faith in Trials",
     "verseLabel": "Scripture Verse",
     "versePlaceholder": "e.g. Eph 1:15 — \"For this reason, ever since I heard about your faith in the Lord Jesus...\"",
+    "fillRequiredField": "Fill in \"{{field}}\"",
     "plannedDateLabel": "Planned preaching date",
     "seriesLabel": "Series",
     "seriesPlaceholder": "Select a series...",
@@ -450,11 +452,8 @@
   },
   "editSermon": {
     "editSermon": "Edit Sermon",
-    "titleLabel": "Title",
-    "titlePlaceholder": "Enter sermon title",
     "verseLabel": "Scripture Verse",
     "versePlaceholder": "Enter scripture verse",
-    "plannedDateLabel": "Planned preaching date (optional)",
     "clearPlannedDate": "Clear",
     "plannedDateHint": "Leave empty if you do not want a planned date",
     "updateError": "Error updating sermon"
@@ -694,7 +693,15 @@
     "resetsAt": "renews {{date}}",
     "graceToast": "You have crossed the monthly boundary — but we are merciful to you. Grace remains with you for a little while longer. If you truly need it, may the Lord bless you.",
     "hardCap": "This time we have done even more than we could. But it is important to remember others too, so there is enough grace for everyone. Everything will open again {{date}}.",
-    "softExpansion": "If you need more right now, you can expand your plan."
+    "softExpansion": "If you need more right now, you can expand your plan.",
+    "grace": "You have passed the monthly line — and we are carrying you. There is still grace here for a while. Everything opens again on {{date}}.",
+    "overLimit": "Over limit",
+    "limitReached": "Limit reached",
+    "openSettings": "Open plan settings",
+    "capDialog": {
+      "title": "Let us pause here for now",
+      "dismiss": "Understood"
+    }
   },
   "settings": {
     "nav": {
@@ -723,7 +730,8 @@
       "audioSeconds": "{{count}} seconds",
       "minutesOfLimit": "{{used}} / {{limit}} min",
       "aiUsageExhausted": "Not enough AI usage remaining.",
-      "transcriptionUsageExhausted": "Not enough transcription usage remaining."
+      "transcriptionUsageExhausted": "Not enough transcription usage remaining.",
+      "audioUsageExhausted": "Not enough audio generation remaining."
     },
     "modelSelector": {
       "title": "AI models by function",
@@ -1029,7 +1037,25 @@
     "draftMode": "Draft",
     "pointMode": "Point-by-Point",
     "createOutlineTooltip": "Add thoughts to your sermon first, then create a structure",
-    "assignThoughtsTooltip": "All thoughts must be assigned to structure points before creating a plan"
+    "assignThoughtsTooltip": "All thoughts must be assigned to structure points before creating a plan",
+    "sourceNoteSection": {
+      "title": "Source note",
+      "kicker": "This sermon was built on this note",
+      "stats": "{{words}} words · {{minutes}} min read",
+      "cutTotal": "scratch notes cut: {{count}}",
+      "cutBadge": "{{count}} cut",
+      "open": "Open",
+      "readOnly": "The note is read-only here — edit it in the note itself.",
+      "sections": "sections: {{count}}"
+    },
+    "materialEmpty": {
+      "plain": "Thoughts will appear here",
+      "plainHint": "Press “New recording” and speak — what you say becomes the first thought. Or write it by hand.",
+      "sortAtoms": "Sort the scratch notes",
+      "stillUnsorted": "Scratch notes from this note still unsorted:",
+      "atomsBandNoNote": "No thoughts yet. The work started with scratch notes:",
+      "scratchOnlyHint": "The scratch notes are written — sort them into the sermon structure."
+    }
   },
   "filters": {
     "filter": "Filter",
@@ -1099,7 +1125,8 @@
     "mini": {
       "title": "Audio Recorder",
       "description": "Record audio for this section"
-    }
+    },
+    "limitReached": "The recording is saved on this device. The monthly allowance is spent, so it cannot be transcribed until the limit renews."
   },
   "errors": {
     "generic": "Error",
@@ -1146,7 +1173,8 @@
   },
   "createThought": {
     "title": "New Thought",
-    "dirtyGuard": "You have unsaved text. Close anyway?"
+    "dirtyGuard": "You have unsaved text. Close anyway?",
+    "dirtyGuardConfirm": "Close"
   },
   "manualThought": {
     "addManual": "Add Manual Thought",
@@ -1781,7 +1809,9 @@
     "legend": {
       "sermons": "Sermons",
       "groups": "Groups",
-      "councils": "Councils"
+      "councils": "Councils",
+      "notes": "Notes",
+      "prayers": "Prayers"
     },
     "views": {
       "month": "Month",
@@ -1806,7 +1836,8 @@
     "outcome": "Outcome",
     "status": {
       "planned": "Planned",
-      "preached": "Preached"
+      "preached": "Preached",
+      "updated": "Updated"
     },
     "missingDateWarning": "This sermon is marked as preached but missing date information",
     "missingDateWarningTitle": "Legacy Preaching Data",
@@ -1858,7 +1889,6 @@
       "bibleBooks": "Bible Books Distribution",
       "oldTestament": "Old Testament",
       "newTestament": "New Testament",
-      "sermons": "sermons",
       "noSermons": "No sermons",
       "mostSermons": "Most sermons",
       "noActivity": "No activity",
@@ -1866,11 +1896,15 @@
       "noActivityRecorded": "No activity recorded yet",
       "bookModalTitle": "Sermons in {{book}}",
       "bookModalCount": "{{count}} sermons",
+      "bookModalCount_one": "{{count}} sermon",
+      "bookModalCount_other": "{{count}} sermons",
       "bookModalEmpty": "No sermons for this book yet",
       "bookModalNoVerse": "No scripture provided",
       "bookModalUntitled": "Untitled sermon",
       "monthModalTitle": "Sermons in {{month}}",
       "monthModalCount": "{{count}} sermons",
+      "monthModalCount_one": "{{count}} sermon",
+      "monthModalCount_other": "{{count}} sermons",
       "monthModalEmpty": "No sermons for this month yet",
       "other": "Other",
       "daysUnit": "days"
@@ -1886,7 +1920,11 @@
     "audiencePlaceholder": "e.g. Youth, General Service, Wedding",
     "notesPlaceholder": "Any specific feedback or things to improve...",
     "totalCouncilsWord_one": "council",
-    "totalCouncilsWord_other": "councils"
+    "totalCouncilsWord_other": "councils",
+    "totalNotesWord_one": "note",
+    "totalNotesWord_other": "notes",
+    "totalPrayersWord_one": "prayer",
+    "totalPrayersWord_other": "prayers"
   },
   "copy": {
     "title": "Copy Content",
@@ -2531,6 +2569,8 @@
         "cancel": "Cancel",
         "addToSeries": "Add to Series",
         "removeFromSeries": "Remove from Series",
+        "removeFromSeriesConfirm": "Remove the sermon from the series \"{{series}}\"?",
+        "removeFromSeriesKeepsSermon": "The sermon itself stays; only the series changes.",
         "moveToDifferentSeries": "Move to Another Series",
         "viewSeries": "View Series",
         "selectSeries": "Select Series",

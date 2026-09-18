@@ -403,3 +403,33 @@ describe('connectivity — verdicts that must not outlive the moment they descri
     expect(getConnectivityState().device).toBe(false);
   });
 });
+
+/**
+ * THE ONE READING OF THE BROWSER'S NETWORK FLAG.
+ *
+ * Twenty-seven write paths used to read `navigator.onLine` themselves, four different ways.
+ */
+describe('isBrowserOffline', () => {
+  const { isBrowserOffline } = jest.requireActual('@/utils/connectivity') as typeof import('@/utils/connectivity');
+  const setOnLine = (value: boolean) =>
+    Object.defineProperty(window.navigator, 'onLine', { configurable: true, get: () => value });
+
+  afterEach(() => setOnLine(true));
+
+  it('is true only when the browser explicitly says there is no network', () => {
+    setOnLine(false);
+    expect(isBrowserOffline()).toBe(true);
+  });
+
+  it('is false while the browser says there is a network', () => {
+    setOnLine(true);
+    expect(isBrowserOffline()).toBe(false);
+  });
+
+  it('reads the flag fresh on every call', () => {
+    setOnLine(true);
+    expect(isBrowserOffline()).toBe(false);
+    setOnLine(false);
+    expect(isBrowserOffline()).toBe(true);
+  });
+});

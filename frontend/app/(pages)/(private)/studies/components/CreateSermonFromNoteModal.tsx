@@ -14,6 +14,8 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
+import { useAppLocale } from '@/hooks/useAppLocale';
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { createSermon } from '@/services/sermon.service';
 import {
@@ -24,11 +26,12 @@ import {
   type NoteCutOutline,
 } from '@/services/studies.service';
 import { newClientId } from '@/utils/clientId';
+import { isBrowserOffline } from '@/utils/connectivity';
 import { measureNoteForCut, WORDS_PER_CLAIM_HIGH, WORDS_PER_CLAIM_LOW } from '@/utils/noteCutCorridor';
 import { sermonDetailKey, sermonListKey } from '@/utils/queryKeys';
+import { formatScriptureReference } from '@/utils/scriptureReference';
 import { NOTE_TO_SERMON_COLORS } from '@/utils/themeColors';
 
-import { formatScriptureRef } from '../bookAbbreviations';
 
 import type { BibleLocale } from '../bibleData';
 import type { ScriptureReference, Sermon } from '@/models/models';
@@ -98,13 +101,6 @@ export interface CreateSermonFromNoteModalProps {
   returnFocusTo?: React.RefObject<HTMLElement | null>;
 }
 
-function toBibleLocale(language: string | undefined): BibleLocale {
-  const lang = language?.toLowerCase() || 'en';
-  if (lang.startsWith('ru')) return 'ru';
-  if (lang.startsWith('uk')) return 'uk';
-  return 'en';
-}
-
 /**
  * The most specific reference the author attached — a verse beats a chapter beats a
  * chapter range beats a book. A chapter range is stored with `fromVerse: 1` on this
@@ -122,11 +118,7 @@ export function pickVerseFromRefs(refs: ScriptureReference[], locale: BibleLocal
     refs.find(isRange) ??
     refs[0];
   const printable = isRange(chosen) ? { ...chosen, fromVerse: undefined, toVerse: undefined } : chosen;
-  return formatScriptureRef(printable, locale);
-}
-
-function isBrowserOffline(): boolean {
-  return typeof navigator !== 'undefined' && navigator.onLine === false;
+  return formatScriptureReference(printable, { locale: locale });
 }
 
 /** Thrown when the cut left the sermon without any Scripture to be born with. */
@@ -217,7 +209,7 @@ export default function CreateSermonFromNoteModal({
   const queryClient = useQueryClient();
   const { uid } = useResolvedUid();
 
-  const bibleLocale = useMemo(() => toBibleLocale(i18n.language), [i18n.language]);
+  const { locale: bibleLocale } = useAppLocale();
   /**
    * WHAT THE NOTE IS, IN UNITS THE READER CAN CHECK. Words and paragraphs, never
    * characters: "36,719 characters" is a number nobody can picture, and the corridor
@@ -341,12 +333,14 @@ export default function CreateSermonFromNoteModal({
     if (opener && typeof opener.focus === 'function' && !opener.hasAttribute('disabled')) opener.focus();
   }, [onClose, returnFocusTo]);
 
+  /*
+   * Escape and the page lock come from the shared rule; the Tab trap below stays, because
+   * keeping focus inside THIS dialog is its own business and differs window by window.
+   */
+  const layer = useModalLayer({ onClose: close });
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        close();
-        return;
-      }
       if (event.key !== 'Tab' || !dialogRef.current) return;
       const nodes = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
       if (nodes.length === 0) return;
@@ -550,7 +544,7 @@ export default function CreateSermonFromNoteModal({
       : error;
 
   const content = (
-    <div className="fixed inset-0 z-[100] flex bg-black/60 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4">
+    <div {...layer} className="fixed inset-0 z-[100] flex overscroll-contain bg-black/60 backdrop-blur-sm sm:items-center sm:justify-center sm:px-4">
       <div
         ref={dialogRef}
         role="dialog"

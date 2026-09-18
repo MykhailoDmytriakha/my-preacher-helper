@@ -78,3 +78,61 @@ describe('ConfirmModal', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+/**
+ * WHERE THE QUESTION STANDS WHEN IT IS ASKED FROM INSIDE ANOTHER WINDOW.
+ *
+ * Built on a third-party dialog, this window kept its own stack: over one of our forms it was
+ * drawn underneath, and one Escape closed the question AND the form it came from.
+ */
+describe('ConfirmModal inside the app\'s window stack', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const FormDialog = require('@/components/ui/FormDialog').default;
+
+  it('closes alone on Escape, leaving the form it was asked from open', () => {
+    const closeForm = jest.fn();
+    const closeQuestion = jest.fn();
+    render(
+      <>
+        <FormDialog title="Форма" onClose={closeForm}>
+          <p>текст</p>
+        </FormDialog>
+        <ConfirmModal isOpen onClose={closeQuestion} onConfirm={jest.fn()} title="Удалить?" />
+      </>
+    );
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(closeQuestion).toHaveBeenCalledTimes(1);
+    expect(closeForm).not.toHaveBeenCalled();
+  });
+
+  it('is drawn above every form layer', () => {
+    render(<ConfirmModal isOpen onClose={jest.fn()} onConfirm={jest.fn()} title="Удалить?" />);
+
+    const layer = document.querySelector('[data-modal-layer="true"]') as HTMLElement;
+    expect(layer.className).toContain('z-[300]');
+  });
+
+  it('answers a stray Enter with "no": focus starts on Cancel', () => {
+    render(<ConfirmModal isOpen onClose={jest.fn()} onConfirm={jest.fn()} title="Удалить?" />);
+
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'common.cancel' }));
+  });
+
+  it('holds the page still while it is open', () => {
+    const { unmount } = render(<ConfirmModal isOpen onClose={jest.fn()} onConfirm={jest.fn()} title="Удалить?" />);
+    expect(document.body.style.overflow).toBe('hidden');
+    unmount();
+    expect(document.body.style.overflow).not.toBe('hidden');
+  });
+
+  it('refuses Escape while the deletion is running', () => {
+    const onClose = jest.fn();
+    render(<ConfirmModal isOpen isDeleting onClose={onClose} onConfirm={jest.fn()} title="Удалить?" />);
+
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(onClose).not.toHaveBeenCalled();
+  });
+});

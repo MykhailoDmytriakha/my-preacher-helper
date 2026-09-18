@@ -4,6 +4,8 @@ import { X } from 'lucide-react';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useModalLayer } from '@/hooks/useModalLayer';
+
 // Translation key constants
 const TRANSLATION_KEYS = {
   HOURS: 'common.hours',
@@ -246,11 +248,15 @@ const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
     };
   }, []);
 
+  /* Escape and the page lock come from the one shared rule (`useModalLayer`). */
+  const layer = useModalLayer({ onClose: onCancel });
+
   // Render modal
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      {...layer}
+      className="fixed inset-0 z-50 flex items-center justify-center overscroll-contain bg-black/60 backdrop-blur-sm"
       onMouseDown={(e) => {
         // Enable backdrop click to close functionality
         // Close modal when clicking outside the content area

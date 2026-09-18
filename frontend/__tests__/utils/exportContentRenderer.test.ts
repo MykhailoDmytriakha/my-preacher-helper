@@ -22,3 +22,28 @@ it('does not render a document for an absent plan and preserves the supplied lan
   expect(renderPlanExport(exportSermon({ plan: { introduction: { outline: 'Body' }, main: { outline: '' }, conclusion: { outline: '' } } }), options, labels))
     .toBe('Sermon: Test sermon\nScripture:\nJohn 1:1\n\nIntro:\n\nBody\n\n---------------------\n\n');
 });
+
+it('exports a plan kept in the CURRENT shape, where the assembled document is not stored', () => {
+  /**
+   * `planText` holds text per node and the whole document is assembled on read, so such a
+   * sermon has neither `plan` nor `draft`. Reading storage for the document returned an empty
+   * string: the file would have come out as a title page with nothing under it — which is what
+   * the person would have got the moment the greyed-out Word button was enabled.
+   */
+  const sermon = exportSermon({
+    outline: {
+      introduction: [{ id: 'p1', text: 'Великое приобретение' }],
+      main: [{ id: 'p2', text: 'Принцип полноты' }],
+      conclusion: [{ id: 'p3', text: 'Так говорит Господь' }],
+    },
+    planText: { p1: '- Исав пренебрёг', p2: '- сосуд без масла', p3: '- внешний вид' },
+  } as never);
+
+  const text = renderPlanExport(sermon, { format: 'plain', includeTags: false, includeMetadata: true }, labels);
+
+  expect(text).toContain('Исав пренебрёг');
+  expect(text).toContain('сосуд без масла');
+  expect(text).toContain('внешний вид');
+  expect(text).toContain('Intro');
+  expect(text).toContain('Conclusion');
+});

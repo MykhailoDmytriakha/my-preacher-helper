@@ -9,12 +9,13 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import OutlineBoard from '@/components/plan-editor/OutlineBoard';
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { usePlanTemplates } from '@/hooks/usePlanTemplates';
-import { useScrollLock } from '@/hooks/useScrollLock';
 import { updateSermonOutline } from '@/services/outline.service';
 import { isOutlineCollisionError } from '@/services/sermons.client';
 import { newClientId } from '@/utils/clientId';
+import { isBrowserOffline } from '@/utils/connectivity';
 import { awaitAcceptance, persistedWrite, queuedMutation } from '@/utils/recoverableWrite';
 import { writeFailureTranslationKey } from '@/utils/writeRecovery';
 
@@ -111,9 +112,6 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   const { t } = useTranslation();
   const { templates, createTemplate } = usePlanTemplates(sermon.userId);
 
-  // Lock background page scroll while the modal is open.
-  useScrollLock(isOpen);
-
   const [outline, setOutline] = useState<SermonOutline>(emptyOutline);
   const [undoStack, setUndoStack] = useState<SermonOutline[]>([]);
   const [redoStack, setRedoStack] = useState<SermonOutline[]>([]);
@@ -121,6 +119,16 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   const [pendingApply, setPendingApply] = useState<SermonOutline | null>(null);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [saveAsOpen, setSaveAsOpen] = useState(false);
+
+  /*
+   * One rule for every window: the page lock, Escape and "am I the topmost window". Escape is
+   * refused while an apply is in flight or a nested dialog is open — those own the key then.
+   */
+  const layer = useModalLayer({
+    onClose,
+    active: isOpen,
+    closeDisabled: Boolean(pendingApply) || saveAsOpen || clearConfirmOpen,
+  });
   const [saveAsName, setSaveAsName] = useState('');
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -194,14 +202,6 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   const storedCollisionRef = useRef(storedCollision);
   storedCollisionRef.current = storedCollision;
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !pendingApply && !saveAsOpen && !clearConfirmOpen) onClose();
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [isOpen, onClose, pendingApply, saveAsOpen, clearConfirmOpen]);
 
   useEffect(() => {
     if (!templatesMenuOpen) return;
@@ -255,7 +255,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
         try {
           const request = updateSermonOutline(sermon.id, next, baseOutlineRef.current);
           const acceptance = await awaitAcceptance(
-            typeof navigator !== 'undefined' && navigator.onLine === false
+            isBrowserOffline()
               ? queuedMutation(`outline:${sermon.id}`, request)
               : persistedWrite(request),
             (error) => toast.error(t(writeFailureTranslationKey(error, 'errors.saveOutlineError')))
@@ -422,7 +422,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
   if (!isOpen || typeof document === 'undefined') return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6">
+    <div {...layer} className="fixed inset-0 z-[200] flex items-center justify-center overscroll-contain p-4 sm:p-6">
       <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
 
       <div
@@ -517,7 +517,7 @@ const PlanEditorModal: React.FC<PlanEditorModalProps> = ({
                       {t('planEditor.saveAsTemplate')}
                     </button>
                     <Link
-                      href="/settings?section=planTemplates"
+                      href="/settings/templates"
                       className="block px-3 py-2 hover:bg-slate-50 dark:hover:bg-gray-700 text-sm text-slate-500 dark:text-gray-400"
                     >
                       {t('planEditor.manageTemplates')}

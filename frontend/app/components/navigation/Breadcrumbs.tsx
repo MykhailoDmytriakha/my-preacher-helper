@@ -38,6 +38,26 @@ const segmentLabels: Record<string, SegmentConfig> = {
     defaultLabel: 'Settings',
     href: '/settings'
   },
+  /**
+   * The settings sections are routes now, and a route segment is not a label: without an
+   * entry each one would be title-cased into the trail as the English word in the URL.
+   */
+  user: {
+    labelKey: 'settings.userSettings',
+    defaultLabel: 'User settings',
+  },
+  limits: {
+    labelKey: 'settings.nav.aiModels',
+    defaultLabel: 'AI and limits',
+  },
+  tags: {
+    labelKey: 'settings.manageTags',
+    defaultLabel: 'Manage tags',
+  },
+  templates: {
+    labelKey: 'settings.planTemplates',
+    defaultLabel: 'Structure templates',
+  },
   sermons: {
     labelKey: 'navigation.sermons',
     defaultLabel: 'Sermons',

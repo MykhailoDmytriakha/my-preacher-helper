@@ -4,11 +4,23 @@ import { SparklesIcon } from '@heroicons/react/24/outline';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { AiBusyComet } from '@/components/ui/AiBusyComet';
+
 export type NoteAiTarget = 'all' | 'title' | 'scriptureRefs' | 'tags';
+
+/**
+ * Which control started the run. The busy animation belongs to the button the person
+ * PRESSED, not to what the model was asked for: choosing "Find Scripture Refs" inside
+ * this header menu has to light this header button, never the small one beside the
+ * reference list. One shared boolean could not tell those apart, so it lit whichever
+ * button happened to own a spinner.
+ */
+export type NoteAiSource = 'menu' | 'scriptureRefs' | 'tags';
 
 interface NoteAiMenuProps {
     onAnalyze: (target: NoteAiTarget) => void;
-    isAnalyzing: boolean;
+    /** True only while THIS button's request is in flight. */
+    isRunning: boolean;
     disabled: boolean;
     /** Shown instead of the normal tooltip when the AI quota is spent. */
     blockedTitle?: string;
@@ -19,7 +31,7 @@ interface NoteAiMenuProps {
  * beside the note's title — it acts on the WHOLE note, never on the text under the
  * cursor, so it belongs next to the thing it rewrites.
  */
-export function NoteAiMenu({ onAnalyze, isAnalyzing, disabled, blockedTitle }: NoteAiMenuProps) {
+export function NoteAiMenu({ onAnalyze, isRunning, disabled, blockedTitle }: NoteAiMenuProps) {
     const { t } = useTranslation();
     const [isOpen, setIsOpen] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
@@ -44,11 +56,18 @@ export function NoteAiMenu({ onAnalyze, isAnalyzing, disabled, blockedTitle }: N
                 type="button"
                 onClick={() => setIsOpen((open) => !open)}
                 disabled={disabled}
-                title={blockedTitle || t('studiesWorkspace.aiAnalyze.button')}
+                aria-busy={isRunning}
+                title={isRunning
+                    ? t('studiesWorkspace.aiAnalyze.analyzing')
+                    : blockedTitle || t('studiesWorkspace.aiAnalyze.button')}
                 aria-label={t('studiesWorkspace.aiAnalyze.button')}
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-purple-400 bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow transition-all hover:from-purple-600 hover:to-indigo-600 disabled:opacity-50 dark:border-purple-600"
+                // No `overflow-hidden`: the comet orbits OUTSIDE the pill.
+                // `disabled:opacity-50` is suspended while it runs — a working control must
+                // not look like a dead one.
+                className={`relative flex h-9 w-9 items-center justify-center rounded-full border border-purple-400 bg-gradient-to-r from-purple-500 to-indigo-500 text-white shadow transition-all hover:from-purple-600 hover:to-indigo-600 dark:border-purple-600 ${isRunning ? 'opacity-100' : 'disabled:opacity-50'}`}
             >
-                <SparklesIcon className={`h-5 w-5 ${isAnalyzing ? 'animate-spin' : ''}`} />
+                {isRunning && <AiBusyComet />}
+                <SparklesIcon className="relative h-5 w-5" />
             </button>
 
             {isOpen && (

@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 
 import FeedbackForm from "@/components/navigation/FeedbackForm";
 import "@locales/i18n";
+import { useModalLayer } from '@/hooks/useModalLayer';
 
 interface FeedbackModalProps {
   isOpen: boolean;
@@ -14,6 +15,8 @@ interface FeedbackModalProps {
 }
 
 export default function FeedbackModal({ isOpen, onClose, onSubmit }: FeedbackModalProps) {
+  /* Holds the page still and answers Escape — one rule for every window (`useModalLayer`). */
+  const layer = useModalLayer({ onClose, active: isOpen });
   const { t } = useTranslation();
   const [mounted, setMounted] = useState(false);
 
@@ -25,7 +28,7 @@ export default function FeedbackModal({ isOpen, onClose, onSubmit }: FeedbackMod
   if (!isOpen) return null;
 
   const modalContent = (
-    <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="feedback-modal" role="dialog" aria-modal="true">
+    <div {...layer} className="fixed inset-0 z-50 overflow-y-auto overscroll-contain" aria-labelledby="feedback-modal" role="dialog" aria-modal="true">
       <div className="flex items-center justify-center min-h-screen p-4">
         {/* Modal backdrop */}
         <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" aria-hidden="true" onClick={onClose}></div>

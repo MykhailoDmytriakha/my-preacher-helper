@@ -126,8 +126,25 @@ export function renderPlanWithFallback(
   liveText: PlanTextMap
 ): CombinedPlan {
   const assembled = renderPlan(sermon?.outline, liveText);
-  const stored = sermon?.plan ?? sermon?.draft;
-  if (!stored) return assembled;
+  /**
+   * PER SECTION, WHICHEVER OLD COPY ACTUALLY HOLDS TEXT — not a fixed winner.
+   *
+   * A sermon from before the split may hold both `plan` and `draft`, and they can each be
+   * complete in different sections: one holds only the introduction, the working copy holds
+   * all three. Choosing one document wholesale then dropped the other's sections on the
+   * floor, which is a plan losing text in front of its author. Asking section by section
+   * costs nothing and cannot lose anything, so the question "which one wins" stops existing.
+   */
+  const storedOutline = (section: SectionKey): string => {
+    // Where both hold this section, `plan` wins — it is the saved document and `draft` the
+    // legacy field, as the export path has always said in words and as the repository does
+    // when it hydrates `plan` from `plan` first. Two suites used to encode OPPOSITE orders
+    // here because the two code paths never met; they meet now, and this is the order.
+    const fromPlan = (sermon?.plan?.[section]?.outline ?? "").trim();
+    if (fromPlan) return sermon?.plan?.[section]?.outline ?? "";
+    return sermon?.draft?.[section]?.outline ?? "";
+  };
+  if (!sermon?.plan && !sermon?.draft) return assembled;
 
   const text = liveText;
   const withFallback = { ...assembled };
@@ -152,11 +169,35 @@ export function renderPlanWithFallback(
      */
     const sectionWasWritten = nodeIds.some((id) => (sermon?.planText ?? {})[id] !== undefined);
 
-    if (!sectionHasText && !sectionWasWritten && (stored[section]?.outline ?? "").trim() !== "") {
-      withFallback[section] = stored[section]?.outline ?? "";
+    const fallback = storedOutline(section);
+    if (!sectionHasText && !sectionWasWritten && fallback.trim() !== "") {
+      withFallback[section] = fallback;
     }
   });
   return withFallback;
+}
+
+/**
+ * Which sections actually have something WRITTEN in them.
+ *
+ * Not the same question as "is the assembled section non-empty": assembly prints the
+ * structure's headings, so a section with points and no text still comes back full of text
+ * and would answer yes to anything that just checked the string. Readiness to preach asked
+ * exactly that and called an untouched plan ready.
+ */
+export function writtenSections(sermon: Sermon | null | undefined): Record<SectionKey, boolean> {
+  const text = readPlanText(sermon);
+  const live = liveNodeIds(sermon?.outline);
+  const written = (section: SectionKey): boolean => {
+    const nodeIds = (sermon?.outline?.[section] ?? []).flatMap((point) => (
+      [point.id, ...((point.subPoints ?? []).map((sub) => sub.id))]
+    ));
+    if (nodeIds.some((id) => live.has(id) && (text[id] ?? "").trim() !== "")) return true;
+    // An older sermon may hold only the assembled string for this section — see `hasWrittenPlan`.
+    const stored = sermon?.draft?.[section]?.outline ?? sermon?.plan?.[section]?.outline ?? "";
+    return stored.trim() !== "";
+  };
+  return { introduction: written("introduction"), main: written("main"), conclusion: written("conclusion") };
 }
 
 /** For readers holding only a sermon — exports, menus, anything without editor state. */

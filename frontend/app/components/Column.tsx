@@ -95,10 +95,12 @@ export default function Column({
   const { setNodeRef, isOver } = useDroppable({ id, data: { container: id } });
   const { t } = useTranslation();
   const isOnline = useOnlineStatus();
-  const { aiBlocked, transcriptionBlocked, refresh: refreshAiUsage } = useAiUsage();
-  const transcriptionUnavailableLabel = transcriptionBlocked
-    ? t("settings.usage.transcriptionUsageExhausted")
-    : undefined;
+  const { aiBlocked, blocked, blockedLabelKey, refresh: refreshAiUsage } = useAiUsage();
+  // Dictation spends transcription AND ai (`/api/thoughts` admits both), so asking only about
+  // transcription left the microphone bright on an account whose AI allowance was spent.
+  const transcriptionBlocked = blocked('dictation');
+  const dictationBlockedKey = blockedLabelKey('dictation');
+  const transcriptionUnavailableLabel = dictationBlockedKey ? t(dictationBlockedKey) : undefined;
   const [showTooltip, setShowTooltip] = useState<boolean>(false);
 
   // State for responsive sidebar visibility on small screens
@@ -175,6 +177,9 @@ export default function Column({
   const [sectionAudioError, setSectionAudioError] = useState<string | null>(null);
   const [normalAudioError, setNormalAudioError] = useState<string | null>(null);
   const [pointAudioErrors, setPointAudioErrors] = useState<Record<string, string>>({});
+  // One flag for the whole column: the monthly allowance is an account-wide fact, not a
+  // property of the recording that happened to meet it.
+  const [audioLimitReached, setAudioLimitReached] = useState(false);
   const normalModePopoverRef = useRef<HTMLDivElement | null>(null);
   const normalAudioErrorRef = useRef<string | null>(null);
 
@@ -358,6 +363,7 @@ export default function Column({
             disabled={allPointsBlocked || transcriptionBlocked}
             title={transcriptionBlocked ? transcriptionUnavailableLabel : undefined}
             transcriptionError={sectionAudioError}
+            transcriptionLimitReached={audioLimitReached}
             onClearError={() => setSectionAudioError(null)}
             onRecordingComplete={(audioBlob) => {
               if (transcriptionBlocked) return;
@@ -368,6 +374,7 @@ export default function Column({
                 sermonId,
                 setIsRecordingAudio,
                 setAudioError: setSectionAudioError,
+                setLimitReached: setAudioLimitReached,
                 onAudioThoughtCreated,
                 t,
                 successMessage: sectionLabel
@@ -730,6 +737,7 @@ export default function Column({
                         disabled={allPointsBlocked || transcriptionBlocked}
                         title={transcriptionBlocked ? transcriptionUnavailableLabel : undefined}
                         transcriptionError={normalAudioError}
+                        transcriptionLimitReached={audioLimitReached}
                         onClearError={() => setNormalAudioErrorSafely(null)}
 	                      onRecordingComplete={(audioBlob) => {
                           if (transcriptionBlocked) return;
@@ -739,6 +747,7 @@ export default function Column({
 	                          sermonId,
 	                          setIsRecordingAudio,
 	                          setAudioError: setNormalAudioErrorSafely,
+	                          setLimitReached: setAudioLimitReached,
 	                          onAudioThoughtCreated,
 	                          t,
 	                          onSuccess: () => setShowAudioPopover(false),

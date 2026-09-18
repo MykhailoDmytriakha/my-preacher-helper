@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 
 import { Chip } from '@/components/ui/Chip';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { getEffectiveIsPreached } from '@/utils/preachDateStatus';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
 import { matchesSermonQuery, tokenizeQuery } from '@/utils/sermonSearch';
@@ -33,6 +34,8 @@ export default function AddSermonToSeriesModal({
   const [selectedSermonIds, setSelectedSermonIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  /* Holds the page still and answers Escape — the same rule every window in the app follows. */
+  const layer = useModalLayer({ onClose, closeDisabled: isAdding });
 
   const availableSermons = useMemo(
     () => sermons.filter((sermon) => !currentSeriesSermonIds.includes(sermon.id)),
@@ -82,7 +85,13 @@ export default function AddSermonToSeriesModal({
   };
 
   const modalContent = (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+    <div
+      {...layer}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('workspaces.series.actions.addSermon', { defaultValue: 'Add sermons to series' })}
+      className="fixed inset-0 z-[100] flex items-center justify-center overscroll-contain bg-black/60 px-4 backdrop-blur-sm"
+    >
       <div className="w-full max-w-3xl mx-4 max-h-[85vh] overflow-hidden rounded-2xl border border-gray-200/70 bg-white shadow-2xl ring-1 ring-gray-100/80 dark:border-gray-800 dark:bg-gray-900 dark:ring-gray-800 flex flex-col">
         <div className="h-1 w-full bg-gradient-to-r from-blue-600 via-indigo-500 to-sky-500" />
         <div className="p-6 sm:p-7 flex flex-col flex-1 overflow-hidden">

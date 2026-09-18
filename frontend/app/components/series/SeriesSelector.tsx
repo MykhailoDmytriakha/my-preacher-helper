@@ -6,6 +6,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
 import { Chip } from '@/components/ui/Chip';
+import { useModalLayer } from '@/hooks/useModalLayer';
 import { useSeries } from '@/hooks/useSeries';
 import { useAuth } from '@/providers/AuthProvider';
 
@@ -27,6 +28,7 @@ export default function SeriesSelector({
   pendingSeriesId = null,
 }: SeriesSelectorProps) {
   const { t } = useTranslation();
+  const layer = useModalLayer({ onClose, closeDisabled: isProcessing });
   const { user } = useAuth();
   const { series, loading } = useSeries(user?.uid || null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -55,7 +57,15 @@ export default function SeriesSelector({
   };
 
   const modalContent = (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50">
+    <div
+      {...layer}
+      role="dialog"
+      aria-modal="true"
+      aria-label={mode === 'change'
+        ? t('workspaces.series.actions.moveToDifferentSeries')
+        : t('workspaces.series.actions.addToSeries')}
+      className="fixed inset-0 z-[100] flex items-center justify-center overscroll-contain bg-black/50"
+    >
       <div className="w-full max-w-lg mx-4 rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800 max-h-[80vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">

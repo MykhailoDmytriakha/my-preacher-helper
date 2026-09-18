@@ -11,13 +11,16 @@ import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import FloatingTextScaleControls from '@/components/FloatingTextScaleControls';
 import { FocusRecorderButton } from '@/components/FocusRecorderButton';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
+import { AiBusyComet } from '@/components/ui/AiBusyComet';
 import { Chip } from '@/components/ui/Chip';
 import { FoldableMarkdown } from '@/components/ui/FoldableMarkdown';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { useActiveSection } from '@/hooks/useActiveSection';
 import { useAiUsage } from '@/hooks/useAiUsage';
+import { useAppLocale } from '@/hooks/useAppLocale';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useCollapseOnScroll } from '@/hooks/useCollapseOnScroll';
+import { useConfirm } from '@/hooks/useConfirm';
 import { useDocumentFreshness } from '@/hooks/useDocumentFreshness';
 import { useDurableDraft } from '@/hooks/useDurableDraft';
 import { useMarkdownOutline } from '@/hooks/useMarkdownOutline';
@@ -52,7 +55,7 @@ import ScriptureRefBadge from '../ScriptureRefBadge';
 import ScriptureRefPicker from '../ScriptureRefPicker';
 import TagCatalogModal from '../TagCatalogModal';
 
-import { NoteAiMenu } from './NoteAiMenu';
+import { NoteAiMenu, type NoteAiSource, type NoteAiTarget } from './NoteAiMenu';
 import { type NoteDraftPayload } from './noteDraft';
 import { NoteMobileSheet } from './NoteMobileSheet';
 import { NoteSidePanel } from './NoteSidePanel';
@@ -154,9 +157,9 @@ function useNoteInitialization({
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function useNoteDeletion({ t, noteId, isNew, uid, deleteNote, shareLinks, deleteShareLink, router }: any) {
+function useNoteDeletion({ t, confirm, noteId, isNew, uid, deleteNote, shareLinks, deleteShareLink, router }: any) {
     return async () => {
-        if (window.confirm(t('studiesWorkspace.deleteConfirm'))) {
+        if (await confirm({ title: t('studiesWorkspace.deleteConfirm'), confirmText: t('common.delete') })) {
             if (noteId && !isNew && uid) {
                 try {
                     // useStudyNotes' delete recovery descriptor reports a late refusal while this screen is mounted.
@@ -202,8 +205,18 @@ function useNoteAIAssistant({
     setScriptureRefs: (refs: ScriptureReference[] | ((prev: ScriptureReference[]) => ScriptureReference[])) => void; setTags: (tags: string[] | ((prev: string[]) => string[])) => void;
     t: ReturnType<typeof useTranslation>['t'];
 }) {
-    const { aiBlocked, transcriptionBlocked, refresh: refreshAiUsage } = useAiUsage();
-    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const { aiBlocked, blocked, blockedLabelKey, refresh: refreshAiUsage } = useAiUsage();
+    // `/api/studies/transcribe` admits transcription AND ai, so the microphone has to answer
+    // for both — gating on transcription alone let the take go out and be refused.
+    const dictationBlocked = blocked('dictation');
+    const dictationBlockedKey = blockedLabelKey('dictation');
+    // WHICH control is working, not merely THAT something is working. A bare boolean
+    // could only say "an analysis is running", so the busy motion landed on whichever
+    // button owned a spinner — press the one beside the references, watch the header
+    // button spin. The source is the button that was pressed; `isAnalyzing` stays as the
+    // page-wide gate that keeps a second request from starting.
+    const [analyzingSource, setAnalyzingSource] = useState<NoteAiSource | null>(null);
+    const isAnalyzing = analyzingSource !== null;
     const [isVoiceProcessing, setIsVoiceProcessing] = useState(false);
     // Voice recovery: keep the recording alive so a failed transcription never loses the thought.
     const [voiceError, setVoiceError] = useState<string | null>(null);
@@ -214,14 +227,17 @@ function useNoteAIAssistant({
 
     const [pendingAnalysisResult, setPendingAnalysisResult] = useState<AnalysisResultData | null>(null);
 
-    const handleAIAnalyze = async (analysisType: 'all' | 'title' | 'tags' | 'scriptureRefs' = 'all') => {
+    const handleAIAnalyze = async (
+        analysisType: NoteAiTarget = 'all',
+        source: NoteAiSource = 'menu'
+    ) => {
         if (aiBlocked) return;
         if (!content.trim()) {
             toast.error(t('studiesWorkspace.aiAnalyze.emptyContent') || 'Please enter note content');
             return;
         }
 
-        setIsAnalyzing(true);
+        setAnalyzingSource(source);
         try {
             const token = await auth.currentUser?.getIdToken();
             const response = await apiClient('/api/studies/analyze', {
@@ -264,7 +280,7 @@ function useNoteAIAssistant({
             if (isUsageCapReachedError(error)) return;
             toast.error(t('studiesWorkspace.aiAnalyze.error') || 'Failed to analyze');
         } finally {
-            setIsAnalyzing(false);
+            setAnalyzingSource(null);
         }
     };
 
@@ -375,7 +391,7 @@ function useNoteAIAssistant({
     }, []);
 
     return {
-        isAnalyzing, isVoiceProcessing, aiBlocked, transcriptionBlocked, handleAIAnalyze, handleVoiceRecordingComplete,
+        isAnalyzing, analyzingSource, isVoiceProcessing, aiBlocked, dictationBlocked, dictationBlockedKey, handleAIAnalyze, handleVoiceRecordingComplete,
         voiceError, voiceRetryCount, voiceMaxRetries: VOICE_MAX_RETRIES, handleRetryVoice, handleClearVoiceError,
         resendVoiceBlob,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
@@ -645,7 +661,7 @@ function noteScrollLayout(wide: boolean, navHeight: number, belowHeader: number,
 }
 
 export default function StudyNoteEditorPage() {
-    const { t, i18n } = useTranslation();
+    const { t } = useTranslation();
     const router = useRouter();
     const routeId = useRouteId();
     const [createdNoteId, setCreatedNoteId] = useState<string | null>(null);
@@ -679,12 +695,7 @@ export default function StudyNoteEditorPage() {
     // Load existing note data or create a new empty template
     const existingNote = useMemo(() => notes.find(n => n.id === noteId), [notes, noteId]);
 
-    const bibleLocale: BibleLocale = useMemo(() => {
-        const lang = i18n.language?.toLowerCase() || 'en';
-        if (lang.startsWith('ru')) return 'ru';
-        if (lang.startsWith('uk')) return 'uk';
-        return 'en';
-    }, [i18n.language]);
+    const { locale: bibleLocale } = useAppLocale();
 
     const availableTags = useMemo(() => {
         const fromTags = [...(tagData.requiredTags ?? []), ...(tagData.customTags ?? [])].map(t => t.name);
@@ -950,7 +961,7 @@ export default function StudyNoteEditorPage() {
 
     // AI assistant hook
     const {
-        isAnalyzing, isVoiceProcessing, aiBlocked, transcriptionBlocked, handleAIAnalyze, handleVoiceRecordingComplete,
+        isAnalyzing, analyzingSource, isVoiceProcessing, aiBlocked, dictationBlocked, dictationBlockedKey, handleAIAnalyze, handleVoiceRecordingComplete,
         voiceError, voiceRetryCount, voiceMaxRetries, handleRetryVoice, handleClearVoiceError,
         resendVoiceBlob,
         pendingAnalysisResult, setPendingAnalysisResult, handleApplyAnalysis
@@ -970,8 +981,10 @@ export default function StudyNoteEditorPage() {
         router.push(queryParams ? `/studies?${queryParams}` : '/studies');
     };
 
+    const { confirm, confirmDialog } = useConfirm();
     const handleDelete = useNoteDeletion({
         t,
+        confirm,
         noteId,
         isNew,
         uid,
@@ -1025,12 +1038,21 @@ export default function StudyNoteEditorPage() {
                             {isEditing && (
                                 <button
                                     type="button"
-                                    onClick={() => handleAIAnalyze('scriptureRefs')}
+                                    onClick={() => handleAIAnalyze('scriptureRefs', 'scriptureRefs')}
                                     disabled={isAnalyzing || !content.trim() || aiBlocked}
-                                    title={aiBlocked ? t(AI_USAGE_EXHAUSTED_KEY) : t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
-                                    className="flex items-center justify-center rounded-lg p-1.5 opacity-0 transition-opacity group-hover/refs:opacity-100 focus-visible:opacity-100 text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
+                                    aria-busy={analyzingSource === 'scriptureRefs'}
+                                    title={analyzingSource === 'scriptureRefs'
+                                        ? t('studiesWorkspace.aiAnalyze.analyzing')
+                                        : aiBlocked ? t(AI_USAGE_EXHAUSTED_KEY) : t('studiesWorkspace.aiAnalyze.findRefs', { defaultValue: 'Find Scripture Refs' })}
+                                    // While it runs the button drops out of the hover-reveal: a control
+                                    // the person just pressed must not vanish when the pointer leaves
+                                    // the section, or its own feedback becomes invisible.
+                                    className={`relative flex items-center justify-center rounded-full p-1.5 transition-opacity focus-visible:opacity-100 text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors ${analyzingSource === 'scriptureRefs'
+                                        ? 'opacity-100'
+                                        : 'opacity-0 group-hover/refs:opacity-100 disabled:opacity-50'}`}
                                 >
-                                    <SparklesIcon className="h-5 w-5" />
+                                    {analyzingSource === 'scriptureRefs' && <AiBusyComet inset="-inset-[6px]" />}
+                                    <SparklesIcon className="relative h-5 w-5" />
                                 </button>
                             )}
                         </div>
@@ -1115,12 +1137,20 @@ export default function StudyNoteEditorPage() {
                             {isEditing && (
                                 <button
                                     type="button"
-                                    onClick={() => handleAIAnalyze('tags')}
+                                    onClick={() => handleAIAnalyze('tags', 'tags')}
                                     disabled={isAnalyzing || !content.trim() || aiBlocked}
-                                    title={aiBlocked ? t(AI_USAGE_EXHAUSTED_KEY) : t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
-                                    className="flex items-center justify-center rounded-lg p-1.5 opacity-0 transition-opacity group-hover/tags:opacity-100 focus-visible:opacity-100 text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors disabled:opacity-50"
+                                    aria-busy={analyzingSource === 'tags'}
+                                    title={analyzingSource === 'tags'
+                                        ? t('studiesWorkspace.aiAnalyze.analyzing')
+                                        : aiBlocked ? t(AI_USAGE_EXHAUSTED_KEY) : t('studiesWorkspace.aiAnalyze.generateTags', { defaultValue: 'Generate Tags' })}
+                                    // Same hover-reveal exemption as the references button: while it
+                                    // works, it stays on screen.
+                                    className={`relative flex items-center justify-center rounded-full p-1.5 transition-opacity focus-visible:opacity-100 text-purple-600 hover:bg-purple-50 hover:text-purple-700 dark:text-purple-400 dark:hover:bg-purple-900/50 transition-colors ${analyzingSource === 'tags'
+                                        ? 'opacity-100'
+                                        : 'opacity-0 group-hover/tags:opacity-100 disabled:opacity-50'}`}
                                 >
-                                    <SparklesIcon className="h-5 w-5" />
+                                    {analyzingSource === 'tags' && <AiBusyComet inset="-inset-[6px]" />}
+                                    <SparklesIcon className="relative h-5 w-5" />
                                 </button>
                             )}
                         </div>
@@ -1280,8 +1310,9 @@ export default function StudyNoteEditorPage() {
                 title={title} setTitle={setTitle} searchQuery={searchQuery} justSaved={justSaved}
                 aiMenu={
                     <NoteAiMenu
-                        onAnalyze={handleAIAnalyze}
-                        isAnalyzing={isAnalyzing}
+                        // Every target picked inside this menu belongs to THIS button.
+                        onAnalyze={(target: NoteAiTarget) => handleAIAnalyze(target, 'menu')}
+                        isRunning={analyzingSource === 'menu'}
                         disabled={isAnalyzing || !content.trim() || aiBlocked}
                         blockedTitle={aiBlocked ? t(AI_USAGE_EXHAUSTED_KEY) : undefined}
                     />
@@ -1359,8 +1390,8 @@ export default function StudyNoteEditorPage() {
                                 <FocusRecorderButton
                                     onRecordingComplete={handleVoiceRecordingComplete}
                                     isProcessing={isVoiceProcessing}
-                                    disabled={transcriptionBlocked}
-                                    title={transcriptionBlocked ? t('settings.usage.transcriptionUsageExhausted') : undefined}
+                                    disabled={dictationBlocked}
+                                    title={dictationBlockedKey ? t(dictationBlockedKey) : undefined}
                                     onError={(err: unknown) => toast.error(String(err) || 'Error')}
                                     transcriptionError={voiceError}
                                     onRetry={handleRetryVoice}
@@ -1433,6 +1464,7 @@ export default function StudyNoteEditorPage() {
                 sheet is up it would sit ON the outline rows. Nothing to size while the
                 text is covered anyway. */}
             {!isEditing && !sheetOpen && <FloatingTextScaleControls />}
+            {confirmDialog}
         </div>
     );
 }

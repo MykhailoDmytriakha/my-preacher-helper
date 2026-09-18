@@ -22,6 +22,7 @@ import { useStudyNotes } from '@/hooks/useStudyNotes';
 import { useStudyNoteShareLinks } from '@/hooks/useStudyNoteShareLinks';
 import { useTags } from '@/hooks/useTags';
 import { StudyNote } from '@/models/models';
+import { scriptureReferenceSearchText } from '@/utils/scriptureReference';
 
 import { getBooksForDropdown, BibleLocale, getLocalizedBookName, resolveBibleLocale } from './bibleData';
 import ShareNoteModal from './components/ShareNoteModal';
@@ -136,28 +137,10 @@ export default function StudiesPage() {
         return tokens.some((token) => lowered.includes(token));
       });
 
+      // Matched by what the card shows — both the abbreviation and the spelled-out name, the
+      // Psalms renumbered as displayed (`scriptureReferenceSearchText`).
       const refsMatch = note.scriptureRefs.some((ref) => {
-        const bookName = getLocalizedBookName(ref.book, bibleLocale);
-
-        if (ref.chapter === undefined) {
-          const refText = bookName.toLowerCase();
-          return tokens.some((token) => refText.includes(token));
-        }
-
-        const chapter = ref.chapter;
-
-        if (ref.toChapter !== undefined) {
-          const refText = `${bookName} ${chapter}-${ref.toChapter}`.toLowerCase();
-          return tokens.some((token) => refText.includes(token));
-        }
-
-        if (ref.fromVerse === undefined) {
-          const refText = `${bookName} ${chapter}`.toLowerCase();
-          return tokens.some((token) => refText.includes(token));
-        }
-
-        const verses = ref.toVerse ? `${ref.fromVerse}-${ref.toVerse}` : `${ref.fromVerse}`;
-        const refText = `${bookName} ${chapter}:${verses}`.toLowerCase();
+        const refText = scriptureReferenceSearchText(ref, bibleLocale);
         return tokens.some((token) => refText.includes(token));
       });
 

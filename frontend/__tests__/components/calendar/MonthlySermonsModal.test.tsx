@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
+import '@testing-library/jest-dom';
 import MonthlySermonsModal from '@/components/calendar/MonthlySermonsModal';
 import * as reactI18next from 'react-i18next';
 
@@ -159,8 +160,8 @@ describe('MonthlySermonsModal', () => {
                 entries={[]}
             />
         );
-        screen.debug();
-        expect(screen.getByRole('heading', { level: 2 }).textContent).toBeTruthy();
+        // Inside a sentence the month keeps its natural lower case and its standalone form.
+        expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Sermons in февраль 2024');
     });
 
     it('handles UK locale correctly', () => {
@@ -173,9 +174,8 @@ describe('MonthlySermonsModal', () => {
                 entries={[]}
             />
         );
-        const title = screen.getByRole('heading', { level: 2 });
-        // Ukrainian "March 2024" can be "Березень 2024" or "Березня 2024" depending on context
-        expect(title.textContent).toMatch(/(березень|березня) 2024/i);
+        // One answer, not "either form": the standalone month, lower case inside the sentence.
+        expect(screen.getByRole('heading', { level: 2 }).textContent).toBe('Sermons in березень 2024');
     });
 
     it('falls back to default locale for unknown languages', () => {

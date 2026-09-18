@@ -10,20 +10,38 @@ import {
 } from "@/components/export-buttons/classNames";
 
 describe("export button classNames", () => {
-  it("covers icon button variants across availability and preached state", () => {
-    expect(getTxtIconButtonClassName(true)).toContain("text-gray-500");
+  /**
+   * GREY MEANS ONE THING: THIS CANNOT BE PRESSED.
+   *
+   * Every icon used to be grey at rest and coloured only under the cursor, so a working TXT
+   * button and a dead PDF button looked the same — one shade of grey apart — and the only way
+   * to tell them apart was to try.
+   */
+  it("gives every available icon its own colour at rest, on a fresh card and a preached one", () => {
+    [true, false].forEach((isPreached) => {
+      expect(getTxtIconButtonClassName(isPreached)).toContain("text-blue-600");
+      expect(getPdfIconButtonClassName(true, isPreached)).toContain("text-purple-600");
+      expect(getWordIconButtonClassName(false, isPreached)).toContain("text-green-600");
+      expect(getAudioIconButtonClassName(isPreached)).toContain("text-orange-600");
+    });
+  });
+
+  it("keeps grey for the one state that really is unavailable", () => {
+    [true, false].forEach((isPreached) => {
+      expect(getPdfIconButtonClassName(false, isPreached)).toContain("cursor-not-allowed");
+      expect(getPdfIconButtonClassName(false, isPreached)).toContain("text-gray-300");
+      expect(getWordIconButtonClassName(true, isPreached)).toContain("cursor-not-allowed");
+      expect(getWordIconButtonClassName(true, isPreached)).toContain("text-gray-300");
+    });
+  });
+
+  it("still deepens the colour under the cursor, so pressing stays legible", () => {
     expect(getTxtIconButtonClassName(false)).toContain("hover:bg-blue-50");
-
-    expect(getPdfIconButtonClassName(false, false)).toContain("cursor-not-allowed");
-    expect(getPdfIconButtonClassName(true, true)).toContain("hover:text-purple-600");
     expect(getPdfIconButtonClassName(true, false)).toContain("hover:bg-purple-50");
-
-    expect(getWordIconButtonClassName(true, false)).toContain("cursor-not-allowed");
-    expect(getWordIconButtonClassName(false, true)).toContain("hover:text-green-600");
     expect(getWordIconButtonClassName(false, false)).toContain("hover:bg-green-50");
-
-    expect(getAudioIconButtonClassName(true)).toContain("hover:text-orange-600");
     expect(getAudioIconButtonClassName(false)).toContain("hover:bg-orange-50");
+    // A preached card is already a grey field, so the hover wash matches it.
+    expect(getTxtIconButtonClassName(true)).toContain("hover:bg-gray-200");
   });
 
   it("covers text button variants across availability and preached state", () => {
