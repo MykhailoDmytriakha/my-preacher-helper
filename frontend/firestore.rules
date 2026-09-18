@@ -18,8 +18,14 @@ service cloud.firestore {
       return request.auth != null;
     }
     // The EXISTING doc's owner field equals the caller.
+    //
+    // A DataEngine tombstone names its owner in `_dataEngineOwner` INSTEAD of the legacy owner
+    // field, so that no legacy `where(userId == uid)` query ever returns a deleted document.
+    // Its owner may still READ it (the engine's listener has to learn the document is gone);
+    // every WRITE rule below also demands legacyExisting(), which a tombstone never satisfies.
     function ownsExisting(field) {
-      return signedIn() && resource.data[field] == request.auth.uid;
+      return signedIn() && (resource.data[field] == request.auth.uid
+        || (!(field in resource.data) && resource.data.get('_dataEngineOwner', null) == request.auth.uid));
     }
     // The INCOMING doc's owner field equals the caller (and can't be reassigned away).
     function ownsIncoming(field) {
@@ -196,7 +202,10 @@ service cloud.firestore {
     }
 
     match /_dataEngineHeads/{id} {
-      allow read: if ownsExisting('userId');
+      // The head is born with the owner's FIRST engine write. Until then a listener must get
+      // "no such document", not an evaluation error: `resource` is null for an absent document,
+      // and a denied listener looks like an authentication failure in the middle of a rollout.
+      allow read: if signedIn() && (resource == null || resource.data.userId == request.auth.uid);
       allow write: if false;
     }
 

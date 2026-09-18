@@ -1,5 +1,6 @@
 import { adminDb } from '@/config/firebaseAdminConfig';
 import { assertLegacyWritable, createLegacyDocument, runLegacyTransaction } from '@/data-engine/legacyBoundary.server';
+import { isEngineTombstone } from '@/utils/engineTombstone';
 
 import type { CouncilBody } from '@/api/councils/writeSupport';
 import type { Council } from '@/models/models';
@@ -33,12 +34,12 @@ function hydrate(data: Record<string, unknown>, id: string): Council {
 export class CouncilsRepository {
   async listForOwner(userId: string): Promise<Council[]> {
     const snapshot = await adminDb.collection(COLLECTION).where('userId', '==', userId).get();
-    return snapshot.docs.map((doc) => hydrate(doc.data(), doc.id));
+    return snapshot.docs.filter((doc) => !isEngineTombstone(doc.data())).map((doc) => hydrate(doc.data(), doc.id));
   }
 
   async getForOwner(userId: string, id: string): Promise<Council | null> {
     const snapshot = await adminDb.collection(COLLECTION).doc(id).get();
-    if (!snapshot.exists || snapshot.data()?.userId !== userId) return null;
+    if (!snapshot.exists || snapshot.data()?.userId !== userId || isEngineTombstone(snapshot.data())) return null;
     return hydrate(snapshot.data() ?? {}, id);
   }
 

@@ -5,7 +5,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { getClientDb } from '@/config/firebaseClientDb';
 import { resolveOwnerUid } from '@/utils/queryKeys';
 
-import { getResourcePolicy } from './protocol';
+import { getResourcePolicy, TOMBSTONE_OWNER_FIELD } from './protocol';
 import { snapshotSchema } from './transport.client';
 
 import type { ObservationSource } from './observer';
@@ -26,14 +26,16 @@ export function normalizeFirestoreValue(value: unknown): Json {
 
 function decode(owner: string, resource: ResourceRef, raw: Record<string, unknown> | undefined): ResourceSnapshot {
   const policy = getResourcePolicy(resource.collection);
-  if (policy.ownerField === 'id' ? resource.id !== owner : raw && raw[policy.ownerField] !== owner) {
+  // A tombstone names its owner outside the legacy owner field, so no legacy query returns it.
+  const ownedBy = raw && (raw[policy.ownerField] ?? raw[TOMBSTONE_OWNER_FIELD]);
+  if (policy.ownerField === 'id' ? resource.id !== owner : raw && ownedBy !== owner) {
     throw new Error('Document ownership mismatch');
   }
   if (!raw) return { resource, value: null, metadata: null };
   if (raw._dataEngine === null) throw new Error('Unsupported protocol metadata');
   const metadata = raw._dataEngine === undefined ? null : raw._dataEngine;
   const deleted = metadata && typeof metadata === 'object' && 'deleted' in metadata && metadata.deleted === true;
-  const content = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== '_dataEngine'));
+  const content = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== '_dataEngine' && key !== TOMBSTONE_OWNER_FIELD));
   return snapshotSchema.parse({ resource, metadata, value: deleted ? null : normalizeFirestoreValue(content) });
 }
 

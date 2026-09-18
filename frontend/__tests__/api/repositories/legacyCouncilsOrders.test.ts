@@ -116,7 +116,11 @@ it('preserves owner-filtered legacy reads and refusal for missing or foreign cou
   records.set('councils/c', { ...body(), userId: 'owner', rev: 0 });
   records.set('councils/foreign', { ...body(), userId: 'other', rev: 0 });
   records.set('serviceOrders/o', draft('funeral') as unknown as Record<string, unknown>);
+  // A tombstone written before 2026-09-18 still carries userId and answers the owner query;
+  // hydrated, it would be drawn as a blank, editable council that is not in the database.
+  records.set('councils/buried', { userId: 'owner', _dataEngine: { ...marker, deleted: true } });
   expect(await councils.listForOwner('owner')).toHaveLength(1);
+  expect(await councils.getForOwner('owner', 'buried')).toBeNull();
   expect((await councils.getForOwner('owner', 'c'))?.title).toBe('Council');
   expect(await councils.getForOwner('owner', 'foreign')).toBeNull();
   expect(await councils.getForOwner('owner', 'missing')).toBeNull();

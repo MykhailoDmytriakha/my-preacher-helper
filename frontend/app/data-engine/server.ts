@@ -4,7 +4,7 @@ import { FieldPath } from 'firebase-admin/firestore';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
 
-import { commandFingerprint, getResourcePolicy, validateCommand } from './protocol';
+import { commandFingerprint, getResourcePolicy, TOMBSTONE_OWNER_FIELD, validateCommand } from './protocol';
 import { assembleChangePage, collectionHeadId, HEADS_COLLECTION, parseChangePointer, planFeedWrites, readHeadVersion, sequenceId } from './serverFeed';
 import { planDataCommand } from './serverRelations';
 
@@ -75,7 +75,11 @@ function resourcePolicy(resource: ResourceRef) {
 
 function owns(owner: string, resource: ResourceRef, raw: Record<string, unknown> | undefined): boolean {
   const policy = resourcePolicy(resource);
-  return policy.ownerField === 'id' ? resource.id === owner : !raw || raw[policy.ownerField] === owner;
+  if (policy.ownerField === 'id') return resource.id === owner;
+  if (!raw || raw[policy.ownerField] === owner) return true;
+  // A tombstone carries no legacy owner field (see TOMBSTONE_OWNER_FIELD); ones written before
+  // 2026-09-18 still do and are matched by the line above.
+  return raw[policy.ownerField] === undefined && raw[TOMBSTONE_OWNER_FIELD] === owner;
 }
 
 /** Firestore timestamps have one stable JSON representation on both HTTP paths. */
@@ -108,7 +112,7 @@ function snapshotFromRaw(resource: ResourceRef, raw: Record<string, unknown> | u
   if (!raw) return { resource, value: null, metadata: null };
   const metadata = readMetadata(raw._dataEngine);
   if (metadata?.deleted) return { resource, value: null, metadata };
-  const value = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== '_dataEngine'));
+  const value = Object.fromEntries(Object.entries(raw).filter(([key]) => key !== '_dataEngine' && key !== TOMBSTONE_OWNER_FIELD));
   return { resource, value: toJson(value) as DocumentData, metadata };
 }
 
@@ -318,7 +322,7 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       const feedWrites = await prepareFeedWrites(transaction, owner, command.operationId, effects);
       for (const snapshot of effects) {
         const value = snapshot.value === null
-          ? { [getResourcePolicy(snapshot.resource.collection).ownerField]: owner }
+          ? { [TOMBSTONE_OWNER_FIELD]: owner }
           : preserveStoredTypes(rawDocuments.get(resourceKey(snapshot.resource)), snapshot.value) as Record<string, unknown>;
         transaction.set(adminDb.collection(snapshot.resource.collection).doc(snapshot.resource.id), { ...value, _dataEngine: snapshot.metadata });
       }
@@ -340,6 +344,16 @@ export async function readDocument(owner: string, resource: ResourceRef): Promis
 }
 
 export type ResourcePage = CollectionPage;
+
+/** Firestore orders document IDs by UTF-8 bytes, i.e. by Unicode scalar value — not UTF-16 units. */
+function compareDocumentIds(left: string, right: string): number {
+  const a = Array.from(left), b = Array.from(right);
+  for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
+    const difference = a[index].codePointAt(0)! - b[index].codePointAt(0)!;
+    if (difference) return difference;
+  }
+  return a.length - b.length;
+}
 
 function headReference(owner: string, collection: string) {
   try { return adminDb.collection(HEADS_COLLECTION).doc(collectionHeadId(owner, collection)); }
@@ -363,12 +377,18 @@ export async function listDocuments(owner: string, collection: string, options: 
       const snapshot = snapshotFromRaw({ collection, id: owner }, document.exists ? document.data() : undefined);
       return { snapshots: snapshot.value !== null || snapshot.metadata !== null ? [snapshot] : [], nextCursor: null, version };
     }
-    let query = adminDb.collection(collection).where(policy.ownerField, '==', owner).orderBy(FieldPath.documentId()).limit(limit + 1);
-    if (options.cursor !== undefined) query = query.startAfter(options.cursor);
-    const page = await transaction.get(query);
+    // Two owner queries, one list: live documents answer the legacy owner field, tombstones
+    // answer TOMBSTONE_OWNER_FIELD. Both run from the same cursor and merge in document order.
+    const owned = (field: string) => {
+      const query = adminDb.collection(collection).where(field, '==', owner).orderBy(FieldPath.documentId()).limit(limit + 1);
+      return transaction.get(options.cursor === undefined ? query : query.startAfter(options.cursor));
+    };
+    const [live, buried] = await Promise.all([owned(policy.ownerField), owned(TOMBSTONE_OWNER_FIELD)]);
+    const merged = [...new Map([...live.docs, ...buried.docs].map(document => [document.id, document])).values()]
+      .sort((left, right) => compareDocumentIds(left.id, right.id));
     const snapshots: ResourceSnapshot[] = [];
     let bytes = 0;
-    for (const document of page.docs.slice(0, limit)) {
+    for (const document of merged.slice(0, limit)) {
       const resource = { collection, id: document.id };
       const raw = document.data();
       if (!owns(owner, resource, raw)) throw new DataEngineServerError(PERMISSION_DENIED, 403);
@@ -377,7 +397,7 @@ export async function listDocuments(owner: string, collection: string, options: 
       if (bytes > MAX_LIST_BYTES && snapshots.length > 0) break;
       snapshots.push(snapshot);
     }
-    return { snapshots, nextCursor: page.docs.length > snapshots.length ? snapshots.at(-1)!.resource.id : null, version };
+    return { snapshots, nextCursor: merged.length > snapshots.length ? snapshots.at(-1)!.resource.id : null, version };
   });
 }
 

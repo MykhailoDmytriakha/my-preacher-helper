@@ -117,7 +117,7 @@ describe('transactional relation execution', () => {
     const result = await Promise.all(ordered.map(command => processCommand('owner-1', command)));
     expect(result[0].kind).toBe('acknowledged');
     expect(result[1].kind).toBe(deleteFirst ? 'refused' : 'acknowledged');
-    expect(documents.get('sermons/s')).toEqual({ userId: 'owner-1', _dataEngine: expect.objectContaining({ deleted: true }) });
+    expect(documents.get('sermons/s')).toEqual({ _dataEngineOwner: 'owner-1', _dataEngine: expect.objectContaining({ deleted: true }) });
     expect(documents.get('series/a')?.items).toEqual([]);
     expect(transactionReads).toContain('sermons/s');
     expect(receipts()).toHaveLength(2);
@@ -143,7 +143,7 @@ describe('transactional relation execution', () => {
     expect(documents.get('studyNoteShareLinks/link')?.token).toBe('secret-token');
     failCommit = false;
     expect(await processCommand('owner-1', command)).toMatchObject({ kind: 'acknowledged' });
-    expect(documents.get('studyNoteShareLinks/link')).toEqual({ ownerId: 'owner-1', _dataEngine: expect.objectContaining({ deleted: true, operationId: 'retire' }) });
+    expect(documents.get('studyNoteShareLinks/link')).toEqual({ _dataEngineOwner: 'owner-1', _dataEngine: expect.objectContaining({ deleted: true, operationId: 'retire' }) });
     expect(documents.get('studyNoteShareLinks/foreign')?.token).toBe('foreign-token');
     expect(await readCollectionChanges('owner-1', 'studyNoteShareLinks', 0)).toMatchObject({ version: 1, snapshots: [{ value: null, metadata: { deleted: true } }] });
     expect((await listDocuments('owner-1', 'studyNoteShareLinks')).snapshots).toHaveLength(1);
@@ -380,7 +380,7 @@ describe('transactional DataEngine server', () => {
     if (created.kind !== 'acknowledged') throw new Error('Expected initial acknowledgement');
     const deleted = await processCommand('owner-1', { ...create('delete-1'), kind: 'delete', generation: 'create-1', baseline: created.snapshot.value! });
     expect(deleted).toMatchObject({ kind: 'acknowledged', snapshot: { value: null, metadata: { deleted: true } } });
-    expect(documents.get('sermons/sermon-1')).toEqual({ userId: 'owner-1', _dataEngine: expect.objectContaining({ deleted: true }) });
+    expect(documents.get('sermons/sermon-1')).toEqual({ _dataEngineOwner: 'owner-1', _dataEngine: expect.objectContaining({ deleted: true }) });
     expect(await readDocument('owner-1', resource)).toMatchObject({ value: null, metadata: { deleted: true } });
     await expect(readDocument('attacker', resource)).rejects.toMatchObject({ code: 'permission-denied' });
     expect((await processCommand('owner-1', update())).kind).not.toBe('acknowledged');
@@ -439,6 +439,47 @@ describe('transactional DataEngine server', () => {
     expect(first.snapshots.map(item => item.resource.id)).toEqual(['a']);
     expect(first.nextCursor).toBe('a');
     expect(await listDocuments('owner-1', 'sermons', { limit: 1, cursor: 'a' })).toEqual({ snapshots: [expect.objectContaining({ resource: { collection: 'sermons', id: 'b' }, value: null })], nextCursor: null, version: 0 });
+  });
+
+  it('writes a tombstone no legacy owner query can match, and still owns, replays and lists it', async () => {
+    const created = await processCommand('owner-1', create());
+    if (created.kind !== 'acknowledged') throw new Error('Expected acknowledgement');
+    const remove: DataCommand = { ...create('delete-1'), kind: 'delete', generation: 'create-1', baseline: created.snapshot.value! };
+    expect(await processCommand('owner-1', remove)).toMatchObject({ kind: 'acknowledged', snapshot: { value: null, metadata: { deleted: true } } });
+
+    // Every legacy reader — the repository, /api/owner-list, the SDK query in an old bundle —
+    // asks `where(userId == uid)`. A tombstone carrying userId answers that query and is drawn
+    // as a blank, editable council: data on screen that is not in the database.
+    const stored = documents.get('sermons/sermon-1')!;
+    expect(stored).toEqual({ _dataEngineOwner: 'owner-1', _dataEngine: expect.objectContaining({ deleted: true }) });
+    const legacy = await adminDb.collection('sermons').where('userId', '==', 'owner-1').get();
+    expect(legacy.docs).toEqual([]);
+
+    // The engine itself keeps full sight of it: ownership, replay and the listing.
+    expect(await readDocument('owner-1', resource)).toMatchObject({ value: null, metadata: { deleted: true } });
+    await expect(readDocument('attacker', resource)).rejects.toMatchObject({ code: 'permission-denied' });
+    expect(await processCommand('owner-1', remove)).toMatchObject({ kind: 'acknowledged', snapshot: { value: null } });
+    expect(await processCommand('attacker', { ...update('steal', 'create-1'), owner: 'attacker' })).toMatchObject({ kind: 'refused', code: 'permission-denied' });
+    expect((await listDocuments('owner-1', 'sermons')).snapshots).toEqual([expect.objectContaining({ resource, value: null })]);
+    expect((await listDocuments('attacker', 'sermons')).snapshots).toEqual([]);
+  });
+
+  it('pages live documents and both generations of tombstones as one list in document order', async () => {
+    documents.set('sermons/a', { userId: 'owner-1', title: 'A' });
+    documents.set('sermons/b', { _dataEngineOwner: 'owner-1', _dataEngine: { protocol: 1, generation: 'b', revision: 2, deleted: true } });
+    documents.set('sermons/c', { userId: 'owner-1', title: 'C' });
+    // Written before 2026-09-18, when a tombstone still carried the legacy owner field.
+    documents.set('sermons/d', { userId: 'owner-1', _dataEngine: { protocol: 1, generation: 'd', revision: 2, deleted: true } });
+    documents.set('sermons/e', { _dataEngineOwner: 'attacker', _dataEngine: { protocol: 1, generation: 'e', revision: 2, deleted: true } });
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    for (let guard = 0; guard < 10; guard += 1) {
+      const page = await listDocuments('owner-1', 'sermons', { limit: 2, ...(cursor ? { cursor } : {}) });
+      seen.push(...page.snapshots.map(item => item.resource.id));
+      if (page.nextCursor === null) break;
+      cursor = page.nextCursor;
+    }
+    expect(seen).toEqual(['a', 'b', 'c', 'd']);
   });
 
   it('uses document identity for private user profiles instead of caller-selected ownership fields', async () => {

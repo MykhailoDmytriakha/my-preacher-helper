@@ -7,6 +7,14 @@ import type {
   FieldValue, Json, ResourceSnapshot,
 } from './types';
 
+/**
+ * Where a tombstone names its owner. Deliberately NOT the collection's legacy owner field: every
+ * legacy reader — server repository, /api/owner-list, the SDK query inside a bundle already
+ * shipped — asks `where(userId == uid)`, and a tombstone that answered it was drawn as a blank,
+ * editable document. Shipped bundles cannot be taught to skip it, so it must not match at all.
+ */
+export const TOMBSTONE_OWNER_FIELD = '_dataEngineOwner';
+
 const BAD_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
 const own = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
 const object = (value: unknown): value is DocumentData => value !== null

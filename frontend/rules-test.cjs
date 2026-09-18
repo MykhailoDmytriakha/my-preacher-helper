@@ -169,6 +169,15 @@ const SERVER_MANAGED_USER_FIELDS = {
     await check(`${collection}: legacy delete denied`, assertFails(deleteDoc(reference)));
     await testEnv.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), collection, id), { ...owner, _dataEngine: { ...metadata, deleted: true } }));
     await check(`${collection}: tombstone cannot be resurrected`, assertFails(setDoc(reference, { ...owner, language: 'ru' })));
+    if (collection !== 'users') {
+      // Since 2026-09-18 a tombstone names its owner outside the legacy owner field, so that no
+      // legacy owner query returns it. Its owner still reads it; nobody revives it from a browser.
+      await testEnv.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), collection, 'buried'), { _dataEngineOwner: 'userA', _dataEngine: { ...metadata, deleted: true } }));
+      await check(`${collection}: owner reads an owner-hidden tombstone`, assertSucceeds(getDoc(doc(a, collection, 'buried'))));
+      await check(`${collection}: foreign read of an owner-hidden tombstone denied`, assertFails(getDoc(doc(b, collection, 'buried'))));
+      await check(`${collection}: owner-hidden tombstone cannot be resurrected`, assertFails(setDoc(doc(a, collection, 'buried'), { ...owner, language: 'ru' })));
+      await check(`${collection}: owner-hidden tombstone cannot be deleted from a browser`, assertFails(deleteDoc(doc(a, collection, 'buried'))));
+    }
     if (collection !== 'users') await check(`${collection}: client cannot manufacture marker`, assertFails(setDoc(doc(a, collection, 'forged'), { ...owner, _dataEngine: metadata })));
   }
   for (const marker of [null, {}, { protocol: 99 }]) {
@@ -177,6 +186,7 @@ const SERVER_MANAGED_USER_FIELDS = {
   }
   const headId = JSON.stringify(['userA', 'sermons']);
   await testEnv.withSecurityRulesDisabled(async ctx => setDoc(doc(ctx.firestore(), '_dataEngineHeads', headId), { userId: 'userA', collection: 'sermons', version: 1 }));
+  await check('absent head reads as absent, not denied', assertSucceeds(getDoc(doc(a, '_dataEngineHeads', JSON.stringify(['userA', 'councils'])))));
   await check('head owner read allowed', assertSucceeds(getDoc(doc(a, '_dataEngineHeads', headId))));
   await check('head foreign read denied', assertFails(getDoc(doc(b, '_dataEngineHeads', headId))));
   await check('head SDK write denied', assertFails(updateDoc(doc(a, '_dataEngineHeads', headId), { version: 2 })));

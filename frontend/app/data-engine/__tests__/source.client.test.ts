@@ -88,6 +88,17 @@ describe('Firestore observation source', () => {
     link.receive(event({ ownerId: 'owner', _dataEngine: { ...metadata, deleted: true } }));
     expect(link.publish).toHaveBeenCalledWith(expect.objectContaining({ snapshot: expect.objectContaining({ value: null, metadata: { ...metadata, deleted: true } }) }));
   });
+  it('reads a tombstone by the owner it names outside the legacy owner field', () => {
+    const tombstone = { ...metadata, revision: 2, deleted: true };
+    const mine = setup();
+    mine.receive(event({ _dataEngineOwner: 'owner', _dataEngine: tombstone }));
+    expect(mine.publish).toHaveBeenCalledWith({ snapshot: { resource, value: null, metadata: tombstone }, source: 'server' });
+    const foreign = setup();
+    foreign.receive(event({ _dataEngineOwner: 'someone-else', _dataEngine: tombstone }));
+    expect(foreign.publish).not.toHaveBeenCalled();
+    expect(foreign.error).toHaveBeenCalled();
+  });
+
   it('fences owner changes before subscription, during decoding, and after unsubscribe', () => {
     jest.mocked(resolveOwnerUid).mockReturnValue('other');
     const skipped = setup(); skipped.unsubscribe();
