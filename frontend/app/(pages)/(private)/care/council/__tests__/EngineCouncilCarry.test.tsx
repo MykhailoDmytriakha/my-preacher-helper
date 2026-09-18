@@ -65,6 +65,9 @@ describe('carrying a section from a held council through the engine', () => {
     fireEvent.click(carryButton());
     expect(carryButton()).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByTestId('council-carry-chooser')).toBeInTheDocument();
+    // "A new council" needs a create and a carry in one act, which the engine has no command for:
+    // offered here it could only fail, so it is not offered.
+    expect(screen.queryByText('council.topic.carryNew')).not.toBeInTheDocument();
     expect(mockCarry).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByText('Council target-b'));

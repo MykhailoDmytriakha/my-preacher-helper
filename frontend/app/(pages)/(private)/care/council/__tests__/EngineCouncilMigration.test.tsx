@@ -10,12 +10,13 @@ import type { Council } from '@/models/models';
 jest.mock('@/services/councils.local', () => ({ readLocalCouncils: jest.fn(), clearLocalCouncils: jest.fn() }));
 
 const created: string[] = [];
+const createdWith: Council[] = [];
 let failNext: string | null = null;
 jest.mock('../EngineCouncilCreator', () => ({
   EngineCouncilCreator: ({ council, onCreated, onFailed }: { council: Council; onCreated: (id: string) => void; onFailed: (message: string) => void }) => {
     React.useEffect(() => {
       if (failNext === council.id) { onFailed('refused'); return; }
-      created.push(council.id);
+      created.push(council.id); createdWith.push(council);
       onCreated(council.id);
     }, [council, onCreated, onFailed]);
     return <div data-testid={`creating-${council.id}`} />;
@@ -26,9 +27,27 @@ const local = (id: string): Council => ({
   id, userId: 'owner', title: `Council ${id}`, status: 'preparing', topics: [], createdAt: 'then', updatedAt: 'then',
 });
 
-beforeEach(() => { jest.clearAllMocks(); created.length = 0; failNext = null; });
+beforeEach(() => { jest.clearAllMocks(); created.length = 0; createdWith.length = 0; failNext = null; });
 
 describe('EngineCouncilMigration', () => {
+  // The browser copies were written by code that is gone and come back unvalidated. The engine
+  // refuses a NEW document with any field outside its schema, and the legacy model carries `rev`.
+  it('hands the engine only the fields a council may have', async () => {
+    jest.mocked(readLocalCouncils).mockReturnValue([{ ...local('a'), rev: 0, date: '2026-09-20', leftover: 'from an older build' } as unknown as Council]);
+    render(<EngineCouncilMigration owner="owner" serverIds={new Set()} />);
+    await waitFor(() => expect(createdWith).toHaveLength(1));
+    expect(createdWith[0]).toEqual({ id: 'a', userId: 'owner', title: 'Council a', status: 'preparing', topics: [], createdAt: 'then', updatedAt: 'then', date: '2026-09-20' });
+  });
+
+  it('says so when the carry-over stops, because these councils exist nowhere else', async () => {
+    jest.mocked(readLocalCouncils).mockReturnValue([local('a')]);
+    failNext = 'a';
+    const onRefused = jest.fn();
+    render(<EngineCouncilMigration owner="owner" serverIds={new Set()} onRefused={onRefused} />);
+    await waitFor(() => expect(onRefused).toHaveBeenCalledWith('refused'));
+    expect(clearLocalCouncils).not.toHaveBeenCalled();
+  });
+
   it('carries only what the server does not already have, one at a time', async () => {
     jest.mocked(readLocalCouncils).mockReturnValue([local('a'), local('b'), local('already')]);
     render(<EngineCouncilMigration owner="owner" serverIds={new Set(['already'])} />);

@@ -4,7 +4,7 @@ import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
 import { ArrowLeft, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
@@ -81,10 +81,14 @@ function EngineCouncilListPage() {
     return undefined;
   };
   // Councils that lived in the browser before the database: carried through the engine, one at a
-  // time, and only once the server itself has answered which ids it already has.
-  const serverIds = engine.complete ? new Set(engine.councils.map(council => council.id)) : null;
+  // time, and only once the SERVER has answered in this session which ids it already has — a
+  // cursor restored from disk says `complete` offline too, and proves nothing about today.
+  // Tombstones count as known: a council deleted since must not come back from a browser copy.
+  // Memoised: a fresh Set per render re-read localStorage and re-keyed the carry-over each time.
+  const serverIds = useMemo(() => (engine.serverAnswered ? engine.knownIds : null), [engine.serverAnswered, engine.knownIds]);
   return <>
-    {!pending && user?.uid && <EngineCouncilMigration owner={user.uid} serverIds={serverIds} />}
+    {!pending && user?.uid && <EngineCouncilMigration owner={user.uid} serverIds={serverIds}
+      onRefused={message => toast.error(message || t('council.save.refused'))} />}
     {pending && <EngineCouncilCreator council={pending} onCreated={id => { setPending(null); router.push(`/care/council/${id}`); }}
       onFailed={message => { setPending(null); toast.error(message || t('council.save.refused')); }} />}
     <CouncilListContent source={{ councils: engine.councils, loading: engine.loading, error: engine.error, refresh: engine.refresh, createCouncil }} />

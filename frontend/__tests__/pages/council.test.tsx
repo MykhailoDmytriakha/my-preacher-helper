@@ -45,7 +45,8 @@ jest.mock('@/data-engine/react.client', () => ({
   isCollectionOnEngine: (collection: string) => engineCollections.split(',').includes(collection),
 }));
 jest.mock('@/hooks/useCouncilsDataCollection', () => ({
-  useCouncilsDataCollection: () => ({ ...engineState, complete: true, freshness: 'server', refresh: mockEngineRefresh }),
+  useCouncilsDataCollection: () => ({ ...engineState, complete: true, freshness: 'server', serverAnswered: true,
+    knownIds: new Set(engineState.councils.map(council => council.id)), refresh: mockEngineRefresh }),
 }));
 
 jest.mock('next/link', () => ({

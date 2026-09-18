@@ -61,6 +61,17 @@ describe('useCouncilsDataCollection', () => {
     expect(result.current.freshness).toBe('cache');
   });
 
+  // The pre-database carry-over re-creates whatever the server "does not have". A cursor restored
+  // from disk says `complete` offline too, and a tombstone is not in the list of councils.
+  it('says the server answered only for a server read of THIS session, and knows ids it no longer shows', () => {
+    const rows = [snapshot('gone', null, true), snapshot('kept', council('Kept'))];
+    expect(setup(state(rows, { complete: true, freshness: 'cache' })).result.current.serverAnswered).toBe(false);
+    const fresh = setup(state(rows)).result.current;
+    expect(fresh.serverAnswered).toBe(true);
+    expect([...fresh.knownIds].sort()).toEqual(['gone', 'kept']);
+    expect(fresh.councils.map(item => item.id)).toEqual(['kept']);
+  });
+
   it('asks for the collection by name and forwards loading, error and refresh', async () => {
     const { result, refresh } = setup(null, { loading: true, error: 'engine offline' });
     expect(jest.mocked(useDataCollection)).toHaveBeenCalledWith('councils');

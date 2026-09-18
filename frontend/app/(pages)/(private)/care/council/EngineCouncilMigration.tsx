@@ -12,6 +12,22 @@ interface EngineCouncilMigrationProps {
   owner: string;
   /** Ids the server itself returned; null until it has answered at all. */
   serverIds: Set<string> | null;
+  /** A carry-over that stopped has to be said: these councils exist nowhere but this browser. */
+  onRefused?: (message: string) => void;
+}
+
+/**
+ * Only what a council is allowed to be. The browser copies were written by code that no longer
+ * exists and are read back unvalidated; the legacy model carries `rev`, and the engine refuses a
+ * NEW document with any field outside its schema — one stray key would stop the carry-over for
+ * good, silently, with the only copy still in localStorage.
+ */
+function councilFields(council: Council, owner: string): Council {
+  const { id, title, date, status, heldAt, topics, createdAt, updatedAt } = council;
+  return {
+    id, userId: owner, title, status, topics, createdAt, updatedAt,
+    ...(date !== undefined ? { date } : {}), ...(heldAt !== undefined ? { heldAt } : {}),
+  };
 }
 
 /**
@@ -25,11 +41,11 @@ interface EngineCouncilMigrationProps {
  * The browser copy is the only copy these councils have. It is cleared only after every one of
  * them has landed; a refusal leaves everything in place for the next opening.
  */
-export function EngineCouncilMigration({ owner, serverIds }: EngineCouncilMigrationProps) {
+export function EngineCouncilMigration({ owner, serverIds, onRefused }: EngineCouncilMigrationProps) {
   const pending = useMemo(() => {
     if (!serverIds) return null;
     const local = readLocalCouncils(owner);
-    return local.filter(council => !serverIds.has(council.id)).map(council => ({ ...council, userId: owner }));
+    return local.filter(council => !serverIds.has(council.id)).map(council => councilFields(council, owner));
   }, [owner, serverIds]);
 
   const [index, setIndex] = useState(0);
@@ -48,6 +64,6 @@ export function EngineCouncilMigration({ owner, serverIds }: EngineCouncilMigrat
   return <EngineCouncilCreator
     council={council}
     onCreated={() => setIndex(value => value + 1)}
-    onFailed={() => setStopped(true)}
+    onFailed={message => { setStopped(true); onRefused?.(message); }}
   />;
 }

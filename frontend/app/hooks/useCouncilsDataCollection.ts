@@ -30,8 +30,19 @@ export function useCouncilsDataCollection() {
         .sort((left, right) => left.id.localeCompare(right.id)),
     [state]
   );
+  /**
+   * Every id the engine knows about — live councils, tombstones and confirmed absences alike.
+   * The pre-database carry-over must not re-create a council that was deleted since.
+   */
+  const knownIds = useMemo(() => new Set((state?.snapshots ?? []).map(snapshot => snapshot.resource.id)), [state]);
   return {
     councils,
+    knownIds,
+    /**
+     * `complete` alone is loaded from the disk cursor of an EARLIER session, offline included;
+     * "the server answered" needs this session's server read as well.
+     */
+    serverAnswered: Boolean(state?.complete) && state?.freshness === 'server',
     loading: collection.loading,
     error: collection.error,
     /** False means the cache is partial: an empty list is then unknown, not "no councils". */

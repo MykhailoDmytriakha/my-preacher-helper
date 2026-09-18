@@ -23,7 +23,7 @@ import AddSermonModal from '@/components/AddSermonModal';
 import { SermonSyncBadge } from '@/components/dashboard/SermonSyncBadge';
 import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
 import { Chip } from '@/components/ui/Chip';
-import { useCouncils } from '@/hooks/useCouncils';
+import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { useDashboardOptimisticSermons } from '@/hooks/useDashboardOptimisticSermons';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useFittingRows } from '@/hooks/useFittingRows';
@@ -235,7 +235,7 @@ export default function DashboardPage() {
   const { notes } = useStudyNotes();
   const { prayerRequests, createPrayer } = usePrayerRequests(user?.uid || null);
   const { groups } = useGroups(user?.uid || null);
-  const { councils } = useCouncils();
+  const { councils } = useCouncilsRead();
   const [showSermonModal, setShowSermonModal] = useState(false);
   const [showPrayerModal, setShowPrayerModal] = useState(false);
 

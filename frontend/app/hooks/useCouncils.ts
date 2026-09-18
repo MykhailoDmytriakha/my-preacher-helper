@@ -103,7 +103,10 @@ export function useCouncils() {
         confirmedAfterTheReadBegan: (id) => (queue.confirmedAt.get(id) ?? 0) > setOutAt,
       });
     },
-    enabled: Boolean(userId),
+    // Beside the engine this hook is only the unused half of useCouncilsRead. Left enabled it
+    // still read the whole list on every screen and persisted it for a week — doubled reads on a
+    // domain whose read cost was never measured, and a second copy for a rollback to trip over.
+    enabled: Boolean(userId) && !isCollectionOnEngine(COUNCILS_COLLECTION),
     mode: 'cache-first',
     // A refused write is a real answer; asking again would only bring the same answer later.
     retry: false,
