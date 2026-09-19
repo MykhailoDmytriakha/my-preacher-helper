@@ -41,6 +41,8 @@ export interface CollectionReaderOptions {
   pageSize?: number;
   /** Protect against an endless or damaged feed without silently truncating a collection. */
   maxPages?: number;
+  /** Legacy writers do not publish feed events; bound freshness while rollout is mixed. */
+  legacyPollIntervalMs?: number;
 }
 
 type Listener = (state: CollectionState) => void;
@@ -61,6 +63,8 @@ interface CollectionEntry {
   legacyOpen: boolean;
   /** Whether the server has been asked at all since this reader was created. */
   asked: boolean;
+  legacyTimer: ReturnType<typeof setTimeout> | null;
+  legacyFailures: number;
 }
 
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -88,12 +92,15 @@ export class CollectionReader {
   private readonly entries = new Map<string, CollectionEntry>();
   private readonly pageSize: number;
   private readonly maxPages: number;
+  private readonly legacyPollIntervalMs: number;
 
   constructor(private readonly options: CollectionReaderOptions) {
     this.pageSize = options.pageSize ?? 100;
     this.maxPages = options.maxPages ?? 1_000;
+    this.legacyPollIntervalMs = options.legacyPollIntervalMs ?? 15_000;
     if (!Number.isInteger(this.pageSize) || this.pageSize < 1 || this.pageSize > 100
-      || !Number.isInteger(this.maxPages) || this.maxPages < 1) throw failure('Invalid collection paging budget', 'invalid-argument');
+      || !Number.isInteger(this.maxPages) || this.maxPages < 1
+      || !Number.isFinite(this.legacyPollIntervalMs) || this.legacyPollIntervalMs < 1) throw failure('Invalid collection paging budget', 'invalid-argument');
   }
 
   setOwner(owner: string | null): void {
@@ -102,6 +109,7 @@ export class CollectionReader {
     this.generation += 1;
     for (const entry of this.entries.values()) {
       entry.closed = true;
+      this.clearLegacyTimer(entry);
       entry.stopHead?.();
       entry.state = initialState();
       this.emit(entry);
@@ -156,6 +164,7 @@ export class CollectionReader {
       released = true;
       entry.listeners.delete(subscription);
       if (!entry.listeners.size) {
+        this.clearLegacyTimer(entry);
         entry.stopHead?.();
         entry.stopHead = null;
       }
@@ -172,17 +181,24 @@ export class CollectionReader {
       entry.inFlight.explicit ||= explicit;
       return entry.inFlight.promise.then(copy);
     }
+    // Head observations must not bypass a failed mixed sweep's backoff merely
+    // because that sweep left the durable cursor incomplete. Explicit Retry may.
+    if (!explicit && entry.legacyFailures > 0 && entry.legacyTimer !== null) return Promise.resolve(copy(entry.state));
+    this.clearLegacyTimer(entry);
     const promise = this.synchronize(entry, generation);
     entry.inFlight = { generation, promise, explicit };
-    const finish = () => {
-      if (entry.inFlight?.promise === promise) entry.inFlight = null;
+    const finish = (failed = false) => {
+      if (entry.inFlight?.promise !== promise) return;
+      entry.inFlight = null;
+      entry.legacyFailures = failed ? entry.legacyFailures + 1 : 0;
+      this.scheduleLegacyRefresh(entry);
     };
     void promise.then(() => {
       finish();
       if (this.current(entry, generation) && this.online && this.visible && entry.listeners.size && this.needsRefresh(entry)) {
         this.background(this.requestRefresh(collection, false), entry, generation);
       }
-    }, finish);
+    }, () => finish(true));
     return promise.then(copy);
   }
 
@@ -192,6 +208,7 @@ export class CollectionReader {
     this.generation += 1;
     for (const entry of this.entries.values()) {
       entry.closed = true;
+      this.clearLegacyTimer(entry);
       entry.stopHead?.();
       entry.listeners.clear();
     }
@@ -206,7 +223,7 @@ export class CollectionReader {
     if (!entry) {
       entry = { owner: this.owner, collection, state: initialState(), cursor: undefined, loaded: false,
         loading: null, inFlight: null, listeners: new Set(), stopHead: null, head: null, headVersion: null, closed: false,
-        legacyOpen: false, asked: false };
+        legacyOpen: false, asked: false, legacyTimer: null, legacyFailures: 0 };
       this.entries.set(collection, entry);
     }
     return entry;
@@ -274,6 +291,9 @@ export class CollectionReader {
 
   private async advance(entry: CollectionEntry, generation: number): Promise<void> {
     if (!entry.cursor?.initialized) return this.hydrate(entry, generation);
+    // A complete mixed-mode listing already catches the feed up from its page anchor.
+    // Reading the same feed before it adds cost but cannot prove legacy freshness.
+    if (entry.legacyOpen) return this.hydrate(entry, generation);
     try { await this.changes(entry, generation, entry.cursor.version, true); }
     catch (error) {
       if (errorCode(error) !== 'feed-reset') throw error;
@@ -447,10 +467,30 @@ export class CollectionReader {
   private restart(): void {
     this.generation += 1;
     for (const entry of this.entries.values()) {
+      this.clearLegacyTimer(entry);
       entry.state = { ...entry.state, checking: false, freshness: entry.state.snapshots.length || entry.state.complete ? 'cache' : 'unknown' };
       this.emit(entry);
       if (this.online && this.visible && entry.listeners.size) this.background(this.requestRefresh(entry.collection, false), entry, this.generation);
     }
+  }
+
+  private clearLegacyTimer(entry: CollectionEntry): void {
+    if (entry.legacyTimer !== null) clearTimeout(entry.legacyTimer);
+    entry.legacyTimer = null;
+  }
+
+  private scheduleLegacyRefresh(entry: CollectionEntry): void {
+    this.clearLegacyTimer(entry);
+    if (!this.current(entry, this.generation) || !entry.legacyOpen || !this.online || !this.visible
+      || !entry.listeners.size || entry.inFlight) return;
+    const generation = this.generation;
+    const delay = Math.min(Math.max(120_000, this.legacyPollIntervalMs), this.legacyPollIntervalMs * 2 ** Math.min(entry.legacyFailures, 16));
+    entry.legacyTimer = setTimeout(() => {
+      entry.legacyTimer = null;
+      if (this.current(entry, generation) && this.online && this.visible && entry.listeners.size) {
+        this.background(this.requestRefresh(entry.collection, false), entry, generation);
+      }
+    }, delay);
   }
 
   private requireAvailableCache(entry: CollectionEntry): void {

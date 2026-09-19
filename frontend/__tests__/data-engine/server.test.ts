@@ -38,11 +38,14 @@ const receiptPath = (owner: string, operationId: string) => `_dataEngineReceipts
 const receipts = () => [...documents.entries()].filter(([key]) => key.startsWith('_dataEngineReceipts/'));
 const transactionReads: string[] = [];
 const transactionWrites: string[] = [];
+// Document operation model, not a cloud billing report: include empty-query minimums.
+let documentReadUnits = 0;
 
 beforeEach(() => {
   documents.clear();
   transactionReads.length = 0;
   transactionWrites.length = 0;
+  documentReadUnits = 0;
   failCommit = false;
   transactionTail = Promise.resolve();
   (adminDb.collection as jest.Mock).mockImplementation(queryFor);
@@ -52,8 +55,10 @@ beforeEach(() => {
       const result = await callback({
         get: async (reference: { path?: string; get: () => Promise<unknown> }) => {
           if (writes.size) throw new Error('Firestore requires all reads before writes');
-          if (reference.path) transactionReads.push(reference.path);
-          return reference.path ? snapshot(reference.path) : reference.get();
+          if (reference.path) { transactionReads.push(reference.path); documentReadUnits += 1; return snapshot(reference.path); }
+          const result = await reference.get() as { docs: unknown[] };
+          documentReadUnits += Math.max(1, result.docs.length);
+          return result;
         },
         set: (reference: { path: string }, value: Raw) => { transactionWrites.push(reference.path); writes.set(reference.path, value); },
       });
@@ -63,6 +68,68 @@ beforeEach(() => {
     });
     transactionTail = run.catch(() => undefined);
     return run;
+  });
+});
+
+describe('document operation budgets', () => {
+  const reset = () => { documentReadUnits = 0; transactionWrites.length = 0; };
+  const measured = () => ({ reads: documentReadUnits, writes: transactionWrites.length });
+
+  it('bounds an atomic two-document relation across two collections', async () => {
+    documents.set('studyMaterials/m', { userId: 'owner-1', noteIds: [] });
+    documents.set('studyNotes/n', { userId: 'owner-1', content: 'Keep text', materialIds: [] });
+    expect(await processCommand('owner-1', { protocol: 1, owner: 'owner-1', operationId: 'attach',
+      resource: { collection: 'studyMaterials', id: 'm' }, generation: null, dependsOn: [], kind: 'relation', relation: 'material-notes',
+      beforeNoteIds: [], afterNoteIds: ['n'], targets: [{ id: 'n', generation: null }] })).toMatchObject({ kind: 'acknowledged' });
+    expect(measured()).toEqual({ reads: 5, writes: 7 });
+  });
+
+  it('bounds create/update and duplicate/refused delivery without multiplying effect writes', async () => {
+    await processCommand('owner-1', create());
+    expect(measured()).toEqual({ reads: 3, writes: 4 }); // Resource, receipt, head; resource, receipt, head, pointer.
+    reset(); await processCommand('owner-1', update());
+    expect(measured()).toEqual({ reads: 3, writes: 4 });
+    reset(); await processCommand('owner-1', update());
+    expect(measured()).toEqual({ reads: 2, writes: 0 });
+    reset(); expect(await processCommand('owner-1', { ...update('conflict'), changes: [{ path: ['title'], before: { exists: true, value: 'First' }, after: { exists: true, value: 'Competing' } }] })).toMatchObject({ kind: 'conflict' });
+    expect(measured()).toEqual({ reads: 2, writes: 1 });
+  });
+
+  it('counts empty queries, live and tombstone lists, and deduplicated feed document reads', async () => {
+    await listDocuments('owner-1', 'sermons');
+    expect(measured()).toEqual({ reads: 3, writes: 0 }); // Head plus two empty owner queries.
+    await processCommand('owner-1', create());
+    await processCommand('owner-1', update());
+    reset(); await listDocuments('owner-1', 'sermons');
+    expect(measured()).toEqual({ reads: 3, writes: 0 }); // One live row plus empty tombstone query and head.
+    reset(); await readCollectionChanges('owner-1', 'sermons', 0);
+    expect(measured()).toEqual({ reads: 4, writes: 0 }); // Two pointers, one distinct document, one head.
+    reset(); await readCollectionChanges('owner-1', 'sermons', 2);
+    expect(measured()).toEqual({ reads: 2, writes: 0 });
+  });
+
+  it('retains compact acknowledgement proofs across a thousand saves and replays an old operation', async () => {
+    await processCommand('owner-1', create());
+    reset();
+    for (let index = 0; index < 1_000; index += 1) {
+      await processCommand('owner-1', { ...update(`save-${index}`), changes: [{ path: ['title'], before: { exists: true, value: index === 0 ? 'First' : `Title ${index - 1}` }, after: { exists: true, value: `Title ${index}` } }] });
+    }
+    expect(measured()).toEqual({ reads: 3_000, writes: 4_000 });
+    const savedReceipts = receipts();
+    expect(savedReceipts).toHaveLength(1_001);
+    expect(Math.max(...savedReceipts.map(([, value]) => Buffer.byteLength(JSON.stringify(value))))).toBeLessThan(1_000);
+    expect([...documents.keys()].filter(key => key.includes('/changes/'))).toHaveLength(1_001);
+    reset(); expect(await processCommand('owner-1', create())).toMatchObject({ kind: 'acknowledged', committed: { revision: 1 }, snapshot: { value: { title: 'Title 999' } } });
+    expect(measured()).toEqual({ reads: 2, writes: 0 });
+  });
+
+  it('does not reapply an old saved operation when later edits return to its original ancestor', async () => {
+    await processCommand('owner-1', create());
+    await processCommand('owner-1', update());
+    await processCommand('owner-1', { ...update('back-to-first'), changes: [{ path: ['title'], before: { exists: true, value: 'Second' }, after: { exists: true, value: 'First' } }] });
+    reset();
+    expect(await processCommand('owner-1', update())).toMatchObject({ kind: 'acknowledged', committed: { revision: 2 }, snapshot: { value: { title: 'First' } } });
+    expect(measured()).toEqual({ reads: 2, writes: 0 });
   });
 });
 

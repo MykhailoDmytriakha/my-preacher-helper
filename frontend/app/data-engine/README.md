@@ -90,6 +90,10 @@ function NoteContent({ id }: { id: string }) {
   completeness and freshness separately. Tombstones are retained in the result;
   views exclude their rows while still knowing a deletion was confirmed. An offline
   incomplete cache must not be presented as an authoritative empty collection.
+  While the server says `legacyOpen`, one shared, lifecycle-bounded collection
+  sweep also discovers old writers that do not publish feed events. Closure stops
+  that sweep. Cost and retention constraints are in
+  `docs/architecture/data-engine-operations.md` at the repository root.
 
 Browser composition outside React may use `browser.client.ts`. Type-only imports
 from the module are allowed. Runtime imports of internal modules by features are

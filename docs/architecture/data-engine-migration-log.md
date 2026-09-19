@@ -98,7 +98,29 @@ by `el` in this worktree, case `2026-09-19-data-engine-production-readiness`.
   zero automatic delivery; runtime boundaries still pass without new exceptions.
 - Rollout order is corrected below: protective marked-document rules precede engine
   writes; collection-wide closure remains last. No cloud deployment was performed.
-- Next: measure cost and decide safe receipt/feed retention before further migrations.
+- Legacy cache preservation checkpoint committed as `4457af7b`.
+- Operating-budget checkpoint: shared collection readers now sweep mixed collections
+  every 15 seconds after the previous request settles. Sweeps coalesce consumers,
+  suspend offline/hidden/unwatched, back off on errors, and stop on closure. A head
+  observation cannot bypass backoff; mixed hydration avoids a redundant feed read.
+- Live proof: an authorized legacy HTTP writer created and renamed QA council
+  `3b800de3-0b72-4d84-afdf-908796dcddd8` while the engine list stayed open. Both changes
+  arrived without navigation; the engine head stayed at 70. This proves the actual
+  legacy API/browser path, not a second physical device or production PWA.
+- Protocol instrumentation proves ordinary saves cost 3 document reads / 4 writes,
+  duplicate delivery 2 / 0, and 1,000 saves 3,000 / 4,000 before retries and other
+  traffic. Receipt-expiry negative control re-applies an old edit after a value cycle:
+  acknowledgement proofs must not get TTL under the current unbounded offline contract.
+  Read `data-engine-operations.md` for the full model and remaining cloud measurements.
+- Current gates: **699 suites / 6987 tests pass**, 2 suites / 5 tests skipped;
+  types pass, lint 0 errors / 15 inherited warnings. Councils-enabled production build
+  passes (`/tmp/data-engine-production-build-operating.log`). Tests/logs:
+  `/tmp/data-engine-operating-{full,lint}.log`, `/tmp/data-engine-mixed-budget-2.log`,
+  `/tmp/data-engine-server-budget-final.log`. Sequential review covered timer ownership,
+  generation fencing, request amplification, replay semantics and documentation;
+  no high-confidence regression remains in this diff. No independent agent reviewed it.
+- Next: migrate remaining domain adapters, starting with groups and their embedded
+  flow/meeting editors, while preserving opening baselines and explicit manual stages.
   Recovery of an original unsent fork still leaves its source available, as the UI
   explains; retirement/active-tab distinction needs an explicit lifecycle design.
   The eleven
@@ -135,7 +157,7 @@ closing log.
 `BUG-20260919-engine-conflict-local-failure`. Evidence and limitations are above.
 `BUG-20260919-council-outcome-bypasses-manual-scope` is also closed locally with
 manual-form conflict, cancel, restart/recovery and screen-wiring evidence above.
-Production rollout and legacy draft preservation remain open.
+Production rollout remains open; legacy council query-cache preservation is covered above.
 
 **Inherited main-branch note (verify before publishing): two commits were NOT pushed** (a push of `main` is a production deploy — the
 owner's button): `778b3b02` (a test pinned to 2026-09-18 that turned red on that day and would

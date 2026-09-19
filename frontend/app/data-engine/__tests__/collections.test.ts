@@ -387,6 +387,84 @@ describe('CollectionReader durable read lifecycle', () => {
 describe('a collection legacy writers may still change', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
+  const mixed = () => {
+    const s = setup();
+    const list = jest.mocked(s.transport.list).getMockImplementation()!;
+    const changes = jest.mocked(s.transport.changes).getMockImplementation()!;
+    jest.mocked(s.transport.list).mockImplementation(async (...args) => ({ ...(await list(...args)), legacyOpen: true }));
+    jest.mocked(s.transport.changes).mockImplementation(async (...args) => ({ ...(await changes(...args)), legacyOpen: true }));
+    return s;
+  };
+
+  it('shares a bounded mixed refresh across consumers and suspends it while hidden, offline or unwatched', async () => {
+    const s = mixed(); s.seed(legacy('a'));
+    const stopA = s.reader.watch(collection, jest.fn()), stopB = s.reader.watch(collection, jest.fn());
+    await settle();
+    expect(s.transport.list).toHaveBeenCalledTimes(1);
+    jest.mocked(s.transport.list).mockClear(); jest.mocked(s.transport.changes).mockClear();
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(s.transport.list).toHaveBeenCalledTimes(4);
+    expect(s.transport.changes).toHaveBeenCalledTimes(4); // One catch-up per list, no duplicate pre-list feed read.
+    s.reader.setVisible(false); await jest.advanceTimersByTimeAsync(60_000);
+    expect(s.transport.list).toHaveBeenCalledTimes(4);
+    s.reader.setVisible(true); await settle();
+    expect(s.transport.list).toHaveBeenCalledTimes(5);
+    s.reader.setOnline(false); await jest.advanceTimersByTimeAsync(60_000);
+    expect(s.transport.list).toHaveBeenCalledTimes(5);
+    s.reader.setOnline(true); await settle();
+    expect(s.transport.list).toHaveBeenCalledTimes(6);
+    stopA(); stopB(); await jest.advanceTimersByTimeAsync(60_000);
+    expect(s.transport.list).toHaveBeenCalledTimes(6);
+    s.reader.dispose(); s.observer.dispose();
+  });
+
+  it('does not overlap a slow sweep and stops polling once the server closes legacy writes', async () => {
+    const s = mixed(); const stop = s.reader.watch(collection, jest.fn()); await settle();
+    const response = pending<CollectionPage>();
+    jest.mocked(s.transport.list).mockReturnValueOnce(response.promise);
+    await jest.advanceTimersByTimeAsync(15_000);
+    expect(s.transport.list).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(120_000);
+    expect(s.transport.list).toHaveBeenCalledTimes(2);
+    jest.mocked(s.transport.changes).mockResolvedValue({ snapshots: [], cursor: 0, version: 0, hasMore: false });
+    response.resolve({ snapshots: [], nextCursor: null, version: 0 }); await settle();
+    await jest.advanceTimersByTimeAsync(120_000);
+    expect(s.transport.list).toHaveBeenCalledTimes(2);
+    stop(); s.reader.dispose(); s.observer.dispose();
+  });
+
+  it('backs off failed mixed sweeps and retries without a new head version', async () => {
+    const s = mixed(); const stop = s.reader.watch(collection, jest.fn()); await settle();
+    const list = jest.mocked(s.transport.list).getMockImplementation()!;
+    jest.mocked(s.transport.list).mockRejectedValueOnce(new Error('unavailable'));
+    await jest.advanceTimersByTimeAsync(15_000);
+    expect(s.transport.list).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(29_999);
+    expect(s.transport.list).toHaveBeenCalledTimes(2);
+    jest.mocked(s.transport.list).mockImplementation(list);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(s.transport.list).toHaveBeenCalledTimes(3);
+    stop(); s.reader.dispose(); s.observer.dispose();
+  });
+
+  it('discovers legacy changes on an already open list without a feed event or user refresh', async () => {
+    const s = setup(); s.seed(legacy('kept')); s.seed(legacy('doomed'));
+    const list = jest.mocked(s.transport.list).getMockImplementation()!;
+    const changes = jest.mocked(s.transport.changes).getMockImplementation()!;
+    jest.mocked(s.transport.list).mockImplementation(async (...args) => ({ ...(await list(...args)), legacyOpen: true }));
+    jest.mocked(s.transport.changes).mockImplementation(async (...args) => ({ ...(await changes(...args)), legacyOpen: true }));
+    let state!: CollectionState;
+    const stop = s.reader.watch(collection, next => { state = next; }); await settle(); s.head(); await settle();
+    const initialLists = jest.mocked(s.transport.list).mock.calls.length;
+    s.server.set('kept', { ...legacy('kept'), value: { userId: 'owner', content: 'Legacy changed this', updatedAt: '2026-09-19' } });
+    s.server.delete('doomed');
+    await jest.advanceTimersByTimeAsync(15_000); await settle();
+    expect(s.transport.list).toHaveBeenCalledTimes(initialLists + 1);
+    expect(state.snapshots.filter(snapshot => snapshot.value)).toEqual([
+      expect.objectContaining({ value: expect.objectContaining({ content: 'Legacy changed this' }) }),
+    ]);
+    stop(); s.reader.dispose(); s.observer.dispose();
+  });
 
   it('reads the whole list again, because a legacy write raises no feed event', async () => {
     const s = setup();
