@@ -92,6 +92,20 @@ describe('LoginOptions Component', () => {
     expect(screen.getByText('Test Login (Dev Only)')).toBeInTheDocument();
   });
   
+  // A Vercel Preview is a production build; it shows the button only when it opted in at
+  // build time, and never on the word of anything but the exact flag.
+  it('shows the test login in a production build only when that build opted in', () => {
+    const env = process.env as Record<string, string | undefined>;
+    setNodeEnv('production');
+    env.NEXT_PUBLIC_ENABLE_TEST_LOGIN = 'true';
+    try {
+      render(<LoginOptions {...defaultProps} />);
+      expect(screen.getByText('Test Login (Dev Only)')).toBeInTheDocument();
+    } finally {
+      delete env.NEXT_PUBLIC_ENABLE_TEST_LOGIN;
+    }
+  });
+
   it('calls onTestLogin when Test login button is clicked', () => {
     setNodeEnv('development');
     render(<LoginOptions {...defaultProps} />);

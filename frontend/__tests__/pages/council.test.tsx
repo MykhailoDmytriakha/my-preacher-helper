@@ -104,6 +104,12 @@ describe('Brothers\' council list', () => {
     expect(mockRefresh).not.toHaveBeenCalled();
   });
 
+  // The page counts days from the real clock, and the seeded council is dated 2026-09-18:
+  // without a frozen "today" this suite turned red on that very day and stays red after it.
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('says a failed read out loud instead of calling it an empty list', () => {
     state.error = new Error('permission-denied');
     render(<CouncilListPage />);

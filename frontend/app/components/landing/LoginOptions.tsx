@@ -4,6 +4,7 @@ import { GoogleLogin } from '@react-oauth/google';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { isTestLoginAvailable } from '@/utils/testLogin';
 import { CheckIcon, GoogleIcon } from '@components/Icons';
 
 interface LoginOptionsProps {
@@ -30,7 +31,8 @@ export default function LoginOptions({
   onGoogleCredential,
 }: LoginOptionsProps) {
   const { t } = useTranslation();
-  const isDev = process.env.NODE_ENV === 'development';
+  // Decided by the build (utils/testLogin.ts): a production bundle without the flag has no button.
+  const showTestLogin = isTestLoginAvailable();
   const isLoading = googleLoading || testLoading;
   const useFedcmButton = Boolean(googleClientId && onGoogleCredential);
 
@@ -104,7 +106,7 @@ export default function LoginOptions({
           </button>
         )}
 
-        {isDev && (
+        {showTestLogin && (
           <button
             className="flex w-full items-center justify-center gap-2 rounded-full border border-amber-400 bg-amber-100/50 px-5 py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-amber-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-400 disabled:cursor-not-allowed disabled:opacity-75 dark:border-amber-300/80 dark:bg-amber-500/15 dark:text-white dark:hover:border-amber-300 dark:hover:bg-amber-500/25"
             onClick={onTestLogin}

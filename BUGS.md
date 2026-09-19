@@ -570,6 +570,9 @@ Wiring-наборы plan/prayer/membership давали 25/25 зелёных п�
 
 ## 🟡 Открыто, но не «код-фикс»
 
+### Сменить пароль тестового аккаунта — он был публичным
+Пароль `testuser@example.com` лежал в боевом бандле до фикса BUG-20260919-test-account-password-in-production-bundle (коммит в `main`, 2026-09-19). Код его больше не отдаёт, но сам пароль уже публичный: сменить в Firebase Console → Authentication и затем в `frontend/app/utils/testLogin.ts` одним изменением. Делает владелец, после выкатки фикса на прод.
+
 ### referral Sybil — фейк-аккаунты стакают промо
 **P1 (PLAUSIBLE)** · `frontend/app/.../referral.server.ts` → `computeReferralPromotion:25-29`
 Награда +30 дней tier1 за КАЖДОГО зарегавшегося и заклеймившего, кумулятивно. Защищает: email_verified + аккаунт младше 24 ч + клейм один раз + не self-referral. Sybil стоит N верифицированных email и N аккаунтов за сутки.
