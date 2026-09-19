@@ -14,6 +14,22 @@
 
 ## 🔴 P1 — открыто
 
+### BUG-20260912-scratch-merge-replaces-remote-sibling · Сохранение одного наброска возвращает старый текст другого
+**P1** — теряется текст другого устройства · `frontend/app/utils/mergeScratch.ts:24` (`mergeScratch`) · `frontend/app/services/sermons.client.ts` (запись набросков)
+Ожидалось: правка карточки A сохраняет независимую правку B. Получилось: `base=[A0,B0]`, `mine=[A1,B0]`, `stored=[A0,B1]` дают `[A1,B0]` — воспроизведено вызовом настоящего merge в диагностическом тесте, без боевой базы. Как должно работать: неизменённая здесь карточка сохраняет чужую новую версию; конфликт — только при пересечении правок. Аудит — `docs/audits/2026-09-12-sync-mechanisms-context.md` в ветке `data-engine`; пробы — `.sessions/sync-diagnostic-probes.json` и `sync-groups-probes.json` в worktree `~/.codex/worktrees/2767/my-preacher-helper` (не в git). Лечится в ветке `data-engine` переводом домена на движок; в `main` не чинилось.
+
+### BUG-20260912-council-conflict-drops-local-text · Конфликт совета удаляет локальный текст
+**P1** — теряется отклонённая правка · `frontend/app/hooks/useCouncils.ts:157` (ветка `conflict`: `writer.forget(id)` на `:162` и замена кэша серверной копией)
+Ожидалось: сохранить оба варианта до решения человека. Получилось: при `conflict` ждущий текст выбрасывается, в кэше чужой текст, очередь пуста. Как должно работать: уведомление не выбирает версию за человека. Аудит — `docs/audits/2026-09-12-sync-mechanisms-context.md` в ветке `data-engine`; пробы — `.sessions/sync-diagnostic-probes.json` и `sync-groups-probes.json` в worktree `~/.codex/worktrees/2767/my-preacher-helper` (не в git). Лечится в ветке `data-engine` переводом домена на движок; в `main` не чинилось.
+
+### BUG-20260912-council-offline-bypasses-conflict-contract · Совет офлайн теряет защиту и подтверждает очередь без результата
+**P1** — возможна перезапись целого документа и ложное обещание сохранности · `frontend/app/services/councils.service.ts:41` и `:71` (офлайн: безусловный `setDoc` всего совета, промис не ждётся)
+Ожидалось: офлайн сохраняет намерение с исходной версией; отказ хранения виден человеку. Получилось: A офлайн правит старую копию, B сохраняет новую, A подключается — чужая правка заменена молча; ответ `queued` приходит и при отклонённом промисе SDK. Живая проверка двумя устройствами не выполнялась. Аудит — `docs/audits/2026-09-12-sync-mechanisms-context.md` в ветке `data-engine`; пробы — `.sessions/sync-diagnostic-probes.json` и `sync-groups-probes.json` в worktree `~/.codex/worktrees/2767/my-preacher-helper` (не в git). Лечится в ветке `data-engine` переводом домена на движок; в `main` не чинилось.
+
+### BUG-20260912-group-meeting-array-lost-update · Дата встречи группы перезаписывает другую встречу
+**P1** — независимая календарная правка теряется · `frontend/app/services/groups.service.ts:342-357` (`add/update/deleteGroupMeetingDate`) · чтение-и-запись всего массива `meetingDates` (`:252` → `:267`) · офлайн через `atomicUpdate.client.ts`
+Ожидалось: изменение встречи A сохраняет изменение B. Получилось: онлайн между чтением и записью и офлайн при добавлении записывается весь вычисленный заранее массив — B1 возвращается к B0 (два сценария воспроизведены с реальным сервисом и управляемой границей Firestore). Как должно работать: независимые встречи объединяются, пересечение одного текста сохраняет обе версии. Аудит — `docs/audits/2026-09-12-sync-mechanisms-context.md` в ветке `data-engine`; пробы — `.sessions/sync-diagnostic-probes.json` и `sync-groups-probes.json` в worktree `~/.codex/worktrees/2767/my-preacher-helper` (не в git). Лечится в ветке `data-engine` переводом домена на движок; в `main` не чинилось.
+
 ### BUG-20260916-series-read-hangs-on-silent-transport · Серия не загружается: скелетон навсегда
 **P1** — раздел серий на iPad владельца не открывается вообще, и ждать бесполезно · `frontend/app/services/series.service.ts:70` · `:77` · `frontend/app/services/groups.service.ts:64` · `:72` · `frontend/app/services/studies.service.ts:104`
 Ожидалось: серия открывается или честно говорит, что не прочиталась. Получилось: `getDocs`/`getDoc` на молчащем транспорте Firestore не отвечают ни данными, ни ошибкой, срока ожидания нет, второго канала нет — экран остаётся скелетоном.
