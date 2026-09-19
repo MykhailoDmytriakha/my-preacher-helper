@@ -224,3 +224,7 @@ take over the same scope. This is not a cross-tab lock: durable storage still
 arbitrates concurrent runtime changes. Account changes fence discovery and claims.
 Selectors on group details and sermon menus reuse `SeriesMembershipDialog` with
 `mode="target"`; its choices come from the pinned stage, not a refreshed baseline.
+The existing-sermon form uses `useEngineSeriesField`, a presentation adapter over
+the same stage. An empty complete series list is valid; selecting an uncaptured
+target is always refused. Metadata and membership currently have separate delivery
+outcomes, and retrying metadata must reuse any already captured membership action.

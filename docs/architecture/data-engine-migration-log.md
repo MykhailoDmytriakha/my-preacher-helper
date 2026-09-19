@@ -21,8 +21,9 @@ and dependent request in one local transaction; validation is recorded below.
 Public delivery/retry/discard controls are committed as `eda634e2`. Series list
 readers and durable creation are committed as `1b6a2bab`. Series detail now uses
 the public engine for metadata, deletion and pinned assign/remove/reorder stages.
-The current UI checkpoint is locally validated; remaining membership callers,
-sermon backlinks and live acceptance still block activation.
+Workspace-wide membership recovery and group/sermon-menu entry points are committed
+as `1b8d2bce`. The existing-sermon edit field now uses a pinned engine scope too.
+Creation with membership, sermon backlinks and live acceptance still block activation.
 Groups/series activation stays blocked. No production deployment or switch changed.
 
 - Reproduced `BUG-20260919-engine-field-buffer-diverges`: the focused text field
@@ -1637,3 +1638,24 @@ Group implementation checkpoint in progress:
   creation, legacy backlinks, remaining domain migrations and live acceptance.
   Firestore quota exhaustion still blocks live series QA; no production flags or
   cloud settings changed. Read-cooldown checkpoint: `c1f2a746`.
+
+### 2026-09-19 — existing-sermon editor membership
+
+- The edit form's series field opens a pinned engine stage before showing choices.
+  Selection stays durable and unsent until Save; Cancel cancels the stage. Navigation
+  retains it for workspace recovery. A different sermon starts a new form lifetime.
+- The form awaits only local membership capture. Legacy sermon metadata remains a
+  separately reported write until that domain migrates. Retrying failed metadata
+  reuses the captured membership identity instead of making another move.
+- Empty complete owner lists are valid membership stages: they permit unrelated
+  metadata editing and no-op cancellation/save, but cannot invent a missing target.
+- Real-engine UI tests cover atomic move, a remotely deleted target preserving the
+  source, Cancel, empty lists, and retry after metadata failure. Legacy modal tests
+  still pass. Gates: **722 suites / 7177 tests**, 2 suites / 10 skipped; both TS
+  configurations pass, lint 0 errors / 15 inherited warnings, isolated production
+  build passes. Logs: `/tmp/data-engine-edit-membership-{full,lint,types-final,unused,build}.log`.
+- Sequential review: pinned ancestry, independent write outcomes, no implicit retry,
+  cancellation/navigation, empty lists, public imports and disabled-flag behavior.
+  No production activation or live acceptance claimed. Creation remains a separate
+  blocker: a UI Promise chain cannot durably own create plus membership after restart.
+  The next engine extension will capture both effects as one atomic operation.

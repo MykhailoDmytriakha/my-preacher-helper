@@ -42,6 +42,13 @@ function fixture() {
 }
 
 describe('membership intent projection', () => {
+  it('allows an empty complete opening list without permitting an uncaptured target', async () => {
+    const t = fixture(), scope = t.begin('empty-list', []); await scope.settled();
+    expect(scope.getState().values).toEqual([]);
+    expect(() => scope.update(move)).toThrow('target was not present');
+    expect(await scope.save()).toEqual([]); expect(t.save).not.toHaveBeenCalled();
+    expect(await t.commits.list('owner')).toEqual([]);
+  });
   it('moves mixed selections out of every opening source, preserving unrelated fields and inputs', () => {
     const sermon = { id: 'sermon-sermon', type: 'sermon', refId: 'sermon', position: 1 };
     const values = new Map([['a', snapshot('a', true).value!], ['b', snapshot('b').value!], ['c', { ...snapshot('c').value!, items: [sermon] } as DocumentData]]);

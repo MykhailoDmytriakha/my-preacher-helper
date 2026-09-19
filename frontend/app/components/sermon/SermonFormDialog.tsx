@@ -62,6 +62,8 @@ interface SermonFormDialogProps {
    * sermon outside the series they wanted.
    */
   seriesLoading?: boolean;
+  seriesDisabled?: boolean;
+  seriesStatus?: React.ReactNode;
   /** Omitted → no planned-date row at all (some create flows deliberately have none). */
   showPlannedDate?: boolean;
   /** Sits under the second group, in the caller's words. */
@@ -83,6 +85,8 @@ export default function SermonFormDialog({
   error,
   seriesOptions,
   seriesLoading = false,
+  seriesDisabled = false,
+  seriesStatus,
   showPlannedDate = false,
   detailsHint,
   titleMaxRows = 4,
@@ -291,7 +295,7 @@ export default function SermonFormDialog({
                   value={values.seriesId}
                   onChange={(event) => onChange({ seriesId: event.target.value })}
                   className={`${FIELD_INPUT} appearance-none pr-12`}
-                  disabled={locked}
+                  disabled={locked || seriesDisabled}
                 >
                   <option value="">{t('addSermon.noSeriesOption')}</option>
                   {seriesOptions.map((option) => (
@@ -308,6 +312,7 @@ export default function SermonFormDialog({
               )}
             </div>
           )}
+          {seriesStatus}
         </div>
         {detailsHint && (
           <p className={GROUP_HINT}>{detailsHint}</p>

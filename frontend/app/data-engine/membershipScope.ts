@@ -33,7 +33,7 @@ const OWNER_CHANGED = 'Membership action owner changed';
 export function validateMembershipScope(record: MembershipScopeRecord): void {
   if (record?.kind !== 'membership' || record.version !== 1 || !isValidIdentifier(record.owner) || !record.scopeId
     || !Number.isSafeInteger(record.revision) || record.revision < 0 || !Number.isSafeInteger(record.generation) || record.generation < 0
-    || !['editing', 'saving', 'submitted', 'cancelled'].includes(record.phase) || !Array.isArray(record.pins) || !record.pins.length
+    || !['editing', 'saving', 'submitted', 'cancelled'].includes(record.phase) || !Array.isArray(record.pins)
     || record.pins.length > MAX_RELATION_RESOURCES || new Set(record.pins.map(pin => pin.baseline?.resource.id)).size !== record.pins.length
     || !Array.isArray(record.requestIds) || record.requestIds.some(id => !isValidIdentifier(id)) || new Set(record.requestIds).size !== record.requestIds.length
     || (record.phase !== 'submitted' && record.requestIds.length > 0)) throw new Error('Invalid membership scope');

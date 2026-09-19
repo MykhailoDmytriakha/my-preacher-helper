@@ -4,7 +4,9 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import "@locales/i18n";
 
+import { useEngineSeriesField } from '@/components/series/useEngineSeriesField';
 import SermonFormDialog from '@/components/sermon/SermonFormDialog';
+import { DataMembershipStatus } from '@/data-engine/DataMembershipStatus';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useSeries } from '@/hooks/useSeries';
 import { useSeriesMembership } from '@/hooks/useSeriesMembership';
@@ -38,7 +40,11 @@ interface EditSermonModalProps {
   syncState?: DashboardSermonSyncState;
 }
 
-export default function EditSermonModal({
+export default function EditSermonModal(props: EditSermonModalProps) {
+  return <SermonEditor key={props.sermon.id} {...props} />;
+}
+
+function SermonEditor({
   sermon,
   onClose,
   onUpdate,
@@ -72,13 +78,15 @@ export default function EditSermonModal({
    */
   const { series: seriesList, loading: seriesLoading } = useSeries(null);
   const { addToSeries, removeFromAllSeries } = useSeriesMembership();
+  const engineSeries = useEngineSeriesField({ type: 'sermon', refId: sermon.id });
   const currentSeriesId = getSeriesForRef(sermon.id, seriesList)?.id ?? '';
   const [seriesId, setSeriesId] = useState(currentSeriesId);
   const seriesTouchedRef = React.useRef(false);
   // Until the person touches the field, it follows the list: the playlist may still be
   // loading when this opens, and a field frozen at "" would then offer to unfile the sermon.
-  const shownSeriesId = seriesTouchedRef.current ? seriesId : currentSeriesId;
-  const seriesChanged = seriesTouchedRef.current && shownSeriesId !== currentSeriesId;
+  const legacySeriesId = seriesTouchedRef.current ? seriesId : currentSeriesId;
+  const shownSeriesId = engineSeries.enabled ? engineSeries.seriesId : legacySeriesId;
+  const seriesChanged = engineSeries.enabled ? engineSeries.changed : seriesTouchedRef.current && shownSeriesId !== currentSeriesId;
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [saveError, setSaveError] = useState('');
   const formEditedRef = React.useRef(false);
@@ -113,13 +121,13 @@ export default function EditSermonModal({
     seriesChanged;
 
   /**
-   * Membership goes through its one writer and is NOT awaited: the sweep is optimistic and
-   * offline it never resolves, so awaiting it would hang the editor. Its refusals have their
-   * own reporter for every surface (`useSeriesMembership`), which is why this does not try
-   * to speak for them.
+   * The engine awaits durable local capture only. The legacy sweep remains fire-and-forget
+   * because its network persistence does not resolve offline. Each writer owns delivery
+   * reporting independently of the sermon's metadata write.
    */
   const applySeriesChange = () => {
     if (!seriesChanged) return;
+    if (engineSeries.enabled) return engineSeries.save();
     if (shownSeriesId) {
       addToSeries(shownSeriesId, { type: 'sermon', refId: sermon.id });
       return;
@@ -240,7 +248,8 @@ export default function EditSermonModal({
           unspecifiedChurchName: getUnspecifiedChurch().name,
         });
 
-        applySeriesChange();
+        const membershipCapture = applySeriesChange();
+        if (membershipCapture) await membershipCapture;
         await awaitAcceptance(submission, (error) => {
           /**
            * A LATE refusal is shown on the sermon's own card, as a badge with the text
@@ -275,7 +284,8 @@ export default function EditSermonModal({
       const corePatch = churchChanged
         ? { title, verse, church: church ?? { id: '', name: '', city: '' } }
         : { title, verse };
-      applySeriesChange();
+      const membershipCapture = applySeriesChange();
+      if (membershipCapture) await membershipCapture;
       const data = await updateSermon({ ...sermon, ...corePatch }, corePatch);
 
       if (!data) {
@@ -302,19 +312,25 @@ export default function EditSermonModal({
         if ('church' in patch) setChurch(patch.church);
         if ('plannedDate' in patch) setPlannedDate(patch.plannedDate ?? '');
         if ('seriesId' in patch) {
+          if (engineSeries.enabled) { void engineSeries.change(patch.seriesId ?? '').catch(() => undefined); return; }
           seriesTouchedRef.current = true;
           setSeriesId(patch.seriesId ?? '');
         }
       }}
       onSubmit={handleSubmit}
-      onCancel={onClose}
+      onCancel={() => {
+        if (engineSeries.enabled) void engineSeries.cancel().then(onClose).catch(() => undefined);
+        else onClose();
+      }}
       submitLabel={t('buttons.save')}
       saving={isSubmitting}
-      submitDisabled={!hasChanges}
+      submitDisabled={!hasChanges || (engineSeries.enabled && engineSeries.unsettled)}
       readOnly={isReadOnly}
       error={saveError}
-      seriesOptions={seriesList.map((entry) => ({ id: entry.id, label: entry.title || entry.theme }))}
-      seriesLoading={seriesLoading}
+      seriesOptions={engineSeries.enabled ? engineSeries.options : seriesList.map((entry) => ({ id: entry.id, label: entry.title || entry.theme }))}
+      seriesLoading={engineSeries.enabled ? engineSeries.loading : seriesLoading}
+      seriesDisabled={engineSeries.enabled && engineSeries.disabled}
+      seriesStatus={engineSeries.enabled && <DataMembershipStatus action={{ ...engineSeries.action, retry: engineSeries.retry }} />}
       showPlannedDate
       detailsHint={t('editSermon.plannedDateHint', { defaultValue: 'Leave empty if you do not want a planned date.' })}
     />
