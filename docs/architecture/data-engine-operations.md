@@ -85,7 +85,8 @@ re-listed on navigation or explicit refresh; an open list could stay stale forev
 `CollectionReader` now schedules one sweep 15 seconds after the preceding request
 settles, only while `legacyOpen`, watched, visible and online. All consumers in one
 engine share it. Slow requests never overlap; failures back off up to 120 seconds;
-head observations cannot bypass that backoff. Hidden/offline/unwatched readers
+head observations cannot bypass that backoff. Failure cooldown also applies before
+the first response establishes legacy mode and to failed closed-collection feeds. Hidden/offline/unwatched readers
 stop, and the sweep stops once a response establishes collection closure.
 
 A mixed sweep lists directly, then catches up the feed from that list's anchor.
@@ -147,3 +148,15 @@ Firebase Usage / billing deltas with the model, including existing non-engine
 traffic; keep the measurement interval and baseline. Verify physical iPad and
 installed PWA behavior separately. The instrumented tests and desktop browser proof
 do not establish these cloud/device outcomes.
+
+
+### Live quota refusal, 2026-09-19 07:25 PDT
+
+The local authenticated QA server observed Firestore `RESOURCE_EXHAUSTED: Quota
+exceeded`, including the independent entitlement read. The test tabs and server
+were stopped. The source of project-wide consumption is not established; the
+request model above is not evidence assigning this event to one component.
+Series live acceptance did not complete and no new test series was submitted.
+A follow-up regression exposed and fixed missing cooldown on first-list/closed-feed
+failure. This bounds an automatic retry path; it does not impose a project-wide
+billing ceiling or change the documented cost of healthy mixed-mode sweeps.

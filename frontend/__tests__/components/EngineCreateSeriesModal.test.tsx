@@ -13,12 +13,13 @@ jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: ({ 
 const resource = { collection: 'series', id: 'new-series' };
 function setup() {
   const harness = documentEngineHarness({ resource, value: null, metadata: null });
-  jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+  let reportBackground: ((error: unknown) => void) | undefined;
+  jest.mocked(createBrowserDataEngine).mockImplementation(options => { reportBackground = options?.onError; return harness.createBrowser(options); });
   const onClose = jest.fn(), onQueued = jest.fn();
   function Workspace({ recoveryId }: { recoveryId?: string }) {
     return <DataEngineProvider><EngineCreateSeriesModal seriesId={resource.id} recoveryId={recoveryId} onClose={onClose} onQueued={onQueued} /></DataEngineProvider>;
   }
-  return { harness, Workspace, view: render(<Workspace />), onQueued, onClose };
+  return { harness, Workspace, view: render(<Workspace />), onQueued, onClose, reportBackground: (error: unknown) => reportBackground?.(error) };
 }
 beforeEach(() => jest.clearAllMocks());
 it('retains raw typing across restart and only captures creation on explicit submission', async () => {
@@ -55,4 +56,18 @@ it('reports missing fields and accepts an offline creation without claiming serv
   expect(harness.server.value).toBeNull(); expect(harness.transport.send).not.toHaveBeenCalled();
   expect((await harness.commits.list('owner')).some(commit => commit.value?.title === 'Offline series')).toBe(true);
   expect(screen.getByRole('status')).toHaveTextContent('dataSync.phase.queued'); view.unmount();
+});
+
+it('keeps local creation available when an unrelated background read fails', async () => {
+  const { harness, view, onQueued, reportBackground } = setup();
+  const title = await screen.findByPlaceholderText('workspaces.series.form.titlePlaceholder');
+  await waitFor(() => expect(title).toBeEnabled());
+  act(() => { harness.engine.setOnline(false); reportBackground(new Error('Quota exceeded')); });
+  expect(title).toBeEnabled(); expect(screen.getByRole('alert')).toHaveTextContent('Quota exceeded');
+  fireEvent.change(title, { target: { value: 'Local during outage' } });
+  fireEvent.change(screen.getByPlaceholderText('workspaces.series.form.bookOrTopicPlaceholder'), { target: { value: 'Romans' } });
+  fireEvent.submit(title.closest('form')!);
+  await waitFor(() => expect(onQueued).toHaveBeenCalledWith(resource.id));
+  expect(harness.transport.read).not.toHaveBeenCalled(); expect(harness.transport.send).not.toHaveBeenCalled();
+  expect((await harness.commits.list('owner')).some(commit => commit.value?.title === 'Local during outage')).toBe(true); view.unmount();
 });

@@ -86,6 +86,35 @@ describe('CollectionReader durable read lifecycle', () => {
   beforeEach(() => { jest.useFakeTimers(); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 
+  it('backs off an initial failure before the server can report its legacy mode', async () => {
+    const s = setup();
+    jest.mocked(s.transport.list).mockRejectedValue(new Error('quota unavailable'));
+    const stop = s.reader.watch(collection, jest.fn()); await settle();
+    expect(s.transport.list).toHaveBeenCalledTimes(1);
+    for (let index = 0; index < 10; index += 1) { s.head(); await settle(); }
+    expect(s.transport.list).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(29_999); await settle();
+    expect(s.transport.list).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1); await settle();
+    expect(s.transport.list).toHaveBeenCalledTimes(2);
+    stop(); await jest.advanceTimersByTimeAsync(120_000); await settle();
+    expect(s.transport.list).toHaveBeenCalledTimes(2); s.reader.dispose();
+  });
+
+  it('backs off a failed closed-collection feed and resumes without another head event', async () => {
+    const s = setup(); s.seed(row('a'));
+    const stop = s.reader.watch(collection, jest.fn()); await settle();
+    jest.mocked(s.transport.changes).mockRejectedValueOnce(new Error('quota unavailable'));
+    s.change(row('a', 2, 'new')); s.head(); await settle();
+    const calls = jest.mocked(s.transport.changes).mock.calls.length;
+    for (let index = 0; index < 10; index += 1) { s.head(); await settle(); }
+    expect(s.transport.changes).toHaveBeenCalledTimes(calls);
+    await jest.advanceTimersByTimeAsync(30_000); await settle();
+    expect(s.transport.changes).toHaveBeenCalledTimes(calls + 1);
+    expect((await s.reader.read(collection)).snapshots[0].value?.content).toBe('new');
+    stop(); s.reader.dispose();
+  });
+
   it('hydrates every page and catches up from the first page anchor, including insertion behind the page cursor', async () => {
     const s = setup({ pageSize: 1 });
     jest.mocked(s.transport.list)

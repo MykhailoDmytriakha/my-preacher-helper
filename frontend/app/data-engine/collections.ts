@@ -67,8 +67,8 @@ interface CollectionEntry {
   legacyOpen: boolean;
   /** Whether the server has been asked at all since this reader was created. */
   asked: boolean;
-  legacyTimer: ReturnType<typeof setTimeout> | null;
-  legacyFailures: number;
+  refreshTimer: ReturnType<typeof setTimeout> | null;
+  refreshFailures: number;
 }
 
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -113,7 +113,7 @@ export class CollectionReader {
     this.generation += 1;
     for (const entry of this.entries.values()) {
       entry.closed = true;
-      this.clearLegacyTimer(entry);
+      this.clearRefreshTimer(entry);
       entry.stopHead?.();
       entry.state = initialState();
       this.emit(entry);
@@ -168,7 +168,7 @@ export class CollectionReader {
       released = true;
       entry.listeners.delete(subscription);
       if (!entry.listeners.size) {
-        this.clearLegacyTimer(entry);
+        this.clearRefreshTimer(entry);
         entry.stopHead?.();
         entry.stopHead = null;
       }
@@ -185,17 +185,17 @@ export class CollectionReader {
       entry.inFlight.explicit ||= explicit;
       return entry.inFlight.promise.then(copy);
     }
-    // Head observations must not bypass a failed mixed sweep's backoff merely
-    // because that sweep left the durable cursor incomplete. Explicit Retry may.
-    if (!explicit && entry.legacyFailures > 0 && entry.legacyTimer !== null) return Promise.resolve(copy(entry.state));
-    this.clearLegacyTimer(entry);
+    // Every failed automatic read gets a cooldown, even before the first server
+    // answer establishes legacy mode. Head events cannot bypass it; explicit Retry may.
+    if (!explicit && entry.refreshFailures > 0 && entry.refreshTimer !== null) return Promise.resolve(copy(entry.state));
+    this.clearRefreshTimer(entry);
     const promise = this.synchronize(entry, generation);
     entry.inFlight = { generation, promise, explicit };
     const finish = (failed = false) => {
       if (entry.inFlight?.promise !== promise) return;
       entry.inFlight = null;
-      entry.legacyFailures = failed ? entry.legacyFailures + 1 : 0;
-      this.scheduleLegacyRefresh(entry);
+      entry.refreshFailures = failed ? entry.refreshFailures + 1 : 0;
+      this.scheduleRefresh(entry);
     };
     void promise.then(() => {
       finish();
@@ -212,7 +212,7 @@ export class CollectionReader {
     this.generation += 1;
     for (const entry of this.entries.values()) {
       entry.closed = true;
-      this.clearLegacyTimer(entry);
+      this.clearRefreshTimer(entry);
       entry.stopHead?.();
       entry.listeners.clear();
     }
@@ -227,7 +227,7 @@ export class CollectionReader {
     if (!entry) {
       entry = { owner: this.owner, collection, state: initialState(), cursor: undefined, loaded: false,
         loading: null, inFlight: null, listeners: new Set(), stopHead: null, head: null, headVersion: null, closed: false,
-        legacyOpen: false, asked: false, legacyTimer: null, legacyFailures: 0 };
+        legacyOpen: false, asked: false, refreshTimer: null, refreshFailures: 0 };
       this.entries.set(collection, entry);
     }
     return entry;
@@ -471,26 +471,26 @@ export class CollectionReader {
   private restart(): void {
     this.generation += 1;
     for (const entry of this.entries.values()) {
-      this.clearLegacyTimer(entry);
+      this.clearRefreshTimer(entry);
       entry.state = { ...entry.state, checking: false, freshness: entry.state.snapshots.length || entry.state.complete ? 'cache' : 'unknown' };
       this.emit(entry);
       if (this.online && this.visible && entry.listeners.size) this.background(this.requestRefresh(entry.collection, false), entry, this.generation);
     }
   }
 
-  private clearLegacyTimer(entry: CollectionEntry): void {
-    if (entry.legacyTimer !== null) clearTimeout(entry.legacyTimer);
-    entry.legacyTimer = null;
+  private clearRefreshTimer(entry: CollectionEntry): void {
+    if (entry.refreshTimer !== null) clearTimeout(entry.refreshTimer);
+    entry.refreshTimer = null;
   }
 
-  private scheduleLegacyRefresh(entry: CollectionEntry): void {
-    this.clearLegacyTimer(entry);
-    if (!this.current(entry, this.generation) || !entry.legacyOpen || !this.online || !this.visible
+  private scheduleRefresh(entry: CollectionEntry): void {
+    this.clearRefreshTimer(entry);
+    if (!this.current(entry, this.generation) || (!entry.legacyOpen && entry.refreshFailures === 0) || !this.online || !this.visible
       || !entry.listeners.size || entry.inFlight) return;
     const generation = this.generation;
-    const delay = Math.min(Math.max(120_000, this.legacyPollIntervalMs), this.legacyPollIntervalMs * 2 ** Math.min(entry.legacyFailures, 16));
-    entry.legacyTimer = setTimeout(() => {
-      entry.legacyTimer = null;
+    const delay = Math.min(Math.max(120_000, this.legacyPollIntervalMs), this.legacyPollIntervalMs * 2 ** Math.min(entry.refreshFailures, 16));
+    entry.refreshTimer = setTimeout(() => {
+      entry.refreshTimer = null;
       if (this.current(entry, generation) && this.online && this.visible && entry.listeners.size) {
         this.background(this.requestRefresh(entry.collection, false), entry, generation);
       }

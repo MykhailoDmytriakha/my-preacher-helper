@@ -1585,3 +1585,29 @@ Group implementation checkpoint in progress:
   acceptance blocker, not a successful series test; no new QA series was submitted.
   Next critical investigation: bounded degraded-read retries and local editing while
   unrelated reads fail. `/tmp/data-engine-series-dev.log` contains the server evidence.
+
+
+### 2026-09-19 — initial/closed collection failure cooldown
+
+- `BUG-20260919-collection-first-failure-backoff` reproduced independently of live
+  Firestore: ten head events after a rejected first list caused ten extra list
+  requests. A closed-collection feed failure likewise bypassed cooldown.
+- The collection reader now schedules failure retries for every mode, including
+  unknown initial mode. Automatic head events share the cooldown; explicit refresh
+  remains immediate. Success stops the timer for closed collections, while mixed
+  collections retain their documented bounded sweep. Offline/hidden/unwatched
+  lifecycles still suspend it.
+- Both negative controls pass after the fix, alongside 70 reader/observer tests.
+  A real-engine component test injects a background read error and proves that local
+  creation still captures a durable request without any read/send request. The
+  briefly disabled live form was not enough evidence of a creation defect; no
+  speculative creation change was made.
+- Final gates: **720 suites / 7167 tests**, 2 suites / 10 intentionally skipped;
+  both TS configurations pass, lint 0 errors / 15 inherited warnings, isolated
+  production build passes in 20.58 seconds. No worker teardown warning in this run.
+  Logs: `/tmp/data-engine-read-backoff-{full,lint,types,unused,build}.log`,
+  `/tmp/data-engine-first-failure-{before,after}.log`, `/tmp/data-engine-quota-local-create.log`.
+- Review: lifecycle/ownership, automatic versus explicit retry, cache retention,
+  protocol boundaries and failure recovery. No new server traffic or cloud config
+  was used for these checks. Project quota exhaustion remains unattributed and
+  live series/PWA acceptance remains open. Series UI checkpoint: `52ca503f`.
