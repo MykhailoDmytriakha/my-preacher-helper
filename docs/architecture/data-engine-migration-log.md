@@ -961,3 +961,12 @@ flush, the hidden-page save, or `close` itself turns their tests red. Gates: tes
 **Known, not changed:** a checkpoint left by an earlier page load still lists a request that has
 since been delivered, so "Найти сохранённые черновики" can offer work that is already saved
 (neighbour of `BUG-20260913-engine-idle-banner-hides-unfinished-work`).
+
+**Re-walked on the preview after the fix** (`733cdbc`; the tab's service worker and caches for
+the preview origin were removed first and the new engine chunk confirmed loaded): a title typed
+and left at once reached the server (revision 1 → 2, the list shows it); a council deleted with an
+immediate return to the list was a tombstone at once (revision 3) and left the list. The last test
+council was deleted the same way (revision 10). The engine list, `GET /api/councils`,
+`/api/owner-list` and the screen all agree on the account's one remaining council; no console
+errors. Queue item 5 now holds for a production build with a live service worker, not only for
+localhost. Still not walked: a real iPad, an installed PWA.
