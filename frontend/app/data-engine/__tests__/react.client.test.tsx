@@ -45,7 +45,7 @@ function makeEditor() {
       const id = `op-${++sequence}`;
       state = { ...state, checkpoint: { ...state.checkpoint, pending: { ...state.checkpoint.pending, [id]: { generation: state.checkpoint.editGeneration, value: state.checkpoint.draft } } } }; emit();
     }),
-    acceptRemote: jest.fn(async () => undefined), keepLocal: jest.fn(async () => undefined), remove: jest.fn(async () => undefined), dispose: jest.fn(),
+    acceptRemote: jest.fn(async () => undefined), keepLocal: jest.fn(async () => undefined), remove: jest.fn(async () => undefined), dispose: jest.fn(), close: jest.fn(),
   };
   return {
     editor, emit,
@@ -160,7 +160,7 @@ describe('React DataEngine contract', () => {
     await act(async () => core.save());
     expect(s.editor.save).toHaveBeenCalledTimes(1);
     view.unmount();
-    expect(s.editor.dispose).toHaveBeenCalledTimes(1);
+    expect(s.editor.close).toHaveBeenCalledTimes(1);
   });
 
   it('captures an explicit commit before later typing while persistence is still pending', async () => {
@@ -274,7 +274,7 @@ describe('React DataEngine contract', () => {
     expect(result.current.data).toEqual({ content: 'B' });
     await act(async () => { s.emit(); jest.advanceTimersByTime(2_000); });
     expect(s.editor.save).toHaveBeenCalledTimes(2);
-    unmount(); expect(b.browser.dispose).toHaveBeenCalledTimes(1); expect(s.editor.dispose).toHaveBeenCalledTimes(1);
+    unmount(); expect(b.browser.dispose).toHaveBeenCalledTimes(1); expect(s.editor.close).toHaveBeenCalledTimes(1);
   });
 
   it.each([false, true])('keeps resolution explicit with autoSave=%s', async autoSave => {
@@ -363,7 +363,7 @@ describe('React DataEngine contract', () => {
     await waitFor(() => expect(result.current.data).toEqual({ content: 'base' }));
     rerender({ id: 'middle' }); await waitFor(() => expect(b.engine.openEditor).toHaveBeenCalledTimes(2));
     rerender({ id: 'note' }); await waitFor(() => expect(b.engine.openEditor).toHaveBeenCalledTimes(3));
-    expect(first.editor.dispose).toHaveBeenCalledTimes(1);
+    expect(first.editor.close).toHaveBeenCalledWith({ flush: false });
     expect(result.current.loading).toBe(true); expect(result.current.data).toBeNull();
     await act(async () => { middleOpen.resolve(middle.editor); replacementOpen.resolve(replacement.editor); });
     expect(middle.editor.dispose).toHaveBeenCalledTimes(1);
@@ -398,6 +398,34 @@ describe('React DataEngine contract', () => {
     const { result } = renderHook(() => useDataDocument(resource), { wrapper: Wrapper });
     expect(result.current.loading).toBe(false); expect(result.current.data).toBeNull();
     expect(b.engine.openEditor).not.toHaveBeenCalled();
+  });
+
+  // BUG-20260919-engine-leaving-strands-last-edit: leaving is a moment to save, not to forget.
+  it.each([true, false])('asks the engine to keep what was typed when the screen goes away (autoSave=%s)', async autoSave => {
+    const s = makeEditor(); const b = makeBrowser(s.editor); jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+    const { result, unmount } = renderHook(() => useDataDocument(resource, { autoSave }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => { await result.current.edit({ content: 'typed and gone' }); });
+    unmount();
+    expect(s.editor.close).toHaveBeenCalledWith({ flush: autoSave });
+    expect(s.editor.dispose).not.toHaveBeenCalled();
+  });
+
+  it('saves at once when the page is hidden instead of waiting out the autosave delay', async () => {
+    const s = makeEditor(); const b = makeBrowser(s.editor); jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+    const { result } = renderHook(() => useDataDocument(resource), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await act(async () => { await result.current.edit({ content: 'typed, then the app was switched' }); });
+    expect(s.editor.save).not.toHaveBeenCalled();
+    const visibility = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState');
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    try {
+      await act(async () => { document.dispatchEvent(new Event('visibilitychange')); });
+      expect(s.editor.save).toHaveBeenCalledTimes(1);
+    } finally {
+      delete (document as unknown as Record<string, unknown>).visibilityState;
+      if (visibility) Object.defineProperty(Document.prototype, 'visibilityState', visibility);
+    }
   });
 
   it('persists each keystroke immediately and debounces a typing burst without status-only timer resets', async () => {
@@ -444,7 +472,9 @@ describe('React DataEngine contract', () => {
     await act(async () => jest.advanceTimersByTime(1_500)); expect(s.editor.save).toHaveBeenCalledTimes(1);
   });
 
-  it.each(['owner', 'navigation', 'unmount'] as const)('cancels scheduled delivery on %s changes', async change => {
+  // The late timer never fires for a screen that is gone; what it would have sent is handed to
+  // the engine as the editor closes (BUG-20260919-engine-leaving-strands-last-edit).
+  it.each(['owner', 'navigation', 'unmount'] as const)('cancels scheduled delivery on %s changes and hands the draft over on close', async change => {
     const s = makeEditor(); const first = makeBrowser(s.editor), second = makeBrowser();
     jest.mocked(createBrowserDataEngine).mockReturnValueOnce(first.browser).mockReturnValue(second.browser);
     const { result, rerender, unmount } = renderHook(({ id }) => useDataDocument({ ...resource, id }), { wrapper: Wrapper, initialProps: { id: 'note' } });
@@ -456,7 +486,7 @@ describe('React DataEngine contract', () => {
     else unmount();
     await act(async () => jest.advanceTimersByTime(1_000));
     expect(s.editor.save).not.toHaveBeenCalled();
-    expect(s.editor.dispose).toHaveBeenCalledTimes(1);
+    expect(s.editor.close).toHaveBeenCalledWith({ flush: true });
   });
 
   it('requires the provider boundary', () => {
@@ -603,7 +633,7 @@ describe('React collection and explicit recovery APIs', () => {
     let recovering!: Promise<void>;
     await act(async () => { recovering = result.current.recover(listed[0].id); });
     await act(async () => recovering);
-    expect(old.editor.dispose).toHaveBeenCalledTimes(1); expect(old.editor.edit).not.toHaveBeenCalled();
+    expect(old.editor.close).toHaveBeenCalledWith({ flush: autoSave }); expect(old.editor.edit).not.toHaveBeenCalled();
     expect(result.current.data).toEqual({ content: 'recovered' });
     expect(b.engine.recoverEditor).toHaveBeenCalledWith(resource, expect.stringContaining(':recovery:'), recoveryRecord.id, { signal: expect.any(AbortSignal) });
     await act(async () => jest.advanceTimersByTime(750)); expect(restored.editor.save).toHaveBeenCalledTimes(autoSave ? 1 : 0);

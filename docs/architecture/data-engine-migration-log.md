@@ -919,3 +919,45 @@ the first one that carries them.
 
 Owed by the owner: acceptance on a real device through the preview, on councils created for the
 test (see "Testing on a Vercel preview").
+
+### 2026-09-19 — The preview found what localhost could not: leaving a screen stranded the last edit
+
+The owner could not sign in on the preview (Google's OAuth client allows the production origin
+only). The chosen way in was the dev test account, which also exposed a production leak: its
+e-mail and password shipped in the public landing bundle (`BUG-20260919-test-account-password-in-production-bundle`,
+fixed on `main` in `ecec9508` and merged here). The test login now exists only in builds that
+decide so at build time; `NEXT_PUBLIC_ENABLE_TEST_LOGIN=true` is set for Preview · this branch.
+
+Walked on the preview (a production build with its service worker active), revisions read from
+the server: create and edit (1 → 5), conduct (7), carry by the button (source 7 → 9 with the mark,
+destination 1 → 2), an offline edit that left by itself after a reload (2 → 3), and two tabs on one
+field ending in a real conflict with both versions kept (4 → 5). Per-collection switching held:
+the engine route answered 200 for councils and 503 for sermons.
+
+**Then a defect that the slower dev server had hidden.** Deleting a council sent the person to the
+list while the council stayed alive on the server (revision 5); opening it again in the same tab
+delivered the deletion then (revision 6) — a deletion that happens later, by surprise. Typing into
+a title and leaving within the 750 ms autosave delay left the server on the old title. Cause:
+`react.client.tsx` disposed the editor on unmount without a last save, and the autosave timer was
+simply cleared; the intent sat in a checkpoint no editor would read again. The legacy councils hook
+had "the last save on the way out"; the engine did not — a regression, not a new risk.
+
+Fix (`BUG-20260919-engine-leaving-strands-last-edit`):
+- `ManagedEditor.close({ flush })` — closes the entry at once (the same editor identity may reopen
+  immediately) and hands a savable draft to the engine's commit queue as a durable request, which
+  any editor or tab of the owner delivers, now or after a reload. Drafts that wait for the person
+  (conflict, refusal, deleted elsewhere) are left alone; `flush` is false for manual forms and
+  creation.
+- The React layer closes with `flush` equal to the document's autosave setting, and saves at once
+  when the page is hidden or left (`pagehide`, `visibilitychange`) instead of waiting out the delay —
+  on an iPad that is the home gesture or switching apps.
+
+Tests red before the fix: three in `commits.test.ts` against a real engine (a typed draft, a
+deletion, nothing sent when not asked), three in `react.client.test.tsx`. Four React tests that
+pinned the old "unmount disposes" contract were rewritten to the new one. Mutations: removing the
+flush, the hidden-page save, or `close` itself turns their tests red. Gates: test:fast 6945 passed /
+6950 with the preview's switches set, tsc 0, lint:full 0 errors.
+
+**Known, not changed:** a checkpoint left by an earlier page load still lists a request that has
+since been delivered, so "Найти сохранённые черновики" can offer work that is already saved
+(neighbour of `BUG-20260913-engine-idle-banner-hides-unfinished-work`).

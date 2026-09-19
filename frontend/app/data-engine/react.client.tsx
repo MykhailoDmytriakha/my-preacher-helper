@@ -149,6 +149,9 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
     setFailure(value === null ? null : { identity, message: value });
   }, [identity]);
   const mounted = useRef(false);
+  // Read when the editor closes, not when it opened: whether leaving may send what was typed.
+  const autoSaveRef = useRef(autoSave);
+  autoSaveRef.current = autoSave;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; requestedRecovery.current?.reject(aborted()); }; }, []);
   useEffect(() => () => { if (requestedRecovery.current?.base === base) requestedRecovery.current.reject(aborted()); }, [base]);
   const scope = useRef(identity);
@@ -179,7 +182,9 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       publish();
       recovery?.resolve();
     }).catch(failure => { recovery?.reject(failure); if (active) setError(message(failure)); });
-    return () => { active = false; cancellation.abort(); recovery?.reject(aborted()); stop?.(); editor?.dispose(); };
+    // Leaving the screen is a moment to save, not to forget (BUG-20260919-engine-leaving-strands-last-edit):
+    // with autosave, whatever the debounce had not sent yet becomes a durable request as the editor closes.
+    return () => { active = false; cancellation.abort(); recovery?.reject(aborted()); stop?.(); editor?.close({ flush: autoSaveRef.current }); };
   }, [browser, owner, collection, id, slot, create, key, attempt, setError, identity, recovery]);
 
   // Owner and resource identity gate rendering before effect cleanup can run.
@@ -226,10 +231,24 @@ function useIsolatedDataDocument(resource: ResourceRef | null, { slot = 'default
       void current.editor.save().catch(failure => { if (isCurrent()) setError(message(failure)); });
     }, delay);
     saveTimer.current = timer;
+    // Hiding the page — another tab, another app, the iPad's home gesture — may be the last
+    // moment this page runs. Save now instead of waiting out the delay.
+    const saveNow = () => {
+      if (!active || !isCurrent()) return;
+      active = false;
+      clearTimeout(timer);
+      if (saveTimer.current === timer) saveTimer.current = null;
+      void current.editor.save().catch(failure => { if (isCurrent()) setError(message(failure)); });
+    };
+    const onVisibility = () => { if (document.visibilityState === 'hidden') saveNow(); };
+    window.addEventListener('pagehide', saveNow);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
       active = false;
       clearTimeout(timer);
       if (saveTimer.current === timer) saveTimer.current = null;
+      window.removeEventListener('pagehide', saveNow);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [autoSave, autoSaveDelayMs, current?.editor, current?.state.checkpoint.editGeneration, current?.status.canSave, isCurrent, setError]);
 

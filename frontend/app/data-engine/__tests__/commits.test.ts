@@ -76,6 +76,36 @@ describe('Durable commit requests', () => {
     restarted.dispose();
   });
 
+  // BUG-20260919-engine-leaving-strands-last-edit. A screen that is left inside the autosave
+  // delay used to dispose its editor with the draft only in a checkpoint nobody would read again.
+  it('turns a draft still waiting for autosave into a durable request when its editor closes', async () => {
+    const s = setup(); const engine = s.makeEngine(); const editor = await engine.openEditor(initial().resource, 'tab');
+    await editor.edit({ ...initial().value, title: 'typed just before leaving' });
+    editor.close({ flush: true }); await settle();
+    expect((await s.requests.list('owner')).map(request => request.value?.title)).toEqual(['typed just before leaving']);
+    engine.setOnline(true); await engine.retry(); await settle();
+    expect(s.server().value?.title).toBe('typed just before leaving');
+    engine.dispose();
+  });
+
+  it('lets a deletion started just before leaving land', async () => {
+    const s = setup(); const engine = s.makeEngine(); const editor = await engine.openEditor(initial().resource, 'tab');
+    void editor.remove().catch(() => undefined);
+    editor.close({ flush: true }); await settle();
+    engine.setOnline(true); await engine.retry(); await settle();
+    expect(s.server()).toMatchObject({ value: null, metadata: { deleted: true } });
+    engine.dispose();
+  });
+
+  it('sends nothing on close when not asked to, or when the draft waits for the person to decide', async () => {
+    const s = setup(); const engine = s.makeEngine();
+    const manual = await engine.openEditor(initial().resource, 'form');
+    await manual.edit({ ...initial().value, title: 'staged in a form' });
+    manual.close({ flush: false }); await settle();
+    expect(await s.requests.list('owner')).toEqual([]);
+    engine.dispose();
+  });
+
   it('freezes save at invocation before persistence and does not accidentally authorize later typing', async () => {
     const s = setup(); const engine = s.makeEngine(); const editor = await engine.openEditor(initial().resource, 'tab');
     const staging = editor.edit({ ...initial().value, title: 'saved' });

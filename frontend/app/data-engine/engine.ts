@@ -11,6 +11,7 @@ import type { CollectionReader, CollectionState } from './collections';
 import type { ManualScopeStore, StoredManualScope } from './manualScopes.client';
 import type { Observation, ResourceObserver } from './observer';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
+import type { SessionCheckpoint } from './session';
 import type { DocumentData, EngineTransport, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
 export interface SnapshotStore {
@@ -60,6 +61,15 @@ export interface ManagedEditor {
   acceptRemote(): Promise<void>;
   keepLocal(): Promise<void>;
   dispose(): void;
+  /**
+   * Leave the editor. With `flush`, a draft that could be saved — typed inside the autosave
+   * delay, or a deletion whose request was not written yet — becomes a durable request first,
+   * so leaving a screen never strands it in a checkpoint no editor will read again
+   * (BUG-20260919-engine-leaving-strands-last-edit). A draft that waits for the person —
+   * a conflict, a refusal, a document deleted elsewhere — is left alone, as is everything
+   * when `flush` is false (manual forms, creation).
+   */
+  close(options?: { flush?: boolean }): void;
 }
 
 export interface EditorOpenOptions {
@@ -462,6 +472,19 @@ export class DataEngine {
           this.close(entry);
           if (this.editors.get(editorId) === entry) this.editors.delete(editorId);
         },
+        close: ({ flush = false } = {}) => {
+          if (entry.closed) return;
+          const leaving = flush && this.current(owner, generation) ? this.leavingIntent(controller) : null;
+          // The entry closes now, synchronously: the same editor identity may reopen at once
+          // (navigation back to this document), and an open entry would refuse it.
+          this.close(entry);
+          if (this.editors.get(editorId) === entry) this.editors.delete(editorId);
+          if (!leaving) return;
+          // The request belongs to the engine's queue, not to the controller that just closed:
+          // it is delivered by any editor or tab of this owner, now or after a reload.
+          this.background(this.commits.save(editorId, leaving.checkpoint, leaving.predecessorId ? { predecessorId: leaving.predecessorId } : undefined)
+            .then(() => { this.backgroundDrain(); }), owner, generation);
+        },
       };
       this.backgroundDrain();
       return managed;
@@ -470,6 +493,22 @@ export class DataEngine {
       if (this.editors.get(editorId) === entry) this.editors.delete(editorId);
       throw error;
     }
+  }
+
+  /** What a closing editor still owes the server: a savable draft no request has taken yet. */
+  private leavingIntent(controller: EditorController): { checkpoint: SessionCheckpoint; predecessorId?: string } | null {
+    let state: EditorState;
+    try { state = controller.getState(); } catch { return null; }
+    const { checkpoint } = state;
+    const pending = Object.entries(checkpoint.pending);
+    const unqueued = pending.every(([, request]) => request.generation < checkpoint.editGeneration);
+    const waitsForPerson = checkpoint.conflicts.length > 0
+      || state.result?.kind === 'conflict' || state.result?.kind === 'refused'
+      || Boolean(checkpoint.confirmed.metadata?.deleted)
+      || (checkpoint.remoteCandidate !== null && checkpoint.remoteCandidate.value === null);
+    if (!checkpoint.dirty || !unqueued || waitsForPerson) return null;
+    const predecessorId = pending.sort((a, b) => b[1].generation - a[1].generation)[0]?.[0];
+    return { checkpoint: JSON.parse(JSON.stringify(checkpoint)) as SessionCheckpoint, ...(predecessorId ? { predecessorId } : {}) };
   }
 
   private abortError(): Error {
