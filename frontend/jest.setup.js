@@ -55,6 +55,10 @@ for (const key of Object.keys(process.env)) {
 // off so the suite is deterministic regardless of the ambient env it runs in.
 delete process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
+// The test-login switch is set on the Vercel Preview whose build runs this suite; a test that
+// wants the test login on sets it itself (utils/testLogin.ts).
+delete process.env.NEXT_PUBLIC_ENABLE_TEST_LOGIN;
+
 // Lazy load heavy mocks only when NODE_ENV is test
 if (process.env.NODE_ENV === 'test') {
   // Pre-configure fetch mock for better performance

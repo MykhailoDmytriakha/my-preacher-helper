@@ -168,6 +168,10 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_APP_VERSION: (process.env.VERCEL_GIT_COMMIT_SHA || "dev").slice(0, 7),
     NEXT_PUBLIC_BUILD_TIME: new Date().toISOString(),
+    // Always defined, so the build can fold the test-login condition away (utils/testLogin.ts):
+    // an unset NEXT_PUBLIC_ variable stays in the bundle as a runtime lookup, and the test
+    // account's credentials would ship with it. "true" only where a Preview opted in.
+    NEXT_PUBLIC_ENABLE_TEST_LOGIN: process.env.NEXT_PUBLIC_ENABLE_TEST_LOGIN === "true" ? "true" : "false",
   },
 
   eslint: {

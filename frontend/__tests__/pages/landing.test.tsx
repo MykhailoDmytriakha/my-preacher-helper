@@ -160,7 +160,20 @@ describe('Landing Page UI Smoke Test', () => {
     });
   });
 
+  // BUG-20260919-test-account-password-in-production-bundle: the credentials exist only in a
+  // build that enabled the test login; anywhere else the handler has nothing to sign in with.
+  it('signs in with nothing when this build did not enable the test login', async () => {
+    const env = process.env as Record<string, string | undefined>;
+    delete env.NEXT_PUBLIC_ENABLE_TEST_LOGIN;
+    fireEvent.click(screen.getByRole('button', { name: 'Mock Test Login' }));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(mockSignInWithEmailAndPassword).not.toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
   it('routes test login to the dashboard', async () => {
+    const env = process.env as Record<string, string | undefined>;
+    env.NEXT_PUBLIC_ENABLE_TEST_LOGIN = 'true';
     fireEvent.click(screen.getByRole('button', { name: 'Mock Test Login' }));
 
     await waitFor(() => {
@@ -171,6 +184,7 @@ describe('Landing Page UI Smoke Test', () => {
       );
       expect(mockPush).toHaveBeenCalledWith('/dashboard');
     });
+    delete env.NEXT_PUBLIC_ENABLE_TEST_LOGIN;
   });
 
   // Add more checks for other essential elements like headers, footers, specific sections if applicable

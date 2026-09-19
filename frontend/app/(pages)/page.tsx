@@ -13,6 +13,7 @@ import PublicRoute from '@/components/PublicRoute';
 import '@locales/i18n';
 import { auth, signInWithGoogle } from '@/services/firebaseAuth.service';
 import { capturePendingReferral } from '@/services/referral.client';
+import { testAccount } from '@/utils/testLogin';
 import { CheckIcon, DocumentIcon, LightBulbIcon, MicrophoneIcon } from '@components/Icons';
 
 // Public Web OAuth client ID for this Firebase project (not a secret). When set,
@@ -58,10 +59,12 @@ export default function Home() {
   };
 
   const handleTestLogin = async () => {
-    if (loadingProvider) return;
+    // Null in every build that did not enable the test login: there is nothing to sign in with.
+    const account = testAccount();
+    if (loadingProvider || !account) return;
     try {
       setLoadingProvider('test');
-      await signInWithEmailAndPassword(auth, 'testuser@example.com', 'TestPassword123');
+      await signInWithEmailAndPassword(auth, account.email, account.password);
       router.push(DASHBOARD_ROUTE);
     } catch (error) {
       console.error('Test login failed:', error);
