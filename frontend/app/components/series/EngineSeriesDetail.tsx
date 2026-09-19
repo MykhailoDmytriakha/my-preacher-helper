@@ -4,11 +4,12 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { EngineCreateSermonModal } from '@/components/sermon/EngineCreateSermonModal';
 import { SeriesDetailSkeleton } from '@/components/skeletons/SeriesDetailSkeleton';
 import FormDialog from '@/components/ui/FormDialog';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { DataDocumentProvider, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { DataDocumentProvider, isCollectionOnEngine, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useGroupsRead } from '@/hooks/useGroupsRead';
 import { useSeriesDataCollection } from '@/hooks/useSeriesDataCollection';
@@ -37,6 +38,7 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
   const collection = useSeriesDataCollection(true, user?.uid ?? null);
   const sermons = useDashboardSermons(), groups = useGroupsRead(user?.uid ?? null);
   const [editing, setEditing] = useState(false), [deleting, setDeleting] = useState(false);
+  const [creatingSermon, setCreatingSermon] = useState(false);
   const [membership, setMembership] = useState<MembershipDialog | null>(null);
   const metadata = useDataForm({ collection: 'series', id: seriesId }, 'series-metadata', SERIES_METADATA_SELECTION);
   const metadataRecovery = useRecoveryDiscovery({ identity: metadata.recoveryIdentity, enabled: !metadata.loading,
@@ -89,7 +91,10 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
       position={index + 1} resolvedItem={entry} sortable={false} onRemove={(type, refId) => setMembership({ mode: 'remove', member: { type, refId } })} />)}</div>}>
     {editing && <EngineEditSeriesModal seriesId={seriesId} onClose={() => setEditing(false)} />}
     {membership && <SeriesMembershipDialog key={membership.recoveryId ?? `${membership.mode}:${membership.member?.refId ?? ''}`}
-      seriesId={seriesId} {...membership} onClose={() => setMembership(null)} />}
+      seriesId={seriesId} {...membership} onClose={() => setMembership(null)}
+      onCreateSermon={isCollectionOnEngine('sermons') ? () => { setMembership(null); setCreatingSermon(true); } : undefined} />}
+    {creatingSermon && <EngineCreateSermonModal preSelectedSeriesId={seriesId} onClose={() => setCreatingSermon(false)}
+      onQueued={() => setCreatingSermon(false)} />}
     {deleting && <DeleteSeries seriesId={seriesId} onClose={() => setDeleting(false)} onDeleted={() => router.replace('/series')} />}
   </SeriesDetailView>;
 }

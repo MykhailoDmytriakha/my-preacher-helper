@@ -16,20 +16,27 @@ export interface LegacyQueryCopy {
 const object = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 type Candidate = Omit<LegacyQueryCopy, 'id'>;
-const SERIES_DETAIL_KEY = 'series-detail';
-
+const OWNER_DETAIL = 'owner-detail';
+const QUERY_SOURCES: Record<string, { collection: string; length: number; kind: 'list' | 'detail' | 'owner-detail' | 'series-detail' }> = {
+  councils: { collection: 'councils', length: 2, kind: 'list' },
+  groups: { collection: 'groups', length: 2, kind: 'list' },
+  'group-detail': { collection: 'groups', length: 2, kind: 'detail' },
+  calendarGroups: { collection: 'groups', length: 4, kind: 'list' },
+  series: { collection: 'series', length: 2, kind: 'list' },
+  'series-detail': { collection: 'series', length: 2, kind: 'series-detail' },
+  sermons: { collection: 'sermons', length: 2, kind: 'list' },
+  sermon: { collection: 'sermons', length: 3, kind: OWNER_DETAIL },
+  calendarSermons: { collection: 'sermons', length: 4, kind: 'list' },
+};
 function querySource(query: unknown, enabled: (collection: string) => boolean) {
   if (!object(query) || !Array.isArray(query.queryKey) || !object(query.state)) return null;
-  const key = query.queryKey;
-  const collection = key[0] === 'councils' ? 'councils'
-    : ['groups', 'group-detail', 'calendarGroups'].includes(String(key[0])) ? 'groups'
-    : ['series', SERIES_DETAIL_KEY].includes(String(key[0])) ? 'series' : null;
-  if (!collection || !enabled(collection) || key.length !== (key[0] === 'calendarGroups' ? 4 : 2)) return null;
-  const detail = key[0] === 'group-detail' || key[0] === SERIES_DETAIL_KEY;
-  const rows = key[0] === SERIES_DETAIL_KEY ? [object(query.state.data) ? query.state.data.series : null]
+  const key = query.queryKey, source = QUERY_SOURCES[String(key[0])];
+  if (!source || !enabled(source.collection) || key.length !== source.length) return null;
+  const { collection, kind } = source, detail = kind !== 'list';
+  const rows = kind === 'series-detail' ? [object(query.state.data) ? query.state.data.series : null]
     : detail ? [query.state.data] : query.state.data;
   if (!Array.isArray(rows)) return null;
-  return { collection, detail, identity: key[1], rows,
+  return { collection, detail, identity: kind === OWNER_DETAIL ? key[2] : key[1], rows, owner: kind === OWNER_DETAIL ? key[1] : null,
     savedAt: typeof query.state.dataUpdatedAt === 'number' && Number.isFinite(query.state.dataUpdatedAt) ? query.state.dataUpdatedAt : null };
 }
 
@@ -41,40 +48,46 @@ function queryCopies(query: unknown, enabled: (collection: string) => boolean): 
       || typeof document.userId !== 'string' || !document.userId) return [];
     // Old detail keys omit owner; the complete document still names its owner.
     // Never assign a cached document to whoever happens to be signed in now.
-    if (source.detail ? document.id !== source.identity : document.userId !== source.identity) return [];
+    if ((source.owner !== null && document.userId !== source.owner) || (source.detail ? document.id !== source.identity : document.userId !== source.identity)) return [];
     return [{ owner: document.userId, collection: source.collection, documentId: document.id,
       title: typeof document.title === 'string' ? document.title : document.id,
       raw: JSON.stringify(document, null, 2), savedAt: source.savedAt }];
   });
 }
 
+const MUTATION_OPERATIONS: Record<string, readonly string[]> = {
+  groups: ['create', 'update', 'delete'], series: ['create', 'update', 'delete'],
+  dashboardSermons: ['create', 'update', 'delete', 'markPreached', 'unmarkPreached', 'savePreachDate'],
+};
+const textField = (value: unknown): string | null => typeof value === 'string' && value ? value : null;
+function mutationIdentity(collection: string, operation: string, variables: unknown) {
+  const fields = object(variables) ? variables : {};
+  const documentId = (operation === 'delete' ? textField(variables) : null)
+    ?? textField(fields.sermonId) ?? textField(fields.id) ?? textField(fields.seriesId) ?? 'unassigned-create';
+  const explicitOwner = textField(collection === 'sermons' ? fields.uid : fields.userId);
+  const payload = object(fields.input) ? fields.input : object(fields.updates) ? fields.updates : fields;
+  return { documentId, explicitOwner, title: textField(payload.title) ?? `${operation}: ${documentId}` };
+}
+
 /** Paused/error variables can outlive the optimistic row, or have no row at all. */
 function mutationCopies(mutations: unknown[], queries: Candidate[], enabled: (collection: string) => boolean): Candidate[] {
   return mutations.flatMap((mutation): Candidate[] => {
     if (!object(mutation) || !Array.isArray(mutation.mutationKey) || !object(mutation.state)) return [];
-    const [collection, operation] = mutation.mutationKey;
-    if ((collection !== 'groups' && collection !== 'series') || !enabled(collection) || mutation.mutationKey.length !== 2 || !['create', 'update', 'delete'].includes(String(operation))) return [];
-    const variables = mutation.state.variables;
-    const fields = object(variables) ? variables : {};
-    const documentId = operation === 'delete' && typeof variables === 'string' ? variables
-      : typeof fields.id === 'string' ? fields.id : typeof fields.seriesId === 'string' ? fields.seriesId : 'unassigned-create';
-    const explicitOwner = typeof fields.userId === 'string' && fields.userId ? fields.userId : null;
+    const [prefix, operation] = mutation.mutationKey;
+    const collection = prefix === 'dashboardSermons' ? 'sermons' : String(prefix);
+    if (mutation.mutationKey.length !== 2 || !MUTATION_OPERATIONS[String(prefix)]?.includes(String(operation)) || !enabled(collection)) return [];
+    const { documentId, explicitOwner, title } = mutationIdentity(collection, String(operation), mutation.state.variables);
     const cachedOwners = new Set(queries.filter(copy => copy.collection === collection && copy.documentId === documentId).map(copy => copy.owner));
-    // Old deletes have only an ID. Attribute only when the persisted document proves
-    // one owner. Otherwise retain quarantined bytes (owner=''), never show another
-    // account's intent merely because that person signs in after the upgrade.
+    // Old deletes have only an ID. An ambiguous owner remains quarantined (owner='').
     const owner = explicitOwner ?? (cachedOwners.size === 1 ? [...cachedOwners][0] : '');
-    const payload = object(fields.updates) ? fields.updates : fields;
-    return [{ owner, collection, documentId,
-      title: typeof payload.title === 'string' ? payload.title : `${operation}: ${documentId}`,
-      raw: JSON.stringify(mutation, null, 2),
+    return [{ owner, collection, documentId, title, raw: JSON.stringify(mutation, null, 2),
       savedAt: typeof mutation.state.submittedAt === 'number' ? mutation.state.submittedAt : null }];
   });
 }
 
 /** Cache state has no provable opening ancestor or delivery status. Archive, never import. */
 export async function preserveLegacyQueryCache(enabled: (collection: string) => boolean): Promise<void> {
-  if (!['councils', 'groups', 'series'].some(enabled)) return;
+  if (!['councils', 'groups', 'series', 'sermons'].some(enabled)) return;
   const persisted: unknown = await get('react-query-cache');
   if (!object(persisted) || !object(persisted.clientState)) return;
   const queries = (Array.isArray(persisted.clientState.queries) ? persisted.clientState.queries : []).flatMap(query => queryCopies(query, enabled));

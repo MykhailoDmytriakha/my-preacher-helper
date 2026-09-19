@@ -10,6 +10,8 @@ import DashboardContent from "@/components/dashboard/DashboardContent";
 import DashboardStats from "@/components/dashboard/DashboardStats";
 import { DashboardStatsSkeleton } from "@/components/skeletons/DashboardStatsSkeleton";
 import { Chip } from "@/components/ui/Chip";
+import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
+import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useDashboardOptimisticSermons } from "@/hooks/useDashboardOptimisticSermons";
 import { useDashboardSermons, useSermonMutations } from "@/hooks/useDashboardSermons";
 import { useFilteredSermons } from "@/hooks/useFilteredSermons";
@@ -56,7 +58,7 @@ const CHECKBOX_CLASSES = "w-4 h-4 rounded border-gray-300 text-blue-600 focus:ri
 export default function SermonsPage() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { sermons, loading } = useDashboardSermons();
+  const { sermons, loading, state: sermonState } = useDashboardSermons();
   const { deleteSermonFromCache, updateSermonCache } = useSermonMutations();
   const { syncStatesById, actions: optimisticActions } = useDashboardOptimisticSermons();
   const [createFormOpen, setCreateFormOpen] = useState(false);
@@ -198,6 +200,7 @@ export default function SermonsPage() {
         </div>
       </div>
 
+      {isCollectionOnEngine('sermons') && <DataCollectionStatus state={sermonState} />}
       {/* Stats Section */}
       <div className="overflow-x-auto sm:overflow-visible -mx-4 sm:mx-0">
         <div className="px-4 sm:px-0">

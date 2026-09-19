@@ -26,10 +26,12 @@ as `1b8d2bce`. The existing-sermon edit field now uses a pinned engine scope too
 Creation with membership, sermon backlinks and live acceptance still block activation.
 Atomic create-and-link is committed as `de572d6a`; its durable stage/public API is
 committed as `c90ad88a`. `EngineCreateSermonModal` and workspace recovery now consume
-that API, with **724 suites / 7201 tests** passing. Remaining immediate work:
-replace dashboard/list/series-selector creation entry points together with their
-canonical sermon collection reads; preserve old cache/mutation input before that
-switch, and support durable preselected-series intent. No entry-point rollout yet.
+that API, with **724 suites / 7201 tests** passing at `7762616e`. The next change
+wires dashboard/list/series-picker creation, durable presets and canonical sermon
+list/calendar reads. Old query inputs and all six dashboard mutation payloads archive
+before hydration; their legacy replay refuses enabled sermons. Final gates pass: **725 suites / 7214 tests**, both TypeScript configurations,
+lint (0 errors / 15 inherited warnings), production build (23.51 seconds). Existing sermon editors, metadata/date
+writers and remaining feature consumers are the next migration boundary.
 Groups/series activation stays blocked. No production deployment or switch changed.
 
 - Reproduced `BUG-20260919-engine-field-buffer-diverges`: the focused text field
@@ -1750,3 +1752,37 @@ Group implementation checkpoint in progress:
   intent must itself be durable before a catalog read; do not silently omit it on
   failure/restart. Then finish legacy sermon backlinks, all remaining domain writes,
   bypass closure, independent live/device acceptance and production rollout gates.
+
+
+### 2026-09-19 — sermon creation entry points, presets and canonical list reads
+
+- `AddSermonModal` switches to the engine form for enabled sermons; it never calls
+  legacy create/created callbacks. The series picker opens the same form with a
+  durable preset. Save captures local intent and closes; lists own its pending state.
+- Preset identity is persisted before any catalog read. Missing series or failed
+  reads keep the stage editable but block Save. Restart restores that condition;
+  only explicit No series clears it. Pinning selects the requested destination once.
+- `useSermonsDataCollection` supplies submitted projection to dashboard, list,
+  membership choices and calendar. Pure hydration/sorting is shared with the old
+  service facade. Unsaved typing is absent from the list; a saved offline creation
+  appears in list/calendar across restart, then follows ACK, remote update and tombstone.
+- Query preservation now covers sermon list, owner-scoped detail, calendar and all
+  six dashboard mutation shapes before hydration/expiry. Exact payloads remain
+  exportable; enabled-domain replay fails before a service call. Old mutation inputs
+  do not become new engine updates with invented ancestry.
+- Real-engine component proof covers the actual AddSermonModal entry point plus
+  series detail -> picker -> create. Only I/O is replaced. A test harness initially
+  omitted tombstones; its collection transport now retains owner identity for them,
+  matching the real protocol rather than weakening absence validation.
+- Sequential review lanes: preset/Save races, storage identity and account fencing,
+  submitted collection projection, migration preservation/replay, UI caller ownership,
+  and legacy compatibility. No independent reviewer agent was used. No remaining
+  high-confidence defect found in this checkpoint; activation remains blocked by
+  existing sermon editors and unmigrated inner writers.
+- Final gates: **725 suites / 7214 tests pass**; 13 emulator-only checks skipped in
+  the ordinary run (passed separately at the atomic creation checkpoint). Both TS
+  configs pass; lint 0 errors / 15 inherited warnings. Isolated production build
+  with councils/groups/series/sermons compile switches passes in **23.51 seconds**.
+  Logs: `/tmp/data-engine-entry-{full-final,types-final,unused-final,lint-final,build}.log`.
+- Live browser/device proof remains blocked by previously observed Firestore quota;
+  no production flags, deployment or cloud data were changed for this checkpoint.

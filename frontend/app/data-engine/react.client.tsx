@@ -38,13 +38,13 @@ export function useRecoveryDiscovery<T>(options: RecoveryDiscoveryOptions<T>) {
 
 /** Preserve old cache copies before the query provider may hydrate, expire or replace them. */
 export function DataEngineMigrationGate({ children }: { children: ReactNode }) {
-  return (['councils', 'groups', 'series'].some(isCollectionOnEngine)) ? <LegacyQueryMigrationGate enabled={isCollectionOnEngine}>{children}</LegacyQueryMigrationGate> : <>{children}</>;
+  return (['councils', 'groups', 'series', 'sermons'].some(isCollectionOnEngine)) ? <LegacyQueryMigrationGate enabled={isCollectionOnEngine}>{children}</LegacyQueryMigrationGate> : <>{children}</>;
 }
 
 /** Archived cache copies are evidence for the person, never confirmed engine snapshots. */
 export function LegacyDataRecoveryNotice() {
   const { user } = useAuth();
-  return user?.uid && (['councils', 'groups', 'series'].some(isCollectionOnEngine)) ? <LegacyQueryCopies key={user.uid} owner={user.uid} /> : null;
+  return user?.uid && (['councils', 'groups', 'series', 'sermons'].some(isCollectionOnEngine)) ? <LegacyQueryCopies key={user.uid} owner={user.uid} /> : null;
 }
 
 /** Keep one owner-scoped engine alive when navigation chrome is hidden. */
@@ -119,13 +119,13 @@ export function useDataMembership() {
     try { const result = await action(); active(); refresh(); return result; }
     catch (error) { if (latest.current === identity) setFailure({ identity, message: message(error) }); throw error; }
   }, [active, identity, refresh]);
-  const begin = useCallback((sourceId?: string, creation?: { collection: 'sermons' | 'groups'; value: DocumentData }): Promise<void> => {
+  const begin = useCallback((sourceId?: string, creation?: { collection: 'sermons' | 'groups'; value: DocumentData; requestedSeriesId?: string }): Promise<void> => {
     if (opening.current?.identity === identity) return opening.current.promise;
     if (current.current?.identity === identity) return Promise.reject(new Error('Close the current membership stage first'));
     const engine = active();
     const promise = run(async () => {
       const scope = sourceId ? await engine.recoverMembership(sourceId, { exclusive: true })
-        : creation ? await engine.beginMemberCreation(creation.collection, creation.value) : await engine.beginMembership();
+        : creation ? await engine.beginMemberCreation(creation.collection, creation.value, creation.requestedSeriesId) : await engine.beginMembership();
       if (latest.current !== identity) { engine.releaseMembership(scope.getState().record.scopeId); throw new Error(EDITOR_CHANGED); }
       current.current = { identity, scope, scopeId: scope.getState().record.scopeId, stop: scope.subscribe(refresh) }; refresh();
     });
@@ -168,7 +168,7 @@ export function useDataMembership() {
     recoveryIdentity: identity as object, recoveryVersion,
     delivery: delivery?.identity === identity && delivery.scopeId === state?.record.scopeId ? delivery.state : null,
     begin: () => begin(), recover: (scopeId: string) => begin(scopeId), dismiss,
-    beginCreate: (collection: 'sermons' | 'groups', value: DocumentData) => begin(undefined, { collection, value }),
+    beginCreate: (collection: 'sermons' | 'groups', value: DocumentData, requestedSeriesId?: string) => begin(undefined, { collection, value, requestedSeriesId }),
     openSeries: () => run(() => active().openCreationSeries(required().getState().record.scopeId)),
     updateCreation: (updater: (value: DocumentData) => DocumentData) => run(async () => {
       const scope = required(), creation = scope.getState().record.creation;

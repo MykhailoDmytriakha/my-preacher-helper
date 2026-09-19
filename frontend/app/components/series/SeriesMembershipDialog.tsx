@@ -23,8 +23,8 @@ const UNKNOWN_LABEL = 'common.unknown';
 const CHOICE_STYLE = 'flex gap-3 rounded-lg border p-3';
 
 /** The complete stage opens before any selection; only explicit Save submits it. */
-export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onClose }: {
-  seriesId: string; mode: SeriesMembershipDialogMode; member?: Member; recoveryId?: string; onClose: () => void;
+export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onClose, onCreateSermon }: {
+  seriesId: string; mode: SeriesMembershipDialogMode; member?: Member; recoveryId?: string; onClose: () => void; onCreateSermon?: () => void;
 }) {
   const { t } = useTranslation();
   const action = useDataMembership(), attempted = useRef<object | null>(null);
@@ -62,6 +62,8 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
         {mode !== 'group' && <SermonChoices current={series.items ?? []} selected={selected} onChange={changeSelection} />}
         {(mode === 'group' || mode === 'recover') && <GroupChoices current={series.items ?? []} selected={selected} onChange={changeSelection} />}
       </fieldset>}
+      {editing && mode === 'sermon' && onCreateSermon && <button type="button" className="rounded-lg border px-3 py-2"
+        disabled={saving} onClick={() => { action.dismiss(); onCreateSermon(); }}>{t('addSermon.createNewSermon')}</button>}
       {editing && series && kind === 'reorder' && <ReorderChoices items={series.items ?? []} disabled={saving}
         onChange={itemIds => action.update({ kind: 'reorder', seriesId: targetId, itemIds })} />}
       {kind === 'remove' && <p>{t('workspaces.series.actions.membershipRemoveHint')}</p>}

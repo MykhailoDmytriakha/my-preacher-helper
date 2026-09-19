@@ -23,6 +23,8 @@ import AddSermonModal from '@/components/AddSermonModal';
 import { SermonSyncBadge } from '@/components/dashboard/SermonSyncBadge';
 import CreatePrayerModal from '@/components/prayer/CreatePrayerModal';
 import { Chip } from '@/components/ui/Chip';
+import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
+import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { useDashboardOptimisticSermons } from '@/hooks/useDashboardOptimisticSermons';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
@@ -229,7 +231,7 @@ export default function DashboardPage() {
   const { t, i18n } = useTranslation();
   const router = useRouter();
   const { user } = useAuth();
-  const { sermons } = useDashboardSermons();
+  const { sermons, state: sermonState } = useDashboardSermons();
   const { actions: optimisticSermonActions, syncStatesById } = useDashboardOptimisticSermons();
   const { series } = useSeries(user?.uid || null);
   const { notes } = useStudyNotes();
@@ -348,6 +350,8 @@ export default function DashboardPage() {
           </button>
         </div>
       </header>
+      {isCollectionOnEngine('sermons') && <DataCollectionStatus state={sermonState} />}
+
 
       <section className="grid gap-3 grid-flow-col auto-cols-fr grid-rows-6 sm:grid-rows-3 lg:grid-rows-2 xl:grid-rows-1" aria-label={t('dashboardHome.metrics.label')}>
         {metrics.map((metric) => (

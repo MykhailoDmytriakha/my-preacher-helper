@@ -15,14 +15,14 @@ jest.mock('@/components/church/ChurchField', () => ({ __esModule: true, default:
 jest.mock('@/components/ui/DatePickerField', () => ({ __esModule: true, default: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
   <input aria-label="Planned date" value={value} onChange={event => onChange(event.target.value)} /> }));
 
-function setup(open = true) {
+function setup(open = true, preSelectedSeriesId?: string) {
   const harness = membershipEngineHarness([{ resource: { collection: 'series', id: 'target' }, metadata: null,
     value: { userId: 'owner', theme: 'Target', title: 'Target', bookOrTopic: '', status: 'draft', items: [], sermonIds: [], seriesKind: 'sermon' } }]);
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
   const queued = jest.fn();
   function Workspace({ initialOpen = open }: { initialOpen?: boolean }) {
     const [visible, setVisible] = useState(initialOpen);
-    return <DataEngineProvider><SeriesMembershipRecovery />{visible && <EngineCreateSermonModal allowPlannedDate onClose={() => setVisible(false)}
+    return <DataEngineProvider><SeriesMembershipRecovery />{visible && <EngineCreateSermonModal preSelectedSeriesId={preSelectedSeriesId} allowPlannedDate onClose={() => setVisible(false)}
       onQueued={id => { queued(id); setVisible(false); }} />}</DataEngineProvider>;
   }
   return { harness, queued, Workspace, view: render(<Workspace />) };
@@ -89,4 +89,39 @@ it('can create a standalone sermon after the optional catalog fails, without los
   await act(async () => { await harness.engine.retry(); await settleEngine(); });
   expect(harness.transport.send).toHaveBeenCalledTimes(1);
   expect(jest.mocked(harness.transport.send).mock.calls[0][0].kind).toBe('create'); view.unmount();
+});
+
+
+it('pins a preset automatically and atomically creates in that series without a second selection', async () => {
+  const { harness, queued, view } = setup(true, 'target'); await typeSermon();
+  await waitFor(() => expect(screen.getByLabelText('addSermon.seriesLabel')).toHaveValue('target'));
+  fireEvent.click(screen.getByRole('button', { name: 'addSermon.save' }));
+  await waitFor(() => expect(queued).toHaveBeenCalledTimes(1));
+  await act(async () => { await harness.engine.retry(); await settleEngine(); });
+  expect(harness.transport.send).toHaveBeenCalledTimes(1);
+  expect(harness.read({ collection: 'series', id: 'target' }).value?.sermonIds).toEqual([queued.mock.calls[0][0]]);
+  view.unmount();
+});
+
+it('restores an unavailable preset and requires an explicit choice before saving outside the series', async () => {
+  const { harness, Workspace, queued, view } = setup(true, 'missing'); await typeSermon();
+  await screen.findByText('addSermon.pendingSeries');
+  expect(screen.getByRole('button', { name: 'addSermon.save' })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: 'common.close' }));
+  await screen.findByRole('option', { name: 'New sermon' }); view.unmount();
+  const restored = render(<Workspace initialOpen={false} />);
+  const option = await screen.findByRole('option', { name: 'New sermon' });
+  fireEvent.change(screen.getByLabelText('dataSync.recoveryLabel'), { target: { value: option.getAttribute('value') } });
+  fireEvent.click(screen.getByRole('button', { name: 'dataSync.recover' }));
+  await screen.findByText('addSermon.pendingSeries'); await screen.findByRole('alert');
+  expect(screen.getByRole('button', { name: 'addSermon.save' })).toBeDisabled();
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'addSermon.createWithoutSeries' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'addSermon.save' })).toBeEnabled());
+  fireEvent.click(screen.getByRole('button', { name: 'addSermon.save' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await act(async () => { await harness.engine.retry(); await settleEngine(); });
+  expect(harness.transport.send).toHaveBeenCalledTimes(1);
+  expect(jest.mocked(harness.transport.send).mock.calls[0][0].kind).toBe('create');
+  expect(queued).not.toHaveBeenCalled(); restored.unmount();
 });

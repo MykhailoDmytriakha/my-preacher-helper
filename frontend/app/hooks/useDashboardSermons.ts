@@ -1,7 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
+import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
+import { useSermonsDataCollection } from '@/hooks/useSermonsDataCollection';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
 import { Sermon } from '@/models/models';
 import { debugLog } from '@/utils/debugMode';
@@ -11,7 +13,8 @@ import { getSermons } from '@services/sermon.service';
 interface UseDashboardSermonsResult {
   sermons: Sermon[];
   loading: boolean;
-  error: Error | null;
+  error: Error | string | null;
+  state?: ReturnType<typeof useSermonsDataCollection>['state'];
   refresh: () => Promise<void>;
 }
 
@@ -41,6 +44,7 @@ function resolveUid(): string | undefined {
 
 export function useDashboardSermons(): UseDashboardSermonsResult {
   const isOnline = useOnlineStatus();
+  const engine = useSermonsDataCollection();
   // We need to wait for auth to be initialized or local storage to be checked
   // Ideally this should come from an auth hook, but for now we resolve it here
   // If uid is undefined, we might be loading or not logged in
@@ -52,7 +56,7 @@ export function useDashboardSermons(): UseDashboardSermonsResult {
       if (!uid) return Promise.resolve([]);
       return getSermons(uid);
     },
-    enabled: !!uid,
+    enabled: !!uid && !isCollectionOnEngine('sermons'),
   });
 
   useEffect(() => {
@@ -69,13 +73,7 @@ export function useDashboardSermons(): UseDashboardSermonsResult {
     await refetch();
   };
 
-  // Compatibility wrapper to match old interface
-  // We return setSermons as a no-op or we expose mutation methods instead
-  // But the old interface had setSermons. To fully migrate, we should use
-  // queryClient.setQueryData in the components, or expose a mutation here.
-  // For now, let's stick to the interface but note that setSermons is missing.
-  // The components using this hook will need to be updated to NOT use setSermons directly
-  // or we provide a wrapper for optimistic updates.
+  if (isCollectionOnEngine('sermons')) return { ...engine, refresh: async () => { await engine.refresh(); } };
 
   return {
     sermons,

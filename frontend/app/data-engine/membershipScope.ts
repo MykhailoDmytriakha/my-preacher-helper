@@ -8,7 +8,7 @@ import type { ManualSavedIntent } from './manualScope';
 import type { DocumentData, ResourceRef, ResourceSnapshot } from './types';
 
 export const CREATION_SCOPE_PREFIX = 'creation:';
-export interface MembershipCreation { resource: ResourceRef; value: DocumentData; seriesOpened: boolean }
+export interface MembershipCreation { resource: ResourceRef; value: DocumentData; seriesOpened: boolean; requestedSeriesId?: string }
 
 export interface MembershipPin {
   baseline: ResourceSnapshot;
@@ -53,6 +53,7 @@ function validateCreation(record: MembershipScopeRecord): void {
     return;
   }
   if (!record.scopeId.startsWith(CREATION_SCOPE_PREFIX) || !creation.resource || !['sermons', 'groups'].includes(creation.resource.collection)
+    || (creation.requestedSeriesId !== undefined && (!isValidIdentifier(creation.requestedSeriesId) || creation.seriesOpened || ['saving', 'submitted'].includes(record.phase)))
     || typeof creation.seriesOpened !== 'boolean' || creation.value?.userId !== record.owner
     || (!creation.seriesOpened && (record.pins.length || record.action))) throw new Error('Invalid creation stage');
   // Input may be incomplete while typing; full resource validation belongs to Save.
@@ -97,9 +98,9 @@ export class MembershipScope {
   static restore(record: MembershipScopeRecord, port: MembershipScopePort): MembershipScope {
     const scope = new MembershipScope(record, port, true); scope.assertCurrent(); return scope;
   }
-  static beginCreation(owner: string, scopeId: string, resource: ResourceRef, value: DocumentData, port: MembershipScopePort): MembershipScope {
+  static beginCreation(owner: string, scopeId: string, resource: ResourceRef, value: DocumentData, port: MembershipScopePort, requestedSeriesId?: string): MembershipScope {
     const scope = new MembershipScope({ kind: 'membership', version: 1, owner, scopeId, revision: 0, pins: [], action: null,
-      generation: 0, phase: 'editing', requestIds: [], creation: { resource, value, seriesOpened: false } }, port, false);
+      generation: 0, phase: 'editing', requestIds: [], creation: { resource, value, seriesOpened: false, ...(requestedSeriesId ? { requestedSeriesId } : {}) } }, port, false);
     scope.assertCurrent(); void scope.enqueue(() => scope.write()).catch(() => undefined); return scope;
   }
   getState() {
@@ -110,9 +111,12 @@ export class MembershipScope {
   subscribe(listener: () => void): () => void { this.assertCurrent(); this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   update(action: MembershipAction | null): Promise<void> {
     this.assertEditing();
-    validateCreation({ ...this.record, action });
+    const next = { ...this.record, action: clone(action), ...(this.record.creation ? { creation: { ...this.record.creation } } : {}) };
+    // Explicit selection (including "No series") resolves a preset; typing never does.
+    if (next.creation) delete next.creation.requestedSeriesId;
+    validateCreation(next);
     projectMembershipAction(this.values(), action);
-    this.record.action = clone(action); this.record.generation += 1; this.durable = false; this.emit();
+    this.record = next; this.record.generation += 1; this.durable = false; this.emit();
     return this.enqueue(() => this.write());
   }
   updateCreation(value: DocumentData): Promise<void> {
@@ -126,7 +130,13 @@ export class MembershipScope {
     this.assertEditing();
     if (!this.record.creation) throw new Error('Open a creation stage first');
     if (this.record.creation.seriesOpened) return this.settled();
-    const next = { ...this.record, pins: clone([...pins]), creation: { ...this.record.creation, seriesOpened: true } };
+    const creation = { ...this.record.creation, seriesOpened: true };
+    const targetId = creation.requestedSeriesId;
+    delete creation.requestedSeriesId;
+    const action: MembershipAction | null = targetId ? { kind: 'assign', targetId,
+      refs: [{ type: creation.resource.collection === 'sermons' ? 'sermon' : 'group', refId: creation.resource.id }] } : this.record.action;
+    const next = { ...this.record, action, pins: clone([...pins]), creation };
+    // Missing preset targets leave the stage untouched, so recovery cannot silently unlink it.
     validateMembershipScope(next); this.record = next;
     this.record.generation += 1; this.durable = false; this.emit(); return this.enqueue(() => this.write());
   }
@@ -135,6 +145,7 @@ export class MembershipScope {
     if (this.saving) return this.saving;
     if (this.record.phase === 'submitted') return this.enqueue(async () => { if (!this.durable) await this.write(); return [...this.record.requestIds]; });
     if (this.record.phase === 'cancelled') throw new Error('Membership action was cancelled');
+    if (this.record.creation?.requestedSeriesId) throw new Error('Resolve the requested series before saving');
     if (this.record.creation) validateResourceDocument(this.record.creation.resource.collection, this.record.creation.value, { kind: 'create' });
     // Freeze before any await. No later selection can change an uncertain capture.
     this.record.phase = 'saving'; this.durable = false; this.emit();

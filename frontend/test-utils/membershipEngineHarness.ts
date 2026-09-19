@@ -19,6 +19,7 @@ const key = (resource: ResourceRef) => JSON.stringify([resource.collection, reso
 export function membershipEngineHarness(initial: ResourceSnapshot[]) {
   const disk = installStorageHarness();
   const server = new Map(initial.map(snapshot => [key(snapshot.resource), copy(snapshot)]));
+  const owners = new Map(initial.map(snapshot => [key(snapshot.resource), snapshot.value?.userId]));
   const cached = new Map(initial.map(snapshot => [key(snapshot.resource), copy(snapshot)]));
   const journal = new Map<string, JournalEntry>(), receipts = new Map<string, CommandResult>();
   const cursors = new Map<string, CollectionCursor>();
@@ -32,7 +33,7 @@ export function membershipEngineHarness(initial: ResourceSnapshot[]) {
         get: async resource => read(resource),
         list: async collection => copy([...server.values()].filter(snapshot => snapshot.resource.collection === collection)),
       });
-      for (const snapshot of plan.writes) server.set(key(snapshot.resource), copy(snapshot));
+      for (const snapshot of plan.writes) { server.set(key(snapshot.resource), copy(snapshot)); owners.set(key(snapshot.resource), command.owner); }
       if (plan.writes.length) version += 1;
       const result = plan.result.kind === 'acknowledged' ? { ...plan.result,
         relatedSnapshots: plan.writes.filter(snapshot => key(snapshot.resource) !== key(command.resource)) } : plan.result;
@@ -41,7 +42,7 @@ export function membershipEngineHarness(initial: ResourceSnapshot[]) {
   };
   const commits = createIndexedDbCommitStore(), scopes = createIndexedDbMembershipScopes();
   const collectionTransport = {
-    list: jest.fn(async (owner: string, collection: string) => ({ snapshots: copy([...server.values()].filter(snapshot => snapshot.resource.collection === collection && snapshot.value?.userId === owner)), nextCursor: null, version, legacyOpen: true })),
+    list: jest.fn(async (owner: string, collection: string) => ({ snapshots: copy([...server.values()].filter(snapshot => snapshot.resource.collection === collection && owners.get(key(snapshot.resource)) === owner)), nextCursor: null, version, legacyOpen: true })),
     changes: jest.fn(async () => ({ snapshots: [], cursor: version, version, hasMore: false, legacyOpen: true })),
   };
   const createBrowser = (): BrowserDataEngine => {
@@ -53,7 +54,7 @@ export function membershipEngineHarness(initial: ResourceSnapshot[]) {
     const snapshots = {
       read: async (_owner: string, resource: ResourceRef) => copy(cached.get(key(resource))),
       put: async (_owner: string, snapshot: ResourceSnapshot) => { cached.set(key(snapshot.resource), copy(snapshot)); },
-      list: async (owner: string, collection: string) => copy([...cached.values()].filter(snapshot => snapshot.resource.collection === collection && snapshot.value?.userId === owner)),
+      list: async (owner: string, collection: string) => copy([...cached.values()].filter(snapshot => snapshot.resource.collection === collection && owners.get(key(snapshot.resource)) === owner)),
     };
     const observer = new ResourceObserver({ transport, source: { listen: () => () => undefined } });
     const collections = new CollectionReader({ observer, snapshots, cursors: {
@@ -68,5 +69,5 @@ export function membershipEngineHarness(initial: ResourceSnapshot[]) {
     return { engine: instance, dispose: () => instance.dispose(), editorId: () => `editor-${++sequence}` };
   };
   return { createBrowser, transport, collectionTransport, commits, scopes, disk, read, get engine() { return engine; },
-    replace: (snapshot: ResourceSnapshot) => { server.set(key(snapshot.resource), copy(snapshot)); version += 1; } };
+    replace: (snapshot: ResourceSnapshot) => { server.set(key(snapshot.resource), copy(snapshot)); if (snapshot.value) owners.set(key(snapshot.resource), snapshot.value.userId); version += 1; } };
 }

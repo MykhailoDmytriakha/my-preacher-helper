@@ -211,8 +211,11 @@ CAS storage, capture retention, retry and completion logic. Creation records use
 happens before Save freezes the stage; typing can remain incomplete.
 
 `EngineCreateSermonModal` and workspace recovery now consume this stage and restore
-the whole draft. Creation entry points and sermon collection readers still require
-migration, including durable preselected-series intent before catalog reads.
+the whole draft. Dashboard/list/series-picker creation now selects the same form
+under the sermon flag, and list/calendar readers render submitted engine projection.
+An optional preset is stored before catalog reads and prevents Save until the target
+is pinned, or the person explicitly chooses to create without it. Failure and restart
+preserve that requirement. Existing sermon editing and other writers remain open.
 Group creation recovery is not exposed through the sermon form. Do not bridge
 remaining callers with UI-owned Promise chains, separate queues, fresh reads at
 Save, or compensating removal.

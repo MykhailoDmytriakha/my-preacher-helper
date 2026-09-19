@@ -277,12 +277,12 @@ export class DataEngine {
   }
 
   /** A creation draft exists durably before any optional catalog request. */
-  async beginMemberCreation(collection: 'sermons' | 'groups', value: DocumentData): Promise<MembershipScope> {
+  async beginMemberCreation(collection: 'sermons' | 'groups', value: DocumentData, requestedSeriesId?: string): Promise<MembershipScope> {
     const owner = this.requireOwner(), generation = this.generation;
     if (!this.options.membershipScopes) throw new Error('Creation stage storage is not configured');
     const scopeId = `${CREATION_SCOPE_PREFIX}${this.options.operationId()}`;
     const resource = { collection, id: this.options.operationId() };
-    const scope = MembershipScope.beginCreation(owner, scopeId, resource, { ...value, userId: owner }, this.membershipPort(owner, generation));
+    const scope = MembershipScope.beginCreation(owner, scopeId, resource, { ...value, userId: owner }, this.membershipPort(owner, generation), requestedSeriesId);
     this.membershipForms.set(scopeId, scope);
     try { await scope.settled(); this.assertCurrent(owner, generation); return scope; }
     catch (error) { this.membershipForms.delete(scopeId); scope.dispose(); throw error; }

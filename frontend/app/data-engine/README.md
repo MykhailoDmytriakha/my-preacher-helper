@@ -229,7 +229,7 @@ the same stage. An empty complete series list is valid; selecting an uncaptured
 target is always refused. Metadata and membership currently have separate delivery
 outcomes, and retrying metadata must reuse any already captured membership action.
 
-For a new sermon/group, `beginCreate(collection, initialValue)` durably allocates its
+For a new sermon/group, `beginCreate(collection, initialValue, requestedSeriesId?)` durably allocates its
 identity without reading any collection. `creation` exposes that resource and its
 current draft. `updateCreation(updater)` persists typing without sending. Only
 `openSeries()` reads and pins the optional destination catalog; show selection
@@ -238,7 +238,17 @@ through `update`, or use `update(null)` for standalone creation. `save()` valida
 the complete draft before freezing, then captures the new document and selected
 destination atomically. Recovery/retry keeps the original ID and capture identity.
 
+For a preset series, the stage stores `requestedSeriesId` before the catalog read.
+Save is blocked until `openSeries` pins and selects that target, or explicit
+`update(null)` clears the requirement. Missing targets/read failures keep the preset
+through restart; they never silently create outside the intended series.
+
 Creation scopes use a separate durable range so older membership-only dialogs
 cannot recover half of their intent. `EngineCreateSermonModal` and workspace recovery
-are example consumers. Creation entry points/readers and durable preselected-series
-intent still require migration; their availability does not authorize activation.
+are example consumers. `AddSermonModal` selects this form for enabled sermons and
+never invokes its legacy write callbacks; the engine series picker passes a durable
+preset. `useSermonsDataCollection` supplies dashboard/list/calendar reads and submitted
+creation immediately, with `DataCollectionStatus` for pending/incomplete lists.
+Existing sermon editors and other writers still require migration; creation availability
+does not authorize activation. Old dashboard mutation inputs are archived before
+query hydration and refused before service replay under the sermon switch.

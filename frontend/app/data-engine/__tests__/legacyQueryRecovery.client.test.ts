@@ -123,3 +123,25 @@ it('preserves series lists, detail documents and pending mutation inputs before 
   expect(JSON.stringify([...disk.rows.values()])).toContain('unknown');
   await preserveLegacyQueryCache(collection => collection === 'series'); expect(await listLegacyQueryCopies('owner')).toHaveLength(4);
 });
+
+
+it('archives sermon list, owner-scoped detail, calendar and every paused dashboard operation without inferring a fresh baseline', async () => {
+  installStorageHarness();
+  const sermon = { id: 's', userId: 'owner', title: 'List', scratch: [{ text: 'private draft' }] };
+  const operations = ['create', 'update', 'delete', 'markPreached', 'unmarkPreached', 'savePreachDate'];
+  const mutations = operations.map(operation => ({ mutationKey: ['dashboardSermons', operation], state: { isPaused: true,
+    variables: { uid: 'owner', sermonId: 's', input: { title: operation, seriesId: 'series' }, expectedRevision: 7 } } }));
+  jest.mocked(get).mockResolvedValue({ clientState: { queries: [
+    { queryKey: ['sermons', 'owner'], state: { data: [sermon] } },
+    { queryKey: ['sermon', 'owner', 's'], state: { data: { ...sermon, title: 'Detail' } } },
+    { queryKey: ['calendarSermons', 'owner', 'start', 'end'], state: { data: [{ ...sermon, title: 'Calendar' }] } },
+    { queryKey: ['sermon', 'other', 's'], state: { data: { ...sermon, title: 'Wrong owner' } } },
+    { queryKey: ['sermon', 'owner', 'wrong'], state: { data: { ...sermon, title: 'Wrong ID' } } },
+  ], mutations } });
+  await preserveLegacyQueryCache(collection => collection === 'sermons');
+  const copies = await listLegacyQueryCopies('owner');
+  expect(copies.map(copy => JSON.parse(copy.raw))).toEqual([sermon, { ...sermon, title: 'Detail' }, { ...sermon, title: 'Calendar' }, ...mutations]);
+  expect(await listLegacyQueryCopies('other')).toEqual([]);
+  await preserveLegacyQueryCache(collection => collection === 'sermons');
+  expect(await listLegacyQueryCopies('owner')).toHaveLength(9);
+});

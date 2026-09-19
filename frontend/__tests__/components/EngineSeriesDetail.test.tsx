@@ -15,6 +15,7 @@ jest.mock('@/data-engine/browser.client', () => ({ createBrowserDataEngine: jest
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
 jest.mock('@/hooks/useGroupsRead', () => ({ useGroupsRead: () => ({ groups: [{ id: 'g', title: 'Meeting' }], loading: false, error: null }) }));
 jest.mock('@/hooks/useDashboardSermons', () => ({ useDashboardSermons: () => ({ sermons: [], loading: false, error: null }) }));
+jest.mock('@/components/church/ChurchField', () => ({ __esModule: true, default: () => null }));
 jest.mock('@/components/MarkdownDisplay', () => ({ __esModule: true, default: ({ content }: { content: string }) => <p>{content}</p> }));
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: ({ value, onChange }: { value: string; onChange: (value: string) => void }) =>
   <textarea aria-label="Description" value={value} onChange={event => onChange(event.target.value)} /> }));
@@ -80,4 +81,24 @@ it('keeps a closed unsent metadata form visible and offers it after restart with
   fireEvent.change(panel.getByRole('combobox'), { target: { value: panel.getByRole('option', { name: 'b' }).getAttribute('value') } });
   fireEvent.click(panel.getByRole('button', { name: 'dataSync.recover' }));
   await screen.findByDisplayValue('Unsent metadata'); expect(harness.transport.send).not.toHaveBeenCalled(); restored.unmount();
+});
+
+
+it('opens creation from the series picker with a durable preset and submits only one create-and-link command', async () => {
+  process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series,sermons';
+  const { harness, view } = setup(); await screen.findByRole('heading', { name: 'b', level: 1 });
+  fireEvent.click(screen.getAllByRole('button', { name: 'workspaces.series.actions.addSermon' })[0]);
+  fireEvent.click(await screen.findByRole('button', { name: 'addSermon.createNewSermon' }));
+  const title = await screen.findByLabelText('addSermon.titleLabel'); await waitFor(() => expect(title).toBeEnabled());
+  fireEvent.change(title, { target: { value: 'Born in this series' } });
+  fireEvent.change(screen.getByLabelText('addSermon.verseLabel'), { target: { value: 'Romans 1' } });
+  await waitFor(() => expect(screen.getByLabelText('addSermon.seriesLabel')).toHaveValue('b'));
+  await act(async () => { await settleEngine(); });
+  expect(harness.transport.send).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'addSermon.save' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await act(async () => { await harness.engine.retry(); await settleEngine(); });
+  expect(harness.transport.send).toHaveBeenCalledTimes(1);
+  const id = (harness.read(series('b').resource).value!.sermonIds as string[])[0];
+  expect(harness.read({ collection: 'sermons', id }).value).toMatchObject({ title: 'Born in this series' }); view.unmount();
 });

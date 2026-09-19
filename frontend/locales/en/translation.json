@@ -431,6 +431,8 @@
     }
   },
   "addSermon": {
+    "pendingSeries": "The selected series must load before saving. Your draft is kept on this device.",
+    "createWithoutSeries": "Create without a series",
     "newSermon": "New Sermon",
     "createNewSermon": "Create New Sermon",
     "titleLabel": "Title",

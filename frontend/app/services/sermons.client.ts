@@ -46,7 +46,8 @@ import { mergeOutline } from '@/utils/mergeOutline';
 import { mergeScratch } from '@/utils/mergeScratch';
 import { mergeSections } from '@/utils/mergeSections';
 import { readWithDeadline } from '@/utils/readWithDeadline';
-import { compareById, timeOrZero } from '@/utils/sortHelpers';
+import { hydrateSermon, sortSermons } from '@/utils/sermonDocument';
+export { hydrateSermon } from '@/utils/sermonDocument';
 import { stripStructureTags } from '@/utils/thoughtTagSanitizer';
 
 // Sermon READS + own-doc WRITES (update fields, structure, outline, thoughts[],
@@ -80,37 +81,6 @@ function db() {
 
 function sermonRef(id: string) {
   return doc(db(), SERMONS_COLLECTION, id);
-}
-
-/**
- * Mirrors the server hydration (sermons.repository.fetchSermonById): keep the
- * modern field and its legacy alias in sync so consumers see the same shape
- * whether the doc stored `thoughtsBySection`/`structure` or `draft`/`plan`.
- */
-export function hydrateSermon(raw: Sermon): Sermon {
-  const sermon: Sermon = { ...raw };
-
-  const hydratedStructure = raw.thoughtsBySection || raw.structure;
-  if (hydratedStructure) {
-    sermon.thoughtsBySection = hydratedStructure;
-    sermon.structure = raw.structure || hydratedStructure;
-  }
-
-  const hydratedDraft = raw.draft || raw.plan;
-  if (hydratedDraft) {
-    sermon.draft = hydratedDraft;
-    sermon.plan = raw.plan || hydratedDraft;
-  }
-
-  return sermon;
-}
-
-function sortSermons(sermons: Sermon[]): Sermon[] {
-  return [...sermons].sort((a, b) => {
-    const byDate = timeOrZero(b.date) - timeOrZero(a.date);
-    if (byDate !== 0) return byDate;
-    return compareById(a, b);
-  });
 }
 
 // --- READS ---

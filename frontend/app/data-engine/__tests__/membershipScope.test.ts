@@ -97,6 +97,31 @@ describe('durable pinned membership stage', () => {
     expect((await t.commits.list('owner'))[0]).toMatchObject({ baseline: { resource: creationResource, value: null }, value: { title: 'Complete title' } });
   });
 
+  it('retains an unresolved preset across restart and missing targets, refusing silent standalone creation', async () => {
+    const t = fixture(), scope = MembershipScope.beginCreation('owner', 'creation:preset', creationResource,
+      { ...creationValue, title: 'In series', verse: 'Romans 1' }, t.port, 'b');
+    await scope.settled();
+    const restored = MembershipScope.restore((await t.scopes.read('owner', 'creation:preset'))!, t.port);
+    expect(() => restored.save()).toThrow('Resolve the requested series');
+    expect(() => restored.pinCreationSeries([])).toThrow('target was not present');
+    expect(restored.getState().record.creation).toMatchObject({ requestedSeriesId: 'b', seriesOpened: false });
+    expect(t.save).not.toHaveBeenCalled();
+    await restored.pinCreationSeries(pins());
+    expect(restored.getState().record.action).toEqual({ kind: 'assign', targetId: 'b', refs: [{ type: 'sermon', refId: creationResource.id }] });
+    expect(restored.getState().record.creation?.requestedSeriesId).toBeUndefined();
+    expect(await restored.save()).toHaveLength(2);
+  });
+
+  it('allows an explicit removal of the preset without any catalog read or delayed reassignment', async () => {
+    const t = fixture(), scope = MembershipScope.beginCreation('owner', 'creation:preset', creationResource,
+      { ...creationValue, title: 'Standalone', verse: 'Romans 1' }, t.port, 'missing');
+    await scope.settled(); await scope.update(null);
+    const restored = MembershipScope.restore((await t.scopes.read('owner', 'creation:preset'))!, t.port);
+    await restored.pinCreationSeries(pins());
+    expect(restored.getState().record.action).toBeNull();
+    expect(await restored.save()).toHaveLength(1);
+  });
+
   it('pins the optional selector once and preserves both frozen creation participants across capture failure', async () => {
     const t = fixture(), scope = create(t); await scope.settled();
     await scope.updateCreation({ ...creationValue, title: 'New sermon', verse: 'Romans 1' });

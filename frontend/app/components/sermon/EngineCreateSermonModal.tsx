@@ -16,15 +16,15 @@ import type { DocumentData } from '@/data-engine/types';
 import type { Church, PreachDate, Series } from '@/models/models';
 
 /** The stage owns typing and the new ID; this view never writes through legacy callbacks. */
-export function EngineCreateSermonModal({ recoveryId, allowPlannedDate = false, onClose, onQueued }: {
-  recoveryId?: string; allowPlannedDate?: boolean; onClose: () => void; onQueued: (id: string) => void;
+export function EngineCreateSermonModal({ recoveryId, preSelectedSeriesId, allowPlannedDate = false, onClose, onQueued }: {
+  recoveryId?: string; preSelectedSeriesId?: string; allowPlannedDate?: boolean; onClose: () => void; onQueued: (id: string) => void;
 }) {
   const { t } = useTranslation(), action = useDataMembership();
   const [initial] = useState(() => ({ title: '', verse: '', date: new Date().toISOString(), thoughts: [] }));
   const [saving, setSaving] = useState(false), [openingSeries, setOpeningSeries] = useState(false);
   const attempted = useRef<object | null>(null), mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const open = () => recoveryId ? action.recover(recoveryId) : action.beginCreate('sermons', initial);
+  const open = () => recoveryId ? action.recover(recoveryId) : action.beginCreate('sermons', initial, preSelectedSeriesId);
   useEffect(() => {
     if (!action.ready || attempted.current === action.recoveryIdentity) return;
     attempted.current = action.recoveryIdentity; void open().catch(() => undefined);
@@ -34,11 +34,16 @@ export function EngineCreateSermonModal({ recoveryId, allowPlannedDate = false, 
   const seriesId = action.action?.kind === 'assign' ? action.action.targetId : '';
   const options = action.values.map(row => hydrateSeries({ ...row.value, id: row.id } as unknown as Series))
     .map(row => ({ id: row.id, label: row.title || row.theme }));
+  const seriesAttempt = useRef<string | null>(null);
   const openSeries = async () => {
     setOpeningSeries(true);
     try { await action.openSeries(); } catch { /* The shared status owns the error. */ }
     finally { if (mounted.current) setOpeningSeries(false); }
   };
+  useEffect(() => {
+    if (!creation?.requestedSeriesId || seriesAttempt.current === creation.resource.id || action.phase !== 'editing') return;
+    seriesAttempt.current = creation.resource.id; void openSeries();
+  });
   const change = (patch: Partial<SermonFormValues>) => {
     if (!creation) return;
     if ('seriesId' in patch) {
@@ -48,7 +53,7 @@ export function EngineCreateSermonModal({ recoveryId, allowPlannedDate = false, 
       creation.resource.id, t('calendar.unspecifiedChurch'))).catch(() => undefined);
   };
   const save = async () => {
-    if (!creation || saving || !action.durable || action.phase !== 'editing') return;
+    if (!creation || creation.requestedSeriesId || saving || !action.durable || action.phase !== 'editing') return;
     setSaving(true);
     try {
       await action.updateCreation(current => ({ ...current, title: String(current.title ?? '').trim(), verse: String(current.verse ?? '').trim() }));
@@ -62,15 +67,25 @@ export function EngineCreateSermonModal({ recoveryId, allowPlannedDate = false, 
       plannedDate: dates[0]?.date ?? '', seriesId }} onChange={change}
     onSubmit={event => { event.preventDefault(); void save(); }} onDismiss={onClose}
     onCancel={() => { void cancel().catch(() => undefined); }} submitLabel={t('addSermon.save')}
-    saving={saving} readOnly={!creation || action.phase !== 'editing'} submitDisabled={!action.durable}
+    saving={saving} readOnly={!creation || action.phase !== 'editing'} submitDisabled={!action.durable || Boolean(creation?.requestedSeriesId)}
     showPlannedDate={allowPlannedDate || dates.length > 0} detailsHint={t('addSermon.groupLaterHint')}
     seriesOptions={creation?.seriesOpened ? options : undefined}
     seriesStatus={<div className="space-y-3 p-4">
+      {creation?.requestedSeriesId && <div>
+        <p>{t('addSermon.pendingSeries')}</p>
+        <button type="button" className="rounded-lg border px-3 py-2" onClick={() => { void action.update(null).catch(() => undefined); }}>
+          {t('addSermon.createWithoutSeries')}
+        </button>
+      </div>}
       {isCollectionOnEngine('series') && creation && !creation.seriesOpened && action.phase === 'editing' && <button type="button"
         className="rounded-lg border px-3 py-2 disabled:opacity-50" disabled={openingSeries || saving} onClick={() => { void openSeries(); }}>
         {t(openingSeries ? 'workspaces.series.loadingSeries' : 'workspaces.series.actions.selectSeries')}
       </button>}
-      <DataMembershipStatus action={{ ...action, retry: action.phase ? action.retry : open }} onDiscarded={onClose} />
+      <DataMembershipStatus action={{ ...action, retry: async () => {
+        if (!action.phase) { await open(); return; }
+        await action.retry();
+        if (creation?.requestedSeriesId) await action.openSeries();
+      } }} onDiscarded={onClose} />
     </div>} />;
 }
 

@@ -176,3 +176,13 @@ describe('registerOfflineMutationDefaults', () => {
     expect(setQueryData).not.toHaveBeenCalled();
   });
 });
+
+
+it.each(Object.entries(DASHBOARD_SERMON_MUTATION_KEYS))('refuses old %s replay before touching a service when sermons use the engine', async (_operation, key) => {
+  process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'sermons';
+  try {
+    const client = new QueryClient(); registerOfflineMutationDefaults(client);
+    const mutation = client.getMutationDefaults(key).mutationFn as (input: unknown) => Promise<unknown>;
+    await expect(mutation({})).rejects.toMatchObject({ code: 'data-engine-required', status: 426 });
+  } finally { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; }
+});
