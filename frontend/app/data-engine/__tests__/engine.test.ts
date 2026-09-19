@@ -113,6 +113,28 @@ describe('DataEngine composition', () => {
     expect(await s.commits.list('owner')).toEqual([]); s.engine.dispose();
   });
 
+  it('preserves amended manual input when journal retirement fails, and recovers it in a new editor', async () => {
+    const s = setup(); const editor = await s.engine.openEditor(resource, 'repair');
+    const form = editor.form('title', [['title']]); await form.begin();
+    await form.update(value => ({ ...value, title: 'Mine' }));
+    s.server.set(keyOf('owner', resource), { ...initial(), value: { ...initial().value!, title: 'Theirs' } });
+    await form.save(); await s.engine.retry(); await drainMicrotasks();
+    await form.begin(); await form.update(value => ({ ...value, title: 'Corrected mine' }));
+    await expect(form.save()).rejects.toThrow('Resolve the failed delivery');
+    const count = (await s.commits.list('owner')).length;
+    jest.mocked(s.journal.remove).mockRejectedValueOnce(new Error('Journal disk failure'));
+    await expect(form.resolve('local')).rejects.toThrow('Journal disk failure');
+    expect(form.getState()).toMatchObject({ value: { title: 'Corrected mine' }, dirty: true, durable: true, record: { active: false } });
+    expect((await s.commits.list('owner'))).toHaveLength(count);
+    editor.close({ flush: false });
+    const reopened = await s.engine.openEditor(resource, 'repair-reopened');
+    const recovered = reopened.form('title', [['title']]); await recovered.begin();
+    const choices = await recovered.listRecoverable();
+    expect(choices).toHaveLength(1); await recovered.recover(choices[0].scopeId);
+    expect(recovered.getState()).toMatchObject({ value: { title: 'Corrected mine' }, dirty: true, record: { active: true } });
+    expect(s.server.get(keyOf('owner', resource))!.value!.title).toBe('Theirs'); s.engine.dispose();
+  });
+
   it('saves title B then D offline while unrelated unsaved content stays outside both requests', async () => {
     const s = setup({ online: false }); const editor = await s.engine.openEditor(resource, 'manual');
     await editor.edit({ ...editor.getState().checkpoint.draft, content: 'unsaved scratch C' });

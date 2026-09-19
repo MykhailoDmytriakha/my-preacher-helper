@@ -71,6 +71,32 @@ run('DataEngine against real Firestore transactions', () => {
   beforeEach(() => { process.env.DATA_ENGINE_ENABLED = 'true'; });
   afterAll(async () => { process.env = environment; await adminDb.terminate(); });
 
+  it('refuses a dangling thought placement atomically and keeps that refusal immutable on replay', async () => {
+    const resource = sermon('thought-integrity');
+    const thought = { id: 'thought', text: 'Original', tags: [], date: 'today' };
+    const outline = { introduction: [], main: [{ id: 'point', text: 'Point' }], conclusion: [] };
+    const initial = await processCommand(owner, { protocol: 1, owner, operationId: operationId(), resource, generation: null, dependsOn: [], kind: 'create',
+      value: { ...baseValue(), thoughts: [thought], outline } });
+    if (initial.kind !== 'acknowledged') throw new Error('Sermon seed refused');
+    const base = { protocol: 1 as const, owner, resource, generation: initial.snapshot.metadata!.generation, dependsOn: [] };
+    const deleted = await processCommand(owner, { ...base, operationId: operationId(), kind: 'update', changes: [
+      { path: ['outline'], before: { exists: true, value: outline }, after: { exists: true, value: { ...outline, main: [] } } },
+    ] });
+    if (deleted.kind !== 'acknowledged') throw new Error('Outline edit refused');
+    const attempted: DataCommand = { ...base, operationId: operationId(), kind: 'update', changes: [
+      { path: ['thoughts'], before: { exists: true, value: [thought] }, after: { exists: true, value: [{ ...thought, text: 'My edit', outlinePointId: 'point' }] } },
+      { path: ['structure'], before: { exists: false }, after: { exists: true, value: { introduction: [], main: ['thought'], conclusion: [] } } },
+    ] };
+    const refused = await processCommand(owner, attempted);
+    expect(refused).toMatchObject({ kind: 'refused', code: 'invalid-document' });
+    expect(await readDocument(owner, resource)).toEqual(deleted.snapshot);
+    await processCommand(owner, { ...base, operationId: operationId(), kind: 'update', changes: [
+      { path: ['outline'], before: { exists: true, value: { ...outline, main: [] } }, after: { exists: true, value: outline } },
+    ] });
+    expect(await processCommand(owner, attempted)).toEqual(refused);
+    expect(await processCommand(owner, { ...attempted, operationId: operationId() })).toMatchObject({ kind: 'acknowledged', snapshot: { value: { thoughts: [{ text: 'My edit', outlinePointId: 'point' }] } } });
+  });
+
   it('atomically creates a sermon in a series and replays a lost response without duplicating either effect', async () => {
     const destination = { collection: 'series', id: `${owner}-create-destination` };
     const seeded = await processCommand(owner, { protocol: 1, owner, operationId: operationId(), resource: destination, generation: null, dependsOn: [], kind: 'create',

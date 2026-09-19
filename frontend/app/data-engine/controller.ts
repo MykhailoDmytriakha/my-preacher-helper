@@ -1,6 +1,6 @@
 import { requiredDomainTargets } from './domainPolicy';
 import { projectManualSelection, type ManualPath } from './manualScope';
-import { equalValues } from './protocol';
+import { equalValues, mergeDocumentFields } from './protocol';
 import { DataSession, type SessionCheckpoint } from './session';
 
 import type { CommitQueue, CommitRequest } from './commits';
@@ -230,8 +230,12 @@ export class EditorController {
   }
 
   /** Keep local conflict fields after terminal refusal, without replacing remote siblings. */
-  keepLocal(selection?: readonly ManualPath[]): Promise<void> {
+  keepLocal(selection?: readonly ManualPath[], amendment?: { base: DocumentData; value: DocumentData }): Promise<void> {
+    const correction = amendment ? JSON.parse(JSON.stringify(amendment)) as typeof amendment : undefined;
     return this.enqueue(async () => {
+      if (correction && (!selection || !equalValues(correction.value, projectManualSelection(correction.base, correction.value, selection)))) {
+        throw new Error('Manual resolution changed an unselected field');
+      }
       this.assertManualResolution(selection);
       if (this.options.commits && Object.keys(this.session.checkpoint().pending).length) await this.cancelCommits();
       const checkpoint = this.session.checkpoint();
@@ -253,6 +257,11 @@ export class EditorController {
       this.assertManualResolution(selection);
       // Typing can arrive during journal retirement, so resolve the current session, not preview.
       this.session.keepLocal();
+      if (correction) {
+        // The explicit choice includes staged corrections, while untouched remote siblings survive.
+        const merged = mergeDocumentFields(correction.base, correction.value, this.session.checkpoint().draft);
+        this.session.edit(merged.value.exists ? merged.value.value as DocumentData : null);
+      }
       this.result = null;
       await this.persist();
     });

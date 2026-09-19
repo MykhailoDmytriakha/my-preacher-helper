@@ -236,3 +236,33 @@ describe('manual form scope', () => {
   });
 
 });
+
+it('suspends a correction without erasing it and permits explicit recovery after restart', async () => {
+  const test = fixture(); const scope = ManualScope.begin(test.options); await scope.settled();
+  await scope.update(value => ({ ...value, title: 'Correction' })); await scope.suspend();
+  expect(test.disk()).toMatchObject({ active: false, stage: [{ exists: true, value: 'Correction' }] });
+  expect(() => scope.update(value => value)).toThrow();
+  const recovered = ManualScope.restore(test.options, test.disk()); await recovered.reopen();
+  expect(recovered.getState()).toMatchObject({ value: { title: 'Correction' }, dirty: true, durable: true });
+  expect(test.save).not.toHaveBeenCalled();
+});
+
+it('keeps the original opening distinct from later saved values through persistence and recovery', async () => {
+  const test = fixture(); const scope = ManualScope.begin(test.options); await scope.settled();
+  await scope.update(value => ({ ...value, title: 'B' })); await scope.save();
+  expect(scope.getState()).toMatchObject({ openingValue: { title: 'A' }, value: { title: 'B' } });
+  const restored = ManualScope.restore(test.options, test.disk());
+  await restored.update(value => ({ ...value, title: 'C' })); await restored.save();
+  expect(restored.getState()).toMatchObject({ openingValue: { title: 'A' }, value: { title: 'C' } });
+  expect(restored.getState().record.savedSelection).toEqual([{ exists: true, value: 'C' }]);
+  const oldSaved = test.disk(); delete oldSaved.openingSelection;
+  expect(ManualScope.restore(test.options, oldSaved).getState().openingValue).toBeNull();
+});
+
+it('recovers an old never-saved opening without guessing an already-saved origin', async () => {
+  const test = fixture(); const scope = ManualScope.begin(test.options); await scope.settled();
+  await scope.update(value => ({ ...value, title: 'Unsent' }));
+  const old = test.disk(); delete old.openingSelection;
+  expect(ManualScope.restore(test.options, old).getState()).toMatchObject({ openingValue: { title: 'A' }, value: { title: 'Unsent' } });
+  expect(() => ManualScope.restore(test.options, { ...old, openingSelection: [] })).toThrow('opening selection');
+});

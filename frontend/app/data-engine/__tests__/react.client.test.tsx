@@ -78,7 +78,7 @@ function makeManualForm() {
     getState: () => state && clone(state),
     subscribe: jest.fn(listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }),
     begin: jest.fn(async () => {
-      state = { value: { content: 'base' }, durable: true, dirty: false, record: { kind: 'manual', version: 1, owner: 'owner', scopeId: 'scope', resource,
+      state = { value: { content: 'base' }, openingValue: { content: 'base' }, durable: true, dirty: false, record: { kind: 'manual', version: 1, owner: 'owner', scopeId: 'scope', resource,
         selection: [['content']], baseline: snapshot(), predecessor: null, stage: [{ exists: true, value: 'base' }], savedSelection: [{ exists: true, value: 'base' }], generation: 0, savedGeneration: null, active: true } }; emit();
     }),
     update: jest.fn(async updater => { state = { ...state!, value: updater(state!.value), dirty: true }; emit(); }),

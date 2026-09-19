@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 
 import '@testing-library/jest-dom';
@@ -7,6 +7,9 @@ jest.mock('@/hooks/useDocumentFreshness', () => ({
 }));
 
 jest.mock('@locales/i18n', () => ({}));
+import { useSermonThoughtsDataDocument } from '@/(pages)/(private)/sermons/[id]/hooks/useSermonThoughtsDataDocument';
+import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
+import ThoughtList from '@/components/sermon/ThoughtList';
 import SermonPage from '@/(pages)/(private)/sermons/[id]/page';
 import { EngineScratchWorkspace } from '@/(pages)/(private)/sermons/[id]/components/EngineScratchWorkspace';
 import { useScratchNotes } from '@/(pages)/(private)/sermons/[id]/hooks/useScratchNotes';
@@ -43,6 +46,10 @@ jest.mock('@/data-engine/react.client', () => ({
 jest.mock('@/(pages)/(private)/sermons/[id]/hooks/useSermonCoreDataDocument', () => ({
   useSermonCoreDataDocument: jest.fn(() => mockCore),
 }));
+jest.mock('@/(pages)/(private)/sermons/[id]/hooks/useSermonThoughtsDataDocument', () => ({
+  useSermonThoughtsDataDocument: jest.fn(() => ({ patchThought: jest.fn(async () => undefined), deleteThought: jest.fn(async () => undefined) })),
+}));
+jest.mock('@/components/thought/EngineThoughtModal', () => ({ EngineThoughtModal: jest.fn(() => <div data-testid="engine-thought-modal" />) }));
 jest.mock('@/(pages)/(private)/sermons/[id]/components/EngineScratchWorkspace', () => ({
   EngineScratchWorkspace: jest.fn(() => <div data-testid="engine-scratch-workspace" />),
 }));
@@ -98,7 +105,7 @@ jest.mock('@/components/sermon/prep/ThesisStepContent', () => ({ __esModule: tru
 jest.mock('@/components/sermon/prep/ExegeticalPlanStepContent', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="exegetical" />) }));
 jest.mock('@/components/sermon/prep/PrepStepCard', () => ({ __esModule: true, default: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 jest.mock('@/components/sermon/BrainstormModule', () => ({ __esModule: true, default: ({}) => <div data-testid="brainstorm" /> }));
-jest.mock('@/components/sermon/ThoughtList', () => ({ __esModule: true, default: ({}) => <div data-testid="thought-list" /> }));
+jest.mock('@/components/sermon/ThoughtList', () => ({ __esModule: true, default: jest.fn(() => <div data-testid="thought-list" />) }));
 jest.mock('@/components/sermon/ThoughtFilterControls', () => ({ __esModule: true, default: ({}) => null }));
 jest.mock('@/components/sermon/StructurePreview', () => ({ __esModule: true, default: ({}) => null }));
 jest.mock('@/components/sermon/SermonOutline', () => ({ __esModule: true, default: ({}) => <div data-testid="outline" /> }));
@@ -435,5 +442,26 @@ describe('SermonPage mode transitions', () => {
     await waitFor(() => {
       expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sermon-abc-mode', 'classic');
     });
+  });
+
+  it('opens the canonical form and routes direct placement/deletion to the shared document', async () => {
+    mockEngineEnabled = true;
+    const thought = { id: 'thought', text: 'Visible thought', tags: [], date: '2026-09-19' };
+    mockCore.data = { ...mockCore.data!, thoughts: [thought] };
+    searchParamsMock = new URLSearchParams();
+    const view = render(<TestProviders><SermonPage /></TestProviders>);
+    const list = jest.mocked(ThoughtList).mock.calls.at(-1)![0];
+    expect(list.isReadOnly).toBe(false);
+    const actions = jest.mocked(useSermonThoughtsDataDocument).mock.results.at(-1)!.value;
+    await act(async () => { await list.onThoughtOutlinePointChange!(thought, 'point', 'sub'); });
+    expect(actions.patchThought).toHaveBeenCalledWith('thought', { outlinePointId: 'point', subPointId: 'sub' });
+    await act(async () => { list.onDelete('thought'); });
+    expect(actions.deleteThought).toHaveBeenCalledWith('thought');
+    act(() => { list.onEditStart(thought, 0); });
+    expect(jest.mocked(EngineThoughtModal).mock.calls.at(-1)![0]).toMatchObject({ sermonId: 'abc', thoughtId: 'thought' });
+    act(() => { jest.mocked(EngineThoughtModal).mock.calls.at(-1)![0].onClose(); });
+    fireEvent.click(screen.getByRole('button', { name: 'manualThought.addManual' }));
+    expect(jest.mocked(EngineThoughtModal).mock.calls.at(-1)![0]).toMatchObject({ sermonId: 'abc', thoughtId: undefined });
+    view.unmount(); mockEngineEnabled = false;
   });
 });

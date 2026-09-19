@@ -835,6 +835,9 @@ export class DataEngine {
       begin: () => start(),
       update: updater => execute(() => requireScope().update(updater)),
       save: updater => execute(async () => {
+        if (this.editorDelivery(parent, this.pending).some(entry => ['conflict', 'refused'].includes(entry.state))) {
+          throw new Error('Resolve the failed delivery with Keep local or Accept remote before saving');
+        }
         const scope = requireScope();
         if (updater) { const staged = scope.update(updater); const saving = scope.save(); await Promise.all([staged, saving]); }
         else await scope.save();
@@ -844,15 +847,21 @@ export class DataEngine {
       retry: () => execute(async () => { if (state.scope) await state.scope.retryPersistence(); else await start(); await this.retry(resource); }),
       resolve: choice => execute(async () => {
         const scope = state.scope;
-        if (scope?.getState().dirty) throw new Error('Save or cancel the unsent form before resolving delivery');
+        const staged = scope?.getState();
+        const failed = this.editorDelivery(parent, this.pending).some(entry => ['conflict', 'refused'].includes(entry.state));
+        if (staged?.dirty && (choice !== 'local' || !failed)) throw new Error('Save or cancel the unsent form before resolving delivery');
+        if (staged && !staged.durable) throw new Error('Persist the manual form before resolving delivery');
+        const amendment = staged?.dirty ? { base: staged.record.predecessor?.value ?? staged.record.baseline.value!, value: staged.value } : undefined;
         parent.controller!.assertManualResolution(selection);
-        // Freeze the clean form before awaiting retirement so later typing cannot be discarded.
-        if (scope) await scope.cancel();
+        // Freeze the form before awaiting retirement; amended input keeps a durable recovery copy.
+        if (scope) await (amendment ? scope.suspend() : scope.cancel());
         active();
         if (choice === 'remote') await parent.controller!.acceptRemote(selection);
         else {
-          await parent.controller!.keepLocal(selection); active();
+          await parent.controller!.keepLocal(selection, amendment); active();
           await parent.controller!.save(undefined, selection); active();
+          // Only the durable replacement request may retire the suspended correction copy.
+          if (amendment && scope) await scope.cancel();
           await this.prepareCommits(); this.backgroundDrain();
         }
         active();

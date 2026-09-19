@@ -31,6 +31,8 @@ export interface ManualScopeRecord {
   predecessor: ManualSavedIntent | null;
   stage: FieldValue[];
   savedSelection: FieldValue[];
+  /** Immutable per opening; older saved records may lack this evidence. */
+  openingSelection?: FieldValue[];
   generation: number;
   savedGeneration: number | null;
   active: boolean;
@@ -87,6 +89,7 @@ export class ManualScope {
       || !Array.isArray(record.savedSelection) || record.savedSelection.length !== options.selection.length
       || !Number.isSafeInteger(record.generation) || record.generation < 0 || typeof record.active !== 'boolean'
       || (record.savedGeneration !== null && (!Number.isSafeInteger(record.savedGeneration) || record.savedGeneration < 0 || record.savedGeneration > record.generation || !record.predecessor))) throw new Error('Manual recovery identity mismatch');
+    if (record.openingSelection !== undefined && (!Array.isArray(record.openingSelection) || record.openingSelection.length !== options.selection.length)) throw new Error('Invalid manual opening selection');
     if (!options.port.isCurrent()) throw new Error(OWNER_CHANGED);
     if (record.predecessor !== null) {
       validateIntent(record.predecessor, options);
@@ -97,7 +100,7 @@ export class ManualScope {
     }
     if (!record.baseline.value || record.baseline.metadata?.deleted) throw new Error('Manual form requires a live confirmed document');
     validateDocument(record.baseline.value, options);
-    for (const field of [...record.stage, ...record.savedSelection]) {
+    for (const field of [...record.stage, ...record.savedSelection, ...(record.openingSelection ?? [])]) {
       if (!field || (field.exists !== true && field.exists !== false)) throw new Error('Invalid manual field value');
       if (field.exists) validateResourceDocument(options.resource.collection, { value: presentValue(field) }, { kind: 'update', changedFields: [] });
     }
@@ -111,7 +114,8 @@ export class ManualScope {
 
   getState() {
     this.assertCurrent();
-    return { record: copy(this.record), value: this.value(), dirty: !equalValues(this.record.stage, this.record.savedSelection), durable: this.durable };
+    const opening = this.record.openingSelection ?? (this.record.savedGeneration === null ? this.record.savedSelection : null);
+    return { record: copy(this.record), openingValue: opening ? project(this.record.baseline.value!, this.record.selection, opening) : null, value: this.value(), dirty: !equalValues(this.record.stage, this.record.savedSelection), durable: this.durable };
   }
 
   update(updater: (current: DocumentData) => DocumentData): Promise<void> {
@@ -161,6 +165,15 @@ export class ManualScope {
       if (this.tail?.generation === captured.generation) this.tail = null;
     });
     return saving;
+  }
+
+  /** Freeze corrections durably while a failed delivery is retired; never erase their recovery copy. */
+  suspend(): Promise<void> {
+    this.assertCurrent();
+    this.record.generation += 1;
+    this.record.active = false;
+    this.durable = false;
+    return this.enqueue(() => this.write());
   }
 
   /** Cancel only this stage. A previously durable Save survives cancellation. */
@@ -328,7 +341,7 @@ function captureRecord(options: ScopeOptions, generation: number): ManualScopeRe
       throw new Error('An unsaved editor already owns a selected field');
     }
     return { kind: 'manual', version: 1, owner: options.owner, resource: copy(options.resource), scopeId: options.scopeId,
-      selection: copy([...options.selection]), baseline, predecessor, stage, savedSelection: copy(stage), generation, savedGeneration: null, active: true };
+      selection: copy([...options.selection]), baseline, predecessor, stage, savedSelection: copy(stage), openingSelection: copy(stage), generation, savedGeneration: null, active: true };
 
 }
 

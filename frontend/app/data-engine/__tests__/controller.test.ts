@@ -249,7 +249,9 @@ describe('EditorController keeps local conflict fields explicitly', () => {
     let finish!: () => void;
     const remove = jest.mocked(s.journal.remove).getMockImplementation()!;
     jest.mocked(s.journal.remove).mockImplementationOnce(async (owner, id) => { await new Promise<void>(resolve => { finish = resolve; }); await remove(owner, id); });
-    const resolving = choice === 'local' ? editor.keepLocal([['content']]) : editor.acceptRemote([['content']]);
+    const resolving = choice === 'local' ? editor.keepLocal([['content']], {
+      base: { ...initial().value!, content: 'mine' }, value: { ...initial().value!, content: 'corrected mine' },
+    }) : editor.acceptRemote([['content']]);
     const refused = expect(resolving).rejects.toThrow('other document changes');
     while (!finish) await Promise.resolve();
     const typing = editor.edit({ ...initial().value, content: 'mine', tags: ['later unsent'] });
@@ -308,4 +310,16 @@ describe('EditorController keeps local conflict fields explicitly', () => {
     await expect(editor.remove()).rejects.toThrow('local draft'); expect(editor.getState().checkpoint).toEqual(before); editor.dispose();
   });
 
+});
+
+it('rejects an unselected manual amendment before retiring the failed command', async () => {
+  const s = setup(), editor = await EditorController.open(s.options);
+  await editor.edit({ ...initial().value, content: 'mine' }); await editor.save();
+  const remote = { ...initial(), value: { ...initial().value, content: 'theirs' }, metadata: { ...initial().metadata!, revision: 2 } };
+  jest.mocked(s.transport.send).mockResolvedValueOnce({ kind: 'conflict', operationId: 'op-1', snapshot: remote, conflicts: [] });
+  await s.runtime.drain(); await editor.settled();
+  await expect(editor.keepLocal([['content']], { base: initial().value!, value: { ...initial().value!, tags: ['unselected'] } })).rejects.toThrow('unselected');
+  expect(s.journal.remove).not.toHaveBeenCalled();
+  expect(Object.keys(editor.getState().checkpoint.pending)).toEqual(['op-1']);
+  expect(editor.getState().checkpoint.draft?.content).toBe('mine'); editor.dispose();
 });

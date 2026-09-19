@@ -11,28 +11,22 @@ Opus/Fable hand-off. Production readiness is still open. The current local work
 prioritizes shared data safety before more domain adapters. Progress is also tracked
 by `el` in this worktree, case `2026-09-19-data-engine-production-readiness`.
 
-Current hard-path checkpoint: atomic queue ownership is committed as `61104b4b`;
-legacy series preservation is committed as `ea536555`. Pinned membership stages,
-CAS storage and the public `useDataMembership` hook are committed as `9abeede6`,
-with crash/retention regression proof and a successful isolated production build.
-The checkpoint passed final coverage/review recording. Cascade write-set activation
-guards are committed as `c699ae74`. Whole-action discard now owns every participant
-and dependent request in one local transaction; validation is recorded below.
-Public delivery/retry/discard controls are committed as `eda634e2`. Series list
-readers and durable creation are committed as `1b6a2bab`. Series detail now uses
-the public engine for metadata, deletion and pinned assign/remove/reorder stages.
-Workspace-wide membership recovery and group/sermon-menu entry points are committed
-as `1b8d2bce`. The existing-sermon edit field now uses a pinned engine scope too.
-Creation with membership, sermon backlinks and live acceptance still block activation.
-Atomic create-and-link is committed as `de572d6a`; its durable stage/public API is
-committed as `c90ad88a`. `EngineCreateSermonModal` and workspace recovery now consume
-that API, with **724 suites / 7201 tests** passing at `7762616e`. The next change
-wires dashboard/list/series-picker creation, durable presets and canonical sermon
-list/calendar reads. Old query inputs and all six dashboard mutation payloads archive
-before hydration; their legacy replay refuses enabled sermons. Final gates pass: **725 suites / 7214 tests**, both TypeScript configurations,
-lint (0 errors / 15 inherited warnings), production build (23.51 seconds). Existing sermon editors, metadata/date
-writers and remaining feature consumers are the next migration boundary.
-Groups/series activation stays blocked. No production deployment or switch changed.
+Previous checkpoint: **`226978ae`**, pinned sermon metadata/date forms and
+shared terminal-delivery resolution. Atomic queue/CAS ownership, pinned membership,
+creation with membership, series screens, workspace recovery, sermon creation
+entry points and list/calendar reads are implemented behind collection switches.
+
+This checkpoint migrates manual thought creation/editing and direct
+placement/deletion, with shared post-merge sermon integrity and corrected-form
+resolution. Scratch outline replacement repairs affected thought assignments in the
+same command. Adversarial checks exposed three concrete bugs, tracked below and in
+`BUGS.md` through regression proof. Immutable manual opening fields now distinguish
+creation identity from the latest saved value. Closure and final gates are recorded below.
+
+Still open: complete outline/structure/plan/date and AI writer migration, remaining
+domains, legacy backlink closure, actual cloud cost measurements, rules/rollout and
+live/PWA/device acceptance. Live series QA hit Firestore RESOURCE_EXHAUSTED; the
+project-wide source remains unproven. No production deployment or switch changed.
 
 - Reproduced `BUG-20260919-engine-field-buffer-diverges`: the focused text field
   hid remote content already accepted by the engine; blur could also discard a
@@ -404,10 +398,10 @@ that has to move. "State" is what exists today, measured by imports, not by inte
 | Domain | Ops | State today | What it still needs |
 |---|---|---|---|
 | Councils | 6 | Create/read/update/delete, carry, readers and held-outcome manual forms integrated behind the collection switch; current browser and regression evidence above | Live cloud cost verification, recovery lifecycle and rollout/device gates |
-| Sermons | 33 | Partially on the engine: core fields and scratch wired; `useSermonThoughtsDataDocument` written but **imported by no screen**; eight controls inert behind the switch (`page.tsx`, `legacyReadOnly`) | Wire thoughts; adapters for outline, structure, plan, preach dates and the AI writers; un-inert the eight controls. Largest domain, last in order |
+| Sermons | 33 | Core/preparation and scratch, creation/list/calendar, metadata/planned-date forms are integrated. Manual thought CRUD/placement and structural integrity are integrated | Finish all outline/structure/plan/preach-date/AI writers, legacy backlinks and read surfaces; real browser/device acceptance |
 | Groups | 11 | CRUD, conduct, creation, readers and legacy-copy preservation integrated; real engine regressions and dev-browser evidence recorded below | Series boundary must migrate before activation; final PWA/device and rollout acceptance |
 | Studies (notes + materials + share links) | 7 | Untouched; the note editor is the most complete legacy example of the contract | Full adapter; `material-notes` relation already exists in the core; share links need an ownership decision |
-| Series (+ membership) | 6 + 6 | Server relation, atomic ownership and public pinned membership stage implemented with crash/restart evidence; feature screens still legacy | Whole-action delivery/conflict controls, full reader/editor migration, outbox retirement and browser acceptance |
+| Series (+ membership) | 6 + 6 | List/detail/create/edit/delete and pinned assign/remove/reorder, atomic creation, delivery controls and workspace recovery are integrated; legacy input is archived | Sermon/backlink compatibility, final caller/bypass audit, live acceptance and activation |
 | Prayers | 9 | Untouched | Full adapter; the answer/update journal is another embedded array |
 | Service orders | 13 | Untouched; already has HTTP + CAS and its own freshness | Full adapter; placement is a bounded multi-document operation and may need its own command |
 | Plan templates | 5 | Untouched | Full adapter |
@@ -1814,3 +1808,59 @@ Group implementation checkpoint in progress:
   changed. Live QA remains blocked by the previously observed Firestore quota.
   Next: remaining thought, outline, plan and date writers/readers, other domains,
   bypass closure and live/device rollout acceptance. Whole-app readiness is open.
+
+### 2026-09-19 — thought forms, merged structural integrity and durable correction
+
+- Sermon-page manual thought creation/editing now uses `EngineThoughtModal` and the
+  public manual form. Typing and dictation stage locally; Save captures one command
+  for text/tags/placement. Direct moves/deletes use the shared document adapter.
+  Fresh creation openings have separate identities, including two creations offline.
+- `sermonThoughtEdits.ts` extracts the existing pure transforms and handles outline
+  replacement plus affected thought assignments. Scratch outline replacement and
+  note consumption now include those dependent edits in the same command. Complete
+  outline/structure/plan editor migration remains open, including opening ancestry
+  for long-lived/manual/AI proposals.
+- Closed `BUG-20260919-engine-dangling-sermon-links`: the merged candidate is checked
+  inside `applyCommand` for new missing point/subpoint/thought references and duplicate
+  placement. It rejects the complete write; untouched legacy defects remain repairable.
+  The real-engine failing scenario is in `/tmp/data-engine-thought-reference-before.log`.
+- Closed `BUG-20260919-manual-repair-depends-on-refusal`: plain Save refuses a successor
+  of failed delivery. Explicit Keep local includes durable staged corrections, merges
+  untouched remote siblings, and guards unrelated input before/after retirement.
+  Corrections are suspended on disk before retiring the old intent, and retired only
+  after the replacement is durable. A failed journal removal leaves a recoverable
+  correction. Unknown outcomes retain their existing no-discard boundary.
+- Closed `BUG-20260919-manual-origin-lost-after-save`: `openingSelection`/`openingData`
+  remain distinct from the last saved selection across Save/recovery. Refused embedded
+  creation is recovered explicitly with its original ID and readable preview; correction
+  closes creation, and the next form is independent. Older saved forms without original
+  opening evidence return null instead of guessing; source bytes remain preserved.
+  Red proof: `/tmp/data-engine-thought-origin-before.log`.
+- Behavior proof covers opening versions, same-field conflict choices, remote sibling
+  edits, remote thought deletion, deleted outline targets, corrected retry, disk failure
+  during retirement, explicit recovery, Cancel, consecutive dictation, tags, atomic
+  placement/delete, offline restart, repeat delivery and consecutive offline creations.
+  Page tests verify that enabled actions use these adapters, not legacy callbacks.
+- Sequential code-review lanes: public boundary/ownership, staged versus submitted
+  intent, baseline and child identity, async retirement/crash safety, post-merge domain
+  invariants, legacy compatibility, UI wiring and actual test coverage. No independent
+  reviewer agent was used. Production activation and device proof remain open.
+- Full fast gate: **731 suites / 7265 tests pass**. Final UI preview refinement passes
+  its 11 real-engine component tests; both TypeScript configurations and lint pass
+  (0 errors / 15 inherited warnings). Logs: `/tmp/data-engine-thought-final-full.log`,
+  `/tmp/data-engine-thought-final-ui.log`, `/tmp/data-engine-thought-final-types-lint.log`.
+- Coverage run earlier in this checkpoint passed **731 suites / 7259 tests**, **92.07%**
+  lines. Additional origin/sequence regressions were verified subsequently; that
+  percentage is not claimed as a final-tree measurement or 100% changed-line proof.
+  A redundant coverage diagnostic accidentally selected a broad run and was stopped;
+  it is not counted as a passed gate. `/tmp/data-engine-thought-coverage.log` is the
+  completed full coverage run. Final build/emulator results are recorded below.
+- Main fetched at 09:47; `HEAD..origin/main` empty. No push, deployment, production
+  switch change or claim of new live/PWA/device acceptance. Live QA is quota-blocked;
+  project-wide cost attribution still requires external evidence.
+
+- Final isolated production build passes in **15.60 seconds** (`/tmp/data-engine-thought-verified-build.log`).
+  **14 real local Firestore emulator checks pass**, including rejection of a dangling
+  merged placement with no document mutation, immutable refusal replay, and a new
+  explicit valid command. `/tmp/data-engine-thought-final-emulator.log`. This is Admin
+  transaction evidence, not Security Rules, cloud quota or physical-device proof.

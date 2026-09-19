@@ -1,6 +1,7 @@
 import { getUtf8ByteLength } from '@/utils/feedbackPayload';
 
 import { validateResourceDocument } from './resourceSchemas';
+import { preservesSermonLinks } from './sermonIntegrity';
 
 import type {
   CommandResult, ConflictDetail, DataCommand, DocumentData, FieldChange,
@@ -412,7 +413,7 @@ export function applyCommand(command: DataCommand, current: ResourceSnapshot): C
     const conflicts = applyExistingFields(command, value);
     if (conflicts.length) return { kind: 'conflict', operationId: command.operationId, snapshot: current, conflicts };
   }
-  if (!validCandidate(command, value)) return refused('invalid-document');
+  if (!validCandidate(command, value, current.value)) return refused('invalid-document');
   return {
     kind: 'acknowledged', operationId: command.operationId,
     snapshot: advanceResourceSnapshot(current, command.kind === 'delete' ? null : value, command.operationId,
@@ -420,13 +421,13 @@ export function applyCommand(command: DataCommand, current: ResourceSnapshot): C
   };
 }
 
-function validCandidate(command: Exclude<DataCommand, { kind: 'relation' }>, value: DocumentData): boolean {
+function validCandidate(command: Exclude<DataCommand, { kind: 'relation' }>, value: DocumentData, previous: DocumentData | null): boolean {
   if (command.kind === 'delete') return true;
   try {
     validateResourceDocument(command.resource.collection, value, {
       kind: command.kind,
       changedFields: command.kind === 'update' ? command.changes.map(change => change.path[0]) : undefined,
     });
-    return true;
+    return command.resource.collection !== 'sermons' || preservesSermonLinks(previous, value);
   } catch { return false; }
 }

@@ -130,9 +130,11 @@ A clean active form preserves the document's queued/unknown/conflict/refused sta
 it must not relabel an unresolved Save as a saved or merely stale form. Expose
 `keepLocal` and `acceptRemote` from the same hook to resolve terminal delivery and
 reopen the form from the chosen version. Keeping local submits that explicit choice.
-The engine refuses these form decisions if unsent form input or changes outside
-its selected fields would be affected; save/cancel that input or resolve through
-the owning document first. Guards run inside the controller queue before and after
+For a known conflict/refusal, Keep local can include durable staged corrections;
+ordinary Save refuses to create a successor of the failed request. Corrections are
+suspended on disk until the replacement request is durable, so interrupted resolution
+remains recoverable. Accept remote cannot discard unsent form input. Changes outside
+the form's selected fields must be saved/cancelled or resolved through their owner first. Guards run inside the controller queue before and after
 asynchronous retirement, so concurrent typing remains durable.
 
 `components/council/CouncilOutcomeForm.tsx` is the integrated example. Its tests
@@ -265,3 +267,16 @@ creation immediately, with `DataCollectionStatus` for pending/incomplete lists.
 Existing sermon editors and other writers still require migration; creation availability
 does not authorize activation. Old dashboard mutation inputs are archived before
 query hydration and refused before service replay under the sermon switch.
+
+Sermon thought forms use `components/thought/EngineThoughtModal.tsx`: fixed child
+identity, pinned manual ancestry and atomic thought/placement edits. Pure domain
+transforms are in `utils/sermonThoughtEdits.ts`; no transport or merge lives there.
+`sermonIntegrity.ts` checks the final merged document for new dangling point/subpoint
+references, missing thoughts and duplicate placements. Existing untouched defects
+remain repairable. Outline writers must update affected assignments in the same command.
+
+A manual form exposes `openingData` separately from `initialData` (last saved intent).
+`openingSelection` remains unchanged across Save/recovery until an explicit fresh
+opening. Embedded creation uses it to retain its own child identity after refusal.
+Older already-saved scopes lacking that evidence expose `openingData: null`; features
+that require an origin must preserve/export their text rather than infer an identity.

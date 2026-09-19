@@ -13,6 +13,7 @@
     "actionFailed": "Could not read or export the saved change. The original record has been kept."
   },
   "dataSync": {
+    "missingOpeningVersion": "This saved form lacks its original opening version. Copy the preserved text and start a new form.",
     "actionCancelled": "This action was cancelled.",
     "actionChecking": "Checking the saved action…",
     "discardAction": "Discard this action",

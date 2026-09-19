@@ -1,9 +1,10 @@
 import { useDataDocument } from '@/data-engine/react.client';
 import { newClientId } from '@/utils/clientId';
 import { moveNoteTo } from '@/utils/scratchOrder';
+import { replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 
 import type { DocumentData, Json } from '@/data-engine/types';
-import type { ScratchNote, SermonOutline } from '@/models/models';
+import type { ScratchNote, Sermon, SermonOutline } from '@/models/models';
 
 type ScratchPatch = { text?: string; section?: ScratchNote['section'] | null };
 export interface QueuedScratchDelivery { delivery: 'queued' }
@@ -49,7 +50,8 @@ export function useScratchDataDocument(sermonId: string | null) {
     const consumed = new Set(consumedNoteIds);
     await document.commit(current => {
       const sermon = existing(current);
-      return { ...sermon, outline: outline as unknown as Json, scratch: notesOf(sermon).filter(note => !consumed.has(note.id)) as unknown as Json };
+      return { ...replaceSermonOutline(sermon as unknown as Sermon, outline) as unknown as DocumentData,
+        scratch: notesOf(sermon).filter(note => !consumed.has(note.id)) as unknown as Json };
     });
     return { delivery: 'queued' };
   };

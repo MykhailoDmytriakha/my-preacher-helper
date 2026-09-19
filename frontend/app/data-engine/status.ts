@@ -23,6 +23,11 @@ export interface SyncStatus {
 /** A Save-button stage owns its opening ancestor, even while the parent observes newer data. */
 export function describeManualSync(form: ReturnType<ManualScope['getState']> | null, editor: EditorState | null, parent: SyncStatus | null, error: string | null): SyncStatus | null {
   if (!form?.record.active || !editor || !parent) return parent;
+  // Explicit Keep local may include durable corrections to a known failed command.
+  // Accept remote still cannot discard an unsent stage, and unknown outcomes stay immutable.
+  if (form.dirty && form.durable && ['conflict', 'refused'].includes(parent.phase)) {
+    return { ...parent, canSave: false, canRemove: false, canAcceptRemote: false };
+  }
   // A pristine reopened form must not hide delivery or terminal recovery behind its pinned copy.
   if (!form.dirty && form.durable && !['saved', 'draft', 'remoteChanged'].includes(parent.phase)) {
     return { ...parent, canSave: false, canRemove: false };

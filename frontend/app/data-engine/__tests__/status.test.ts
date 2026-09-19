@@ -47,7 +47,10 @@ describe('Shared synchronization status', () => {
     expect(describeManualSync(form.getState(), editor, parent, null)).toMatchObject({ phase, canSave: false,
       canKeepLocal: phase === 'conflict', canAcceptRemote: phase === 'conflict' });
     await form.update(value => ({ ...value, content: 'Later unsent input' }));
-    expect(describeManualSync(form.getState(), editor, parent, null)).toMatchObject({ phase: 'draft', canKeepLocal: false, canAcceptRemote: false });
+    expect(describeManualSync(form.getState(), editor, parent, null)).toMatchObject({
+      phase: ['conflict', 'refused'].includes(phase) ? phase : 'draft',
+      canKeepLocal: phase === 'conflict', canAcceptRemote: false,
+    });
   });
 
   it('keeps save confirmation separate from current freshness', () => {

@@ -1,5 +1,7 @@
 "use client";
 
+
+
 import { doc, onSnapshot } from "firebase/firestore";
 import { motion } from "framer-motion";
 import { BookOpen, Sparkles } from "lucide-react";
@@ -31,6 +33,7 @@ import SermonOutline from "@/components/sermon/SermonOutline";
 import StructurePreview from "@/components/sermon/StructurePreview";
 import StructureStats from "@/components/sermon/StructureStats";
 import { SermonDetailSkeleton } from "@/components/skeletons/SermonDetailSkeleton";
+import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
 import { getClientDb } from "@/config/firebaseClientDb";
 import { DataDocumentProvider, isCollectionOnEngine } from '@/data-engine/react.client';
 import { useAiUsage } from '@/hooks/useAiUsage';
@@ -80,6 +83,7 @@ import {
 import { EngineScratchWorkspace } from './components/EngineScratchWorkspace';
 import { useScratchNotes } from "./hooks/useScratchNotes";
 import { useSermonCoreDataDocument } from './hooks/useSermonCoreDataDocument';
+import { useSermonThoughtsDataDocument } from './hooks/useSermonThoughtsDataDocument';
 
 import type { Sermon, Thought, SermonOutline as SermonOutlineType, Preparation, BrainstormSuggestion } from "@/models/models";
 import type { StructureSectionId } from '@utils/tagUtils';
@@ -359,6 +363,7 @@ const ignoreLegacyProjection = async () => undefined;
 
 function EngineSermonPageContent({ id }: { id: string }) {
   const core = useSermonCoreDataDocument(id);
+  const thoughts = useSermonThoughtsDataDocument(id);
   const isOnline = useOnlineStatus();
   const sermon = useMemo(() => core.data ? ({ ...core.data, id, thoughts: core.data.thoughts ?? [] } as unknown as Sermon) : null, [core.data, id]);
   const source = {
@@ -366,10 +371,10 @@ function EngineSermonPageContent({ id }: { id: string }) {
     error: core.error ? new Error(core.error) : null, isOnline, awaitingFirstAnswer: core.loading,
     refreshSermon: core.retry, getSortedThoughts: () => [...(sermon?.thoughts ?? [])],
   };
-  return <SermonPageContent id={id} source={source} core={core} />;
+  return <SermonPageContent id={id} source={source} core={core} engineThoughts={thoughts} />;
 }
 
-function SermonPageContent({ id, source, core }: { id: string; source: ReturnType<typeof useSermon>; core?: CoreDocument }) {
+function SermonPageContent({ id, source, core, engineThoughts }: { id: string; source: ReturnType<typeof useSermon>; core?: CoreDocument; engineThoughts?: ReturnType<typeof useSermonThoughtsDataDocument> }) {
   const { user } = useAuth();
   /**
    * WHOSE screen this is, answered from the LIVE source at report time.
@@ -402,7 +407,7 @@ function SermonPageContent({ id, source, core }: { id: string; source: ReturnTyp
   const dictationBlockedKey = usageBlockedLabelKey('dictation');
   const isReadOnly = Boolean(core?.isReadOnly);
   const engineEnabled = Boolean(core);
-  // Explicit migration boundary: thoughts, outline editing and AI writers still use
+  // Explicit migration boundary: outline editing and AI writers still use
   // legacy transports. Keep their controls inert until their canonical adapters land.
   const legacyReadOnly = engineEnabled || isReadOnly;
 
@@ -1585,11 +1590,13 @@ useEffect(() => {
       setBrainstormSuggestion={setBrainstormSuggestion}
       filteredThoughts={filteredThoughts}
       sermonOutline={sermon?.outline}
-      onDelete={handleDeleteThought}
+      onDelete={engineThoughts ? id => { void engineThoughts.deleteThought(id).catch(() => undefined); } : handleDeleteThought}
       onEditStart={handleEditThoughtStart}
       onThoughtUpdate={handleThoughtUpdate}
-      onThoughtOutlinePointChange={handleThoughtOutlinePointChange}
-      isReadOnly={legacyReadOnly}
+      onThoughtOutlinePointChange={engineThoughts ? async (thought, outlinePointId, subPointId) => {
+        await engineThoughts.patchThought(thought.id, { outlinePointId, subPointId: subPointId ?? null }).catch(() => undefined);
+      } : handleThoughtOutlinePointChange}
+      isReadOnly={isReadOnly}
       sermon={sermon}
       scratchNotes={scratchNotes.notes}
       onOpenScratch={() => setUiMode('raw')}
@@ -1909,6 +1916,9 @@ useEffect(() => {
         />
       </div>
 
+      {engineEnabled && uiMode !== 'raw' && <button type="button" disabled={isReadOnly}
+        className={`rounded-lg px-4 py-2 disabled:opacity-50 ${UI_COLORS.button.plan.bg} ${UI_COLORS.button.plan.hover} ${UI_COLORS.button.plan.text}`}
+        onClick={() => setIsCreateModalOpen(true)}>{t('manualThought.addManual')}</button>}
       {!engineEnabled && uiMode !== 'raw' && (
         <AudioRecorderPortalBridge
           RecorderComponent={AudioRecorder}
@@ -2001,7 +2011,10 @@ useEffect(() => {
           allowOffline={true}
         />
       )}
-      <CreateThoughtModal
+      {engineEnabled && (editingModalData || isCreateModalOpen) && <EngineThoughtModal
+        key={editingModalData?.session ?? 'create'} sermonId={id} thoughtId={editingModalData?.thought.id}
+        allowedTags={allowedTags} onClose={() => { closeEditingModal(); setIsCreateModalOpen(false); }} />}
+      {!engineEnabled && <CreateThoughtModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onCreateThought={handleCreateManualThought}
@@ -2009,7 +2022,7 @@ useEffect(() => {
         allowedTags={allowedTags}
         sermonOutline={sermon?.outline}
         disabled={legacyReadOnly}
-      />
+      />}
       {!engineEnabled && sermon && (
         <PlanEditorModal
           isOpen={isPlanEditorOpen}

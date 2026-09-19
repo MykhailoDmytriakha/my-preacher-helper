@@ -505,6 +505,8 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
   return {
     active: target?.state?.record.active ?? false,
     data: target?.state?.value ?? document.data,
+    // The opening may include submitted predecessors; it is never a confirmed snapshot.
+    openingData: target?.state?.openingValue ?? null,
     // This may be a previously saved intent, so it is deliberately not called confirmed.
     initialData: target?.state ? target.state.record.predecessor?.value ?? target.state.record.baseline.value : document.data,
     recoveryIdentity: identity as object,
