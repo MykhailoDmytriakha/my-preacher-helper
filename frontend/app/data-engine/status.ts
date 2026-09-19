@@ -1,4 +1,7 @@
+import { sameManualSelection } from './manualScope';
+
 import type { EditorState } from './controller';
+import type { ManualScope } from './manualScope';
 import type { Observation } from './observer';
 import type { JournalEntry } from './types';
 
@@ -15,6 +18,23 @@ export interface SyncStatus {
   canRemove: boolean;
   canAcceptRemote: boolean;
   canKeepLocal: boolean;
+}
+
+/** A Save-button stage owns its opening ancestor, even while the parent observes newer data. */
+export function describeManualSync(form: ReturnType<ManualScope['getState']> | null, editor: EditorState | null, parent: SyncStatus | null, error: string | null): SyncStatus | null {
+  if (!form?.record.active || !editor || !parent) return parent;
+  const observed = editor.checkpoint.remoteCandidate ?? editor.checkpoint.confirmed;
+  const { baseline, predecessor, selection } = form.record;
+  const deleted = observed.value === null || Boolean(observed.metadata?.deleted);
+  const replaced = Boolean(baseline.metadata && observed.metadata && baseline.metadata.generation !== observed.metadata.generation);
+  const changed = deleted || replaced || selection.some(path => !sameManualSelection(observed.value, baseline.value, path)
+    && !(predecessor && sameManualSelection(observed.value, predecessor.value, path)));
+  let phase: SyncPhase = form.dirty ? 'draft' : 'saved';
+  if (changed) phase = deleted ? 'deleted' : 'remoteChanged';
+  if (!form.durable) phase = error ? 'localFailure' : 'savingLocally';
+  return { ...parent, phase, hasForeignChange: changed,
+    canSave: form.dirty && form.durable && !deleted, canRemove: false,
+    canAcceptRemote: false, canKeepLocal: false };
 }
 
 /** Status describes proven state; an SDK echo of our command is not a foreign edit. */

@@ -174,7 +174,9 @@ export class CommitQueue {
     for (const record of records) {
       if (record.command) await this.options.runtime.discard(record.command.operationId);
       this.assertCurrent(owner, generation);
-      await this.options.store.compareAndSet(record, { ...record, state: 'cancelled' });
+      const cancelled = await this.options.store.compareAndSet(record, { ...record, state: 'cancelled' });
+      this.assertCurrent(owner, generation);
+      this.emit(cancelled);
     }
   }
 

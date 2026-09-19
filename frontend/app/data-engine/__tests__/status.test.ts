@@ -1,5 +1,6 @@
 import { DataSession } from '../session';
-import { describeSync } from '../status';
+import { ManualScope } from '../manualScope';
+import { describeManualSync, describeSync } from '../status';
 import type { EditorState } from '../controller';
 import type { Observation } from '../observer';
 import type { JournalEntry, ResourceSnapshot } from '../types';
@@ -10,6 +11,31 @@ const state = (): EditorState => ({ checkpoint: new DataSession(snapshot).checkp
 const pending = (status: JournalEntry['state']): JournalEntry => ({ command: { protocol: 1, operationId: 'mine', owner: 'owner', resource: snapshot.resource, generation: 'g', dependsOn: [], kind: 'delete', baseline: snapshot.value! }, state: status, createdAt: 1, attempts: 1 });
 
 describe('Shared synchronization status', () => {
+  it('describes manual durability and selected-field changes independently of the parent', async () => {
+    const editor = state();
+    const form = ManualScope.begin({ owner: 'owner', resource: snapshot.resource, scopeId: 'form', selection: [['content']], port: {
+      isCurrent: () => true, capture: () => ({ checkpoint: editor.checkpoint, provenance: [], requests: [] }),
+      persist: async () => undefined, save: jest.fn(),
+    } });
+    await form.settled();
+    const parent = describeSync(editor, observation, []);
+    await form.update(value => ({ ...value, content: 'mine' }));
+    expect(describeManualSync(form.getState(), editor, parent, null)).toMatchObject({ phase: 'draft', canSave: true });
+    const staged = form.getState();
+    expect(describeManualSync({ ...staged, durable: false }, editor, parent, 'disk full')).toMatchObject({ phase: 'localFailure', canSave: false });
+    editor.checkpoint.confirmed = { ...snapshot, value: { ...snapshot.value, title: 'Unrelated' } };
+    expect(describeManualSync(staged, editor, parent, null)?.hasForeignChange).toBe(false);
+    editor.checkpoint.confirmed = { ...snapshot, value: { ...snapshot.value, content: 'remote' } };
+    expect(describeManualSync(staged, editor, parent, null)).toMatchObject({ phase: 'remoteChanged', hasForeignChange: true });
+    staged.record.predecessor = { id: 'prior', owner: 'owner', resource: snapshot.resource, value: editor.checkpoint.confirmed.value!, predecessorId: null };
+    expect(describeManualSync(staged, editor, parent, null)?.hasForeignChange).toBe(false);
+    editor.checkpoint.confirmed = { ...snapshot, metadata: { ...snapshot.metadata!, generation: 'recreated' } };
+    expect(describeManualSync(staged, editor, parent, null)?.hasForeignChange).toBe(true);
+    editor.checkpoint.confirmed = { ...snapshot, value: null, metadata: { ...snapshot.metadata!, deleted: true } };
+    expect(describeManualSync(staged, editor, parent, null)).toMatchObject({ phase: 'deleted', canSave: false });
+    staged.record.active = false;
+    expect(describeManualSync(staged, editor, parent, null)).toBe(parent);
+  });
   it('keeps save confirmation separate from current freshness', () => {
     expect(describeSync(state(), { ...observation, checking: true, error: true }, [])).toMatchObject({ phase: 'saved', freshness: 'cache', checking: true, readFailed: true, canSave: false });
   });

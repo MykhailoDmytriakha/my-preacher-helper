@@ -137,7 +137,9 @@ export class DataEngine {
         try { this.background(manual.parent.controller.adoptManualCommit(request, manual.selection), request.owner, this.generation); }
         catch (error) { this.options.onError?.(error); }
         manual.emit();
-        if (request.state === 'acknowledged' && this.options.manualScopes) this.background(this.options.manualScopes.compact(request.owner, manual.scopeId), request.owner, this.generation);
+      }
+      if (manual && ['acknowledged', 'cancelled'].includes(request.state) && this.options.manualScopes) {
+        this.background(this.options.manualScopes.compact(request.owner, manual.scopeId), request.owner, this.generation);
       }
       if (request.result?.kind === 'acknowledged') this.background(this.persistSnapshot(request.owner, this.generation, request.result.snapshot), request.owner, this.generation);
       for (const [editorId, entry] of this.editors) if (!entry.closed && editorId === request.editorId) this.emit(entry);
@@ -586,7 +588,7 @@ export class DataEngine {
         const port = {
           capture: () => frozenCapture,
           isCurrent: () => this.current(owner, generation),
-          isAcknowledged: (id: string) => this.commitRecords.get(id)?.state === 'acknowledged',
+          isSettled: (id: string) => ['acknowledged', 'cancelled'].includes(this.commitRecords.get(id)?.state ?? ''),
           persist: async (record: ReturnType<ManualScope['getState']>['record']) => {
             const envelope: StoredManualScope = { owner, scopeId: targetId, parentEditorId, slot, record, commitReferences: record.predecessor ? [record.predecessor.id] : [] };
             if (creating) { await store.create(envelope); creating = false; } else await store.put(envelope);
@@ -606,7 +608,7 @@ export class DataEngine {
         state.scope = existing?.record ? ManualScope.restore(options, { ...copy(existing.record), scopeId: targetId, active: true }) : ManualScope.begin(options, existing ? existing.watermark.generation + 1 : 0);
         if (existing?.record) {
           if (!source && !existing.record.active && equalValues(existing.record.stage, existing.record.savedSelection)
-            && (!existing.record.predecessor || port.isAcknowledged(existing.record.predecessor.id))) {
+            && (!existing.record.predecessor || port.isSettled(existing.record.predecessor.id))) {
             await state.scope.restart();
           } else await state.scope.reopen();
         } else await state.scope.settled();
@@ -629,8 +631,14 @@ export class DataEngine {
       }),
       cancel: () => execute(() => requireScope().cancel()),
       retry: () => execute(async () => { if (state.scope) await state.scope.retryPersistence(); else await start(); await this.retry(resource); }),
-      listRecoverable: async () => { active(); const values = await store.list(owner, resource); active(); return values.filter(value => equalValues(value.record.selection, selection)
-        && (!equalValues(value.record.stage, value.record.savedSelection) || Boolean(value.record.predecessor && this.commitRecords.get(value.record.predecessor.id)?.state !== 'acknowledged'))); },
+      listRecoverable: async () => {
+        active();
+        const values = await store.list(owner, resource);
+        const requests = await this.commits.list(); active();
+        const settled = new Set(requests.filter(request => ['acknowledged', 'cancelled'].includes(request.state)).map(request => request.id));
+        return values.filter(value => value.scopeId !== state.scopeId && equalValues(value.record.selection, selection)
+          && (!equalValues(value.record.stage, value.record.savedSelection) || Boolean(value.record.predecessor && !settled.has(value.record.predecessor.id))));
+      },
       recover: sourceScopeId => start(sourceScopeId),
     };
     return state.form;

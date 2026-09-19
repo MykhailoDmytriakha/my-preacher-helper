@@ -26,9 +26,16 @@ jest.mock('next/navigation', () => ({
   useParams: () => ({ id: 'source' }),
 }));
 jest.mock('sonner', () => ({ toast: { error: jest.fn(), success: jest.fn(), warning: jest.fn() } }));
-jest.mock('@/data-engine/react.client', () => ({ isCollectionOnEngine: () => true }));
+jest.mock('@/data-engine/react.client', () => ({
+  ...jest.requireActual('@/data-engine/react.client'),
+  isCollectionOnEngine: () => true,
+  DataDocumentProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+}));
 jest.mock('@/data-engine/DataSyncStatus', () => ({ DataSyncStatus: () => null }));
 jest.mock('@/components/ui/RichMarkdownEditor', () => ({ RichMarkdownEditor: () => null }));
+jest.mock('@/components/council/CouncilOutcomeForm', () => ({
+  CouncilOutcomeForm: ({ councilId, topicId }: { councilId: string; topicId: string }) => <div data-testid="engine-outcome-form">{councilId}/{topicId}</div>,
+}));
 jest.mock('@/hooks/useCouncils', () => ({ useCouncil: jest.fn() }));
 jest.mock('@/hooks/useCouncilsRead', () => ({
   useCouncilsRead: () => ({ councils: state.councils, loading: false, error: null, refresh: jest.fn() }),
@@ -57,6 +64,12 @@ beforeEach(() => {
 });
 
 describe('carrying a section from a held council through the engine', () => {
+  it('routes held-outcome editing through the pinned engine form', () => {
+    state.councils = [state.council!];
+    render(<CouncilDetailPage />);
+    fireEvent.click(screen.getByRole('button', { name: 'council.topic.editOutcome' }));
+    expect(screen.getByTestId('engine-outcome-form')).toHaveTextContent('source/topic-1');
+  });
   it('asks where when two councils are being prepared, and carries on the second press', () => {
     state.councils = [state.council!, council('target-a', 'preparing'), council('target-b', 'preparing')];
     render(<CouncilDetailPage />);

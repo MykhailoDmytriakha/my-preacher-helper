@@ -56,8 +56,32 @@ by `el` in this worktree, case `2026-09-19-data-engine-production-readiness`.
 - Review conclusion for this checkpoint: no remaining high-confidence regressions
   in the changed paths after the lifecycle repair. No independent agent was used.
   `origin/main` was fetched on 2026-09-19; `HEAD..origin/main` is empty.
-- Next: finish navigation/save browser proof and full gates; pin held-council outcome
-  forms to engine manual scopes (their component-local draft is a separate audit risk).
+- Checkpoint one is committed as `962d3fcf` (editor lifetimes and recoverable work).
+- Held-council outcome forms now use `useDataForm` inside the shared page provider.
+  Opening pins selected outcome fields; typing remains durable but unsent; Save
+  compares against that ancestor. The form has its own status and recovery discovery.
+  Live before: B silently overwrote A. Live after: B retained its text and exposed
+  the common conflict choices while A stayed saved on the other tab.
+- A second regression showed explicitly cancelled manual intent returning on reopen.
+  Cancellation now emits a terminal queue event, clean inactive scopes compact on
+  ACK or cancellation, and recovery reads fresh durable request state. Later unsent
+  typing is still retained. Tests failed before these changes and pass after.
+- Live restart proof on the same disposable council: `QA manual restart retained`
+  survived reload, appeared as a recovery preview, and was restored only by choice.
+  The other tab still showed `QA pinned final A` until explicit Save; afterwards both
+  showed the restored value. The test fixture remains available for acceptance.
+- Current gates for the manual-form checkpoint: **697 suites / 6970 tests pass**
+  (2 suites / 5 tests skipped), TypeScript passes, lint 0 errors / 15 inherited warnings.
+  `npm run build` with the councils switches passes in an isolated copy, including
+  the production service worker. First sandboxed attempt could not fetch Google
+  Fonts; the network-enabled repeat passed. `npm run test:rules` passes **256 + 5**
+  emulator checks. Logs: `/tmp/data-engine-manual-{full-2,lint-2,cancel-before,retire-before,retire-after}.log`,
+  `/tmp/data-engine-production-build-network.log`, `/tmp/data-engine-rules.log`.
+  Sequential review covered selection boundaries, pinned ancestry, owner fencing,
+  cancellation, recovery, public imports and actual screen wiring; no independent
+  agent reviewed this checkpoint. No high-confidence regression remains in its diff.
+- Next: resolve legacy council cache recovery and safe rollout ordering, then measure
+  cost and retention before further domain migrations.
   Recovery of an original unsent fork still leaves its source available, as the UI
   explains; retirement/active-tab distinction needs an explicit lifecycle design.
   The eleven
@@ -68,8 +92,9 @@ The earlier decision to treat a focused field hiding accepted remote content as
 harmless is withdrawn: its next keystroke can overwrite the remote value without
 a conflict. The regressions above establish why this must be fixed before rollout.
 
-**Production: nothing is live.** Every engine switch is off in Production, the prepared rules are
-not deployed, and no production user's data has gone through the engine.
+**Inherited deployment state (not re-inspected in this continuation):** engine switches
+were off in Production and prepared rules were not deployed. This continuation has
+not pushed or deployed anything. Preview uses the production database; see below.
 
 **Preview: councils run on the engine.** Branch alias
 `https://my-preacher-helper-git-data-engine-mykhailos-projects-97382f6c.vercel.app` (Vercel
@@ -79,7 +104,7 @@ sign-in in front of it). Three variables are set for **Preview · branch `data-e
 the production origin only); sign in with **"Sign in as Test User"**, the dev test account.
 The preview shares the production database.
 
-**Councils is the first domain and is functionally complete, proven twice in a browser:** on
+**Councils is the first integrated domain. Earlier browser coverage ran** on
 localhost (2026-09-18) and on the preview's production build with a live service worker
 (2026-09-19). Create, rename, add and name sections, conduct, carry a section by the button,
 delete (tombstone), an offline edit that survives a reload, two tabs on one field ending in a
@@ -91,9 +116,11 @@ closing log.
 `BUG-20260913-engine-idle-banner-hides-unfinished-work`,
 `BUG-20260919-engine-field-buffer-diverges`, and
 `BUG-20260919-engine-conflict-local-failure`. Evidence and limitations are above.
-The earlier claim of complete council integration still needs the held-outcome form audit.
+`BUG-20260919-council-outcome-bypasses-manual-scope` is also closed locally with
+manual-form conflict, cancel, restart/recovery and screen-wiring evidence above.
+Production rollout and legacy draft preservation remain open.
 
-**`main` holds two commits that are NOT pushed** (a push of `main` is a production deploy — the
+**Inherited main-branch note (verify before publishing): two commits were NOT pushed** (a push of `main` is a production deploy — the
 owner's button): `778b3b02` (a test pinned to 2026-09-18 that turned red on that day and would
 block every Vercel build) and `ecec9508` (the dev test account's password shipped in the public
 production bundle). Both are already merged into this branch. After they reach production, the
@@ -102,29 +129,25 @@ test account's password must be rotated — `BUGS.md` → "Открыто, но 
 **How a domain is rolled out changed on 2026-09-18** — read "Rollout order" before touching any
 switch. Closing a collection to legacy writers is the LAST step, not the first.
 
-**The eleven other domains have not been started.** See "Whole-app remainder" below.
+**Eleven other domain rows remain incomplete** (sermons already has partial adapters).
+See "Whole-app remainder" below; the whole-app objective is not complete.
 
 ### Where the next agent continues
 
-In this order; each step is done when its proof is written into the closing log.
+Continue autonomously in this order and record evidence, rather than waiting for the
+owner's eventual device acceptance before doing independent implementation work:
 
-1. **Owner's acceptance on an iPad** — Safari on the preview alias, "Sign in as Test User", no
-   installed PWA needed. Owner's action; ask what was seen. The case in Elephant (`el` from the
-   main checkout, case `2026-09-18-data-engine`, item 4.4) waits on it.
-2. **Owner's push of `main`**, then rotate the test account's password (Firebase Console →
-   Authentication, then `frontend/app/utils/testLogin.ts`, one change).
-3. **Continue the current checkpoint above**: verify held-outcome manual forms; recovery
-   visibility and delivered-request projection are now repaired locally.
-4. **Before any production switch** — the rest of "Blockers that gate every domain": deploy the
-   rules (run `npm run test:rules` first — it is not in the build gate), measure reads and writes
-   per session, decide retention for receipts and change-feed pointers, walk an installed PWA.
-5. **Then the rollout** itself, step by step as "Rollout order" says, the owner pressing each
-   button.
-6. **Only after councils is live and quiet**, the next domain (see "Domains"; groups carries two
-   of the five audited losses and has the same embedded-array shape as council sections).
+1. Preserve legacy persisted council drafts and review mixed-version rollout safety.
+2. Measure engine reads/writes and decide safe receipt/change-feed retention.
+3. Migrate remaining domains with per-domain behavior and boundary gates; groups
+   carries two audited data-loss paths and shares councils' embedded-array shape.
+4. Re-run production build, rules emulator and installed-PWA checks for the final tree.
+5. Physical iPad/phone acceptance, production switches/rules deployment and test-account
+   password rotation remain separately tracked external/owner actions. They have not
+   been performed by this continuation.
 
-Independent review: the owner declined a pass by a second engine (Codex) on 2026-09-18; the only
-adversarial review on record ran on the same provider. Offer it again before the production switch.
+The earlier recommendation to wait for councils to be live before implementing other
+domains is superseded by the owner's explicit autonomous whole-app instruction.
 
 ## How to run and check this locally
 
@@ -206,8 +229,8 @@ now, read the first section instead:
   confirms a queue without a result).
 - It has nested ID-bearing items (`topics`), which is the exact class the protocol
   was built for, so it is representative.
-- It has **no manual Save form** — the screens use `LiveTextInput`/`LiveTextArea`
-  autosave. The engine's manual-scope support is still being designed, so the
+- Most fields use `LiveTextInput`/`LiveTextArea` autosave. Held-outcome editing does
+  have a manual Save form, now integrated through `useDataForm`. Originally the
   first domain deliberately avoids the least mature part of the core.
 - It is small: 4 client operations against 33 for sermons.
 
@@ -290,7 +313,7 @@ Nothing may be switched on in production while these stand.
 | Manual Save forms | `app/data-engine/README.md`, manual scopes | The mechanism exists and is wired for the sermon title and verse (`useDataForm`, `manualScope.ts`; the open-A / type-B / remote-C case is guarded by `manualScope.test.ts`). What is owed is a live pass per form as each domain migrates — not a design |
 | Rules not deployed | `frontend/firestore.rules` | Prepared rules exist but are not live; until they are, an old client can still write a migrated document offline, the engine's SDK listener is denied the change head (it falls back to HTTP polling, up to ~15 s late), and a tombstone is unreadable to its owner's listener. `npm run test:rules` proves them on the emulator (256 + 5 checks) and is NOT part of the build gate — run it before deploying rules |
 | Legacy queued writes | `app/data-engine/legacyRecovery.client.ts` | Pending writes in `writeOutbox`, React Query paused mutations and the membership outbox must be discovered and settled before their domain's legacy path closes. **For councils this discovery finds nothing by construction:** their legacy queue lives in memory (`councilWriteQueue.client.ts`) and their optimistic copy in the persisted React Query cache `['councils', uid]` — neither is a place `discoverLegacyRecovery` looks. What an old bundle could not save survives a reload only there, unread |
-| Device validation | — | Proven on a production build with a live service worker (preview, desktop Chrome, 2026-09-19). Not yet on an iPad, a phone, or an installed PWA — and the automation tab is always `hidden`, so a genuinely foregrounded window is still unproven |
+| Device validation | — | Proven on a production build with a live service worker (preview, desktop Chrome, 2026-09-19). Not yet on an iPad, a phone, or an installed PWA. The current continuation verified genuinely visible Chrome tabs on localhost; no visibility emulation was used |
 | No cost measurement | — | Reads and writes per session under the engine have never been measured against the Firestore quota |
 
 ### Domains
@@ -300,7 +323,7 @@ that has to move. "State" is what exists today, measured by imports, not by inte
 
 | Domain | Ops | State today | What it still needs |
 |---|---|---|---|
-| Councils | 6 | List read through the engine (done, unshippable alone); `council-carry` registered in the core; `EngineCouncilCreator` written and unwired | Client half of writing: domain policy for the carry, document adapter, council and conduct screens, wiring the creator, then the readers in step 4 |
+| Councils | 6 | Create/read/update/delete, carry, readers and held-outcome manual forms integrated behind the collection switch; current browser and regression evidence above | Legacy persisted-draft discovery, retention/cost proof and rollout/device gates |
 | Sermons | 33 | Partially on the engine: core fields and scratch wired; `useSermonThoughtsDataDocument` written but **imported by no screen**; eight controls inert behind the switch (`page.tsx`, `legacyReadOnly`) | Wire thoughts; adapters for outline, structure, plan, preach dates and the AI writers; un-inert the eight controls. Largest domain, last in order |
 | Groups | 11 | Untouched. Carries two of the five audited losses (meeting array online and offline) | Full adapter and screens; the meeting array is the same ID-item class as council topics |
 | Studies (notes + materials + share links) | 7 | Untouched; the note editor is the most complete legacy example of the contract | Full adapter; `material-notes` relation already exists in the core; share links need an ownership decision |

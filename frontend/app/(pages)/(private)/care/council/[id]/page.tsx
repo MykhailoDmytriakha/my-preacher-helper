@@ -34,6 +34,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { ReorderArrows } from '@/(pages)/(private)/care/orders/ReorderArrows';
+import { CouncilOutcomeForm } from '@/components/council/CouncilOutcomeForm';
 import { CouncilOutcomePanel, useOutcomeLine, useRecordedOutcomeLabel, useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
 import MarkdownDisplay from '@/components/MarkdownDisplay';
 import { Chip } from '@/components/ui/Chip';
@@ -41,7 +42,7 @@ import ConfirmModal from '@/components/ui/ConfirmModal';
 import { LiveTextArea, LiveTextInput } from '@/components/ui/LiveTextInput';
 import { RichMarkdownEditor } from '@/components/ui/RichMarkdownEditor';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { isCollectionOnEngine } from '@/data-engine/react.client';
+import { DataDocumentProvider, isCollectionOnEngine } from '@/data-engine/react.client';
 import { useCouncilDataDocument } from '@/hooks/useCouncilDataDocument';
 import { useCouncil } from '@/hooks/useCouncils';
 import { useCouncilsRead } from '@/hooks/useCouncilsRead';
@@ -98,6 +99,12 @@ function LegacyCouncilDetailPage({ councilId }: { councilId: string }) {
  * business — so the screen keeps its own contract and loses its second write.
  */
 function EngineCouncilDetailPage({ councilId }: { councilId: string }) {
+  return <DataDocumentProvider resource={{ collection: 'councils', id: councilId }}>
+    <EngineCouncilDetailWorkspace councilId={councilId} />
+  </DataDocumentProvider>;
+}
+
+function EngineCouncilDetailWorkspace({ councilId }: { councilId: string }) {
   const { t } = useTranslation();
   const document = useCouncilDataDocument(councilId);
   const list = useCouncilsRead();
@@ -140,7 +147,7 @@ function EngineCouncilDetailPage({ councilId }: { councilId: string }) {
       onRetry={() => document.refresh()} onKeepLocal={() => document.keepLocal()} onAcceptRemote={() => document.acceptRemote()}
       recoveryChoices={recovery.choices} onListRecovery={recovery.refresh} onRecover={recovery.recover}
       recoveryLoading={recovery.loading} recoveryError={recovery.error} />
-    <CouncilDetailContent source={source} />
+    <CouncilDetailContent source={source} engineCouncilId={councilId} />
   </>;
 }
 
@@ -157,7 +164,7 @@ interface CouncilDetailSource {
   canCarryToNew?: boolean;
 }
 
-function CouncilDetailContent({ source }: { source: CouncilDetailSource }) {
+function CouncilDetailContent({ source, engineCouncilId }: { source: CouncilDetailSource; engineCouncilId?: string }) {
   const { t } = useTranslation();
   const router = useRouter();
   const { council, councils, loading, error, refresh, updateCouncil, deleteCouncil, carryTopicToNext, canCarryToNew = true } = source;
@@ -427,6 +434,7 @@ function CouncilDetailContent({ source }: { source: CouncilDetailSource }) {
           {council.topics.map((topic, index) => (
             <li key={topic.id}>
               <TopicCard
+                engineCouncilId={engineCouncilId}
                 index={index + 1}
                 topic={topic}
                 held={held}
@@ -497,6 +505,7 @@ function BackToList() {
 }
 
 function TopicCard({
+  engineCouncilId,
   index,
   topic,
   held,
@@ -510,6 +519,7 @@ function TopicCard({
   canCarryToNew,
   carriedTo,
 }: {
+  engineCouncilId?: string;
   index: number;
   topic: CouncilTopic;
   held: boolean;
@@ -714,7 +724,9 @@ function TopicCard({
 
               {held && (
                 <div className="mt-3 rounded-xl border border-indigo-200/80 bg-indigo-50/70 p-3 dark:border-indigo-900/50 dark:bg-indigo-950/30">
-                  {editingOutcome && info ? (
+                  {editingOutcome && engineCouncilId && !info ? (
+                    <CouncilOutcomeForm councilId={engineCouncilId} topicId={topic.id} onClose={() => setEditingOutcome(false)} />
+                  ) : editingOutcome && info ? (
                     <div className="space-y-2">
                       <CouncilOutcomePanel
                         topic={topic}

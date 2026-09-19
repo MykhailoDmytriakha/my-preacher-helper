@@ -45,14 +45,14 @@ describe('durable manual stages', () => {
     await expect(stages.put({ ...value, owner: 'foreign' })).rejects.toThrow('identity mismatch');
   });
 
-  it('compacts only closed clean acknowledged stages to a generation watermark', async () => {
+  it.each(['acknowledged', 'cancelled'] as const)('compacts only closed clean %s stages to a generation watermark', async terminal => {
     const stages = createIndexedDbManualScopes(), commits = createIndexedDbCommitStore();
     const queued = await commits.create(request());
     const value = envelope(); value.record.predecessor = { id: queued.id, owner: 'owner', resource, value: queued.value!, predecessorId: null };
     value.record.savedSelection = [{ exists: true, value: 'B' }]; value.record.savedGeneration = 1; value.commitReferences = [queued.id];
     await stages.create(value); await stages.compact('owner', 'scope'); expect(await stages.list('owner')).toHaveLength(1);
     value.record.active = false; await stages.put(value); await stages.compact('owner', 'scope'); expect(await stages.list('owner')).toHaveLength(1);
-    await commits.compareAndSet(queued, { ...queued, state: 'acknowledged', result: { kind: 'acknowledged', operationId: queued.id, snapshot: { ...baseline, value: queued.value } } });
+    await commits.compareAndSet(queued, { ...queued, state: terminal, result: terminal === 'acknowledged' ? { kind: 'acknowledged', operationId: queued.id, snapshot: { ...baseline, value: queued.value } } : null });
     await stages.compact('owner', 'scope');
     expect(await stages.list('owner')).toEqual([]);
     expect(await stages.read('owner', 'scope')).toEqual({ owner: 'owner', scopeId: 'scope', parentEditorId: 'tab', slot: 'title', record: null,

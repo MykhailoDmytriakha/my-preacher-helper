@@ -6,7 +6,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { newClientId } from '@/utils/clientId';
 
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
-import { describeSync, type SyncStatus } from './status';
+import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
 
 import type { CollectionState } from './collections';
@@ -403,16 +403,21 @@ export function useDataForm(resource: ResourceRef | null, slot: string, selectio
       if (busy && current()) setWorking(value => ({ identity, count: Math.max(0, value.identity === identity ? value.count - 1 : 0) }));
     }
   }, [targetForm, current, identity]);
+  const begin = useCallback(() => run(form => form.begin()), [run]);
+  const error = failure?.identity === identity ? failure.message : document.error;
   return {
     active: target?.state?.record.active ?? false,
     data: target?.state?.value ?? document.data,
+    // This may be a previously saved intent, so it is deliberately not called confirmed.
+    initialData: target?.state ? target.state.record.predecessor?.value ?? target.state.record.baseline.value : document.data,
+    recoveryIdentity: identity as object,
     busy: working.identity === identity && working.count > 0,
-    loading: document.loading,
+    loading: document.loading || Boolean(hasResource && owner && !target && !error),
     durable: target?.state?.durable ?? true,
     dirty: target?.state?.dirty ?? false,
-    status: document.status,
-    error: failure?.identity === identity ? failure.message : document.error,
-    begin: () => run(form => form.begin()),
+    status: describeManualSync(target?.state ?? null, document.state, document.status, error),
+    error,
+    begin,
     update: (updater: (draft: DocumentData) => DocumentData) => run(form => form.update(updater), false),
     save: (updater?: (draft: DocumentData) => DocumentData) => run(form => form.save(updater)),
     cancel: () => run(form => form.cancel()),

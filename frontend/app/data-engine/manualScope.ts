@@ -38,7 +38,8 @@ export interface ManualScopeRecord {
 export interface ManualScopePort {
   capture(): ManualCapture;
   isCurrent(): boolean;
-  isAcknowledged?(requestId: string): boolean;
+  /** Delivery succeeded, or the person explicitly retired the failed intent. */
+  isSettled?(requestId: string): boolean;
   /** Dedicated manual records must not enter ordinary editor autosave/recovery. */
   persist(record: ManualScopeRecord): Promise<void>;
   save(scopeId: string, captured: SessionCheckpoint, options: { predecessorId?: string | null }): Promise<ManualSavedIntent>;
@@ -178,7 +179,7 @@ export class ManualScope {
   restart(): Promise<void> {
     this.assertCurrent();
     if (!equalValues(this.record.stage, this.record.savedSelection)) throw new Error('Resolve the unsaved manual stage before reopening');
-    if (this.record.predecessor && !this.options.port.isAcknowledged?.(this.record.predecessor.id)) throw new Error('The previous manual Save is not acknowledged');
+    if (this.record.predecessor && !this.options.port.isSettled?.(this.record.predecessor.id)) throw new Error('The previous manual Save is not settled');
     this.record = captureRecord(this.options, this.record.generation + 1);
     this.tail = null;
     this.saves.clear();

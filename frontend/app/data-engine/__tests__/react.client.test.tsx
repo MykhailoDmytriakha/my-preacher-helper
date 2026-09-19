@@ -116,6 +116,12 @@ describe('React DataEngine contract', () => {
     jest.mocked(manual.form.update).mockImplementationOnce(updater => { void update(updater); return pending.promise; });
     let typing!: Promise<void>; act(() => { typing = hook.result.current.update(value => ({ ...value, content: 'typed' })); });
     expect(hook.result.current.busy).toBe(false);
+    expect(hook.result.current.status).toMatchObject({ phase: 'draft', canSave: true });
+    act(() => parent.setState({ ...parent.state, checkpoint: { ...parent.state.checkpoint,
+      confirmed: snapshot('remote', 2), draft: { content: 'remote' } } }));
+    expect(hook.result.current.data?.content).toBe('typed');
+    expect(hook.result.current.initialData?.content).toBe('base');
+    expect(hook.result.current.status).toMatchObject({ phase: 'remoteChanged', hasForeignChange: true });
     await act(async () => { pending.resolve(); await typing; });
     await act(async () => { jest.advanceTimersByTime(2000); });
     expect(parent.editor.save).not.toHaveBeenCalled(); expect(manual.form.save).not.toHaveBeenCalled();

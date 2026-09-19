@@ -100,8 +100,24 @@ blocked by `__tests__/architecture/dataEngineBoundary.test.ts`.
 A Save-button form must retain the baseline that the person actually opened.
 Passing its local text to a fresh shared document at Save time loses that baseline.
 Putting unfinished form text into a shared autosaving document sends it too early.
-The manual-scope integration is still in progress; do not enable migrated manual
-forms until open/edit/remote-change/save and cancel scenarios pass through it.
+Use `useDataForm(resource, slot, selection)` inside the same `DataDocumentProvider`
+as its parent screen. `begin()` pins the selected fields; `update()` persists a
+stage without sending it; `save()` submits that stage; `cancel()` retires only
+unsaved typing. `initialData` is the pinned ancestor (possibly an earlier queued
+Save, not a server confirmation). The form's own `status`, `error` and `durable`
+describe that stage, including remote changes while it is open.
+
+Use its `recoveryIdentity`, `listRecoverable` and `recover` with the public
+`useRecoveryDiscovery`. A reload offers unfinished work for explicit recovery;
+recovery itself never sends it. An acknowledged or explicitly cancelled Save is
+terminal: reopening starts from the current document, and clean inactive manual
+records can be compacted. Later unsaved typing must still survive.
+
+`components/council/CouncilOutcomeForm.tsx` is the integrated example. Its tests
+exercise the real engine and storage adapters: open A, type B, observe C, Save
+conflicts; Cancel sends nothing; restart recovers B only by choice. Every migrated
+form needs these behavior checks and a screen-level wiring check. Import gates
+alone cannot detect a component that discards its opening ancestor in `useState`.
 
 ## Invariants owned here
 

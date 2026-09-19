@@ -85,7 +85,7 @@ export function createIndexedDbManualScopes(): ManualScopeStore {
         if (!record.predecessor) { finish(); return; }
         read(store.get(['identity', owner, record.predecessor.id]), (requestKey: IDBValidKey | undefined) => {
           if (!requestKey) { done(undefined); return; }
-          read(store.get(requestKey), (request: { state: string } | undefined) => { if (request?.state === 'acknowledged') finish(); else done(undefined); });
+          read(store.get(requestKey), (request: { state: string } | undefined) => { if (request && ['acknowledged', 'cancelled'].includes(request.state)) finish(); else done(undefined); });
         });
       });
     }),
