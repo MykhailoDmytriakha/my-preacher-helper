@@ -29,6 +29,10 @@ Every opening allocates a new editor identity. A closed, acknowledged checkpoint
 already be compacted; reusing its identity would restart the edit counter behind the
 durable deduplication watermark. Share a mounted editor through the provider, and
 recover previous work explicitly rather than reusing an earlier page identity.
+The engine automatically continues one unambiguous **submitted** chain when a new
+editor opens that resource. This covers queued creation and updates after navigation
+or restart. Later unsent typing remains a separate recovery choice. Competing
+submitted branches are never silently selected or combined.
 
 ```tsx
 import { DataDocumentProvider, useDataDocument } from '@/data-engine/react.client';
@@ -86,9 +90,14 @@ function NoteContent({ id }: { id: string }) {
   Recovery forks the complete
   checkpoint, including the exact pending operation. It does not steal another tab's
   editor or silently apply an old draft.
-- **Collections:** `useDataCollection(collection)` returns confirmed snapshots,
-  completeness and freshness separately. Tombstones are retained in the result;
-  views exclude their rows while still knowing a deletion was confirmed. An offline
+- **Collections:** `useDataCollection(collection)` returns confirmed `snapshots`
+  and read-only presentation `documents` separately. Render rows from `documents`:
+  they include submitted local work and carry `pending`, `needsAttention` and
+  `deleting` flags. Never use these values as a confirmed editor baseline.
+  `DataCollectionStatus` is the shared list status component. A pending deletion
+  stays addressable until ACK, including after refusal. An ACK bridges feed lag
+  without upgrading collection completeness or freshness. Tombstones remain in
+  the result; views exclude rows whose value is null. An offline
   incomplete cache must not be presented as an authoritative empty collection.
   While the server says `legacyOpen`, one shared, lifecycle-bounded collection
   sweep also discovers old writers that do not publish feed events. Closure stops

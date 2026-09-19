@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 
 import { useTopicStateLine } from '@/components/council/CouncilOutcomePanel';
 import { Chip } from '@/components/ui/Chip';
+import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useCouncils } from '@/hooks/useCouncils';
 import { useCouncilsDataCollection } from '@/hooks/useCouncilsDataCollection';
@@ -91,6 +92,7 @@ function EngineCouncilListPage() {
       onRefused={message => toast.error(message || t('council.save.refused'))} />}
     {pending && <EngineCouncilCreator council={pending} onCreated={id => { setPending(null); router.push(`/care/council/${id}`); }}
       onFailed={message => { setPending(null); toast.error(message || t('council.save.refused')); }} />}
+    <DataCollectionStatus state={engine.state} />
     <CouncilListContent source={{ councils: engine.councils, loading: engine.loading, error: engine.error, refresh: engine.refresh, createCouncil }} />
   </>;
 }

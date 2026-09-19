@@ -112,7 +112,10 @@ class RelationPlanner {
   }
 
   private async list(collection: string, filter?: RelationFilter): Promise<ResourceSnapshot[]> {
-    const values = await this.reader.list(collection, MAX_RELATION_RESOURCES - this.cached.size + 1, filter);
+    // Returned rows may include documents already read individually. Reserve room
+    // for those duplicates plus one new row to prove a truncated scope cannot pass.
+    const overlap = [...this.cached.values()].filter(snapshot => snapshot.resource.collection === collection).length;
+    const values = await this.reader.list(collection, MAX_RELATION_RESOURCES - this.cached.size + overlap + 1, filter);
     return values.map(snapshot => this.remember(snapshot));
   }
 
@@ -180,16 +183,42 @@ class RelationPlanner {
     await this.linkMaterial(this.writes.get(key(this.primary.resource)) ?? this.primary, before, after, generations);
   }
 
+  /** Validate the final transaction view, including documents absent from the client's edits. */
+  private async exclusiveSeriesMembers(added: Set<string>): Promise<void> {
+    if (!added.size) return;
+    const series = new Map((await this.list('series')).map(snapshot => [key(snapshot.resource), snapshot]));
+    for (const snapshot of this.writes.values()) {
+      if (snapshot.resource.collection === 'series') series.set(key(snapshot.resource), snapshot);
+    }
+    const assigned = new Set<string>();
+    for (const snapshot of series.values()) {
+      if (!snapshot.value || snapshot.metadata?.deleted) continue;
+      for (const member of currentItems(snapshot.value)) {
+        const identity = `${member.type}:${member.refId}`;
+        if (!added.has(identity)) continue;
+        if (assigned.has(identity)) fail('membership-already-assigned');
+        assigned.add(identity);
+      }
+    }
+  }
+
   private async seriesRelation(command: Extract<DataCommand, { relation: 'series-membership' }>): Promise<CommandResult | undefined> {
+    const added = new Set<string>();
     for (const edit of command.edits) {
       const series = await this.get(edit.resource);
       const value = this.live(series, edit.generation);
       const merged = mergeFields({ exists: true, value: edit.beforeItems }, { exists: true, value: edit.afterItems }, { exists: true, value: currentItems(value) }, ['items']);
       if (merged.conflicts.length) return this.conflict(merged.conflicts.map(item => ({ ...item, path: [edit.resource.id, ...item.path] })));
       const fields = seriesFields(merged.value.value as DocumentData[]);
+      const before = new Set(currentItems(value).map(member => `${member.type}:${member.refId}`));
+      for (const member of fields.items as DocumentData[]) {
+        const identity = `${member.type}:${member.refId}`;
+        if (!before.has(identity)) added.add(identity);
+      }
       await this.checkSeriesTargets(fields.items as DocumentData[]);
       this.stage(series, fields);
     }
+    await this.exclusiveSeriesMembers(added);
   }
 
   /**
@@ -342,7 +371,11 @@ class RelationPlanner {
       materialSections(value, ids(value.noteIds));
       if (command.kind === 'create') await this.linkMaterial(accepted, [], ids(value.noteIds));
     }
-    if (this.primary.resource.collection === 'series' && command.kind === 'create') await this.checkSeriesTargets(value.items as DocumentData[]);
+    if (this.primary.resource.collection === 'series' && command.kind === 'create') {
+      const members = value.items as DocumentData[];
+      await this.checkSeriesTargets(members);
+      await this.exclusiveSeriesMembers(new Set(members.map(member => `${member.type}:${member.refId}`)));
+    }
   }
 
   private async ordinary(command: Exclude<DataCommand, { kind: 'relation' }>): Promise<CommandResult | undefined> {

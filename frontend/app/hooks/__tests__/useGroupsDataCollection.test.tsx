@@ -22,6 +22,16 @@ it('projects current rows and hides tombstones using the same legacy shape', () 
   expect(result.current.groups).toEqual([expect.objectContaining({ id: 'a', title: 'Updated', status: 'draft', flow: [], templates: [] })]);
   expect(result.current.complete).toBe(true);
 });
+it('uses the shared submitted projection while keeping completeness and status available', () => {
+  const source = jest.mocked(useDataCollection).getMockImplementation()!('groups');
+  jest.mocked(useDataCollection).mockReturnValue({ ...source, state: { ...source.state!, complete: false, documents: [{
+    resource: { collection: 'groups', id: 'pending' }, value: { userId: 'owner', title: 'Queued' }, pending: true, needsAttention: false, deleting: false,
+  }] } });
+  const { result } = renderHook(() => useGroupsDataCollection());
+  expect(result.current.groups).toEqual([expect.objectContaining({ id: 'pending', title: 'Queued' })]);
+  expect(result.current.complete).toBe(false);
+  expect(result.current.state?.documents?.[0].pending).toBe(true);
+});
 it('keeps the engine read idle when the domain or reader is inactive', () => {
   jest.mocked(isCollectionOnEngine).mockReturnValue(false);
   renderHook(() => useGroupsDataCollection()); expect(useDataCollection).toHaveBeenLastCalledWith(null);

@@ -1,11 +1,12 @@
-import { serverCopyIsNewer, type VersionedCopy } from '../utils/readFreshness';
-
+import { collectionDocumentViews } from './collectionView';
 import { CommitQueue, type CommitRequest, type CommitStore } from './commits';
 import { EditorController, type CheckpointRecoveryStore, type CheckpointStore, type EditorState, type RecoveryCheckpoint } from './controller';
 import { collectionHeadRef } from './feed';
 import { ManualScope, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord } from './recovery.client';
+import { canReplaceSnapshot } from './snapshotFreshness';
+import { submittedWorkCheckpoint } from './submittedWork';
 
 import type { CollectionReader, CollectionState } from './collections';
 import type { ManualScopeStore, StoredManualScope } from './manualScopes.client';
@@ -13,6 +14,8 @@ import type { Observation, ResourceObserver } from './observer';
 import type { DataEngineRuntime, RuntimeEvent } from './runtime';
 import type { SessionCheckpoint } from './session';
 import type { DocumentData, EngineTransport, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
+
+export { canReplaceSnapshot } from './snapshotFreshness';
 
 export interface SnapshotStore {
   read(owner: string, resource: ResourceRef): Promise<ResourceSnapshot | undefined>;
@@ -89,20 +92,6 @@ const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
 const cacheKey = (owner: string, resource: ResourceRef) => JSON.stringify([owner, resource.collection, resource.id]);
 const initialObservation = (): Observation => ({ snapshot: null, source: null, readiness: 'unknown', checking: false, error: false });
-
-/** Incoming data must be a confirmed snapshot, never an optimistic editor draft. */
-export function canReplaceSnapshot(current: ResourceSnapshot | undefined, incoming: ResourceSnapshot): boolean {
-  if (!current) return true;
-  if (!sameResource(current.resource, incoming.resource)) return false;
-  if (current.metadata) {
-    return incoming.metadata !== null
-      && incoming.metadata.generation === current.metadata.generation
-      && incoming.metadata.revision >= current.metadata.revision
-      && (!current.metadata.deleted || incoming.metadata.deleted);
-  }
-  if (incoming.metadata || current.value === null || incoming.value === null) return true;
-  return !serverCopyIsNewer(current.value as VersionedCopy, incoming.value as VersionedCopy);
-}
 
 /** Public lifecycle boundary: callers never manage replay, baselines, or transport choice. */
 export class DataEngine {
@@ -208,18 +197,47 @@ export class DataEngine {
   }
 
   readCollection(collection: string): Promise<CollectionState> {
-    this.requireOwner();
-    return this.collectionReader().read(collection);
+    const owner = this.requireOwner(), generation = this.generation;
+    return this.collectionReader().read(collection, { allowIncompleteCache: true }).then(async state => {
+      const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+      return { ...state, documents: collectionDocumentViews(owner, collection, state.snapshots, requests) };
+    });
   }
 
   watchCollection(collection: string, listener: (state: CollectionState) => void): () => void {
-    this.requireOwner();
-    return this.collectionReader().watch(collection, listener);
+    const owner = this.requireOwner(), generation = this.generation;
+    const reader = this.collectionReader();
+    let active = true, latest: CollectionState | null = null;
+    const emit = () => {
+      if (!active || !latest) return;
+      if (!this.current(owner, generation)) {
+        active = false;
+        listener({ snapshots: [], documents: [], complete: false, freshness: 'unknown', checking: false, version: 0, error: null });
+        return;
+      }
+      listener({ ...latest, documents: collectionDocumentViews(owner, collection, latest.snapshots, [...this.commitRecords.values()]) });
+    };
+    const stopRead = reader.watch(collection, state => { latest = state; emit(); });
+    const stopCommits = this.commits.subscribe(({ request }) => {
+      if (request.owner === owner && request.baseline.resource.collection === collection) emit();
+    });
+    this.background(this.commits.list().then(requests => {
+      if (!active || !this.current(owner, generation)) return;
+      for (const request of requests) {
+        const newer = this.commitRecords.get(request.id);
+        if (!newer || newer.revision < request.revision) this.commitRecords.set(request.id, request);
+      }
+      emit();
+    }), owner, generation);
+    return () => { active = false; stopRead(); stopCommits(); };
   }
 
   refreshCollection(collection: string): Promise<CollectionState> {
-    this.requireOwner();
-    return this.collectionReader().refresh(collection);
+    const owner = this.requireOwner(), generation = this.generation;
+    return this.collectionReader().refresh(collection).then(async state => {
+      const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+      return { ...state, documents: collectionDocumentViews(owner, collection, state.snapshots, requests) };
+    });
   }
 
   openEditor(resource: ResourceRef, editorId: string, options?: EditorOpenOptions): Promise<ManagedEditor> {
@@ -392,15 +410,20 @@ export class DataEngine {
       if (entry.closed) throw this.abortError();
     };
     try {
+      const requests = creating ? [] : await this.commits.list();
+      assertOpening();
+      const submittedCheckpoint = submittedWorkCheckpoint(owner, frozen, requests);
+      const resumingCreation = Boolean(submittedCheckpoint && submittedCheckpoint.confirmed.value === null && !submittedCheckpoint.confirmed.metadata);
       const snapshot: ResourceSnapshot = creating
         ? { resource: frozen, value: null, metadata: null }
-        : await this.openingSnapshot(owner, generation, frozen, editorId);
+        : submittedCheckpoint?.confirmed ?? await this.openingSnapshot(owner, generation, frozen, editorId);
       assertOpening();
       const controller = await EditorController.open({
         owner, editorId, snapshot, store: this.options.checkpoints, runtime: this.options.runtime,
         operationId: this.options.operationId,
         readConfirmed: resource => this.read(resource),
         commits: this.commits,
+        submittedCheckpoint: submittedCheckpoint ?? undefined,
         isCurrentOwner: uid => !entry.closed && this.current(uid, generation),
       });
       entry.controller = controller;
@@ -429,12 +452,12 @@ export class DataEngine {
         if (!equalValues(confirmed, lastConfirmed)) {
           lastConfirmed = confirmed;
           // A new, unsubmitted editor's absence is not evidence of a server deletion.
-          if (!creating || confirmed.metadata || confirmed.value !== null) {
+          if ((!creating && !resumingCreation) || confirmed.metadata || confirmed.value !== null) {
             this.background(this.persistSnapshot(owner, generation, confirmed), owner, generation);
           }
         }
         // Watching an existing ID before create acknowledgement could turn create into update.
-        if (!entry.stopObservation && (!creating || confirmed.metadata || confirmed.value !== null)) {
+        if (!entry.stopObservation && ((!creating && !resumingCreation) || confirmed.metadata || confirmed.value !== null)) {
           const stopObservation = this.options.observer.watch(owner, frozen, observation => {
             if (entry.closed || !this.current(owner, generation)) return;
             entry.observation = observation;

@@ -128,17 +128,19 @@ by `el` in this worktree, case `2026-09-19-data-engine-production-readiness`.
   `/tmp/data-engine-groups-final-{tests,lint}.log`, `/tmp/data-engine-group-types.log`,
   `/tmp/data-engine-production-build-groups.log`. Live conduct reached saved status,
   and the already-open list adopted its 7-minute duration.
-- Critical next check reproduced `BUG-20260919-engine-series-double-assignment`:
-  two series accept the same member; initial series creation has the same hole.
-  Two new negative regressions are red. Fix the server invariant and migrate the
-  relation client before enabling groups. This is not production readiness.
-- Next: migrate remaining domain adapters, starting with groups and their embedded
-  flow/meeting editors, while preserving opening baselines and explicit manual stages.
-  Recovery of an original unsent fork still leaves its source available, as the UI
-  explains; retirement/active-tab distinction needs an explicit lifecycle design.
-  The eleven
-  remaining domains, recovery lifecycle, cost/retention policy, rules rollout
-  and physical-device acceptance are still outstanding.
+- Shared submitted-work checkpoint: navigation/restart retain queued creation and
+  updates. Lists project local intent separately from confirmed snapshots; pending
+  deletion remains addressable. Logout clears the list, and the canonical session
+  rule preserves independently merged ancestor fields. Full fast gate: 710 suites /
+  7,049 tests. Lint/types pass; full coverage passes at 92.05% lines. Details at the end of this file.
+- Series exclusivity now rejects concurrent assignment of the same typed member
+  to two series, including initial creation. Five actual emulator tests pass; the
+  explicit opt-in is preserved by Jest setup. Group activation is still blocked on
+  compatible series clients and atomic move/recovery handling.
+- Next: migrate series membership, series CRUD and their readers. Group editing,
+  creation, manual conduct and reads are implemented but remain off in production.
+  Remaining domain rows, recovery lifecycle, cloud cost/retention measurement,
+  protective rules rollout and physical-device acceptance remain outstanding.
 
 The earlier decision to treat a focused field hiding accepted remote content as
 harmless is withdrawn: its next keystroke can overwrite the remote value without
@@ -1226,3 +1228,39 @@ Group implementation checkpoint in progress:
   compatible boundary before switching groups on (delete can mark linked series).
   Architecture ledger did not grow. Public `clientPolicy` contains flags/refusal
   only, no transport or storage access.
+
+2026-09-19 shared submitted-work continuation (in progress):
+- Server relation planning now rejects assigning one typed member to two series,
+  including creation and stale ancestor item-ID replacement. The bounded owner
+  scan accounts for already-read rows before declaring its result complete.
+  A real Firestore emulator concurrent assignment test produced one ACK and one
+  refusal. The opt-in environment flag previously got erased by Jest setup;
+  it is now preserved and all five emulator cases actually execute.
+- New editors continue a single durable submitted chain across navigation and
+  restart. Unsubmitted later typing stays in its source recovery fork; competing
+  branches are not silently combined. Confirmed cache remains separate.
+- Collection presentation now projects submitted work with pending/attention
+  status, including a queued creation and an addressable pending deletion. ACKs
+  bridge feed lag through the canonical snapshot freshness rule. This part is
+  undergoing integration, architecture and UI checks; it is not a rollout.
+- Next: finish shared handoff/projection review and gates, then migrate series
+  membership and all related writers before enabling groups.
+
+- Shared handoff checkpoint verification: test:fast 710 suites / 7,049 tests passed;
+  lint has zero errors and 15 inherited warnings; both TypeScript checks pass.
+  Sequential review caught and fixed logout clearing and acknowledged-ancestor
+  projection, using the existing DataSession merge rule. Browser Chrome localhost:
+  edited the own QA group's title to `QA engine submitted handoff`, immediately
+  returned to the list, and saw the new title. Offline/restart behavior is proved
+  by the actual engine/storage test harness, not claimed as a physical-device run.
+
+- Full coverage passed: 710 suites / 7,049 tests, 92.05% lines (6 tests skipped,
+  including the explicit emulator opt-in). Focused submitted-chain coverage is
+  100% lines/branches; collection projection is 100% lines. Reports:
+  `/tmp/data-engine-handoff-{full-tests,coverage,lint}.log` and
+  `/tmp/data-engine-handoff-focused-coverage-2.log`. The five real emulator cases
+  were run separately (`/tmp/data-engine-membership-emulator.log`).
+- Closed locally in this checkpoint: `BUG-20260919-engine-navigation-hides-queued-work`,
+  `BUG-20260919-engine-series-double-assignment`,
+  `BUG-20260919-engine-emulator-optin-cleared`. Physical-device and production PWA
+  verification of this checkpoint remain open. No cloud switch/rules/deploy changed.

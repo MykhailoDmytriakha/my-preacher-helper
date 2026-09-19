@@ -336,7 +336,7 @@ export function useDataCollection(collection: string | null) {
   const error = (failure?.identity === identity ? failure.message : null) ?? state?.error ?? engineError;
   return {
     state,
-    loading: Boolean(owner && collection && !error && (!state || state.freshness === 'unknown')),
+    loading: Boolean(owner && collection && !error && (!state || (state.freshness === 'unknown' && !state.documents?.some(document => document.value !== null)))),
     error,
     refresh: async () => {
       if (!current() || !browser || !owner || !collection) throw new Error('The active collection changed');

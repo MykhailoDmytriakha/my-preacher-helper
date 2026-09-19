@@ -13,6 +13,8 @@
     "actionFailed": "Could not read or export the saved change. The original record has been kept."
   },
   "dataSync": {
+    "collectionAttention": "Some submitted changes need attention. Open the item or its saved drafts to review them.",
+    "collectionIncomplete": "The local list may be incomplete. Connect to check the server.",
     "phase": {
       "savingLocally": "Saving on this device…",
       "localFailure": "Could not save on this device. Keep this page open and retry.",

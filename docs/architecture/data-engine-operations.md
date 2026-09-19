@@ -38,6 +38,15 @@ heads, dependency receipts and planning reads. For a list page the model is
 `limit + 1`, so pagination may read more rows than that page returns. A feed page
 costs `1 + max(1, pointer rows) + distinct changed documents`.
 
+Assigning a sermon/group to a series additionally scans the owner's series inside
+the transaction to enforce exclusive typed membership, including concurrent
+assignments from different devices. Removal/reorder without new membership avoids
+that scan. The planner bounds total distinct participants at 100 and refuses
+`relation-scope-too-large` when it cannot prove the scope complete; it never accepts
+a truncated uniqueness check. This is an additional relation cost, not an ordinary
+three-read save. The emulator regression proves one ACK/one refusal for concurrent
+assignments; it does not measure live billing or client security rules.
+
 The current Standard-edition free allowance is 50,000 document reads, 20,000 writes
 and 20,000 deletes per day for one database per project; it is shared by users and
 all application paths. Storage allowance is 1 GiB. TTL deletes are outside free

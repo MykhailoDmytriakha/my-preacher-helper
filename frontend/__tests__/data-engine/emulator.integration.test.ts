@@ -69,6 +69,31 @@ run('DataEngine against real Firestore transactions', () => {
   jest.setTimeout(30_000);
   afterAll(async () => { await adminDb.terminate(); });
 
+  it('serializes competing series assignments and preserves one owner after duplicate delivery', async () => {
+    const member = await seed('exclusive-member');
+    const createSeries = async (name: string, items: unknown[] = []) => {
+      const resource = { collection: 'series', id: `${owner}-${name}` };
+      const result = await processCommand(owner, { protocol: 1, operationId: operationId(), owner, resource, generation: null, dependsOn: [], kind: 'create',
+        value: { userId: owner, theme: name, bookOrTopic: '', status: 'draft', createdAt: 'now', updatedAt: 'now', items } });
+      if (result.kind !== 'acknowledged') throw new Error(`Series seed refused: ${JSON.stringify(result)}`);
+      return result.snapshot;
+    };
+    const first = await createSeries('exclusive-first'), second = await createSeries('exclusive-second');
+    const attach = (target: ResourceSnapshot): DataCommand => ({ protocol: 1, operationId: operationId(), owner,
+      resource: target.resource, generation: target.metadata!.generation, dependsOn: [], kind: 'relation', relation: 'series-membership', edits: [
+        { resource: target.resource, generation: target.metadata!.generation, beforeItems: [], afterItems: [
+          { id: 'member', type: 'sermon', refId: member.resource.id, position: 1 },
+        ] },
+      ] });
+    const commands = [attach(first), attach(second)];
+    const results = await Promise.all(commands.map(command => processCommand(owner, command)));
+    expect(results.map(result => result.kind).sort()).toEqual(['acknowledged', 'refused']);
+    expect(results.find(result => result.kind === 'refused')).toMatchObject({ code: 'membership-already-assigned' });
+    await Promise.all(commands.map(command => processCommand(owner, command)));
+    const stored = await Promise.all([first, second].map(target => readDocument(owner, target.resource)));
+    expect(stored.reduce((count, snapshot) => count + (snapshot.value!.items as unknown[]).length, 0)).toBe(1);
+  });
+
   it('delivers two explicit offline saves after restart without opening the editor and retains unsaved typing', async () => {
     const initial = await seed('closed-successor');
     const checkpointRows = new Map<string, EditorRecord>();

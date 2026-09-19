@@ -43,6 +43,8 @@ interface ControllerOptions {
   isCurrentOwner: (owner: string) => boolean;
   readConfirmed?: (resource: ResourceRef) => Promise<ResourceSnapshot>;
   commits?: CommitQueue;
+  /** Proven submitted intent for a fresh opening; an existing checkpoint takes precedence. */
+  submittedCheckpoint?: SessionCheckpoint;
 }
 
 export interface EditorState {
@@ -88,6 +90,12 @@ export class EditorController {
       controller.prepared = saved.prepared;
       controller.unfinalized = saved.unfinalized ?? [];
       controller.completedCommits = saved.completedCommits ?? [];
+    }
+    if (!saved && options.submittedCheckpoint) {
+      const checkpoint = options.submittedCheckpoint;
+      if (checkpoint.confirmed.resource.collection !== options.snapshot.resource.collection
+        || checkpoint.confirmed.resource.id !== options.snapshot.resource.id) throw new Error('Submitted checkpoint identity mismatch');
+      controller.session = DataSession.restore(checkpoint);
     }
     controller.unsubscribe = options.runtime.subscribe(event => controller.onRuntime(event));
     if (options.commits) controller.stopCommits = options.commits.subscribe(({ request }) => controller.onCommit(request));

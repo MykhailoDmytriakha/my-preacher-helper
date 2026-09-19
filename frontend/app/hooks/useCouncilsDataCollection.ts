@@ -22,10 +22,10 @@ export function useCouncilsDataCollection() {
   const state = collection.state;
   const councils = useMemo<Council[]>(
     () =>
-      (state?.snapshots ?? [])
+      (state?.documents ?? state?.snapshots ?? [])
         // Tombstones and confirmed absences stay in the collection state on purpose: the list
         // must not show them, while the engine still knows the deletion was confirmed.
-        .filter(snapshot => snapshot.value !== null && !snapshot.metadata?.deleted)
+        .filter(snapshot => snapshot.value !== null)
         .map(snapshot => hydrateCouncil(snapshot.value as Record<string, unknown>, snapshot.resource.id))
         .sort((left, right) => left.id.localeCompare(right.id)),
     [state]
@@ -34,9 +34,10 @@ export function useCouncilsDataCollection() {
    * Every id the engine knows about — live councils, tombstones and confirmed absences alike.
    * The pre-database carry-over must not re-create a council that was deleted since.
    */
-  const knownIds = useMemo(() => new Set((state?.snapshots ?? []).map(snapshot => snapshot.resource.id)), [state]);
+  const knownIds = useMemo(() => new Set((state?.documents ?? state?.snapshots ?? []).map(snapshot => snapshot.resource.id)), [state]);
   return {
     councils,
+    state,
     knownIds,
     /**
      * `complete` alone is loaded from the disk cursor of an EARLIER session, offline included;

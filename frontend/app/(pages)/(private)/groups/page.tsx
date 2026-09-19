@@ -17,6 +17,7 @@ import { EngineCreateGroupModal } from '@/components/groups/EngineCreateGroupMod
 import { EngineDeleteGroupModal } from '@/components/groups/EngineDeleteGroupModal';
 import GroupCard from '@/components/groups/GroupCard';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
 import { isCollectionOnEngine, useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useGroups } from '@/hooks/useGroups';
@@ -61,8 +62,8 @@ function EngineGroupsPage() {
     } });
   return <>
     <GroupsView source={source} onCreate={() => setCreation({ id: newClientId() })} onDelete={group => setDeleting(group.id)}
-      feedback={<DataSyncStatus status={null} recoveryChoices={recovery.choices} onListRecovery={recovery.refresh}
-        onRecover={recovery.recover} recoveryLoading={recovery.loading} recoveryError={recovery.error} />} />
+      feedback={<><DataCollectionStatus state={source.state} /><DataSyncStatus status={null} recoveryChoices={recovery.choices} onListRecovery={recovery.refresh}
+        onRecover={recovery.recover} recoveryLoading={recovery.loading} recoveryError={recovery.error} /></>} />
     {creation && <EngineCreateGroupModal key={`${owner}:${creation.id}`} groupId={creation.id} recoveryId={creation.recoveryId}
       onClose={() => setCreation(null)} onQueued={id => { setCreation(null); router.push(`/groups/${id}`); }} />}
     {deleting && <EngineDeleteGroupModal key={`${owner}:${deleting}`} groupId={deleting} onClose={() => setDeleting(null)} />}
@@ -70,7 +71,7 @@ function EngineGroupsPage() {
 }
 function GroupsView({ source, onCreate, onDelete, feedback }: {
   source: Pick<ReturnType<typeof useGroups>, 'groups' | 'loading'> & { error: unknown; refreshGroups: () => unknown }
-    & Partial<Pick<ReturnType<typeof useGroups>, 'createNewGroup' | 'deleteExistingGroup'>>;
+    & Partial<Pick<ReturnType<typeof useGroups>, 'createNewGroup' | 'deleteExistingGroup'>> & { complete?: boolean };
   onCreate?: () => void; onDelete?: (group: Group) => void; feedback?: ReactNode;
 }) {
   const { t } = useTranslation();
@@ -255,7 +256,7 @@ function GroupsView({ source, onCreate, onDelete, feedback }: {
             />
           ))}
         </div>
-      ) : groups.length === 0 && !error ? (
+      ) : groups.length === 0 && !error && source.complete !== false ? (
         <div className="rounded-xl border border-dashed border-gray-300 bg-white/50 p-8 text-center dark:border-gray-700 dark:bg-gray-900/40">
           <p className="text-gray-600 dark:text-gray-300">
             {t('workspaces.groups.empty', { defaultValue: 'No groups yet. Create your first group.' })}

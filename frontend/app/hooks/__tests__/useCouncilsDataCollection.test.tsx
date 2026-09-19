@@ -31,6 +31,15 @@ function setup(value: CollectionState | null, extra: Partial<ReturnType<typeof u
 beforeEach(() => jest.clearAllMocks());
 
 describe('useCouncilsDataCollection', () => {
+  it('uses the submitted presentation and reserves queued creation ids without claiming a server read', () => {
+    const { result } = setup(state([], { complete: false, freshness: 'unknown', documents: [{
+      resource: { collection: 'councils', id: 'queued' }, value: council('Queued'), pending: true, needsAttention: false, deleting: false,
+    }] }));
+    expect(result.current.councils[0]).toMatchObject({ id: 'queued', title: 'Queued' });
+    expect(result.current.knownIds.has('queued')).toBe(true);
+    expect(result.current.serverAnswered).toBe(false);
+    expect(result.current.state?.snapshots).toEqual([]);
+  });
   it('shapes engine snapshots into councils the screens already understand', () => {
     const { result } = setup(state([snapshot('b', council('Second', { rev: 7 })), snapshot('a', council('First'))]));
     expect(result.current.councils).toEqual([

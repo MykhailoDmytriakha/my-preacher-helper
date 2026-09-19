@@ -381,3 +381,60 @@ describe('council carry', () => {
     expect(await planDataCommand(removed, source, reader)).toMatchObject({ result: { kind: 'acknowledged' } });
   });
 });
+
+describe('exclusive series membership across documents', () => {
+  const attach = (target: ResourceSnapshot, member = item('group', { type: 'group' })): DataCommand => ({
+    ...commandBase(target), kind: 'relation', relation: 'series-membership', edits: [
+      { resource: target.resource, generation: target.metadata?.generation ?? null, beforeItems: [], afterItems: [member] },
+    ],
+  });
+  it('refuses a second offline assignment to another series without silently moving or duplicating it', async () => {
+    put('groups', 'group', {});
+    const first = series('first', []), second = series('second', []);
+    const accepted = await planDataCommand(attach(first), first, reader);
+    expect(accepted.result.kind).toBe('acknowledged');
+    accepted.writes.forEach(write => records.set(key(write.resource.collection, write.resource.id), write));
+    const competing = await planDataCommand(attach(second), second, reader);
+    expect(competing.result).toMatchObject({ kind: 'refused', code: 'membership-already-assigned' });
+    expect(competing.writes).toEqual([]);
+    expect(records.get('series/first')?.value?.items).toEqual([item('group', { type: 'group' })]);
+  });
+  it('also guards initial members in a newly created series', async () => {
+    put('sermons', 'sermon', {}); series('existing', [item()]);
+    const target = { resource: { collection: 'series', id: 'new' }, value: null, metadata: null };
+    const command: DataCommand = { ...commandBase(target), kind: 'create', value: {
+      userId: owner, theme: 'New', bookOrTopic: '', status: 'draft', createdAt: 'now', updatedAt: 'now', items: [item()],
+    } };
+    expect(await planDataCommand(command, target, reader)).toMatchObject({ result: { kind: 'refused', code: 'membership-already-assigned' }, writes: [] });
+  });
+  it('rejects incomplete owner scans even when the prefix contains already-read participants', async () => {
+    put('groups', 'group', {});
+    const target = series('first', []);
+    for (let index = 0; index < 101; index++) series(`later-${index}`, []);
+    expect(await planDataCommand(attach(target), target, reader)).toMatchObject({ result: { code: 'relation-scope-too-large' }, writes: [] });
+  });
+  it('distinguishes group and sermon identity and tolerates unrelated historical duplicates', async () => {
+    put('groups', 'group', {});
+    series('legacy-one', [item('old')]); series('legacy-two', [item('old')]);
+    series('same-id-sermon', [item('group')]);
+    const target = series('target', []);
+    expect((await planDataCommand(attach(target), target, reader)).result.kind).toBe('acknowledged');
+  });
+  it('allows removing a legacy duplicate without an unrelated ownership sweep', async () => {
+    const target = series('first', [item()]); series('second', [item()]);
+    const command: DataCommand = { ...commandBase(target), kind: 'relation', relation: 'series-membership', edits: [
+      { resource: target.resource, generation: null, beforeItems: [item()], afterItems: [] },
+    ] };
+    const noScan: RelationReader = { ...reader, list: async () => { throw new Error('Removal does not need a global scan'); } };
+    expect((await planDataCommand(command, target, noScan)).result.kind).toBe('acknowledged');
+  });
+
+  it('checks accepted server additions even when a supplied ancestor changes the item ID', async () => {
+    put('groups', 'group', {}); series('existing', [item('group', { type: 'group' })]);
+    const target = series('target', []);
+    const command = attach(target) as Extract<DataCommand, { relation: 'series-membership' }>;
+    command.edits[0].beforeItems = [item('group', { type: 'group', id: 'older-item' })];
+    expect(await planDataCommand(command, target, reader)).toMatchObject({ result: { code: 'membership-already-assigned' }, writes: [] });
+  });
+
+});

@@ -537,6 +537,17 @@ describe('React DataEngine contract', () => {
 const collectionState = (snapshots: ResourceSnapshot[] = [snapshot()]): CollectionState => ({ snapshots, complete: true, freshness: 'server', checking: false, version: 1, error: null });
 
 describe('React collection and explicit recovery APIs', () => {
+  it('shows submitted local rows before an initial server list answers', async () => {
+    const b = makeBrowser(); jest.mocked(createBrowserDataEngine).mockReturnValue(b.browser);
+    const { result } = renderHook(() => useDataCollection('studyNotes'), { wrapper: Wrapper });
+    await waitFor(() => expect(b.collectionWatches).toHaveLength(1));
+    await act(async () => b.collectionWatches[0].next({ ...collectionState([]), complete: false, freshness: 'unknown', documents: [{
+      resource: snapshot().resource, value: snapshot().value, pending: true, needsAttention: false, deleting: false,
+    }] }));
+    expect(result.current.loading).toBe(false);
+    expect(result.current.state?.complete).toBe(false);
+    expect(result.current.state?.freshness).toBe('unknown');
+  });
   beforeEach(() => { jest.useFakeTimers(); jest.clearAllMocks(); owner('owner'); });
   afterEach(() => { jest.clearAllTimers(); jest.useRealTimers(); });
 

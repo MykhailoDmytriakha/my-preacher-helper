@@ -1,7 +1,9 @@
-import { canReplaceSnapshot, type SnapshotStore } from './engine';
 import { collectionHeadRef, feedVersion } from './feed';
 import { equalValues, getResourcePolicy, isValidIdentifier } from './protocol';
+import { canReplaceSnapshot } from './snapshotFreshness';
 
+import type { CollectionDocumentView } from './collectionView';
+import type { SnapshotStore } from './engine';
 import type { Observation, ResourceObserver } from './observer';
 import type { CollectionChanges, CollectionPage, CollectionTransport, ResourceSnapshot } from './types';
 
@@ -25,6 +27,8 @@ export interface CollectionSnapshotStore extends SnapshotStore {
 export interface CollectionState {
   /** Includes tombstones and confirmed legacy absences; views choose which rows to display. */
   snapshots: ResourceSnapshot[];
+  /** Added by DataEngine: submitted local intent is separate from confirmed snapshots. */
+  documents?: CollectionDocumentView[];
   complete: boolean;
   freshness: 'unknown' | 'cache' | 'server';
   checking: boolean;
@@ -133,13 +137,13 @@ export class CollectionReader {
     this.restart();
   }
 
-  async read(collection: string): Promise<CollectionState> {
+  async read(collection: string, options?: { allowIncompleteCache?: boolean }): Promise<CollectionState> {
     const entry = this.entry(collection);
     const generation = this.generation;
     await this.load(entry, generation);
     this.assertCurrent(entry, generation);
     if (!entry.cursor?.initialized && this.online && this.visible) return this.refresh(collection);
-    this.requireAvailableCache(entry);
+    if (!options?.allowIncompleteCache) this.requireAvailableCache(entry);
     return copy(entry.state);
   }
 

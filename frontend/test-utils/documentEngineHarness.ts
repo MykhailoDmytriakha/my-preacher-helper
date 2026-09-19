@@ -1,5 +1,6 @@
 import { createIndexedDbCheckpoints } from '@/data-engine/checkpoint.client';
 import { createIndexedDbCommitStore } from '@/data-engine/commits.client';
+import { CollectionReader, type CollectionCursor } from '@/data-engine/collections';
 import { DataEngine } from '@/data-engine/engine';
 import { createIndexedDbManualScopes } from '@/data-engine/manualScopes.client';
 import { ResourceObserver } from '@/data-engine/observer';
@@ -31,17 +32,27 @@ export function documentEngineHarness(initial: ResourceSnapshot) {
   };
   const commits = createIndexedDbCommitStore(), checkpoints = createIndexedDbCheckpoints();
   let engine!: DataEngine;
-  const createBrowser = (): BrowserDataEngine => {
+  const createBrowser = (options?: { withCollections?: boolean; onError?: (error: unknown) => void }): BrowserDataEngine => {
     const runtime = new DataEngineRuntime({ transport, journal: {
       list: async owner => [...journal.values()].filter(item => item.command.owner === owner).map(copy),
       put: async entry => { journal.set(entry.command.operationId, copy(entry)); },
       remove: async (_owner, id) => { journal.delete(id); },
     } });
     const observer = new ResourceObserver({ transport, source: { listen: () => () => undefined } });
+    const snapshots = {
+      read: async () => copy(cached), put: async (_owner: string, value: ResourceSnapshot) => { cached = copy(value); },
+      list: async (owner: string, collection: string) => cached.resource.collection === collection && cached.value?.userId === owner ? [copy(cached)] : [],
+    };
+    let cursor: CollectionCursor | undefined;
+    const collections = options?.withCollections ? new CollectionReader({ observer, snapshots, cursors: {
+      read: async () => cursor,
+      put: async (_owner, _collection, _expected, next) => (cursor = { ...next, revision: (cursor?.revision ?? 0) + 1 }),
+    }, transport: {
+      list: async () => ({ snapshots: [copy(server)], nextCursor: null, version: 0 }),
+      changes: async () => ({ snapshots: [copy(server)], cursor: 0, version: 0, hasMore: false }),
+    } }) : undefined;
     const instance = new DataEngine({ runtime, observer, transport, commits, checkpoints,
-      manualScopes: createIndexedDbManualScopes(), snapshots: {
-        read: async () => copy(cached), put: async (_owner, value) => { cached = copy(value); },
-      }, operationId: () => `operation-${++sequence}` });
+      manualScopes: createIndexedDbManualScopes(), snapshots, collections, operationId: () => `operation-${++sequence}` });
     engine = instance;
     return { engine: instance, dispose: () => instance.dispose(), editorId: () => `editor-${++sequence}` };
   };
