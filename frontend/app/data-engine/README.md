@@ -147,6 +147,14 @@ plus dates as one document request. Series membership remains its own pinned act
 with separate delivery; metadata retry reuses that action's captured identity. Import gates
 alone cannot detect a component that discards its opening ancestor in `useState`.
 
+`EngineOutlineModal` is the outline example: selected fields include the outline,
+thoughts and placement aliases, because hierarchy edits affect all of them. The pure
+`replaceSermonOutline` transform follows IDs through move/nest/promotion/delete; the
+form pins the ancestor and owns persistence. `OutlineBoard.directText` emits every
+keystroke into that form, while one outer Save submits the complete action. The board
+itself owns no transport or conflict rules. A pending AI proposal needs the same
+opening discipline; do not apply its old full outline to a newly read document.
+
 ## Preserving previous clients' input
 
 `DataEngineMigrationGate` mounts before `QueryProvider` can hydrate, expire or

@@ -17,6 +17,7 @@ import { DataFreshnessBanner } from '@/components/DataFreshnessBanner';
 import PlanEditorModal from "@/components/plan-editor/PlanEditorModal";
 import AudioRecorderPortalBridge from '@/components/sermon/AudioRecorderPortalBridge';
 import ClassicThoughtsPanel from '@/components/sermon/ClassicThoughtsPanel';
+import { EngineOutlineModal } from "@/components/sermon/EngineOutlineModal";
 import KnowledgeSection from "@/components/sermon/KnowledgeSection";
 import ExegeticalPlanStepContent from '@/components/sermon/prep/ExegeticalPlanStepContent';
 import GoalsStepContent, { GoalType } from '@/components/sermon/prep/GoalsStepContent';
@@ -719,6 +720,7 @@ useEffect(() => {
   const isCreateModalOpenRef = useRef(isCreateModalOpen);
   isCreateModalOpenRef.current = isCreateModalOpen;
   const [isPlanEditorOpen, setIsPlanEditorOpen] = useState(false);
+  const [isEngineOutlineOpen, setIsEngineOutlineOpen] = useState(false);
   // Bumped when the plan editor changes the outline, to force SermonOutline to
   // re-read the freshly saved outline (its fetch effect keys on sermon.id only).
   const [outlineRefreshKey, setOutlineRefreshKey] = useState(0);
@@ -1975,6 +1977,10 @@ useEffect(() => {
                     onOpenPlanEditor={!legacyReadOnly ? () => setIsPlanEditorOpen(true) : undefined}
                   />
                 </div>
+                {engineEnabled && !isReadOnly && <button type="button" onClick={() => setIsEngineOutlineOpen(true)}
+                  className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">
+                  {t('planEditor.title')}
+                </button>}
                 <SermonOutline
                   key={outlineRefreshKey}
                   sermon={sermon!}
@@ -1996,6 +2002,8 @@ useEffect(() => {
           </motion.div>
         </div>
       </div>
+      {engineEnabled && !isReadOnly && isEngineOutlineOpen && <EngineOutlineModal
+        sermonId={sermon!.id} onClose={() => setIsEngineOutlineOpen(false)} />}
       {!legacyReadOnly && editingModalData && (
         <EditThoughtModal
           // Remount for every queued edit because the modal seeds its fields only on mount.

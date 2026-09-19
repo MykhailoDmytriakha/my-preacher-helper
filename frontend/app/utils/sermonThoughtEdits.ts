@@ -54,18 +54,28 @@ export function replaceSermonOutline(current: Sermon, outline: SermonOutline): S
   for (const thought of current.thoughts ?? []) {
     const previous = before.find(entry => entry.point.id === thought.outlinePointId);
     if (!previous) continue;
-    const movedSub = thought.subPointId ? after.find(entry => entry.point.subPoints?.some(sub => sub.id === thought.subPointId)) : undefined;
-    const target = movedSub ?? after.find(entry => entry.point.id === thought.outlinePointId);
-    const patch: ThoughtFieldPatch = {};
-    if (!target) { patch.outlinePointId = null; patch.subPointId = null; }
-    else {
-      if (target.point.id !== thought.outlinePointId) { patch.outlinePointId = target.point.id; patch.subPointId = thought.subPointId ?? null; }
-      if (thought.subPointId && previous.point.subPoints?.some(sub => sub.id === thought.subPointId) && !movedSub) patch.subPointId = null;
-      if (target.section !== previous.section) patch.tags = [
-        ...thought.tags.filter(tag => !normalizeStructureTag(tag)), getCanonicalTagForSection(target.section),
-      ];
-    }
+    const patch = outlineThoughtPatch(thought, previous, after);
     if (Object.keys(patch).length) next = patchSermonThought(next, thought.id, patch);
   }
   return next;
+}
+
+function outlineThoughtPatch(thought: Thought, previous: ReturnType<typeof outlineEntries>[number], after: ReturnType<typeof outlineEntries>): ThoughtFieldPatch {
+  const hadSub = Boolean(thought.subPointId && previous.point.subPoints?.some(sub => sub.id === thought.subPointId));
+  const movedSub = hadSub ? after.find(entry => entry.point.subPoints?.some(sub => sub.id === thought.subPointId)) : undefined;
+  const promotedSub = hadSub ? after.find(entry => entry.point.id === thought.subPointId) : undefined;
+  const nestedPoint = after.find(entry => entry.point.subPoints?.some(sub => sub.id === thought.outlinePointId));
+  const target = movedSub ?? promotedSub ?? nestedPoint ?? after.find(entry => entry.point.id === thought.outlinePointId);
+  const patch: ThoughtFieldPatch = {};
+  if (!target) { patch.outlinePointId = null; patch.subPointId = null; }
+  else {
+    if (target.point.id !== thought.outlinePointId) { patch.outlinePointId = target.point.id; patch.subPointId = thought.subPointId ?? null; }
+    if (promotedSub) patch.subPointId = null;
+    else if (nestedPoint && !movedSub) patch.subPointId = thought.outlinePointId;
+    else if (hadSub && !movedSub) patch.subPointId = null;
+    if (target.section !== previous.section) patch.tags = [
+      ...thought.tags.filter(tag => !normalizeStructureTag(tag)), getCanonicalTagForSection(target.section),
+    ];
+  }
+  return patch;
 }

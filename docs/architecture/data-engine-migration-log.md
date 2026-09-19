@@ -11,17 +11,16 @@ Opus/Fable hand-off. Production readiness is still open. The current local work
 prioritizes shared data safety before more domain adapters. Progress is also tracked
 by `el` in this worktree, case `2026-09-19-data-engine-production-readiness`.
 
-Previous checkpoint: **`226978ae`**, pinned sermon metadata/date forms and
-shared terminal-delivery resolution. Atomic queue/CAS ownership, pinned membership,
-creation with membership, series screens, workspace recovery, sermon creation
-entry points and list/calendar reads are implemented behind collection switches.
+Previous checkpoint: **`704cf5bb`**, thought forms, merged structural integrity and
+recoverable correction. Atomic queue/CAS ownership, pinned membership, creation with
+membership, series screens, workspace recovery, sermon creation/list/calendar reads
+and metadata/date forms are implemented behind collection switches.
 
-This checkpoint migrates manual thought creation/editing and direct
-placement/deletion, with shared post-merge sermon integrity and corrected-form
-resolution. Scratch outline replacement repairs affected thought assignments in the
-same command. Adversarial checks exposed three concrete bugs, tracked below and in
-`BUGS.md` through regression proof. Immutable manual opening fields now distinguish
-creation identity from the latest saved value. Closure and final gates are recorded below.
+This checkpoint migrates manual outline editing through the shared pinned form.
+Point/subpoint titles and reminders stage every keystroke without sending. Save
+captures outline and dependent thought repairs together. Nesting and promotion now
+preserve thought links. Tests cover explicit conflicts, restart recovery, offline
+operation identity and page wiring. See the closing entry below for exact gates.
 
 Still open: complete outline/structure/plan/date and AI writer migration, remaining
 domains, legacy backlink closure, actual cloud cost measurements, rules/rollout and
@@ -398,7 +397,7 @@ that has to move. "State" is what exists today, measured by imports, not by inte
 | Domain | Ops | State today | What it still needs |
 |---|---|---|---|
 | Councils | 6 | Create/read/update/delete, carry, readers and held-outcome manual forms integrated behind the collection switch; current browser and regression evidence above | Live cloud cost verification, recovery lifecycle and rollout/device gates |
-| Sermons | 33 | Core/preparation and scratch, creation/list/calendar, metadata/planned-date forms are integrated. Manual thought CRUD/placement and structural integrity are integrated | Finish all outline/structure/plan/preach-date/AI writers, legacy backlinks and read surfaces; real browser/device acceptance |
+| Sermons | 33 | Core/preparation and scratch, creation/list/calendar, metadata/planned-date forms are integrated. Manual thought CRUD/placement, outline form and structural integrity are integrated | Finish scratch proposal ancestry, structure/plan/preach-date/AI writers, legacy backlinks and read surfaces; real browser/device acceptance |
 | Groups | 11 | CRUD, conduct, creation, readers and legacy-copy preservation integrated; real engine regressions and dev-browser evidence recorded below | Series boundary must migrate before activation; final PWA/device and rollout acceptance |
 | Studies (notes + materials + share links) | 7 | Untouched; the note editor is the most complete legacy example of the contract | Full adapter; `material-notes` relation already exists in the core; share links need an ownership decision |
 | Series (+ membership) | 6 + 6 | List/detail/create/edit/delete and pinned assign/remove/reorder, atomic creation, delivery controls and workspace recovery are integrated; legacy input is archived | Sermon/backlink compatibility, final caller/bypass audit, live acceptance and activation |
@@ -1864,3 +1863,53 @@ Group implementation checkpoint in progress:
   merged placement with no document mutation, immutable refusal replay, and a new
   explicit valid command. `/tmp/data-engine-thought-final-emulator.log`. This is Admin
   transaction evidence, not Security Rules, cloud quota or physical-device proof.
+
+### 2026-09-19 — pinned manual outline editing
+
+- `EngineOutlineModal` uses public `useDataForm` with outline, thoughts and both
+  placement aliases selected. It never replaces the current page document with
+  component-local outline state at Save time. The sermon page opens it only behind
+  the sermon collection switch. Legacy PlanEditor/structure-page migration remains open.
+- `OutlineBoard.directText` is a presentation option: each title/reminder keystroke
+  emits into the owning durable stage. Add allocates a stable empty child immediately;
+  Save is unavailable until titles are filled. The board retains its existing drag,
+  confirmation and hierarchy behavior. Legacy inline Save/Cancel remains the default.
+- Closed `BUG-20260919-outline-level-change-loses-links`: shared outline replacement
+  follows stable IDs through nesting and promotion, updates section assignments and
+  retains thought text. Both regressions failed before the fix in
+  `/tmp/data-engine-outline-level-before.log`; the shared helper fixes both the new
+  form and the existing scratch application consumer.
+- Ten real-engine component scenarios prove title/reminder staging, explicit Save,
+  Cancel, restart/recovery, empty child handling, atomic deletion with remote thought
+  text, independent remote outline insertion, both conflict choices, offline retry
+  identity, conflicting remote reassignment, and subpoint/reminder recovery. These
+  exercise actual engine/runtime/storage/planner code with substituted I/O, not cloud.
+- Sequential review lanes: public ownership and opening ancestry; hierarchy/link
+  invariants; scoped conflict/error behavior; legacy UI compatibility; offline/restart
+  and page wiring. No independent reviewer agent was used.
+- Full fast run: **732 suites / 7277 tests pass**, 14 emulator-only cases skipped.
+  Final focused run including an added page-wiring assertion: **58 tests pass**.
+  Both TypeScript configurations and lint pass (0 errors / 15 inherited warnings).
+  Isolated production build passes in **16.92 seconds** before a formatting-only
+  reminder-render extraction cleanup. Final verification is recorded below.
+  Logs: `/tmp/data-engine-outline-{full,final-focused,final-lint,build}.log`.
+- No cloud writes, deployment or activation changes. Existing quota failure blocks
+  live QA; no new PWA/physical-device evidence is claimed. Whole-app readiness stays
+  open. Next critical work: pin scratch/manual/AI proposal ancestry before async
+  generation or local editing, preserving notes and dependent outline changes in
+  one accepted action. Then finish structure/plan/date writers, other domains,
+  legacy closure, measured cloud costs, rules and device acceptance.
+
+- Final-tree gates: **732 suites / 7278 tests pass** (14 emulator-only skips), both
+  TypeScript configurations and lint pass (0 errors / 15 inherited warnings).
+  `/tmp/data-engine-outline-verified-full.log`, `/tmp/data-engine-outline-verified-lint.log`.
+- Next-source audit: `scratch.service.ts` sends `existingOutline` and note IDs; the
+  compose API selects note text from its current repository read. A pinned proposal
+  must bind the actual generation input, the durable proposal, and the eventual
+  outline-plus-consumption command. Do not merely add a late snapshot at Apply, or
+  assume IDs establish which note text the generator saw. Preserve legacy behavior
+  until the complete engine path and its concurrency tests are ready.
+- Final isolated production build passes in **15.51 seconds** after the last source
+  change (`/tmp/data-engine-outline-verified-build.log`). No emulator rerun was needed
+  for this UI/pure-transform checkpoint; the preceding 14 transaction checks remain
+  recorded separately and are not presented as a new run.

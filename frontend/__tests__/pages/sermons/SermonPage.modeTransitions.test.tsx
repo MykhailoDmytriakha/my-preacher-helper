@@ -8,6 +8,7 @@ jest.mock('@/hooks/useDocumentFreshness', () => ({
 
 jest.mock('@locales/i18n', () => ({}));
 import { useSermonThoughtsDataDocument } from '@/(pages)/(private)/sermons/[id]/hooks/useSermonThoughtsDataDocument';
+import { EngineOutlineModal } from '@/components/sermon/EngineOutlineModal';
 import { EngineThoughtModal } from '@/components/thought/EngineThoughtModal';
 import ThoughtList from '@/components/sermon/ThoughtList';
 import SermonPage from '@/(pages)/(private)/sermons/[id]/page';
@@ -49,6 +50,7 @@ jest.mock('@/(pages)/(private)/sermons/[id]/hooks/useSermonCoreDataDocument', ()
 jest.mock('@/(pages)/(private)/sermons/[id]/hooks/useSermonThoughtsDataDocument', () => ({
   useSermonThoughtsDataDocument: jest.fn(() => ({ patchThought: jest.fn(async () => undefined), deleteThought: jest.fn(async () => undefined) })),
 }));
+jest.mock('@/components/sermon/EngineOutlineModal', () => ({ EngineOutlineModal: jest.fn(() => <div data-testid="engine-outline-modal" />) }));
 jest.mock('@/components/thought/EngineThoughtModal', () => ({ EngineThoughtModal: jest.fn(() => <div data-testid="engine-thought-modal" />) }));
 jest.mock('@/(pages)/(private)/sermons/[id]/components/EngineScratchWorkspace', () => ({
   EngineScratchWorkspace: jest.fn(() => <div data-testid="engine-scratch-workspace" />),
@@ -442,6 +444,19 @@ describe('SermonPage mode transitions', () => {
     await waitFor(() => {
       expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sermon-abc-mode', 'classic');
     });
+  });
+
+  it('opens the pinned outline form only for the enabled sermon collection', async () => {
+    mockEngineEnabled = true;
+    searchParamsMock = new URLSearchParams();
+    const view = render(<TestProviders><SermonPage /></TestProviders>);
+    fireEvent.click(await screen.findByRole('button', { name: 'planEditor.title' }));
+    expect(jest.mocked(EngineOutlineModal).mock.calls.at(-1)![0]).toMatchObject({ sermonId: 'abc' });
+    act(() => { jest.mocked(EngineOutlineModal).mock.calls.at(-1)![0].onClose(); });
+    expect(screen.queryByTestId('engine-outline-modal')).not.toBeInTheDocument(); view.unmount();
+    mockEngineEnabled = false;
+    const legacy = render(<TestProviders><SermonPage /></TestProviders>);
+    expect(screen.queryByTestId('engine-outline-modal')).not.toBeInTheDocument(); legacy.unmount();
   });
 
   it('opens the canonical form and routes direct placement/deletion to the shared document', async () => {

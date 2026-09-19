@@ -1,3 +1,4 @@
+import { nestPointUnderPoint, outdentSubPoint } from '@/utils/outlineDnd';
 import { addSermonThought, replaceSermonOutline } from '@/utils/sermonThoughtEdits';
 import { preservesSermonLinks } from '@/data-engine/sermonIntegrity';
 import type { Sermon, SermonOutline } from '@/models/models';
@@ -37,4 +38,17 @@ it('deduplicates an identical thought identity but refuses a different payload w
   expect(addSermonThought(original, a)).toBe(original);
   expect(() => addSermonThought(original, { ...a, text: 'Other operation' })).toThrow('already uses this ID');
   expect(original.thoughts).toEqual([a, b]);
+});
+
+it('keeps thought identity attached when a point becomes a subpoint', () => {
+  const direct = { ...a, id: 'direct', subPointId: null };
+  const input = { ...original, thoughts: [a, b, direct] };
+  const next = replaceSermonOutline(input, nestPointUnderPoint(outline, 'p1', 'p2'));
+  expect(next.thoughts).toEqual([{ ...a, outlinePointId: 'p2' }, b, { ...direct, outlinePointId: 'p2', subPointId: 'p1' }]);
+});
+
+it('follows a promoted subpoint into its new section', () => {
+  const next = replaceSermonOutline(original, outdentSubPoint(outline, 'sub', 'introduction', 0));
+  expect(next.thoughts).toEqual([{ ...a, outlinePointId: 'sub', subPointId: null, tags: ['custom', 'intro'] }, b]);
+  expect(next.structure).toMatchObject({ introduction: ['a'], main: ['b'] }); valid(next);
 });

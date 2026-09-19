@@ -11,6 +11,7 @@ import { Bars2Icon, Bars3Icon, CheckIcon, PencilIcon, TrashIcon, XMarkIcon } fro
 import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import TextareaAutosize from 'react-textarea-autosize';
 
 import PointNote from '@/components/PointNote';
 import {
@@ -120,6 +121,8 @@ interface OutlineBoardProps {
    * Off by default so contexts like the template editor stay note-free.
    */
   showNotes?: boolean;
+  /** Emit every keystroke to a parent-owned draft with one explicit form Save. */
+  directText?: boolean;
   scratch?: ScratchLayerProps;
 }
 
@@ -141,10 +144,12 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   onSubPointMoved,
   className = 'grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 h-full',
   showNotes = false,
+  directText = false,
   scratch,
 }) => {
   const { t } = useTranslation();
   const points = withSection(value);
+  const editingDirectly = directText && !isReadOnly;
   const noteIndex = useMemo(() => indexScratchNotes(scratch), [scratch]);
   const notesInContainer = (id: string) => noteIndex.get(id) ?? [];
   const { activeDrag, hoveredDropId, noteSlot, activeNoteHeight, liftedNoteId, overlayCardRef, sensors,
@@ -281,6 +286,11 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
 
   const startAddingSubPoint = (outlinePointId: string) => {
     if (isReadOnly) return;
+    if (directText) {
+      mutatePoint(outlinePointId, point => ({ ...point, subPoints: [...(point.subPoints ?? []),
+        { id: newClientId(), text: '', position: Math.max(0, ...(point.subPoints ?? []).map(sub => sub.position)) + 1000 }] }));
+      return;
+    }
     setAddingSubPointTo(outlinePointId);
     setNewSubPointText('');
     setEditingSubPointId(null);
@@ -428,9 +438,29 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
   const renderNoteStrip = ({ containerId, notes, testId }: { containerId: string; notes: ScratchNote[]; testId: string }) => scratch
     ? <ScratchNoteStrip {...noteListProps} scratch={scratch} containerId={containerId} notes={notes} testId={testId} /> : null;
 
+  const renderPointReminder = (point: OutlinePoint) => editingDirectly ? (
+    <TextareaAutosize minRows={2} value={point.note ?? ''}
+      aria-label={t('planEditor.note.label')} placeholder={t('planEditor.note.placeholder')}
+      className="w-full rounded border border-amber-200 bg-transparent p-1 text-sm dark:border-amber-800"
+      onChange={event => mutatePoint(point.id, current => ({ ...current, note: event.target.value }))} />
+  ) : (
+    <PointNote note={point.note} onChange={note => mutatePoint(point.id, current => ({ ...current, note }))}
+      isReadOnly={isReadOnly} indentClass="ml-6" addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
+      tone={scratch ? 'neutral' : 'note'} labels={scratch?.noteLabels} />
+  );
+
   const renderSubPointControls = (point: OutlinePoint, sp: SubPoint) => {
     const isEditing = editingSubPointId === sp.id;
 
+    if (editingDirectly) return <>
+      <TextareaAutosize minRows={2} value={sp.text} aria-label={t('structure.subPointPlaceholder')}
+        className="min-w-0 flex-1 rounded border border-gray-300 bg-transparent p-1 text-sm dark:border-gray-600"
+        onChange={event => mutatePoint(point.id, current => ({ ...current,
+          subPoints: (current.subPoints ?? []).map(sub => sub.id === sp.id ? { ...sub, text: event.target.value } : sub) }))} />
+      <button type="button" aria-label={t(DELETE_KEY)} onClick={() => requestDeleteSubPoint(point.id, sp.id)}>
+        <TrashIcon className="h-3.5 w-3.5" />
+      </button>
+    </>;
     if (isEditing) {
       return (
         <div className="flex-1 flex items-center gap-1 min-w-0">
@@ -560,7 +590,11 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                             {renderSubPointControls(point, sp)}
                           </div>
                           {showNotes && (
-                            <PointNote
+                            editingDirectly ? <TextareaAutosize minRows={2} value={sp.note ?? ''}
+                              aria-label={t('planEditor.note.label')} placeholder={t('planEditor.note.placeholder')}
+                              className="w-full rounded border border-amber-200 bg-transparent p-1 text-sm dark:border-amber-800"
+                              onChange={event => mutatePoint(point.id, current => ({ ...current,
+                                subPoints: (current.subPoints ?? []).map(sub => sub.id === sp.id ? { ...sub, note: event.target.value } : sub) }))} /> : <PointNote
                               note={sp.note}
                               onChange={(n) =>
                                 mutatePoint(point.id, (p) => ({
@@ -773,7 +807,11 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                             <Bars3Icon className="h-5 w-5" />
                           </div>
 
-                          {editingPointId === point.id ? (
+                          {editingDirectly ? (
+                            <TextareaAutosize minRows={2} value={point.text} aria-label={t('structure.editPointPlaceholder')}
+                              className="min-w-0 flex-1 rounded border border-gray-300 bg-transparent p-1 text-sm dark:border-gray-600"
+                              onChange={event => mutatePoint(point.id, current => ({ ...current, text: event.target.value }))} />
+                          ) : editingPointId === point.id ? (
                             <div className="flex-1 flex items-center gap-1">
                               <input
                                 type="text"
@@ -833,7 +871,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
 
                           {editingPointId !== point.id && !isReadOnly && (
                             <div className="flex items-center gap-0.5 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                              <button
+                              {!directText && <button
                                 aria-label={t('common.edit')}
                                 onClick={() => {
                                   setEditingPointId(point.id);
@@ -843,7 +881,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                                 className="p-1 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
                               >
                                 <PencilIcon className="h-4 w-4" />
-                              </button>
+                              </button>}
                               <button aria-label={t(DELETE_KEY)} onClick={() => deletePoint(point)} className="p-1 text-gray-400 hover:text-red-600 dark:hover:text-red-400">
                                 <TrashIcon className="h-4 w-4" />
                               </button>
@@ -853,15 +891,7 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
                         {editingPointId !== point.id && (
                           <div className="min-w-0 px-2 pb-2">
                             {showNotes && (
-                              <PointNote
-                                note={point.note}
-                                onChange={(n) => mutatePoint(point.id, (p) => ({ ...p, note: n }))}
-                                isReadOnly={isReadOnly}
-                                indentClass="ml-6"
-                                addRevealClass="opacity-100 lg:opacity-0 lg:group-hover:opacity-100"
-                                tone={scratch ? 'neutral' : 'note'}
-                                labels={scratch?.noteLabels}
-                              />
+                              renderPointReminder(point)
                             )}
                             {scratch &&
                               renderNoteStrip({
@@ -922,6 +952,10 @@ const OutlineBoard: React.FC<OutlineBoardProps> = ({
             ) : (
               <button
                 onClick={() => {
+                  if (directText) {
+                    emit({ ...points, [section]: [...points[section], { id: newClientId(), text: '' }] });
+                    return;
+                  }
                   setAddingToSection(section);
                   setEditingPointId(null);
                 }}
