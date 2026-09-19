@@ -10,7 +10,7 @@ const sdk = (name: string) => /node_modules\/(?:@firebase\/firestore|firebase(?:
 export interface FirestoreCall { file: string; operation: string; line: number }
 export interface BoundaryAccess { file: string; capability: string; line: number }
 
-const PUBLIC_ENGINE = new Set(['data-engine/react.client.tsx', 'data-engine/browser.client.ts', 'data-engine/DataSyncStatus.tsx']);
+const PUBLIC_ENGINE = new Set(['data-engine/clientPolicy.ts', 'data-engine/react.client.tsx', 'data-engine/browser.client.ts', 'data-engine/DataSyncStatus.tsx']);
 const ENGINE_ROUTES = new Set(['api/data-engine/commands/route.ts', 'api/data-engine/documents/[collection]/[id]/route.ts',
   'api/data-engine/collections/[collection]/route.ts', 'api/data-engine/changes/[collection]/route.ts']);
 const ADAPTERS = new Set(['data-engine/server.ts', 'data-engine/source.client.ts', 'data-engine/legacyBoundary.server.ts']);

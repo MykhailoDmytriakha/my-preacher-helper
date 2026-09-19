@@ -5,7 +5,7 @@ import React, { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 
-import { useGroups } from '@/hooks/useGroups';
+import { useGroupsRead } from '@/hooks/useGroupsRead';
 import { useModalLayer } from '@/hooks/useModalLayer';
 import { useAuth } from '@/providers/AuthProvider';
 import { awaitAcceptance, type WriteSubmission } from '@/utils/recoverableWrite';
@@ -23,7 +23,7 @@ export default function AddGroupToSeriesModal({
 }: AddGroupToSeriesModalProps) {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const { groups, loading } = useGroups(user?.uid || null);
+  const { groups, loading } = useGroupsRead(user?.uid || null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroupIds, setSelectedGroupIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);

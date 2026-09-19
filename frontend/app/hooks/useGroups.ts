@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 
+import { isCollectionOnEngine } from '@/data-engine/react.client';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useResolvedUid } from '@/hooks/useResolvedUid';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
@@ -38,7 +39,7 @@ export function useGroups(userId?: string | null) {
   } = useServerFirstQuery({
     queryKey: buildQueryKey(effectiveUserId),
     queryFn: () => (effectiveUserId ? getAllGroups(effectiveUserId) : Promise.resolve([])),
-    enabled: !!effectiveUserId,
+    enabled: !!effectiveUserId && !isCollectionOnEngine('groups'),
   });
 
   // CREATE — optimistic: insert a client-only temp row immediately so the UI

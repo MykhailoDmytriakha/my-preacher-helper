@@ -3,7 +3,7 @@
     "preserving": "Preserving local copies from the previous version…",
     "preservationFailed": "Could not preserve previous local copies. The original cache has been kept. Retry before opening the workspace.",
     "cacheTitle": "Local copies from the previous version ({{count}})",
-    "cacheBody": "These copies may contain unsaved council text. They may also be older than the server version. Inspect or export them to recover your text; they are never sent automatically.",
+    "cacheBody": "These copies may contain unsaved text. They may also be older than the server version. Inspect or export them to recover your text; they are never sent automatically.",
     "title": "A saved change needs recovery",
     "blockedTitle": "A saved change could not be delivered",
     "body": "Your original change is still on this device. Automatic delivery has stopped. Its old format does not contain a complete starting version, so it cannot safely replace the current document. Copy or export it for recovery; this keeps the original local record.",

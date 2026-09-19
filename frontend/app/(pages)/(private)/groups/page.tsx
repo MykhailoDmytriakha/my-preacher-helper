@@ -7,26 +7,76 @@ import {
   PlusIcon,
   UserGroupIcon,
 } from '@heroicons/react/24/outline';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { TechnicalDetailsButton } from '@/components/diagnostics/TechnicalDetailsButton';
 import CreateGroupModal from '@/components/groups/CreateGroupModal';
+import { EngineCreateGroupModal } from '@/components/groups/EngineCreateGroupModal';
+import { EngineDeleteGroupModal } from '@/components/groups/EngineDeleteGroupModal';
 import GroupCard from '@/components/groups/GroupCard';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
+import { isCollectionOnEngine, useDataEngine, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useGroups } from '@/hooks/useGroups';
+import { useGroupsDataCollection } from '@/hooks/useGroupsDataCollection';
 import { useSeries } from '@/hooks/useSeries';
 import { Group } from '@/models/models';
 import { useAuth } from '@/providers/AuthProvider';
 import { recordDiagnostic } from '@/utils/appDiagnostics';
+import { newClientId } from '@/utils/clientId';
 import { awaitAcceptance } from '@/utils/recoverableWrite';
+
+import type { ReactNode } from 'react';
 import '@locales/i18n';
 
 export default function GroupsPage() {
+  const { user } = useAuth();
+  return isCollectionOnEngine('groups') ? <EngineGroupsPage key={user?.uid ?? ''} /> : <LegacyGroupsPage />;
+}
+function LegacyGroupsPage() {
+  const { user } = useAuth();
+  const source = useGroups(user?.uid ?? null);
+  return <GroupsView source={source} />;
+}
+function EngineGroupsPage() {
+  const source = useGroupsDataCollection();
+  const router = useRouter();
+  const { browser, owner } = useDataEngine();
+  const [creation, setCreation] = useState<{ id: string; recoveryId?: string } | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const recovery = useRecoveryDiscovery({ identity: browser ?? {}, enabled: Boolean(browser && owner),
+    version: String(Boolean(creation)),
+    list: async () => (await browser!.engine.listRecoverable()).filter(entry =>
+      entry.record.checkpoint.confirmed.resource.collection === 'groups' && entry.record.checkpoint.confirmed.value === null && entry.record.checkpoint.draft !== null)
+      .map(entry => ({ id: entry.id, documentId: entry.record.checkpoint.confirmed.resource.id,
+        title: String(entry.record.checkpoint.draft?.title || entry.record.checkpoint.confirmed.resource.id),
+        preview: String(entry.record.checkpoint.draft?.description ?? '') })),
+    recover: async id => {
+      const records = await browser!.engine.listRecoverable();
+      const selected = records.find(entry => entry.id === id && entry.record.checkpoint.confirmed.resource.collection === 'groups');
+      if (!selected) throw new Error('Group draft no longer exists');
+      setCreation({ id: selected.record.checkpoint.confirmed.resource.id, recoveryId: id });
+    } });
+  return <>
+    <GroupsView source={source} onCreate={() => setCreation({ id: newClientId() })} onDelete={group => setDeleting(group.id)}
+      feedback={<DataSyncStatus status={null} recoveryChoices={recovery.choices} onListRecovery={recovery.refresh}
+        onRecover={recovery.recover} recoveryLoading={recovery.loading} recoveryError={recovery.error} />} />
+    {creation && <EngineCreateGroupModal key={`${owner}:${creation.id}`} groupId={creation.id} recoveryId={creation.recoveryId}
+      onClose={() => setCreation(null)} onQueued={id => { setCreation(null); router.push(`/groups/${id}`); }} />}
+    {deleting && <EngineDeleteGroupModal key={`${owner}:${deleting}`} groupId={deleting} onClose={() => setDeleting(null)} />}
+  </>;
+}
+function GroupsView({ source, onCreate, onDelete, feedback }: {
+  source: Pick<ReturnType<typeof useGroups>, 'groups' | 'loading'> & { error: unknown; refreshGroups: () => unknown }
+    & Partial<Pick<ReturnType<typeof useGroups>, 'createNewGroup' | 'deleteExistingGroup'>>;
+  onCreate?: () => void; onDelete?: (group: Group) => void; feedback?: ReactNode;
+}) {
   const { t } = useTranslation();
   const { user } = useAuth();
   const groupsUserId = user?.uid ?? null;
-  const { groups, loading, error, refreshGroups, createNewGroup, deleteExistingGroup } = useGroups(groupsUserId);
+  const { groups, loading, error, refreshGroups, createNewGroup, deleteExistingGroup } = source;
   const { series } = useSeries(groupsUserId);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deletingGroupId, setDeletingGroupId] = useState<string | null>(null);
@@ -57,10 +107,10 @@ export default function GroupsPage() {
   // The page hands the submission over and does nothing else: CreateGroupModal awaits
   // acceptance and calls `onClose` itself. Closing here TOO made the canonical example
   // teach a duplicate mechanism — the first thing a newcomer would copy.
-  const handleCreateGroup = (payload: Omit<Group, 'id'>) => createNewGroup(payload);
+  const handleCreateGroup = (payload: Omit<Group, 'id'>) => createNewGroup!(payload);
 
   const handleDeleteGroupTrigger = (group: Group) => {
-    setGroupToDelete(group);
+    if (onDelete) onDelete(group); else setGroupToDelete(group);
   };
 
   const handleConfirmDelete = async () => {
@@ -72,7 +122,7 @@ export default function GroupsPage() {
       // refusal restores it — so no success message here. Await ACCEPTANCE, not the
       // call: `await` on the submission object would resolve instantly and swallow an
       // early refusal, which is what the whole contract exists to prevent.
-      await awaitAcceptance(deleteExistingGroup(groupToDelete.id), () => undefined);
+      await awaitAcceptance(deleteExistingGroup!(groupToDelete.id), () => undefined);
       setGroupToDelete(null);
     } catch (errorValue) {
       // Reported by the delete descriptor in useGroups — one refusal, one reporter.
@@ -85,24 +135,14 @@ export default function GroupsPage() {
   // The private layout owns the sign-in flow; no workspace is shown without a user.
   if (!user?.uid) return null;
 
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <header className="space-y-2">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-            {t('navigation.groups', { defaultValue: 'Groups' })}
-          </h1>
-        </header>
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
-          {t('workspaces.groups.errors.loadFailed', { defaultValue: 'Failed to load groups' })}
-          <div className="mt-3"><TechnicalDetailsButton /></div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <section className="space-y-6">
+      {feedback}
+      {Boolean(error) && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
+        {t('workspaces.groups.errors.loadFailed', { defaultValue: 'Failed to load groups' })}
+        <div className="mt-3"><TechnicalDetailsButton /></div>
+      </div>}
       <header className="space-y-3">
         <p className="text-sm font-semibold uppercase tracking-wide text-emerald-500">
           {t('workspaces.groups.badge', { defaultValue: 'Workspace' })}
@@ -126,7 +166,7 @@ export default function GroupsPage() {
               {t('common.refresh', { defaultValue: 'Refresh' })}
             </button>
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => onCreate ? onCreate() : setShowCreateModal(true)}
               className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
             >
               <PlusIcon className="h-4 w-4" />
@@ -215,13 +255,13 @@ export default function GroupsPage() {
             />
           ))}
         </div>
-      ) : groups.length === 0 ? (
+      ) : groups.length === 0 && !error ? (
         <div className="rounded-xl border border-dashed border-gray-300 bg-white/50 p-8 text-center dark:border-gray-700 dark:bg-gray-900/40">
           <p className="text-gray-600 dark:text-gray-300">
             {t('workspaces.groups.empty', { defaultValue: 'No groups yet. Create your first group.' })}
           </p>
           <button
-            onClick={() => setShowCreateModal(true)}
+            onClick={() => onCreate ? onCreate() : setShowCreateModal(true)}
             className="mt-4 inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
           >
             <PlusIcon className="h-4 w-4" />

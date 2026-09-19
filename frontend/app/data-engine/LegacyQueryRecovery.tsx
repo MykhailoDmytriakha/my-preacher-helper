@@ -40,7 +40,7 @@ export function LegacyQueryCopies({ owner }: { owner: string }) {
     try {
       url = URL.createObjectURL(new Blob([copy.raw], { type: 'application/json' }));
       const anchor = document.createElement('a');
-      anchor.href = url; anchor.download = 'saved-council-copy.json'; anchor.click();
+      anchor.href = url; anchor.download = `saved-${copy.collection}-copy.json`; anchor.click();
     } catch { setState(previous => previous?.owner === owner ? { ...previous, failed: true } : previous); }
     finally { if (url) URL.revokeObjectURL(url); }
   };

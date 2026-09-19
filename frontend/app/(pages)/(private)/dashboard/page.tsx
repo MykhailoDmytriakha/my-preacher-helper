@@ -27,7 +27,7 @@ import { useCouncilsRead } from '@/hooks/useCouncilsRead';
 import { useDashboardOptimisticSermons } from '@/hooks/useDashboardOptimisticSermons';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useFittingRows } from '@/hooks/useFittingRows';
-import { useGroups } from '@/hooks/useGroups';
+import { useGroupsRead } from '@/hooks/useGroupsRead';
 import { usePrayerRequests } from '@/hooks/usePrayerRequests';
 import { useSeries } from '@/hooks/useSeries';
 import { useStudyNotes } from '@/hooks/useStudyNotes';
@@ -234,7 +234,7 @@ export default function DashboardPage() {
   const { series } = useSeries(user?.uid || null);
   const { notes } = useStudyNotes();
   const { prayerRequests, createPrayer } = usePrayerRequests(user?.uid || null);
-  const { groups } = useGroups(user?.uid || null);
+  const { groups } = useGroupsRead(user?.uid || null);
   const { councils } = useCouncilsRead();
   const [showSermonModal, setShowSermonModal] = useState(false);
   const [showPrayerModal, setShowPrayerModal] = useState(false);

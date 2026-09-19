@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 
 import { GroupBlockStatus, GroupBlockTemplate, GroupFlowItem } from '@/models/models';
 
+import { LiveTextInput, LiveTextArea } from '../ui/LiveTextInput';
 import { RichMarkdownEditor } from '../ui/RichMarkdownEditor';
 
 const STATUS_OPTIONS: Array<{ value: GroupBlockStatus; labelKey: string; fallback: string; color: string }> = [
@@ -85,10 +86,10 @@ export default function FlowEditor({
                         <label htmlFor="block-title" className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                             {t('groupFlow.editor.blockTitleLabel', { defaultValue: 'Block Name (Template)' })}
                         </label>
-                        <input
+                        <LiveTextInput
                             id="block-title"
                             value={template.title}
-                            onChange={(event) => onUpdateTemplate({ title: event.target.value })}
+                            onChange={(value) => onUpdateTemplate({ title: value })}
                             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-semibold text-gray-800 transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100 xl:rounded-lg xl:px-3 xl:py-2"
                         />
                     </div>
@@ -113,11 +114,11 @@ export default function FlowEditor({
                         <label htmlFor="step-title" className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                             {t('groupFlow.editor.stepTitleLabel', { defaultValue: 'Step title' })}
                         </label>
-                        <input
+                        <LiveTextInput
                             id="step-title"
                             value={flowItem.instanceTitle || ''}
-                            onChange={(event) =>
-                                onUpdateFlowItem({ instanceTitle: event.target.value || undefined })
+                            onChange={(value) =>
+                                onUpdateFlowItem({ instanceTitle: value || undefined })
                             }
                             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 xl:rounded-lg xl:px-3 xl:py-2"
                             placeholder={template.title}
@@ -147,11 +148,11 @@ export default function FlowEditor({
                         <label htmlFor="step-notes" className="mb-2 block text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                             {t('groupFlow.editor.notesLabel', { defaultValue: 'Leader Notes' })}
                         </label>
-                        <textarea
+                        <LiveTextArea
                             id="step-notes"
                             value={flowItem.instanceNotes || ''}
-                            onChange={(event) =>
-                                onUpdateFlowItem({ instanceNotes: event.target.value || undefined })
+                            onChange={(value) =>
+                                onUpdateFlowItem({ instanceNotes: value || undefined })
                             }
                             rows={3}
                             className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm text-gray-700 transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 xl:rounded-lg xl:px-3 xl:py-2"

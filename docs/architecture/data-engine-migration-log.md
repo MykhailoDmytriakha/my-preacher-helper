@@ -119,6 +119,19 @@ by `el` in this worktree, case `2026-09-19-data-engine-production-readiness`.
   `/tmp/data-engine-server-budget-final.log`. Sequential review covered timer ownership,
   generation fencing, request amplification, replay semantics and documentation;
   no high-confidence regression remains in this diff. No independent agent reviewed it.
+- Operating-budget checkpoint committed as `5fe1b629`.
+- Group checkpoint: detail, creation, manual conduct, recovery, read projections,
+  legacy preservation and pre-transport refusal now pass **705 suites / 7020 tests**,
+  TypeScript and lint (0 errors, 15 inherited warnings). Isolated production build
+  with councils/groups enabled passes after supplying the existing local environment
+  in memory; the first isolated attempt lacked Firebase configuration. Logs:
+  `/tmp/data-engine-groups-final-{tests,lint}.log`, `/tmp/data-engine-group-types.log`,
+  `/tmp/data-engine-production-build-groups.log`. Live conduct reached saved status,
+  and the already-open list adopted its 7-minute duration.
+- Critical next check reproduced `BUG-20260919-engine-series-double-assignment`:
+  two series accept the same member; initial series creation has the same hole.
+  Two new negative regressions are red. Fix the server invariant and migrate the
+  relation client before enabling groups. This is not production readiness.
 - Next: migrate remaining domain adapters, starting with groups and their embedded
   flow/meeting editors, while preserving opening baselines and explicit manual stages.
   Recovery of an original unsent fork still leaves its source available, as the UI
@@ -353,7 +366,7 @@ Nothing may be switched on in production while these stand.
 | Rules not deployed | `frontend/firestore.rules` | Prepared rules exist but are not live; until they are, an old client can still write a migrated document offline, the engine's SDK listener is denied the change head (it falls back to HTTP polling, up to ~15 s late), and a tombstone is unreadable to its owner's listener. `npm run test:rules` proves them on the emulator (256 + 5 checks) and is NOT part of the build gate — run it before deploying rules |
 | Legacy queued writes | `legacyRecovery.client.ts`, `legacyQueryRecovery.client.ts` | Council query-cache copies are now archived before hydration and offered for preview/export; no reliable baseline exists for automatic import. Outbox/membership/paused-mutation migration remains domain-specific work for the other domains. Old input already reverted or never persisted cannot be reconstructed |
 | Device validation | — | Proven on a production build with a live service worker (preview, desktop Chrome, 2026-09-19). Not yet on an iPad, a phone, or an installed PWA. The current continuation verified genuinely visible Chrome tabs on localhost; no visibility emulation was used |
-| No cost measurement | — | Reads and writes per session under the engine have never been measured against the Firestore quota |
+| Cloud cost verification | `data-engine-operations.md` | Protocol operation counts and mixed-mode scenarios are now tested; actual project usage, retry/index/listener overhead and physical-device session costs remain unmeasured |
 
 ### Domains
 
@@ -362,7 +375,7 @@ that has to move. "State" is what exists today, measured by imports, not by inte
 
 | Domain | Ops | State today | What it still needs |
 |---|---|---|---|
-| Councils | 6 | Create/read/update/delete, carry, readers and held-outcome manual forms integrated behind the collection switch; current browser and regression evidence above | Retention/cost proof, recovery lifecycle and rollout/device gates |
+| Councils | 6 | Create/read/update/delete, carry, readers and held-outcome manual forms integrated behind the collection switch; current browser and regression evidence above | Live cloud cost verification, recovery lifecycle and rollout/device gates |
 | Sermons | 33 | Partially on the engine: core fields and scratch wired; `useSermonThoughtsDataDocument` written but **imported by no screen**; eight controls inert behind the switch (`page.tsx`, `legacyReadOnly`) | Wire thoughts; adapters for outline, structure, plan, preach dates and the AI writers; un-inert the eight controls. Largest domain, last in order |
 | Groups | 11 | Untouched. Carries two of the five audited losses (meeting array online and offline) | Full adapter and screens; the meeting array is the same ID-item class as council topics |
 | Studies (notes + materials + share links) | 7 | Untouched; the note editor is the most complete legacy example of the contract | Full adapter; `material-notes` relation already exists in the core; share links need an ownership decision |
@@ -1137,3 +1150,79 @@ council was deleted the same way (revision 10). The engine list, `GET /api/counc
 `/api/owner-list` and the screen all agree on the account's one remaining council; no console
 errors. Queue item 5 now holds for a production build with a live service worker, not only for
 localhost. Still not walked: a real iPad, an installed PWA.
+
+
+## Group migration continuation — 2026-09-19
+
+This is an open implementation phase; the groups switch must stay off until the
+whole domain passes. The existing `useGroupDetail` page holds a second content
+buffer, a 500 ms timer, revision bookkeeping and its own freshness banner.
+`ConductPreflight` holds edited durations until Start. Both need the engine to own
+the ancestor at opening, not a fresh baseline constructed when Save is pressed.
+
+Migration map:
+
+| Surface | Required seam / invariant |
+|---|---|
+| Group shaping | One pure hydrator shared with the existing SDK service; no Firebase import in a domain editor |
+| Group detail and embedded templates/flow/meetings | One `DataDocumentProvider`, immediate draft updates; no screen-local delivery timer or revision counter |
+| Conduct setup | Explicit `useDataForm` for durations; durable unsent work and pinned opening values; timers remain transient UI state |
+| List/create/delete, dashboard and breadcrumbs | Shared collection read and durable creation/deletion; never claim queue acceptance is a server save |
+| Calendar and series readers | Same collection/document view as group detail; no second cache claiming freshness |
+| Series membership and group deletion | Existing `series-membership` command and `serverRelations.detachSeriesMember`; deletion already cascades atomically inside the engine, so do not add a screen-side sweep |
+| Legacy migration | Preserve groups list/detail/calendar copies plus paused mutation/outbox payloads before hydration; previews are not automatic imports |
+| Boundary checks | Add migrated imports/callers to enforcement only after the whole group route is wired; do not grow the legacy exception ledger |
+
+The prior list-hang tracker entry is already locally repaired by the inherited
+`readOwnerList` / `readOwnerDocument` paths. The remaining iPad acceptance is not a
+reason to reimplement that reader. Group meeting-date writes still use the old
+full-array update; their replacement must prove concurrent additions/edits/deletes
+using the actual shared protocol, not only a mocked hook.
+
+
+Group implementation checkpoint in progress:
+- `useGroupDataDocument` delegates fields and ID-based meeting operations to the
+  shared editor; the legacy SDK and engine use the same extracted group hydrator.
+- Detail uses one presentation with two adapters. The engine adapter has no second
+  content buffer, save timer, revision counter or freshness observer. Text controls
+  use the shared buffer; meeting metadata is editable after choosing a date, so an
+  incomplete meeting cannot poison autosave. Clearing the first date removes that
+  meeting and preserves any additional meetings.
+- Conduct setup uses the shared pinned manual form. Typing does not send; Start
+  explicitly submits. Starting unchanged sends nothing. Restart offers recovery.
+- Actual React + DataEngine + runtime + storage-harness tests cover immediate
+  offline navigation/reconnect, clean remote text while focused, competing local
+  text/conflict/accept-remote, duration conflict and restart recovery. The server
+  transport in these tests is replaced by the actual command protocol; these are
+  not browser/device proof. Detail/conduct suites currently pass 21 tests.
+- Still open: creation, list/read projections, legacy draft/queue preservation,
+  series membership compatibility, boundary proof and live browser acceptance.
+  Groups remain off. Deleting a group cascades into series and can mark their
+  documents, so groups cannot be rolled out beside incompatible series writers.
+
+2026-09-19 group continuation (not yet a rollout):
+- Creation immediately checkpoints typed fields, submits only on Create, and
+  offers unfinished creations from the list after restart. Delete confirmation
+  uses the same document editor. Dashboard, breadcrumbs, calendar and series
+  group projections read the shared collection; legacy group queries are disabled.
+- Every old group service write refuses with `data-engine-required` before either
+  transport. The old outbox holds enabled collections without sending. That refusal
+  is terminal for React Query, not a five-attempt transient retry.
+- Migration archives group list/detail/calendar copies and complete paused/error
+  mutation records before hydration/expiry. Old ID-only mutations are attributed
+  only from a unique cached owner. Unattributable bytes remain quarantined under
+  an empty owner and are never shown to the next signed-in user. No automatic
+  baseline reconstruction or import. Existing localStorage recovery remains visible.
+- Live Chrome localhost: own group `54f7a34d-5fc5-4e95-8dde-84c1e4331847`:
+  creation draft closed/reloaded/recovered, explicit Create, immediate title edit
+  and navigation, then new tab saw `QA engine group last keystroke` and saved
+  status. Conduct's unsent 7-minute duration survived leaving and explicit recovery.
+  This is development-browser evidence, not installed PWA/device proof.
+- Sequential review found list read errors hid creation/recovery. The list now
+  shows the error alongside local actions without claiming that an unknown list
+  is empty. Regression was red before the fix. A separate suspected Start/input
+  race was disproved by the real runtime test; no speculative fix was made.
+- Remaining activation blocker: migrate series membership and writers as one
+  compatible boundary before switching groups on (delete can mark linked series).
+  Architecture ledger did not grow. Public `clientPolicy` contains flags/refusal
+  only, no transport or storage access.

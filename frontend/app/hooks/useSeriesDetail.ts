@@ -1,7 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 
+import { isCollectionOnEngine } from '@/data-engine/react.client';
+import { useGroupsDataCollection } from '@/hooks/useGroupsDataCollection';
 import { usePersistedConflict } from '@/hooks/usePersistedConflict';
 import { useSeriesMembership } from '@/hooks/useSeriesMembership';
 import { useServerFirstQuery } from '@/hooks/useServerFirstQuery';
@@ -83,7 +85,7 @@ const buildPayload = async (seriesData: Series): Promise<SeriesDetailPayload> =>
 
   const [sermonResults, groupResults] = await Promise.all([
     Promise.all(sermonIds.map((id) => getSermonById(id))),
-    Promise.all(groupIds.map((id) => getGroupById(id))),
+    isCollectionOnEngine('groups') ? Promise.resolve([]) : Promise.all(groupIds.map((id) => getGroupById(id))),
   ]);
 
   const sermons = sermonResults.filter((sermon): sermon is Sermon => Boolean(sermon));
@@ -127,9 +129,20 @@ export function useSeriesDetail(seriesId: string) {
   });
 
   const series = data?.series ?? null;
-  const items = data?.items ?? EMPTY_ITEMS;
+  const needsGroups = Boolean(series?.items?.some(item => item.type === 'group'));
+  const groupCollection = useGroupsDataCollection(needsGroups);
+  const legacyItems = data?.items ?? EMPTY_ITEMS;
+  const items = useMemo(() => {
+    if (!isCollectionOnEngine('groups')) return legacyItems;
+    const groupById = new Map(groupCollection.groups.map(group => [group.id, group]));
+    const sermonById = new Map((data?.sermons ?? []).map(sermon => [sermon.id, sermon]));
+    return normalizeSeriesItems(series?.items, series?.sermonIds ?? []).map(item => ({ item,
+      sermon: item.type === 'sermon' ? sermonById.get(item.refId) : undefined,
+      group: item.type === 'group' ? groupById.get(item.refId) : undefined,
+    })).filter(entry => entry.item.type === 'sermon' ? Boolean(entry.sermon) : Boolean(entry.group));
+  }, [legacyItems, groupCollection.groups, data?.sermons, series]);
   const sermons = data?.sermons ?? EMPTY_SERMONS;
-  const groups = data?.groups ?? EMPTY_GROUPS;
+  const groups = isCollectionOnEngine('groups') ? items.flatMap(entry => entry.group ? [entry.group] : []) : data?.groups ?? EMPTY_GROUPS;
 
   const refreshSeriesDetail = useCallback(async () => {
     // Same as useSermon/useGroupDetail: `refetch()` resolves even when it fails, so
@@ -396,11 +409,11 @@ export function useSeriesDetail(seriesId: string) {
     items,
     sermons,
     groups,
-    loading: isLoading,
+    loading: isLoading || (isCollectionOnEngine('groups') && needsGroups && groupCollection.loading),
     isRefetching: isFetching,
     // Only a detail-query failure is page-fatal. Mutation failures reject back to
     // their owning control so its rendered draft/retry surface remains mounted.
-    error: error as Error | null,
+    error: (error ?? (isCollectionOnEngine('groups') && needsGroups && groupCollection.error ? new Error(groupCollection.error) : null)) as Error | null,
     refreshSeriesDetail,
     addSermon,
     addSermons,

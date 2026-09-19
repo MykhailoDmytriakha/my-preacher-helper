@@ -126,8 +126,11 @@ alone cannot detect a component that discards its opening ancestor in `useState`
 ## Preserving previous clients' input
 
 `DataEngineMigrationGate` mounts before `QueryProvider` can hydrate, expire or
-replace its persisted cache. For the councils pilot it archives owner-scoped legacy
-query copies in the engine database. Distinct contents remain separate; repeated
+replace its persisted cache. For councils and groups it archives owner-scoped legacy
+query copies in the engine database. Group paused/error mutation payloads are
+preserved too, including fields no longer present in an optimistic query row.
+Old ID-only operations without provable ownership are retained in quarantine,
+never assigned to the next signed-in account. Distinct contents remain separate; repeated
 startup is idempotent. A failed archive keeps the original cache untouched and
 holds workspace startup behind an explicit Retry. `LegacyDataRecoveryNotice`
 exposes preview/export to the current owner only, without inventing a confirmed

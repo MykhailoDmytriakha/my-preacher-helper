@@ -45,3 +45,19 @@ describe('legacy replay terminal recovery', () => {
     expect(markOutboxRecoveryRequired('other', 'permission-denied')).toBe(false);
   });
 });
+
+it('holds an enabled collection before contacting either old transport, keeping its exact intent', async () => {
+  localStorage.clear(); mockWrite.mockReset();
+  const previous = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+  process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'groups';
+  const entry = { ...original, collection: 'groups' };
+  enqueueWrite(entry);
+  try {
+    expect(await replayOutbox('owner')).toMatchObject({ recoveryRequired: 1, replayed: 0 });
+    expect(mockWrite).not.toHaveBeenCalled();
+    expect(pendingOutboxRecovery('owner')).toEqual([{ ...entry, status: 'migration-required', recoveryReason: 'data-engine-required' }]);
+  } finally {
+    if (previous === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previous;
+  }
+});

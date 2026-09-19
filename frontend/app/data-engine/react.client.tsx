@@ -6,6 +6,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { newClientId } from '@/utils/clientId';
 
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
+import { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
@@ -15,6 +16,8 @@ import type { EditorState } from './controller';
 import type { ManagedEditor, ManagedManualForm } from './engine';
 import type { ManualPath } from './manualScope';
 import type { DocumentData, ResourceRef } from './types';
+
+export { isCollectionOnEngine, isDataEngineEnabled } from './clientPolicy';
 
 interface EngineContextValue {
   browser: BrowserDataEngine | null;
@@ -30,34 +33,15 @@ export function useRecoveryDiscovery<T>(options: RecoveryDiscoveryOptions<T>) {
   return useDiscovery(options);
 }
 
-const listed = (value: string | undefined): string[] =>
-  (value ?? '').split(',').map(entry => entry.trim()).filter(Boolean);
-
-/**
- * A domain migrates as a whole, so activation is per collection. The older
- * all-or-nothing flag stays valid and means every collection.
- * Enable only with the coordinated server, legacy-writer and rules cutover.
- */
-export function isCollectionOnEngine(collection: string): boolean {
-  if (process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED === 'true') return true;
-  return listed(process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS).includes(collection);
-}
-
-/** Whether the workspace needs a live engine at all: one migrated collection is enough. */
-export function isDataEngineEnabled(): boolean {
-  return process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED === 'true'
-    || listed(process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS).length > 0;
-}
-
 /** Preserve old cache copies before the query provider may hydrate, expire or replace them. */
 export function DataEngineMigrationGate({ children }: { children: ReactNode }) {
-  return isCollectionOnEngine('councils') ? <LegacyQueryMigrationGate enabled={isCollectionOnEngine}>{children}</LegacyQueryMigrationGate> : <>{children}</>;
+  return (isCollectionOnEngine('councils') || isCollectionOnEngine('groups')) ? <LegacyQueryMigrationGate enabled={isCollectionOnEngine}>{children}</LegacyQueryMigrationGate> : <>{children}</>;
 }
 
 /** Archived cache copies are evidence for the person, never confirmed engine snapshots. */
 export function LegacyDataRecoveryNotice() {
   const { user } = useAuth();
-  return user?.uid && isCollectionOnEngine('councils') ? <LegacyQueryCopies key={user.uid} owner={user.uid} /> : null;
+  return user?.uid && (isCollectionOnEngine('councils') || isCollectionOnEngine('groups')) ? <LegacyQueryCopies key={user.uid} owner={user.uid} /> : null;
 }
 
 /** Keep one owner-scoped engine alive when navigation chrome is hidden. */

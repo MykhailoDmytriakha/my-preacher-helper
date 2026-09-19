@@ -138,6 +138,14 @@ describe('GroupsPage', () => {
     });
   });
 
+  it('keeps local creation reachable when loading the remote list fails', () => {
+    mockUseGroups.mockReturnValue({ groups: [], loading: false, error: new Error('offline'), refreshGroups, createNewGroup } as any);
+    render(<GroupsPage />);
+    fireEvent.click(screen.getAllByRole('button', { name: 'New group' })[0]);
+    expect(screen.getByTestId('create-group-modal')).toBeInTheDocument();
+    expect(screen.getByText('Failed to load groups')).toBeInTheDocument();
+  });
+
   it('renders loading skeleton and empty state', () => {
     mockUseGroups.mockReturnValue({
       groups: [],

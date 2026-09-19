@@ -4,6 +4,7 @@ import { doc } from 'firebase/firestore';
 
 
 import { getClientDb } from '@/config/firebaseClientDb';
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { conflictSafeUpdate, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
 import {
   listOutbox,
@@ -78,6 +79,7 @@ export async function replayOutbox(uid: string): Promise<{
     const lane = laneOf(entry);
     const rebased = committedHere.get(lane);
     try {
+      assertLegacyClientWriteAllowed(entry.collection);
       /**
        * A SEMANTIC intent: redo the merge instead of applying a patch.
        *

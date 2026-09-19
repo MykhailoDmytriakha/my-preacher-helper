@@ -56,3 +56,50 @@ describe('legacy query input preservation', () => {
     expect(get).not.toHaveBeenCalled(); expect(createStore).not.toHaveBeenCalled();
   });
 });
+
+it('preserves all known group cache shapes with ownership from the correct source', async () => {
+  installStorageHarness();
+  const group = { id: 'g', userId: 'owner', title: 'List', flow: [], meetingDates: [] };
+  jest.mocked(get).mockResolvedValue({ clientState: { queries: [
+    { queryKey: ['groups', 'owner'], state: { data: [group] } },
+    { queryKey: ['group-detail', 'g'], state: { data: { ...group, title: 'Detail', unknown: 'keep' } } },
+    { queryKey: ['calendarGroups', 'owner', 'start', 'end'], state: { data: [{ ...group, title: 'Calendar' }] } },
+    { queryKey: ['group-detail', 'mismatch'], state: { data: { ...group, title: 'Do not copy' } } },
+    { queryKey: ['groups', 'different-owner'], state: { data: [group] } },
+  ] } });
+  await preserveLegacyQueryCache(collection => collection === 'groups');
+  const copies = await listLegacyQueryCopies('owner');
+  expect(copies.map(copy => JSON.parse(copy.raw).title)).toEqual(['List', 'Detail', 'Calendar']);
+  expect(copies.map(copy => copy.collection)).toEqual(['groups', 'groups', 'groups']);
+  expect(await listLegacyQueryCopies('different-owner')).toEqual([]);
+  expect(JSON.parse(copies[1].raw).unknown).toBe('keep');
+});
+
+it('archives paused and failed mutation variables even when queries have expired or rolled back', async () => {
+  installStorageHarness();
+  const mutation = (operation: string, variables: unknown) => ({ mutationKey: ['groups', operation], state: { variables, status: 'error', submittedAt: 15, isPaused: false } });
+  const create = mutation('create', { userId: 'owner', title: 'Only in a mutation', templates: [{ id: 't', content: 'preserve' }] });
+  const update = mutation('update', { id: 'g', userId: 'owner', updates: { title: 'Refused title' }, expectedBaseline: { title: 'Opening' } });
+  jest.mocked(get).mockResolvedValue({ clientState: { mutations: [create, update, mutation('create', { userId: 'other', title: 'Private' })] } });
+  await preserveLegacyQueryCache(collection => collection === 'groups');
+  const copies = await listLegacyQueryCopies('owner');
+  expect(copies.map(copy => JSON.parse(copy.raw))).toEqual([create, update]);
+  expect(copies.every(copy => copy.savedAt === 15)).toBe(true);
+  expect(await listLegacyQueryCopies('other')).toHaveLength(1);
+  await preserveLegacyQueryCache(collection => collection === 'groups');
+  expect(await listLegacyQueryCopies('owner')).toHaveLength(2);
+});
+
+it('attributes old ownerless deletes only from a unique cached owner, quarantining ambiguous intent', async () => {
+  const disk = installStorageHarness();
+  const removed = (id: string) => ({ mutationKey: ['groups', 'delete'], state: { variables: id, isPaused: true } });
+  jest.mocked(get).mockResolvedValue({ clientState: {
+    queries: [{ queryKey: ['groups', 'owner'], state: { data: [{ id: 'known', userId: 'owner', title: 'Known' }] } }],
+    mutations: [removed('known'), removed('unknown')],
+  } });
+  await preserveLegacyQueryCache(collection => collection === 'groups');
+  expect((await listLegacyQueryCopies('owner')).map(copy => copy.documentId)).toEqual(['known', 'known']);
+  expect(await listLegacyQueryCopies('other')).toEqual([]);
+  expect(await listLegacyQueryCopies('')).toEqual([]);
+  expect(JSON.stringify([...disk.rows.values()])).toContain('unknown');
+});
