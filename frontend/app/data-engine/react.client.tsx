@@ -119,12 +119,13 @@ export function useDataMembership() {
     try { const result = await action(); active(); refresh(); return result; }
     catch (error) { if (latest.current === identity) setFailure({ identity, message: message(error) }); throw error; }
   }, [active, identity, refresh]);
-  const begin = useCallback((sourceId?: string): Promise<void> => {
+  const begin = useCallback((sourceId?: string, creation?: { collection: 'sermons' | 'groups'; value: DocumentData }): Promise<void> => {
     if (opening.current?.identity === identity) return opening.current.promise;
     if (current.current?.identity === identity) return Promise.reject(new Error('Close the current membership stage first'));
     const engine = active();
     const promise = run(async () => {
-      const scope = sourceId ? await engine.recoverMembership(sourceId, { exclusive: true }) : await engine.beginMembership();
+      const scope = sourceId ? await engine.recoverMembership(sourceId, { exclusive: true })
+        : creation ? await engine.beginMemberCreation(creation.collection, creation.value) : await engine.beginMembership();
       if (latest.current !== identity) { engine.releaseMembership(scope.getState().record.scopeId); throw new Error(EDITOR_CHANGED); }
       current.current = { identity, scope, scopeId: scope.getState().record.scopeId, stop: scope.subscribe(refresh) }; refresh();
     });
@@ -163,9 +164,17 @@ export function useDataMembership() {
     ready: Boolean(browser && owner), error: failure?.identity === identity ? failure.message : null,
     values: state?.values ?? [], phase: state?.record.phase ?? null, durable: state?.durable ?? false,
     action: state?.record.action ?? null, scopeId: state?.record.scopeId ?? null,
+    creation: state?.record.creation ?? null,
     recoveryIdentity: identity as object, recoveryVersion,
     delivery: delivery?.identity === identity && delivery.scopeId === state?.record.scopeId ? delivery.state : null,
     begin: () => begin(), recover: (scopeId: string) => begin(scopeId), dismiss,
+    beginCreate: (collection: 'sermons' | 'groups', value: DocumentData) => begin(undefined, { collection, value }),
+    openSeries: () => run(() => active().openCreationSeries(required().getState().record.scopeId)),
+    updateCreation: (updater: (value: DocumentData) => DocumentData) => run(async () => {
+      const scope = required(), creation = scope.getState().record.creation;
+      if (!creation) throw new Error('Open a creation stage first');
+      await scope.updateCreation(updater(creation.value));
+    }),
     update: (action: MembershipAction | null) => run(() => required().update(action)),
     save: () => run(() => required().save()), cancel: () => run(async () => { await required().cancel(); dismiss(); }),
     retry: () => run(() => active().retryMembership(required().getState().record.scopeId)),

@@ -64,6 +64,26 @@ it('remains idle in an unmigrated deployment with no provider', () => {
   expect(() => result.current.begin()).toThrow('changed');
 });
 
+it('exposes creation typing before optional series opening and sends only through explicit Save', async () => {
+  const t = fixture(), capture = jest.fn(async captures => captures.map((_: unknown, index: number) => ({ id: `created-${index}` })));
+  const scope = MembershipScope.beginCreation('owner', 'creation:scope', { collection: 'sermons', id: 'new' },
+    { userId: 'owner', title: '', verse: '', date: 'now', thoughts: [] },
+    { isCurrent: () => true, persist: async (record, revision) => ({ ...record, revision: (revision ?? -1) + 1 }), save: capture });
+  const begin = jest.fn(async () => scope), open = jest.fn(async () => scope.pinCreationSeries(t.scope.getState().record.pins));
+  Object.assign(t.engine, { beginMemberCreation: begin, openCreationSeries: open });
+  const { result } = renderHook(useDataMembership, { wrapper: Wrapper });
+  await waitFor(() => expect(result.current.ready).toBe(true));
+  await act(async () => { await result.current.beginCreate('sermons', { title: '', verse: '', date: 'now', thoughts: [] }); });
+  expect(result.current.creation?.resource.id).toBe('new'); expect(open).not.toHaveBeenCalled();
+  await act(async () => { await result.current.updateCreation(value => ({ ...value, title: 'Typed title', verse: 'Romans 1' })); });
+  expect(result.current.creation?.value.title).toBe('Typed title'); expect(capture).not.toHaveBeenCalled();
+  await act(async () => { await result.current.openSeries(); await result.current.update({ kind: 'assign', targetId: 's', refs: [{ type: 'sermon', refId: 'new' }] }); });
+  expect(result.current.creation?.seriesOpened).toBe(true);
+  await act(async () => { await result.current.save(); });
+  expect(capture).toHaveBeenCalledTimes(1); expect(capture.mock.calls[0][0]).toHaveLength(2);
+  expect(result.current.phase).toBe('submitted');
+});
+
 it('exposes engine delivery and discards only through the complete action owner', async () => {
   const t = fixture(), { result } = renderHook(useDataMembership, { wrapper: Wrapper });
   await waitFor(() => expect(result.current.ready).toBe(true));

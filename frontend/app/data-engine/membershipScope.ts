@@ -1,10 +1,14 @@
+import { prepareDomainCommand } from './domainPolicy';
 import { projectMembershipAction, type MembershipAction } from './membershipIntent';
 import { equalValues, isValidIdentifier, MAX_RELATION_RESOURCES } from './protocol';
 import { validateResourceDocument } from './resourceSchemas';
 
 import type { AtomicCapture } from './commits';
 import type { ManualSavedIntent } from './manualScope';
-import type { DocumentData, ResourceSnapshot } from './types';
+import type { DocumentData, ResourceRef, ResourceSnapshot } from './types';
+
+export const CREATION_SCOPE_PREFIX = 'creation:';
+export interface MembershipCreation { resource: ResourceRef; value: DocumentData; seriesOpened: boolean }
 
 export interface MembershipPin {
   baseline: ResourceSnapshot;
@@ -18,6 +22,7 @@ export interface MembershipScopeRecord {
   generation: number;
   phase: 'editing' | 'saving' | 'submitted' | 'cancelled';
   requestIds: string[];
+  creation?: MembershipCreation;
 }
 export interface MembershipScopePort {
   isCurrent(): boolean;
@@ -38,7 +43,23 @@ export function validateMembershipScope(record: MembershipScopeRecord): void {
     || !Array.isArray(record.requestIds) || record.requestIds.some(id => !isValidIdentifier(id)) || new Set(record.requestIds).size !== record.requestIds.length
     || (record.phase !== 'submitted' && record.requestIds.length > 0)) throw new Error('Invalid membership scope');
   for (const pin of record.pins) validatePin(pin, record.owner);
+  validateCreation(record);
   projectMembershipAction(new Map(record.pins.map(pin => [pin.baseline.resource.id, ancestor(pin)])), record.action);
+}
+function validateCreation(record: MembershipScopeRecord): void {
+  const creation = record.creation;
+  if (!creation) {
+    if (record.scopeId.startsWith(CREATION_SCOPE_PREFIX)) throw new Error('Creation scope requires its draft');
+    return;
+  }
+  if (!record.scopeId.startsWith(CREATION_SCOPE_PREFIX) || !creation.resource || !['sermons', 'groups'].includes(creation.resource.collection)
+    || typeof creation.seriesOpened !== 'boolean' || creation.value?.userId !== record.owner
+    || (!creation.seriesOpened && (record.pins.length || record.action))) throw new Error('Invalid creation stage');
+  // Input may be incomplete while typing; full resource validation belongs to Save.
+  prepareDomainCommand(record.owner, 'validate-creation-draft', { resource: creation.resource, value: null, metadata: null }, creation.value);
+  if (record.action && (record.action.kind !== 'assign' || record.action.refs.length !== 1
+    || record.action.refs[0].refId !== creation.resource.id
+    || record.action.refs[0].type !== (creation.resource.collection === 'sermons' ? 'sermon' : 'group'))) throw new Error('Creation may assign only its own member');
 }
 function validatePin(pin: MembershipPin, owner: string): void {
   const { baseline, predecessor } = pin;
@@ -76,6 +97,11 @@ export class MembershipScope {
   static restore(record: MembershipScopeRecord, port: MembershipScopePort): MembershipScope {
     const scope = new MembershipScope(record, port, true); scope.assertCurrent(); return scope;
   }
+  static beginCreation(owner: string, scopeId: string, resource: ResourceRef, value: DocumentData, port: MembershipScopePort): MembershipScope {
+    const scope = new MembershipScope({ kind: 'membership', version: 1, owner, scopeId, revision: 0, pins: [], action: null,
+      generation: 0, phase: 'editing', requestIds: [], creation: { resource, value, seriesOpened: false } }, port, false);
+    scope.assertCurrent(); void scope.enqueue(() => scope.write()).catch(() => undefined); return scope;
+  }
   getState() {
     this.assertCurrent();
     return { record: clone(this.record), durable: this.durable,
@@ -84,15 +110,32 @@ export class MembershipScope {
   subscribe(listener: () => void): () => void { this.assertCurrent(); this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   update(action: MembershipAction | null): Promise<void> {
     this.assertEditing();
+    validateCreation({ ...this.record, action });
     projectMembershipAction(this.values(), action);
     this.record.action = clone(action); this.record.generation += 1; this.durable = false; this.emit();
     return this.enqueue(() => this.write());
+  }
+  updateCreation(value: DocumentData): Promise<void> {
+    this.assertEditing();
+    if (!this.record.creation) throw new Error('Open a creation stage first');
+    const next = { ...this.record, creation: { ...this.record.creation, value: clone(value) } };
+    validateCreation(next); this.record = next;
+    this.record.generation += 1; this.durable = false; this.emit(); return this.enqueue(() => this.write());
+  }
+  pinCreationSeries(pins: readonly MembershipPin[]): Promise<void> {
+    this.assertEditing();
+    if (!this.record.creation) throw new Error('Open a creation stage first');
+    if (this.record.creation.seriesOpened) return this.settled();
+    const next = { ...this.record, pins: clone([...pins]), creation: { ...this.record.creation, seriesOpened: true } };
+    validateMembershipScope(next); this.record = next;
+    this.record.generation += 1; this.durable = false; this.emit(); return this.enqueue(() => this.write());
   }
   save(): Promise<string[]> {
     this.assertCurrent();
     if (this.saving) return this.saving;
     if (this.record.phase === 'submitted') return this.enqueue(async () => { if (!this.durable) await this.write(); return [...this.record.requestIds]; });
     if (this.record.phase === 'cancelled') throw new Error('Membership action was cancelled');
+    if (this.record.creation) validateResourceDocument(this.record.creation.resource.collection, this.record.creation.value, { kind: 'create' });
     // Freeze before any await. No later selection can change an uncertain capture.
     this.record.phase = 'saving'; this.durable = false; this.emit();
     const result = this.enqueue(async () => {
@@ -119,8 +162,8 @@ export class MembershipScope {
   private captures(): AtomicCapture[] {
     const next = projectMembershipAction(this.values(), this.record.action);
     const changed = this.record.pins.some(pin => !equalValues(ancestor(pin), next.get(pin.baseline.resource.id)));
-    if (!changed) return [];
-    return this.record.pins.flatMap(pin => {
+    if (!changed && !this.record.creation) return [];
+    const membership = this.record.pins.flatMap(pin => {
       const id = pin.baseline.resource.id, draft = next.get(id)!;
       // Even an already-satisfied target must participate: deleting it remotely
       // cannot allow the action to remove the last surviving source membership.
@@ -130,6 +173,11 @@ export class MembershipScope {
         captured: { confirmed: clone(pin.baseline), draft: clone(draft), dirty: true, editGeneration: this.record.generation,
           conflicts: [], remoteCandidate: null, pending: {} } }];
     });
+    if (!this.record.creation) return membership;
+    const { resource, value } = this.record.creation;
+    return [{ editorId: JSON.stringify([this.record.scopeId, 'create', resource]), predecessorId: null, retentionScope: this.record.scopeId,
+      captured: { confirmed: { resource: clone(resource), value: null, metadata: null }, draft: clone(value), dirty: true,
+        editGeneration: this.record.generation, conflicts: [], remoteCandidate: null, pending: {} } }, ...membership];
   }
   private async write(): Promise<void> {
     this.assertCurrent(); this.durable = false;

@@ -5,7 +5,7 @@ import type { useDataMembership } from '@/data-engine/react.client';
 
 type Action = ReturnType<typeof useDataMembership>;
 const action = (patch: Partial<Action> = {}): Action => ({ ready: true, error: null, values: [], phase: 'submitted', durable: true,
-  action: null, scopeId: 'scope', recoveryIdentity: {}, recoveryVersion: 0, delivery: { phase: 'unknown', canDiscard: false, code: null },
+  action: null, creation: null, beginCreate: jest.fn(), openSeries: jest.fn(), updateCreation: jest.fn(), scopeId: 'scope', recoveryIdentity: {}, recoveryVersion: 0, delivery: { phase: 'unknown', canDiscard: false, code: null },
   begin: jest.fn(), recover: jest.fn(), dismiss: jest.fn(), update: jest.fn(), save: jest.fn(), cancel: jest.fn(), retry: jest.fn(), discard: jest.fn(), listRecoverable: jest.fn(), ...patch });
 it('offers only retry for uncertain delivery and does not call discard', async () => {
   const state = action(); render(<DataMembershipStatus action={state} />);

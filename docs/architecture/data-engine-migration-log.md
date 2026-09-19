@@ -1687,3 +1687,31 @@ Group implementation checkpoint in progress:
   integration. Preserve pre-Save input, stable new ID and destination pins across
   restart; old membership recovery must not reinterpret creation stages. Existing
   editor checkpoint: `44e22b94`. Live QA remains blocked by Firestore quota exhaustion.
+
+### 2026-09-19 — durable creation stage and public facade
+
+- `beginMemberCreation` allocates the stable resource and durable draft before any
+  catalog read. `openCreationSeries` pins the optional selector separately. A failed
+  series read does not prevent standalone offline creation; incomplete input stays
+  editable, while complete schema validation precedes Save's immutable capture.
+- The existing MembershipScope state machine owns creation too: no second outbox,
+  save protocol or retry loop. `creation-scope` storage prevents older dialogs from
+  restoring only its membership half. Store guards preserve the resource identity,
+  pinned selection and frozen creation value; shared capture references cover the
+  crash between request persistence and stage completion.
+- Public `useDataMembership` exposes `beginCreate`, `updateCreation`, `openSeries`
+  and `creation`. Tests prove typing/restart without reads, failed optional reads,
+  fixed resource identity, selector immutability, same-ID retry after capture crash,
+  old-dialog isolation, cancellation and public React staging without premature send.
+- Gates: **723 suites / 7197 tests**, 2 suites / 13 emulator-only cases skipped in
+  the regular run; both TypeScript configurations pass, lint 0 errors / 15 inherited
+  warnings, isolated production build passes in 19.62 seconds. The final draft guard
+  reuses domain policy to forbid legacy backlinks, with focused tests/types/lint
+  rechecked after that refinement. Logs: `/tmp/data-engine-creation-scope-{full,lint,types-final,unused,build}.log`.
+- Sequential review covered ownership, immutable identity, pre-Save validation,
+  concurrent typing/selector reads, storage CAS, frozen capture and old-tab recovery.
+  No independent agent. Current UI does not expose creation stages yet, and the
+  membership-only workspace dialog excludes them intentionally. Next: add the
+  creation form and matching workspace recovery, migrate dashboard and selector
+  entry points/readers, then complete sermon/domain migration and live acceptance.
+  Atomic queue/server foundation is committed as `de572d6a`.

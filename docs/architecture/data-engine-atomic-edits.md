@@ -203,9 +203,14 @@ queues that understand only ordinary requests or series-only atomic moves.
 Predecessor holds live in the existing `reference` range until initialization, so
 older collectors cannot delete a dependency they cannot otherwise see.
 
-This is the validated queue/server foundation, not a finished creation UI. Next:
-the durable form must own the new resource ID, every keystroke and the pinned series
-selection before Save; capture references must survive a crash before completion.
-Its recovery record also needs a capability boundary that old membership dialogs
-cannot interpret as a membership-only action. Do not bridge this with UI-owned
-Promise chains, separate queues, fresh reads at Save, or compensating removal.
+The public durable stage now allocates its ID and persists input without a catalog
+read. Its optional selector pins series once before presenting choices; the draft
+remains editable if that read fails. It shares the existing action state machine,
+CAS storage, capture retention, retry and completion logic. Creation records use
+`creation-scope`, invisible to older membership recovery. Full document validation
+happens before Save freezes the stage; typing can remain incomplete.
+
+Creation-form and workspace-recovery UI integration is still open. The existing
+membership-only recovery dialog deliberately excludes creation records rather than
+opening only their link half. Do not bridge this with UI-owned Promise chains,
+separate queues, fresh reads at Save, or compensating removal.

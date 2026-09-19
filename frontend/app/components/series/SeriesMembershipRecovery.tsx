@@ -19,7 +19,8 @@ function WorkspaceRecovery() {
   const id = selected?.identity === actions.recoveryIdentity ? selected.id : null;
   const recovery = useRecoveryDiscovery({ identity: actions.recoveryIdentity, enabled: actions.ready,
     version: `${actions.recoveryVersion}:${id ?? ''}`,
-    list: async () => (await actions.listRecoverable({ closedOnly: true })).map(record => {
+    // Creation requires its own form; this dialog may never recover only the link half.
+    list: async () => (await actions.listRecoverable({ closedOnly: true })).filter(record => !record.creation).map(record => {
       const action = record.action;
       const targetId = action?.kind === 'assign' ? action.targetId : action?.kind === 'reorder' ? action.seriesId : null;
       const target = targetId ? record.pins.find(pin => pin.baseline.resource.id === targetId) : null;

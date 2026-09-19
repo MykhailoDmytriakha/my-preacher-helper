@@ -79,6 +79,56 @@ describe('membership intent projection', () => {
 });
 
 describe('durable pinned membership stage', () => {
+  const creationResource = { collection: 'sermons', id: 'new-sermon' };
+  const creationValue = { userId: 'owner', title: '', verse: '', date: 'now', thoughts: [] };
+  const create = (t: ReturnType<typeof fixture>) => MembershipScope.beginCreation('owner', 'creation:scope', creationResource, creationValue, t.port);
+  it('durably stages incomplete creation before any series selection, then restores the same resource without sending', async () => {
+    const t = fixture(), scope = create(t); await scope.settled();
+    await scope.updateCreation({ ...creationValue, title: 'Unsent title' });
+    expect(() => scope.save()).toThrow(); expect(scope.getState().record.phase).toBe('editing');
+    const restored = MembershipScope.restore((await t.scopes.read('owner', 'creation:scope'))!, t.port);
+    expect(restored.getState().record.creation).toEqual({ resource: creationResource, value: { ...creationValue, title: 'Unsent title' }, seriesOpened: false });
+    expect(t.save).not.toHaveBeenCalled(); expect(await t.commits.list('owner')).toEqual([]);
+    const transaction = createEngineStorageTransaction();
+    const oldStages = await transaction('readonly', (store, read, done) => read(store.getAll(engineOwnerRange('membership-scope', 'owner')), done));
+    expect(oldStages).toEqual([]);
+    await restored.updateCreation({ ...creationValue, title: 'Complete title', verse: 'Romans 1' });
+    expect(await restored.save()).toHaveLength(1);
+    expect((await t.commits.list('owner'))[0]).toMatchObject({ baseline: { resource: creationResource, value: null }, value: { title: 'Complete title' } });
+  });
+
+  it('pins the optional selector once and preserves both frozen creation participants across capture failure', async () => {
+    const t = fixture(), scope = create(t); await scope.settled();
+    await scope.updateCreation({ ...creationValue, title: 'New sermon', verse: 'Romans 1' });
+    await scope.pinCreationSeries(pins());
+    await scope.update({ kind: 'assign', targetId: 'b', refs: [{ type: 'sermon', refId: creationResource.id }] });
+    const original = scope.getState().record;
+    await scope.pinCreationSeries([]); expect(scope.getState().record.pins).toEqual(original.pins);
+    t.persist.mockImplementation(async (record, revision) => {
+      if (record.phase === 'submitted') throw new Error('crash after capture');
+      return t.scopes.persist(record, revision);
+    });
+    await expect(scope.save()).rejects.toThrow('crash after capture');
+    const first = await t.commits.list('owner'); expect(first).toHaveLength(2);
+    expect(() => scope.updateCreation({ ...creationValue, title: 'Different' })).toThrow('frozen');
+    t.persist.mockImplementation((record, revision) => t.scopes.persist(record, revision));
+    const restored = MembershipScope.restore((await t.scopes.read('owner', 'creation:scope'))!, t.port);
+    expect(await restored.save()).toEqual(first.map(row => row.id));
+    expect(await t.commits.list('owner')).toEqual(first); expect(t.send).not.toHaveBeenCalled();
+  });
+
+  it('rejects a different owner, resource, selector reset and edits after creation is frozen', async () => {
+    const t = fixture(), scope = create(t); await scope.settled();
+    expect(() => scope.updateCreation({ ...creationValue, userId: 'other' })).toThrow('Invalid creation');
+    expect(() => scope.updateCreation({ ...creationValue, seriesId: 'b' })).toThrow('Edit membership through');
+    await scope.pinCreationSeries(pins());
+    expect(() => scope.update(move)).toThrow('only its own');
+    const record = scope.getState().record;
+    await expect(t.scopes.persist({ ...record, creation: { ...record.creation!, resource: { ...creationResource, id: 'replacement' } } }, record.revision)).rejects.toThrow('Frozen');
+    await expect(t.scopes.persist({ ...record, pins: [], creation: { ...record.creation!, seriesOpened: false } }, record.revision)).rejects.toThrow('Frozen');
+    await scope.cancel(); await t.scopes.compact('owner', record.scopeId);
+    expect(await t.scopes.list('owner')).toEqual([]);
+  });
   it('pins before typing, stages durably without delivery, and captures the complete move once', async () => {
     const t = fixture(), captured = pins(), scope = t.begin('scope', captured);
     captured[0].baseline.value!.title = 'Later remote';
@@ -244,8 +294,22 @@ describe('DataEngine membership ownership', () => {
     const engine = new DataEngine({ runtime, observer, transport, snapshots, collections, checkpoints: createIndexedDbCheckpoints(),
       commits: t.commits, membershipScopes: t.scopes, operationId: () => `engine-${++id}` });
     engine.setOnline(false); engine.setOwner('owner');
-    return { ...t, engine, cache };
+    return { ...t, engine, cache, collections };
   }
+  it('creates and restores local input even when the optional series catalog cannot be read', async () => {
+    const t = engineFixture(); const read = jest.spyOn(t.collections, 'read').mockRejectedValue(new Error('catalog offline'));
+    const scope = await t.engine.beginMemberCreation('sermons', { title: '', verse: '', date: 'now', thoughts: [] });
+    expect(read).not.toHaveBeenCalled();
+    await scope.updateCreation({ ...scope.getState().record.creation!.value, title: 'Local title', verse: 'Romans 1' });
+    const original = scope.getState().record;
+    await expect(t.engine.openCreationSeries(original.scopeId)).rejects.toThrow('catalog offline');
+    t.engine.setOwner(null); t.engine.setOwner('owner');
+    expect(await t.engine.listMembershipRecovery()).toEqual([original]);
+    const recovered = await t.engine.recoverMembership(original.scopeId);
+    expect(recovered.getState().record.creation?.resource).toEqual(original.creation?.resource);
+    expect(await recovered.save()).toHaveLength(1); expect(read).toHaveBeenCalledTimes(1);
+    expect(t.send).not.toHaveBeenCalled(); t.engine.dispose();
+  });
   it('publishes a closed stage and gives only one recovery dialog exclusive ownership', async () => {
     const t = engineFixture(), notified = jest.fn();
     const stop = t.engine.subscribeMembership(notified);

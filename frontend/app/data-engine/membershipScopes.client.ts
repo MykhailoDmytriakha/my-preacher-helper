@@ -1,6 +1,6 @@
 'use client';
 
-import { validateMembershipScope, type MembershipScopeRecord } from './membershipScope';
+import { CREATION_SCOPE_PREFIX, validateMembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { equalValues } from './protocol';
 import { collectCommitRows, commitCaptureKey } from './retention.client';
 import { createEngineStorageTransaction, engineOwnerRange, validateCommitReferences } from './storage.client';
@@ -16,7 +16,7 @@ export interface MembershipScopeStore {
 }
 interface ScopeWatermark { owner: string; scopeId: string; revision: number; closed: true; outcome?: 'acknowledged' | 'cancelled' }
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
-const key = (owner: string, id: string): IDBValidKey => ['membership-scope', owner, id];
+const key = (owner: string, id: string): IDBValidKey => [id.startsWith(CREATION_SCOPE_PREFIX) ? 'creation-scope' : 'membership-scope', owner, id];
 const referenceKey = (owner: string, id: string): IDBValidKey => ['reference', owner, 'membership', id];
 const live = (value: MembershipScopeRecord | ScopeWatermark): value is MembershipScopeRecord => !('closed' in value);
 const references = (record: MembershipScopeRecord) => [...new Set([...record.pins.flatMap(pin => pin.predecessor ? [pin.predecessor.id] : []), ...record.requestIds])];
@@ -36,15 +36,23 @@ export function createIndexedDbMembershipScopes(): MembershipScopeStore {
     read: (owner, scopeId) => transaction('readonly', (store, read, done) => read(store.get(key(owner, scopeId)), (value: MembershipScopeRecord | ScopeWatermark | undefined) => {
       done(value && live(value) ? validated(value, owner, scopeId) : undefined);
     })),
-    list: owner => transaction('readonly', (store, read, done) => read(store.getAll(engineOwnerRange('membership-scope', owner)), (values: (MembershipScopeRecord | ScopeWatermark)[]) => {
-      done(values.filter(live).map(record => validated(record, owner)));
-    })),
+    list: owner => transaction('readonly', (store, read, done) => {
+      const records: MembershipScopeRecord[] = []; let remaining = 2;
+      for (const kind of ['membership-scope', 'creation-scope']) read(store.getAll(engineOwnerRange(kind, owner)), (values: (MembershipScopeRecord | ScopeWatermark)[]) => {
+        records.push(...values.filter(live).map(record => validated(record, owner)));
+        if (!--remaining) done(records);
+      });
+    }),
     persist: async (record, expectedRevision) => {
       const frozen = validated(record, record.owner), refs = references(frozen);
       return transaction('readwrite', (store, read, done) => read(store.get(key(frozen.owner, frozen.scopeId)), (existing: MembershipScopeRecord | ScopeWatermark | undefined) => {
         if (expectedRevision === null ? Boolean(existing) : !existing || existing.revision !== expectedRevision || !live(existing)) throw new Error('Membership stage changed in another session');
         if (existing && live(existing)) {
-          if (!equalValues(existing.pins, frozen.pins) || existing.generation > frozen.generation
+          const openingCreationSeries = existing.phase === 'editing' && existing.creation?.seriesOpened === false && frozen.creation?.seriesOpened === true;
+          if ((!openingCreationSeries && !equalValues(existing.pins, frozen.pins))
+            || !equalValues(existing.creation?.resource, frozen.creation?.resource)
+            || (existing.creation?.seriesOpened === true && frozen.creation?.seriesOpened !== true)
+            || (existing.phase !== 'editing' && !equalValues(existing.creation, frozen.creation)) || existing.generation > frozen.generation
             || (existing.phase !== 'editing' && (!equalValues(existing.action, frozen.action) || existing.generation !== frozen.generation))
             || (existing.phase === 'saving' && !['saving', 'submitted'].includes(frozen.phase))
             || (existing.phase === 'submitted' && (frozen.phase !== 'submitted' || !equalValues(existing.requestIds, frozen.requestIds)))

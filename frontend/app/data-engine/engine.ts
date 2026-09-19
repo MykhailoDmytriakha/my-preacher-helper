@@ -5,7 +5,7 @@ import { collectionHeadRef } from './feed';
 import { ManualScope, sameManualSelection, type ManualCapture, type ManualPath, type ManualSavedIntent } from './manualScope';
 import { captureMembershipPins } from './membershipCapture';
 import { describeMembershipDelivery, type MembershipDelivery } from './membershipDelivery';
-import { MembershipScope, type MembershipScopeRecord } from './membershipScope';
+import { CREATION_SCOPE_PREFIX, MembershipScope, type MembershipScopeRecord } from './membershipScope';
 import { getResourcePolicy, equalValues, isValidIdentifier } from './protocol';
 import { forkCheckpoint, isRecoverableCheckpoint, reconcileRecoveryRecord } from './recovery.client';
 import { canReplaceSnapshot, coversCommittedEffect } from './snapshotFreshness';
@@ -276,6 +276,30 @@ export class DataEngine {
     catch (error) { this.membershipForms.delete(scopeId); scope.dispose(); throw error; }
   }
 
+  /** A creation draft exists durably before any optional catalog request. */
+  async beginMemberCreation(collection: 'sermons' | 'groups', value: DocumentData): Promise<MembershipScope> {
+    const owner = this.requireOwner(), generation = this.generation;
+    if (!this.options.membershipScopes) throw new Error('Creation stage storage is not configured');
+    const scopeId = `${CREATION_SCOPE_PREFIX}${this.options.operationId()}`;
+    const resource = { collection, id: this.options.operationId() };
+    const scope = MembershipScope.beginCreation(owner, scopeId, resource, { ...value, userId: owner }, this.membershipPort(owner, generation));
+    this.membershipForms.set(scopeId, scope);
+    try { await scope.settled(); this.assertCurrent(owner, generation); return scope; }
+    catch (error) { this.membershipForms.delete(scopeId); scope.dispose(); throw error; }
+  }
+
+  /** Open the optional selector separately; creating an unlinked draft needs no catalog read. */
+  async openCreationSeries(scopeId: string): Promise<void> {
+    const owner = this.requireOwner(), generation = this.generation, scope = this.membershipForms.get(scopeId);
+    if (!scope?.getState().record.creation) throw new Error('Open a creation stage first');
+    if (scope.getState().record.creation?.seriesOpened) return;
+    const state = await this.collectionReader().read('series');
+    const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+    if (this.membershipForms.get(scopeId) !== scope) throw new Error('Creation stage changed');
+    if (scope.getState().record.phase !== 'editing') return;
+    await scope.pinCreationSeries(captureMembershipPins(owner, state, requests));
+  }
+
   /** Recovery is an explicit continuation of the same durable Save identity. */
   async recoverMembership(scopeId: string, { exclusive = false }: { exclusive?: boolean } = {}): Promise<MembershipScope> {
     const owner = this.requireOwner(), generation = this.generation;
@@ -305,7 +329,7 @@ export class DataEngine {
     this.background(scope.settled().then(async () => {
       this.assertCurrent(owner, generation);
       const record = scope.getState().record;
-      if (record.phase === 'editing' && record.action === null) await scope.cancel();
+      if (record.phase === 'editing' && record.action === null && !record.creation) await scope.cancel();
       await this.options.membershipScopes!.compact(owner, scopeId);
     }).finally(() => {
       scope.dispose();
@@ -321,7 +345,7 @@ export class DataEngine {
     const records = await store.list(owner); this.assertCurrent(owner, generation);
     for (const record of records) { await store.compact(owner, record.scopeId); this.assertCurrent(owner, generation); }
     const remaining = await store.list(owner); this.assertCurrent(owner, generation);
-    return remaining.filter(record => record.phase !== 'cancelled' && (record.action || record.phase === 'saving')
+    return remaining.filter(record => record.phase !== 'cancelled' && (record.action || record.creation || record.phase === 'saving')
       && (!closedOnly || (!this.membershipForms.has(record.scopeId) && !this.membershipOpenings.has(record.scopeId) && !this.membershipReleases.has(record.scopeId))));
   }
 

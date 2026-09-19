@@ -228,3 +228,17 @@ The existing-sermon form uses `useEngineSeriesField`, a presentation adapter ove
 the same stage. An empty complete series list is valid; selecting an uncaptured
 target is always refused. Metadata and membership currently have separate delivery
 outcomes, and retrying metadata must reuse any already captured membership action.
+
+For a new sermon/group, `beginCreate(collection, initialValue)` durably allocates its
+identity without reading any collection. `creation` exposes that resource and its
+current draft. `updateCreation(updater)` persists typing without sending. Only
+`openSeries()` reads and pins the optional destination catalog; show selection
+controls after `creation.seriesOpened` is true. Assign only the new typed member
+through `update`, or use `update(null)` for standalone creation. `save()` validates
+the complete draft before freezing, then captures the new document and selected
+destination atomically. Recovery/retry keeps the original ID and capture identity.
+
+Creation scopes use a separate durable range so older membership-only dialogs
+cannot recover half of their intent. The public stage is tested, but creation-form
+and workspace-recovery integration remains the next migration step. Do not activate
+sermons or expose these stages without the matching creation/recovery UI.
