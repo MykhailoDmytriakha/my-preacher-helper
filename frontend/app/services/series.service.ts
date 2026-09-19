@@ -1,6 +1,7 @@
 import { addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from 'firebase/firestore';
 
 import { getClientDb } from '@/config/firebaseClientDb';
+import { assertLegacyClientWriteAllowed } from '@/data-engine/clientPolicy';
 import { Series } from '@/models/models';
 import { conflictSafeUpdate, revisionBump } from '@/services/conflictSafeUpdate.client';
 import { readOwnerDocument, readOwnerList } from '@/services/ownerListRead.client';
@@ -201,6 +202,7 @@ export const getSeriesById = async (seriesId: string): Promise<Series | undefine
 };
 
 export const createSeries = async (series: Omit<Series, 'id'> & { id?: string }): Promise<Series> => {
+  assertLegacyClientWriteAllowed(SERIES_COLLECTION);
   return createSeriesViaClient(series);
 };
 
@@ -214,10 +216,12 @@ export const updateSeries = async (
   // Items/sermonIds membership flows through the dedicated cascade endpoints, never
   // updateSeries; the client path whitelists metadata only (same as the server route),
   // so it stays a pure own-doc write with no cross-collection effect.
+  assertLegacyClientWriteAllowed(SERIES_COLLECTION);
   return updateSeriesViaClient(seriesId, updates, expectedRevision, expectedBaseline);
 };
 
 export const deleteSeries = async (seriesId: string): Promise<void> => {
+  assertLegacyClientWriteAllowed(SERIES_COLLECTION);
   try {
     const authHeaders = await getAuthenticatedRequestHeaders();
     const response = await fetch(`${API_BASE}/api/series/${seriesId}`, {

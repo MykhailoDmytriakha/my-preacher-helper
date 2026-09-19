@@ -146,3 +146,14 @@ describe('series.service', () => {
 jest.mock('@/utils/authenticatedRequest', () => ({
   getAuthenticatedRequestHeaders: jest.fn().mockResolvedValue({ Authorization: 'Bearer test-token' }),
 }));
+
+it('refuses every legacy series CRUD write before SDK or HTTP when the collection is migrated', async () => {
+  jest.clearAllMocks(); process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series';
+  try {
+    const service = await importServiceWithClientMocks();
+    await expect(service.createSeries(baseSeries)).rejects.toMatchObject({ code: 'data-engine-required' });
+    await expect(service.updateSeries('s', { title: 'changed' })).rejects.toMatchObject({ code: 'data-engine-required' });
+    await expect(service.deleteSeries('s')).rejects.toMatchObject({ code: 'data-engine-required' });
+    expect(mockGetClientDb).not.toHaveBeenCalled(); expect(mockFetch).not.toHaveBeenCalled();
+  } finally { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; delete process.env.NEXT_PUBLIC_API_BASE; }
+});

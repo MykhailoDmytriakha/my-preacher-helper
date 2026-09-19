@@ -103,3 +103,23 @@ it('attributes old ownerless deletes only from a unique cached owner, quarantini
   expect(await listLegacyQueryCopies('')).toEqual([]);
   expect(JSON.stringify([...disk.rows.values()])).toContain('unknown');
 });
+
+it('preserves series lists, detail documents and pending mutation inputs before hydration', async () => {
+  const disk = installStorageHarness();
+  const series = { id: 's', userId: 'owner', title: 'List', items: [], unknownField: { keep: true } };
+  const mutation = (op: string, variables: unknown) => ({ mutationKey: ['series', op], state: { variables, isPaused: true, submittedAt: 20 } });
+  const update = mutation('update', { seriesId: 's', userId: 'owner', updates: { title: 'Pending text' }, expectedBaseline: { title: 'Opening' } });
+  const removed = mutation('delete', 's');
+  jest.mocked(get).mockResolvedValue({ clientState: { queries: [
+    { queryKey: ['series', 'owner'], state: { data: [series] } },
+    { queryKey: ['series-detail', 's'], state: { data: { series: { ...series, title: 'Detail' }, items: [] } } },
+    { queryKey: ['series-detail', 'wrong'], state: { data: { series } } },
+  ], mutations: [update, removed, mutation('create', { userId: 'other', title: 'Private' }), mutation('delete', 'unknown')] } });
+  await preserveLegacyQueryCache(collection => collection === 'series');
+  const copies = await listLegacyQueryCopies('owner');
+  expect(copies.map(copy => JSON.parse(copy.raw))).toEqual([series, { ...series, title: 'Detail' }, update, removed]);
+  expect(copies.every(copy => copy.collection === 'series')).toBe(true);
+  expect(await listLegacyQueryCopies('other')).toHaveLength(1);
+  expect(JSON.stringify([...disk.rows.values()])).toContain('unknown');
+  await preserveLegacyQueryCache(collection => collection === 'series'); expect(await listLegacyQueryCopies('owner')).toHaveLength(4);
+});

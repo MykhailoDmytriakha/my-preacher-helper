@@ -1,5 +1,7 @@
 'use client';
 
+import { isCollectionOnEngine } from './clientPolicy';
+
 import type { ResourceRef } from './types';
 
 export interface LegacyRecoverySource {
@@ -45,15 +47,13 @@ export function discoverLegacyRecovery(owner: string, options: DiscoveryOptions 
   const draftPrefix = `draft:v1:${owner}:`;
   for (let index = 0; index < storage.length; index += 1) {
     const key = storage.key(index);
-    if (!key || (!key.startsWith('outbox:v1:') && !key.startsWith(draftPrefix))) continue;
+    if (!key || (!key.startsWith('outbox:v1:') && !key.startsWith('membershipOutbox:v2:') && !key.startsWith(draftPrefix))) continue;
     const raw = storage.getItem(key);
     if (raw === null) continue;
     let payload: unknown;
     try { payload = JSON.parse(raw); } catch { continue; }
     if (!object(payload)) continue;
-    const source = key.startsWith('outbox:v1:')
-      ? outboxSource(key, payload, owner, options.resource)
-      : draftSource(key.slice(draftPrefix.length), payload, options);
+    const source = identifySource(key, payload, owner, draftPrefix, options);
     if (!source) continue;
     sources.push({ ...source, id: key, owner, raw, payload, savedAt: typeof payload.savedAt === 'number' && Number.isFinite(payload.savedAt) ? payload.savedAt : null,
       importable: false, reason: 'incomplete-original-document' });
@@ -68,6 +68,12 @@ export function exportLegacyRecovery(source: LegacyRecoverySource, owner: string
 }
 
 type SourceIdentity = Pick<LegacyRecoverySource, 'kind' | 'resource' | 'documentId' | 'aggregate' | 'status'>;
+
+function identifySource(key: string, payload: Record<string, unknown>, owner: string, draftPrefix: string, options: DiscoveryOptions): SourceIdentity | null {
+  if (key.startsWith('outbox:v1:')) return outboxSource(key, payload, owner, options.resource);
+  if (key.startsWith('membershipOutbox:v2:')) return membershipSource(key, payload, owner, options.resource);
+  return draftSource(key.slice(draftPrefix.length), payload, options);
+}
 
 function outboxSource(key: string, payload: Record<string, unknown>, owner: string, requested?: ResourceRef): SourceIdentity | null {
   if (payload.uid !== owner || typeof payload.id !== 'string' || key !== `outbox:v1:${payload.id}`
@@ -85,4 +91,14 @@ function draftSource(remainder: string, payload: Record<string, unknown>, option
   const aggregate = remainder.slice(separator + 1);
   if (options.resource && (options.resource.id !== documentId || !options.draftAggregates?.includes(aggregate))) return null;
   return { kind: 'draft', resource: options.resource ?? null, documentId, aggregate, status: null };
+}
+
+
+/** v2 retained individual transforms, not original action boundaries or baselines. */
+function membershipSource(key: string, payload: Record<string, unknown>, owner: string, requested?: ResourceRef): SourceIdentity | null {
+  if (payload.uid !== owner || typeof payload.id !== 'string' || key !== `membershipOutbox:v2:${payload.id}`
+    || !object(payload.transform) || typeof payload.transform.seriesId !== 'string' || !payload.transform.seriesId) return null;
+  const resource = { collection: 'series', id: payload.transform.seriesId };
+  if (requested && (requested.collection !== resource.collection || requested.id !== resource.id)) return null;
+  return { kind: 'outbox', resource, documentId: resource.id, aggregate: 'membership', status: isCollectionOnEngine('series') ? 'migration-required' : null };
 }

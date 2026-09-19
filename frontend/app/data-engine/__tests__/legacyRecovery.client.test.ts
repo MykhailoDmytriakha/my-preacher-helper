@@ -50,3 +50,21 @@ describe('legacy recovery discovery', () => {
     expect(discoverLegacyRecovery('owner').map(source => source.documentId)).toEqual(['a', 'b', 'sermon']);
   });
 });
+
+it('discovers preserved membership transforms only for their owner without inventing an atomic group', () => {
+  localStorage.clear(); process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series';
+  try {
+    const payload = { id: 'move-side', uid: 'owner', savedAt: 12, transform: { seriesId: 'target', op: 'add', refs: [{ type: 'group', refId: 'g' }] }, future: 'keep' };
+    const raw = JSON.stringify(payload, null, 3);
+    localStorage.setItem('membershipOutbox:v2:move-side', raw);
+    localStorage.setItem('membershipOutbox:v2:foreign', JSON.stringify({ ...payload, id: 'foreign', uid: 'other' }));
+    localStorage.setItem('membershipOutbox:v2:wrong-id', raw);
+    const sources = discoverLegacyRecovery('owner', { resource: { collection: 'series', id: 'target' } });
+    expect(sources).toHaveLength(1);
+    expect(sources[0]).toMatchObject({ kind: 'outbox', aggregate: 'membership', importable: false, status: 'migration-required' });
+    expect(exportLegacyRecovery(sources[0], 'owner')).toBe(raw); expect(localStorage.getItem(sources[0].id)).toBe(raw);
+    expect(discoverLegacyRecovery('owner', { resource: { collection: 'groups', id: 'target' } })).toEqual([]);
+    delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    expect(discoverLegacyRecovery('owner')[0].status).toBeNull();
+  } finally { delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS; }
+});

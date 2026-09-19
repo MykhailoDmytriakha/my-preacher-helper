@@ -17,7 +17,8 @@ mixed-version request isolation. `b5060049` introduced ACK evidence and `384843a
 introduced atomic storage. The queue extension passed its local gates and sequential review;
 see `data-engine-atomic-edits.md` and the closing entries below. It is still internal:
 public membership scopes and every series reader/writer must migrate before group
-activation. No production deployment or switch changed.
+activation. The next checkpoint preserves legacy series cache/mutation inputs and
+blocks the old writer in newly enabled clients; it does not activate series. No production deployment or switch changed.
 
 - Reproduced `BUG-20260919-engine-field-buffer-diverges`: the focused text field
   hid remote content already accepted by the engine; blur could also discard a
@@ -1350,3 +1351,26 @@ Group implementation checkpoint in progress:
 - Closed `BUG-20260919-engine-old-tab-splits-atomic-action` with an old-range
   negative control. Public series membership scope and UI remain unimplemented;
   the next work is listed at the top. No production switch, rules or deploy changed.
+
+## 2026-09-19 — legacy series preservation before activation
+
+- Reproduced `BUG-20260919-series-legacy-replay-splits-move`: v2 stores independent
+  transforms and replays a move piecemeal. A deleted target refuses its addition,
+  then the source removal succeeds. Evidence: `/tmp/data-engine-legacy-membership-repro.log`;
+  exact temporary test source: `/tmp/data-engine-legacy-membership-repro.test.ts`.
+  The bug remains open while the old path is active.
+- When series is enabled, new-bundle legacy CRUD/membership entry points refuse
+  before SDK/HTTP access. Replay leaves original v2 bytes intact; recovery exposes
+  owner-scoped preview/export with migration-required status. Original action
+  grouping and opening versions are absent, so automatic import would invent intent.
+- Series list/detail query documents and pending CRUD variables now archive before
+  React Query hydrates, expires or replaces them. Ownerless deletes are attributed
+  only by a unique cached owner; unknown ownership stays quarantined.
+- Validation: 711 suites / 7,096 tests pass; full lint/types pass (the two new lint
+  warnings were then removed and focused tests rerun: 35/35, changed modules lint clean).
+  Logs: `/tmp/data-engine-series-preservation-{full,lint,after-2,eslint}.log`.
+- Sequential review checked migration gating, owner separation, unchanged inactive
+  behavior, exact-byte recovery and transport refusal. No new high-confidence issue
+  remains in this diff. Already shipped clients are not changed by these guards.
+- Next: public pinned membership scopes and all series readers/writers. Groups and
+  series remain disabled for production; PWA/device acceptance remains outstanding.

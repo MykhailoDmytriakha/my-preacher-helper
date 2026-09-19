@@ -35,13 +35,13 @@ export function useRecoveryDiscovery<T>(options: RecoveryDiscoveryOptions<T>) {
 
 /** Preserve old cache copies before the query provider may hydrate, expire or replace them. */
 export function DataEngineMigrationGate({ children }: { children: ReactNode }) {
-  return (isCollectionOnEngine('councils') || isCollectionOnEngine('groups')) ? <LegacyQueryMigrationGate enabled={isCollectionOnEngine}>{children}</LegacyQueryMigrationGate> : <>{children}</>;
+  return (['councils', 'groups', 'series'].some(isCollectionOnEngine)) ? <LegacyQueryMigrationGate enabled={isCollectionOnEngine}>{children}</LegacyQueryMigrationGate> : <>{children}</>;
 }
 
 /** Archived cache copies are evidence for the person, never confirmed engine snapshots. */
 export function LegacyDataRecoveryNotice() {
   const { user } = useAuth();
-  return user?.uid && (isCollectionOnEngine('councils') || isCollectionOnEngine('groups')) ? <LegacyQueryCopies key={user.uid} owner={user.uid} /> : null;
+  return user?.uid && (['councils', 'groups', 'series'].some(isCollectionOnEngine)) ? <LegacyQueryCopies key={user.uid} owner={user.uid} /> : null;
 }
 
 /** Keep one owner-scoped engine alive when navigation chrome is hidden. */

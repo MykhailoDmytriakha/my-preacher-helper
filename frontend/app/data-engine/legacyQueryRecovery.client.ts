@@ -16,15 +16,18 @@ export interface LegacyQueryCopy {
 const object = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 type Candidate = Omit<LegacyQueryCopy, 'id'>;
+const SERIES_DETAIL_KEY = 'series-detail';
 
 function querySource(query: unknown, enabled: (collection: string) => boolean) {
   if (!object(query) || !Array.isArray(query.queryKey) || !object(query.state)) return null;
   const key = query.queryKey;
   const collection = key[0] === 'councils' ? 'councils'
-    : ['groups', 'group-detail', 'calendarGroups'].includes(String(key[0])) ? 'groups' : null;
+    : ['groups', 'group-detail', 'calendarGroups'].includes(String(key[0])) ? 'groups'
+    : ['series', SERIES_DETAIL_KEY].includes(String(key[0])) ? 'series' : null;
   if (!collection || !enabled(collection) || key.length !== (key[0] === 'calendarGroups' ? 4 : 2)) return null;
-  const detail = key[0] === 'group-detail';
-  const rows = detail ? [query.state.data] : query.state.data;
+  const detail = key[0] === 'group-detail' || key[0] === SERIES_DETAIL_KEY;
+  const rows = key[0] === SERIES_DETAIL_KEY ? [object(query.state.data) ? query.state.data.series : null]
+    : detail ? [query.state.data] : query.state.data;
   if (!Array.isArray(rows)) return null;
   return { collection, detail, identity: key[1], rows,
     savedAt: typeof query.state.dataUpdatedAt === 'number' && Number.isFinite(query.state.dataUpdatedAt) ? query.state.dataUpdatedAt : null };
@@ -47,17 +50,16 @@ function queryCopies(query: unknown, enabled: (collection: string) => boolean): 
 
 /** Paused/error variables can outlive the optimistic row, or have no row at all. */
 function mutationCopies(mutations: unknown[], queries: Candidate[], enabled: (collection: string) => boolean): Candidate[] {
-  if (!enabled('groups')) return [];
   return mutations.flatMap((mutation): Candidate[] => {
     if (!object(mutation) || !Array.isArray(mutation.mutationKey) || !object(mutation.state)) return [];
     const [collection, operation] = mutation.mutationKey;
-    if (collection !== 'groups' || mutation.mutationKey.length !== 2 || !['create', 'update', 'delete'].includes(String(operation))) return [];
+    if ((collection !== 'groups' && collection !== 'series') || !enabled(collection) || mutation.mutationKey.length !== 2 || !['create', 'update', 'delete'].includes(String(operation))) return [];
     const variables = mutation.state.variables;
     const fields = object(variables) ? variables : {};
     const documentId = operation === 'delete' && typeof variables === 'string' ? variables
-      : typeof fields.id === 'string' ? fields.id : 'unassigned-create';
+      : typeof fields.id === 'string' ? fields.id : typeof fields.seriesId === 'string' ? fields.seriesId : 'unassigned-create';
     const explicitOwner = typeof fields.userId === 'string' && fields.userId ? fields.userId : null;
-    const cachedOwners = new Set(queries.filter(copy => copy.collection === 'groups' && copy.documentId === documentId).map(copy => copy.owner));
+    const cachedOwners = new Set(queries.filter(copy => copy.collection === collection && copy.documentId === documentId).map(copy => copy.owner));
     // Old deletes have only an ID. Attribute only when the persisted document proves
     // one owner. Otherwise retain quarantined bytes (owner=''), never show another
     // account's intent merely because that person signs in after the upgrade.
@@ -72,7 +74,7 @@ function mutationCopies(mutations: unknown[], queries: Candidate[], enabled: (co
 
 /** Cache state has no provable opening ancestor or delivery status. Archive, never import. */
 export async function preserveLegacyQueryCache(enabled: (collection: string) => boolean): Promise<void> {
-  if (!enabled('councils') && !enabled('groups')) return;
+  if (!['councils', 'groups', 'series'].some(enabled)) return;
   const persisted: unknown = await get('react-query-cache');
   if (!object(persisted) || !object(persisted.clientState)) return;
   const queries = (Array.isArray(persisted.clientState.queries) ? persisted.clientState.queries : []).flatMap(query => queryCopies(query, enabled));
