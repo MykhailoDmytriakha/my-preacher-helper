@@ -15,7 +15,9 @@ jest.mock('@/config/firebaseAdminConfig', () => {
 const run = process.env.DATA_ENGINE_EMULATOR_TEST === 'true' ? describe : describe.skip;
 run('legacy cutover against real Firestore transactions', () => {
   jest.setTimeout(30_000);
-  afterAll(async () => { await adminDb.terminate(); });
+  const environment = { ...process.env };
+  beforeEach(() => { process.env.DATA_ENGINE_ENABLED = 'true'; });
+  afterAll(async () => { process.env = environment; await adminDb.terminate(); });
   it('refuses an in-flight legacy save whose successful preflight predates the engine transition', async () => {
     const owner = `legacy-overlap-${randomUUID()}`;
     const resource = { collection: 'sermons', id: owner };

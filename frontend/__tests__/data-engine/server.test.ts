@@ -2,10 +2,13 @@
 import { createHash } from 'node:crypto';
 
 import { adminDb } from '@/config/firebaseAdminConfig';
+import { isCollectionServed } from '@/data-engine/activation';
 import { DataEngineServerError, listDocuments, MAX_COMMAND_BYTES, processCommand, readCollectionChanges, readCommandBody, readDocument, serverErrorResponse } from '@/data-engine/server';
 import { collectionHeadId, HEADS_COLLECTION, sequenceId } from '@/data-engine/serverFeed';
 import { DataSession } from '@/data-engine/session';
 import type { DataCommand, ResourceSnapshot } from '@/data-engine/types';
+
+jest.mock('@/data-engine/activation', () => ({ ...jest.requireActual('@/data-engine/activation'), isCollectionServed: jest.fn(() => true) }));
 
 jest.mock('@/config/firebaseAdminConfig', () => ({ adminDb: { collection: jest.fn(), runTransaction: jest.fn() } }));
 
@@ -42,6 +45,7 @@ const transactionWrites: string[] = [];
 let documentReadUnits = 0;
 
 beforeEach(() => {
+  jest.mocked(isCollectionServed).mockReturnValue(true);
   documents.clear();
   transactionReads.length = 0;
   transactionWrites.length = 0;
@@ -799,5 +803,44 @@ describe('command request bounds', () => {
       expect(await unavailable.text()).not.toContain('Secret');
       expect(serverErrorResponse(Object.assign(new Error('Invalid'), { code: 'invalid-argument' })).status).toBe(400);
     } finally { global.Response = previous; }
+  });
+});
+
+
+describe('complete write-set activation boundary', () => {
+  const deleting = (collection: string, id: string, value: Raw, operationId = 'delete-cohort'): DataCommand => ({
+    protocol: 1, owner: 'owner-1', operationId, resource: { collection, id }, generation: null, dependsOn: [], kind: 'delete', baseline: value as never,
+  });
+  it.each([
+    { primary: 'groups', id: 'g', value: { userId: 'owner-1', title: 'Group', templates: [], flow: [] }, related: 'series/s',
+      linked: { userId: 'owner-1', items: [{ id: 'group-g', type: 'group', refId: 'g', position: 1 }], sermonIds: [] } },
+    { primary: 'series', id: 's', value: { userId: 'owner-1', title: 'Series', items: [], sermonIds: [] }, related: 'sermons/n',
+      linked: { userId: 'owner-1', title: 'Legacy sermon', thoughts: [], seriesId: 's', seriesPosition: 1 } },
+  ])('refuses $primary cascade into an unserved collection without touching either document', async ({ primary, id, value, related, linked }) => {
+    documents.set(`${primary}/${id}`, value); documents.set(related, linked);
+    jest.mocked(isCollectionServed).mockImplementation(collection => collection === primary);
+    const command = deleting(primary, id, value);
+    expect(await processCommand('owner-1', command)).toMatchObject({ kind: 'refused', code: 'related-collection-not-enabled' });
+    expect(documents.get(`${primary}/${id}`)).toEqual(value); expect(documents.get(related)).toEqual(linked);
+    expect(transactionWrites.every(path => path.startsWith('_dataEngineReceipts/'))).toBe(true);
+    jest.mocked(isCollectionServed).mockReturnValue(true);
+    // A refusal is immutable. Enabling another collection cannot silently replay old refused intent.
+    expect(await processCommand('owner-1', command)).toMatchObject({ kind: 'refused' });
+    expect(await processCommand('owner-1', { ...command, operationId: 'explicit-retry' })).toMatchObject({ kind: 'acknowledged' });
+    jest.mocked(isCollectionServed).mockImplementation(collection => collection === primary);
+    transactionWrites.length = 0;
+    // Already accepted work keeps its ACK proof despite a later rollout switch.
+    expect(await processCommand('owner-1', { ...command, operationId: 'explicit-retry' })).toMatchObject({ kind: 'acknowledged' });
+    expect(transactionWrites).toEqual([]);
+  });
+  it('allows read-only references to unserved domains while guarding all actual writes', async () => {
+    documents.set('series/s', { userId: 'owner-1', items: [], sermonIds: [] });
+    documents.set('groups/g', { userId: 'owner-1', title: 'Referenced group', templates: [], flow: [] });
+    jest.mocked(isCollectionServed).mockImplementation(collection => collection === 'series');
+    expect(await processCommand('owner-1', { protocol: 1, owner: 'owner-1', operationId: 'read-only-target',
+      resource: { collection: 'series', id: 's' }, generation: null, dependsOn: [], kind: 'relation', relation: 'series-membership', edits: [
+        { resource: { collection: 'series', id: 's' }, generation: null, beforeItems: [], afterItems: [{ id: 'group-g', type: 'group', refId: 'g', position: 1 }] },
+      ] })).toMatchObject({ kind: 'acknowledged' });
+    expect(documents.get('groups/g')).not.toHaveProperty('_dataEngine');
   });
 });

@@ -13,7 +13,7 @@ by `el` in this worktree, case `2026-09-19-data-engine-production-readiness`.
 
 Current hard-path checkpoint: atomic queue ownership is committed as `61104b4b`;
 legacy series preservation is committed as `ea536555`. Pinned membership stages,
-CAS storage and the public `useDataMembership` hook are now implemented locally,
+CAS storage and the public `useDataMembership` hook are committed as `9abeede6`,
 with crash/retention regression proof and a successful isolated production build.
 The checkpoint passed final coverage/review recording. Domain screens,
 whole-action delivery/conflict controls and all series readers/writers remain next.
@@ -392,7 +392,7 @@ that has to move. "State" is what exists today, measured by imports, not by inte
 | Sermons | 33 | Partially on the engine: core fields and scratch wired; `useSermonThoughtsDataDocument` written but **imported by no screen**; eight controls inert behind the switch (`page.tsx`, `legacyReadOnly`) | Wire thoughts; adapters for outline, structure, plan, preach dates and the AI writers; un-inert the eight controls. Largest domain, last in order |
 | Groups | 11 | CRUD, conduct, creation, readers and legacy-copy preservation integrated; real engine regressions and dev-browser evidence recorded below | Series boundary must migrate before activation; final PWA/device and rollout acceptance |
 | Studies (notes + materials + share links) | 7 | Untouched; the note editor is the most complete legacy example of the contract | Full adapter; `material-notes` relation already exists in the core; share links need an ownership decision |
-| Series (+ membership) | 6 + 6 | Server relation plus atomic client ownership implemented internally, including multi-source actions; feature hooks/screens still legacy | Public pinned membership scope, full reader/editor migration, outbox retirement and browser acceptance |
+| Series (+ membership) | 6 + 6 | Server relation, atomic ownership and public pinned membership stage implemented with crash/restart evidence; feature screens still legacy | Whole-action delivery/conflict controls, full reader/editor migration, outbox retirement and browser acceptance |
 | Prayers | 9 | Untouched | Full adapter; the answer/update journal is another embedded array |
 | Service orders | 13 | Untouched; already has HTTP + CAS and its own freshness | Full adapter; placement is a bounded multi-document operation and may need its own command |
 | Plan templates | 5 | Untouched | Full adapter |
@@ -435,6 +435,29 @@ cost that must be measured before larger domains are enabled.
 | 2 | Complete test-account/device acceptance and legacy-copy preservation checks; then build/deploy with both councils serving/client switches enabled | New bundles preserve the previous persisted council cache before hydration/expiry, then use the engine. Archived copies are preview/export evidence, never automatically imported into a fresh baseline. Old bundles can still edit unmarked documents; an engine-touched document refuses legacy writes |
 | 3 | Verify every active device has reloaded into the new bundle before it edits migrated documents | Installed PWAs do not update synchronously. The app version must be checked on each device; a server environment change is not proof |
 | 4 | Set server `DATA_ENGINE_CLOSED_COLLECTIONS=councils` and rules `closedToBrowserWrites` to include councils, then deploy both | The whole collection is closed to legacy writes and readers may use only the feed. Roll back closure by reverting both settings, retaining protective rules |
+
+**Cascades cross activation boundaries.** `processCommand` validates every planned
+write against served collections before persisting any document or feed. The route's
+primary-collection check alone is insufficient. A disabled related collection refuses
+the entire action with `related-collection-not-enabled`; the original local request
+is retained. Already accepted receipts replay their proof, never re-plan the effect.
+Enabling a collection later does not mutate a previously refused receipt.
+
+Known write dependencies from `serverRelations.ts` (read-only references do not
+require activation):
+
+| Operation | Other collections it can write | Rollout consequence |
+|---|---|---|
+| Delete group or sermon | series | Finish series compatibility before unrestricted deletion |
+| Delete series with legacy backlinks | sermons, groups | Do not assume groups+series alone is a complete activation cohort |
+| Delete tag | sermons | Finish sermon compatibility before custom-tag cascades |
+| Material membership/create/delete | studyNotes | Notes/materials need compatible writers together |
+| Delete study note | studyMaterials, studyNoteShareLinks | Include relation and share-link ownership in study migration |
+
+The server switch proves that a protocol is served; it does not prove the feature
+UI is migrated or that every installed PWA reloaded. Those are separate rollout
+gates. The write-set check prevents accidental effects in unserved domains while
+compatible client rollout is completed.
 
 **After the first engine write, disabling the client switch is not a safe rollback.**
 Marked documents are intentionally unwritable by legacy paths. Use a forward fix
@@ -1410,3 +1433,29 @@ Group implementation checkpoint in progress:
 - Remaining: delivery/refusal/whole-action conflict controls, integration of every
   series membership caller and CRUD reader/writer, migrated-boundary detector
   closure, browser/PWA acceptance, remaining domains and production rollout proof.
+
+## 2026-09-19 — cascade activation boundary
+
+- Found/reproduced `BUG-20260919-engine-cascade-bypasses-activation`: groups-only
+  deletion marked a series, and series-only deletion marked a legacy sermon backlink.
+  The former check validated only the command's primary collection.
+- Server now refuses the entire planned write set if any actual effect is outside
+  served collections. No document or feed writes happen; only the immutable refusal
+  receipt is stored. Read-only references remain allowed. Prior successful ACK
+  replay preserves its proof after related switches change.
+- Red-to-green server proof: `/tmp/data-engine-cascade-activation-{before,after}.log`;
+  93 server tests pass. Real local Firestore emulator: **10 tests / 2 suites pass**,
+  including the cross-domain refusal and legacy preflight race. This is Admin
+  transaction evidence, not a Security Rules test. Log:
+  `/tmp/data-engine-cascade-activation-emulator.log`.
+- Groups/series still cannot activate: public action delivery/conflict controls,
+  all series screens/writers, sermon compatibility for legacy backlinks and the
+  remaining migration/device gates are outstanding. No deployment performed.
+
+- Final cascade checkpoint gates: **713 suites / 7,125 tests pass**, 10 skipped in
+  the normal run and executed separately in the emulator. Lint: 0 errors /
+  15 inherited warnings; both TypeScript checks pass. Production build passes
+  in 15.35s. Logs: `/tmp/data-engine-cascade-activation-{full,lint}.log`,
+  `/tmp/data-engine-cascade-production-build.log`. Sequential review checked
+  no-partial-write ordering, receipt identity/replay and read-only references;
+  no introduced high-confidence blocker remains.

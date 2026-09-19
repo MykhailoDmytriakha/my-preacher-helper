@@ -67,7 +67,23 @@ function device(initial: ResourceSnapshot, checkpoint?: Map<string, EditorRecord
 
 run('DataEngine against real Firestore transactions', () => {
   jest.setTimeout(30_000);
-  afterAll(async () => { await adminDb.terminate(); });
+  const environment = { ...process.env };
+  beforeEach(() => { process.env.DATA_ENGINE_ENABLED = 'true'; });
+  afterAll(async () => { process.env = environment; await adminDb.terminate(); });
+
+  it('refuses an actual cascade into an unserved domain without marking either document', async () => {
+    const group = { collection: 'groups', id: `${owner}-rollout-group` };
+    const series = { collection: 'series', id: `${owner}-rollout-series` };
+    const value = { userId: owner, title: 'Group', templates: [], flow: [] };
+    const linked = { userId: owner, items: [{ id: 'member', type: 'group', refId: group.id, position: 1 }], sermonIds: [] };
+    await adminDb.collection(group.collection).doc(group.id).set(value);
+    await adminDb.collection(series.collection).doc(series.id).set(linked);
+    process.env.DATA_ENGINE_ENABLED = 'false'; process.env.DATA_ENGINE_COLLECTIONS = 'groups';
+    expect(await processCommand(owner, { protocol: 1, owner, operationId: operationId(), resource: group,
+      generation: null, dependsOn: [], kind: 'delete', baseline: value })).toMatchObject({ kind: 'refused', code: 'related-collection-not-enabled' });
+    expect((await adminDb.collection(group.collection).doc(group.id).get()).data()).toEqual(value);
+    expect((await adminDb.collection(series.collection).doc(series.id).get()).data()).toEqual(linked);
+  });
 
   it('replays both participants of an atomic relation with current content and compact proof', async () => {
     const material = { collection: 'studyMaterials', id: `${owner}-ack-material` };

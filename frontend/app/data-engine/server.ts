@@ -33,7 +33,8 @@ export class DataEngineServerError extends Error {
 /**
  * The HTTP protocol remains opt-in while legacy writers, rules and domain policies
  * are being migrated. This deployment gate is not a replacement for that migration.
- * Trusted server adapters can exercise processCommand without exposing a public API.
+ * Trusted server adapters can exercise processCommand without exposing a public API,
+ * but every collection in a new effect must still be explicitly served.
  */
 export function assertDataEngineEnabled(collection?: string): void {
   if (!isEngineServing()) throw new DataEngineServerError('data-engine-disabled', 503);
@@ -329,6 +330,12 @@ export async function processCommand(owner: string, input: unknown): Promise<Com
       // Leave headroom below Firestore's transaction request limit; never split a cascade.
       if (effectBytes(effects) > MAX_EFFECT_BYTES) {
         result = refusal('relation-effects-too-large');
+      }
+      // The primary route switch is insufficient: a cascade can mark documents
+      // whose clients are still legacy. Refuse the entire effect before any write.
+      // Receipt replay above retains proof of already accepted work independently.
+      if (effects.some(effect => !isCollectionServed(effect.resource.collection))) {
+        result = refusal('related-collection-not-enabled');
       }
     }
     let receipt: CommandReceipt = { owner, operationId: command.operationId, commandHash, result };
