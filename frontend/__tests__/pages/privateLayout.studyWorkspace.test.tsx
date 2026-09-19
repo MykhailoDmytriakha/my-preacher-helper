@@ -12,6 +12,7 @@ jest.mock('next/navigation', () => ({
 jest.mock('@/data-engine/react.client', () => ({
     DataEngineWorkspace: ({ children }: { children: ReactNode }) => <div data-testid="data-engine-workspace">{children}</div>,
 }));
+jest.mock('@/components/series/SeriesMembershipRecovery', () => ({ SeriesMembershipRecovery: () => <div data-testid="membership-recovery" /> }));
 jest.mock('@/components/ProtectedRoute', () => ({ children }: { children: ReactNode }) => children);
 jest.mock('@/components/navigation/DashboardNav', () => () => <nav>Navigation</nav>);
 jest.mock('@/components/navigation/Breadcrumbs', () => () => <div>Breadcrumbs</div>);
@@ -53,5 +54,6 @@ describe('bounded study workspace routing', () => {
         expect(workspace).toContainElement(screen.getByRole('main'));
         expect(workspace).toContainElement(screen.getByText('Preaching content'));
         expect(workspace).toContainElement(screen.getByTestId('outbox-drain'));
+        expect(workspace).toContainElement(screen.getByTestId('membership-recovery'));
     });
 });

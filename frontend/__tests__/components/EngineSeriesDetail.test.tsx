@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
+import { SeriesMembershipRecovery } from '@/components/series/SeriesMembershipRecovery';
 import { EngineSeriesDetail } from '@/components/series/EngineSeriesDetail';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
@@ -25,7 +26,7 @@ const series = (id: string, occupied = false): ResourceSnapshot => ({ resource: 
 function setup(id = 'b') {
   const harness = membershipEngineHarness([series('a', true), series('b'), { resource: { collection: 'groups', id: 'g' }, metadata: null, value: { userId: 'owner', title: 'Meeting' } }]);
   jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
-  function Workspace() { return <DataEngineProvider><EngineSeriesDetail seriesId={id} /></DataEngineProvider>; }
+  function Workspace() { return <DataEngineProvider><SeriesMembershipRecovery /><EngineSeriesDetail seriesId={id} /></DataEngineProvider>; }
   return { harness, Workspace, view: render(<Workspace />) };
 }
 beforeEach(() => { jest.clearAllMocks(); process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'series'; });

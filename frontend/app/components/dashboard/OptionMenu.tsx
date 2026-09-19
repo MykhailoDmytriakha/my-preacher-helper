@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
+import { SeriesMembershipDialog } from '@/components/series/SeriesMembershipDialog';
+import { isCollectionOnEngine } from '@/data-engine/clientPolicy';
 import { useConfirm } from '@/hooks/useConfirm';
 import { useSeriesMembership } from "@/hooks/useSeriesMembership";
 import {
@@ -99,7 +101,7 @@ export default function OptionMenu({
     onUpdate?.(applySourceNoteLinkPatch(own, patch));
   });
   const [showSeriesSelector, setShowSeriesSelector] = useState(false);
-  const [seriesSelectorMode, setSeriesSelectorMode] = useState<'add' | 'change'>('add');
+  const [seriesSelectorMode, setSeriesSelectorMode] = useState<'add' | 'change' | 'remove'>('add');
   const effectiveIsPreached = getEffectiveIsPreached(sermon);
   const isSyncPending = syncState?.status === 'pending';
   const menuRef = useRef<HTMLDivElement>(null);
@@ -405,6 +407,7 @@ export default function OptionMenu({
     e.preventDefault();
     e.stopPropagation();
     if (!currentSeries) return;
+    if (isCollectionOnEngine('series')) { setSeriesSelectorMode('remove'); setShowSeriesSelector(true); closeMenu(); return; }
     // A question of its own, naming the series — it used to be the button's label with "?" glued on.
     // The answer button repeats the menu item the person just chose, and the note says the sermon
     // stays: "remove" next to a sermon otherwise reads as deleting it.
@@ -550,14 +553,11 @@ export default function OptionMenu({
         defaultStatus="preached"
       />
 
-      {showSeriesSelector && (
-        <SeriesSelector
-          onClose={() => setShowSeriesSelector(false)}
-          onSelect={handleSeriesSelected}
-          currentSeriesId={currentSeries?.id}
-          mode={seriesSelectorMode}
-        />
-      )}
+      {showSeriesSelector && (isCollectionOnEngine('series')
+        ? <SeriesMembershipDialog seriesId={currentSeries?.id ?? ''} member={{ type: 'sermon', refId: sermon.id }}
+          mode={seriesSelectorMode === 'remove' ? 'remove' : 'target'} onClose={() => setShowSeriesSelector(false)} />
+        : <SeriesSelector onClose={() => setShowSeriesSelector(false)} onSelect={handleSeriesSelected}
+          currentSeriesId={currentSeries?.id} mode={seriesSelectorMode === 'remove' ? 'change' : seriesSelectorMode} />)}
 
       {showSourceNotePicker && sourceNoteOpening && (
         <SourceNotePickerModal

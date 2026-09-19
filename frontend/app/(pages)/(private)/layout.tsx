@@ -12,6 +12,7 @@ import DevQuickNav from '@/components/navigation/DevQuickNav';
 import { OutboxConflictBanner } from '@/components/OutboxConflictBanner';
 import { OutboxDrain } from '@/components/OutboxDrain';
 import ProtectedRoute from '@/components/ProtectedRoute';
+import { SeriesMembershipRecovery } from '@/components/series/SeriesMembershipRecovery';
 import { DataEngineWorkspace } from '@/data-engine/react.client';
 
 export default function PrivateLayout({ children }: { children: ReactNode }) {
@@ -57,6 +58,7 @@ function PrivateLayoutContent({ children }: { children: ReactNode }) {
           </div>
         </>
       )}
+      <div className="mx-auto w-full px-4 sm:px-6 lg:px-8"><SeriesMembershipRecovery /></div>
       <main
         id="main-content"
         tabIndex={-1}

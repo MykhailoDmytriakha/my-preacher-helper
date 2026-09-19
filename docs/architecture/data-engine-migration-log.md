@@ -1611,3 +1611,29 @@ Group implementation checkpoint in progress:
   protocol boundaries and failure recovery. No new server traffic or cloud config
   was used for these checks. Project quota exhaustion remains unattributed and
   live series/PWA acceptance remains open. Series UI checkpoint: `52ca503f`.
+
+### 2026-09-19 — workspace recovery and membership entry points
+
+- Closed membership stages are discoverable from every private page, including
+  preaching mode. The recovery dialog is loaded on demand and survives navigation
+  away from the originating editor. Recovery alone makes no network write.
+- Engine lifecycle notifications publish completed releases. Optional closed-only
+  discovery excludes active/opening/releasing scopes; exclusive recovery claims
+  prevent two dialogs in one engine from owning the same stage. Durable storage
+  remains the authority between different tabs. Owner/generation guards are retained.
+- Group-detail assignment/unlink and sermon-menu add/move/unlink now use the same
+  pinned membership dialog when series is enabled. Real-engine component tests
+  verify no pre-Save request, one atomic move, and no legacy writer call.
+- Gates: **721 suites / 7172 tests passed**, 2 suites / 10 tests skipped; both
+  TypeScript configurations pass; production build passes in 19.55 seconds. Lint
+  has 0 errors; the single new duplicate-literal warning was removed and that file
+  rechecked, leaving the 15 inherited warnings. Focused layout/recovery/menu tests
+  also cover the final layout adjustment outside the study workspace main region.
+  Logs: `/tmp/data-engine-workspace-membership-{full,lint,types,unused,build}.log`
+  and `/tmp/data-engine-workspace-membership-final-focused.log`.
+- Sequential review covered ownership, account fencing, navigation, activation
+  compatibility, lazy loading and error recovery. No independent reviewer agent
+  was used. Still open: edit/create sermon membership callers, selector sermon
+  creation, legacy backlinks, remaining domain migrations and live acceptance.
+  Firestore quota exhaustion still blocks live series QA; no production flags or
+  cloud settings changed. Read-cooldown checkpoint: `c1f2a746`.

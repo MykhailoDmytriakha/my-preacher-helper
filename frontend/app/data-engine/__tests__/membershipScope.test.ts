@@ -239,6 +239,25 @@ describe('DataEngine membership ownership', () => {
     engine.setOnline(false); engine.setOwner('owner');
     return { ...t, engine, cache };
   }
+  it('publishes a closed stage and gives only one recovery dialog exclusive ownership', async () => {
+    const t = engineFixture(), notified = jest.fn();
+    const stop = t.engine.subscribeMembership(notified);
+    const scope = await t.engine.beginMembership(); await scope.update(move);
+    const id = scope.getState().record.scopeId;
+    expect(await t.engine.listMembershipRecovery({ closedOnly: true })).toEqual([]);
+    await expect(t.engine.recoverMembership(id, { exclusive: true })).rejects.toThrow('already open');
+    t.engine.releaseMembership(id);
+    await expect(t.engine.recoverMembership(id, { exclusive: true })).rejects.toThrow('already open');
+    for (let turn = 0; turn < 100; turn += 1) await Promise.resolve();
+    expect(notified).toHaveBeenCalled();
+    expect(await t.engine.listMembershipRecovery({ closedOnly: true })).toHaveLength(1);
+    const first = t.engine.recoverMembership(id, { exclusive: true });
+    await expect(t.engine.recoverMembership(id, { exclusive: true })).rejects.toThrow('already open');
+    const recovered = await first; expect(recovered.getState().record.action).toEqual(move);
+    expect(await t.engine.listMembershipRecovery({ closedOnly: true })).toEqual([]);
+    expect(t.send).not.toHaveBeenCalled(); stop(); t.engine.dispose();
+  });
+
   it('opens and recovers through the engine without exposing a feature-owned queue', async () => {
     const t = engineFixture(), scope = await t.engine.beginMembership();
     t.cache.set('a', { ...snapshot('a', true), value: { ...snapshot('a', true).value!, title: 'Remote title after opening' } });

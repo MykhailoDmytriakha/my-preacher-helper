@@ -17,8 +17,10 @@ import { hydrateSeries } from '@/utils/seriesDocument';
 import type { Series, SeriesItem } from '@/models/models';
 
 type Member = Pick<SeriesItem, 'type' | 'refId'>;
-export type SeriesMembershipDialogMode = 'sermon' | 'group' | 'reorder' | 'remove' | 'recover';
+export type SeriesMembershipDialogMode = 'sermon' | 'group' | 'reorder' | 'remove' | 'recover' | 'target';
 const same = (left: Member, right: Member) => left.type === right.type && left.refId === right.refId;
+const UNKNOWN_LABEL = 'common.unknown';
+const CHOICE_STYLE = 'flex gap-3 rounded-lg border p-3';
 
 /** The complete stage opens before any selection; only explicit Save submits it. */
 export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onClose }: {
@@ -51,13 +53,12 @@ export function SeriesMembershipDialog({ seriesId, mode, member, recoveryId, onC
     finally { setSaving(false); }
   };
   const cancel = async () => { await action.cancel(); onClose(); };
-  const title = t(kind === 'remove' ? 'workspaces.series.actions.removeFromSeries'
-    : kind === 'reorder' ? 'workspaces.series.actions.reorder'
-      : mode === 'group' ? 'workspaces.series.actions.addGroup' : 'workspaces.series.actions.addSermon');
+  const title = t(dialogTitle(mode, kind));
   return <FormDialog title={title} eyebrow={series?.title} onClose={onClose}>
     <div className="mt-4 space-y-4">
       <DataMembershipStatus action={{ ...action, retry: action.phase ? action.retry : open }} onDiscarded={onClose} />
-      {editing && series && kind === 'assign' && <fieldset disabled={saving}>
+      {editing && mode === 'target' && member && <TargetChoices action={action} member={member} disabled={saving} />}
+      {editing && mode !== 'target' && series && kind === 'assign' && <fieldset disabled={saving}>
         {mode !== 'group' && <SermonChoices current={series.items ?? []} selected={selected} onChange={changeSelection} />}
         {(mode === 'group' || mode === 'recover') && <GroupChoices current={series.items ?? []} selected={selected} onChange={changeSelection} />}
       </fieldset>}
@@ -88,7 +89,7 @@ function MemberChoices({ type, rows, loading, error, current, selected, onChange
 }) {
   const { t } = useTranslation(), [query, setQuery] = useState('');
   const selectedOfType = selected.filter(ref => ref.type === type);
-  const choices = [...rows, ...selectedOfType.filter(ref => !rows.some(row => row.id === ref.refId)).map(ref => ({ id: ref.refId, title: t('common.unknown') }))]
+  const choices = [...rows, ...selectedOfType.filter(ref => !rows.some(row => row.id === ref.refId)).map(ref => ({ id: ref.refId, title: t(UNKNOWN_LABEL) }))]
     .filter(row => !current.some(item => same(item, { type, refId: row.id })) || selectedOfType.some(ref => ref.refId === row.id))
     .filter(row => row.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   return <div className="space-y-3">
@@ -97,7 +98,7 @@ function MemberChoices({ type, rows, loading, error, current, selected, onChange
     {Boolean(error) && <p role="alert">{t('dataSync.readFailed')}</p>}
     <div className="max-h-80 space-y-2 overflow-auto">{choices.map(row => {
       const ref = { type, refId: row.id }, checked = selected.some(item => same(item, ref));
-      return <label key={row.id} className="flex gap-3 rounded-lg border p-3">
+      return <label key={row.id} className={CHOICE_STYLE}>
         <input type="checkbox" checked={checked} onChange={() => {
           void onChange(checked ? selected.filter(item => !same(item, ref)) : [...selected, ref]).catch(() => undefined);
         }} /><span>{row.title}</span>
@@ -119,7 +120,7 @@ function ReorderChoices({ items, disabled, onChange }: { items: SeriesItem[]; di
     if (over) move(items.findIndex(item => item.id === active.id), items.findIndex(item => item.id === over.id));
   }}><SortableContext items={items.map(item => item.id)} strategy={verticalListSortingStrategy}>
     <div className="space-y-2">{items.map((item, index) => <ReorderRow key={item.id} id={item.id} index={index}
-      title={(item.type === 'sermon' ? sermons.sermons : groups.groups).find(row => row.id === item.refId)?.title || t('common.unknown')}
+      title={(item.type === 'sermon' ? sermons.sermons : groups.groups).find(row => row.id === item.refId)?.title || t(UNKNOWN_LABEL)}
       count={items.length} disabled={disabled} move={direction => move(index, index + direction)} />)}</div>
   </SortableContext></DndContext>;
 }
@@ -137,4 +138,28 @@ function ReorderRow({ id, index, title, count, disabled, move }: {
       className="rounded border px-2 py-1 disabled:opacity-40" aria-label={`${t(direction < 0 ? 'common.moveUp' : 'common.moveDown')}: ${title}`}
       onClick={() => move(direction)}>{direction < 0 ? '↑' : '↓'}</button>)}</div>
   </div>;
+}
+
+function TargetChoices({ action, member, disabled }: { action: ReturnType<typeof useDataMembership>; member: Member; disabled: boolean }) {
+  const { t } = useTranslation(), [query, setQuery] = useState('');
+  const rows = action.values.map(row => hydrateSeries({ ...row.value, id: row.id } as unknown as Series));
+  const targetId = action.action?.kind === 'assign' ? action.action.targetId : action.action?.kind === 'remove' ? ''
+    : rows.find(row => row.items?.some(item => same(item, member)))?.id ?? '';
+  const change = (target: string) => { void action.update(target ? { kind: 'assign', targetId: target, refs: [member] }
+    : { kind: 'remove', refs: [member] }).catch(() => undefined); };
+  return <fieldset disabled={disabled} className="space-y-3">
+    <input aria-label={t('common.search')} value={query} onChange={event => setQuery(event.target.value)} className="w-full rounded-lg border bg-transparent px-3 py-2" />
+    <label className={CHOICE_STYLE}><input type="radio" name="target-series" checked={!targetId} onChange={() => change('')} />{t('addSermon.noSeriesOption')}</label>
+    <div className="max-h-80 space-y-2 overflow-auto">{rows.filter(row => (row.title ?? row.theme ?? '').toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(row =>
+      <label key={row.id} className={CHOICE_STYLE}><input type="radio" name="target-series" checked={targetId === row.id} onChange={() => change(row.id)} />
+        <span>{row.title || row.theme || t(UNKNOWN_LABEL)}</span></label>)}</div>
+  </fieldset>;
+}
+
+function dialogTitle(mode: SeriesMembershipDialogMode, kind: 'assign' | 'remove' | 'reorder') {
+  if (mode === 'target') return 'workspaces.series.actions.selectSeries';
+  if (kind === 'remove') return 'workspaces.series.actions.removeFromSeries';
+  if (kind === 'reorder') return 'workspaces.series.actions.reorder';
+  if (mode === 'recover') return 'workspaces.series.membershipAssignment';
+  return mode === 'group' ? 'workspaces.series.actions.addGroup' : 'workspaces.series.actions.addSermon';
 }

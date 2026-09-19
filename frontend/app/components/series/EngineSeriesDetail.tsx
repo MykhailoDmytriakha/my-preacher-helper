@@ -8,7 +8,7 @@ import { SeriesDetailSkeleton } from '@/components/skeletons/SeriesDetailSkeleto
 import FormDialog from '@/components/ui/FormDialog';
 import { DataCollectionStatus } from '@/data-engine/DataCollectionStatus';
 import { DataSyncStatus } from '@/data-engine/DataSyncStatus';
-import { DataDocumentProvider, useDataDocument, useDataForm, useDataMembership, useRecoveryDiscovery } from '@/data-engine/react.client';
+import { DataDocumentProvider, useDataDocument, useDataForm, useRecoveryDiscovery } from '@/data-engine/react.client';
 import { useDashboardSermons } from '@/hooks/useDashboardSermons';
 import { useGroupsRead } from '@/hooks/useGroupsRead';
 import { useSeriesDataCollection } from '@/hooks/useSeriesDataCollection';
@@ -45,32 +45,12 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
       title: String(record.baseline.value?.title ?? t(SERIES_LABEL)),
       preview: record.stage.filter(field => field.exists && typeof field.value === 'string').map(field => String(field.value)).join('\n').slice(0, 500) })),
     recover: async id => { await metadata.recover(id); setEditing(true); } });
-  const actions = useDataMembership();
   const recovery = useRecoveryDiscovery({ identity: document.recoveryIdentity,
     enabled: !document.loading && document.status !== null,
     version: JSON.stringify([document.status?.phase, document.confirmed?.metadata?.revision, editing]),
     list: async () => (await document.listRecoverable()).map(({ id, record }) => ({ id,
       title: String(record.checkpoint.draft?.title ?? record.checkpoint.confirmed.value?.title ?? t(SERIES_LABEL)) })),
     recover: document.recover });
-  const actionRecovery = useRecoveryDiscovery({ identity: actions.recoveryIdentity, enabled: actions.ready,
-    version: `${actions.recoveryVersion}:${Boolean(membership)}`,
-    list: async () => (await actions.listRecoverable()).filter(record => {
-      const action = record.action;
-      if (action?.kind === 'reorder') return action.seriesId === seriesId;
-      if (action?.kind === 'assign' && action.targetId === seriesId) return true;
-      const pin = record.pins.find(pin => pin.baseline.resource.id === seriesId), value = pin?.predecessor?.value ?? pin?.baseline.value;
-      return Boolean(value && action && hydrateSeries({ ...value, id: seriesId } as unknown as Series)
-        .items?.some(item => action.refs.some(ref => ref.type === item.type && ref.refId === item.refId)));
-    })
-      .map(record => {
-        const action = record.action;
-        const targetId = action?.kind === 'assign' ? action.targetId : action?.kind === 'reorder' ? action.seriesId : seriesId;
-        const target = record.pins.find(pin => pin.baseline.resource.id === targetId);
-        return { id: record.scopeId, title: String(target?.predecessor?.value?.title ?? target?.baseline.value?.title ?? t(SERIES_LABEL)),
-          preview: t(action?.kind === 'reorder' ? 'workspaces.series.actions.reorder'
-            : action?.kind === 'remove' ? 'workspaces.series.actions.removeFromSeries' : 'workspaces.series.membershipAssignment') };
-      }),
-    recover: async recoveryId => { setMembership({ mode: 'recover', recoveryId }); } });
   const sync = <DataSyncStatus status={document.status} error={document.error} onRetry={document.retry}
     onKeepLocal={document.keepLocal} onAcceptRemote={document.acceptRemote}
     recoveryChoices={recovery.choices} recoveryLoading={recovery.loading} recoveryError={recovery.error}
@@ -102,12 +82,6 @@ function SeriesWorkspace({ seriesId }: { seriesId: string }) {
       </section>}
       <DataCollectionStatus state={collection.state} />
       {collection.error && <p role="alert">{t('dataSync.readFailed')}</p>}
-      {actionRecovery.choices.length > 0 && <section className="space-y-2 rounded-lg border p-3">
-        <h2 className="font-semibold">{t('workspaces.series.membershipRecovery')}</h2>
-        <DataSyncStatus status={null} recoveryChoices={actionRecovery.choices} recoveryLoading={actionRecovery.loading}
-          recoveryError={actionRecovery.error} onListRecovery={actionRecovery.refresh} onRecover={actionRecovery.recover} />
-      </section>}
-      {actionRecovery.error && <p role="alert">{actionRecovery.error}</p>}
     </>}
     reorderHint={<button type="button" className="underline" onClick={() => setMembership({ mode: 'reorder' })}>
       {t('workspaces.series.actions.reorder')}</button>}

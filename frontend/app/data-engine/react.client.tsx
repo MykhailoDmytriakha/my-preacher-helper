@@ -124,7 +124,7 @@ export function useDataMembership() {
     if (current.current?.identity === identity) return Promise.reject(new Error('Close the current membership stage first'));
     const engine = active();
     const promise = run(async () => {
-      const scope = sourceId ? await engine.recoverMembership(sourceId) : await engine.beginMembership();
+      const scope = sourceId ? await engine.recoverMembership(sourceId, { exclusive: true }) : await engine.beginMembership();
       if (latest.current !== identity) { engine.releaseMembership(scope.getState().record.scopeId); throw new Error(EDITOR_CHANGED); }
       current.current = { identity, scope, scopeId: scope.getState().record.scopeId, stop: scope.subscribe(refresh) }; refresh();
     });
@@ -170,7 +170,7 @@ export function useDataMembership() {
     save: () => run(() => required().save()), cancel: () => run(async () => { await required().cancel(); dismiss(); }),
     retry: () => run(() => active().retryMembership(required().getState().record.scopeId)),
     discard: () => run(async () => { await active().discardMembership(required().getState().record.scopeId); dismiss(); }),
-    listRecoverable: () => run(() => active().listMembershipRecovery()),
+    listRecoverable: (options?: { closedOnly?: boolean }) => run(() => active().listMembershipRecovery(options)),
   };
 }
 

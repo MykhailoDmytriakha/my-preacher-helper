@@ -7,6 +7,7 @@ import { useSeries } from '@/hooks/useSeries';
 import { useAuth } from '@/providers/AuthProvider';
 import { createBrowserDataEngine } from '@/data-engine/browser.client';
 import { DataEngineProvider } from '@/data-engine/react.client';
+import { membershipEngineHarness } from '../../test-utils/membershipEngineHarness';
 import { documentEngineHarness, settleEngine } from '../../test-utils/documentEngineHarness';
 import { hasGroupsAccess } from '@/services/userSettings.service';
 
@@ -702,6 +703,31 @@ describe('GroupDetailPage with the actual data engine', () => {
     }
     return { ...harness, harness, Workspace, view: render(<Workspace />) };
   }
+  it('uses one pinned engine action for series assignment without calling the legacy sweep', async () => {
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'groups,series';
+    mockUseParams.mockReturnValue({ id: 'group-1' });
+    mockUseAuth.mockReturnValue({ user: { uid: 'user-1' } } as ReturnType<typeof useAuth>);
+    mockUseSeries.mockReturnValue({ series: [] } as never); mockAddToSeries.mockClear();
+    const item = { id: 'group-group-1', type: 'group', refId: 'group-1', position: 1 };
+    const harness = membershipEngineHarness([
+      { resource: { collection: 'groups', id: 'group-1' }, metadata: null, value: {
+        userId: 'user-1', title: 'Engine group', status: 'draft', templates: [], flow: [], meetingDates: [], createdAt: 'created', updatedAt: 'old',
+      } },
+      ...['Source', 'Target'].map(id => ({ resource: { collection: 'series', id }, metadata: null,
+        value: { userId: 'user-1', title: id, items: id === 'Source' ? [item] : [], sermonIds: [], seriesKind: 'group' } })),
+    ]);
+    jest.mocked(createBrowserDataEngine).mockImplementation(harness.createBrowser);
+    const view = render(<DataEngineProvider><GroupDetailPage /></DataEngineProvider>);
+    await screen.findByDisplayValue('Engine group');
+    fireEvent.click(screen.getByRole('button', { name: 'Assign to series' }));
+    const target = await screen.findByRole('radio', { name: 'Target' }); fireEvent.click(target);
+    await act(async () => { await settleEngine(); }); expect(harness.transport.send).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'common.save' }));
+    await act(async () => { await harness.engine.retry(); await settleEngine(); });
+    await waitFor(() => expect(harness.read({ collection: 'series', id: 'Target' }).value!.items).toEqual([item]));
+    expect(harness.read({ collection: 'series', id: 'Source' }).value!.items).toEqual([]);
+    expect(mockAddToSeries).not.toHaveBeenCalled(); expect(harness.transport.send).toHaveBeenCalledTimes(1); view.unmount();
+  });
   it('durably owns the last keystroke before navigation and delivers it on reconnect', async () => {
     const { harness, Workspace, view } = setupEnginePage();
     const input = await screen.findByDisplayValue('Engine group');

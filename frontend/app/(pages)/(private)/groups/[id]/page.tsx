@@ -36,6 +36,7 @@ import AddBlockButton from '@/components/groups/AddBlockButton';
 import FlowEditor from '@/components/groups/FlowEditor';
 import FlowFooter from '@/components/groups/FlowFooter';
 import FlowItemRow from '@/components/groups/FlowItemRow';
+import { SeriesMembershipDialog } from '@/components/series/SeriesMembershipDialog';
 import SeriesSelector from '@/components/series/SeriesSelector';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import DatePickerField from '@/components/ui/DatePickerField';
@@ -96,6 +97,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
   const groupSeries = group ? getSeriesForRef(group.id, series) : undefined;
 
   const [isSeriesSelectorOpen, setIsSeriesSelectorOpen] = useState(false);
+  const [engineRemovalOpen, setEngineRemovalOpen] = useState(false);
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -252,6 +254,7 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
 
   const handleUnlinkSeries = () => {
     if (!group) return;
+    if (isCollectionOnEngine('series')) { setEngineRemovalOpen(true); return; }
     removeFromAllSeries({ type: 'group', refId: group.id });
   };
 
@@ -535,14 +538,11 @@ function GroupDetailView({ editor }: { editor: GroupPageEditor }) {
         </div>
       </div>
 
-      {isSeriesSelectorOpen && (
-        <SeriesSelector
-          mode="change"
-          currentSeriesId={groupSeries?.id}
-          onSelect={handleSeriesSelect}
-          onClose={() => setIsSeriesSelectorOpen(false)}
-        />
-      )}
+      {isSeriesSelectorOpen && (isCollectionOnEngine('series')
+        ? <SeriesMembershipDialog seriesId={groupSeries?.id ?? ''} mode="target" member={{ type: 'group', refId: group.id }} onClose={() => setIsSeriesSelectorOpen(false)} />
+        : <SeriesSelector mode="change" currentSeriesId={groupSeries?.id} onSelect={handleSeriesSelect} onClose={() => setIsSeriesSelectorOpen(false)} />)}
+      {engineRemovalOpen && <SeriesMembershipDialog seriesId={groupSeries?.id ?? ''} mode="remove" member={{ type: 'group', refId: group.id }} onClose={() => setEngineRemovalOpen(false)} />}
+
 
       <ConfirmModal
         isOpen={showDeleteConfirm}

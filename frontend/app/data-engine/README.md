@@ -215,3 +215,12 @@ pending membership from the engine collection projection, never by replacing an
 open document draft with another scope's payload. `DataMembershipStatus` exposes
 whole-action retry/discard. `recoveryIdentity` and `recoveryVersion` feed the shared
 `useRecoveryDiscovery` hook, including when no action dialog is mounted.
+
+Mount `SeriesMembershipRecovery` once in the private workspace so closed stages
+remain discoverable after navigation. `listRecoverable({ closedOnly: true })`
+omits stages held, opening, or finishing release in this engine. The React hook
+claims a recovered stage exclusively within its engine; a second dialog cannot
+take over the same scope. This is not a cross-tab lock: durable storage still
+arbitrates concurrent runtime changes. Account changes fence discovery and claims.
+Selectors on group details and sermon menus reuse `SeriesMembershipDialog` with
+`mode="target"`; its choices come from the pinned stage, not a refreshed baseline.

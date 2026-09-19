@@ -120,6 +120,9 @@ export class DataEngine {
   private commitRecords = new Map<string, CommitRequest>();
   private manualForms = new Map<string, { parent: EditorEntry; selection: readonly ManualPath[]; form: ManagedManualForm; scope: ManualScope | null; scopeId: string; emit: () => void }>();
   private membershipForms = new Map<string, MembershipScope>();
+  private membershipOpenings = new Map<string, Promise<MembershipScope>>();
+  private membershipReleases = new Map<string, MembershipScope>();
+  private membershipListeners = new Set<() => void>();
 
   constructor(private readonly options: DataEngineOptions) {
     this.commits = new CommitQueue({ store: options.commits, runtime: options.runtime,
@@ -153,6 +156,8 @@ export class DataEngine {
     this.manualForms.clear();
     for (const scope of this.membershipForms.values()) scope.dispose();
     this.membershipForms.clear();
+    this.membershipOpenings.clear();
+    this.membershipReleases.clear();
     this.recovering.clear();
     this.reads.clear();
     this.options.runtime.setOwner(owner);
@@ -272,15 +277,22 @@ export class DataEngine {
   }
 
   /** Recovery is an explicit continuation of the same durable Save identity. */
-  async recoverMembership(scopeId: string): Promise<MembershipScope> {
+  async recoverMembership(scopeId: string, { exclusive = false }: { exclusive?: boolean } = {}): Promise<MembershipScope> {
     const owner = this.requireOwner(), generation = this.generation;
     if (!this.options.membershipScopes) throw new Error('Membership stage storage is not configured');
-    const existing = this.membershipForms.get(scopeId);
+    const existing = this.membershipForms.get(scopeId), opening = this.membershipOpenings.get(scopeId);
+    if (this.membershipReleases.has(scopeId) || (exclusive && (existing || opening))) throw new Error('Membership action is already open');
     if (existing) return existing;
-    const record = await this.options.membershipScopes.read(owner, scopeId); this.assertCurrent(owner, generation);
-    if (!record) throw new Error('Membership recovery no longer exists');
-    const scope = MembershipScope.restore(record, this.membershipPort(owner, generation));
-    this.membershipForms.set(scopeId, scope); return scope;
+    if (opening) return opening;
+    const restoring = (async () => {
+      const record = await this.options.membershipScopes!.read(owner, scopeId); this.assertCurrent(owner, generation);
+      if (!record) throw new Error('Membership recovery no longer exists');
+      const scope = MembershipScope.restore(record, this.membershipPort(owner, generation));
+      this.membershipForms.set(scopeId, scope); this.emitMembership(); return scope;
+    })();
+    this.membershipOpenings.set(scopeId, restoring);
+    try { return await restoring; }
+    finally { if (this.membershipOpenings.get(scopeId) === restoring) this.membershipOpenings.delete(scopeId); }
   }
 
   /** Leaving a selector retains its unsent stage; an invoked Save finishes local ownership. */
@@ -289,22 +301,28 @@ export class DataEngine {
     if (!scope || !this.owner) return;
     const owner = this.owner, generation = this.generation;
     this.membershipForms.delete(scopeId);
+    this.membershipReleases.set(scopeId, scope);
     this.background(scope.settled().then(async () => {
       this.assertCurrent(owner, generation);
       const record = scope.getState().record;
       if (record.phase === 'editing' && record.action === null) await scope.cancel();
       await this.options.membershipScopes!.compact(owner, scopeId);
-    }).finally(() => scope.dispose()), owner, generation);
+    }).finally(() => {
+      scope.dispose();
+      if (this.membershipReleases.get(scopeId) === scope) this.membershipReleases.delete(scopeId);
+      if (this.current(owner, generation)) this.emitMembership();
+    }), owner, generation);
   }
 
-  async listMembershipRecovery(): Promise<MembershipScopeRecord[]> {
+  async listMembershipRecovery({ closedOnly = false }: { closedOnly?: boolean } = {}): Promise<MembershipScopeRecord[]> {
     const owner = this.requireOwner(), generation = this.generation;
     const store = this.options.membershipScopes;
     if (!store) return [];
     const records = await store.list(owner); this.assertCurrent(owner, generation);
     for (const record of records) { await store.compact(owner, record.scopeId); this.assertCurrent(owner, generation); }
     const remaining = await store.list(owner); this.assertCurrent(owner, generation);
-    return remaining.filter(record => record.phase !== 'cancelled' && (record.action || record.phase === 'saving'));
+    return remaining.filter(record => record.phase !== 'cancelled' && (record.action || record.phase === 'saving')
+      && (!closedOnly || (!this.membershipForms.has(record.scopeId) && !this.membershipOpenings.has(record.scopeId) && !this.membershipReleases.has(record.scopeId))));
   }
 
   /** An explicit discard is allowed only for a proven failed complete action. */
@@ -342,8 +360,9 @@ export class DataEngine {
   subscribeMembership(listener: () => void): () => void {
     const owner = this.requireOwner(), generation = this.generation;
     const notify = () => { if (this.current(owner, generation)) listener(); };
+    this.membershipListeners.add(notify);
     const stopCommits = this.commits.subscribe(notify), stopPending = this.subscribePending(notify);
-    return () => { stopCommits(); stopPending(); };
+    return () => { this.membershipListeners.delete(notify); stopCommits(); stopPending(); };
   }
 
   /** Resume frozen capture or replay its existing identity; never rebase on retry. */
@@ -482,6 +501,7 @@ export class DataEngine {
     this.stopCommits();
     this.commits.setOwner(null);
     this.pendingListeners.clear();
+    this.membershipListeners.clear();
     this.options.collections?.dispose();
     this.options.observer.dispose();
   }
@@ -926,6 +946,10 @@ export class DataEngine {
     entry.controller?.dispose();
     entry.controller = null;
     entry.listeners.clear();
+  }
+
+  private emitMembership(): void {
+    for (const listener of this.membershipListeners) { try { listener(); } catch { /* UI does not own persistence. */ } }
   }
 
   private emit(entry: EditorEntry): void {
