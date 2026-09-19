@@ -6,6 +6,7 @@ import { useAuth } from '@/providers/AuthProvider';
 import { newClientId } from '@/utils/clientId';
 
 import { createBrowserDataEngine, type BrowserDataEngine } from './browser.client';
+import { LegacyQueryCopies, LegacyQueryMigrationGate } from './LegacyQueryRecovery';
 import { describeManualSync, describeSync, type SyncStatus } from './status';
 import { useRecoveryDiscovery as useDiscovery, type RecoveryDiscoveryOptions } from './useRecoveryDiscovery';
 
@@ -46,6 +47,17 @@ export function isCollectionOnEngine(collection: string): boolean {
 export function isDataEngineEnabled(): boolean {
   return process.env.NEXT_PUBLIC_DATA_ENGINE_ENABLED === 'true'
     || listed(process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS).length > 0;
+}
+
+/** Preserve old cache copies before the query provider may hydrate, expire or replace them. */
+export function DataEngineMigrationGate({ children }: { children: ReactNode }) {
+  return isCollectionOnEngine('councils') ? <LegacyQueryMigrationGate enabled={isCollectionOnEngine}>{children}</LegacyQueryMigrationGate> : <>{children}</>;
+}
+
+/** Archived cache copies are evidence for the person, never confirmed engine snapshots. */
+export function LegacyDataRecoveryNotice() {
+  const { user } = useAuth();
+  return user?.uid && isCollectionOnEngine('councils') ? <LegacyQueryCopies key={user.uid} owner={user.uid} /> : null;
 }
 
 /** Keep one owner-scoped engine alive when navigation chrome is hidden. */

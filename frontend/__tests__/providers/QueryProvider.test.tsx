@@ -4,12 +4,14 @@ import React, { useEffect } from 'react';
 import { toast } from 'sonner';
 
 import { QueryProvider, shouldDehydrateMutation } from '@/providers/QueryProvider';
+import { preserveLegacyQueryCache } from '@/data-engine/legacyQueryRecovery.client';
 import { UsageCapReachedError } from '@/services/usageLimits';
 import { createIDBPersister } from '@/utils/queryPersister';
 
 jest.mock('@/utils/queryPersister', () => ({
   createIDBPersister: jest.fn(),
 }));
+jest.mock('@/data-engine/legacyQueryRecovery.client', () => ({ preserveLegacyQueryCache: jest.fn() }));
 
 jest.mock('sonner', () => ({
   toast: Object.assign(jest.fn(), { error: jest.fn() })
@@ -30,6 +32,27 @@ const ClientProbe = ({ onReady }: { onReady: (client: ReturnType<typeof useQuery
 describe('QueryProvider', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('does not mount the cache persister until engine migration input is durably preserved', async () => {
+    const previous = process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+    process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = 'councils';
+    let finish!: () => void;
+    jest.mocked(preserveLegacyQueryCache).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    mockCreateIDBPersister.mockReturnValue({ persistClient: jest.fn(), restoreClient: jest.fn(), removeClient: jest.fn() });
+    try {
+      const view = render(<QueryProvider><p>Workspace</p></QueryProvider>);
+      await waitFor(() => expect(preserveLegacyQueryCache).toHaveBeenCalled());
+      expect(mockCreateIDBPersister).not.toHaveBeenCalled();
+      expect(screen.queryByText('Workspace')).not.toBeInTheDocument();
+      finish();
+      expect(await screen.findByText('Workspace')).toBeInTheDocument();
+      expect(mockCreateIDBPersister).toHaveBeenCalledTimes(1);
+      view.unmount();
+    } finally {
+      if (previous === undefined) delete process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS;
+      else process.env.NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS = previous;
+    }
   });
 
   it('configures the query client with expected defaults', async () => {

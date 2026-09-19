@@ -80,12 +80,29 @@ by `el` in this worktree, case `2026-09-19-data-engine-production-readiness`.
   Sequential review covered selection boundaries, pinned ancestry, owner fencing,
   cancellation, recovery, public imports and actual screen wiring; no independent
   agent reviewed this checkpoint. No high-confidence regression remains in its diff.
-- Next: resolve legacy council cache recovery and safe rollout ordering, then measure
-  cost and retention before further domain migrations.
+- Manual-form checkpoint committed as `e201ed58`.
+- Legacy council query-cache copies now archive **before** QueryProvider mounts,
+  including expired caches. Failure retains the original cache and gates startup with
+  Retry. The current owner can inspect/export preserved copies; no copy is automatically
+  merged or submitted. Content deduplication retains distinct old/new drafts.
+  Browser proof used a real legacy UI save refused with HTTP 400: its
+  `QA legacy refused copy preserved` text appears in the archived record after enabling
+  the engine, while the actual document still says `QA manual restart retained`.
+  The archive UI says copies may be stale rather than claiming they are unsaved edits.
+- Bypassing the pre-hydration gate makes the provider regression fail. Current tests:
+  **699 suites / 6978 tests pass**, 2 suites / 5 skipped; types pass, lint 0 errors /
+  15 inherited warnings. Councils-enabled production build also passes:
+  `/tmp/data-engine-production-build-legacy.log`. Other logs:
+  `/tmp/data-engine-legacy-{full,lint,gate-negative,gate-after}.log`.
+  Review checked failure ordering, cross-account reads, preservation idempotence and
+  zero automatic delivery; runtime boundaries still pass without new exceptions.
+- Rollout order is corrected below: protective marked-document rules precede engine
+  writes; collection-wide closure remains last. No cloud deployment was performed.
+- Next: measure cost and decide safe receipt/feed retention before further migrations.
   Recovery of an original unsent fork still leaves its source available, as the UI
   explains; retirement/active-tab distinction needs an explicit lifecycle design.
   The eleven
-  remaining domains, legacy draft migration, cost/retention policy, rules rollout
+  remaining domains, recovery lifecycle, cost/retention policy, rules rollout
   and physical-device acceptance are still outstanding.
 
 The earlier decision to treat a focused field hiding accepted remote content as
@@ -230,8 +247,8 @@ now, read the first section instead:
 - It has nested ID-bearing items (`topics`), which is the exact class the protocol
   was built for, so it is representative.
 - Most fields use `LiveTextInput`/`LiveTextArea` autosave. Held-outcome editing does
-  have a manual Save form, now integrated through `useDataForm`. Originally the
-  first domain deliberately avoids the least mature part of the core.
+  have a manual Save form, now integrated through `useDataForm`. The original
+  claim that this domain avoided manual forms was incorrect.
 - It is small: 4 client operations against 33 for sermons.
 
 ## Working rule
@@ -312,7 +329,7 @@ Nothing may be switched on in production while these stand.
 | ~~Mixed-mode collection reads~~ | `app/data-engine/activation.ts`, `collections.ts` | Fixed 2026-09-18: while legacy writers share a served collection the server says `legacyOpen` and the reader lists the whole collection on every synchronisation; closing the collection is a separate, last switch. **Cost to revisit:** one full listing per synchronisation while mixed — fine for councils, not for sermons |
 | Manual Save forms | `app/data-engine/README.md`, manual scopes | The mechanism exists and is wired for the sermon title and verse (`useDataForm`, `manualScope.ts`; the open-A / type-B / remote-C case is guarded by `manualScope.test.ts`). What is owed is a live pass per form as each domain migrates — not a design |
 | Rules not deployed | `frontend/firestore.rules` | Prepared rules exist but are not live; until they are, an old client can still write a migrated document offline, the engine's SDK listener is denied the change head (it falls back to HTTP polling, up to ~15 s late), and a tombstone is unreadable to its owner's listener. `npm run test:rules` proves them on the emulator (256 + 5 checks) and is NOT part of the build gate — run it before deploying rules |
-| Legacy queued writes | `app/data-engine/legacyRecovery.client.ts` | Pending writes in `writeOutbox`, React Query paused mutations and the membership outbox must be discovered and settled before their domain's legacy path closes. **For councils this discovery finds nothing by construction:** their legacy queue lives in memory (`councilWriteQueue.client.ts`) and their optimistic copy in the persisted React Query cache `['councils', uid]` — neither is a place `discoverLegacyRecovery` looks. What an old bundle could not save survives a reload only there, unread |
+| Legacy queued writes | `legacyRecovery.client.ts`, `legacyQueryRecovery.client.ts` | Council query-cache copies are now archived before hydration and offered for preview/export; no reliable baseline exists for automatic import. Outbox/membership/paused-mutation migration remains domain-specific work for the other domains. Old input already reverted or never persisted cannot be reconstructed |
 | Device validation | — | Proven on a production build with a live service worker (preview, desktop Chrome, 2026-09-19). Not yet on an iPad, a phone, or an installed PWA. The current continuation verified genuinely visible Chrome tabs on localhost; no visibility emulation was used |
 | No cost measurement | — | Reads and writes per session under the engine have never been measured against the Firestore quota |
 
@@ -323,7 +340,7 @@ that has to move. "State" is what exists today, measured by imports, not by inte
 
 | Domain | Ops | State today | What it still needs |
 |---|---|---|---|
-| Councils | 6 | Create/read/update/delete, carry, readers and held-outcome manual forms integrated behind the collection switch; current browser and regression evidence above | Legacy persisted-draft discovery, retention/cost proof and rollout/device gates |
+| Councils | 6 | Create/read/update/delete, carry, readers and held-outcome manual forms integrated behind the collection switch; current browser and regression evidence above | Retention/cost proof, recovery lifecycle and rollout/device gates |
 | Sermons | 33 | Partially on the engine: core fields and scratch wired; `useSermonThoughtsDataDocument` written but **imported by no screen**; eight controls inert behind the switch (`page.tsx`, `legacyReadOnly`) | Wire thoughts; adapters for outline, structure, plan, preach dates and the AI writers; un-inert the eight controls. Largest domain, last in order |
 | Groups | 11 | Untouched. Carries two of the five audited losses (meeting array online and offline) | Full adapter and screens; the meeting array is the same ID-item class as council topics |
 | Studies (notes + materials + share links) | 7 | Untouched; the note editor is the most complete legacy example of the contract | Full adapter; `material-notes` relation already exists in the core; share links need an ownership decision |
@@ -349,42 +366,46 @@ budget into a hard zero.
 
 ## Rollout order
 
-Decided 2026-09-18, replacing the earlier "server, then rules, then client" with the collection
-closed at the first step. That order cannot be executed: the CLIENT switch
-(`NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS`) is compiled into the bundle, so "the client flips" means a
-build, a service-worker swap and a voluntary reload on every device — days, on an installed PWA
-(`AppUpdateButton.tsx`) — while a server-side closure is instant. Closing first would have left
-the bundle in every browser unable to save councils at all.
+**Revised 2026-09-19 after checking the actual rules.** Separate document protection
+from collection closure. `legacyExisting()` rejects writes to marked documents;
+`closedToBrowserWrites()` defaults to an empty list and leaves unmarked legacy
+councils writable. Therefore protective rules can and must be deployed **before**
+any engine write, without prematurely closing the whole collection. The inherited
+order (engine writes first, rules later) allowed an old SDK write to erase a marker.
+The emulator's full-set/marked-document negative checks establish this boundary.
 
-So a rollout has a **mixed stage**, and every mechanism below exists to make that stage safe in
-itself. Each step is one deliberate action by the owner; rollback is named per step.
+The client switch is compiled into the bundle; changing it requires a build and a
+service-worker update/reload. The server can serve both protocols while unmarked
+legacy documents still exist. Mixed readers use complete collection listings
+(`legacyOpen`) because old writes do not produce engine feed entries; this has a
+cost that must be measured before larger domains are enabled.
 
-| # | Action | What changes | Rollback |
-|---|---|---|---|
-| 0 | Merge to `main` with every switch unset | Nothing: all engine paths are off by default; the legacy boundary only refuses documents that carry a marker, and none does | revert the merge |
-| 1 | Set `DATA_ENGINE_COLLECTIONS=councils` on the server and `NEXT_PUBLIC_DATA_ENGINE_COLLECTIONS=councils` for the build, then deploy | New bundles read and write councils through the engine. Old bundles keep working the legacy way on every council the engine has not written yet; on one it has, they are refused with 426 and keep their text for the session. New bundles see legacy changes because the server says `legacyOpen` and the list is re-read | Unset both and redeploy. Documents the engine wrote stay marked: the legacy road refuses them until they are unmarked by hand. **This is the point of no return for those documents — not for the collection** |
-| 2 | Every device reloaded into the new bundle (Settings → "Показывать версию" shows the SHA) | The mixed stage ends in fact | — |
-| 3 | Deploy `firestore.rules` from this branch | Browsers can no longer write a marked document or forge a marker; the engine's listener may read the change head and its own tombstones | redeploy the previous rules |
-| 4 | Set `DATA_ENGINE_CLOSED_COLLECTIONS=councils` and list `'councils'` in `closedToBrowserWrites` (rules), deploy both | Every legacy write to councils is refused, creation included; the server stops saying `legacyOpen` and lists go back to following the feed alone | unset the variable, empty the list |
+| Step | Action | Guarantee and rollback limit |
+|---|---|---|
+| 0 | Merge the verified code with engine switches off; keep the collection closure list empty | Normal legacy paths remain selected. Revert the merge before activation if needed |
+| 1 | Run rules tests and deploy the prepared protective rules, still with an empty closure list | Unmarked legacy writes still work; marked documents cannot be overwritten or stripped of metadata. Engine heads/tombstones become readable. Verify the deployed rules release before the first engine command |
+| 2 | Complete test-account/device acceptance and legacy-copy preservation checks; then build/deploy with both councils serving/client switches enabled | New bundles preserve the previous persisted council cache before hydration/expiry, then use the engine. Archived copies are preview/export evidence, never automatically imported into a fresh baseline. Old bundles can still edit unmarked documents; an engine-touched document refuses legacy writes |
+| 3 | Verify every active device has reloaded into the new bundle before it edits migrated documents | Installed PWAs do not update synchronously. The app version must be checked on each device; a server environment change is not proof |
+| 4 | Set server `DATA_ENGINE_CLOSED_COLLECTIONS=councils` and rules `closedToBrowserWrites` to include councils, then deploy both | The whole collection is closed to legacy writes and readers may use only the feed. Roll back closure by reverting both settings, retaining protective rules |
 
-**Preview deployments share the production database.** A preview built from this branch with the
-switches set writes real markers into real councils. Scope the two variables to the Preview
-environment of this branch only, test there on councils created for the test, and delete them
-through the engine afterwards. A tombstone no longer shows up in the production app's list
-(`TOMBSTONE_OWNER_FIELD`); a marked LIVE test council does, and production cannot edit it.
+**After the first engine write, disabling the client switch is not a safe rollback.**
+Marked documents are intentionally unwritable by legacy paths. Use a forward fix
+or an explicitly reviewed data migration; do not strip markers or weaken rules to
+make an old client appear functional.
 
-**Residual risks that no server change removes** (the old bundle is already shipped):
+**Preview shares the production database.** Scope switches to Preview for this
+branch, use only the authorized test account and owned QA fixtures, and keep the
+protective-rules requirement visible. This continuation has not deployed rules or
+changed Production switches; local checks do not establish the current cloud state.
 
-- An old bundle that edits councils OFFLINE queues a Firestore SDK write. On reconnect it lands
-  on an unmarked council as before; on a marked one the rules (once deployed) reject it and the
-  SDK reverts the local copy without telling the app. That text is lost. Before step 3 the same
-  write OVERWRITES the marked document, marker included. Either way: reload every device soon
-  after step 1, and do not edit councils offline on a device that has not reloaded.
-- An old bundle refused on a marked council keeps the text on screen and in its persisted React
-  Query cache, shown as if saved; after a reload the new bundle shows the server's truth and
-  nothing offers the old text back.
-- An old bundle that deletes a marked council removes it from its own screen first and is then
-  refused; the council reappears at its next read.
+**Old bundles impose a real residual risk.** An already shipped client may keep an
+unsent change only in its persisted query cache; the new migration gate preserves
+what is present on first startup, even if expired. It cannot reconstruct text the
+old SDK already reverted, data never persisted, or cache overwritten by another
+old tab after that snapshot. Reload devices before further migrated-domain edits.
+A missing cache copy is not proof there was no unsaved work. No automatic merge is
+safe without its original baseline. The new UI offers archived copies for manual
+inspection/export and keeps them until a separate reviewed retention policy exists.
 
 ## Testing on a Vercel preview — what the owner does, and what not to touch
 

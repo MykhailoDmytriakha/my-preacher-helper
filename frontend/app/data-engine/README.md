@@ -119,6 +119,22 @@ conflicts; Cancel sends nothing; restart recovers B only by choice. Every migrat
 form needs these behavior checks and a screen-level wiring check. Import gates
 alone cannot detect a component that discards its opening ancestor in `useState`.
 
+## Preserving previous clients' input
+
+`DataEngineMigrationGate` mounts before `QueryProvider` can hydrate, expire or
+replace its persisted cache. For the councils pilot it archives owner-scoped legacy
+query copies in the engine database. Distinct contents remain separate; repeated
+startup is idempotent. A failed archive keeps the original cache untouched and
+holds workspace startup behind an explicit Retry. `LegacyDataRecoveryNotice`
+exposes preview/export to the current owner only, without inventing a confirmed
+ancestor or submitting any copy. These may be ordinary stale cache entries, not
+necessarily unsaved changes, so the UI says that explicitly.
+
+This protects input present at startup. It cannot recover text an old bundle never
+persisted or already overwrote. Protective Firestore rules must be deployed before
+the first engine write; whole-collection legacy closure remains a separate final
+step. See the migration log for the ordered rollout and its remaining device gates.
+
 ## Invariants owned here
 
 1. Checkpoint before journal submission; accepted projection before receipt retirement.

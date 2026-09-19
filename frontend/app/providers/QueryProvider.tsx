@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 
 
 import UsageCapGlobalHandler from '@/components/usage/UsageCapGlobalHandler';
+import { DataEngineMigrationGate } from '@/data-engine/react.client';
 import { isOfflineQueuedError, isStaleWriteError, isWriteRefusedError } from '@/services/conflictSafeUpdate.client';
 import { notifyUsageCapReached } from '@/services/usageCapClient';
 import { registerOfflineMutationDefaults } from '@/utils/mutationDefaults';
@@ -29,6 +30,10 @@ export const shouldDehydrateMutation = (mutation: {
 }): boolean => mutation.state.isPaused || mutation.state.status === 'error';
 
 export const QueryProvider = ({ children }: { children: React.ReactNode }) => {
+  return <DataEngineMigrationGate><QueryRuntimeProvider>{children}</QueryRuntimeProvider></DataEngineMigrationGate>;
+};
+
+const QueryRuntimeProvider = ({ children }: { children: React.ReactNode }) => {
   const [queryClient] = useState(() => {
     const client = new QueryClient({
         mutationCache: new MutationCache({

@@ -10,6 +10,7 @@ import { OUTBOX_CHANGED_EVENT } from '@/components/OutboxDrain';
 import { SaveConflictBanner } from '@/components/SaveConflictBanner';
 import { getClientDb } from '@/config/firebaseClientDb';
 import { discoverLegacyRecovery, exportLegacyRecovery, type LegacyRecoverySource } from '@/data-engine/legacyRecovery.client';
+import { LegacyDataRecoveryNotice } from '@/data-engine/react.client';
 import { useClipboard } from '@/hooks/useClipboard';
 import { useAuth } from '@/providers/AuthProvider';
 import { conflictSafeUpdate, isStaleWriteError } from '@/services/conflictSafeUpdate.client';
@@ -244,6 +245,7 @@ function LegacyConflictBanner() {
 export function OutboxConflictBanner() {
   const { user } = useAuth();
   return <>
+    <LegacyDataRecoveryNotice />
     {user?.uid && <LegacyRecoveryBanner key={`recovery:${user.uid}`} owner={user.uid} />}
     <LegacyConflictBanner key={`conflict:${user?.uid ?? 'signed-out'}`} />
   </>;
