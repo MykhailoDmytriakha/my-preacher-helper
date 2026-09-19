@@ -352,8 +352,8 @@ export class DataEngine {
     const outcome = await this.options.membershipScopes?.completion(owner, scopeId); this.assertCurrent(owner, generation);
     if (outcome) return;
     const scope = await this.recoverMembership(scopeId); this.assertCurrent(owner, generation);
-    if (scope.getState().record.phase === 'editing') await scope.retryPersistence();
-    else if (scope.getState().record.phase !== 'cancelled') await scope.save();
+    if (['editing', 'cancelled'].includes(scope.getState().record.phase)) await scope.retryPersistence();
+    else await scope.save();
     this.assertCurrent(owner, generation);
     await this.retry(); this.assertCurrent(owner, generation);
   }

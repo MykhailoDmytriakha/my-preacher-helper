@@ -19,8 +19,10 @@ The checkpoint passed final coverage/review recording. Cascade write-set activat
 guards are committed as `c699ae74`. Whole-action discard now owns every participant
 and dependent request in one local transaction; validation is recorded below.
 Public delivery/retry/discard controls are committed as `eda634e2`. Series list
-readers and durable creation are now wired and validated. Series detail, metadata
-forms, deletion and membership callers remain next.
+readers and durable creation are committed as `1b6a2bab`. Series detail now uses
+the public engine for metadata, deletion and pinned assign/remove/reorder stages.
+The current UI checkpoint is locally validated; remaining membership callers,
+sermon backlinks and live acceptance still block activation.
 Groups/series activation stays blocked. No production deployment or switch changed.
 
 - Reproduced `BUG-20260919-engine-field-buffer-diverges`: the focused text field
@@ -1540,3 +1542,46 @@ Group implementation checkpoint in progress:
   No new browser/device acceptance yet. **Series detail, metadata forms, deletion,
   all membership callers and real offline navigation remain unfinished.** The
   enabled creation route must not ship before its destination detail page migrates.
+
+
+### 2026-09-19 — series detail and pinned membership UI
+
+- Shared `SeriesDetailView` preserves legacy presentation; flag-enabled detail reads
+  through `DataDocumentProvider` and the canonical collection projection. Submitted
+  membership is visible immediately without injecting it into an open metadata draft.
+- Metadata editing uses one pinned manual scope, persists every keystroke, and sends
+  only on explicit Save. Closed unsent forms remain visible on the page and are
+  discoverable after restart. Disjoint remote fields survive; conflicting titles do
+  not overwrite the other device.
+- `SeriesMembershipDialog` opens its stage before selection or ordering controls.
+  Assign/remove/reorder share `useDataMembership`; drag, keyboard and arrow controls
+  edit the same durable unsent stage. Missing child documents remain represented.
+- `DataMembershipStatus` presents whole-action delivery. Unknown delivery offers
+  same-identity retry; only engine-proven failed actions can be discarded. Failed
+  immutable receipts do not offer a misleading ordinary retry.
+- Review found `BUG-20260919-membership-cancel-retry`: a failed local Cancel stayed
+  cancelled in memory, but Retry skipped writing that state. Its UI regression failed
+  before the shared `retryMembership` fix and passes now, with zero network sends.
+- Actual engine/runtime/storage/transaction-planner UI tests prove offline move
+  projection, one atomic command after restart, destination deletion preserving the
+  source, reorder retaining a remote insertion, local delete capture, and unsent
+  metadata recovery. Only I/O and unrelated child catalogs are replaced.
+- Gates: **720 suites / 7164 tests passed**, 2 suites / 10 tests intentionally skipped;
+  both TypeScript configurations pass; lint has 0 errors / 15 inherited warnings;
+  isolated production build passes with councils/groups/series compiled in. The full
+  Jest run reported a worker teardown warning; focused open-handle diagnostics pass (5 suites / 19 tests) without a leak report. Logs: `/tmp/data-engine-series-detail-final-{tests,types,unused,lint}.log`,
+  `/tmp/data-engine-series-detail-build.log`, `/tmp/data-engine-cancel-retry-{before,after}.log`.
+- Sequential review lanes: ownership/ancestry, error handling and recovery, public
+  boundaries, UI regression, tests and migration compatibility. No independent agent
+  was used. Remaining activation gates: other membership callers, sermon creation
+  inside the selector, legacy sermon backlinks, and browser/PWA/device acceptance.
+  No production flag changed. No production deployment. Fresh `origin/main` fetched
+  at 07:22 is already contained in this branch.
+
+- Live follow-up at 07:25 could not complete: Firestore returned
+  `RESOURCE_EXHAUSTED: Quota exceeded` on entitlement reads, while engine HTTP
+  reads timed out or returned unavailable. QA tabs and the local server were stopped.
+  Source of project-wide quota consumption is not yet established. This is a live
+  acceptance blocker, not a successful series test; no new QA series was submitted.
+  Next critical investigation: bounded degraded-read retries and local editing while
+  unrelated reads fail. `/tmp/data-engine-series-dev.log` contains the server evidence.

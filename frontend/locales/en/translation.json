@@ -13,6 +13,10 @@
     "actionFailed": "Could not read or export the saved change. The original record has been kept."
   },
   "dataSync": {
+    "actionCancelled": "This action was cancelled.",
+    "actionChecking": "Checking the saved action…",
+    "discardAction": "Discard this action",
+    "discardActionHint": "This also discards dependent membership changes. Later text edits remain in drafts.",
     "collectionAttention": "Some submitted changes need attention. Open the item or its saved drafts to review them.",
     "collectionIncomplete": "The local list may be incomplete. Connect to check the server.",
     "phase": {
@@ -2572,12 +2576,14 @@
         "customColor": "Custom color"
       },
       "actions": {
+        "reorder": "Reorder items",
         "createSeries": "Create Series",
         "saveChanges": "Save Changes",
         "cancel": "Cancel",
         "addToSeries": "Add to Series",
         "removeFromSeries": "Remove from Series",
         "removeFromSeriesConfirm": "Remove the sermon from the series \"{{series}}\"?",
+        "membershipRemoveHint": "The items stay in your library; only their series membership changes.",
         "removeFromSeriesKeepsSermon": "The sermon itself stays; only the series changes.",
         "moveToDifferentSeries": "Move to Another Series",
         "viewSeries": "View Series",
@@ -2649,7 +2655,10 @@
         "addGroupFailed": "Failed to add group to series"
       },
       "groupsAdded_one": "Group added to series",
-      "groupsAdded_other": "{{count}} groups added to series"
+      "groupsAdded_other": "{{count}} groups added to series",
+      "membershipAssignment": "Assign items to a series",
+      "membershipRecovery": "Unfinished series actions",
+      "metadataRecovery": "Unfinished series details"
     },
     "studies": {
       "badge": "Preview",

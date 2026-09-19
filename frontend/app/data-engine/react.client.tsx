@@ -96,6 +96,7 @@ export function useDataMembership() {
   const [failure, setFailure] = useState<{ identity: object; message: string } | null>(null);
   const [delivery, setDelivery] = useState<{ identity: object; scopeId: string; state: MembershipDelivery } | null>(null);
   const refreshVersion = useRef(0);
+  const [recoveryVersion, setRecoveryVersion] = useState(0);
   const active = useCallback(() => {
     if (latest.current !== identity || !browser || !owner) throw new Error(EDITOR_CHANGED);
     return browser.engine;
@@ -125,8 +126,7 @@ export function useDataMembership() {
     const promise = run(async () => {
       const scope = sourceId ? await engine.recoverMembership(sourceId) : await engine.beginMembership();
       if (latest.current !== identity) { engine.releaseMembership(scope.getState().record.scopeId); throw new Error(EDITOR_CHANGED); }
-      const stopScope = scope.subscribe(refresh), stopDelivery = engine.subscribeMembership(refresh);
-      current.current = { identity, scope, scopeId: scope.getState().record.scopeId, stop: () => { stopScope(); stopDelivery(); } }; refresh();
+      current.current = { identity, scope, scopeId: scope.getState().record.scopeId, stop: scope.subscribe(refresh) }; refresh();
     });
     opening.current = { identity, promise };
     void promise.finally(() => { if (opening.current?.promise === promise) opening.current = null; }).catch(() => undefined);
@@ -142,7 +142,12 @@ export function useDataMembership() {
   }, [active, browser, identity]);
   useEffect(() => {
     latest.current = identity;
+    const stopDelivery = browser && owner ? browser.engine.subscribeMembership(() => {
+      if (latest.current !== identity) return;
+      setRecoveryVersion(version => version + 1); refresh();
+    }) : () => undefined;
     return () => {
+      stopDelivery();
       if (latest.current === identity) latest.current = {};
       const held = current.current;
       if (held?.identity === identity) {
@@ -152,11 +157,13 @@ export function useDataMembership() {
         current.current = null;
       }
     };
-  }, [browser, identity]);
+  }, [browser, owner, identity, refresh]);
   const state = stored?.identity === identity ? stored.state : null;
   return {
     ready: Boolean(browser && owner), error: failure?.identity === identity ? failure.message : null,
     values: state?.values ?? [], phase: state?.record.phase ?? null, durable: state?.durable ?? false,
+    action: state?.record.action ?? null, scopeId: state?.record.scopeId ?? null,
+    recoveryIdentity: identity as object, recoveryVersion,
     delivery: delivery?.identity === identity && delivery.scopeId === state?.record.scopeId ? delivery.state : null,
     begin: () => begin(), recover: (scopeId: string) => begin(scopeId), dismiss,
     update: (action: MembershipAction | null) => run(() => required().update(action)),

@@ -207,3 +207,11 @@ explicitly reopen it; recovery alone never submits. `cancel()` cancels an unsent
 stage only. Never implement domain-owned journals or read a fresh baseline at
 Save time. Series UI migration is still in progress; the public API being available
 is not authorization to enable the collection in production.
+
+
+The series detail is an example consumer: `EngineEditSeriesModal` owns a pinned
+manual form; `SeriesMembershipDialog` owns one complete membership stage. Render
+pending membership from the engine collection projection, never by replacing an
+open document draft with another scope's payload. `DataMembershipStatus` exposes
+whole-action retry/discard. `recoveryIdentity` and `recoveryVersion` feed the shared
+`useRecoveryDiscovery` hook, including when no action dialog is mounted.

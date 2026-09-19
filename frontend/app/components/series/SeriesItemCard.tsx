@@ -24,6 +24,7 @@ interface SeriesItemCardProps {
   position: number;
   onRemove?: (type: 'sermon' | 'group', refId: string) => void;
   id: string;
+  sortable?: boolean;
 }
 
 const sermonPreview = (sermon: Sermon) =>
@@ -34,6 +35,7 @@ export default function SeriesItemCard({
   position,
   onRemove,
   id,
+  sortable = true,
 }: SeriesItemCardProps) {
   const { t } = useTranslation();
   const { item, sermon, group } = resolvedItem;
@@ -45,7 +47,7 @@ export default function SeriesItemCard({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id });
+  } = useSortable({ id, disabled: !sortable });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -72,14 +74,14 @@ export default function SeriesItemCard({
         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-50 text-sm font-semibold text-blue-700 ring-1 ring-blue-100 dark:bg-blue-900/40 dark:text-blue-200 dark:ring-blue-800/70">
           {position}
         </div>
-        <div
+        {sortable && <div
           {...attributes}
           {...listeners}
           className="cursor-grab text-gray-400 hover:text-gray-600 active:cursor-grabbing dark:text-gray-500 dark:hover:text-gray-300 touch-none outline-none"
           title={t('workspaces.series.detail.dragToReorder')}
         >
           <Bars3Icon className="h-4 w-4" />
-        </div>
+        </div>}
       </div>
 
       <div className="flex-1 min-w-0">

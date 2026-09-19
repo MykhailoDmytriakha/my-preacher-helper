@@ -13,6 +13,10 @@
     "actionFailed": "Не вдалося прочитати або експортувати зміну. Початковий запис збережено."
   },
   "dataSync": {
+    "actionCancelled": "Дію скасовано.",
+    "actionChecking": "Перевіряємо збережену дію…",
+    "discardAction": "Скасувати цю дію",
+    "discardActionHint": "Також скасуються залежні зміни складу серій. Подальші правки тексту залишаться в чернетках.",
     "collectionAttention": "Деякі надіслані зміни потребують рішення. Відкрийте запис або його збережені чернетки.",
     "collectionIncomplete": "Локальний список може бути неповним. Підключіться до мережі для перевірки.",
     "phase": {
@@ -2585,12 +2589,14 @@
         "customColor": "Свій колір"
       },
       "actions": {
+        "reorder": "Змінити порядок",
         "createSeries": "Створити серію",
         "saveChanges": "Зберегти зміни",
         "cancel": "Скасувати",
         "addToSeries": "Додати до серії",
         "removeFromSeries": "Видалити із серії",
         "removeFromSeriesConfirm": "Видалити проповідь із серії «{{series}}»?",
+        "membershipRemoveHint": "Елементи залишаться у вашій бібліотеці; зміниться лише їхня належність до серій.",
         "removeFromSeriesKeepsSermon": "Сама проповідь залишиться, зміниться лише серія.",
         "moveToDifferentSeries": "Перемістити до серії",
         "viewSeries": "Переглянути серію",
@@ -2670,7 +2676,10 @@
       "groupsAdded_one": "Групу додано до серії",
       "groupsAdded_few": "{{count}} групи додано до серії",
       "groupsAdded_many": "{{count}} груп додано до серії",
-      "groupsAdded_other": "{{count}} груп додано до серії"
+      "groupsAdded_other": "{{count}} груп додано до серії",
+      "membershipAssignment": "Додавання елементів до серії",
+      "membershipRecovery": "Незавершені дії із серіями",
+      "metadataRecovery": "Незавершені зміни серії"
     },
     "studies": {
       "badge": "Прев'ю",
