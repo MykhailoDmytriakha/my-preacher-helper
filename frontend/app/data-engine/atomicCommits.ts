@@ -139,16 +139,13 @@ export function cancellationScope(records: readonly CommitRequest[], editorId: s
   return records.filter(record => selected.has(record.id) && record.state !== 'acknowledged' && record.state !== 'cancelled');
 }
 
-export async function cancelAtomicCommits(records: readonly CommitRequest[], context: AtomicCommitContext): Promise<void> {
-  const atomic = records.filter(record => record.atomic);
-  if (!atomic.length) return;
+export async function cancelActionCommits(records: readonly CommitRequest[], context: AtomicCommitContext): Promise<void> {
+  if (!records.length) return;
   if (!context.store.compareAndSetBatch) throw new Error('Atomic commit storage is required');
-  for (const id of new Set(atomic.flatMap(record => record.command ? [record.command.operationId] : []))) {
+  for (const id of new Set(records.flatMap(record => record.command ? [record.command.operationId] : []))) {
     await context.runtime.discard(id); context.assertCurrent();
   }
-  for (const id of new Set(atomic.map(record => record.atomic!.id))) {
-    const group = atomic.filter(record => record.atomic!.id === id);
-    const saved = await context.store.compareAndSetBatch(group.map(previous => ({ previous, next: { ...previous, state: 'cancelled' as const } })));
-    context.assertCurrent(); saved.forEach(context.emit);
-  }
+  // Dependents and every participant retire together, even across several moves.
+  const saved = await context.store.compareAndSetBatch(records.map(previous => ({ previous, next: { ...previous, state: 'cancelled' as const, cancelledByAction: true } })));
+  context.assertCurrent(); saved.forEach(context.emit);
 }

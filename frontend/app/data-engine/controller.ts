@@ -54,6 +54,7 @@ export interface EditorState {
   result: CommandResult | null;
   /** A command is being prepared or durably queued; it is not yet an acknowledgement. */
   preparing?: boolean;
+  actionResolutionRequired?: boolean;
 }
 
 /** A single editor owns its checkpoint; the runtime owns delivery for every editor. */
@@ -71,6 +72,7 @@ export class EditorController {
   private unsubscribe: () => void = () => undefined;
   private stopCommits: () => void = () => undefined;
   private completedCommits: string[] = [];
+  private atomicPending = new Set<string>();
 
   private constructor(private readonly options: ControllerOptions) {
     this.session = new DataSession(options.snapshot);
@@ -117,7 +119,8 @@ export class EditorController {
 
   getState(): EditorState {
     this.assertCurrent();
-    return { checkpoint: this.session.checkpoint(), durable: this.durable, error: this.error, result: this.result, preparing: this.preparations > 0 };
+    return { checkpoint: this.session.checkpoint(), durable: this.durable, error: this.error, result: this.result, preparing: this.preparations > 0,
+      actionResolutionRequired: this.atomicPending.size > 0 };
   }
 
   subscribe(listener: () => void): () => void {
@@ -297,6 +300,9 @@ export class EditorController {
   private async applyCommit(request: CommitRequest): Promise<void> {
     this.assertCurrent();
     if (this.completedCommits.includes(request.id)) return;
+    if (request.atomic && !['acknowledged', 'cancelled'].includes(request.state)) this.atomicPending.add(request.id);
+    else this.atomicPending.delete(request.id);
+    if (request.state === 'cancelled' && request.cancelledByAction) this.result = null;
     if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.result = request.result;
     if (this.session.applyCommit(request)) this.completedCommits.push(request.id);
     await this.persist();

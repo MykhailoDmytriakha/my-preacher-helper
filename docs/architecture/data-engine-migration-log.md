@@ -15,8 +15,10 @@ Current hard-path checkpoint: atomic queue ownership is committed as `61104b4b`;
 legacy series preservation is committed as `ea536555`. Pinned membership stages,
 CAS storage and the public `useDataMembership` hook are committed as `9abeede6`,
 with crash/retention regression proof and a successful isolated production build.
-The checkpoint passed final coverage/review recording. Domain screens,
-whole-action delivery/conflict controls and all series readers/writers remain next.
+The checkpoint passed final coverage/review recording. Cascade write-set activation
+guards are committed as `c699ae74`. Whole-action discard now owns every participant
+and dependent request in one local transaction; validation is recorded below.
+Domain screens, public delivery/conflict controls and all series readers/writers remain next.
 Groups/series activation stays blocked. No production deployment or switch changed.
 
 - Reproduced `BUG-20260919-engine-field-buffer-diverges`: the focused text field
@@ -1459,3 +1461,28 @@ Group implementation checkpoint in progress:
   `/tmp/data-engine-cascade-production-build.log`. Sequential review checked
   no-partial-write ordering, receipt identity/replay and read-only references;
   no introduced high-confidence blocker remains.
+
+## 2026-09-19 — complete-action discard and participant conflict ownership
+
+- Reproduced `BUG-20260919-engine-participant-resolution-splits-action`: after
+  destination deletion, a source editor could Keep Local, retire the refused move
+  and later submit only its source removal. The reproduction failed before the
+  guard (`/tmp/data-engine-participant-resolution-before.log`).
+- Generic document choices now defer to the action owner. The queue enforces it
+  independently of presentation; `describeSync` hides invalid per-document choices.
+- Whole-action discard cancels every participant and dependent request in one
+  revision-checked storage transaction. A changed dependent revision rolls the
+  entire cancellation back; retry succeeds with current evidence.
+- Cancelled projections restore membership while retaining subsequent saved or
+  unsent titles. An unrelated remote title conflict stays unresolved. Closed
+  editor recovery and mounted editors use the same `DataSession` rule.
+- The engine validates scope ownership, refuses pending delivery, waits for local
+  editor projection and permits retry after stage compaction failure.
+- Sequential review lanes: ownership/public boundaries, cancellation races and
+  restart, field merge/conflict retention, failure recovery, and behavior evidence.
+  No independent agent was used. UI wiring and physical-platform acceptance remain
+  open; no deployment or production flags changed.
+- Validation: **713 suites / 7131 tests pass**, 10 skipped; lint 0 errors / 15
+  inherited warnings; TypeScript and unused-symbol checks pass. Isolated production
+  build passes in 19.54s. Logs: `/tmp/data-engine-action-{full,lint,build}.log`;
+  focused owner/discard proof: `/tmp/data-engine-discard-owner-2.log`.

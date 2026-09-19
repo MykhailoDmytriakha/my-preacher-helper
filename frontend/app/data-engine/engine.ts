@@ -306,6 +306,26 @@ export class DataEngine {
     return remaining.filter(record => record.phase !== 'cancelled' && (record.action || record.phase === 'saving'));
   }
 
+  /** An explicit discard is allowed only for a proven failed complete action. */
+  async discardMembership(scopeId: string): Promise<void> {
+    const owner = this.requireOwner(), generation = this.generation;
+    const store = this.options.membershipScopes;
+    const record = await store?.read(owner, scopeId); this.assertCurrent(owner, generation);
+    if (!record || record.phase !== 'submitted' || !record.requestIds.length) throw new Error('Resolve the pending Save before discarding this action');
+    const requests = await this.commits.list(); this.assertCurrent(owner, generation);
+    if (record.requestIds.some(id => !requests.some(request => request.id === id && request.retentionScope === scopeId))) throw new Error('Membership action evidence changed');
+    if (!record.requestIds.every(id => requests.some(request => request.id === id && request.state === 'cancelled'))) {
+      await this.commits.cancelAction(record.requestIds); this.assertCurrent(owner, generation);
+    }
+    await Promise.all([...this.editors.values()].map(async entry => {
+      if (entry.controller?.needsPersistenceRetry()) await entry.controller.retryPersistence();
+      await entry.controller?.settled();
+    }));
+    this.assertCurrent(owner, generation);
+    await store!.compact(owner, scopeId); this.assertCurrent(owner, generation);
+    this.releaseMembership(scopeId);
+  }
+
   private membershipPort(owner: string, generation: number): import('./membershipScope').MembershipScopePort {
     const store = this.options.membershipScopes!;
     return {

@@ -80,6 +80,9 @@ describe('Shared synchronization status', () => {
     s.checkpoint.remoteCandidate = { ...snapshot, value: { userId: 'owner', content: 'other' } };
     s.result = { kind: 'conflict', operationId: 'mine', snapshot, conflicts: [] };
     expect(describeSync(s, observation, [pending('conflict')])).toMatchObject({ phase: 'conflict', canAcceptRemote: true, canKeepLocal: true });
+    s.actionResolutionRequired = true;
+    expect(describeSync(s, observation, [pending('conflict')])).toMatchObject({ canAcceptRemote: false, canKeepLocal: false });
+    s.actionResolutionRequired = false;
     s.checkpoint.remoteCandidate.value = null;
     expect(describeSync(s, observation, [pending('conflict')])).toMatchObject({ canAcceptRemote: true, canKeepLocal: false, canSave: false });
     s.result = { kind: 'refused', operationId: 'mine', code: 'denied' };

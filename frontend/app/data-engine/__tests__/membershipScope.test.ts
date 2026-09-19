@@ -251,6 +251,24 @@ describe('DataEngine membership ownership', () => {
     await expect(t.engine.recoverMembership(recovery[0].scopeId)).rejects.toThrow('no longer exists');
     t.engine.dispose();
   });
+  it('discards a proven failed action through its owner and preserves later participant text', async () => {
+    const t = engineFixture(), scope = await t.engine.beginMembership(); await scope.update(move); await scope.save();
+    const scopeId = scope.getState().record.scopeId;
+    await expect(t.engine.discardMembership(scopeId)).rejects.toThrow('Resolve pending');
+    for (const request of await t.commits.list('owner')) await t.commits.compareAndSet(request, {
+      ...request, state: 'refused', command: null, result: { kind: 'refused', operationId: request.id, code: 'target-deleted' },
+    });
+    const editor = await t.engine.openEditor(snapshot('a').resource, 'participant');
+    await editor.edit({ ...editor.getState().checkpoint.draft, title: 'Later title' });
+    const compact = jest.spyOn(t.scopes, 'compact').mockRejectedValueOnce(new Error('compaction failed'));
+    await expect(t.engine.discardMembership(scopeId)).rejects.toThrow('compaction failed');
+    compact.mockRestore();
+    await t.engine.discardMembership(scopeId);
+    expect(editor.getState()).toMatchObject({ result: null, actionResolutionRequired: false, checkpoint: { pending: {}, draft: { items: [member], title: 'Later title' } } });
+    expect(await t.engine.listMembershipRecovery()).toEqual([]);
+    t.engine.setOwner('other'); await expect(t.engine.discardMembership(scopeId)).rejects.toThrow('pending Save');
+    t.engine.dispose();
+  });
   it('finishes invoked Save after navigation and preserves unsent selections on ordinary release', async () => {
     const t = engineFixture(), scope = await t.engine.beginMembership(); await scope.update(move);
     const scopeId = scope.getState().record.scopeId;

@@ -1,4 +1,5 @@
 import { prepareDomainCommand } from './domainPolicy';
+import { projectManualSelection } from './manualScope';
 import { equalValues, mergeDocumentFields } from './protocol';
 
 import type { CommitRequest } from './commits';
@@ -49,12 +50,39 @@ export class DataSession {
   /** One projection rule for mounted editors and recovery of editors that already closed. */
   applyCommit(request: CommitRequest): boolean {
     if (request.state === 'cancelled') {
+      if (request.cancelledByAction && this.state.pending[request.id]) this.rollbackAction(request);
       this.release(request.id);
       return true;
     }
     this.registerCommit(request.id, request.editGeneration, request.value, request.atomic?.id ?? request.command?.operationId);
     if (request.result && ['acknowledged', 'conflict', 'refused'].includes(request.state)) this.accept(request.result);
     return request.state === 'acknowledged';
+  }
+
+  private rollbackAction(request: CommitRequest): void {
+    const accepted = this.state.remoteCandidate ?? this.state.confirmed;
+    const predecessor = request.predecessor ? this.state.pending[request.predecessor] : undefined;
+    const rollbackValue = accepted.value ?? (!accepted.metadata && !request.baseline.value ? predecessor?.value ?? null : null);
+    const rebased = mergeDocumentFields(request.value, this.state.draft, rollbackValue);
+    // Discard owns membership only. Later saved metadata in a dependent request
+    // is still the person's work, just like later unsent typing. Rebase those
+    // fields against the actual confirmed ancestor, not the cancelled request.
+    if (request.baseline.resource.collection === 'series' && this.state.draft && rebased.value.exists) {
+      const fields = ['items', 'sermonIds', 'seriesKind'];
+      const ordinary = mergeDocumentFields(this.state.confirmed.value, this.state.draft, accepted.value);
+      if (ordinary.value.exists) {
+        rebased.value = { exists: true, value: projectManualSelection(ordinary.value.value as DocumentData, rebased.value.value as DocumentData, fields.map(field => [field])) };
+        const conflicts = [...this.state.conflicts.filter(conflict => !fields.includes(conflict.path[0])),
+          ...ordinary.conflicts.filter(conflict => !fields.includes(conflict.path[0])), ...rebased.conflicts.filter(conflict => fields.includes(conflict.path[0]))];
+        rebased.conflicts = [...new Map(conflicts.map(conflict => [JSON.stringify(conflict.path), conflict])).values()];
+      }
+    }
+    this.state.confirmed = copy(accepted);
+    this.state.draft = rebased.value.exists ? copy(rebased.value.value as DocumentData) : null;
+    this.state.conflicts = copy(rebased.conflicts);
+    this.state.remoteCandidate = rebased.conflicts.length ? copy(accepted) : null;
+    this.state.editGeneration += 1;
+    this.state.dirty = !equalValues(this.state.draft, accepted.value);
   }
 
   prepare(operationId: string, owner: string, targets: readonly ResourceSnapshot[] = [], intended: SessionCheckpoint = this.state): DataCommand | null {

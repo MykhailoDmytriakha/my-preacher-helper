@@ -9,6 +9,7 @@ import { DataEngineRuntime } from '../runtime';
 import { DataSession } from '../session';
 import { planDataCommand } from '../serverRelations';
 import { submittedWorkCheckpoint } from '../submittedWork';
+import { reconcileRecoveryRecord } from '../recovery.client';
 import { installStorageHarness } from './storageHarness';
 import type { CommandResult, EngineTransport, JournalEntry, ResourceSnapshot } from '../types';
 jest.mock('idb-keyval', () => ({ createStore: jest.fn() }));
@@ -80,7 +81,7 @@ it('replays unknown delivery after restart with the same identity and preserves 
   const s = setup(); let { queue } = s.make();
   await queue.saveAtomic(s.moving()); s.rows.get('b')!.value!.title = 'remote sibling'; s.loseAck();
   await queue.drain(true); expect((await queue.list()).every(row => row.state === 'prepared')).toBe(true);
-  await expect(queue.cancel('from')).rejects.toThrow('Resolve pending');
+  await expect(queue.cancelAction((await queue.list()).filter(row => row.editorId === 'from').map(row => row.id))).rejects.toThrow('Resolve pending');
   ({ queue } = s.make()); await queue.drain(true);
   expect(jest.mocked(s.transport.send).mock.calls.map(([command]) => command.operationId)).toEqual(['operation-1', 'operation-1']);
   expect((await queue.list())[1].result).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: 'remote sibling', items: [member] } } });
@@ -113,7 +114,7 @@ it('refuses a competing assignment as a whole and explicit cancellation retires 
   const s = setup(); const { queue } = s.make();
   await queue.saveAtomic(s.moving()); s.rows.get('a')!.value!.items = []; s.rows.get('c')!.value!.items = [member]; await queue.drain(true);
   expect((await queue.list()).every(row => row.state === 'refused')).toBe(true); expect(s.rows.get('b')?.value?.items).toEqual([]);
-  await queue.cancel('to'); expect((await queue.list()).every(row => row.state === 'cancelled')).toBe(true);
+  await queue.cancelAction((await queue.list()).filter(row => row.editorId === 'to').map(row => row.id)); expect((await queue.list()).every(row => row.state === 'cancelled')).toBe(true);
 });
 it('atomically captures once for repeated Save and never publishes or sends a failed local capture', async () => {
   const s = setup(); const { queue } = s.make(); const listener = jest.fn(); queue.subscribe(listener); s.storage.writeFailure = true;
@@ -271,15 +272,15 @@ it('projects a source conflict only to its own editor and retains both failed dr
   expect(records[1]).toMatchObject({ state: 'refused', result: { kind: 'refused', code: 'atomic-operation-conflict' } });
   const result = records[0].result;
   expect(result?.kind === 'conflict' && result.conflicts.every(conflict => conflict.path[0] === 'items')).toBe(true);
-  await queue.cancel('from'); expect((await queue.list()).every(record => record.state === 'cancelled')).toBe(true);
+  await queue.cancelAction((await queue.list()).filter(row => row.editorId === 'from').map(row => row.id)); expect((await queue.list()).every(record => record.state === 'cancelled')).toBe(true);
 });
 
 it('does not partially cancel an atomic pair when persistence fails during the explicit decision', async () => {
   const s = setup(); const { queue } = s.make(); await queue.saveAtomic(s.moving());
   s.rows.get('a')!.value!.items = []; s.rows.get('c')!.value!.items = [member]; await queue.drain(true);
-  s.storage.writeFailure = true; await expect(queue.cancel('from')).rejects.toThrow('disk full'); s.storage.writeFailure = false;
+  s.storage.writeFailure = true; await expect(queue.cancelAction((await queue.list()).filter(row => row.editorId === 'from').map(row => row.id))).rejects.toThrow('disk full'); s.storage.writeFailure = false;
   expect((await queue.list()).every(record => record.state === 'refused')).toBe(true);
-  await queue.cancel('to'); expect((await queue.list()).every(record => record.state === 'cancelled')).toBe(true);
+  await queue.cancelAction((await queue.list()).filter(row => row.editorId === 'to').map(row => row.id)); expect((await queue.list()).every(record => record.state === 'cancelled')).toBe(true);
 });
 
 it('waits for a queued destination creation instead of treating its local value as a confirmed generation', async () => {
@@ -342,4 +343,86 @@ it('stores one immutable wire payload for a participant group and exposes delive
     expect(a.getDelivery()[0].command.operationId).toBe(b.getDelivery()[0].command.operationId);
     expect(b.getState().checkpoint.pending[prepared[1].id].operations).toContain(prepared[0].id);
   } finally { engine.dispose(); }
+});
+
+
+it('prevents a participant editor from replacing a refused move with one ordinary save', async () => {
+  const s = setup(), { queue } = s.make(); await queue.saveAtomic(s.moving());
+  s.rows.set('b', { ...series('b'), value: null, metadata: { ...series('b').metadata!, deleted: true, revision: 2 } });
+  await queue.drain(true);
+  const engine = s.makeEngine();
+  const editor = await engine.openEditor(series('a').resource, 'participant-resolver');
+  expect(editor.getState().checkpoint.draft!.items).toEqual([]);
+  expect(editor.getState().actionResolutionRequired).toBe(true);
+  await expect(editor.keepLocal()).rejects.toMatchObject({ code: 'atomic-action-resolution-required' });
+  await expect(editor.acceptRemote()).rejects.toMatchObject({ code: 'atomic-action-resolution-required' });
+  expect((await s.requests.list('owner')).every(request => request.state === 'refused')).toBe(true);
+  expect(s.rows.get('a')!.value!.items).toEqual([member]);
+  engine.dispose();
+});
+
+
+it('whole-action discard removes both pending projections but preserves later unsent typing', async () => {
+  const s = setup(), { queue } = s.make(); const captured = await queue.saveAtomic(s.moving());
+  const sessions = captured.map(request => DataSession.restore(submittedWorkCheckpoint('owner', request.baseline.resource, captured)!));
+  sessions[0].edit({ ...sessions[0].checkpoint().draft, title: 'Later unsent title' });
+  s.rows.set('b', { ...series('b'), value: null, metadata: { ...series('b').metadata!, deleted: true, revision: 2 } });
+  await queue.drain(true);
+  for (const [index, request] of (await queue.list()).entries()) sessions[index].applyCommit(request);
+  await queue.cancelAction(captured.map(request => request.id));
+  for (const [index, request] of (await queue.list()).entries()) sessions[index].applyCommit(request);
+  expect(sessions[0].checkpoint()).toMatchObject({ draft: { items: [member], title: 'Later unsent title' }, dirty: true, pending: {} });
+  expect(sessions[1].checkpoint()).toMatchObject({ draft: { items: [] }, dirty: false, pending: {} });
+  const before = sessions[0].checkpoint(); sessions[0].applyCommit((await queue.list())[0]);
+  expect(sessions[0].checkpoint()).toEqual(before);
+  expect(s.rows.get('a')!.value!.items).toEqual([member]);
+});
+
+it('retains metadata saved after a refused move when the whole dependent chain is discarded', async () => {
+  const s = setup(), { queue } = s.make(); const first = await queue.saveAtomic(s.moving());
+  const checkpoint = submittedWorkCheckpoint('owner', series('a').resource, first)!;
+  const session = DataSession.restore(checkpoint); session.edit({ ...session.checkpoint().draft, title: 'My later saved title' });
+  const later = (await queue.save('later-editor', session.checkpoint(), { predecessorId: first[0].id }))!;
+  session.applyCommit(later);
+  const closed = { owner: 'owner', editorId: 'later-editor', prepared: null, checkpoint: session.checkpoint(), unfinalized: [], completedCommits: [] };
+  s.rows.set('b', { ...series('b'), value: null, metadata: { ...series('b').metadata!, deleted: true, revision: 2 } });
+  await queue.drain(true);
+  await queue.cancelAction(first.map(request => request.id));
+  for (const request of await queue.list()) if (request.baseline.resource.id === 'a') session.applyCommit(request);
+  expect(session.checkpoint()).toMatchObject({ draft: { items: [member], title: 'My later saved title' }, pending: {}, dirty: true });
+  expect((await queue.list()).every(request => request.state === 'cancelled')).toBe(true);
+  expect(reconcileRecoveryRecord(closed, await queue.list()).checkpoint).toMatchObject({ draft: { items: [member], title: 'My later saved title' }, pending: {}, dirty: true });
+});
+
+it('rolls back the complete discard when a dependent request changes during cancellation', async () => {
+  const s = setup(), { queue } = s.make(); const first = await queue.saveAtomic(s.moving());
+  const session = DataSession.restore(submittedWorkCheckpoint('owner', series('a').resource, first)!);
+  session.edit({ ...session.checkpoint().draft, title: 'Dependent title' });
+  const later = (await queue.save('later', session.checkpoint(), { predecessorId: first[0].id }))!;
+  s.rows.set('b', { ...series('b'), value: null, metadata: { ...series('b').metadata!, deleted: true, revision: 2 } });
+  await queue.drain(true);
+  const actualBatch = s.requests.compareAndSetBatch!;
+  const batch = jest.spyOn(s.requests, 'compareAndSetBatch').mockImplementationOnce(async changes => {
+    const dependent = changes.find(change => change.previous.id === later.id)!;
+    await actualBatch([{ previous: dependent.previous, next: dependent.previous }]);
+    return actualBatch(changes);
+  });
+  await expect(queue.cancelAction(first.map(request => request.id))).rejects.toMatchObject({ code: 'commit-changed' });
+  expect((await queue.list()).some(request => request.state === 'cancelled')).toBe(false);
+  batch.mockRestore(); await queue.cancelAction(first.map(request => request.id));
+  expect((await queue.list()).every(request => request.state === 'cancelled')).toBe(true);
+});
+
+it('does not silently resolve an unrelated text conflict while retiring several participants in a chain', async () => {
+  const s = setup(), { queue } = s.make(); const first = await queue.saveAtomic(s.moving());
+  const session = DataSession.restore(submittedWorkCheckpoint('owner', series('a').resource, first)!);
+  session.edit({ ...session.checkpoint().draft, title: 'My saved title' });
+  const later = (await queue.save('later', session.checkpoint(), { predecessorId: first[0].id }))!; session.applyCommit(later);
+  s.rows.set('b', { ...series('b'), value: null, metadata: { ...series('b').metadata!, deleted: true, revision: 2 } });
+  await queue.drain(true);
+  session.observe({ ...series('a', true), value: { ...series('a', true).value!, title: 'Other device title' }, metadata: { ...series('a').metadata!, revision: 2 } }, { source: 'server' });
+  await queue.cancelAction(first.map(request => request.id));
+  for (const request of await queue.list()) if (request.baseline.resource.id === 'a') session.applyCommit(request);
+  expect(session.checkpoint()).toMatchObject({ draft: { title: 'My saved title', items: [member] }, remoteCandidate: { value: { title: 'Other device title' } } });
+  expect(session.checkpoint().conflicts.some(conflict => conflict.path[0] === 'title')).toBe(true);
 });

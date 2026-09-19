@@ -1,6 +1,6 @@
 'use client';
 
-import { assertCommitBatch, assertCommitCapture, type CommitRequest, type CommitStore } from './commits';
+import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, type CommitRequest, type CommitStore } from './commits';
 import { collectCommitRows, commitCaptureKey, commitGenerationKey, commitProjectionKey, commitRowKey, readCommitRows } from './retention.client';
 import { createEngineStorageTransaction, validateCommitReferences, type StorageRead } from './storage.client';
 
@@ -45,7 +45,7 @@ export function createIndexedDbCommitStore(): CommitStore {
     });
   };
   const compareAndSetBatch = async (changes: readonly { previous: CommitRequest; next: CommitRequest }[]): Promise<CommitRequest[]> => {
-    const frozen = clone(changes); assertCommitBatch(frozen.map(change => change.previous));
+    const frozen = clone(changes); assertCommitIdentities(frozen.map(change => change.previous));
     if (!frozen.length) return [];
     return transaction('readwrite', (store, read, done) => {
       const result: CommitRequest[] = []; let remaining = frozen.length;

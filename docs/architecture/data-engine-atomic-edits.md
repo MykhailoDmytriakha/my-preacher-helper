@@ -161,3 +161,20 @@ The public `useDataMembership` hook supports begin/update/save/recover/cancel an
 owner-fenced presentation. It is not yet connected to domain screens. Delivery
 status, whole-action conflict/discard controls, all series callers and live browser/
 PWA acceptance remain outstanding. Production activation is still forbidden.
+
+## Whole-action resolution
+
+A document editor cannot Keep Local or Accept Remote on behalf of an unresolved
+atomic action. Both the queue boundary and the shared status enforce this; hiding
+buttons alone is insufficient. The action owner explicitly discards through
+`DataEngine.discardMembership(scopeId)` after delivery is proven failed.
+Unknown delivery cannot be discarded. The action and its dependent requests use
+one compare-and-set transaction, so a concurrent revision or disk failure cannot
+retire only half of the local chain.
+
+Cancellation carries explicit action provenance. `DataSession` removes the
+cancelled membership projection while retaining later saved/unsent metadata and
+unrelated conflicts. Mounted editors and closed-checkpoint recovery share this
+rule. Otherwise the next ordinary autosave could submit only the source removal.
+Stage compaction can be retried after cancellation; it must not trigger another
+network operation or lose the remaining local recovery evidence.

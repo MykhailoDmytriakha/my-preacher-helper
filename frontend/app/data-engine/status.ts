@@ -59,8 +59,8 @@ export function describeSync(state: EditorState, observation: Observation, deliv
     hasForeignChange: foreign,
     canSave: checkpoint.dirty && state.durable && !state.preparing && hasUnqueuedGeneration && !refused && checkpoint.conflicts.length === 0 && !deletedCandidate && !checkpoint.confirmed.metadata?.deleted,
     canRemove: state.durable && !state.preparing && pendingIds.length === 0 && checkpoint.confirmed.value !== null && !checkpoint.confirmed.metadata?.deleted,
-    canAcceptRemote: foreign && settled,
-    canKeepLocal: settled && !deletedCandidate && (foreign || phase === 'conflict' || phase === 'refused'),
+    canAcceptRemote: !state.actionResolutionRequired && foreign && settled,
+    canKeepLocal: !state.actionResolutionRequired && settled && !deletedCandidate && (foreign || phase === 'conflict' || phase === 'refused'),
   };
 }
 
