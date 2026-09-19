@@ -171,16 +171,21 @@ export function prepareDomainCommand(owner: string, operationId: string, confirm
   return { ...prepared, command: copy(validateCommand(prepared.command)) };
 }
 
-/** A move owns all captured series versions and only their membership fields. */
+/** A move owns membership fields; creating a member also owns its absent document. */
 export function prepareAtomicSeriesCommand(owner: string, operationId: string, participants: readonly { confirmed: ResourceSnapshot; draft: DocumentData | null }[]): DataCommand {
   if (participants.length < 2 || participants.length > MAX_RELATION_RESOURCES) return failure('A series move requires a bounded participant group');
-  const edits = participants.map(({ confirmed, draft }) => {
+  const creation = participants[0].confirmed.resource.collection !== 'series' ? participants[0] : null;
+  if (creation && (participants.length !== 2 || !['sermons', 'groups'].includes(creation.confirmed.resource.collection)
+    || creation.confirmed.value || creation.confirmed.metadata || !creation.draft || creation.draft.userId !== owner)) return failure('A new owned member is required');
+  const edits = (creation ? participants.slice(1) : participants).map(({ confirmed, draft }) => {
     if (confirmed.resource.collection !== 'series' || !confirmed.value || confirmed.metadata?.deleted || !draft) return failure('Live series participants are required', REFERENCED_DOCUMENT_DELETED);
     if (confirmed.value.userId !== owner || draft.userId !== owner) return failure('Series belongs to another owner', PERMISSION_DENIED);
     if (diffFields(confirmed.value, draft).some(change => !['items', 'sermonIds', 'seriesKind'].includes(change.path[0]))) return failure('Save ordinary fields separately from a series move', 'atomic-membership-only');
     return { resource: copy(confirmed.resource), generation: confirmed.metadata?.generation ?? null,
       beforeItems: copy(items(confirmed.value)), afterItems: copy(items(draft, false)) };
   });
+  if (creation) return validateCommand({ protocol: 1, owner, operationId, resource: copy(creation.confirmed.resource), generation: null,
+    dependsOn: [], kind: 'relation', relation: 'series-member-create', value: copy(creation.draft!), edit: edits[0] });
   return validateCommand({ protocol: 1, owner, operationId, resource: edits[0].resource, generation: edits[0].generation,
     dependsOn: [], kind: 'relation', relation: 'series-membership', edits });
 }

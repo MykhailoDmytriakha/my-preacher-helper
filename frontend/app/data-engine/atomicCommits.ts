@@ -6,7 +6,7 @@ import type { CommitRequest, CommitStore } from './commits';
 import type { DataEngineRuntime } from './runtime';
 import type { CommandResult, DocumentData, EngineMetadata, JournalEntry, ResourceRef, ResourceSnapshot } from './types';
 
-export interface AtomicCommitIdentity { id: string; participants: string[] }
+export interface AtomicCommitIdentity { id: string; participants: string[]; kind?: 'create-member' }
 const sameResource = (a: ResourceRef, b: ResourceRef) => a.collection === b.collection && a.id === b.id;
 
 /** The same predecessor rebase is used for ordinary and atomic saved intent. */

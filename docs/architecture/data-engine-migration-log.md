@@ -1659,3 +1659,31 @@ Group implementation checkpoint in progress:
   No production activation or live acceptance claimed. Creation remains a separate
   blocker: a UI Promise chain cannot durably own create plus membership after restart.
   The next engine extension will capture both effects as one atomic operation.
+
+### 2026-09-19 — atomic member creation foundation
+
+- `series-member-create` commits a new sermon/group and a pinned destination in one
+  transaction. Existing creation, provenance, merge, exclusivity and collection
+  activation checks are reused. Invalid/deleted/foreign destinations, occupied IDs
+  and missing source notes yield no partial effect. Other membership payloads and
+  their relative order cannot be edited through this command.
+- Shared atomic queue ownership now accepts the new member plus destination. Local
+  capture is all-or-nothing, restart uses the same identity, unknown delivery cannot
+  be discarded, and each participant requires committed proof. New request rows are
+  invisible to older queues; reference holds protect their saved predecessors from
+  older garbage collectors until initialization.
+- Gates: **723 suites / 7192 tests**, 2 suites / 13 emulator-only tests skipped in
+  the regular run; all **13 emulator tests passed separately** against real local
+  Firestore transactions. Both TS configurations pass, lint 0 errors / 15 inherited
+  warnings, isolated production build passes in 15.85 seconds. The final validation
+  refinement preserving relative order also passes 53 focused tests. Emulator proof
+  is Admin transaction evidence, not a Security Rules or live-device acceptance run.
+  Logs: `/tmp/data-engine-member-create-{full,lint,types-final,unused,build,emulator}.log`.
+- Sequential review: absent-ID and tenant guarantees, all-or-nothing write sets,
+  replay proof, domain validation, participant storage, old-tab compatibility,
+  dependency retention and production activation boundaries. No independent agent.
+- This foundation is not yet exposed through a creation form. Next work is the
+  durable creation stage and public hook, then AddSermonModal/dashboard/series-selector
+  integration. Preserve pre-Save input, stable new ID and destination pins across
+  restart; old membership recovery must not reinterpret creation stages. Existing
+  editor checkpoint: `44e22b94`. Live QA remains blocked by Firestore quota exhaustion.

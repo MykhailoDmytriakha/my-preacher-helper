@@ -28,12 +28,12 @@ function setup() {
   const entries = new Map<string, JournalEntry>(), receipts = new Map<string, CommandResult>();
   let sequence = 0, loseAck = false;
   const transport: EngineTransport = {
-    read: jest.fn(async (_owner, resource) => copy(rows.get(resource.id)!)),
+    read: jest.fn(async (_owner, resource) => copy(rows.get(resource.id) ?? { resource, value: null, metadata: null })),
     send: jest.fn(async command => {
       if (receipts.has(command.operationId)) return copy(receipts.get(command.operationId)!);
-      const plan = await planDataCommand(command, rows.get(command.resource.id)!, {
+      const plan = await planDataCommand(command, rows.get(command.resource.id) ?? { resource: command.resource, value: null, metadata: null }, {
         get: async resource => copy(resource.collection === 'groups' ? { ...group, resource } : rows.get(resource.id)!),
-        list: async collection => collection === 'series' ? copy([...rows.values()]) : [],
+        list: async collection => collection === 'series' ? copy([...rows.values()].filter(row => row.resource.collection === 'series')) : [],
       });
       for (const snapshot of plan.writes) rows.set(snapshot.resource.id, copy(snapshot));
       const result = plan.result.kind === 'acknowledged' ? { ...plan.result,
@@ -76,6 +76,53 @@ it('keeps both pending sides across restart and sends exactly one immutable comm
   expect((await queue.list()).map(row => row.state)).toEqual(['acknowledged', 'acknowledged']);
   expect(s.rows.get('a')?.value?.items).toEqual([]); expect(s.rows.get('b')?.value?.items).toEqual([member]); expect(s.entries.size).toBe(0);
   expect((await queue.list()).map(row => row.result)).toMatchObject(saved.map(row => ({ operationId: row.id, snapshot: { resource: row.baseline.resource } })));
+});
+
+const creatingMember = () => {
+  const creation = new DataSession({ resource: { collection: 'sermons', id: 'new' }, value: null, metadata: null });
+  creation.edit({ userId: 'owner', title: 'New sermon', verse: 'Romans 1', date: 'now', thoughts: [] });
+  const linked = new DataSession(series('b'));
+  linked.edit({ ...series('b').value, items: [{ id: 'sermon-new', type: 'sermon', refId: 'new', position: 1 }], sermonIds: ['new'] });
+  return [{ editorId: 'new-sermon', captured: creation.checkpoint(), predecessorId: null },
+    { editorId: 'series-link', captured: linked.checkpoint(), predecessorId: null }];
+};
+it('captures new member and membership together offline, hides them from old readers, and delivers after restart', async () => {
+  const s = setup(); let { queue } = s.make();
+  s.storage.writeFailure = true; await expect(queue.saveAtomic(creatingMember())).rejects.toThrow('disk full');
+  expect(await queue.list()).toEqual([]); s.storage.writeFailure = false;
+  const saved = await queue.saveAtomic(creatingMember());
+  expect(await queue.saveAtomic(creatingMember())).toEqual(saved);
+  const transaction = createEngineStorageTransaction();
+  const legacy = await transaction('readonly', (store, read, done) => {
+    read(store.getAll(engineOwnerRange('request', 'owner')), ordinary => {
+      read(store.getAll(engineOwnerRange('atomic-request', 'owner')), atomic => done([...ordinary, ...atomic]));
+    });
+  });
+  expect(legacy).toEqual([]); await queue.drain(false); expect(s.transport.send).not.toHaveBeenCalled();
+  expect(collectionDocumentViews('owner', 'sermons', [], await queue.list())[0]).toMatchObject({ pending: true, value: { title: 'New sermon' } });
+  ({ queue } = s.make()); await queue.drain(true);
+  expect(s.transport.send).toHaveBeenCalledTimes(1);
+  expect(jest.mocked(s.transport.send).mock.calls[0][0]).toMatchObject({ kind: 'relation', relation: 'series-member-create' });
+  expect((await queue.list()).map(row => row.state)).toEqual(['acknowledged', 'acknowledged']);
+  expect(s.rows.get('new')?.value?.title).toBe('New sermon'); expect(s.rows.get('b')?.value?.sermonIds).toEqual(['new']);
+});
+
+it('replays lost creation acknowledgement with one identity and refuses partial cancellation', async () => {
+  const s = setup(); let { queue } = s.make(); const saved = await queue.saveAtomic(creatingMember()); s.loseAck();
+  await queue.drain(true); expect((await queue.list()).every(row => row.state === 'prepared')).toBe(true);
+  await expect(queue.cancelAction(saved.map(row => row.id))).rejects.toThrow('Resolve pending');
+  ({ queue } = s.make()); await queue.drain(true);
+  expect(jest.mocked(s.transport.send).mock.calls.map(([command]) => command.operationId)).toEqual([saved[0].id, saved[0].id]);
+  expect(s.rows.get('new')?.metadata?.revision).toBe(1); expect(s.rows.get('b')?.value?.items).toHaveLength(1);
+  expect((await queue.list()).every(row => row.state === 'acknowledged')).toBe(true);
+});
+
+it('refuses and discards the whole creation when the pinned destination is deleted', async () => {
+  const s = setup(); const { queue } = s.make(); const saved = await queue.saveAtomic(creatingMember());
+  s.rows.set('b', { ...series('b'), value: null, metadata: { ...series('b').metadata!, deleted: true, revision: 2 } });
+  await queue.drain(true); expect((await queue.list()).every(row => row.state === 'refused')).toBe(true);
+  expect(s.rows.has('new')).toBe(false);
+  await queue.cancelAction(saved.map(row => row.id)); expect((await queue.list()).every(row => row.state === 'cancelled')).toBe(true);
 });
 it('replays unknown delivery after restart with the same identity and preserves merged secondary fields', async () => {
   const s = setup(); let { queue } = s.make();

@@ -5,16 +5,19 @@ import { engineOwnerRange, type StorageRead } from './storage.client';
 import type { CommitRequest } from './commits';
 import type { EditorRecord } from './controller';
 
-export const commitRowKey = (request: Pick<CommitRequest, 'owner' | 'editorId' | 'editGeneration' | 'atomic'>, kind = request.atomic ? 'atomic-request' : 'request'): IDBValidKey => [kind, request.owner, request.editorId, request.editGeneration];
+export const COMMIT_ROW_KINDS = ['request', 'atomic-request', 'creation-request'] as const;
+export const commitRowKey = (request: Pick<CommitRequest, 'owner' | 'editorId' | 'editGeneration' | 'atomic'>,
+  kind: string = request.atomic?.kind === 'create-member' ? 'creation-request' : request.atomic ? 'atomic-request' : 'request'): IDBValidKey => [kind, request.owner, request.editorId, request.editGeneration];
 export const commitGenerationKey = (request: Pick<CommitRequest, 'owner' | 'editorId'>): IDBValidKey => ['generation', request.owner, request.editorId];
 export const commitProjectionKey = (owner: string, id: string): IDBValidKey => ['reference', owner, 'projection', id];
 export const commitCaptureKey = (owner: string, scopeId: string, id: string): IDBValidKey => ['reference', owner, 'capture', scopeId, id];
+export const commitDependencyKey = (owner: string, id: string): IDBValidKey => ['reference', owner, 'dependency', id];
 
-/** Old bundles scan only `request`. They must never prepare atomic participants separately. */
+/** Each capability has its own range so older bundles cannot prepare unsupported participants. */
 export function readCommitRows(store: IDBObjectStore, read: StorageRead, owner: string, done: (requests: CommitRequest[]) => void): void {
   const rows: CommitRequest[] = [];
-  let remaining = 2;
-  for (const kind of ['request', 'atomic-request']) read(store.getAll(engineOwnerRange(kind, owner)), values => {
+  let remaining = COMMIT_ROW_KINDS.length;
+  for (const kind of COMMIT_ROW_KINDS) read(store.getAll(engineOwnerRange(kind, owner)), values => {
     rows.push(...values as CommitRequest[]);
     if (!--remaining) done(rows);
   });
@@ -55,6 +58,7 @@ export function collectCommitRows(store: IDBObjectStore, read: StorageRead, owne
     for (const request of requests) {
       if (!['acknowledged', 'cancelled'].includes(request.state) || request.unfinalized.length || references.has(request.id)) continue;
       store.delete(commitRowKey(request));
+      store.delete(commitDependencyKey(owner, request.id));
       store.delete(['identity', owner, request.id]);
       watermarks.set(request.editorId, Math.max(watermarks.get(request.editorId) ?? 0, request.editGeneration));
     }

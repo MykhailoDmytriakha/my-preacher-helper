@@ -38,6 +38,10 @@ export type DataCommand = CommandBase & (
   | { kind: 'relation'; relation: 'series-membership'; edits: Array<{
       resource: ResourceRef; generation: string | null; beforeItems: DocumentData[]; afterItems: DocumentData[];
     }> }
+  /** Creating a member in a series is one effect, including when the response is lost. */
+  | { kind: 'relation'; relation: 'series-member-create'; value: DocumentData; edit: {
+      resource: ResourceRef; generation: string | null; beforeItems: DocumentData[]; afterItems: DocumentData[];
+    } }
   /** Carrying a section between two councils: the source is marked carried only because it landed. */
   | { kind: 'relation'; relation: 'council-carry'; edits: Array<{
       resource: ResourceRef; generation: string | null; beforeTopics: DocumentData[]; afterTopics: DocumentData[];

@@ -1,17 +1,34 @@
 'use client';
 
 import { assertCommitBatch, assertCommitCapture, assertCommitIdentities, type CommitRequest, type CommitStore } from './commits';
-import { collectCommitRows, commitCaptureKey, commitGenerationKey, commitProjectionKey, commitRowKey, readCommitRows } from './retention.client';
+import { COMMIT_ROW_KINDS, collectCommitRows, commitCaptureKey, commitDependencyKey, commitGenerationKey, commitProjectionKey, commitRowKey, readCommitRows } from './retention.client';
 import { createEngineStorageTransaction, validateCommitReferences, type StorageRead } from './storage.client';
 
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const changed = () => Object.assign(new Error('Commit changed'), { code: 'commit-changed' });
 
+/** Older collectors honor reference rows even when they cannot read a new request format. */
+function retainPredecessor(store: IDBObjectStore, request: CommitRequest): void {
+  const key = commitDependencyKey(request.owner, request.id);
+  if (request.predecessor && !request.initialized && !['cancelled', 'acknowledged'].includes(request.state)) {
+    store.put({ commitReferences: [request.predecessor] }, key);
+  } else store.delete(key);
+}
+
+function checkOwnershipFormat(store: IDBObjectStore, read: StorageRead, request: CommitRequest, done: () => void): void {
+  const selected = (commitRowKey(request) as IDBValidKey[])[0];
+  const others = COMMIT_ROW_KINDS.filter(kind => kind !== selected);
+  let remaining = others.length;
+  for (const kind of others) read(store.get(commitRowKey(request, kind)), other => {
+    if (other) throw new Error('Saved generation cannot change its ownership format');
+    if (!--remaining) done();
+  });
+}
+
 function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRequest, done: (record: CommitRequest) => void): void {
   read(store.get(commitRowKey(frozen)), (existing: CommitRequest | undefined) => {
     if (existing) { assertCommitCapture(existing, frozen); done(existing); return; }
-    read(store.get(commitRowKey(frozen, frozen.atomic ? 'request' : 'atomic-request')), other => {
-      if (other) throw new Error('Saved generation cannot change its ownership format');
+    checkOwnershipFormat(store, read, frozen, () => {
       read(store.get(commitGenerationKey(frozen)), (completed: { through: number } | undefined) => {
         if (completed && completed.through >= frozen.editGeneration) throw Object.assign(new Error('This saved generation is already complete'), { code: 'commit-generation-complete' });
         const identity = ['identity', frozen.owner, frozen.id];
@@ -22,6 +39,7 @@ function createRecord(store: IDBObjectStore, read: StorageRead, frozen: CommitRe
             store.put({ commitReferences: [frozen.id] }, commitProjectionKey(frozen.owner, frozen.id));
             if (frozen.retentionScope) store.put({ commitReferences: [frozen.id] }, commitCaptureKey(frozen.owner, frozen.retentionScope, frozen.id));
             store.put(frozen, commitRowKey(frozen));
+            retainPredecessor(store, frozen);
             done(frozen);
           });
         });
@@ -56,6 +74,7 @@ export function createIndexedDbCommitStore(): CommitStore {
             || next.editGeneration !== previous.editGeneration) throw new Error('Commit identity changed');
           assertCommitCapture(current, next);
           const saved = { ...next, revision: previous.revision + 1 };
+          retainPredecessor(store, saved);
           store.put(saved, commitRowKey(saved)); result[index] = saved;
           if (!--remaining) collectCommitRows(store, read, saved.owner, () => done(result));
         });

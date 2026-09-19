@@ -159,8 +159,9 @@ allows compaction; failures retain their whole original stage.
 
 The public `useDataMembership` hook supports begin/update/save/recover/cancel,
 delivery status, identity-preserving retry and whole-action discard. Presentation
-is fenced by account and response order. It is not yet connected to domain screens.
-All series callers, explicit re-selection UX after refusal, and live browser/PWA
+is fenced by account and response order. Series detail, group detail, sermon menus
+and the existing-sermon edit field now consume it. Creation screens still need
+their durable stage integration. Remaining callers and live browser/PWA
 acceptance remain outstanding. Production activation is still forbidden.
 
 ## Whole-action resolution
@@ -179,3 +180,32 @@ unrelated conflicts. Mounted editors and closed-checkpoint recovery share this
 rule. Otherwise the next ordinary autosave could submit only the source removal.
 Stage compaction can be retried after cancellation; it must not trigger another
 network operation or lose the remaining local recovery evidence.
+
+## Creating a member inside a series
+
+The engine now supports `series-member-create` as one transactional relation: an
+absent sermon/group plus one pinned destination series. The wire command contains
+the complete creation value and the destination's opening membership and generation.
+It may add exactly its new typed member, preserving the content and relative order
+of every existing member. It cannot replace an existing ID or revive a tombstone.
+
+The planner reuses ordinary creation validation, source-note checks, series target
+checks, merge policy, exclusivity and activation guards. The proposed new child is
+visible during reference validation; neither effect is exposed when any check fails.
+Receipts retain proof for both resources. Replay returns current content with the
+original committed proof, without re-planning or repeating the creation.
+
+Internally, `CommitQueue.saveAtomic` accepts the absent member first (explicit null
+predecessor) and the destination second. Both capture and state transitions use one
+local transaction. Existing replay, participant proof, cancellation and projection
+logic remains shared. `creation-request` isolates both participants from older
+queues that understand only ordinary requests or series-only atomic moves.
+Predecessor holds live in the existing `reference` range until initialization, so
+older collectors cannot delete a dependency they cannot otherwise see.
+
+This is the validated queue/server foundation, not a finished creation UI. Next:
+the durable form must own the new resource ID, every keystroke and the pinned series
+selection before Save; capture references must survive a crash before completion.
+Its recovery record also needs a capability boundary that old membership dialogs
+cannot interpret as a membership-only action. Do not bridge this with UI-owned
+Promise chains, separate queues, fresh reads at Save, or compensating removal.

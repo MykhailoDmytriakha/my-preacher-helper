@@ -145,8 +145,18 @@ class RelationPlanner {
   private async checkSeriesTargets(items: DocumentData[]): Promise<void> {
     for (const item of items) {
       // A delete must contend on the target even though only the series is written.
-      this.live(await this.get({ collection: item.type === 'sermon' ? 'sermons' : 'groups', id: String(item.refId) }));
+      const resource = { collection: item.type === 'sermon' ? 'sermons' : 'groups', id: String(item.refId) };
+      this.live(this.writes.get(key(resource)) ?? await this.get(resource));
     }
+  }
+
+  private async createSeriesMember(command: Extract<DataCommand, { relation: 'series-member-create' }>): Promise<CommandResult | undefined> {
+    // Ordinary creation owns validation, ownership, provenance and absent-ID semantics.
+    // These are proposed writes only: a failed series relation exposes neither effect.
+    const result = await this.ordinary({ ...command, kind: 'create' });
+    if (result) return result;
+    return this.seriesRelation({ ...command, resource: command.edit.resource, generation: command.edit.generation,
+      relation: 'series-membership', edits: [command.edit] });
   }
 
   private async linkMaterial(material: ResourceSnapshot, before: string[], after: string[], generations?: Map<string, string | null>): Promise<void> {
@@ -396,7 +406,9 @@ class RelationPlanner {
     if (key(this.command.resource) !== key(this.primary.resource)) fail('resource-mismatch');
     this.assertOwned(this.primary);
     let result: CommandResult | undefined;
-    if (this.command.kind === 'relation') {
+    if (this.command.kind === 'relation' && this.command.relation === 'series-member-create') {
+      result = await this.createSeriesMember(this.command);
+    } else if (this.command.kind === 'relation') {
       this.live(this.primary, this.command.generation);
       result = this.command.relation === 'material-notes' ? await this.materialRelation(this.command)
         : this.command.relation === 'council-carry' ? await this.councilCarry(this.command)

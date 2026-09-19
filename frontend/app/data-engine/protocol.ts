@@ -135,7 +135,23 @@ function validatePayload(command: DataCommand, policy: ReturnType<typeof getReso
   }
 }
 
+function validateSeriesMemberCreation(command: Extract<DataCommand, { relation: 'series-member-create' }>): void {
+  if (!['sermons', 'groups'].includes(command.resource.collection) || command.generation !== null
+    || !object(command.edit) || !object(command.edit.resource)) fail('Invalid series member creation');
+  validateCreate({ ...command, kind: 'create' }, getResourcePolicy(command.resource.collection));
+  validateRelation({ ...command, relation: 'series-membership', resource: command.edit.resource,
+    generation: command.edit.generation, edits: [command.edit] });
+  const type = command.resource.collection === 'sermons' ? 'sermon' : 'group';
+  const matches = (item: DocumentData) => item.type === type && item.refId === command.resource.id;
+  const orderedContent = (items: DocumentData[]) => [...items].sort((left, right) => Number(left.position) - Number(right.position))
+    .map(item => Object.fromEntries(Object.entries(item).filter(([field]) => field !== 'position')));
+  const added = command.edit.afterItems.filter(matches);
+  if (command.edit.beforeItems.some(matches) || added.length !== 1
+    || !equalValues(orderedContent(command.edit.beforeItems), orderedContent(command.edit.afterItems.filter(item => !matches(item))))) fail('Creation must only add its new member');
+}
+
 function validateRelation(command: Extract<DataCommand, { kind: 'relation' }>): void {
+  if (command.relation === 'series-member-create') return validateSeriesMemberCreation(command);
   const ids = (value: unknown) => Array.isArray(value) && value.length <= 100
     && value.every(isValidIdentifier) && new Set(value).size === value.length;
   const generation = (value: unknown) => value === null || isValidIdentifier(value);

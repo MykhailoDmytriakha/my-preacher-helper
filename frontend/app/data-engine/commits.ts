@@ -162,9 +162,13 @@ export class CommitQueue {
     if (!owner) throw new Error(AUTHENTICATION_REQUIRED);
     if (!this.options.store.createBatch || !this.options.store.compareAndSetBatch) throw new Error('Atomic commit storage is required');
     const frozen = clone(captures);
+    const creation = frozen.length === 2 && ['sermons', 'groups'].includes(frozen[0].captured.confirmed.resource.collection)
+      && frozen[0].captured.confirmed.value === null && frozen[0].captured.confirmed.metadata === null
+      && frozen[0].captured.draft !== null && frozen[0].predecessorId === null;
     if (frozen.length < 2 || frozen.length > MAX_RELATION_RESOURCES
       || new Set(frozen.map(item => JSON.stringify(item.captured.confirmed.resource))).size !== frozen.length
-      || frozen.some(item => item.captured.conflicts.length || item.captured.confirmed.resource.collection !== 'series')) throw new Error('Invalid atomic series capture');
+      || frozen.some((item, index) => item.captured.conflicts.length || (!(creation && index === 0)
+        && item.captured.confirmed.resource.collection !== 'series'))) throw new Error('Invalid atomic series capture');
     if (frozen.some(item => (item.captured.confirmed.value && item.captured.confirmed.value.userId !== owner)
       || (item.captured.draft && item.captured.draft.userId !== owner))) throw new Error('Atomic capture belongs to another owner');
     const records = await this.options.store.list(owner); this.assertCurrent(owner, generation);
@@ -180,7 +184,8 @@ export class CommitQueue {
     };
     const existing = repeated(records); if (existing) return existing;
     const id = this.options.operationId();
-    const atomic = { id, participants: frozen.map((_, index) => index === 0 ? id : `${id}-participant-${index}`) };
+    const atomic: AtomicCommitIdentity = { id, participants: frozen.map((_, index) => index === 0 ? id : `${id}-participant-${index}`),
+      ...(creation ? { kind: 'create-member' } : {}) };
     const requests = frozen.map((item, index): CommitRequest => {
       const predecessors = records.filter(record => record.editorId === item.editorId && record.state !== 'cancelled');
       const predecessor = item.predecessorId === null ? undefined : item.predecessorId ? records.find(record => record.id === item.predecessorId)

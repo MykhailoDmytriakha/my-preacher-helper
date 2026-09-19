@@ -2,6 +2,7 @@ import { createStore } from 'idb-keyval';
 
 import { createIndexedDbCommitStore } from '../commits.client';
 import { installStorageHarness } from './storageHarness';
+import { createEngineStorageTransaction, engineOwnerRange } from '../storage.client';
 
 import type { CommitRequest } from '../commits';
 
@@ -78,6 +79,23 @@ describe('IndexedDB commit storage', () => {
     const pair = await store.createBatch!([{ ...request('a'), editorId: 'first', atomic }, { ...request('b'), editorId: 'second', atomic }]);
     await expect(store.create({ ...request('replacement'), editorId: pair[0].editorId })).rejects.toThrow('ownership format');
     expect(await store.list('owner')).toHaveLength(3);
+  });
+
+  it('keeps new-format predecessor holds visible to collectors that cannot read creation requests', async () => {
+    const store = createIndexedDbCommitStore(), predecessor = await store.create(request('prior'));
+    const atomic = { id: 'create', participants: ['create', 'link'], kind: 'create-member' as const };
+    const saved = await store.createBatch!([{ ...request('create'), editorId: 'creation', atomic },
+      { ...request('link'), editorId: 'link', predecessor: predecessor.id, atomic }]);
+    const transaction = createEngineStorageTransaction();
+    const oldCollectorReferences = () => transaction<string[]>('readonly', (rows, read, done) => {
+      read(rows.getAll(engineOwnerRange('reference', 'owner')), refs => done(refs.flatMap(row => row.commitReferences ?? [])));
+    });
+    expect(await oldCollectorReferences()).toContain(predecessor.id);
+    await expect(store.create({ ...request('replacement'), editorId: 'creation' })).rejects.toThrow('ownership format');
+    await expect(store.create({ ...request('replacement'), editorId: 'link', atomic: { id: 'replacement', participants: ['replacement', 'other'] } })).rejects.toThrow('ownership format');
+    await store.compareAndSetBatch!(saved.map(previous => ({ previous, next: { ...previous, initialized: true } })));
+    // The predecessor's own projection remains, while the extra dependency hold retires.
+    expect((await oldCollectorReferences()).filter(id => id === predecessor.id)).toHaveLength(1);
   });
 
   it('atomically deduplicates a saved editor generation across tabs and returns detached records', async () => {

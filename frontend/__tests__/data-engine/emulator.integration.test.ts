@@ -71,6 +71,40 @@ run('DataEngine against real Firestore transactions', () => {
   beforeEach(() => { process.env.DATA_ENGINE_ENABLED = 'true'; });
   afterAll(async () => { process.env = environment; await adminDb.terminate(); });
 
+  it('atomically creates a sermon in a series and replays a lost response without duplicating either effect', async () => {
+    const destination = { collection: 'series', id: `${owner}-create-destination` };
+    const seeded = await processCommand(owner, { protocol: 1, owner, operationId: operationId(), resource: destination, generation: null, dependsOn: [], kind: 'create',
+      value: { userId: owner, theme: 'Creation target', bookOrTopic: '', status: 'draft', createdAt: 'now', updatedAt: 'now', items: [], sermonIds: [] } });
+    if (seeded.kind !== 'acknowledged') throw new Error('Series seed failed');
+    const resource = sermon('atomic-create');
+    const command: DataCommand = { protocol: 1, owner, operationId: operationId(), resource, generation: null, dependsOn: [], kind: 'relation',
+      relation: 'series-member-create', value: baseValue(), edit: { resource: destination, generation: seeded.snapshot.metadata!.generation,
+        beforeItems: [], afterItems: [{ id: 'created-member', type: 'sermon', refId: resource.id, position: 1 }] } };
+    const accepted = await processCommand(owner, command);
+    expect(accepted).toMatchObject({ kind: 'acknowledged', snapshot: { metadata: { revision: 1 } }, affected: [{ resource: destination, metadata: { revision: 2 } }] });
+    if (accepted.kind !== 'acknowledged') throw new Error('Atomic creation refused');
+    await processCommand(owner, { protocol: 1, owner, operationId: operationId(), resource, generation: accepted.snapshot.metadata!.generation, dependsOn: [], kind: 'update',
+      changes: [{ path: ['title'], before: { exists: true, value: 'Sermon' }, after: { exists: true, value: 'Later title' } }] });
+    const replay = await processCommand(owner, command);
+    expect(replay).toMatchObject({ kind: 'acknowledged', snapshot: { value: { title: 'Later title' }, metadata: { revision: 2 } },
+      committed: { revision: 1 }, affected: [{ resource: destination, metadata: { revision: 2 } }] });
+    expect((await readDocument(owner, destination)).value?.items).toHaveLength(1);
+    expect((await readDocument(owner, destination)).metadata?.revision).toBe(2);
+  });
+
+  it.each(['deleted', 'unserved'])('leaves no new sermon when its destination is %s', async mode => {
+    const destination = { collection: 'series', id: `${owner}-create-${mode}` }, resource = sermon(`atomic-${mode}`);
+    const value = { userId: owner, theme: mode, bookOrTopic: '', status: 'draft', createdAt: 'now', updatedAt: 'now', items: [], sermonIds: [] };
+    if (mode === 'unserved') await adminDb.collection('series').doc(destination.id).set(value);
+    process.env.DATA_ENGINE_ENABLED = mode === 'deleted' ? 'true' : 'false'; process.env.DATA_ENGINE_COLLECTIONS = 'sermons';
+    const command: DataCommand = { protocol: 1, owner, operationId: operationId(), resource, generation: null, dependsOn: [], kind: 'relation',
+      relation: 'series-member-create', value: baseValue(), edit: { resource: destination, generation: null, beforeItems: [],
+        afterItems: [{ id: 'created-member', type: 'sermon', refId: resource.id, position: 1 }] } };
+    expect(await processCommand(owner, command)).toMatchObject({ kind: 'refused', code: mode === 'deleted' ? 'referenced-document-deleted' : 'related-collection-not-enabled' });
+    expect((await adminDb.collection('sermons').doc(resource.id).get()).exists).toBe(false);
+    if (mode === 'unserved') expect((await adminDb.collection('series').doc(destination.id).get()).data()).toEqual(value);
+  });
+
   it('refuses an actual cascade into an unserved domain without marking either document', async () => {
     const group = { collection: 'groups', id: `${owner}-rollout-group` };
     const series = { collection: 'series', id: `${owner}-rollout-series` };
